@@ -6,6 +6,7 @@ const { ok, err } = require('./results');
 const audit = require('./audit');
 const dt = require('./datetime');
 const quietFacts = require('./quiet-facts');
+const preferences = require('./preferences');
 const { autoReminderAt } = require('./auto-reminder');
 const { hasOffset, badTime } = dt;
 
@@ -106,8 +107,113 @@ function normalizeRepeatRule(raw) {
 // There is no column that separates a pill from a nag — `nudge` is false on
 // every live repeating row and `due_at` is null on six of the seven — so the
 // shape of the rule is the only honest signal, and this is where it stops.
-function movesOffQuietDay(rule) {
+//
+// A CHASE is the one thing added to that list (owner, 2026-09-22, the second
+// ruling of the same day): a daily chase toward a deadline skips a quiet day
+// rather than arriving on it. The argument the carve-outs above make is about
+// what a skip COSTS — a pill skipped on Saturday is a pill missed, and a bare
+// 'weekly' skipped is a whole week gone, which is why it moves instead. A daily
+// chase loses nothing at all: it comes back the next morning, and לקחת מצלמה
+// לתיקון on Shabbat is a message about something nobody can do. For a `daily`
+// rule "move to the next kept day" and "skip this one" are the same instant,
+// so it goes through the same one function rather than a second path.
+function movesOffQuietDay(rule, { until = null } = {}) {
+  if (until) return Boolean(normalizeRepeatRule(rule));
   return normalizeRepeatRule(rule) === 'weekly';
+}
+
+// ---- a chase, as against a cadence ------------------------------------------
+//
+// Both are `repeat_rule` rows and the difference is `repeat_until`: a cadence
+// is a rhythm somebody lives by and has no end, a chase is one job being
+// followed until a deadline and stops there. Migration 081 has the whole story;
+// what matters at every call site is that FOUR readers used to take "repeating"
+// to mean "a rhythm", and each of them wants this predicate instead.
+function isChase(row) {
+  return Boolean(row && row.repeat_until && normalizeRepeatRule(row.repeat_rule));
+}
+
+// The hour somebody already hears from Olma in the morning — their earliest
+// morning digest, failing that the start of the window they agreed to
+// (preferences.DEFAULT_WINDOW's 09:00 is a sentence they read in the discovery
+// ladder, never a bare constant here). The owner named exactly this for a chase
+// whose hour nobody stated, and it is the rule the PAGE already applies to a
+// standing nudge — `remDefaultAt` in docs/design/user-dashboard.html, whose
+// REM_MORNING_BEFORE and REM_FALLBACK_AT these two constants mirror. The two
+// copies are pinned to each other in tests/reminders-chase.test.js, because a
+// hour that disagrees between the page and the chat is a person being told two
+// different things about one arrangement.
+const CHASE_MORNING_BEFORE = '12:00';
+const CHASE_FALLBACK_AT = '09:00';
+
+// The evening slot, and the only hour here nobody's own settings can answer.
+// It exists for one case: they asked during the day, the morning hour is gone,
+// and the owner's rule is that the day they asked COUNTS. A chase that started
+// tomorrow would quietly drop the first of the days they asked for.
+const CHASE_EVENING_AT = '19:00';
+
+function chaseHour({ digestTimes, windowStart } = {}) {
+  const times = (Array.isArray(digestTimes) ? digestTimes : String(digestTimes || '').split(','))
+    .map((t) => String(t).trim()).filter(Boolean).filter((t) => t < CHASE_MORNING_BEFORE).sort();
+  if (times.length) return times[0];
+  return /^\d{2}:\d{2}$/.test(String(windowStart || '')) ? String(windowStart) : CHASE_FALLBACK_AT;
+}
+
+// When the first occurrence goes. Their own morning hour if it is still ahead
+// today, the evening slot if the morning is gone and the evening is not, and
+// otherwise tomorrow morning — which is where somebody who asks at 22:00 lands,
+// since an evening slot already past is not an evening they are awake for.
+// Returns a Date: an instant is already unambiguous, and `hasOffset` takes one
+// as-is precisely so internal callers computing their own moment never have to
+// round-trip through a string (domain/pause.js does the same).
+function firstChaseMoment({ hour, timezone, windowEnd, now = new Date() }) {
+  const tz = timezone || 'UTC';
+  const at = new Date(now);
+  const p = dt.partsInZone(tz, at);
+  const on = (hhmm) => {
+    const [hh, mi] = String(hhmm).split(':').map(Number);
+    return dt.instantInZone(tz, { y: p.y, m: p.m, d: p.d, hh, mi, ss: 0 });
+  };
+  const ahead = (when) => when.getTime() > at.getTime() + PAST_GRACE_MS;
+  const today = on(hour);
+  if (ahead(today)) return today;
+  // Never past the hour they agreed to be written at: the gate would hold it,
+  // and a held rung 1 meets the expiry check before the window re-opens.
+  const eveningOk = !/^\d{2}:\d{2}$/.test(String(windowEnd || '')) || CHASE_EVENING_AT <= String(windowEnd);
+  const evening = on(CHASE_EVENING_AT);
+  if (eveningOk && ahead(evening)) return evening;
+  const [hh, mi] = String(hour).split(':').map(Number);
+  return dt.instantInZone(tz, { y: p.y, m: p.m, d: p.d + 1, hh, mi, ss: 0 });
+}
+
+// The evening occurrence is a DAY ZERO, not the series: `repeat_seq` 0 is the
+// message that exists only because the day they asked counts, and from it the
+// series proper starts the next morning at their own hour. Without this the
+// whole chase would inherit 19:00 from the hour they happened to ask at, which
+// is the "never a bare constant" rule broken by accident instead of on purpose.
+//
+// The hour is recomputed rather than stored: somebody who moves their morning
+// digest has moved when they read Olma, and the chase should follow them there.
+function chaseReanchor(remindAt, hour, tz) {
+  const zone = tz || 'UTC';
+  const p = dt.partsInZone(zone, new Date(remindAt));
+  const [hh, mi] = String(hour).split(':').map(Number);
+  return dt.instantInZone(zone, { y: p.y, m: p.m, d: p.d + 1, hh, mi, ss: 0 });
+}
+
+// The last instant a chase may fire: the END of the local day the thing is due
+// on. The same boundary `dueForSending` already draws for a follow-up rung —
+// "never a rung once the local day of due_at has ended" — said once more here,
+// because a chase is the same promise made daily. A day-shaped due_at (local
+// midnight, which is how "עד שבוע הבא" is stored) therefore still earns that
+// morning's message, and nothing earns one the day after.
+function chaseUntil(dueAt, timezone) {
+  if (!dueAt) return null;
+  const due = new Date(dueAt);
+  if (Number.isNaN(due.getTime())) return null;
+  const tz = timezone || 'UTC';
+  const p = dt.partsInZone(tz, due);
+  return dt.instantInZone(tz, { y: p.y, m: p.m, d: p.d, hh: 23, mi: 59, ss: 59 });
 }
 
 // Bare 'monthly' carries no day. Pin it to the day the reminder itself falls
@@ -221,7 +327,7 @@ const TASK_THEY_ARE_ON = `(t.owner_id = $2 OR EXISTS (
   SELECT 1 FROM shares s WHERE s.viewer_id = $2 AND s.status = 'active'
     AND (s.task_id = t.id OR s.task_id = t.parent_id)))`;
 
-async function setReminder(client, userId, taskId, remindAt, repeatRule, { nudge = false } = {}) {
+async function setReminder(client, userId, taskId, remindAt, repeatRule, { nudge = false, until = null, seq = 1 } = {}) {
   if (!remindAt) return err('invalid', 'remind_at required');
   if (!hasOffset(remindAt)) return badTime('remind_at', remindAt);
   // The zone is the PERSON's, not the task owner's: "every month on the 16th"
@@ -247,9 +353,13 @@ async function setReminder(client, userId, taskId, remindAt, repeatRule, { nudge
   // chose in words with that day in front of them — the exemption the gate has
   // always granted (gate.askedForInWords), which this rule narrows by exactly
   // one rule shape and not one step further.
+  // An end without a repeat is nothing at all: "until Sunday" said of a
+  // one-off is a moment, and the moment is `remind_at`. Dropped rather than
+  // refused, so a caller that passes both by reflex still stores a true row.
+  const endsAt = rule && until ? new Date(until) : null;
   let at = remindAt;
   let movedOff = null;
-  if (movesOffQuietDay(rule)) {
+  if (movesOffQuietDay(rule, { until: endsAt })) {
     const kept = await quietFacts.keptMomentFor(
       client, { id: userId, timezone: rows[0].timezone, locale: rows[0].locale }, remindAt
     );
@@ -291,18 +401,90 @@ async function setReminder(client, userId, taskId, remindAt, repeatRule, { nudge
   // שאעשה את זה" and "תזכירי לי ב-9" produce the same row otherwise, and the
   // ladder default (RUNGS) says one message for both. It is stamped only when
   // they ASKED — a model that passes it by reflex is the drum this replaced.
+  // A chase whose first moment is already past its own end is a series with
+  // nothing in it. That is a caller error, and it is refused rather than
+  // stored: a row that can never fire looks exactly like one that will, both
+  // to `list_my_reminders` and to the person who was just promised it.
+  if (endsAt && new Date(at).getTime() > endsAt.getTime()) {
+    return err('invalid', 'the chase would end before its first reminder');
+  }
   const ins = await client.query(
-    `INSERT INTO task_reminders (task_id, remind_at, repeat_rule, auto, nudge, user_id)
-     VALUES ($1, $2, $3, false, $4, $5) RETURNING *`,
-    [taskId, at, rule, nudge === true, userId]
+    `INSERT INTO task_reminders (task_id, remind_at, repeat_rule, auto, nudge, user_id, repeat_until, repeat_seq)
+     VALUES ($1, $2, $3, false, $4, $5, $6, $7) RETURNING *`,
+    [taskId, at, rule, nudge === true, userId, endsAt, Number.isFinite(Number(seq)) ? Math.max(0, Number(seq)) : 1]
   );
   await audit.record(client, userId, 'reminder.created', {
     taskId, reminderId: ins.rows[0].id,
     ...(nudge === true ? { nudge: true } : {}),
+    ...(endsAt ? { chaseUntil: endsAt.toISOString() } : {}),
     ...(movedOff ? { movedOffQuietDay: movedOff, askedFor: remindAt } : {}),
     ...(superseded.rowCount ? { supersededAuto: superseded.rows.map((r) => Number(r.id)) } : {}),
   });
   return ok({ reminder: ins.rows[0], supersededAuto: superseded.rowCount });
+}
+
+// ---- arming a chase ---------------------------------------------------------
+//
+// "תעזור לי בתזכורת... אני רוצה שעד שבוע הבא היא תהיה מוכנה" (חיים, 2026-09-22).
+// What that asks for is one reminder a day, from the day he said it, until the
+// deadline — unless he says it is done. What he got was a single message the
+// evening before the deadline, at an hour he had never named.
+//
+// The model's job is the half only it can do: did they ask to be CHASED. That
+// is the `nudge` flag, which has meant "תזכירי לי עד שאעשה את זה" since
+// migration 072. Everything that follows from it is decided here, deterministic
+// and testable, for the same reason auto-reminder.js exists: the shape of the
+// answer is not a thing to leave in a prompt.
+//
+//   the HOUR  — theirs, never a constant we picked: the morning digest they
+//               already read, failing that the start of the window they agreed
+//               to (chaseHour). The owner named exactly this.
+//   the FIRST — today if that hour is still ahead, this evening if it is not,
+//               tomorrow morning if the evening is gone too. The day they ask
+//               counts; it is the first of the days they asked for.
+//   the END   — the end of the local day the thing is due on (chaseUntil).
+//
+// Returns null when the task carries no deadline to chase toward, or when only
+// ONE occurrence would fit before it. That second case is not a failure: a
+// deadline today or tomorrow is what the escalation ladder is for, and `nudge`
+// already buys its three rungs. So the caller falls back to what it does today
+// and nothing is lost.
+// `at` is the caller's own anchor and the whole of the hour decision when it is
+// given: `set_task_reminder` takes a moment by contract, so "כל יום ב-8 עד יום
+// ראשון" keeps the eight o'clock they said. Only when nobody named an hour does
+// the paragraph above apply.
+async function startChase(client, userId, taskId, { now = new Date(), at = null } = {}) {
+  const { rows } = await client.query(
+    `SELECT t.due_at, u.timezone, u.digest_times
+       FROM tasks t JOIN users u ON u.id = $2
+      WHERE t.id = $1 AND t.archived_at IS NULL AND t.status = 'open' AND ${TASK_THEY_ARE_ON}`,
+    [taskId, userId]
+  );
+  if (!rows[0] || !rows[0].due_at) return null;
+  const tz = rows[0].timezone || 'Asia/Jerusalem';
+  const until = chaseUntil(rows[0].due_at, tz);
+  if (!until || until.getTime() <= new Date(now).getTime()) return null;
+  let first;
+  let seq = 1;
+  let hour = null;
+  if (at) {
+    first = new Date(at);
+    if (Number.isNaN(first.getTime())) return null;
+  } else {
+    const { data } = await preferences.availabilityWindow(client, userId);
+    const window = (data && data.window) || preferences.DEFAULT_WINDOW;
+    hour = chaseHour({ digestTimes: rows[0].digest_times, windowStart: window.start });
+    first = firstChaseMoment({ hour, timezone: tz, windowEnd: window.end, now });
+    // Their hour, today, is the series starting today. Anything else is the
+    // evening exception: day zero, and the series proper starts tomorrow.
+    const p = dt.partsInZone(tz, first);
+    seq = `${String(p.hh).padStart(2, '0')}:${String(p.mi).padStart(2, '0')}` === hour ? 1 : 0;
+  }
+  if (first.getTime() > until.getTime()) return null;
+  // One occurrence is not a chase. The ladder says the same thing better.
+  const second = seq === 0 ? chaseReanchor(first, hour, tz) : nextOccurrence(first, 'daily', tz);
+  if (!second || second.getTime() > until.getTime()) return null;
+  return setReminder(client, userId, taskId, first, 'daily', { nudge: true, until, seq });
 }
 
 // One ladder per task. Maya asked for a reminder at 16:00 AND one at 16:15
@@ -363,7 +545,7 @@ async function retireSiblingLadders(client, userId, taskId, reminderId, now = ne
 // Returns the created row, or null. Null is a real answer — a task with no due
 // date, a moment already past, one too far out — and callers must treat it as
 // one rather than as a failure worth mentioning to anybody.
-async function attachAutoReminder(client, ownerId, task, timezone, now = new Date()) {
+async function attachAutoReminder(client, ownerId, task, timezone, now = new Date(), { nudge = false } = {}) {
   const at = autoReminderAt(task.due_at, timezone, now);
   if (!at) return null;
   // Never a second reminder on a task that already has a live one OF THEIRS:
@@ -378,13 +560,19 @@ async function attachAutoReminder(client, ownerId, task, timezone, now = new Dat
     [task.id, ownerId]
   );
   if (existing.length) return null;
+  // The hour is Olma's, and `nudge` is still theirs: somebody who asked to be
+  // chased about a task whose deadline is too close to chase across (one day,
+  // where startChase declines) gets the ladder's three rungs, which is exactly
+  // what the flag has meant since migration 072. Losing it here would answer
+  // "תעזור לי עד שאעשה" with one message and nothing after it.
   const { rows } = await client.query(
-    `INSERT INTO task_reminders (task_id, remind_at, auto, user_id)
-     VALUES ($1, $2, true, $3) RETURNING *`,
-    [task.id, at, ownerId]
+    `INSERT INTO task_reminders (task_id, remind_at, auto, nudge, user_id)
+     VALUES ($1, $2, true, $4, $3) RETURNING *`,
+    [task.id, at, ownerId, nudge === true]
   );
   await audit.record(client, ownerId, 'reminder.auto_created', {
     taskId: Number(task.id), reminderId: Number(rows[0].id), remindAt: at,
+    ...(nudge === true ? { nudge: true } : {}),
   });
   return rows[0];
 }
@@ -601,6 +789,9 @@ async function dueForSending(client, now, opts = {}) {
   const nudgingRungs = cap(opts.nudgingRungs, RUNGS.nudging);
   const { rows } = await client.query(
     `SELECT r.id AS reminder_id, r.task_id, r.remind_at, r.repeat_rule, r.attempts, r.auto,
+            -- a chase and its place in one: which occurrence this is, and the
+            -- instant past which there are no more (migration 081)
+            r.repeat_until, r.repeat_seq,
             -- who it reaches — the person who set it, and only for rows older
             -- than migration 073 the task's owner
             ${RECIPIENT} AS user_id, t.title, t.due_at, u.timezone, u.digest_times, u.locale,
@@ -775,9 +966,11 @@ async function retireForMovedTask(client, ownerId, task, { timezone, now = new D
 //     it, so "stop reminding" cannot be about it. It is also the hour they may
 //     still be promised, and cancelling it silently would be the opposite
 //     failure — a reminder they asked for, gone without a word.
-//   - a repeating reminder: that cadence IS theirs, and ending it is a decision
-//     about a standing arrangement, not about the last few messages. The model
-//     still has cancel_reminder for it, with words.
+//   - a CADENCE (repeating, no end): that rhythm IS theirs, and ending it is a
+//     decision about a standing arrangement, not about the last few messages.
+//     The model still has cancel_reminder for it, with words. A CHASE is the
+//     opposite — it is precisely the last few messages, one a day — so it is
+//     stopped, and so is the occurrence already waiting behind it.
 //   - the TASK: stopping the reminders is not doing the thing or dropping it
 //     (cancel_reminder's own taskStillOpen hint, and the pause doctrine).
 const STOP_WINDOW_HOURS = 24;
@@ -788,12 +981,13 @@ async function stopRecentLadders(client, userId, { now = new Date(), windowHours
   // reminder. A rung the gate held reached nobody and is not what "stop" is
   // answering — and it is withdrawn below anyway, where withdrawing is free.
   const { rows: reached } = await client.query(
-    `SELECT DISTINCT r.id, r.sent_at IS NULL AS climbing
+    `SELECT DISTINCT r.id, r.task_id, r.repeat_until IS NOT NULL AS chase
        FROM task_reminders r
        JOIN tasks t ON t.id = r.task_id
        JOIN outbox o ON o.user_id = $1 AND o.kind = 'reminder'
         AND substring(o.idempotency_key from '^reminder:([0-9]+)')::bigint = r.id
-      WHERE ${RECIPIENT} = $1 AND r.repeat_rule IS NULL AND r.cancelled_at IS NULL
+      WHERE ${RECIPIENT} = $1 AND (r.repeat_rule IS NULL OR r.repeat_until IS NOT NULL)
+        AND r.cancelled_at IS NULL
         AND r.attempts >= 1
         AND o.sent_at IS NOT NULL AND o.hold_reason IS NULL
         AND o.sent_at > $2::timestamptz - ($3::double precision * interval '1 hour')`,
@@ -812,16 +1006,32 @@ async function stopRecentLadders(client, userId, { now = new Date(), windowHours
   // the whole reason cancelling used to be a lie for hours (incidents.md, "The
   // reminder that would not stop"). Withdrawn for every id in the window,
   // including a ladder that had already ended and still has a message waiting.
-  const keys = ids.flatMap((id) => [`reminder:${id}`, `reminder:${id}:%`]);
+  // A CHASE keeps its promise in a row that has not fired yet: each occurrence
+  // is a new row, armed the moment the last one went out. Retiring only what
+  // reached them would stop nothing at all — the same message would arrive the
+  // next morning — so the occurrence WAITING on a chase they just stopped is
+  // cancelled too. The exemption above is untouched by this: an unfired row is
+  // spared because they have never heard it and may still be promised its hour,
+  // and neither is true of the next day of a series they are hearing daily.
+  const chased = reached.filter((r) => r.chase).map((r) => Number(r.task_id));
+  const nextOff = chased.length ? (await client.query(
+    `UPDATE task_reminders r SET cancelled_at = $3
+       FROM tasks t
+      WHERE t.id = r.task_id AND r.task_id = ANY($2::bigint[]) AND ${RECIPIENT} = $1
+        AND r.repeat_until IS NOT NULL AND r.attempts = 0
+        AND r.sent_at IS NULL AND r.cancelled_at IS NULL
+      RETURNING r.id`, [userId, chased, now])).rows.map((r) => Number(r.id)) : [];
+  const keys = [...ids, ...nextOff].flatMap((id) => [`reminder:${id}`, `reminder:${id}:%`]);
   const { rows: withdrawn } = await client.query(
     `UPDATE outbox SET sent_at = now(), hold_reason = 'stopped'
       WHERE user_id = $1 AND kind = 'reminder' AND sent_at IS NULL
         AND idempotency_key LIKE ANY($2::text[])
       RETURNING id`, [userId, keys]);
-  const stoppedIds = stopped.map((r) => Number(r.id));
+  const stoppedIds = [...stopped.map((r) => Number(r.id)), ...nextOff];
   if (stoppedIds.length || withdrawn.length) {
     await audit.record(client, userId, 'reminder.ladder_stopped', {
       stopped: stoppedIds, outboxWithdrawn: withdrawn.map((r) => Number(r.id)),
+      ...(nextOff.length ? { chasesEnded: nextOff } : {}),
     });
   }
   return { stopped: stoppedIds, withdrawn: withdrawn.length };
@@ -856,11 +1066,19 @@ async function markSent(client, reminderId) {
 // somebody who moved their nudge to 18:00 asked for a message at 18:00, and a
 // digest at 09:35 is not it.
 //
-// Only a dateless, REPEATING nudge rides. A dated task's reminder is about a
-// moment, and the whole point of a moment is that it arrives at it; a one-off
-// is a moment they named, for the same reason.
-function ridesDigest({ dueAt, repeatRule, remindAt, timezone, digestTimes }) {
-  if (dueAt) return false;
+// Only a REPEATING nudge rides, and a one-off never does: that is a moment
+// they named, and the whole point of a moment is that it arrives at it.
+//
+// A dated task used to be refused here on the same argument, and a CHASE is
+// the case that argument does not cover (owner, 2026-09-22). Its occurrences
+// are not the moment of the thing — they are a daily nudge toward a deadline,
+// at an hour picked for being the hour that person already reads Olma — so for
+// somebody with a morning digest it is the same "do not interrupt twice" that
+// built this path. What still may not ride is a dated task's ONE reminder,
+// chase or no chase: `repeat_until` without `repeat_rule` is not a thing
+// setReminder will store.
+function ridesDigest({ dueAt, repeatRule, remindAt, timezone, digestTimes, repeatUntil = null }) {
+  if (dueAt && !repeatUntil) return false;
   if (!normalizeRepeatRule(repeatRule)) return false;
   const times = Array.isArray(digestTimes)
     ? digestTimes
@@ -914,6 +1132,8 @@ module.exports = {
   setReminder, attachAutoReminder, retireSiblingLadders, cancelReminder, listReminders, dueForSending, markSent,
   retireForMovedTask, stopRecentLadders, STOP_WINDOW_HOURS, momentIsPast, PAST_GRACE_MS,
   normalizeRepeatRule, nextOccurrence, resolveMonthlyAnchor, movesOffQuietDay,
+  isChase, chaseHour, firstChaseMoment, chaseUntil, chaseReanchor, startChase,
+  CHASE_MORNING_BEFORE, CHASE_FALLBACK_AT, CHASE_EVENING_AT,
   recordAttempt, attemptKey, ESCALATION_MAX_ATTEMPTS, ESCALATION_GAP_HOURS, RUNGS,
   ridesDigest, carriedForDigest, markCarried,
 };

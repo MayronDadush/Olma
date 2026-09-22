@@ -17,10 +17,23 @@ module.exports = [
     { task_id: S('number', 'Task id'), remind_at: S('string', 'ISO-8601 datetime WITH UTC offset'),
       nudge: S('boolean', 'Chase until done, if they ask'),
       repeat_rule: S('string', 'Optional repeat, these exact forms or it stores a ONE-OFF: "daily"; "weekly"; "weekly:MO,TH" (SU MO TU WE TH FR SA) — a weekday they NAMED goes HERE, not only in remind_at; "monthly:16"; "monthly:last" (whatever the last day is; a short month clamps).') }, ['task_id', 'remind_at'],
-    (client, user, a) => (reminders.momentIsPast(a.remind_at)
-      ? pastMoment('remind_at', a.remind_at, user.timezone, 'no reminder was set and none was cancelled')
-      : reminders.setReminder(client, user.id, a.task_id, a.remind_at, a.repeat_rule,
-        { nudge: a.nudge === true }))),
+    async (client, user, a) => {
+      if (reminders.momentIsPast(a.remind_at)) {
+        return pastMoment('remind_at', a.remind_at, user.timezone, 'no reminder was set and none was cancelled');
+      }
+      // `nudge` on a task with a deadline is a CHASE — one a day at the hour
+      // they just named, until that day (reminders.startChase, חיים 2026-09-22).
+      // Only when the model asked for no cadence of its own: "כל 16 בחודש,
+      // ותנדנדי לי" is a monthly rhythm and is not a thing to end at a date.
+      // A null answer is "there was nothing to chase across" and falls through
+      // to the ladder, which is what `nudge` has always bought.
+      if (a.nudge === true && !reminders.normalizeRepeatRule(a.repeat_rule)) {
+        const chase = await reminders.startChase(client, user.id, a.task_id, { at: a.remind_at });
+        if (chase) return chase;
+      }
+      return reminders.setReminder(client, user.id, a.task_id, a.remind_at, a.repeat_rule,
+        { nudge: a.nudge === true });
+    }),
   tool('cancel_reminder', 'Cancel a pending reminder. If the result carries taskStillOpen, follow its hint — "cancel the reminder" and "cancel the thing" are the same sentence to most people.',
     { reminder_id: S('number', 'Reminder id') }, ['reminder_id'],
     async (client, user, a) => {

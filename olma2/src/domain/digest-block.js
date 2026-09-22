@@ -251,7 +251,15 @@ function renderDigestBlock(data, { locale, timezone, channelType, now, link } = 
   // weaving it in may reword it or drop it while the row reads delivered.
   // Their own words, unwrapped — `stripUserMarkup` for the same reason every
   // other verbatim path uses it, since a title is a person's own typing.
+  // …and never twice. A dateless standing nudge is on nobody's day, so this
+  // never arose; a CHASE is on a task with a deadline, and on the morning that
+  // deadline arrives the same title is already in the to-do list above. Drawing
+  // it in both places is one fact said twice in one message, which is the whole
+  // family of faults this block exists to end.
+  const drawn = new Set((Array.isArray(data && data.tasks) ? data.tasks : [])
+    .map((t) => Number(t && t.id)).filter(Boolean));
   const nudges = (Array.isArray(data && data.nudges) ? data.nudges : [])
+    .filter((n) => !drawn.has(Number(n && n.taskId)))
     .map((n) => format.stripUserMarkup(String(n && n.title ? n.title : '')).trim())
     .filter(Boolean);
 

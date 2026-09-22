@@ -34,6 +34,7 @@
 const format = require('./message-format');
 const digestBlock = require('./digest-block');
 const { normalizeRepeatRule } = require('./reminders');
+const dt = require('./datetime');
 
 const { WORDS, localeKey, contextFor, line, whenLabel, dayLabel, rangeLabel } = digestBlock;
 
@@ -80,6 +81,7 @@ const REPEAT = {
     days: (names) => `כל ${names.slice(0, -1).join(', ')} ו${names[names.length - 1]}`,
     monthlyLast: 'בסוף כל חודש',
     monthlyDay: (d) => `כל ${d} בחודש`,
+    until: (every, day) => `${every} עד ${day}`,
   },
   en: {
     daily: 'every day',
@@ -88,6 +90,7 @@ const REPEAT = {
     days: (names) => `every ${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`,
     monthlyLast: 'the last day of every month',
     monthlyDay: (d) => `the ${ordinal(d)} of every month`,
+    until: (every, day) => `${every} until ${day}`,
   },
 };
 
@@ -159,7 +162,14 @@ function renderReminderListBlock(data, opts = {}) {
     const title = format.stripUserMarkup(String(r.title || '').replace(/\s+/g, ' ').trim());
     if (!title) return null;
     const when = whenLabel(r.remind_at, ctx, { alwaysTime: true });
-    const repeat = repeatLabel(r.repeat_rule, k);
+    // A CHASE has an end, and a line that says only "every day" about one is a
+    // promise to keep going for ever — the opposite of what they asked for
+    // (reminders.isChase). Drawn here rather than left to a sentence for the
+    // same reason every other line in this file is drawn.
+    const every = repeatLabel(r.repeat_rule, k);
+    const repeat = every && r.repeat_until
+      ? REPEAT[k].until(every, dayLabel(dt.partsInZone(ctx.tz, new Date(r.repeat_until)), ctx))
+      : every;
     const head = [when, title].filter(Boolean).join(' — ');
     return repeat ? `${head}, ${repeat}` : head;
   }).filter(Boolean);
