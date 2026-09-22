@@ -123,6 +123,34 @@ have already had to be argued for.
   `incidents.md`, "The room coordinated without the person who opened it"). The
   comment above the first one asserted it was "exactly" the gate's condition.
 
+- **A room opens on TWO connected members, not on everybody — and it still
+  says who is not here.** `group_open_without_everyone` (flag, open by the
+  owner's choice 2026-09-22, a bool row on the admin main page) is read by
+  `groups.evaluate` and passed into the pure `groups.decideState`, which opens
+  a room once `groups.MIN_CONNECTED_TO_OPEN` = 2 members are connected.
+  Everybody-or-nobody is what it replaces, and Padel Gang (group 9) is what
+  that rule cost: four of its seven members are users who have written to her,
+  the other three reached us only as LIDs, and a LID can never write to her as a
+  matching number — so that room can never open, and what it got instead was the
+  wait line twice in the twelve minutes after it registered. **`missing` is unchanged by
+  the flag**, and that is the load-bearing half — an open room is not a claim
+  that everybody is in it, so `jobs/groups.js` announces `opened` only when
+  `!missing.length`, because `group_opened` says "יש! כולם כאן" and that names a
+  fact. A room the flag opens opens in SILENCE; the sentence that would be true
+  there is the owner's copy to write, and inventing it is how a room gets a line
+  nobody chose. **Two is a floor, not a taste call**: `startCoordination`
+  refuses a room where the only member it can reach is the one asking, so a room
+  opened on one connected member buys an agent that can do nothing. Two things
+  the flag does NOT change — `group-meetings.coordinatingMembers` still filters
+  on `isConnected`, so a member who never wrote is never swept into a
+  coordination and never messaged; and `group-connections.connectRoom` never
+  read the state at all, so who is connected to whom is the same with the flag
+  open or closed. What it does change, beyond opening: a room with an agent no
+  longer RE-LOCKS when a stranger joins, so the newcomer shares a room with a
+  live agent from the moment they arrive. They can already read everything said
+  there, and no group tool returns anybody's private row (the rule above), which
+  is why that was judged acceptable rather than papered over.
+
 - **Being in the room IS the introduction, and it is not the inferred closeness
   the old rule forbids.** Everybody in a group with Olma who is ALREADY a user
   becomes connected to everybody else there, every feature on, nobody asked

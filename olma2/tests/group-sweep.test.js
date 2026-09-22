@@ -779,6 +779,12 @@ test('two sessions and nothing new: the room is answered once, not on every pass
 // hears the explanation the next time somebody actually asks her for
 // something, which is what the notice is for.
 test('a room that re-locks mid-pass does not answer a tag nobody sent', async () => {
+  // The watermark is the subject here and re-locking is only its vehicle, so
+  // `group_open_without_everyone` is pinned closed: with it open a room with an
+  // agent never re-locks on a newcomer, and there is no mid-pass transition
+  // left to reproduce.
+  const flags = require('../src/domain/flags');
+  await withTx(db.pool, (c) => flags.setFlag(c, 'group_open_without_everyone', false));
   const a = await connectedUser('+972605000020');
   const b = await connectedUser('+972605000021');
   const jid = JID(31);
@@ -808,4 +814,49 @@ test('a room that re-locks mid-pass does not answer a tag nobody sent', async ()
   assert.deepEqual(out.relocked, [jid]);
   assert.equal(out.notices, 0, 'nobody tagged her — the roster changed under her');
   assert.deepEqual(grown.sent, []);
+  await withTx(db.pool, (c) => flags.setFlag(c, 'group_open_without_everyone', true));
+});
+
+// The other half of `group_open_without_everyone` (owner, 2026-09-22), and the
+// half that is a SENTENCE rather than a state: the room WAS told somebody was
+// missing, and then it opens while somebody still is. "יש! כולם כאן" names a
+// fact, so it must not be said — and there is no replacement line, because the
+// sentence that would be true there is the owner's to write. The room opens in
+// silence, with an agent, which is the part that was worth four days.
+test('a room that opens without everyone gets its agent and does not claim everybody is here', async () => {
+  const a = await connectedUser('+972605000030');
+  const b = await makeUser(db.pool, '+972605000031');   // a user, still silent
+  const c = await makeUser(db.pool, '+972605000032');   // and stays silent
+  const jid = JID(32);
+  const roster = `${a.phone}, ${b.phone}, ${c.phone}`;
+  const at = Date.now();
+
+  await pass(gatewayWith({ jid, roster, at }).deps);    // registers + intro; one connected
+
+  // Somebody tags her while the room is still locked on the floor of two, so
+  // the room has now been told there is a wait.
+  const tagged = gatewayWith({ jid, roster, at: at + 60_000, messageId: 'MSG-31' });
+  assert.equal((await pass(tagged.deps)).notices, 1);
+  const told = await withTx(db.pool, (c2) => groupsDomain.getByExternalId(c2, 'whatsapp', jid));
+  assert.equal(told.state, 'locked', 'one connected member is not a room');
+  assert.ok(told.gate_notice_at);
+
+  // b writes. Two are connected, c never has — under the old rule this room
+  // would still be locked.
+  await db.pool.query(`UPDATE users SET last_inbound_at = now() WHERE id = $1`, [b.id]);
+  const third = gatewayWith({ jid, roster, at: at + 120_000 });
+  const out = await pass({ ...third.deps, now: helpers.daytime() });
+
+  assert.deepEqual(out.opened, [jid]);
+  assert.equal(out.announced, 0, 'c is not here, so nobody may say everybody is');
+  assert.deepEqual(third.sent, []);
+
+  const row = await withTx(db.pool, (c2) => groupsDomain.getByExternalId(c2, 'whatsapp', jid));
+  assert.equal(row.state, 'open');
+  assert.ok(row.agent_id, 'and it has a voice of its own from here on');
+  assert.equal(row.opened_announced_at, null, 'nothing was announced, so nothing is stamped');
+
+  // c is still missing, and the room still knows it.
+  const evald = await withTx(db.pool, (c2) => groupsDomain.evaluate(c2, row.id));
+  assert.deepEqual(evald.data.missing.map((m) => m.phone), [c.phone]);
 });
