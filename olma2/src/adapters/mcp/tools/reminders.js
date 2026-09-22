@@ -16,7 +16,7 @@ module.exports = [
   tool('set_task_reminder', 'Attach a reminder to a task, for a moment they ASKED for. A task with a due_at already has one; this is a different time or a repeat, and it cancels the automatic one, never two. remind_at MUST carry a UTC offset (2026-08-20T09:00:00+03:00), their local time (USER.md); never bare digits with a Z.',
     { task_id: S('number', 'Task id'), remind_at: S('string', 'ISO-8601 datetime WITH UTC offset'),
       nudge: S('boolean', 'Chase until done, if they ask'),
-      repeat_rule: S('string', 'Optional repeat: "daily"; "weekly"; "weekly:MO,TH" (SU MO TU WE TH FR SA); "monthly:16"; "monthly:last" (the last day, whatever it is; a day past a short month lands on its last day). Anything else is stored as a ONE-OFF, so use these exact forms.') }, ['task_id', 'remind_at'],
+      repeat_rule: S('string', 'Optional repeat, these exact forms or it stores a ONE-OFF: "daily"; "weekly"; "weekly:MO,TH" (SU MO TU WE TH FR SA) — a weekday they NAMED goes HERE, not only in remind_at; "monthly:16"; "monthly:last" (whatever the last day is; a short month clamps).') }, ['task_id', 'remind_at'],
     (client, user, a) => (reminders.momentIsPast(a.remind_at)
       ? pastMoment('remind_at', a.remind_at, user.timezone, 'no reminder was set and none was cancelled')
       : reminders.setReminder(client, user.id, a.task_id, a.remind_at, a.repeat_rule,

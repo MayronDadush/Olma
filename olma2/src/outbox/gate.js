@@ -55,56 +55,14 @@ function msUntilWindowOpen(window, tz, date = new Date()) {
   return deltaMin * 60_000;
 }
 
-// Which day of the week it is where THEY are — 0 = Sunday, matching
-// preferences.DAY_NAMES. Same fail-open shape as minutesInTz: a broken zone
-// falls back to UTC rather than throwing inside the gate.
-const WEEKDAYS = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
-function weekdayInTz(tz, date = new Date()) {
-  try {
-    const s = new Intl.DateTimeFormat('en-US', {
-      timeZone: tz || 'UTC', weekday: 'short',
-    }).format(date);
-    const d = WEEKDAYS[s];
-    return d === undefined ? date.getUTCDay() : d;
-  } catch {
-    return date.getUTCDay();
-  }
-}
-
-// The local calendar date where THEY are. Same fail-open shape as the two
-// above, and the same reason the weekday is asked in their zone rather than
-// the server's: 23:00 UTC on the 20th is already the 21st in Jerusalem, and
-// Yom Kippur is a DATE, not an instant.
-function localDateInTz(tz, date = new Date()) {
-  try {
-    return new Intl.DateTimeFormat('en-CA', {
-      timeZone: tz || 'UTC', year: 'numeric', month: '2-digit', day: '2-digit',
-    }).format(date);
-  } catch {
-    return date.toISOString().slice(0, 10);
-  }
-}
-
-// Is this a day they keep? A weekday they named, or — only for somebody who
-// asked for it — a date the calendar says is a yom tov. One predicate for both
-// so the hold and the RELEASE can never disagree about which days exist:
-// Rosh Hashana runs into Shabbat often enough that a release computed from
-// weekdays alone would wake a row in the middle of a three-day run.
-//
-// `facts.shabbatWindow` is the one exception to "a day": for an Israeli zone
-// whose Saturday is quiet, the caller already resolved candle-lighting →
-// havdalah and dropped 6 out of `quietDays` (holidays.shabbatWindow), so the
-// weekday check below never also fires for Saturday and extend the hold past
-// nightfall into a plain calendar-day boundary.
-function quietDayReason(facts, tz, date) {
-  const sw = facts.shabbatWindow;
-  if (sw && date >= sw.start && date < sw.end) return 'quiet_day';
-  const days = facts.quietDays || [];
-  if (days.includes(weekdayInTz(tz, date))) return 'quiet_day';
-  const dates = facts.quietDates || [];
-  if (dates.length && dates.includes(localDateInTz(tz, date))) return 'quiet_holiday';
-  return null;
-}
+// The three predicates below moved to `domain/quiet-facts.js` on 2026-09-22,
+// when the gate stopped being the only thing that asks whether a moment is on
+// a day somebody keeps: a repeating reminder is now SCHEDULED off the same
+// answer, a week before any row of it reaches this file. Re-exported from here
+// unchanged, so nothing that imported them has to know they moved.
+const {
+  weekdayInTz, localDateInTz, quietDayReason,
+} = require('../domain/quiet-facts');
 
 // Milliseconds until the first moment past a run of quiet days that is also
 // inside their window. Approximate across DST for the same reason

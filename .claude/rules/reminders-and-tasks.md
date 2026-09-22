@@ -14,6 +14,7 @@ paths:
   - "olma2/src/adapters/mcp/tools/meetings.js"
   - "olma2/src/jobs/fact-extraction.js"
   - "olma2/src/jobs/sweeps.js"
+  - "olma2/src/domain/quiet-facts.js"
 ---
 
 # Reminders, tasks and dates
@@ -437,3 +438,33 @@ title means this file. Grep the title, not the filename.
   are told — one `share_reminder_dropped` row, sent only when a reminder
   actually went down, never when you left of your own accord (owner's
   decision: "מתבטלת ואומרים לו").
+
+- **A repeating reminder that merely LANDS on a day they keep is moved to the
+  next day they do not; one whose rule NAMES that day still goes out.** The
+  owner's rule, 2026-09-22: "אם זה לא תזכורת ספציפית ליום שבת - אז היא לא
+  צריכה להגיע כמו שהמשימות של הדיגסט בוקר לא מגיעות." `weekly:SA` is a request
+  for Saturdays and is untouched; `daily`, plain `weekly` and every `monthly:*`
+  name no day at all (`reminders.daysNamedBy`), so a Shabbat they land on is
+  the calendar happening to them. **The decision is made at SPAWN, never at
+  the gate** (`quiet-facts.keptMomentFor`, called from `sweeps.sweepReminders`
+  and from `reminders.setReminder` for the first occurrence) — the gate's order
+  is paused → eval → EXPIRY → … → quiet day, and a repeating reminder is always
+  rung 1, whose row expires at `remind_at + 2h`: a hold over Shabbat comes back
+  on Sunday morning, meets the expiry check first and DELETES the message. A
+  held DAILY reminder would also land in the same hour as Sunday's own
+  occurrence. **It is a shift and never a skip** — skipping is what makes a
+  `monthly:16` vanish for a month, which `nextOccurrence` already refuses to do
+  when February is short — and it keeps the same LOCAL hour on the next kept
+  day, walking a day at a time so a run of two or eight is crossed whole.
+  Plain `weekly` is the one rule whose series MIGRATES when it shifts, because
+  its successor is "seven days after the stored moment"; that was put to the
+  owner against the two alternatives and chosen, since a weekly whose every
+  occurrence is quiet otherwise never arrives at all. **A ONE-OFF is never
+  moved**: "תזכירי לי בשבת ב-10" is a single moment they chose with that day in
+  front of them, and the gate's standing exemption for rung 1 of an asked-for
+  reminder (`gate.askedForInWords`) is narrowed by this rule to the kind that
+  repeats and not one step further. The predicate is `gate.quietDayReason`
+  itself, which moved to `domain/quiet-facts.js` so the schedule and the gate
+  cannot hold two opinions — and for an Israeli zone that means the edge is
+  candle-lighting to havdalah, so a Saturday evening past havdalah is an
+  ordinary evening to both of them.

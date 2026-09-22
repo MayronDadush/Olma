@@ -5,6 +5,7 @@
 const { ok, err } = require('./results');
 const audit = require('./audit');
 const dt = require('./datetime');
+const quietFacts = require('./quiet-facts');
 const { autoReminderAt } = require('./auto-reminder');
 const { hasOffset, badTime } = dt;
 
@@ -73,6 +74,30 @@ function normalizeRepeatRule(raw) {
   return null; // unrecognised → a one-off, never a wrong cadence
 }
 
+
+// Which weekdays this rule NAMES out loud — 0 = Sunday, matching
+// preferences.DAY_NAMES. The quiet-day shift reads it (domain/quiet-facts.
+// keptMomentFor): a repeating reminder that merely LANDS on a day somebody
+// keeps waits for the next one they do not, and one whose rule NAMES that day
+// still goes out, because that day is the thing they asked for.
+//
+// Empty for 'daily', for plain 'weekly' and for every 'monthly:*', and each of
+// those is deliberate:
+//
+//   daily        — names nothing; every day is equally incidental.
+//   weekly       — "כל שבוע" said on a Saturday is a coincidence of WHEN they
+//                  said it, not a request for Saturdays. Only
+//                  FREQ=WEEKLY;BYDAY=SA reaches 'weekly:SA', which is why the
+//                  tool schema now tells the model to put a named day in the
+//                  RULE rather than only in remind_at.
+//   monthly:16   — names a DATE. The 16th falling on a Shabbat is the calendar
+//                  happening to them, and no month named a weekday.
+function daysNamedBy(rule) {
+  const norm = normalizeRepeatRule(rule);
+  if (!norm || !norm.startsWith('weekly:')) return [];
+  return norm.slice('weekly:'.length).split(',')
+    .map((d) => DAYS.indexOf(d)).filter((i) => i >= 0);
+}
 
 // Bare 'monthly' carries no day. Pin it to the day the reminder itself falls
 // on, read in the person's own zone — and to 'monthly:last' when that IS the
@@ -191,7 +216,7 @@ async function setReminder(client, userId, taskId, remindAt, repeatRule, { nudge
   // The zone is the PERSON's, not the task owner's: "every month on the 16th"
   // is a promise in the clock of whoever asked for it.
   const { rows } = await client.query(
-    `SELECT t.id, t.status, u.timezone FROM tasks t JOIN users u ON u.id = $2
+    `SELECT t.id, t.status, u.timezone, u.locale FROM tasks t JOIN users u ON u.id = $2
       WHERE t.id = $1 AND t.archived_at IS NULL AND ${TASK_THEY_ARE_ON}`,
     [taskId, userId]
   );
@@ -203,6 +228,25 @@ async function setReminder(client, userId, taskId, remindAt, repeatRule, { nudge
   // day so the rule can never re-derive itself from a clamped occurrence and
   // walk backwards month by month.
   const rule = resolveMonthlyAnchor(normalizeRepeatRule(repeatRule), remindAt, rows[0].timezone);
+  // The FIRST occurrence gets the same treatment the sweep gives every one
+  // after it (owner, 2026-09-22): a repeating reminder that lands on a day
+  // they keep is armed for the next day they do not, at the same local hour,
+  // unless its rule NAMES that day. Without this, "כל יום בשבע" set on a
+  // Friday arms Saturday and the rule only starts applying a day late.
+  //
+  // A ONE-OFF is untouched. "תזכירי לי בשבת ב-10" is a moment they chose in
+  // words, and moving it would be deciding for them about a single day they
+  // were looking straight at — the exemption the gate has always granted
+  // (gate.askedForInWords), narrowed here to exactly the kind that repeats.
+  let at = remindAt;
+  let movedOff = null;
+  if (rule) {
+    const kept = await quietFacts.keptMomentFor(
+      client, { id: userId, timezone: rows[0].timezone, locale: rows[0].locale },
+      remindAt, { namedDays: daysNamedBy(rule) }
+    );
+    if (kept.movedFrom) { at = kept.at.toISOString(); movedOff = kept.reason; }
+  }
   // An asked-for reminder supersedes the one Olma inferred from the due date.
   // Without this, "תזכירי לי בשמונה" on a task that already carries an auto
   // reminder produces two messages about one thing — and the person never
@@ -218,6 +262,11 @@ async function setReminder(client, userId, taskId, remindAt, repeatRule, { nudge
   // stands beside it. `attempts = 0`, not `sent_at IS NULL`: since the
   // escalation ladder a delivered row keeps a null `sent_at` for up to a day,
   // and a reminder that already reached her is not a plan to revise.
+  // Judged on the day they ASKED about, never on the day a quiet-day shift
+  // moved it to. "at eight, not whenever you were going to" is about the day
+  // they were looking at, and the auto row on that day is the one being
+  // replaced — it would otherwise survive, be held over the quiet day itself,
+  // and land in the same morning as the reminder that replaced it.
   const newDay = localDayKey(remindAt, tz);
   // Only THEIR auto row: the one Olma inferred is the owner's, and a
   // participant asking for their own hour withdraws nothing of the owner's.
@@ -237,11 +286,12 @@ async function setReminder(client, userId, taskId, remindAt, repeatRule, { nudge
   const ins = await client.query(
     `INSERT INTO task_reminders (task_id, remind_at, repeat_rule, auto, nudge, user_id)
      VALUES ($1, $2, $3, false, $4, $5) RETURNING *`,
-    [taskId, remindAt, rule, nudge === true, userId]
+    [taskId, at, rule, nudge === true, userId]
   );
   await audit.record(client, userId, 'reminder.created', {
     taskId, reminderId: ins.rows[0].id,
     ...(nudge === true ? { nudge: true } : {}),
+    ...(movedOff ? { movedOffQuietDay: movedOff, askedFor: remindAt } : {}),
     ...(superseded.rowCount ? { supersededAuto: superseded.rows.map((r) => Number(r.id)) } : {}),
   });
   return ok({ reminder: ins.rows[0], supersededAuto: superseded.rowCount });
@@ -545,7 +595,7 @@ async function dueForSending(client, now, opts = {}) {
     `SELECT r.id AS reminder_id, r.task_id, r.remind_at, r.repeat_rule, r.attempts, r.auto,
             -- who it reaches — the person who set it, and only for rows older
             -- than migration 073 the task's owner
-            ${RECIPIENT} AS user_id, t.title, t.due_at, u.timezone, u.digest_times,
+            ${RECIPIENT} AS user_id, t.title, t.due_at, u.timezone, u.digest_times, u.locale,
             -- How many rungs THIS reminder gets (rule 5 above), never more than
             -- the flag allows. Returned so the sweep can say "last one" off the
             -- same number the WHERE clause stopped on: a cap the caller derives
@@ -855,7 +905,7 @@ async function markCarried(client, reminderId, outboxId, now = new Date()) {
 module.exports = {
   setReminder, attachAutoReminder, retireSiblingLadders, cancelReminder, listReminders, dueForSending, markSent,
   retireForMovedTask, stopRecentLadders, STOP_WINDOW_HOURS, momentIsPast, PAST_GRACE_MS,
-  normalizeRepeatRule, nextOccurrence, resolveMonthlyAnchor,
+  normalizeRepeatRule, nextOccurrence, resolveMonthlyAnchor, daysNamedBy,
   recordAttempt, attemptKey, ESCALATION_MAX_ATTEMPTS, ESCALATION_GAP_HOURS, RUNGS,
   ridesDigest, carriedForDigest, markCarried,
 };

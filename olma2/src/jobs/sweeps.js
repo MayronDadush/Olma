@@ -11,6 +11,8 @@ const groupMeetings = require('../domain/group-meetings');
 const tasks = require('../domain/tasks');
 const quota = require('../domain/quota');
 const flags = require('../domain/flags');
+const audit = require('../domain/audit');
+const quietFacts = require('../domain/quiet-facts');
 const { minutesInTz, parseHHMM } = require('../outbox/gate');
 
 // ---- reminders --------------------------------------------------------------
@@ -134,10 +136,35 @@ async function sweepReminders(client, nowIso) {
       // flat interval breaks each of them (see reminders.nextOccurrence).
       const next = reminders.nextOccurrence(r.remind_at, r.repeat_rule, r.timezone);
       if (next) {
-        await client.query(
-          `INSERT INTO task_reminders (task_id, remind_at, repeat_rule, user_id) VALUES ($1, $2, $3, $4)`,
-          [r.task_id, next, reminders.normalizeRepeatRule(r.repeat_rule), r.user_id]
+        // …and if THAT lands on a day they keep quiet, it is armed for the
+        // next day they do not, at the same local hour (owner, 2026-09-22).
+        // Unless the rule NAMES the day: "כל שבוע בשבת" is a request for
+        // Saturdays and goes out on Saturdays.
+        //
+        // Here rather than in the gate, and the reason is not style. The
+        // gate's order is paused → eval → EXPIRY → … → quiet day, and a
+        // repeating reminder is always rung 1, whose row expires at
+        // `remind_at + 2h`. A hold over Shabbat would come back on Sunday
+        // morning, meet the expiry check first and DELETE the message. Moving
+        // the moment a week early is the only place this decision is safe.
+        const kept = await quietFacts.keptMomentFor(
+          client, { id: r.user_id, timezone: r.timezone, locale: r.locale },
+          next, { namedDays: reminders.daysNamedBy(r.repeat_rule) }
         );
+        const ins = await client.query(
+          `INSERT INTO task_reminders (task_id, remind_at, repeat_rule, user_id)
+           VALUES ($1, $2, $3, $4) RETURNING id`,
+          [r.task_id, kept.at, reminders.normalizeRepeatRule(r.repeat_rule), r.user_id]
+        );
+        // The shift is the only thing about a repeating reminder that a person
+        // could notice and not be able to explain, so it is on the record —
+        // and the row itself only ever shows where it landed.
+        if (kept.movedFrom) {
+          await audit.record(client, r.user_id, 'reminder.moved_off_quiet_day', {
+            taskId: Number(r.task_id), reminderId: Number(ins.rows[0].id),
+            from: kept.movedFrom.toISOString(), to: kept.at.toISOString(), reason: kept.reason,
+          });
+        }
       }
       out.push(r.reminder_id);
     }
