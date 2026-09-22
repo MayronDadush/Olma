@@ -2304,19 +2304,38 @@ which is the state production is actually in when a line is due — the
 fixture-writes-the-state trap, caught by the fix rather than by review.
 ### The room that could never open (2026-09-22)
 
-Padel Gang🏓 registered at 09:45:57 with seven live members. Four of them are
-users who have written to Olma — מירון, Guy, Sharon, Yuval. The other three are
-`+259201444126724`, `+69320805752936` and `+6266525098172`: fifteen, fourteen
-and thirteen digits, none of them a phone number anybody has, all of them LIDs
-the gateway handed us in the roster string with no JID to tell them apart by
-(the same column, the same day, cost the room three tags addressed to nobody —
-"The room chased three people, two of whom had never been asked").
+Padel Gang🏓 registered at 09:45:57 with seven live members. Four of them
+resolved to users who had written to Olma — מירון, Guy, Sharon, Yuval. The other
+three sat in `chat_group_members.phone` as `+259201444126724`,
+`+69320805752936` and `+6266525098172`: fifteen, fourteen and thirteen digits,
+none of them a number anybody dials, all of them LIDs the gateway handed us in
+the roster string with no JID to tell them apart by (the same column, the same
+day, cost the room three tags addressed to nobody — "The room chased three
+people, two of whom had never been asked").
 
-Under the rule as written the room was locked, and would have stayed locked for
-ever: `isConnected` needs a `user_id`, a LID resolves to none, and there is no
-message those three numbers could ever send that would change it. What the room
-got instead was the only sentence a locked room can say. By 09:57:17 it had been
-said twice.
+**One of those three was not nobody, and that is the sharper half of this.**
+`69320805752936` is Gal. He wrote to Olma at 10:03:01 — the gateway stamped
+`lid-mapping-69320805752936_reverse.json` with `"972509412015"` at that exact
+second — was greeted at 10:03:23, and is user 37, `active`, with
+`last_inbound_at`. He is a member of that room who HAS written to her privately,
+and the room's gate cannot see it, because `syncRoster` resolves a member by
+phone and his row holds a LID. The other two have no reverse-mapping file at
+all: nothing on the box has ever seen a phone behind them.
+
+So the room was locked, and would have stayed locked for ever whatever anybody
+did: `isConnected` needs a `user_id`, a LID resolves to none, and two of those
+three numbers have no person behind them that we know of. What the room got
+instead was the only sentence a locked room can say. By 09:57:17 it had been
+said twice — and at that point five of its seven members were people Olma was
+already talking to.
+
+**This makes the LID resolution a real second fix, not an alternative to this
+one.** `channels/sessions.lidToPhone` already reads those reverse files (it is
+not exported; `sessions.js:744`), so a roster sync that asked it would put Gal
+in his own row, and the room would count five connected rather than four. That
+is its own change and its own PR; it does not unlock this room, because the
+other two stay unresolvable, and a gate that can be defeated by a roster we
+cannot fully read is the thing being fixed here.
 
 Nothing about this was a bug. Everybody-or-nobody is what the gate was asked to
 enforce, and the failure is that it has no answer for a roster it cannot fully

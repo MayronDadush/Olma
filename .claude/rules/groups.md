@@ -129,10 +129,13 @@ have already had to be argued for.
   `groups.evaluate` and passed into the pure `groups.decideState`, which opens
   a room once `groups.MIN_CONNECTED_TO_OPEN` = 2 members are connected.
   Everybody-or-nobody is what it replaces, and Padel Gang (group 9) is what
-  that rule cost: four of its seven members are users who have written to her,
-  the other three reached us only as LIDs, and a LID can never write to her as a
-  matching number — so that room can never open, and what it got instead was the
-  wait line twice in the twelve minutes after it registered. **`missing` is unchanged by
+  that rule cost: four of its seven members resolved to users who have written to
+  her and the other three reached us only as LIDs, which no message of theirs
+  turns into a matching phone — so that room can never open, and what it got
+  instead was the wait line twice in the twelve minutes after it registered. One
+  of those three had in fact written and the gate could not see him, which is a
+  SECOND fix and not this one (`channels/sessions.lidToPhone` already reads the
+  reverse map; `incidents.md`, "The room that could never open"). **`missing` is unchanged by
   the flag**, and that is the load-bearing half — an open room is not a claim
   that everybody is in it, so `jobs/groups.js` announces `opened` only when
   `!missing.length`, because `group_opened` says "יש! כולם כאן" and that names a

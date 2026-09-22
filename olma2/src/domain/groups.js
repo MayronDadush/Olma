@@ -275,10 +275,12 @@ const MIN_CONNECTED_TO_OPEN = 2;
 // `openWithoutEveryone` is the owner's switch (2026-09-22,
 // `group_open_without_everyone`, open by default). The original rule was
 // everybody or nobody, and Padel Gang is what that costs: four of its seven
-// members are users who have written to her and the other three reached us only
-// as LIDs, which cannot write to her as a matching number. That room can never
-// open under the old rule, and what it got instead was the wait line, twice, in
-// the twelve minutes after it registered. With the switch open a room opens
+// members resolved to users who have written to her and the other three reached
+// us only as LIDs, which no message of theirs can turn into a matching phone.
+// One of those three is Gal, who had in fact written — his row is a LID, so the
+// gate cannot see him — and the other two have no phone behind them at all, so
+// that room can never open under the old rule. What it got instead was the wait
+// line, twice, in the twelve minutes after it registered. With the switch open a room opens
 // once at least two members are connected.
 //
 // **`missing` is unchanged either way.** Who has not written to her is a fact
