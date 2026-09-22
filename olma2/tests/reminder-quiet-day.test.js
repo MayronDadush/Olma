@@ -4,12 +4,17 @@
 //
 // Three sentences, and all three are asserted below:
 //
-//   * "תזכיר לי כל שבוע בשבת"  → every Saturday. The rule NAMES the day.
-//   * "תזכיר לי כל שבוע", said on a Saturday → moves to Sunday, and the
-//     series carries on from there. He was shown the migration and chose it
-//     over the two alternatives: pinning 'weekly' to the day it was set on
-//     hands somebody an exemption they never asked for, and SKIPPING the
-//     occurrence makes a monthly reminder vanish for a month.
+//   * "תזכיר לי כל יום ב7"     → arrives, Saturday included: "כי זה יכול
+//     להיות תרופה או משהו חשוב", and his own two daily rows are a thyroid
+//     pill and a refund run.
+//   * "תזכיר לי כל ה16 בחודש"  → arrives on the 16th wherever it lands:
+//     "אם זה נופל על שבת שיהיה על שבת". His monthly:16 is also a pill.
+//   * "תזכיר לי כל שבוע בשבת"  → every Saturday. The rule pins the weekday.
+//   * "תזכיר לי כל שבוע", said on a Saturday → the ONE shape that moves, and
+//     the only one whose quiet day nobody chose. It goes to Sunday, and the
+//     series carries on from there — the migration he was shown and picked
+//     over pinning the day (an exemption nobody asked for) and over skipping
+//     (a reminder that never arrives).
 //   * A quiet day is a property of the PERSON. Somebody whose Saturday is an
 //     ordinary day is untouched, and somebody whose Friday is quiet gets the
 //     same treatment on a Friday.
@@ -69,16 +74,21 @@ test('a moment on a day they keep moves to the next one they do not, same local 
   } finally { await teardown(); }
 });
 
-test('…but not when the rule NAMES that day', async () => {
-  const { pool, teardown } = await freshDb();
-  try {
-    const u = await person(pool);
-    const named = reminders.daysNamedBy('weekly:SA');
-    assert.deepEqual(named, [6], 'SA is Saturday, 0 = Sunday');
-    const kept = await withTx(pool, (c) => quietFacts.keptMomentFor(c, who(u), SAT_10, { namedDays: named }));
-    assert.equal(kept.at.toISOString(), SAT_10);
-    assert.equal(kept.movedFrom, null);
-  } finally { await teardown(); }
+test('only a rule that pins NOTHING is moved at all', () => {
+  // The carve-outs the owner made after reading the rule against his own
+  // list. A routine set for every day, or for a date, is a commitment — and a
+  // quiet day is not a reason to break it.
+  assert.equal(reminders.movesOffQuietDay('daily'), false, 'a pill at seven is a pill on Saturday too');
+  assert.equal(reminders.movesOffQuietDay('monthly:16'), false, 'the 16th is the 16th');
+  assert.equal(reminders.movesOffQuietDay('monthly:last'), false);
+  assert.equal(reminders.movesOffQuietDay('weekly:SA'), false, 'they named Saturday; Saturday is what they get');
+  assert.equal(reminders.movesOffQuietDay('weekly:MO,TH'), false);
+  assert.equal(reminders.movesOffQuietDay(null), false, 'a one-off is never moved');
+  assert.equal(reminders.movesOffQuietDay('gibberish'), false, 'an unrecognised rule stores a one-off');
+  // …and the one that does.
+  assert.equal(reminders.movesOffQuietDay('weekly'), true);
+  assert.equal(reminders.movesOffQuietDay('שבועי'), true, 'the Hebrew word normalises to the same bare rule');
+  assert.equal(reminders.movesOffQuietDay('FREQ=WEEKLY'), true);
 });
 
 test('a day they keep is a property of the PERSON, not of the weekday', async () => {
@@ -111,24 +121,26 @@ test('a moment already on a kept day is returned untouched', async () => {
 
 // ---- what the rule vocabulary can and cannot say ----------------------------
 
-test('only a rule that spells the day out names it', () => {
-  assert.deepEqual(reminders.daysNamedBy('weekly:SA'), [6]);
-  assert.deepEqual(reminders.daysNamedBy('FREQ=WEEKLY;BYDAY=SA'), [6]);
-  assert.deepEqual(reminders.daysNamedBy('weekly:MO,TH'), [1, 4]);
-  // The ones that name nothing, and each for its own reason: every day is
-  // equally incidental to 'daily'; "כל שבוע" said on a Saturday is a
-  // coincidence of when they said it; and the 16th is a DATE, which never
-  // named a weekday.
-  for (const rule of ['daily', 'weekly', 'שבועי', 'monthly:16', 'monthly:last', null]) {
-    assert.deepEqual(reminders.daysNamedBy(rule), [], `${rule} names no day`);
-  }
+test('naming the weekday is what keeps it, so the model is told to do that', () => {
+  // "כל שבוע בשבת" must reach the DB as weekly:SA and not as a bare weekly on
+  // a Saturday, or the person who asked for Saturdays gets Sundays. The tool
+  // schema says so in as many words; this pins the normaliser that has to
+  // understand the answer.
+  assert.equal(reminders.normalizeRepeatRule('FREQ=WEEKLY;BYDAY=SA'), 'weekly:SA');
+  assert.equal(reminders.normalizeRepeatRule('weekly:SA'), 'weekly:SA');
+  assert.equal(reminders.normalizeRepeatRule('שבועי'), 'weekly', 'the bare Hebrew word pins no day, and must not pretend to');
 });
 
 // ---- the first occurrence ---------------------------------------------------
 
+let title = 0;
 async function armed(pool, user, at, rule) {
+  // A distinct title every time: the same thing OPEN on one list twice is
+  // refused by design (rules/reminders-and-tasks.md), and a fixture that
+  // reuses one is testing that rule instead of this one.
+  title += 1;
   const taskId = await withTx(pool, async (c) => {
-    const t = await tasks.addTask(c, user.id, { title: 'לעבור על המיילים' });
+    const t = await tasks.addTask(c, user.id, { title: 'לעבור על המיילים ' + title });
     const r = await reminders.setReminder(c, user.id, t.data.task.id, at, rule);
     assert.equal(r.ok, true, r.ok ? '' : JSON.stringify(r.error));
     return t.data.task.id;
@@ -139,13 +151,24 @@ async function armed(pool, user, at, rule) {
   return { taskId, at: rows[0].remind_at.toISOString(), rule: rows[0].repeat_rule };
 }
 
-test('"כל שבוע בשבת" is armed for Saturday', async () => {
+test('everything that pins a slot is armed exactly where it landed', async () => {
   const { pool, teardown } = await freshDb();
   try {
     const u = await person(pool);
-    const r = await armed(pool, u, SAT_10, 'FREQ=WEEKLY;BYDAY=SA');
-    assert.equal(r.rule, 'weekly:SA');
-    assert.equal(r.at, SAT_10, 'they named the day; the day is what they get');
+    // They named Saturday.
+    const named = await armed(pool, u, SAT_10, 'FREQ=WEEKLY;BYDAY=SA');
+    assert.equal(named.rule, 'weekly:SA');
+    assert.equal(named.at, SAT_10);
+
+    // A pill at seven, every day. The owner's first carve-out, and the reason
+    // for it in his own words: "כי זה יכול להיות תרופה או משהו חשוב".
+    const pill = await armed(pool, u, SAT_10, 'daily');
+    assert.equal(pill.at, SAT_10, 'a daily routine is not broken by a quiet day');
+
+    // The 26th of the month, which in September 2026 is a Saturday. His
+    // second carve-out: "אם זה נופל על שבת שיהיה על שבת".
+    const monthly = await armed(pool, u, SAT_10, 'monthly:26');
+    assert.equal(monthly.at, SAT_10);
   } finally { await teardown(); }
 });
 
@@ -180,51 +203,66 @@ test('a ONE-OFF on a quiet day is never moved', async () => {
 
 // ---- every occurrence after the first ---------------------------------------
 
-test('the sweep arms the next occurrence off a quiet day, and the chain survives it', async () => {
+async function spawnedAfter(pool, taskId, tickIso) {
+  await withTx(pool, (c) => sweeps.sweepReminders(c, tickIso));
+  const { rows } = await pool.query(
+    `SELECT remind_at FROM task_reminders
+      WHERE task_id = $1 AND attempts = 0 AND cancelled_at IS NULL`, [taskId]);
+  assert.equal(rows.length, 1, 'one live row, never two');
+  return rows[0].remind_at.toISOString();
+}
+
+test('the sweep moves a bare weekly when the quiet day arrived after it was set', async () => {
   const { pool, teardown } = await freshDb();
   try {
-    const u = await person(pool);
-    // Friday 10:00, daily. Firing it spawns Saturday — which moves to Sunday.
-    const first = await armed(pool, u, FRI_10, 'daily');
-    assert.equal(first.at, FRI_10, 'Friday is a day they keep');
+    // Why the SWEEP needs this at all, when setReminder already moved the
+    // first occurrence: a bare weekly returns to the same weekday for ever,
+    // so its successor is quiet only when the world changed under it. Two
+    // ways that happens — they add a quiet day, or a yom tov lands on their
+    // weekday. This is the first, because it is the one a test can pin
+    // without a calendar.
+    const u = await person(pool, { quiet: 'none' });
+    const r = await armed(pool, u, SAT_10, 'weekly');
+    assert.equal(r.at, SAT_10, 'Saturday was an ordinary day when they asked');
 
-    await withTx(pool, (c) => sweeps.sweepReminders(c, '2026-09-25T09:01:00Z'));
-    const { rows } = await pool.query(
-      `SELECT remind_at FROM task_reminders
-        WHERE task_id = $1 AND attempts = 0 AND cancelled_at IS NULL`, [first.taskId]);
-    assert.equal(rows.length, 1, 'one live row, never two');
-    const spawned = rows[0].remind_at.toISOString();
-    assert.equal(local(TZ, spawned), local(TZ, SUN_10), 'Saturday moved to Sunday');
+    await withTx(pool, (c) => preferences.remember(c, u.id, 'quiet_days', 'sat'));
+    const spawned = await spawnedAfter(pool, r.taskId, '2026-09-26T09:01:00Z');
+    assert.match(local(TZ, spawned), /^Sun 04 Oct/, 'the next one lands on the Sunday, not the Saturday');
 
-    // The day after Sunday is Monday — the chain is intact and nobody gets two
-    // messages in one morning. (A 'daily' successor is computed from the
-    // stored moment, so a shift costs the series nothing.)
-    assert.match(local(TZ, reminders.nextOccurrence(spawned, 'daily', TZ).toISOString()), /^Mon/);
-
-    // …and the move is on the record, because it is the one thing about a
-    // repeating reminder somebody could notice and not be able to explain.
     const { rows: log } = await pool.query(
-      `SELECT event, detail FROM audit_log WHERE actor_id = $1 AND event = 'reminder.moved_off_quiet_day'`,
-      [u.id]);
-    assert.equal(log.length, 1);
+      `SELECT detail FROM audit_log WHERE event = 'reminder.moved_off_quiet_day'`);
+    assert.equal(log.length, 1, 'the move is on the record — it is the one thing somebody could notice and not explain');
     assert.equal(log[0].detail.reason, 'quiet_day');
   } finally { await teardown(); }
 });
 
-test('a monthly date that lands on a quiet day shifts, and the NEXT one does not drift', async () => {
+test('the sweep arms a daily successor on the quiet day itself', async () => {
   const { pool, teardown } = await freshDb();
   try {
     const u = await person(pool);
-    // 2026: the 26th of September is a Saturday. 'monthly:26' names a DATE, so
-    // it moves — to the 27th.
-    const kept = await withTx(pool, (c) => quietFacts.keptMomentFor(
-      c, who(u), SAT_10, { namedDays: reminders.daysNamedBy('monthly:26') }));
-    assert.match(local(TZ, kept.at), /^Sun 27 Sep/);
-    // The month after is still the 26th: 'monthly:N' reads its day from the
-    // RULE, never from the previous occurrence, so a shift can never compound
-    // into a walk down the calendar.
-    const after = reminders.nextOccurrence(kept.at.toISOString(), 'monthly:26', TZ);
-    assert.match(local(TZ, after.toISOString()), /26 Oct/);
+    const first = await armed(pool, u, FRI_10, 'daily');
+    assert.equal(first.at, FRI_10);
+    const spawned = await spawnedAfter(pool, first.taskId, '2026-09-25T09:01:00Z');
+    assert.equal(local(TZ, spawned), local(TZ, SAT_10), 'Saturday, because the pill is on Saturday too');
+    const { rows: log } = await pool.query(
+      `SELECT 1 FROM audit_log WHERE event = 'reminder.moved_off_quiet_day'`);
+    assert.equal(log.length, 0, 'nothing moved, so nothing is claimed');
+  } finally { await teardown(); }
+});
+
+test('a bare weekly keeps its hour when it moves, and its series from then on', async () => {
+  const { pool, teardown } = await freshDb();
+  try {
+    const u = await person(pool);
+    const r = await armed(pool, u, SAT_10, 'weekly');
+    assert.match(local(TZ, r.at), /10:00$/, 'the hour is the promise and it survives the move');
+    // The migration the owner chose, stated as an assertion: from here the
+    // series is every Sunday, because a weekly successor is seven days after
+    // the STORED moment. It is the reason this is the only shape that moves —
+    // daily reads the stored moment too but lands on a kept day either way,
+    // and monthly reads its day from the rule and cannot drift at all.
+    const after = reminders.nextOccurrence(r.at, 'weekly', TZ);
+    assert.match(local(TZ, after.toISOString()), /^Sun 04 Oct/);
     assert.match(local(TZ, after.toISOString()), /10:00$/);
   } finally { await teardown(); }
 });

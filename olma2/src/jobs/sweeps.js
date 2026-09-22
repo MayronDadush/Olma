@@ -136,10 +136,11 @@ async function sweepReminders(client, nowIso) {
       // flat interval breaks each of them (see reminders.nextOccurrence).
       const next = reminders.nextOccurrence(r.remind_at, r.repeat_rule, r.timezone);
       if (next) {
-        // …and if THAT lands on a day they keep quiet, it is armed for the
-        // next day they do not, at the same local hour (owner, 2026-09-22).
-        // Unless the rule NAMES the day: "כל שבוע בשבת" is a request for
-        // Saturdays and goes out on Saturdays.
+        // …and a BARE 'weekly' that lands on a day they keep quiet is armed
+        // for the next day they do not, at the same local hour (owner,
+        // 2026-09-22). Every other shape arrives on the day it lands on:
+        // reminders.movesOffQuietDay carries the owner's two carve-outs and
+        // the reasoning behind them.
         //
         // Here rather than in the gate, and the reason is not style. The
         // gate's order is paused → eval → EXPIRY → … → quiet day, and a
@@ -147,10 +148,10 @@ async function sweepReminders(client, nowIso) {
         // `remind_at + 2h`. A hold over Shabbat would come back on Sunday
         // morning, meet the expiry check first and DELETE the message. Moving
         // the moment a week early is the only place this decision is safe.
-        const kept = await quietFacts.keptMomentFor(
-          client, { id: r.user_id, timezone: r.timezone, locale: r.locale },
-          next, { namedDays: reminders.daysNamedBy(r.repeat_rule) }
-        );
+        const kept = reminders.movesOffQuietDay(r.repeat_rule)
+          ? await quietFacts.keptMomentFor(
+            client, { id: r.user_id, timezone: r.timezone, locale: r.locale }, next)
+          : { at: next, movedFrom: null, reason: null };
         const ins = await client.query(
           `INSERT INTO task_reminders (task_id, remind_at, repeat_rule, user_id)
            VALUES ($1, $2, $3, $4) RETURNING id`,

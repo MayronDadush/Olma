@@ -221,7 +221,7 @@ Loads when you **Read** a file under `src/domain/reminders.js`, `src/domain/task
 - **A reminder belongs to the PERSON, not to the task** — every reader asks `COALESCE(r.user_id, t.owner_id)`.
 - **A task with no date can still nudge, and a nudge must NEVER date it** — the dateless kind carries an hour of its own.
 - **…and the hour it defaults to is the hour they ALREADY hear from Olma, so the nudge rides the morning picture instead of interrupting twice** — drawn into the digest, never woven into it.
-- **A repeating reminder that merely LANDS on a quiet day is moved to the next day they keep; one whose rule NAMES that day still goes out** — decided at SPAWN, because a hold would meet the expiry check first and delete it.
+- **A repeating reminder arrives on a quiet day unless its rule pins NOTHING** — a pill at seven is a pill on Saturday; only a bare "weekly" moves, and it moves at SPAWN, because a hold would meet the expiry check first and delete it.
 
 ### People, silence, and data you must not get wrong
 

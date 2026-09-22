@@ -439,32 +439,40 @@ title means this file. Grep the title, not the filename.
   actually went down, never when you left of your own accord (owner's
   decision: "מתבטלת ואומרים לו").
 
-- **A repeating reminder that merely LANDS on a day they keep is moved to the
-  next day they do not; one whose rule NAMES that day still goes out.** The
-  owner's rule, 2026-09-22: "אם זה לא תזכורת ספציפית ליום שבת - אז היא לא
-  צריכה להגיע כמו שהמשימות של הדיגסט בוקר לא מגיעות." `weekly:SA` is a request
-  for Saturdays and is untouched; `daily`, plain `weekly` and every `monthly:*`
-  name no day at all (`reminders.daysNamedBy`), so a Shabbat they land on is
-  the calendar happening to them. **The decision is made at SPAWN, never at
-  the gate** (`quiet-facts.keptMomentFor`, called from `sweeps.sweepReminders`
-  and from `reminders.setReminder` for the first occurrence) — the gate's order
-  is paused → eval → EXPIRY → … → quiet day, and a repeating reminder is always
+- **A repeating reminder arrives on a quiet day unless its rule pins NOTHING —
+  and the only rule that pins nothing is a bare `weekly`**
+  (`reminders.movesOffQuietDay`). The owner's rule took two passes, and the
+  second is the one in force. The first was "a repeat that is not specifically
+  for Saturday should not arrive on one"; he then read it against his own list
+  and carved out both shapes that were in it — "כל יום ב7 צריך להיות כולל שבת
+  (כי זה יכול להיות תרופה או משהו חשוב)" and "כנ״ל כל ה16 בחודש שאם זה נופל על
+  שבת שיהיה על שבת". His two live `daily` rows are a thyroid pill and a refund
+  run, and his `monthly:16` is another pill: **a routine set for every day, or
+  for a date, is a commitment, and a quiet day is not a reason to break it.**
+  So `daily`, `weekly:SA`, `monthly:16` and `monthly:last` all arrive where
+  they land; only "כל שבוע", whose day is a coincidence of when it was said,
+  moves. **There is no column that separates a pill from a nag** — `nudge` is
+  false on every live repeating row and `due_at` is null on six of the seven —
+  so the shape of the rule is the only honest signal and this is where it
+  stops. That is also why the tool schema tells the model to put a weekday
+  they NAMED into the rule and not only into `remind_at`: naming Saturday is
+  the only way to keep it. **The decision is made at SPAWN, never at the gate**
+  (`quiet-facts.keptMomentFor`, from `sweeps.sweepReminders` and from
+  `reminders.setReminder` for the first occurrence) — the gate's order is
+  paused → eval → EXPIRY → … → quiet day, and a repeating reminder is always
   rung 1, whose row expires at `remind_at + 2h`: a hold over Shabbat comes back
-  on Sunday morning, meets the expiry check first and DELETES the message. A
-  held DAILY reminder would also land in the same hour as Sunday's own
-  occurrence. **It is a shift and never a skip** — skipping is what makes a
-  `monthly:16` vanish for a month, which `nextOccurrence` already refuses to do
-  when February is short — and it keeps the same LOCAL hour on the next kept
-  day, walking a day at a time so a run of two or eight is crossed whole.
-  Plain `weekly` is the one rule whose series MIGRATES when it shifts, because
-  its successor is "seven days after the stored moment"; that was put to the
-  owner against the two alternatives and chosen, since a weekly whose every
-  occurrence is quiet otherwise never arrives at all. **A ONE-OFF is never
+  on Sunday morning, meets the expiry check first and DELETES the message. It
+  is a shift and never a skip, it keeps the same LOCAL hour, and it walks a day
+  at a time so a run of two or eight is crossed whole. **A ONE-OFF is never
   moved**: "תזכירי לי בשבת ב-10" is a single moment they chose with that day in
   front of them, and the gate's standing exemption for rung 1 of an asked-for
-  reminder (`gate.askedForInWords`) is narrowed by this rule to the kind that
-  repeats and not one step further. The predicate is `gate.quietDayReason`
-  itself, which moved to `domain/quiet-facts.js` so the schedule and the gate
-  cannot hold two opinions — and for an Israeli zone that means the edge is
-  candle-lighting to havdalah, so a Saturday evening past havdalah is an
-  ordinary evening to both of them.
+  reminder (`gate.askedForInWords`) is narrowed by exactly one rule shape.
+  A bare `weekly` MIGRATES when it moves, because its successor is seven days
+  after the stored moment; that was put to the owner against pinning the day
+  and against skipping, and chosen. In the sweep the branch is reached only
+  when the world changed under a standing reminder — they added a quiet day, or
+  a yom tov landed on their weekday — because a weekly returns to the same
+  weekday for ever. The predicate is `gate.quietDayReason` itself, which moved
+  to `domain/quiet-facts.js` so the schedule and the gate cannot hold two
+  opinions; for an Israeli zone that means the edge is candle-lighting to
+  havdalah, so a Saturday evening past havdalah is an ordinary evening to both.

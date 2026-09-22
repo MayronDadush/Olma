@@ -75,28 +75,39 @@ function normalizeRepeatRule(raw) {
 }
 
 
-// Which weekdays this rule NAMES out loud — 0 = Sunday, matching
-// preferences.DAY_NAMES. The quiet-day shift reads it (domain/quiet-facts.
-// keptMomentFor): a repeating reminder that merely LANDS on a day somebody
-// keeps waits for the next one they do not, and one whose rule NAMES that day
-// still goes out, because that day is the thing they asked for.
+// Does a quiet day move this repeat, or does it arrive on it?
 //
-// Empty for 'daily', for plain 'weekly' and for every 'monthly:*', and each of
-// those is deliberate:
+// The owner's rule went through two passes and the second is the one that
+// matters (2026-09-22). The first was "a repeat that is not specifically for
+// Saturday should not arrive on one". Then he read it against his own list and
+// carved out the two shapes that were actually in it:
 //
-//   daily        — names nothing; every day is equally incidental.
-//   weekly       — "כל שבוע" said on a Saturday is a coincidence of WHEN they
-//                  said it, not a request for Saturdays. Only
-//                  FREQ=WEEKLY;BYDAY=SA reaches 'weekly:SA', which is why the
-//                  tool schema now tells the model to put a named day in the
-//                  RULE rather than only in remind_at.
-//   monthly:16   — names a DATE. The 16th falling on a Shabbat is the calendar
-//                  happening to them, and no month named a weekday.
-function daysNamedBy(rule) {
-  const norm = normalizeRepeatRule(rule);
-  if (!norm || !norm.startsWith('weekly:')) return [];
-  return norm.slice('weekly:'.length).split(',')
-    .map((d) => DAYS.indexOf(d)).filter((i) => i >= 0);
+//   "כל יום ב7 צריך להיות כולל שבת (כי זה יכול להיות תרופה או משהו חשוב)"
+//   "כנ״ל כל ה16 בחודש שאם זה נופל על שבת שיהיה על שבת"
+//
+// His own live rows are why: the two `daily` reminders on the box are "לקחת
+// כדור לבלוטה" and "לשלוח החזרים לקופה", and the `monthly:16` is "לקחת כדור
+// ריבה". A routine somebody set for every day, or for a date, is a commitment
+// they made — and skipping Saturday breaks the routine rather than sparing
+// them a message.
+//
+// So what is left is ONE shape, and the line is whether the rule PINS
+// anything:
+//
+//   daily        — pins every day. Arrives.
+//   weekly:SA    — pins the weekday, Saturday included. Arrives, and that is
+//                  the whole point of naming it.
+//   monthly:16   — pins a date. Arrives, wherever the 16th lands.
+//   monthly:last — pins a date. Arrives.
+//   weekly       — pins NOTHING. "כל שבוע" said on a Saturday is a
+//                  coincidence of when they said it, and it is the only rule
+//                  whose quiet day nobody chose. It moves.
+//
+// There is no column that separates a pill from a nag — `nudge` is false on
+// every live repeating row and `due_at` is null on six of the seven — so the
+// shape of the rule is the only honest signal, and this is where it stops.
+function movesOffQuietDay(rule) {
+  return normalizeRepeatRule(rule) === 'weekly';
 }
 
 // Bare 'monthly' carries no day. Pin it to the day the reminder itself falls
@@ -229,21 +240,18 @@ async function setReminder(client, userId, taskId, remindAt, repeatRule, { nudge
   // walk backwards month by month.
   const rule = resolveMonthlyAnchor(normalizeRepeatRule(repeatRule), remindAt, rows[0].timezone);
   // The FIRST occurrence gets the same treatment the sweep gives every one
-  // after it (owner, 2026-09-22): a repeating reminder that lands on a day
-  // they keep is armed for the next day they do not, at the same local hour,
-  // unless its rule NAMES that day. Without this, "כל יום בשבע" set on a
-  // Friday arms Saturday and the rule only starts applying a day late.
+  // after it (owner, 2026-09-22), and `movesOffQuietDay` is the whole test:
+  // only a bare 'weekly' pins nothing, so only a bare 'weekly' moves.
   //
-  // A ONE-OFF is untouched. "תזכירי לי בשבת ב-10" is a moment they chose in
-  // words, and moving it would be deciding for them about a single day they
-  // were looking straight at — the exemption the gate has always granted
-  // (gate.askedForInWords), narrowed here to exactly the kind that repeats.
+  // A ONE-OFF is untouched either way. "תזכירי לי בשבת ב-10" is a moment they
+  // chose in words with that day in front of them — the exemption the gate has
+  // always granted (gate.askedForInWords), which this rule narrows by exactly
+  // one rule shape and not one step further.
   let at = remindAt;
   let movedOff = null;
-  if (rule) {
+  if (movesOffQuietDay(rule)) {
     const kept = await quietFacts.keptMomentFor(
-      client, { id: userId, timezone: rows[0].timezone, locale: rows[0].locale },
-      remindAt, { namedDays: daysNamedBy(rule) }
+      client, { id: userId, timezone: rows[0].timezone, locale: rows[0].locale }, remindAt
     );
     if (kept.movedFrom) { at = kept.at.toISOString(); movedOff = kept.reason; }
   }
@@ -905,7 +913,7 @@ async function markCarried(client, reminderId, outboxId, now = new Date()) {
 module.exports = {
   setReminder, attachAutoReminder, retireSiblingLadders, cancelReminder, listReminders, dueForSending, markSent,
   retireForMovedTask, stopRecentLadders, STOP_WINDOW_HOURS, momentIsPast, PAST_GRACE_MS,
-  normalizeRepeatRule, nextOccurrence, resolveMonthlyAnchor, daysNamedBy,
+  normalizeRepeatRule, nextOccurrence, resolveMonthlyAnchor, movesOffQuietDay,
   recordAttempt, attemptKey, ESCALATION_MAX_ATTEMPTS, ESCALATION_GAP_HOURS, RUNGS,
   ridesDigest, carriedForDigest, markCarried,
 };
