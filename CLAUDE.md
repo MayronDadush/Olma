@@ -161,7 +161,7 @@ Loads when you **Read** a file under `src/outbox/**`, `src/domain/message-format
 - **The invite and the table question offer the coordination's own page, on a bare line; nothing else in the negotiation does** — and the characters are handed over, never asked for: a prompt that named a meeting id got three invented domains in one minute
 - **A private message about a coordination is one sentence of context and one question** — two options are a sentence, a game room counts heads, and the length is measured
 - **The same thing does not go out twice inside a few minutes unless the person ASKED**
-- **The delivery gate is the chokepoint and a paused user has no exceptions** — save one room-coordination invite per pause
+- **The delivery gate is the chokepoint and a paused user has no exceptions** — save one room-coordination invite per pause, and one per run of silence
 - **An unstated quiet day is not "none" — it is Saturday or Sunday, and which one is a fact about the PERSON.**
 - **Quiet HOURS and a quiet DAY draw different lines, and the digest is where they differ.**
 - **For an Israeli zone, Saturday's quiet day is candle-lighting to havdalah, not midnight to midnight.**

@@ -143,9 +143,13 @@ test('a member who wrote is stamped, and a stranger who wrote is not', async () 
 test('the invite reaches the man who was talking in the room, and nothing else does', async () => {
   const miron = await makeUser(db.pool, '+972606000010');
   const amit = await makeUser(db.pool, '+972606000011');
+  // Their one room-coordination invite is spent, so the ROOM is the only thing
+  // that can carry the invite here — the allowance added on 2026-09-22 would
+  // otherwise answer the first drain below and this test would be about it.
   for (const u of [miron, amit]) {
     await db.pool.query(
-      `UPDATE users SET timezone = 'Asia/Jerusalem', checkin_misses = 1 WHERE id = $1`, [u.id]);
+      `UPDATE users SET timezone = 'Asia/Jerusalem', checkin_misses = 1, room_invite_sent_at = now()
+        WHERE id = $1`, [u.id]);
   }
   const g = await withTx(db.pool, (c) => room(c, {
     jid: '120363000000002@g.us', members: [{ phone: miron.phone }, { phone: amit.phone }],
@@ -196,7 +200,12 @@ test('the invite reaches the man who was talking in the room, and nothing else d
 test('a word said before the coordination started does not open a window on it', async () => {
   const dana = await makeUser(db.pool, '+972606000020');
   const yael = await makeUser(db.pool, '+972606000021');
-  await db.pool.query(`UPDATE users SET checkin_misses = 1 WHERE id = $1`, [yael.id]);
+  // Her one room-coordination invite is already spent (owner, 2026-09-22), so
+  // the window is the only thing left that could carry this row — which is the
+  // question this test asks. Without the stamp the allowance answers it first
+  // and the assertion below stops being about the window at all.
+  await db.pool.query(
+    `UPDATE users SET checkin_misses = 1, room_invite_sent_at = now() WHERE id = $1`, [yael.id]);
   const g = await withTx(db.pool, (c) => room(c, {
     jid: '120363000000003@g.us', members: [{ phone: dana.phone }, { phone: yael.phone }],
   }));
