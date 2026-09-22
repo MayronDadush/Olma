@@ -252,6 +252,24 @@ have already had to be argued for.
   messages reach her (PR #429), the answer to "איפה נפגשים?" still needs a
   tag (`incidents.md`, "The place nobody asked for").
 
+- **The room says that people have not answered only about people she has
+  actually written to** (owner, 2026-09-22; `group-meetings.statusOf` puts
+  `asked` on every person it names, `group-voice.said` is the filter).
+  `silent` still means exactly "has answered nothing" — the model's `answered`
+  count is `participants - silent.length` and must stay exact — and `asked` is
+  the separate question of whether anything about this coordination ever
+  REACHED them: an `outbox` row for this meeting with `sent_at` set and
+  `hold_reason` null, the same test `meeting-options.unheardRemovals` applies
+  to a removal. Both room lines filter on it (the base's `missing`, the chase's
+  list) and so does the model's `waitingFor`, because the block is the only
+  thing it may speak from in the room; the people it drops come back as
+  `notYetAsked`, a count with no tags, so the numbers still add up. With nobody
+  reached yet there is no true sentence to say and the room hears nothing at
+  all. A caller that carries no `asked` is taken at its word (`!== false`), so
+  a fixture or an older payload still says its line — being over-careful here
+  costs a line that is true (`incidents.md`, "The room chased three people, two
+  of whom had never been asked").
+
 - **A group turn is told the room's coordination state before the model's first
   word, and that block is the only thing it may speak from.** The DM half of
   this has been live since 2026-09-06 (turns-and-replies.md, "The turn opens

@@ -66,6 +66,7 @@ never trust a dated narrative for something you are about to act on.
 - [The room heard its own state from memory (fixed 2026-09-19)](#the-room-heard-its-own-state-from-memory-fixed-2026-09-19)
 - [The room waited for nobody (fixed 2026-09-20)](#the-room-waited-for-nobody-fixed-2026-09-20)
 - [The place nobody asked for (fixed 2026-09-20)](#the-place-nobody-asked-for-fixed-2026-09-20)
+- [The room chased three people, two of whom had never been asked (fixed 2026-09-22)](#the-room-chased-three-people-two-of-whom-had-never-been-asked-fixed-2026-09-22)
 - [A message in the room, with no tag on it (2026-09-19, half shipped)](#a-message-in-the-room-with-no-tag-on-it-2026-09-19-half-shipped)
 - [Eighteen messages, no answer (fixed 2026-09-07)](#eighteen-messages-no-answer-fixed-2026-09-07)
 - [The man who only ever answered from the page (fixed 2026-09-20)](#the-man-who-only-ever-answered-from-the-page-fixed-2026-09-20)
@@ -2261,6 +2262,41 @@ seven descriptions (55,833 → 55,478 chars), which is what adding a tool
 costs here. What it still waits on: an answer typed in the room reaches her
 only with a tag until PR #429 lands.
 
+
+### The room chased three people, two of whom had never been asked (fixed 2026-09-22)
+
+Coordination 38 was opened in the test room at 00:40 to measure something
+else: three `meeting_invite` rows, and the gate decided all three correctly —
+the owner's held for the night, Maya's held for the night, Capish's dropped as
+`quiet` on one check-in miss. The owner then wrote in the room with no tag,
+which released his own row and it went out at 00:54 (PR #429 working, on live
+traffic).
+
+At **09:00:36** the voice sweep said this in the room:
+
+> עוד לא שמעתי מ@מירון @מאיה @Capish — תגידו לי בפרטי מתי אתם יכולים ואני סוגרת את זה.
+
+Maya's invite went out at **09:01:36** — one minute after the room was told she
+had not answered. Capish's had been dropped nine hours earlier and never
+arrived at all. One of the three tags was fair.
+
+`group-meetings.statusOf` computed `silent` as "no row in
+`meeting_option_answers`", which is a true statement about ANSWERS and was
+being read as a statement about people. The same shape as the fold that could
+not see an invite the gate had dropped (PR #432): the only reader in this
+codebase that had it right was `meeting-options.unheardRemovals`, which asks
+what actually REACHED somebody.
+
+**Fix.** `asked` on every person `statusOf` names — an `outbox` row for this
+meeting, `sent_at` set and `hold_reason` null — and `silent` left alone, so the
+model's `answered` arithmetic stays exact. `group-voice.said` filters both room
+lines, and `group-turn` filters `waitingFor` and reports the rest as
+`notYetAsked`, a count with no tags. Four tests in `group-voice.test.js` and
+two in `group-turn-context.test.js` went red on the fix and were right to: they
+answered options by hand and never delivered an invite, so under the new rule
+the room correctly had nothing to say. They now mark the invites delivered,
+which is the state production is actually in when a line is due — the
+fixture-writes-the-state trap, caught by the fix rather than by review.
 ### A message in the room, with no tag on it (2026-09-19, half shipped)
 
 The owner asked for this twice in one day: *"אני רציתי שאם היא כותבת הודעה
