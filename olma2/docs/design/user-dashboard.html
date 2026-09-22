@@ -3377,6 +3377,14 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
         <button class="chip mini" aria-pressed="false" data-remoff="60"   data-i18n="off.h1"></button>
         <button class="chip mini" aria-pressed="false" data-remoff="1440" data-i18n="off.d1"></button>
       </div>
+      <!-- An offset answers "how long before the task", and a task with no
+           date has no before. The same fold then asks the only thing a
+           standing nudge actually needs: which hour. Same clock wheel as
+           everywhere else on the page. -->
+      <span class="vseg" id="sRemindAtSeg" hidden>
+        <button class="vseg-b set" id="sRemindAtChip" data-i18n-label="sheet.remindAt">
+          <svg class="vic"><use href="#i-clock"/></svg><span id="sRemindAtVal"></span></button>
+      </span>
     </div></div></div>
     <!-- "Add to calendar" is a promise about a specific calendar, and with
          more than one connected the switch alone does not say which. There is
@@ -3961,12 +3969,53 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      vocabularies, and refuses yearly outright — "better null than a lie" — so
      the sheet does not offer one). */
   var REPEAT_RULE = {none:null, day:"daily", week:"weekly", month:"monthly"};
+  /* The hour a standing nudge goes out when nobody has said otherwise, and
+     the owner's rule for it (2026-09-20): the hour they already hear from
+     Olma in the morning, so the nudge rides the morning picture instead of
+     being a second interruption — the server draws it INTO the digest when
+     the two coincide (domain/digest-block.js). Failing that, the hour their
+     own day opens. Never midnight, and never an hour nobody chose: a
+     notification that arrives while somebody is asleep is one they will never
+     see.
+     The morning one specifically. Somebody whose only digest is at 18:00 is
+     not being asked "when do you read your updates in the morning", so they
+     fall through to their window — the owner's call, same conversation. */
+  var REM_MORNING_BEFORE = "12:00";
+  var REM_FALLBACK_AT = "09:00";
+  function remDefaultAt(){
+    var morning = (DIGEST.times || []).filter(function(t){ return t < REM_MORNING_BEFORE; }).sort();
+    if(morning.length) return morning[0];
+    return (SCHED && SCHED.start) || REM_FALLBACK_AT;
+  }
+  /* The next time that hour comes round in their zone — later today if it is
+     still ahead, otherwise tomorrow. Never a moment already past: the server
+     would fire it within the minute, which reads as a bug and spends the one
+     nudge this task had. */
+  function nextIsoAt(time){
+    var tz = myTz(), day = todayInZone();
+    var ymd = function(d){ return d.getFullYear() + "-" + pad2(d.getMonth()+1) + "-" + pad2(d.getDate()); };
+    var at = new Date(localStamp(tz, ymd(day), time)).getTime();
+    if(!isFinite(at)) return null;
+    if(at <= Date.now()){
+      day.setDate(day.getDate() + 1);
+      at = new Date(localStamp(tz, ymd(day), time)).getTime();
+    }
+    return new Date(at).toISOString().replace(/\.\d+Z$/, "+00:00");
+  }
   /* When the reminder actually goes out: the task's own moment, minus the
      offset the person picked. An all-day task has no hour of its own, so it
      is reminded about at 09:00 local rather than at midnight — a notification
      that arrives while somebody is asleep is one they will never see. */
   function remindIso(x){
-    if(!x || !x.d) return null;
+    if(!x) return null;
+    /* A task with no date still gets to nudge, and this is the whole point of
+       the dateless kind: "לקבוע עם מיכאל" is not a moment and giving it a due
+       date to make the switch work turns a standing job into a deadline that
+       is wrong by tomorrow. The reminder carries an hour of its OWN, the task
+       stays dateless, and `repeatRule` is what makes it come back. An offset
+       has nothing to be offset FROM here, which is why the sheet puts the hour
+       where the offset chips are. */
+    if(!x.d) return x.rem ? nextIsoAt(x.remAt || remDefaultAt()) : null;
     var time = (x.all || !x.tm) ? "09:00" : x.tm;
     /* From the task's real instant, not from its wall clock read as UTC: an
        offset of "two hours before" is two hours of actual time, and on the
@@ -4095,7 +4144,10 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
         if(x.rem){
           payload.remindAt = remindIso(x);
           payload.repeatRule = REPEAT_RULE[x.rep || "none"] || null;
-          if(!payload.remindAt) return;   /* no date: nothing to remind about */
+          /* A backstop, not the dateless case — that one now builds its own
+             moment above. `setTaskReminder` refuses `on` without a `remindAt`
+             and would cancel nothing, so there is no call worth making. */
+          if(!payload.remindAt) return;
         }
         API.send("setTaskReminder", payload);
       });
@@ -4577,6 +4629,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "cal.thisWeek":"השבוע","cal.taskTag":"משימה","cal.taskSub":"מהרשימה שלך בעולמה","cal.taskRem":"עולמה תזכיר ב־{name}",
       "cal.showIn":"להצגה ביומן",
       "off.at":"בזמן","off.m10":"10 דק׳ לפני","off.h1":"שעה לפני","off.d1":"יום לפני",
+      "sheet.remindAt":"שעת התזכורת","sheet.remindAtVal":"להזכיר ב־{time}",
       "rep.once":"ללא","rep.day":"כל יום","rep.week":"כל שבוע","rep.month":"כל חודש",
       "sheet.repeatNeedsRemind":"החזרה נשמרת על התזכורת — צריך להדליק תזכורת קודם",
 
@@ -4891,6 +4944,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "cal.thisWeek":"This week","cal.taskTag":"Task","cal.taskSub":"From your Allma list","cal.taskRem":"Allma will remind you on {name}",
       "cal.showIn":"Show in calendar",
       "off.at":"On time","off.m10":"10 min before","off.h1":"1 hour before","off.d1":"1 day before",
+      "sheet.remindAt":"Reminder time","sheet.remindAtVal":"Remind at {time}",
       "rep.once":"Never","rep.day":"Every day","rep.week":"Every week","rep.month":"Every month",
       "sheet.repeatNeedsRemind":"A repeat lives on the reminder — switch one on first",
 
@@ -5416,6 +5470,14 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     {id:14, d:isoAt(2), tm:"12:00", tmEnd:"19:00", all:false, t:{he:"משמרת",en:"Shift"},
      rem:true, rep:"week", cal:true, cat:"work", catAuto:true},
     {id:4, d:"",        tm:"", all:false, t:{he:"לקבוע תור לרופא שיניים",en:"Book a dentist appointment"}, rem:false, rep:"none", cal:false, cat:"health", catAuto:true},
+    /* The dateless kind that still nudges: no date, no deadline, and a weekly
+       reminder at an hour of its own. Four of the owner's own tasks were this
+       shape and the page had no way to say it (2026-09-19). It has to be a
+       task of its OWN — id 4 is what the suggestion strip above proposes to
+       archive, on the grounds that it has neither a date nor a reminder, and
+       a fixture that contradicts the sentence beside it teaches the next
+       reader the wrong thing about both. */
+    {id:12, d:"",       tm:"", all:false, t:{he:"ריצות בים פעמיים בשבוע",en:"Sea runs, twice a week"}, rem:true, rep:"week", remAt:"18:00", cal:false, cat:"health", catAuto:false},
     /* imported. `src` is the whole difference — everything else is a task. */
     {id:7, d:isoAt(1), tm:"14:00", all:false, src:"monday",
      t:{he:"לאשר את הקריאייטיב לקמפיין",en:"Sign off the campaign creative"},
@@ -7171,6 +7233,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     var pick = $$("#sCat .chip").filter(function(c){ return c.getAttribute("aria-pressed") === "true"; })[0];
     if(pick) editing.cat = pick.dataset.cat;
     var wasRem = editing.rem, wasOff = editing.remOff, wasRep = editing.rep, wasCal = editing.cal;
+    var wasRemAt = editing.remAt;
     editing.rem = $("#sRemind").getAttribute("aria-checked") === "true";
     editing.cal = $("#sCal").getAttribute("aria-checked") === "true";
     var off = $$("#sOffset .chip").filter(function(c){ return c.getAttribute("aria-pressed") === "true"; })[0];
@@ -7207,6 +7270,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
        task moves what it reminds you about. */
     var whenKey = String(editing.d) + "|" + String(editing.tm) + "|" + String(editing.all);
     if(save && (editing.rem !== wasRem || editing.remOff !== wasOff || editing.rep !== wasRep
+       || editing.remAt !== wasRemAt
        || (editing.rem && whenKey !== lastWhenKey))) API.setTaskReminder(editing);
     if(save && (editing.cal !== wasCal || (editing.cal && whenKey !== lastWhenKey))) API.setTaskCalendar(editing);
     if(save) lastWhenKey = whenKey;
@@ -7309,6 +7373,11 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
        row, because two lockRow calls on one row leave only the last. */
     var chosen = $$("#sRepeat .chip").filter(function(c){ return c.getAttribute("aria-pressed") === "true"; })[0];
     $("#sRepeatVal").textContent = t("rep." + ({none:"once", day:"day", week:"week", month:"month"}[chosen ? chosen.dataset.rep : "none"] || "once"));
+    /* The reminder fold asks one question or the other, never both: how long
+       before a moment there is, or what hour when there is none. */
+    $("#sOffset").hidden = !dated;
+    $("#sRemindAtSeg").hidden = dated;
+    $("#sRemindAtVal").textContent = t("sheet.remindAtVal", {time:editing.remAt || remDefaultAt()});
     var ck = editing.cat || "none";
     $("#sCatVal").textContent = t("tcat." + ck);
     /* Olma's guess says so until the person overrules it — an automatic
@@ -7641,7 +7710,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     var x = id ? open.filter(function(o){ return o.id === id; })[0] : null;
     isNew = !x;
     editing = x || {id:++seq, d:"", tm:"", all:false, t:both(""), rem:false, rep:"none",
-                    remOff:0, cal:false, cat:"none"};
+                    remOff:0, remAt:"", cal:false, cat:"none"};
     if(!x && preset) Object.keys(preset).forEach(function(k){ editing[k] = preset[k]; });
     /* What "when" was when this sheet opened. commit() compares against it so
        a reminder is only rewritten when the moment it points at actually
@@ -7748,6 +7817,17 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   $("#sTimeChip").addEventListener("click", function(){
     openTimePop(this, editing.tm, function(v){ setTaskClock($("#sTime"), v); },
       {clear:function(){ setTaskClock($("#sTime"), ""); }});
+  });
+  /* The standing nudge's own hour. It writes straight onto `editing` rather
+     than through a hidden input, because unlike the task's two clocks it is
+     not part of the task at all — it belongs to the reminder, and the task
+     stays dateless. No clear: turning the reminder OFF is how you stop it,
+     and an hour cleared to nothing would leave a switch that is on with
+     nowhere to fire. */
+  $("#sRemindAtChip").addEventListener("click", function(){
+    openTimePop(this, editing.remAt || remDefaultAt(), function(v){
+      editing.remAt = v; commit();
+    });
   });
   $("#sEnd").addEventListener("change", commit);
   /* An end opens an hour after the start, on a wheel that begins at the
@@ -11293,6 +11373,19 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     for(var i = 0; i < OFFSETS.length; i++) if(mins >= OFFSETS[i]) return OFFSETS[i];
     return 0;
   }
+  /* The hour a dateless task's nudge fires at, read back off the instant the
+     server stores. The dated kind recovers an OFFSET instead (above): there
+     the reminder is described by its distance from the task, here the task
+     has no moment to be a distance from and the hour is the whole answer. */
+  function remAtOf(x){
+    if(!x.reminder || !x.reminder.at || x.date) return "";
+    var at = Date.parse(x.reminder.at);
+    if(!isFinite(at)) return "";
+    try{
+      return new Intl.DateTimeFormat("en-GB", {timeZone:myTz(), hour:"2-digit", minute:"2-digit", hour12:false})
+        .format(new Date(at));
+    }catch(err){ return ""; }
+  }
   function repShape(rule){
     if(!rule) return "none";
     if(rule === "daily") return "day";
@@ -11312,6 +11405,9 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
          fifth chip — the reminder is real either way, and the sheet only has
          to be able to show it. */
       remOff:remOffOf(x),
+      /* …and the hour itself, for the dateless kind, which has no offset to
+         recover. Empty for a dated task, where remOff carries the answer. */
+      remAt:remAtOf(x),
       /* The task's own answer to "put this on my calendar", resolved server-
          side against the standing switch (domain/user-dashboard.js). */
       cal:!!x.calendar,

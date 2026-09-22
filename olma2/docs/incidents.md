@@ -167,6 +167,7 @@ never trust a dated narrative for something you are about to act on.
 - [The same rule, in the noun form nobody had written down (fixed 2026-09-18)](#the-same-rule-in-the-noun-form-nobody-had-written-down-fixed-2026-09-18)
 
 **Features as they shipped**
+- [The switch that did nothing on a task with no date (2026-09-19)](#the-switch-that-did-nothing-on-a-task-with-no-date-2026-09-19)
 - [The triage he did by hand, and the fourth detector the box refused (2026-09-19)](#the-triage-he-did-by-hand-and-the-fourth-detector-the-box-refused-2026-09-19)
 - [The light that would not go round (2026-09-22)](#the-light-that-would-not-go-round-2026-09-22)
 - [The list he could not put his own task into (2026-09-19)](#the-list-he-could-not-put-his-own-task-into-2026-09-19)
@@ -6420,6 +6421,85 @@ rule working exactly as written.
 
 ## Features as they shipped
 
+
+### The switch that did nothing on a task with no date (2026-09-19)
+
+The triage below ended with four of Miron's own tasks reduced to one shape he
+had no words for in the product: *something with no date that should keep
+coming back until it is done.* "לקבוע עם מיכאל", "ריצות בים", "להזכיר לאבא",
+"פתיח ספק בכפר סבא". The system offered two answers and both were wrong — give
+it a `due_at` and a standing job becomes a deadline that is wrong by tomorrow,
+or leave it dateless and it rots in a list nobody rereads.
+
+The stopgap was a dateless task carrying a repeating reminder, and it works:
+`reminders.setReminder` takes a `remind_at` and a `repeat_rule` and writes no
+`due_at`. It had always worked. But every one of those reminders was set
+either from CHAT or, on the afternoon of the 19th, by a session on the box
+running a script — because **the page could not ask for one**. `remindIso`
+derived the reminder's moment from the task's due date, returned null when
+there was none, and `setTaskReminder` dropped the call before making it. No
+error, no toast: the switch stayed on under the person's finger and no
+reminder existed. The same silent shape as the switch that read a missing `on`
+as OFF, one row above it in the same sheet, found the same day.
+
+So the dateless kind now carries an hour of its OWN — the next time that hour
+comes round in their zone, tomorrow if today's has gone — and the sheet asks
+for it in the place the "how long before" chips occupy on a dated task, since
+an offset has nothing to be offset from. The task stays dateless, which is the
+entire point and the one thing the tests pin hardest.
+
+### The second message nobody asked for
+
+The hour was the next question, and the owner answered it the day after
+(2026-09-20): the nudge should default to **the hour he already hears from
+Olma in the morning**, and it should arrive *with* that message rather than a
+minute behind it. Failing a morning digest, the hour his own day opens.
+
+Half of that was five lines in the page — it already receives `digestTimes`
+and `availability` in `/me/data`. The other half ran straight into a rule.
+`message-merge.js` keeps a closed list of what may travel in company and
+`reminder` is deliberately not on it: every rung rides the raw pipe with the
+owner's own wording and no model, because handing the one sentence a person
+actually asked for to a model that may reword or drop it leaves the row
+stamped delivered all the same. The digest is a model turn. So "together"
+could not mean merged.
+
+It could mean DRAWN. The digest already has a half that is rendered in code
+and relayed verbatim, and that half exists for this exact reason — so the
+nudge became a section of it, under its own heading, and the reminder sweep
+stopped enqueuing a message for that occurrence at all.
+
+Three details are the whole design, and each one closes a way this could have
+gone silent instead of wrong:
+
+- **The sweeps were reordered, digests first.** `sweepReminders` will only
+  hand a nudge over when it can SEE the digest row waiting to go out. In the
+  old order that row does not exist yet, so the check could only ever have
+  been a hope — and a nudge handed to a digest that has already been delivered
+  reaches nobody, in silence.
+- **The link is the row, not a clock.** `carried_outbox_id` (migration 078)
+  points at the digest itself, so the nudge is drawn for exactly as long as
+  that message is still waiting and stops the instant it lands. The first
+  attempt was "carried in the last two hours", which needed a clock the model
+  composing the turn does not share, and which a test could not pin without
+  inventing one.
+- **A card may not replace a block that is carrying a nudge.** A card draws a
+  DAY; it has no row for a job with no date. Past the threshold the nudge
+  would have disappeared into a picture that was never asked to hold it, on an
+  occurrence already stamped as the message that carried it.
+
+It survives `summary` scope, which is where four of the six people who have a
+digest at all sit, on the argument that a nudge is the one personal item that
+is not a count: it is a sentence somebody asked to hear at this hour.
+
+Two things were learned again here rather than for the first time. **The bug
+was invisible in every text assertion and obvious in a browser** — the page
+was opened, a dateless task's sheet was opened, and the answer was there.
+And the design fixture contradicted itself the moment it was edited: giving
+the dentist task a weekly nudge left the suggestion strip above it still
+saying "no date and no reminder, shall I archive it?" — so the nudging task is
+now one of its own. A fixture that argues with the sentence beside it teaches
+the next reader the wrong thing about both.
 
 ### The triage he did by hand, and the fourth detector the box refused (2026-09-19)
 

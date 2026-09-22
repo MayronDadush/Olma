@@ -186,8 +186,15 @@ const deployDrift = require('./deploy-drift');
     // do work that is almost always "nothing due" — three times the wake-ups
     // for one tick's worth of results.
     { name: 'minute_sweeps', run: () => withTx(pool, async (c) => ({
-      reminders: await sweeps.sweepReminders(c),
+      // Digests BEFORE reminders, since 2026-09-20, and the order is
+      // load-bearing: a standing nudge set for the hour somebody already hears
+      // from Olma rides the morning picture instead of arriving beside it, and
+      // `sweepReminders` will only hand one over when it can SEE the digest row
+      // still waiting to go out. The other way round that row does not exist
+      // yet, so the check could only ever be a hope — and a nudge handed to a
+      // digest that was already delivered is a nudge nobody gets.
       digests: await sweeps.sweepDigests(c),
+      reminders: await sweeps.sweepReminders(c),
       unblocks: await sweeps.sweepUnblocks(c),
       staleMeetings: await sweeps.sweepStaleMeetings(c),
       // The settle grace is a minute, so this tick IS the resolution of the

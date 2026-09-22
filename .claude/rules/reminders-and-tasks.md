@@ -348,6 +348,52 @@ title means this file. Grep the title, not the filename.
   a pattern that fires on ordinary input is worse than none
   (`rules/detectors.md`).
 
+- **A task with no date can still nudge, and a nudge must NEVER date it**
+  (owner, 2026-09-19). Four of his own tasks were this shape — "לקבוע עם
+  מיכאל", "ריצות בים" — something with no moment that should come back every
+  week until it is done. `reminders.setReminder` always allowed it: it takes a
+  `remind_at` and a `repeat_rule` and writes no `due_at`. What refused was the
+  PAGE, where a reminder was derived from the task's due date, so the switch on
+  a dateless task built nothing and dropped the call — no error, no toast, a
+  switch left on and a reminder that never existed. The dateless kind now
+  carries an hour of its own (`remAt`, the next time that hour comes round in
+  their zone) and the sheet asks for it where the "how long before" chips sit,
+  because an offset has nothing to be offset from. **Giving such a task a
+  `due_at` to make the machinery work is the one thing that must not happen** —
+  it turns a standing job into a deadline that is wrong by tomorrow, and it is
+  the whole reason the shape exists. `tests/user-dashboard-write.test.js` pins
+  both halves: the row is written with `repeat_rule` and the task's `due_at`
+  stays NULL, and the page's own `nextIsoAt` is RUN, in four zones, and has to
+  land on the hour asked for and always ahead of now.
+
+- **…and the hour it defaults to is the hour they ALREADY hear from Olma, so
+  the nudge rides the morning picture instead of interrupting twice** (owner,
+  2026-09-20). The page takes their earliest morning `digest_times` entry,
+  failing that the start of their availability window, and never a bare
+  constant; somebody whose only digest is in the evening falls through to the
+  window, because the question being answered is "when do you read your
+  updates in the morning". At that hour the reminder sweep does not enqueue a
+  message at all — `reminders.ridesDigest` (dateless AND repeating AND exactly
+  one of their digest hours, read in THEIR zone) hands the occurrence to the
+  waiting digest row, and `digest-block` DRAWS it under its own heading.
+  **Drawn, never woven**: `message-merge.js` refuses to fold a reminder into a
+  composed turn because a model may reword or drop the one sentence somebody
+  asked for while the row still reads delivered, and that reason does not stop
+  applying just because the owner wants one message instead of two.
+  Three things hold it together and each closes a way it could go silent.
+  **The sweeps run digests-FIRST** (`jobs/registry.js`), so `sweepReminders`
+  can require a digest row that is really there and really still unsent before
+  handing anything over — the other order leaves only a hope, and a nudge given
+  to a digest already delivered reaches nobody. **The link is the ROW**
+  (`task_reminders.carried_outbox_id`, migration 078), not a time window: the
+  nudge is drawn for exactly as long as that digest is waiting and stops the
+  moment it lands, which is a clock fewer to get wrong. And **a card never
+  replaces a block that is carrying one** — a card draws a DAY and has no row
+  for a job with no date, so `drawInsteadOfBlock` refuses outright rather than
+  letting the nudge vanish into a picture on a row already stamped as the
+  message that carried it. It survives `summary` scope for the same reason a
+  nudge is not a count: four of the six people with a digest are on it.
+
 - **Everyone on a shared task is equal, and a write on it is made AS its
   owner** (owner, 2026-09-19). There is one kind of share: `shares.role` is
   still a column and is read by nothing. `shares.actingOwner` answers whom a
