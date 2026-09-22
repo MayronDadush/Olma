@@ -168,7 +168,9 @@ never trust a dated narrative for something you are about to act on.
 - [The same rule, in the noun form nobody had written down (fixed 2026-09-18)](#the-same-rule-in-the-noun-form-nobody-had-written-down-fixed-2026-09-18)
 
 **Features as they shipped**
+- [The switch that did nothing on a task with no date (2026-09-19)](#the-switch-that-did-nothing-on-a-task-with-no-date-2026-09-19)
 - [The triage he did by hand, and the fourth detector the box refused (2026-09-19)](#the-triage-he-did-by-hand-and-the-fourth-detector-the-box-refused-2026-09-19)
+- [The light that would not go round (2026-09-22)](#the-light-that-would-not-go-round-2026-09-22)
 - [The list he could not put his own task into (2026-09-19)](#the-list-he-could-not-put-his-own-task-into-2026-09-19)
 - [An offer to call a number the bridge has never served (fixed 2026-09-06)](#an-offer-to-call-a-number-the-bridge-has-never-served-fixed-2026-09-06)
 - [The reply's first six seconds were bookkeeping (2026-09-05)](#the-replys-first-six-seconds-were-bookkeeping-2026-09-05)
@@ -6496,6 +6498,85 @@ rule working exactly as written.
 ## Features as they shipped
 
 
+### The switch that did nothing on a task with no date (2026-09-19)
+
+The triage below ended with four of Miron's own tasks reduced to one shape he
+had no words for in the product: *something with no date that should keep
+coming back until it is done.* "לקבוע עם מיכאל", "ריצות בים", "להזכיר לאבא",
+"פתיח ספק בכפר סבא". The system offered two answers and both were wrong — give
+it a `due_at` and a standing job becomes a deadline that is wrong by tomorrow,
+or leave it dateless and it rots in a list nobody rereads.
+
+The stopgap was a dateless task carrying a repeating reminder, and it works:
+`reminders.setReminder` takes a `remind_at` and a `repeat_rule` and writes no
+`due_at`. It had always worked. But every one of those reminders was set
+either from CHAT or, on the afternoon of the 19th, by a session on the box
+running a script — because **the page could not ask for one**. `remindIso`
+derived the reminder's moment from the task's due date, returned null when
+there was none, and `setTaskReminder` dropped the call before making it. No
+error, no toast: the switch stayed on under the person's finger and no
+reminder existed. The same silent shape as the switch that read a missing `on`
+as OFF, one row above it in the same sheet, found the same day.
+
+So the dateless kind now carries an hour of its OWN — the next time that hour
+comes round in their zone, tomorrow if today's has gone — and the sheet asks
+for it in the place the "how long before" chips occupy on a dated task, since
+an offset has nothing to be offset from. The task stays dateless, which is the
+entire point and the one thing the tests pin hardest.
+
+### The second message nobody asked for
+
+The hour was the next question, and the owner answered it the day after
+(2026-09-20): the nudge should default to **the hour he already hears from
+Olma in the morning**, and it should arrive *with* that message rather than a
+minute behind it. Failing a morning digest, the hour his own day opens.
+
+Half of that was five lines in the page — it already receives `digestTimes`
+and `availability` in `/me/data`. The other half ran straight into a rule.
+`message-merge.js` keeps a closed list of what may travel in company and
+`reminder` is deliberately not on it: every rung rides the raw pipe with the
+owner's own wording and no model, because handing the one sentence a person
+actually asked for to a model that may reword or drop it leaves the row
+stamped delivered all the same. The digest is a model turn. So "together"
+could not mean merged.
+
+It could mean DRAWN. The digest already has a half that is rendered in code
+and relayed verbatim, and that half exists for this exact reason — so the
+nudge became a section of it, under its own heading, and the reminder sweep
+stopped enqueuing a message for that occurrence at all.
+
+Three details are the whole design, and each one closes a way this could have
+gone silent instead of wrong:
+
+- **The sweeps were reordered, digests first.** `sweepReminders` will only
+  hand a nudge over when it can SEE the digest row waiting to go out. In the
+  old order that row does not exist yet, so the check could only ever have
+  been a hope — and a nudge handed to a digest that has already been delivered
+  reaches nobody, in silence.
+- **The link is the row, not a clock.** `carried_outbox_id` (migration 078)
+  points at the digest itself, so the nudge is drawn for exactly as long as
+  that message is still waiting and stops the instant it lands. The first
+  attempt was "carried in the last two hours", which needed a clock the model
+  composing the turn does not share, and which a test could not pin without
+  inventing one.
+- **A card may not replace a block that is carrying a nudge.** A card draws a
+  DAY; it has no row for a job with no date. Past the threshold the nudge
+  would have disappeared into a picture that was never asked to hold it, on an
+  occurrence already stamped as the message that carried it.
+
+It survives `summary` scope, which is where four of the six people who have a
+digest at all sit, on the argument that a nudge is the one personal item that
+is not a count: it is a sentence somebody asked to hear at this hour.
+
+Two things were learned again here rather than for the first time. **The bug
+was invisible in every text assertion and obvious in a browser** — the page
+was opened, a dateless task's sheet was opened, and the answer was there.
+And the design fixture contradicted itself the moment it was edited: giving
+the dentist task a weekly nudge left the suggestion strip above it still
+saying "no date and no reminder, shall I archive it?" — so the nudging task is
+now one of its own. A fixture that argues with the sentence beside it teaches
+the next reader the wrong thing about both.
+
 ### The triage he did by hand, and the fourth detector the box refused (2026-09-19)
 
 Sorting Miron's 38 open tasks with him on the live page took his list down to
@@ -6562,6 +6643,62 @@ in place. **Running a detector against production before shipping it is not
 the same as measuring the thresholds** — the thresholds were measured first
 and were right; what the second pass caught was a whole category the queries
 had no opinion about.
+
+### The light that would not go round (2026-09-22)
+
+The owner asked for the suggestion card to look like the one thing on the page
+Olma thought of herself — "סטייל ai עם אנימציה שתמיד זזה" — and then rejected
+the motion twice, in the same words both times: it does not loop properly
+around.
+
+Both rejections were the same bug, and the second attempt was the first one
+slowed down. A conic gradient rotated behind the card moves at a constant
+number of **degrees** per second; an edge is walked in **pixels**. The card is
+roughly 343×110, so the light crosses a long edge and a short one in the same
+slice of time — it races the sides and stalls at the ends. Slowing the
+rotation from 7.5s to 22s did not fix it, it made the unevenness last longer,
+which is why variants "א" and "ג" read as the same thing at two speeds.
+
+What works is not a gradient at all: a round glow walking the perimeter
+itself, one edge at a time, with each edge given the share of the cycle its
+LENGTH earns (38/12/38/12). Round, so a corner needs no case of its own and
+nothing rotates. The card's own background became the rim and the face sits
+1.5px inside it, so only the stretch the glow is passing brightens — the
+1.5px is the whole effect.
+
+Two colour calls came out of the same round, and both were about what a
+treatment sits ON. The drift under the text was right on the dark card and
+read as dirt on the white one: on a light theme there is no depth behind a
+card for colour to sit in, so the same paint is a glow in one theme and a
+smudge in the other, and light dropped to a third of dark's values. And the
+whole thing moved off the product violet onto turquoise and sky, because the
+ring was the same hue as the אשר button underneath it and the eye read a
+button glowing rather than a card.
+
+**Then the verb.** The card's accept button said "אשר" for all three kinds,
+and the owner's question was whether that is clear: אשר *what*. It now says
+what the action is, per kind — "להוריד", "להוריד את זו" — and the rule that
+came with it is the part worth keeping: **the word on that button may only
+name what `decide` actually does.** He floated "מזג" for the duplicate kind,
+and "מזג" would have been a lie: accepting a duplicate archives the copy and
+leaves the other row exactly as it was, carrying nothing across. A verb naming
+something the code does not do is a promise, and a label is not a feature. The
+fallback is the neutral "אשר" and NOT `t()`'s own — `t` returns the KEY for a
+string it does not know, so a kind added without a verb would have shipped a
+button reading "sugg.yes.merge".
+
+**And the button he asked for.** "הצעת Ai" steps to the next suggestion, and
+it is a step through what is already READY rather than a scan. The detectors
+run once a week per person and the stuck threshold is fourteen days, so a
+second scan on the same day cannot find anything the first one did not: a
+button whose honest answer is almost always "nothing found" teaches you the
+feature is empty on the very week it has something to say. So `liveFor`
+returns the whole live set (at most three), the page holds it, and the button
+moves between them in the browser — no round trip, no new action on the write
+surface, nothing decided, and no button at all unless a second one exists.
+This is the same shape as the rule it sits under: having nothing to say draws
+nothing.
+
 
 ### The list he could not put his own task into (2026-09-19)
 

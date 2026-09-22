@@ -12,6 +12,7 @@
 //                  another person (never block human-to-human coordination)
 const { ok, err } = require('./results');
 const audit = require('./audit');
+const reminders = require('./reminders');
 
 const SCOPES = ['summary', 'full', 'today', 'block_view'];
 
@@ -90,8 +91,18 @@ async function assemble(client, userId, scope) {
     [userId]
   )).rows;
 
+  // Standing nudges the reminder sweep handed to this digest rather than
+  // sending on their own (owner, 2026-09-20). On `base`, ABOVE the summary
+  // early-return on purpose: a nudge is the one personal item that is not a
+  // count — it is a sentence somebody asked to hear at this hour — and the
+  // scope they picked says how much of their LIST they want read back, which
+  // is a different question. Dropping it on `summary` would turn the feature
+  // off for four of the six people who have a digest at all.
+  const nudges = await reminders.carriedForDigest(client, userId);
+
   const base = {
     scope,
+    nudges,
     counts: {
       openTasks: counts.open_tasks, dueOrOverdue: counts.due_or_overdue, pendingReminders: reminderCount,
       // Calendar entries counted apart from jobs: "3 open tasks" that are two

@@ -64,6 +64,21 @@ test('a call is priced per model, with cache reads far cheaper than fresh input'
   assert.equal(sonnet.cost, 3, 'sonnet input is $3/Mtok, not the blended rate');
 });
 
+// The cost page re-prices history, so a rate belongs to a day: moving flash's
+// price used to restate every row on the page (2026-09-15).
+test('a past day is priced at the rate that held that day, not today\'s', () => {
+  const tokens = { input: 1e6 };
+  const flash = 'openrouter/deepseek/deepseek-v4-flash';
+  const [past] = pricing.PAST_RATES['deepseek/deepseek-v4-flash'];
+  assert.equal(pricing.priceUsage(tokens, flash, null, '2026-09-09').cost, past.input, 'the day before the pin');
+  assert.equal(pricing.priceUsage(tokens, flash, null, past.until).cost, pricing.RATES['deepseek/deepseek-v4-flash'].input, 'the first day of the new rate');
+  assert.equal(pricing.priceUsage(tokens, flash, null).cost, pricing.RATES['deepseek/deepseek-v4-flash'].input, 'no day means today');
+  // pg hands a DATE back as LOCAL midnight; read it the same way.
+  assert.equal(pricing.priceUsage(tokens, flash, null, new Date(2026, 8, 9)).cost, past.input);
+  // A model with no history is unaffected by a day.
+  assert.equal(pricing.priceUsage(tokens, 'claude-sonnet-4-6', null, '2020-01-01').cost, 3);
+});
+
 test('an unpriced model falls back to the blended rate and says so', () => {
   const p = pricing.priceUsage({ input: 1e6 }, 'some-future-model', 1.5);
   assert.equal(p.cost, 1.5);

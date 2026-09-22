@@ -49,7 +49,13 @@ module.exports = [
     { scope: S('string', 'summary | full | today') }, [],
     async (client, user, a) => {
       const res = await digest.assemble(client, user.id, a.scope || user.digest_scope || 'summary');
-      if (!res.ok || !res.data || !(res.data.events || res.data.tasks)) return res;
+      // `summary` returns neither list, and until 2026-09-20 that was the end
+      // of it. A standing nudge handed over by the reminder sweep is the one
+      // personal item that survives that scope: it is not a count, it is the
+      // sentence they asked to hear at this hour, and four of the six people
+      // with a digest at all are on `summary`.
+      const nudges = Array.isArray(res.data && res.data.nudges) ? res.data.nudges : [];
+      if (!res.ok || !res.data || !(res.data.events || res.data.tasks || nudges.length)) return res;
       // The layout of a digest is the same every morning; only the sentence
       // about it changes. So the list is DRAWN here and handed over finished
       // (domain/digest-block.js) rather than retyped, and the hint below is
@@ -59,7 +65,7 @@ module.exports = [
       const items = digestBlock.blockItemCount(res.data);
       const min = await flags.getFlag(client, 'digest_card_min_items');
       const link = listWorthAPage(res.data) ? await dashboardAuth.tasksLinkUnlessRecent(client, user.id) : null;
-      if (digestBlock.drawInsteadOfBlock(items, min)) {
+      if (digestBlock.drawInsteadOfBlock(items, min, { hasNudges: nudges.length > 0 })) {
         return ok({
           ...res.data,
           // On the card path there is no block to draw the link into, so it

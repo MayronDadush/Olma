@@ -172,8 +172,11 @@ async function rotateIdentityToken(client, { userId, apply = false, run, log, mi
   // 2. the verifier
   await client.query(`UPDATE users SET identity_token = $1 WHERE id = $2`, [newToken, u.id]);
 
-  // 3. the primary path
-  fs.writeFileSync(agentsPath, renderAgentsMd(newToken), { mode: 0o600 });
+  // 3. the primary path — in the doctrine variant THIS person is on. Rendered
+  // bare, it handed four people the turn_start doctrine under a
+  // turn-context-for-all flag until a resync put it back (2026-09-14).
+  const turnContext = await require('./turn').contextEnabledFor(client, u);
+  fs.writeFileSync(agentsPath, renderAgentsMd(newToken, { turnContext }), { mode: 0o600 });
   fs.chmodSync(agentsPath, 0o600);
 
   await client.query(

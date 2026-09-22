@@ -545,7 +545,7 @@ async function dueForSending(client, now, opts = {}) {
     `SELECT r.id AS reminder_id, r.task_id, r.remind_at, r.repeat_rule, r.attempts, r.auto,
             -- who it reaches — the person who set it, and only for rows older
             -- than migration 073 the task's owner
-            ${RECIPIENT} AS user_id, t.title, t.due_at, u.timezone,
+            ${RECIPIENT} AS user_id, t.title, t.due_at, u.timezone, u.digest_times,
             -- How many rungs THIS reminder gets (rule 5 above), never more than
             -- the flag allows. Returned so the sweep can say "last one" off the
             -- same number the WHERE clause stopped on: a cap the caller derives
@@ -785,9 +785,77 @@ async function markSent(client, reminderId) {
   return ok({ reminderId });
 }
 
+// ---- riding the morning picture --------------------------------------------
+//
+// The owner's rule, 2026-09-20: a standing nudge on a dateless task defaults to
+// the hour that person already hears from Olma in the morning, and when it does
+// it arrives WITH the morning picture rather than as a second interruption.
+//
+// This is the one predicate both sweeps ask, because they run one after the
+// other in the same tick (jobs/registry.js) and a disagreement between them is
+// either a nudge nobody gets or a nudge they get twice. It is deliberately
+// narrow — the hour has to be one of their digest hours EXACTLY, not near it:
+// somebody who moved their nudge to 18:00 asked for a message at 18:00, and a
+// digest at 09:35 is not it.
+//
+// Only a dateless, REPEATING nudge rides. A dated task's reminder is about a
+// moment, and the whole point of a moment is that it arrives at it; a one-off
+// is a moment they named, for the same reason.
+function ridesDigest({ dueAt, repeatRule, remindAt, timezone, digestTimes }) {
+  if (dueAt) return false;
+  if (!normalizeRepeatRule(repeatRule)) return false;
+  const times = Array.isArray(digestTimes)
+    ? digestTimes
+    : String(digestTimes || '').split(',');
+  const wanted = times.map((t) => String(t).trim()).filter(Boolean);
+  if (!wanted.length) return false;
+  const at = new Date(remindAt);
+  if (Number.isNaN(at.getTime())) return false;
+  const p = dt.partsInZone(timezone || 'UTC', at);
+  const hhmm = `${String(p.hh).padStart(2, '0')}:${String(p.mi).padStart(2, '0')}`;
+  return wanted.includes(hhmm);
+}
+
+// What the digest draws: the occurrences handed to a digest row that is STILL
+// WAITING to go out. Not "carried in the last N minutes" — the model composes
+// the turn some seconds after the sweep, and a time window would be a second
+// clock to get wrong in a file whose whole subject is getting clocks right.
+// Tied to the row instead, it self-clears: once that digest is delivered the
+// nudge stops being drawn, because the message that carried it has landed.
+async function carriedForDigest(client, userId) {
+  const { rows } = await client.query(
+    `SELECT r.id, r.task_id, t.title, r.remind_at, r.repeat_rule
+       FROM task_reminders r
+       JOIN tasks t ON t.id = r.task_id
+       JOIN outbox o ON o.id = r.carried_outbox_id
+      WHERE COALESCE(r.user_id, t.owner_id) = $1
+        AND o.sent_at IS NULL
+      ORDER BY r.carried_at, r.id`,
+    [userId]
+  );
+  return rows.map((r) => ({
+    reminderId: Number(r.id), taskId: Number(r.task_id), title: r.title,
+    remindAt: r.remind_at, repeatRule: r.repeat_rule,
+  }));
+}
+
+// Stamped INSTEAD of enqueuing a message of its own. The occurrence is retired
+// the way a delivered one is — a repeating reminder never climbs a ladder, so
+// there is nothing to follow — and the digest row is what says where it went.
+async function markCarried(client, reminderId, outboxId, now = new Date()) {
+  await client.query(
+    `UPDATE task_reminders
+        SET carried_at = $3, carried_outbox_id = $2, sent_at = COALESCE(sent_at, $3)
+      WHERE id = $1`,
+    [reminderId, outboxId, new Date(now).toISOString()]
+  );
+  return ok({ reminderId: Number(reminderId), outboxId: Number(outboxId) });
+}
+
 module.exports = {
   setReminder, attachAutoReminder, retireSiblingLadders, cancelReminder, listReminders, dueForSending, markSent,
   retireForMovedTask, stopRecentLadders, STOP_WINDOW_HOURS, momentIsPast, PAST_GRACE_MS,
   normalizeRepeatRule, nextOccurrence, resolveMonthlyAnchor,
   recordAttempt, attemptKey, ESCALATION_MAX_ATTEMPTS, ESCALATION_GAP_HOURS, RUNGS,
+  ridesDigest, carriedForDigest, markCarried,
 };

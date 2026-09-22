@@ -444,15 +444,107 @@ html.intro-go .tabbar{animation:introBar .55s var(--ease) .3s both}
    that looked like its own to-do would be the worst possible place to learn
    that. There is no empty state and no placeholder: when the server sends
    nothing, this element is not in the page at all. */
+/* It used to be drawn in the same material as a task group, on the argument
+   that the icon and the two buttons were enough to say it is not a list. The
+   owner asked for the opposite (2026-09-22): a suggestion is the one thing on
+   this page Olma THOUGHT of rather than recorded, and he wanted it to look it
+   — "סטייל ai עם אנימציה שתמיד זזה".
+   So the card keeps the page's own geometry, spacing and type, and everything
+   that changed is BEHIND the words: a light that travels around the edge, and
+   a slow drift of colour under them. Nothing here moves the text, changes its
+   size, or sits where a finger lands — the whole treatment is in three
+   painted layers under `z-index:0`, and the card is still a card with two
+   buttons on it.
+   The palette is the product's own accent plus two neighbours, not the
+   violet-to-cyan wash that every generated page reaches for: it has to look
+   like this product thinking, not like an AI sticker pasted onto it. */
 .sugg{
-  background:var(--surface);border-radius:16px;padding:15px 16px 13px;
+  /* Turquoise and sky rather than the product violet (owner, 2026-09-22):
+     the buttons on this card are already the accent, and a light that is the
+     same hue as the primary button reads as the button glowing. */
+  --sugg-a:#12A3B8;
+  --sugg-b:#5FC7EC;
+  /* The face is light grey in this theme, not the white every other card
+     uses — on white there is nothing for the rim to be seen against. */
+  --sugg-face:#EDF1F3;
+  --sugg-rim:16%;
+  --sugg-aura:.28;
+  --sugg-mix-a:13%;
+  --sugg-mix-b:11%;
+  position:relative;isolation:isolate;overflow:hidden;
+  /* The parent's own background paints BELOW its negative-z children, which
+     makes it the constant part of the rim: the travelling light brightens the
+     stretch it is passing and this is what the rest of the edge looks like. */
+  background:color-mix(in oklab, var(--sugg-a) var(--sugg-rim), transparent);
+  border-radius:16px;padding:15px 16px 13px;
   display:grid;gap:11px;margin-bottom:22px;
-  /* the same material and elevation as a task group, because it sits in the
-     same column — what says it is not a list is the icon and the two buttons */
   box-shadow:var(--shadow-m);
 }
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]) .sugg{
+    --sugg-a:#35CEE2;--sugg-b:#8AD6FF;--sugg-face:var(--surface);
+    --sugg-rim:22%;--sugg-aura:.5;--sugg-mix-a:24%;--sugg-mix-b:20%;
+  }
+}
+:root[data-theme="dark"] .sugg{
+  --sugg-a:#35CEE2;--sugg-b:#8AD6FF;--sugg-face:var(--surface);
+  --sugg-rim:22%;--sugg-aura:.5;--sugg-mix-a:24%;--sugg-mix-b:20%;
+}
+/* The travelling light, third attempt and the first one that actually goes
+   ROUND. The two before it rotated a conic gradient, and a conic's speed is
+   constant in DEGREES while an edge is walked in PIXELS — on a card three
+   times wider than it is tall that means the light races the long edges and
+   stalls at the ends, which is what "לא עושה לופ כמו שצריך" was, twice.
+   This is a round glow that walks the perimeter itself, one edge at a time,
+   at a pace set by how long each edge actually is (38/12/38/12 ≈ 343×110,
+   the card at phone width). It is round, so a corner needs no special case
+   and nothing has to rotate. Only the 1.5px the face does not cover shows it,
+   so what the eye gets is a bright stretch of rim moving along the edge. */
+.sugg::before{
+  content:"";position:absolute;z-index:-3;
+  width:132px;height:132px;margin:-66px;border-radius:50%;
+  background:radial-gradient(circle closest-side,
+    var(--sugg-b) 0%, var(--sugg-a) 42%, transparent 100%);
+  animation:suggOrbit 13s linear infinite;
+}
+/* The face, inset by the rim's own width. The card's background cannot live
+   here: it is the rim (see above). */
+.sugg::after{
+  content:"";position:absolute;z-index:-2;inset:1.5px;border-radius:14.5px;
+  background:var(--sugg-face);
+}
+/* Two soft blobs drifting under the text. A GLOW on a dark card and a TINT on
+   a light one, which are not the same number — at the dark value it was a
+   smudge on the light theme, because there is no depth behind the card there
+   for the colour to sit in. */
+.sugg .saura{
+  position:absolute;z-index:-1;inset:1.5px;border-radius:14.5px;
+  pointer-events:none;opacity:var(--sugg-aura);
+  background:
+    radial-gradient(42% 74% at 18% 26%, color-mix(in oklab, var(--sugg-a) var(--sugg-mix-a), transparent), transparent 70%),
+    radial-gradient(38% 66% at 82% 78%, color-mix(in oklab, var(--sugg-b) var(--sugg-mix-b), transparent), transparent 72%);
+  animation:suggDrift 17s var(--ease-io) infinite alternate;
+}
+@keyframes suggOrbit{
+  0%{top:0;left:0}
+  38%{top:0;left:100%}
+  50%{top:100%;left:100%}
+  88%{top:100%;left:0}
+  100%{top:0;left:0}
+}
+@keyframes suggDrift{
+  0%{transform:translate(0,0) scale(1)}
+  50%{transform:translate(4%,-3%) scale(1.09)}
+  100%{transform:translate(-3%,3%) scale(1.04)}
+}
+/* Reduced motion keeps the LOOK and drops the movement: the rim stays lit
+   where it is rather than the card falling back to a plain box, which would
+   make the one thing Olma proposed the plainest thing on the page. */
+@media (prefers-reduced-motion:reduce){
+  .sugg::before,.sugg .saura{animation:none}
+}
 .sugg .sline{display:flex;gap:10px;align-items:flex-start}
-.sugg .sicon{flex:none;width:19px;height:19px;color:var(--text-3);margin-top:1px}
+.sugg .sicon{flex:none;width:19px;height:19px;color:var(--sugg-a);margin-top:1px}
 .sugg .sicon svg{width:19px;height:19px;display:block}
 .sugg .stext{display:grid;gap:3px;min-width:0}
 /* Their own words, and they may be long — this wraps rather than truncating,
@@ -461,6 +553,13 @@ html.intro-go .tabbar{animation:introBar .55s var(--ease) .3s both}
 .sugg .stitle{font-size:14.5px;font-weight:600;overflow-wrap:anywhere}
 .sugg .swhy{font-size:12.5px;color:var(--text-3);line-height:1.45}
 .sugg .sbtns{display:flex;gap:8px;justify-content:flex-end}
+/* Pushed to the far end of the row: it is not one of the two answers. No fill
+   either — on a card that already has a moving light, a third solid button is
+   one too many things asking to be pressed. */
+.sugg .sbtn.more{
+  margin-inline-end:auto;background:transparent;color:var(--sugg-a);
+  padding-inline:9px;
+}
 /* The page's own two button tones (.btn.primary / .btn.ghost) at card scale:
    a strip inside the list cannot carry a 16.5px sheet button, and inventing a
    third palette for two buttons is how this page grew a second vocabulary
@@ -3278,6 +3377,14 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
         <button class="chip mini" aria-pressed="false" data-remoff="60"   data-i18n="off.h1"></button>
         <button class="chip mini" aria-pressed="false" data-remoff="1440" data-i18n="off.d1"></button>
       </div>
+      <!-- An offset answers "how long before the task", and a task with no
+           date has no before. The same fold then asks the only thing a
+           standing nudge actually needs: which hour. Same clock wheel as
+           everywhere else on the page. -->
+      <span class="vseg" id="sRemindAtSeg" hidden>
+        <button class="vseg-b set" id="sRemindAtChip" data-i18n-label="sheet.remindAt">
+          <svg class="vic"><use href="#i-clock"/></svg><span id="sRemindAtVal"></span></button>
+      </span>
     </div></div></div>
     <!-- "Add to calendar" is a promise about a specific calendar, and with
          more than one connected the switch alone does not say which. There is
@@ -3722,7 +3829,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     leaveTask:           "leave_task",                /* NO TOOL YET — dashboard only */
     setCategory:         "set_task_category",         /* NO TOOL YET — tasks.category */
     setServiceMode:      "start_calendar_connection", /* integrations.scope, per service */
-    setFriendPermission: "grant_connection_feature",  /* revoke_connection_feature when off */
+    setFriendPermission: "set_connection_feature",    /* on=false when off */
     setDefaultChannel:   "set_primary_channel",       /* NO TOOL YET — dashboard only, users.setPrimaryChannel */
     setTimezone:         "set_my_timezone",
     inviteContact:       "request_connection",
@@ -3862,12 +3969,53 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      vocabularies, and refuses yearly outright — "better null than a lie" — so
      the sheet does not offer one). */
   var REPEAT_RULE = {none:null, day:"daily", week:"weekly", month:"monthly"};
+  /* The hour a standing nudge goes out when nobody has said otherwise, and
+     the owner's rule for it (2026-09-20): the hour they already hear from
+     Olma in the morning, so the nudge rides the morning picture instead of
+     being a second interruption — the server draws it INTO the digest when
+     the two coincide (domain/digest-block.js). Failing that, the hour their
+     own day opens. Never midnight, and never an hour nobody chose: a
+     notification that arrives while somebody is asleep is one they will never
+     see.
+     The morning one specifically. Somebody whose only digest is at 18:00 is
+     not being asked "when do you read your updates in the morning", so they
+     fall through to their window — the owner's call, same conversation. */
+  var REM_MORNING_BEFORE = "12:00";
+  var REM_FALLBACK_AT = "09:00";
+  function remDefaultAt(){
+    var morning = (DIGEST.times || []).filter(function(t){ return t < REM_MORNING_BEFORE; }).sort();
+    if(morning.length) return morning[0];
+    return (SCHED && SCHED.start) || REM_FALLBACK_AT;
+  }
+  /* The next time that hour comes round in their zone — later today if it is
+     still ahead, otherwise tomorrow. Never a moment already past: the server
+     would fire it within the minute, which reads as a bug and spends the one
+     nudge this task had. */
+  function nextIsoAt(time){
+    var tz = myTz(), day = todayInZone();
+    var ymd = function(d){ return d.getFullYear() + "-" + pad2(d.getMonth()+1) + "-" + pad2(d.getDate()); };
+    var at = new Date(localStamp(tz, ymd(day), time)).getTime();
+    if(!isFinite(at)) return null;
+    if(at <= Date.now()){
+      day.setDate(day.getDate() + 1);
+      at = new Date(localStamp(tz, ymd(day), time)).getTime();
+    }
+    return new Date(at).toISOString().replace(/\.\d+Z$/, "+00:00");
+  }
   /* When the reminder actually goes out: the task's own moment, minus the
      offset the person picked. An all-day task has no hour of its own, so it
      is reminded about at 09:00 local rather than at midnight — a notification
      that arrives while somebody is asleep is one they will never see. */
   function remindIso(x){
-    if(!x || !x.d) return null;
+    if(!x) return null;
+    /* A task with no date still gets to nudge, and this is the whole point of
+       the dateless kind: "לקבוע עם מיכאל" is not a moment and giving it a due
+       date to make the switch work turns a standing job into a deadline that
+       is wrong by tomorrow. The reminder carries an hour of its OWN, the task
+       stays dateless, and `repeatRule` is what makes it come back. An offset
+       has nothing to be offset FROM here, which is why the sheet puts the hour
+       where the offset chips are. */
+    if(!x.d) return x.rem ? nextIsoAt(x.remAt || remDefaultAt()) : null;
     var time = (x.all || !x.tm) ? "09:00" : x.tm;
     /* From the task's real instant, not from its wall clock read as UTC: an
        offset of "two hours before" is two hours of actual time, and on the
@@ -3996,7 +4144,10 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
         if(x.rem){
           payload.remindAt = remindIso(x);
           payload.repeatRule = REPEAT_RULE[x.rep || "none"] || null;
-          if(!payload.remindAt) return;   /* no date: nothing to remind about */
+          /* A backstop, not the dateless case — that one now builds its own
+             moment above. `setTaskReminder` refuses `on` without a `remindAt`
+             and would cancel nothing, so there is no call worth making. */
+          if(!payload.remindAt) return;
         }
         API.send("setTaskReminder", payload);
       });
@@ -4259,7 +4410,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "sugg.overdue":"התאריך שלה עבר לפני {days} ימים והיא עדיין פתוחה. להוריד מהרשימה?",
       "sugg.duplicate":"אומרת כמעט אותו דבר כמו „{keep}”. להוריד את זו ולהשאיר את הראשונה?",
       "sugg.undo":"אפשר להחזיר מהארכיון בכל רגע.",
-      "sugg.yes":"אשר","sugg.no":"דלג",
+      "sugg.yes":"אשר","sugg.no":"דלג","sugg.more":"הצעת Ai",
+      "sugg.yes.stuck":"להוריד","sugg.yes.overdue":"להוריד","sugg.yes.duplicate":"להוריד את זו",
       "toast.suggArchived":"„{name}” עברה לארכיון","toast.suggSkipped":"לא נשאל על „{name}” שוב",
       "nest.title":"המשימה נכנסה לרשימה","nest.ok":"הבנתי","nest.undo":"ביטול",
       "nest.body":"כשגוררים משימה אל תוך משימה אחרת, היא הופכת לפריט ברשימה שלה. אפשר לסמן אותה שם כשהיא נעשית — או לבטל ולהחזיר אותה למקום.",
@@ -4477,6 +4629,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "cal.thisWeek":"השבוע","cal.taskTag":"משימה","cal.taskSub":"מהרשימה שלך בעולמה","cal.taskRem":"עולמה תזכיר ב־{name}",
       "cal.showIn":"להצגה ביומן",
       "off.at":"בזמן","off.m10":"10 דק׳ לפני","off.h1":"שעה לפני","off.d1":"יום לפני",
+      "sheet.remindAt":"שעת התזכורת","sheet.remindAtVal":"להזכיר ב־{time}",
       "rep.once":"ללא","rep.day":"כל יום","rep.week":"כל שבוע","rep.month":"כל חודש",
       "sheet.repeatNeedsRemind":"החזרה נשמרת על התזכורת — צריך להדליק תזכורת קודם",
 
@@ -4575,7 +4728,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "sugg.overdue":"Its date passed {days} days ago and it is still open. Take it off the list?",
       "sugg.duplicate":"Says almost the same as \u201c{keep}\u201d. Take this one off and keep the first?",
       "sugg.undo":"You can restore it from the archive at any time.",
-      "sugg.yes":"Confirm","sugg.no":"Skip",
+      "sugg.yes":"Confirm","sugg.no":"Skip","sugg.more":"AI suggestion",
+      "sugg.yes.stuck":"Take it off","sugg.yes.overdue":"Take it off","sugg.yes.duplicate":"Take this one off",
       "toast.suggArchived":"\u201c{name}\u201d moved to the archive","toast.suggSkipped":"You will not be asked about \u201c{name}\u201d again",
       "nest.title":"Added to a list","nest.ok":"Got it","nest.undo":"Undo",
       "nest.body":"Dropping a task onto another turns it into an item on that task\u2019s list. Tick it off there when it\u2019s done \u2014 or undo to put it back.",
@@ -4790,6 +4944,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "cal.thisWeek":"This week","cal.taskTag":"Task","cal.taskSub":"From your Allma list","cal.taskRem":"Allma will remind you on {name}",
       "cal.showIn":"Show in calendar",
       "off.at":"On time","off.m10":"10 min before","off.h1":"1 hour before","off.d1":"1 day before",
+      "sheet.remindAt":"Reminder time","sheet.remindAtVal":"Remind at {time}",
       "rep.once":"Never","rep.day":"Every day","rep.week":"Every week","rep.month":"Every month",
       "sheet.repeatNeedsRemind":"A repeat lives on the reminder — switch one on first",
 
@@ -5315,6 +5470,14 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     {id:14, d:isoAt(2), tm:"12:00", tmEnd:"19:00", all:false, t:{he:"משמרת",en:"Shift"},
      rem:true, rep:"week", cal:true, cat:"work", catAuto:true},
     {id:4, d:"",        tm:"", all:false, t:{he:"לקבוע תור לרופא שיניים",en:"Book a dentist appointment"}, rem:false, rep:"none", cal:false, cat:"health", catAuto:true},
+    /* The dateless kind that still nudges: no date, no deadline, and a weekly
+       reminder at an hour of its own. Four of the owner's own tasks were this
+       shape and the page had no way to say it (2026-09-19). It has to be a
+       task of its OWN — id 4 is what the suggestion strip above proposes to
+       archive, on the grounds that it has neither a date nor a reminder, and
+       a fixture that contradicts the sentence beside it teaches the next
+       reader the wrong thing about both. */
+    {id:12, d:"",       tm:"", all:false, t:{he:"ריצות בים פעמיים בשבוע",en:"Sea runs, twice a week"}, rem:true, rep:"week", remAt:"18:00", cal:false, cat:"health", catAuto:false},
     /* imported. `src` is the whole difference — everything else is a task. */
     {id:7, d:isoAt(1), tm:"14:00", all:false, src:"monday",
      t:{he:"לאשר את הקריאייטיב לקמפיין",en:"Sign off the campaign creative"},
@@ -6311,26 +6474,55 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   }
   /* ───────── a suggestion, when there is one ─────────
      ONE at a time, and nothing at all when there is none — the owner's two
-     rules for this strip. The server keeps up to three ready and hands over
-     the oldest (`domain/task-suggestions.nextFor`); answering one does not
-     pull the next one up in its place, because a second question arriving
-     the instant the first is answered is an interrogation, not an offer.
+     rules for this strip. The server sends everything it has ready, at most
+     three (`domain/task-suggestions.liveFor`), and the page shows the oldest;
+     answering one does not pull the next one up in its place, because a
+     second question arriving the instant the first is answered is an
+     interrogation, not an offer.
+
+     The one way to see another is asking for it: "הצעת Ai" (owner,
+     2026-09-22) steps to the next one and appears only when there IS one.
+     It decides nothing — the suggestion you step past stays unanswered — and
+     it sends nothing, because the whole set is already here.
 
      A suggestion never writes a date and never arms a reminder (owner,
      2026-09-19). The only verb is "put it away", and it is the same archive
      the delete button calls, so the way back is the one the person already
      knows. */
   /* A design fixture, like `open` and `archived` above: the strip cannot be
-     looked at at all when the only way to see it is a live suggestion. The
-     hydration below overwrites it with `d.suggestion`, which is null for
-     almost everybody almost every week — a real page shows nothing here. */
-  var SUGGESTION = {id:1, kind:"stuck", taskIds:[4], title:"לקבוע תור לרופא שיניים", days:23, keepTitle:null};
+     looked at at all when the only way to see it is a live suggestion. Two of
+     them, so the third button is visible here — a real page usually has one
+     and often none. The hydration below overwrites this with `d.suggestions`,
+     which is EMPTY for almost everybody almost every week. */
+  var SUGGESTIONS = [
+    {id:1, kind:"stuck",   taskIds:[4], title:"לקבוע תור לרופא שיניים", days:23, keepTitle:null},
+    {id:2, kind:"overdue", taskIds:[5], title:"לאסוף חבילה מהשליח",     days:9,  keepTitle:null}
+  ];
+  var SUGG_AT = 0;   /* which of them is on screen — the page's business alone */
   var SUGG_ICON = {stuck:"i-clock", overdue:"i-cal", duplicate:"i-list"};
-  function suggestionHTML(s){
+  /* The verb says what the button DOES, per kind (owner, 2026-09-22). Today
+     all three say a version of "take it off the list", because taking it off
+     the list is all `decide` does — it archives what the suggestion named and
+     writes nothing else. A kind whose verb would be something ELSE needs
+     `task-suggestions.decide` to do that something else FIRST; a word on a
+     button is not a feature, and "מזג" over an archive-and-forget is the
+     kind of promise `rules/doctrine.md` is about.
+
+     The fallback is the neutral verb and not `t()`'s own — `t` returns the
+     KEY when it does not know it, so a kind added without a verb would ship
+     a button reading "sugg.yes.merge". */
+  function suggVerb(kind){
+    var k = "sugg.yes." + kind;
+    return D[k] === undefined ? t("sugg.yes") : t(k);
+  }
+  function suggestionHTML(s, more){
     var why = s.kind === "duplicate"
       ? t("sugg.duplicate", {keep:s.keepTitle || t("sheet.untitled")})
       : t("sugg." + s.kind, {days:s.days});
     return '<div class="sugg">' +
+      /* Painted layers only — aria-hidden and pointer-events:none, so the
+         card still reads as a title, a reason and two buttons. */
+      '<span class="saura" aria-hidden="true"></span>' +
       '<div class="sline">' +
         '<span class="sicon"><svg aria-hidden="true"><use href="#' +
           (SUGG_ICON[s.kind] || "i-list") + '"/></svg></span>' +
@@ -6340,25 +6532,44 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
         "</span>" +
       "</div>" +
       '<div class="sbtns">' +
-        '<button class="sbtn yes" data-sugg="accept">' + esc(t("sugg.yes")) + "</button>" +
+        /* Only when there IS another one. A button that answers "no more"
+           teaches you the feature is empty on the very week it has something
+           to say, which is the same argument as drawing no card at all. It
+           sits at the far end from אשר/דלג because it does not ANSWER the
+           suggestion — it changes which one you are looking at. */
+        (more ? '<button class="sbtn more" data-sugg="more">' + esc(t("sugg.more")) + "</button>" : "") +
+        '<button class="sbtn yes" data-sugg="accept">' + esc(suggVerb(s.kind)) + "</button>" +
         '<button class="sbtn" data-sugg="skip">' + esc(t("sugg.no")) + "</button>" +
       "</div></div>";
+  }
+  /* The page's own copy of the server's "is any named task still open".
+     Somebody who ticked the task off a moment ago has answered that
+     suggestion without being asked, and it must not outlive that. */
+  function liveSuggestions(){
+    return SUGGESTIONS.filter(function(s){
+      return s && s.taskIds.some(function(id){
+        return open.some(function(x){ return x.id === id; });
+      });
+    });
   }
   function renderSuggestion(){
     var w = $("#suggWrap");
     if(!w) return;
-    /* The page's own copy of the server's "is any named task still open".
-       Somebody who ticked the task off a moment ago has answered the
-       suggestion without being asked, and the card must not outlive that. */
-    var s = SUGGESTION, alive = !!s && s.taskIds.some(function(id){
-      return open.some(function(x){ return x.id === id; });
-    });
-    w.innerHTML = alive ? suggestionHTML(s) : "";
+    var live = liveSuggestions();
+    if(!live.length){ w.innerHTML = ""; return; }
+    /* Clamped rather than reset: a task going away under the card should not
+       also send you back to the one you just stepped past. */
+    if(SUGG_AT >= live.length) SUGG_AT = 0;
+    w.innerHTML = suggestionHTML(live[SUGG_AT], live.length > 1);
   }
   function decideSuggestion(decision){
-    var s = SUGGESTION;
+    var live = liveSuggestions(), s = live[SUGG_AT];
     if(!s) return;
-    SUGGESTION = null;                       /* one at a time, answered once */
+    /* Answering one does not pull the next one up in its place — a second
+       question arriving the instant the first is answered is an
+       interrogation, not an offer. The rest are still on the server for the
+       next load; the strip is done for now. */
+    SUGGESTIONS = [];
     var row = taskById(s.taskIds[0]);
     if(decision === "accept") open = open.filter(function(o){ return s.taskIds.indexOf(o.id) < 0; });
     renderTasks(); renderStrip(selDay);   /* renderTasks repaints the strip */
@@ -6372,7 +6583,16 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   }
   $("#suggWrap").addEventListener("click", function(e){
     var b = e.target.closest("[data-sugg]");
-    if(b) decideSuggestion(b.dataset.sugg);
+    if(!b) return;
+    if(b.dataset.sugg === "more"){
+      /* Round and round the set that is already here. Nothing is sent and
+         nothing is decided — the one you stepped past is exactly as
+         unanswered as it was. */
+      SUGG_AT = (SUGG_AT + 1) % Math.max(1, liveSuggestions().length);
+      renderSuggestion();
+      return;
+    }
+    decideSuggestion(b.dataset.sugg);
   });
 
   function renderTasks(){
@@ -7013,6 +7233,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     var pick = $$("#sCat .chip").filter(function(c){ return c.getAttribute("aria-pressed") === "true"; })[0];
     if(pick) editing.cat = pick.dataset.cat;
     var wasRem = editing.rem, wasOff = editing.remOff, wasRep = editing.rep, wasCal = editing.cal;
+    var wasRemAt = editing.remAt;
     editing.rem = $("#sRemind").getAttribute("aria-checked") === "true";
     editing.cal = $("#sCal").getAttribute("aria-checked") === "true";
     var off = $$("#sOffset .chip").filter(function(c){ return c.getAttribute("aria-pressed") === "true"; })[0];
@@ -7049,6 +7270,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
        task moves what it reminds you about. */
     var whenKey = String(editing.d) + "|" + String(editing.tm) + "|" + String(editing.all);
     if(save && (editing.rem !== wasRem || editing.remOff !== wasOff || editing.rep !== wasRep
+       || editing.remAt !== wasRemAt
        || (editing.rem && whenKey !== lastWhenKey))) API.setTaskReminder(editing);
     if(save && (editing.cal !== wasCal || (editing.cal && whenKey !== lastWhenKey))) API.setTaskCalendar(editing);
     if(save) lastWhenKey = whenKey;
@@ -7151,6 +7373,11 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
        row, because two lockRow calls on one row leave only the last. */
     var chosen = $$("#sRepeat .chip").filter(function(c){ return c.getAttribute("aria-pressed") === "true"; })[0];
     $("#sRepeatVal").textContent = t("rep." + ({none:"once", day:"day", week:"week", month:"month"}[chosen ? chosen.dataset.rep : "none"] || "once"));
+    /* The reminder fold asks one question or the other, never both: how long
+       before a moment there is, or what hour when there is none. */
+    $("#sOffset").hidden = !dated;
+    $("#sRemindAtSeg").hidden = dated;
+    $("#sRemindAtVal").textContent = t("sheet.remindAtVal", {time:editing.remAt || remDefaultAt()});
     var ck = editing.cat || "none";
     $("#sCatVal").textContent = t("tcat." + ck);
     /* Olma's guess says so until the person overrules it — an automatic
@@ -7483,7 +7710,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     var x = id ? open.filter(function(o){ return o.id === id; })[0] : null;
     isNew = !x;
     editing = x || {id:++seq, d:"", tm:"", all:false, t:both(""), rem:false, rep:"none",
-                    remOff:0, cal:false, cat:"none"};
+                    remOff:0, remAt:"", cal:false, cat:"none"};
     if(!x && preset) Object.keys(preset).forEach(function(k){ editing[k] = preset[k]; });
     /* What "when" was when this sheet opened. commit() compares against it so
        a reminder is only rewritten when the moment it points at actually
@@ -7590,6 +7817,17 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   $("#sTimeChip").addEventListener("click", function(){
     openTimePop(this, editing.tm, function(v){ setTaskClock($("#sTime"), v); },
       {clear:function(){ setTaskClock($("#sTime"), ""); }});
+  });
+  /* The standing nudge's own hour. It writes straight onto `editing` rather
+     than through a hidden input, because unlike the task's two clocks it is
+     not part of the task at all — it belongs to the reminder, and the task
+     stays dateless. No clear: turning the reminder OFF is how you stop it,
+     and an hour cleared to nothing would leave a switch that is on with
+     nowhere to fire. */
+  $("#sRemindAtChip").addEventListener("click", function(){
+    openTimePop(this, editing.remAt || remDefaultAt(), function(v){
+      editing.remAt = v; commit();
+    });
   });
   $("#sEnd").addEventListener("change", commit);
   /* An end opens an hour after the start, on a wheel that begins at the
@@ -11135,6 +11373,19 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     for(var i = 0; i < OFFSETS.length; i++) if(mins >= OFFSETS[i]) return OFFSETS[i];
     return 0;
   }
+  /* The hour a dateless task's nudge fires at, read back off the instant the
+     server stores. The dated kind recovers an OFFSET instead (above): there
+     the reminder is described by its distance from the task, here the task
+     has no moment to be a distance from and the hour is the whole answer. */
+  function remAtOf(x){
+    if(!x.reminder || !x.reminder.at || x.date) return "";
+    var at = Date.parse(x.reminder.at);
+    if(!isFinite(at)) return "";
+    try{
+      return new Intl.DateTimeFormat("en-GB", {timeZone:myTz(), hour:"2-digit", minute:"2-digit", hour12:false})
+        .format(new Date(at));
+    }catch(err){ return ""; }
+  }
   function repShape(rule){
     if(!rule) return "none";
     if(rule === "daily") return "day";
@@ -11154,6 +11405,9 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
          fifth chip — the reminder is real either way, and the sheet only has
          to be able to show it. */
       remOff:remOffOf(x),
+      /* …and the hour itself, for the dateless kind, which has no offset to
+         recover. Empty for a dated task, where remOff carries the answer. */
+      remAt:remAtOf(x),
       /* The task's own answer to "put this on my calendar", resolved server-
          side against the standing switch (domain/user-dashboard.js). */
       cal:!!x.calendar,
@@ -11461,7 +11715,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     FQ.forEach(function(p, i){ FQ_ORDER[p.key] = p.order != null ? p.order : i; });
     open = (d.tasks || []).map(liveTask);
     /* Null is the normal answer and draws nothing — see renderSuggestion. */
-    SUGGESTION = d.suggestion || null;
+    SUGGESTIONS = d.suggestions || (d.suggestion ? [d.suggestion] : []); SUGG_AT = 0;
     /* Rebuilt from scratch each time: an id that has left the server's answer
        has left the server, and treating it as known would turn the next save
        into an edit of a row that is no longer there. */
