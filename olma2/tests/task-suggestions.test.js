@@ -372,3 +372,35 @@ test('a list with open items under it is never proposed, by any detector', async
       [list, plain].sort((a, b) => a - b));
   });
 });
+
+// The "הצעת Ai" button (owner, 2026-09-22) steps between the ones already
+// ready, in the browser. That only works if the page is given the whole set —
+// and only stays inside the owner's rule if what is SHOWN is still one.
+test('liveFor hands over everything ready, and nextFor is still its first', async () => {
+  await withClient(async (c) => {
+    const me = await person();
+    const STALE = ['לסדר את המוסך', 'להחליף נורה במטבח', 'לבטל מנוי לחדר כושר'];
+    for (let i = 0; i < STALE.length; i++) await aged(c, me.id, STALE[i], 30 + i);
+
+    assert.deepEqual(await suggestions.liveFor(c, me.id), [], 'nothing ready is an empty set, not a null');
+
+    await suggestions.refresh(c, me.id, { now: NOW });
+    const live = await suggestions.liveFor(c, me.id);
+    assert.equal(live.length, suggestions.MAX_LIVE);
+    assert.deepEqual(live.map((s) => s.id).slice().sort((a, b) => a - b), live.map((s) => s.id),
+      'oldest first, so the button walks them in the order they were made');
+    assert.deepEqual(await suggestions.nextFor(c, me.id), live[0]);
+
+    // Answering one takes exactly that one out; the button still has the rest.
+    const done = await suggestions.decide(c, me.id, live[1].id, 'skip', { now: NOW });
+    assert.equal(done.ok, true);
+    const after = await suggestions.liveFor(c, me.id);
+    assert.deepEqual(after.map((s) => s.id), [live[0].id, live[2].id]);
+
+    // A task that went away under the card takes its suggestion with it, the
+    // same way `nextFor` has always behaved — the page filters again on its
+    // own copy, and the two must not disagree.
+    assert.equal((await tasks.archiveTask(c, me.id, live[0].taskIds[0])).ok, true);
+    assert.deepEqual((await suggestions.liveFor(c, me.id)).map((s) => s.id), [live[2].id]);
+  });
+});

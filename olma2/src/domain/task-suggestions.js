@@ -12,9 +12,14 @@
 //     decision the same day). The only thing it proposes is taking something
 //     off the list, which is reversible — `restore_task` brings it back — and
 //     which is what the triage actually consisted of.
-//   * One verb for every kind. Whatever the reason, אשר archives and דלג
-//     leaves it alone, so there is one thing to learn and no kind where the
-//     buttons mean something else.
+//   * One ACTION for every kind. Whatever the reason, accepting archives what
+//     the suggestion named and skipping leaves it alone, so there is one thing
+//     to learn and no kind where the buttons mean something else. Since
+//     2026-09-22 the WORD on the button is per kind ("להוריד", "להוריד את
+//     זו") — which is the same action said in that kind's own terms, and is
+//     the only thing a label may ever do here. A verb naming something the
+//     code does not do ("מזג", over an archive that copies nothing across) is
+//     a promise, and this module does not make those.
 //   * Nothing to say means NO row, and the page renders nothing at all. This
 //     is `rules/detectors.md` applied to a person instead of an operator: a
 //     hint that fires on ordinary input is worse than no hint, and here the
@@ -254,21 +259,25 @@ async function refresh(client, userId, { now = new Date(), force = false } = {})
   return ok({ ran: true, reason: 'ran', added });
 }
 
-// The one the page shows. Oldest first, so a suggestion made a week ago is
-// answered before one made today rather than being buried by it.
-async function nextFor(client, userId) {
+// Everything ready for this person, oldest first, so a suggestion made a week
+// ago is offered before one made today rather than being buried by it. At
+// most `MAX_LIVE`, which is why the page can hold the whole set: the "הצעת
+// Ai" button (owner, 2026-09-22) moves between them in the browser with no
+// second round trip and no new action on the write surface.
+//
+// Sending three is NOT a change to the rule that one is SHOWN. Which one is
+// on screen stays the page's business, and nothing here decides it.
+async function liveFor(client, userId, limit = MAX_LIVE) {
   const { rows } = await client.query(
     `SELECT s.id, s.kind, s.task_ids, s.detail, s.created_at
        FROM task_suggestions s
       WHERE s.user_id = $1 AND s.decided_at IS NULL
         AND EXISTS (SELECT 1 FROM tasks t
                      WHERE t.id = ANY(s.task_ids) AND t.status = 'open' AND t.archived_at IS NULL)
-      ORDER BY s.id LIMIT 1`,
-    [userId]
+      ORDER BY s.id LIMIT $2`,
+    [userId, Math.max(1, Number(limit) || MAX_LIVE)]
   );
-  if (!rows[0]) return null;
-  const s = rows[0];
-  return {
+  return rows.map((s) => ({
     id: Number(s.id),
     kind: s.kind,
     taskIds: s.task_ids.map(Number),
@@ -276,7 +285,13 @@ async function nextFor(client, userId) {
     title: s.detail.title || null,
     days: s.detail.days ?? null,
     keepTitle: s.detail.keepTitle || null,
-  };
+  }));
+}
+
+// The one the page opens on.
+async function nextFor(client, userId) {
+  const [first] = await liveFor(client, userId, 1);
+  return first || null;
 }
 
 // אשר or דלג. Accepting archives — reversibly, through the same
@@ -354,7 +369,7 @@ async function sweepSuggestions(client, { now = new Date() } = {}) {
 // never do — see `rules/detectors.md`. The rows above are in the test, so
 // anybody who builds this detector has to beat them first.
 module.exports = {
-  refresh, nextFor, decide, sweepSuggestions,
+  refresh, nextFor, liveFor, decide, sweepSuggestions,
   stuckTasks, overdueTasks, duplicateTasks,
   EVERY_MS, MAX_LIVE, STUCK_DAYS, OVERDUE_DAYS, KINDS,
 };
