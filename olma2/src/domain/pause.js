@@ -41,6 +41,27 @@ const reminders = require('./reminders');
 // users.paused_reason for a pause the check-in ladder made (migration 049).
 const QUIET_LADDER = 'quiet_ladder';
 
+// …and for a pause taken the MOMENT somebody said stop, before they have
+// confirmed anything (owner, 2026-09-22). Gal wrote "dont send me messages
+// bye", was asked "בטוח?", never answered — and because the doctrine paused
+// only on a yes, nothing on his record ever said he had asked. Four urgent
+// coordination messages were dispatched to his agent over the next hour and
+// three of them reached him.
+//
+// So the order is inverted: comply first, ask second. The pause does
+// everything a confirmed one does — the gate is the chokepoint, the queue is
+// cancelled, the reminders come down — and differs in exactly one way: their
+// next message ends it (`stopResume`, from openRecord's `wake`), because the
+// owner's rule is that somebody who writes again about anything else has
+// come back. A confirmed stop (reason NULL) is ended only by them or by an
+// admin, which is why the answer to "בטוח?" is a SECOND pause_olma call and
+// not a no-op.
+//
+// The failure mode this trades into is one extra "stop" from somebody who
+// says it twice; the one it trades away is a person who asked to be left
+// alone being messaged anyway. Both are recoverable, only one is a betrayal.
+const SAID_STOP = 'said_stop';
+
 // How long a paused person's one coordination message keeps them in that
 // coordination with no answer, and how long after answering a "leave me
 // paused" still counts as the answer to it.
@@ -83,9 +104,13 @@ async function isPaused(client, userId) {
 // nothing, and resume silently brings nothing back. It failed about one run in
 // thirty, only ever with the whole suite running in parallel. One clock, one
 // transaction timestamp, and the two are now exactly equal.
-async function pauseUser(client, userId, { note = null } = {}) {
+async function pauseUser(client, userId, { note = null, confirmed = true } = {}) {
   // paused_reason = NULL: this pause is THEIRS (or the admin's), so a ladder
   // pause already in place is taken over and stops ending on its own.
+  // `confirmed: false` is the same pause under SAID_STOP — see the constant.
+  // A confirmed call LANDS ON an unconfirmed one and clears the reason, which
+  // is the whole point of asking: "בטוח?" → "כן" makes it permanent.
+  const reason = confirmed ? null : SAID_STOP;
   //
   // Both room-invite stamps are carried forward when they answered their one
   // coordination message in the last 24 hours. Writing ended the pause
@@ -94,13 +119,13 @@ async function pauseUser(client, userId, { note = null } = {}) {
   // reaches them again; and answered_at at the same moment is what keeps
   // their NEXT message from ending this pause too.
   const { rows } = await client.query(
-    `UPDATE users SET paused_at = COALESCE(paused_at, now()), paused_reason = NULL,
+    `UPDATE users SET paused_at = COALESCE(paused_at, now()), paused_reason = $3,
             room_invite_sent_at = CASE WHEN room_invite_answered_at > now() - ($2::bigint * interval '1 millisecond')
               THEN now() ELSE room_invite_sent_at END,
             room_invite_answered_at = CASE WHEN room_invite_answered_at > now() - ($2::bigint * interval '1 millisecond')
               THEN now() ELSE room_invite_answered_at END
       WHERE id = $1
-      RETURNING id, paused_at`, [userId, ROOM_INVITE_ANSWER_MS]);
+      RETURNING id, paused_at`, [userId, ROOM_INVITE_ANSWER_MS, reason]);
   if (!rows[0]) return err('not_found', 'no such user');
 
   // Everything already armed against them. Cancelling rather than leaving them
@@ -122,6 +147,7 @@ async function pauseUser(client, userId, { note = null } = {}) {
 
   await audit.record(client, userId, 'user.paused', {
     note: note ? String(note).slice(0, 500) : null,
+    reason,
     remindersCancelled: pending.map((r) => Number(r.id)),
     outboxCancelled: queued.map((r) => Number(r.id)),
     dataDeleted: false,
@@ -148,7 +174,8 @@ async function resumeUser(client, userId, { now = new Date(), reason = null } = 
   // reminder was cancelled and re-cancelled across two pauses must not come
   // back twice.
   const frozen = (await client.query(
-    `SELECT DISTINCT ON (r.task_id) r.task_id, r.remind_at, r.repeat_rule, u.timezone
+    `SELECT DISTINCT ON (r.task_id) r.task_id, r.remind_at, r.repeat_rule, r.repeat_until,
+            r.repeat_seq, u.timezone
        FROM task_reminders r JOIN tasks t ON t.id = r.task_id
        JOIN users u ON u.id = $1
       WHERE COALESCE(r.user_id, t.owner_id) = $1 AND r.cancelled_at >= $2
@@ -158,9 +185,29 @@ async function resumeUser(client, userId, { now = new Date(), reason = null } = 
 
   const rearmed = [];
   for (const f of frozen) {
+    // A chase the pause caught before its first message ever went out has
+    // nothing worth preserving about its moment: that moment was "the evening
+    // of the day they asked", and that day is over. Starting it again is the
+    // one path that re-derives the hour, the first moment and the end together
+    // — and it declines outright if the deadline went by while they were away.
+    if (Number(f.repeat_seq) === 0 && f.repeat_until) {
+      const again = await reminders.startChase(client, userId, f.task_id, { now });
+      if (again && again.ok) {
+        rearmed.push({ taskId: Number(f.task_id), remindAt: new Date(again.data.reminder.remind_at).toISOString() });
+      }
+      continue;
+    }
     const next = nextOccurrenceAfter(f.remind_at, f.repeat_rule, now, f.timezone);
     if (!next) continue;
-    const res = await reminders.setReminder(client, userId, f.task_id, next, f.repeat_rule);
+    // A chase comes back as the chase it was, end included. Re-arming it
+    // without `until` would leave a daily nag with nothing to stop it, which is
+    // the one shape the end date exists to prevent; and a chase whose deadline
+    // passed during the pause is not resurrected at all, for the same reason
+    // the one-off above is not — the day it was about is gone.
+    const until = f.repeat_until ? new Date(f.repeat_until) : null;
+    if (until && next.getTime() > until.getTime()) continue;
+    const res = await reminders.setReminder(client, userId, f.task_id, next, f.repeat_rule,
+      { until, seq: Number(f.repeat_seq) || 1 });
     if (res.ok) rearmed.push({ taskId: Number(f.task_id), remindAt: next.toISOString() });
   }
 
@@ -203,6 +250,23 @@ async function quietResume(client, userId) {
   return ok({ resumed: true });
 }
 
+// Their next message ends an UNCONFIRMED stop. Unlike quietResume this goes
+// through resumeUser rather than clearing the columns: an unconfirmed pause
+// takes the queue and the reminders down like any other, so coming back has
+// to put them up again, each at its own next real occurrence.
+//
+// It runs ahead of the model, from openRecord's `wake`, and that is the
+// point — the owner's rule is that Olma comes back on when they write, not
+// when a model decides she may. If the message turns out to be another stop,
+// the model pauses again in the same turn; the queue it would re-arm was
+// cancelled at the first pause and a sweep has one turn to produce a new row.
+async function stopResume(client, userId, { now = new Date() } = {}) {
+  const { rows } = await client.query(
+    `SELECT id FROM users WHERE id = $1 AND paused_reason = $2`, [userId, SAID_STOP]);
+  if (!rows[0]) return ok({ resumed: false });
+  return resumeUser(client, userId, { now, reason: SAID_STOP });
+}
+
 // They wrote, for the first time since the one coordination message their
 // pause allows — whenever that is (owner, 2026-09-14: "until he writes
 // again"). The owner's rule is that anything they say then — other than asking
@@ -238,6 +302,6 @@ async function resumeAfterRoomInvite(client, userId, { now = new Date() } = {}) 
 }
 
 module.exports = {
-  pauseUser, resumeUser, quietPause, quietResume, resumeAfterRoomInvite, roomInviteSpent,
-  isPaused, nextOccurrenceAfter, QUIET_LADDER, ROOM_INVITE_ANSWER_MS,
+  pauseUser, resumeUser, quietPause, quietResume, stopResume, resumeAfterRoomInvite, roomInviteSpent,
+  isPaused, nextOccurrenceAfter, QUIET_LADDER, SAID_STOP, ROOM_INVITE_ANSWER_MS,
 };

@@ -89,9 +89,16 @@ module.exports = [
   // nothing to call, simply said goodbye and messaged him again the next
   // morning. Pausing is reversible and deletes nothing — see domain/pause.js.
   tool('pause_olma',
-    'Stop Olma from EVER reaching out again: check-ins, reminders, digests, anything another person would have triggered. Call it when someone asks to stop, pause or unsubscribe — after ONE short confirming question and their yes, never on a guess. Deletes NOTHING; resume_olma puts everything back, and you still answer when they write. Tell them plainly you will not write again and they can come back any time by sending a message.',
-    { note: S('string', 'What they said, in their own words, if they gave a reason') }, [],
-    (client, user, a) => pause.pauseUser(client, user.id, { note: a.note })),
+    'Stop Olma reaching out: check-ins, reminders, digests, anything another person would have triggered. Call it THE MOMENT someone asks to stop, pause or unsubscribe, BEFORE you reply and before any confirming question — with confirmed=false. Then ask your one question; on their yes call it again with confirmed=true. An unconfirmed pause ends by itself the next time they write about anything else; a confirmed one lasts until they ask for it back. Deletes NOTHING and you still answer when they write.',
+    { note: S('string', 'What they said, in their own words, if they gave a reason'),
+      confirmed: S('boolean', 'true ONLY after they confirmed the stop; false when you have just heard it') }, [],
+    (client, user, a) => pause.pauseUser(client, user.id, {
+      // `!== false`, not `=== true`: an omitted flag must fall to the LASTING
+      // pause. Getting it wrong that way leaves somebody paused who meant to
+      // be, and resume_olma is one sentence away; the other way lifts a stop
+      // that was confirmed, which is the whole fault this exists to close.
+      note: a.note, confirmed: a.confirmed !== false,
+    })),
   // The voice bridge (a separate process, loopback port 8792) decides who may
   // be called — this tool just asks it to dial and relays the answer.
   tool('call_me_on_the_phone',

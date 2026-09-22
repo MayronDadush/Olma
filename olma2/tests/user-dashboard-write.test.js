@@ -631,3 +631,52 @@ test('a successful write is the person answering: it stamps the page and resets 
   assert.equal(u.checkin_misses, 0);
   assert.ok(u.last_dashboard_at, 'stamped');
 });
+
+// A tick on the page is this action, and what comes back is the only thing
+// that can tell the page a standing task is still standing. The server has
+// behaved this way since "saying you did this week's chore does not end the
+// chore" (tests/recurring-schedules.test.js); what was never pinned is that
+// the answer survives the trip through the dashboard's own write path, which
+// is what the page now reads.
+test('ticking a task that repeats answers that it stays open', async () => {
+  const t = await mkTask({ dueAt: iso(3 * 86400e3) });
+  assert.equal((await act('setTaskReminder',
+    { taskId: t.id, on: true, remindAt: iso(86400e3), repeatRule: 'weekly' })).ok, true);
+
+  const done = await act('completeTask', { taskId: t.id });
+  assert.equal(done.ok, true, done.ok ? '' : JSON.stringify(done.error));
+  assert.equal(done.data.recurring, true, 'the page has nothing else to read');
+  assert.equal(done.data.repeatRule, 'weekly');
+  assert.equal(done.data.task.status, 'open', 'a standing task stays on the list');
+  const { rows } = await db.pool.query(`SELECT status FROM tasks WHERE id = $1`, [t.id]);
+  assert.equal(rows[0].status, 'open', 'and stays open in the table the next read comes from');
+});
+
+test('…and a task that does not repeat still closes, with no flag on the answer', async () => {
+  const t = await mkTask({ dueAt: iso(3 * 86400e3) });
+  assert.equal((await act('setTaskReminder',
+    { taskId: t.id, on: true, remindAt: iso(86400e3) })).ok, true);
+  const done = await act('completeTask', { taskId: t.id });
+  assert.equal(done.ok, true, done.ok ? '' : JSON.stringify(done.error));
+  assert.equal(done.data.recurring, undefined);
+  assert.equal(done.data.task.status, 'done');
+});
+
+// The other half, on the page. It moved the row into the archive and sent the
+// write fire-and-forget, so a task the server had deliberately left open was
+// off the screen until something reloaded — a tick that read as lost.
+test('the page reads that answer instead of assuming the tick closed the task', () => {
+  const page = require('node:fs').readFileSync(
+    require('node:path').join(__dirname, '..', 'docs', 'design', 'user-dashboard.html'), 'utf8');
+  // The answer is handed back at all — the other two writes of this shape are
+  // still fire-and-forget on purpose.
+  assert.match(page, /API\.send\("completeTask", \{taskId:real\}, onOk\)/);
+  // …and the tick is what asks for it.
+  assert.match(page, /if\(data && data\.recurring\) standingStaysOpen\(id, i\);/);
+  // Back to the list, at the index it left from, and never a restoreTask —
+  // there is nothing to restore, because nothing was ever completed.
+  assert.match(page, /function standingStaysOpen\(id, at\)\{/);
+  assert.match(page, /open\.splice\(Math\.max\(0, Math\.min\(at, open\.length\)\), 0, task\);/);
+  // And it says why, rather than leaving a row that reappears on its own.
+  assert.match(page, /toast\(t\("toast\.stillRepeating"\)\);/);
+});

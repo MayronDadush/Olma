@@ -370,8 +370,18 @@ function createBrokerServer({ pool, flood, placeMark, now }) {
     let userId = null;
     let cardStale = false;
     await withTx(pool, async (client) => {
+      // The WHOLE row, never a projection. `turn.advise` is shared with
+      // `turn_start`, which resolves its user with `SELECT *` — so a column
+      // this list forgot did not read as NULL here, it read as `undefined`,
+      // and every branch in `advise` testing one is testing for falsy.
+      // `opening_sent_at` was missing from the day this path was written; from
+      // 2026-09-09 this path was EVERYBODY, and two people read the owner's
+      // opening copy twice — once from the greeter, once from their own agent
+      // — while `tests/first-turn.test.js` went on passing against the other
+      // door (`incidents.md`, "The introduction that came back").
+      // `turn.ADVISE_COLUMNS` is the guard that makes the next omission loud.
       const { rows } = await client.query(
-        `SELECT id, phone, first_name, locale, paused_at FROM users WHERE agent_id = $1 AND status = 'active'`, [agentId]);
+        `SELECT * FROM users WHERE agent_id = $1 AND status = 'active'`, [agentId]);
       const user = rows[0];
       if (!user) { out = { ok: false, error: 'no active user for agent' }; return; }
       userId = Number(user.id);
@@ -405,7 +415,16 @@ function createBrokerServer({ pool, flood, placeMark, now }) {
         stoppedReminders: (pre && pre.stoppedReminders) || 0,
       });
       if (pre) pre.contextSent = true;
-      out = { ok: true, enabled: true, context: turnDomain.renderContext(data), directive: data.directive };
+      out = {
+        ok: true, enabled: true, context: turnDomain.renderContext(data), directive: data.directive,
+        // Not for the model — for the GATE. `reply_payload_sending` fires in
+        // the same plugin, in the same turn, and decides locally with no
+        // socket in the path; the one fact it cannot work out from the text is
+        // who is reading it. The columns live here, so the verdict is computed
+        // here and the plugin only remembers it (see `domain/language
+        // .writesHebrew`, and the `english` tier in `domain/reply-leak`).
+        readerWritesHebrew: require('../domain/language').writesHebrew(user),
+      };
     });
     if (cardStale && userId) await refreshUserCard(pool, userId);
     return out;

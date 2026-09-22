@@ -12,7 +12,7 @@ const assert = require('node:assert/strict');
 const { freshDb, makeUser } = require('./helpers');
 const { withTx } = require('../src/db/pool');
 const { createDashboard } = require('../src/adapters/http/dashboard');
-const { instructionFor } = require('../src/channels/openclaw');
+const { instructionFor, offersDashboardLink, dashboardUrlFor } = require('../src/channels/openclaw');
 const auth = require('../src/domain/dashboard-auth');
 const meetings = require('../src/domain/meetings');
 const connections = require('../src/domain/connections');
@@ -129,27 +129,99 @@ test('opening a coordination from chat hands back its page, and the two-options 
   assert.equal(two.data.hints && two.data.hints.dashboard, undefined, 'the page was offered twice');
 });
 
-test('the invite asks for the coordination\'s page, in a private invite and a room\'s', () => {
-  const plain = instructionFor({ kind: 'meeting_invite', payload: { meetingId: 41, title: 'x', byName: 'Ann' } });
-  assert.match(plain, /open_my_dashboard with meeting_id=41/);
-  const room = instructionFor({ kind: 'meeting_invite', payload: { meetingId: 42, title: 'x', byName: 'Ann', groupSubject: 'פאדל' } });
-  assert.match(room, /open_my_dashboard with meeting_id=42/);
-  const none = instructionFor({ kind: 'meeting_invite', payload: { title: 'x', byName: 'Ann' } });
-  assert.doesNotMatch(none, /open_my_dashboard/);
+// The invite carries the page as CHARACTERS. It used to carry the sentence
+// "call open_my_dashboard with meeting_id=N and put its url here", and on
+// 2026-09-22 the first room fan-out after that shipped sent three people three
+// different invented domains, each ending in the meeting id the instruction
+// had handed over, with not one link minted. So the url is minted at delivery
+// and passed in; no url, no clause, and never a number to build one out of.
+const URL = 'https://allma.world/d/AbCdEfGhIjKlMnOpQrStUv';
+test('the invite carries the page itself, in a private invite and a room\'s', () => {
+  const plain = instructionFor({ kind: 'meeting_invite', payload: { meetingId: 41, title: 'x', byName: 'Ann' } }, URL);
+  assert.ok(plain.includes(URL));
+  const room = instructionFor({ kind: 'meeting_invite', payload: { meetingId: 42, title: 'x', byName: 'Ann', groupSubject: 'פאדל' } }, URL);
+  assert.ok(room.includes(URL));
+  const none = instructionFor({ kind: 'meeting_invite', payload: { title: 'x', byName: 'Ann' } }, URL);
+  assert.ok(!none.includes(URL), 'a payload with no meeting still offered a page');
   // …and the folded table question, which is the invite asked late. Not a
   // plain proposal or a decline (owner, 2026-09-20: shorter; the link is
   // above whatever they are reading by then), and the link line carries no
   // sentence about it.
-  const table = instructionFor({ kind: 'meeting_slot_proposed', payload: { meetingId: 43, title: 'x', byName: 'Ann', tableChanged: true } });
-  assert.match(table, /open_my_dashboard with meeting_id=43/);
-  const one = instructionFor({ kind: 'meeting_slot_proposed', payload: { meetingId: 43, title: 'x', byName: 'Ann', slot: 'a' } });
-  assert.doesNotMatch(one, /open_my_dashboard/);
-  const no = instructionFor({ kind: 'meeting_slot_declined', payload: { meetingId: 43, title: 'x', byName: 'Ann' } });
-  assert.doesNotMatch(no, /open_my_dashboard/);
+  const table = instructionFor({ kind: 'meeting_slot_proposed', payload: { meetingId: 43, title: 'x', byName: 'Ann', tableChanged: true } }, URL);
+  assert.ok(table.includes(URL));
+  const one = instructionFor({ kind: 'meeting_slot_proposed', payload: { meetingId: 43, title: 'x', byName: 'Ann', slot: 'a' } }, URL);
+  assert.ok(!one.includes(URL));
+  const no = instructionFor({ kind: 'meeting_slot_declined', payload: { meetingId: 43, title: 'x', byName: 'Ann' } }, URL);
+  assert.ok(!no.includes(URL));
   for (const body of [plain, room, table]) {
     assert.doesNotMatch(body, /answering here/);
     assert.match(body, /on a line of its own, with no sentence about it/);
+    // The half that broke: nothing anywhere asks the model to go and get a url.
+    assert.doesNotMatch(body, /open_my_dashboard/);
   }
+  // And with no url in hand there is no clause at all — the message still asks
+  // its question, which is the half that matters, and says nothing about a page.
+  for (const kind of ['meeting_invite', 'meeting_slot_proposed']) {
+    const dry = instructionFor({ kind, payload: { meetingId: 44, title: 'x', byName: 'Ann', tableChanged: true } });
+    assert.doesNotMatch(dry, /line of its own/);
+    assert.doesNotMatch(dry, /open_my_dashboard|allma\.world|\burl\b/i);
+  }
+});
+
+// The deliverer mints a link only for a row that will actually carry one, and
+// it works that out by ASKING the builder rather than keeping its own list of
+// kinds — two lists is how the clause and the mint come to disagree.
+test('what gets a link minted for it is exactly what would print one', () => {
+  const rows = [
+    [{ kind: 'meeting_invite', payload: { meetingId: 41, title: 'x', byName: 'Ann' } }, true],
+    [{ kind: 'meeting_invite', payload: { meetingId: 42, title: 'x', byName: 'Ann', groupSubject: 'פאדל' } }, true],
+    [{ kind: 'meeting_invite', payload: { meetingId: 42, title: 'x', byName: 'Ann', askedItYourself: true } }, true],
+    [{ kind: 'meeting_invite', payload: { title: 'x', byName: 'Ann' } }, false],
+    [{ kind: 'meeting_slot_proposed', payload: { meetingId: 43, title: 'x', byName: 'Ann', tableChanged: true } }, true],
+    [{ kind: 'meeting_slot_proposed', payload: { meetingId: 43, title: 'x', byName: 'Ann', slot: 'a' } }, false],
+    [{ kind: 'meeting_slot_declined', payload: { meetingId: 43, title: 'x', byName: 'Ann' } }, false],
+    [{ kind: 'meeting_confirmed', payload: { meetingId: 43, title: 'x', slot: 'a' } }, false],
+    [{ kind: 'digest', payload: {} }, false],
+    [{ kind: 'reminder', payload: { title: 'x', rung: 1 } }, false],
+  ];
+  for (const [row, want] of rows) {
+    assert.equal(offersDashboardLink(row), want, `${row.kind}: ${JSON.stringify(row.payload)}`);
+    // the two answers are the same answer
+    assert.equal(instructionFor(row, URL).includes(URL), want);
+  }
+  // A row whose payload cannot even be read is a row we mint nothing for.
+  assert.equal(offersDashboardLink({ kind: 'meeting_invite', payload: '{not json' }), false);
+});
+
+// The whole road, on the shape that failed: an invite row for a real meeting
+// comes out of the deliverer's hands with a real link in the instruction. This
+// is the test the old design could not have — there was nothing to assert on,
+// because the url only ever existed inside a model turn.
+test('an invite row is handed a link that was really minted, and the instruction carries it', async () => {
+  const started = await call('start_meeting_coordination', ann, { title: 'ערב משחקים', phones: [ben.phone] });
+  assert.equal(started.ok, true, JSON.stringify(started.error));
+  const mid = Number(started.data.meeting.id);
+
+  const invite = { kind: 'meeting_invite', user_id: ben.id,
+    payload: { meetingId: mid, title: 'ערב משחקים', byName: 'Ann', groupSubject: 'משחקים' } };
+  const url = await dashboardUrlFor(db.pool, invite);
+  assert.match(String(url), /^https?:\/\/\S+\/d\/[A-Za-z0-9]{22}$/, 'no link was minted for an invite');
+
+  const { rows } = await db.pool.query(
+    `SELECT target, meeting_id FROM magic_links WHERE user_id = $1 AND target = 'meeting'
+        AND meeting_id = $2`, [ben.id, mid]);
+  assert.equal(rows.length, 1, 'the link exists in the table the page reads it from');
+
+  const body = instructionFor(invite, url);
+  assert.ok(body.includes(url), 'the instruction does not carry the url it was given');
+  assert.doesNotMatch(body, /open_my_dashboard/);
+
+  // …and nothing is minted for somebody the coordination does not include, or
+  // for a kind that never offers a page. A key is five per person and the
+  // oldest is evicted, so a link nobody was going to be shown costs a real one.
+  const stranger = { ...invite, user_id: ann.id, payload: { ...invite.payload, meetingId: mid + 9999 } };
+  assert.equal(await dashboardUrlFor(db.pool, stranger), null);
+  assert.equal(await dashboardUrlFor(db.pool, { kind: 'digest', user_id: ben.id, payload: {} }), null);
 });
 
 // ---- tasks -------------------------------------------------------------------
