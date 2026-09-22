@@ -265,6 +265,22 @@ have already had to be argued for.
   since the start (`proactive-text.mentionTokens`, capped at `MAX_TAGS`), and
   the model's half was the last place a name could still get out.
 
+- **The first thing a room hears about its own coordination is that she has
+  STARTED, and it counts people rather than naming them** (owner, 2026-09-22:
+  "תכתוב בקבוצה שאתה מתחיל בתיאום בפרטי עם מי שכתב לה"). `group_coord_started`,
+  decided first in `group-voice.decideGroupLine`'s negotiating branch, stamped on
+  `meetings.group_started_at` (migration 080) like every other line in that
+  family so a line held for the night goes out in the morning and never twice.
+  Before it, the room's first word was `base` — which waits for two people to
+  agree on a time, hours later — so a room that had just asked her for something
+  heard nothing at all. **It carries a COUNT and no tags**: `co.participants` is
+  who she is actually asking, and `co.outside` is how many members of the room
+  she could not sweep in, said only as "somebody here is not counted" and only
+  when there is one. Who those people are is the gate notice's own sentence, and
+  a room hearing the same list in two voices is what this whole family of lines
+  avoids — which is also why nobody is named, in a line that would otherwise be
+  the easiest place to break the tag-not-name rule below.
+
 - **The "סגור" line names who can make it, a calendar line is said only for
   a SHARED event, and a base line is never said to nobody** (owner,
   2026-09-20, off coordinations 35–37). `group-meetings.statusOf` exposes

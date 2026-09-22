@@ -456,7 +456,7 @@ async function sweepGroupVoice(client, deps) {
     // duplicate column name in one row silently keeps the LAST one — which
     // would date every coordination from the day the ROOM was registered.
     `SELECT m.id AS meeting_id, m.status, m.created_at AS meeting_created_at,
-            m.group_base_at, m.group_chase_at, m.group_done_at,
+            m.group_started_at, m.group_base_at, m.group_chase_at, m.group_done_at,
             m.group_dayof_at, m.group_hour_at, m.group_calendar_at, g.*,
             (SELECT max(last_wrote_at) FROM chat_group_members
               WHERE group_id = g.id) AS last_member_write_at
@@ -483,6 +483,7 @@ async function sweepGroupVoice(client, deps) {
          FROM meetings WHERE id = $1`, [row.meeting_id]);
     const st = await groupMeetings.statusOf(client, row, full[0] || null);
     const line = groupVoice.decideGroupLine(st.coordination, {
+      saidStarted: Boolean(row.group_started_at),
       saidBase: Boolean(row.group_base_at),
       saidChase: Boolean(row.group_chase_at),
       saidDone: Boolean(row.group_done_at),
@@ -506,6 +507,7 @@ async function sweepGroupVoice(client, deps) {
       idempotencyKey: `g${row.id}:m${row.meeting_id}:${line.kind}`,
     });
     const column = {
+      started: 'group_started_at',
       base: 'group_base_at', chase: 'group_chase_at', done: 'group_done_at',
       calendar: 'group_calendar_at', dayof: 'group_dayof_at', soon: 'group_hour_at',
     }[line.kind];

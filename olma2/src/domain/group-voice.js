@@ -79,7 +79,8 @@ function leadingOption(options) {
 // saying the base of a plan that is already settled is worse than saying
 // nothing.
 function decideGroupLine(co, {
-  saidBase, saidChase, saidDone, saidCalendar, saidDayOf, saidHour, startedAtMs, nowMs, timezone,
+  saidStarted, saidBase, saidChase, saidDone, saidCalendar, saidDayOf, saidHour,
+  startedAtMs, nowMs, timezone,
 } = {}) {
   if (!co) return { kind: 'none', reason: 'nothing being coordinated' };
   if (co.status === 'confirmed') {
@@ -105,6 +106,15 @@ function decideGroupLine(co, {
     return { kind: 'none', reason: 'already reminded, or not yet due' };
   }
   if (co.status !== 'negotiating') return { kind: 'none', reason: `coordination is ${co.status}` };
+
+  // First, once: she has started asking (owner, 2026-09-22). It comes before
+  // everything else in this branch because it is the only line that is true the
+  // moment the coordination exists — `base` waits for two people to agree on a
+  // time, which in the rooms measured so far took hours, and until then the room
+  // that asked her for something heard nothing at all.
+  if (!saidStarted) {
+    return { kind: 'started', title: co.title, asked: co.participants, outside: co.outside || 0 };
+  }
 
   const lead = leadingOption(co.options);
   if (!saidBase && lead) {

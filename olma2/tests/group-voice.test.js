@@ -94,6 +94,15 @@ test('a room hears "there is a direction" once, when two people can make the sam
   const when = slotStart('שלישי', { hours: 72 });
 
   await deliverInvites(meetingId);
+  // Since 2026-09-22 the room hears that she has STARTED before it hears
+  // anything else, so that line is spent here with a real pass rather than
+  // stamped by hand — a fixture that writes the column cannot notice the column
+  // is only ever reached this way.
+  const opening = [];
+  await pass(opening, null, group.external_id);
+  assert.equal(opening.length, 1);
+  assert.match(opening[0].body, /מתחילה לתאם \*פאדל\*/);
+
   // One yes — the proposer's own — is not a direction.
   const optionId = await withTx(db.pool, async (c) =>
     (await options.add(c, a.id, meetingId, 'שלישי 20:00', when)).data.option.id);
@@ -125,6 +134,8 @@ test('the base of a game is its own minimum, not two people', async () => {
   const optionId = await withTx(db.pool, async (c) =>
     (await options.add(c, a.id, meetingId, 'רביעי 20:00', when)).data.option.id);
   await withTx(db.pool, (c) => options.answer(c, b.id, meetingId, optionId, 'y'));
+  // Spend the opening line first — see the test above.
+  await pass([], null, group.external_id);
 
   let sent = [];
   await pass(sent, null, group.external_id);
@@ -224,10 +235,10 @@ test('no base line for nobody — everybody agreed, or the settle minute is alre
       yes: [p(1), p(2)], no: [], missing: [], quorum: { known: false } }],
     ...over,
   });
-  assert.equal(groupVoice.decideGroupLine(co(), { nowMs: Date.now() }).kind, 'none', 'nobody to wait for');
+  assert.equal(groupVoice.decideGroupLine(co(), { saidStarted: true, nowMs: Date.now() }).kind, 'none', 'nobody to wait for');
   const three = co({ participants: 3, options: [{ ...co().options[0], missing: [p(3)] }] });
-  assert.equal(groupVoice.decideGroupLine(three, { nowMs: Date.now() }).kind, 'base', 'somebody still owed');
-  assert.equal(groupVoice.decideGroupLine({ ...three, settleDueAt: new Date().toISOString() }, { nowMs: Date.now() }).kind, 'none',
+  assert.equal(groupVoice.decideGroupLine(three, { saidStarted: true, nowMs: Date.now() }).kind, 'base', 'somebody still owed');
+  assert.equal(groupVoice.decideGroupLine({ ...three, settleDueAt: new Date().toISOString() }, { saidStarted: true, nowMs: Date.now() }).kind, 'none',
     'the minute is running — the next thing the room hears is סגור');
   // whoIsIn: all, some, unknown.
   assert.deepEqual(groupVoice.whoIsIn({ participants: 2, confirmedOption: { yes: [p(1), p(2)] } }), { all: true, phones: [] });
@@ -289,11 +300,20 @@ test('a stamp Olma herself moved does not open the room at night', async () => {
   const sent = [];
   const held = await pass(sent, night, group.external_id);
   assert.deepEqual(sent, [], 'nobody in the room is awake, whatever her own sessions say');
-  assert.equal(held.held, 1);
+  // `held` counts every room in the pass, and every earlier test in this file
+  // left a live coordination behind — the same too-wide collection the comment
+  // on `pass` is about. What this test owns is THIS meeting: held means nothing
+  // was stamped, which is what makes the morning possible.
+  assert.ok(held.held >= 1, 'due, and held rather than sent');
+  const { rows: stamps } = await db.pool.query(
+    `SELECT group_started_at, group_base_at FROM meetings WHERE id = $1`, [meetingId]);
+  assert.equal(stamps[0].group_started_at, null, 'nothing stamped, so nothing is lost');
+  assert.equal(stamps[0].group_base_at, null);
 
   const morning = [];
   await pass(morning, null, group.external_id);
   assert.equal(morning.length, 1, 'and it goes out in the morning');
+  assert.match(morning[0].body, /מתחילה לתאם/, 'the first thing the room hears, one line per pass');
 });
 
 // The other half of the same rule: somebody IS in the room, so she is not
@@ -333,14 +353,14 @@ test('the chase names only the people who answered nothing at all', () => {
   // A day and a bit in, with the thing itself tomorrow: past half the
   // distance, and past the 24-hour ceiling on waiting.
   const started = Date.now() - 30 * 3600_000;
-  const line = groupVoice.decideGroupLine(co, { saidBase: true, saidChase: false, saidDone: false,
+  const line = groupVoice.decideGroupLine(co, { saidStarted: true, saidBase: true, saidChase: false, saidDone: false,
     startedAtMs: started, nowMs: Date.now() });
   assert.equal(line.kind, 'chase');
   assert.deepEqual(line.missing, ['+972500000003'],
     'somebody who said no has answered — chasing them is asking them to change their mind in public');
 
   // Too early: half the distance to the thing itself has not passed.
-  const early = groupVoice.decideGroupLine(co, { saidBase: true, saidChase: false, saidDone: false,
+  const early = groupVoice.decideGroupLine(co, { saidStarted: true, saidBase: true, saidChase: false, saidDone: false,
     startedAtMs: Date.now() - 60_000, nowMs: Date.now() });
   assert.equal(early.kind, 'none');
 });
@@ -473,18 +493,72 @@ test('neither room line names somebody the coordination never reached', () => {
   };
   const at = { startedAtMs: Date.now() - 30 * 3600_000, nowMs: Date.now() };
 
-  const base = groupVoice.decideGroupLine(co, { saidBase: false, saidChase: true, saidDone: false, ...at });
+  const base = groupVoice.decideGroupLine(co, { saidStarted: true, saidBase: false, saidChase: true, saidDone: false, ...at });
   assert.equal(base.kind, 'base');
   assert.deepEqual(base.missing, [asked.phone], 'the base waits out loud only for somebody who was asked');
 
-  const chase = groupVoice.decideGroupLine(co, { saidBase: true, saidChase: false, saidDone: false, ...at });
+  const chase = groupVoice.decideGroupLine(co, { saidStarted: true, saidBase: true, saidChase: false, saidDone: false, ...at });
   assert.equal(chase.kind, 'chase');
   assert.deepEqual(chase.missing, [asked.phone]);
 
   // Nobody reached yet: there is no true sentence about people not answering,
   // so the room hears nothing at all rather than a line with no tags in it.
   const noneReached = { ...co, options: [{ ...co.options[0], missing: [never], yes: [{ phone: '+972500000023', asked: true }] }], silent: [never] };
-  const quiet = groupVoice.decideGroupLine(noneReached, { saidBase: false, saidChase: false, saidDone: false, ...at });
+  const quiet = groupVoice.decideGroupLine(noneReached, { saidStarted: true, saidBase: false, saidChase: false, saidDone: false, ...at });
   assert.equal(quiet.kind, 'none');
 });
 
+
+// ── the room hears that she has started ─────────────────────────────────────
+// Owner, 2026-09-22: "תכתוב בקבוצה שאתה מתחיל בתיאום בפרטי עם מי שכתב לה". Until
+// this line existed the first thing a room heard about its own coordination was
+// `base` — which waits for two people to agree on a time, hours later — so a
+// room that had just asked her for something heard nothing at all.
+test('the first line a room hears is that she has started asking, and it counts people not names', async () => {
+  const { group, people } = await room(40);
+  const [a] = people;
+  const started = await withTx(db.pool, (c) => groupMeetings.startCoordination(c, group, a, 'פאדל השבוע'));
+  const meetingId = Number(started.data.meeting.id);
+
+  const sent = [];
+  await pass(sent, null, group.external_id);
+  assert.equal(sent.length, 1);
+  assert.match(sent[0].body, /מתחילה לתאם \*פאדל השבוע\*/);
+  assert.match(sent[0].body, /שאלתי בפרטי 3 מכם/, 'the three who have written');
+  // Nobody is named and nobody is tagged: who is missing is the gate notice's
+  // sentence, and this room has nobody missing anyway.
+  assert.equal(/@\+?\d/.test(sent[0].body), false, 'no tags in this line, ever');
+  for (const p of people) assert.equal(sent[0].body.includes(p.first_name || '—'), false);
+  assert.equal(/לא נספר/.test(sent[0].body), false, 'everybody here has written, so no note about it');
+
+  // Once, ever.
+  const again = [];
+  await pass(again, null, group.external_id);
+  assert.deepEqual(again, [], 'said once per coordination');
+  const { rows } = await db.pool.query(
+    `SELECT group_started_at FROM meetings WHERE id = $1`, [meetingId]);
+  assert.ok(rows[0].group_started_at);
+});
+
+// The other half: a room the `group_open_without_everyone` switch opened has
+// members who never wrote, and the line says such people exist WITHOUT naming
+// them — the room already heard who they are from the gate.
+test('a room with members who never wrote is told they are not counted, without a name or a tag', async () => {
+  const { group, people } = await room(41);
+  const [a] = people;
+  // Somebody joins who has never written to her — the Padel Gang shape.
+  await withTx(db.pool, (c) => groups.syncRoster(c, group.id, [
+    ...people.map((u) => ({ phone: u.phone })),
+    { phone: '+972609990041', displayName: 'חדש' },
+  ]));
+  const started = await withTx(db.pool, (c) => groupMeetings.startCoordination(c, group, a, 'פאדל'));
+  assert.equal(started.ok, true);
+
+  const sent = [];
+  await pass(sent, null, group.external_id);
+  assert.equal(sent.length, 1);
+  assert.match(sent[0].body, /שאלתי בפרטי 3 מכם/, 'the three she can reach, not the four in the room');
+  assert.match(sent[0].body, /לא נספר/, 'and that somebody here is not counted');
+  assert.equal(sent[0].body.includes('חדש'), false, 'never by name');
+  assert.equal(sent[0].body.includes('972609990041'), false, 'and never by number');
+});
