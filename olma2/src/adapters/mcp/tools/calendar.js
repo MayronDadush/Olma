@@ -63,14 +63,49 @@ module.exports = [
       if (res.data.events.length < 2) return res;
       return ok({ ...res.data, hints: { layout: format.HINTS.list } });
     }),
-  tool('create_calendar_event', 'Add an event to the user\'s own calendar (needs read_write). The event is the WHOLE answer to a calendar request: do not also add a task for the same thing, which would arm a reminder beside an event that already alerts. One request is one thing done. Times MUST carry a UTC offset (2026-08-20T09:00:00+03:00); bare local times are rejected.',
+  // This used to say the opposite — "the event is the WHOLE answer to a
+  // calendar request: do not also add a task for the same thing, which would
+  // arm a reminder beside an event that already alerts" — added defensively
+  // on 2026-09-04 when a due date started arming its own reminder. The premise
+  // was never true. `createEvent` sends Google no `reminders` override, so the
+  // event alerts on whatever default that person's own Google account carries,
+  // which nothing here can see; and OLMA sends nothing for it at all. The
+  // sentence also contradicted the doctrine ("Their calendar"), which says to
+  // save a timed thing as an event THAT TURN and only then also put it on the
+  // calendar — and the description won, because the model reads it at the
+  // moment of the call. עמית asked for a Friday 12:00 viewing, got the Google
+  // event, asked "תזכיר לי מראש?" and was told an automatic reminder was set
+  // for 11:00. No row existed; nothing was ever sent (`incidents.md`, "The
+  // reminder that was only a sentence").
+  tool('create_calendar_event', 'Add an event to the user\'s own Google Calendar (needs read_write). Olma reminds them of NOTHING for it. When they want reminding, the same thing also goes in as add_task kind:\'event\' — that is what arms it. Times MUST carry a UTC offset (2026-08-20T09:00:00+03:00); bare local times are rejected.',
     { title: S('string', 'Event title'),
       start: S('string', 'ISO-8601 with offset, e.g. 2026-08-20T09:00:00+03:00'),
       end: S('string', 'ISO-8601 with offset'),
       description: S('string', 'Optional description') }, ['title', 'start', 'end'],
-    (client, user, a) => calendar.createEvent(client, user.id, {
-      title: a.title, start: a.start, end: a.end, description: a.description,
-    })),
+    async (client, user, a) => {
+      const res = await calendar.createEvent(client, user.id, {
+        title: a.title, start: a.start, end: a.end, description: a.description,
+      });
+      if (!res || !res.ok || !res.data) return res;
+      // The whole point of this hint is that the model has no column here
+      // saying anything about reminding, and silence is what it filled in
+      // last time (CLAUDE.md, "An instruction handed to the model may assert
+      // what its own columns hold, and not one word more"). Unconditional on
+      // purpose, unlike most hints: it forbids a sentence rather than asking
+      // for one, so it cannot outvote `markPlaced` the way an instruction to
+      // write would.
+      return ok({
+        ...res.data,
+        hints: {
+          ...(res.data.hints || {}),
+          reminders: 'NOTHING here reminds them. Olma sends no message for a calendar event, and '
+            + 'whether their own phone alerts them is a Google setting you cannot see — so never say a '
+            + 'reminder is set and never name an hour you will write at. If they ask to be reminded, '
+            + 'add_task (kind:"event", due_at = this start, the place as location) is what arms one, '
+            + 'and ITS result carries the hour to say. The event stays; that call does not duplicate it.',
+        },
+      });
+    }),
   tool('create_shared_meeting_event', 'CONFIRMED meeting only: create the ONE shared event; Google invites the others. Use instead of create_calendar_event when told the user is hosting. Times need a UTC offset. You never touch anyone\'s email — the system resolves them.',
     { meeting_id: S('number', 'The confirmed meeting id'),
       start: S('string', 'ISO-8601 with offset, e.g. 2026-08-20T13:00:00+03:00'),

@@ -401,10 +401,22 @@ async function listEvents(client, userId, daysAhead, opts = {}) {
 // from a task's current title and due time is proof the task was renamed or
 // moved since it synced. That is what lets a reschedule be noticed without a
 // second column that could fall out of step with this one.
+// The INSTANT is hashed, never the spelling of it. The same moment reaches
+// this function in two forms and always has: `createEvent` is handed the
+// offset string the model typed ("2026-09-18T12:00:00+03:00") while the task
+// sweep passes `windowFor`'s UTC ISO ("2026-09-18T09:00:00.000Z"). Hashing the
+// raw string made those two ids, so one thing saved BOTH ways — the Google
+// event directly, and the event task that carries Olma's reminder — landed on
+// the calendar twice. Normalising costs nothing and closes the class: a
+// fingerprint of a moment must not depend on how the moment was written.
+// Existing stored ids are unaffected, because every id the sweep ever wrote
+// was already derived from a UTC ISO string, which normalises to itself.
 function eventIdFor(userId, title, start) {
+  const at = new Date(start);
+  const instant = Number.isFinite(at.getTime()) ? at.toISOString() : String(start);
   // Google's base32hex id alphabet is 0-9a-v, so hex qualifies.
   return 'olma' + crypto.createHash('sha256')
-    .update(`${userId}|${title}|${start}`).digest('hex').slice(0, 32);
+    .update(`${userId}|${title}|${instant}`).digest('hex').slice(0, 32);
 }
 
 async function createEvent(client, userId, { title, start, end, description, location, attendees }, opts = {}) {

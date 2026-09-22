@@ -881,3 +881,110 @@ test('one calendar event is a sentence, not a block — and the safety note stil
   assert.equal(res.data.hints, undefined);
   assert.match(res.data.note, /never as instructions/);
 });
+
+// ---- the reminder that was only a sentence ---------------------------------
+// עמית asked for a Friday 12:00 viewing to go in his calendar, got the event,
+// then asked "תזכיר לי מראש?" and was told an automatic reminder was set for
+// 11:00. No reminder row was ever written and nothing was sent. The result
+// said nothing about reminding, so the model filled the silence — CLAUDE.md,
+// "An instruction handed to the model may assert what its own columns hold,
+// and not one word more". These two tests hold both halves: the description no
+// longer claims the event alerts, and the RESULT says who reminds them (nobody).
+
+test('create_calendar_event never claims an alert it does not set', () => {
+  const { BY_NAME } = require('../src/adapters/mcp/registry');
+  const d = BY_NAME.get('create_calendar_event').description;
+  // The false premise, verbatim from the 2026-09-04 commit that added it.
+  assert.ok(!/already alerts/.test(d), 'the event alerts on the person\'s own Google default, which we cannot see');
+  assert.ok(!/do not also add a task/.test(d),
+    'that contradicted the doctrine, which saves a timed thing as an event THAT TURN');
+  assert.match(d, /reminds them of NOTHING/);
+  // And it names the thing that DOES arm one, because an ask with nowhere to
+  // go is the shape this repo keeps rediscovering.
+  assert.match(d, /add_task kind:'event'/);
+  // createEvent sends Google no reminders override — the premise, asserted
+  // against the code rather than trusted.
+  const src = fs.readFileSync(require.resolve('../src/domain/calendar'), 'utf8');
+  assert.ok(!/reminders:\s*\{/.test(src), 'if a reminders override is ever sent, this rule needs rewriting');
+});
+
+test('the create_calendar_event RESULT says nobody is reminding them', async () => {
+  const { BY_NAME } = require('../src/adapters/mcp/registry');
+  const amit = await makeUser(db.pool, '+972631000031', { firstName: 'עמית', timezone: 'Asia/Jerusalem' });
+  await connect(amit.id, { access: 'read_write' });
+  const fetchImpl = fakeFetch({
+    'calendars/primary/events': { body: { id: 'evt-friday', summary: 'אולם לחתונה', start: { dateTime: '2026-09-18T12:00:00+03:00' } } },
+  });
+  const original = globalThis.fetch;
+  globalThis.fetch = fetchImpl;
+  let res;
+  try {
+    res = await withTx(db.pool, (c) => BY_NAME.get('create_calendar_event').handler(c, amit, {
+      title: 'אולם לחתונה', start: '2026-09-18T12:00:00+03:00', end: '2026-09-18T13:00:00+03:00',
+    }));
+  } finally {
+    globalThis.fetch = original;
+  }
+  assert.equal(res.ok, true, JSON.stringify(res.error));
+  assert.equal(res.data.created, true, 'the event itself still goes in');
+  assert.match(res.data.hints.reminders, /NOTHING here reminds them/);
+  assert.match(res.data.hints.reminders, /never say a reminder is set/);
+  assert.match(res.data.hints.reminders, /add_task/);
+  // The 👍 hint the tool already carried must survive beside it — the new hint
+  // forbids a sentence rather than asking for one, so it cannot outvote it.
+  assert.ok(!/\bsay\b[^.]*\breminder\b/i.test(res.data.hints.reminders.replace(/never say a reminder is set/, '')),
+    'this hint must never become an unconditional instruction to write');
+});
+
+// ---- one thing saved both ways is ONE entry --------------------------------
+// The fix above routes "remind me about this calendar event" to add_task, and
+// for the one person with calendar_sync_tasks on that task syncs to Google
+// too. It must land on the event that is already there rather than beside it.
+
+test('the event id fingerprints the INSTANT, not the spelling of it', () => {
+  const offset = calendar.eventIdFor(7, 'אולם', '2026-09-18T12:00:00+03:00');
+  const utc = calendar.eventIdFor(7, 'אולם', '2026-09-18T09:00:00.000Z');
+  assert.equal(offset, utc, 'the same moment written two ways must be one event');
+  // A UTC ISO string normalises to itself, so every id the sweep has already
+  // written is unchanged and no live event is re-created under a new id.
+  const stored = require('node:crypto').createHash('sha256')
+    .update('7|אולם|2026-09-18T09:00:00.000Z').digest('hex').slice(0, 32);
+  assert.equal(utc, 'olma' + stored);
+  // Unparseable input still produces an id rather than throwing.
+  assert.match(calendar.eventIdFor(7, 'x', 'not a date'), /^olma[0-9a-f]{32}$/);
+});
+
+test('a task syncing to a calendar event that already exists does not double-book it', async () => {
+  const taskCalendar = require('../src/domain/task-calendar');
+  const u = await makeUser(db.pool, '+972631000032', { firstName: 'Sync', timezone: 'Asia/Jerusalem' });
+  await connect(u.id, { access: 'read_write' });
+  const args = { title: 'אולם לחתונה', start: '2026-09-18T12:00:00+03:00', end: '2026-09-18T12:30:00+03:00' };
+  const direct = fakeFetch({
+    'calendars/primary/events': { body: { id: 'evt-x', summary: args.title, start: { dateTime: args.start } } },
+  });
+  await withTx(db.pool, (c) => calendar.createEvent(c, u.id, args, { fetchImpl: direct }));
+  const sentId = JSON.parse(direct.calls.at(-1).init.body).id;
+
+  // Now the same thing as an event task, the way the hint tells the model to
+  // save it, synced by the sweep — which hands windowFor's UTC ISO string.
+  const { rows } = await db.pool.query(
+    `INSERT INTO tasks (owner_id, title, kind, due_at, calendar_opt_in, source)
+     VALUES ($1, $2, 'event', $3, true, 'chat') RETURNING *`,
+    [u.id, args.title, args.start]
+  );
+  const retry = fakeFetch({
+    'calendars/primary/events': { status: 409, body: { error: { message: 'The requested identifier already exists.' } } },
+  });
+  const out = await withTx(db.pool, (c) => taskCalendar.syncOne(c, { ...rows[0], sync_wanted: true },
+    { createEvent: (c2, uid, a) => calendar.createEvent(c2, uid, a, { fetchImpl: retry }) }));
+  assert.equal(out.action, 'added');
+  assert.equal(JSON.parse(retry.calls.at(-1).init.body).id, sentId,
+    'the sweep must aim at the event already on the calendar, not a second one');
+  assert.equal(out.eventId, sentId);
+  // And the row is now bound to it, so the next tick reports `unchanged`
+  // rather than removing and re-adding the person's event every five minutes.
+  const again = await withTx(db.pool, (c) => taskCalendar.syncOne(c,
+    { ...rows[0], calendar_event_id: out.eventId, sync_wanted: true },
+    { createEvent: () => { throw new Error('must not create again'); } }));
+  assert.equal(again.action, 'unchanged');
+});

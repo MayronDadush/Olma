@@ -1269,13 +1269,22 @@ test('agent doctrine: a due date arms its own reminder, and asking first is the 
   assert.ok(tpl.indexOf('A due_at gets its own') < tpl.indexOf('A standing task is not finished'));
 });
 
-// The surviving half of that incident, now pinned where it actually lives.
-test('one request is one thing done: a calendar ask does not also mint a task', () => {
+// This used to pin the surviving half of that incident — "do not also add a
+// task for the same thing, which would arm a reminder beside an event that
+// already alerts" — and it held that sentence in place for eighteen days while
+// the sentence was false. Nothing alerts: `createEvent` sends Google no
+// reminders override and Olma speaks for no calendar event at all, so עמית was
+// promised an 11:00 reminder that no row backed (`incidents.md`, "The reminder
+// that was only a sentence"). What the test protects now is the correction,
+// and the deeper assertion is in tests/calendar.test.js, which checks it
+// against the code rather than against another string.
+test('a calendar event promises no reminder it cannot send', () => {
   const { TOOLS } = require('../src/adapters/mcp/registry');
   const t = TOOLS.find((x) => x.name === 'create_calendar_event');
   assert.ok(t, 'create_calendar_event exists');
-  assert.match(t.description, /do not also add a task for the same thing/);
-  assert.match(t.description, /One request is one thing done/);
+  assert.ok(!/already alerts/.test(t.description));
+  assert.match(t.description, /reminds them of NOTHING/);
+  assert.match(t.description, /add_task kind:'event'/, 'the ask needs somewhere to go');
 });
 
 test('agent doctrine: a refusal hands over the search, and never a link of its own', () => {

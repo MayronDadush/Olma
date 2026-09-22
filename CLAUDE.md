@@ -217,6 +217,7 @@ Loads when you **Read** a file under `src/domain/reminders.js`, `src/domain/task
 - **A title need not restate the hour the row now carries, but only the SERVER may take it out.**
 - **A day named with ל־ in a title dates the THING, not the task.**
 - **`due_at` is when the THING is; `remind_at` is the hour THEY named.**
+- **A calendar event reminds NOBODY, and `create_calendar_event`'s result says so rather than leaving it to be guessed** — `add_task kind:'event'` is what arms one, and `eventIdFor` hashes the instant so the same moment saved both ways is one entry.
 - **Everyone on a shared task is equal, and a write on it is made AS its owner** — "delete" with others on it is leaving, and only the last one left can archive.
 - **A reminder belongs to the PERSON, not to the task** — every reader asks `COALESCE(r.user_id, t.owner_id)`.
 
