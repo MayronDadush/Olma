@@ -86,6 +86,23 @@ title means this file. Grep the title, not the filename.
   on every message for ever. It was 922 of 2,482 tool calls in the fourteen
   days before (`incidents.md`, "The conversation that never ended").
 
+- **A function shared by two openers is handed the WHOLE user row, never a
+  projection.** `turn.advise` serves `turn_start` (`users.resolveByToken`,
+  `SELECT *`) and brokerd's `turn_context`, which selected five columns by
+  name. A column one door omits does not arrive as NULL, it arrives as
+  `undefined` — both falsy, so the omission takes a branch instead of raising,
+  and the branch it takes is the one for a person nothing has happened to yet.
+  `opening_sent_at` was outside that projection from the day the path existed
+  and invisible while the flag named a handful of phones; from 2026-09-09 the
+  flag said `all`, and the whole fix for "Two introductions" stopped running
+  for everybody while `tests/first-turn.test.js` went on passing against the
+  other door (`incidents.md`, "The introduction that came back").
+  `turn.ADVISE_COLUMNS` names every column `advise` reads and
+  `requireAdviseColumns` throws on a row missing one — affordable exactly here,
+  because the plugin fails open and the doctrine falls back to `turn_start`, so
+  hitting it costs one tool call. **Assert a shared decision once per DOOR**; a
+  test that reaches it through one of them proves nothing about the other.
+
 - **A repeat of the same message must never be read as a new one.** The
   gateway hook's `turn_open` counts the message, wakes the person and places
   the 👀 before the model's first call, and until 2026-09-13 it had no memory

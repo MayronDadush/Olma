@@ -112,6 +112,111 @@ test('their first ever message: the opener rides in the context, first_turn_at i
   assert.equal(parse((await context({ agentId: u.agentId })).context).firstTurn, undefined);
 });
 
+test('somebody the greeter already welcomed is not welcomed again — on the door production actually uses', async () => {
+  // `tests/first-turn.test.js` has asserted this since 2026-09-07 and never
+  // stopped passing, because it asks `turn_start`, whose user row is a
+  // `SELECT *`. This path resolved its user with a five-column projection
+  // that did not name `opening_sent_at`, so the column read `undefined`,
+  // `advise` took the nobody-has-greeted-them branch, and the fix for "Two
+  // introductions" was dead for everyone the moment the flag went to `all`
+  // (2026-09-09). Capish on 2026-09-19 and Sharon on 2026-09-22 each read the
+  // owner's opening copy twice, in two voices, exactly as עידן had.
+  //
+  // So this is the same assertion as `first-turn.test.js`'s, deliberately, put
+  // where the other door is: one test per door, because the shared function
+  // between them cannot tell which row it was handed.
+  const u = await agentUser({ locale: 'he' });
+  await enable(u.phone);
+  await db.pool.query(`UPDATE users SET opening_sent_at = now() WHERE id = $1`, [u.id]);
+  await open({ agentId: u.agentId, messageId: '3EB0CTX0020', kind: 'text' });
+  const data = parse((await context({ agentId: u.agentId })).context);
+  assert.equal(data.firstTurn, true, 'it is still their first turn on their own agent');
+  assert.equal(data.onboarding.sendVerbatim, undefined,
+    'the copy they have already read must not be handed out a second time');
+  assert.equal(data.onboarding.alreadyOpened, true);
+  assert.match(data.onboarding.instruction, /already been greeted/i);
+});
+
+test('a projection reaches advise as undefined, not as NULL, so advise refuses one', async () => {
+  // The bug above is not "somebody forgot a column", it is that forgetting one
+  // is SILENT: `undefined` and NULL are both falsy, so a missing column does
+  // not raise, it picks the branch for a person nothing has happened to yet.
+  // Throwing is affordable here — the plugin fails open and the doctrine falls
+  // back to `turn_start`, so the cost of hitting this on the box is one tool
+  // call, while the cost of not hitting it was two introductions for every
+  // person who joined in thirteen days.
+  const u = await agentUser();
+  await assert.rejects(
+    () => withTx(db.pool, (c) => turnDomain.advise(c,
+      { id: u.id, phone: u.phone, first_name: u.first_name, locale: u.locale, paused_at: null },
+      { counted: { data: { blocked: false } }, firstTurn: true, ourTurn: false })),
+    /opening_sent_at/,
+    'the exact projection that shipped, named by the column it dropped');
+});
+
+test('what they told the greeter is unanswered, and their first turn is told so — greeted or not', async () => {
+  // Sharon Mishayev, 2026-09-22, his first ever words to Olma — sent to the
+  // greeter, from a padel room she sits in, answering the question that room
+  // had asked him:
+  //
+  //   היי
+  //   אני יכול בשבת אחרי 4 בצהריים
+  //   ובאמצע שבוע בימי ראשון ורביעי
+  //
+  // Provisioning carried all three lines into USER.md, correctly. Then his own
+  // agent's first turn read an instruction ending "Your reply is still the copy
+  // above and nothing else", and that is what he got — twice, counting the
+  // greeter's. His availability reached no coordination and nobody ever
+  // answered it.
+  //
+  // Both branches, because both narrowed the reply to this turn's text: the
+  // greeted one to "what they actually wrote", the ungreeted one to the copy.
+  const greeted = await agentUser({ locale: 'he' });
+  const cold = await agentUser({ locale: 'he' });
+  await enable(greeted.phone, cold.phone);
+  await db.pool.query(
+    `UPDATE users SET intake_note_at = now(), opening_sent_at = now() WHERE id = $1`, [greeted.id]);
+  await db.pool.query(`UPDATE users SET intake_note_at = now() WHERE id = $1`, [cold.id]);
+
+  await open({ agentId: greeted.agentId, messageId: '3EB0CTX0021', kind: 'text' });
+  const a = parse((await context({ agentId: greeted.agentId })).context).onboarding;
+  assert.equal(a.alreadyOpened, true);
+  assert.equal(a.pendingNote, true);
+  assert.match(a.instruction, /USER.md/, 'it names where the words are');
+  assert.match(a.instruction, /מה שכבר שיתפו/, 'by the heading the doctrine wrote');
+  assert.match(a.instruction, /Act on it in THIS reply/);
+  assert.match(a.instruction, /never ask them to say it again/i);
+  assert.doesNotMatch(a.instruction, /Answer what they actually wrote, in one short reply/i,
+    'the sentence that threw his availability away');
+
+  await open({ agentId: cold.agentId, messageId: '3EB0CTX0022', kind: 'text' });
+  const b = parse((await context({ agentId: cold.agentId })).context).onboarding;
+  assert.equal(b.sendVerbatim, onboarding.openingMessage('he'),
+    'nobody greeted this one, so the copy is still owed');
+  assert.equal(b.pendingNote, true);
+  assert.match(b.instruction, /character for character/i, 'and it is still verbatim');
+  assert.match(b.instruction, /below the copy/i, 'with the answer under it, in the same reply');
+  assert.doesNotMatch(b.instruction, /otherwise stop there/i);
+  assert.doesNotMatch(b.instruction, /the copy above and nothing else/i,
+    'the line the model quoted back while dropping what he came to say');
+  // Neither branch may lose the rules that were already there.
+  for (const said of [a.instruction, b.instruction]) {
+    assert.match(said, /set_my_name with confirmed: true/);
+  }
+  assert.match(b.instruction, /no follow-up question/i);
+});
+
+test('nothing was carried, so nothing points the first turn at a note that is not there', async () => {
+  const u = await agentUser({ locale: 'he' });
+  await enable(u.phone);
+  await open({ agentId: u.agentId, messageId: '3EB0CTX0023', kind: 'text' });
+  const said = parse((await context({ agentId: u.agentId })).context).onboarding;
+  assert.equal(said.pendingNote, undefined);
+  assert.doesNotMatch(said.instruction, /USER.md/,
+    'a note the model cannot find is a paragraph of doubt in the one reply that matters');
+  assert.match(said.instruction, /otherwise stop there/i, 'the unchanged behaviour for everyone else');
+});
+
 test('the display name the hook saw fills a missing first name, as a guess, exactly as turn_start would', async () => {
   const u = await agentUser();
   await enable(u.phone);

@@ -215,8 +215,17 @@ title means this file. Grep the title, not the filename.
 - **The owner's opening copy is said ONCE, by whichever voice reaches the
   person first.** An organic joiner meets the intake greeter, so the greeter
   sends it verbatim and provisioning stamps `users.opening_sent_at`;
-  `turn_start` reads that column and, on the same `firstTurn`, tells the model
-  the introduction is done instead of handing out `sendVerbatim`. A NULL means
+  `turn.advise` reads that column and, on the same `firstTurn`, tells the model
+  the introduction is done instead of handing out `sendVerbatim`. **BOTH
+  openers must hand it the whole row** — `turn_start` resolves its user with
+  `SELECT *` and brokerd's `turn_context` did not, so for thirteen days the
+  column read `undefined` rather than NULL on the only path anybody was on,
+  every branch testing it is testing for falsy, and the rule above was simply
+  not running for the product: Capish and Sharon each read the copy twice
+  (`incidents.md`, "The introduction that came back").
+  `turn.ADVISE_COLUMNS` + `requireAdviseColumns` throw on a projection now, and
+  the founding assertion is made once per DOOR — a test against one of them
+  passed throughout. A NULL means
   nobody has greeted them (testbed reset, hand-provisioned) and their own agent
   still opens. **A prompt that DESCRIBES brand copy instead of quoting it is a
   second copy of it** — the greeter was told to "say who you are and name one
@@ -241,6 +250,19 @@ title means this file. Grep the title, not the filename.
   real question in front of it gets a real answer. Any code that treats the
   first inbound as a greeting to be replaced, deduped or discarded is throwing
   away the only thing the person came to say.
+  **…and carrying their words into USER.md is only half of it: the first-turn
+  instruction has to SAY they are unanswered.** `agents-template.md` has said
+  since 2026-08-17 that a pending intake note means the conversation simply
+  continues; both branches of `advise`'s opener contradicted it in the same
+  turn — "Answer what they actually wrote, in one short reply" for a greeted
+  person, "otherwise stop there … the copy above and nothing else" for
+  everyone else — and 40k chars of doctrine partly attended to lose that
+  argument to sixty tokens the model has just read, which it quoted back while
+  dropping Sharon's padel availability (`incidents.md`, "The introduction that
+  came back"). `users.intake_note_at` (migration 079) is the column that lets
+  the instruction assert it: stamped by provisioning under the SAME condition
+  `seedWorkspace` writes the section under, read on `firstTurn` only, where
+  "nobody has answered it yet" is true by construction.
 
 - **`gmail.readonly` is a RESTRICTED scope and everything else Olma asks for
   is merely SENSITIVE — the two words are different verification tracks, and
