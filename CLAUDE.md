@@ -278,6 +278,8 @@ Loads when you **Read** a file under `src/adapters/http/**`, `docs/design/**`.
 - **`google-oauth.json` is cached at module level**
 - **A redirect URI must be registered at Google BEFORE the file points at it**
 - **Changing the domain never invalidates an existing Google connection.**
+- **Two sheets on the same `z-index` are ordered by the MARKUP, and the time picker has to beat all of them.**
+- **An element appended into a container something else re-renders is borrowed, not owned.**
 
 ### Doctrine, tools and reactions
 

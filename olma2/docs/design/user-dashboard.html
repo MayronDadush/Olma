@@ -756,6 +756,12 @@ button.row:active{background:var(--bg-tint)}
 .chip[aria-pressed="true"]{background:var(--accent);color:var(--on-accent)}
 .chip:active{transform:scale(.95)}
 .chip.mini{font-size:12.5px;padding:5px 11px}
+/* "שעה מדויקת" says the hour once there is one — the chip IS the value, so
+   there is no second pill on a line below carrying a bare number nobody can
+   tell is a button (the owner, 2026-09-22). The clock is the part that says
+   it still opens the picker. */
+.chip.exacttime{display:inline-flex;align-items:center;gap:5px;font-variant-numeric:tabular-nums}
+.chip.exacttime svg{width:12.5px;height:12.5px;flex:none;opacity:.85}
 
 /* ── channels ──────────────────────────────────────────────────
    Side by side rather than stacked: there are only ever two or three,
@@ -2493,16 +2499,19 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   box-shadow:var(--shadow-l),var(--rim);max-height:92vh;overflow-y:auto;
 }
 .sheet.show{transform:none}
-/* #timeSheet stacks on top of an already-open sheet (task editor, meeting
-   sheets); same z-index as every other .sheet would leave paint order to
-   DOM position, and #timeSheet loses that tie against sheets defined later
-   in the markup. Bump it above the whole .sheet layer explicitly. */
-#timeSheet{z-index:82}
-/* #mtOptSheet stacks on the coordination sheet for the same reason: adding a
-   time used to CLOSE the coordination and open a second sheet 130ms later,
-   then close that to bring the first one back — three animations for one tap.
-   It opens on top and lifts off, and what is under it never moves. */
+/* #mtOptSheet stacks on the coordination sheet: adding a time used to CLOSE
+   the coordination and open a second sheet 130ms later, then close that to
+   bring the first one back — three animations for one tap. It opens on top
+   and lifts off, and what is under it never moves. */
 #mtOptSheet{z-index:82}
+/* #timeSheet is the only sheet that is ALWAYS opened from inside another one,
+   so it is not one more sheet in the layer — it is the top of it, and it has
+   to beat the bumped ones too. It sat at 82 beside #mtOptSheet, lost that tie
+   to DOM order (later markup wins), and opened UNDERNEATH the sheet whose chip
+   had just been tapped: the tap read as doing nothing at all, and what showed
+   was a strip of the hidden picker above the sheet (the owner, 2026-09-22).
+   Anything new that stacks stays at 82; this one stays above them. */
+#timeSheet{z-index:83}
 /* ── the top edge is a handle ──
    Five pixels of ribbon cannot be caught with a thumb, so the whole strip
    above the title is the grab area. `touch-action:none` or the browser
@@ -3528,7 +3537,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     <div class="glabel" style="margin-top:16px"><span data-i18n="mt.whenLbl"></span></div>
     <div class="group"><div class="foldpad tight">
       <div class="chips" id="mtOptParts"></div>
-      <button class="vchip set" id="mtOptTimeChip" hidden data-i18n-label="mt.exact" style="margin-top:9px"><span id="mtOptTimeVal"></span></button>
+      <!-- the hour itself is drawn INTO the chips row above, by partChipsHTML;
+           this field is only where it is held -->
       <input id="mtOptTime" type="time" tabindex="-1" aria-hidden="true"
              style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px">
     </div></div>
@@ -3604,7 +3614,6 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     </div>
     <div id="mtWhenWrap"><div class="foldpad tight">
       <div class="chips" id="mtWhenChips"></div>
-      <button class="vchip set" id="mtNewTimeChip" hidden data-i18n-label="mt.exact" style="margin-top:9px"><span id="mtNewTimeVal"></span></button>
       <input id="mtNewTime" type="time" tabindex="-1" aria-hidden="true"
              style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px">
       <button class="linkbtn pdtoggle" id="mtPerDay" aria-expanded="false" aria-controls="mtPerDayList">
@@ -7906,16 +7915,12 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   });
   $("#timeClear").addEventListener("click", function(){ pickTime(""); });
   $("#timeCancel").addEventListener("click", closeTimeSheet);
-  /* One chip renderer for every field this sheet feeds: hide it when the
-     field has no time to show, otherwise show what it holds (or the 20:00
-     default the meeting flow's "exact" chip has always started from). */
-  function syncTimeChip(input, chip, valEl, exact){
-    chip.hidden = !exact;
+  /* The field behind the chip this sheet feeds: it holds what was chosen, or
+     the 20:00 the meeting flow's "exact" chip has always started from. The
+     chip itself is drawn by whoever draws the row (exactChipHTML). */
+  function syncTimeField(input, exact){
     input.value = exact || "20:00";
-    valEl.textContent = input.value;
   }
-  $("#mtOptTimeChip").addEventListener("click", function(){ openTimeSheet($("#mtOptTime")); });
-  $("#mtNewTimeChip").addEventListener("click", function(){ openTimeSheet($("#mtNewTime")); });
   /* the one-tap days and the clear button write the date exactly the way a
      pick in the calendar does, so there is one path for a task's date */
   $$(".whenvals [data-taskday]").forEach(function(b){
@@ -9063,8 +9068,20 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       return '<button class="chip mini" aria-pressed="' + (!exact && part === k) +
         '" data-' + prefix + '="' + k + '">' + esc(t("mt.part." + k)) + "</button>";
     }).join("") +
-      '<button class="chip mini" aria-pressed="' + !!exact + '" data-' + prefix + '="exact">' +
-      esc(t("mt.exact")) + "</button>";
+      exactChipHTML(exact, "data-" + prefix + '="exact"');
+  }
+  /* The hour an "exact time" answer holds IS that chip, not a second one:
+     once it is chosen the chip says the hour, and tapping it again opens the
+     picker (which is what a tap on an already-pressed chip used to do:
+     nothing). The hour had its own pill under the row before, unlabelled and
+     alone on a line of its own, which is what made this sheet look broken
+     (the owner, 2026-09-22). The clock is what says the chip still opens
+     something; the label stays the words, for anything reading it out. */
+  function exactChipHTML(exact, attr){
+    return '<button class="chip mini exacttime" aria-pressed="' + !!exact + '" ' + attr +
+      (exact ? ' aria-label="' + esc(t("mt.exact")) + '"' : "") + ">" +
+      (exact ? '<svg aria-hidden="true"><use href="#i-clock"/></svg><span>' + esc(exact) + "</span>"
+             : esc(t("mt.exact"))) + "</button>";
   }
   /* Same shape as partChipsHTML, but the day rides IN the data attribute
      ("data-pd" = "<off>:<key>") since one row's chips share a listener with
@@ -9074,8 +9091,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       return '<button class="chip mini" aria-pressed="' + (!exact && part === k) +
         '" data-pd="' + off + ":" + k + '">' + esc(t("mt.part." + k)) + "</button>";
     }).join("") +
-      '<button class="chip mini" aria-pressed="' + !!exact + '" data-pd="' + off + ':exact">' +
-      esc(t("mt.exact")) + "</button>";
+      exactChipHTML(exact, 'data-pd="' + off + ':exact"');
   }
   dgRedraw["#mtOptDays"] = function(){ renderOptSheet(); };
   dgRedraw["#mtDays"]    = function(){ renderMtDays(); };
@@ -9083,7 +9099,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     dayGridHTML("#mtOptDays", "#mtOptMon", optDay, false);
     $("#mtOptWhen").hidden = !!(mtOpen && mtOpen.allDay);
     $("#mtOptParts").innerHTML = partChipsHTML(optPart, optExact, "optpart");
-    syncTimeChip($("#mtOptTime"), $("#mtOptTimeChip"), $("#mtOptTimeVal"), optExact);
+    syncTimeField($("#mtOptTime"), optExact);
     /* Never a dead button: it says what is still missing, and once there is an
        answer it says what pressing it will add. */
     var m = mtOpen, full = !!m && !m.settled && m.opts.length >= MEET_CAP;
@@ -9135,11 +9151,19 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   $("#mtOptParts").addEventListener("click", function(e){
     var b = e.target.closest("[data-optpart]");
     if(!b) return;
-    if(b.dataset.optpart === "exact"){ optExact = optExact || "20:00"; }
+    /* the second tap on the hour is the one that opens the picker */
+    if(b.dataset.optpart === "exact"){
+      if(optExact){ openTimeSheet($("#mtOptTime")); return; }
+      optExact = "20:00";
+    }
     else { optExact = ""; optPart = b.dataset.optpart; }
     renderOptSheet();
   });
-  $("#mtOptTime").addEventListener("input", function(){ optExact = this.value; $("#mtOptTimeVal").textContent = this.value; });
+  /* A whole render, not just the chip's own text: the button under it NAMES
+     the moment it will add ("הוספה · מחר · 20:00"), and patching the chip by
+     hand left it saying the hour that was replaced — the button lying about
+     what it was about to do (the owner, 2026-09-22). */
+  $("#mtOptTime").addEventListener("input", function(){ optExact = this.value; renderOptSheet(); });
   $("#mtOptCancel").addEventListener("click", function(){
     /* on the swap pane this goes back to the moment, it does not leave */
     if(swapNew){ swapNew = null; renderOptSheet(); return; }
@@ -9362,7 +9386,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     $("#mtAllDay").setAttribute("aria-checked", mtNewAllDay);
     $("#mtWhenWrap").hidden = mtNewAllDay;
     $("#mtWhenChips").innerHTML = partChipsHTML(mtNewPart, mtNewExact, "newpart");
-    syncTimeChip($("#mtNewTime"), $("#mtNewTimeChip"), $("#mtNewTimeVal"), mtNewExact);
+    syncTimeField($("#mtNewTime"), mtNewExact);
     $("#mtPerDay").setAttribute("aria-expanded", mtPerDay);
     /* The fold stays populated even while closed — collapsing it is a CSS
        grid-rows transition (.fold/.fold.open, same as every other disclosure
@@ -9373,8 +9397,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       var ex = mtDayExact[off] || "", p = mtDayPart[off] || mtNewPart;
       return '<div class="pdrow"><b>' + esc(mtDayLabel(off)) + "</b><div class=\"chips\">" +
         pdChipsHTML(off, p, ex) + "</div>" +
-        (ex ? '<button class="vchip set" data-pdtimechip="' + off + '"><span>' + esc(ex) + "</span></button>" +
-          '<input data-pdtime="' + off + '" type="time" tabindex="-1" aria-hidden="true" value="' + esc(ex) +
+        (ex ? '<input data-pdtime="' + off + '" type="time" tabindex="-1" aria-hidden="true" value="' + esc(ex) +
           '" style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px">' : "") +
         "</div>";
     }).join("");
@@ -9491,31 +9514,35 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   $("#mtWhenChips").addEventListener("click", function(e){
     var b = e.target.closest("[data-newpart]");
     if(!b) return;
-    if(b.dataset.newpart === "exact"){ mtNewExact = mtNewExact || "20:00"; }
+    if(b.dataset.newpart === "exact"){
+      if(mtNewExact){ openTimeSheet($("#mtNewTime")); return; }
+      mtNewExact = "20:00";
+    }
     else { mtNewExact = ""; mtNewPart = b.dataset.newpart; }
     renderMtWhen();
   });
-  $("#mtNewTime").addEventListener("input", function(){ mtNewExact = this.value; $("#mtNewTimeVal").textContent = this.value; });
+  $("#mtNewTime").addEventListener("input", function(){ mtNewExact = this.value; renderMtWhen(); });
   $("#mtPerDay").addEventListener("click", function(){ mtPerDay = !mtPerDay; renderMtWhen(); });
   $("#mtPerDayList").addEventListener("click", function(e){
     var b = e.target.closest("[data-pd]");
-    if(b){
-      var bits = b.dataset.pd.split(":"), off = +bits[0], key = bits[1];
-      if(key === "exact") mtDayExact[off] = mtDayExact[off] || "20:00";
-      else { mtDayExact[off] = ""; mtDayPart[off] = key; }
-      renderMtWhen();
-      return;
+    if(!b) return;
+    var bits = b.dataset.pd.split(":"), off = +bits[0], key = bits[1];
+    if(key === "exact"){
+      if(mtDayExact[off]){
+        openTimeSheet($('[data-pdtime="' + off + '"]', $("#mtPerDayList")));
+        return;
+      }
+      mtDayExact[off] = "20:00";
     }
-    var tc = e.target.closest("[data-pdtimechip]");
-    if(!tc) return;
-    openTimeSheet($('[data-pdtime="' + tc.dataset.pdtimechip + '"]', $("#mtPerDayList")));
+    else { mtDayExact[off] = ""; mtDayPart[off] = key; }
+    renderMtWhen();
   });
   $("#mtPerDayList").addEventListener("input", function(e){
     var inp = e.target.closest("[data-pdtime]");
     if(!inp) return;
     var off = +inp.dataset.pdtime;
     mtDayExact[off] = inp.value;
-    var span = $('[data-pdtimechip="' + off + '"] span', $("#mtPerDayList"));
+    var span = $('[data-pd="' + off + ':exact"] span', $("#mtPerDayList"));
     if(span) span.textContent = inp.value;
   });
   $("#mtNewCancel").addEventListener("click", closeSheets);
