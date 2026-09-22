@@ -4174,8 +4174,11 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
        disappear came back on the next reload. */
     deleteTask:      function(x){      var id = idOf(x); API.call("deleteTask", {task_id:id});
       return onRealId(x, function(real){ API.send("archiveTask", {taskId:real}); }); },
-    completeTask:    function(x){      var id = idOf(x); API.call("completeTask", {task_id:id});
-      return onRealId(x, function(real){ API.send("completeTask", {taskId:real}); }); },
+    /* The only one of the three that hands the answer back: a task that
+       REPEATS is not closed by ticking it once, and the caller has to be told
+       so — see standingStaysOpen. */
+    completeTask:    function(x, onOk){  var id = idOf(x); API.call("completeTask", {task_id:id});
+      return onRealId(x, function(real){ API.send("completeTask", {taskId:real}, onOk); }); },
     restoreTask:     function(x){      var id = idOf(x); API.call("restoreTask", {task_id:id});
       return onRealId(x, function(real){ API.send("restoreTask", {taskId:real}); }); },
     shareTask:       function(x, who){
@@ -4656,6 +4659,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "toast.callFailed":"לא הצלחתי להתקשר עכשיו — נסה שוב בעוד רגע",
       "toast.moreRequested":"הבקשה נשלחה",
       "toast.done":"המשימה הושלמה","toast.saved":"המשימה נשמרה",
+      "toast.stillRepeating":"נרשם. המשימה חוזרת, אז היא נשארת ברשימה",
       "toast.updated":"המשימה עודכנה","toast.deleted":"המשימה נמחקה",
       "toast.needTitle":"צריך שם למשימה",
       "toast.removed":"החיבור הוסר",
@@ -4971,6 +4975,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "toast.callFailed":"The call would not go through — try again in a moment",
       "toast.moreRequested":"Your request has been sent",
       "toast.done":"Task completed","toast.saved":"Task saved",
+      "toast.stillRepeating":"Noted. This one repeats, so it stays on your list",
       "toast.updated":"Task updated","toast.deleted":"Task deleted",
       "toast.needTitle":"Give the task a name",
       "toast.removed":"Connection removed",
@@ -6693,6 +6698,27 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       toast(t("toast.restored", {name:L(task.t) || t("sheet.untitled")}));
     }, 220);
   }
+  /* Ticking a task that repeats acknowledges THIS time and nothing more: the
+     server leaves the task open with the cadence armed, because doing the
+     dishes on Monday does not finish "the dishes, every Monday and Thursday"
+     (domain/tasks.js, completeTask). The page never read that answer — it had
+     already moved the row into the archive — so the tick looked like it landed
+     and the task was back on the list at the next reload, which reads as a tap
+     that got lost. Put it back where it was, and say why.
+     A row that is no longer in the archive has been undone by hand in the
+     meantime, and the person's own choice outranks this one. */
+  function standingStaysOpen(id, at){
+    var i = archived.findIndex(function(x){ return x.id === id; });
+    if(i < 0) return;
+    var entry = archived[i];
+    archived.splice(i, 1);
+    var task = entry.task || {id:entry.id, d:"", tm:"", all:false, t:entry.t, rem:false, rep:"none", cal:false};
+    /* Back where it was, not at the top: nothing about the task changed, so
+       the list it returns to is the list it left. */
+    open.splice(Math.max(0, Math.min(at, open.length)), 0, task);
+    renderTasks(); renderStrip(selDay);
+    toast(t("toast.stillRepeating"));
+  }
   $("#taskStack").addEventListener("click", function(e){
     var wrap = e.target.closest(".taskwrap");
     if(e.target.closest(".tick") && wrap){
@@ -6711,7 +6737,9 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
         }
         /* The row itself, not its number: it has just left `open`, and if its
            own add is still in flight only the object can wait for the real id. */
-        API.completeTask(row || id);
+        API.completeTask(row || id, function(data){
+          if(data && data.recurring) standingStaysOpen(id, i);
+        });
         renderTasks();
         catchInArchive();
         /* A tick is one small target away from a tap meant for the row, and

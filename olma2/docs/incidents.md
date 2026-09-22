@@ -3966,6 +3966,20 @@ identical `now()`, and a reminder the person cancelled themselves never
 matches. A moment already passed is walked forward instead of resurrected, and
 the old row keeps its cancellation — that Monday really did go unreminded.
 
+**…and for three weeks the PAGE said the opposite of all that (2026-09-22).**
+The fix above is a server answer — `recurring: true`, the task left open — and
+`/me` never read it. A tick moves the row into the archive on the spot and
+sends the write fire-and-forget, which is right for every other task and wrong
+for this one: the row was gone from the list, the toast said "המשימה הושלמה",
+and the next reload brought the task back open. Nothing was lost and nothing
+was logged — from the person's side, a tap that did not take. The page now
+passes a callback on this one write (`API.completeTask`), and a `recurring`
+answer puts the row back at the index it left from with one sentence saying
+why. The other two writes of that shape stay fire-and-forget deliberately.
+The shape is the one already written down twice: **a flag the writer sets and
+the reader ignores is worse than no flag** — the server had been saying this
+since 2026-08-29, in a field nobody on the other side was reading.
+
 **A snooze destroyed its own evidence.** `snoozeTask` overwrote `due_at` and
 audited only where the task landed, so two hours later and the fourth
 postponement of the same errand were indistinguishable. The old value is read
