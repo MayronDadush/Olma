@@ -12,6 +12,7 @@ const tasks = require('../domain/tasks');
 const quota = require('../domain/quota');
 const flags = require('../domain/flags');
 const quietFacts = require('../domain/quiet-facts');
+const preferences = require('../domain/preferences');
 const { minutesInTz, parseHHMM } = require('../outbox/gate');
 
 // ---- reminders --------------------------------------------------------------
@@ -19,13 +20,36 @@ const { minutesInTz, parseHHMM } = require('../outbox/gate');
 // are due). A rung expires 2h past ITS OWN moment: past that it is "עבר זמנה",
 // never a live nag.
 // Arming the next occurrence of a repeating reminder. ONE function, because
-// there are two paths to it — the ordinary send and the nudge a digest
-// carried (reminders.ridesDigest) — and a second copy of this is a second
-// place for the quiet-day rule to be forgotten. It was, for exactly as long
-// as it took to rebase the two branches onto each other.
-async function armNextOccurrence(client, r) {
-  const next = reminders.nextOccurrence(r.remind_at, r.repeat_rule, r.timezone);
-  if (!next) return;
+// there are three paths to it now — the ordinary send, the nudge a digest
+// carried (reminders.ridesDigest), and a chase asking a moment early whether
+// this is its last one — and a second copy of this is a second place for the
+// quiet-day rule to be forgotten. It was, for exactly as long as it took to
+// rebase the two branches onto each other.
+//
+// WHERE the next occurrence lands, or null when there is not going to be one.
+// Split out of the arming because the SEND needs the same answer a moment
+// earlier: "is this the last one" is the difference between "בוצע?" and "זו
+// התזכורת האחרונה", and a second copy of this arithmetic is a second place for
+// the two to disagree about one series.
+async function nextOccurrenceMoment(client, r) {
+  // Day zero is the evening occurrence that exists only because the day they
+  // asked counts (reminders.startChase). The series proper starts the next
+  // morning at THEIR hour, so this one occurrence re-anchors instead of adding
+  // a day to 19:00 — otherwise the hour they happened to ask at becomes the
+  // hour of the whole arrangement.
+  const next = Number(r.repeat_seq) === 0 && reminders.isChase(r)
+    ? reminders.chaseReanchor(r.remind_at, reminders.chaseHour({
+      digestTimes: r.digest_times,
+      windowStart: ((await preferences.availabilityWindow(client, r.user_id)).data.window || {}).start,
+    }), r.timezone)
+    : reminders.nextOccurrence(r.remind_at, r.repeat_rule, r.timezone);
+  if (!next) return null;
+  // A chase ends at its deadline, and the check is here rather than in the
+  // sweep's WHERE clause because this is the only place that knows where the
+  // NEXT one would land. Nothing is written, so the series simply stops having
+  // a successor — and the occurrence that goes out now says it was the last.
+  const until = r.repeat_until ? new Date(r.repeat_until) : null;
+  if (until && next.getTime() > until.getTime()) return null;
   // A BARE 'weekly' that lands on a day they keep quiet is armed for the next
   // day they do not, at the same local hour (owner, 2026-09-22). Every other
   // shape arrives on the day it lands on — a pill at seven is a pill on
@@ -38,14 +62,30 @@ async function armNextOccurrence(client, r) {
   // Shabbat would come back on Sunday morning, meet the expiry check first and
   // DELETE the message. Moving the moment a week early is the only place this
   // decision is safe.
-  const kept = reminders.movesOffQuietDay(r.repeat_rule)
+  const kept = reminders.movesOffQuietDay(r.repeat_rule, { until })
     ? await quietFacts.keptMomentFor(
       client, { id: r.user_id, timezone: r.timezone, locale: r.locale }, next)
     : { at: next, movedFrom: null, reason: null };
+  // …and again after the move, which for a chase is a SKIP: Saturday's
+  // occurrence lands on Sunday, and if the deadline was Saturday there is
+  // nothing left to arm at all.
+  if (until && kept.at.getTime() > until.getTime()) return null;
+  return kept;
+}
+
+async function armNextOccurrence(client, r, precomputed) {
+  const kept = precomputed === undefined ? await nextOccurrenceMoment(client, r) : precomputed;
+  if (!kept) return;
+  const until = r.repeat_until ? new Date(r.repeat_until) : null;
   const ins = await client.query(
-    `INSERT INTO task_reminders (task_id, remind_at, repeat_rule, user_id)
-     VALUES ($1, $2, $3, $4) RETURNING id`,
-    [r.task_id, kept.at, reminders.normalizeRepeatRule(r.repeat_rule), r.user_id]
+    `INSERT INTO task_reminders (task_id, remind_at, repeat_rule, user_id, repeat_until, repeat_seq)
+     VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+    [r.task_id, kept.at, reminders.normalizeRepeatRule(r.repeat_rule), r.user_id,
+      // Day zero (0) and the first occurrence (1) are both the FIRST message
+      // somebody reads, and nothing may be the first thing twice — so the
+      // successor of day zero is 2, not 1. The number is the position in what
+      // they hear, which is the only thing anything downstream reads it for.
+      until, (Number(r.repeat_seq) === 0 ? 1 : (Number(r.repeat_seq) || 1)) + 1]
   );
   // The move is the only thing about a repeating reminder somebody could
   // notice and not be able to explain, so it is on the record — and the row
@@ -82,6 +122,26 @@ async function sweepReminders(client, nowIso) {
     // would drift and say "זו התזכורת האחרונה" a rung early or late.
     const rungCap = Number(r.rung_cap) || maxAttempts;
     const finalAttempt = repeats || attempt >= rungCap;
+    // A CHASE says a different sentence on each of its three positions, and
+    // they are the three rung templates it already has: the first is a plain
+    // reminder, the ones in the middle ask "בוצע?" and say how to stop it —
+    // which a daily series has to carry, or the doctrine's promise that a
+    // reminder can always be ended is false for a week — and the last one says
+    // it is the last. `chaseNext` is computed BEFORE the send for exactly that
+    // third case, and handed to the arming so one answer serves both.
+    const chase = reminders.isChase(r);
+    // 0 is day zero — the evening they asked — and says the same plain first
+    // sentence 1 does, which is why this may not collapse into `|| 1`.
+    const chaseSeq = Number.isFinite(Number(r.repeat_seq)) ? Number(r.repeat_seq) : 1;
+    const chaseNext = chase ? await nextOccurrenceMoment(client, r) : undefined;
+    // `attempt` drives the WORDING (proactive-text.reminderTemplateKey) and
+    // `rung` drives the quiet hours; a chase splits them deliberately. Only its
+    // first occurrence is a moment the person chose by asking — every one after
+    // it is an hour Olma picked on a day Olma picked, which is the same line
+    // the escalation ladder draws between rung 1 and the rungs above it.
+    const chaseRung = chase && chaseSeq > 1 ? 2 : 1;
+    const chaseWording = chase && chaseSeq > 1
+      ? { attempt: 2, finalAttempt: !chaseNext } : {};
     // The previous rung never left our side (dueForSending: expired after failed
     // delivery attempts). This rung REPLACES it rather than following it up:
     // the plain reminder text, since nothing was delivered to follow up on,
@@ -100,7 +160,7 @@ async function sweepReminders(client, nowIso) {
     // it would do so silently, which is the worst shape this repo has.
     if (attempt === 1 && reminders.ridesDigest({
       dueAt: r.due_at, repeatRule: r.repeat_rule, remindAt: r.remind_at,
-      timezone: r.timezone, digestTimes: r.digest_times,
+      timezone: r.timezone, digestTimes: r.digest_times, repeatUntil: r.repeat_until,
     })) {
       const { rows: waiting } = await client.query(
         `SELECT id FROM outbox
@@ -114,7 +174,7 @@ async function sweepReminders(client, nowIso) {
           taskId: Number(r.task_id), reminderId: Number(r.reminder_id),
           outboxId: Number(waiting[0].id),
         });
-        await armNextOccurrence(client, r);
+        await armNextOccurrence(client, r, chaseNext);
         continue;
       }
     }
@@ -127,7 +187,7 @@ async function sweepReminders(client, nowIso) {
       // A follow-up is Olma's own idea and queues like everything else Olma
       // decided to say — otherwise three rungs per reminder would be a way to
       // spend an unlimited proactive budget by setting enough reminders.
-      urgency: attempt === 1 || (redo && attempt === 2) ? 'urgent' : 'normal',
+      urgency: (attempt === 1 && chaseRung === 1) || (redo && attempt === 2) ? 'urgent' : 'normal',
       payload: {
         taskId: Number(r.task_id), title: r.title, remindAt: r.remind_at,
         // Which rung this is, always — the gate reads it to decide whether the
@@ -136,13 +196,13 @@ async function sweepReminders(client, nowIso) {
         // exactly that reason: `attempt` drives the WORDING and a redo
         // deliberately uses rung 1's plain text, while this drives the QUIET
         // HOURS and a redo is still Olma choosing the moment.
-        rung: attempt,
+        rung: chase ? chaseRung : attempt,
         // Whether the model inferred this reminder from a due date (true) or
         // the person asked for it in words (false). The gate's quiet rule
         // reads it: once somebody has stopped answering, only rung 1 of a
         // reminder they asked for still goes out.
         auto: Boolean(r.auto),
-        ...(redo ? { redo: true } : attempt > 1 ? { attempt, finalAttempt } : {}),
+        ...(redo ? { redo: true } : attempt > 1 ? { attempt, finalAttempt } : chaseWording),
       },
       // Rung 1 keeps the original 2h-past-the-moment window. A later rung is
       // measured from now: remind_at is hours or a day behind and would make
@@ -165,7 +225,7 @@ async function sweepReminders(client, nowIso) {
       // this used to compare against the literals 'daily'/'weekly' while the
       // model was storing 'FREQ=DAILY', so every repeating reminder silently
       // fired exactly once. See reminders.normalizeRepeatRule.
-      await armNextOccurrence(client, r);
+      await armNextOccurrence(client, r, chaseNext);
       out.push(r.reminder_id);
     }
   }
@@ -448,9 +508,11 @@ async function sweepFinishedTasks(client, nowIso) {
   const grace = Number.isFinite(graceHours) && graceHours >= 0 ? graceHours : 3;
   const cutoff = new Date(now.getTime() - grace * 3600_000).toISOString();
 
-  // A repeating reminder makes a task standing — doing it once does not finish
-  // it, and completeTask refuses to close it for exactly that reason. Sweeping
-  // it would be the same mistake made from the other side.
+  // A repeating reminder with NO END makes a task standing — doing it once
+  // does not finish it, and completeTask refuses to close it for exactly that
+  // reason. Sweeping it would be the same mistake made from the other side. A
+  // CHASE is not that: it ends at the event's own date, and the event closing
+  // when it passes is what closes the chase with it (migration 081).
   const { rows: expired } = await client.query(
     `SELECT t.id, t.owner_id, t.title
        FROM tasks t JOIN users u ON u.id = t.owner_id
@@ -459,6 +521,7 @@ async function sweepFinishedTasks(client, nowIso) {
         AND u.status = 'active' AND u.is_eval = false
         AND NOT EXISTS (SELECT 1 FROM task_reminders r
                          WHERE r.task_id = t.id AND r.repeat_rule IS NOT NULL
+                           AND r.repeat_until IS NULL
                            AND r.sent_at IS NULL AND r.cancelled_at IS NULL)
       ORDER BY t.owner_id, t.id
       LIMIT 200`,

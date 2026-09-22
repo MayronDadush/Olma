@@ -77,6 +77,7 @@ never trust a dated narrative for something you are about to act on.
 - [Her reminders arrived in Hebrew (fixed 2026-09-07)](#her-reminders-arrived-in-hebrew-fixed-2026-09-07)
 - [A hundred and five pending reminders, thirteen of them pending (fixed 2026-09-07)](#a-hundred-and-five-pending-reminders-thirteen-of-them-pending-fixed-2026-09-07)
 - [The reminder that would not stop (fixed 2026-09-09)](#the-reminder-that-would-not-stop-fixed-2026-09-09)
+- [A week of help, delivered as one reminder the night before (fixed 2026-09-22)](#a-week-of-help-delivered-as-one-reminder-the-night-before-fixed-2026-09-22)
 - [The reminder that was only a sentence (fixed 2026-09-22)](#the-reminder-that-was-only-a-sentence-fixed-2026-09-22)
 - [התיק לבית חולים: one reminder asked for, six messages delivered (fixed 2026-09-18)](#התיק-לבית-חולים-one-reminder-asked-for-six-messages-delivered-fixed-2026-09-18)
 - [The hook's timer fired late, and brokerd took the blame (fixed 2026-09-07)](#the-hooks-timer-fired-late-and-brokerd-took-the-blame-fixed-2026-09-07)
@@ -3054,6 +3055,98 @@ still fire", and the two only look alike.
 
 Nothing about what is ARMED changed. Rung 2 and rung 3 still go out. This is
 only about what a person is told.
+
+### A week of help, delivered as one reminder the night before (fixed 2026-09-22)
+
+חיים, 2026-09-22, 14:39 Israel:
+
+> **THEM:** אני אשמח שתזכיר לי מתי לקחת את המצלמה לתיקון כדי להתחיל לעבוד איתה אני רוצה שעד שבוע הבא היא תהיה מוכנה תעזור לי בתזכורת תודה רבה
+> **YOU:** 👍
+
+That is the whole exchange. Task 731 was saved with `due_at` on 28.9, one
+reminder was armed for 27.9 at 18:30, and he was told nothing at all — not
+that a reminder existed, not when it would reach him. Six days later he would
+have heard from her once, the evening before the deadline, about a camera he
+had asked to be helped with all week.
+
+**Three things had to line up for the silence, and only the third is a
+surprise.** The model called `add_task` with a `remind_at` it had invented —
+18:30 is an hour nobody in that conversation ever said — which set
+`remindersAsked: true` on the result. That branch of `taskHints.reminders`
+says "armed for the hour they themselves named … this is not a reason to
+write", which is right when it is true. And `markPlaced` had already put a 👍
+on his message, so the doctrine's answer to "nothing to add" is `NO_REPLY`.
+Each layer behaved correctly on a premise the layer above it had got wrong.
+
+**But the real fault is that no correct answer existed.** Going through the
+tools one at a time, with his sentence in hand:
+
+- `repeat_rule: 'daily'` is a rhythm with no end. It would still have been
+  reminding him about the camera in March.
+- Worse, `completeTask` refuses to close a task carrying a repeating reminder,
+  so "עשיתי" would have left the chase running — the bug he would have hit
+  second is worse than the one he hit first.
+- `nudge: true` meant the three-rung ladder: three messages in one evening,
+  which is not one a day.
+- And two other readers — the overdue detector, the expired-events sweep —
+  take "repeating" to mean "a rhythm, not a deadline", so anything built out of
+  the existing columns would have been read wrongly by code nobody was
+  changing.
+
+`nudge` had been called **zero** times in production, which is why none of
+this had shown up before.
+
+**So the fix is a discriminator, not a new mechanism** (migration 081):
+`task_reminders.repeat_until`, plus `repeat_seq` for which occurrence a row is.
+A repeating reminder with `repeat_until IS NULL` is a CADENCE — a pill at
+seven, a refund run on the 16th, the shape every existing rule already
+describes. One with `repeat_until` set is a CHASE: it ends at the deadline, it
+ends on "done", and `reminders.isChase` is the one place that asks.
+
+**The end is explicit rather than inferred from `due_at`, and that was
+measured.** User 16's monthly pill (task 121) carries a vestigial `due_at`
+from whenever it was first written; inferring "repeating + due_at = chase"
+would have silently ended a medication reminder. A column that says what it
+means costs a migration once.
+
+**The owner decided the four things no reading of the code could settle:**
+
+- **The day he asks counts.** His morning hour is gone by 14:39, so the first
+  one goes that evening — `reminders.CHASE_EVENING_AT`, 19:00, inside his
+  window. That occurrence is `repeat_seq = 0` ("day zero") and the series
+  re-anchors to the morning hour from the next day, because a chase that
+  inherited 19:00 from the exception would be a different promise than the one
+  it made.
+- **The hour is the one he already hears from Olma** — his earliest morning
+  digest, failing that the start of his own availability window, failing both
+  09:00. Never a constant we picked. Same question, same answer as the dateless
+  nudge on his own page.
+- **A quiet day is SKIPPED.** Saturday is a day nobody can take a camera to a
+  repair shop; the series comes back on Sunday and does not try to make up the
+  missed day.
+- **"עד ש…" plus a request for help is what arms one**, not an explicit "every
+  day". His sentence has no "כל יום" in it anywhere.
+
+**What the person is told changed too, and that is half the fix.** A chase is
+the one arming where the SHAPE is news whoever picked the hour — "every day
+until Sunday" is what he asked for and a 👍 cannot carry a cadence — so
+`hints.reminders` takes a third branch that asks for one short line saying the
+first hour and the last day and nothing in between. `list_my_reminders` renders
+"כל יום עד 28.9" rather than a bare "כל יום", because a line that says only
+"every day" about something with an end is a promise to keep going for ever.
+
+**And `hints.chaseAvailable` is the question that was never asked.** On a turn
+that arms exactly one reminder for a deadline more than two days out, the
+result asks whether their words wanted help until it is done. Measured on the
+box the same day before it was written: 24 of 227 live tasks carry a deadline
+that far ahead, so "לאסוף את הילדים מחר" never sees it (`rules/detectors.md`,
+a hint that fires on ordinary input is worse than none).
+
+`tests/reminder-chase.test.js` replays his week end to end — the evening
+start, five mornings, Saturday skipped, the wording climbing from
+`reminder` to `reminder_followup` to `reminder_last`, rung 1 once and rung 2
+after — and the eval `chase-until-done` replays his message itself, because
+the half of this that lives in the model's judgement cannot be unit-tested.
 
 ### The reminder that was only a sentence (fixed 2026-09-22)
 

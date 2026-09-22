@@ -281,6 +281,50 @@ const SCENARIOS = [
     rubric: 'המשתמש ביקש תזכורת למחר ב-9:30. בדוק: (1) אם נאמרה שעה בכלל, היא 9:30 — לא 8:30 ולא שום שעה אחרת. (2) אין משפט שמודיע שהמשימה נשמרה: זו שעה שהוא עצמו נקב בה, והלייק על ההודעה שלו כבר אמר את זה. תשובה ריקה לגמרי היא תשובה טובה כאן. (3) לא נשאלה רשות ולא נשאלה שאלה על מה שכבר נאמר.',
   },
   {
+    id: 'chase-until-done',
+    title: 'בקשה לעזרה עד הדדליין נדרכת כמרדף יומי, לא כתזכורת אחת',
+    // חיים, 2026-09-22: "אני אשמח שתזכיר לי מתי לקחת את המצלמה לתיקון … אני
+    // רוצה שעד שבוע הבא היא תהיה מוכנה תעזור לי בתזכורת". He got one reminder,
+    // six days later, at an hour nobody had named — and because the row looked
+    // like an hour HE had chosen, the turn answered with a 👍 and no words, so
+    // he was never even told when he would hear from her.
+    //
+    // The words are his own, minus the camera's model number. "שבוע הבא" rather
+    // than a weekday for the same reason as the scenario above: a weekday in the
+    // prompt means something different depending on the day it runs
+    // (rules/testing.md), and what is asserted here is the SHAPE, not a date.
+    turns: ['אני אשמח שתזכיר לי מתי לקחת את המצלמה לתיקון כדי להתחיל לעבוד איתה אני רוצה שעד שבוע הבא היא תהיה מוכנה תעזור לי בתזכורת תודה רבה'],
+    hard: async (client, ctx) => [
+      ...await turnOpening(client, ctx),
+      { name: 'a daily chase is armed, not a single reminder',
+        pass: (await count(client,
+          `SELECT count(*)::int AS n FROM task_reminders r JOIN tasks t ON t.id = r.task_id
+            WHERE COALESCE(r.user_id, t.owner_id) = $1
+              AND r.repeat_rule IS NOT NULL AND r.repeat_until IS NOT NULL
+              AND r.cancelled_at IS NULL`,
+          [ctx.userId])) >= 1 },
+      // The day he asks counts. Asserted as "inside a day" rather than "today",
+      // because at 23:00 local the first one is tomorrow morning and that is
+      // correct — what must never happen again is the first one being six days
+      // out.
+      { name: 'the first one is inside a day, not next week',
+        pass: (await count(client,
+          `SELECT count(*)::int AS n FROM task_reminders r JOIN tasks t ON t.id = r.task_id
+            WHERE COALESCE(r.user_id, t.owner_id) = $1
+              AND r.repeat_until IS NOT NULL AND r.cancelled_at IS NULL
+              AND r.remind_at < now() + interval '24 hours'`,
+          [ctx.userId])) >= 1 },
+      { name: 'the chase ends at the deadline and not after it',
+        pass: (await count(client,
+          `SELECT count(*)::int AS n FROM task_reminders r JOIN tasks t ON t.id = r.task_id
+            WHERE COALESCE(r.user_id, t.owner_id) = $1
+              AND r.repeat_until IS NOT NULL
+              AND (t.due_at IS NULL OR r.repeat_until >= t.due_at + interval '1 day')`,
+          [ctx.userId])) === 0 },
+    ],
+    rubric: 'המשתמש ביקש שיזכירו לו לקחת מצלמה לתיקון, וביקש עזרה עד שהיא תהיה מוכנה בשבוע הבא. בדוק: (1) התשובה אומרת בשורה אחת שהוא יקבל תזכורת כל יום עד התאריך — זה מה שהוא ביקש, והלייק לבדו לא יכול להגיד את זה. (2) התשובה איננה ריקה: כאן דווקא צריך משפט. (3) לא מפורטים הימים אחד-אחד ולא נשאלת רשות.',
+  },
+  {
     id: 'goal-capture',
     title: 'מטרה שנאמרה בשיחה נשמרת באותו טרן, בלי לבקש רשות',
     turns: ['אני חייב להתחיל למכור שלושה רכבים שלי'],
