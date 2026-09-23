@@ -26,6 +26,7 @@ const onboardingDomain = require('./onboarding');
 const templates = require('./message-templates');
 const holidays = require('./holidays');
 const preferences = require('./preferences');
+const { genderFromWords } = require('./gender-forms');
 
 // Rollout control. Absent/empty = off everywhere, so deploying this changes
 // nothing until someone turns it on: a fix for an invisible defect must not
@@ -516,7 +517,9 @@ async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, 
   // gets no hint — the hint exists for the register that keeps slipping.
   const { rows: genderRow } = await client.query(
     `SELECT value FROM user_preferences WHERE user_id = $1 AND key = 'gender_forms'`, [user.id]);
-  const genderForms = genderRow[0] && /נקבה|feminine|female|woman/i.test(String(genderRow[0].value))
+  // One reading of the words for every reader (`gender-forms.js`): this
+  // regex alone missed "נשי", which is what Maya's row actually says.
+  const genderForms = genderRow[0] && genderFromWords(genderRow[0].value) === 'female'
     ? 'feminine' : null;
 
   // Stamped once, only here — the one place that actually hands the

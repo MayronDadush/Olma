@@ -32,6 +32,22 @@ async function remember(client, userId, key, value) {
     [userId, key, text]
   );
   await audit.record(client, userId, 'preference.remembered', { key, overwrote });
+  // How they want to be addressed, said in their private chat, moves the
+  // profile column too — the one the room and the page both read (owner,
+  // 2026-09-23; `gender-forms.js`). Only when the words are unambiguous and
+  // disagree with it; `users.setPersonal` then finds the preference already
+  // agreeing and writes nothing back.
+  if (key === 'gender_forms') {
+    const { genderFromWords } = require('./gender-forms');
+    const g = genderFromWords(text);
+    if (g) {
+      const { rows: cur } = await client.query(`SELECT gender FROM users WHERE id = $1`, [userId]);
+      if (cur[0] && cur[0].gender !== g) {
+        const res = await require('./users').setPersonal(client, userId, { gender: g });
+        if (!res.ok) return res;
+      }
+    }
+  }
   return ok({ key });
 }
 
@@ -41,6 +57,12 @@ async function forget(client, userId, key, user = {}) {
   );
   if (!rowCount) return err('not_found', 'no such preference');
   await audit.record(client, userId, 'preference.forgotten', { key });
+  // Withdrawn in the private chat, withdrawn in the room and on the page too —
+  // otherwise the room keeps a form they just took back (see `remember`).
+  if (key === 'gender_forms') {
+    const res = await require('./users').setPersonal(client, userId, { gender: null });
+    if (!res.ok) return res;
+  }
   // Deleting this one key does not mean "no quiet days" any more — it means
   // "go back to the default", which since 2026-09-11 is a real day. Every
   // sentence a person actually says here ("write to me on Saturdays too") is

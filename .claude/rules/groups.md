@@ -316,6 +316,27 @@ have already had to be argued for.
   which is what "בר" got. `groups.listMembers` carries the three columns.
   `groups.roomStatus` and `group-meetings.statusOf` are unchanged: the turn
   block is what she speaks from (`incidents.md`, "She called Bar את").
+  **…and what somebody says about THEMSELVES in the room is kept**
+  (owner, 2026-09-23). Amit told her "אני גבר ואת אמורה לדעת את זה עליי". She
+  apologised and nothing was written, so the next turn would have drawn him
+  with no `address` again. `remember_sender_gender` (a group tool) writes
+  `users.gender` through `users.setPersonal`, the same column and function
+  the profile page uses. It writes only for the SENDER: `actingUser` is chosen
+  by the server, so nobody can set another member's form from the room. It is
+  in `user-card.CARD_TOOLS`, so their private USER.md is re-rendered after
+  commit. A group call never sets brokerd's `actorId`, so it carries its own
+  `groupCardUserId` for exactly this one purpose. Anything but `male`/`female`
+  is refused, not interpreted.
+  **…and the two records of it agree, whichever side moved** (owner, same day).
+  `users.gender` (the page, the room) and the `gender_forms` preference (the
+  private chat's turn_start) had drifted: Maya's said "נשי" with no column,
+  and the private reader's regex did not even know that word. Both now read
+  through `domain/gender-forms.genderFromWords`, and each writer moves the
+  other: `users.setPersonal` rewrites a preference that contradicts the
+  column (words that already agree are left as they said them; a cleared
+  column deletes it), and `preferences.remember`/`forget` of `gender_forms`
+  call `setPersonal` when the words are unambiguous and disagree. The second
+  write finds them agreeing, so they cannot bounce.
 
 - **The first thing a room hears about its own coordination is that she has
   STARTED, and it counts people rather than naming them** (owner, 2026-09-22:

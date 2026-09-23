@@ -2702,6 +2702,18 @@ page first, then the preference, both readings or neither is null).
 - no `address` means masculine;
 - the sender is the entry carrying the sender's digits.
 
+The same afternoon Amit said "אני גבר" in the room and nothing was written,
+so `remember_sender_gender` saves what a member says about themselves. The
+owner then asked for the two stores to agree whichever side moved: a form set
+in the room or on the page reaches the private chat, and one said privately
+reaches the room. The count above shows they never had. Maya's "נשי" had no
+column, and the private chat's own regex (`נקבה|feminine|female|woman`) did
+not read it as feminine either. So the one person who had asked for feminine
+address in words got no reminder of it in the chat where she asked.
+`domain/gender-forms.js` is now the one reading for all three readers, and
+`users.setPersonal` / `preferences.remember` / `preferences.forget` keep the
+two in step.
+
 ### The poker, seven times (fixed 2026-09-23)
 
 Meeting 42 was confirmed and פחם הסעות got its "סגור" line at 12:11 UTC. Over
