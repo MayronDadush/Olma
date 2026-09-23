@@ -182,6 +182,7 @@ never trust a dated narrative for something you are about to act on.
 - [The triage he did by hand, and the fourth detector the box refused (2026-09-19)](#the-triage-he-did-by-hand-and-the-fourth-detector-the-box-refused-2026-09-19)
 - [The light that would not go round (2026-09-22)](#the-light-that-would-not-go-round-2026-09-22)
 - [The picker that opened underneath (fixed 2026-09-22)](#the-picker-that-opened-underneath-fixed-2026-09-22)
+- [The coordination that expired on the wrong Tuesday (fixed 2026-09-23)](#the-coordination-that-expired-on-the-wrong-tuesday-fixed-2026-09-23)
 - [The list he could not put his own task into (2026-09-19)](#the-list-he-could-not-put-his-own-task-into-2026-09-19)
 - [An offer to call a number the bridge has never served (fixed 2026-09-06)](#an-offer-to-call-a-number-the-bridge-has-never-served-fixed-2026-09-06)
 - [The reply's first six seconds were bookkeeping (2026-09-05)](#the-replys-first-six-seconds-were-bookkeeping-2026-09-05)
@@ -7517,6 +7518,68 @@ with the row, or keep it out of the row entirely.
 strictly above every bumped sheet (measured against whatever is bumped, not
 against the number 82), one renderer for the hour with no chip of its own
 outside the row, and the input handler that redraws the button.
+
+### The coordination that expired on the wrong Tuesday (fixed 2026-09-23)
+
+Found while answering the owner's fourth item — "פגישות שלא נקבעו שכל המועדים
+שלהם עברו - עוברות לארכיון". They did not, and the way they did not had two
+opposite halves.
+
+A coordination offers up to five candidate times (`meeting_options`). The
+single-slot columns it grew out of — `meetings.proposed_slot` and
+`proposed_start_at` — are kept as mirrors of one of them, and the one they
+mirror is the most recently ADDED: `mirrorCurrent` orders by `id DESC`, which
+is the newest ROW, not the latest MOMENT. That is fine for what a mirror is
+for. `expireStaleMeetings` then asked that column, and only that column,
+whether the negotiation was over.
+
+So the order two times were put on the table decided the coordination's fate:
+
+- **Tuesday first, next month second.** The mirror points at next month, so
+  Tuesday never expires. It stays on the table, offered to people, listed in
+  every message about the coordination, a week after Tuesday.
+- **Next month first, Tuesday second.** The mirror points at Tuesday, so on
+  Tuesday night the WHOLE coordination is closed and everybody is told it did
+  not come together — with next month still live and unanswered.
+
+Neither half is visible from the meetings table: both coordinations look
+ordinary, and in each case the mirror is doing exactly what it says it does.
+
+The owner's rule replaces the question rather than patching it (2026-09-23):
+"שמועד שעבר זמנו ימחק מהאופציות - כשאין אופציות אפשר למחוק את התיאום לגמרי".
+A time whose moment has passed comes off the TABLE, and a coordination that
+runs out of times is over. The mirror is no longer asked anything about time;
+it is refreshed after the drop like any other change to the table, which is
+all it was ever for.
+
+Two things had to be said out loud to build it.
+
+**Running out of times is not the same thing as having none.** A person may
+take the last time off the table and put another up a minute later, and a
+coordination nobody has proposed a time for has never had one — both sit at
+zero and neither is over. Only a meeting this pass has just taken a time away
+from is asked whether it is empty, which makes "the last one passed" the thing
+being detected instead of "the table is bare".
+
+**A whole day is not over six hours after it starts.** An all-day option's
+instant is 09:00 of the day it means (`meeting-option-moment.momentFor`), so
+the six-hour grace that is right for a clock time would have taken "Sunday,
+all day" off the table at 15:00 on Sunday. It gets a full day on top. The
+dayparts need no exception: their instants are 09:00, 13:00, 19:00 and 21:00,
+and six hours from each lands at the end of the part it names or later.
+
+And the status says which of the two ways a time left. `deleted` is a person
+taking it off, and that is repeated to everybody else the next time they hear
+about the coordination; `expired` (migration 085) is nobody's doing and is
+said to no one, because "Tuesday came off the table", about a Tuesday that has
+been and gone, is noise.
+
+The two tests that covered the old sweep both moved `meetings.proposed_start_at`
+by hand — a replica of the mechanism, not the mechanism — so neither could
+have seen any of this. They drive the option now, and three new ones measure
+what was actually wrong: both orderings above, the whole-day exception, and a
+brand-new coordination that must not be closed for having an empty table.
+All three go red on the old code.
 
 ### The list he could not put his own task into (2026-09-19)
 
