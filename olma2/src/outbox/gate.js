@@ -282,11 +282,32 @@ function decide(facts) {
   // say, and somebody who has not answered is the likeliest person never to
   // have been told who was writing to them in the first place. ג.ב would have
   // lost his to this rule on the morning it was queued for (2026-09-08).
+  // And a coordination they have ANSWERED is not Olma's idea either — it is
+  // the outcome of something they said yes or no to, and the branch above was
+  // dropping the answer to their own question. `jobs/checkin.pickRung` has
+  // made exactly this distinction since 2026-09-07, one layer up: at
+  // `misses >= 1` it stops the discovery pitch and Olma's opinions, and lets
+  // `stuck_meeting` and `deadline_risk` through, "because a meeting waiting on
+  // them or a deadline tomorrow is theirs, not ours." The gate could not make
+  // it, so the ladder's own check-in passed and the confirmation of the
+  // coordination did not: Sharon (2026-09-23) took 16:00 off the table, asked
+  // the room for 17:00, answered yes to 17:00 — and when it closed on 17:00 he
+  // was the one person of five never told, while the room's closing line tagged
+  // him as one of the four who were in (`incidents.md`, "The room named him and
+  // nobody told him").
+  //
+  // The owner chose the NARROW line, 2026-09-23: an ANSWER on record is what
+  // earns it, not membership. An invite to somebody who has engaged with
+  // nothing is still Olma's initiative and still drops — the Vered rule above
+  // is untouched — and `pausedRoomInvite` remains the only way a first invite
+  // gets through. Like `groupWroteAt` this can only be true for a row carrying
+  // a `payload.meetingId`, so it reaches meeting rows and nothing else.
   if ((Number(facts.checkinMisses) || 0) >= 1
     && row.kind !== 'checkin' && row.kind !== 'introduction') {
     // A ladder pause is three misses, so its one room invite would die here
     // without the same exemption the pause branch above gives it.
-    if (!askedForInWords(row) && !inRoomGrace && !onPageGrace && !facts.pausedRoomInvite) {
+    if (!askedForInWords(row) && !inRoomGrace && !onPageGrace && !facts.pausedRoomInvite
+      && !facts.answeredCoordination) {
       return { action: 'drop', holdReason: 'quiet' };
     }
   }

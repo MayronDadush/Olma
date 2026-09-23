@@ -241,7 +241,7 @@ Loads when you **Read** a file under `src/jobs/checkin.js`, `src/jobs/onboarding
 - **Every time crossing a tool boundary needs an explicit offset.**
 - **Nobody is asked a question they have already not answered once.**
 - **A day-one step that has not gone out is REPLACED by the NEXT CHECK-IN of any kind, never joined by it.**
-- **Somebody who has stopped answering hears nothing Olma decided to say, and nothing on their record is cancelled.**
+- **Somebody who has stopped answering hears nothing Olma decided to say, and nothing on their record is cancelled.** — but a coordination they ANSWERED is not her idea, and an answer is what earns that, never membership
 - **A stop is acted on the moment it is HEARD, not when it is confirmed** — `paused_reason = 'said_stop'` is a full pause, and their next message about anything else ends it.
 - **A write from their own page IS the person answering** — `last_dashboard_at`, never `last_inbound_at`
 - **A "once ever" question is stamped on the PERSON, never deduped on the route that asks it.**
@@ -289,6 +289,7 @@ Loads when you **Read** a file under `src/adapters/http/**`, `docs/design/**`.
 - **Changing the domain never invalidates an existing Google connection.**
 - **Two sheets on the same `z-index` are ordered by the MARKUP, and the time picker has to beat all of them.**
 - **An element appended into a container something else re-renders is borrowed, not owned.**
+- **The SERVER decides when a coordination stops being active, and the page never cuts that list a second time.**
 
 ### Doctrine, tools and reactions
 

@@ -78,6 +78,7 @@ never trust a dated narrative for something you are about to act on.
 - [A message in the room, with no tag on it (2026-09-19, half shipped)](#a-message-in-the-room-with-no-tag-on-it-2026-09-19-half-shipped)
 - [Eighteen messages, no answer (fixed 2026-09-07)](#eighteen-messages-no-answer-fixed-2026-09-07)
 - [The man who only ever answered from the page (fixed 2026-09-20)](#the-man-who-only-ever-answered-from-the-page-fixed-2026-09-20)
+- [The room named him and nobody told him (fixed 2026-09-23)](#the-room-named-him-and-nobody-told-him-fixed-2026-09-23)
 - [Nine reminders, nine messages (fixed 2026-09-07)](#nine-reminders-nine-messages-fixed-2026-09-07)
 - [Fifty-two seconds behind the introduction (fixed 2026-09-08)](#fifty-two-seconds-behind-the-introduction-fixed-2026-09-08)
 - [Her reminders arrived in Hebrew (fixed 2026-09-07)](#her-reminders-arrived-in-hebrew-fixed-2026-09-07)
@@ -182,6 +183,7 @@ never trust a dated narrative for something you are about to act on.
 - [The triage he did by hand, and the fourth detector the box refused (2026-09-19)](#the-triage-he-did-by-hand-and-the-fourth-detector-the-box-refused-2026-09-19)
 - [The light that would not go round (2026-09-22)](#the-light-that-would-not-go-round-2026-09-22)
 - [The picker that opened underneath (fixed 2026-09-22)](#the-picker-that-opened-underneath-fixed-2026-09-22)
+- [Saturday's game, filed under "closed" (fixed 2026-09-23)](#saturdays-game-filed-under-closed-fixed-2026-09-23)
 - [The coordination that expired on the wrong Tuesday (fixed 2026-09-23)](#the-coordination-that-expired-on-the-wrong-tuesday-fixed-2026-09-23)
 - [The list he could not put his own task into (2026-09-19)](#the-list-he-could-not-put-his-own-task-into-2026-09-19)
 - [An offer to call a number the bridge has never served (fixed 2026-09-06)](#an-offer-to-call-a-number-the-bridge-has-never-served-fixed-2026-09-06)
@@ -3421,6 +3423,65 @@ availability on the page while the ladder has them paused still hears nothing.
 Nobody has been there yet. And the greeting itself was the cheap model ignoring
 an instruction already in the prompt; item C of the same day's plan
 (`recentMeetings` on `turn_start`) is the closest code gets to it.
+
+### The room named him and nobody told him (fixed 2026-09-23)
+
+Sharon (u-36) shaped coordination 40 more than anyone. At 16:24 on 2026-09-22
+he took שבת 16:00 off the table — it was too hot — asked privately that the
+group be told the time had moved, and answered yes to שבת 17:00 a minute later.
+Three answers of his are on record that afternoon: a `y`, an `n`, and the `y`
+on the option that eventually won.
+
+Then he had an evening. Two check-ins went out, at 17:53 and 20:54, and he
+ignored both, which put `checkin_misses` at 2. When the coordination closed on
+שבת 17:00 at 07:27 the next morning, five `meeting_confirmed` rows were
+enqueued. Three were held `night` for 09:00. One had been cancelled by hand,
+for somebody who had asked not to be written to. And Sharon's was **dropped**
+`quiet` by the gate's "somebody who has stopped answering" branch — not held,
+dropped, permanently, eight seconds after it was created.
+
+Ninety minutes later the room's own closing line went out naming the four
+people who were in, by tag. He was one of the four. He was the only one of the
+five nobody had told.
+
+**The rule was right and the reader was one layer too low.** `checkin.pickRung`
+has drawn this line since Vered, on 2026-09-07: at `misses >= 1` it returns the
+quiet one-liner and stops the discovery pitch, the overload nudge and the
+stalled-goal nudge, while `stuck_meeting` and `deadline_risk` still go —
+"because a meeting waiting on them or a deadline tomorrow is theirs, not ours."
+The gate had no way to tell the two apart, so its exemption list contained the
+ladder's own check-in and not the coordination: **the one thing that passed to a
+silent person was Olma's own initiative, and the thing that dropped was the
+answer to his question.** The counter that gated it was half manufactured, too —
+see the note at the end.
+
+**Fix.** `outbox/worker` reads one more per-row fact, built exactly like
+`groupWroteAt` and `pausedRoomInvite`: `answeredCoordination` is true when the
+person has a `meeting_option_answers` row on any option of THIS row's meeting.
+The gate's silence branch takes it as a fourth exemption. Deliberately narrow,
+and the owner chose that line in as many words: an ANSWER earns it, never
+membership — a first invite to somebody who has engaged with nothing is still
+Olma's initiative and still drops, so Vered's rule is untouched and
+`pausedRoomInvite` remains the only way a first invite gets through a silence.
+Nothing else moves: the night still holds the row, the quiet day still holds it.
+
+Two details are load-bearing. **An answer to a DELETED option counts** — the
+option somebody answered about is the first thing a negotiation throws away, and
+Sharon's own `n` was on the 16:00 he removed, so reading live options only would
+have lost the exemption for exactly the people who shaped the table most. And
+the fact is reset to false wherever a SIBLING row is re-decided against the same
+facts, because it is about one coordination and a row about another must not
+borrow it.
+
+**Named, not fixed.** `checkin_misses` is incremented at ENQUEUE
+(`jobs/checkin.js`), not when the send confirms. One of Sharon's two misses was
+a check-in created at 03:04, held `night` until 09:00, and never delivered at
+all — a message nobody could have answered, counted as a message he ignored,
+and it was the second miss that crossed the threshold. That violates
+`rules/detectors.md`, "Stamp 'we told them' only after the send confirms". The
+owner parked it on 2026-09-23; moving the increment also moves the ladder's own
+`GIVE_UP_MISSES` pause, which is deliberately counted on the enqueue, so the two
+have to be decided together.
 
 ### The hook's timer fired late, and brokerd took the blame (fixed 2026-09-07)
 
@@ -7519,6 +7580,39 @@ strictly above every bumped sheet (measured against whatever is bumped, not
 against the number 82), one renderer for the hour with no chip of its own
 outside the row, and the input handler that redraws the button.
 
+### Saturday's game, filed under "closed" (fixed 2026-09-23)
+
+One screenshot of Miron's own coordination list, and three of the cards in the
+fold called "תיאומים שנסגרו ושיצאת מהם" were meetings that had not happened
+yet — one of them days away. Nothing was wrong with the data: the three rows
+came back from the server in the ACTIVE list, exactly as they should have.
+
+`loadMeetings` already draws the line. A settled coordination stays active
+until its moment has actually passed — `EXPIRE_AFTER_START_MS` past its start,
+or `LEGACY_STALE_DAYS` for the text-only rows that predate start times — and
+`loadLeftMeetings` picks up what falls off, plus what the person left. Two
+queries, one cut between them, and `tests/user-dashboard-meetings.test.js` has
+asserted all three cases since 2026-09-05.
+
+The page then cut the same list a second time, on `settled` alone, and its
+comment says why it thought it should: a settled coordination "is a calendar
+entry, not an active one". That is true the day after. It is false the week
+before, which is most of a settled coordination's life — and it is precisely
+when the person wants to see it. So the archive filled up with meetings still
+to come, under a heading that says they are closed.
+
+**Two cuts where one is authoritative is the shape, not the filter.** The page
+draws the list it is handed; when it is right to leave, the server says so and
+it leaves. That is the part with the clock, the timezone and the six-hour
+grace in it, and none of those exist in the browser.
+
+What did have to move to the page is the marking, because a settled card now
+sits beside four that still want something. The chip alone did not carry it —
+same size, same shape and same language as "אפשר לסגור" and "ממתין", so in a
+quick scan down the list it does not separate. The owner picked the whole card
+instead (2026-09-23): the card is tinted `--accent-soft` and the chip goes
+solid with a ✓ on it, active list only. An archive row is over and is worth
+pointing at with nothing.
 ### The coordination that expired on the wrong Tuesday (fixed 2026-09-23)
 
 Found while answering the owner's fourth item — "פגישות שלא נקבעו שכל המועדים

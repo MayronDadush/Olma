@@ -91,6 +91,18 @@ title means this file. Grep the title, not the filename.
   not a message with words in it. Kapish answered a whole coordination from
   the page, never wrote in the chat, and was `quiet` to everything
   (`incidents.md`, "The man who only ever answered from the page").
+  **And a coordination they have ANSWERED is not Olma's idea either**
+  (2026-09-23). `outbox/worker` reads one fact per row —
+  `answeredCoordination`, a `meeting_option_answers` row of theirs on any
+  option of THIS row's meeting, live or deleted — and the gate lets that row
+  past the quiet drop. The owner chose the narrow line: an answer earns it,
+  never membership, so a first invite to somebody who has engaged with nothing
+  still drops and `pausedRoomInvite` stays the only way one gets through. It
+  changes nothing else — the night still holds it, the quiet DAY still holds
+  it, and Vered's rule above is untouched. `pickRung` had drawn this exact line
+  two weeks earlier one layer up ("theirs, not ours"); the gate could not, so
+  the ladder's own check-in passed and the confirmation of the coordination did
+  not (`incidents.md`, "The room named him and nobody told him").
 
 - **A stop is acted on the moment it is HEARD, not when it is confirmed.** גל
   wrote "dont send me messages bye", was asked "בטוח?", and never answered —

@@ -1568,6 +1568,20 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 .mtpill.settled{background:var(--accent-soft);color:var(--accent)}
 .mtpill.waiting{background:var(--warn-soft);color:var(--warn)}
 .mtpill.stuck{background:var(--danger-soft);color:var(--danger)}
+/* A coordination whose time is SET is the only card in this list with nothing
+   left to ask of anybody, and since 2026-09-23 it stays here until its moment
+   has actually passed — so it needs to read as settled before the sentence on
+   it is read at all. The chip alone did not do that: it is the same size and
+   the same language as "אפשר לסגור" and "ממתין", and in a quick scan it does
+   not separate. The whole card is tinted instead, and the chip goes solid
+   (the owner chose this over marking the chip alone). Only the ACTIVE list
+   tints — an archive row is over, and nothing in it is worth pointing at. */
+.group.mtset{background:var(--accent-soft)}
+.group.mtset .mtpill.settled{
+  display:inline-flex;align-items:center;gap:4px;
+  background:var(--accent);color:var(--on-accent);
+}
+.group.mtset .mtpill.settled::before{content:"\2713";font-size:10px;font-weight:800}
 .mtcard .chev{width:15px;height:15px;flex:none;color:var(--text-3)}
 .mtrow{display:flex;align-items:center}
 .mtrow .mtcard{padding-inline-end:10px}
@@ -8234,7 +8248,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      ans:{0:{41:"y", 42:"y"}, 2:{42:"y"}},
      left:[], settled:null, inCal:false},
 
-    /* settled, and therefore in the calendar rather than here */
+    /* settled, and on the calendar — and still in this list, because its
+       moment has not passed yet. This is the card the tint is for. */
     {id:5, t:{he:"פגישה עם רון",en:"Meeting with Ron"}, by:8, who:[8], allDay:false,
      opts:[{id:51, day:1, time:"11:00"}],
      ans:{0:{51:"y"}, 8:{51:"y"}},
@@ -8360,7 +8375,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
         esc(t("mt.leave")) + "</button>" +
         '<button class="mobtn" data-mtleaveno>' + esc(t("sheet.cancel")) + "</button></div></div></div>";
     }
-    return '<div class="group" style="margin-bottom:10px"><div class="mtrow">' +
+    return '<div class="group' + (m.settled ? " mtset" : "") + '" style="margin-bottom:10px"><div class="mtrow">' +
       '<button class="mtcard" data-mt="' + m.id + '">' +
       faceStack(m.who) +
       '<span class="mtbody"><span class="mtname">' + esc(L(m.t)) +
@@ -8397,22 +8412,26 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       '"><svg><use href="#i-undo"/></svg></button>') + '</div></div>';
   }
   function renderMeets(){
-    /* Settled coordinations are not "active" any more — they are calendar
-       entries, and leaving them here would make the list a permanent archive
-       of every meeting ever arranged. */
-    var live = MEETS.filter(function(m){ return !m.settled; });
-    var done = MEETS.filter(function(m){ return m.settled; });
+    /* Everything the server sends here is still ahead of this person: the
+       active query keeps a settled coordination only until it has happened
+       (six hours past its start, or three days for the text-only rows that
+       predate start times), and hands the rest to the archive. This list used
+       to filter `settled` out on top of that, which put Saturday's game and
+       next month's meeting — both arranged, both still coming — under
+       "תיאומים שנסגרו ושיצאת מהם", three days before they happen (the owner,
+       2026-09-23). A coordination leaves this list when its moment passes,
+       and that decision is the server's alone. */
+    var live = MEETS;
     $("#mtList").innerHTML = live.length
       ? live.map(mtCardHTML).join("")
       : '<div class="group">' + emptyBig(t("mt.empty"), "mtNew", t("mt.new")) + "</div>";
     rollText($("#mtCount"), live.length ? pl("mt", live.length) : "");
-    /* Settled first, then the ones you left — the same ordering rule the task
-       archive uses (most recently out of the list, first). Capped at the same
-       eight, and it SAYS it is capped rather than quietly truncating, because
-       an archive that silently drops the ninth row is a safety net with a hole
-       nobody can see. */
-    var arc = done.map(function(m){ return {html:mtCardHTML(m)}; })
-      .concat(MTLEFT.map(function(m){ return {html:mtLeftHTML(m)}; }));
+    /* What HAS happened, and what you left — both arrive from the server
+       already reduced to a title and the words of the slot. Capped at the same
+       eight as the task archive, and it SAYS it is capped rather than quietly
+       truncating, because an archive that silently drops the ninth row is a
+       safety net with a hole nobody can see. */
+    var arc = MTLEFT.map(function(m){ return {html:mtLeftHTML(m)}; });
     $("#mtArchive").hidden = !arc.length;
     $("#mtArcCount").textContent = arc.length;
     $("#mtDone").innerHTML = arc.slice(0, ARCHIVE_MAX).map(function(x){ return x.html; }).join("");
