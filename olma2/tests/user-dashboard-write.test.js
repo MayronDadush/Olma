@@ -378,6 +378,66 @@ test('the reminder switch refuses a task that is finished or gone', async () => 
   assert.equal(gone.error.code, 'not_found');
 });
 
+// The swipe on a task of your own (owner, 2026-09-23): gone, not archived —
+// the tick is what archives. Everything that could still speak about it goes
+// with it: its reminders, and any rung of theirs already waiting in the
+// outbox, which is a message with nothing left behind it.
+test('deleting a task removes it for good, reminders and queued rungs included', async () => {
+  const t = await mkTask({ dueAt: iso(3 * 86400e3) });
+  const item = await tx((c) => tasks.addTask(c, me.id, { title: 'פריט', parentId: t.id }));
+  assert.equal(item.ok, true);
+  const rem = await act('setTaskReminder', { taskId: t.id, on: true, remindAt: iso(86400e3) });
+  assert.equal(rem.ok, true, rem.ok ? '' : JSON.stringify(rem.error));
+  const { rows: [r] } = await db.pool.query(
+    `SELECT id FROM task_reminders WHERE task_id = $1 AND cancelled_at IS NULL ORDER BY id DESC LIMIT 1`, [t.id]);
+  const { rows: [queued] } = await db.pool.query(
+    `INSERT INTO outbox (user_id, kind, payload, idempotency_key)
+     VALUES ($1, 'reminder', '{}'::jsonb, $2) RETURNING id`, [me.id, `reminder:${r.id}:2`]);
+
+  const del = await act('deleteTask', { taskId: t.id });
+  assert.equal(del.ok, true, del.ok ? '' : JSON.stringify(del.error));
+  const { rows: left } = await db.pool.query(
+    `SELECT id FROM tasks WHERE id = ANY($1::bigint[])`, [[t.id, item.data.task.id]]);
+  assert.deepEqual(left, [], 'the task or its item is still in the table');
+  const page = await tx((c) => dash.load(c, me.id));
+  assert.equal(page.data.archived.some((x) => String(x.id) === String(t.id)), false,
+    'a deleted task turned up in the archive');
+  const { rows: [o] } = await db.pool.query(`SELECT sent_at, hold_reason FROM outbox WHERE id = $1`, [queued.id]);
+  assert.notEqual(o.sent_at, null, 'a queued rung would still go out about a task that no longer exists');
+  assert.equal(o.hold_reason, 'cancelled');
+  assert.equal((await act('deleteTask', { taskId: t.id })).ok, false, 'deleting twice should not succeed');
+});
+
+test('an imported task is not ours to delete', async () => {
+  const imported = await mkTask({ source: 'monday' });
+  const r = await act('deleteTask', { taskId: imported.id });
+  assert.equal(r.ok, false);
+  assert.equal(r.error.reason, 'imported');
+  const { rows } = await db.pool.query(`SELECT 1 FROM tasks WHERE id = $1`, [imported.id]);
+  assert.equal(rows.length, 1, 'refused, and still there');
+});
+
+test('a task on the calendar is taken off it before the row goes, or not deleted at all', async () => {
+  const taskCalendar = require('../src/domain/task-calendar');
+  const t = await mkTask({ dueAt: iso(3 * 86400e3) });
+  await db.pool.query(`UPDATE tasks SET calendar_event_id = 'ev-1' WHERE id = $1`, [t.id]);
+  // Google refusing: the delete must not lose the only record of the event.
+  const refused = await tx((c) => taskCalendar.removeEventsFor(c, me.id, t.id,
+    { deleteEvent: async () => ({ ok: false, error: { code: 'forbidden' } }) }));
+  assert.equal(refused.ok, false);
+  assert.equal(refused.error.reason, 'calendar');
+  const blocked = await tx((c) => tasks.deleteTask(c, me.id, t.id));
+  assert.equal(blocked.ok, false, 'the row went with its event id still on it');
+  assert.equal(blocked.error.reason, 'on_calendar');
+  // Google agreeing (or the event already gone): the id is cleared and the delete goes through.
+  const removed = [];
+  const off = await tx((c) => taskCalendar.removeEventsFor(c, me.id, t.id,
+    { deleteEvent: async (_c, _u, { eventId }) => { removed.push(eventId); return { ok: true, data: {} }; } }));
+  assert.equal(off.ok, true);
+  assert.deepEqual(removed, ['ev-1']);
+  assert.equal((await tx((c) => tasks.deleteTask(c, me.id, t.id))).ok, true);
+});
+
 test('restoring brings a task back out of the archive', async () => {
   const t = await mkTask();
   assert.equal((await act('archiveTask', { taskId: t.id })).ok, true);

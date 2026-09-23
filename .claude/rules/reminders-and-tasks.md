@@ -220,11 +220,30 @@ title means this file. Grep the title, not the filename.
   lost: the drawn table says how many people are on each time, and
   `meetings.getStatus` still carries every participant's shareable constraints
   by name — the REASON moved from a push to a pull, readable the moment he or
-  the next thing this coordination asks him goes out. **`meeting_no_match`
-  stays**, because a coordination that DIED is the one thing a table can never
-  tell him later. `afterSlotResponse` keeps an unread `accept` on purpose: a
-  yes and a no produce the same fan-out now, and the parameter says that
-  reading it again is a decision.
+  the next thing this coordination asks him goes out. `meeting_no_match` stayed
+  for one more day and went on 2026-09-23 with the rule below. `afterSlotResponse`
+  keeps an unread `accept` on purpose: a yes and a no produce the same fan-out
+  now, and the parameter says that reading it again is a decision.
+
+- **Nobody MANAGES a coordination** (owner, 2026-09-23: "אין יותר מנהל של
+  התיאום — כולם מנהלים של התיאום"). `meetings.initiator_id` is who OPENED it —
+  a fact the invite and the room still say, and the organiser Google prefers
+  (`calendar.meetingCalendarRoles`) — and grants nothing. Anybody still in it
+  (a participant not `opted_out`; `IN_IT` in `meetings.js`) may settle it by
+  hand (`options.settleNow`), rename it, cancel it for everybody, or LEAVE it,
+  the opener included; somebody who has left may do none of those. Three
+  things follow. **Cancelling for everybody is the chat's alone** — the page
+  offers leaving, and deleting only between two people (either of them), where
+  leaving would end it anyway. **The ending is never a message of its own**:
+  `meeting_expired` and `meeting_no_match` went to the opener alone and are
+  now enqueued by nothing; whoever was still in it reads the ending in their
+  next digest (`digest.assemble` → `crossUser.closedMeetings`, since their
+  last digest that really went out, three days at most), which is the owner's
+  choice between "everybody" and "nobody". **Revoking a connection is an exit**
+  whoever opened the pair's coordination, so it closes `no_match`, never
+  `cancelled`. The chat tools' descriptions and the doctrine's "תבטל את
+  הפגישה" line say "anyone in it"; a test still asserting "initiator only" is
+  asserting the old product.
 
 - **A time ADDED to it rides the same thing, as long as that thing has not gone
   out yet** (2026-09-20). `meeting-fanout.js`'s `fanout` folds a new

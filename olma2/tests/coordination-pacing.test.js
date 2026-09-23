@@ -25,6 +25,7 @@ const connections = require('../src/domain/connections');
 const grants = require('../src/domain/grants');
 const meetings = require('../src/domain/meetings');
 const fanout = require('../src/domain/meeting-fanout');
+const digest = require('../src/domain/digest');
 const opts = meetings.options;
 
 let db, ann, ben, cal;
@@ -165,7 +166,11 @@ test('a plain "no" is no longer a message of its own to whoever opened it', asyn
   });
 });
 
-test('but the RESULT is his alone and never waits', async () => {
+// Until 2026-09-23 "nobody matched" was the one exit that still went to the
+// opener on its own. Nobody manages a coordination now, and the owner chose
+// that its ending rides the next digest of whoever is left instead
+// (digest.closedMeetings) — so the two people leaving make NO message at all.
+test('nobody matching is not a message of its own any more — it waits for the digest', async () => {
   await withClient(async (c) => {
     const m = await trio(c, 'padel no match');
     await deliverAll(ann.id, m);
@@ -173,9 +178,28 @@ test('but the RESULT is his alone and never waits', async () => {
     await fanout.afterOptOut(c, ben, m, await meetings.optOut(c, ben.id, m));
     await fanout.afterOptOut(c, cal, m, await meetings.optOut(c, cal.id, m));
 
-    const rows = await pending(ann.id, m);
-    assert.deepEqual(rows.map((r) => r.kind), ['meeting_no_match'],
-      'one message: nobody matched. Not one per person who left');
-    assert.equal(rows[0].release_after, null, 'a coordination that is over is not paced');
+    assert.deepEqual(await pending(ann.id, m), [], 'no message about it on its own');
+    const d = await digest.assemble(c, ann.id, 'summary');
+    assert.deepEqual(d.data.crossUser.closedMeetings.map((x) => [Number(x.id), x.status]), [[Number(m), 'no_match']]);
+    assert.match(d.data.hints.closedMeetings, /ONE short clause/);
+  });
+});
+
+// A coordination whose time passed is said once, in the next digest that
+// reaches the people still in it — and not again in the one after.
+test('an expired coordination rides the next digest once, and only once', async () => {
+  await withClient(async (c) => {
+    const m = await trio(c, 'padel expired');
+    await c.query(
+      `UPDATE meetings SET status = 'expired', closed_at = now() - interval '1 minute' WHERE id = $1`, [m]);
+    const ids = async (u) => (await digest.assemble(c, u.id, 'summary')).data.crossUser.closedMeetings
+      .map((x) => Number(x.id)).filter((x) => x === Number(m));
+    for (const u of [ann, ben, cal]) assert.deepEqual(await ids(u), [Number(m)], 'everybody in it, not only the opener');
+
+    await c.query(
+      `INSERT INTO outbox (user_id, kind, payload, idempotency_key, sent_at)
+       VALUES ($1, 'digest', '{}'::jsonb, $2, now())`, [ben.id, `digest-test:${m}`]);
+    assert.deepEqual(await ids(ben), [], 'his digest already carried it');
+    assert.deepEqual(await ids(ann), [Number(m)], 'hers has not gone out yet');
   });
 });
