@@ -309,18 +309,15 @@ async function settleDue(client, limit = 50) {
   return settled;
 }
 
-// Initiator only, and immediate: settle on an option whatever the answers say.
-// The case is the owner's own — everyone wants Tuesday, one person cannot make
-// it, and the meeting happens anyway — so this deliberately does NOT check
+// Anybody still in it, and immediate: settle on an option whatever the answers
+// say. The case is the owner's own — everyone wants Tuesday, one person cannot
+// make it, and the meeting happens anyway — so this deliberately does NOT check
 // agreement. What it does check is that the option is really on the table, so
-// a meeting cannot be closed onto a time nobody ever saw.
+// a meeting cannot be closed onto a time nobody ever saw. It was the opener's
+// alone until 2026-09-23, when the owner said nobody manages a coordination.
 async function settleNow(client, userId, meetingId, optionId) {
   const p = await participant(client, meetingId, userId);
-  if (!p) return err('not_found', 'not a participant of this meeting');
-  if (Number(p.initiator_id) !== Number(userId)) {
-    return err('forbidden', 'only the person who opened the coordination settles it',
-      { reason: 'not_initiator' });
-  }
+  if (!p || p.state === 'opted_out') return err('not_found', 'not a participant of this meeting');
   if (p.meeting_status !== 'negotiating') {
     return err('invalid', 'meeting is not negotiating', { reason: 'not_negotiating' });
   }

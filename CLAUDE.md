@@ -215,7 +215,8 @@ Loads when you **Read** a file under `src/domain/reminders.js`, `src/domain/task
 - **A time taken OFF that table is never a message of its own — it rides the next thing each person hears about that coordination.**
 - **A time ADDED to it rides the same thing, as long as that thing has not gone out yet** — four messages in sixty-two seconds is what queueing beside it looks like
 - **A negotiation message WAITS a quarter of an hour behind the last one that reached that person, and everything meanwhile folds into it** — the fold already existed and `urgent` never let it run; a RESULT never waits.
-- **Opening a coordination is not a subscription to every answer in it** — a decline and an exit stop being messages of their own; the reason moves from a push to a pull, and only "nobody matched" still goes on its own.
+- **Opening a coordination is not a subscription to every answer in it** — a decline and an exit stop being messages of their own; the reason moves from a push to a pull.
+- **Nobody manages a coordination** — `initiator_id` is who opened it and grants nothing: anybody still in it settles, renames, cancels (in the chat) or leaves; its ending rides the next digest (`crossUser.closedMeetings`), never a message of its own.
 - **An explicit reminder replaces the automatic one only on the SAME local day; on another day it stands beside it.**
 - **An event is SAID, never only guessed, and it is never told back as a task.**
 - **A task already OPEN on somebody's list is never saved a second time.**
@@ -250,6 +251,7 @@ Loads when you **Read** a file under `src/jobs/checkin.js`, `src/jobs/onboarding
 - **A write from their own page IS the person answering** — `last_dashboard_at`, never `last_inbound_at`
 - **A "once ever" question is stamped on the PERSON, never deduped on the route that asks it.**
 - **The chag offer is that shape's second column (`holiday_quiet_asked_at`, migration 062), with two routes from the start.**
+- **…and the offer to add her to more groups is its third (`more_groups_offered_at`, migration 086)** — earned by a yes on the time a ROOM locked, and it rides the next check-in
 - **Deleting a user is not deleting a person until the GATEWAY's intake session goes too.**
 - **The ledgers are append-only.**
 - **The assistant is עולמה / Allma; the system is still olma2.**

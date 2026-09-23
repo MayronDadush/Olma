@@ -1,7 +1,7 @@
 'use strict';
 // meetings — one slice of the tool registry (see ../registry.js).
 const {
-  dashboardAuth, meetings, calendar, meetingFanout, S, enqueue, actorName, fanout, supersedeQueuedMeetingRows, activeParticipantsExcept, cancelCalendarCleanup, meetingBrief, CANCEL_CLEANUP_HINTS, tool, connectedUserByPhone, users, groupMeetings, ok, err,
+  dashboardAuth, meetings, calendar, meetingFanout, S, actorName, fanout, tool, connectedUserByPhone, users, groupMeetings, ok, err,
 } = require('./_shared');
 const format = require('../../../domain/message-format');
 const listBlock = require('../../../domain/list-block');
@@ -198,7 +198,7 @@ module.exports = [
   // about what is on the table: that one asks "does this time belong here",
   // this one ends the negotiation. Conflating them would put one word between
   // "put it up for discussion" and "it is decided".
-  tool('settle_meeting', 'Initiator only: set the meeting on one option NOW, without waiting ("בוא נקבע על שלישי, דנה לא יכולה"). Unanimity settles itself. Whoever never said yes is told and may bow out. Confirm the option first; option_id from get_meeting_status.',
+  tool('settle_meeting', 'Anyone in it: set the meeting on one option NOW, without waiting ("בוא נקבע על שלישי, דנה לא יכולה"). Unanimity settles itself. Whoever never said yes is told and may bow out. Confirm the option first; option_id from get_meeting_status.',
     { meeting_id: S('number', 'Meeting id'), option_id: S('number', 'The option to set it on') },
     ['meeting_id', 'option_id'],
     async (client, user, a) => {
@@ -206,7 +206,7 @@ module.exports = [
       if (!res.ok) return res;
       return meetingFanout.afterSettled(client, a.meeting_id, res, { actor: user });
     }),
-  tool('opt_out_of_meeting', 'Leave a meeting — while negotiating, OR "I can\'t come" after it was confirmed (it stays on for the others). One person bowing out, NOT a cancellation: when the user is the initiator, or means "call the whole thing off", that is cancel_meeting. Confirm with the user first.',
+  tool('opt_out_of_meeting', 'Leave a meeting — while negotiating, OR "I can\'t come" after it was confirmed (it stays on for the others). One person bowing out, NOT a cancellation — whoever opened it may leave too, and it carries on. "Call the whole thing off" is cancel_meeting. Confirm with the user first.',
     { meeting_id: S('number', 'Meeting id') }, ['meeting_id'],
     async (client, user, a) => {
       const res = await meetings.optOut(client, user.id, a.meeting_id);
@@ -287,39 +287,12 @@ module.exports = [
   // picker.js, and restore the doctrine paragraph in intake/agents-template.md.
   tool('list_my_meetings', 'Your recent meetings.', {}, [],
     (client, user) => meetings.listMine(client, user.id)),
-  tool('cancel_meeting', 'Cancel a meeting you initiated, for EVERYONE — negotiating or confirmed (until it starts). Every participant is told and the shared calendar event is removed. When the user only means THEY cannot come, that is opt_out_of_meeting — ask which they mean if unclear. Confirm with the user first.',
+  tool('cancel_meeting', 'Cancel a meeting you are in, for EVERYONE — anyone in it may; nobody manages one. Negotiating or confirmed (until it starts). Every participant is told and the shared calendar event is removed. When the user only means THEY cannot come, that is opt_out_of_meeting — ask which they mean if unclear. Confirm with the user first.',
     { meeting_id: S('number', 'Meeting id') }, ['meeting_id'],
-    async (client, user, a) => {
-      const brief = await meetingBrief(client, a.meeting_id);
-      const others = await activeParticipantsExcept(client, a.meeting_id, user.id);
-      const res = await meetings.cancelMeeting(client, user.id, a.meeting_id);
-      if (!res.ok) return res;
-      // Nothing about this meeting should still be on its way to anyone.
-      await supersedeQueuedMeetingRows(client, a.meeting_id, ['meeting_slot_proposed', 'meeting_invite']);
-      // A confirmed meeting is on calendars; take the shared event off first
-      // (best-effort, server-side) so most people have nothing left to do.
-      let roles = null, removed = false;
-      if (res.data.wasConfirmed) {
-        roles = await calendar.meetingCalendarRoles(client, a.meeting_id);
-        removed = (await calendar.removeMeetingEvent(client, a.meeting_id)).data.removed;
-      }
-      for (const uid of others) {
-        await enqueue(client, {
-          userId: uid, kind: 'meeting_cancelled', urgency: 'urgent',
-          payload: {
-            meetingId: Number(a.meeting_id), title: brief.title || 'meeting',
-            byName: actorName(user), wasConfirmed: Boolean(res.data.wasConfirmed),
-            slot: brief.confirmed_slot || undefined,
-            calendarCleanup: cancelCalendarCleanup(roles, removed, uid),
-          },
-          idempotencyKey: `mcanc:${a.meeting_id}:${uid}`,
-        });
-      }
-      const hint = CANCEL_CLEANUP_HINTS[cancelCalendarCleanup(roles, removed, user.id)];
-      if (hint) res.data.hint = hint;
-      return res;
-    }),
-  tool('set_meeting_title', 'Rename a meeting you initiated ("שיחה על הפרויקט"). The name is what everyone\'s invites and calendars show, so keep it in the user\'s words. Works while negotiating or after confirmation.',
+    // The whole cancellation — who is told, the calendar, the queued rows —
+    // lives in meeting-fanout, where the personal page reaches it too.
+    (client, user, a) => meetingFanout.cancelAndTell(client, user, a.meeting_id)),
+  tool('set_meeting_title', 'Rename a meeting you are in ("שיחה על הפרויקט") — anyone in it may. The name is what everyone\'s invites and calendars show, so keep it in the user\'s words. Works while negotiating or after confirmation.',
     { meeting_id: S('number', 'Meeting id'), title: S('string', 'The new name, in the user\'s language') },
     ['meeting_id', 'title'],
     async (client, user, a) => {

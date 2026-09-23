@@ -167,16 +167,26 @@ test('accept binding: a legacy row with no machine time still accepts', async ()
   });
 });
 
-test('a meeting of one cannot confirm; initiator cannot opt out; opt-out can close no_match', async () => {
+test('a meeting of one cannot confirm; opt-out can close no_match', async () => {
   await withClient(async (c) => {
     const m = (await meetings.startMeeting(c, alice.id, 'duo', [bob.id])).data.meeting;
     await meetings.proposeSlot(c, alice.id, m.id, 'Sunday 10:00, office', slotStart('Sunday 10:00, office'));
-
-    const initiatorExit = await meetings.optOut(c, alice.id, m.id);
-    assert.equal(initiatorExit.ok, false); // must cancel instead
-
     const r = await meetings.optOut(c, bob.id, m.id);
     assert.equal(r.data.meetingStatus, 'no_match'); // alice alone cannot confirm
+  });
+});
+
+// Nobody manages a coordination (owner, 2026-09-23): whoever opened it leaves
+// like anybody else, and it carries on for the rest.
+test('whoever opened it may leave, and it carries on without them', async () => {
+  await withClient(async (c) => {
+    const m = (await meetings.startMeeting(c, alice.id, 'trio-exit', [bob.id, carol.id])).data.meeting;
+    const r = await meetings.optOut(c, alice.id, m.id);
+    assert.equal(r.ok, true, r.ok ? '' : JSON.stringify(r.error));
+    assert.equal(r.data.meetingStatus, 'negotiating');
+    // …and whoever is left can still do everything to it.
+    assert.equal((await meetings.setTitle(c, bob.id, m.id, 'בלי אליס')).ok, true);
+    assert.equal((await meetings.setTitle(c, alice.id, m.id, 'שלי')).ok, false, 'she left — not hers to rename');
   });
 });
 
@@ -193,13 +203,13 @@ test('opt-out of a third participant can complete the confirmation gate', async 
   });
 });
 
-test('cancel is initiator-only; closed meetings reject all moves', async () => {
+test('anybody in it may cancel, nobody outside it; closed meetings reject all moves', async () => {
   await withClient(async (c) => {
     const m = (await meetings.startMeeting(c, alice.id, 'to-cancel', [bob.id])).data.meeting;
-    const notInitiator = await meetings.cancelMeeting(c, bob.id, m.id);
-    assert.equal(notInitiator.ok, false);
-    const cancelled = await meetings.cancelMeeting(c, alice.id, m.id);
-    assert.equal(cancelled.ok, true);
+    const outsider = await meetings.cancelMeeting(c, carol.id, m.id);
+    assert.equal(outsider.ok, false, 'not in it');
+    const cancelled = await meetings.cancelMeeting(c, bob.id, m.id);
+    assert.equal(cancelled.ok, true, 'he did not open it, and may cancel it');
     const late = await meetings.proposeSlot(c, alice.id, m.id, 'whenever', slotStart('whenever'));
     assert.equal(late.ok, false);
   });
@@ -698,15 +708,15 @@ async function confirmedMeeting(c, initiator, others, slotText = 'Tuesday 17:00,
   return Number(m.id);
 }
 
-test('the initiator can cancel a CONFIRMED meeting until it starts', async () => {
+test('anybody in it can cancel a CONFIRMED meeting until it starts', async () => {
   await withClient(async (c) => {
     const id = await confirmedMeeting(c, alice, [bob]);
 
-    // not the initiator → refused, same answer as "no such meeting"
-    const notMine = await meetings.cancelMeeting(c, bob.id, id);
-    assert.equal(notMine.ok, false);
+    // not in it → refused, same answer as "no such meeting"
+    const outsider = await meetings.cancelMeeting(c, carol.id, id);
+    assert.equal(outsider.ok, false);
 
-    const res = await meetings.cancelMeeting(c, alice.id, id);
+    const res = await meetings.cancelMeeting(c, bob.id, id);
     assert.equal(res.ok, true, JSON.stringify(res.error || {}));
     assert.equal(res.data.meetingStatus, 'cancelled');
     assert.equal(res.data.wasConfirmed, true, 'the caller must know a calendar may need cleaning');
@@ -733,19 +743,15 @@ test('a participant withdrawing from a confirmed trio leaves the meeting ON', as
   await withClient(async (c) => {
     const id = await confirmedMeeting(c, alice, [bob, carol]);
 
-    // the initiator is pointed at cancel_meeting instead
-    const initiatorTry = await meetings.optOut(c, alice.id, id);
-    assert.equal(initiatorTry.ok, false);
-    assert.match(initiatorTry.error.message, /cancel/);
-
-    const res = await meetings.optOut(c, bob.id, id);
+    // whoever opened it withdraws like anybody else (2026-09-23)
+    const res = await meetings.optOut(c, alice.id, id);
     assert.equal(res.ok, true, JSON.stringify(res.error || {}));
     assert.equal(res.data.withdrew, true);
     assert.equal(res.data.meetingStatus, 'confirmed', 'two people remain — still on');
 
-    const st = await meetings.getStatus(c, alice.id, id);
+    const st = await meetings.getStatus(c, bob.id, id);
     const states = Object.fromEntries(st.data.participants.map((p) => [p.user_id, p.state]));
-    assert.equal(states[bob.id], 'opted_out');
+    assert.equal(states[alice.id], 'opted_out');
     assert.equal(st.data.meeting.status, 'confirmed');
   });
 });
@@ -774,7 +780,7 @@ test('withdrawal after the meeting started is refused', async () => {
 
 // ---- titles -----------------------------------------------------------------
 
-test('an unnamed meeting is named after its people, and the initiator can rename it', async () => {
+test('an unnamed meeting is named after its people, and anybody in it can rename it', async () => {
   await withClient(async (c) => {
     const m = (await meetings.startMeeting(c, alice.id, '   ', [bob.id])).data.meeting;
     assert.match(m.title, /Alice/);
@@ -784,8 +790,9 @@ test('an unnamed meeting is named after its people, and the initiator can rename
     assert.equal(renamed.ok, true);
     assert.equal(renamed.data.title, 'שיחה על הפרויקט');
 
-    const notMine = await meetings.setTitle(c, bob.id, m.id, 'hijack');
-    assert.equal(notMine.ok, false);
+    const byBob = await meetings.setTitle(c, bob.id, m.id, 'שיחה על הפרויקט');
+    assert.equal(byBob.ok, true, 'nobody manages it — he may rename it too');
+    assert.equal((await meetings.setTitle(c, carol.id, m.id, 'hijack')).ok, false, 'not in it');
 
     const st = await meetings.getStatus(c, alice.id, m.id);
     assert.equal(st.data.meeting.title, 'שיחה על הפרויקט');

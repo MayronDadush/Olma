@@ -349,21 +349,14 @@ async function sweepUnblocks(client, nowIso) {
 // Nothing ever closed a negotiation whose moment had passed, so an unanswered
 // proposal stayed open forever and the check-in ladder kept asking about it —
 // a Saturday nudge about Friday's poker game. Closing it is half the fix; the
-// other half is telling the person, once, so a plan that quietly died does not
-// just vanish. Only the initiator hears: they are the one who can restart it.
+// other half is telling people, once, so a plan that quietly died does not
+// just vanish. That used to be a message to the opener alone; since
+// 2026-09-23 nobody manages a coordination, and the owner chose that it is
+// never a message of its own — it rides the next digest of everybody still in
+// it (digest.closedMeetings, keyed on `closed_at`, which this stamps).
 async function sweepStaleMeetings(client, nowMs) {
   const closed = await meetings.expireStaleMeetings(client, nowMs || Date.now());
-  const out = [];
-  for (const m of closed) {
-    const res = await enqueue(client, {
-      userId: Number(m.initiator_id), kind: 'meeting_expired',
-      payload: { meetingId: Number(m.id), title: m.title || 'meeting', slot: m.proposed_slot },
-      urgency: 'normal',
-      idempotencyKey: `mexpired:${m.id}`,
-    });
-    out.push({ meetingId: Number(m.id), notified: res.data.enqueued });
-  }
-  return out;
+  return closed.map((m) => ({ meetingId: Number(m.id) }));
 }
 
 // ---- meetings whose grace has run out ---------------------------------------
