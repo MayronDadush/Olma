@@ -214,6 +214,7 @@ never trust a dated narrative for something you are about to act on.
 - [The sentinel that only stripped itself (fixed 2026-09-15)](#the-sentinel-that-only-stripped-itself-fixed-2026-09-15)
 - [The working-out, measured (fixed 2026-09-15)](#the-working-out-measured-fixed-2026-09-15)
 - [The gate had no idea who was reading (fixed 2026-09-22)](#the-gate-had-no-idea-who-was-reading-fixed-2026-09-22)
+- [The working-out arrived in Hebrew (fixed 2026-09-23)](#the-working-out-arrived-in-hebrew-fixed-2026-09-23)
 - [The working-out arrived instead of the message (fixed 2026-09-10)](#the-working-out-arrived-instead-of-the-message-fixed-2026-09-10)
 - [The greeter's own message id (fixed 2026-09-19)](#the-greeters-own-message-id-fixed-2026-09-19)
 - [The gate knew the leak's vocabulary, not its shape (fixed 2026-09-15)](#the-gate-knew-the-leaks-vocabulary-not-its-shape-fixed-2026-09-15)
@@ -9243,6 +9244,49 @@ working-out and the real work was a tool call, and not one real reply touched.
 The parity corpus now runs every case through both implementations under all
 three values of the flag, because an option is the newest way for the port and
 the module to drift and the default is only one of its three answers.
+
+### The working-out arrived in Hebrew (fixed 2026-09-23)
+
+Miron, 09:52 UTC, in the middle of the poker coordination. He answered
+Olma's "מתי נוח לך?" with "צריך שכולם יהיו פנויים", and what came back was
+thirteen lines of the model thinking about him: "הוא הגיב על ההודעה שלי על
+הפוקר…", "אני צריך להבין: האם הוא מתכוון…", "אכתוב לו ש…", then an English
+paragraph of our own reply-target instruction set off with `>`, then two more
+Hebrew paragraphs ending "אני צריך להסביר…". No answer to him anywhere in it.
+
+`gateReply` was run on the exact text afterwards: `pass`, zero findings. Two
+reasons, both structural. Every drop tier was English: the lexical ones, the
+deliberation shapes, and the reader-language tier, which by design ignores a
+line with a Hebrew letter or a `>`. The one English line did name a block,
+"Reply target of current user message", but in quotation marks, and
+`scannable` strips quotations before `BLOCK_RE` reads the line. That is right
+for somebody else's words and wrong for a name only the model ever sees.
+
+The fix has two drops and one report. `BLOCK_RE` now reads the raw line too.
+A new `hebrew` tier drops the model's next step in the first person, "אני
+צריך/צריכה ל" plus a verb off a closed list. It was chosen the way the English
+tier was, from traffic. Over 2,697 assistant messages from every u-* agent in
+21 days it changes exactly three, all working-out: this one, u-24's "אני צריכה
+למצוא את המשימה הזו כדי לצרף לה תזכורת", and u-18's "אני צריך לסמן את כל
+המשימות". The verb list is narrower than the first draft. "לדעת", "לבדוק",
+"לוודא", "לחפש", "לראות" and "לעדכן" were left off because each makes a sentence
+Olma really says to a person ("אני צריכה לבדוק רגע ביומן — מתי בערך?"), and
+none fired on anything in the 21 days.
+
+The other shape in the leak, the reader in the third person ("הוא הגיב על
+ההודעה שלי"), was measured and left REPORT-only. It hit this message and
+nothing else, a message the step tier already cancels. And every tell that
+separates it from a relay also shows up in a real relay: "היא ענתה על ההודעה
+שלי: מתאים לה שלישי". So `(ההודעה|השאלה|התשובה) שלי` is counted as
+`hebrew-narration`, and `NARRATION_RE` learned הגיב, אומר, מבקש, שואל, עונה.
+`measure-reply-gate.js` prints both counts. The next person reads those
+paragraphs before making the report a drop.
+
+u-18's message shows what is left. The cut is by paragraph, and its working-out
+continued in a paragraph with no step in it, so that message is trimmed rather
+than cancelled. The port in `gateway-plugin/olma-turn/index.js` carries all of
+it, held by the parity corpus. Like every change to the plugin, it is inert
+until the gateway restarts.
 
 ### The working-out arrived instead of the message (fixed 2026-09-10)
 
