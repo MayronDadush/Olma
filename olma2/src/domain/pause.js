@@ -74,6 +74,25 @@ function roomInviteSpent(row) {
   return new Date(row.room_invite_sent_at).getTime() >= new Date(row.paused_at).getTime();
 }
 
+// The same allowance, for somebody who is NOT paused but has stopped answering
+// — `checkin_misses >= 1`, the gate's other silence (owner, 2026-09-22). There
+// is no `paused_at` to anchor "this run of silence" to, so the anchor is their
+// last word: a stamp older than that was spent during a silence that has since
+// ended, and writing or marking something on their page resets the counter
+// anyway, so the allowance re-arms itself exactly when the silence does. Both
+// columns, because the page is the DM's equal here as it is in the gate.
+// Never spoken at all and a stamp on the row means spent — the allowance is
+// one per silence, not one per coordination.
+function quietRoomInviteSpent(row) {
+  if (!row || !row.room_invite_sent_at) return false;
+  const spent = new Date(row.room_invite_sent_at).getTime();
+  const spoke = Math.max(
+    row.last_inbound_at ? new Date(row.last_inbound_at).getTime() : 0,
+    row.last_dashboard_at ? new Date(row.last_dashboard_at).getTime() : 0,
+  );
+  return spent >= spoke;
+}
+
 const MAX_CATCHUP_STEPS = 800; // ~2 years of daily; a guard, never a limit in practice
 
 function nextOccurrenceAfter(from, rule, notBefore, tz) {
@@ -302,6 +321,7 @@ async function resumeAfterRoomInvite(client, userId, { now = new Date() } = {}) 
 }
 
 module.exports = {
-  pauseUser, resumeUser, quietPause, quietResume, stopResume, resumeAfterRoomInvite, roomInviteSpent,
+  pauseUser, resumeUser, quietPause, quietResume, stopResume, resumeAfterRoomInvite,
+  roomInviteSpent, quietRoomInviteSpent,
   isPaused, nextOccurrenceAfter, QUIET_LADDER, SAID_STOP, ROOM_INVITE_ANSWER_MS,
 };

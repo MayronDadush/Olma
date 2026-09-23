@@ -91,6 +91,96 @@ test('gate: the one room invite passes a pause and a ladder silence, and nothing
     row: invite }).action, 'hold');
 });
 
+// ── The same allowance, for a silence that is not a pause (owner, 2026-09-22)
+// Guy had written to Olma on 2026-09-08, was never paused, and stood at two
+// check-in misses when Padel Gang started its first coordination. The pause
+// branch has had the allowance since 2026-09-13; the quiet branch had none, so
+// his invite was dropped twice in three minutes while the room was told
+// nothing about him at all.
+test('gate: one room invite passes the quiet drop too, and only the allowance spends it', () => {
+  const base = {
+    plan: 'free', blocked: false, window: { start: '09:00', end: '21:00' }, tz: 'Asia/Jerusalem',
+    sentToday: 0, budget: 4, now: new Date('2026-08-16T12:00:00Z'), checkinMisses: 2,
+  };
+  const invite = { kind: 'meeting_invite', urgency: 'urgent', expires_at: null };
+  assert.equal(decide({ ...base, row: invite }).holdReason, 'quiet', 'two misses and no allowance');
+  const past = decide({ ...base, quietRoomInvite: true, row: invite });
+  assert.equal(past.action, 'deliver');
+  assert.equal(past.spendsQuietRoomInvite, true, 'the gate says the allowance is what carried it');
+
+  // A row the room window or their own page carried needs no allowance, so it
+  // must not burn one.
+  for (const carried of [{ groupWroteAt: base.now }, { dashboardWroteAt: base.now }]) {
+    const v = decide({ ...base, ...carried, quietRoomInvite: true, row: invite });
+    assert.equal(v.action, 'deliver');
+    assert.equal(v.spendsQuietRoomInvite, undefined, `${Object.keys(carried)[0]} is not an allowance`);
+  }
+  // The night still applies to it, like anything else Olma decided to say. What
+  // keeps it to an INVITE is the worker, which is the only thing that sets the
+  // fact — asserted against a real queue in the test below.
+  assert.equal(decide({ ...base, quietRoomInvite: true, now: new Date('2026-08-16T00:00:00Z'), row: invite }).action,
+    'hold');
+});
+
+test('pause.quietRoomInviteSpent: one per run of silence, anchored on their last word', () => {
+  const t = (ms) => new Date(Date.now() + ms);
+  assert.equal(pause.quietRoomInviteSpent({ last_inbound_at: t(0) }), false, 'nothing spent yet');
+  assert.equal(pause.quietRoomInviteSpent({ room_invite_sent_at: t(0), last_inbound_at: t(-1000) }), true);
+  assert.equal(pause.quietRoomInviteSpent({ room_invite_sent_at: t(-1000), last_inbound_at: t(0) }), false,
+    'they wrote after it, so this silence is a new one');
+  assert.equal(pause.quietRoomInviteSpent({ room_invite_sent_at: t(-1000), last_dashboard_at: t(0) }), false,
+    'the page is the DM\'s equal here, as it is in the gate');
+  assert.equal(pause.quietRoomInviteSpent({ room_invite_sent_at: t(0) }), true,
+    'never spoken at all, and it has been spent');
+});
+
+test('a silent member who was never paused hears about the coordination once', async () => {
+  const { group, people } = await room(5);
+  const [asker, other, silent] = people;
+  // Two misses: the ladder asked and got nothing back, which is where the
+  // allowance used to run out. Their last word is pushed back so the stamp the
+  // drain writes lands after it.
+  await db.pool.query(
+    `UPDATE users SET checkin_misses = 2, last_inbound_at = now() - interval '14 days' WHERE id = $1`, [silent.id]);
+
+  const first = await start(group, asker, 'פאדל');
+  assert.equal(first.participants, 3, 'a silence is not a pause and nothing drops them from the room');
+  const rec = recorder();
+  await drainOnce(db.pool, rec.deliver, GATE_NOW, live);
+
+  const toSilent = rec.sent.filter((r) => Number(r.user_id) === Number(silent.id));
+  assert.equal(toSilent.length, 1, 'the invite reached them');
+  assert.equal(toSilent[0].payload.pausedNotice, undefined, 'they are not paused and are not told they are');
+  assert.doesNotMatch(instructionFor(toSilent[0]), /PAUSED/);
+  const { rows: [u] } = await db.pool.query(`SELECT room_invite_sent_at FROM users WHERE id = $1`, [silent.id]);
+  assert.ok(u.room_invite_sent_at, 'the allowance is spent once the send confirmed');
+  assert.equal(pause.quietRoomInviteSpent({ ...u, last_inbound_at: null, last_dashboard_at: null }), true);
+  const { rows: trail } = await db.pool.query(
+    `SELECT event FROM audit_log WHERE actor_id = $1 AND event LIKE '%room_invite_sent'`, [silent.id]);
+  assert.deepEqual(trail.map((r) => r.event), ['quiet.room_invite_sent'],
+    'the trail says which of the two rules paid');
+  assert.ok(rec.sent.some((r) => Number(r.user_id) === Number(other.id)), 'everybody else is unaffected');
+
+  // Nothing else of theirs moves: the allowance is an invite's, and the rest of
+  // this person's queue is as silent as it was before.
+  await db.pool.query(
+    `INSERT INTO outbox (user_id, kind, payload, urgency) VALUES ($1, 'reminder', $2::jsonb, 'normal')`,
+    [silent.id, JSON.stringify({ title: 'לשתות מים', auto: true, rung: 2 })]);
+  await drainOnce(db.pool, recorder().deliver, GATE_NOW, live);
+  const { rows: rem } = await db.pool.query(
+    `SELECT hold_reason FROM outbox WHERE user_id = $1 AND kind = 'reminder'`, [silent.id]);
+  assert.deepEqual(rem.map((r) => r.hold_reason), ['quiet']);
+
+  // A second coordination inside the same silence gets nothing — one, not one
+  // per coordination.
+  await close(first.meeting.id);
+  const second = await start(group, asker, 'פאדל שוב');
+  await drainOnce(db.pool, recorder().deliver, GATE_NOW, live);
+  const rows = (await inviteRows(second.meeting.id)).filter((r) => Number(r.user_id) === Number(silent.id));
+  assert.equal(rows.length, 1, 'the row is still created — the room counts them in');
+  assert.equal(rows[0].hold_reason, 'quiet', 'and the allowance is spent, so it drops as it always did');
+});
+
 test('a paused member hears about the coordination once, and the second one leaves them out', async () => {
   const { group, people } = await room(1);
   const [asker, other, paused] = people;
