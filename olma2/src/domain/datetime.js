@@ -140,6 +140,31 @@ function weekdayClash(label, text, startsAt, tz) {
     { reason: 'weekday_mismatch', namedWeekdays: named, actualWeekday: actual });
 }
 
+// The same question for a TASK, which has one reading a meeting slot never
+// has. A slot description is always ABOUT the slot, so any weekday in it must
+// be the slot's own and `weekdayClash` can stay blunt. A person asking for a
+// task can date the OBJECT instead — "תקנה מתנה ליום שישי" dates the gift, and
+// the buying belongs before it — so a Friday in their words against a Wednesday
+// due date is the ordinary case and refusing it would fire on ordinary input
+// (`rules/detectors.md`). That is `datesTheObject`'s shape, and the two stay
+// disjoint here the same way they are there: ל־ is dropped before the check, so
+// only a day the person pinned the TASK to (ב־, or a bare "יום ראשון") is ever
+// compared. Anything the strip removes is the model's to resolve, not ours to
+// refuse.
+const HE_FOR_WEEKDAY_STRIP = /(?:^|\s)ל(?:יום\s+)?(?:ראשון|שני|שלישי|רביעי|חמישי|שישי|שבת)(?![\u0590-\u05FF])/gu;
+
+function taskWeekdayClash(label, text, startsAt, tz, note) {
+  if (typeof text !== 'string') return null;
+  const clash = weekdayClash(label, text.replace(HE_FOR_WEEKDAY_STRIP, ' '), startsAt, tz);
+  // `note` says what did NOT happen, in the words the sibling refusals on this
+  // path use (`pastMoment`). A refusal that describes only the disagreement
+  // leaves the model to guess whether the row went in, and guessing wrong
+  // there is a second "רשמתי" about something that was never written.
+  if (!clash || !note) return clash;
+  const { code, message, ...rest } = clash.error;
+  return err(code, `${message.replace(/\s*$/, '')} NOTHING was saved — ${note}.`, rest);
+}
+
 // ---- a date that belongs to the OBJECT, not to the task ---------------------
 //
 // "לארגן אימון לרביעי" — organise a training FOR Wednesday. The ל־ dates the
@@ -300,7 +325,7 @@ function weekdayOfParts({ y, m, d }) {
 module.exports = {
   datesTheObject,
   OFFSET_RE, hasOffset, badTime,
-  weekdaysInText, weekdayInZone, weekdayClash,
+  weekdaysInText, weekdayInZone, weekdayClash, taskWeekdayClash,
   namesAMoment,
   partsInZone, zoneOffsetMs, instantInZone, daysInMonth, weekdayOfParts,
 };

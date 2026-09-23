@@ -64,6 +64,21 @@ const { IDENTITY_PARAM } = require('../src/adapters/mcp/identity-param');
 // an answer about a time into a room. The ceiling still matters at 56,500: the
 // margin is 449, one ordinary tool, so the argument the paragraphs above make
 // is unchanged and the next one has to be made again.
+//
+// **That 449 was true for one day.** Measured 2026-09-23, with no tool added
+// since: 56,245, a margin of 255. Ordinary growth across a handful of
+// descriptions had spent 194 of it while nobody was counting — which is what
+// this test exists to make impossible to do silently, and reading the number
+// out of this comment instead of running the measurement is how a session
+// plans its change against room that is no longer there. **Ask the code, not
+// the paragraph.** `add_task`'s `when_said` (2026-09-23, 183 chars all in)
+// then took it to 56,428, a margin of 72. It buys the weekday guard for the
+// one tool that WRITES the row; `edit_task`, `snooze_task` and
+// `set_task_reminder` are deliberately left unguarded, because four copies of
+// it do not fit and one guarded door beats an argument about the ceiling.
+// English on purpose, and that is not a style choice: JSON escapes every
+// Hebrew character as \uXXXX at six chars each, so the founding example
+// ("ביום הראשון הקרוב") would have cost more than the rule it illustrates.
 const JSON_CEILING = 56_500;
 const DESCRIPTION_CEILING = 700;
 const IDENTITY_DESCRIPTION_CEILING = 40;
