@@ -15,6 +15,7 @@ paths:
   - "olma2/src/jobs/fact-extraction.js"
   - "olma2/src/jobs/sweeps.js"
   - "olma2/src/domain/quiet-facts.js"
+  - "olma2/src/domain/chase-deadline.js"
 ---
 
 # Reminders, tasks and dates
@@ -637,3 +638,31 @@ title means this file. Grep the title, not the filename.
   speaks on the due day; and **`set_task_reminder(nudge)` says on its result
   which branch it took** (`hints.chase`) — a result silent about the shape leaves
   the hint that described the OTHER branch as the model's only account of it.
+
+- **Whether a message ASKED for a chase is read by code, and the model is only
+  told what the server will do** (2026-09-24, the owner's call after six red
+  samples in a row). The model read חיים's sentence two ways — it dated "take
+  the camera in" for tomorrow and armed one reminder — and no hint could settle
+  which reading was right, because both were reasonable. So the gateway hook
+  (`olma-turn-open`, `chaseDeadline`) reads a request for help plus "עד" plus a
+  horizon, and sends a KIND (`next_week`, `weekday`, `date`, …) and whether a
+  clock hour was said, never the words; `domain/chase-deadline` resolves it
+  against THEIR clock at the moment the message arrived (an Israeli week starts
+  on Sunday, so "שבוע הבא" said on a Tuesday is the coming Sunday); and
+  `add_task` on that turn is due THAT day with `nudge` on, whatever date the
+  model gave it, while an hour survives only if they named one. A task already
+  on their list is chased the same way through `set_task_reminder` (`startChase`'s
+  `until`). **Measured before it was written**: of 861 real inbound messages,
+  112 ask for something, 10 say "עד", and ONE does both — his. The nine others
+  are hour ranges, trips and shifts, and they are the test's negatives. **Three
+  shapes are refused on purpose**: a bare number after "עד" (an hour range), a
+  dotted date with no year ("עד 8.10" is a time), and a message naming a
+  DIFFERENT day for the reminder ("תזכיר לי מחר להגיש עד סוף השבוע" is one
+  reminder with a deadline) unless it also says "כל יום". **The verdict is
+  spent once and dies after fifteen minutes** (`chaseDeadline.pending`): the
+  shim keeps one turn object for hours, and a chase nobody used must not wait
+  there for the next task somebody saves about something else. **The hook is
+  read at gateway STARTUP** — until a restart this is live code and inert, like
+  `thanksOnly`. The eval harness reads the same three verdicts with the same
+  functions and sends them, because the CLI fires no hook and the eval was
+  otherwise measuring a reading production no longer asks the model for.

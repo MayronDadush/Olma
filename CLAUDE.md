@@ -200,7 +200,7 @@ Loads when you **Read** a file under `src/brokerd/**`, `src/domain/turn.js`, `sr
 ### Reminders, tasks and dates
 
 **`.claude/rules/reminders-and-tasks.md`** — the three different questions about a pending reminder, ladders, duplicate titles, dating a task, and due_at against remind_at.
-Loads when you **Read** a file under `src/domain/reminders.js`, `src/domain/tasks.js`, `src/domain/auto-reminder.js` and 12 more.
+Loads when you **Read** a file under `src/domain/reminders.js`, `src/domain/tasks.js`, `src/domain/auto-reminder.js` and 13 more.
 
 - **"What is still pending" must ask `attempts = 0`**
 - **…and "what is still going to REACH them" is a THIRD question, which `attempts = 0` answers wrongly.**
@@ -234,6 +234,7 @@ Loads when you **Read** a file under `src/domain/reminders.js`, `src/domain/task
 - **The owner decided the four things about a chase that no reading of the code could settle** — the day they ask counts, the hour is one they already hear from Olma, a quiet day is skipped, and "עד ש…" plus a request for help is what arms one.
 - **A chase is the one arming whose SHAPE is news, whoever picked the hour** — a 👍 cannot carry a cadence, and a line that says only "every day" about something with an end is a promise to keep going for ever.
 - **The second call echoes the moment already armed, and that is not an hour anybody named** — a chase replaces every automatic row in its span, and its result says which branch it took
+- **Whether a message ASKED for a chase is read by code, and the model is only told what the server will do** — the gateway hook sends a deadline KIND, `add_task` on that turn is due that day with `nudge` on, and it needs a gateway restart to go live
 
 ### People, silence, and data you must not get wrong
 
