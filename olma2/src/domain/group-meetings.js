@@ -217,12 +217,19 @@ async function statusOf(client, group, meeting) {
   const active = parts.filter((p) => p.state !== 'opted_out').map((p) => Number(p.user_id));
   const optedOut = parts.filter((p) => p.state === 'opted_out').map((p) => who(p.user_id));
 
-  // When the table last MOVED, for the room's own "השולחן זז" line: a time
+  // EVERY moment the table moved, for the room's own "השולחן זז" line: a time
   // added carries `created_at`, a time taken off carries `decided_at`, and
   // GREATEST ignores the null on the half that does not apply.
-  const { rows: [changed] } = await client.query(
-    `SELECT max(GREATEST(created_at, decided_at)) AS at FROM meeting_options WHERE meeting_id = $1`,
-    [meeting.id]);
+  //
+  // The list and not only the newest, because the room waits a quarter of an
+  // hour before it says the table moved (`group-voice.TABLE_SETTLE_MS`) and
+  // the clock on that starts at the FIRST change the room has not heard about
+  // — which is the one thing a `max()` throws away. It is bounded by the five
+  // options a coordination may hold plus whatever has been taken off it.
+  const { rows: changes } = await client.query(
+    `SELECT GREATEST(created_at, decided_at) AS at FROM meeting_options
+      WHERE meeting_id = $1 ORDER BY at`, [meeting.id]);
+  const changedAts = changes.map((r) => r.at).filter(Boolean);
   const all = await options.list(client, Number(meeting.id));
   const onTable = all.filter((o) => o.status === 'active');
   const answeredSomething = new Set();
@@ -264,7 +271,8 @@ async function statusOf(client, group, meeting) {
       // about (owner, 2026-09-20: only when nobody said one).
       location: meeting.location === undefined ? null : (meeting.location || null),
       startedBy: who(meeting.initiator_id).name,
-      tableChangedAt: (changed && changed.at) || null,
+      tableChangedAt: changedAts.length ? changedAts[changedAts.length - 1] : null,
+      tableChangedAts: changedAts,
       participants: active.length,
       // Members of the ROOM this coordination could not sweep in at all: they
       // have never written to her, so there is nobody to ask. A COUNT and never

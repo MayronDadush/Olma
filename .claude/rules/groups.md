@@ -281,14 +281,33 @@ have already had to be argued for.
   avoids — which is also why nobody is named, in a line that would otherwise be
   the easiest place to break the tag-not-name rule below.
 
+- **A tag is a NUMBER, and the roster hands us LIDs in the same column** (owner,
+  2026-09-22). `chat_group_members.phone` holds a WhatsApp LID for members the
+  gateway only ever named that way: the roster is the envelope's
+  `group_members`, a list of digits with no JID on it, so nothing downstream can
+  see which is which. `proactive-text.isTaggableNumber` cuts at 13 digits — the
+  box's own numbers: 2,673 LID keys run 12-15 digits, 5,346 real numbers stop at
+  13, so nothing 14 or longer has ever been a number here and no real member is
+  silenced. `mentionToken` answers `null` and `mentionTokens` filters before
+  `MAX_TAGS`, so the overflow count counts people. **It is a filter, not a
+  guarantee** — 95 of those LIDs are 12-13 digits and indistinguishable, one of
+  Padel Gang's three among them — so never read a rendered tag list as
+  "everybody who is missing"; the airtight answer is upstream. **And a line whose
+  whole content is tags is not said when it can name nobody**: the gate notice
+  is skipped, uncounted and unstamped rather than going out as
+  `עוד מחכה ל:  🧐`, which costs the owner's "every tag gets an answer" and is
+  left as a cost, because the sentence for a room waiting on somebody we cannot
+  name is his to write (`incidents.md`, "The room asked three numbers that were
+  nobody").
+
 - **Every line a room hears is said once, except the TABLE moving, which is
-  news every time** (migration 082, `meetings.group_table_at`; owner,
+  news every time** (migration 084, `meetings.group_table_at`; owner,
   2026-09-22). מירון's padel room was told she had started and that there was
   a direction, and then heard nothing all afternoon while שבת 16:00 came off,
   three times went on and two people turned Wednesday down. So that one line
   is a WATERMARK rather than a flag — the moment the room was last told what
-  is on the table, against the newest change to any option (`created_at` for
-  one added, `decided_at` for one removed). **The watermark is the BASE line
+  is on the table, against every change to any option (`created_at` for one
+  added, `decided_at` for one removed). **The watermark is the BASE line
   and never the started line**: the first time somebody puts a time up, the
   table is being LAID, not moving, and the first cut of this said "השולחן זז —
   עכשיו מועד אחד" about it until `tests/group-voice.test.js` refused. It says
@@ -296,6 +315,25 @@ have already had to be argued for.
   because whose answer is whose is still nobody else's to hear. Its
   idempotency key carries the change's own timestamp, so one line per
   movement and a re-run of the pass collapses onto it.
+
+- **…and it waits a quarter of an hour, so a burst of changes is ONE sentence**
+  (`group-voice.TABLE_SETTLE_MS`, owner 2026-09-22: the room should wait before
+  it announces a change, so that changes which overlap in that time do not each
+  get their own message). The same fifteen minutes as the private side's
+  `meeting-fanout.PACE_MS`, off the same afternoon: מירון's table moved at
+  16:14, 16:22, 16:23 and 16:25, and `group_voice` runs every sixty seconds, so
+  an ungated line is the private complaint said out loud in the room. **The
+  clock starts at the FIRST change the room has not heard about, never at the
+  newest** — waiting for the table to go QUIET reads better and starves, since a
+  room that keeps adding times would never be told anything at all. It gates
+  BOTH lines about the table moving, `table` and `moved`: a time deleted and
+  replaced thirty seconds later is one thing that happened, and said at once it
+  is "שבת 16:00 כבר לא על השולחן" followed a minute later by the table having
+  moved again. Nothing else waits — "she has started" is the line whose whole
+  value is being early, and a base, a chase and a "סגור" are each said once.
+  **The stamp is the clock the DECISION was made on and never SQL's `now()`**:
+  two of those columns are read back as moments rather than flags, so a stamp
+  from a different clock is a quarter of an hour that measures nothing.
 
 - **The room is chased an HOUR after she starts, not half way to the thing**
   (`group-voice.CHASE_AFTER_MS`). Half the distance, clamped to [1h, 24h],
@@ -306,7 +344,6 @@ have already had to be argued for.
   on this room — גל had been written to four times and not answered, so he is
   nameable; גיא had every message dropped at the gate as `quiet`, was never
   actually asked, and must not be.
-
 - **The "סגור" line names who can make it, a calendar line is said only for
   a SHARED event, and a base line is never said to nobody** (owner,
   2026-09-20, off coordinations 35–37). `group-meetings.statusOf` exposes
@@ -329,6 +366,28 @@ have already had to be argued for.
   `@<digits>` in the message she received is the sender tagging HER — she
   echoed her own LID as if it were Yuval's (`incidents.md`, "The room waited
   for nobody").
+
+- **A time the room was TOLD about and that has since left the table is said
+  again; a time merely overtaken is not** (owner, 2026-09-22: "יש אנשים
+  שסימנו אותו ועכשיו הוא לא רלוונטי"). `group_base_at` says the line was said
+  and cannot say WHICH time it said, so Padel Gang held שבת 16:00 for the rest
+  of its coordination — eleven minutes after Sharon deleted it and put 17:00 on
+  the table, with two people's yes on the time she removed. `meetings.
+  group_base_slot` (migration 082) is the slot text the room actually heard,
+  and `group-voice.decideGroupLine`'s `namedGone` is the whole trigger: that
+  slot is no longer among the active options AND another one leads. **Three
+  things it deliberately is not.** A new leading time with the old one still on
+  the table says NOTHING — the room's picture is still true, and a line per
+  change of lead is how this family of lines becomes the thing the owner asked
+  it never to be. Nothing is said until a replacement has `enough` — the stamp
+  goes on naming the gone slot, so the line simply waits and goes out with a
+  direction rather than announcing a hole. And it is not once per
+  coordination: the `group_outbox` key carries the time that WENT
+  (`g<gid>:m<mid>:moved:<was>`), so a second named time leaving the table is a
+  second line and the same one is never said twice. `group_coord_moved` carries
+  the new direction as `{{lead}}`, rendered from `group_coord_base` itself, so
+  the owner rewords "יש כיוון" in one place (`incidents.md`, "The room held a
+  time that no longer existed").
 
 - **The place is the room's own words, asked for only when nobody said one,
   and it rides the confirmation onto the calendar event** (owner,

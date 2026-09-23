@@ -42,6 +42,37 @@ const CHASE_FALLBACK_MS = 6 * 3600_000;
 // keeps the old instinct for the case it was actually written for: a game in
 // ninety minutes is chased in forty-five, not in sixty.
 const CHASE_AFTER_MS = 3600_000;
+// How long the room waits after the table starts moving before it says so
+// (owner, 2026-09-22: "החדר צריך לחכות לפחות רבע שעה עד שהוא מכריז על שינוי,
+// בשביל שאם אנשים עושים שינויים נוספים בזמן הזה הקבוצה לא תקבל חפירה על כל
+// דבר בנפרד"). The same quarter of an hour as the private side's
+// `meeting-fanout.PACE_MS`, for the same reason and off the same afternoon:
+// מירון's table moved at 16:14, 16:22, 16:23 and 16:25, and `group_voice`
+// runs every sixty seconds, so an ungated line would have been four messages
+// in the room in eleven minutes — the private complaint, said out loud.
+//
+// The clock starts at the FIRST change the room has not heard about, never at
+// the newest one. Waiting for the table to go QUIET reads better and starves:
+// a room that keeps adding times would never be told anything at all. Opening
+// the window at the first change means everything that lands inside it is one
+// sentence and the sentence always comes, a quarter of an hour in.
+//
+// Nothing else here waits. "She has started" is the line whose whole value is
+// being early, and a base, a chase and a "סגור" are each said once in a
+// coordination — only the two lines about the table MOVING can arrive in a
+// burst, and they are the two this gates.
+const TABLE_SETTLE_MS = 15 * 60_000;
+
+// The moment the room may speak about a table that has moved since it was last
+// told, or null when it has not moved at all. `co.tableChangedAts` is every
+// moment any option was added or taken off (`group-meetings.statusOf`).
+function tableSettledAt(co, tableSaidAtMs) {
+  const unheard = (co.tableChangedAts || [])
+    .map((t) => new Date(t).getTime())
+    .filter((t) => t > tableSaidAtMs);
+  return unheard.length ? Math.min(...unheard) + TABLE_SETTLE_MS : null;
+}
+
 // The two reminders about a coordination that is already set. "An hour
 // before" is exactly that; the day-of line is skipped when the thing is
 // already close, because two messages three hours apart about the same
@@ -92,7 +123,7 @@ function leadingOption(options) {
 // saying the base of a plan that is already settled is worse than saying
 // nothing.
 function decideGroupLine(co, {
-  saidStarted, saidBase, saidChase, saidDone, saidCalendar, saidDayOf, saidHour,
+  saidStarted, saidBase, saidBaseSlot, saidChase, saidDone, saidCalendar, saidDayOf, saidHour,
   startedAtMs, nowMs, timezone, tableSaidAtMs,
 } = {}) {
   if (!co) return { kind: 'none', reason: 'nothing being coordinated' };
@@ -130,7 +161,29 @@ function decideGroupLine(co, {
   }
 
   const lead = leadingOption(co.options);
-  if (!saidBase && lead) {
+  // The room was told a time, and that time is no longer on the table (owner,
+  // 2026-09-22: "יש אנשים שסימנו אותו ועכשיו הוא לא רלוונטי"). `group_base_at`
+  // alone could not see this — it says the line was SAID and not which time it
+  // said — so Padel Gang went on holding שבת 16:00 for as long as the
+  // coordination ran, eleven minutes after Sharon deleted it and replaced it
+  // with 17:00. `saidBaseSlot` is that slot text, and this is deliberately the
+  // narrowest trigger that answers the owner's reason: a leading time merely
+  // OVERTAKEN by another leaves the room's picture true, and only a time that
+  // stopped existing makes it false. It is also what bounds the line — one per
+  // named slot that disappeared, not one per change of lead — and why nothing
+  // is said until there is a new direction to say: the stamp keeps naming the
+  // gone slot, so the line simply waits for `enough` and goes out then.
+  //
+  // It waits out the settle like the table line below, and for the owner's own
+  // reason: the removal that makes this true is itself a movement of the table,
+  // and a time deleted and replaced thirty seconds later is ONE thing that
+  // happened. Said immediately, the room would read "שבת 16:00 כבר לא על
+  // השולחן" and then, a minute later, that the table had moved again.
+  const settledAt = tableSettledAt(co, tableSaidAtMs || 0);
+  const settled = settledAt !== null && nowMs >= settledAt;
+  const namedGone = Boolean(saidBase && saidBaseSlot && lead && saidBaseSlot !== lead.slot
+    && !(co.options || []).some((o) => o.slot === saidBaseSlot) && settled);
+  if ((!saidBase || namedGone) && lead) {
     // What "a base" is depends on what the room said it needs. A game has a
     // number and it is that number; anywhere else two people who can both make
     // the same time IS the direction, and one person agreeing with themselves
@@ -145,7 +198,8 @@ function decideGroupLine(co, {
     // to say while somebody is still owed; with nobody missing, or the
     // grace already armed, the next thing this room hears is "סגור".
     if (enough && missing.length && !co.settleDueAt) {
-      return { kind: 'base', slot: lead.slot, yes: lead.yes.length, missing: missing.slice(0, MAX_TAGS) };
+      const line = { slot: lead.slot, yes: lead.yes.length, missing: missing.slice(0, MAX_TAGS) };
+      return namedGone ? { kind: 'moved', was: saidBaseSlot, ...line } : { kind: 'base', ...line };
     }
   }
 
@@ -180,8 +234,7 @@ function decideGroupLine(co, {
   // direction (`tests/group-voice.test.js` asserted exactly this and caught
   // the first cut of this branch saying "השולחן זז — עכשיו מועד אחד").
   const onTable = (co.options || []).length;
-  const changedAt = co.tableChangedAt ? new Date(co.tableChangedAt).getTime() : 0;
-  if (onTable && tableSaidAtMs && changedAt > tableSaidAtMs) {
+  if (onTable && tableSaidAtMs && settled) {
     return { kind: 'table', count: onTable, lead: lead ? lead.slot : null };
   }
   return { kind: 'none', reason: 'nothing new to say' };
@@ -208,5 +261,6 @@ function earliestStart(co) {
 
 module.exports = {
   decideGroupLine, leadingOption, chaseDueAt, localDay, whoIsIn,
-  CHASE_FALLBACK_MS, CHASE_AFTER_MS, HOUR_BEFORE_MS, DAY_OF_MIN_LEAD_MS,
+  tableSettledAt,
+  CHASE_FALLBACK_MS, CHASE_AFTER_MS, HOUR_BEFORE_MS, DAY_OF_MIN_LEAD_MS, TABLE_SETTLE_MS,
 };

@@ -74,3 +74,46 @@ test('no line guesses the gender of a single person', () => {
   // Second-person singular endings are the trap: "אתה", "שלך", "תשלח".
   assert.ok(!/\bאתה\b|\bאת\b|\bשלך\b/.test(all), all);
 });
+
+// A LID is not a phone number, and the roster hands us both in one column with
+// nothing to tell them apart. Padel Gang was asked "עוד מחכה ל:" three of them
+// in front of four people. The cut is LENGTH, and it is the box's own numbers:
+// no real number there is over 13 digits, 2,578 of 2,673 LIDs are 14 or more.
+test('a LID is never tagged, and the real number beside it still is', () => {
+  const rendered = text.mentionTokens([
+    '+259201444126724',   // 15 digits — a LID
+    '+69320805752936',    // 14 digits — a LID
+    '+972501111111',      // a number
+  ]);
+  assert.equal(rendered, '@+972501111111');
+  assert.equal(text.mentionToken('+259201444126724'), null);
+  assert.equal(text.mentionToken('+972501111111'), '@+972501111111');
+});
+
+// The cap's "ועוד N" is a count of PEOPLE. Counting the LIDs into it would tell
+// a room nine people owe her a message when three of them are not people.
+test('the overflow count counts people, not LIDs', () => {
+  const list = [
+    ...Array.from({ length: 9 }, (_, i) => `+97250111111${i}`),
+    '+259201444126724', '+69320805752936',
+  ];
+  assert.match(text.mentionTokens(list), /ועוד 1$/);
+});
+
+test('the taggable cut is 13 digits, measured and not guessed', () => {
+  assert.equal(text.isTaggableNumber('+9725011111111'), true);   // 13
+  assert.equal(text.isTaggableNumber('+97250111111111'), false); // 14
+  assert.equal(text.isTaggableNumber('123456'), false);          // under the floor
+  assert.equal(text.isTaggableNumber('+972-50-111'), false);     // not digits
+  assert.equal(text.isTaggableNumber(''), false);
+  assert.equal(text.isTaggableNumber(null), false);
+});
+
+// The gap, kept in the test rather than only in a comment: 95 of the box's
+// 2,673 LIDs are 12-13 digits and no local test can tell them from a number.
+// One of Padel Gang's own three is exactly that, and it still gets through.
+// Beating this means going upstream — a roster carrying JIDs, or the gateway's
+// LID map — not tightening the length.
+test('a short LID is indistinguishable from a number, and this knows it', () => {
+  assert.equal(text.isTaggableNumber('+6266525098172'), true);
+});

@@ -66,8 +66,10 @@ never trust a dated narrative for something you are about to act on.
 - [The room window opened on a row nobody would look at (fixed 2026-09-19)](#the-room-window-opened-on-a-row-nobody-would-look-at-fixed-2026-09-19)
 - [The coordination waited on the man who started it (fixed 2026-09-19)](#the-coordination-waited-on-the-man-who-started-it-fixed-2026-09-19)
 - [The room heard its own state from memory (fixed 2026-09-19)](#the-room-heard-its-own-state-from-memory-fixed-2026-09-19)
+- [The room held a time that no longer existed (fixed 2026-09-22)](#the-room-held-a-time-that-no-longer-existed-fixed-2026-09-22)
 - [The room waited for nobody (fixed 2026-09-20)](#the-room-waited-for-nobody-fixed-2026-09-20)
 - [The place nobody asked for (fixed 2026-09-20)](#the-place-nobody-asked-for-fixed-2026-09-20)
+- [The room asked three numbers that were nobody (fixed 2026-09-22)](#the-room-asked-three-numbers-that-were-nobody-fixed-2026-09-22)
 - [The room chased three people, two of whom had never been asked (fixed 2026-09-22)](#the-room-chased-three-people-two-of-whom-had-never-been-asked-fixed-2026-09-22)
 - [The room that could never open (2026-09-22)](#the-room-that-could-never-open-2026-09-22)
 - [The room asked, and heard nothing back for hours (2026-09-22)](#the-room-asked-and-heard-nothing-back-for-hours-2026-09-22)
@@ -220,6 +222,8 @@ never trust a dated narrative for something you are about to act on.
 - [The mailbox, Phase 1: read-only Gmail, and nobody's mail is browsed (2026-09-02)](#the-mailbox-phase-1-read-only-gmail-and-nobodys-mail-is-browsed-2026-09-02)
 - [Voice-note transcription moved to ElevenLabs Scribe v2 (2026-08-18)](#voice-note-transcription-moved-to-elevenlabs-scribe-v2-2026-08-18)
 - [Onboarding has no "welcome" step any more (redesigned 2026-08-17)](#onboarding-has-no-welcome-step-any-more-redesigned-2026-08-17)
+- [Three people, three invented domains, one minute (2026-09-22)](#three-people-three-invented-domains-one-minute-2026-09-22)
+- [A link that goes nowhere now stops at the gate (2026-09-22)](#a-link-that-goes-nowhere-now-stops-at-the-gate-2026-09-22)
 - [The link she said she sent (fixed 2026-09-07)](#the-link-she-said-she-sent-fixed-2026-09-07)
 - [A Google consent with no calendar scope was stored as "connected" (fixed 2026-08-20)](#a-google-consent-with-no-calendar-scope-was-stored-as-connected-fixed-2026-08-20)
 - [The move to allma.world, and the truncated link that asked for the admin password (2026-09-04)](#the-move-to-allmaworld-and-the-truncated-link-that-asked-for-the-admin-password-2026-09-04)
@@ -1714,7 +1718,7 @@ forty-five.
 said ONCE per coordination, which is right for each of them — she has started,
 there is a direction, who has not answered, it is closed — and leaves a
 negotiation that moves all afternoon with nothing to report. `group_table_at`
-(migration 082) is the first watermark in that family rather than a flag: the
+(migration 084) is the first watermark in that family rather than a flag: the
 moment the room was last told what is on the table, against the newest change
 to any option (`created_at` for one added, `decided_at` for one taken off,
 both of which `meeting_options` already had — no second column was needed).
@@ -1730,6 +1734,43 @@ move. And the count went into the template as a number, which in Hebrew reads
 whole phrase. The idempotency key carries the change's own timestamp
 (`g<room>:m<meeting>:table:<epoch>`), so each movement gets one line and a
 re-run of the pass still collapses onto it.
+
+**And then the owner asked the obvious next question, which nobody had.** If
+the room speaks whenever the table moves, and the sweep that decides runs every
+sixty seconds, then מירון's afternoon — 16:14, 16:22, 16:23, 16:25 — is four
+messages in the room in eleven minutes. The private complaint, said out loud,
+by the fix for the private complaint. His words were that the room should wait
+at least a quarter of an hour before it announces a change, so that changes
+overlapping inside that time do not each get their own message.
+
+So `group-voice.TABLE_SETTLE_MS` is the same fifteen minutes as
+`meeting-fanout.PACE_MS`, and the room half needs no folding machinery to go
+with it: the line is rebuilt from `statusOf` at the moment it is said, so a
+delay by itself makes everything that moved inside the window one sentence.
+**The clock starts at the FIRST change the room has not heard about, never at
+the newest.** Waiting for the table to go quiet reads better and starves — a
+room that keeps adding times would never be told anything at all — while a
+window opened by the first change always closes, a quarter of an hour later,
+whatever else lands in it. It gates both lines about the table, `table` and the
+`moved` line that shipped an hour earlier: a time deleted and replaced thirty
+seconds later is ONE thing that happened, and said at once it is "שבת 16:00
+כבר לא על השולחן" followed a minute later by the table having moved again.
+Nothing else waits. "She has started" is the line whose whole value is being
+early, and a base, a chase and a "סגור" are each said once in a coordination.
+
+**Two things the settle exposed that had nothing to do with it.** The sweep
+DECIDED on the clock it was handed and STAMPED with SQL's `now()`, which in
+production is the same instant and in a test is hours apart — harmless while
+every column in that family was a flag, and meaningless the moment two of them
+became moments that a quarter of an hour is measured from. It stamps the
+deciding clock now. And the hour-in chase had quietly made
+`tests/group-voice.test.js` depend on the time of day: its passes announce at
+11:00 UTC while the database stamps the coordination's `created_at` with the
+real clock, so "an hour after she started" was true for most of the day and
+false after ten in the morning. The suite was green on both PRs and would have
+gone red on `main` at the wrong hour. The fixtures place what they measure on
+the announcing clock now (`rules/testing.md`, "never let a test depend on the
+hour").
 
 **Who may be named was already right, and this is the measurement that says
 so.** Of the two people who had answered nothing, גל had been written to four
@@ -2384,6 +2425,57 @@ person than the rows it had just written. It is `participants` now.
 `deploy.sh` does not restart it; the trace line to look for is
 `{"group":"g-7","turn":"prepended"}`.
 
+### The room held a time that no longer existed (fixed 2026-09-22)
+
+Padel Gang's first coordination (meeting 40). At 13:13 Sharon put שבת 16:00 on
+the table and said yes to it. At 13:15:42 the room heard the line it is supposed
+to hear: `יש כיוון: *שבת 16:00* — 2 כבר בפנים. מחכה ל@… 🤞`. Yuval and Miron
+then said yes to it too, so three of the five people being asked had agreed to
+that time.
+
+At 13:25:05 Sharon removed it — she had written privately that four o'clock was
+a bit hot — and ten seconds later added שבת 17:00. Yuval agreed to the new one,
+Miron agreed eleven minutes later, and the coordination carried on perfectly
+well in private. The room was never told any of it. For the rest of that
+afternoon the only thing it had ever heard about a time was a time that had been
+deleted, and the owner's reason for minding is the exact one: people had marked
+it, and it was no longer relevant.
+
+`group_base_at` is why. Every room line is stamped on its own column so it is
+said once per coordination, and a boolean stamp can say that the line was said
+but not WHICH time it said. There was also no room line of any kind for the
+table changing: the private side has had one since 2026-09-09 (a removal rides
+the next thing each person hears, `options.unheardRemovals` — which worked here;
+both men were told), and the room side had no equivalent at all.
+
+`meetings.group_base_slot` (migration 082) is the slot text the room heard, and
+the trigger is deliberately the narrowest one that answers the owner's reason:
+that slot is no longer among the active options AND another time leads. A
+leading time merely OVERTAKEN by another leaves the room's picture true, and a
+line for every change of lead is how this family of lines turns into the
+chattering the whole design avoids. If the replacement has nobody else's yes
+yet, nothing is said and the stamp goes on naming the gone slot, so the line
+waits and goes out with a direction rather than announcing a hole. And the
+`group_outbox` key carries the time that WENT, so a second named time leaving
+the table is a second line while the same one is never said twice.
+
+`group_coord_moved` carries the new direction as `{{lead}}`, rendered from
+`group_coord_base` itself rather than re-worded beside it, so "יש כיוון" has one
+spelling wherever it is said:
+
+```
+*שבת 16:00* כבר לא על השולחן 🔄
+יש כיוון: *שבת 17:00* — 2 כבר בפנים.
+מחכה ל@+972… 🤞
+```
+
+**Still open, and a separate question the owner asked to examine**: whether
+17:00 should have been ADDED beside 16:00 rather than replacing it.
+`meeting-options.remove` is open to any participant and asks nothing about who
+else has agreed to the option — here one person deleted a time three of five had
+said yes to, and rebuilding the same agreement took three more messages. The
+table holds five, so there was room for both.
+
 ### The room waited for nobody (fixed 2026-09-20)
 
 Three things the test rooms said on 2026-09-20, read back from the group
@@ -2445,6 +2537,67 @@ seven descriptions (55,833 → 55,478 chars), which is what adding a tool
 costs here. What it still waits on: an answer typed in the room reaches her
 only with a tag until PR #429 lands.
 
+
+### The room asked three numbers that were nobody (fixed 2026-09-22)
+
+A real group, "Padel Gang", added Olma at 09:45:57. Seven members: four
+Israeli numbers, three of them people we know, and **three identifiers 14, 15
+and 13 digits long that are not phone numbers at all**. The intro went out at
+09:46:48 and was correct. Then Yuval tagged her at 09:49:42, the room was
+locked, and the gate notice said what it is built to say:
+
+```
+רק אומרת.. עוד לא שלחו לי: @+259201444126724 @+6266525098172 @+69320805752936 @+972542636760
+```
+
+Only the last of those four is a number, and only it pinged anybody — Sharon,
+who was not a user yet. She did exactly what the sentence asked, wrote at
+09:51:42 and was onboarded as `u-36`. At 09:57:17 the next tag arrived and the
+shorter nudge went out to the three that were left: `עוד מחכה ל:` and three
+tokens nobody can press, about nobody.
+
+**Where they come from.** WhatsApp addresses a member by number or by LID, and
+the roster we read is the inbound envelope's `group_members` — a
+comma-separated list of digits with **no JID on it**. So `syncRoster` writes a
+LID into a column called `phone`, `mentionToken` prefixes `@+` to whatever it
+is handed, and nothing between the two ever had a way to tell the difference.
+`group-context.senderPhone` had already met this and answers `null` for a LID;
+that knowledge was one function away and could not reach here, because by the
+time the roster is a string the `@lid` suffix is gone.
+
+**Why the room was also stuck for good.** The three are counted into the gate's
+`missing`, and the gate opens only when every member has written to her. A LID
+cannot write as a matching number, so the room could never reach `open`, and
+the sentence it kept repeating — *"היי" בפרטי וזהו* — was not something those
+members could act on. Four days of nudges with no exit.
+
+**The fix, and what it deliberately does not do.** The cut is LENGTH, and it is
+a measurement: the gateway's own LID map on the box holds 2,673 keys at 12 (7),
+13 (88), 14 (870) and 15 (1,708) digits, against 5,346 real numbers that stop
+at 13. Nothing 14 digits or longer has ever been a number here, so
+`proactive-text.isTaggableNumber` cuts there — safe in the only direction that
+matters, since no real member is silenced. `mentionToken` returns `null` and
+`mentionTokens` filters BEFORE the cap, so "ועוד N" counts people rather than
+LIDs.
+
+**It catches two of Padel Gang's three.** The 13-digit one is inside the range
+where 95 of the box's LIDs live, and no local test can tell it from a number;
+`+6266525098172` looks like a valid Indonesian number and is not one. That gap
+is asserted in `tests/group-text.test.js` rather than written only in a
+comment, because the honest answer is upstream — a roster carrying JIDs, or the
+gateway's LID map consulted, which already resolves one of these three to a
+real Israeli number — and neither is this change.
+
+**And the new silence it creates, named rather than hidden.** Once the filter
+runs, a room whose missing members are all LIDs has nothing the line can name,
+and `templates.render` fills an empty variable with an empty string: the notice
+would be `עוד מחכה ל:  🧐`, which is `rules/groups.md`'s base line said to
+nobody. So the sweep does not enqueue it, does not count it and does not stamp
+`gate_notice_at`. That is a real cost against the owner's rule that every tag
+gets an answer (he removed a cooldown for exactly that reason), and it is left
+as a cost on purpose: what to say to a room waiting on somebody we cannot name
+is a sentence in `message_templates`, which is his to write, and inventing one
+here would be editing his copy on his behalf.
 
 ### The room chased three people, two of whom had never been asked (fixed 2026-09-22)
 
@@ -9627,6 +9780,105 @@ person is already having simply continues, silently more capable.
 - Stdio MCP servers get NO identity env vars from the gateway (probed) —
   the workspace `.olma-identity` file remains the only auth root; brokerd's
   `config_guard` job watches the config invariants that protect it.
+
+### Three people, three invented domains, one minute (2026-09-22)
+
+The owner forwarded a screenshot of his own invite to a padel coordination:
+one sentence, one question, and under it
+`https://dashboard.openclaw.ai/meetings/40`, which is nobody's page. The first
+answer — "the model invented a link" — was right and far too small.
+
+What the outbox says: row 10990, a `meeting_invite` for meeting 40, delivered
+16:13:14. What the instruction said: *"Also call open_my_dashboard with
+meeting_id=40 and put its url in this same message on a line of its own."*
+What the transcript says: one tool call in that turn, `get_meeting_status`,
+and then the message. What `magic_links` says: **no link was minted for
+meeting 40 at all** — not for him, not for anyone, not once in that whole
+fan-out. Three people were sent three different fabrications inside one
+minute, each ending in the number the instruction had handed over:
+
+```
+16:12  u-36   https://dashboard.olma.ai/meetings/40
+16:12  u-12   https://dash.olma.app/meetings/40
+16:13  u-3    https://dashboard.openclaw.ai/meetings/40
+16:20  u-12   https://dash.olma.app/meetings/40   (again, off the two-options hint)
+```
+
+A scan of every agent's transcript store found **eight** of these across five
+people, going back to 2026-09-05 — including `my.olma.app/dashboard?meeting=30`,
+a retired `/pick/` link, and one to a stranger's `base44.app` sandbox. The
+first estimate in this session was "twice, ever", and it was wrong because the
+grep named one domain; a scan has to enumerate every URL Olma has ever written
+and then ask which of them are ours, not search for the fake you happen to
+have seen.
+
+**The discriminator was already in the codebase.** Three places offer this
+page. Two of them told the model to CALL `open_my_dashboard` and paste the
+result; both produced fabrications. The third, `withStartLink`, mints the link
+server-side and hands the characters over on the result — and has never
+produced one, which the comment above it had already predicted in 2026-09-15's
+words: "one call fewer, and nothing to forget".
+
+So the two remaining paths now hand the characters over too.
+`openclaw.makeDeliverer` mints at DELIVERY — never at enqueue, because a link
+lives 24 hours and a row the gate holds overnight would arrive dead — and
+`inviteLinkClause` prints the url it was given or prints nothing at all: a
+message with no link still asks its question, and that is strictly better than
+one with a link that goes nowhere. `offerDashboardOnce` mints on the result,
+where `createLinkUrl` writes the same `meeting.dashboard_offered` row that
+makes "once" true. **Which rows get a link is asked of the instruction
+builder** (`offersDashboardLink` puts a probe through `instructionFor` and
+looks for it on the way out) rather than answered by a second list of kinds —
+two lists is how the mint and the clause come to disagree about who gets one.
+
+What this does not close: nothing in Postgres can see a fabricated link. There
+is no row for a link that was never minted, so no detector could have found
+this and none did — the owner's screenshot did. That half is the delivery
+gate, and it is its own change.
+
+### A link that goes nowhere now stops at the gate (2026-09-22)
+
+Olma sent eight invented URLs to five people over four weeks. Three of them
+went to three different people inside one minute, for one coordination, each
+on a different made-up domain — `dashboard.olma.ai`, `dash.olma.app`,
+`dashboard.openclaw.ai` — and every one ended in `/meetings/40`, the meeting
+id the instruction had handed the model when it asked for a link to be
+fetched. No link was minted for that coordination at all. The cause is fixed
+where the instruction is (the characters are handed over now, not requested).
+
+This is the other half, and it is the half that could not be skipped by
+anybody getting an instruction wrong — **and the only half that can NOTICE**.
+There is no row in Postgres for a link that was never minted: the outbox, the
+audit trail and the health board all read perfectly clean through all eight,
+and what found them was a screenshot from the owner.
+
+So `reply-leak.js` gained a third thing it stops, on the gate that already
+stands at delivery. Two shapes, both checkable rather than judged:
+
+- a host claiming to be US — `olma`, `allma` or `openclaw` as a WHOLE label —
+  that is not one of the two hostnames we actually serve;
+- our own hostname on a path the Caddy allowlist does not pass, which is a
+  dead link by definition rather than an opinion (`rules/dashboard-and-domains
+  .md`). That is the tier that catches the retired `/pick/` link Olma sent on
+  2026-09-05, ten days after that page started answering 410.
+
+It STRIPS, where every other dropping tier condemns its paragraph: the
+sentence around the link is the message. An invite that loses its dead line
+still asks when suits them, and cutting the paragraph would take the question
+with it. Measured against every URL Olma has ever written on the box — 6 of
+the 7 real inventions caught, 0 of 11 real links touched (a `/d/` link in both
+token shapes, `/privacy`, `/terms`, the admin host, Google search, a Google
+consent URL, and two outside domains carrying our names inside a longer label:
+`olmafarm.com`, `openclawresearch.org`).
+
+**The gap is named rather than guessed at.** An invention on a domain that
+does not sound like ours passes — `preview-sandbox--….base44.app/rsvp/…`,
+sent on 2026-09-06, is indistinguishable here from a real external link. The
+rule that would catch it is "a URL that was not in this turn's tool results",
+and this gate is handed the reply and nothing else. Writing it as a guess
+would delete a news headline, a search result or a consent screen the first
+time one went out, which is the failure this repo has already paid for twice:
+a detector that fires on ordinary input is worse than no detector.
 
 ### The link she said she sent (fixed 2026-09-07)
 

@@ -16,6 +16,12 @@
 -- means never, and the base line's own stamp stands in for it, so a room that
 -- has heard "יש כיוון" is not told the table moved by the very option that
 -- line was about.
+--
+-- It is also the far end of the quarter of an hour the room waits before it
+-- says anything about the table at all (`group-voice.TABLE_SETTLE_MS`, owner
+-- 2026-09-22): this sweep runs every sixty seconds, and מירון's table moved
+-- four times in eleven minutes, so a line with no settle on it is the private
+-- complaint said out loud in the room.
 ALTER TABLE meetings ADD COLUMN IF NOT EXISTS group_table_at timestamptz;
 COMMENT ON COLUMN meetings.group_table_at IS
   'when the room was last told what is on the table (group-voice, kind: table)';

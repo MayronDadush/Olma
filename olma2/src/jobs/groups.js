@@ -32,6 +32,7 @@ const groupMeetings = require('../domain/group-meetings');
 const groupVoice = require('../domain/group-voice');
 const groupOutbox = require('../domain/group-outbox');
 const groupConnections = require('../domain/group-connections');
+const { isTaggableNumber } = require('../domain/proactive-text');
 const gate = require('../outbox/gate');
 // Through the worker facade, never channels/sessions.js: every read there is
 // synchronous, and this runs inside brokerd on the loop that answers live
@@ -402,13 +403,28 @@ async function sweepGroups(client, deps) {
       // until somebody actually asks her for something, which is what the
       // paragraph above says the nudge is for.
       const notice = groups.decideNotice(group);
-      if (notice.kind !== 'none') {
+      // The whole sentence is the tags: "עוד מחכה ל: {{missing}}". A room whose
+      // missing members are all LIDs has nobody this line can name, and
+      // `templates.render` fills an empty var with an empty string — so saying
+      // it anyway means "עוד מחכה ל:  🧐", which is the shape of
+      // `rules/groups.md`'s base line said to nobody. Silence is the lesser of
+      // the two, and it is NOT the owner's "every tag gets an answer" being
+      // quietly dropped: there is no true sentence here to say, and the
+      // sentence itself is his to change (a count instead of tags is a
+      // `message_templates` decision, not code's).
+      const nameable = notice.kind === 'too_large'
+        || missing.some((m) => isTaggableNumber(m.phone));
+      if (notice.kind !== 'none' && nameable) {
         // The key counts the notice, so a second tag earns a second (shorter)
         // one while the first can never be written twice.
         const nth = Number(group.notices_sent || 0) + 1;
         const payload = notice.kind === 'too_large'
           ? { maxMembers: Number(await flags.getFlag(client, 'group_max_members')) || 25 }
-          : { kind: notice.kind, missing: missing.map((m) => m.phone) };
+          // Only the ones the line can actually name. `mentionTokens` filters
+          // again at render — it is the last gate and covers every other
+          // caller — but the row is the record of what she SAID, and a payload
+          // listing a LID she never tagged is a row that lies about itself.
+          : { kind: notice.kind, missing: missing.map((m) => m.phone).filter(isTaggableNumber) };
         await groupOutbox.enqueue(client, {
           groupId: group.id,
           kind: notice.kind === 'too_large' ? 'too_large' : 'gate_notice',
@@ -444,6 +460,23 @@ async function sweepGroups(client, deps) {
 // notices: no model, so a room whose members are slow costs nothing at all.
 // And every line waits for the group's own daytime (mayAnnounce) — nobody
 // asked for these, which is exactly what makes the hour matter.
+// Two of the lines below repeat within one coordination, so the key that stops
+// a room hearing the same sentence twice cannot be the kind alone.
+//
+//   `moved`  — a named time can leave the table more than once, so the key is
+//              the time that WENT. That is also the bound on the line.
+//   `table`  — the table can move for ever, so the key is the newest change
+//              this sentence is reporting. A re-run of the same pass therefore
+//              collapses onto the same key, and the next movement gets its own.
+//
+// Everything else is said once per coordination and keys on its kind.
+function idempotencyKeyFor(row, line, co) {
+  const base = `g${row.id}:m${row.meeting_id}`;
+  if (line.kind === 'moved') return `${base}:moved:${line.was}`;
+  if (line.kind === 'table') return `${base}:table:${new Date(co.tableChangedAt).getTime()}`;
+  return `${base}:${line.kind}`;
+}
+
 async function sweepGroupVoice(client, deps) {
   const now = deps.now || new Date();
   const out = { said: [], held: 0 };
@@ -456,7 +489,8 @@ async function sweepGroupVoice(client, deps) {
     // duplicate column name in one row silently keeps the LAST one — which
     // would date every coordination from the day the ROOM was registered.
     `SELECT m.id AS meeting_id, m.status, m.created_at AS meeting_created_at,
-            m.group_started_at, m.group_base_at, m.group_chase_at, m.group_done_at, m.group_table_at,
+            m.group_started_at, m.group_base_at, m.group_base_slot, m.group_chase_at,
+            m.group_done_at, m.group_table_at,
             m.group_dayof_at, m.group_hour_at, m.group_calendar_at, g.*,
             (SELECT max(last_wrote_at) FROM chat_group_members
               WHERE group_id = g.id) AS last_member_write_at
@@ -485,6 +519,7 @@ async function sweepGroupVoice(client, deps) {
     const line = groupVoice.decideGroupLine(st.coordination, {
       saidStarted: Boolean(row.group_started_at),
       saidBase: Boolean(row.group_base_at),
+      saidBaseSlot: row.group_base_slot,
       saidChase: Boolean(row.group_chase_at),
       saidDone: Boolean(row.group_done_at),
       saidCalendar: Boolean(row.group_calendar_at),
@@ -510,19 +545,39 @@ async function sweepGroupVoice(client, deps) {
       groupId: row.id,
       kind: 'coordination',
       payload: { line },
-      // The table line may be said again, so its key carries WHICH change it
-      // is about — one row per movement of the table, and a re-run of the same
-      // pass still collapses onto the same key.
-      idempotencyKey: line.kind === 'table'
-        ? `g${row.id}:m${row.meeting_id}:table:${new Date(st.coordination.tableChangedAt).getTime()}`
-        : `g${row.id}:m${row.meeting_id}:${line.kind}`,
+      // Two of these may be said more than once in one coordination, so
+      // neither can key on its kind alone. `moved` carries the time that WENT,
+      // which is also the bound on it — once per gone slot. `table` carries
+      // the newest change it is reporting, so one row per movement of the
+      // table and a re-run of the same pass still collapses onto the same key.
+      // Every other kind is once per coordination and keys on the kind.
+      idempotencyKey: idempotencyKeyFor(row, line, st.coordination),
     });
     const column = {
       started: 'group_started_at',
-      base: 'group_base_at', chase: 'group_chase_at', done: 'group_done_at', table: 'group_table_at',
+      base: 'group_base_at', moved: 'group_base_at', chase: 'group_chase_at',
+      done: 'group_done_at', table: 'group_table_at',
       calendar: 'group_calendar_at', dayof: 'group_dayof_at', soon: 'group_hour_at',
     }[line.kind];
-    await client.query(`UPDATE meetings SET ${column} = now() WHERE id = $1`, [row.meeting_id]);
+    // `base` and `moved` share the stamp and also record WHICH time the room was
+    // told, because that is what makes the next one decidable: a slot the room
+    // heard and that has since left the table is the whole trigger (group-voice,
+    // `namedGone`). Every other line writes the stamp alone, as before.
+    //
+    // The stamp is the clock the DECISION was made on, never SQL's `now()`.
+    // Two of these columns are read back as moments and not as flags — the
+    // base stamp is the watermark the table line measures against, and both
+    // are what the settle is measured from — so a stamp from a different clock
+    // than the one that just decided is a quarter of an hour that means
+    // nothing. In production the two are the same instant; in a test they are
+    // hours apart, which is precisely how this went unnoticed.
+    if (line.kind === 'base' || line.kind === 'moved') {
+      await client.query(
+        `UPDATE meetings SET group_base_at = $3, group_base_slot = $2 WHERE id = $1`,
+        [row.meeting_id, line.slot, now]);
+    } else {
+      await client.query(`UPDATE meetings SET ${column} = $2 WHERE id = $1`, [row.meeting_id, now]);
+    }
     await audit.record(client, row.registered_by_user_id, 'group.coordination_said', {
       groupId: row.id, meetingId: Number(row.meeting_id), kind: line.kind,
     });
