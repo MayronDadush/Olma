@@ -224,6 +224,25 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
             [meetingId]);
           pausedRoomInvite = g.length > 0;
         }
+        // Have they ANSWERED in this coordination? The gate's silence branch
+        // treats a yes or a no on record as proof this row is news about
+        // something of theirs rather than something Olma decided to say (owner,
+        // 2026-09-23, the narrow line of two). Worker-scoped and about THIS
+        // row's meeting, like the two above, so it is false for every sibling.
+        //
+        // An answer to ANY option of this meeting counts, live or deleted: a
+        // person who declined the only slot on the table has engaged with the
+        // coordination exactly as much as one who accepted it, and the option
+        // they answered about is the first thing the negotiation throws away.
+        let answeredCoordination = false;
+        if (meetingId) {
+          const { rows: ans } = await client.query(
+            `SELECT 1 FROM meeting_option_answers a
+               JOIN meeting_options o ON o.id = a.option_id
+              WHERE o.meeting_id = $1 AND a.user_id = $2 LIMIT 1`,
+            [meetingId, row.user_id]);
+          answeredCoordination = ans.length > 0;
+        }
         // An introduction still waiting to go out. Bounded to two days on
         // purpose: a repair that was queued and somehow never delivered must
         // not silence everything else for this person for ever, and past that
@@ -291,6 +310,7 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
           blockedUntil: row.quota_blocked_until,
           window: win.data.window, quietDays, quietDates, shabbatWindow, tz: row.timezone,
           lastInboundAt: row.last_inbound_at, dashboardWroteAt: row.last_dashboard_at, groupWroteAt, pausedRoomInvite,
+          answeredCoordination,
           hasDigest: Boolean(row.digest_times),
           introductionPending: introRows.length > 0,
           introductionSentAt: introSent[0] ? introSent[0].sent_at : null,
@@ -358,11 +378,15 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
           for (const sib of siblings) {
             if (ids.length >= MAX_BATCH) break;
             if (batchKeyFor(sib) !== key) continue;
-            // `groupWroteAt` was read for THIS row's coordination and is the
-            // one fact here that is about the row rather than the person. The
-            // batch is reminders only, which never carry a meeting, so it is
-            // null for every sibling — said out loud rather than relied upon.
-            if (decide({ ...facts, groupWroteAt: null, pausedRoomInvite: false, row: sib }).action !== 'deliver') continue;
+            // `groupWroteAt` and `answeredCoordination` were read for THIS
+            // row's coordination and are the facts here that are about the row
+            // rather than the person. The batch is reminders only, which never
+            // carry a meeting, so both are empty for every sibling — said out
+            // loud rather than relied upon.
+            if (decide({
+              ...facts, groupWroteAt: null, pausedRoomInvite: false,
+              answeredCoordination: false, row: sib,
+            }).action !== 'deliver') continue;
             ids.push(sib.id);
             titles.push(payloadOf(sib).title);
             carried.add(String(sib.id));
@@ -394,7 +418,18 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
           // Re-decided rather than assumed, for the same reason as above:
           // expiry, quiet and the introduction hold are all per row, and a row
           // the gate would stop must not ride along on one it would not.
-          const deliverable = others.filter((sib) => decide({ ...facts, pausedRoomInvite: false, row: sib }).action === 'deliver');
+          //
+          // `answeredCoordination` is reset for the same reason it is in the
+          // reminder batch. `groupWroteAt` is not, and that asymmetry is not a
+          // judgement: no `MERGEABLE` kind carries a meeting at all
+          // (domain/message-merge.js — digests, the ladder's rung, travel and
+          // four statements), so neither meeting fact can decide anything here.
+          // Mine is stated because a kind added to that table later would make
+          // it matter, and a fact about another row's coordination must not be
+          // the thing that lets a sibling through.
+          const deliverable = others.filter((sib) => decide({
+            ...facts, pausedRoomInvite: false, answeredCoordination: false, row: sib,
+          }).action === 'deliver');
           const parts = planMerge(row, deliverable);
           if (parts) {
             mergedParts = parts.map((r) => ({ kind: r.kind, payload: payloadOf(r) }));
