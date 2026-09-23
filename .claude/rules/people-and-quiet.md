@@ -149,6 +149,15 @@ title means this file. Grep the title, not the filename.
   conversation context only (owner, 2026-09-11: "רק בהקשר השיחה") — it rides
   `today.holiday`, never a message of its own, and a day marked `solemn` (a
   fast, Yom HaShoah, Yom HaZikaron, Yom Kippur) is never congratulated.
+  **`users.more_groups_offered_at` (migration 086) is the third column of that
+  shape**: the offer to add Olma to more groups (owner, 2026-09-23). It is the
+  `more_groups` rung of `checkin.pickRung`, earned by a YES on the exact option
+  a ROOM's coordination locked on (`starts_at` = `confirmed_start_at`) in the
+  last fourteen days. Everybody who said yes gets it, not only whoever asked.
+  A private coordination does not earn it, by the owner's choice. It sits
+  below `stuck_meeting`/`deadline_risk` and above Olma's own opinions, and it
+  never reaches somebody at `misses >= 1`. It is spent on the enqueue in
+  `checkin.run`, and the copy is quoted, not described, and asks nothing.
 
 - **Deleting a user is not deleting a person until the GATEWAY's intake
   session goes too.** `deprovisionUser` removes everything olma2 owns — row,
