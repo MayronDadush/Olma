@@ -22,6 +22,14 @@ const EXPIRE_AFTER_START_MS = 6 * 3600_000;
 // cannot be dated at all. They stop being nudged about immediately — see
 // pendingMeetingFor — and are closed once they are plainly abandoned.
 const LEGACY_STALE_DAYS = 3;
+// The same six hours decide when a candidate TIME is over — with one
+// exception that has to be said out loud. A whole-day option's instant is
+// 09:00 of the day it means (meeting-option-moment.momentFor), so six hours
+// would take it off the table at 15:00 of its own day, while the day it names
+// is still going on. It gets a full day on top of the grace. Everything here
+// errs late on purpose: a time taken away an hour early is a time somebody
+// could still have said yes to.
+const ALL_DAY_EXTRA_MS = 24 * 3600_000;
 
 // `groupId` makes this the coordination OF A ROOM (domain/group-meetings.js),
 // and it changes exactly one rule: the pairwise `meetings` grant is not asked
@@ -597,29 +605,103 @@ async function pendingMeetingFor(client, userId) {
   return ok({ pending });
 }
 
-// Close negotiations whose moment has passed. Until this existed nothing ever
-// ended a meeting except confirmation, cancellation, or everyone leaving — so
-// an unanswered proposal stayed 'negotiating' forever, and forever is how long
-// it kept surfacing.
+// Take every candidate time whose moment has passed off the table, across all
+// open negotiations, and report which meetings lost one and which time was the
+// last of them to go.
+//
+// The status is 'expired' and not 'deleted' on purpose: 'deleted' means a
+// PERSON took a time off, and that is carried to everybody else the next time
+// they hear about the coordination (options.removed, options.unheardRemovals).
+// Nobody took this one off. "Tuesday came off the table", said about a Tuesday
+// that has been and gone, is noise — and `removed_by` stays NULL because there
+// is no one to name.
+async function dropPassedOptions(client, now) {
+  const { rows } = await client.query(
+    `UPDATE meeting_options o SET status = 'expired', decided_at = now()
+       FROM meetings m
+      WHERE m.id = o.meeting_id AND m.status = 'negotiating'
+        AND o.status = 'active' AND o.starts_at IS NOT NULL
+        AND o.starts_at < $1::timestamptz - make_interval(secs => CASE WHEN o.all_day THEN $3::float8 ELSE $2::float8 END)
+      RETURNING o.meeting_id, o.id, o.slot_text, o.starts_at`,
+    [new Date(now).toISOString(), EXPIRE_AFTER_START_MS / 1000,
+      (EXPIRE_AFTER_START_MS + ALL_DAY_EXTRA_MS) / 1000]
+  );
+  const byMeeting = new Map();
+  for (const r of rows) {
+    const id = Number(r.meeting_id);
+    const prev = byMeeting.get(id);
+    if (!prev || new Date(r.starts_at) > new Date(prev.startsAt)) {
+      byMeeting.set(id, { slot: r.slot_text, startsAt: r.starts_at });
+    }
+    await audit.record(client, null, 'meeting.option_expired',
+      { meetingId: id, optionId: Number(r.id), slot: r.slot_text });
+  }
+  return byMeeting;
+}
+
+// Close negotiations there is nothing left to agree on. Until this existed
+// nothing ever ended a meeting except confirmation, cancellation, or everyone
+// leaving — so an unanswered proposal stayed 'negotiating' forever, and
+// forever is how long it kept surfacing.
+//
+// It used to ask ONE question: is `proposed_start_at` more than six hours old.
+// That column is a mirror of the most recently ADDED option (options.
+// mirrorCurrent, `ORDER BY id DESC`), which is not the latest one in time and
+// never claimed to be — so a coordination offering Tuesday and, added after
+// it, next month, was closed on Tuesday night with next month still on the
+// table, and one offering next month and then Tuesday kept Tuesday listed
+// long after Tuesday. The owner's rule (2026-09-23) replaces the question with
+// the table itself: a time whose moment has passed leaves the options, and a
+// coordination that runs out of them is over. Both halves in one pass, in that
+// order, because the second reads what the first wrote.
+//
+// Running out of options is not the same thing as HAVING none. A person may
+// take the last time off the table and put another one up a minute later, and
+// a coordination nobody has proposed a time for yet has never had one — those
+// two both sit at zero and neither is over. Only a meeting this pass has just
+// taken a time away from is asked whether it is empty, which is what makes
+// "the last one passed" the thing being detected and not "the table is bare".
 //
 // Returns the rows it closed so the caller can tell the participants once.
 // 'expired' rather than 'no_match': nobody disagreed, the moment simply passed.
 async function expireStaleMeetings(client, now = Date.now()) {
-  const { rows } = await client.query(
+  const closed = [];
+  for (const [meetingId, last] of await dropPassedOptions(client, now)) {
+    await options.mirrorCurrent(client, meetingId);
+    if (await options.activeCount(client, meetingId) > 0) {
+      // Two things losing a time can do to a settle countdown, and tryConfirm
+      // answers both — the same call `options.remove` makes for the same
+      // reason: a grace armed on the time that just passed is disarmed, and a
+      // remaining unanimous one is armed.
+      await options.tryConfirm(client, meetingId);
+      continue;
+    }
+    // The slot the message names is the last time this coordination had, not
+    // `proposed_slot` — mirrorCurrent has just set that to NULL, which is the
+    // honest state of the table and useless as a sentence.
+    const { rows } = await client.query(
+      `UPDATE meetings SET status = 'expired', updated_at = now(), closed_at = now()
+        WHERE id = $1 AND status = 'negotiating'
+        RETURNING id, title, initiator_id`, [meetingId]);
+    if (rows[0]) closed.push({ ...rows[0], proposed_slot: last.slot });
+  }
+  // Rows nothing can date: a proposal made before slots carried a start time,
+  // and a coordination nobody has put a time on at all. Neither has a moment
+  // to pass, so the only reading of them is abandonment.
+  const { rows: legacy } = await client.query(
     `UPDATE meetings SET status = 'expired', updated_at = now(), closed_at = now()
       WHERE status = 'negotiating'
-        AND (
-          (proposed_start_at IS NOT NULL AND proposed_start_at < $1::timestamptz - make_interval(secs => $2))
-          OR (proposed_start_at IS NULL AND updated_at < $1::timestamptz - make_interval(days => $3))
-        )
+        AND proposed_start_at IS NULL
+        AND updated_at < $1::timestamptz - make_interval(days => $2)
       RETURNING id, title, initiator_id, proposed_slot`,
-    [new Date(now).toISOString(), EXPIRE_AFTER_START_MS / 1000, LEGACY_STALE_DAYS]
+    [new Date(now).toISOString(), LEGACY_STALE_DAYS]
   );
-  for (const m of rows) {
+  for (const m of legacy) closed.push(m);
+  for (const m of closed) {
     await audit.record(client, m.initiator_id, 'meeting.expired',
       { meetingId: Number(m.id), slot: m.proposed_slot });
   }
-  return rows;
+  return closed;
 }
 
 // Close ONE negotiation by hand. The sweep handles the general case, but a
@@ -681,7 +763,8 @@ module.exports = {
   startMeeting, recordConstraint, proposeSlot, respondToSlot,
   optOut, rejoin, applyExit, withdrawConfirmed, cancelMeeting, setTitle, setQuorum,
   getStatus, listMine, pendingMeetingFor, tryConfirm, settleNow,
-  expireStaleMeetings, expireOne, listNegotiating, EXPIRE_AFTER_START_MS, LEGACY_STALE_DAYS,
+  expireStaleMeetings, dropPassedOptions, expireOne, listNegotiating,
+  EXPIRE_AFTER_START_MS, LEGACY_STALE_DAYS, ALL_DAY_EXTRA_MS,
   shareableConstraints, constraintTexts, shareableTexts,
   CONSTRAINT_MAX_CHARS, MAX_SHARED_REASONS,
   options,
