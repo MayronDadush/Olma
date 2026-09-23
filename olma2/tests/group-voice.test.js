@@ -256,6 +256,52 @@ test('when everybody said yes the done line says so, and no calendar line withou
   assert.deepEqual(nothing, [], 'no calendar event, no calendar line');
 });
 
+// "פוקר בזום" was confirmed on 2026-09-23 and the room was asked where to meet.
+// The name already said it; somebody had to answer "בזום".
+test('a coordination named as a Zoom call has its place, and the done line does not ask', async () => {
+  const { group, people } = await room(42);
+  const [a, b, c] = people;
+  const started = await withTx(db.pool, (c2) => groupMeetings.startCoordination(c2, group, a, 'פוקר בזום'));
+  assert.equal(started.data.meeting.location, 'זום', 'the platform the room named, as its place');
+  const meetingId = Number(started.data.meeting.id);
+  const when = slotStart('שישי', { hours: 96 });
+  const optionId = await withTx(db.pool, async (c2) =>
+    (await options.add(c2, a.id, meetingId, 'שישי בצהריים', when)).data.option.id);
+  await withTx(db.pool, (c2) => options.answer(c2, b.id, meetingId, optionId, 'y'));
+  await withTx(db.pool, (c2) => options.answer(c2, c.id, meetingId, optionId, 'y'));
+  await db.pool.query(`UPDATE meetings SET settle_due_at = clock_timestamp() - interval '1 second' WHERE id = $1`, [meetingId]);
+  await withTx(db.pool, (c2) => options.settleDue(c2));
+
+  const sent = [];
+  await pass(sent, null, group.external_id);
+  assert.equal(sent.length, 1, JSON.stringify(sent));
+  assert.match(sent[0].body, /סגור: \*שישי בצהריים\*/);
+  assert.doesNotMatch(sent[0].body, /איפה נפגשים/, 'the name already said where');
+});
+
+test('a coordination opened before that, with no place on it, is not asked either', () => {
+  // Meeting 42 itself: location NULL, the platform only in the title. And a
+  // time that carries it ("שישי בזום") says it just as well.
+  const done = (co) => groupVoice.decideGroupLine({ status: 'confirmed', location: null, participants: [], ...co },
+    { nowMs: Date.now() });
+  assert.equal(done({ title: 'פוקר בזום', confirmedSlot: 'שישי בצהריים' }).placeAsk, false);
+  assert.equal(done({ title: 'פוקר', confirmedSlot: 'שישי ב-Zoom' }).placeAsk, false);
+  assert.equal(done({ title: 'פוקר', confirmedSlot: 'שישי בצהריים' }).placeAsk, true, 'nothing said where: still asked');
+});
+
+test('only a platform a meeting happens ON counts as a place', () => {
+  const { onlinePlace } = require('../src/domain/online-place');
+  for (const [text, want] of [
+    ['פוקר בזום', 'זום'], ['פוקר ב-Zoom', 'Zoom'], ['ישיבה בטימס', 'טימס'], ['poker on zoom', 'zoom'],
+    ['שיחת וידאו עם אמא', 'שיחת וידאו'], ['פגישה אונליין', 'אונליין'], ['Google Meet sync', 'Google Meet'],
+  ]) assert.equal(onlinePlace(text), want, text);
+  // A shoot is somewhere real, "Meet Dana" is a sentence, and a word that
+  // merely CONTAINS a platform is not one.
+  for (const text of ['צילום וידאו', 'Meet Dana', 'two teams', 'זומבים בערב', 'בזומבה', 'פוקר אצל יוסי', '', null]) {
+    assert.equal(onlinePlace(text), null, String(text));
+  }
+});
+
 // "מחכה ל 🤞" went out to nobody: Yuval's yes made it unanimous, the settle
 // minute was running, and the base line named an empty list twelve seconds
 // later (coordination 37, 2026-09-20). Pure: the decision, not the sweep.
