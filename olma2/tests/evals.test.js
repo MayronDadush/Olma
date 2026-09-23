@@ -930,7 +930,10 @@ test('a meeting the eval user only PARTICIPATES in is cleared too', async () => 
     // Written as raw rows on purpose — this is a test about a DELETE, and
     // going through startMeeting would drag in connections and feature grants
     // that have nothing to do with what is being checked.
-    const partner = await makeUser(db.pool, '+972500000778', { firstName: 'דנה' });
+    // The partner is an eval user, as the seed makes it: a meeting a real
+    // person started is never deleted (the test after the next one).
+    const partner = await makeUser(db.pool, '+12025550178', { firstName: 'דנה' });
+    await c.query(`UPDATE users SET is_eval = true WHERE id = $1`, [partner.id]);
     const { rows: [m] } = await c.query(
       `INSERT INTO meetings (initiator_id, title) VALUES ($1, $2) RETURNING id`,
       [partner.id, 'קפה']);
@@ -955,6 +958,64 @@ test('a meeting the eval user only PARTICIPATES in is cleared too', async () => 
     const opts = await c.query(
       `SELECT count(*)::int AS n FROM meeting_options WHERE meeting_id = $1`, [m.id]);
     assert.equal(opts.rows[0].n, 0);
+  });
+});
+
+// The box's state on 2026-09-23: the eval user's answers on meetings they no
+// longer have a participant row in. The meeting delete finds meetings THROUGH
+// that row, so it could never reach them, and the guard failed every
+// scenario for twelve nights on these four rows.
+test('an answer the eval user left with no participant row behind it is cleared', async () => {
+  await withTx(db.pool, async (c) => {
+    const partner = await makeUser(db.pool, '+12025550179', { firstName: 'דנה' });
+    await c.query(`UPDATE users SET is_eval = true WHERE id = $1`, [partner.id]);
+    const { rows: [m] } = await c.query(
+      `INSERT INTO meetings (initiator_id, title) VALUES ($1, 'קפה ישן') RETURNING id`, [partner.id]);
+    await c.query(`INSERT INTO meeting_participants (meeting_id, user_id) VALUES ($1, $2)`, [m.id, partner.id]);
+    const { rows: [opt] } = await c.query(
+      `INSERT INTO meeting_options (meeting_id, slot_text, added_by) VALUES ($1, 'שני 18:00', $2) RETURNING id`,
+      [m.id, partner.id]);
+    await c.query(
+      `INSERT INTO meeting_option_answers (option_id, user_id, answer) VALUES ($1, $2, 'y')`,
+      [opt.id, evalUser.id]);
+
+    await harness.resetEvalUser(c, evalUser.id);
+
+    const dirty = await harness.cleanSlateViolations(c, evalUser.id);
+    assert.deepEqual(dirty, [], `still dirty after a reset: ${JSON.stringify(dirty)}`);
+  });
+});
+
+test('a meeting a REAL person started is never deleted; only the eval user\'s own rows leave it', async () => {
+  await withTx(db.pool, async (c) => {
+    const { rows: [m] } = await c.query(
+      `INSERT INTO meetings (initiator_id, title) VALUES ($1, 'פגישה של אדם אמיתי') RETURNING id`,
+      [realUser.id]);
+    await c.query(
+      `INSERT INTO meeting_participants (meeting_id, user_id) VALUES ($1, $2), ($1, $3)`,
+      [m.id, realUser.id, evalUser.id]);
+    const { rows: [opt] } = await c.query(
+      `INSERT INTO meeting_options (meeting_id, slot_text, added_by) VALUES ($1, 'רביעי 19:00', $2) RETURNING id`,
+      [m.id, realUser.id]);
+    await c.query(
+      `INSERT INTO meeting_option_answers (option_id, user_id, answer) VALUES ($1, $2, 'y'), ($1, $3, 'y')`,
+      [opt.id, realUser.id, evalUser.id]);
+
+    await harness.resetEvalUser(c, evalUser.id);
+
+    const n = async (sql, args) => (await c.query(sql, args)).rows[0].n;
+    assert.equal(await n(`SELECT count(*)::int AS n FROM meetings WHERE id = $1`, [m.id]), 1,
+      'the person\'s meeting stands');
+    assert.equal(await n(`SELECT count(*)::int AS n FROM meeting_options WHERE meeting_id = $1`, [m.id]), 1);
+    assert.equal(await n(
+      `SELECT count(*)::int AS n FROM meeting_participants WHERE meeting_id = $1 AND user_id = $2`,
+      [m.id, realUser.id]), 1, 'and so does their place in it');
+    assert.equal(await n(
+      `SELECT count(*)::int AS n FROM meeting_option_answers WHERE option_id = $1 AND user_id = $2`,
+      [opt.id, realUser.id]), 1, 'and their answer');
+    assert.deepEqual(await harness.cleanSlateViolations(c, evalUser.id), [],
+      'while the eval user is on a blank slate all the same');
+    await c.query(`DELETE FROM meetings WHERE id = $1`, [m.id]);
   });
 });
 
