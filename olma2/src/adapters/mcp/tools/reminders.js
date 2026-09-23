@@ -5,6 +5,27 @@ const {
 } = require('./_shared');
 const format = require('../../../domain/message-format');
 const listBlock = require('../../../domain/list-block');
+const { partsInZone } = require('../../../domain/datetime');
+
+// What set_task_reminder(nudge:true) actually armed, said on the result —
+// the same two sentences tools/tasks.js gives add_task, because a chase is
+// the one arming whose SHAPE is news and a 👍 cannot carry a cadence.
+const NOT_A_CHASE = 'No daily chase was armed: there is no deadline, or not two days of it left. This is ONE '
+  + 'reminder at this moment, followed up the same day if they do not answer. Never say "every day".';
+
+function chaseArmedHint(reminder, timezone) {
+  const tz = timezone || 'UTC';
+  const pad = (n) => String(n).padStart(2, '0');
+  const p = partsInZone(tz, new Date(reminder.remind_at));
+  const u = partsInZone(tz, new Date(reminder.repeat_until));
+  return `A daily chase is armed: first ${p.y}-${pad(p.m)}-${pad(p.d)} ${pad(p.hh)}:${pad(p.mi)} (their time), `
+    + `then every day until ${u.y}-${pad(u.m)}-${pad(u.d)}, and it stops the moment they say it is done. `
+    + 'Say that shape back in ONE short line and never list the days.';
+}
+
+function withHint(res, chase) {
+  return { ...res, data: { ...res.data, hints: { ...((res.data && res.data.hints) || {}), chase } } };
+}
 
 module.exports = [
   // `nudge` is paid for by the trim in the same sentence — the surface had 35
@@ -29,7 +50,15 @@ module.exports = [
       // to the ladder, which is what `nudge` has always bought.
       if (a.nudge === true && !reminders.normalizeRepeatRule(a.repeat_rule)) {
         const chase = await reminders.startChase(client, user.id, a.task_id, { at: a.remind_at });
-        if (chase) return chase;
+        if (chase) return chase.ok ? withHint(chase, chaseArmedHint(chase.data.reminder, user.timezone)) : chase;
+        // The fallback has to SAY it is one. Run 79 (2026-09-23): the model
+        // had just been told this call "becomes one a day until the deadline",
+        // got back a plain one-off, and promised a message every day. A result
+        // that is silent about the shape leaves the hint as the only account of
+        // it, and the hint described the other branch.
+        const one = await reminders.setReminder(client, user.id, a.task_id, a.remind_at, a.repeat_rule,
+          { nudge: true });
+        return one.ok ? withHint(one, NOT_A_CHASE) : one;
       }
       return reminders.setReminder(client, user.id, a.task_id, a.remind_at, a.repeat_rule,
         { nudge: a.nudge === true });

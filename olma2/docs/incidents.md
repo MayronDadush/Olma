@@ -3876,6 +3876,34 @@ start, five mornings, Saturday skipped, the wording climbing from
 after — and the eval `chase-until-done` replays his message itself, because
 the half of this that lives in the model's judgement cannot be unit-tested.
 
+**…and the half in the model's judgement was right; the eval went red on the
+server (2026-09-23).** Run 79 was the first real eval night after twelve that
+measured nothing, and `chase-until-done` was red: a single reminder on Monday
+at 09:00, no repeat, and a reply promising "אתחיל להזכיר לך כל יום … ופעם
+אחרונה בבוקר של יום שני". The transcript shows the model doing exactly what it
+was told. It called `add_task` without `nudge`, which armed the automatic
+09:00 on the deadline day; `hints.chaseAvailable` fired and asked for
+`set_task_reminder(task_id, remind_at, nudge:true)`; and it passed back the one
+moment it had in front of it, that 09:00. `startChase` takes `at` as the first
+occurrence, so the chase's first day was its LAST, one occurrence is not a
+chase, and the tool fell through to a one-off ladder. The result said nothing
+about which branch it took, so the only account of the shape the model had was
+the hint, and the hint described the branch that did not happen. The founding
+test never saw it because it arms through `add_task(nudge:true)` in one call —
+the path the model did not take. Three changes, each red without the others'
+help in `tests/reminder-chase.test.js`:
+
+- **An echoed moment is not a named hour.** `at` within a minute of this
+  person's own pending automatic reminder on the task is treated as no hour at
+  all, and the owner's rules decide the hour and the first day.
+- **A chase replaces every pending automatic row inside its span**, not only
+  one on the same local day — the day-rule is about one-offs, and a chase
+  already speaks on the due day. With the first fix alone, Monday would have
+  carried the automatic 08:00 an hour before the chase's own last message.
+- **The fallback says it is ONE reminder** (`hints.chase` on
+  `set_task_reminder`), and the armed branch says the shape, so neither answer
+  leaves the model reading the hint as the result.
+
 ### The reminder that was only a sentence (fixed 2026-09-22)
 
 עמית, 2026-09-15, 16:44 Israel:
