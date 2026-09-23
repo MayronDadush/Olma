@@ -48,6 +48,7 @@ never trust a dated narrative for something you are about to act on.
 - [Rotating a token that leaked: the file first, then the DB, then the doctrine (2026-09-03)](#rotating-a-token-that-leaked-the-file-first-then-the-db-then-the-doctrine-2026-09-03)
 
 **Delivery, outbox and proactive messages**
+- [The stop that waited for a yes (fixed 2026-09-22)](#the-stop-that-waited-for-a-yes-fixed-2026-09-22)
 - [The table that did not say where she stood (2026-09-20)](#the-table-that-did-not-say-where-she-stood-2026-09-20)
 - [Four messages in sixty-two seconds (fixed 2026-09-20)](#four-messages-in-sixty-two-seconds-fixed-2026-09-20)
 - [The constraint that was an answer (fixed 2026-09-20)](#the-constraint-that-was-an-answer-fixed-2026-09-20)
@@ -67,6 +68,7 @@ never trust a dated narrative for something you are about to act on.
 - [The room held a time that no longer existed (fixed 2026-09-22)](#the-room-held-a-time-that-no-longer-existed-fixed-2026-09-22)
 - [The room waited for nobody (fixed 2026-09-20)](#the-room-waited-for-nobody-fixed-2026-09-20)
 - [The place nobody asked for (fixed 2026-09-20)](#the-place-nobody-asked-for-fixed-2026-09-20)
+- [The room asked three numbers that were nobody (fixed 2026-09-22)](#the-room-asked-three-numbers-that-were-nobody-fixed-2026-09-22)
 - [The room chased three people, two of whom had never been asked (fixed 2026-09-22)](#the-room-chased-three-people-two-of-whom-had-never-been-asked-fixed-2026-09-22)
 - [The room that could never open (2026-09-22)](#the-room-that-could-never-open-2026-09-22)
 - [The room asked, and heard nothing back for hours (2026-09-22)](#the-room-asked-and-heard-nothing-back-for-hours-2026-09-22)
@@ -176,6 +178,7 @@ never trust a dated narrative for something you are about to act on.
 - [The switch that did nothing on a task with no date (2026-09-19)](#the-switch-that-did-nothing-on-a-task-with-no-date-2026-09-19)
 - [The triage he did by hand, and the fourth detector the box refused (2026-09-19)](#the-triage-he-did-by-hand-and-the-fourth-detector-the-box-refused-2026-09-19)
 - [The light that would not go round (2026-09-22)](#the-light-that-would-not-go-round-2026-09-22)
+- [The picker that opened underneath (fixed 2026-09-22)](#the-picker-that-opened-underneath-fixed-2026-09-22)
 - [The list he could not put his own task into (2026-09-19)](#the-list-he-could-not-put-his-own-task-into-2026-09-19)
 - [An offer to call a number the bridge has never served (fixed 2026-09-06)](#an-offer-to-call-a-number-the-bridge-has-never-served-fixed-2026-09-06)
 - [The reply's first six seconds were bookkeeping (2026-09-05)](#the-replys-first-six-seconds-were-bookkeeping-2026-09-05)
@@ -218,6 +221,8 @@ never trust a dated narrative for something you are about to act on.
 - [The mailbox, Phase 1: read-only Gmail, and nobody's mail is browsed (2026-09-02)](#the-mailbox-phase-1-read-only-gmail-and-nobodys-mail-is-browsed-2026-09-02)
 - [Voice-note transcription moved to ElevenLabs Scribe v2 (2026-08-18)](#voice-note-transcription-moved-to-elevenlabs-scribe-v2-2026-08-18)
 - [Onboarding has no "welcome" step any more (redesigned 2026-08-17)](#onboarding-has-no-welcome-step-any-more-redesigned-2026-08-17)
+- [Three people, three invented domains, one minute (2026-09-22)](#three-people-three-invented-domains-one-minute-2026-09-22)
+- [A link that goes nowhere now stops at the gate (2026-09-22)](#a-link-that-goes-nowhere-now-stops-at-the-gate-2026-09-22)
 - [The link she said she sent (fixed 2026-09-07)](#the-link-she-said-she-sent-fixed-2026-09-07)
 - [A Google consent with no calendar scope was stored as "connected" (fixed 2026-08-20)](#a-google-consent-with-no-calendar-scope-was-stored-as-connected-fixed-2026-08-20)
 - [The move to allma.world, and the truncated link that asked for the admin password (2026-09-04)](#the-move-to-allmaworld-and-the-truncated-link-that-asked-for-the-admin-password-2026-09-04)
@@ -1736,6 +1741,63 @@ nothing. And the tool is out of `TOOL_MARKS`, into the negotiation family that
 negotiating, so every call is a negotiation step, and the negotiation family
 has no 👍 by rule.
 
+### The stop that waited for a yes (fixed 2026-09-22)
+
+גל (u-37) wrote "dont send me messages bye" at 13:08 on 2026-09-22. Olma
+answered exactly as the doctrine asked her to — one short question, once, no
+argument and no pitch — and he never answered it. Nothing else happened in
+that conversation, and so nothing on his record ever said he had asked to be
+left alone: `paused_at` was still NULL when the owner reported it that
+evening, because the doctrine paused only on a yes.
+
+Over the next eighteen minutes four urgent coordination rows were dispatched
+to his agent. The model read the conversation and decided correctly on every
+one of the four turns; it did not want to write to him. Three of those
+decisions reached him as English text anyway. The first pass at this read
+`sent_at` and the model's own `NO_REPLY` and concluded that nothing had gone
+out — the owner corrected it with a screenshot of three deleted messages, and
+`sent_at` is stamped when `deliver()` returns ok, which was never proof that
+a message was emitted. **One thing here is still unexplained and this fix is
+not about it**: the reply gate cancels those exact texts in the build that
+was running then and in the build running now, and its trace carries no
+`gate` line at all for those three turns while firing for two other users in
+the same minutes.
+
+What the fix is about is that none of it should have been reachable. The
+owner: "אפשר פשוט לבנות שהודעות לא נכנסות אליו יותר ברגע שהוא משהה את עולמה -
+אין צורך שהמודל יצטרך לקרוא את השיחה ולסרב לפי השיקול דעת שלו." A pause is a
+column the delivery gate reads before a turn is ever spawned. A model
+refusing per turn is the same judgement exercised four times where one write
+would have settled it — and a gate that has to hold is a gate that can be
+missed, which is exactly what happened.
+
+So the order is inverted: comply first, ask second. `pause_olma` takes
+`confirmed`, the doctrine's steps were swapped (pause THAT turn, before a
+word goes back; the one question second; the yes is a SECOND call with
+`confirmed=true`), and an unconfirmed stop is a full pause under
+`paused_reason = 'said_stop'` — the gate drops everything, the queued rows
+are cancelled, the reminders come down. It differs from a confirmed one in
+exactly one way, which is the other half of the owner's instruction
+("ברגע שגל שולח לו שוב הודעה (שהיא לא קשורה לרצון שלו להפסיק) עולמה יוצאת
+מהשהייה"): their next message about anything else ends it, from
+`openRecord`'s `wake`, ahead of the model. `pause.stopResume` is the third
+resume beside `quietResume` and `resumeAfterRoomInvite` and the only one that
+goes through `resumeUser`, because unlike the ladder's pause this one took
+reminders down, and coming back has to put each of them up at its own next
+real occurrence.
+
+Two small decisions inside it. `confirmed` defaults to the LASTING pause
+(`a.confirmed !== false`, not `=== true`): an omitted flag leaving somebody
+paused who meant to be is one sentence from undone, and the other way round
+lifts a stop that was confirmed, which is the whole fault this exists to
+close. And the answer to "בטוח?" is a second `pause_olma` rather than a
+no-op, because that call is what clears the provisional reason and stops the
+next message ending it.
+
+The trade is one extra "stop" from somebody who says it twice, against a
+person who asked to be left alone being written to anyway. Both are
+recoverable; only one is a betrayal.
+
 ### The table that did not say where she stood (2026-09-20)
 
 Same room and the same hour as "Four messages in sixty-two seconds", read
@@ -2323,6 +2385,67 @@ seven descriptions (55,833 → 55,478 chars), which is what adding a tool
 costs here. What it still waits on: an answer typed in the room reaches her
 only with a tag until PR #429 lands.
 
+
+### The room asked three numbers that were nobody (fixed 2026-09-22)
+
+A real group, "Padel Gang", added Olma at 09:45:57. Seven members: four
+Israeli numbers, three of them people we know, and **three identifiers 14, 15
+and 13 digits long that are not phone numbers at all**. The intro went out at
+09:46:48 and was correct. Then Yuval tagged her at 09:49:42, the room was
+locked, and the gate notice said what it is built to say:
+
+```
+רק אומרת.. עוד לא שלחו לי: @+259201444126724 @+6266525098172 @+69320805752936 @+972542636760
+```
+
+Only the last of those four is a number, and only it pinged anybody — Sharon,
+who was not a user yet. She did exactly what the sentence asked, wrote at
+09:51:42 and was onboarded as `u-36`. At 09:57:17 the next tag arrived and the
+shorter nudge went out to the three that were left: `עוד מחכה ל:` and three
+tokens nobody can press, about nobody.
+
+**Where they come from.** WhatsApp addresses a member by number or by LID, and
+the roster we read is the inbound envelope's `group_members` — a
+comma-separated list of digits with **no JID on it**. So `syncRoster` writes a
+LID into a column called `phone`, `mentionToken` prefixes `@+` to whatever it
+is handed, and nothing between the two ever had a way to tell the difference.
+`group-context.senderPhone` had already met this and answers `null` for a LID;
+that knowledge was one function away and could not reach here, because by the
+time the roster is a string the `@lid` suffix is gone.
+
+**Why the room was also stuck for good.** The three are counted into the gate's
+`missing`, and the gate opens only when every member has written to her. A LID
+cannot write as a matching number, so the room could never reach `open`, and
+the sentence it kept repeating — *"היי" בפרטי וזהו* — was not something those
+members could act on. Four days of nudges with no exit.
+
+**The fix, and what it deliberately does not do.** The cut is LENGTH, and it is
+a measurement: the gateway's own LID map on the box holds 2,673 keys at 12 (7),
+13 (88), 14 (870) and 15 (1,708) digits, against 5,346 real numbers that stop
+at 13. Nothing 14 digits or longer has ever been a number here, so
+`proactive-text.isTaggableNumber` cuts there — safe in the only direction that
+matters, since no real member is silenced. `mentionToken` returns `null` and
+`mentionTokens` filters BEFORE the cap, so "ועוד N" counts people rather than
+LIDs.
+
+**It catches two of Padel Gang's three.** The 13-digit one is inside the range
+where 95 of the box's LIDs live, and no local test can tell it from a number;
+`+6266525098172` looks like a valid Indonesian number and is not one. That gap
+is asserted in `tests/group-text.test.js` rather than written only in a
+comment, because the honest answer is upstream — a roster carrying JIDs, or the
+gateway's LID map consulted, which already resolves one of these three to a
+real Israeli number — and neither is this change.
+
+**And the new silence it creates, named rather than hidden.** Once the filter
+runs, a room whose missing members are all LIDs has nothing the line can name,
+and `templates.render` fills an empty variable with an empty string: the notice
+would be `עוד מחכה ל:  🧐`, which is `rules/groups.md`'s base line said to
+nobody. So the sweep does not enqueue it, does not count it and does not stamp
+`gate_notice_at`. That is a real cost against the owner's rule that every tag
+gets an answer (he removed a cooldown for exactly that reason), and it is left
+as a cost on purpose: what to say to a room waiting on somebody we cannot name
+is a sentence in `message_templates`, which is his to write, and inventing one
+here would be editing his copy on his behalf.
 
 ### The room chased three people, two of whom had never been asked (fixed 2026-09-22)
 
@@ -4016,6 +4139,20 @@ writes `completed_at` and `cancelled_at` in ONE transaction, so both carry the
 identical `now()`, and a reminder the person cancelled themselves never
 matches. A moment already passed is walked forward instead of resurrected, and
 the old row keeps its cancellation — that Monday really did go unreminded.
+
+**…and for three weeks the PAGE said the opposite of all that (2026-09-22).**
+The fix above is a server answer — `recurring: true`, the task left open — and
+`/me` never read it. A tick moves the row into the archive on the spot and
+sends the write fire-and-forget, which is right for every other task and wrong
+for this one: the row was gone from the list, the toast said "המשימה הושלמה",
+and the next reload brought the task back open. Nothing was lost and nothing
+was logged — from the person's side, a tap that did not take. The page now
+passes a callback on this one write (`API.completeTask`), and a `recurring`
+answer puts the row back at the index it left from with one sentence saying
+why. The other two writes of that shape stay fire-and-forget deliberately.
+The shape is the one already written down twice: **a flag the writer sets and
+the reader ignores is worse than no flag** — the server had been saying this
+since 2026-08-29, in a field nobody on the other side was reading.
 
 **A snooze destroyed its own evidence.** `snoozeTask` overwrote `due_at` and
 audited only where the task landed, so two hours later and the fourth
@@ -7048,6 +7185,53 @@ This is the same shape as the rule it sits under: having nothing to say draws
 nothing.
 
 
+### The picker that opened underneath (fixed 2026-09-22)
+
+The owner sent one screenshot of the coordination sheet — "ברגע שבוחרים שעה
+מדויקת זה לא נראה טוב" — and it held three separate faults, none of which is
+visible in a diff.
+
+**The picker opened under the sheet that called it.** `#timeSheet` had been
+bumped to `z-index:82` precisely so it would beat the sheets defined after it
+in the markup; then `#mtOptSheet` was bumped to 82 for its own good reason, and
+the two tied. A tie goes to DOM order, `#mtOptSheet` is the later element, and
+the sheet that summoned the picker painted over it. What a person saw when
+they tapped the hour was nothing at all — or, when the picker was the taller of
+the two, a strip of it sticking out above a sheet that had not moved. Both
+rules are correct on their own; the fault only exists between them. `#timeSheet`
+is now 83, with the reason written as a rule rather than a number: it is the
+only sheet always opened from INSIDE another one, so it is not one of the
+layer, it is the top of it.
+
+**The hour sat outside the row it belonged to.** Choosing "שעה מדויקת" drew a
+second pill under the chips — an unlabelled `20:00` alone on its own line at
+the start edge, which reads as a caption, not as the button that opens the
+picker. The chip and its value are one answer, so they are now one chip: once
+there is an hour the chip says the hour, with a clock on it, and tapping it
+again opens the picker — which is what a tap on an already-pressed chip used
+to do, precisely nothing. The same renderer draws it in all three places that
+ask for a time (the sheet, the new coordination, the per-day rows), so they
+cannot drift apart.
+
+**And the button under it named the wrong hour.** The CTA says the moment it
+will add ("הוספה · מחר · 20:00"). The picker's handler patched the chip's own
+text by hand and re-rendered nothing, so picking 19:40 left the button saying
+20:00 while the option it added was 19:40 — the button lying about what it was
+about to do. It re-renders the sheet now, which is what every other control in
+it already did.
+
+The first attempt at the second fault was to keep the pill and move it into
+the chips row on each render. It worked once: the next render's `innerHTML`
+destroyed the element it had just been given, and from then on `$("#…Chip")`
+was null and the sheet's render threw halfway through. **An element appended
+into a container somebody else rewrites is borrowed, not owned** — draw it
+with the row, or keep it out of the row entirely.
+
+`tests/user-dashboard-design.test.js` holds all three: the picker's layer
+strictly above every bumped sheet (measured against whatever is bumped, not
+against the number 82), one renderer for the hour with no chip of its own
+outside the row, and the input handler that redraws the button.
+
 ### The list he could not put his own task into (2026-09-19)
 
 Sorting Miron's 38 open tasks with him on the live page, one drop was
@@ -9444,6 +9628,105 @@ person is already having simply continues, silently more capable.
 - Stdio MCP servers get NO identity env vars from the gateway (probed) —
   the workspace `.olma-identity` file remains the only auth root; brokerd's
   `config_guard` job watches the config invariants that protect it.
+
+### Three people, three invented domains, one minute (2026-09-22)
+
+The owner forwarded a screenshot of his own invite to a padel coordination:
+one sentence, one question, and under it
+`https://dashboard.openclaw.ai/meetings/40`, which is nobody's page. The first
+answer — "the model invented a link" — was right and far too small.
+
+What the outbox says: row 10990, a `meeting_invite` for meeting 40, delivered
+16:13:14. What the instruction said: *"Also call open_my_dashboard with
+meeting_id=40 and put its url in this same message on a line of its own."*
+What the transcript says: one tool call in that turn, `get_meeting_status`,
+and then the message. What `magic_links` says: **no link was minted for
+meeting 40 at all** — not for him, not for anyone, not once in that whole
+fan-out. Three people were sent three different fabrications inside one
+minute, each ending in the number the instruction had handed over:
+
+```
+16:12  u-36   https://dashboard.olma.ai/meetings/40
+16:12  u-12   https://dash.olma.app/meetings/40
+16:13  u-3    https://dashboard.openclaw.ai/meetings/40
+16:20  u-12   https://dash.olma.app/meetings/40   (again, off the two-options hint)
+```
+
+A scan of every agent's transcript store found **eight** of these across five
+people, going back to 2026-09-05 — including `my.olma.app/dashboard?meeting=30`,
+a retired `/pick/` link, and one to a stranger's `base44.app` sandbox. The
+first estimate in this session was "twice, ever", and it was wrong because the
+grep named one domain; a scan has to enumerate every URL Olma has ever written
+and then ask which of them are ours, not search for the fake you happen to
+have seen.
+
+**The discriminator was already in the codebase.** Three places offer this
+page. Two of them told the model to CALL `open_my_dashboard` and paste the
+result; both produced fabrications. The third, `withStartLink`, mints the link
+server-side and hands the characters over on the result — and has never
+produced one, which the comment above it had already predicted in 2026-09-15's
+words: "one call fewer, and nothing to forget".
+
+So the two remaining paths now hand the characters over too.
+`openclaw.makeDeliverer` mints at DELIVERY — never at enqueue, because a link
+lives 24 hours and a row the gate holds overnight would arrive dead — and
+`inviteLinkClause` prints the url it was given or prints nothing at all: a
+message with no link still asks its question, and that is strictly better than
+one with a link that goes nowhere. `offerDashboardOnce` mints on the result,
+where `createLinkUrl` writes the same `meeting.dashboard_offered` row that
+makes "once" true. **Which rows get a link is asked of the instruction
+builder** (`offersDashboardLink` puts a probe through `instructionFor` and
+looks for it on the way out) rather than answered by a second list of kinds —
+two lists is how the mint and the clause come to disagree about who gets one.
+
+What this does not close: nothing in Postgres can see a fabricated link. There
+is no row for a link that was never minted, so no detector could have found
+this and none did — the owner's screenshot did. That half is the delivery
+gate, and it is its own change.
+
+### A link that goes nowhere now stops at the gate (2026-09-22)
+
+Olma sent eight invented URLs to five people over four weeks. Three of them
+went to three different people inside one minute, for one coordination, each
+on a different made-up domain — `dashboard.olma.ai`, `dash.olma.app`,
+`dashboard.openclaw.ai` — and every one ended in `/meetings/40`, the meeting
+id the instruction had handed the model when it asked for a link to be
+fetched. No link was minted for that coordination at all. The cause is fixed
+where the instruction is (the characters are handed over now, not requested).
+
+This is the other half, and it is the half that could not be skipped by
+anybody getting an instruction wrong — **and the only half that can NOTICE**.
+There is no row in Postgres for a link that was never minted: the outbox, the
+audit trail and the health board all read perfectly clean through all eight,
+and what found them was a screenshot from the owner.
+
+So `reply-leak.js` gained a third thing it stops, on the gate that already
+stands at delivery. Two shapes, both checkable rather than judged:
+
+- a host claiming to be US — `olma`, `allma` or `openclaw` as a WHOLE label —
+  that is not one of the two hostnames we actually serve;
+- our own hostname on a path the Caddy allowlist does not pass, which is a
+  dead link by definition rather than an opinion (`rules/dashboard-and-domains
+  .md`). That is the tier that catches the retired `/pick/` link Olma sent on
+  2026-09-05, ten days after that page started answering 410.
+
+It STRIPS, where every other dropping tier condemns its paragraph: the
+sentence around the link is the message. An invite that loses its dead line
+still asks when suits them, and cutting the paragraph would take the question
+with it. Measured against every URL Olma has ever written on the box — 6 of
+the 7 real inventions caught, 0 of 11 real links touched (a `/d/` link in both
+token shapes, `/privacy`, `/terms`, the admin host, Google search, a Google
+consent URL, and two outside domains carrying our names inside a longer label:
+`olmafarm.com`, `openclawresearch.org`).
+
+**The gap is named rather than guessed at.** An invention on a domain that
+does not sound like ours passes — `preview-sandbox--….base44.app/rsvp/…`,
+sent on 2026-09-06, is indistinguishable here from a real external link. The
+rule that would catch it is "a URL that was not in this turn's tool results",
+and this gate is handed the reply and nothing else. Writing it as a guess
+would delete a news headline, a search result or a consent screen the first
+time one went out, which is the failure this repo has already paid for twice:
+a detector that fires on ordinary input is worse than no detector.
 
 ### The link she said she sent (fixed 2026-09-07)
 

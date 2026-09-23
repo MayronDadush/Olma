@@ -914,3 +914,44 @@ test('no mapping resolves nothing, and takes nobody out of the room', async () =
   const evald = await withTx(db.pool, (c) => groupsDomain.evaluate(c, group.id));
   assert.deepEqual(evald.data.missing.map((m) => m.phone), [`+${lid}`]);
 });
+
+// Padel Gang, 2026-09-22: three of its seven members reached us as LIDs, which
+// the roster hands over in the same shape as a number. The nudge is nothing but
+// its tags, so once the one real missing member had written, the line she had
+// left to say was "עוד מחכה ל:" and three tokens that ping nobody. Filtered,
+// there is no true sentence there at all — so she says nothing, rather than
+// punctuation. Her "every tag gets an answer" is not being dropped quietly:
+// what to say to a room waiting on somebody we cannot name is his sentence to
+// write, and until he writes one there is none.
+test('a room whose missing members are all LIDs is not nudged with empty tags', async () => {
+  const a = await connectedUser('+972603000140');
+  const jid = JID(41);
+  // One member who has written, and two the gateway only ever named by LID.
+  const roster = `דני (${a.phone}), +259201444126724, +69320805752936`;
+  const sent = [];
+  const at = Date.now();
+  const session = (ms) => [{
+    key: `agent:ggreet:whatsapp:group:${jid}`, agentId: pg.GREETER_AGENT_ID,
+    channel: 'whatsapp', chatType: 'group', peer: jid, lastInteractionAt: ms,
+  }];
+  const deps = {
+    configPath,
+    listGroupSessions: () => session(at),
+    readGroupContext: () => ({ subject: 'פאדל', members: roster, wasMentioned: true, at, messageId: 'M-1' }),
+    send: async (target, body) => { sent.push({ target, body }); return true; },
+  };
+
+  let out = await pass(deps);
+  assert.deepEqual(out.registered, [jid]);
+  assert.equal(out.intros, 1, 'the room is still greeted — that line names nobody');
+
+  // a tag, in a room that is locked on two members who are not numbers
+  deps.listGroupSessions = () => session(at + 60_000);
+  out = await pass(deps);
+  assert.equal(out.notices, 0, 'nothing to say is said');
+  const row = await withTx(db.pool, (c) => groupsDomain.getByExternalId(c, 'whatsapp', jid));
+  assert.equal(row.state, 'locked', 'and the room is still waiting on them');
+  assert.equal(row.notices_sent, 0, 'an unsaid notice is not counted as said');
+  assert.equal(row.gate_notice_at, null, 'nor recorded as a wait she announced');
+  assert.equal(sent.filter((m) => /עוד לא שלחו לי|עוד מחכה ל/.test(m.body)).length, 0);
+});

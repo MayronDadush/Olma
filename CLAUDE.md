@@ -157,7 +157,7 @@ Loads when you **Read** a file under `src/outbox/**`, `src/domain/message-format
 - **What is the same every time is DRAWN, and only the sentence about it is a model's**
 - **…and since 2026-09-10 the lists and choices a person ASKS for are drawn the same way**
 - **…and a drawn table says where the READER stands, plus the one line that needs only their yes**
-- **The invite and the table question offer the coordination's own page, on a bare line; nothing else in the negotiation does**
+- **The invite and the table question offer the coordination's own page, on a bare line; nothing else in the negotiation does** — and the characters are handed over, never asked for: a prompt that named a meeting id got three invented domains in one minute
 - **A private message about a coordination is one sentence of context and one question** — two options are a sentence, a game room counts heads, and the length is measured
 - **The same thing does not go out twice inside a few minutes unless the person ASKED**
 - **The delivery gate is the chokepoint and a paused user has no exceptions** — save one room-coordination invite per pause
@@ -192,7 +192,7 @@ Loads when you **Read** a file under `src/brokerd/**`, `src/domain/turn.js`, `sr
 - **A DECISION to stay quiet is not a reply that got lost.**
 - **A repair job fires precisely when the system's belief about itself is already wrong, so it must be the most sceptical thing in the codebase.**
 - **A reply that got lost is RE-SENT, never re-answered.**
-- **The model's own working-out is stopped in the GATEWAY, not by the doctrine.**
+- **The model's own working-out is stopped in the GATEWAY, not by the doctrine.** — and so is a link that goes nowhere: a host claiming to be us, or our own on a path nothing serves
 - **The last tier's missing input was not a pattern, it was the READER** — `writesHebrew` is a tri-state, `null` acts like `false`, and the value rides `turn_context` to a gate with no database
 
 ### Reminders, tasks and dates
@@ -239,6 +239,7 @@ Loads when you **Read** a file under `src/jobs/checkin.js`, `src/jobs/onboarding
 - **Nobody is asked a question they have already not answered once.**
 - **A day-one step that has not gone out is REPLACED by the NEXT CHECK-IN of any kind, never joined by it.**
 - **Somebody who has stopped answering hears nothing Olma decided to say, and nothing on their record is cancelled.**
+- **A stop is acted on the moment it is HEARD, not when it is confirmed** — `paused_reason = 'said_stop'` is a full pause, and their next message about anything else ends it.
 - **A write from their own page IS the person answering** — `last_dashboard_at`, never `last_inbound_at`
 - **A "once ever" question is stamped on the PERSON, never deduped on the route that asks it.**
 - **The chag offer is that shape's second column (`holiday_quiet_asked_at`, migration 062), with two routes from the start.**
@@ -283,6 +284,8 @@ Loads when you **Read** a file under `src/adapters/http/**`, `docs/design/**`.
 - **`google-oauth.json` is cached at module level**
 - **A redirect URI must be registered at Google BEFORE the file points at it**
 - **Changing the domain never invalidates an existing Google connection.**
+- **Two sheets on the same `z-index` are ordered by the MARKUP, and the time picker has to beat all of them.**
+- **An element appended into a container something else re-renders is borrowed, not owned.**
 
 ### Doctrine, tools and reactions
 
@@ -338,6 +341,7 @@ Loads when you **Read** a file under `src/domain/group-connections.js`, `src/dom
 - **The "סגור" line names who can make it, a calendar line is said only for a SHARED event, and a base line is never said to nobody**
 - **A time the room was TOLD about and that has since left the table is said again; a time merely overtaken is not**
 - **The place is the room's own words, asked for only when nobody said one, and it rides the confirmation onto the calendar event**
+- **A tag is a NUMBER, and the roster hands us LIDs in the same column** — the cut is 13 digits, measured; a line that can name nobody is not said
 - **The room says that people have not answered only about people she has actually written to** — `silent` is still the exact count; `asked` is what may be SAID
 - **A group turn is told the room's coordination state before the model's first word, and that block is the only thing it may speak from.**
 - **A message in the room with no tag on it is ENDED, never answered — and the window it opens is the point.** Inert behind a flag, and measuring while it is.

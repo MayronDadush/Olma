@@ -171,3 +171,47 @@ test('every var(--token) without a fallback names a token this file defines', ()
     assert.equal(defined.has(t), false, `${t} is defined now — take it off KNOWN_BAD`);
   }
 });
+
+// The time picker is the only sheet on this page that is always opened from
+// INSIDE another sheet, so its layer is not one of theirs — it is the top of
+// them. It sat at 82 next to #mtOptSheet, lost that tie to DOM order, and
+// opened underneath the sheet whose chip had just been tapped: the tap read as
+// doing nothing, and what showed was a strip of the hidden picker above the
+// sheet. Nothing about that is visible in a diff of either rule.
+test('the time picker outranks every sheet it can open on top of', () => {
+  const layer = (id) => {
+    const m = page.match(new RegExp('#' + id + '\\{[^}]*z-index:(\\d+)'));
+    assert.ok(m, '#' + id + ' sets a z-index');
+    return Number(m[1]);
+  };
+  const bumped = [...page.matchAll(/#(\w+)\{z-index:(\d+)\}/g)]
+    .filter((m) => m[1] !== 'timeSheet');
+  assert.ok(bumped.length, 'some sheet is bumped above the .sheet layer, or this test is watching nothing');
+  for (const [, id, z] of bumped) {
+    assert.ok(layer('timeSheet') > Number(z),
+      '#timeSheet must sit above #' + id + ', which it opens on top of');
+  }
+});
+
+// The hour an "exact time" answer holds is the chip, not a second pill parked
+// under the row: one unlabelled "20:00" at the start edge, which is what made
+// this sheet look broken. Both chip rows draw it the same way, through one
+// function, and the hour's own field is the only thing left outside the row.
+test('the exact hour is drawn INSIDE the chips row, by one renderer', () => {
+  assert.match(page, /function exactChipHTML\(exact, attr\)\{/);
+  for (const fn of ['partChipsHTML', 'pdChipsHTML']) {
+    const body = page.match(new RegExp('function ' + fn + '\\([^)]*\\)\\{[\\s\\S]*?\\n  \\}'));
+    assert.ok(body, fn + ' is still here');
+    assert.match(body[0], /exactChipHTML\(/, fn + ' draws the hour with the row');
+  }
+  assert.doesNotMatch(page, /id="mt(Opt|New)TimeChip"/,
+    'the hour has no chip of its own outside the row');
+});
+
+// The button under the sheet NAMES the moment it will add ("הוספה · מחר ·
+// 20:00"). Patching the chip's own text by hand left it saying the hour that
+// was just replaced — the button lying about what it was about to do.
+test('picking an hour redraws the button that names it', () => {
+  assert.match(page,
+    /\$\("#mtOptTime"\)\.addEventListener\("input", function\(\)\{ optExact = this\.value; renderOptSheet\(\); \}\);/);
+});

@@ -130,8 +130,15 @@ test('the page is offered once, only from chat, only once two options are on the
   // Two options: offered, exactly here, naming the meeting.
   const two = await call('propose_meeting_slot', ann, { meeting_id: m, slot_description: 'option 2', starts_at: t48 });
   assert.equal(two.ok, true, JSON.stringify(two.error));
-  assert.match(two.data.hints.dashboard, new RegExp(`open_my_dashboard with meeting_id=${m}`));
+  // The URL itself, minted on the result — never a sentence asking the model
+  // to go and get one. On 2026-09-22 a model handed that sentence wrote
+  // `dash.olma.app/meetings/40` instead of calling anything.
+  assert.match(two.data.hints.dashboard, /dashboard\.url/);
+  assert.doesNotMatch(two.data.hints.dashboard, /open_my_dashboard/);
   assert.match(two.data.hints.dashboard, /optional/);
+  assert.match(two.data.dashboard.url, /\/d\/[A-Za-z0-9]{22}$/);
+  assert.equal(two.data.dashboard.meetingId, m);
+  assert.ok(two.data.dashboard.sendLinkVerbatim, 'a url with nothing saying it must be sent');
   // the table hint that was already there is still there — added to, not replaced
   assert.match(two.data.hints.table, /2 option/);
 
@@ -143,7 +150,8 @@ test('the page is offered once, only from chat, only once two options are on the
   // The other side's first move on a full table: offered to THEM, once.
   const bens = await call('respond_to_meeting_slot', ben, { meeting_id: m, accept: false, accepted_starts_at: t24 });
   assert.equal(bens.ok, true, JSON.stringify(bens.error));
-  assert.match(bens.data.hints.dashboard, new RegExp(`meeting_id=${m}`));
+  assert.equal(bens.data.dashboard.meetingId, m);
+  assert.match(bens.data.dashboard.url, /\/d\/[A-Za-z0-9]{22}$/);
   const bens2 = await call('respond_to_meeting_slot', ben, { meeting_id: m, accept: false, accepted_starts_at: t48 });
   assert.equal(bens2.data.hints && bens2.data.hints.dashboard, undefined);
 
