@@ -33,10 +33,17 @@ const OPEN_TIMEOUT_MS = 2_000;
 const JUDGE_MODEL = 'moonshotai/kimi-k2.6';
 const TURN_TIMEOUT_MS = 240_000; // a cold flash turn measured ~77s; leave room
 
+// THE eval user, by its phone — not "the first is_eval row". Scenario seeds
+// create partners, and a partner is marked is_eval too (so the gate drops
+// every row addressed to it), which makes `is_eval ORDER BY id LIMIT 1` a
+// question with two answers that only happens to pick right while the eval
+// user has the lower id. The one the harness drives is the one
+// `scripts/setup-eval-user.js` provisioned, and that is keyed on EVAL_PHONE.
 async function getEvalUser(client) {
   const { rows } = await client.query(
     `SELECT id, phone, agent_id, workspace_path, timezone, identity_token
-       FROM users WHERE is_eval = true AND status = 'active' ORDER BY id LIMIT 1`
+       FROM users WHERE phone = $1 AND is_eval = true AND status = 'active'`,
+    [EVAL_PHONE]
   );
   return rows[0] || null;
 }

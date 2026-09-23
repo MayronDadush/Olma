@@ -1143,3 +1143,68 @@ test('a scenario green on every trial is green, and says so', async () => {
   assert.equal(summary.results[0].passedAll, true);
   assert.equal(summary.tally.green, 1);
 });
+
+// ── The partner a seed creates is an eval user too ─────────────────────────
+//
+// `meeting-second-option` created its partner as an ordinary person at a
+// number that may belong to somebody, and the outbox treated it as one: the
+// intake agent provisioned it, and twelve WhatsApp messages went to that
+// number over a day (incidents.md, "The eval partner was a real WhatsApp
+// recipient"). Rolled back, so the rows never reach the tests after it.
+
+async function inRollback(fn) {
+  const c = await db.pool.connect();
+  try {
+    await c.query('BEGIN');
+    return await fn(c);
+  } finally {
+    await c.query('ROLLBACK');
+    c.release();
+  }
+}
+
+test('the meeting seed marks its partner is_eval, created or found', async () => {
+  const seed = byId['meeting-second-option'].seed;
+  const partnerRow = async (c) => (await c.query(
+    `SELECT u.id, u.is_eval, u.checkin_enabled, u.phone FROM users u
+       JOIN meetings m ON m.initiator_id = u.id
+      WHERE m.title = 'קפה עם דנה' ORDER BY m.id DESC LIMIT 1`)).rows[0];
+
+  await inRollback(async (c) => {
+    await seed(c, evalUser.id);
+    const p = await partnerRow(c);
+    assert.equal(p.is_eval, true, 'a created partner is an eval user from its first run');
+    assert.equal(p.checkin_enabled, false);
+    assert.match(p.phone, /^\+1\d{3}55501\d{2}$/, 'and its number is one reserved for fiction');
+  });
+
+  // A partner row that already exists unmarked — the state the box was in —
+  // is marked by the next run rather than reused as a person.
+  await inRollback(async (c) => {
+    await seed(c, evalUser.id);
+    const first = await partnerRow(c);
+    await c.query(`UPDATE users SET is_eval = false, checkin_enabled = true WHERE id = $1`, [first.id]);
+    await seed(c, evalUser.id);
+    const again = await partnerRow(c);
+    assert.equal(Number(again.id), Number(first.id), 'the partner is reused, not recreated');
+    assert.equal(again.is_eval, true);
+    assert.equal(again.checkin_enabled, false);
+  });
+});
+
+test('getEvalUser is the user at EVAL_PHONE, never merely the lowest is_eval id', async () => {
+  await inRollback(async (c) => {
+    // Swap the phone onto a NEWER row, so the lowest-id is_eval user is no
+    // longer the one the harness drives. `ORDER BY id LIMIT 1` got this wrong.
+    const { rows: [other] } = await c.query(
+      `INSERT INTO users (phone, first_name, is_eval) VALUES ('+972599999077', 'שותפה', true) RETURNING id`);
+    await c.query(`UPDATE users SET phone = '+972599999078' WHERE id = $1`, [evalUser.id]);
+    await c.query(`UPDATE users SET phone = $2 WHERE id = $1`, [other.id, harness.EVAL_PHONE]);
+    const u = await harness.getEvalUser(c);
+    assert.equal(Number(u.id), Number(other.id));
+  });
+  await withTx(db.pool, async (c) => {
+    const u = await harness.getEvalUser(c);
+    assert.equal(Number(u.id), Number(evalUser.id), 'and the fixture is untouched afterwards');
+  });
+});

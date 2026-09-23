@@ -545,12 +545,25 @@ const SCENARIOS = [
       // ways, and one coordination between them with one option on the table.
       // Idempotent across nightly runs: the partner and the connection persist,
       // the meeting is fresh every run (old ones expire on their own).
-      const PHONE = '+972500000777';
+      //
+      // The partner is an eval user too, and is marked so on EVERY run, not
+      // only at creation. Until 2026-09-23 it was created as an ordinary
+      // person at +972500000777 — a number that may belong to somebody — and
+      // the outbox treated it as one: the invite reached the intake agent,
+      // which provisioned it a real agent and binding, and twelve WhatsApp
+      // messages went to that number over the next day (incidents.md, "The
+      // eval partner was a real WhatsApp recipient"). is_eval is what the gate
+      // drops on and every sweep skips; the number is from the range reserved
+      // for fiction (NANP 555-0100..0199) so that even a path that ignores the
+      // flag has nobody to reach.
+      const PHONE = '+12025550177';
       let partner = await users.getByPhone(client, PHONE);
       if (!partner) {
         const made = await users.createUser(client, { phone: PHONE, firstName: 'דנה', timezone: 'Asia/Jerusalem' });
         partner = made.data.user;
       }
+      await client.query(
+        `UPDATE users SET is_eval = true, checkin_enabled = false WHERE id = $1`, [partner.id]);
       const { rows: conn } = await client.query(
         `SELECT id FROM connections WHERE status = 'active'
            AND ((requester_id = $1 AND target_id = $2) OR (requester_id = $2 AND target_id = $1)) LIMIT 1`, [userId, partner.id]);
