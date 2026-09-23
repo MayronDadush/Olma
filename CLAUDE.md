@@ -233,6 +233,7 @@ Loads when you **Read** a file under `src/domain/reminders.js`, `src/domain/task
 - **A repeating reminder with an END is a CHASE, and every reader that took "repeating" to mean "a rhythm" had to be told the difference** — `repeat_until` is the discriminator, and it is EXPLICIT because a live monthly pill carries a vestigial `due_at`.
 - **The owner decided the four things about a chase that no reading of the code could settle** — the day they ask counts, the hour is one they already hear from Olma, a quiet day is skipped, and "עד ש…" plus a request for help is what arms one.
 - **A chase is the one arming whose SHAPE is news, whoever picked the hour** — a 👍 cannot carry a cadence, and a line that says only "every day" about something with an end is a promise to keep going for ever.
+- **The second call echoes the moment already armed, and that is not an hour anybody named** — a chase replaces every automatic row in its span, and its result says which branch it took
 
 ### People, silence, and data you must not get wrong
 
