@@ -339,6 +339,7 @@ Loads when you **Read** a file under `src/domain/group-connections.js`, `src/dom
 - **In the room a person is addressed by their TAG and never by their name; in a private chat, by their name**
 - **The first thing a room hears about its own coordination is that she has STARTED, and it counts people rather than naming them**
 - **The "סגור" line names who can make it, a calendar line is said only for a SHARED event, and a base line is never said to nobody**
+- **A time the room was TOLD about and that has since left the table is said again; a time merely overtaken is not**
 - **The place is the room's own words, asked for only when nobody said one, and it rides the confirmation onto the calendar event**
 - **A tag is a NUMBER, and the roster hands us LIDs in the same column** — the cut is 13 digits, measured; a line that can name nobody is not said
 - **The room says that people have not answered only about people she has actually written to** — `silent` is still the exact count; `asked` is what may be SAID
