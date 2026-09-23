@@ -38,6 +38,13 @@ title means this file. Grep the title, not the filename.
   The health board shows the rendered size against the gateway's ceiling
   (`doctrineMeter` in `dashboard.js`) — an unreadable config reads as an
   unknown ceiling, never as the gateway's 20k default.
+  **2026-09-23: 36,874 after the dead text went** — the whole "Their mailbox"
+  section (its tools were deleted with `gmail.readonly` on 09-07 and it was
+  still read on every turn) and the cadence list `set_task_reminder`'s own
+  schema already carries. What a mailbox is still for now lives on the one
+  USER.md line that exists only when one is connected. **Read the doctrine for
+  text about a tool that is gone before arguing for room**; ~11% of it was
+  dead or duplicated when counted.
 
 - **What Olma runs on is not the user's to be handed — asked outright or as
   an aside.** Sharon asked what she runs on three hours into his first day and

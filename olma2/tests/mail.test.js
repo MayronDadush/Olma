@@ -543,6 +543,10 @@ test('the card says read-only, not merely connected', () => {
   assert.ok(card.includes('Email: connected (dana@example.com, read-only'));
   assert.ok(/cannot send/.test(card));
   assert.ok(/never browse it unasked/.test(card));
+  // The search tool went with gmail.readonly; a card that still names it sends
+  // the model to a tool that does not exist, on every turn it is connected.
+  assert.doesNotMatch(card, /search_my_email|read_email/);
+  assert.match(card, /subscribe_live_updates with mail_query/);
   assert.ok(renderCard({ first_name: 'Dana' }, [], [], { mail: false }).includes('Email: not connected'));
 });
 
