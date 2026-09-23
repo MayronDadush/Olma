@@ -1082,3 +1082,70 @@ test('a scenario green on every trial is green, and says so', async () => {
   assert.equal(summary.results[0].passedAll, true);
   assert.equal(summary.tally.green, 1);
 });
+
+// ── A night that measured nothing is its own state ─────────────────────────
+//
+// From 2026-09-12 every nightly errored on every scenario before a turn ran.
+// The alert said so sixteen times in sixteen near-identical lines, the
+// heartbeat stayed green and the admin strip showed the "N red last night"
+// warn it shows for an ordinary bad night — for twelve nights (incidents.md,
+// "The eval partner was a real WhatsApp recipient…").
+
+test('a run where no scenario reached a verdict is noneRan, and its alert is one sentence', async () => {
+  const two = [byId['general-knowledge'], byId['not-chatgpt-essay']];
+  const dead = await evalsJob.runEvalSuite(db.pool, {
+    trigger: 'manual', scenarios: two,
+    deps: { runTurn: async () => { throw new Error('eval user 15 is not on a blank slate: x.y (4)'); }, complete: judgePass },
+  });
+  assert.equal(dead.tally.error, 2);
+  assert.equal(dead.noneRan, true);
+  const text = evalsJob.alertText(dead);
+  assert.match(text, /0 מתוך 2/);
+  assert.match(text, /not on a blank slate/, 'the cause is in it');
+  assert.doesNotMatch(text, /⚠️/, 'and not one line per scenario');
+
+  // One scenario that ran is a night that measured something: the old list.
+  let i = 0;
+  const half = await evalsJob.runEvalSuite(db.pool, {
+    trigger: 'manual', scenarios: two,
+    deps: {
+      runTurn: async (...a) => { i += 1; if (i === 1) throw new Error('boom'); return fakeTurns([{ reply: 'זה לא התחום שלי — אבל את המשימות שלך אשמח לסדר.' }])(...a); },
+      complete: judgePass,
+    },
+  });
+  assert.equal(half.noneRan, false);
+  assert.match(evalsJob.alertText(half), /⚠️ general-knowledge/);
+});
+
+test('the admin strip is RED for a run that measured nothing, and for a nightly that stopped', async () => {
+  const { collectAlerts } = require('../src/adapters/http/admin/sections/health');
+  const evalPills = async (c) => (await collectAlerts(c, { hbRows: [], gateway: { status: 'live' } }))
+    .filter((a) => a.href === '#evals');
+  const c = await db.pool.connect();
+  try {
+    await c.query('BEGIN');
+    await c.query(`DELETE FROM eval_runs`);
+    assert.deepEqual(await evalPills(c), [], 'a box that never ran a nightly says nothing');
+
+    await c.query(
+      `INSERT INTO eval_runs (trigger, scenarios, greens, reds, errors, finished_at)
+       VALUES ('nightly', 16, 13, 3, 0, now())`);
+    let pills = await evalPills(c);
+    assert.deepEqual(pills.map((p) => p.level), ['warn'], 'an ordinary bad night stays a warn');
+
+    await c.query(
+      `INSERT INTO eval_runs (trigger, scenarios, errors, finished_at) VALUES ('nightly', 16, 16, now())`);
+    pills = await evalPills(c);
+    assert.equal(pills.length, 1, 'one pill, not a red one AND the "16 red" warn');
+    assert.equal(pills[0].level, 'bad');
+    assert.match(pills[0].text, /0 מתוך 16/);
+
+    await c.query(`UPDATE eval_runs SET started_at = now() - interval '50 hours', errors = 0, greens = 16`);
+    pills = await evalPills(c);
+    assert.deepEqual(pills.map((p) => p.level), ['bad']);
+    assert.match(pills[0].text, /50 שעות/, 'a nightly that stopped happening is red too');
+  } finally {
+    await c.query('ROLLBACK');
+    c.release();
+  }
+});

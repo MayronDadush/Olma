@@ -79,6 +79,20 @@ async function previousStatus(client, scenario, beforeRunId) {
 }
 
 function alertText(summary) {
+  // A night where nothing ran is ONE sentence, not a line per scenario: from
+  // 2026-09-12 the morning alert was sixteen near-identical "הבדיקה עצמה
+  // נשברה" lines carrying one cause, and it did not read as "the suite is
+  // dead" (incidents.md, "The eval partner was a real WhatsApp recipient…").
+  // The cause is usually shared, so the first one is the one worth reading.
+  if (summary.noneRan) {
+    const first = summary.results.find((r) => r.error) || summary.results[0];
+    const cause = (first && (first.error || (first.judge && first.judge.error))) || 'unknown';
+    return [
+      `🚨 עולמה: בדיקת ההתנהגות הלילית לא הריצה אף תרחיש — 0 מתוך ${summary.results.length}.`,
+      `הסיבה (${first.scenario}): ${cause}`,
+      'עד שזה מתוקן, שום דבר לא נמדד על המודל.',
+    ].join('\n');
+  }
   const lines = ['🧪 עולמה: בדיקת ההתנהגות הלילית מצאה בעיות.'];
   for (const r of summary.alerts) {
     if (r.status === 'red') {
@@ -177,7 +191,12 @@ async function runEvalSuite(pool, { trigger = 'nightly', deps = {}, scenarios = 
       if (prev === 'yellow' || prev === 'red') alerts.push(r);
     }
   }
-  return { runId, trigger, tally, alerts, results, trials };
+  // Not one scenario reached a verdict: the night measured nothing about the
+  // model. Its own state rather than "N errors", because N errors is what the
+  // board, the alert and the admin strip already showed for twelve nights
+  // running, and every one of them read like an ordinary bad night.
+  const noneRan = results.length > 0 && tally.error === results.length;
+  return { runId, trigger, tally, alerts, results, trials, noneRan };
 }
 
 // The brokerd job. deps.send(phone, text) is the raw pipe (same as the credit
@@ -256,6 +275,7 @@ async function sweepEvals(pool, deps = {}) {
   }
   return {
     runId: summary.runId, ...summary.tally,
+    ...(summary.noneRan ? { noneRan: true } : {}),
     alerted: summary.alerted || false, alerts: summary.alerts.length,
     // Distinguishes "nothing to say" from "said, but not until morning" —
     // without it the heartbeat reads a queued alert as no alert at all.

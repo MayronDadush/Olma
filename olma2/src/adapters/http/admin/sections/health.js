@@ -144,13 +144,17 @@ function doctrineRow(m) {
 // ---- the alerts strip -------------------------------------------------------
 // The one thing to read before anything else: every signal the page already
 // computes for its sections, lifted into a row of pills at the top of the
-// open group. Zero new network calls and ONE new query (four scalar
+// open group. Zero new network calls and ONE new query (scalar
 // subqueries); the gateway state and the heartbeat rows arrive from the
 // router, the prepaid balances come from infra-cost's 10-minute cache. A pill
 // links to the section that explains it.
 //
 // Classes are alert-bad/alert-warn, never the bare `bad`/`warn` the tests
 // slice sections by (tests/dashboard.test.js sectionOf/rowFor).
+// A nightly starts inside a three-hour window once a day, so a newest start
+// more than a day and a half old means at least one night did not happen.
+const EVAL_NIGHTLY_STALE_H = 36;
+
 async function collectAlerts(client, { hbRows, gateway }) {
   const out = [];
   const bad = (text, href) => out.push({ level: 'bad', text, href });
@@ -170,6 +174,19 @@ async function collectAlerts(client, { hbRows, gateway }) {
             WHERE sent_at IS NULL AND cancelled_at IS NULL AND remind_at < now() AND attempts = 0) AS overdue_reminders,
          (SELECT reds + errors FROM eval_runs
             WHERE finished_at IS NOT NULL AND trigger <> $1 ORDER BY id DESC LIMIT 1) AS eval_bad,
+         -- The same run, asked a different question: did ANY scenario reach
+         -- a verdict? Twelve nights of "16 red" read exactly like one bad
+         -- night, when nothing had been measured at all (incidents.md, "The
+         -- eval partner was a real WhatsApp recipient…").
+         (SELECT greens + yellows + reds FROM eval_runs
+            WHERE finished_at IS NOT NULL AND trigger <> $1 ORDER BY id DESC LIMIT 1) AS eval_ran,
+         (SELECT scenarios FROM eval_runs
+            WHERE finished_at IS NOT NULL AND trigger <> $1 ORDER BY id DESC LIMIT 1) AS eval_scenarios,
+         -- And whether a nightly happened at all. NULL (never ran, as on a
+         -- box with no eval user) is silent; only a suite that USED to run
+         -- and stopped is a pill.
+         (SELECT floor(extract(epoch FROM now() - max(started_at)) / 3600)::int
+            FROM eval_runs WHERE trigger = 'nightly') AS eval_nightly_age_h,
          -- A new person was told something untrue, or got no answer at all, in
          -- their first three hours (jobs/onboarding-review.js). Not
          -- BREAKS_USERS — nothing is failing right now — but it is the one
@@ -184,7 +201,14 @@ async function collectAlerts(client, { hbRows, gateway }) {
     if (r.outbox_failing > 0) bad(`${r.outbox_failing} הודעות נכשלות בשליחה`, '#planned');
     if (r.overdue_reminders > 0) warn(`${r.overdue_reminders} תזכורות שעברו ולא יצאו`, '#planned');
     if (r.open_issues > 0) warn(`${r.open_issues} תקלות פתוחות`, '#issues');
-    if (r.eval_bad > 0) warn(`${r.eval_bad} בדיקות התנהגות אדומות אמש`, '#evals');
+    if (r.eval_scenarios > 0 && r.eval_ran === 0) {
+      bad(`בדיקת ההתנהגות לא הריצה אף תרחיש (0 מתוך ${r.eval_scenarios})`, '#evals');
+    } else if (r.eval_bad > 0) {
+      warn(`${r.eval_bad} בדיקות התנהגות אדומות אמש`, '#evals');
+    }
+    if (r.eval_nightly_age_h !== null && r.eval_nightly_age_h >= EVAL_NIGHTLY_STALE_H) {
+      bad(`אין בדיקת התנהגות לילית כבר ${r.eval_nightly_age_h} שעות`, '#evals');
+    }
     if (r.bad_onboardings > 0) bad(`${r.bad_onboardings} משתמשים חדשים שההצטרפות שלהם השתבשה`, '#onboarding');
   } catch (e) {
     // A query that failed is not a clean board — say so, in the strip itself.
