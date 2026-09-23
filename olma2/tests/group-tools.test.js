@@ -142,7 +142,7 @@ test('every tool in the group file is a group tool, and no other file has one', 
   const groupFile = require('../src/adapters/mcp/tools/group');
   for (const t of groupFile) assert.equal(t.audience, 'group', `${t.name} is a group tool`);
   assert.deepEqual(groupFile.map((t) => t.name).sort(),
-    ['add_group_coordination_option', 'group_coordination_status', 'group_status', 'set_group_coordination_place', 'set_group_kind',
+    ['add_group_coordination_option', 'group_coordination_status', 'group_status', 'remember_sender_gender', 'set_group_coordination_place', 'set_group_kind',
       'settle_group_coordination', 'start_group_coordination']);
 
   const { toolDefinitions } = require('../src/adapters/mcp/registry');
@@ -151,3 +151,51 @@ test('every tool in the group file is a group tool, and no other file has one', 
   assert.deepEqual(elsewhere, [], 'a group-audience tool defined outside tools/group.js');
 });
 
+
+// 2026-09-23, פחם הסעות: Amit wrote "אני גבר ואת אמורה לדעת את זה עליי", she
+// apologised, and nothing was written — the next turn's block would have
+// drawn him with no `address` again. The owner asked for it to be kept. Run
+// through brokerd's real door, so the audience check, the acting member and
+// the card refresh after commit are all the production path.
+test('a member saying their own gender in the room is saved on THEIR record, and their card follows', async () => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const { createBrokerServer } = require('../src/brokerd/server');
+  const amit = await makeUser(db.pool, '+972605000031', { firstName: 'עמית' });
+  const miron = await makeUser(db.pool, '+972605000032', { firstName: 'מירון' });
+  const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'olma-group-gender-'));
+  await db.pool.query(`UPDATE users SET last_inbound_at = now(), workspace_path = $2 WHERE id = $1`, [amit.id, ws]);
+  await db.pool.query(`UPDATE users SET last_inbound_at = now() WHERE id = $1`, [miron.id]);
+  const group = await withTx(db.pool, (c) => openGroup(c, {
+    jid: JID(9), members: [{ phone: amit.phone }, { phone: miron.phone }], token: TOKEN('e'),
+  }));
+  const broker = createBrokerServer({ pool: db.pool });
+  const call = (gender) => broker.dispatch({ id: 1, method: 'tool_call',
+    params: { name: 'remember_sender_gender', args: { olma_identity: group.identity_token, gender } } }, {});
+
+  // Nobody filed as the sender: nothing is saved, for anybody.
+  // `dispatch` answers the way the shim speaks: the envelope is always ok, and
+  // a refusal is the text the model reads.
+  const blind = await call('male');
+  assert.match(blind.text, /^ERROR invalid/);
+  const gender = async (u) => (await db.pool.query(`SELECT gender FROM users WHERE id = $1`, [u.id])).rows[0].gender;
+  assert.equal(await gender(amit), null);
+
+  await db.pool.query(
+    `INSERT INTO group_inbound_context (session_key, agent_id, chat_id, members, sender_e164, was_mentioned, at)
+     VALUES ($1, $2, $3, $4, $5, true, now())`,
+    [`agent:${group.agent_id}:whatsapp:group:${group.external_id}`, group.agent_id, group.external_id,
+      `${amit.phone}, ${miron.phone}`, amit.phone]);
+  const res = await call('male');
+  assert.match(res.text, /^OK /);
+  assert.equal(await gender(amit), 'male', 'the sender, and only the sender');
+  assert.equal(await gender(miron), null);
+  assert.match(fs.readFileSync(path.join(ws, 'USER.md'), 'utf8'), /Address them in the MASCULINE form/,
+    'their private agent reads it on its next turn');
+
+  // Anything that is not one of the two words is refused, not guessed at.
+  const odd = await call('גבר');
+  assert.match(odd.text, /^ERROR invalid/);
+  assert.equal(await gender(amit), 'male');
+});

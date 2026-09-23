@@ -12,7 +12,7 @@
 // can be handed a person by accident, and `actingUser` — the member whose tag
 // started this turn — is chosen by the server from what the gateway filed,
 // never by the model.
-const { groups, groupMeetings, meetings, meetingFanout, ok, err, groupTool, S } = require('./_shared');
+const { groups, groupMeetings, meetings, meetingFanout, users, ok, err, groupTool, S } = require('./_shared');
 
 module.exports = [
   groupTool('group_status',
@@ -170,6 +170,29 @@ module.exports = [
             ? 'Say ONE short line: noted, and the calendar event now carries the place.'
             : 'Say ONE short line: noted. It goes on the calendar with the event — do not claim it is there yet.',
         },
+      });
+    }),
+
+  // 2026-09-23, פחם הסעות: Amit wrote "אני גבר ואת אמורה לדעת את זה עליי",
+  // she apologised, and nothing was written — the room's turn block would
+  // have drawn him with no `address` on the next turn and the next one after
+  // that. The owner asked for it to be kept. Only ever the SENDER, about
+  // THEMSELVES: `actingUser` is chosen by the server from what the gateway
+  // filed, so a member cannot set somebody else's form of address from the
+  // room, and the column is the same one their own profile page writes
+  // (`users.setPersonal`), so the private chat learns it too.
+  groupTool('remember_sender_gender',
+    'GROUP AGENTS ONLY. The member who tagged you said how to address THEM ("אני גבר", "אני אישה"): save it. Never for anybody else.',
+    { gender: S('string', '"male" or "female"') }, ['gender'],
+    async (client, ctx, a) => {
+      if (!ctx.actingUser) {
+        return err('invalid', 'I cannot tell who said this — nothing was saved');
+      }
+      const res = await users.setPersonal(client, ctx.actingUser.id, { gender: a.gender });
+      if (!res.ok) return res;
+      return ok({
+        gender: res.data.gender,
+        hints: { room: 'Saved. If a word is needed, ONE short line in their form — no apology speech.' },
       });
     }),
 

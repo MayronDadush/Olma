@@ -29,6 +29,10 @@ const CARD_TOOLS = new Set([
   // A fact stated outright mid-conversation shows up in the card immediately,
   // the same turn — it should not have to wait for the extraction job to run.
   'remember_fact', 'forget_fact',
+  // The one GROUP tool that writes to a person: the form of address the
+  // sender stated about themselves in a room is the card's "Address them in
+  // the … form" line, and their private agent reads it next turn.
+  'remember_sender_gender',
   // Calendar and connection state live on the card too (see renderCard), so
   // the calls that change them refresh it. Connecting a calendar happens in
   // the OAuth callback (an HTTP route, not a tool) — the dashboard calls

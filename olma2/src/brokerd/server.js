@@ -456,6 +456,11 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers }) {
       // Carried out of the transaction for the acknowledgement mark below: the
       // reaction target is read from OUR row, never from anything the model sent.
       let actorPhone = null;
+      // A group tool that writes to the SENDER's own record (their form of
+      // address, said in the room) leaves that person's USER.md stale, and the
+      // card refresh below keys on `actorId` — which a group call never sets,
+      // on purpose, because everything else hung off it is person-shaped.
+      let groupCardUserId = null;
       const result = await withTx(pool, async (client) => {
         // ── the group door ────────────────────────────────────────────────
         // Routed on the token's PREFIX, before the user door is even tried:
@@ -493,7 +498,9 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers }) {
           await require('../domain/audit').record(client, actingUser ? actingUser.id : null, 'group.tool', {
             tool: name, groupId: group.id, actingPhone: actingUser ? actingUser.phone : null,
           });
-          return tool.handler(client, { group, actingUser }, stripIdentity(args), { flood, now: clock });
+          const out = await tool.handler(client, { group, actingUser }, stripIdentity(args), { flood, now: clock });
+          if (out && out.ok && actingUser && CARD_TOOLS.has(name)) groupCardUserId = actingUser.id;
+          return out;
         }
 
         const auth = await usersDomain.resolveByToken(client, readIdentity(args));
@@ -605,6 +612,7 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers }) {
       if (actorId && result && result.ok && (CARD_TOOLS.has(name) || result.cardStale)) {
         await refreshUserCard(pool, actorId);
       }
+      if (groupCardUserId && result && result.ok) await refreshUserCard(pool, groupCardUserId);
       // The acknowledgement mark on the person's own message — 👀 as the turn
       // opens, ⏰ or ✅ as the work lands. Here, and not inside the handlers,
       // because every tool already passes through this one line: the table of
