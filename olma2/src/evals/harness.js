@@ -66,12 +66,32 @@ async function resetEvalUser(client, userId) {
   // orphan `meeting_option_answers` rows when `assertCleanSlate` was first
   // pointed at it. Deleting the meeting cascades to options, answers,
   // participants, availability and picker links (migrations 001, 020, 039).
+  //
+  // But only a meeting an EVAL user started. The seed's partner is is_eval,
+  // so its meetings qualify; a meeting a real person started never does,
+  // whatever the eval user's part in it — this function's is_eval check above
+  // protects the eval user's own rows, and nothing protected a person's
+  // meeting until this join. On 2026-09-23 a careful read of the box took
+  // the partner for a real person (it had not been marked), and this DELETE
+  // was the thing that would have removed her coordination.
   await client.query(
     `DELETE FROM meetings m
-      WHERE m.initiator_id = $1
-         OR EXISTS (SELECT 1 FROM meeting_participants p
-                     WHERE p.meeting_id = m.id AND p.user_id = $1)`, [userId]
+      USING users i
+      WHERE i.id = m.initiator_id AND i.is_eval
+        AND (m.initiator_id = $1
+             OR EXISTS (SELECT 1 FROM meeting_participants p
+                         WHERE p.meeting_id = m.id AND p.user_id = $1))`, [userId]
   );
+  // The eval user's OWN rows in whatever is left, by user_id — never by way
+  // of a meeting. These are what kept every nightly from 2026-09-12 red:
+  // resets before #342 deleted the eval user's participant rows and left
+  // their answers on the partner's meetings, #342's delete could then only
+  // find meetings through a participant row that no longer existed, and
+  // four orphan answers failed the clean-slate guard every night (incidents.md,
+  // "The eval partner was a real WhatsApp recipient…").
+  await client.query(`DELETE FROM meeting_option_answers WHERE user_id = $1`, [userId]);
+  await client.query(`DELETE FROM meeting_availability WHERE user_id = $1`, [userId]);
+  await client.query(`DELETE FROM picker_links WHERE user_id = $1`, [userId]);
   await client.query(`DELETE FROM meeting_participants WHERE user_id = $1`, [userId]);
   await client.query(`DELETE FROM outbox WHERE user_id = $1`, [userId]);
   await client.query(`DELETE FROM connections WHERE requester_id = $1 OR target_id = $1`, [userId]);
