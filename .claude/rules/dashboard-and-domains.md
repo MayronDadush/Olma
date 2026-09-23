@@ -87,6 +87,18 @@ title means this file. Grep the title, not the filename.
   not owned.** Moving a value chip into a row whose next render sets
   `innerHTML` destroys it, and every `$("#id")` after that is null. Draw it
   with the row.
+- **The SERVER decides when a coordination stops being active, and the page
+  never cuts that list a second time.** `user-dashboard.loadMeetings` keeps a
+  settled one until its moment has actually passed (`meetings.EXPIRE_AFTER_START_MS`
+  past its start, `LEGACY_STALE_DAYS` for the text-only rows that predate start
+  times), and `user-dashboard.loadLeftMeetings` is the other half of the same
+  cut. `renderMeets` filtered `settled` out on top of that, so three meetings
+  still to come — one of them days away — sat in the fold that says they are
+  closed (`incidents.md`, "Saturday's game, filed under \"closed\""). That cut
+  is the one with the clock, the timezone and the six-hour grace in it, and
+  none of those exist in a browser. What the page DOES own is the marking: a
+  settled card carries `mtset`, which tints the card and fills the chip, and
+  only in the active list.
 
 - **Admin edits go through the domain functions, never raw SQL**, so an
   operator's change is validated and audited like the agent's own.

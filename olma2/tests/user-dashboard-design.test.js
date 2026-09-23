@@ -215,3 +215,24 @@ test('picking an hour redraws the button that names it', () => {
   assert.match(page,
     /\$\("#mtOptTime"\)\.addEventListener\("input", function\(\)\{ optExact = this\.value; renderOptSheet\(\); \}\);/);
 });
+
+// The server already decides when a coordination stops being active: a settled
+// one stays until its moment has passed (six hours after it starts, or three
+// days for the text-only rows that predate start times) and only then turns
+// into an archive row. The page cut it a SECOND time, on `settled` alone — so
+// Saturday's game and next month's meeting, both arranged and both still
+// coming, sat under "תיאומים שנסגרו ושיצאת מהם" from the minute they were
+// agreed (the owner, 2026-09-23). Two cuts where one is authoritative is the
+// shape, not the filter: the page draws what it is sent, and marks it.
+test('a settled coordination stays in the list, and the card says so', () => {
+  const body = page.match(/function renderMeets\(\)\{[\s\S]*?\n {2}\}/);
+  assert.ok(body, 'renderMeets is still here');
+  assert.doesNotMatch(body[0], /MEETS\.filter/,
+    'the page never re-cuts the active list the server sent it');
+  assert.match(body[0], /var arc = MTLEFT\.map/,
+    'the archive is exactly the list the server calls left/over');
+  assert.match(page, /m\.settled \? " mtset" : ""/, 'a settled card carries the marker');
+  assert.match(page, /\.group\.mtset\{background:var\(--accent-soft\)\}/,
+    'and the marker tints the whole card, not only the chip');
+  assert.match(page, /\.group\.mtset \.mtpill\.settled\{/);
+});
