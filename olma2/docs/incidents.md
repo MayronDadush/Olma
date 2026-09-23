@@ -70,6 +70,7 @@ never trust a dated narrative for something you are about to act on.
 - [The room held a time that no longer existed (fixed 2026-09-22)](#the-room-held-a-time-that-no-longer-existed-fixed-2026-09-22)
 - [The room waited for nobody (fixed 2026-09-20)](#the-room-waited-for-nobody-fixed-2026-09-20)
 - [The room that did not know its own member (fixed 2026-09-23)](#the-room-that-did-not-know-its-own-member-fixed-2026-09-23)
+- [She called Bar את (fixed 2026-09-23)](#she-called-bar-את-fixed-2026-09-23)
 - [The place nobody asked for (fixed 2026-09-20)](#the-place-nobody-asked-for-fixed-2026-09-20)
 - [The room asked three numbers that were nobody (fixed 2026-09-22)](#the-room-asked-three-numbers-that-were-nobody-fixed-2026-09-22)
 - [The room chased three people, two of whom had never been asked (fixed 2026-09-22)](#the-room-chased-three-people-two-of-whom-had-never-been-asked-fixed-2026-09-22)
@@ -2616,6 +2617,42 @@ group 9 is outside `group_untagged_rooms` and the claiming path is inert
 there. Backing the request, which is what the owner actually wants her to do,
 needs a room turn that may act about a person other than the sender; that is
 the capability question still open.
+
+### She called Bar את (fixed 2026-09-23)
+
+Poker in פחם הסעות, meeting 42. At 11:51 UTC Olma told the room she was
+still waiting on Bar, "ברגע שהיא תענה נעדכן את כולם". At 12:13 Bar tagged her
+with a joke, and her answer opened with "אין לי מושג על מה שאת מדברת". Bar is
+a man. Nothing on his record said so either way: no `users.gender`, no
+`gender_forms` preference, and "בר" is a name both men and women carry.
+
+The room had no rule for this at all. The private doctrine has had one since
+the start: masculine by default, never a slashed form, and a stored preference
+decides. That paragraph lives in `agents-template.md`, which a room never
+reads. The group doctrine said only "שם ומגדר של חברי הקבוצה, כדי לפנות אליהם
+נכון". It was a promise with no data behind it. `room.people` carried tags and
+lids, and `TAG_RULE` forbade names outright. Her private agent's knowledge of
+a person never reached the room, so she guessed from a name.
+
+The owner loosened the 2026-09-20 rule the same afternoon. If she knows
+someone's name and how to address them, she may take that and only that.
+Measured on the box before writing it, across the seven live rooms:
+
+- 5 people have a confirmed first name.
+- 1 has `users.gender` (Miron, male).
+- 1 has a `gender_forms` preference (Maya, "נשי").
+
+So the default is what most people get, and it had to be written down. Bar is
+one of them.
+
+`group-turn.peopleOf` adds `name` (confirmed only) and `address` (their own
+page first, then the preference, both readings or neither is null).
+`TAG_RULE` now says:
+- the tag is still how someone is reached;
+- a name may appear in a sentence only as the block spells it;
+- `address` governs every verb and pronoun about that person;
+- no `address` means masculine;
+- the sender is the entry carrying the sender's digits.
 
 ### The place nobody asked for (fixed 2026-09-20)
 
