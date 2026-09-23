@@ -254,8 +254,40 @@ function renderGroupCoordination(line, overrides) {
     // owner has one sentence to edit rather than two that can drift.
     return templates.render('group_coord_moved', { was: slotText(line.was), lead }, overrides).trim();
   }
+  // Somebody else's words, over their TAG — never their name, the same rule
+  // every room line obeys. The text was bounded and stripped where it was saved
+  // (group-meetings.cleanRelay); `slotText` here is the same last pass every
+  // verbatim room string gets, and it is what the slots go through too.
+  //
+  // Which of the three it is, is a fact and not a choice: the clause is said
+  // only about a change that person actually made to this table, so a relay
+  // from somebody who touched nothing carries no clause at all rather than a
+  // sentence nobody can check.
+  if (line.kind === 'relay') {
+    const vars = { from: mentionToken(line.from) || '', what: slotText(line.what) };
+    if (line.added && line.was) {
+      return templates.render('group_coord_relay_swapped',
+        { ...vars, was: slotText(line.was), added: slotText(line.added) }, overrides).trim();
+    }
+    if (line.added) {
+      return templates.render('group_coord_relay_added',
+        { ...vars, added: slotText(line.added) }, overrides).trim();
+    }
+    return templates.render('group_coord_relay', vars, overrides).trim();
+  }
   if (line.kind === 'chase') {
     return templates.render('group_coord_chase', { missing: mentionTokens(line.missing || []) }, overrides);
+  }
+  if (line.kind === 'table') {
+    // `lead` is a whole phrase, so an owner's rewording can move or drop it,
+    // and a table nobody has said yes to yet draws nothing rather than an
+    // empty label — the same shape as `who` on the done line below.
+    return templates.render('group_coord_table', {
+      // A whole phrase, not a number: Hebrew does not say "1 מועדים", and
+      // agreement is the renderer's job rather than the template's.
+      count: line.count === 1 ? ONE_OPTION : `*${line.count}* ${MANY_OPTIONS}`,
+      lead: line.lead ? `${TABLE_LEAD} *${slotText(line.lead)}*.` : '',
+    }, overrides).trim();
   }
   if (line.kind === 'dayof') return templates.render('group_coord_dayof', { slot: slotText(line.slot) }, overrides);
   if (line.kind === 'soon') return templates.render('group_coord_soon', { slot: slotText(line.slot) }, overrides);
@@ -267,6 +299,9 @@ function renderGroupCoordination(line, overrides) {
     slot: slotText(line.slot), who, place_ask: line.placeAsk ? PLACE_ASK : '',
   }, overrides).trim();
 }
+const TABLE_LEAD = 'הכי מתקדם:';
+const ONE_OPTION = 'מועד אחד';
+const MANY_OPTIONS = 'מועדים';
 const PLACE_ASK = 'איפה נפגשים? תכתבו לי ואני אוסיף ליומן 📍';
 const OUTSIDE_NOTE = 'מי שעוד לא כתב לי בפרטי לא נספר פה — ״היי״ בפרטי וזה מסתדר ☺️';
 const WHO_ALL = 'כולם בפנים';

@@ -264,6 +264,24 @@ have already had to be argued for.
   (`rules/delivering.md`): the fixed lines a room hears have tagged people
   since the start (`proactive-text.mentionTokens`, capped at `MAX_TAGS`), and
   the model's half was the last place a name could still get out.
+  **And a tag COMING IN is a member to look up, not a token to discard**
+  (2026-09-23). `group-turn.draw` puts `room.people` — every member's `tag`,
+  plus the `lid` they are tagged by when the gateway's reverse map knows it —
+  in the block on EVERY turn, negotiation or none, and `TAG_RULE` sends her to
+  match an incoming `@<digits>` against it. The map is
+  `channels/sessions.lidPhoneNumbers` again, read by brokerd through the worker
+  facade and injectable so no test reaches the live gateway; an empty or
+  unreadable one costs the `lid` fields and nothing else, the same direction
+  `groups.resolveLidMembers` takes. **This rule has now been wrong in both
+  directions** — it used to say every `@<digits>` in an incoming message was
+  the sender tagging HER, written when she echoed her own LID as if it were
+  Yuval's, and that reading made a real member's tag "nobody's": Miron tagged
+  Yuval to ask him to book a court and she told the room she did not recognise
+  the id, three hours after tagging that same man in her own "בפנים" line
+  (`incidents.md`, "The room that did not know its own member"). A token
+  matching nobody is ignored in SILENCE — her own trouble identifying one is
+  not the room's business, and the owner's two acceptable answers were to stay
+  out of it or to back the request, never to narrate the confusion.
 
 - **The first thing a room hears about its own coordination is that she has
   STARTED, and it counts people rather than naming them** (owner, 2026-09-22:
@@ -299,6 +317,51 @@ have already had to be argued for.
   left as a cost, because the sentence for a room waiting on somebody we cannot
   name is his to write (`incidents.md`, "The room asked three numbers that were
   nobody").
+
+- **Every line a room hears is said once, except the TABLE moving, which is
+  news every time** (migration 084, `meetings.group_table_at`; owner,
+  2026-09-22). מירון's padel room was told she had started and that there was
+  a direction, and then heard nothing all afternoon while שבת 16:00 came off,
+  three times went on and two people turned Wednesday down. So that one line
+  is a WATERMARK rather than a flag — the moment the room was last told what
+  is on the table, against every change to any option (`created_at` for one
+  added, `decided_at` for one removed). **The watermark is the BASE line
+  and never the started line**: the first time somebody puts a time up, the
+  table is being LAID, not moving, and the first cut of this said "השולחן זז —
+  עכשיו מועד אחד" about it until `tests/group-voice.test.js` refused. It says
+  the SHAPE only — how many times are on the table, which is furthest along —
+  because whose answer is whose is still nobody else's to hear. Its
+  idempotency key carries the change's own timestamp, so one line per
+  movement and a re-run of the pass collapses onto it.
+
+- **…and it waits a quarter of an hour, so a burst of changes is ONE sentence**
+  (`group-voice.TABLE_SETTLE_MS`, owner 2026-09-22: the room should wait before
+  it announces a change, so that changes which overlap in that time do not each
+  get their own message). The same fifteen minutes as the private side's
+  `meeting-fanout.PACE_MS`, off the same afternoon: מירון's table moved at
+  16:14, 16:22, 16:23 and 16:25, and `group_voice` runs every sixty seconds, so
+  an ungated line is the private complaint said out loud in the room. **The
+  clock starts at the FIRST change the room has not heard about, never at the
+  newest** — waiting for the table to go QUIET reads better and starves, since a
+  room that keeps adding times would never be told anything at all. It gates
+  BOTH lines about the table moving, `table` and `moved`: a time deleted and
+  replaced thirty seconds later is one thing that happened, and said at once it
+  is "שבת 16:00 כבר לא על השולחן" followed a minute later by the table having
+  moved again. Nothing else waits — "she has started" is the line whose whole
+  value is being early, and a base, a chase and a "סגור" are each said once.
+  **The stamp is the clock the DECISION was made on and never SQL's `now()`**:
+  two of those columns are read back as moments rather than flags, so a stamp
+  from a different clock is a quarter of an hour that measures nothing.
+
+- **The room is chased an HOUR after she starts, not half way to the thing**
+  (`group-voice.CHASE_AFTER_MS`). Half the distance, clamped to [1h, 24h],
+  put מירון's room at 05:11 the next morning with the night in front of it,
+  because the earliest option was twenty-six hours out. `Math.min` keeps the
+  old instinct as a ceiling rather than a formula: a game in ninety minutes is
+  still chased in forty-five. Who may be NAMED is unchanged and was re-checked
+  on this room — גל had been written to four times and not answered, so he is
+  nameable; גיא had every message dropped at the gate as `quiet`, was never
+  actually asked, and must not be.
 - **The "סגור" line names who can make it, a calendar line is said only for
   a SHARED event, and a base line is never said to nobody** (owner,
   2026-09-20, off coordinations 35–37). `group-meetings.statusOf` exposes
@@ -445,3 +508,40 @@ have already had to be argued for.
   It sends no "X left" message, because they said nothing. `meeting_no_match`
   goes to the initiator only when the exit closes the meeting (`incidents.md`,
   "A room counted in somebody who had paused").
+
+- **Every line a room hears unasked is Olma's own text, save exactly one: a
+  sentence a MEMBER asked her to say there** (owner, 2026-09-22). Sharon told
+  her in private that the group should know the time had moved from 16:00 to
+  17:00; there was no shape in the system for a sentence somebody else decided
+  on, so the room was never told and people kept the old hour they had marked.
+  `relay_to_group` writes it and the SWEEP says it — deliberately not the tool,
+  because enqueueing into `group_outbox` from a private turn would make it the
+  one voice able to wake a room at 03:00 (`groups.mayAnnounce` is in the sweep,
+  never in the drain) — as `group-voice`'s `relay` kind, between `started` and
+  her own three lines: the room learns what is being arranged before it is
+  handed somebody's sentence about it. **The guard against her becoming
+  "חופרת" is arithmetic, not judgement**: ONE per person per coordination, with
+  `meeting_participants.relay_text` (migration 083) as the budget itself, and
+  the room has to be named in the `group_relay_rooms` flag at all — empty by
+  default, flipped per room from the admin page. Nothing asks a model whether a
+  sentence was worth saying. Two more things follow from it being somebody
+  else's words: `group-meetings.cleanRelay` strips every `@<digits>` token
+  before it is stored, because a relay is a sentence and never a way to notify
+  people, and `pendingRelay` is read by the sweep and **never** by
+  `group-meetings.statusOf` — that status is also the block a group turn speaks
+  from, and a model that could see a sentence waiting would say it itself, in
+  its own words, a pass early and outside the room's hours.
+
+
+- **…and that line carries what the same person did to the TABLE, because the
+  reason and the change are one piece of news** (owner's wording, 2026-09-22:
+  *"ב-4 קצת חם הוספתי / החלפתי לאופציה של השעה 17 📣"*). Three shapes, chosen by
+  what is true and never by a model: `group_coord_relay_swapped` when they took
+  a time off and put one on, `group_coord_relay_added` when they only added, and
+  `group_coord_relay` — their sentence alone — when they touched nothing.
+  `pendingRelay` reads only THEIR writes, and only an addition that is still
+  `active`, so a time somebody else has since removed is not reported as news
+  about this table; a removal with nothing in its place draws the plain line,
+  because "החלפתי" would be false and a time leaving the table has a line of its
+  own. The joiner is a dash, not a comma: their sentence keeps its own
+  punctuation and a comma after a full stop is what that looks like.

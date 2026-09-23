@@ -50,7 +50,21 @@ const { IDENTITY_PARAM } = require('../src/adapters/mcp/identity-param');
 // and it is available more often than it looks: the description has to carry
 // only what the model needs on a turn nobody could predict. 55,494 now, margin
 // of 6 — the next one really does have to argue.
-const JSON_CEILING = 55_500;
+//
+// Raised deliberately, the second time ever, on 2026-09-22: 55,500 -> 56,500,
+// for `relay_to_group` — 924 chars all in, and the owner cleared the raise in
+// as many words ("אפשר לעלות את מכסת התווים שלנו בשביל מה שאתה צריך") when
+// told what it would cost. What the tool buys is the one thing a room hears
+// that somebody actually asked for: Sharon told Olma privately that the group
+// should know the time had moved, and there was no shape in the system for a
+// sentence a MEMBER decided on, so the room never heard it. The description
+// could not shrink much further either — most of it is the boundary against
+// the two tools it is NOT (`record_meeting_constraint`,
+// `respond_to_meeting_slot`), and a model that gets that boundary wrong relays
+// an answer about a time into a room. The ceiling still matters at 56,500: the
+// margin is 449, one ordinary tool, so the argument the paragraphs above make
+// is unchanged and the next one has to be made again.
+const JSON_CEILING = 56_500;
 const DESCRIPTION_CEILING = 700;
 const IDENTITY_DESCRIPTION_CEILING = 40;
 

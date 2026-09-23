@@ -114,7 +114,13 @@ test('meeting lifecycle fans out at every turn', async () => {
   assert.equal(rows[0].payload.slot, 'Wednesday 18:00, phone');
 });
 
-test('plain decline notifies the initiator; cancel notifies participants', async () => {
+// A plain decline used to be a message of its own to the initiator, and two of
+// Miron's five messages on 2026-09-22 were exactly that. It is not one any more
+// (owner: "אין צורך שמי שפתח את התיאום יקבל הודעות מיוחדות") — the table he is
+// shown carries the answer. What a CANCEL does is unchanged, and the two are
+// tested together because the difference between them is the whole rule: one
+// is an update inside a live coordination, the other is its end.
+test('a plain decline notifies nobody; cancel still notifies participants', async () => {
   const started = await call(miron, 'start_meeting_coordination', { title: 'lunch', phones: [kapish.phone] });
   const meetingId = Number(/"id":"?(\d+)/.exec(started)[1]);
   await call(miron, 'propose_meeting_slot', { meeting_id: meetingId, slot_description: 'Sunday 12:00',
@@ -122,8 +128,7 @@ test('plain decline notifies the initiator; cancel notifies participants', async
 
   await call(kapish, 'respond_to_meeting_slot', { meeting_id: meetingId, accept: false });
   const declined = await outboxFor(miron.id, 'meeting_slot_declined');
-  assert.equal(declined.length, 1);
-  assert.equal(declined[0].payload.byName, 'Kapish');
+  assert.equal(declined.length, 0);
 
   await call(miron, 'cancel_meeting', { meeting_id: meetingId });
   const cancelled = await outboxFor(kapish.id, 'meeting_cancelled');
@@ -910,8 +915,11 @@ test('a constraint that rules out a time on the table is that time declined', as
   const after = (await db.pool.query(`SELECT constraints FROM meeting_participants WHERE meeting_id = $1 AND user_id = $2`, [meetingId, kapish.id])).rows[0].constraints;
   assert.deepEqual(after, before, 'nothing half done');
 
-  // With the id: the constraint AND the decline, and the initiator hears it
-  // with the reasons, exactly as respond_to_meeting_slot accept=false.
+  // With the id: the constraint AND the decline, on the same road
+  // respond_to_meeting_slot accept=false takes. That road no longer ends in a
+  // message of its own to the initiator (2026-09-22) — so what is asserted is
+  // where the reasons ARE, which is the status he reads, by name, whenever he
+  // or his next message about this coordination asks for it.
   const declined = await call(kapish, 'record_meeting_constraint', {
     meeting_id: meetingId, constraint: 'לא יכול בערב', declines_option_ids: [evening.id] });
   assert.match(declined, /"constraintRecorded":true/);
@@ -919,8 +927,10 @@ test('a constraint that rules out a time on the table is that time declined', as
   const row = (await db.pool.query(`SELECT answer FROM meeting_option_answers WHERE option_id = $1 AND user_id = $2`, [evening.id, kapish.id])).rows[0];
   assert.equal(row && row.answer, 'n');
   const heard = (await outboxFor(miron.id, 'meeting_slot_declined')).filter((r) => Number(r.payload.meetingId) === meetingId);
-  assert.equal(heard.length, 1);
-  assert.ok(heard[0].payload.reasons.includes('לא יכול בערב'));
-  assert.ok(heard[0].payload.reasons.includes('לא בערב'));
+  assert.equal(heard.length, 0, 'the initiator is not notified of every answer any more');
+  const st = await meetings.getStatus(db.pool, miron.id, meetingId);
+  const theirs = st.data.participants.find((p) => Number(p.user_id) === Number(kapish.id));
+  assert.ok(theirs.constraints.includes('לא יכול בערב'), 'the reason is still his to read');
+  assert.ok(theirs.constraints.includes('לא בערב'));
 });
 
