@@ -67,6 +67,7 @@ never trust a dated narrative for something you are about to act on.
 - [The room heard its own state from memory (fixed 2026-09-19)](#the-room-heard-its-own-state-from-memory-fixed-2026-09-19)
 - [The room waited for nobody (fixed 2026-09-20)](#the-room-waited-for-nobody-fixed-2026-09-20)
 - [The place nobody asked for (fixed 2026-09-20)](#the-place-nobody-asked-for-fixed-2026-09-20)
+- [The room asked three numbers that were nobody (fixed 2026-09-22)](#the-room-asked-three-numbers-that-were-nobody-fixed-2026-09-22)
 - [The room chased three people, two of whom had never been asked (fixed 2026-09-22)](#the-room-chased-three-people-two-of-whom-had-never-been-asked-fixed-2026-09-22)
 - [The room that could never open (2026-09-22)](#the-room-that-could-never-open-2026-09-22)
 - [The room asked, and heard nothing back for hours (2026-09-22)](#the-room-asked-and-heard-nothing-back-for-hours-2026-09-22)
@@ -2332,6 +2333,67 @@ seven descriptions (55,833 → 55,478 chars), which is what adding a tool
 costs here. What it still waits on: an answer typed in the room reaches her
 only with a tag until PR #429 lands.
 
+
+### The room asked three numbers that were nobody (fixed 2026-09-22)
+
+A real group, "Padel Gang", added Olma at 09:45:57. Seven members: four
+Israeli numbers, three of them people we know, and **three identifiers 14, 15
+and 13 digits long that are not phone numbers at all**. The intro went out at
+09:46:48 and was correct. Then Yuval tagged her at 09:49:42, the room was
+locked, and the gate notice said what it is built to say:
+
+```
+רק אומרת.. עוד לא שלחו לי: @+259201444126724 @+6266525098172 @+69320805752936 @+972542636760
+```
+
+Only the last of those four is a number, and only it pinged anybody — Sharon,
+who was not a user yet. She did exactly what the sentence asked, wrote at
+09:51:42 and was onboarded as `u-36`. At 09:57:17 the next tag arrived and the
+shorter nudge went out to the three that were left: `עוד מחכה ל:` and three
+tokens nobody can press, about nobody.
+
+**Where they come from.** WhatsApp addresses a member by number or by LID, and
+the roster we read is the inbound envelope's `group_members` — a
+comma-separated list of digits with **no JID on it**. So `syncRoster` writes a
+LID into a column called `phone`, `mentionToken` prefixes `@+` to whatever it
+is handed, and nothing between the two ever had a way to tell the difference.
+`group-context.senderPhone` had already met this and answers `null` for a LID;
+that knowledge was one function away and could not reach here, because by the
+time the roster is a string the `@lid` suffix is gone.
+
+**Why the room was also stuck for good.** The three are counted into the gate's
+`missing`, and the gate opens only when every member has written to her. A LID
+cannot write as a matching number, so the room could never reach `open`, and
+the sentence it kept repeating — *"היי" בפרטי וזהו* — was not something those
+members could act on. Four days of nudges with no exit.
+
+**The fix, and what it deliberately does not do.** The cut is LENGTH, and it is
+a measurement: the gateway's own LID map on the box holds 2,673 keys at 12 (7),
+13 (88), 14 (870) and 15 (1,708) digits, against 5,346 real numbers that stop
+at 13. Nothing 14 digits or longer has ever been a number here, so
+`proactive-text.isTaggableNumber` cuts there — safe in the only direction that
+matters, since no real member is silenced. `mentionToken` returns `null` and
+`mentionTokens` filters BEFORE the cap, so "ועוד N" counts people rather than
+LIDs.
+
+**It catches two of Padel Gang's three.** The 13-digit one is inside the range
+where 95 of the box's LIDs live, and no local test can tell it from a number;
+`+6266525098172` looks like a valid Indonesian number and is not one. That gap
+is asserted in `tests/group-text.test.js` rather than written only in a
+comment, because the honest answer is upstream — a roster carrying JIDs, or the
+gateway's LID map consulted, which already resolves one of these three to a
+real Israeli number — and neither is this change.
+
+**And the new silence it creates, named rather than hidden.** Once the filter
+runs, a room whose missing members are all LIDs has nothing the line can name,
+and `templates.render` fills an empty variable with an empty string: the notice
+would be `עוד מחכה ל:  🧐`, which is `rules/groups.md`'s base line said to
+nobody. So the sweep does not enqueue it, does not count it and does not stamp
+`gate_notice_at`. That is a real cost against the owner's rule that every tag
+gets an answer (he removed a cooldown for exactly that reason), and it is left
+as a cost on purpose: what to say to a room waiting on somebody we cannot name
+is a sentence in `message_templates`, which is his to write, and inventing one
+here would be editing his copy on his behalf.
 
 ### The room chased three people, two of whom had never been asked (fixed 2026-09-22)
 

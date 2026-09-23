@@ -122,17 +122,54 @@ function renderReminderText(payload, overrides, locale, channelType) {
 // dead text nobody is notified by.
 const MAX_TAGS = 8;
 
+// …and a LID is not a phone number, so it is not a tag either. WhatsApp
+// addresses a member by number OR by LID, and the roster we read arrives as a
+// comma-separated list of digits with no JID on it (`domain/groups.js`, the
+// `group_members` envelope), so `chat_group_members.phone` holds LIDs for some
+// members with no marker to sort them by. Padel Gang was told
+// "עוד מחכה ל: @+259201444126724 @+6266525098172 @+69320805752936" in front of
+// four people (`incidents.md`, "The room asked three numbers that were nobody").
+//
+// LENGTH is the discriminator, and it is a MEASUREMENT, not a guess. The
+// gateway's own LID map on the box, 2026-09-22: 2,673 LID keys at 12 (7),
+// 13 (88), 14 (870) and 15 (1,708) digits, against 5,346 real numbers that top
+// out at 13 (10:4, 11:128, 12:5,206, 13:8). Nothing 14 digits or longer has
+// ever been a number here, which makes the cut safe in the only direction that
+// matters — a real member is never silenced. The floor is the one
+// `channels/sessions.js` already uses for a number it reads out of the
+// gateway's map.
+//
+// **What this does NOT catch: the 95 LIDs of 12-13 digits, which no local test
+// can tell from a number.** One of Padel Gang's own three is 13 digits and
+// still gets through. The airtight answer is upstream — a roster that carries
+// JIDs, or the gateway's LID map consulted — and neither is this change. So
+// this is a filter, never a guarantee, and a caller must not read a rendered
+// tag list as "everybody who is missing".
+const TAGGABLE_MIN_DIGITS = 7;
+const TAGGABLE_MAX_DIGITS = 13;
+
+function isTaggableNumber(value) {
+  const digits = String(value == null ? '' : value).trim().replace(/^\+/, '');
+  if (!/^\d+$/.test(digits)) return false;
+  return digits.length >= TAGGABLE_MIN_DIGITS && digits.length <= TAGGABLE_MAX_DIGITS;
+}
+
 // One tag, for the places that hand a person to the MODEL rather than render a
 // sentence (the group turn's own context block, the group tools' results).
 // Same spelling in one place: a second one that dropped the `+` would look
-// identical in a log and ping nobody.
+// identical in a log and ping nobody. `null` for something that is not a
+// number is the honest third state the rest of the room code already uses —
+// the model is told it may address somebody only by a tag the block carries,
+// so no tag means it cannot name them, which is right.
 function mentionToken(phone) {
   const digits = String(phone == null ? '' : phone).trim();
-  return digits ? `@${digits.replace(/^\+?/, '+')}` : null;
+  if (!isTaggableNumber(digits)) return null;
+  return `@${digits.replace(/^\+?/, '+')}`;
 }
 
 function mentionTokens(phones) {
-  const list = (phones || []).map((p) => String(p || '').trim()).filter(Boolean);
+  // Filtered BEFORE the cap, so "ועוד N" counts people and never LIDs.
+  const list = (phones || []).map((p) => String(p || '').trim()).filter(isTaggableNumber);
   const shown = list.slice(0, MAX_TAGS).map((phone) => mentionToken(phone));
   const rest = list.length - shown.length;
   // A 25-person group with twenty missing would otherwise produce a wall of
@@ -263,5 +300,6 @@ function rawPipeTextFor(row, overrides, channelType) {
 module.exports = {
   renderReminderText, rawPipeTextFor, reminderTemplateKey, localizedKey,
   renderGroupIntro, renderGroupGateNotice, renderGroupTooLarge, renderGroupOpened,
-  renderGroupCoordination, mentionTokens, mentionToken, MAX_TAGS, SELF_NUMBER,
+  renderGroupCoordination, mentionTokens, mentionToken, isTaggableNumber,
+  MAX_TAGS, SELF_NUMBER,
 };

@@ -340,6 +340,7 @@ Loads when you **Read** a file under `src/domain/group-connections.js`, `src/dom
 - **The first thing a room hears about its own coordination is that she has STARTED, and it counts people rather than naming them**
 - **The "סגור" line names who can make it, a calendar line is said only for a SHARED event, and a base line is never said to nobody**
 - **The place is the room's own words, asked for only when nobody said one, and it rides the confirmation onto the calendar event**
+- **A tag is a NUMBER, and the roster hands us LIDs in the same column** — the cut is 13 digits, measured; a line that can name nobody is not said
 - **The room says that people have not answered only about people she has actually written to** — `silent` is still the exact count; `asked` is what may be SAID
 - **A group turn is told the room's coordination state before the model's first word, and that block is the only thing it may speak from.**
 - **A message in the room with no tag on it is ENDED, never answered — and the window it opens is the point.** Inert behind a flag, and measuring while it is.
