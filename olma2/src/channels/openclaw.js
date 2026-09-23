@@ -13,6 +13,8 @@ const usersDomain = require('../domain/users');
 const selfInitiated = require('../domain/self-initiated');
 const proactiveText = require('../domain/proactive-text');
 const templates = require('../domain/message-templates');
+const dashboardAuth = require('../domain/dashboard-auth');
+const { withTx } = require('../db/pool');
 const format = require('../domain/message-format');
 const gatewayRpc = require('./gateway-rpc');
 
@@ -139,8 +141,12 @@ const PAUSED_ROOM_INVITE = ' The user has PAUSED your messages. This is the only
   + 'without apologising at length. If they answer that they want to stay paused, that answer is '
   + 'already their yes: call pause_olma, no confirming question. If they do not answer, nothing more is sent.';
 
-function instructionFor(row) {
-  const p = typeof row.payload === 'string' ? JSON.parse(row.payload) : (row.payload || {});
+// `dashboardUrl` arrives the same way `mergedParts` does: on the in-memory row
+// at DELIVERY, never on the stored payload — a link minted at enqueue would be
+// a day old before a row the gate held overnight ever went out.
+function instructionFor(row, dashboardUrl) {
+  const raw = typeof row.payload === 'string' ? JSON.parse(row.payload) : (row.payload || {});
+  const p = dashboardUrl ? { ...raw, dashboardUrl } : raw;
   const parts = Array.isArray(p.mergedParts) ? p.mergedParts : [];
   if (parts.length > 1) return `${DELIVERY_PREAMBLE}\n\n${mergedBody(parts)}`;
   if (p.instruction) return `${DELIVERY_PREAMBLE}\n\n${p.instruction}`;
@@ -206,14 +212,28 @@ function meetingCalendarStep(p) {
 }
 
 // The coordination's own page, offered with the invite (owner, 2026-09-15).
-// The model mints it, because a link is a tool result and a prompt cannot
-// carry one; minting a link that names a meeting writes the audit row that
-// stops the two-options offer repeating it later. Only for an invite that
-// names its meeting — a payload without an id has nothing to open on.
+// Only for a row that names its meeting — a payload without an id has nothing
+// to open on — and only once the URL EXISTS: `dashboardUrl` is put on the
+// payload at delivery by the deliverer below, and is never stored.
+//
+// Until 2026-09-22 this said "call open_my_dashboard with meeting_id=N and put
+// its url here", because a link was a tool result and a prompt could not carry
+// one. What a prompt could not carry, the model supplied: on the first room
+// fan-out after that clause shipped, three people in one minute were each sent
+// a different invented domain — dashboard.olma.ai, dash.olma.app,
+// dashboard.openclaw.ai — all of them `/meetings/40`, the number the
+// instruction itself had handed over, and NOT ONE link was minted for that
+// coordination. Eight fabrications across five people are in the transcripts,
+// against zero from `withStartLink`, which mints on the result and hands the
+// characters over. So this hands the characters over too: there is nothing
+// left to forget, and no number to build a plausible URL out of
+// (`incidents.md`, "Three people, three invented domains, one minute").
 function inviteLinkClause(p) {
   const mid = Number(p && p.meetingId);
   if (!Number.isInteger(mid) || mid <= 0) return '';
-  return ` Also call open_my_dashboard with meeting_id=${mid} and put its url in this same message on a line of its own, with no sentence about it.`;
+  if (!p.dashboardUrl) return '';
+  return ' Put this url in this same message on a line of its own, with no sentence'
+    + ` about it — nothing else will deliver it, so if the characters are not in the message you are writing now the person has no link: ${p.dashboardUrl}`;
 }
 
 // The length budget (owner and Yuval, 2026-09-20). Yuval's first two
@@ -606,6 +626,35 @@ function abortSessionLane({ agentId, key }) {
   ]);
 }
 
+// Which rows offer the coordination's page — asked of the BUILDER rather than
+// answered again here, because a second list of kinds is a list that drifts
+// from the first one. A probe no instruction can contain goes in, and the
+// answer is whether it came out.
+const LINK_PROBE = 'about:blank#olma-dashboard-probe';
+function offersDashboardLink(row) {
+  try { return instructionFor(row, LINK_PROBE).includes(LINK_PROBE); } catch { return false; }
+}
+
+// The page itself, minted at DELIVERY — the moment the row is really going
+// out, so its 24 hours start then and not whenever it was queued. A link we
+// could not mint writes no clause at all: no link is a message that still asks
+// its question, and an invented one is the bug this exists to close.
+async function dashboardUrlFor(pool, row) {
+  return offersDashboardLink(row) ? meetingLinkFor(pool, row) : null;
+}
+
+async function meetingLinkFor(pool, row) {
+  const p = typeof row.payload === 'string' ? JSON.parse(row.payload) : (row.payload || {});
+  try {
+    const made = await withTx(pool, (c) => dashboardAuth.createLinkUrl(
+      c, row.user_id, { meetingId: Number(p.meetingId) }));
+    // `meetingId` back on the result is the link really opening on THIS
+    // coordination; without it createLinkUrl minted a plain home link, which
+    // is not what the clause promises.
+    return made.ok && made.data.meetingId ? made.data.url : null;
+  } catch { return null; }
+}
+
 // deliver(row) for the outbox worker. Needs a fresh client only for the
 // channel lookup, so it takes the pool.
 function makeDeliverer(pool) {
@@ -646,6 +695,12 @@ function makeDeliverer(pool) {
       });
     }
 
+    // Only now, once this row is known to be going out as a model turn: a
+    // reminder on the raw pipe never offers a page, and a link minted for a
+    // send that did not happen is a key spent for nothing (five live per
+    // person, oldest evicted).
+    const dashboardUrl = await dashboardUrlFor(pool, row);
+
     // Users without an agent yet (pending: invited strangers, waitlist) are
     // reached through the intake agent's session for their phone.
     const agentId = row.agent_id || 'intake';
@@ -673,7 +728,7 @@ function makeDeliverer(pool) {
       '--session-key', sessionKey,
       '--channel', channel.channel_type,
       '--to', channel.channel_identifier,
-      '--message', instructionFor(row),
+      '--message', instructionFor(row, dashboardUrl),
       '--deliver',
     ]));
   };
@@ -681,6 +736,6 @@ function makeDeliverer(pool) {
 
 module.exports = {
   BRIEF,
-  makeDeliverer, instructionFor, runOpenclaw, runOpenclawJson, sendRawMessage,
+  makeDeliverer, instructionFor, offersDashboardLink, dashboardUrlFor, runOpenclaw, runOpenclawJson, sendRawMessage,
   abortSessionLane,
 };

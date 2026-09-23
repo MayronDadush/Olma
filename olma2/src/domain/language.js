@@ -141,7 +141,32 @@ function decideStreak({ stored, observed, prevObserved, prevCount, askedAt, now 
   return { observed: code, count, ask: count >= STREAK_TO_ASK && !askedRecently };
 }
 
+// Does this person write Hebrew? A TRI-STATE, and the third value is the
+// reason this is a function rather than `user.locale === 'he'` at a call site.
+//
+// It exists for one consumer: `domain/reply-leak`'s `english` tier, which
+// DROPS an English paragraph on the grounds that a Hebrew reader would never
+// have been sent one. That is destructive, so the two columns have to agree
+// before it may act. u-13 עמית is the case that forced the third value — his
+// `locale` says `he` and his `locale_observed` says `en`, because he writes
+// English, and the one English paragraph he was sent in eight days ("its all
+// good 👍") was a real reply. Filed one way, writing the other: not somebody a
+// drop tier may be run against.
+//
+//   true  — stored Hebrew, and nothing observed says otherwise
+//   false — stored anything else; they were decided, and not as Hebrew
+//   null  — the two disagree. A guess never acts (CLAUDE.md).
+function writesHebrew(user) {
+  if (!user) return null;
+  const stored = normalizeLocale(user.locale);
+  if (!stored) return null;
+  if (stored !== 'he') return false;
+  const observed = normalizeLocale(user.locale_observed);
+  if (observed && observed !== 'he') return null;
+  return true;
+}
+
 module.exports = {
   detectLanguage, resolveLocale, SCRIPTS, MIN_LETTERS,
-  decideStreak, normalizeLocale, STREAK_TO_ASK, ASK_AGAIN_DAYS,
+  decideStreak, normalizeLocale, STREAK_TO_ASK, ASK_AGAIN_DAYS, writesHebrew,
 };

@@ -144,6 +144,13 @@ async function sweepGroups(client, deps) {
   // store keeps the bare text and the block was never there to read.
   const readContext = deps.readGroupContext || ((agentId, key) => groupContext.read(client, agentId, key));
   const now = deps.now || new Date();
+  // The gateway's LID → phone reverse map, read once for the whole pass. An
+  // unreadable credentials directory answers `{}`, which resolves nothing and
+  // leaves every roster exactly as it arrived — the one direction that is safe,
+  // because the other would read as every LID member leaving their room.
+  const lidPhones = deps.lidPhoneNumbers
+    ? await deps.lidPhoneNumbers()
+    : await sessions.lidPhoneNumbers();
 
   // Before anything else, and every pass: a stale sender gate is the one
   // failure here that is invisible from the outside — she keeps working, she
@@ -173,6 +180,8 @@ async function sweepGroups(client, deps) {
     // twice (migration 055).
     registered: [], intros: 0, notices: 0, opened: [], relocked: [], announced: 0,
     unreadable: 0, strangers: 0, skipped: 0,
+    // Roster rows the reverse map turned from a LID into a phone this pass.
+    lidsResolved: 0,
     // Connections made because two people share a room. Counts the pairs
     // this pass changed, so a steady state reads 0 and a new member reads
     // however many people were already in there with her.
@@ -190,7 +199,18 @@ async function sweepGroups(client, deps) {
     // Null is "no evidence", not "an empty group" — a store we could not read
     // must never look like a group with nobody in it.
     if (!ctx || !ctx.members) { out.unreadable++; continue; }
-    const { members, unparsed } = groups.parseRoster(ctx.members);
+    // A member the gateway names by LID resolves to no user, so the room's gate
+    // counts them missing for ever. The reverse map is read ONCE per pass and
+    // shared by every room: it is a directory listing plus a small file per LID
+    // (2,673 of them on the box), and doing that per room would put it on the
+    // daemon's loop several times a tick for no new information.
+    const parsed = groups.parseRoster(ctx.members);
+    const unparsed = parsed.unparsed;
+    const resolvedRoster = groups.resolveLidMembers(parsed.members, lidPhones);
+    const members = resolvedRoster.members;
+    // Counted per PASS, so a steady state reads 0 and the number answers "did
+    // anything get resolved" without a log line naming anybody's number.
+    out.lidsResolved += resolvedRoster.resolved;
     if (!members.length) { out.unreadable++; continue; }
 
     let group = await groups.getByExternalId(client, 'whatsapp', jid);
@@ -337,8 +357,19 @@ async function sweepGroups(client, deps) {
       // The row in hand came from provisioning, from a state change or from
       // the sweep's own list, and none of those carry the roster — so the one
       // column `mayAnnounce` judges on is fetched here rather than assumed.
+      //
+      // `!missing.length` is the whole of what `group_open_without_everyone`
+      // changes here. The template is "יש! כולם כאן ואפשר להתחיל" — it names a
+      // fact, not a state — so a room the flag opened while three members have
+      // still never written to her must not say it. Such a room opens in
+      // silence: the sentence that would be true there ("אפשר להתחיל, וגיא
+      // ודנה עדיין לא כאן") is the owner's to write, and inventing it is how
+      // a room gets a line nobody chose. Nothing is lost in the meantime — the
+      // room has an agent from this pass on, and the next person who tags her
+      // gets an answer instead of the wait line.
       const presentGroup = { ...group, last_member_write_at: await groups.lastMemberWriteAt(client, group.id) };
-      if (!group.opened_announced_at && group.gate_notice_at && mayAnnounce(presentGroup, now)) {
+      if (!group.opened_announced_at && group.gate_notice_at && !missing.length
+        && mayAnnounce(presentGroup, now)) {
         await groupOutbox.enqueue(client, {
           groupId: group.id, kind: 'opened', idempotencyKey: `g${group.id}:opened`,
         });
@@ -441,7 +472,7 @@ async function sweepGroupVoice(client, deps) {
     // duplicate column name in one row silently keeps the LAST one — which
     // would date every coordination from the day the ROOM was registered.
     `SELECT m.id AS meeting_id, m.status, m.created_at AS meeting_created_at,
-            m.group_base_at, m.group_chase_at, m.group_done_at,
+            m.group_started_at, m.group_base_at, m.group_chase_at, m.group_done_at,
             m.group_dayof_at, m.group_hour_at, m.group_calendar_at, g.*,
             (SELECT max(last_wrote_at) FROM chat_group_members
               WHERE group_id = g.id) AS last_member_write_at
@@ -468,6 +499,7 @@ async function sweepGroupVoice(client, deps) {
          FROM meetings WHERE id = $1`, [row.meeting_id]);
     const st = await groupMeetings.statusOf(client, row, full[0] || null);
     const line = groupVoice.decideGroupLine(st.coordination, {
+      saidStarted: Boolean(row.group_started_at),
       saidBase: Boolean(row.group_base_at),
       saidChase: Boolean(row.group_chase_at),
       saidDone: Boolean(row.group_done_at),
@@ -491,6 +523,7 @@ async function sweepGroupVoice(client, deps) {
       idempotencyKey: `g${row.id}:m${row.meeting_id}:${line.kind}`,
     });
     const column = {
+      started: 'group_started_at',
       base: 'group_base_at', chase: 'group_chase_at', done: 'group_done_at',
       calendar: 'group_calendar_at', dayof: 'group_dayof_at', soon: 'group_hour_at',
     }[line.kind];

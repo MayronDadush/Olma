@@ -92,6 +92,30 @@ title means this file. Grep the title, not the filename.
   the page, never wrote in the chat, and was `quiet` to everything
   (`incidents.md`, "The man who only ever answered from the page").
 
+- **A stop is acted on the moment it is HEARD, not when it is confirmed.** גל
+  wrote "dont send me messages bye", was asked "בטוח?", and never answered —
+  so nothing on his record said he had asked, four urgent coordination rows
+  were dispatched over the next eighteen minutes and three of them reached
+  him (`incidents.md`, "The stop that waited for a yes"). The order is
+  inverted now: `pause_olma` THAT turn with `confirmed=false`, before a word
+  goes back, then the one question, then a SECOND call with `confirmed=true`
+  on their yes — a second call and not a no-op, because that is what clears
+  the provisional reason. An unconfirmed stop is a FULL pause under
+  `paused_reason = 'said_stop'` — the gate is the chokepoint, the queued rows
+  are cancelled, the reminders come down — and differs in exactly one way:
+  **their next message about anything else ends it** (`pause.stopResume`,
+  from `openRecord`'s `wake`, so it runs ahead of the model instead of
+  waiting for one to decide Olma may speak again). It goes through
+  `pause.resumeUser` rather than the ladder's column-clearing
+  `pause.quietResume`, because this pause took reminders down and each has to
+  come back at its own next real occurrence. `confirmed` defaults to the
+  LASTING pause (`a.confirmed !== false`): an omitted flag leaving somebody
+  paused who meant to be is one sentence from undone, and the other way round
+  lifts a stop that was confirmed. The owner's rule (2026-09-22) is that a
+  model reading the conversation and refusing turn by turn is not the
+  mechanism — "אין צורך שהמודל יצטרך לקרוא את השיחה ולסרב לפי השיקול דעת
+  שלו" — a column the gate reads before a turn is ever spawned is.
+
 - **A "once ever" question is stamped on the PERSON, never deduped on the
   route that asks it.** Two routes each honouring "at most once" is twice.
   The city is `users.timezone_asked_at` (migration 045), written by whichever

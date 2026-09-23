@@ -95,6 +95,49 @@ function dedupe(members) {
   return [...byPhone.values()];
 }
 
+// The roster reaches us as digits with no JID on them, so a member addressed by
+// LID is indistinguishable in `chat_group_members.phone` from one addressed by
+// phone — and a LID resolves to no user, which is the whole of why Padel Gang
+// could not open (`incidents.md`, "The room that could never open"). The gateway
+// writes `lid-mapping-<digits>_reverse.json` the moment it first resolves a LID,
+// so for anybody who has ever written to Olma there IS a way back to a number:
+// Gal's file was stamped at the exact second of his first message.
+//
+// Pure, and it takes the map rather than reading it, because the files belong to
+// the gateway and this module must not touch the filesystem
+// (`channels/sessions.lidPhoneNumbers` reads them, through the worker facade).
+//
+// `null`/`undefined` — nobody asked, or nothing could be read — changes NOTHING.
+// That direction is not a convenience: a roster silently emptied of its LID rows
+// would read as every one of those members leaving the room.
+//
+// Two things it deliberately does not do. It never DROPS a member it cannot
+// resolve: an unresolvable LID is still somebody in the room, and the room's
+// gate is entitled to keep counting them as missing. And a resolved phone that
+// is already in the roster collapses into one member through `dedupe` rather
+// than becoming a second row for one person — which is the case where the same
+// human is listed twice, once by each address.
+// Returns `{ members, resolved }` rather than a bare list, because the caller
+// has to be able to say whether anything changed without re-deriving the
+// predicate — and `dedupe` below can shorten the list, so a length difference
+// is not that answer.
+function resolveLidMembers(members, lidPhones) {
+  const list = members || [];
+  if (!lidPhones) return { members: list, resolved: 0 };
+  let resolved = 0;
+  const mapped = list.map((m) => {
+    const digits = String(m.phone || '').replace(/\D/g, '');
+    const phone = normalizePhone(lidPhones[digits] || '');
+    // A mapping onto the member's own number is not a mapping; and a key that
+    // is really a phone number could only get here from a gateway that wrote a
+    // reverse file for one, so this no-op is the whole guard against it.
+    if (!phone || phone === m.phone) return m;
+    resolved++;
+    return { ...m, phone };
+  });
+  return { members: dedupe(mapped), resolved };
+}
+
 // ---- timezone ---------------------------------------------------------------
 
 // A group's quiet hours run in whichever timezone most of its members are in.
@@ -263,16 +306,42 @@ function isConnected(member) {
   return Boolean(member.user_id && (member.last_inbound_at || member.opening_sent_at));
 }
 
+// Two is the floor, and it is not a taste call: `startCoordination` already
+// refuses a room where the person asking is the only member it can reach
+// ("there is nobody else in this group to coordinate with"), so opening a room
+// with one connected member would buy an agent that can do nothing.
+const MIN_CONNECTED_TO_OPEN = 2;
+
 // Pure, so the whole policy is testable without a database.
 // Returns { state, missing, memberCount } — never writes.
-function decideState(members, { maxMembers }) {
+//
+// `openWithoutEveryone` is the owner's switch (2026-09-22,
+// `group_open_without_everyone`, open by default). The original rule was
+// everybody or nobody, and Padel Gang is what that costs: four of its seven
+// members resolved to users who have written to her and the other three reached
+// us only as LIDs, which no message of theirs can turn into a matching phone.
+// One of those three is Gal, who had in fact written — his row is a LID, so the
+// gate cannot see him — and the other two have no phone behind them at all, so
+// that room can never open under the old rule. What it got instead was the wait
+// line, twice, in the twelve minutes after it registered. With the switch open a room opens
+// once at least two members are connected.
+//
+// **`missing` is unchanged either way.** Who has not written to her is a fact
+// about those people, and an open room is not a claim that everybody is in it —
+// the two answers are separate on purpose, because the caller has to know both:
+// it is what stops the "יש! כולם כאן" line going out about a room where they
+// are not.
+function decideState(members, { maxMembers, openWithoutEveryone = false }) {
   const live = members.filter((m) => !m.left_at);
   if (live.length > maxMembers) {
     return { state: 'too_large', missing: [], memberCount: live.length };
   }
   const missing = live.filter((m) => !isConnected(m));
+  const connected = live.length - missing.length;
+  const open = !missing.length
+    || (openWithoutEveryone && connected >= MIN_CONNECTED_TO_OPEN);
   return {
-    state: missing.length ? 'locked' : 'open',
+    state: open ? 'open' : 'locked',
     missing: missing.map((m) => ({ phone: m.phone, displayName: m.display_name || null })),
     memberCount: live.length,
   };
@@ -282,8 +351,9 @@ async function evaluate(client, groupId) {
   const group = await getById(client, groupId);
   if (!group) return err('not_found', 'no such group');
   const maxMembers = Number(await flags.getFlag(client, 'group_max_members')) || 25;
+  const openWithoutEveryone = await flags.getFlag(client, 'group_open_without_everyone') === true;
   const members = await listMembers(client, groupId);
-  return ok({ group, ...decideState(members, { maxMembers }) });
+  return ok({ group, ...decideState(members, { maxMembers, openWithoutEveryone }) });
 }
 
 // Applies whatever `evaluate` decided. Returns the transition so the caller
@@ -594,9 +664,9 @@ function quorumFor(group, yesCount) {
 
 module.exports = {
   DEFAULT_TIMEZONE,
-  parseRoster, normalizePhone, majorityTimezone, SELF_PHONE,
+  parseRoster, normalizePhone, majorityTimezone, SELF_PHONE, resolveLidMembers,
   registerGroup, getById, getByExternalId, listMembers, syncRoster,
-  decideState, evaluate, applyState, isConnected,
+  decideState, evaluate, applyState, isConnected, MIN_CONNECTED_TO_OPEN,
   decideNotice, noteNoticeSent, seenAt, noteSeen, lastMemberWriteAt,
   GROUP_KINDS, validKind, setKind, noteKindAsked, quorumFor,
   GROUP_TOKEN_RE, looksLikeGroupToken, resolveByToken, actingMember, roomStatus,

@@ -39,6 +39,20 @@ const DEFAULTS = {
   // A flag rather than a constant because it is a taste call about a product
   // that has not met a real group yet.
   group_max_members: 25,
+  // domain/groups.decideState: may a room start coordinating before EVERY member
+  // has written to her privately? Open by the owner's choice (2026-09-22), after
+  // Padel Gang (group 9) registered at 09:45 with seven members, four of them
+  // resolved to users who had written and three of them numbers the gateway only
+  // ever named by LID. By 09:57 the room had been told twice who it was waiting
+  // for, tagging numbers nobody dials — and one of those three turned out to be
+  // Gal (u-37), who had written to her at 10:03 and whose row the gate cannot
+  // see because `syncRoster` resolves by phone. Two of the three have no phone
+  // behind them anywhere on the box, so that room can never open. With this open a room opens once at least
+  // `MIN_CONNECTED_TO_OPEN` members are connected, and the ones who have not
+  // written are still listed as missing: the room is usable, and the fact that
+  // some people are not in it yet stays true rather than being papered over.
+  // Closed restores the original rule, everybody or nobody.
+  group_open_without_everyone: true,
   // domain/group-context.js: which rooms may have an UNTAGGED message of theirs
   // claimed — ended before any model turn starts, so the stamp that opens the
   // fifteen-minute window is taken and she says nothing. Room jids,

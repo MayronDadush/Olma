@@ -69,6 +69,22 @@ export function stampRegistration(fields, file = stampPath()) {
   try { writeFileSync(file, JSON.stringify({ at: new Date().toISOString(), pid: process.pid, ...fields }) + "\n"); } catch { /* best effort */ }
 }
 
+// Which of our agents speak to somebody who writes Hebrew, as brokerd answered
+// on that agent's last turn context. Tri-state per agent and ABSENT by default:
+// an agent nobody has answered for is `undefined`, which arms nothing. That is
+// the honest state for `intake` and `ggreet` in particular — the two agents
+// that speak to people whose language nobody knows yet, and which never reach
+// `before_prompt_build` at all.
+const LANG = new Map();
+export function rememberReader(agentId, value) {
+  if (value === true || value === false) LANG.set(agentId, value);
+  else LANG.delete(agentId);
+}
+export function readerOf(agentId) {
+  return LANG.has(agentId) ? LANG.get(agentId) : null;
+}
+export function _resetReaders() { LANG.clear(); }
+
 export function agentIdOf(sessionKey) {
   const m = /^agent:(u-\d+):/.exec(String(sessionKey || ""));
   return m ? m[1] : null;
@@ -145,6 +161,13 @@ export function buildHandler({ agents, connect, sock, timeoutMs, log = trace } =
     if (!reply || reply.ok !== true) { log({ agentId, outcome: reply ? "refused" : "unreachable", ms }); return undefined; }
     if (!reply.enabled) { log({ agentId, outcome: "not-enabled", ms }); return undefined; }
     if (typeof reply.context !== "string" || !reply.context) { log({ agentId, outcome: "no-open", trigger: params.trigger, ms }); return undefined; }
+    // The reader's language, for the gate below. Same turn, same agent, no
+    // second socket — which is the only way `reply_payload_sending` can have
+    // it at all, since it decides locally by design. Remembered rather than
+    // re-asked because it is a property of the person, not of the turn, and a
+    // turn that never reaches here (not covered, no open) simply leaves the
+    // last known answer standing.
+    rememberReader(agentId, reply.readerWritesHebrew);
     log({ agentId, outcome: "prepended", directive: reply.directive || null, chars: reply.context.length, promptChars: prompt.length, replyInPrompt: params.replyTarget, ms });
     return { prependContext: reply.context };
   };
@@ -440,6 +463,25 @@ export function deliberationIn(raw, text) {
   if (soft && DELIB_CUE_RE.test(text)) return soft[0];
   return null;
 }
+// Ported from `domain/reply-leak.englishToHebrewReader` — the tier that needs
+// a fact the gate cannot work out: the LANGUAGE OF THE READER. It arrives on
+// the `turn_context` this same plugin already fetches (`readerWritesHebrew`),
+// is remembered per agent in LANG below, and is a tri-state where only `true`
+// arms anything.
+const ENGLISH_WORD_RE = /[A-Za-z]{2,}/g;
+const HEBREW_LETTER_RE = /[\u0590-\u05FF]/;
+const MEDIA_LINE_RE = /^\s*MEDIA:/i;
+const RELAYED_LINE_RE = /^\s*>/;
+export const MIN_ENGLISH_WORDS = 4;
+export function englishToHebrewReader(raw, text, readerWritesHebrew) {
+  if (readerWritesHebrew !== true) return null;
+  if (MEDIA_LINE_RE.test(raw)) return null;
+  if (RELAYED_LINE_RE.test(raw)) return null;
+  if (HEBREW_LETTER_RE.test(raw)) return null;
+  const words = text.match(ENGLISH_WORD_RE) || [];
+  if (words.length < MIN_ENGLISH_WORDS) return null;
+  return words.slice(0, 6).join(" ");
+}
 const INSTANT_RE = /\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})\b/;
 const SENTINEL_RE = /\bNO_REPLY\b/;
 const SENTINEL_STRIP_RE = /\s*\bNO_REPLY\b\s*/g;
@@ -456,7 +498,7 @@ export function scannable(line) {
   return String(line || "").replace(URL_RE, " ").replace(ADDRESS_RE, " ").replace(QUOTED_RE, " ");
 }
 export function redact(at) { return String(at || "").replace(TOKEN_RE, "olma_***"); }
-export function leaksIn(line) {
+export function leaksIn(line, { readerWritesHebrew = null } = {}) {
   const raw = String(line || "");
   const text = scannable(raw);
   const out = [];
@@ -477,6 +519,10 @@ export function leaksIn(line) {
   const sentinel = SENTINEL_RE.exec(text);
   if (sentinel) out.push({ kind: "sentinel", at: sentinel[0] });
   if (!out.length) {
+    const english = englishToHebrewReader(raw, text, readerWritesHebrew);
+    if (english) out.push({ kind: "english", at: english.slice(0, 40) });
+  }
+  if (!out.length) {
     const id = IDENTIFIER_RE.exec(text);
     if (id) out.push({ kind: "identifier", at: id[1] });
   }
@@ -492,11 +538,11 @@ export function paragraphEnd(lines, i) {
   while (end + 1 < lines.length && lines[end + 1].trim()) end += 1;
   return end;
 }
-export function gateReply(text) {
+export function gateReply(text, { readerWritesHebrew = null } = {}) {
   const raw = String(text == null ? "" : text);
   if (raw.trim() === SENTINEL) return { action: "pass", text: raw, leaks: [], reported: [] };
   const lines = raw.split("\n");
-  const found = lines.map(leaksIn);
+  const found = lines.map((l) => leaksIn(l, { readerWritesHebrew }));
   const reported = [];
   let last = -1;
   for (let i = 0; i < lines.length; i++) {
@@ -538,14 +584,14 @@ export function buildReplyGateHandler({ connect, sock, timeoutMs = 1500, log = t
       const payload = event && event.payload;
       const text = payload && typeof payload.text === "string" ? payload.text : "";
       if (!text.trim()) return undefined;
-      const verdict = gateReply(text);
+      const agentId = m[1];
+      const verdict = gateReply(text, { readerWritesHebrew: readerOf(agentId) });
       if (verdict.action === "pass" && !verdict.reported.length) return undefined;
       // brokerd is asked only when something was found, so the ordinary reply
       // never waits on a socket. It is asked BEFORE the text goes (or does
       // not), because after a cancel there is nothing left to prove it
       // happened — and on a short deadline, because a wedged brokerd must
       // cost this reply a second and a half, not the fifteen the hook has.
-      const agentId = m[1];
       const report = {
         agentId, sessionKey: sessionKey.slice(0, 200), action: verdict.action,
         channel: (event && event.channel) || (ctx && ctx.channel) || null,

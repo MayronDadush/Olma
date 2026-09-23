@@ -29,7 +29,10 @@ async function renderUsers(client, csrf) {
       <td><a href="/user?id=${u.id}">${esc([u.first_name, u.last_name].filter(Boolean).join(' ') || u.phone)}</a>${u.is_test ? ' <span class="pill">בדיקה</span>' : ''}</td>
       <td class="mono dim">${esc(u.phone)}</td>
       <td>${u.paused_at ? (u.paused_reason === 'quiet_ladder'
-          ? '<span class="pill warn">מושהה — לא עונה</span>' : '<span class="pill warn">ביקש להפסיק</span>')
+          ? '<span class="pill warn">מושהה — לא עונה</span>'
+          : u.paused_reason === 'said_stop'
+          ? '<span class="pill warn">ביקש להפסיק — טרם אישר</span>'
+          : '<span class="pill warn">ביקש להפסיק</span>')
         : blocked(u) ? '<span class="pill warn">הגיע למכסה</span>'
         : u.status === 'active' ? '<span class="pill ok">פעיל</span>'
         : `<span class="pill">${STATUS_LABEL[u.status] || esc(u.status)}</span>`}</td>

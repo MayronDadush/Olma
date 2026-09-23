@@ -74,6 +74,20 @@ title means this file. Grep the title, not the filename.
 
 ### Editing the dashboard or domain
 
+- **Two sheets on the same `z-index` are ordered by the MARKUP, and the picker
+  has to beat all of them.** `#timeSheet` is the only sheet always opened from
+  inside another one. It was bumped to 82 to clear the plain `.sheet` layer,
+  `#mtOptSheet` was later bumped to 82 for its own reason, and the tie went to
+  whichever is written later — so tapping the hour opened the picker
+  *underneath* the sheet that asked for it, which reads as a tap that did
+  nothing (`incidents.md`, "The picker that opened underneath"). Anything new
+  that stacks stays at 82; `#timeSheet` stays above it, and
+  `tests/user-dashboard-design.test.js` compares the two rather than the number.
+- **An element appended into a container something else re-renders is borrowed,
+  not owned.** Moving a value chip into a row whose next render sets
+  `innerHTML` destroys it, and every `$("#id")` after that is null. Draw it
+  with the row.
+
 - **Admin edits go through the domain functions, never raw SQL**, so an
   operator's change is validated and audited like the agent's own.
 - **After any preference/fact edit, call `refreshUserCard(pool, userId)` —

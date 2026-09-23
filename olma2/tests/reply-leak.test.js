@@ -428,6 +428,104 @@ test('a leaked identity token cancels the message and is never written down in t
   assert.ok(hebrewQuality.flawsIn(`שלום <|tool_calls|>`).some((f) => f.kind === 'markup'));
 });
 
+// ---- the `english` tier ----------------------------------------------------
+//
+// Measured on the box on 2026-09-22 (`scripts/measure-reply-gate.js`, 8 days,
+// 37 agents, 255 assistant messages, 639 paragraphs): TWELVE English paragraphs
+// were delivered with no finding at all, nine of them to people who write
+// Hebrew and three of them real replies to the two people who write English.
+// Every string below is one of those twelve, verbatim off the transcripts.
+const ENGLISH_LEAKS = [
+  // u-36 Sharon, 12:12 and 15:03 — the second is the one the owner reported,
+  // and its Hebrew half is a real answer to a real question.
+  ['Now write the reply — one short message, one offer, the zone statement, then the name question.\n\nהיי שחר 👋 שמרתי שהזמינות שלך היא שבת אחרי 16:00, ראשון ורביעי.',
+    'היי שחר 👋 שמרתי שהזמינות שלך היא שבת אחרי 16:00, ראשון ורביעי.'],
+  ["The user answered my name question indirectly — they're not correcting me, so I'll confirm the name. And they asked a question about what I run on.\n\nכן, בדיוק — אני רצה על OpenClaw.",
+    'כן, בדיוק — אני רצה על OpenClaw.'],
+  // u-37 Gal — "with this model" is the system describing its own insides.
+  ["No contacts named padel. I need to ask Gal who's in the group so I can start coordinating.\n\nפאדל גנג — אחלה שם 😎",
+    'פאדל גנג — אחלה שם 😎'],
+  ["I can't see the image content with this model. Let me ask Gal to tell me who's in the group.\n\nהתמונה לא נקראת לי — תכתוב לי מי בפאדל גנג?",
+    'התמונה לא נקראת לי — תכתוב לי מי בפאדל גנג?'],
+  ["I still don't know who's in the Padel Gang. That's a good question — who are the other players I need to coordinate with.\n\nנעים להכיר באמת 😊",
+    'נעים להכיר באמת 😊'],
+  // u-3, the owner's own phone.
+  ['Now for the update — deliver the OpenRouter new models update as subscribed.\n\nוגם — התזכורת על לשלוח לאורלי מחכה לך.',
+    'וגם — התזכורת על לשלוח לאורלי מחכה לך.'],
+];
+
+test('english: a paragraph with no Hebrew in it, to somebody who writes Hebrew, loses the paragraph and keeps the answer', () => {
+  for (const [text, kept] of ENGLISH_LEAKS) {
+    // Each of these was DELIVERED — the corpus is the residue every other
+    // tier passed, which is the whole reason this tier exists. If one of them
+    // ever starts being caught lexically, this line is where you find out.
+    const before = leak.gateReply(text);
+    assert.equal(before.action, 'pass', `already caught without the flag: ${text.slice(0, 50)}`);
+    const after = leak.gateReply(text, { readerWritesHebrew: true });
+    assert.equal(after.action, 'trim');
+    assert.equal(after.text, kept);
+    assert.ok(after.leaks.some((l) => l.kind === 'english'), JSON.stringify(after.leaks));
+  }
+});
+
+test('english: a reply that is ONLY the working-out reaches nobody', () => {
+  // All three of these were delivered whole on the box. Each is a turn whose
+  // real work was a tool call, so silence is the correct message, not a loss:
+  // מאיה's accept went through, גלי's reminder was cancelled with a 👍 on it.
+  for (const text of [
+    "From the status: אופציה 37 — מירון ✅, אלי ✅.\n\nNow she's answering. I'll accept that option for her.",
+    "I'll gather the morning info now.",
+    "The recent reminder is about taking medication. She says it's cancelled.",
+  ]) {
+    assert.equal(leak.gateReply(text, { readerWritesHebrew: true }).action, 'cancel', text);
+  }
+});
+
+test('english: the tri-state — only `true` arms it, and a person who writes English keeps their reply', () => {
+  // u-12's locale is `en` and u-13's says `he` while he writes English; both
+  // got a real English reply in the window, and neither may lose it. `null` is
+  // the honest answer for the second and it must behave like `false`.
+  for (const text of ['its all good 👍',
+    "you have nothing in the calendar those days, and since it's Erev Yom Kippur today I'm guessing Friday morning at the beach could work?"]) {
+    for (const reader of [false, null, undefined]) {
+      assert.equal(leak.gateReply(text, { readerWritesHebrew: reader }).action, 'pass',
+        `reader=${reader}: ${text}`);
+    }
+  }
+  // …and the default, for every caller that passes nothing at all.
+  assert.equal(leak.gateReply('its all good 👍').action, 'pass');
+});
+
+test('english: the lines that must survive even for a Hebrew reader', () => {
+  const armed = { readerWritesHebrew: true };
+  // A relayed block is somebody else's text — a subscribed update, a digest,
+  // another person's message. The first measurement of this tier deleted
+  // Miron's OpenRouter update through exactly this line.
+  const relayed = 'הנה העדכון:\n\n> מודלים חדשים ב-OpenRouter:\n> Xiaomi MiMo-V2.6-Pro-UltraSpeed ($4.35/$8.70), MiMo-V2.6-Flash ($0.14/$0.28), Grok 4.7 ($1.60/$4.80)';
+  assert.equal(leak.gateReply(relayed, armed).action, 'pass', 'a relayed quote is not Olma writing English');
+  // The gateway's own attachment convention, which carries the schedule card.
+  assert.equal(leak.gateReply('הנה הכרטיס שלך 🙏\n\nMEDIA: /root/.openclaw/workspaces/u-7/cards/week.png', armed).action,
+    'pass', 'a MEDIA line is not a sentence');
+  // Short enough to be a name, a label or a sign-off rather than a paragraph.
+  for (const short of ['👍', 'Padel Gang', 'OK 👍', 'Tel Aviv']) {
+    assert.equal(leak.gateReply(short, armed).action, 'pass', short);
+  }
+  // One Hebrew letter anywhere means it is not this tier's business, and it is
+  // read off the RAW line — a Hebrew phrase quoted back is still Hebrew.
+  assert.equal(leak.gateReply('The meeting is on יום שלישי at four', armed).action, 'pass');
+});
+
+test('english: writesHebrew is a tri-state read off the columns, never a guess', () => {
+  const { writesHebrew } = require('../src/domain/language');
+  assert.equal(writesHebrew({ locale: 'he', locale_observed: null }), true);
+  assert.equal(writesHebrew({ locale: 'he', locale_observed: 'he' }), true);
+  // u-13 עמית: filed one way, writing the other. Neither column wins.
+  assert.equal(writesHebrew({ locale: 'he', locale_observed: 'en' }), null);
+  assert.equal(writesHebrew({ locale: 'en', locale_observed: null }), false);
+  assert.equal(writesHebrew({ locale: null }), null);
+  assert.equal(writesHebrew(null), null);
+});
+
 // The plugin carries a port of domain/reply-leak.js because it loads in the
 // gateway's own loader with nothing of ours beside it. This is what keeps the
 // two from drifting: one corpus, both implementations, first disagreement wins.
@@ -436,12 +534,47 @@ test('the gateway plugin\'s copy and the domain module answer identically', () =
     ...ORDINARY, ...DELIBERATION.map(([text]) => text),
     'Actually, I need to save the reminder first.\n\nרשמתי לך: להתקשר לבנק, מחר ב-10:00 👍', 'NO_REPLY', 'בוצע NO_REPLY', 'בוצע, סגרתי את המשימה NO_REPLY', '', '   ',
     'סיימתי את user_service', 'DELIVERY: say good morning', 'הפגישה ב-2026-09-10T10:00:00Z',
-    'Conversation info (untrusted metadata)', 'turn_start returned proceed'];
+    'Conversation info (untrusted metadata)', 'turn_start returned proceed',
+    ...ENGLISH_LEAKS.map(([text]) => text),
+    'הנה העדכון:\n\n> Xiaomi MiMo-V2.6-Pro-UltraSpeed, Grok 4.7',
+    'הנה הכרטיס 🙏\n\nMEDIA: /root/.openclaw/workspaces/u-7/cards/week.png',
+    'The meeting is on יום שלישי at four'];
   assert.deepEqual(plugin.INTERNAL_NAMES, leak.INTERNAL_NAMES, 'the closed lists are the same list');
+  assert.equal(plugin.MIN_ENGLISH_WORDS, leak.MIN_ENGLISH_WORDS, 'the same floor');
+  // Every case under every value the reader flag can take, because the option
+  // is the newest way for the two copies to drift and the default is only one
+  // of its three answers.
   for (const text of corpus) {
+    for (const readerWritesHebrew of [true, false, null]) {
+      const opts = { readerWritesHebrew };
+      assert.deepEqual(plugin.gateReply(text, opts), leak.gateReply(text, opts),
+        `disagreed on ${readerWritesHebrew}: ${JSON.stringify(text)}`);
+      assert.deepEqual(plugin.leaksIn(text, opts), leak.leaksIn(text, opts),
+        `disagreed on ${readerWritesHebrew}: ${JSON.stringify(text)}`);
+    }
     assert.deepEqual(plugin.gateReply(text), leak.gateReply(text), `disagreed on: ${JSON.stringify(text)}`);
     assert.deepEqual(plugin.leaksIn(text), leak.leaksIn(text), `disagreed on: ${JSON.stringify(text)}`);
   }
+});
+
+test('the plugin remembers each agent\'s reader language, and forgets it when brokerd does not know', () => {
+  // brokerd answers `turn_context` with `readerWritesHebrew`, the plugin holds
+  // it per agent, and the gate reads it back a reply later — the flag has to
+  // survive the gap between the two hooks, and it must not survive a `null`.
+  plugin._resetReaders();
+  assert.equal(plugin.readerOf('u-36'), null, 'an agent nobody has seen is unknown, not Hebrew');
+  plugin.rememberReader('u-36', true);
+  plugin.rememberReader('u-12', false);
+  assert.equal(plugin.readerOf('u-36'), true);
+  assert.equal(plugin.readerOf('u-12'), false);
+  assert.equal(plugin.readerOf('u-99'), null);
+  // u-13's row disagrees with itself, so brokerd sends null and the previous
+  // answer must not be left standing in its place.
+  plugin.rememberReader('u-36', null);
+  assert.equal(plugin.readerOf('u-36'), null);
+  plugin.rememberReader('u-12', undefined);
+  assert.equal(plugin.readerOf('u-12'), null);
+  plugin._resetReaders();
 });
 
 // ---- the hook itself -------------------------------------------------------
@@ -495,6 +628,34 @@ test('an ordinary reply never touches brokerd and is returned untouched', async 
     assert.equal(await handler({ payload: { text }, sessionKey: KEY }, {}), undefined, text);
   }
   assert.equal(sent.length, 0, 'the normal path costs no socket at all');
+});
+
+test('the hook arms the english tier off the agent id, and only for an agent brokerd answered for', async () => {
+  // The two hooks are a whole turn apart — `before_prompt_build` learns the
+  // language, the gate reads it back after the model has written. u-36 Sharon
+  // is the measured case, and the same bytes to an agent nobody answered for
+  // must go out untouched rather than being guessed at.
+  const english = "I can't see the image content with this model. Let me ask Gal who's in the group.";
+  plugin._resetReaders();
+  const key = (agent) => `agent:${agent}:whatsapp:direct:+972500000000`;
+
+  const quiet = gateHandler();
+  assert.equal(await quiet.handler({ payload: { text: english }, sessionKey: key('u-36') }, {}), undefined);
+  assert.equal(quiet.sent.length, 0, 'unknown reader, so the tier is not armed and brokerd hears nothing');
+
+  plugin.rememberReader('u-36', true);
+  const armed = gateHandler();
+  const out = await armed.handler({ payload: { text: english }, sessionKey: key('u-36') }, {});
+  assert.deepEqual(out, { cancel: true, reason: 'olma_reply_leak' });
+  assert.equal(armed.sent[0].params.agentId, 'u-36');
+  assert.deepEqual(armed.sent[0].params.leaks.map((l) => l.kind), ['english']);
+  assert.ok(!JSON.stringify(armed.sent).includes('image content'), 'the message never leaves the gateway');
+
+  // …and it is remembered PER AGENT: u-12 writes English and was never marked.
+  const other = gateHandler();
+  assert.equal(await other.handler({ payload: { text: english }, sessionKey: key('u-12') }, {}), undefined);
+  assert.equal(other.sent.length, 0);
+  plugin._resetReaders();
 });
 
 // The raw pipe sends as `main` and carries the owner's own wording with no
@@ -681,4 +842,68 @@ test('a cancelled reply is never re-sent verbatim by the repair sweep', () => {
   assert.deepEqual(resendableVerbatim('בוצע NO_REPLY'), { ok: true, gated: true, text: 'בוצע' });
   assert.deepEqual(resendableVerbatim('  '), { ok: false, why: 'empty' });
   assert.deepEqual(resendableVerbatim('הנה\nMEDIA: /tmp/x.png'), { ok: false, why: 'media' });
+});
+
+// ---- a link that goes nowhere -----------------------------------------------
+//
+// The eight real ones are in the transcripts on the box; these are the seven
+// that reached a person as a URL, plus every real link Olma has actually sent,
+// so the rule is read off traffic and not off a hunch. 6 of 7 caught, 0 of 11
+// real links touched.
+test('a link that claims to be us, or lands on a path we do not serve, is caught', () => {
+  const invented = [
+    // our own hostname, a page retired ten days earlier (410)
+    'https://allma.world/pick/d1bd2f3228fe065203bf07be921c9efdf7301d653361733a',
+    'https://my.olma.app/dashboard?meeting=30',
+    'https://my.openclaw.ai/dashboard?meeting=31',
+    // three people, one minute, one coordination (2026-09-22)
+    'https://dashboard.olma.ai/meetings/40',
+    'https://dash.olma.app/meetings/40',
+    'https://dashboard.openclaw.ai/meetings/40',
+  ];
+  for (const u of invented) assert.equal(leak.deadLink(u), true, u);
+
+  // NAMED, not fixed: an invention on a domain that does not sound like ours
+  // reads exactly like a real external link. This one went out on 2026-09-06
+  // and this rule cannot see it — closing that needs the turn's own tool
+  // results, which this gate does not get.
+  assert.equal(
+    leak.deadLink('https://preview-sandbox--6a9c6568cff3f4a92b4ecc77.base44.app/rsvp/6a9cf4ba'),
+    false, 'KNOWN GAP — see the comment above deadLink');
+
+  const real = [
+    `https://allma.world/d/${'AbCdEfGhIjKlMnOpQrStUv'}`,
+    `https://allma.world/d/${'a'.repeat(64)}`,
+    'https://allma.world/privacy', 'https://allma.world/terms', 'https://allma.world/',
+    'https://olmachat.duckdns.org/',
+    'https://www.google.com/search?q=x',
+    'https://accounts.google.com/o/oauth2/v2/auth?client_id=x',
+    'https://letmegooglethat.com/?q=x',
+    // a whole label, so somebody else's business is not ours to cut
+    'https://olmafarm.com/shop', 'https://www.openclawresearch.org/paper',
+  ];
+  for (const u of real) assert.equal(leak.deadLink(u), false, u);
+});
+
+// It is lifted OUT; the sentence it sat in is the message and is delivered.
+// Cutting the paragraph would take the question with it, which is the thing
+// the invite exists to ask.
+test('the dead link goes and the message stays', () => {
+  const v = leak.gateReply('כרגע 5 בקבוצה על הפרק ושחרון אישר. מתי נוח לך להצטרף?\n\nhttps://dashboard.openclaw.ai/meetings/40');
+  assert.equal(v.action, 'trim');
+  assert.equal(v.text, 'כרגע 5 בקבוצה על הפרק ושחרון אישר. מתי נוח לך להצטרף?');
+  assert.deepEqual(v.leaks.map((l) => l.kind), ['link']);
+  assert.match(v.leaks[0].at, /dashboard\.openclaw\.ai/, 'the audit row has to name what was cut');
+
+  // A real link is not touched, and nothing else about the message moves.
+  const good = 'מתי נוח לך?\n\nhttps://allma.world/d/AbCdEfGhIjKlMnOpQrStUv';
+  assert.deepEqual(leak.gateReply(good), { action: 'pass', text: good, leaks: [], reported: [] });
+
+  // Mid-sentence, and twice in one message.
+  const two = leak.gateReply('הנה https://dash.olma.app/meetings/40 וגם https://my.olma.app/x — מתי?');
+  assert.equal(two.action, 'trim');
+  assert.match(two.text, /^הנה +וגם +— מתי\?$/);
+
+  // Nothing left but the link: better nothing than a link to nowhere.
+  assert.equal(leak.gateReply('https://dashboard.olma.ai/meetings/40').action, 'cancel');
 });

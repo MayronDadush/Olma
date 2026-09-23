@@ -209,7 +209,12 @@ test('a member who is not a user at all keeps the group locked', async () => {
   assert.deepEqual(evald.data.missing.map((m) => m.phone), ['+972501000021']);
 });
 
+// The CLOSED rule, which is what `group_open_without_everyone` restores: a
+// newcomer who has never written puts the room back behind the gate. Pinned
+// off here on purpose — this test is the definition of the old behaviour, and
+// the new default's own case is the test below it.
 test('a newcomer re-locks an open group, and leaving reopens it', async () => {
+  await withTx(db.pool, (c) => flags.setFlag(c, 'group_open_without_everyone', false));
   const a = await connectedUser('+972501000030');
   const b = await connectedUser('+972501000031');
   const reg = await withTx(db.pool, (c) => groups.registerGroup(c, {
@@ -237,6 +242,39 @@ test('a newcomer re-locks an open group, and leaving reopens it', async () => {
   const left = await withTx(db.pool, (c) => groups.listMembers(c, gid, { includeLeft: true }));
   assert.equal(left.length, 3, 'who was here is history — rows are marked, never deleted');
   assert.ok(left.find((m) => m.phone === '+972501000032').left_at);
+  await withTx(db.pool, (c) => flags.setFlag(c, 'group_open_without_everyone', true));
+});
+
+// The owner's switch, 2026-09-22, and the reason it exists: Padel Gang sat
+// locked for four days because three of its members reached us only as LIDs.
+// Two things have to be true at once for this to be safe — the room opens, and
+// it still says out loud who is not in it. `missing` is the second one, and it
+// is what keeps the "יש! כולם כאן" line off a room where they are not.
+test('with the switch open, a member who never wrote does not lock the room — and is still missing', async () => {
+  const a = await connectedUser('+972501200010');
+  const b = await connectedUser('+972501200011');
+  const reg = await withTx(db.pool, (c) => groups.registerGroup(c, {
+    externalId: JID(20),
+    members: [{ phone: a.phone }, { phone: b.phone }, { phone: '+972501200012', displayName: 'חדש' }],
+  }));
+  const evald = await withTx(db.pool, (c) => groups.evaluate(c, reg.data.group.id));
+  assert.equal(evald.data.state, 'open');
+  assert.deepEqual(evald.data.missing.map((m) => m.displayName), ['חדש'],
+    'open is not a claim that everybody is here');
+  assert.equal(evald.data.memberCount, 3);
+});
+
+// The floor is not a taste call: `startCoordination` refuses a room where the
+// only person it can reach is the one asking, so a room opened on one member
+// buys an agent that can do nothing.
+test('one connected member is not a room, switch or no switch', async () => {
+  const a = await connectedUser('+972501200020');
+  const reg = await withTx(db.pool, (c) => groups.registerGroup(c, {
+    externalId: JID(21), members: [{ phone: a.phone }, { phone: '+972501200021' }],
+  }));
+  const evald = await withTx(db.pool, (c) => groups.evaluate(c, reg.data.group.id));
+  assert.equal(evald.data.state, 'locked');
+  assert.equal(groups.MIN_CONNECTED_TO_OPEN, 2);
 });
 
 test('a rejoining member comes back live rather than as a second row', async () => {
@@ -257,7 +295,10 @@ test('a rejoining member comes back live rather than as a second row', async () 
 test('a group over the cap is too_large, which is not a locked group', async () => {
   const a = await connectedUser('+972501000050');
   const members = [{ phone: a.phone }];
-  for (let i = 0; i < 30; i++) members.push({ phone: `+9725010001${String(i).padStart(2, '0')}` });
+  // Their own range. `+9725010001xx` overlapped four users two tests above,
+  // so the filler was quietly three connected members rather than none — which
+  // nothing noticed while the answer was "everybody or nobody" either way.
+  for (let i = 0; i < 30; i++) members.push({ phone: `+9725019001${String(i).padStart(2, '0')}` });
   const reg = await withTx(db.pool, (c) => groups.registerGroup(c, {
     externalId: JID(7), members,
   }));
@@ -361,4 +402,44 @@ test('notices are stamped where the sweep and the opening line can read them', a
   assert.ok(other.last_notice_at);
   assert.equal(other.notices_sent, 1);
   assert.equal(other.gate_notice_at, null);
+});
+
+// ── resolveLidMembers, the pure half ───────────────────────────────────────
+test('a LID in the roster becomes the number the gateway mapped it to', () => {
+  const out = groups.resolveLidMembers(
+    [{ phone: '+972501111111', displayName: 'דני' }, { phone: '+69320805752936', displayName: null }],
+    { '69320805752936': '+972509412015' });
+  assert.equal(out.resolved, 1);
+  assert.deepEqual(out.members, [
+    { phone: '+972501111111', displayName: 'דני' },
+    { phone: '+972509412015', displayName: null },
+  ]);
+});
+
+// `null` is "nobody asked, or nothing could be read", and it must be a no-op —
+// the other direction reads as every LID member leaving the room.
+test('no map changes nothing, and an unmapped LID is left in place', () => {
+  const roster = [{ phone: '+972501111111', displayName: null }, { phone: '+6266525098172', displayName: null }];
+  assert.deepEqual(groups.resolveLidMembers(roster, null), { members: roster, resolved: 0 });
+  const empty = groups.resolveLidMembers(roster, {});
+  assert.equal(empty.resolved, 0);
+  assert.deepEqual(empty.members.map((m) => m.phone), ['+972501111111', '+6266525098172']);
+});
+
+// The same human listed twice, once by each address — one member, and the NAME
+// survives whichever row carried it.
+test('a LID that resolves onto a number already in the roster collapses into one member', () => {
+  const out = groups.resolveLidMembers(
+    [{ phone: '+972509412015', displayName: null }, { phone: '+69320805752936', displayName: 'גל' }],
+    { '69320805752936': '+972509412015' });
+  assert.equal(out.resolved, 1);
+  assert.deepEqual(out.members, [{ phone: '+972509412015', displayName: 'גל' }]);
+});
+
+// A mapping onto the member's own number is not a mapping.
+test('a map entry pointing at the same number is not counted as resolved', () => {
+  const out = groups.resolveLidMembers(
+    [{ phone: '+972509412015', displayName: null }], { '972509412015': '+972509412015' });
+  assert.equal(out.resolved, 0);
+  assert.deepEqual(out.members, [{ phone: '+972509412015', displayName: null }]);
 });
