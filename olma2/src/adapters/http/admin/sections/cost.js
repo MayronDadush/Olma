@@ -163,6 +163,43 @@ async function renderInfraCosts(client, money) {
     שימוש Claude Code שלך מעבר לבוט מכוסה במנוי האישי ואינו חיוב נפרד, כדי לא לספור פעמיים.</p>`;
 }
 
+// What each ROOM's own agent has cost, this month and since it started.
+// A room's turns are priced like anybody's — the usage sweep reads its
+// transcripts and files them under `g-<id>` in usage_system_ledger, because
+// there is no user to hang them on — but on this page they sat as a bare
+// "g-3 (מערכת)" beside `main` and `intake`, and the groups page, where the
+// owner actually looks at a room, had no money on it at all (asked
+// 2026-09-23, after an afternoon of the poker room joking with her).
+// Re-priced at render through today's rate table, for the same reason as
+// everything else here. What this does NOT hold is the private side of a
+// room's coordination — the invites and answers each member's own agent
+// handles are that person's turns, in usage_ledger, and nothing marks them
+// as the room's.
+async function groupCosts(client, agentIds) {
+  const ids = (agentIds || []).filter(Boolean);
+  if (!ids.length) return new Map();
+  const { rows } = await client.query(
+    `SELECT agent_id, date, model, input_tokens, output_tokens, cache_read_tokens,
+            cache_write_tokens, cost_usd
+       FROM usage_system_ledger WHERE agent_id = ANY($1)`, [ids]);
+  const blended = await pricing.blendedRate(client);
+  const monthStart = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1));
+  const out = new Map();
+  for (const r of rows) {
+    const p = pricing.priceUsage({
+      input: r.input_tokens, output: r.output_tokens,
+      cacheRead: r.cache_read_tokens, cacheWrite: r.cache_write_tokens,
+    }, r.model, blended, r.date);
+    const cost = p.estimated ? Number(r.cost_usd) : p.cost;
+    const g = out.get(r.agent_id) || { month: 0, total: 0, estimated: false };
+    g.total += cost;
+    if (new Date(r.date) >= monthStart) g.month += cost;
+    if (p.estimated) g.estimated = true;
+    out.set(r.agent_id, g);
+  }
+  return out;
+}
+
 async function renderCost(client) {
   // Days and month totals span BOTH ledgers: usage_ledger is per user, and
   // usage_system_ledger holds the agents nobody owns (main, intake) — real
@@ -297,6 +334,11 @@ async function renderCost(client) {
   if (!days.rows.length) return infraHtml + mediaHtml + voiceHtml + '<p class="dim">עדיין אין נתוני עלות למשתמשים — החישוב רץ כל שעה.</p>';
   const usersTotal = top.rows.reduce((s, r) => s + Number(r.cost), 0);
   const systemTotal = system.rows.reduce((s, r) => s + Number(r.cost), 0);
+  // A room's agent reads as the room, not as `g-3`: it is a room somebody can
+  // name, which `main` and `intake` are not.
+  const { rows: rooms } = await client.query(
+    `SELECT agent_id, subject FROM chat_groups WHERE agent_id IS NOT NULL`);
+  const roomByAgent = new Map(rooms.map((g) => [g.agent_id, g.subject || g.agent_id]));
   const monthTotal = usersTotal + systemTotal;
   const todayRow = days.rows[0];
 
@@ -330,10 +372,11 @@ async function renderCost(client) {
     ${days.rows.map((r) => `<tr><td class="nowrap">${esc(String(r.date).slice(0, 10))}</td><td>${money(Number(r.cost), 3)}${r.estimated ? ' <span class="dim">≈</span>' : ''}</td></tr>`).join('')}</table></div>
     <div><h4>לפי משתמש (החודש)</h4><table><tr><th>מי</th><th>עלות</th></tr>
     ${top.rows.map((r) => `<tr><td>${esc(r.first_name || r.phone)}</td><td>${money(Number(r.cost), 3)}</td></tr>`).join('')}
-    ${system.rows.map((r) => `<tr><td class="dim">${esc(r.agent_id)} (מערכת)</td><td class="dim">${money(Number(r.cost), 3)}</td></tr>`).join('')}</table></div></div>
+    ${system.rows.map((r) => `<tr><td class="dim">${roomByAgent.has(r.agent_id)
+    ? `קבוצה: ${esc(roomByAgent.get(r.agent_id))}` : `${esc(r.agent_id)} (מערכת)`}</td><td class="dim">${money(Number(r.cost), 3)}</td></tr>`).join('')}</table></div></div>
     <p class="dim small">מחושב מהתמלילים עצמם — סכימת הטוקנים בפועל לפי התעריף של כל מודל, <b>לפי טבלת התעריפים כפי שהיא היום</b>.
     הספרים עצמם לא משתנים למפרע, ולכן שורה שנרשמה בתעריף שהתברר כשגוי מוצגת כאן מתוקנת ונשמרת שם כמו שנכתבה.
     ${anyEstimated ? 'שורות עם ≈ הן מודל שאין לו תעריף ידוע גם היום, ותומחר בתעריף ממוצע. ' : ''}החיוב האמיתי מגיע מ-Anthropic. שער דולר-שקל: ${fx.configured && fx.rate ? `₪${fx.rate.toFixed(3)} ל-$1` : 'לא זמין כרגע'}.</p>`;
 }
 
-module.exports = { makeMoney, renderInfraRow, LOW_DAYS, LOW_USD, prepaidLow, prepaidRow, renderInfraCosts, renderCost };
+module.exports = { makeMoney, renderInfraRow, LOW_DAYS, LOW_USD, prepaidLow, prepaidRow, renderInfraCosts, renderCost, groupCosts };
