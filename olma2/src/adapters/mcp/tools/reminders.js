@@ -6,6 +6,7 @@ const {
 const format = require('../../../domain/message-format');
 const listBlock = require('../../../domain/list-block');
 const { partsInZone } = require('../../../domain/datetime');
+const chaseDeadline = require('../../../domain/chase-deadline');
 
 // What set_task_reminder(nudge:true) actually armed, said on the result —
 // the same two sentences tools/tasks.js gives add_task, because a chase is
@@ -38,9 +39,22 @@ module.exports = [
     { task_id: S('number', 'Task id'), remind_at: S('string', 'ISO-8601 datetime WITH UTC offset'),
       nudge: S('boolean', 'Chase until done, if they ask'),
       repeat_rule: S('string', 'Optional repeat, these exact forms or it stores a ONE-OFF: "daily"; "weekly"; "weekly:MO,TH" (SU MO TU WE TH FR SA) — a weekday they NAMED goes HERE, not only in remind_at; "monthly:16"; "monthly:last" (whatever the last day is; a short month clamps).') }, ['task_id', 'remind_at'],
-    async (client, user, a) => {
+    async (client, user, a, ctx) => {
       if (reminders.momentIsPast(a.remind_at)) {
         return pastMoment('remind_at', a.remind_at, user.timezone, 'no reminder was set and none was cancelled');
+      }
+      // The same deadline add_task arms, on a task already on their list:
+      // the gateway heard "until next week" in this turn's message, so the
+      // chase runs to THAT day whatever the task's own date, and the hour is
+      // theirs only if they named one (domain/chase-deadline).
+      const heard = !reminders.normalizeRepeatRule(a.repeat_rule) && chaseDeadline.pending(ctx && ctx.turn, ctx && ctx.now ? ctx.now() : Date.now());
+      if (heard) {
+        const chase = await reminders.startChase(client, user.id, a.task_id,
+          { at: heard.namedHour ? a.remind_at : null, until: heard.dueAt });
+        if (chase) {
+          if (chase.ok) ctx.turn.chaseUsed = true;
+          return chase.ok ? withHint(chase, chaseArmedHint(chase.data.reminder, user.timezone)) : chase;
+        }
       }
       // `nudge` on a task with a deadline is a CHASE — one a day at the hour
       // they just named, until that day (reminders.startChase, חיים 2026-09-22).

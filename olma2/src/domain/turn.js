@@ -216,7 +216,7 @@ async function openTurnImplicitly(client, user, { firstTool } = {}) {
 // turn by every user, for fields that appear on a handful of turns in a
 // person's life. The budget rule (CLAUDE.md, "Doctrine"): guidance about a
 // RESULT rides the result.
-function turnHints({ offerResume, languageNudge, recentReminders, recentMeetings, planHeadline, replyTarget, genderForms, thanksOnly, stoppedReminders, today }) {
+function turnHints({ offerResume, languageNudge, recentReminders, recentMeetings, planHeadline, replyTarget, genderForms, thanksOnly, stoppedReminders, chaseUntil, chaseNamedHour, today }) {
   const hints = {};
   if (today) {
     // Rides beside the block on every turn it is on, because a block the
@@ -304,6 +304,21 @@ function turnHints({ offerResume, languageNudge, recentReminders, recentMeetings
       + 'Their tasks are untouched, so say something only if they asked for something else too, '
       + 'or if they named a NEW time to be reminded — that one is a reminder to set.';
   }
+  if (chaseUntil) {
+    // The gateway read a deadline and a request for help in their message
+    // (gateway-hooks/olma-turn-open .chaseDeadline) and brokerd arms the chase
+    // itself, on the task this turn saves — so the model is told what the
+    // SERVER will do, and asked only not to do it a second, different way.
+    // חיים's sentence was read two ways by the model; this is the reading the
+    // owner chose (2026-09-24), and it is code's to make, not the prompt's.
+    hints.chase = `Their message asks for help until ${chaseUntil}, and that is a CHASE: save the thing with `
+      + `add_task (or, if it is already on their list, set_task_reminder on it) and the server makes it ONE `
+      + `reminder a day until ${chaseUntil}, due that day. Do not date it for an earlier day and do not pass `
+      + (chaseNamedHour
+        ? 'nudge or a repeat — pass the hour they named as remind_at. '
+        : 'nudge, a repeat or a remind_at: the hour is one they already hear from Olma. ')
+      + 'The result says the shape; say it back in ONE short line.';
+  }
   if (offerResume) {
     hints.offerResume = 'First message since they paused: answer what they actually asked, then add '
       + 'ONE line asking if they would like Olma to start reaching out again.';
@@ -390,7 +405,7 @@ function requireAdviseColumns(user) {
   }
 }
 
-async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, languageNudge, thanksOnly, stoppedReminders, now }) {
+async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, languageNudge, thanksOnly, stoppedReminders, chaseUntil, chaseNamedHour, now }) {
   requireAdviseColumns(user);
   // A paused person who writes gets answered — pausing stops Olma
   // INITIATING, not answering (see domain/pause.js) — but before this, that
@@ -646,7 +661,7 @@ async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, 
       ...(replyTarget ? { replyTarget: true } : {}),
       ...(genderForms ? { genderForms } : {}),
       ...(today ? { today } : {}),
-      ...turnHints({ offerResume, languageNudge, recentReminders, recentMeetings, planHeadline, replyTarget, genderForms, thanksOnly, stoppedReminders, today }),
+      ...turnHints({ offerResume, languageNudge, recentReminders, recentMeetings, planHeadline, replyTarget, genderForms, thanksOnly, stoppedReminders, chaseUntil, chaseNamedHour, today }),
     };
   }
   const shouldNotice = await quota.shouldSendBlockNotice(client, user.id);

@@ -146,6 +146,83 @@ function stopRemindersOnly(text) {
   return STOP_VERB_RE.test(raw) && REMIND_WORD_RE.test(raw);
 }
 
+// ── "Help me, until next week" — a chase, decided here ───────────────────────
+// חיים, 2026-09-22: "…אני רוצה שעד שבוע הבא היא תהיה מוכנה תעזור לי בתזכורת".
+// The owner's rule is that a deadline plus a request for help is a CHASE — one
+// reminder a day until that day (domain/reminders.startChase) — and left to the
+// model the sentence was read two ways: six samples in a row dated the errand
+// for tomorrow and armed one reminder. The owner's answer (2026-09-24) was that
+// this goes through code, so the reading happens here and brokerd arms it.
+//
+// Only a VERDICT travels, like the two above: which deadline, as a kind the
+// server resolves against the person's own clock (domain/chase-deadline.js),
+// and whether a clock time was said. Never the words.
+//
+// Measured before it was written, on every real inbound message on the box
+// (861, 2026-09-24): 112 carry an ASK word, 10 carry "עד", ONE carries both and
+// it is חיים's. The nine "עד"-only ones are hour ranges, a trip, a work shift
+// and a "wake me every 3 minutes until I say I'm up" — tests/chase-deadline
+// .test.js holds each of them, reworded, as a reading this must never make.
+//
+// Strict in three ways, because a false positive is a drum somebody never
+// asked for and a miss is today's behaviour:
+//   - the horizon must FOLLOW "עד" directly — "מ-9 עד 11" is an hour range,
+//     and a bare number after it never reads as a date;
+//   - a date written with a dot and no year is an hour ("עד 8.10") and is not
+//     read at all — a slash, a year, a month's name or "ה-15" are;
+//   - a message that names a DIFFERENT day for the reminder ("תזכיר לי מחר
+//     להגיש עד סוף השבוע") is one reminder with a deadline, unless it also
+//     says "every day" in so many words.
+// `\b` is dead against Hebrew (rules/turns-and-replies.md); every boundary here
+// is a Hebrew-letter lookaround, and "עד" may carry ו/ש/ה in front of it.
+const HE = 'א-ת';
+const CHASE_ASK_RE = /(תזכיר|תזכרי|תזכירי|להזכיר|תזכורת|תזכורות|תעזור|תעזרי|לעזור|עזרה|תנדנד|לנדנד|תציק|תדאג|תדאגי|תמשיך|תמשיכי|תרדוף|תרדפי|remind|nudge|chase)/iu;
+const EVERY_DAY_RE = new RegExp(`(כל\\s+יום|כל\\s+בוקר|כל\\s+ערב|יומית|יומי(?![${HE}])|every\\s*day|daily)`, 'iu');
+const UNTIL_RE = new RegExp(`(?:^|[^${HE}])[ושה]?עד(?![${HE}])\\s*(?:ל(?=[${HE}]))?`, 'gu');
+const HE_MONTHS = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני', 'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'];
+const HE_WEEKDAYS = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
+const NOT_A_WEEKDAY_AFTER = `(?![${HE}])(?!\\s*(?:ימים|שבועות|חודשים|שעות|דקות|פעמים))`;
+// Tried in order at the point right after "עד"; the first that matches wins.
+const HORIZONS = [
+  [new RegExp(`^(?:ה)?שבוע\\s+(?:ה)?בא(?![${HE}])`, 'u'), () => ({ kind: 'next_week' })],
+  [new RegExp(`^(?:ה)?חודש\\s+(?:ה)?בא(?![${HE}])`, 'u'), () => ({ kind: 'next_month' })],
+  [new RegExp(`^(?:סוף\\s+(?:ה)?שבוע|סופ"?ש)(?![${HE}])`, 'u'), () => ({ kind: 'end_of_week' })],
+  [new RegExp(`^סוף\\s+(?:ה)?חודש(?![${HE}])`, 'u'), () => ({ kind: 'end_of_month' })],
+  [new RegExp(`^מחרתיים(?![${HE}])`, 'u'), () => ({ kind: 'days', n: 2 })],
+  [new RegExp(`^מחר(?![${HE}])`, 'u'), () => ({ kind: 'days', n: 1 })],
+  [new RegExp(`^(?:יום\\s+)?(${HE_WEEKDAYS.join('|')})${NOT_A_WEEKDAY_AFTER}`, 'u'),
+    (m) => ({ kind: 'weekday', weekday: HE_WEEKDAYS.indexOf(m[1]) })],
+  [new RegExp(`^(?:ה[-־]?\\s*)?(\\d{1,2})\\s*(?:ב|ל)?(${HE_MONTHS.join('|')}|מרס)(?![${HE}])`, 'u'),
+    (m) => ({ kind: 'date', day: Number(m[1]), month: m[2] === 'מרס' ? 3 : HE_MONTHS.indexOf(m[2]) + 1 })],
+  [/^(\d{1,2})\/(\d{1,2})(?:\/\d{2,4})?(?!\d)/u, (m) => ({ kind: 'date', day: Number(m[1]), month: Number(m[2]) })],
+  [/^(\d{1,2})\.(\d{1,2})\.\d{2,4}(?!\d)/u, (m) => ({ kind: 'date', day: Number(m[1]), month: Number(m[2]) })],
+  [/^ה[-־]?\s*(\d{1,2})(?![\d:.])/u, (m) => ({ kind: 'date', day: Number(m[1]) })],
+];
+// A day for the REMINDER, said beside the deadline.
+const OTHER_DAY_RE = new RegExp(`(?:^|[^${HE}])(?:[ו]?(?:מחר|מחרתיים|היום|הערב|בעוד)|ביום)(?![${HE}])`, 'u');
+const NAMED_HOUR_RE = new RegExp(`(\\d{1,2}:\\d{2}|בשעה\\s*\\d|\\d{1,2}\\s*(?:בבוקר|בערב|בצהריים|בלילה)(?![${HE}])|\\d{1,2}\\s*(?:am|pm)\\b)`, 'iu');
+const MAX_CHASE_CHARS = 600;
+
+function chaseDeadline(text) {
+  const raw = String(text || '').replace(REPLY_BLOCK_RE, ' ').replace(/[‎‏‪-‮]/g, '');
+  if (!raw.trim() || raw.length > MAX_CHASE_CHARS) return null;
+  if (!CHASE_ASK_RE.test(raw)) return null;
+  for (const until of raw.matchAll(UNTIL_RE)) {
+    const from = until.index + until[0].length;
+    const rest = raw.slice(from);
+    for (const [re, build] of HORIZONS) {
+      const m = rest.match(re);
+      if (!m) continue;
+      const verdict = build(m);
+      // Everything outside the "עד …" phrase is where a reminder day would be.
+      const outside = raw.slice(0, until.index) + ' ' + raw.slice(from + m[0].length);
+      if (OTHER_DAY_RE.test(outside) && !EVERY_DAY_RE.test(raw)) return null;
+      return { ...verdict, namedHour: NAMED_HOUR_RE.test(outside) };
+    }
+  }
+  return null;
+}
+
 // Which inbound events open a turn. Measured on OpenClaw 2026.8.1 (2026-09-06,
 // olma-hook-probe): a WhatsApp DM fires `message:preprocessed` ~300ms after
 // the inbound log line and `agent:bootstrap` a second later — and NEVER
@@ -187,6 +264,9 @@ function handle(event, { connect = net.connect, sock = SOCK } = {}) {
     // in the last day and puts a 👍 on this message (domain/reminders
     // .stopRecentLadders). The verdict travels; the words do not.
     stopReminders: stopRemindersOnly(ctx.transcript || ctx.body),
+    // "help me until next week" — brokerd arms a daily chase to that day on
+    // the task this turn saves (domain/chase-deadline). A kind, never words.
+    chase: chaseDeadline(ctx.transcript || ctx.body),
     at: new Date(event.timestamp || Date.now()).toISOString(),
   };
   return new Promise((resolve) => {
@@ -226,4 +306,5 @@ module.exports.isVoice = isVoice;
 module.exports.replyToIdOf = replyToIdOf;
 module.exports.thanksOnly = thanksOnly;
 module.exports.stopRemindersOnly = stopRemindersOnly;
+module.exports.chaseDeadline = chaseDeadline;
 module.exports._resetSeen = () => seen.clear();
