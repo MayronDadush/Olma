@@ -3904,6 +3904,31 @@ help in `tests/reminder-chase.test.js`:
   `set_task_reminder`), and the armed branch says the shape, so neither answer
   leaves the model reading the hint as the result.
 
+**…and then the model stopped reading the sentence as a chase at all
+(2026-09-23 → 24).** With the server path fixed, runs 81 and 82 were red six
+samples out of six for a different reason: the model dated "take the camera
+in" for tomorrow or Friday, took "ready by next week" as the goal, saved a
+two-day deadline, and `chaseAvailable` — which fires only on a deadline more
+than two days out — never had anything to ask about. Each reply read sensibly.
+Two readings of one sentence, both defensible, and the owner's rule of
+2026-09-22 picks one. A hint cannot make a model choose between two
+reasonable readings every time, so the owner's answer was that this goes
+through code: "אני רוצה שהפתרון לחיים יפטר דרך קוד".
+
+The detector was measured before it was written, on every real inbound
+message on the box (861, live and archived, eval and test users excluded):
+112 carry a request word (תזכיר, תעזור, תנדנד…), 10 carry "עד", and exactly ONE
+carries both, and it is חיים's. The nine "עד"-only messages are hour ranges, a
+trip abroad, a work shift, and u-18's "wake me every three minutes until I say
+I'm up" — none asks for anything, and all nine are in
+`tests/chase-deadline.test.js`, reworded, as readings it must never make. So
+the hook classifies, only the verdict leaves the gateway, brokerd resolves the
+day against the person's clock, and the task the turn saves is due that day
+with a chase on it. The eval harness had been opening every turn with no
+verdicts at all — thanks and "stop reminding me" included — since the day the
+harness learned to open turns; it sends all three now, read by the same
+functions.
+
 ### The reminder that was only a sentence (fixed 2026-09-22)
 
 עמית, 2026-09-15, 16:44 Israel:

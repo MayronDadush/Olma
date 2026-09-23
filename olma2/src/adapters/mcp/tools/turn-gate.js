@@ -208,6 +208,9 @@ module.exports = [
         // Same provenance as thanksOnly: brokerd classified the message, acted
         // on it, and the count rides the pending open this call adopted.
         stoppedReminders: (ctx && ctx.turn && ctx.turn.stoppedReminders) || 0,
+        // And the deadline it heard, which add_task on this turn will arm.
+        chaseUntil: (ctx && ctx.turn && ctx.turn.chase && !ctx.turn.chaseUsed && ctx.turn.chase.day) || null,
+        chaseNamedHour: Boolean(ctx && ctx.turn && ctx.turn.chase && ctx.turn.chase.namedHour),
       });
       return stale(ok(data), namedNow);
     }),

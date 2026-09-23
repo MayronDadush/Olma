@@ -487,7 +487,10 @@ async function echoesAutoReminder(client, userId, taskId, at) {
   return rows.length > 0;
 }
 
-async function startChase(client, userId, taskId, { now = new Date(), at = null } = {}) {
+// `until` is a deadline the SERVER heard (domain/chase-deadline, on a turn the
+// gateway classified) and wins over the task's own due_at: that is set_task_
+// reminder on a task already on their list, whose date was never this one.
+async function startChase(client, userId, taskId, { now = new Date(), at = null, until: deadline = null } = {}) {
   if (at && await echoesAutoReminder(client, userId, taskId, at)) at = null;
   const { rows } = await client.query(
     `SELECT t.due_at, u.timezone, u.digest_times
@@ -495,9 +498,10 @@ async function startChase(client, userId, taskId, { now = new Date(), at = null 
       WHERE t.id = $1 AND t.archived_at IS NULL AND t.status = 'open' AND ${TASK_THEY_ARE_ON}`,
     [taskId, userId]
   );
-  if (!rows[0] || !rows[0].due_at) return null;
+  const endsOn = deadline || (rows[0] && rows[0].due_at);
+  if (!rows[0] || !endsOn) return null;
   const tz = rows[0].timezone || 'Asia/Jerusalem';
-  const until = chaseUntil(rows[0].due_at, tz);
+  const until = chaseUntil(endsOn, tz);
   if (!until || until.getTime() <= new Date(now).getTime()) return null;
   let first;
   let seq = 1;

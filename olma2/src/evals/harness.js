@@ -235,7 +235,28 @@ async function assertCleanSlate(client, userId) {
 // socket is what keeps us alive until the answer or the deadline; the
 // unref'd timer still fires while it does, and both are gone the moment
 // `finish` runs.
-function openTurnForEval(agentId, { connect = net.connect, sock = BROKERD_SOCK } = {}) {
+//
+// The CLI fires no hook, so the three verdicts the gateway hook reads off a
+// real message — thanks, "stop reminding me", and a deadline to chase to —
+// are read here with the SAME functions and sent the same way. Until
+// 2026-09-24 the opening carried none of them, so every eval measured a turn
+// the classifiers had never seen, and `chase-until-done` scored the model's
+// reading of חיים's sentence when production no longer asks the model for it.
+function evalVerdicts(message) {
+  if (typeof message !== 'string' || !message) return {};
+  // The hook writes a "loaded" line to its trace on import, and that file is
+  // how the box answers "did the GATEWAY load it". This process is not the
+  // gateway, so its import is kept out of that record.
+  if (!process.env.OLMA_HOOK_TRACE) process.env.OLMA_HOOK_TRACE = require('node:os').devNull;
+  const hook = require('../../gateway-hooks/olma-turn-open/handler');
+  return {
+    thanks: hook.thanksOnly(message),
+    stopReminders: hook.stopRemindersOnly(message),
+    chase: hook.chaseDeadline(message),
+  };
+}
+
+function openTurnForEval(agentId, { connect = net.connect, sock = BROKERD_SOCK, message = null } = {}) {
   return new Promise((resolve) => {
     let done = false;
     let socket = null;
@@ -255,7 +276,7 @@ function openTurnForEval(agentId, { connect = net.connect, sock = BROKERD_SOCK }
     socket.on('data', finish);
     socket.on('connect', () => {
       try {
-        socket.write(`${JSON.stringify({ id: 1, method: 'turn_open', params: { agentId, kind: 'text' } })}\n`);
+        socket.write(`${JSON.stringify({ id: 1, method: 'turn_open', params: { agentId, kind: 'text', ...evalVerdicts(message) } })}\n`);
       } catch { finish(); }
     });
   });
@@ -283,7 +304,7 @@ function makeTurnRunner({ agentId, sessionKey, model }, deps = {}) {
   let sqliteOffset = 0;  // next unread event seq (gateway ≥ 2026.8.1)
   let sessionFile = null;
   return async function runTurn(message) {
-    await openTurn(agentId);
+    await openTurn(agentId, { message });
     const json = await run(
       ['agent', '--agent', agentId, '--session-key', sessionKey, '--message', message, '--json',
         // A per-call override, exactly as scripts/model-pilot.js uses it: it
