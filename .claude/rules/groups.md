@@ -299,6 +299,23 @@ have already had to be argued for.
   matching nobody is ignored in SILENCE — her own trouble identifying one is
   not the room's business, and the owner's two acceptable answers were to stay
   out of it or to back the request, never to narrate the confusion.
+  **…and since 2026-09-23 a name she KNOWS may be said, with the form of
+  address they set** (owner: "אם היא יודעת את השם שלהם ואיזה לשון לדבר אליהם
+  … היא כן יכולה לשלוף רק את המידע הזה"). The same afternoon she called Bar
+  "את" to his face and "היא" about him, in front of the room: nothing in the
+  block said how to address anybody, and the room's doctrine had no default.
+  `group-turn.peopleOf` now adds two fields from the person's own record and
+  no others. `name` is a first name they CONFIRMED (`users.name_confirmed`),
+  because an unconfirmed one came from WhatsApp or a guess, and that is the
+  "M&M" mistake this rule was written for. `address` is `users.gender` from
+  their own page, failing that the `gender_forms` preference their private
+  agent stored when they said it in words (`group-turn.addressOf`: both
+  readings or neither is null). The tag is still how somebody is REACHED;
+  the name is what a sentence may call them. **No `address` means masculine
+  forms**, the private doctrine's own default, never a guess from the name,
+  which is what "בר" got. `groups.listMembers` carries the three columns.
+  `groups.roomStatus` and `group-meetings.statusOf` are unchanged: the turn
+  block is what she speaks from (`incidents.md`, "She called Bar את").
 
 - **The first thing a room hears about its own coordination is that she has
   STARTED, and it counts people rather than naming them** (owner, 2026-09-22:
