@@ -98,6 +98,35 @@ function seedWorkspace(workspace, { subject, identityToken, members, state }) {
   fs.writeFileSync(path.join(workspace, '.olma-identity'), identityToken + '\n', { mode: 0o600 });
 }
 
+// AGENTS.md for a ROOM is written once, at provisioning, exactly as a
+// person's is — so a change to agents-group-template.md reached no room that
+// already existed. The person's half has been resynced on every deploy since
+// 2026-08 (scripts/resync-agent-templates.js); rooms were never in that
+// script, and on 2026-09-23 the room doctrine gained a tool whose whole point
+// is the sentence the old text forbade ("לא מציעים זמנים בקבוצה"). A room
+// reading the old line beside the new tool is two instructions that disagree.
+//
+// Compared against each room's OWN rendering (its token is inline) and
+// written only when it differs; `missing` is a workspace with no AGENTS.md,
+// which is reported and never created here — seeding is provisioning's job.
+function resyncGroupDoctrine(rows, { apply = false, log = () => {} } = {}) {
+  let changed = 0, same = 0, missing = 0;
+  for (const g of rows || []) {
+    if (!g.workspace_path || !g.identity_token) continue;
+    const file = path.join(g.workspace_path, 'AGENTS.md');
+    if (!fs.existsSync(file)) { missing++; log(`  ! group ${g.id}: no AGENTS.md at ${file}`); continue; }
+    const rendered = renderAgentsMd(g.identity_token);
+    if (fs.readFileSync(file, 'utf8') === rendered) { same++; continue; }
+    log(`  ${apply ? '→' : '·'} group ${g.id} ${g.subject || ''}: template is stale`);
+    if (apply) {
+      fs.writeFileSync(file, rendered, { mode: 0o600 });
+      fs.chmodSync(file, 0o600);
+    }
+    changed++;
+  }
+  return { changed, same, missing };
+}
+
 // GROUP.md is rewritten on every roster change, so a group that gained or lost
 // somebody does not spend a week describing a room that no longer exists.
 // Compared before it is written: the sweep calls this every ten seconds for
@@ -305,6 +334,6 @@ async function lockGroup(client, { groupId, configPath }) {
 module.exports = {
   GREETER_AGENT_ID, TEMPLATE_PATH,
   defaultPaths, newGroupToken, renderAgentsMd, renderGroupMd,
-  seedWorkspace, refreshGroupCard,
+  seedWorkspace, refreshGroupCard, resyncGroupDoctrine,
   installGreeter, admitRegisteredGroup, provisionGroup, lockGroup, undoSideEffects,
 };

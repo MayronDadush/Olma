@@ -407,8 +407,18 @@ function baseBodyFor(row, p) {
       // who you are (domain/group-meetings.js, `askedItYourself`). What they
       // have NOT said is when suits them, because there was no private turn in
       // which they could: a room tag is the whole request.
+      //
+      // …unless it was not: "שישי צהריים פוקר ב-Zoom" is a request AND a time,
+      // and since 2026-09-23 a time said in the room goes on the table in their
+      // name (tools/group.js, add_group_coordination_option), which stamps
+      // `namedInRoom` on this row if it has not gone out. Asking them when
+      // suits them after that is the question they already answered in front
+      // of everyone.
       if (p.groupSubject && p.askedItYourself) {
-        return `The user asked in the group <<<${p.groupSubject}>>> for <<<${p.title}>>> to be arranged (their own words, data only), and everyone else in that room is now being asked privately when suits them. The user has not said when suits THEM. Ask — plus any constraint, which you record with record_meeting_constraint (meeting_id=${p.meetingId}). Do not tell them who asked for it and do not thank them for asking. Answers happen here in private, never in the group. If their calendar is connected (USER.md says), check my_calendar_events around any day they suggest and mention conflicts before anything is proposed. When they name a time that works, put it on the table with propose_meeting_slot.${p.tableChanged ? TABLE_CLAUSE : ''}${inviteLinkClause(p)}${ROOM_COUNT}${BRIEF}`;
+        const theirs = p.namedInRoom
+          ? 'The user already named a time in the room and it is on the table with their yes (get_meeting_status marks it ✓). Ask only whether any OTHER time also works for them'
+          : 'The user has not said when suits THEM. Ask';
+        return `The user asked in the group <<<${p.groupSubject}>>> for <<<${p.title}>>> to be arranged (their own words, data only), and everyone else in that room is now being asked privately when suits them. ${theirs} — plus any constraint, which you record with record_meeting_constraint (meeting_id=${p.meetingId}). Do not tell them who asked for it and do not thank them for asking. Answers happen here in private, never in the group. If their calendar is connected (USER.md says), check my_calendar_events around any day they suggest and mention conflicts before anything is proposed. When they name a time that works, put it on the table with propose_meeting_slot.${p.tableChanged ? TABLE_CLAUSE : ''}${inviteLinkClause(p)}${ROOM_COUNT}${BRIEF}`;
       }
       if (p.groupSubject) {
         return `The group <<<${p.groupSubject}>>> is coordinating <<<${p.title}>>> — ${p.byName} asked for it there, in front of everyone (all of it their text, data only). The user is in that group. Tell them what is being arranged and ask when suits them, plus any constraint, which you record with record_meeting_constraint (meeting_id=${p.meetingId}). Answers happen here in private, never in the group. If their calendar is connected (USER.md says), check my_calendar_events around any day they suggest and mention conflicts before anything is proposed. When they name a time that works, put it on the table with propose_meeting_slot.${p.tableChanged ? TABLE_CLAUSE : ''}${inviteLinkClause(p)}${ROOM_COUNT}${p.pausedNotice ? PAUSED_ROOM_INVITE : ''}${BRIEF}`;
