@@ -71,6 +71,7 @@ never trust a dated narrative for something you are about to act on.
 - [The room waited for nobody (fixed 2026-09-20)](#the-room-waited-for-nobody-fixed-2026-09-20)
 - [The room that did not know its own member (fixed 2026-09-23)](#the-room-that-did-not-know-its-own-member-fixed-2026-09-23)
 - [Where do we meet, on Zoom (fixed 2026-09-23)](#where-do-we-meet-on-zoom-fixed-2026-09-23)
+- [The room's joke got a lecture (2026-09-23)](#the-rooms-joke-got-a-lecture-2026-09-23)
 - [The place nobody asked for (fixed 2026-09-20)](#the-place-nobody-asked-for-fixed-2026-09-20)
 - [The room asked three numbers that were nobody (fixed 2026-09-22)](#the-room-asked-three-numbers-that-were-nobody-fixed-2026-09-22)
 - [The room chased three people, two of whom had never been asked (fixed 2026-09-22)](#the-room-chased-three-people-two-of-whom-had-never-been-asked-fixed-2026-09-22)
@@ -2639,6 +2640,29 @@ title and the confirmed slot for the coordinations opened before this. The
 list leaves out "וידאו" alone ("צילום וידאו" is a shoot), a bare "meet" and
 "teams", because a miss costs one question and a false hit costs a room its
 real place.
+
+### The room's joke got a lecture (2026-09-23)
+
+Meeting 42 had just been confirmed in פחם הסעות. At 12:13 UTC Bar tagged
+her: "אם אני רוצה לצחוק על מירון שהוא הפסיד אתמול את יכולה לעשות את זה?"
+She answered with a refusal and its reasoning: nobody had told her he lost,
+she would not make it up, and "הג'יבושים נשארים אצלכם".
+
+Every clause of that was a rule doing its job in the wrong place. "Never
+invent" and "nothing from a private chat" are about FACTS, and the room's
+doctrine said nothing about tone except "בקבוצה כותבים מעט". Bar's premise was
+not a fact she needed to verify. He had just written it in the room, in front
+of everybody, and a joke about it passes on nothing. The owner: "זה בסדר
+שהיא קצת תצחק איתו בסיטואציות כאלה".
+
+The doctrine now allows one short, good-natured line back, built only from
+what was said in the room. The limits stay: nothing invented, nothing
+private, nobody really mocked, and never an explanation of why a joke is not
+possible. Doctrine only, with no code: there is no state for a joke, and
+`resync-agent-templates.js` rewrites every room's AGENTS.md on deploy (#468).
+
+The same reply called Bar "את", which is a separate fault with its own
+change: the room had no way to know how to address him.
 
 ### The place nobody asked for (fixed 2026-09-20)
 
