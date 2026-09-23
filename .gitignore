@@ -2,7 +2,14 @@
 # its own from package-lock.json during deploy. @resvg/resvg-js pulls a
 # platform-specific native binary, so a committed tree would be wrong for the
 # droplet anyway.
-node_modules/
+#
+# No trailing slash, deliberately. `node_modules/` matches a DIRECTORY only, so
+# it never matched the SYMLINK an npm install in a sibling worktree left behind
+# — and on 2026-09-23 a `git add` of that symlink was accepted into a merge
+# commit, pinning one laptop's absolute path into main as a 120000 blob. Git
+# does not follow a symlink when matching an ignore rule, so the shape that
+# slipped through is exactly the one the slash excluded. Without it, both match.
+node_modules
 
 # Local env / secrets — the real ones live in /opt/olma2/.env (0600) on the box.
 .env
