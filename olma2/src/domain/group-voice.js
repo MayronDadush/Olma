@@ -21,6 +21,7 @@
 // "who has not answered" in the same breath has been given a paragraph to
 // read about a thing it asked for in four words.
 const { MAX_TAGS } = require('./proactive-text');
+const { onlinePlace } = require('./online-place');
 
 // How long she waits before saying anything about people who have not
 // answered, when the coordination has no dated option to measure against.
@@ -129,8 +130,14 @@ function decideGroupLine(co, {
   if (!co) return { kind: 'none', reason: 'nothing being coordinated' };
   if (co.status === 'confirmed') {
     // `placeAsk`: nobody has said where, so the done line asks — only then
-    // (owner, 2026-09-20: "פוקר אצל יוסי" already says it).
-    if (!saidDone) return { kind: 'done', slot: co.confirmedSlot, who: whoIsIn(co), placeAsk: !co.location };
+    // (owner, 2026-09-20: "פוקר אצל יוסי" already says it). A name or a time
+    // that says it happens ON Zoom has said where too (2026-09-23, "פוקר
+    // בזום"): new coordinations carry it as their location from the start, and
+    // this covers the ones opened before that, and a time like "שישי בזום".
+    const saidOnline = onlinePlace(co.title) || onlinePlace(co.confirmedSlot);
+    if (!saidDone) {
+      return { kind: 'done', slot: co.confirmedSlot, who: whoIsIn(co), placeAsk: !co.location && !saidOnline };
+    }
     // Once, after the done line, and only when a SHARED calendar event exists
     // for this coordination — `calendar_event_id` is written by nothing but
     // calendar.createSharedMeetingEvent. "הוספתי ליומן של כולם" would have

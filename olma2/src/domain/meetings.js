@@ -12,6 +12,7 @@ const audit = require('./audit');
 const grants = require('./grants');
 const { hasOffset, badTime, weekdayClash } = require('./datetime');
 const options = require('./meeting-options');
+const { onlinePlace } = require('./online-place');
 
 // How long a slot stays "live" after its start before the negotiation is
 // closed as expired. Generous on purpose: the thing itself may still be
@@ -82,6 +83,11 @@ async function startMeeting(client, initiatorId, title, participantUserIds, { gr
     finalTitle = `פגישה — ${names.join(', ')}`.slice(0, TITLE_MAX_CHARS);
   }
 
+  // A title that names where it happens online IS the room saying where
+  // (domain/online-place.js): "פוקר בזום" was confirmed and the room was then
+  // asked where to meet. A place somebody actually said still wins.
+  const place = cleanLocation(location) || cleanLocation(onlinePlace(finalTitle));
+
   // The room's minimum is COPIED here, never read through later (migration
   // 064). A coordination opened out of a group starts from that room's number
   // and owns it from this instant — including clearing it, which the group's
@@ -92,7 +98,7 @@ async function startMeeting(client, initiatorId, title, participantUserIds, { gr
     `INSERT INTO meetings (initiator_id, title, group_id, quorum_min, location)
      VALUES ($1, $2, $3, (SELECT quorum_min FROM chat_groups WHERE id = $3), $4)
      RETURNING *`,
-    [initiatorId, finalTitle, groupId, cleanLocation(location)]
+    [initiatorId, finalTitle, groupId, place]
   );
   const meeting = rows[0];
   for (const uid of [initiatorId, ...unique]) {

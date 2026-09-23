@@ -439,6 +439,16 @@ have already had to be argued for.
   as the organiser, since the event is on their calendar. Until untagged room
   messages reach her (PR #429), the answer to "איפה נפגשים?" still needs a
   tag (`incidents.md`, "The place nobody asked for").
+  **…and a name that says it happens ON Zoom has said where** (owner,
+  2026-09-23: "פוקר בזום" was confirmed and the room was asked where to meet).
+  `online-place.onlinePlace` reads a CLOSED list of platforms as whole words,
+  with the ב/ל/ה prefix a place takes, and returns the word as written.
+  `meetings.startMeeting` stores it as `location` when nobody passed one, so it
+  reaches the calendar event too. `group-voice.decideGroupLine` also reads the
+  title and the confirmed slot, for coordinations opened before that. It is
+  code on purpose: no model decides it. "וידאו" alone, a bare "meet" and
+  "teams" stay off the list, because a false hit tells a room nobody needs to
+  know where they are going (`incidents.md`, "Where do we meet, on Zoom").
 
 - **The room says that people have not answered only about people she has
   actually written to** (owner, 2026-09-22; `group-meetings.statusOf` puts

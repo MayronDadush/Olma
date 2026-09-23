@@ -70,6 +70,7 @@ never trust a dated narrative for something you are about to act on.
 - [The room held a time that no longer existed (fixed 2026-09-22)](#the-room-held-a-time-that-no-longer-existed-fixed-2026-09-22)
 - [The room waited for nobody (fixed 2026-09-20)](#the-room-waited-for-nobody-fixed-2026-09-20)
 - [The room that did not know its own member (fixed 2026-09-23)](#the-room-that-did-not-know-its-own-member-fixed-2026-09-23)
+- [Where do we meet, on Zoom (fixed 2026-09-23)](#where-do-we-meet-on-zoom-fixed-2026-09-23)
 - [The place nobody asked for (fixed 2026-09-20)](#the-place-nobody-asked-for-fixed-2026-09-20)
 - [The room asked three numbers that were nobody (fixed 2026-09-22)](#the-room-asked-three-numbers-that-were-nobody-fixed-2026-09-22)
 - [The room chased three people, two of whom had never been asked (fixed 2026-09-22)](#the-room-chased-three-people-two-of-whom-had-never-been-asked-fixed-2026-09-22)
@@ -2615,6 +2616,28 @@ group 9 is outside `group_untagged_rooms` and the claiming path is inert
 there. Backing the request, which is what the owner actually wants her to do,
 needs a room turn that may act about a person other than the sender; that is
 the capability question still open.
+
+### Where do we meet, on Zoom (fixed 2026-09-23)
+
+The poker room (meeting 42) confirmed Friday at noon at 15:07, and the room's
+"סגור" line ended "איפה נפגשים? תכתבו לי ואני אוסיף ליומן 📍". The coordination
+was called "פוקר בזום", and עמית had asked for "פוקר ב-Zoom" in his first
+message. Somebody answered "בזום מאמי".
+
+The done line asks whenever `meetings.location` is NULL, and the only writers
+of that column were `where` on `start_group_coordination` and
+`set_group_coordination_place`. The model is told to pass `where` only when
+the room said one, and it did not count a platform in the title as a place.
+The owner asked for the fix to be in code only.
+
+`domain/online-place.js` reads a closed list of platforms, as whole words
+(Hebrew has no `\b`), with the one-letter prefix a place takes. It returns the
+word as written. `meetings.startMeeting` stores it as the location, so the
+calendar event carries it as well, and `group-voice.decideGroupLine` reads the
+title and the confirmed slot for the coordinations opened before this. The
+list leaves out "וידאו" alone ("צילום וידאו" is a shoot), a bare "meet" and
+"teams", because a miss costs one question and a false hit costs a room its
+real place.
 
 ### The place nobody asked for (fixed 2026-09-20)
 
