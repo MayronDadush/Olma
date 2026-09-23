@@ -53,6 +53,13 @@ const RATES = {
   // the completion wins over this table whenever it is reported.
   'deepseek/deepseek-v4-flash': { input: 0.068, output: 0.168, cacheWrite: 0.068, cacheRead: 0.0168 },
   'deepseek/deepseek-v4-pro':   { input: 1.0308,  output: 2.0616,  cacheWrite: 1.0308,  cacheRead: 0.0859 },
+  // Pilot candidates (2026-09-23), OpenRouter's listed price that day; the
+  // pilot is unpinned, so the listing is the honest figure. The 0731 row is
+  // NOT optional: `rateFor` matches by substring, longest key first, and
+  // "deepseek-v4-flash-0731" contains "deepseek-v4-flash" — without its own
+  // row it would be billed at the incumbent's rates, output under by ~4x.
+  'deepseek/deepseek-v4.1-flash':     { input: 0.15, output: 0.60, cacheWrite: 0.15, cacheRead: 0.003 },
+  'deepseek/deepseek-v4-flash-0731':  { input: 0.04, output: 0.64, cacheWrite: 0.04, cacheRead: 0.016 },
 
   // Every model a pilot or the evals judge has actually run on. Absent from
   // this table they were not merely approximated, they were priced by whatever

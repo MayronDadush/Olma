@@ -64,6 +64,7 @@ never trust a dated narrative for something you are about to act on.
 - [היא שבורה: the room waited for somebody who had already written (fixed 2026-09-09)](#היא-שבורה-the-room-waited-for-somebody-who-had-already-written-fixed-2026-09-09)
 - [The room was told about a meeting at 01:12 (fixed 2026-09-09)](#the-room-was-told-about-a-meeting-at-0112-fixed-2026-09-09)
 - [The room window opened on a row nobody would look at (fixed 2026-09-19)](#the-room-window-opened-on-a-row-nobody-would-look-at-fixed-2026-09-19)
+- [The times the room said went nowhere (fixed 2026-09-23)](#the-times-the-room-said-went-nowhere-fixed-2026-09-23)
 - [The coordination waited on the man who started it (fixed 2026-09-19)](#the-coordination-waited-on-the-man-who-started-it-fixed-2026-09-19)
 - [The room heard its own state from memory (fixed 2026-09-19)](#the-room-heard-its-own-state-from-memory-fixed-2026-09-19)
 - [The room held a time that no longer existed (fixed 2026-09-22)](#the-room-held-a-time-that-no-longer-existed-fixed-2026-09-22)
@@ -135,6 +136,7 @@ never trust a dated narrative for something you are about to act on.
 - [The three tables nobody could merge (2026-09-10)](#the-three-tables-nobody-could-merge-2026-09-10)
 - [The conversation that never ended (fixed 2026-09-09)](#the-conversation-that-never-ended-fixed-2026-09-09)
 - [The pin held the order and the cache still died (measured 2026-09-11)](#the-pin-held-the-order-and-the-cache-still-died-measured-2026-09-11)
+- [DigitalOcean never cached (measured 2026-09-14)](#digitalocean-never-cached-measured-2026-09-14)
 - [The pilot that read as an expensive day (fixed 2026-09-09)](#the-pilot-that-read-as-an-expensive-day-fixed-2026-09-09)
 - [The heartbeat was the bill (fixed 2026-09-05)](#the-heartbeat-was-the-bill-fixed-2026-09-05)
 - [The ledger overstated OpenRouter by 65%, in both directions at once (fixed 2026-09-03)](#the-ledger-overstated-openrouter-by-65-in-both-directions-at-once-fixed-2026-09-03)
@@ -184,6 +186,7 @@ never trust a dated narrative for something you are about to act on.
 - [The light that would not go round (2026-09-22)](#the-light-that-would-not-go-round-2026-09-22)
 - [The picker that opened underneath (fixed 2026-09-22)](#the-picker-that-opened-underneath-fixed-2026-09-22)
 - [Saturday's game, filed under "closed" (fixed 2026-09-23)](#saturdays-game-filed-under-closed-fixed-2026-09-23)
+- [The coordination that expired on the wrong Tuesday (fixed 2026-09-23)](#the-coordination-that-expired-on-the-wrong-tuesday-fixed-2026-09-23)
 - [The list he could not put his own task into (2026-09-19)](#the-list-he-could-not-put-his-own-task-into-2026-09-19)
 - [An offer to call a number the bridge has never served (fixed 2026-09-06)](#an-offer-to-call-a-number-the-bridge-has-never-served-fixed-2026-09-06)
 - [The reply's first six seconds were bookkeeping (2026-09-05)](#the-replys-first-six-seconds-were-bookkeeping-2026-09-05)
@@ -2296,6 +2299,43 @@ NULL is the **once-per-life first-turn signal** (`openRecord` computes
 is the **silence test** behind the name-confirm rung. Stamping it early would
 have spent the first-turn signal and broken the silence test to fix a gate.
 The narrow column was the right lever.
+
+### The times the room said went nowhere (fixed 2026-09-23)
+
+The poker room ("פחם הסעות 🚌", meeting 42), 23 September, 09:48–09:51 UTC.
+עמית tagged her: poker on Zoom, Friday afternoon. מירון added in the room:
+"תוסיפי גם אופציה של חמישי ערב ושבת ערב". The room's agent understood both —
+its transcript shows it reaching for `propose_meeting_slot`, the person's own
+tool, and brokerd answering `forbidden: not available in a group`, exactly as
+the audience boundary is meant to. It then told the room it would ask
+everybody privately. Nothing had been written: `meeting_options` for meeting
+42 was empty, the page מירון opened from his invite showed no times at all,
+and the private invites asked each person "when suits you" about a
+coordination whose three candidate times had been said out loud minutes
+earlier.
+
+Two things made it structural rather than a bad turn. The room doctrine said
+in so many words "לא מציעים זמנים בקבוצה" and `start_group_coordination`'s
+description said "never collect times here" — a rule written against the room
+proposing a time in its OWN voice, which also forbade recording a time a
+person said. And no group tool could write one. The recurring shape exactly:
+the agent understood, and the outcome had nowhere to go.
+
+The fix is a group tool, `add_group_coordination_option`, that puts the time
+on the table AS the member who said it (`actingUser`, filed by the gateway,
+never taken from the call) through the same `proposeSlot` →
+`afterOptionAdded` path as the private tool — their yes recorded, the others
+asked privately, folded into an invite that has not gone out. It cost the
+third raise of the tool-schema ceiling (56,500 → 57,000), cleared by the owner
+with the cost in front of him. Two smaller things came with it: the
+requester's own invite said "The user has not said when suits THEM" — false
+once their time is on the table — so the tool stamps `namedInRoom` on it; and
+the room doctrine was only ever written at provisioning, so
+`resync-agent-templates.js` walks rooms now too, or the poker room would have
+kept reading the old line beside the new tool.
+
+Nothing backfills meeting 42: the times have to be said again.
+
 ### The coordination waited on the man who started it (fixed 2026-09-19)
 
 מירון tagged her in the test room: *"תתאמי לנו פגישה שבוע הקרוב."* She said in
@@ -5653,6 +5693,61 @@ the first reading of this said the cache was healthy for people who do not have
 one. Same rule as `efficiency-watch`, rediscovered inside an hour of writing a
 new ratio.
 
+### DigitalOcean never cached (measured 2026-09-14)
+
+**This corrects the entry above.** It read the cache loss as rotation — "same
+provider 54%, different provider 3%" — and recommended moving the head of the
+order towards the traffic. The split was real and the cause was not: nearly
+all the "same provider" hits were StreamLake following StreamLake.
+
+By 2026-09-14 the order was holding almost perfectly. Of 177 calls read back
+through OpenRouter's generation records, **DigitalOcean served 176** — no
+rotation left to blame — and the first call of a turn was still cached 25% of
+the time (17% of prompt tokens), against 55% for later calls of the same turn.
+
+The probe that settled it sent one 24k-token prompt to one provider at a time
+(`provider.order: [X], allow_fallbacks: false`): cold, again at +3s and +90s,
+then six warm repeats back to back. Calls after the first that read anything
+from cache:
+
+| provider | cached | HQ (OpenRouter /providers) | input $/M that day |
+|---|---|---|---|
+| DigitalOcean | **0 of 8** | not stated | 0.098 |
+| StreamLake | 8 of 8 | CN | 0.084 |
+| Novita | 8 of 8 | US | 0.14 |
+| Baidu | 7 of 8 | CN | 0.0854 |
+
+Probe spend: $0.07. DigitalOcean does not keep a prefix cache for this model
+at all, three seconds apart or ninety. The 9/09 pin put it first for a price
+that had also moved by 9/14 — it was dearer than StreamLake that day.
+OpenRouter's `supports_implicit_caching` field reads `false` for all five, so
+**the published flag is no evidence either way**; only a repeat call is.
+
+**The change:** `ORDER = ['novita', 'streamlake']`, fallbacks still on, and
+`data_collection: "deny"`. **`model-pricing.js` was deliberately left
+alone**: the first draft moved the flash rate with the order and
+`tests/cost-repricing.test.js` went red, because the admin cost page re-prices
+every ledger row at the table's current rate — a rate change would have
+restated the whole history, not priced new rows. Until rates carry an
+effective date the page under-reads Novita calls by about half. **The judgment call was data residency, and the owner made it
+(2026-09-15).** StreamLake is the cheapest provider that caches, but it is
+CN-headquartered and had been serving part of the traffic since 9/09 without
+anyone deciding that on purpose; Novita is US-headquartered, caches just as
+well, and lists at $0.14/M against $0.084. For personal data from Israeli
+users with a Google verification in flight, the owner took Novita. Modelled
+at 300 users and 20 messages a day it is still about a fifth under the
+uncached DigitalOcean bill it replaces; StreamLake would be about half.
+
+`data_collection: "deny"` was probed before it shipped: all five providers
+tried served under it. So it breaks nothing — and, by the same result,
+nothing here proves it excludes anyone.
+
+**Still true from the entry above:** the money is small (the whole gap is a
+few dollars a month) and the case is the seconds on the first token. A
+`params` change needs a gateway restart, and the proof is a fresh responseId
+answered by OpenRouter with `provider_name` "Novita" — then
+`scripts/cache-probe.js` again after a few days of traffic.
+
 ### The pilot that read as an expensive day (fixed 2026-09-09)
 
 On the morning of 2026-09-09 the efficiency watch sent this:
@@ -7613,6 +7708,67 @@ quick scan down the list it does not separate. The owner picked the whole card
 instead (2026-09-23): the card is tinted `--accent-soft` and the chip goes
 solid with a ✓ on it, active list only. An archive row is over and is worth
 pointing at with nothing.
+### The coordination that expired on the wrong Tuesday (fixed 2026-09-23)
+
+Found while answering the owner's fourth item — "פגישות שלא נקבעו שכל המועדים
+שלהם עברו - עוברות לארכיון". They did not, and the way they did not had two
+opposite halves.
+
+A coordination offers up to five candidate times (`meeting_options`). The
+single-slot columns it grew out of — `meetings.proposed_slot` and
+`proposed_start_at` — are kept as mirrors of one of them, and the one they
+mirror is the most recently ADDED: `mirrorCurrent` orders by `id DESC`, which
+is the newest ROW, not the latest MOMENT. That is fine for what a mirror is
+for. `expireStaleMeetings` then asked that column, and only that column,
+whether the negotiation was over.
+
+So the order two times were put on the table decided the coordination's fate:
+
+- **Tuesday first, next month second.** The mirror points at next month, so
+  Tuesday never expires. It stays on the table, offered to people, listed in
+  every message about the coordination, a week after Tuesday.
+- **Next month first, Tuesday second.** The mirror points at Tuesday, so on
+  Tuesday night the WHOLE coordination is closed and everybody is told it did
+  not come together — with next month still live and unanswered.
+
+Neither half is visible from the meetings table: both coordinations look
+ordinary, and in each case the mirror is doing exactly what it says it does.
+
+The owner's rule replaces the question rather than patching it (2026-09-23):
+"שמועד שעבר זמנו ימחק מהאופציות - כשאין אופציות אפשר למחוק את התיאום לגמרי".
+A time whose moment has passed comes off the TABLE, and a coordination that
+runs out of times is over. The mirror is no longer asked anything about time;
+it is refreshed after the drop like any other change to the table, which is
+all it was ever for.
+
+Two things had to be said out loud to build it.
+
+**Running out of times is not the same thing as having none.** A person may
+take the last time off the table and put another up a minute later, and a
+coordination nobody has proposed a time for has never had one — both sit at
+zero and neither is over. Only a meeting this pass has just taken a time away
+from is asked whether it is empty, which makes "the last one passed" the thing
+being detected instead of "the table is bare".
+
+**A whole day is not over six hours after it starts.** An all-day option's
+instant is 09:00 of the day it means (`meeting-option-moment.momentFor`), so
+the six-hour grace that is right for a clock time would have taken "Sunday,
+all day" off the table at 15:00 on Sunday. It gets a full day on top. The
+dayparts need no exception: their instants are 09:00, 13:00, 19:00 and 21:00,
+and six hours from each lands at the end of the part it names or later.
+
+And the status says which of the two ways a time left. `deleted` is a person
+taking it off, and that is repeated to everybody else the next time they hear
+about the coordination; `expired` (migration 085) is nobody's doing and is
+said to no one, because "Tuesday came off the table", about a Tuesday that has
+been and gone, is noise.
+
+The two tests that covered the old sweep both moved `meetings.proposed_start_at`
+by hand — a replica of the mechanism, not the mechanism — so neither could
+have seen any of this. They drive the option now, and three new ones measure
+what was actually wrong: both orderings above, the whole-day exception, and a
+brand-new coordination that must not be closed for having an empty table.
+All three go red on the old code.
 
 ### The list he could not put his own task into (2026-09-19)
 

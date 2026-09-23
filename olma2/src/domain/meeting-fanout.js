@@ -100,6 +100,25 @@ async function foldIntoPendingQuestion(client, userId, meetingId) {
   return true;
 }
 
+// A time said IN the room, by the person whose own private invite has not gone
+// out yet (2026-09-23). That invite still says "the user has not said when
+// suits THEM" — which stopped being true the moment their time went on the
+// table in front of everyone. So it is told, on the row itself: an UPDATE of a
+// row nothing has sent, exactly like the fold above, and a row already in the
+// worker's hands (`FOR UPDATE SKIP LOCKED`) is left alone rather than rewritten
+// under a send that may already have happened.
+async function noteNamedInRoom(client, userId, meetingId) {
+  const { rowCount } = await client.query(
+    `UPDATE outbox SET payload = payload || '{"namedInRoom": true}'::jsonb
+      WHERE id IN (
+        SELECT id FROM outbox
+         WHERE sent_at IS NULL AND user_id = $1 AND kind = 'meeting_invite'
+           AND (payload->>'meetingId')::bigint = $2
+         FOR UPDATE SKIP LOCKED)`,
+    [userId, meetingId]);
+  return rowCount > 0;
+}
+
 // A slot question for somebody whose invite never REACHED them is the invite,
 // asked late. The gate dropped Kapish's (`quiet`, 2026-09-20), and the first
 // thing he then read about the coordination was a bare "two times on the
@@ -529,7 +548,7 @@ async function afterStart(client, actor, res, participantIds, title) {
 
 module.exports = {
   afterSettled,
-  afterStart, afterOptionAdded, afterOptionRemoved,
+  afterStart, afterOptionAdded, afterOptionRemoved, noteNamedInRoom,
   afterSlotResponse, afterOptOut, afterRejoin,
   actorName, fanout, supersedeQueuedMeetingRows, activeParticipantsExcept,
   meetingCalendarFanout, calendarRoleFor, cancelCalendarCleanup, calendarHintFor,
