@@ -237,6 +237,22 @@ resync_templates() {
   "
 }
 
+# Each agent's list of OUR tools it is not shown (intake/agent-tool-policy.js),
+# recomputed from the registry this release carries. Without it a tool added
+# today reaches every existing room's prompt until someone notices. A failure
+# warns and does not fail the run: nothing breaks — brokerd refuses a tool
+# called by the wrong audience either way — and config_guard reports the
+# drift on the board. Not called on rollback: a deny naming a tool the older
+# release lacks hides nothing and costs nothing.
+sync_tool_policies() {
+  $SSH "$SERVER" "
+    set -euo pipefail
+    cd $DEST
+    set -a; [ -f .env ] && . ./.env; set +a
+    node scripts/sync-agent-tool-policies.js --apply
+  "
+}
+
 roll_back() {
   if ! $SSH "$SERVER" "[ -d $BACKUP ]"; then
     echo "No previous release snapshot to roll back to — manual intervention required." >&2
@@ -272,6 +288,7 @@ if [ "$RESTART" = "1" ]; then
     echo "Deployed and healthy, but the AGENTS.md resync FAILED — existing users are still on the previous doctrine. Run scripts/resync-agent-templates.js --apply on the server." >&2
     exit 1
   fi
+  sync_tool_policies || echo "WARNING: agent tool policies were NOT synced — some agents may be shown tools for the other audience. Run scripts/sync-agent-tool-policies.js --apply on the server." >&2
 else
   echo "Note: no --restart, so nothing was restarted and AGENTS.md was NOT resynced — existing users keep their current doctrine until you do both." >&2
 fi

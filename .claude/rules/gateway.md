@@ -12,6 +12,8 @@ paths:
   - "olma2/scripts/set-cache-retention.js"
   - "olma2/scripts/enable-turn-context.js"
   - "olma2/scripts/register-openrouter-models.js"
+  - "olma2/scripts/sync-agent-tool-policies.js"
+  - "olma2/src/intake/agent-tool-policy.js"
 ---
 
 # Talking to the gateway
@@ -107,6 +109,22 @@ title means this file. Grep the title, not the filename.
   unanswered) still see yesterday on the morning after — a reader of the
   live session id alone is blind once a day. `config_guard` goes red if the
   mode comes back off; `scripts/set-session-reset.js --apply` sets it.
+
+- **A room's agent is shown six tools and a person's is shown the rest, by a
+  `tools.deny` on each agent's entry — computed, never typed.** The shim
+  cannot tell who asks and serves all of them; the gateway can, and filters
+  per agent before the prompt is built. Measured on g-7, 2026-09-23, one probe
+  either side: 27,337 input tokens a turn to 11,625, 90 of our tools to 6.
+  `intake/agent-tool-policy.agentToolPolicy` derives the list from the
+  registry's audiences, `addAgent` writes it on every new agent, the deploy
+  re-syncs every existing one (`scripts/sync-agent-tool-policies.js`, which
+  validates the candidate with `openclaw config validate` on a scratch
+  `OPENCLAW_HOME` before writing), and `config_guard` names any agent that
+  differs. **Deny, never allow**: an agent-level allow list narrows the
+  gateway's own tools too. **Never hand-edit one** — the next deploy puts it
+  back, and a hand list is how a new person tool would leak into every room.
+  `main`, `intake` and `ggreet` are not narrowed. Brokerd is still the lock;
+  this only decides what the model reads.
 
 ### systemd scope
 

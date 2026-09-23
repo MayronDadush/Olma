@@ -759,7 +759,9 @@ test('config guard: a multi-agent roster with no ambient owner is a violation', 
   assert.deepEqual(guard.checkOpenclawConfig(solo), []);
 
   const many = baseConfig();
-  many.agents.list.push({ id: 'u-3', workspace: '/x/u-3', agentDir: '/x/u-3-agent' });
+  // Through addAgent, which writes the agent's tool policy — a hand-built
+  // entry without one is its own violation (see the next test).
+  occ.addAgent(many, { id: 'u-3', workspace: '/x/u-3', agentDir: '/x/u-3-agent' });
   const v = guard.checkOpenclawConfig(many);
   assert.equal(v.length, 1);
   assert.match(v[0], /systemAgent\.agentId is unset/);
@@ -771,6 +773,31 @@ test('config guard: a multi-agent roster with no ambient owner is a violation', 
 
   many.agents.defaults.systemAgent.agentId = 'intake';
   assert.deepEqual(guard.checkOpenclawConfig(many), []);
+});
+
+// A room shown every tool read 27,337 input tokens a turn; shown its six,
+// 11,625 (g-7, 2026-09-23). The list is derived from the registry, so the
+// failure to catch is an agent the deploy never re-synced after a tool was
+// added — which must go red, and must go green again once synced.
+test('config guard: an agent shown the other audience\'s tools is reported, and syncing clears it', () => {
+  const cfg = baseConfig();
+  cfg.agents.defaults.systemAgent = { agentId: 'intake' };
+  occ.addAgent(cfg, { id: 'u-3', workspace: '/x/u-3', agentDir: '/x/u-3-agent' });
+  occ.addAgent(cfg, { id: 'g-7', workspace: '/x/g-7', agentDir: '/x/g-7-agent' });
+  assert.deepEqual(guard.checkOpenclawConfig(cfg), [], 'agents written by addAgent are born correct');
+
+  // A stale list: one person's tool missing from the room's deny.
+  occ.agentEntry(cfg, 'g-7').tools.deny.pop();
+  // And a person with no policy at all.
+  delete occ.agentEntry(cfg, 'u-3').tools;
+  const v = guard.checkOpenclawConfig(cfg);
+  assert.equal(v.length, 1, 'one row for all of them, so the title is stable');
+  assert.match(v[0], /2 agent\(s\).*g-7, u-3/);
+  assert.match(v[0], /sync-agent-tool-policies\.js --apply/);
+
+  const policy = require('../src/intake/agent-tool-policy');
+  for (const id of ['g-7', 'u-3']) occ.setAgentTools(cfg, id, policy.agentToolPolicy(id, cfg));
+  assert.deepEqual(guard.checkOpenclawConfig(cfg), []);
 });
 
 // Measured 2026-09-05 over seven days of transcripts: 3,051 heartbeat calls

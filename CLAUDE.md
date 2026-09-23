@@ -128,7 +128,7 @@ the impression that the first green answer is the answer.
 ### Talking to the gateway (and systemd scope)
 
 **`.claude/rules/gateway.md`** — writing openclaw.json, the three model lists, heartbeats, the daily session reset, and which units are user-scope.
-Loads when you **Read** a file under `src/intake/openclaw-config.js`, `src/intake/provision.js`, `src/channels/**` and 9 more.
+Loads when you **Read** a file under `src/intake/openclaw-config.js`, `src/intake/provision.js`, `src/channels/**` and 11 more.
 
 - **Never shell out to `openclaw config set`**
 - **An invalid config is IGNORED, not rejected.**
@@ -141,6 +141,7 @@ Loads when you **Read** a file under `src/intake/openclaw-config.js`, `src/intak
 - **Never poll `openclaw sessions list` on a timer**
 - **The gateway heartbeat stays OFF: `agents.defaults.heartbeat.every: "0m"`.**
 - **Every session resets daily: `session.reset: { mode: "daily", atHour: 2 }`**
+- **A room's agent is shown six tools and a person's the rest, by a computed `tools.deny` per agent** — never hand-edited; the deploy re-syncs it.
 
 ### Delivering a message
 
