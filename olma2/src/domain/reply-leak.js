@@ -150,7 +150,7 @@ const MARK_RE = new RegExp(
 // corpus is sixteen strings somebody wrote by hand — the 383 real messages this
 // module's header already names as the measurement it is missing are still on
 // the box. Same reasoning as the identifier tier: unmeasured means report.
-const NARRATION_RE = /^[\s"״'׳]*(?:הוא|היא|הם|הן)\s+(?:אמרו|אמרה|אמר|כתבו|כתבה|כתב)(?![֐-׿])\s*["״'׳\d]|^\s*(?:he|she|they)\s+(?:said|wrote|replied)\s+["״'\d]/i;
+const NARRATION_RE = /^[\s"״'׳]*(?:הוא|היא|הם|הן)\s+(?:אמרו|אמרה|אמר|כתבו|כתבה|כתב|הגיבו|הגיבה|הגיב|אומרים|אומרת|אומר|מבקשים|מבקשת|מבקש|שואלים|שואלת|שואל|עונים|עונה)(?![֐-׿])\s*["״'׳\d]|^\s*(?:he|she|they)\s+(?:said|wrote|replied)\s+["״'\d]/i;
 
 // The model talking about what it is about to do, or about the reader in the
 // third person, in English. This is the tier the header above named as
@@ -226,6 +226,38 @@ function deliberationIn(raw, text) {
   const soft = DELIB_SOFT_RE.exec(text);
   if (soft && DELIB_CUE_RE.test(text)) return soft[0];
   return null;
+}
+
+// The same working-out, in HEBREW (2026-09-23). Every drop tier above is
+// English, so when the model reasoned in Hebrew there was nothing to catch:
+// Miron got thirteen lines about himself in the third person — "הוא הגיב על
+// ההודעה שלי… אני צריך להבין… אכתוב לו ש…" — and `gateReply` answered `pass`
+// with zero findings (`incidents.md`, "The working-out arrived in Hebrew").
+//
+// Read off traffic, not off that one message: 2,697 assistant messages from
+// every u-* agent over 21 days. The model's next step in the FIRST person with
+// a verb off a closed list — "אני צריך להבין", "אני צריכה למצוא את המשימה" —
+// changed exactly three messages, all three working-out, and no real reply.
+// "לדעת" is deliberately NOT on the list: "אני צריכה לדעת מתי נוח לך" is a
+// question to a person. Neither are לבדוק, לחפש, לראות, לוודא and לעדכן —
+// "אני צריכה לבדוק רגע ביומן — מתי בערך?" is a sentence to somebody, and none
+// of the five fired on anything in the 21 days, so leaving them off cost
+// nothing that was measured. Olma speaks in the feminine and the working-out
+// arrives in both genders, so both are matched. Against `text`, so somebody
+// else's words in quotation marks are never read as hers.
+//
+// The other shape the leak had — "הוא הגיב על ההודעה שלי", the reader in the
+// third person — was measured too and is REPORTED, not dropped: it hit that
+// one message and nothing else, a message the step already cancels, and every
+// tell that separates it from a relay ("היא ענתה על ההודעה שלי: מתאים לה
+// שלישי") is a sentence Olma can really say. So `(ההודעה|השאלה|התשובה) שלי`
+// is counted as `hebrew-narration` and delivered, and NARRATION_RE learned
+// the verbs this leak used — same reasoning as the identifier tier.
+const HEB_STEP_RE = /(?:^|[\s,.:;—-])(אני\s+(?:צריך|צריכה)\s+ל(?:הבין|הסביר|סמן|מצוא|החליט|ענות|כתוב|שמור))(?![֐-׿])/;
+const HEB_OWN_RE = /(?:ההודעה|השאלה|התשובה) שלי(?![֐-׿])/;
+function hebrewStepIn(text) {
+  const step = HEB_STEP_RE.exec(text);
+  return step ? step[1] : null;
 }
 
 // The tier the 2026-09-15 measurement rejected, with the one fact it was
@@ -407,7 +439,11 @@ function leaksIn(line, { readerWritesHebrew = null } = {}) {
   if (dead) out.push({ kind: 'link', at: dead.slice(0, 60) });
   const internal = INTERNAL_RE.exec(text);
   if (internal) out.push({ kind: 'internal', at: internal[1] });
-  const block = BLOCK_RE.exec(text);
+  // A block name is ours even inside quotation marks — no person writes
+  // "Reply target of current user message" — and Miron's leak (2026-09-23)
+  // quoted it, which `scannable` strips before anything reads it. So the raw
+  // line is asked too.
+  const block = BLOCK_RE.exec(text) || BLOCK_RE.exec(raw);
   if (block) out.push({ kind: 'block', at: block[0].trim().slice(0, 40) });
   const mark = MARK_RE.exec(text);
   if (mark) out.push({ kind: 'mark', at: mark[0].trim().slice(0, 40) });
@@ -419,6 +455,8 @@ function leaksIn(line, { readerWritesHebrew = null } = {}) {
   if (narration) out.push({ kind: 'narration', at: narration[0].trim().slice(0, 40) });
   const deliberation = deliberationIn(raw, text);
   if (deliberation) out.push({ kind: 'deliberation', at: deliberation.trim().slice(0, 40) });
+  const hebrew = hebrewStepIn(text);
+  if (hebrew) out.push({ kind: 'hebrew', at: hebrew.slice(0, 40) });
   const instant = INSTANT_RE.exec(text);
   if (instant) out.push({ kind: 'instant', at: instant[0] });
   const sentinel = SENTINEL_RE.exec(text);
@@ -436,6 +474,10 @@ function leaksIn(line, { readerWritesHebrew = null } = {}) {
     const id = IDENTIFIER_RE.exec(text);
     if (id) out.push({ kind: 'identifier', at: id[1] });
   }
+  if (!out.length) {
+    const own = HEB_OWN_RE.exec(text);
+    if (own) out.push({ kind: 'hebrew-narration', at: own[0] });
+  }
   return out;
 }
 
@@ -449,12 +491,12 @@ function leaksIn(line, { readerWritesHebrew = null } = {}) {
 // only the closed, unmistakable markers are allowed in here.
 // `link` is here for the same reason `sentinel` is: it is taken OUT of its
 // line and the line stays. The words around a dead link are the message.
-const KEEPS_LINE = new Set(['identifier', 'sentinel', 'narration', 'link']);
+const KEEPS_LINE = new Set(['identifier', 'sentinel', 'narration', 'hebrew-narration', 'link']);
 
 // The subset of those that also change NOTHING about the text. `sentinel` is
 // not in here: it leaves its line standing but is stripped out of it, so it is
 // a real change and belongs in `leaks`.
-const REPORT_ONLY = new Set(['identifier', 'narration']);
+const REPORT_ONLY = new Set(['identifier', 'narration', 'hebrew-narration']);
 function drops(leaks) { return leaks.some((l) => !KEEPS_LINE.has(l.kind)); }
 
 // Is there real content BEFORE line `i` — any earlier line that is not blank?
@@ -563,5 +605,6 @@ module.exports = {
   deadLink, firstDeadLink, OUR_HOSTS,
   FRAME_RE, INTERNAL_RE, BLOCK_RE, INSTANT_RE, SENTINEL_RE, IDENTIFIER_RE,
   MARK_RE, NARRATION_RE, deliberationIn, englishToHebrewReader,
+  HEB_STEP_RE, HEB_OWN_RE, hebrewStepIn,
   INTERNAL_NAMES, SENTINEL, KEEPS_LINE, REPORT_ONLY, MIN_ENGLISH_WORDS,
 };

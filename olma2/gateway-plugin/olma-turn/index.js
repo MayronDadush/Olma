@@ -438,7 +438,7 @@ const MARK_RE = new RegExp(
   + `|(?:אשיב|אענה|אגיב|אשלח)\\s+(?:לו|לה|להם|)\\s*(?:${VOCAB_RE})`
   + `|(?:reply|respond|answer|react|send)(?:ing|s|ed)?\\s+(?:back\\s+)?(?:with|using)\\s+(?:a\\s+)?(?:${VOCAB_RE})`,
   "i");
-const NARRATION_RE = /^[\s"״'׳]*(?:הוא|היא|הם|הן)\s+(?:אמרו|אמרה|אמר|כתבו|כתבה|כתב)(?![֐-׿])\s*["״'׳\d]|^\s*(?:he|she|they)\s+(?:said|wrote|replied)\s+["״'\d]/i;
+const NARRATION_RE = /^[\s"״'׳]*(?:הוא|היא|הם|הן)\s+(?:אמרו|אמרה|אמר|כתבו|כתבה|כתב|הגיבו|הגיבה|הגיב|אומרים|אומרת|אומר|מבקשים|מבקשת|מבקש|שואלים|שואלת|שואל|עונים|עונה)(?![֐-׿])\s*["״'׳\d]|^\s*(?:he|she|they)\s+(?:said|wrote|replied)\s+["״'\d]/i;
 const DELIB_VERBS = "check|see|look|verify|re-?check|figure|find|get|read|re-?read|try|compose|deliver|save|cancel|write|remove|update|confirm|start|first|also|just|search|call|fetch|proceed|think|handle|do|make|give|send|reply|respond|answer|draft|set|ask|follow|merge|create|add|mark|use|note|pull|run|open|archive";
 const DELIB_LET_ME = `Let me(?: not| just| also| first)? (?:${DELIB_VERBS})`;
 const DELIB_OPENER_RE = new RegExp("^\\s*(?:"
@@ -462,6 +462,14 @@ export function deliberationIn(raw, text) {
   const soft = DELIB_SOFT_RE.exec(text);
   if (soft && DELIB_CUE_RE.test(text)) return soft[0];
   return null;
+}
+// Ported from `domain/reply-leak.hebrewStepIn` (2026-09-23): the working-out
+// in Hebrew, measured on 2,697 real messages. The reasoning is in the module.
+const HEB_STEP_RE = /(?:^|[\s,.:;—-])(אני\s+(?:צריך|צריכה)\s+ל(?:הבין|הסביר|סמן|מצוא|החליט|ענות|כתוב|שמור))(?![֐-׿])/;
+const HEB_OWN_RE = /(?:ההודעה|השאלה|התשובה) שלי(?![֐-׿])/;
+export function hebrewStepIn(text) {
+  const step = HEB_STEP_RE.exec(text);
+  return step ? step[1] : null;
 }
 // Ported from `domain/reply-leak.englishToHebrewReader` — the tier that needs
 // a fact the gate cannot work out: the LANGUAGE OF THE READER. It arrives on
@@ -490,8 +498,8 @@ const URL_RE = /\b(?:https?:\/\/|www\.)\S+/gi;
 const ADDRESS_RE = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g;
 const QUOTED_RE = /["״'][^"״'\n]{1,80}["״']/g;
 const TOKEN_RE = /\bolma_(?:tok|grp)_[0-9a-f]{8,}/g;
-const KEEPS_LINE = new Set(["identifier", "sentinel", "narration"]);
-const REPORT_ONLY = new Set(["identifier", "narration"]);
+const KEEPS_LINE = new Set(["identifier", "sentinel", "narration", "hebrew-narration"]);
+const REPORT_ONLY = new Set(["identifier", "narration", "hebrew-narration"]);
 const SENTINEL = "NO_REPLY";
 
 export function scannable(line) {
@@ -506,7 +514,7 @@ export function leaksIn(line, { readerWritesHebrew = null } = {}) {
   if (frame) out.push({ kind: "frame", at: redact(frame[0].slice(0, 40)) });
   const internal = INTERNAL_RE.exec(text);
   if (internal) out.push({ kind: "internal", at: internal[1] });
-  const block = BLOCK_RE.exec(text);
+  const block = BLOCK_RE.exec(text) || BLOCK_RE.exec(raw);
   if (block) out.push({ kind: "block", at: block[0].trim().slice(0, 40) });
   const mark = MARK_RE.exec(text);
   if (mark) out.push({ kind: "mark", at: mark[0].trim().slice(0, 40) });
@@ -514,6 +522,8 @@ export function leaksIn(line, { readerWritesHebrew = null } = {}) {
   if (narration) out.push({ kind: "narration", at: narration[0].trim().slice(0, 40) });
   const deliberation = deliberationIn(raw, text);
   if (deliberation) out.push({ kind: "deliberation", at: deliberation.trim().slice(0, 40) });
+  const hebrew = hebrewStepIn(text);
+  if (hebrew) out.push({ kind: "hebrew", at: hebrew.slice(0, 40) });
   const instant = INSTANT_RE.exec(text);
   if (instant) out.push({ kind: "instant", at: instant[0] });
   const sentinel = SENTINEL_RE.exec(text);
@@ -525,6 +535,10 @@ export function leaksIn(line, { readerWritesHebrew = null } = {}) {
   if (!out.length) {
     const id = IDENTIFIER_RE.exec(text);
     if (id) out.push({ kind: "identifier", at: id[1] });
+  }
+  if (!out.length) {
+    const own = HEB_OWN_RE.exec(text);
+    if (own) out.push({ kind: "hebrew-narration", at: own[0] });
   }
   return out;
 }

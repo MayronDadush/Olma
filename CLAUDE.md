@@ -193,6 +193,7 @@ Loads when you **Read** a file under `src/brokerd/**`, `src/domain/turn.js`, `sr
 - **A repair job fires precisely when the system's belief about itself is already wrong, so it must be the most sceptical thing in the codebase.**
 - **A reply that got lost is RE-SENT, never re-answered.**
 - **The model's own working-out is stopped in the GATEWAY, not by the doctrine.** — and so is a link that goes nowhere: a host claiming to be us, or our own on a path nothing serves
+- **…and since 2026-09-23 the working-out is caught in Hebrew too** — a first-person next step off a closed verb list drops, the third-person shape is only reported, and a block name counts even inside quotes
 - **The last tier's missing input was not a pattern, it was the READER** — `writesHebrew` is a tri-state, `null` acts like `false`, and the value rides `turn_context` to a gate with no database
 
 ### Reminders, tasks and dates

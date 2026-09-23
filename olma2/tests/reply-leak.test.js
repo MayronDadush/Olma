@@ -396,6 +396,101 @@ test('deliberation: a bare third-person opening or a hedge with no tell is a sen
   }
 });
 
+// ---- the working-out in Hebrew (2026-09-23) ---------------------------------
+//
+// Miron, the poker coordination, 09:52 UTC — exactly as it reached his phone.
+// Every drop tier was English, the one English line quoted the block name
+// (which `scannable` strips), and the gate answered `pass` with zero findings.
+const MIRON_POKER = [
+  '',
+  '',
+  'הוא הגיב על ההודעה שלי על הפוקר. הוא אומר "צריך שכולם יהיו פנויים" — תגובה לשאלה "מתי נוח לך?", לא סתם משפט. זה בעצם אומר שהוא לא אמר עדיין מתי נוח לו, אלא מעיר שכולם צריכים להיות פנויים (ברור, אבל לא עונה על השאלה).',
+  '',
+  'אני צריך להבין: האם הוא מתכוון שזה ברור מאליו, או שהוא שואל אם כולם פנויים לפני שהוא עונה? כנראה שהוא לא מבין שכל אחד עונה בנפרד.',
+  '',
+  'אכתוב לו שכל אחד עונה לי בפרטי ורק אחר כך אני מעלה הצעה לשולחן, ושיחזור על השאלה — מתי נוח לו.',
+  '',
+  '>  They used WhatsApp reply on ONE earlier message, and the "Reply target of current user message" block above holds its text. Answer THAT message — "סיימתי" on a reply to a rent reminder closes the rent task, not the newest thing either of you said.',
+  '',
+  'ההודעה שהוא הגיב עליה היא "עמית מחפש פוקר בזום. אתם 3, צריך עד 4. מתי נוח לך?" — והוא אומר "צריך שכולם יהיו פנויים". אז הוא עונה על השאלה שלי בכך שהוא אומר שכולם צריכים להיות פנויים. לא ברור אם זאת תשובה ("לא משנה מתי נוח לי, תמצא זמן שכולם פנויים") או הבהרה.',
+  '',
+  'אני צריך להסביר שכל אחד אומר לי בפרטי מה נוח לו, ואז אני מעלה זמן שכולם יכולים. ולשאול שוב — מה נוח לו.',
+].join('\n');
+
+// The three real messages the Hebrew tier changes on 21 days of traffic
+// (2,697 messages), and nothing else did: the shape of each, with what fired.
+const HEBREW_DELIBERATION = [
+  ['אני צריכה למצוא את המשימה הזו כדי לצרף לה תזכורת. בואי נראה איך הן שמורות.', 'אני צריכה למצוא'],
+  ['יהב אמר שהכל בוצע חוץ מטופס פנסיה. אני צריך לסמן את כל המשימות האחרות כהושלמו.', 'אני צריך לסמן'],
+  ['אני צריך להבין: האם הוא מתכוון שזה ברור מאליו?', 'אני צריך להבין'],
+  ['אני צריך להסביר שכל אחד אומר לי בפרטי מה נוח לו.', 'אני צריך להסביר'],
+];
+
+// Sentences Olma really says, several of them one word away from a shape above.
+const HEBREW_ORDINARY = [
+  'אני צריכה לדעת מתי נוח לך',
+  'אכתוב לה שאתה מאחר',
+  'הוא אמר שיאחר',
+  'הוא כתב: "מירון רוצה לתאם איתך דייט"',
+  'הוא כתב: "אני צריך להבין מה קורה עם המעבר"',
+  'היא ענתה על ההודעה שלי: מתאים לה שלישי',
+  'היא רוצה לדעת אם בעצם נוח לך מחר',
+  'אני צריכה לבדוק רגע ביומן — מתי בערך?',
+  'אני צריכה לוודא: התכוונת ליום שלישי?',
+];
+
+test('Miron\'s poker message: the Hebrew working-out is found, and nothing is delivered', () => {
+  const v = leak.gateReply(MIRON_POKER, { readerWritesHebrew: true });
+  assert.equal(v.action, 'cancel');
+  assert.equal(v.text, '');
+  const kinds = v.leaks.map((l) => `${l.kind}:${l.at}`);
+  assert.ok(kinds.includes('hebrew:אני צריך להבין'), kinds.join(' | '));
+  assert.ok(kinds.includes('hebrew:אני צריך להסביר'), kinds.join(' | '));
+  assert.ok(kinds.includes('block:Reply target of current user message'),
+    'a block name is ours even inside quotation marks');
+  // And for every reader: this is not the English tier, it does not need one.
+  for (const readerWritesHebrew of [false, null]) {
+    assert.equal(leak.gateReply(MIRON_POKER, { readerWritesHebrew }).action, 'cancel');
+  }
+});
+
+test('hebrew: every measured shape drops, and names what it fired on', () => {
+  for (const [text, at] of HEBREW_DELIBERATION) {
+    const v = leak.gateReply(text);
+    assert.equal(v.action, 'cancel', `should drop: ${text}`);
+    assert.ok(v.leaks.some((l) => l.kind === 'hebrew' && l.at === at), `${text} → ${JSON.stringify(v.leaks)}`);
+  }
+});
+
+test('hebrew: the working-out above an answer loses only the working-out', () => {
+  const text = 'אני צריכה למצוא את המשימה הזו.\n\nמצאתי — הוספתי תזכורת למחר ב-9:00 👍';
+  const v = leak.gateReply(text);
+  assert.equal(v.action, 'trim');
+  assert.equal(v.text, 'מצאתי — הוספתי תזכורת למחר ב-9:00 👍');
+});
+
+test('hebrew: a sentence to a person, or somebody else\'s words quoted, is delivered', () => {
+  for (const text of HEBREW_ORDINARY) {
+    const v = leak.gateReply(text, { readerWritesHebrew: true });
+    assert.equal(v.action, 'pass', `${text} → ${JSON.stringify(v.leaks)}`);
+    assert.equal(v.text, text);
+  }
+});
+
+test('hebrew: the reader in the third person is REPORTED, never dropped', () => {
+  // One hit on 21 days of traffic, in a message the step tier already
+  // cancels — and every tell that tells it from a relay is a real sentence.
+  const own = 'היא ענתה על ההודעה שלי: מתאים לה שלישי';
+  const v = leak.gateReply(own);
+  assert.equal(v.action, 'pass');
+  assert.deepEqual(v.reported.map((l) => l.kind), ['hebrew-narration']);
+  assert.ok(leak.REPORT_ONLY.has('hebrew-narration') && leak.KEEPS_LINE.has('hebrew-narration'));
+  // NARRATION_RE learned the verbs this leak used — reported, as before.
+  const quoted = 'הוא אומר "צריך שכולם יהיו פנויים"';
+  assert.deepEqual(leak.gateReply(quoted).reported.map((l) => l.kind), ['narration']);
+  assert.equal(leak.gateReply(quoted).action, 'pass');
+});
+
 // The wide tier. Every internal name nobody has thought of is this shape — and
 // so is a word a developer might have put in a task title, which is why it is
 // reported and delivered rather than dropped. The audit row is where the next
@@ -538,7 +633,10 @@ test('the gateway plugin\'s copy and the domain module answer identically', () =
     ...ENGLISH_LEAKS.map(([text]) => text),
     'הנה העדכון:\n\n> Xiaomi MiMo-V2.6-Pro-UltraSpeed, Grok 4.7',
     'הנה הכרטיס 🙏\n\nMEDIA: /root/.openclaw/workspaces/u-7/cards/week.png',
-    'The meeting is on יום שלישי at four'];
+    'The meeting is on יום שלישי at four',
+    MIRON_POKER, ...HEBREW_DELIBERATION.map(([text]) => text), ...HEBREW_ORDINARY,
+    'אני צריכה למצוא את המשימה הזו.\n\nמצאתי — הוספתי תזכורת למחר ב-9:00 👍',
+    'הוא אומר "צריך שכולם יהיו פנויים"', 'כתבת "Reply target of current user message"'];
   assert.deepEqual(plugin.INTERNAL_NAMES, leak.INTERNAL_NAMES, 'the closed lists are the same list');
   assert.equal(plugin.MIN_ENGLISH_WORDS, leak.MIN_ENGLISH_WORDS, 'the same floor');
   // Every case under every value the reader flag can take, because the option

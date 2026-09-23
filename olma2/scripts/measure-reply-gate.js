@@ -96,6 +96,11 @@ console.log(`agents: ${agents.length}  days: ${DAYS}  assistant messages: ${mess
 console.log(`gate today: pass ${actions.pass}  trim ${actions.trim}  cancel ${actions.cancel}`);
 const residue = rows.filter((x) => x.found === 'english-only' && x.survives === 'delivered');
 console.log(`English paragraphs the gate delivers with no finding at all: ${residue.length}  (read these — they are the next tier, or the proof there is none)`);
+// The Hebrew tier (2026-09-23) drops on its own, so every paragraph it takes
+// is read by hand here — and `hebrew-narration` is the shape that was only
+// REPORTED, so its count is the evidence for or against making it a drop.
+const count = (kind) => rows.filter((x) => x.found.split('+').includes(kind)).length;
+console.log(`Hebrew working-out paragraphs dropped: ${count('hebrew')}  reported only (hebrew-narration): ${count('hebrew-narration')}  (read both — the first is destructive)`);
 console.log('');
 console.log('--- agent | local time | paragraph i/n | gate action | this paragraph | finding | text ---');
 for (const x of rows) {
