@@ -930,7 +930,10 @@ test('a meeting the eval user only PARTICIPATES in is cleared too', async () => 
     // Written as raw rows on purpose — this is a test about a DELETE, and
     // going through startMeeting would drag in connections and feature grants
     // that have nothing to do with what is being checked.
-    const partner = await makeUser(db.pool, '+972500000778', { firstName: 'דנה' });
+    // The partner is an eval user, as the seed makes it: a meeting a real
+    // person started is never deleted (the test after the next one).
+    const partner = await makeUser(db.pool, '+12025550178', { firstName: 'דנה' });
+    await c.query(`UPDATE users SET is_eval = true WHERE id = $1`, [partner.id]);
     const { rows: [m] } = await c.query(
       `INSERT INTO meetings (initiator_id, title) VALUES ($1, $2) RETURNING id`,
       [partner.id, 'קפה']);
@@ -955,6 +958,64 @@ test('a meeting the eval user only PARTICIPATES in is cleared too', async () => 
     const opts = await c.query(
       `SELECT count(*)::int AS n FROM meeting_options WHERE meeting_id = $1`, [m.id]);
     assert.equal(opts.rows[0].n, 0);
+  });
+});
+
+// The box's state on 2026-09-23: the eval user's answers on meetings they no
+// longer have a participant row in. The meeting delete finds meetings THROUGH
+// that row, so it could never reach them, and the guard failed every
+// scenario for twelve nights on these four rows.
+test('an answer the eval user left with no participant row behind it is cleared', async () => {
+  await withTx(db.pool, async (c) => {
+    const partner = await makeUser(db.pool, '+12025550179', { firstName: 'דנה' });
+    await c.query(`UPDATE users SET is_eval = true WHERE id = $1`, [partner.id]);
+    const { rows: [m] } = await c.query(
+      `INSERT INTO meetings (initiator_id, title) VALUES ($1, 'קפה ישן') RETURNING id`, [partner.id]);
+    await c.query(`INSERT INTO meeting_participants (meeting_id, user_id) VALUES ($1, $2)`, [m.id, partner.id]);
+    const { rows: [opt] } = await c.query(
+      `INSERT INTO meeting_options (meeting_id, slot_text, added_by) VALUES ($1, 'שני 18:00', $2) RETURNING id`,
+      [m.id, partner.id]);
+    await c.query(
+      `INSERT INTO meeting_option_answers (option_id, user_id, answer) VALUES ($1, $2, 'y')`,
+      [opt.id, evalUser.id]);
+
+    await harness.resetEvalUser(c, evalUser.id);
+
+    const dirty = await harness.cleanSlateViolations(c, evalUser.id);
+    assert.deepEqual(dirty, [], `still dirty after a reset: ${JSON.stringify(dirty)}`);
+  });
+});
+
+test('a meeting a REAL person started is never deleted; only the eval user\'s own rows leave it', async () => {
+  await withTx(db.pool, async (c) => {
+    const { rows: [m] } = await c.query(
+      `INSERT INTO meetings (initiator_id, title) VALUES ($1, 'פגישה של אדם אמיתי') RETURNING id`,
+      [realUser.id]);
+    await c.query(
+      `INSERT INTO meeting_participants (meeting_id, user_id) VALUES ($1, $2), ($1, $3)`,
+      [m.id, realUser.id, evalUser.id]);
+    const { rows: [opt] } = await c.query(
+      `INSERT INTO meeting_options (meeting_id, slot_text, added_by) VALUES ($1, 'רביעי 19:00', $2) RETURNING id`,
+      [m.id, realUser.id]);
+    await c.query(
+      `INSERT INTO meeting_option_answers (option_id, user_id, answer) VALUES ($1, $2, 'y'), ($1, $3, 'y')`,
+      [opt.id, realUser.id, evalUser.id]);
+
+    await harness.resetEvalUser(c, evalUser.id);
+
+    const n = async (sql, args) => (await c.query(sql, args)).rows[0].n;
+    assert.equal(await n(`SELECT count(*)::int AS n FROM meetings WHERE id = $1`, [m.id]), 1,
+      'the person\'s meeting stands');
+    assert.equal(await n(`SELECT count(*)::int AS n FROM meeting_options WHERE meeting_id = $1`, [m.id]), 1);
+    assert.equal(await n(
+      `SELECT count(*)::int AS n FROM meeting_participants WHERE meeting_id = $1 AND user_id = $2`,
+      [m.id, realUser.id]), 1, 'and so does their place in it');
+    assert.equal(await n(
+      `SELECT count(*)::int AS n FROM meeting_option_answers WHERE option_id = $1 AND user_id = $2`,
+      [opt.id, realUser.id]), 1, 'and their answer');
+    assert.deepEqual(await harness.cleanSlateViolations(c, evalUser.id), [],
+      'while the eval user is on a blank slate all the same');
+    await c.query(`DELETE FROM meetings WHERE id = $1`, [m.id]);
   });
 });
 
@@ -1081,6 +1142,71 @@ test('a scenario green on every trial is green, and says so', async () => {
     `error was: ${summary.results[0].error || JSON.stringify(summary.results[0].hardFailures)}`);
   assert.equal(summary.results[0].passedAll, true);
   assert.equal(summary.tally.green, 1);
+});
+
+// ── The partner a seed creates is an eval user too ─────────────────────────
+//
+// `meeting-second-option` created its partner as an ordinary person at a
+// number that may belong to somebody, and the outbox treated it as one: the
+// intake agent provisioned it, and twelve WhatsApp messages went to that
+// number over a day (incidents.md, "The eval partner was a real WhatsApp
+// recipient"). Rolled back, so the rows never reach the tests after it.
+
+async function inRollback(fn) {
+  const c = await db.pool.connect();
+  try {
+    await c.query('BEGIN');
+    return await fn(c);
+  } finally {
+    await c.query('ROLLBACK');
+    c.release();
+  }
+}
+
+test('the meeting seed marks its partner is_eval, created or found', async () => {
+  const seed = byId['meeting-second-option'].seed;
+  const partnerRow = async (c) => (await c.query(
+    `SELECT u.id, u.is_eval, u.checkin_enabled, u.phone FROM users u
+       JOIN meetings m ON m.initiator_id = u.id
+      WHERE m.title = 'קפה עם דנה' ORDER BY m.id DESC LIMIT 1`)).rows[0];
+
+  await inRollback(async (c) => {
+    await seed(c, evalUser.id);
+    const p = await partnerRow(c);
+    assert.equal(p.is_eval, true, 'a created partner is an eval user from its first run');
+    assert.equal(p.checkin_enabled, false);
+    assert.match(p.phone, /^\+1\d{3}55501\d{2}$/, 'and its number is one reserved for fiction');
+  });
+
+  // A partner row that already exists unmarked — the state the box was in —
+  // is marked by the next run rather than reused as a person.
+  await inRollback(async (c) => {
+    await seed(c, evalUser.id);
+    const first = await partnerRow(c);
+    await c.query(`UPDATE users SET is_eval = false, checkin_enabled = true WHERE id = $1`, [first.id]);
+    await seed(c, evalUser.id);
+    const again = await partnerRow(c);
+    assert.equal(Number(again.id), Number(first.id), 'the partner is reused, not recreated');
+    assert.equal(again.is_eval, true);
+    assert.equal(again.checkin_enabled, false);
+  });
+});
+
+test('getEvalUser is the user at EVAL_PHONE, never merely the lowest is_eval id', async () => {
+  await inRollback(async (c) => {
+    // Swap the phone onto a NEWER row, so the lowest-id is_eval user is no
+    // longer the one the harness drives. `ORDER BY id LIMIT 1` got this wrong.
+    const { rows: [other] } = await c.query(
+      `INSERT INTO users (phone, first_name, is_eval) VALUES ('+972599999077', 'שותפה', true) RETURNING id`);
+    await c.query(`UPDATE users SET phone = '+972599999078' WHERE id = $1`, [evalUser.id]);
+    await c.query(`UPDATE users SET phone = $2 WHERE id = $1`, [other.id, harness.EVAL_PHONE]);
+    const u = await harness.getEvalUser(c);
+    assert.equal(Number(u.id), Number(other.id));
+  });
+  await withTx(db.pool, async (c) => {
+    const u = await harness.getEvalUser(c);
+    assert.equal(Number(u.id), Number(evalUser.id), 'and the fixture is untouched afterwards');
+  });
 });
 
 // ── A night that measured nothing is its own state ─────────────────────────
