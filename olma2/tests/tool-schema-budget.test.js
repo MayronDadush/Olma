@@ -64,7 +64,19 @@ const { IDENTITY_PARAM } = require('../src/adapters/mcp/identity-param');
 // an answer about a time into a room. The ceiling still matters at 56,500: the
 // margin is 449, one ordinary tool, so the argument the paragraphs above make
 // is unchanged and the next one has to be made again.
-const JSON_CEILING = 56_500;
+//
+// Raised the third time, on 2026-09-23: 56,500 -> 57,000, for
+// `add_group_coordination_option` — 607 chars all in, cleared by the owner as
+// a choice put to him with the cost on it. What it buys is the room's own
+// times: עמית asked the room for poker on Friday afternoon and מירון added
+// Thursday and Saturday evening, in front of everyone; the room's agent had no
+// tool that could write a time, was refused on the person's one, told the room
+// the times were going out privately, and the coordination's page showed an
+// empty table. It paid 26 chars of its own first — `start_group_coordination`
+// lost the "never collect times here" the new tool makes false, and the new
+// description carries no sentence its error message already says. 56,827 now,
+// a margin of 173: not one more ordinary tool.
+const JSON_CEILING = 57_000;
 const DESCRIPTION_CEILING = 700;
 const IDENTITY_DESCRIPTION_CEILING = 40;
 

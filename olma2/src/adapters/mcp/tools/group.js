@@ -12,7 +12,7 @@
 // can be handed a person by accident, and `actingUser` — the member whose tag
 // started this turn — is chosen by the server from what the gateway filed,
 // never by the model.
-const { groups, groupMeetings, ok, groupTool, S } = require('./_shared');
+const { groups, groupMeetings, meetings, meetingFanout, ok, err, groupTool, S } = require('./_shared');
 
 module.exports = [
   groupTool('group_status',
@@ -23,10 +23,11 @@ module.exports = [
   // The trigger. Everything after this happens in the members' PRIVATE chats,
   // on the meeting tools their own agents already have — this tool creates the
   // coordination and hands each of them the question, and that is all it does.
-  // It never proposes a time: a time proposed from the room would be one
-  // person's suggestion wearing the room's voice.
+  // It never proposes a time itself. A time somebody SAYS in the room is theirs,
+  // and `add_group_coordination_option` below puts it on the table in their
+  // name — never in the room's voice.
   groupTool('start_group_coordination',
-    'GROUP AGENTS ONLY. Call this the moment the room asks to arrange something — never say you are on it before calling it. Everyone is then asked PRIVATELY when suits them; never collect times here. One per room: asked again returns the same one (created=false) — say where it stands.',
+    'GROUP AGENTS ONLY. Call this the moment the room asks to arrange something — never say you are on it before calling it. Everyone is then asked PRIVATELY when suits them. One per room: asked again returns the same one (created=false) — say where it stands.',
     { what: S('string', 'What is being arranged, in the room\'s own words ("פאדל השבוע")'),
       where: S('string', 'The place, ONLY if the room said one ("אצל יוסי"); never guessed') },
     ['what'],
@@ -42,7 +43,7 @@ module.exports = [
           // about messages that never went. The owner's wording, and the only
           // one this tool can honestly support: she will ask each of them when
           // they are available (`incidents.md`, "The room was told twice").
-          ? 'Say ONE short line in the room: you are on it, and you will ask each of them privately WHEN THEY ARE AVAILABLE. Never say they have already been asked — nothing has reached anybody yet, and some of them are asleep or have stopped answering. Do not list the members and do not ask anything here.'
+          ? 'Say ONE short line in the room: you are on it, and you will ask each of them privately WHEN THEY ARE AVAILABLE. Never say they have already been asked — nothing has reached anybody yet, and some of them are asleep or have stopped answering. Do not list the members and do not ask anything here. If the request itself named a time, call add_group_coordination_option for it now.'
           : 'This room already has that coordination running. Say where it stands (group_coordination_status), do not start another.',
       };
       // The one question this room is ever asked about itself, folded into
@@ -65,6 +66,66 @@ module.exports = [
         // one short of the rows just written, ready to be said out loud in
         // front of the room.
         created: res.data.created, willAsk: res.data.participants, hints,
+      });
+    }),
+
+  // A time said IN the room (2026-09-23). עמית asked for "שישי צהריים פוקר
+  // ב-Zoom" and מירון added "חמישי ערב ושבת ערב", both in front of everyone;
+  // the room's agent reached for propose_meeting_slot, was refused as a person's
+  // tool, and told the room it was sending the times to everybody privately.
+  // Nothing wrote them anywhere, and the coordination's page had an empty
+  // table (`incidents.md`, "The times the room said went nowhere"). The agent
+  // understood and the outcome had nowhere to go — so this is the missing
+  // tool, not a better sentence.
+  //
+  // It is the person's proposal and never the room's: `actingUser` is the
+  // member whose tag started the turn, chosen by the server off what the
+  // gateway filed, and the option is added AS them — added_by, their yes —
+  // through exactly the path the private tool takes (`meetings.proposeSlot`,
+  // `meetingFanout.afterOptionAdded`), so the five-option ceiling, a duplicate
+  // moment being a yes, the weekday check and the fold into a still-queued
+  // private invite are all the same code.
+  groupTool('add_group_coordination_option',
+    'GROUP AGENTS ONLY. The member who tagged you named a time for this room\'s coordination: put it on the table as THEIR option, with their yes. The others are asked about it privately.',
+    { slot_description: S('string', 'The time in their words, day included'),
+      starts_at: S('string', 'The same moment and DAY, ISO-8601 with offset') },
+    ['slot_description', 'starts_at'],
+    async (client, ctx, a) => {
+      if (!ctx.actingUser) {
+        return err('invalid', 'I cannot tell who said this — ask them to say it again in the group');
+      }
+      const meeting = await groupMeetings.currentMeeting(client, ctx.group.id);
+      if (!meeting) {
+        return err('invalid', 'nothing is being coordinated in this room — call start_group_coordination first');
+      }
+      const meetingId = Number(meeting.id);
+      const res = await meetings.proposeSlot(client, ctx.actingUser.id, meetingId, a.slot_description, a.starts_at);
+      if (!res.ok) {
+        // The full-table refusal carries every option with its per-person
+        // answers keyed by user id. A room is told the times, never whose
+        // answer is whose (.claude/rules/groups.md).
+        if (res.error && Array.isArray(res.error.options)) {
+          return err(res.error.code, res.error.message, {
+            reason: res.error.reason,
+            options: res.error.options.map((o) => ({ optionId: o.id, slot: o.slotText })),
+          });
+        }
+        return res;
+      }
+      const out = await meetingFanout.afterOptionAdded(client, ctx.actingUser, meetingId, res);
+      if (!out.ok) return out;
+      // Their own private invite, if it has not gone out, must stop asking
+      // them the question they just answered in front of everyone.
+      await meetingFanout.noteNamedInRoom(client, ctx.actingUser.id, meetingId);
+      const onTable = await meetings.options.activeCount(client, meetingId);
+      return ok({
+        meetingId, optionId: res.data.optionId, slot: res.data.proposedSlot,
+        duplicate: res.data.duplicate, onTable,
+        hints: {
+          room: res.data.duplicate
+            ? 'That time was already on the table; their yes to it is recorded. Say ONE short line, no names.'
+            : 'Say ONE short line in the room: that time is on the table and you will ask the others about it privately. Never say they have already been asked, and never say who said yes or no.',
+        },
       });
     }),
 

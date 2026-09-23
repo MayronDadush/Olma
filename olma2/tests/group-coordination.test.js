@@ -406,6 +406,7 @@ test('no group tool hands the room its own identity token back', async () => {
     start_group_coordination: { what: 'פאדל' },
     set_group_kind: { kind: 'game', minimum: 4 },
     settle_group_coordination: { option_id: 1 },
+    add_group_coordination_option: { slot_description: 'יום רביעי', starts_at: slotStart('יום רביעי') },
   };
   for (const t of tools) {
     const res = await withTx(db.pool, (c) =>
@@ -489,3 +490,95 @@ test('somebody the gate never let her reach is silent but not ASKED', async () =
   assert.equal(after.coordination.silent.find((p2) => p2.phone === held.phone).asked, true);
 });
 
+
+// ---------------- a time said in the room -------------------------------------
+// 2026-09-23, פחם הסעות: עמית tagged her with "מה את אומרת על שישי צהריים
+// פוקר ב-Zoom?" and מירון followed with "תוסיפי גם אופציה של חמישי ערב ושבת
+// ערב". The room's agent reached for propose_meeting_slot, was refused as a
+// person's tool, and told the room it was sending the times to everybody
+// privately. Nothing wrote them anywhere, and the page showed an empty table.
+const groupTools = () => require('../src/adapters/mcp/tools/group');
+const addTool = () => groupTools().find((t) => t.name === 'add_group_coordination_option');
+const startTool = () => groupTools().find((t) => t.name === 'start_group_coordination');
+
+test('a time said in the room goes on the table as the speaker\'s option, with their yes', async () => {
+  const { group, people } = await room(40, { subject: 'פחם הסעות' });
+  const [amit, miron, bar] = people;
+  await withTx(db.pool, (c) => startTool().handler(c, { group, actingUser: amit }, { what: 'פוקר בזום' }, {}));
+  const friday = slotStart('שישי');
+  const res = await withTx(db.pool, (c) => addTool().handler(
+    c, { group, actingUser: amit }, { slot_description: 'שישי צהריים', starts_at: friday }, {}));
+  assert.equal(res.ok, true, res.ok ? '' : JSON.stringify(res.error));
+  assert.equal(res.data.onTable, 1);
+
+  const { rows: opts } = await db.pool.query(
+    `SELECT o.id, o.added_by, o.slot_text FROM meeting_options o
+      WHERE o.meeting_id = $1 AND o.status = 'active'`, [res.data.meetingId]);
+  assert.equal(opts.length, 1);
+  assert.equal(Number(opts[0].added_by), Number(amit.id), 'in the name of whoever said it, never the room');
+  const { rows: ans } = await db.pool.query(
+    `SELECT user_id, answer FROM meeting_option_answers WHERE option_id = $1`, [opts[0].id]);
+  assert.deepEqual(ans.map((a) => [Number(a.user_id), a.answer]), [[Number(amit.id), 'y']], 'saying it is agreeing to it');
+
+  // The others' invites have not gone out, so the time folds into them rather
+  // than arriving as a message of its own.
+  for (const u of [miron, bar]) {
+    const { rows } = await db.pool.query(
+      `SELECT kind, payload FROM outbox WHERE user_id = $1 AND sent_at IS NULL
+         AND (payload->>'meetingId')::bigint = $2`, [u.id, res.data.meetingId]);
+    assert.equal(rows.length, 1, 'one message, not an invite and a proposal');
+    assert.equal(rows[0].kind, 'meeting_invite');
+    assert.equal(rows[0].payload.tableChanged, true);
+  }
+  // Nothing about anybody's answer comes back to the room.
+  assert.equal(JSON.stringify(res).includes('answers'), false);
+  assert.match(res.data.hints.room, /never say who said yes or no/);
+});
+
+test('whoever named a time in the room is not then asked when suits them', async () => {
+  const { group, people } = await room(41, { subject: 'פחם הסעות' });
+  const [amit] = people;
+  await withTx(db.pool, (c) => startTool().handler(c, { group, actingUser: amit }, { what: 'פוקר בזום' }, {}));
+  const res = await withTx(db.pool, (c) => addTool().handler(
+    c, { group, actingUser: amit }, { slot_description: 'שישי צהריים', starts_at: slotStart('שישי') }, {}));
+  assert.equal(res.ok, true);
+
+  const { rows } = await db.pool.query(
+    `SELECT payload FROM outbox WHERE user_id = $1 AND kind = 'meeting_invite' AND sent_at IS NULL
+       AND (payload->>'meetingId')::bigint = $2`, [amit.id, res.data.meetingId]);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].payload.askedItYourself, true);
+  assert.equal(rows[0].payload.namedInRoom, true);
+  const body = instructionFor({ kind: 'meeting_invite', payload: rows[0].payload });
+  assert.doesNotMatch(body, /has not said when suits THEM/, 'he said it, in front of everyone');
+  assert.match(body, /already named a time in the room/);
+  assert.match(body, /any OTHER time/);
+});
+
+test('a time is refused with nothing running, with nobody behind it, and at a full table', async () => {
+  const { group, people } = await room(42);
+  const [dani, dana] = people;
+  const none = await withTx(db.pool, (c) => addTool().handler(
+    c, { group, actingUser: dani }, { slot_description: 'יום רביעי', starts_at: slotStart('יום רביעי') }, {}));
+  assert.equal(none.ok, false);
+  assert.match(none.error.message, /start_group_coordination first/);
+
+  await withTx(db.pool, (c) => startTool().handler(c, { group, actingUser: dani }, { what: 'פאדל' }, {}));
+  const nobody = await withTx(db.pool, (c) => addTool().handler(
+    c, { group, actingUser: null }, { slot_description: 'יום רביעי', starts_at: slotStart('יום רביעי') }, {}));
+  assert.equal(nobody.ok, false, 'a turn with nobody behind it names no time');
+
+  // Five distinct moments fill the table; a sixth from the room is refused
+  // with the five — as times, never with whose answer is whose.
+  for (let i = 0; i < 5; i++) {
+    const r = await withTx(db.pool, (c) => addTool().handler(
+      c, { group, actingUser: i % 2 ? dana : dani },
+      { slot_description: `בעוד ${50 + i} שעות`, starts_at: slotStart('', { hours: 50 + i }) }, {}));
+    assert.equal(r.ok, true, r.ok ? '' : JSON.stringify(r.error));
+  }
+  const sixth = await withTx(db.pool, (c) => addTool().handler(
+    c, { group, actingUser: dani }, { slot_description: 'בעוד 80 שעות', starts_at: slotStart('', { hours: 80 }) }, {}));
+  assert.equal(sixth.ok, false);
+  assert.equal(sixth.error.options.length, 5);
+  assert.deepEqual(Object.keys(sixth.error.options[0]).sort(), ['optionId', 'slot']);
+});

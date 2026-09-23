@@ -142,7 +142,7 @@ test('every tool in the group file is a group tool, and no other file has one', 
   const groupFile = require('../src/adapters/mcp/tools/group');
   for (const t of groupFile) assert.equal(t.audience, 'group', `${t.name} is a group tool`);
   assert.deepEqual(groupFile.map((t) => t.name).sort(),
-    ['group_coordination_status', 'group_status', 'set_group_coordination_place', 'set_group_kind',
+    ['add_group_coordination_option', 'group_coordination_status', 'group_status', 'set_group_coordination_place', 'set_group_kind',
       'settle_group_coordination', 'start_group_coordination']);
 
   const { toolDefinitions } = require('../src/adapters/mcp/registry');

@@ -249,6 +249,23 @@ have already had to be argued for.
   `incidents.md`, "The coordination waited on the man who started it"). **The
   test asserted the bug** — `2, 'everybody but the person who asked'` — which is
   one layer out from a wrong comment: a test can be wrong about the world.
+  **…and a time said in the room is that person's proposal, put on the table in
+  their name from the room** (2026-09-23). The room had no tool that could
+  write a time and its doctrine said "never collect times here", so עמית's
+  "שישי צהריים" and מירון's "חמישי ערב ושבת ערב" were said in front of
+  everyone, the agent was refused on the person's own `propose_meeting_slot`,
+  told the room the times were going out privately, and the coordination's
+  page showed an empty table. `add_group_coordination_option` goes through
+  the same `meetings.proposeSlot` → `meetingFanout.afterOptionAdded` path as
+  the private tool, as `actingUser`: `added_by` is them, their yes is
+  recorded, the rest are asked privately (folded into an invite that has not
+  gone out), and the result carries nobody's answers. It is never the room's
+  voice — the time belongs to whoever said it. When the requester named the
+  time, `meetingFanout.noteNamedInRoom` stamps `namedInRoom` on their unsent
+  invite so it asks only about OTHER times instead of "when suits you". A
+  room's AGENTS.md now reaches existing rooms through
+  `scripts/resync-agent-templates.js` too; before this it was written once at
+  provisioning (`incidents.md`, "The times the room said went nowhere").
 
 - **In the room a person is addressed by their TAG and never by their name; in
   a private chat, by their name** (owner, 2026-09-20). A tag notifies them and

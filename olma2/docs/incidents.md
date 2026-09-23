@@ -64,6 +64,7 @@ never trust a dated narrative for something you are about to act on.
 - [היא שבורה: the room waited for somebody who had already written (fixed 2026-09-09)](#היא-שבורה-the-room-waited-for-somebody-who-had-already-written-fixed-2026-09-09)
 - [The room was told about a meeting at 01:12 (fixed 2026-09-09)](#the-room-was-told-about-a-meeting-at-0112-fixed-2026-09-09)
 - [The room window opened on a row nobody would look at (fixed 2026-09-19)](#the-room-window-opened-on-a-row-nobody-would-look-at-fixed-2026-09-19)
+- [The times the room said went nowhere (fixed 2026-09-23)](#the-times-the-room-said-went-nowhere-fixed-2026-09-23)
 - [The coordination waited on the man who started it (fixed 2026-09-19)](#the-coordination-waited-on-the-man-who-started-it-fixed-2026-09-19)
 - [The room heard its own state from memory (fixed 2026-09-19)](#the-room-heard-its-own-state-from-memory-fixed-2026-09-19)
 - [The room held a time that no longer existed (fixed 2026-09-22)](#the-room-held-a-time-that-no-longer-existed-fixed-2026-09-22)
@@ -2295,6 +2296,43 @@ NULL is the **once-per-life first-turn signal** (`openRecord` computes
 is the **silence test** behind the name-confirm rung. Stamping it early would
 have spent the first-turn signal and broken the silence test to fix a gate.
 The narrow column was the right lever.
+
+### The times the room said went nowhere (fixed 2026-09-23)
+
+The poker room ("פחם הסעות 🚌", meeting 42), 23 September, 09:48–09:51 UTC.
+עמית tagged her: poker on Zoom, Friday afternoon. מירון added in the room:
+"תוסיפי גם אופציה של חמישי ערב ושבת ערב". The room's agent understood both —
+its transcript shows it reaching for `propose_meeting_slot`, the person's own
+tool, and brokerd answering `forbidden: not available in a group`, exactly as
+the audience boundary is meant to. It then told the room it would ask
+everybody privately. Nothing had been written: `meeting_options` for meeting
+42 was empty, the page מירון opened from his invite showed no times at all,
+and the private invites asked each person "when suits you" about a
+coordination whose three candidate times had been said out loud minutes
+earlier.
+
+Two things made it structural rather than a bad turn. The room doctrine said
+in so many words "לא מציעים זמנים בקבוצה" and `start_group_coordination`'s
+description said "never collect times here" — a rule written against the room
+proposing a time in its OWN voice, which also forbade recording a time a
+person said. And no group tool could write one. The recurring shape exactly:
+the agent understood, and the outcome had nowhere to go.
+
+The fix is a group tool, `add_group_coordination_option`, that puts the time
+on the table AS the member who said it (`actingUser`, filed by the gateway,
+never taken from the call) through the same `proposeSlot` →
+`afterOptionAdded` path as the private tool — their yes recorded, the others
+asked privately, folded into an invite that has not gone out. It cost the
+third raise of the tool-schema ceiling (56,500 → 57,000), cleared by the owner
+with the cost in front of him. Two smaller things came with it: the
+requester's own invite said "The user has not said when suits THEM" — false
+once their time is on the table — so the tool stamps `namedInRoom` on it; and
+the room doctrine was only ever written at provisioning, so
+`resync-agent-templates.js` walks rooms now too, or the poker room would have
+kept reading the old line beside the new tool.
+
+Nothing backfills meeting 42: the times have to be said again.
+
 ### The coordination waited on the man who started it (fixed 2026-09-19)
 
 מירון tagged her in the test room: *"תתאמי לנו פגישה שבוע הקרוב."* She said in

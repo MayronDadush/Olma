@@ -16,6 +16,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { createPool } = require('../src/db/pool');
 const { renderAgentsMd } = require('../src/intake/provision');
+const { resyncGroupDoctrine } = require('../src/intake/provision-group');
 const turnDomain = require('../src/domain/turn');
 
 const APPLY = process.argv.includes('--apply');
@@ -55,6 +56,17 @@ const APPLY = process.argv.includes('--apply');
     changed++;
   }
   console.log(`\n${changed} stale, ${same} already current, ${missing} missing`);
-  if (!APPLY && changed) console.log('dry run — pass --apply to write');
+
+  // Rooms too (2026-09-23). Their AGENTS.md is written once at provisioning,
+  // like a person's, and was never in this script — so a change to the room
+  // doctrine reached only rooms registered after it. `retired` is left alone:
+  // nothing routes to that agent any more.
+  const { rows: rooms } = await pool.query(
+    `SELECT id, subject, workspace_path, identity_token FROM chat_groups
+      WHERE state <> 'retired' AND workspace_path IS NOT NULL AND identity_token IS NOT NULL
+      ORDER BY id`);
+  const r = resyncGroupDoctrine(rooms, { apply: APPLY, log: (l) => console.log(l) });
+  console.log(`rooms: ${r.changed} stale, ${r.same} already current, ${r.missing} missing`);
+  if (!APPLY && (changed || r.changed)) console.log('dry run — pass --apply to write');
   await pool.end();
 })().catch((e) => { console.error(e.message); process.exit(1); });
