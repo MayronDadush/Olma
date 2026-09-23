@@ -264,6 +264,24 @@ have already had to be argued for.
   (`rules/delivering.md`): the fixed lines a room hears have tagged people
   since the start (`proactive-text.mentionTokens`, capped at `MAX_TAGS`), and
   the model's half was the last place a name could still get out.
+  **And a tag COMING IN is a member to look up, not a token to discard**
+  (2026-09-23). `group-turn.draw` puts `room.people` — every member's `tag`,
+  plus the `lid` they are tagged by when the gateway's reverse map knows it —
+  in the block on EVERY turn, negotiation or none, and `TAG_RULE` sends her to
+  match an incoming `@<digits>` against it. The map is
+  `channels/sessions.lidPhoneNumbers` again, read by brokerd through the worker
+  facade and injectable so no test reaches the live gateway; an empty or
+  unreadable one costs the `lid` fields and nothing else, the same direction
+  `groups.resolveLidMembers` takes. **This rule has now been wrong in both
+  directions** — it used to say every `@<digits>` in an incoming message was
+  the sender tagging HER, written when she echoed her own LID as if it were
+  Yuval's, and that reading made a real member's tag "nobody's": Miron tagged
+  Yuval to ask him to book a court and she told the room she did not recognise
+  the id, three hours after tagging that same man in her own "בפנים" line
+  (`incidents.md`, "The room that did not know its own member"). A token
+  matching nobody is ignored in SILENCE — her own trouble identifying one is
+  not the room's business, and the owner's two acceptable answers were to stay
+  out of it or to back the request, never to narrate the confusion.
 
 - **The first thing a room hears about its own coordination is that she has
   STARTED, and it counts people rather than naming them** (owner, 2026-09-22:

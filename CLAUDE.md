@@ -338,7 +338,7 @@ Loads when you **Read** a file under `src/domain/group-connections.js`, `src/dom
 - **A room opens on TWO connected members, not on everybody — and it still says who is not here**
 - **The room reaches each member's OWN page as a group already made**
 - **The person who asked the ROOM for a coordination is asked privately too** — a tag carries no times, and the test asserted the bug
-- **In the room a person is addressed by their TAG and never by their name; in a private chat, by their name**
+- **In the room a person is addressed by their TAG and never by their name; in a private chat, by their name** — and a tag coming IN is a member to look up in `room.people`, never a token to discard
 - **The first thing a room hears about its own coordination is that she has STARTED, and it counts people rather than naming them**
 - **Every line a room hears is said once, except the TABLE moving, which is news every time** — a watermark rather than a flag, anchored on the base line, and it says the shape and never an answer.
 - **…and it waits a quarter of an hour, so a burst of changes is ONE sentence** — the same fifteen minutes as the private side, measured from the FIRST change the room has not heard about, and it gates both lines about the table.

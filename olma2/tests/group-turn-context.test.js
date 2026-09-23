@@ -65,7 +65,17 @@ test('a room with nothing running is told so, with the two numbers it got wrong'
   const r = await ask({ agentId: group.agent_id, externalId: group.external_id });
   assert.equal(r.ok, true);
   const data = parse(r.context);
-  assert.deepEqual(data, { room: { members: 3, countedIn: 2, kind: null }, coordination: null });
+  // `people` is here even with nothing running, and that is the point: the
+  // turn that failed on 2026-09-23 had a SETTLED coordination, so a roster
+  // that only appeared during a negotiation would have been absent exactly
+  // when a tag needed matching. No lid map in this fixture, so tags only.
+  assert.deepEqual(data, {
+    room: {
+      members: 3, countedIn: 2, kind: null,
+      people: people.map((u) => ({ tag: `@${u.phone}` })),
+    },
+    coordination: null,
+  });
   // The sentence that cannot be said from this: the room has no minimum
   // because nobody has told her what kind of room it is.
   assert.ok(!/minimum/.test(r.context), 'no quorum to reason from until somebody says the kind');
@@ -114,9 +124,15 @@ test('a running coordination: the title, how many were asked, how many answered,
   // which is how "M&M" left the room as "מאיה ומירון".
   assert.deepEqual(data.coordination.waitingFor, [`@${yuval.phone}`]);
   assert.match(groupTurn.TAG_RULE, /ONLY with their `tag`/);
-  // She opened with her OWN LID — the token Yuval used to tag her — as if it
-  // were his (coordination 37, 2026-09-20).
-  assert.match(groupTurn.TAG_RULE, /the SENDER tagging YOU/);
+  // Both halves of the incoming-tag rule, which has now been wrong in both
+  // directions. 2026-09-20: she opened with her OWN LID — the token Yuval had
+  // used to tag her — as if it were his. 2026-09-23: Miron tagged Yuval's lid
+  // and she told the room she did not recognise it, about a man she had tagged
+  // herself three hours earlier. So the rule has to send her to `room.people`
+  // first, and to silence when nothing matches.
+  assert.match(groupTurn.TAG_RULE, /match its digits against `lid` and `tag` in `room\.people`/);
+  assert.match(groupTurn.TAG_RULE, /ignore it silently/);
+  assert.match(groupTurn.TAG_RULE, /Never tell the room that you do not recognise a token/);
   assert.equal(data.coordination.waitingFor.length + (data.coordination.notYetAsked || 0),
     data.coordination.asked - data.coordination.answered,
     'the two numbers and the list are one fact and must agree');
@@ -247,4 +263,96 @@ test('a group turn fails open: a refusal, a null context, a dead socket', async 
   };
   assert.equal(await plugin.buildHandler({ connect: dead, log: (o) => log.push(o) })({ prompt: 'x' }, ctx), undefined);
   assert.equal(log.at(-1).turn, 'unreachable');
+});
+
+// 2026-09-23. Miron wrote in Padel Gang `@<Yuval's lid> סוגר לנו מקום?` and she
+// answered the room "אני לא יודעת מי @יובל גליזרין — מזהה כזה לא מוכר לי
+// מהקבוצה" — about a man she had tagged herself three hours earlier, in her own
+// "בפנים" line. The coordination was settled, so the block carried no tags at
+// all, and TAG_RULE told her every `@<digits>` in an incoming message was
+// nobody's. She had a token she could not resolve, an instruction saying it
+// meant nothing, and no data — and she narrated that to the room.
+//
+// The gateway's reverse map had the answer on disk the whole time
+// (`lid-mapping-68758282444950_reverse.json` -> `972544686188`).
+// (`incidents.md`, "The room that did not know its own member".)
+test('an incoming tag is a member the block can name, even once the coordination has settled', async () => {
+  const { group, people } = await room(7, { subject: 'Padel Gang' });
+  const [ann, ben, yuval] = people;
+  // The one thing the failing turn had that the fixture above does not: a
+  // coordination that is over. It returns early in `draw`, which is why the
+  // roster had to move up into `room`.
+  const m = await withTx(db.pool, (c) => groupMeetings.startCoordination(c, group, ann, 'פאדל'));
+  assert.equal(m.ok, true, JSON.stringify(m.error));
+  await db.pool.query(
+    `UPDATE meetings SET status = 'confirmed', confirmed_slot = 'שבת 17:00' WHERE id = $1`,
+    [m.data.meeting.id]);
+
+  // The gateway's own map, injected rather than read: a test file must never
+  // reach the live gateway's credentials directory.
+  const lid = '68758282444950';
+  const withMap = createBrokerServer({
+    pool: db.pool,
+    lidPhoneNumbers: async () => ({ [lid]: yuval.phone }),
+  });
+  const r = await withMap.dispatch({
+    id: 1, method: 'group_turn_context',
+    params: { agentId: group.agent_id, externalId: group.external_id },
+  });
+  assert.equal(r.ok, true);
+  const data = parse(r.context);
+  assert.equal(data.coordination, null, 'settled — the shape that carried no tags before');
+  assert.deepEqual(data.room.people, [
+    { tag: `@${ann.phone}` },
+    { tag: `@${ben.phone}` },
+    { tag: `@${yuval.phone}`, lid },
+  ], 'every member here is a phone, and the one we can recognise carries the lid too');
+  // The whole point: the digits that arrived in the message are findable, and
+  // what she must write back is the tag beside them.
+  assert.ok(r.context.includes(lid), 'the incoming token is in the block to match against');
+  assert.ok(r.context.includes(`@${yuval.phone}`), 'and the tag that actually notifies him is beside it');
+});
+
+// Read off the live roster of the room this incident happened in: three of
+// Padel Gang's eight rows are lids stored where a phone goes, and their
+// lengths are 13, 14 and 15. `proactive-text.isTaggableNumber` caps a tag at
+// 13, so the first of them gets one and the other two get `mentionToken` ->
+// null. The first draft of `peopleOf` filtered those out, which put her back
+// exactly where the incident started: a token that matches nobody, about
+// somebody standing in the room.
+test('a member we cannot tag is still a member, and a tag is never assembled from nothing', () => {
+  assert.deepEqual(groupTurn.peopleOf([
+    { phone: '+972544686188' },   // 12 — a phone, tagged
+    { phone: '+6266525098172' },  // 13 — a lid short enough to tag, and tagging it works
+    { phone: '+69320805752936' }, // 14 — no tag, and still somebody
+    { phone: '+259201444126724' },// 15 — the same
+    { phone: '' },                // nothing at all: not a person, not an entry
+  ], { 68758282444950: '+972544686188' }), [
+    { tag: '@+972544686188', lid: '68758282444950' },
+    { tag: '@+6266525098172' },
+    { lid: '69320805752936' },
+    { lid: '259201444126724' },
+  ]);
+  // And the sentence that makes the third and fourth entries safe to hand over.
+  assert.match(groupTurn.TAG_RULE, /a `lid` and NO `tag`[\s\S]*say nothing about them/);
+});
+
+test('an unreadable lid map costs the lids and nothing else', async () => {
+  const { group, people } = await room(8, { subject: 'Padel Gang' });
+  // `lidPhoneNumbers` throwing is an unreadable credentials directory, and the
+  // same direction `groups.resolveLidMembers` takes: a roster quietly emptied
+  // of its people would read as every one of them leaving the room. A turn
+  // with no block at all is the one outcome worse than one with no lids.
+  const broken = createBrokerServer({
+    pool: db.pool,
+    lidPhoneNumbers: async () => { throw new Error('credentials unreadable'); },
+  });
+  const r = await broken.dispatch({
+    id: 1, method: 'group_turn_context',
+    params: { agentId: group.agent_id, externalId: group.external_id },
+  });
+  assert.equal(r.ok, true, 'the block is still drawn');
+  const data = parse(r.context);
+  assert.deepEqual(data.room.people, people.map((u) => ({ tag: `@${u.phone}` })));
+  assert.ok(!/"lid"/.test(r.context), 'no lid claimed for anybody');
 });

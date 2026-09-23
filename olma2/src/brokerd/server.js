@@ -71,8 +71,17 @@ const newTurn = () => ({
 const PENDING_TTL_MS = 10 * 60_000;
 const PENDING_MAX_PER_USER = 8;
 
-function createBrokerServer({ pool, flood, placeMark, now }) {
+// `lidPhoneNumbers` is injectable for one reason: the default reaches the
+// gateway's credentials directory, and a test file must never reach the LIVE
+// gateway — not its home and not its roster. The suite passes its own map;
+// production gets the worker facade, never `channels/sessions.js` directly,
+// because every export there is synchronous and this daemon answers live
+// users on the same loop.
+function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers }) {
   flood = flood || new FloodCounter();
+  const readLidPhones = typeof lidPhoneNumbers === 'function'
+    ? lidPhoneNumbers
+    : () => require('../channels/sessions-async').lidPhoneNumbers();
   const clock = typeof now === 'function' ? now : Date.now;
   // userId → [{ messageId, kind, senderName, replyToId, lastInboundAt, counted, quota, firstTurn, openedAt, contextSent }], oldest first
   const pending = new Map();
@@ -314,6 +323,15 @@ function createBrokerServer({ pool, flood, placeMark, now }) {
     if (!/^g-\d+$/.test(agentId)) return { ok: false, error: 'bad agentId' };
     const externalId = String(params.externalId || '').trim();
     if (!/^[^:\s]+@g\.us$/.test(externalId)) return { ok: false, error: 'bad externalId' };
+    // The gateway's own reverse map, so a tag the room writes is a person the
+    // block can name. Read BEFORE the transaction and through the worker
+    // facade, never `channels/sessions.js` directly: every export there is
+    // synchronous and this daemon answers live users on the same loop. A
+    // failure is an empty map, which costs the `lid` fields and nothing else —
+    // a turn with no block at all is the one outcome worse than one with no
+    // lids.
+    let lidPhones = null;
+    try { lidPhones = await readLidPhones(); } catch { lidPhones = null; }
     let out = { ok: false, error: 'no group' };
     await withTx(pool, async (client) => {
       const group = await groupsDomain.getByExternalId(client, 'whatsapp', externalId);
@@ -322,7 +340,7 @@ function createBrokerServer({ pool, flood, placeMark, now }) {
       // notice, which is fixed text on the raw pipe — a block for it would be
       // a state nobody can act on.
       if (group.state !== 'open') { out = { ok: true, context: null, state: group.state }; return; }
-      out = { ok: true, context: await groupTurn.renderContext(client, group) };
+      out = { ok: true, context: await groupTurn.renderContext(client, group, { lidPhones }) };
     });
     return out;
   }
