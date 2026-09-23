@@ -730,3 +730,49 @@ Re-measure before adopting either: a `:free` OpenRouter model is rate-limited,
 deprioritised under load, and can be withdrawn without notice. A free model
 that is unavailable at 03:00 is a background layer that silently stops
 writing — the same failure this entry is about, arriving from the other side.
+
+## Run #80 — 2026-09-23 — `deepseek-v4.1-flash`, smoke set, after twelve nights with no board
+
+**Context first, because it decides what #79 and #80 can be compared with.**
+Every nightly from 2026-09-12 to 09-23 (`eval_runs` 65–77) errored on every
+scenario in about a second: the clean-slate guard refused the eval user over
+four orphan `meeting_option_answers` rows, so no turn ran and `agent_model` is
+empty on all of them. The last real board before this is #64 (2026-09-11). A
+pilot earlier on 09-23 (#78) printed the cause for the same reason. Fixed and
+deployed the same afternoon (PRs #477, #478, #479; `incidents.md`, "The eval
+partner was a real WhatsApp recipient, and the broken nightly was what stopped
+it"). #79 is the first full board since, on the live `deepseek-v4-flash`:
+11 🟢 · 3 🟡 · 2 🔴 · 0 ⚠️ in 1153s, against #64's 10 · 3 · 1 · 0. **#79's
+timing is not clean**: the #479 deploy restarted brokerd at 15:07:15 UTC,
+mid-scenario, and `hebrew-gender-feminine` took 490s as a result.
+
+```bash
+node scripts/run-evals.js --model openrouter/deepseek/deepseek-v4.1-flash --only stop-service,goal-capture,bare-time-shift,hebrew-gender-feminine
+```
+
+**#80: 2 🟢 · 2 🟡 · 0 🔴 · 0 ⚠️, 297s.** No hard check failed.
+
+| scenario | v4.1-flash (#80) | v4-flash (#79, same day) |
+|---|---|---|
+| `stop-service` | 🟡 156s | 🟢 63s |
+| `bare-time-shift` | 🟢 17s | 🟢 49s |
+| `goal-capture` | 🟡 33s | 🟢 52s |
+| `hebrew-gender-feminine` | 🟢 91s | 🟢 490s (brokerd restart) |
+
+- **`stop-service` 🟡**: the judge's concern is the first-turn confirmation
+  leaning toward keeping her ("בטוח? יש משהו שלא עובד, או שפשוט די לך?"),
+  against the rubric's one neutral confirming question. The goodbye itself was
+  right: nothing deleted, one line on how to come back. **Its 156s is suspect**:
+  #80 started at 15:16:28, inside a WhatsApp channel restart
+  (15:16:27–15:16:42, a `groupAllowFrom` write for a new real user), with
+  `/health` reading the gateway down for that window.
+- **`goal-capture` 🟡**: the project was saved, and the judge objected to the
+  split being shown as three list lines where the rubric asks for one.
+- **`bare-time-shift` 🟢** in 17s, the scenario haiku got wrong on the clock
+  in #61. **`hebrew-gender-feminine` 🟢** with feminine forms throughout.
+
+**What this says:** the smoke set survived (no red, no error, no timeout), and
+it was faster on the three scenarios no restart touched. Both yellows are
+judge-level wording calls, not tool or DB failures. Four scenarios once is
+not a verdict. Per the one-pilot-a-day rule, the next step is `--full` on a
+later day. Nothing is routed; `agents.defaults.model` is unchanged.

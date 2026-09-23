@@ -234,6 +234,7 @@ Loads when you **Read** a file under `src/domain/reminders.js`, `src/domain/task
 - **A repeating reminder with an END is a CHASE, and every reader that took "repeating" to mean "a rhythm" had to be told the difference** — `repeat_until` is the discriminator, and it is EXPLICIT because a live monthly pill carries a vestigial `due_at`.
 - **The owner decided the four things about a chase that no reading of the code could settle** — the day they ask counts, the hour is one they already hear from Olma, a quiet day is skipped, and "עד ש…" plus a request for help is what arms one.
 - **A chase is the one arming whose SHAPE is news, whoever picked the hour** — a 👍 cannot carry a cadence, and a line that says only "every day" about something with an end is a promise to keep going for ever.
+- **The second call echoes the moment already armed, and that is not an hour anybody named** — a chase replaces every automatic row in its span, and its result says which branch it took
 
 ### People, silence, and data you must not get wrong
 
@@ -249,6 +250,7 @@ Loads when you **Read** a file under `src/jobs/checkin.js`, `src/jobs/onboarding
 - **A write from their own page IS the person answering** — `last_dashboard_at`, never `last_inbound_at`
 - **A "once ever" question is stamped on the PERSON, never deduped on the route that asks it.**
 - **The chag offer is that shape's second column (`holiday_quiet_asked_at`, migration 062), with two routes from the start.**
+- **…and the offer to add her to more groups is its third (`more_groups_offered_at`, migration 086)** — earned by a yes on the time a ROOM locked, and it rides the next check-in
 - **Deleting a user is not deleting a person until the GATEWAY's intake session goes too.**
 - **The ledgers are append-only.**
 - **The assistant is עולמה / Allma; the system is still olma2.**

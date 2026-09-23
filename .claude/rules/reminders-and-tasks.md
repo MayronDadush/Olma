@@ -642,3 +642,17 @@ title means this file. Grep the title, not the filename.
   deadline that far ahead, so "לאסוף את הילדים מחר" never sees it. It is a
   QUESTION about their words and never an instruction to write, because the
   whole answer may be a second tool call and then silence.
+
+- **The second call echoes the moment already armed, and that is not an hour
+  anybody named** (2026-09-23, the eval's first real night). Asked by
+  `chaseAvailable` for `set_task_reminder(task_id, remind_at, nudge:true)`, the
+  model passes back the automatic reminder's own moment — on the deadline day —
+  and `startChase` took it as the first occurrence, found no room for a second,
+  and fell through to a one-off while the reply promised "every day"
+  (`incidents.md`, "A week of help, delivered as one reminder the night
+  before"). So `at` within a minute of this person's pending AUTOMATIC reminder
+  on the task means no hour was named; **a chase cancels every pending automatic
+  row inside its span**, not only one on the same local day, because it already
+  speaks on the due day; and **`set_task_reminder(nudge)` says on its result
+  which branch it took** (`hints.chase`) — a result silent about the shape leaves
+  the hint that described the OTHER branch as the model's only account of it.

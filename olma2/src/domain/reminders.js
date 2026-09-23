@@ -386,6 +386,15 @@ async function setReminder(client, userId, taskId, remindAt, repeatRule, { nudge
   // replaced — it would otherwise survive, be held over the quiet day itself,
   // and land in the same morning as the reminder that replaced it.
   const newDay = localDayKey(remindAt, tz);
+  // A CHASE is not "another day" to anything inside it: it already speaks on
+  // every day up to its end, the due day included, so an automatic row
+  // anywhere in that span is the same morning said twice. The same-day rule
+  // above is about a one-off, and a chase is a message a day — run 79
+  // (2026-09-23) armed one from Tuesday to Monday beside Monday's automatic
+  // 08:00, which would have landed an hour before the chase's own last message.
+  const span = endsAt
+    ? 'r.remind_at <= $3::timestamptz'
+    : "to_char(r.remind_at AT TIME ZONE $2, 'YYYY-MM-DD') = $3";
   // Only THEIR auto row: the one Olma inferred is the owner's, and a
   // participant asking for their own hour withdraws nothing of the owner's.
   const superseded = await client.query(
@@ -393,9 +402,9 @@ async function setReminder(client, userId, taskId, remindAt, repeatRule, { nudge
        FROM tasks t
       WHERE r.task_id = $1 AND t.id = r.task_id AND ${RECIPIENT} = $4
         AND r.auto AND r.attempts = 0 AND r.cancelled_at IS NULL
-        AND to_char(r.remind_at AT TIME ZONE $2, 'YYYY-MM-DD') = $3
+        AND ${span} AND $2::text IS NOT NULL -- keeps $2 typed when the chase span leaves it unread
       RETURNING r.id`,
-    [taskId, tz, newDay, userId]
+    [taskId, tz, endsAt ? endsAt.toISOString() : newDay, userId]
   );
   // `nudge` is the one thing on this row nobody can infer later: "תזכירי לי עד
   // שאעשה את זה" and "תזכירי לי ב-9" produce the same row otherwise, and the
@@ -453,7 +462,33 @@ async function setReminder(client, userId, taskId, remindAt, repeatRule, { nudge
 // given: `set_task_reminder` takes a moment by contract, so "כל יום ב-8 עד יום
 // ראשון" keeps the eight o'clock they said. Only when nobody named an hour does
 // the paragraph above apply.
+//
+// …and a moment the model merely ECHOED is not an hour anybody named. The
+// eval that holds חיים's sentence went red on its first real night
+// (2026-09-23, run 79): add_task armed the automatic 09:00 on the deadline
+// day, `hints.chaseAvailable` asked for set_task_reminder(task_id, remind_at,
+// nudge:true), and the model passed back the one moment it had in front of it
+// — that 09:00. Taken as the anchor, the chase's FIRST day was its last, one
+// occurrence is not a chase, and the ladder fallback armed a single reminder
+// on Monday while the reply promised one every day. So `at` equal to this
+// person's own pending automatic reminder on the task means "no hour was
+// named", and the owner's rules above decide both the hour and the first day.
+const ECHO_TOLERANCE_MS = 60_000;
+
+async function echoesAutoReminder(client, userId, taskId, at) {
+  const when = new Date(at);
+  if (Number.isNaN(when.getTime())) return false;
+  const { rows } = await client.query(
+    `SELECT 1 FROM task_reminders r JOIN tasks t ON t.id = r.task_id
+      WHERE r.task_id = $1 AND ${RECIPIENT} = $2 AND r.auto = true
+        AND r.sent_at IS NULL AND r.cancelled_at IS NULL
+        AND abs(extract(epoch FROM (r.remind_at - $3::timestamptz))) * 1000 < $4
+      LIMIT 1`, [taskId, userId, when, ECHO_TOLERANCE_MS]);
+  return rows.length > 0;
+}
+
 async function startChase(client, userId, taskId, { now = new Date(), at = null } = {}) {
+  if (at && await echoesAutoReminder(client, userId, taskId, at)) at = null;
   const { rows } = await client.query(
     `SELECT t.due_at, u.timezone, u.digest_times
        FROM tasks t JOIN users u ON u.id = $2
