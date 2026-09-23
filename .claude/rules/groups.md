@@ -509,6 +509,18 @@ have already had to be argued for.
   `waitingFor` short of `asked - answered` would be a new false sentence in place
   of the old one. Inert until the gateway is restarted, like everything else in
   that plugin.
+  **…and a result the room has already HEARD is marked, so it is not said
+  again** (2026-09-23). After the poker was confirmed in פחם הסעות and the
+  room had its "סגור" line, she ended seven replies in a row with "the poker
+  is on Friday at noon, on Zoom". Those replies were to jokes, to "I have no
+  tool for that", and to being told off about her Hebrew. The block showed a
+  confirmed `lastCoordination` and nothing said it was old news, so it was the
+  one fact always there to fall back on. `lastCoordination.roomHeard` is `true`
+  only when `meetings.group_done_at` is stamped, which is the column the
+  room's own line writes. `CONTEXT_RULE` says to repeat it only when asked,
+  never as the tail of a reply about something else. Confirmed-but-unannounced
+  carries no flag, because that result is still news
+  (`incidents.md`, "The poker, seven times").
 
 - **A message in the room with no tag on it is ENDED, never answered — and the
   window it opens is the point.** The owner asked twice (2026-09-19) for writing

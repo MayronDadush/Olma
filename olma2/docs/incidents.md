@@ -73,6 +73,7 @@ never trust a dated narrative for something you are about to act on.
 - [Where do we meet, on Zoom (fixed 2026-09-23)](#where-do-we-meet-on-zoom-fixed-2026-09-23)
 - [The room's joke got a lecture (2026-09-23)](#the-rooms-joke-got-a-lecture-2026-09-23)
 - [She called Bar את (fixed 2026-09-23)](#she-called-bar-את-fixed-2026-09-23)
+- [The poker, seven times (fixed 2026-09-23)](#the-poker-seven-times-fixed-2026-09-23)
 - [The place nobody asked for (fixed 2026-09-20)](#the-place-nobody-asked-for-fixed-2026-09-20)
 - [The room asked three numbers that were nobody (fixed 2026-09-22)](#the-room-asked-three-numbers-that-were-nobody-fixed-2026-09-22)
 - [The room chased three people, two of whom had never been asked (fixed 2026-09-22)](#the-room-chased-three-people-two-of-whom-had-never-been-asked-fixed-2026-09-22)
@@ -2700,6 +2701,31 @@ page first, then the preference, both readings or neither is null).
 - `address` governs every verb and pronoun about that person;
 - no `address` means masculine;
 - the sender is the entry carrying the sender's digits.
+
+### The poker, seven times (fixed 2026-09-23)
+
+Meeting 42 was confirmed and פחם הסעות got its "סגור" line at 12:11 UTC. Over
+the next half hour the room played with her. They asked for a WhatsApp event
+she cannot send, praised her Hebrew and then mocked it, and Amit told her he
+is a man. She answered every message, and seven replies in a row ended the same
+way: "הפוקר סגור ליום שישי 25.9 בצהריים, בזום". She said it after a joke,
+after "אין לי כלי לזה", and after "עברית שפה". The owner: "היא כל הזמן חוזרת על
+זה שהיא תיאמה את הפוקר, זה פחות מצחיק".
+
+The turn block (`group-turn.draw`) showed the confirmed coordination on every
+turn as `lastCoordination`. `CONTEXT_RULE` says every sentence about the
+coordination comes from that block, and nothing said the room had already
+heard it. With nothing else to anchor a reply to an off-topic tag, the one
+standing fact became the tail of each one. The doctrine's "don't repeat what
+the room already heard" could not apply, because she had no way to know which
+lines the room had heard. The room's own lines are fixed text on the raw
+pipe, and they never enter the session.
+
+`meetings.group_done_at` already recorded it. `statusOf` now carries it as
+`doneToldAt`, and the block marks `lastCoordination.roomHeard: true` only when
+it is stamped. `CONTEXT_RULE` says to repeat it only when someone asks. The
+doctrine names the three shapes she used: after a joke, after a refusal, and
+"to get back to the point".
 
 ### The place nobody asked for (fixed 2026-09-20)
 

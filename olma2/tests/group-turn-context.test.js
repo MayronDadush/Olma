@@ -171,6 +171,39 @@ test('a cancelled coordination is not an open one, and the block can say which',
   assert.deepEqual(data.lastCoordination, { meetingId, title: 'פאדל', status: 'cancelled' });
 });
 
+// 2026-09-23, פחם הסעות. The poker was confirmed and the room had its "סגור"
+// line at 12:11; for the next half hour the room joked with her, and seven
+// replies running ended with "the poker is on Friday at noon, on Zoom" —
+// after a joke, after "I have no tool for that", after being told off for
+// her Hebrew. Nothing in the block said the room already knew. It does now,
+// off the one column that records it, and only once the line has gone out.
+test('a confirmed coordination the room has already heard about says so', async () => {
+  const { group, people } = await room(10, { subject: 'פחם הסעות' });
+  const started = await withTx(db.pool, (c) => groupMeetings.startCoordination(c, group, people[0], 'פוקר בזום'));
+  assert.equal(started.ok, true);
+  const meetingId = Number(started.data.meeting.id);
+  await db.pool.query(
+    `UPDATE meetings SET status = 'confirmed', confirmed_slot = 'שישי 12:00' WHERE id = $1`, [meetingId]);
+
+  let data = parse((await ask({ agentId: group.agent_id, externalId: group.external_id })).context);
+  assert.deepEqual(data.lastCoordination,
+    { meetingId, title: 'פוקר בזום', status: 'confirmed', slot: 'שישי 12:00' },
+    'confirmed but not yet announced: the room has NOT heard it, and saying it is still news');
+
+  await db.pool.query(`UPDATE meetings SET group_done_at = now() WHERE id = $1`, [meetingId]);
+  const r = await ask({ agentId: group.agent_id, externalId: group.external_id });
+  data = parse(r.context);
+  assert.equal(data.lastCoordination.roomHeard, true);
+  assert.match(r.context, /`lastCoordination\.roomHeard: true` means the room has already been told/);
+  assert.match(r.context, /never as the tail of a reply about something else/);
+
+  // A cancelled one never carries it: the flag is about a result the room
+  // heard, and a cancel has no "סגור" line to have heard.
+  await db.pool.query(`UPDATE meetings SET status = 'cancelled' WHERE id = $1`, [meetingId]);
+  data = parse((await ask({ agentId: group.agent_id, externalId: group.external_id })).context);
+  assert.equal(data.lastCoordination.roomHeard, undefined);
+});
+
 test('the block never carries the room\'s own row, and a nameless member is still counted', async () => {
   const { group, people } = await room(4);
   // Nobody has a name at all, which is where a room-facing label falls back to
