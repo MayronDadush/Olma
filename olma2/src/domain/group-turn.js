@@ -45,13 +45,72 @@ const CONTEXT_RULE = 'Every sentence you say about this room\'s coordination com
 // (`incidents.md`, "Four messages in sixty-two seconds"). The tags are drawn
 // into the block itself so there is nothing to build: copy one character for
 // character or leave the person out of the sentence.
-const TAG_RULE = 'In this room you address a person ONLY with their `tag` exactly as written above (it notifies them; a name does not, and the names people see for each other are not ours to choose). Never write somebody\'s name here, and never invent a tag for somebody the block does not list. In a PRIVATE chat the opposite holds: there you use their name. The `@<digits>` token inside the message you were sent is the SENDER tagging YOU — it is nobody\'s tag, never echo it, and never take it for the sender\'s.';
+// The second half was written for the mirror of the bug it then caused. On
+// 2026-09-20 she echoed her OWN lid as if it were Yuval's, so the rule said
+// every `@<digits>` in an incoming message is the sender tagging HER and is
+// "nobody's tag". On 2026-09-23 Miron tagged Yuval and asked him to book a
+// court: the tag was a real member's lid, the block listed no members at all
+// (a settled coordination draws `coordination: null`), and she answered the
+// room "אני לא יודעת מי @יובל גליזרין — מזהה כזה לא מוכר לי מהקבוצה" — about
+// a man she had tagged herself three hours earlier in her own "בפנים" line.
+//
+// A tag in an incoming message is sometimes her and sometimes a member, and
+// the rule collapsed both into nothing. `room.people` below is the data that
+// was missing; this is the sentence that uses it. The last clause is the
+// owner's: her own trouble identifying a token is not the room's business,
+// and saying it out loud is the same leak `CONTEXT_RULE` already forbids.
+const TAG_RULE = 'In this room you address a person ONLY with their `tag` exactly as written above (it notifies them; a name does not, and the names people see for each other are not ours to choose). Never write somebody\'s name here, and never invent a tag for somebody the block does not list. In a PRIVATE chat the opposite holds: there you use their name. An `@<digits>` token inside the message you were sent is somebody being tagged BY the sender, not a tag you may reuse: match its digits against `lid` and `tag` in `room.people` — a hit is that member, and you address them by their `tag` and never by those digits. A hit on an entry that has a `lid` and NO `tag` is still a member of this room, and one you cannot address: answer the request itself and say nothing about them. A token that matches nobody there is most often your own, and either way it is not a person you can name: ignore it silently. Never tell the room that you do not recognise a token, and never repeat the digits back.';
 
 // The room, and its coordination if one is negotiating. A settled or cancelled
 // one is reported as what it is, under a different key: the model asking "is
 // there a coordination" must never read a closed row as an open one, and the
 // row is what makes "it was cancelled" sayable at all.
-async function draw(client, group) {
+// Everybody in the room, as the one spelling that notifies them, plus the lid
+// they are tagged BY when we know it. Two separate jobs, and the block needs
+// both: `tag` is what she may write, `lid` is what she may have to recognise.
+//
+// It is the room's own membership and nothing more — WhatsApp shows that list
+// to everybody standing in it — so no name, no user id, and no phone that is
+// not already the tag. `mentionToken` rather than a second spelling of it: the
+// room's fixed lines have tagged people through that function since the start,
+// and a tag assembled twice is the drift this file already warns about.
+//
+// `lidPhones` maps lid digits -> E.164 and is the gateway's own reverse map
+// (`channels/sessions.lidPhoneNumbers`, read through the worker facade). Null
+// or empty changes NOTHING but the `lid` fields — the same direction
+// `groups.resolveLidMembers` takes, and for the same reason: an unreadable
+// credentials directory must never look like a room that lost its people.
+function peopleOf(members, lidPhones) {
+  const { mentionToken } = require('./proactive-text');
+  // Keyed on DIGITS, like `groups.resolveLidMembers`: the roster stores
+  // `+972…` and the reverse map's values carry the `+` too, but a comparison
+  // that depends on that agreeing is one rewrite away from matching nothing
+  // and reporting a room where nobody is tagged by anybody.
+  const byPhone = new Map();
+  for (const [lid, phone] of Object.entries(lidPhones || {})) {
+    const key = String(phone || '').replace(/\D/g, '');
+    if (key && !byPhone.has(key)) byPhone.set(key, lid);
+  }
+  return (members || []).map((m) => {
+    const tag = mentionToken(m.phone);
+    const digits = String(m.phone || '').replace(/\D/g, '');
+    if (tag) {
+      const lid = byPhone.get(digits) || null;
+      return lid ? { tag, lid } : { tag };
+    }
+    // No tag means `proactive-text.isTaggableNumber` refused the digits, which
+    // for this column means they are a LID the reverse map has never resolved
+    // — David and Evelyn in Padel Gang. They are still somebody in the room,
+    // and an entry of `{ lid }` alone is the honest third state: she knows the
+    // token belongs to a member, and she still cannot address them, which is
+    // what having no tag means everywhere else in this file. Dropping them
+    // instead would put her back where the incident started — an incoming tag
+    // matching nothing, about a person who is standing right there.
+    return /^\d+$/.test(digits) ? { lid: digits } : null;
+  }).filter(Boolean);
+}
+
+async function draw(client, group, { lidPhones = null } = {}) {
   const members = await groups.listMembers(client, group.id);
   const status = await groupMeetings.coordinationStatus(client, group);
   const c = status.coordination;
@@ -60,6 +119,12 @@ async function draw(client, group) {
     // Whoever a coordination could ask — the gate's own question, asked by
     // calling the gate.
     countedIn: members.filter((m) => groups.isConnected(m)).length,
+    // Who they are, so an incoming tag is a person rather than a puzzle. Drawn
+    // on EVERY turn and not only during a negotiation: the turn that failed had
+    // a settled coordination, which returns early below, so a roster that only
+    // existed while something was on the table would have been absent exactly
+    // when it was needed.
+    people: peopleOf(members, lidPhones),
     // NULL is the honest third state: until somebody in the room has said what
     // kind of room it is there is no true sentence about "enough people", so
     // the minimum is not here to be reasoned from either.
@@ -112,9 +177,9 @@ async function draw(client, group) {
 // Rendered exactly as a tool result is (compact, `OK ` prefixed, tokens
 // scrubbed on the way out), so the model reads the shape it already reads from
 // every group tool.
-async function renderContext(client, group) {
+async function renderContext(client, group, opts = {}) {
   const { renderResult } = require('../adapters/mcp/render');
-  return `${CONTEXT_HEADER}\n${renderResult({ ok: true, data: await draw(client, group) })}\n${CONTEXT_RULE} ${TAG_RULE}`;
+  return `${CONTEXT_HEADER}\n${renderResult({ ok: true, data: await draw(client, group, opts) })}\n${CONTEXT_RULE} ${TAG_RULE}`;
 }
 
-module.exports = { draw, renderContext, CONTEXT_HEADER, CONTEXT_RULE, TAG_RULE };
+module.exports = { draw, peopleOf, renderContext, CONTEXT_HEADER, CONTEXT_RULE, TAG_RULE };

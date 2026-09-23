@@ -68,6 +68,7 @@ never trust a dated narrative for something you are about to act on.
 - [The room heard its own state from memory (fixed 2026-09-19)](#the-room-heard-its-own-state-from-memory-fixed-2026-09-19)
 - [The room held a time that no longer existed (fixed 2026-09-22)](#the-room-held-a-time-that-no-longer-existed-fixed-2026-09-22)
 - [The room waited for nobody (fixed 2026-09-20)](#the-room-waited-for-nobody-fixed-2026-09-20)
+- [The room that did not know its own member (fixed 2026-09-23)](#the-room-that-did-not-know-its-own-member-fixed-2026-09-23)
 - [The place nobody asked for (fixed 2026-09-20)](#the-place-nobody-asked-for-fixed-2026-09-20)
 - [The room asked three numbers that were nobody (fixed 2026-09-22)](#the-room-asked-three-numbers-that-were-nobody-fixed-2026-09-22)
 - [The room chased three people, two of whom had never been asked (fixed 2026-09-22)](#the-room-chased-three-people-two-of-whom-had-never-been-asked-fixed-2026-09-22)
@@ -2516,6 +2517,62 @@ now says the `@<digits>` inside the message she received is the sender
 tagging her, never anybody's tag. The rest of that turn — names instead of
 tags, "שניכם (אתה ויובל)" — is the cheap model ignoring the rule it was
 given, and stays in the narration-faults column.
+
+**That last sentence caused the next incident three days later** — see "The
+room that did not know its own member".
+
+### The room that did not know its own member (fixed 2026-09-23)
+
+At 07:53 the room heard the closing line for the padel coordination, and it
+named the four who were in, by tag. One of the four was `@+972544686188` —
+Yuval. At 10:47 Miron wrote in the same room:
+
+> @יובל גליזרין סוגר לנו מקום?
+
+and she answered, in front of everybody:
+
+> אני לא יודעת מי @יובל גליזרין — מזהה כזה לא מוכר לי מהקבוצה. מי זה שצריך לסגור?
+
+Three hours after tagging the man herself, about a full member of that room
+who had written to her the day before.
+
+**Two things stacked, and neither was the model being careless.** The tag in
+Miron's message was Yuval's LID, `68758282444950`. `TAG_RULE` — written for
+the opposite failure above, where she echoed her own LID as if it were
+somebody's — told her that every `@<digits>` in an incoming message is the
+sender tagging HER and is "nobody's tag". And the block had nothing to check
+it against: `group-turn.draw` listed no members at all, only counts plus
+`waitingFor` during a negotiation, and this coordination was settled, so it
+returned early with `coordination: null`. She had a token she could not
+resolve, an instruction saying it meant nothing, and no data.
+
+The answer was on disk the whole time:
+`credentials/whatsapp/default/lid-mapping-68758282444950_reverse.json` holds
+`"972544686188"`. `channels/sessions.lidPhoneNumbers` already reads exactly
+those files — the roster sweep uses it every pass — and nothing ran the tags
+in the incoming message through it.
+
+**Fix.** `room.people` carries every member's `tag` plus the `lid` they are
+tagged by when the map knows it, on EVERY turn rather than only during a
+negotiation: the turn that failed had a settled coordination, so a roster that
+appeared only while something was on the table would have been missing exactly
+when it was needed. brokerd reads the map through the worker facade, never
+`channels/sessions.js` directly, and it is injectable so no test reaches the
+live gateway's credentials directory; an unreadable one costs the `lid` fields
+and nothing else, the same direction `groups.resolveLidMembers` takes.
+`TAG_RULE` now sends her to `room.people` to match, and to SILENCE when
+nothing matches — the owner's two acceptable answers were to stay out of a
+message not addressed to her or to back the request and nudge the tagged
+member, never to narrate her own confusion to the room, which is the same leak
+`CONTEXT_RULE` forbids one clause earlier.
+
+**Named, not fixed.** She answered a message that tagged somebody else at all.
+The plugin's own trace line for that turn reads `addressed: false, claim:
+false` — our gate knew — and the gateway started the turn anyway, because
+group 9 is outside `group_untagged_rooms` and the claiming path is inert
+there. Backing the request, which is what the owner actually wants her to do,
+needs a room turn that may act about a person other than the sender; that is
+the capability question still open.
 
 ### The place nobody asked for (fixed 2026-09-20)
 
