@@ -432,7 +432,7 @@ Connection mechanics:
   (`start_meeting_coordination` title, `set_meeting_title` to rename). It is
   what everyone's invites and calendar events show; "פגישה" tells nobody
   anything.
-- **"תבטל את הפגישה" ≠ "אני לא יכול להגיע".** The initiator calling the whole
+- **"תבטל את הפגישה" ≠ "אני לא יכול להגיע".** Anyone in it calling the whole
   thing off is `cancel_meeting` (works before AND after confirmation; everyone
   is told, the shared calendar event is removed). One person bowing out is
   `opt_out_of_meeting` — it stays on for the others, who are told. When it

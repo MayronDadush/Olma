@@ -556,8 +556,10 @@ async function loadMeetings(client, userId, zone) {
     settledBy: m.settled_by === null ? null : Number(m.settled_by),
     // Whether this person may end it by hand. The same question the domain
     // asks, asked here only so the page knows whether to draw the control —
-    // `settleNow` re-asks it whatever the page drew.
-    canSettle: String(m.initiator_id) === String(userId) && m.status === 'negotiating',
+    // `settleNow` re-asks it whatever the page drew. Anybody in it may since
+    // 2026-09-23 (nobody manages a coordination), and this list holds only
+    // the ones they are in.
+    canSettle: m.status === 'negotiating',
     // How many yeses this coordination calls enough, copied off the group when
     // it opened (migration 064) and its own ever since. `null` is no minimum,
     // which is every coordination in production today — the page draws no mark

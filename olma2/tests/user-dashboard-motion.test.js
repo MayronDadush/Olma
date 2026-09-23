@@ -65,10 +65,16 @@ test('completing or deleting a task offers the way back, in the toast', () => {
   // which is a fold most people never open.
   assert.match(page, /toast\(t\("toast\.done"\), i > -1 \? function\(\)\{ restoreTask\(id\); \} : null\);/,
     'a tick can be undone for as long as the toast is up');
-  assert.match(page, /toast\(t\("toast\.deleted"\), row \? function\(\)\{ undoDelete\(row\); \} : null\);/);
-  // Delete on this page is archiveTask on the server, so the undo is a real
-  // call and not a promise the page cannot keep.
-  assert.match(page, /function undoDelete\(row\)\{[\s\S]{0,260}API\.restoreTask\(row\);/);
+  // Delete is gone for good on the server (owner, 2026-09-23), so the undo
+  // cannot be a restore: the page holds the delete back until the toast and
+  // its button are gone, and the undo simply never sends it.
+  assert.match(page, /toast\(t\("toast\.deleted"\), function\(\)\{ undoTaskDelete\(k\); \}\);/);
+  assert.match(page, /DELETING\[k\] = \{row:row, at:at, timer:setTimeout\(function\(\)\{ commitDelete\(k\); \}, DELETE_AFTER_MS\)\};/);
+  assert.match(page, /DELETE_AFTER_MS = 4600;/, 'held past the toast, so the undo is never a lie');
+  assert.match(page, /function undoTaskDelete\(k\)\{[\s\S]{0,120}clearTimeout\(d\.timer\);/);
+  assert.match(page, /window\.addEventListener\("pagehide", flushDeletes\);/, 'and leaving the page sends what is waiting');
+  assert.match(page, /\.filter\(function\(x\)\{ return !DELETING\[String\(x\.id\)\]; \}\)/,
+    'a reload during the wait does not draw the row back');
   assert.match(page, /undo \? 4200 :/, 'and a toast carrying a button stays long enough to reach it');
 });
 

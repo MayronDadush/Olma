@@ -5,8 +5,14 @@
 // confirmed_current against the identical proposed_slot. No tool lets a model
 // narrate a meeting into existence.
 //
-// No round cap: negotiation continues until confirm, initiator cancel, or
-// opt-outs leave nobody. slot text = date+time+medium as ONE package.
+// No round cap: negotiation continues until confirm, a cancel, or opt-outs
+// leave nobody. slot text = date+time+medium as ONE package.
+//
+// Nobody MANAGES a coordination (owner, 2026-09-23). `initiator_id` is who
+// opened it — a fact the room and the invite still say ("X asked for this"),
+// and the organiser Google prefers — and nothing else: anybody still in it
+// may settle it, rename it, cancel it for everyone, or leave it, the opener
+// included. `inIt` is that one test.
 const { ok, err } = require('./results');
 const audit = require('./audit');
 const grants = require('./grants');
@@ -112,6 +118,11 @@ async function startMeeting(client, initiatorId, title, participantUserIds, { gr
   });
   return ok({ meeting });
 }
+
+// Still in it: a participant who has not opted out. The whole of what a
+// person needs to act on a coordination for everybody.
+const IN_IT = `EXISTS (SELECT 1 FROM meeting_participants ip
+                   WHERE ip.meeting_id = m.id AND ip.user_id = $2 AND ip.state <> 'opted_out')`;
 
 async function participantRow(client, meetingId, userId) {
   const { rows } = await client.query(
@@ -346,14 +357,13 @@ async function rejoin(client, userId, meetingId, now = Date.now()) {
   return ok({ meetingId, meetingStatus: p.meeting_status, yourState: 'awaiting' });
 }
 
-// Shared exit logic for opt_out AND connection-revoke. Initiator cannot exit
-// their own meeting (must cancel). If exiting leaves fewer than 2 active
+// Shared exit logic for opt_out AND connection-revoke. Whoever opened it
+// leaves like anybody else. If exiting leaves fewer than 2 active
 // participants, the meeting closes no_match.
 async function applyExit(client, userId, meetingId, cause) {
   const p = await participantRow(client, meetingId, userId);
   if (!p) return err('not_found', 'not a participant of this meeting');
   if (p.meeting_status !== 'negotiating') return err('invalid', 'meeting is not negotiating');
-  if (p.initiator_id === userId) return err('invalid', 'initiator cannot opt out — cancel the meeting instead');
   if (p.state === 'opted_out') return ok({ meetingId, meetingStatus: 'negotiating', yourState: 'opted_out' });
 
   await client.query(
@@ -395,9 +405,6 @@ async function applyExit(client, userId, meetingId, cause) {
 async function withdrawConfirmed(client, userId, meetingId, now = Date.now()) {
   const p = await participantRow(client, meetingId, userId);
   if (!p) return err('not_found', 'not a participant of this meeting');
-  if (p.initiator_id === userId) {
-    return err('invalid', 'initiator cannot withdraw — cancel the meeting instead (cancel_meeting)');
-  }
   if (p.state === 'opted_out') return ok({ meetingId, meetingStatus: 'confirmed', yourState: 'opted_out' });
   const { rows: mrows } = await client.query(`SELECT confirmed_start_at FROM meetings WHERE id = $1`, [meetingId]);
   if (mrows[0] && mrows[0].confirmed_start_at
@@ -439,15 +446,17 @@ async function optOut(client, userId, meetingId, now = Date.now()) {
 // everyone agreed is the more common ask, not the rarer one (a live request
 // hit the negotiating-only version and got a refusal). A meeting whose start
 // already passed is not cancellable: it happened, or it didn't, but either
-// way there is nothing left to call off.
+// way there is nothing left to call off. Anybody still in it may (owner,
+// 2026-09-23) — in the chat, where Olma asks first whether they mean
+// everybody or only themselves.
 async function cancelMeeting(client, userId, meetingId, now = Date.now()) {
   const { rows: existing } = await client.query(
-    `SELECT status, confirmed_start_at FROM meetings
-     WHERE id = $1 AND initiator_id = $2 AND status IN ('negotiating', 'confirmed')`,
+    `SELECT status, confirmed_start_at FROM meetings m
+     WHERE id = $1 AND status IN ('negotiating', 'confirmed') AND ${IN_IT}`,
     [meetingId, userId]
   );
   const m = existing[0];
-  if (!m) return err('not_found', 'open meeting you initiated not found');
+  if (!m) return err('not_found', 'open meeting you are in not found');
   if (m.status === 'confirmed' && m.confirmed_start_at
       && new Date(m.confirmed_start_at).getTime() < now) {
     return err('invalid', 'that meeting has already started — there is nothing left to cancel');
@@ -456,16 +465,16 @@ async function cancelMeeting(client, userId, meetingId, now = Date.now()) {
   // The status guard repeats inside the UPDATE so a concurrent confirm/cancel
   // cannot double-apply.
   const { rows } = await client.query(
-    `UPDATE meetings SET status = 'cancelled', updated_at = now(), closed_at = now()
-     WHERE id = $1 AND initiator_id = $2 AND status = $3 RETURNING id`,
+    `UPDATE meetings m SET status = 'cancelled', updated_at = now(), closed_at = now()
+     WHERE id = $1 AND status = $3 AND ${IN_IT} RETURNING id`,
     [meetingId, userId, m.status]
   );
-  if (!rows[0]) return err('not_found', 'open meeting you initiated not found');
+  if (!rows[0]) return err('not_found', 'open meeting you are in not found');
   await audit.record(client, userId, 'meeting.cancelled', { meetingId, wasConfirmed });
   return ok({ meetingId, meetingStatus: 'cancelled', wasConfirmed });
 }
 
-// Rename — initiator only, while the meeting is still alive. The title is
+// Rename — anybody still in it, while the meeting is still alive. The title is
 // what every invite, nudge and calendar event shows, so having no way to fix
 // it is how a meeting stays called "פגישה" forever ("עדכנתי את הפגישה" was
 // once narrated with no tool behind it).
@@ -473,12 +482,12 @@ async function setTitle(client, userId, meetingId, title) {
   const clean = (title || '').trim().slice(0, TITLE_MAX_CHARS);
   if (!clean) return err('invalid', 'title required');
   const { rows } = await client.query(
-    `UPDATE meetings SET title = $3, updated_at = now()
-     WHERE id = $1 AND initiator_id = $2 AND status IN ('negotiating', 'confirmed')
+    `UPDATE meetings m SET title = $3, updated_at = now()
+     WHERE id = $1 AND status IN ('negotiating', 'confirmed') AND ${IN_IT}
      RETURNING id, status, calendar_event_id, calendar_organiser_id`,
     [meetingId, userId, clean]
   );
-  if (!rows[0]) return err('not_found', 'open meeting you initiated not found');
+  if (!rows[0]) return err('not_found', 'open meeting you are in not found');
   await audit.record(client, userId, 'meeting.title_set', { meetingId });
   return ok({
     meetingId, title: clean, meetingStatus: rows[0].status,

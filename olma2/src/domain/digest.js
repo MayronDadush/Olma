@@ -78,6 +78,26 @@ async function assemble(client, userId, scope) {
       GROUP BY m.id, m.title, m.proposed_slot, m.proposed_start_at`,
     [userId]
   )).rows;
+  // Coordinations that ENDED with no time, since the last digest that reached
+  // them — expired (the moment passed) or no_match (not enough people left).
+  // Until 2026-09-23 that was a message of its own, to the opener alone; now
+  // nobody manages a coordination, and the owner chose that its ending is
+  // never a message of its own: it is said here, in passing, to everybody who
+  // was still in it. Bounded to three days so a first digest after a long gap
+  // does not dig up the month. A cancellation is not here — that one was
+  // somebody's act and was told at the time.
+  const closedMeetings = (await client.query(
+    `SELECT m.id, m.title, m.status
+       FROM meetings m
+       JOIN meeting_participants me ON me.meeting_id = m.id AND me.user_id = $1 AND me.state <> 'opted_out'
+      WHERE m.status IN ('expired', 'no_match')
+        AND m.closed_at > GREATEST(now() - interval '3 days',
+              COALESCE((SELECT max(o.sent_at) FROM outbox o
+                         WHERE o.user_id = $1 AND o.kind = 'digest' AND o.hold_reason IS NULL),
+                       '-infinity'::timestamptz))
+      ORDER BY m.closed_at`,
+    [userId]
+  )).rows;
   const pendingConnections = (await client.query(
     `SELECT c.id, c.invite_reason, u.first_name, u.last_name, u.phone
      FROM connections c JOIN users u ON u.id = c.requester_id
@@ -109,7 +129,12 @@ async function assemble(client, userId, scope) {
       // meetings and an errand is not a number anybody can act on.
       openEvents: counts.open_events, eventsToday: counts.events_today,
     },
-    crossUser: { pendingMeetings, awaitingOthers, pendingConnections, pendingShares },
+    crossUser: { pendingMeetings, awaitingOthers, closedMeetings, pendingConnections, pendingShares },
+    ...(closedMeetings.length ? { hints: {
+      closedMeetings: 'crossUser.closedMeetings ended since their last digest with no time found '
+        + '(expired: the time passed; no_match: not enough people left). Nobody was told on its own — '
+        + 'say it in ONE short clause here, by title, never as a question or an apology.',
+    } } : {}),
   };
 
   if (scope === 'summary' || scope === 'block_view') {

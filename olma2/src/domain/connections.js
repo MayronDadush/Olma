@@ -184,12 +184,10 @@ async function revokeConnection(client, userId, connectionId) {
   );
   const closedMeetings = [];
   for (const m of affected.rows) {
-    // The revoker is walking away: as initiator that's a cancel, as a
-    // participant it's an opt-out (which auto-closes no_match for a pair).
-    const { rows: mi } = await client.query(`SELECT initiator_id FROM meetings WHERE id = $1`, [m.id]);
-    const res = mi[0].initiator_id === userId
-      ? await meetings.cancelMeeting(client, userId, m.id)
-      : await meetings.applyExit(client, userId, m.id, 'connection_revoked');
+    // The revoker is walking away, which is an opt-out whoever opened it —
+    // nobody manages a coordination (2026-09-23) — and for a pair that closes
+    // it no_match, which is what this query selected for.
+    const res = await meetings.applyExit(client, userId, m.id, 'connection_revoked');
     closedMeetings.push({ meetingId: m.id, outcome: res.ok ? res.data.meetingStatus : 'error' });
   }
 

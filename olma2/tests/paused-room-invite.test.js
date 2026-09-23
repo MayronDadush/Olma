@@ -203,7 +203,9 @@ test('a day of silence takes them out of the coordination, and nobody is told th
   assert.equal(told.length, 0, 'no "X left the meeting" for somebody who said nothing');
 });
 
-test('a silent exit that leaves one person closes it, and the initiator hears that', async () => {
+// Until 2026-09-23 the opener was sent "nobody matched" on its own. Nobody
+// manages a coordination now: whoever is left reads it in their next digest.
+test('a silent exit that leaves one person closes it, and whoever is left reads that in the digest', async () => {
   const a = await makeUser(db.pool, '+972607799101');
   const b = await makeUser(db.pool, '+972607799102');
   for (const u of [a, b]) await db.pool.query(`UPDATE users SET last_inbound_at = now() WHERE id = $1`, [u.id]);
@@ -225,5 +227,7 @@ test('a silent exit that leaves one person closes it, and the initiator hears th
   const { rows: told } = await db.pool.query(
     `SELECT user_id FROM outbox WHERE kind = 'meeting_no_match' AND (payload->>'meetingId')::bigint = $1`,
     [started.meeting.id]);
-  assert.deepEqual(told.map((r) => Number(r.user_id)), [Number(a.id)]);
+  assert.deepEqual(told, [], 'not a message of its own');
+  const d = await withTx(db.pool, (c) => require('../src/domain/digest').assemble(c, a.id, 'summary'));
+  assert.deepEqual(d.data.crossUser.closedMeetings.map((x) => Number(x.id)), [Number(started.meeting.id)]);
 });

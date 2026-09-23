@@ -155,13 +155,19 @@ test('saying the same yes again does not push the moment away', async () => {
 
 // ---- the button -------------------------------------------------------------
 
-test('only the person who opened it may settle it by hand', async () => {
+// Nobody manages a coordination (owner, 2026-09-23): anybody still in it may
+// settle it by hand — and somebody who has left it may not.
+test('anybody still in it may settle it by hand, and nobody who left', async () => {
   const { id, a } = await table('מי קובע');
-  const no = await actAs(ben, 'settleMeeting', { meetingId: id, optionId: a.id });
-  assert.equal(no.ok, false);
-  assert.equal(no.error.reason, 'not_initiator');
+  await actAs(cal, 'leaveMeeting', { meetingId: id });
+  const gone = await actAs(cal, 'settleMeeting', { meetingId: id, optionId: a.id });
+  assert.equal(gone.ok, false, 'she left — it is not hers to settle');
+  assert.equal(gone.error.code, 'not_found');
   assert.equal((await statusOf(id)).status, 'negotiating');
-  assert.deepEqual(await told(id), []);
+
+  const res = await actAs(ben, 'settleMeeting', { meetingId: id, optionId: a.id });
+  assert.equal(res.ok, true, res.ok ? '' : JSON.stringify(res.error));
+  assert.equal((await statusOf(id)).status, 'confirmed', 'he did not open it, and settled it anyway');
 });
 
 test('a time nobody put on the table cannot be settled onto', async () => {
@@ -215,7 +221,7 @@ test('the page is told how long is left, and who may end it', async () => {
     .data.meetings.find((m) => Number(m.id) === id);
 
   assert.equal((await mine(ann)).canSettle, true, 'she opened it');
-  assert.equal((await mine(ben)).canSettle, false, 'he did not');
+  assert.equal((await mine(ben)).canSettle, true, 'he did not, and may all the same');
   assert.equal((await mine(ann)).settleIn, null, 'nothing is counting down yet');
 
   await actAs(ben, 'answerOption', { meetingId: id, optionId: a.id, answer: 'y' });
@@ -233,8 +239,8 @@ test('the page draws the button on the server\'s answer and sends the action', (
 
   // The shape of the control is the row design's business and has changed
   // once already; what this pins is the GATE in front of it. Drawn on
-  // anything but `canSettle` it is a button that fails for everybody who is
-  // not the initiator, and it used to be drawn for nobody at all.
+  // anything but `canSettle` it is a button that fails for somebody the
+  // server refuses, and it used to be drawn for nobody at all.
   assert.match(page, /\(!LIVE \|\| m\.canSettle[\s\S]{0,120}?data-settle/,
     'the live button opens on canSettle and nothing else — it used to be drawn for nobody');
   assert.match(page, /API\.send\("settleMeeting", \{meetingId:m\.id, optionId:o\.id\}/,

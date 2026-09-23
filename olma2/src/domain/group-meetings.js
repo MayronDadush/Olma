@@ -12,8 +12,9 @@
 // changing anything (2026-09-07):
 //
 //   1. The coordination belongs to the GROUP, not to the person who tagged
-//      her. They are its `initiator_id` — somebody has to be able to settle it
-//      — but every sentence anybody is sent names the room. "בקבוצה 'פאדל
+//      her. They are its `initiator_id` — which since 2026-09-23 is only who
+//      opened it; anybody in it settles it — and every sentence anybody is
+//      sent names the room. "בקבוצה 'פאדל
 //      חמישי' מתאמים משחק", not "דני מארגן משחק".
 //   2. The room hears little and hears it rarely; the asking, the times and
 //      the reasons all happen in private. So this module gives the room
@@ -337,7 +338,17 @@ async function settle(client, group, actingUser, optionId) {
       { reason: 'below_minimum', yes, minimum: q.min, short: q.short });
   }
 
-  const res = await options.settleNow(client, Number(meeting.initiator_id), Number(meeting.id), Number(optionId));
+  // Made as the member who asked when they are in it — nobody manages a
+  // coordination any more, so there is no one else it should be "as". A
+  // member of the room who is not in this one (joined after it opened) acts
+  // through somebody who is, which is what the room asking always meant.
+  const { rows: [as] } = await client.query(
+    `SELECT user_id FROM meeting_participants
+      WHERE meeting_id = $1 AND state <> 'opted_out'
+      ORDER BY (user_id = $2) DESC, (user_id = $3) DESC, user_id LIMIT 1`,
+    [meeting.id, actingUser.id, meeting.initiator_id]);
+  if (!as) return err('not_found', 'nobody is left in this coordination');
+  const res = await options.settleNow(client, Number(as.user_id), Number(meeting.id), Number(optionId));
   if (!res.ok) return res;
   await audit.record(client, actingUser.id, 'group.coordination_settled', {
     groupId: group.id, meetingId: Number(meeting.id), optionId: Number(optionId), yes,
@@ -361,8 +372,8 @@ async function settle(client, group, actingUser, optionId) {
 // or their quiet day from being overtaken by its own exit.
 //
 // Nobody is TOLD they left — "X left the meeting" would be false, they never
-// said a word. Only when their leaving closes it (no_match) does the initiator
-// hear, in the same words any exit that closes a meeting uses.
+// said a word. When their leaving closes it (no_match), whoever is left reads
+// that in their next digest, as with any coordination that ends unmatched.
 async function sweepSilentPausedMembers(client, nowMs = Date.now()) {
   const { rows } = await client.query(
     `SELECT p.meeting_id, p.user_id
@@ -388,13 +399,10 @@ async function sweepSilentPausedMembers(client, nowMs = Date.now()) {
     const meetingId = Number(r.meeting_id);
     const res = await meetings.applyExit(client, Number(r.user_id), meetingId, 'paused_no_answer');
     if (!res.ok) continue;
+    // Closed with nobody left to match: said in the next digest of whoever is
+    // still in it (digest.closedMeetings), never on its own (owner, 2026-09-23).
     if (res.data.meetingStatus === 'no_match') {
       await fanout.supersedeQueuedMeetingRows(client, meetingId, ['meeting_slot_proposed', 'meeting_invite']);
-      const { rows: [m] } = await client.query(
-        `SELECT initiator_id, title FROM meetings WHERE id = $1`, [meetingId]);
-      await fanout.fanout(client, [Number(m.initiator_id)], 'meeting_no_match', {
-        meetingId, title: m.title || 'meeting',
-      }, { key: `mexit:${meetingId}:${r.user_id}` });
     }
     out.push({ meetingId, userId: Number(r.user_id), meetingStatus: res.data.meetingStatus });
   }

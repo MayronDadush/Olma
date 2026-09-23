@@ -160,10 +160,10 @@ test('a yes from a page that sat open lands on the option it saw, never on the n
 });
 
 // Stepping out of a coordination that carries on is an update like any other
-// and is no longer its own message either. The RESULT still is: when the last
-// of them goes and nobody matched, the person who opened it is told, because
-// that is the one thing the table cannot say to him later.
-test('leaving from the page removes them; only the coordination DYING is told', async () => {
+// and is no longer its own message either. Since 2026-09-23 nor is the
+// coordination DYING: nobody manages one, and whoever is left reads that it
+// ended in their next digest (digest.closedMeetings).
+test('leaving from the page removes them; even the coordination dying is said only in the digest', async () => {
   const id = await coordination(gali, [me, ron], 'יציאה');
   const r = await actAs(me, 'leaveMeeting', { meetingId: id });
   assert.equal(r.ok, true, r.ok ? '' : JSON.stringify(r.error));
@@ -177,10 +177,15 @@ test('leaving from the page removes them; only the coordination DYING is told', 
 
   await actAs(ron, 'leaveMeeting', { meetingId: id });
   const told = await db.pool.query(
-    `SELECT user_id, kind, release_after FROM outbox
+    `SELECT user_id FROM outbox
       WHERE (payload->>'meetingId')::bigint = $1 AND kind = 'meeting_no_match'`, [id]);
-  assert.deepEqual(told.rows.map((x) => Number(x.user_id)), [Number(gali.id)]);
-  assert.equal(told.rows[0].release_after, null, 'a result is never paced');
+  assert.deepEqual(told.rows, [], 'no message of its own');
+  const d = await tx((c) => require('../src/domain/digest').assemble(c, gali.id, 'summary'));
+  assert.equal(d.data.crossUser.closedMeetings.some((x) => Number(x.id) === id), true,
+    'gali, the one left, reads it in her digest');
+  const dm = await tx((c) => require('../src/domain/digest').assemble(c, me.id, 'summary'));
+  assert.equal(dm.data.crossUser.closedMeetings.some((x) => Number(x.id) === id), false,
+    'I left it myself — it is not news to me');
 });
 
 test('a meeting somebody left still shows the person, counted in nothing', async () => {
@@ -202,20 +207,66 @@ test('a meeting this person is not in cannot be answered or left', async () => {
   assert.equal((await actAs(stranger, 'leaveMeeting', { meetingId: id })).ok, false);
 });
 
-// The whole reason the page hides its own leave button for the person who
-// opened the coordination (see docs/design/user-dashboard.html, renderMeet's
-// `own` gate): this call is refused for them every time, and the page used
-// to offer it anyway, with the refusal never surfaced — a row that vanished
-// and came straight back with no explanation (real report, meeting id 32,
-// 2026-09-12: an empty "פגישה" מירון started, kept returning to his list).
-test('the initiator cannot leave their own coordination from the page', async () => {
+// Nobody manages a coordination (owner, 2026-09-23): the one who opened it
+// may LEAVE it, from the page or the chat, and it carries on for the others.
+// Who opened it stays a fact on the row and nothing more.
+test('the opener leaves a group coordination, and it carries on for the rest', async () => {
   const id = await coordination(gali, [me, ron], 'שלי');
   const r = await actAs(gali, 'leaveMeeting', { meetingId: id });
-  assert.equal(r.ok, false, 'an initiator leaving is cancelling, not opting out');
-  assert.equal(r.error.code, 'invalid');
+  assert.equal(r.ok, true, r.ok ? '' : JSON.stringify(r.error));
+  const { rows: [m] } = await db.pool.query(`SELECT status, initiator_id FROM meetings WHERE id = $1`, [id]);
+  assert.equal(m.status, 'negotiating', 'leaving is not cancelling');
+  assert.equal(Number(m.initiator_id), Number(gali.id), 'who opened it is history, not a role to hand on');
+  const { rows: [p] } = await db.pool.query(
+    `SELECT state FROM meeting_participants WHERE meeting_id = $1 AND user_id = $2`, [id, gali.id]);
+  assert.equal(p.state, 'opted_out');
+  const told = await db.pool.query(
+    `SELECT 1 FROM outbox WHERE kind = 'meeting_cancelled' AND (payload->>'meetingId')::bigint = $1`, [id]);
+  assert.equal(told.rows.length, 0, 'nobody was told it was cancelled, because it was not');
   const page = await tx((c) => dash.load(c, gali.id));
-  assert.equal(page.data.meetings.some((x) => Number(x.id) === id), true,
-    'refused means still there, not silently archived');
+  assert.equal(page.data.meetings.some((x) => Number(x.id) === id), false, 'off her list');
+  // …and the two left can still settle, rename and cancel it.
+  const page2 = await tx((c) => dash.load(c, me.id));
+  assert.equal(page2.data.meetings.find((x) => Number(x.id) === id).canSettle, true);
+});
+
+// The swipe on the coordinations list (owner, 2026-09-23): the opener may
+// delete one only while it is between the two of them, and that is a real
+// cancellation — the other person is told exactly as cancel_meeting tells
+// them, because it is the same function (meetingFanout.cancelAndTell).
+test('the opener deletes a two-person coordination, and the other side is told', async () => {
+  const id = await coordination(gali, [me], 'רק שנינו');
+  const r = await actAs(gali, 'cancelMeeting', { meetingId: id });
+  assert.equal(r.ok, true, r.ok ? '' : JSON.stringify(r.error));
+  const { rows: m } = await db.pool.query(`SELECT status FROM meetings WHERE id = $1`, [id]);
+  assert.equal(m[0].status, 'cancelled');
+  const told = await db.pool.query(
+    `SELECT user_id FROM outbox WHERE kind = 'meeting_cancelled' AND (payload->>'meetingId')::bigint = $1`, [id]);
+  assert.deepEqual(told.rows.map((x) => Number(x.user_id)), [Number(me.id)]);
+  const page = await tx((c) => dash.load(c, gali.id));
+  assert.equal(page.data.meetings.some((x) => Number(x.id) === id), false, 'it left the list');
+});
+
+test('with more than two people in it, the page cannot cancel it for everyone', async () => {
+  const id = await coordination(gali, [me, ron], 'כולנו');
+  const r = await actAs(gali, 'cancelMeeting', { meetingId: id });
+  assert.equal(r.ok, false);
+  assert.equal(r.error.reason, 'group');
+  const told = await db.pool.query(
+    `SELECT 1 FROM outbox WHERE kind = 'meeting_cancelled' AND (payload->>'meetingId')::bigint = $1`, [id]);
+  assert.equal(told.rows.length, 0, 'a refusal told somebody anyway');
+  // …but once somebody has left and two remain, it is a pair again.
+  await actAs(ron, 'leaveMeeting', { meetingId: id });
+  assert.equal((await actAs(gali, 'cancelMeeting', { meetingId: id })).ok, true);
+});
+
+test('either of the two may delete it, and the other one is told', async () => {
+  const id = await coordination(gali, [me], 'לא אני פתחתי');
+  const r = await actAs(me, 'cancelMeeting', { meetingId: id });
+  assert.equal(r.ok, true, r.ok ? '' : JSON.stringify(r.error));
+  const told = await db.pool.query(
+    `SELECT user_id FROM outbox WHERE kind = 'meeting_cancelled' AND (payload->>'meetingId')::bigint = $1`, [id]);
+  assert.deepEqual(told.rows.map((x) => Number(x.user_id)), [Number(gali.id)]);
 });
 
 test('a meeting the person left is off the answerable list', async () => {

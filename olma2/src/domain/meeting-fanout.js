@@ -476,17 +476,12 @@ async function afterOptOut(client, actor, meetingId, res) {
       res.data.meetingStatus === 'no_match'
         ? ['meeting_slot_proposed', 'meeting_invite'] : ['meeting_slot_proposed']);
   }
-  // `no_match` is the RESULT — the coordination is over and nobody matched —
-  // and it is the one thing only the person who opened it can be told, so it
-  // still goes on its own. Somebody merely stepping OUT of one that carries on
-  // is an update like any other and no longer is (owner, 2026-09-22; see the
-  // decline in `afterSlotResponse`): the table he is shown counts the people
-  // still in, and the next thing the coordination asks him carries it.
-  if (res.data.meetingStatus === 'no_match') {
-    await fanout(client, [Number(brief.initiator_id)], 'meeting_no_match', {
-      meetingId: Number(meetingId), title: brief.title || 'meeting', byName: actorName(actor),
-    }, { key: `mexit:${meetingId}:${actor.id}` });
-  }
+  // Somebody stepping OUT of one that carries on is an update like any other
+  // and not a message of its own (owner, 2026-09-22; see the decline in
+  // `afterSlotResponse`). Nor, since 2026-09-23, is `no_match` — the
+  // coordination ending with nobody to match: nobody manages one, so there is
+  // no single person it belongs to, and whoever is left reads it in their
+  // next digest (digest.closedMeetings) rather than as an interruption.
   if (res.data.meetingStatus === 'settling') {
     // Their exit left the rest agreed. Same silence as any other arming: the
     // people left are about to be told once, a minute from now.
@@ -546,8 +541,44 @@ async function afterStart(client, actor, res, participantIds, title) {
   return res;
 }
 
+// The opener calling a coordination off, for everyone — and everything that
+// has to go with it. Lived inside the cancel_meeting tool until the personal
+// page needed the same door (a two-person coordination deleted from the list,
+// 2026-09-23); one copy, so the page and the chat cannot tell people different
+// things about the same cancellation.
+async function cancelAndTell(client, actor, meetingId) {
+  const brief = await meetingBrief(client, meetingId);
+  const others = await activeParticipantsExcept(client, meetingId, actor.id);
+  const res = await meetings.cancelMeeting(client, actor.id, meetingId);
+  if (!res.ok) return res;
+  // Nothing about this meeting should still be on its way to anyone.
+  await supersedeQueuedMeetingRows(client, meetingId, ['meeting_slot_proposed', 'meeting_invite']);
+  // A confirmed meeting is on calendars; take the shared event off first
+  // (best-effort, server-side) so most people have nothing left to do.
+  let roles = null, removed = false;
+  if (res.data.wasConfirmed) {
+    roles = await calendar.meetingCalendarRoles(client, meetingId);
+    removed = (await calendar.removeMeetingEvent(client, meetingId)).data.removed;
+  }
+  for (const uid of others) {
+    await enqueue(client, {
+      userId: uid, kind: 'meeting_cancelled', urgency: 'urgent',
+      payload: {
+        meetingId: Number(meetingId), title: brief.title || 'meeting',
+        byName: actorName(actor), wasConfirmed: Boolean(res.data.wasConfirmed),
+        slot: brief.confirmed_slot || undefined,
+        calendarCleanup: cancelCalendarCleanup(roles, removed, uid),
+      },
+      idempotencyKey: `mcanc:${meetingId}:${uid}`,
+    });
+  }
+  const hint = CANCEL_CLEANUP_HINTS[cancelCalendarCleanup(roles, removed, actor.id)];
+  if (hint) res.data.hint = hint;
+  return res;
+}
+
 module.exports = {
-  afterSettled,
+  afterSettled, cancelAndTell,
   afterStart, afterOptionAdded, afterOptionRemoved, noteNamedInRoom,
   afterSlotResponse, afterOptOut, afterRejoin,
   actorName, fanout, supersedeQueuedMeetingRows, activeParticipantsExcept,
