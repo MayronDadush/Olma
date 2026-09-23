@@ -468,12 +468,15 @@ async function sweepGroups(client, deps) {
 //   `table`  — the table can move for ever, so the key is the newest change
 //              this sentence is reporting. A re-run of the same pass therefore
 //              collapses onto the same key, and the next movement gets its own.
+//   `relay`  — one per MEMBER who asked the room to hear something, so the key
+//              is that person. Their own row is what bounds it.
 //
 // Everything else is said once per coordination and keys on its kind.
 function idempotencyKeyFor(row, line, co) {
   const base = `g${row.id}:m${row.meeting_id}`;
   if (line.kind === 'moved') return `${base}:moved:${line.was}`;
   if (line.kind === 'table') return `${base}:table:${new Date(co.tableChangedAt).getTime()}`;
+  if (line.kind === 'relay') return `${base}:relay:${line.userId}`;
   return `${base}:${line.kind}`;
 }
 
@@ -516,7 +519,15 @@ async function sweepGroupVoice(client, deps) {
               settle_due_at, calendar_event_id, location
          FROM meetings WHERE id = $1`, [row.meeting_id]);
     const st = await groupMeetings.statusOf(client, row, full[0] || null);
+    // Read HERE and not on `statusOf`, on purpose: `statusOf` is also the block
+    // a group TURN speaks from, and a model that could see a sentence waiting
+    // would say it itself — in its own words, before this pass, with none of
+    // the quiet hours below. The sweep says it or nobody does.
+    const relay = row.status === 'negotiating'
+      ? await groupMeetings.pendingRelay(client, Number(row.meeting_id))
+      : null;
     const line = groupVoice.decideGroupLine(st.coordination, {
+      pendingRelay: relay,
       saidStarted: Boolean(row.group_started_at),
       saidBase: Boolean(row.group_base_at),
       saidBaseSlot: row.group_base_slot,
@@ -541,42 +552,47 @@ async function sweepGroupVoice(client, deps) {
     // columns and not one counter.
     if (!mayAnnounce(row, now)) { out.held++; continue; }
 
+    // A relay is the one line that is not once per COORDINATION — it is once
+    // per PERSON, so the key carries whose it is and the stamp lands on their
+    // participant row rather than on a `meetings.group_*_at` column.
     await groupOutbox.enqueue(client, {
       groupId: row.id,
       kind: 'coordination',
       payload: { line },
-      // Two of these may be said more than once in one coordination, so
-      // neither can key on its kind alone. `moved` carries the time that WENT,
-      // which is also the bound on it — once per gone slot. `table` carries
-      // the newest change it is reporting, so one row per movement of the
-      // table and a re-run of the same pass still collapses onto the same key.
-      // Every other kind is once per coordination and keys on the kind.
+      // Three of these cannot key on their kind alone — see `idempotencyKeyFor`.
       idempotencyKey: idempotencyKeyFor(row, line, st.coordination),
     });
-    const column = {
-      started: 'group_started_at',
-      base: 'group_base_at', moved: 'group_base_at', chase: 'group_chase_at',
-      done: 'group_done_at', table: 'group_table_at',
-      calendar: 'group_calendar_at', dayof: 'group_dayof_at', soon: 'group_hour_at',
-    }[line.kind];
-    // `base` and `moved` share the stamp and also record WHICH time the room was
-    // told, because that is what makes the next one decidable: a slot the room
-    // heard and that has since left the table is the whole trigger (group-voice,
-    // `namedGone`). Every other line writes the stamp alone, as before.
-    //
-    // The stamp is the clock the DECISION was made on, never SQL's `now()`.
-    // Two of these columns are read back as moments and not as flags — the
-    // base stamp is the watermark the table line measures against, and both
-    // are what the settle is measured from — so a stamp from a different clock
-    // than the one that just decided is a quarter of an hour that means
-    // nothing. In production the two are the same instant; in a test they are
-    // hours apart, which is precisely how this went unnoticed.
-    if (line.kind === 'base' || line.kind === 'moved') {
-      await client.query(
-        `UPDATE meetings SET group_base_at = $3, group_base_slot = $2 WHERE id = $1`,
-        [row.meeting_id, line.slot, now]);
+    // The relay is the one line in this family that is not a stamp on the
+    // MEETING: it is said once per member who asked, so what records it is the
+    // member's own row.
+    if (line.kind === 'relay') {
+      await groupMeetings.markRelaySaid(client, Number(row.meeting_id), line.userId);
     } else {
-      await client.query(`UPDATE meetings SET ${column} = $2 WHERE id = $1`, [row.meeting_id, now]);
+      const column = {
+        started: 'group_started_at',
+        base: 'group_base_at', moved: 'group_base_at', chase: 'group_chase_at',
+        done: 'group_done_at', table: 'group_table_at',
+        calendar: 'group_calendar_at', dayof: 'group_dayof_at', soon: 'group_hour_at',
+      }[line.kind];
+      // `base` and `moved` share the stamp and also record WHICH time the room
+      // was told, because that is what makes the next one decidable: a slot the
+      // room heard and that has since left the table is the whole trigger
+      // (group-voice, `namedGone`). Every other line writes the stamp alone.
+      //
+      // The stamp is the clock the DECISION was made on, never SQL's `now()`.
+      // Two of these columns are read back as moments and not as flags — the
+      // base stamp is the watermark the table line measures against, and both
+      // are what the settle is measured from — so a stamp from a different
+      // clock than the one that just decided is a quarter of an hour that
+      // means nothing. In production the two are the same instant; in a test
+      // they are hours apart, which is precisely how this went unnoticed.
+      if (line.kind === 'base' || line.kind === 'moved') {
+        await client.query(
+          `UPDATE meetings SET group_base_at = $3, group_base_slot = $2 WHERE id = $1`,
+          [row.meeting_id, line.slot, now]);
+      } else {
+        await client.query(`UPDATE meetings SET ${column} = $2 WHERE id = $1`, [row.meeting_id, now]);
+      }
     }
     await audit.record(client, row.registered_by_user_id, 'group.coordination_said', {
       groupId: row.id, meetingId: Number(row.meeting_id), kind: line.kind,

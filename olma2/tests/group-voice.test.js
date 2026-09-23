@@ -12,6 +12,7 @@ const groupVoice = require('../src/domain/group-voice');
 const options = require('../src/domain/meeting-options');
 const groupsJob = require('../src/jobs/groups');
 const groupOutbox = require('../src/domain/group-outbox');
+const flags = require('../src/domain/flags');
 const proactiveText = require('../src/domain/proactive-text');
 
 let db;
@@ -724,6 +725,125 @@ test('the first line a room hears is that she has started asking, and it counts 
 // The other half: a room the `group_open_without_everyone` switch opened has
 // members who never wrote, and the line says such people exist WITHOUT naming
 // them — the room already heard who they are from the gate.
+// ── one sentence somebody actually asked for ────────────────────────────────
+
+test('a sentence a member asked the room to hear comes before anything she decided to say', () => {
+  const when = new Date(Date.now() + 72 * 3600_000).toISOString();
+  const co = {
+    status: 'negotiating', title: 'פאדל', participants: 3,
+    options: [{ slot: 'שלישי 20:00', startsAt: when, yes: [{}, {}], no: [], missing: [{ phone: '+972500000003', asked: true }] }],
+    silent: [],
+  };
+  const withRelay = groupVoice.decideGroupLine(co, {
+    saidStarted: true, nowMs: Date.now(), startedAtMs: Date.now(),
+    pendingRelay: { userId: 7, phone: '+972500000001', what: 'ב-4 קצת חם' },
+  });
+  assert.equal(withRelay.kind, 'relay');
+  assert.equal(withRelay.userId, 7);
+  assert.equal(withRelay.what, 'ב-4 קצת חם');
+  // The base is still owed, and is said on the next pass — one line per pass.
+  const without = groupVoice.decideGroupLine(co, {
+    saidStarted: true, nowMs: Date.now(), startedAtMs: Date.now(),
+  });
+  assert.equal(without.kind, 'base');
+
+  // But never in front of "she has started": the room has to know what this is
+  // about before it is handed somebody's sentence about it.
+  const opening = groupVoice.decideGroupLine(co, {
+    nowMs: Date.now(), startedAtMs: Date.now(),
+    pendingRelay: { userId: 7, phone: '+972500000001', what: 'ב-4 קצת חם' },
+  });
+  assert.equal(opening.kind, 'started');
+
+  // And a half-written one says nothing rather than an empty quote.
+  assert.equal(groupVoice.decideGroupLine(co, {
+    saidStarted: true, nowMs: Date.now(), startedAtMs: Date.now(),
+    pendingRelay: { userId: 7, phone: '+972500000001', what: '' },
+  }).kind, 'base');
+});
+
+test('the room hears it in their words, over their tag, once', async () => {
+  const { group, people } = await room(15);
+  const [a, b] = people;
+  await withTx(db.pool, (c) => flags.setFlag(c, groupMeetings.RELAY_FLAG, group.external_id));
+  const started = await withTx(db.pool, (c) => groupMeetings.startCoordination(c, group, a, 'פאדל'));
+  const meetingId = Number(started.data.meeting.id);
+
+  // Spend the opening line first — it is the one that comes before this.
+  const opening = [];
+  await pass(opening, null, group.external_id);
+  assert.equal(opening.length, 1);
+
+  const asked = await withTx(db.pool, (c) => groupMeetings.relayToRoom(c, b.id, meetingId, 'ב-4 קצת חם'));
+  assert.equal(asked.ok, true, asked.ok ? '' : JSON.stringify(asked.error));
+
+  const sent = [];
+  await pass(sent, null, group.external_id);
+  assert.equal(sent.length, 1);
+  // Nothing was added or taken off by them, so the line is their sentence and
+  // nothing else — the clause is a claim about the table and there is none.
+  assert.equal(sent[0].body, `@${b.phone}: ב-4 קצת חם 📣`);
+  // Their TAG, never their name — the rule every room line obeys.
+  assert.equal(sent[0].body.includes(b.first_name), false);
+
+  const again = [];
+  await pass(again, null, group.external_id);
+  assert.deepEqual(again, [], 'said once, and the next pass is back to her own lines');
+  const { rows } = await db.pool.query(
+    `SELECT relay_said_at FROM meeting_participants WHERE meeting_id = $1 AND user_id = $2`,
+    [meetingId, b.id]);
+  assert.ok(rows[0].relay_said_at);
+});
+
+// שרון's own case, end to end: she took 16:00 off, put 17:00 on, and told Olma
+// privately why. Three people had already marked the old time and the room was
+// told none of it. The owner chose this wording on 2026-09-22.
+test('when they also changed the table, the room hears the reason and the change together', async () => {
+  const { group, people } = await room(16);
+  const [a, b] = people;
+  await withTx(db.pool, (c) => flags.setFlag(c, groupMeetings.RELAY_FLAG, group.external_id));
+  const started = await withTx(db.pool, (c) => groupMeetings.startCoordination(c, group, a, 'פאדל'));
+  const meetingId = Number(started.data.meeting.id);
+  // Two distinct moments on the same Saturday: `slotStart` snaps to the weekday
+  // the text names, so the same `hourUtc` for both would be ONE option — the
+  // "same moment twice is one option" rule — and the second add would become a
+  // yes on the first.
+  const four = slotStart('שבת 16:00', { hours: 72, hourUtc: 13 });
+  const five = slotStart('שבת 17:00', { hours: 72, hourUtc: 14 });
+
+  const opening = [];
+  await pass(opening, null, group.external_id);
+  assert.equal(opening.length, 1);
+
+  // She adds one, then replaces it with another — both writes are hers.
+  const old = await withTx(db.pool, async (c) =>
+    (await options.add(c, b.id, meetingId, 'שבת 16:00', four)).data.option.id);
+  await withTx(db.pool, (c) => options.add(c, b.id, meetingId, 'שבת 17:00', five));
+  await withTx(db.pool, (c) => options.remove(c, b.id, meetingId, old));
+  assert.equal((await withTx(db.pool, (c) => groupMeetings.relayToRoom(c, b.id, meetingId, 'ב-4 קצת חם'))).ok, true);
+
+  const sent = [];
+  await pass(sent, null, group.external_id);
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].body, `@${b.phone}: ב-4 קצת חם — החלפתי את *שבת 16:00* באופציה של *שבת 17:00* 📣`);
+});
+
+// Every shape, drawn, so the copy the owner approved is pinned somewhere a
+// reword has to walk past.
+test('the three shapes of that line, exactly', () => {
+  const base = { kind: 'relay', userId: 7, from: '+972542636760', what: 'ב-4 קצת חם' };
+  assert.equal(proactiveText.renderGroupCoordination(base),
+    '@+972542636760: ב-4 קצת חם 📣');
+  assert.equal(proactiveText.renderGroupCoordination({ ...base, added: 'שבת 17:00' }),
+    '@+972542636760: ב-4 קצת חם — הוספתי את האופציה *שבת 17:00* 📣');
+  assert.equal(proactiveText.renderGroupCoordination({ ...base, added: 'שבת 17:00', was: 'שבת 16:00' }),
+    '@+972542636760: ב-4 קצת חם — החלפתי את *שבת 16:00* באופציה של *שבת 17:00* 📣');
+  // A removal with nothing in its place is not a replacement, and the decision
+  // layer never sends one: `was` without `added` draws the plain line.
+  assert.equal(proactiveText.renderGroupCoordination({ ...base, was: 'שבת 16:00' }),
+    '@+972542636760: ב-4 קצת חם 📣');
+});
+
 test('a room with members who never wrote is told they are not counted, without a name or a tag', async () => {
   const { group, people } = await room(41);
   const [a] = people;

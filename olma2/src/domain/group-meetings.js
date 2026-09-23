@@ -37,6 +37,8 @@ const fanout = require('./meeting-fanout');
 const groups = require('./groups');
 const pause = require('./pause');
 const { mentionToken } = require('./proactive-text');
+const format = require('./message-format');
+const flags = require('./flags');
 
 // What the room calls a member. The display name the group itself shows comes
 // first, because that is the name the other people in the room use; their
@@ -427,7 +429,126 @@ async function setPlace(client, group, actingUser, where, opts = {}) {
   return ok({ meetingId: Number(meeting.id), location, calendarUpdated, status: meeting.status });
 }
 
+
+// ── One sentence a member asked the ROOM to hear ─────────────────────────────
+// Owner, 2026-09-22. Sharon wrote to Olma privately that four o'clock was a bit
+// hot and asked that everybody be told; there was no path at all from a private
+// chat into the room — only the sweeps enqueue a room line, and every one of
+// them is the owner's own fixed copy. This is the first thing a room hears that
+// is somebody else's words, which is why all four of its limits are here and not
+// in a prompt: a code rule cannot judge whether a sentence is worth saying, so
+// the budget is a NUMBER, and the owner chose one per person per coordination
+// ("אפשרות 1", the alternative being one a day).
+//
+//   the room must be named in `group_relay_rooms` (empty by default),
+//   the coordination must be one this room is running and still negotiating,
+//   the asker must be in it,
+//   and their one relay for it must be unspent — `relay_text` IS the budget.
+//
+// It does NOT send. The row waits for the group sweep, which is what puts it
+// behind the room's own daytime, the one-line-per-pass rule and the
+// channel-restart grace — a tool that enqueued straight into `group_outbox`
+// would be the one voice in this system that can wake a room at 03:00.
+const RELAY_MAX_CHARS = 160;
+const RELAY_FLAG = 'group_relay_rooms';
+
+// Their words, bounded, on the one path where no model retypes them. Two things
+// come out: markup, for the reason every verbatim room string has it stripped
+// (message-format.stripUserMarkup), and any `@<digits>` token — that is a TAG in
+// a room, it pings whoever it names, and a relay is a sentence, never a way to
+// notify people.
+function cleanRelay(what) {
+  const bare = String(what == null ? '' : what)
+    .replace(/@\+?[\d][\d\s-]*/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return format.stripUserMarkup(bare).slice(0, RELAY_MAX_CHARS).trim();
+}
+
+function relayRoomEnabled(flagValue, jid) {
+  const raw = String(flagValue == null ? '' : flagValue).trim();
+  if (!raw) return false;
+  if (raw === 'all') return true;
+  return raw.split(',').map((x) => x.trim()).filter(Boolean).includes(String(jid || '').trim());
+}
+
+async function relayToRoom(client, userId, meetingId, what) {
+  const { rows } = await client.query(
+    `SELECT m.id, m.status, m.group_id, g.external_id, g.subject, g.state,
+            mp.relay_text, mp.state AS member_state
+       FROM meetings m
+       JOIN chat_groups g ON g.id = m.group_id
+       LEFT JOIN meeting_participants mp ON mp.meeting_id = m.id AND mp.user_id = $2
+      WHERE m.id = $1`, [meetingId, userId]);
+  const row = rows[0];
+  if (!row) return err('not_found', 'that coordination is not one a group is running');
+  if (row.member_state === null || row.member_state === undefined) {
+    return err('forbidden', 'they are not in that coordination');
+  }
+  if (row.member_state === 'opted_out') return err('forbidden', 'they left that coordination');
+  if (row.status !== 'negotiating') {
+    return err('invalid', `that coordination is ${row.status}, so there is nothing to say about it in the group`,
+      { reason: 'not_negotiating' });
+  }
+  if (row.state !== 'open') return err('forbidden', 'that group is not open');
+  if (!relayRoomEnabled(await flags.getFlag(client, RELAY_FLAG), row.external_id)) {
+    return err('forbidden', 'saying a member\'s own words in that group is not turned on', { reason: 'relay_off' });
+  }
+  if (row.relay_text) {
+    return err('invalid', 'they have already had one sentence said in the group about this coordination — tell them you will keep it for what you send there anyway',
+      { reason: 'relay_spent', already: row.relay_text });
+  }
+  const text = cleanRelay(what);
+  if (!text) return err('invalid', 'there is nothing to say — one short sentence in their own words', { reason: 'empty' });
+  await client.query(
+    `UPDATE meeting_participants SET relay_text = $3
+      WHERE meeting_id = $1 AND user_id = $2 AND relay_text IS NULL`, [meetingId, userId, text]);
+  await audit.record(client, userId, 'meeting.relay_asked', {
+    meetingId: Number(meetingId), groupId: Number(row.group_id), chars: text.length,
+  });
+  return ok({ meetingId: Number(meetingId), said: text, group: row.subject || null });
+}
+
+// The one relay this coordination still owes its room, oldest first. Read by the
+// SWEEP and deliberately not by `statusOf`: that status is also the block a
+// group turn speaks from, and a pending relay sitting in it is an invitation for
+// the model to say the sentence itself, a pass before the fixed line does.
+async function pendingRelay(client, meetingId) {
+  const { rows } = await client.query(
+    `SELECT mp.user_id, u.phone, mp.relay_text,
+            -- What THEY did to this table, so the reason and the change reach
+            -- the room as one piece of news (owner, 2026-09-22). Only their own
+            -- writes, and only an addition that is still answerable: a time they
+            -- added and somebody else then removed is not news about this table.
+            (SELECT o.slot_text FROM meeting_options o
+              WHERE o.meeting_id = mp.meeting_id AND o.added_by = mp.user_id
+                AND o.status = 'active' ORDER BY o.id DESC LIMIT 1) AS added,
+            (SELECT o.slot_text FROM meeting_options o
+              WHERE o.meeting_id = mp.meeting_id AND o.removed_by = mp.user_id
+                AND o.status = 'deleted' ORDER BY o.decided_at DESC LIMIT 1) AS was
+       FROM meeting_participants mp JOIN users u ON u.id = mp.user_id
+      WHERE mp.meeting_id = $1 AND mp.relay_text IS NOT NULL AND mp.relay_said_at IS NULL
+        AND mp.state <> 'opted_out'
+      ORDER BY mp.user_id LIMIT 1`, [meetingId]);
+  const r = rows[0];
+  if (!r) return null;
+  // A removal with nothing put in its place says nothing here: "החלפתי" would
+  // be false and the room hears that a time left the table on its own line.
+  const added = r.added || null;
+  return {
+    userId: Number(r.user_id), phone: r.phone, what: r.relay_text,
+    added, was: added ? (r.was || null) : null,
+  };
+}
+
+async function markRelaySaid(client, meetingId, userId) {
+  await client.query(
+    `UPDATE meeting_participants SET relay_said_at = now() WHERE meeting_id = $1 AND user_id = $2`,
+    [meetingId, userId]);
+}
+
 module.exports = {
   startCoordination, coordinationStatus, statusOf, settle, setPlace, sweepSilentPausedMembers,
   currentMeeting, coordinatingMembers, memberLabel,
+  relayToRoom, pendingRelay, markRelaySaid, cleanRelay, relayRoomEnabled, RELAY_MAX_CHARS, RELAY_FLAG,
 };

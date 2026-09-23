@@ -254,6 +254,27 @@ function renderGroupCoordination(line, overrides) {
     // owner has one sentence to edit rather than two that can drift.
     return templates.render('group_coord_moved', { was: slotText(line.was), lead }, overrides).trim();
   }
+  // Somebody else's words, over their TAG — never their name, the same rule
+  // every room line obeys. The text was bounded and stripped where it was saved
+  // (group-meetings.cleanRelay); `slotText` here is the same last pass every
+  // verbatim room string gets, and it is what the slots go through too.
+  //
+  // Which of the three it is, is a fact and not a choice: the clause is said
+  // only about a change that person actually made to this table, so a relay
+  // from somebody who touched nothing carries no clause at all rather than a
+  // sentence nobody can check.
+  if (line.kind === 'relay') {
+    const vars = { from: mentionToken(line.from) || '', what: slotText(line.what) };
+    if (line.added && line.was) {
+      return templates.render('group_coord_relay_swapped',
+        { ...vars, was: slotText(line.was), added: slotText(line.added) }, overrides).trim();
+    }
+    if (line.added) {
+      return templates.render('group_coord_relay_added',
+        { ...vars, added: slotText(line.added) }, overrides).trim();
+    }
+    return templates.render('group_coord_relay', vars, overrides).trim();
+  }
   if (line.kind === 'chase') {
     return templates.render('group_coord_chase', { missing: mentionTokens(line.missing || []) }, overrides);
   }

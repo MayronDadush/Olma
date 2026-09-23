@@ -62,6 +62,12 @@ const DEFAULTS = {
   // that room's real traffic. A false "not addressed" is her going silent on
   // somebody who did ask her something, so this one is earned per room.
   group_untagged_rooms: '',
+  // Which rooms may carry a sentence a MEMBER asked her to say there
+  // (group-meetings.relayToRoom, owner 2026-09-22). Room jids, comma-separated,
+  // or 'all'. Empty on purpose and flipped per room: the standing rule is that
+  // only the test rooms are experimented on, and a relay is the first thing a
+  // room hears that is somebody's own words rather than the owner's copy.
+  group_relay_rooms: '',
   // channels/openclaw.js digest branch: how many items make the morning
   // picture a wall of text worth drawing instead of listing. The number is a
   // flag because it is a taste call about a message people read every day,
