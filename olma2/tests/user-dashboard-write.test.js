@@ -202,6 +202,40 @@ test('the reminder switch replaces rather than accumulates', async () => {
   assert.equal(String(rows[0].id), String(second.data.reminder.id));
 });
 
+// "כל יום עד התאריך" — the owner asked for the chase on the page as well as in
+// chat (2026-09-24). The page sends no hour: the owner's rule picks it.
+test('the daily-until chip arms a chase to the task\'s own date, and the page reads it back', async () => {
+  const t = await mkTask({ dueAt: iso(5 * 86400e3) });
+  const r = await act('setTaskReminder', { taskId: t.id, on: true, chase: true });
+  assert.equal(r.ok, true, r.ok ? '' : JSON.stringify(r.error));
+  const { rows } = await db.pool.query(
+    `SELECT repeat_rule, repeat_until, nudge, auto FROM task_reminders
+      WHERE task_id = $1 AND sent_at IS NULL AND cancelled_at IS NULL`, [t.id]);
+  assert.equal(rows.length, 1, 'the automatic one is replaced, never joined');
+  assert.equal(rows[0].repeat_rule, 'daily');
+  assert.ok(rows[0].repeat_until, 'a chase, with an end');
+  assert.equal(rows[0].nudge, true);
+  assert.equal(rows[0].auto, false, 'they asked for it, and the gate reads that');
+  const page = await tx((c) => dash.load(c, me.id));
+  const row = page.data.tasks.find((x) => String(x.id) === String(t.id));
+  assert.equal(row.reminder.repeat, 'daily');
+  assert.ok(row.reminder.until, 'the sheet needs `until` to tell a chase from "every day" for ever');
+});
+
+test('a chase too close to its date is refused, and the reminder that was there stays', async () => {
+  const t = await mkTask({ dueAt: iso(10 * 3600e3) });
+  const before = (await db.pool.query(
+    `SELECT id FROM task_reminders WHERE task_id = $1 AND sent_at IS NULL AND cancelled_at IS NULL`, [t.id])).rows;
+  const r = await act('setTaskReminder', { taskId: t.id, on: true, chase: true });
+  assert.equal(r.ok, false, 'a one-off under a chip that says "every day" is the promise run 79 broke');
+  const after = (await db.pool.query(
+    `SELECT id FROM task_reminders WHERE task_id = $1 AND sent_at IS NULL AND cancelled_at IS NULL`, [t.id])).rows;
+  assert.deepEqual(after.map((x) => String(x.id)), before.map((x) => String(x.id)),
+    'the refusal cancelled nothing');
+  const undated = await mkTask();
+  assert.equal((await act('setTaskReminder', { taskId: undated.id, on: true, chase: true })).ok, false);
+});
+
 test('turning the reminder off cancels it', async () => {
   const t = await mkTask({ dueAt: iso(3 * 86400e3) });
   assert.equal((await act('setTaskReminder', { taskId: t.id, on: true, remindAt: iso(86400e3) })).ok, true);
@@ -303,10 +337,26 @@ test('the page builds a moment for a dateless nudge instead of dropping the call
   // The fold asks one question or the other. An offset answers "how long
   // before the task" and a dateless task has no before, so the chips that ask
   // it are not offered — the hour takes their place.
-  assert.match(page, /\$\("#sOffset"\)\.hidden = !dated;/);
+  // A chase asks neither: its hour is the owner's rule, so the chips go too.
+  assert.match(page, /\$\("#sOffset"\)\.hidden = !dated \|\| chasing;/);
   assert.match(page, /\$\("#sRemindAtSeg"\)\.hidden = dated;/);
   // A changed hour has to reach the server, or the picker is a decoration.
   assert.match(page, /editing\.remAt !== wasRemAt/);
+});
+
+// The chip the owner asked for, read off the page because the sheet is only
+// ever exercised in a browser: it is offered on a dated task only, it sends a
+// chase and NO hour, and the page tells a chase from "every day" by `until`.
+test('the page offers "daily until the date" on a dated task and sends it as a chase', () => {
+  const page = require('node:fs').readFileSync(
+    require('node:path').join(__dirname, '..', 'docs', 'design', 'user-dashboard.html'), 'utf8');
+  assert.match(page, /data-rep="until" data-i18n="rep\.until"/);
+  assert.match(page, /untilChip\.hidden = !dated;/);
+  assert.match(page, /if\(x\.rep === "until"\)\{ API\.send\("setTaskReminder", \{taskId:id, on:true, chase:true\}\); return; \}/);
+  assert.match(page, /rep:\(x\.reminder && x\.reminder\.until\) \? "until" : repShape/);
+  for (const key of ['rep.until', 'rep.untilVal', 'sheet.chaseSub']) {
+    assert.equal(page.split(`"${key}":`).length - 1, 2, `${key} in both languages`);
+  }
 });
 
 // …and the arithmetic behind it, run rather than read. A text assertion on

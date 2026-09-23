@@ -277,6 +277,28 @@ const ACTIONS = {
     if (probe.rows[0].status !== 'open') {
       return err('invalid', 'cannot set a reminder on a completed task');
     }
+    // "כל יום עד התאריך" — the same chase חיים gets in chat
+    // (reminders.startChase): one a day until the task's own date, at the hour
+    // they already hear from Olma, stopping the moment it is done. The page
+    // sends no hour for it on purpose, because the owner's rule picks the hour
+    // and an hour the page computed would be taken as one they named.
+    //
+    // A deadline too close to chase across (less than two days of it) is
+    // refused rather than quietly turned into a one-off: the chip said "every
+    // day", and a one-off under it is the promise run 79 broke. The cancel and
+    // the attempt share a savepoint, so a refusal leaves the old reminder
+    // exactly where it was — /me/act commits whatever came back.
+    if (p.chase === true) {
+      await client.query('SAVEPOINT dashboard_chase');
+      for (const r of pending) {
+        const res = await reminders.cancelReminder(client, userId, r.id);
+        if (!res.ok) { await client.query('ROLLBACK TO SAVEPOINT dashboard_chase'); return res; }
+      }
+      const chase = await reminders.startChase(client, userId, p.taskId);
+      if (chase && chase.ok) return chase;
+      await client.query('ROLLBACK TO SAVEPOINT dashboard_chase');
+      return chase || err('invalid', 'a daily chase needs the task dated at least two days ahead');
+    }
     for (const r of pending) {
       const res = await reminders.cancelReminder(client, userId, r.id);
       if (!res.ok) return res;
