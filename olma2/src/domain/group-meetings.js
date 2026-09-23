@@ -269,6 +269,9 @@ async function statusOf(client, group, meeting) {
       // did not select them, which the room line treats as "no".
       settleDueAt: meeting.settle_due_at || null,
       calendarEventId: meeting.calendar_event_id || null,
+      // When the room's own "סגור" line went out, so a turn can tell a result
+      // the room has heard from one it has not (`group-turn.draw`).
+      doneToldAt: meeting.group_done_at || null,
       // Where, in the room's own words, or null — which the done line asks
       // about (owner, 2026-09-20: only when nobody said one).
       location: meeting.location === undefined ? null : (meeting.location || null),

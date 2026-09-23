@@ -36,7 +36,7 @@ const groupMeetings = require('./group-meetings');
 // from. `coordination: null` is a fact and not a gap — the wrong answer
 // available without it was the one that got said.
 const CONTEXT_HEADER = 'Room coordination (from the system, not the room — Olma\'s own rows, read this second):';
-const CONTEXT_RULE = 'Every sentence you say about this room\'s coordination comes from the block above. `coordination: null` means this room has nothing running right now, whatever was said earlier in this conversation; a number that is not there is a number you do not have.';
+const CONTEXT_RULE = 'Every sentence you say about this room\'s coordination comes from the block above. `coordination: null` means this room has nothing running right now, whatever was said earlier in this conversation; a number that is not there is a number you do not have. `lastCoordination.roomHeard: true` means the room has already been told that result: say it again only when somebody asks about it, never as the tail of a reply about something else.';
 // The owner's rule (2026-09-20). In the room a person is TAGGED, never named:
 // the tag notifies them, and WhatsApp renders it as whatever each reader has
 // that number saved as — so it is also the only spelling that is right for
@@ -175,6 +175,12 @@ async function draw(client, group, { lidPhones = null } = {}) {
       lastCoordination: {
         meetingId: c.meetingId, title: c.title, status: c.status,
         ...(c.confirmedSlot ? { slot: c.confirmedSlot } : {}),
+        // The room's own "סגור" line went out (`meetings.group_done_at`). A
+        // result the room has heard is not news, and with nothing marking it
+        // she closed seven replies running in פחם הסעות with "the poker is on
+        // Friday at noon, on Zoom" — to jokes that had nothing to do with it
+        // (2026-09-23). The column, not an inference: nothing else says it.
+        ...(c.status === 'confirmed' && c.doneToldAt ? { roomHeard: true } : {}),
       },
     };
   }
