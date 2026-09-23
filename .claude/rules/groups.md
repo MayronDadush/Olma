@@ -562,3 +562,16 @@ have already had to be argued for.
   because "החלפתי" would be false and a time leaving the table has a line of its
   own. The joiner is a dash, not a comma: their sentence keeps its own
   punctuation and a comma after a full stop is what that looks like.
+
+- **A joke in the room is answered with a joke, built only from what the room
+  said** (owner, 2026-09-23). Bar tagged her in פחם הסעות, asking if she could
+  tease Miron for losing yesterday. She answered with a refusal and an
+  explanation ("לא נאמר לי שהוא הפסיד, ולא אמציא לו"). The owner said
+  laughing with him a little is fine. `agents-group-template.md` now allows
+  one short, good-natured line back. The limits are the ones the room already
+  has: nothing invented, nothing from a private chat, nobody really mocked.
+  A premise a member wrote in the room is the room's own words, so a joke
+  about it passes on nothing. Doctrine only,
+  because there is no state to draw: it is a judgement about tone, and
+  `resync-agent-templates.js` carries it to every room on deploy
+  (`incidents.md`, "The room's joke got a lecture").

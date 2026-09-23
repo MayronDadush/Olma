@@ -294,3 +294,15 @@ test('the room doctrine resync rewrites a stale AGENTS.md and touches nothing el
   assert.ok(lines.every((l) => !l.includes('g-tok-')), 'the log never carries a token');
   assert.deepEqual(pg.resyncGroupDoctrine(rows, { apply: true }), { changed: 0, same: 2, missing: 1 });
 });
+
+// The owner, 2026-09-23: Bar tagged her with a joke about Miron losing, and
+// the room got a refusal with reasons. Laughing back a little is allowed, and
+// the limits are the ones every other line in the room already keeps. Held
+// here because a doctrine paragraph is the easiest thing to trim when the file
+// grows, and there is no code behind this one to fail instead.
+test('the room doctrine lets her joke back, from the room\'s own words only', () => {
+  const doctrine = pg.renderAgentsMd('g-tok-joke');
+  assert.match(doctrine, /מותר\s+לצחוק איתו בחזרה/);
+  assert.match(doctrine, /הבדיחה נבנית רק ממה שנאמר כאן/);
+  assert.match(doctrine, /משיחה פרטית לא לוקחים כלום/);
+});
