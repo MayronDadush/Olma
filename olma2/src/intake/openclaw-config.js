@@ -126,15 +126,46 @@ function hasAgent(cfg, id) {
 }
 
 // Adding an agent hot-reloads in both formats, safe to apply per-provision.
-function addAgent(cfg, { id, workspace, agentDir }) {
+// The agent's tool policy (intake/agent-tool-policy.js) is written in the
+// same entry, so a new agent is never live for a moment with every tool. It is
+// computed HERE rather than by each caller: four places create agents
+// (provisioning, rooms, the testbed, install-intake), and the next one should
+// not have to know. Pass `tools` only to override; null writes none.
+function addAgent(cfg, { id, workspace, agentDir, tools }) {
   cfg.agents = cfg.agents || {};
   if (hasAgent(cfg, id)) return false;
+  const policy = tools === undefined ? require('./agent-tool-policy').agentToolPolicy(id, cfg) : tools;
+  const extra = policy && Array.isArray(policy.deny) ? { tools: { deny: [...policy.deny] } } : {};
   if (usesEntries(cfg)) {
-    cfg.agents.entries[id] = { name: id, workspace, agentDir };
+    cfg.agents.entries[id] = { name: id, workspace, agentDir, ...extra };
     return true;
   }
   cfg.agents.list = cfg.agents.list || [];
-  cfg.agents.list.push({ id, name: id, workspace, agentDir });
+  cfg.agents.list.push({ id, name: id, workspace, agentDir, ...extra });
+  return true;
+}
+
+function agentEntry(cfg, id) {
+  if (usesEntries(cfg)) return Object.hasOwn(cfg.agents.entries, id) ? cfg.agents.entries[id] : null;
+  return ((cfg.agents && cfg.agents.list) || []).find((a) => a && a.id === id) || null;
+}
+
+// Set (or, with null, remove) an agent's `tools.deny`, leaving any other key
+// under `tools` alone. True only when something actually changed: a write
+// that changes nothing still makes the gateway re-evaluate its config.
+function setAgentTools(cfg, id, tools) {
+  const entry = agentEntry(cfg, id);
+  if (!entry) return false;
+  const want = tools && Array.isArray(tools.deny) ? [...tools.deny] : null;
+  const have = entry.tools && Array.isArray(entry.tools.deny) ? entry.tools.deny : null;
+  if (JSON.stringify(want) === JSON.stringify(have)) return false;
+  if (want) {
+    entry.tools = { ...(entry.tools || {}), deny: want };
+  } else {
+    const rest = { ...(entry.tools || {}) };
+    delete rest.deny;
+    if (Object.keys(rest).length) entry.tools = rest; else delete entry.tools;
+  }
   return true;
 }
 
@@ -493,7 +524,7 @@ module.exports = {
   addGroupWildcardBinding, muteAgent, isAgentMuted, admitAllGroups,
   admitGroup, unadmitGroup, isGroupAdmitted, addGroupBinding, removeGroupBinding,
   groupAllowFrom, syncGroupAllowFrom, isGroupSenderGateOpen, SELF_PHONE,
-  usesEntries, listAgentIds, hasAgent,
+  usesEntries, listAgentIds, hasAgent, agentEntry, setAgentTools,
 };
 
 // A getter, not a value: `occ.DEFAULT_PATH` now answers with whatever the

@@ -11,6 +11,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const occ = require('../intake/openclaw-config');
+const toolPolicy = require('../intake/agent-tool-policy');
 const infraAgent = require('../domain/infra-agent');
 // The worker-thread facade (channels/sessions-async.js): this guard runs
 // inside brokerd every ten minutes and reads every user's intake session.
@@ -132,6 +133,23 @@ function checkOpenclawConfig(cfg) {
   const resetMode = ((cfg.session || {}).reset || {}).mode;
   if (resetMode !== 'daily') {
     violations.push(`session.reset.mode is ${resetMode === undefined ? 'unset (gateway default "none")' : JSON.stringify(resetMode)} — a session never ends, so every reply reads the whole history since the person joined (fix: scripts/set-session-reset.js --apply)`);
+  }
+  // Which of our tools each person's and room's agent is shown
+  // (intake/agent-tool-policy.js). A room shown every tool read 27k tokens a
+  // turn instead of 12k (g-7, 2026-09-23). The list is computed from the
+  // registry, so a drift here means a tool was added and this agent was never
+  // re-synced — the deploy does it, so this going red means the deploy's step
+  // failed or was skipped. Dashboard row, not BREAKS_USERS: brokerd refuses a
+  // tool called by the wrong audience, so nothing fails, a prompt is only
+  // larger than it should be. One violation for all of them, ids sorted, so
+  // the title is the same on every tick while the set is.
+  const drifted = [];
+  for (const id of occ.listAgentIds(cfg)) {
+    if (!toolPolicy.agentKind(id)) continue;
+    if (!toolPolicy.policyMatches(occ.agentEntry(cfg, id), toolPolicy.agentToolPolicy(id, cfg))) drifted.push(id);
+  }
+  if (drifted.length) {
+    violations.push(`${drifted.length} agent(s) are shown tools for the wrong audience, or miss a deny the registry now needs: ${drifted.sort().join(', ')} (fix: scripts/sync-agent-tool-policies.js --apply)`);
   }
   return violations;
 }

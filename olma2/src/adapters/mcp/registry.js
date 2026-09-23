@@ -60,6 +60,12 @@ function audienceOf(t) { return t.audience === 'group' ? 'group' : 'user'; }
 // the point of the call. The group set is kept tiny for the same reason every
 // schema is (55k on every turn for everybody), and each one says GROUP AGENTS
 // ONLY in its first three words so a person's model does not reach for it.
+//
+// The narrowing happens one layer up since 2026-09-23: the GATEWAY does know
+// which agent it runs, and each person's and room's entry carries a
+// `tools.deny` of the other audience's tools, built from `audienceOf` below
+// (intake/agent-tool-policy.js). A room's prompt went from 27k to 12k tokens.
+// The shim still serves everything and brokerd is still the lock.
 function toolDefinitions({ audience = null } = {}) {
   const list = audience ? TOOLS.filter((t) => audienceOf(t) === audience) : TOOLS;
   return list.map(({ name, description, inputSchema }) => ({ name, description, inputSchema }));
