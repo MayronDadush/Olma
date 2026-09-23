@@ -133,6 +133,34 @@ title means this file. Grep the title, not the filename.
   is deleted, and it had never run for a real person — 8 option rows in the
   whole history of the feature, every one `active`, and no `meeting.option_
   approved` or `option_rejected` row in the audit log (measured on the box).
+  **…and the mirror is a CONVENIENCE, never a clock.** `meeting-options.
+  mirrorCurrent` picks `ORDER BY id DESC` — the most recently ADDED option,
+  which is not the latest one in time and has never claimed to be. Asking
+  `meetings.proposed_start_at` whether a coordination is over therefore gave
+  the opposite answer depending on the order two times were put on the table:
+  a coordination offering Tuesday and, added after it, next month was closed
+  on Tuesday night with next month still live, and the other order left
+  Tuesday on the table long after Tuesday (`incidents.md`, "The coordination
+  that expired on the wrong Tuesday"). Since 2026-09-23 the question is asked
+  of the table itself — `meetings.dropPassedOptions` takes every option whose
+  moment has passed off it, and only a coordination this pass has just taken a
+  time away from is asked whether it is empty. **Running out of times is not
+  the same thing as having none**: a table somebody emptied by hand a minute
+  ago, and one nobody has put a time on yet, both sit at zero and neither is
+  over.
+  **A whole day is the one option whose moment is not six hours after its
+  instant.** `meeting-option-moment.momentFor` stamps an all-day option at
+  09:00 of the day it means, so the grace a clock time gets would take
+  "Sunday, all day" off the table at 15:00 on Sunday. It gets a full day on
+  top (`meetings.ALL_DAY_EXTRA_MS`), and every line here errs late on purpose
+  — a time removed an hour early is a time somebody could still have agreed
+  to.
+  **The status says which of the two ways a time left**: `deleted` is a person
+  taking it off, which is carried to everybody else the next time they hear
+  about the coordination (`meeting-options.removed`, `meeting-options.
+  unheardRemovals`); `expired` (migration 085) is nobody's doing and is said to
+  no one, because "Tuesday came off the table" about a Tuesday that has been
+  and gone is noise.
 
 - **A constraint that rules out a time ON the table is an ANSWER, and the tool
   that records it is the one that declines it** (2026-09-20). Maya wrote "לא
