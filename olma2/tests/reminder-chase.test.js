@@ -35,6 +35,7 @@ const { partsInZone, weekdayOfParts } = require('../src/domain/datetime');
 const pause = require('../src/domain/pause');
 const listBlock = require('../src/domain/list-block');
 const sweeps = require('../src/jobs/sweeps');
+const { BY_NAME } = require('../src/adapters/mcp/registry');
 
 const TZ = 'Asia/Jerusalem';
 // 2026: Tue 22 Sep … Mon 28 Sep. Every moment here is a literal computed once,
@@ -351,4 +352,75 @@ test('the list says the END, because "every day" alone is a promise to go on for
   });
   assert.match(block, /כל יום עד /);
   assert.doesNotMatch(block, /כל יום,/, 'never the bare cadence for something that ends');
+});
+
+// ---- the arming the model actually makes -------------------------------------
+//
+// Run 79, 2026-09-23 — the first real eval night after twelve dead ones, and
+// this file's own scenario went red. add_task armed the automatic 09:00 on the
+// deadline day, `hints.chaseAvailable` asked for set_task_reminder(task_id,
+// remind_at, nudge:true), and the model passed back the one moment in front of
+// it: that 09:00. Taken as the anchor it made the chase's first day its last,
+// the ladder fallback armed one reminder on Monday, and the reply promised one
+// every day. The founding test above arms through add_task(nudge) in ONE call,
+// which is the path the model did not take.
+
+test('the moment the model echoes back is not an hour anybody named, so the owner\'s rules decide', async (t) => {
+  const { pool, teardown } = await freshDb();
+  t.after(teardown);
+  const u = await person(pool);
+  const res = await camera(pool, u, { nudge: false });
+  const [auto] = await pending(pool, res.data.task.id);
+  assert.equal(auto.auto, true, 'add_task armed its own reminder first, as it did on the night');
+
+  const chase = await withTx(pool, (c) => reminders.startChase(c, u.id, res.data.task.id,
+    { now: new Date(ASKED_AT), at: auto.remind_at }));
+  assert.ok(chase && chase.ok, 'echoing the automatic moment still arms a chase');
+  const rows = await pending(pool, res.data.task.id);
+  assert.equal(rows.length, 1, 'the automatic one is replaced, never joined');
+  assert.equal(rows[0].repeat_rule, 'daily');
+  assert.equal(local(rows[0].remind_at), local(EVENING_1), 'the day he asked still counts');
+  assert.equal(local(rows[0].repeat_until), 'Mon 28-09 23:59');
+});
+
+test('through the tool: an echoed moment arms the chase and the result says its shape', async (t) => {
+  const { pool, teardown } = await freshDb();
+  t.after(teardown);
+  const u = await person(pool, { quiet: 'none' });
+  const NOW = Date.now();
+  const added = await withTx(pool, (c) => tasks.addTask(c, u.id, {
+    title: 'לקחת את המצלמה לתיקון', dueAt: new Date(NOW + 5 * 86400_000).toISOString(),
+  }));
+  const [auto] = await pending(pool, added.data.task.id);
+  const res = await withTx(pool, (c) => BY_NAME.get('set_task_reminder').handler(c, { id: u.id, timezone: TZ }, {
+    task_id: added.data.task.id,
+    remind_at: new Date(auto.remind_at).toISOString().replace('Z', '+00:00'),
+    nudge: true,
+  }));
+  assert.equal(res.ok, true, JSON.stringify(res.error || {}));
+  assert.equal(res.data.reminder.repeat_rule, 'daily');
+  assert.ok(res.data.reminder.repeat_until, 'a chase, not a cadence');
+  assert.ok(new Date(res.data.reminder.remind_at).getTime() < NOW + 86400_000,
+    'the first one is inside a day — the eval asserts exactly this');
+  assert.match(res.data.hints.chase, /daily chase is armed/);
+  const live = await pending(pool, added.data.task.id);
+  assert.deepEqual(live.map((r) => Number(r.id)), [Number(res.data.reminder.id)],
+    'the automatic row on the deadline day went: the chase already speaks that morning');
+});
+
+test('through the tool: when no chase fits, the result says it is ONE reminder', async (t) => {
+  const { pool, teardown } = await freshDb();
+  t.after(teardown);
+  const u = await person(pool, { quiet: 'none' });
+  const added = await withTx(pool, (c) => tasks.addTask(c, u.id, { title: 'לקחת את המצלמה לתיקון' }));
+  const res = await withTx(pool, (c) => BY_NAME.get('set_task_reminder').handler(c, { id: u.id, timezone: TZ }, {
+    task_id: added.data.task.id,
+    remind_at: new Date(Date.now() + 3 * 3600_000).toISOString().replace('Z', '+00:00'),
+    nudge: true,
+  }));
+  assert.equal(res.ok, true, JSON.stringify(res.error || {}));
+  assert.equal(res.data.reminder.repeat_rule, null);
+  assert.equal(res.data.reminder.nudge, true, 'they still get the ladder they asked for');
+  assert.match(res.data.hints.chase, /No daily chase was armed/);
+  assert.match(res.data.hints.chase, /Never say "every day"/);
 });
