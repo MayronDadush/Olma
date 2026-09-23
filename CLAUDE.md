@@ -286,6 +286,7 @@ Loads when you **Read** a file under `src/adapters/http/**`, `docs/design/**`.
 - **Changing the domain never invalidates an existing Google connection.**
 - **Two sheets on the same `z-index` are ordered by the MARKUP, and the time picker has to beat all of them.**
 - **An element appended into a container something else re-renders is borrowed, not owned.**
+- **The SERVER decides when a coordination stops being active, and the page never cuts that list a second time.**
 
 ### Doctrine, tools and reactions
 

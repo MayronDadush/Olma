@@ -179,6 +179,7 @@ never trust a dated narrative for something you are about to act on.
 - [The triage he did by hand, and the fourth detector the box refused (2026-09-19)](#the-triage-he-did-by-hand-and-the-fourth-detector-the-box-refused-2026-09-19)
 - [The light that would not go round (2026-09-22)](#the-light-that-would-not-go-round-2026-09-22)
 - [The picker that opened underneath (fixed 2026-09-22)](#the-picker-that-opened-underneath-fixed-2026-09-22)
+- [Saturday's game, filed under "closed" (fixed 2026-09-23)](#saturdays-game-filed-under-closed-fixed-2026-09-23)
 - [The list he could not put his own task into (2026-09-19)](#the-list-he-could-not-put-his-own-task-into-2026-09-19)
 - [An offer to call a number the bridge has never served (fixed 2026-09-06)](#an-offer-to-call-a-number-the-bridge-has-never-served-fixed-2026-09-06)
 - [The reply's first six seconds were bookkeeping (2026-09-05)](#the-replys-first-six-seconds-were-bookkeeping-2026-09-05)
@@ -7231,6 +7232,40 @@ with the row, or keep it out of the row entirely.
 strictly above every bumped sheet (measured against whatever is bumped, not
 against the number 82), one renderer for the hour with no chip of its own
 outside the row, and the input handler that redraws the button.
+
+### Saturday's game, filed under "closed" (fixed 2026-09-23)
+
+One screenshot of Miron's own coordination list, and three of the cards in the
+fold called "תיאומים שנסגרו ושיצאת מהם" were meetings that had not happened
+yet — one of them days away. Nothing was wrong with the data: the three rows
+came back from the server in the ACTIVE list, exactly as they should have.
+
+`loadMeetings` already draws the line. A settled coordination stays active
+until its moment has actually passed — `EXPIRE_AFTER_START_MS` past its start,
+or `LEGACY_STALE_DAYS` for the text-only rows that predate start times — and
+`loadLeftMeetings` picks up what falls off, plus what the person left. Two
+queries, one cut between them, and `tests/user-dashboard-meetings.test.js` has
+asserted all three cases since 2026-09-05.
+
+The page then cut the same list a second time, on `settled` alone, and its
+comment says why it thought it should: a settled coordination "is a calendar
+entry, not an active one". That is true the day after. It is false the week
+before, which is most of a settled coordination's life — and it is precisely
+when the person wants to see it. So the archive filled up with meetings still
+to come, under a heading that says they are closed.
+
+**Two cuts where one is authoritative is the shape, not the filter.** The page
+draws the list it is handed; when it is right to leave, the server says so and
+it leaves. That is the part with the clock, the timezone and the six-hour
+grace in it, and none of those exist in the browser.
+
+What did have to move to the page is the marking, because a settled card now
+sits beside four that still want something. The chip alone did not carry it —
+same size, same shape and same language as "אפשר לסגור" and "ממתין", so in a
+quick scan down the list it does not separate. The owner picked the whole card
+instead (2026-09-23): the card is tinted `--accent-soft` and the chip goes
+solid with a ✓ on it, active list only. An archive row is over and is worth
+pointing at with nothing.
 
 ### The list he could not put his own task into (2026-09-19)
 
