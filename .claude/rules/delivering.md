@@ -273,6 +273,24 @@ title means this file. Grep the title, not the filename.
   conditions makes the exception general, and a general exception means the
   pause stops meaning anything (`incidents.md`, "A room counted in somebody
   who had paused").
+  **And one per run of SILENCE, because the two were inverted** (owner,
+  2026-09-22, asked as a choice and answered "אפשרות 1"): a ladder pause is
+  three misses and had the allowance, while one or two misses — somebody who
+  stopped answering a fortnight ago and was never paused — had nothing at all,
+  so Guy's invite to Padel Gang's first coordination was dropped twice in three
+  minutes. `quietRoomInvite` is the same three conditions anchored on their last
+  word instead of on `paused_at` (`pause.quietRoomInviteSpent`, both
+  `last_inbound_at` and `last_dashboard_at`, so the allowance re-arms exactly
+  when the silence ends), asked by the worker only where the quiet branch can
+  be reached, and never passed to a sibling. **The GATE says whether the
+  allowance was spent** (`spendsQuietRoomInvite` on the deliver verdict) rather
+  than the worker inferring it: unlike the paused case this is one of four ways
+  past that branch, and a row the room window or their own page carried must not
+  burn it — a second copy of those predicates in the worker is the drift this
+  repo keeps paying for. The trail names which rule paid
+  (`quiet.room_invite_sent` beside `pause.room_invite_sent`), because a pause
+  and a silence are different rules on one column (`incidents.md`, "The room
+  asked five and reached four").
 
 - **An unstated quiet day is not "none" — it is Saturday or Sunday, and which
   one is a fact about the PERSON.** `domain/holidays.calendarFor` reads a

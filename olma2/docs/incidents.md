@@ -55,6 +55,7 @@ never trust a dated narrative for something you are about to act on.
 - [The constraint that was an answer (fixed 2026-09-20)](#the-constraint-that-was-an-answer-fixed-2026-09-20)
 - [Two paragraphs where two sentences would do (fixed 2026-09-20)](#two-paragraphs-where-two-sentences-would-do-fixed-2026-09-20)
 - [The slot that was already closed (fixed 2026-09-20)](#the-slot-that-was-already-closed-fixed-2026-09-20)
+- [The room asked five and reached four (fixed 2026-09-22)](#the-room-asked-five-and-reached-four-fixed-2026-09-22)
 - [A room counted in somebody who had paused (fixed 2026-09-13)](#a-room-counted-in-somebody-who-had-paused-fixed-2026-09-13)
 - [The fifth draft was the rude one (fixed 2026-09-11)](#the-fifth-draft-was-the-rude-one-fixed-2026-09-11)
 - [Six good mornings for one timeout (fixed 2026-09-09)](#six-good-mornings-for-one-timeout-fixed-2026-09-09)
@@ -2071,6 +2072,47 @@ shows the average length per window.
 **Not done, and named.** The poker example wants a place ("אצל מירון") —
 that is item F of the same plan, a `meetings.location` column, and lands
 separately.
+### The room asked five and reached four (fixed 2026-09-22)
+
+Padel Gang's first coordination (meeting 40) was opened with five connected
+members. Four private invites landed inside two minutes. The fifth, Guy's
+(u-32), was stamped sent at 13:11:32 with `hold_reason = 'quiet'`, and the
+second thing queued for him — the re-framed invite the table-change path
+produces — was dropped the same way at 13:14:24.
+
+The rule that dropped it is the right rule: `checkin_misses >= 1` means the
+ladder asked "את פה?" and got nothing back, and from there nothing Olma decided
+to say goes out. Guy was at two misses, having last written on 2026-09-08.
+
+What was wrong was the ORDER of the two silences. A ladder pause is three
+misses, and since 2026-09-13 a pause has had an allowance: one room
+coordination invite, because standing in a room where something is being
+arranged is not the same as being interrupted. One or two misses had nothing —
+so the further somebody had withdrawn, the more they heard. The room, correctly,
+said nothing about him at all: the `asked` filter shipped the same morning kept
+him out of the base line's `missing`, which is the difference between a room
+that does not mention somebody and a room that says he is holding things up.
+
+The owner was given the choice and took the first option: extend the allowance.
+`quietRoomInvite` is the paused fact's twin — the same three conditions (a
+`meeting_invite`, a group meeting still negotiating, the allowance unspent),
+anchored on their last word rather than on `paused_at`, since a silence has no
+start column and writing back resets the counter anyway. Two things it is
+careful about. The worker asks only where the quiet branch can be reached
+(`checkin_misses >= 1`), so an ordinary invite to somebody who is answering
+never stamps `room_invite_sent_at` and never costs them a later pause's
+allowance. And the GATE reports the spend instead of the worker inferring it:
+the paused branch has exactly one way past it, but the quiet branch has four —
+a word they asked for, the room's fifteen minutes, their own page — and a row
+carried by one of those must not burn an allowance. Copying those predicates
+into the worker to decide it there is the shape of half the entries in this
+file.
+
+`room_invite_sent_at` stays one column with two anchors, and the audit says
+which rule paid: `quiet.room_invite_sent` beside `pause.room_invite_sent`.
+Meeting 40's own rows were already spent when this shipped, so Guy heard
+nothing about that coordination — the fix is for the next one.
+
 ### A room counted in somebody who had paused (fixed 2026-09-13)
 
 קפיש (u-9) said he was getting system messages he should not have. They were

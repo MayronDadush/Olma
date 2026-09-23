@@ -216,13 +216,30 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
         // room started, only while this pause has not spent it. Worker-scoped
         // like groupWroteAt, and false for every sibling below: it is about
         // THIS row, and a paused person's other rows must still drop.
+        //
+        // `quietRoomInvite` is the same allowance for somebody who has stopped
+        // answering without being paused (owner, 2026-09-22) — the same three
+        // conditions, anchored on their last word instead of on `paused_at`
+        // (pause.quietRoomInviteSpent), and asked only when the gate's quiet
+        // branch can actually be reached, so an ordinary invite to somebody
+        // who is answering never stamps the column and never costs them a
+        // later pause's allowance. A paused row keeps `pausedRoomInvite`
+        // alone: the pause branch is decided before the quiet one, so widening
+        // that fact would change what a pause means.
         let pausedRoomInvite = false;
-        if (row.paused_at && row.kind === 'meeting_invite' && meetingId
-            && !pauseDomain.roomInviteSpent(row)) {
+        let quietRoomInvite = false;
+        const roomInviteCandidate = row.kind === 'meeting_invite' && meetingId
+          && (row.paused_at
+            ? !pauseDomain.roomInviteSpent(row)
+            : (Number(row.checkin_misses) || 0) >= 1 && !pauseDomain.quietRoomInviteSpent(row));
+        if (roomInviteCandidate) {
           const { rows: g } = await client.query(
             `SELECT 1 FROM meetings WHERE id = $1 AND group_id IS NOT NULL AND status = 'negotiating'`,
             [meetingId]);
-          pausedRoomInvite = g.length > 0;
+          if (g.length > 0) {
+            if (row.paused_at) pausedRoomInvite = true;
+            else quietRoomInvite = true;
+          }
         }
         // Have they ANSWERED in this coordination? The gate's silence branch
         // treats a yes or a no on record as proof this row is news about
@@ -309,8 +326,8 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
           checkinMisses: Number(row.checkin_misses) || 0,
           blockedUntil: row.quota_blocked_until,
           window: win.data.window, quietDays, quietDates, shabbatWindow, tz: row.timezone,
-          lastInboundAt: row.last_inbound_at, dashboardWroteAt: row.last_dashboard_at, groupWroteAt, pausedRoomInvite,
-          answeredCoordination,
+          lastInboundAt: row.last_inbound_at, dashboardWroteAt: row.last_dashboard_at, groupWroteAt,
+          pausedRoomInvite, quietRoomInvite, answeredCoordination,
           hasDigest: Boolean(row.digest_times),
           introductionPending: introRows.length > 0,
           introductionSentAt: introSent[0] ? introSent[0].sent_at : null,
@@ -378,13 +395,13 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
           for (const sib of siblings) {
             if (ids.length >= MAX_BATCH) break;
             if (batchKeyFor(sib) !== key) continue;
-            // `groupWroteAt` and `answeredCoordination` were read for THIS
-            // row's coordination and are the facts here that are about the row
-            // rather than the person. The batch is reminders only, which never
-            // carry a meeting, so both are empty for every sibling — said out
-            // loud rather than relied upon.
+            // `groupWroteAt`, `answeredCoordination` and the two room-invite
+            // allowances were read for THIS row's coordination and are the
+            // facts here that are about the row rather than the person. The
+            // batch is reminders only, which never carry a meeting, so all are
+            // empty for every sibling — said out loud rather than relied upon.
             if (decide({
-              ...facts, groupWroteAt: null, pausedRoomInvite: false,
+              ...facts, groupWroteAt: null, pausedRoomInvite: false, quietRoomInvite: false,
               answeredCoordination: false, row: sib,
             }).action !== 'deliver') continue;
             ids.push(sib.id);
@@ -428,7 +445,7 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
           // it matter, and a fact about another row's coordination must not be
           // the thing that lets a sibling through.
           const deliverable = others.filter((sib) => decide({
-            ...facts, pausedRoomInvite: false, answeredCoordination: false, row: sib,
+            ...facts, pausedRoomInvite: false, quietRoomInvite: false, answeredCoordination: false, row: sib,
           }).action === 'deliver');
           const parts = planMerge(row, deliverable);
           if (parts) {
@@ -461,10 +478,17 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
           );
         // Stamped only once the send confirmed or timed out (booked as sent
         // below): "we told them" is never written for a message that failed.
+        // One column, two allowances, and the trail says which one paid: a
+        // pause and a run of silence are different rules with different
+        // anchors, and a single audit kind would make them one thing to read
+        // back. The quiet half is spent only when the GATE says the row got
+        // through on it (verdict.spendsQuietRoomInvite) — a row the room
+        // window or the page carried is not an allowance being used.
         const spendRoomInvite = async () => {
-          if (!pausedRoomInvite) return;
+          const quiet = Boolean(verdict.spendsQuietRoomInvite);
+          if (!pausedRoomInvite && !quiet) return;
           await client.query(`UPDATE users SET room_invite_sent_at = now() WHERE id = $1`, [row.user_id]);
-          await audit.record(client, row.user_id, 'pause.room_invite_sent', {
+          await audit.record(client, row.user_id, quiet ? 'quiet.room_invite_sent' : 'pause.room_invite_sent', {
             outboxId: Number(row.id), meetingId,
           });
         };
