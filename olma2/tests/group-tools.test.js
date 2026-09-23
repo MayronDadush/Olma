@@ -193,6 +193,9 @@ test('a member saying their own gender in the room is saved on THEIR record, and
   assert.equal(await gender(miron), null);
   assert.match(fs.readFileSync(path.join(ws, 'USER.md'), 'utf8'), /Address them in the MASCULINE form/,
     'their private agent reads it on its next turn');
+  const { rows: pref } = await db.pool.query(
+    `SELECT value FROM user_preferences WHERE user_id = $1 AND key = 'gender_forms'`, [amit.id]);
+  assert.equal(pref[0] && pref[0].value, 'לשון זכר', 'and the private chat\'s own record of it agrees');
 
   // Anything that is not one of the two words is refused, not guessed at.
   const odd = await call('גבר');

@@ -95,16 +95,13 @@ const TAG_RULE = 'To reach a person in this room, use their `tag` exactly as wri
 // How a person is addressed, in the only two places they ever said it: the
 // profile page's own answer (`users.gender`, migration 068), and, failing that,
 // the `gender_forms` preference the private agent stores when they tell it in
-// words — free text, "נשי" on the box today. Both matching or neither is null,
-// never a coin toss: a wrong form in front of a room is the thing this ends.
-const FEMININE_RE = /נקב|נשי|אישה|feminine|\bfemale\b|\bwoman\b/i;
-const MASCULINE_RE = /זכר|גברי|masculine|\bmale\b|\bman\b/i;
+// words — free text, "נשי" on the box today. Since 2026-09-23 the two are kept
+// in step on every write (`gender-forms.js`), so the fallback matters only for
+// a row written before that. The reading is that module's, not a copy.
+const { genderFromWords } = require('./gender-forms');
 function addressOf(m) {
-  if (m.gender === 'female') return 'feminine';
-  if (m.gender === 'male') return 'masculine';
-  const said = String(m.gender_forms || '');
-  const f = FEMININE_RE.test(said), mm = MASCULINE_RE.test(said);
-  return f === mm ? null : (f ? 'feminine' : 'masculine');
+  const g = m.gender === 'female' || m.gender === 'male' ? m.gender : genderFromWords(m.gender_forms);
+  return g === 'female' ? 'feminine' : (g === 'male' ? 'masculine' : null);
 }
 
 // What a person's own record may give the room: a first name THEY confirmed,
