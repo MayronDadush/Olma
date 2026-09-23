@@ -50,6 +50,7 @@ never trust a dated narrative for something you are about to act on.
 **Delivery, outbox and proactive messages**
 - [The stop that waited for a yes (fixed 2026-09-22)](#the-stop-that-waited-for-a-yes-fixed-2026-09-22)
 - [The table that did not say where she stood (2026-09-20)](#the-table-that-did-not-say-where-she-stood-2026-09-20)
+- [Five messages in twelve minutes, about one coordination (fixed 2026-09-22)](#five-messages-in-twelve-minutes-about-one-coordination-fixed-2026-09-22)
 - [Four messages in sixty-two seconds (fixed 2026-09-20)](#four-messages-in-sixty-two-seconds-fixed-2026-09-20)
 - [The constraint that was an answer (fixed 2026-09-20)](#the-constraint-that-was-an-answer-fixed-2026-09-20)
 - [Two paragraphs where two sentences would do (fixed 2026-09-20)](#two-paragraphs-where-two-sentences-would-do-fixed-2026-09-20)
@@ -1630,6 +1631,157 @@ compares on anyway. (`domain/identity-repair.js`, `rotateIdentityToken`.)
 
 ## Delivery, outbox and proactive messages
 
+
+### Five messages in twelve minutes, about one coordination (fixed 2026-09-22)
+
+מירון opened a padel coordination in a room at 16:11 and read five messages
+from Olma by 16:25:
+
+| | |
+|---|---|
+| 16:13 | the invite — he opened it, and he is asked privately too |
+| 16:14 | שחרון put שבת 16:00 on the table |
+| 16:22 | יובל cannot do Wednesday |
+| 16:23 | שחרון cannot do Wednesday either |
+| 16:25 | שחרון put שבת 17:00 on the table |
+
+Every one of them was correct. The owner's reading was that there were simply
+too many of them, and that whoever opens a coordination does not need an
+update on everything that happens inside it.
+
+**The machinery that says several things once already existed, and never got
+to run.** `meeting-fanout.foldIntoPendingQuestion` was built after "Four
+messages in sixty-two seconds" precisely for this: a row about a coordination
+that has NOT gone out yet swallows the next one instead of being queued behind
+it. But every negotiation row is `urgent`, so it leaves inside a minute, and
+by the time the next event arrives there is nothing unsent to fold into.
+Kapish's four rows only ever folded because the NIGHT was holding them —
+nothing does that during the day, which is when a coordination actually moves.
+
+**Measured before choosing a number**: 47 (person × coordination) pairs in the
+whole history of the feature, 31 of them 2 messages or more, 11 of them 4 or
+more, worst 7. Of the 68 consecutive messages one person received about one
+coordination, **46 landed within fifteen minutes of the one before**, 31
+within five, 20 within two. Half an hour would have caught two more than
+fifteen and is that much longer for a live question to sit unasked.
+
+So a negotiation row now carries `release_after` = a quarter of an hour after
+anything about that coordination last REACHED that person, and the fold does
+the rest: everything that happens while it waits lands in the one waiting row,
+which goes out carrying the table as it stands at the moment of sending.
+`release_after` rather than a gate hold, because the row is not held — it is
+SCHEDULED, and it has never been looked at; the worker's picker already
+honours the column, so nothing else anywhere needed to change. The baseline is
+what was DELIVERED (`sent_at` with no `hold_reason`), the same one the
+removals and the late invite already use: a row the gate dropped told them
+nothing and buys no quiet.
+
+**Only what is still being negotiated waits.** An invite, a time added, a
+person rejoining. A RESULT — confirmed, cancelled, nobody matched, expired —
+is the message the person is actually waiting for, and holding one of those to
+save them a notification spends their patience on exactly the wrong thing.
+
+**And the second half: two of the five were messages only the initiator ever
+gets.** A plain decline (`meeting_slot_declined`) and somebody stepping out of
+a coordination that carries on (`meeting_opt_out`) both went to the person who
+opened it and to nobody else. Opening a coordination is not a subscription to
+every answer in it (owner: "אין צורך שמי שפתח את התיאום יקבל הודעות
+מיוחדות"), so neither is a message any more. Nothing is lost that he could act
+on: the table he is shown says how many people are on each time, and
+`getStatus` still carries each person's shareable constraints by name, so the
+REASON is his to read the moment he or his next message about that
+coordination asks for it — it moved from a push to a pull. `meeting_no_match`
+stays, because a coordination that died is the one thing a table can never
+tell him later.
+
+`accept` is still in `afterSlotResponse`'s signature and is deliberately
+unread: a yes and a no now produce the same fan-out, and a parameter left in
+place says that reading it again is a decision rather than an oversight.
+**The same afternoon had the mirror-image fault in the ROOM, and the owner
+named it before anybody looked**: the room should have had an update by then,
+and whoever had not answered should have been tagged. What it had actually
+heard was two lines — "מתחילה לתאם" at 16:11 and "יש כיוון" at 16:15 — and
+then nothing, through שבת 16:00 coming off the table, three other times going
+on and two people turning Wednesday down. Two separate reasons, one for each
+half of what he asked for.
+
+**The mid-way chase was scheduled for half past five the next morning.**
+`group-voice.chaseDueAt` waited half the distance to the earliest option,
+clamped to [1h, 24h]; the earliest option was twenty-six hours out, so half
+was thirteen, and the night was in front of it. That reads well and is wrong
+in the only direction that costs anything, so it is an hour after she starts
+now — with the old instinct kept as a ceiling rather than a formula
+(`Math.min`), because a game in ninety minutes should still be chased in
+forty-five.
+
+**And nothing could say the table had changed.** Every line a room hears is
+said ONCE per coordination, which is right for each of them — she has started,
+there is a direction, who has not answered, it is closed — and leaves a
+negotiation that moves all afternoon with nothing to report. `group_table_at`
+(migration 084) is the first watermark in that family rather than a flag: the
+moment the room was last told what is on the table, against the newest change
+to any option (`created_at` for one added, `decided_at` for one taken off,
+both of which `meeting_options` already had — no second column was needed).
+The line says the SHAPE and never an answer: how many times are on the table
+and which one is furthest along. Whether Dana said no is still Dana's to say.
+
+Two things the first cut got wrong and the existing tests caught. It fired on
+the very first option somebody put up — "השולחן זז — עכשיו מועד אחד" about a
+table that had just been laid — so the watermark is the BASE line and never
+the started line: a room that has not been shown a table cannot have seen one
+move. And the count went into the template as a number, which in Hebrew reads
+"1 מועדים"; agreement is the renderer's job, so `count` is handed over as a
+whole phrase. The idempotency key carries the change's own timestamp
+(`g<room>:m<meeting>:table:<epoch>`), so each movement gets one line and a
+re-run of the pass still collapses onto it.
+
+**And then the owner asked the obvious next question, which nobody had.** If
+the room speaks whenever the table moves, and the sweep that decides runs every
+sixty seconds, then מירון's afternoon — 16:14, 16:22, 16:23, 16:25 — is four
+messages in the room in eleven minutes. The private complaint, said out loud,
+by the fix for the private complaint. His words were that the room should wait
+at least a quarter of an hour before it announces a change, so that changes
+overlapping inside that time do not each get their own message.
+
+So `group-voice.TABLE_SETTLE_MS` is the same fifteen minutes as
+`meeting-fanout.PACE_MS`, and the room half needs no folding machinery to go
+with it: the line is rebuilt from `statusOf` at the moment it is said, so a
+delay by itself makes everything that moved inside the window one sentence.
+**The clock starts at the FIRST change the room has not heard about, never at
+the newest.** Waiting for the table to go quiet reads better and starves — a
+room that keeps adding times would never be told anything at all — while a
+window opened by the first change always closes, a quarter of an hour later,
+whatever else lands in it. It gates both lines about the table, `table` and the
+`moved` line that shipped an hour earlier: a time deleted and replaced thirty
+seconds later is ONE thing that happened, and said at once it is "שבת 16:00
+כבר לא על השולחן" followed a minute later by the table having moved again.
+Nothing else waits. "She has started" is the line whose whole value is being
+early, and a base, a chase and a "סגור" are each said once in a coordination.
+
+**Two things the settle exposed that had nothing to do with it.** The sweep
+DECIDED on the clock it was handed and STAMPED with SQL's `now()`, which in
+production is the same instant and in a test is hours apart — harmless while
+every column in that family was a flag, and meaningless the moment two of them
+became moments that a quarter of an hour is measured from. It stamps the
+deciding clock now. And the hour-in chase had quietly made
+`tests/group-voice.test.js` depend on the time of day: its passes announce at
+11:00 UTC while the database stamps the coordination's `created_at` with the
+real clock, so "an hour after she started" was true for most of the day and
+false after ten in the morning. The suite was green on both PRs and would have
+gone red on `main` at the wrong hour. The fixtures place what they measure on
+the announcing clock now (`rules/testing.md`, "never let a test depend on the
+hour").
+
+**Who may be named was already right, and this is the measurement that says
+so.** Of the two people who had answered nothing, גל had been written to four
+times and had not replied — nameable. גיא had every one of his five messages
+DROPPED at the gate as `quiet` (he had stopped answering Olma), so she had
+never actually asked him, and the room must not say his name. That is this
+same morning's rule holding on the next day's data (`incidents.md`, "The room
+chased three people, two of whom had never been asked"). It also leaves a real
+gap open: a member of a room can be invited to its coordination, receive
+nothing, and nobody — not him, not the room, not the person who opened it —
+can tell.
 
 ### Four messages in sixty-two seconds (fixed 2026-09-20)
 

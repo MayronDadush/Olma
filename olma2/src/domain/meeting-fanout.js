@@ -54,7 +54,12 @@ async function withRemovals(client, payload, userId) {
 // its payload names — the times themselves are never copied in here, because
 // the table can move again before this goes out and `get_meeting_status` is
 // the only thing that knows what it holds at the moment of sending.
-const FOLDABLE_KINDS = ['meeting_invite', 'meeting_slot_proposed'];
+//
+// One list, two jobs: these are the rows that WAIT (PACE_MS, below) and the
+// rows a later one folds INTO. They have to be the same set — a kind that
+// waits but cannot be folded into is a second message sitting beside the one
+// the pacing just created, which is the thing being fixed.
+const FOLDABLE_KINDS = ['meeting_invite', 'meeting_slot_proposed', 'meeting_rejoined'];
 
 // `FOR UPDATE SKIP LOCKED`, because "not gone out yet" is not what `sent_at`
 // says — it is what the worker holds. The worker locks a row for the whole of
@@ -121,22 +126,70 @@ async function unheardInvite(client, userId, meetingId) {
   return framing;
 }
 
+// ── The negotiation moves faster than a person wants to be told about ───────
+//
+// The fold above is the whole answer to "several things happened, say them
+// once", and on 2026-09-22 it almost never got to run. Miron opened a padel
+// coordination at 16:11 and read five messages by 16:25 — the invite, a time
+// somebody added, two people declining Wednesday a minute apart, and another
+// time added. Every one of those rows was `urgent`, so each went out inside a
+// minute, and by the time the next event arrived there was nothing left
+// unsent to fold into. Kapish's four rows only ever folded because the NIGHT
+// held them (`incidents.md`, "Four messages in sixty-two seconds"); nothing
+// does that during the day.
+//
+// So a negotiation row waits until a quarter of an hour has passed since
+// anything about THAT coordination actually reached THAT person, and the fold
+// does the rest: everything that happens meanwhile lands in the one waiting
+// row, which goes out carrying the table as it stands at the moment of
+// sending. Measured on the box before the number was chosen — 46 of the 68
+// consecutive coordination messages ever delivered landed inside fifteen
+// minutes of the one before, 31 inside five; half an hour would have caught
+// two more and is that much longer for a live question to sit.
+//
+// `release_after` rather than a gate hold: the row is not held, it is
+// SCHEDULED, and it has never been looked at. The worker's picker already
+// honours the column, so this needs nothing new anywhere else.
+const PACE_MS = 15 * 60_000;
+
+// Only what is still being negotiated waits — `FOLDABLE_KINDS`, above. A
+// RESULT (it is closed, it is off, nobody matched, it expired) is the one
+// message the person is actually waiting for, and holding that to save them a
+// notification spends their patience on exactly the wrong thing.
+
+// The baseline is what REACHED them (`sent_at` with no `hold_reason`), the
+// same one the removals and the late invite already use: a row the gate
+// dropped told them nothing, so it buys no quiet.
+async function paceAfter(client, userId, meetingId) {
+  const { rows } = await client.query(
+    `SELECT max(sent_at) AS last FROM outbox
+      WHERE user_id = $1 AND kind LIKE 'meeting%'
+        AND sent_at IS NOT NULL AND hold_reason IS NULL
+        AND (payload->>'meetingId')::bigint = $2`,
+    [userId, meetingId]);
+  const last = rows[0] && rows[0].last;
+  if (!last) return null;
+  const at = new Date(new Date(last).getTime() + PACE_MS);
+  return at > new Date() ? at : null;
+}
+
 async function fanout(client, userIds, kind, payload, { urgency = 'urgent', key } = {}) {
-  const aboutMeeting = kind === 'meeting_slot_proposed' && payload
+  const aboutMeeting = FOLDABLE_KINDS.includes(kind) && payload
     && payload.meetingId !== undefined && payload.meetingId !== null;
   for (const uid of userIds) {
     if (aboutMeeting && await foldIntoPendingQuestion(client, uid, payload.meetingId)) continue;
+    const releaseAfter = aboutMeeting ? await paceAfter(client, uid, payload.meetingId) : null;
     const framing = aboutMeeting ? await unheardInvite(client, uid, payload.meetingId) : null;
     if (framing) {
       await enqueue(client, {
-        userId: uid, kind: 'meeting_invite', urgency,
+        userId: uid, kind: 'meeting_invite', urgency, releaseAfter,
         payload: await withRemovals(client, { ...framing, tableChanged: true }, uid),
         idempotencyKey: key ? `${key}:${uid}:asinvite` : undefined,
       });
       continue;
     }
     await enqueue(client, {
-      userId: uid, kind, payload: await withRemovals(client, payload, uid), urgency,
+      userId: uid, kind, payload: await withRemovals(client, payload, uid), urgency, releaseAfter,
       idempotencyKey: key ? `${key}:${uid}` : undefined,
     });
   }
@@ -305,7 +358,12 @@ async function meetingBrief(client, meetingId) {
 
 // After meetings.respondToSlot succeeded. `res` is that result, mutated with a
 // `hint` for the actor's own agent when there is one to give.
-async function afterSlotResponse(client, actor, meetingId, res, { accept } = {}) {
+// `accept` is still passed by all four callers and is deliberately not read:
+// a yes and a no now produce the same fan-out — whatever the ANSWER did to the
+// table, told to the people the table is still a question for — and a
+// parameter kept in the signature says that reading it again is a decision,
+// not an oversight.
+async function afterSlotResponse(client, actor, meetingId, res, _opts = {}) {
   const brief = await meetingBrief(client, meetingId);
   const others = await activeParticipantsExcept(client, meetingId, actor.id);
   if (res.data.meetingStatus === 'settling') {
@@ -324,13 +382,17 @@ async function afterSlotResponse(client, actor, meetingId, res, { accept } = {})
       slot: res.data.proposedSlot, startsAt: res.data.startsAt, byName: actorName(actor),
       reasons: await meetings.shareableConstraints(client, meetingId, actor.id),
     });
-  } else if (!accept) {
-    await fanout(client, [Number(brief.initiator_id)].filter((id) => id !== Number(actor.id)),
-      'meeting_slot_declined', {
-        meetingId: Number(meetingId), title: brief.title || 'meeting', byName: actorName(actor),
-        reasons: await meetings.shareableConstraints(client, meetingId, actor.id),
-      });
   }
+  // A plain decline used to be a message of its own to whoever opened the
+  // coordination, and it is not one any more (owner, 2026-09-22: "אין צורך
+  // שמי שפתח את התיאום יקבל הודעות מיוחדות"). Two of Miron's five messages
+  // that afternoon were this — יובל and שחרון turning down the same Wednesday,
+  // sixty-three seconds apart, one message each. Opening a coordination is not
+  // a subscription to every answer in it: the table he is shown already says
+  // how many people are on each time, and he hears it the next time the
+  // coordination has something to ask him. Nothing is lost that the person
+  // could act on, and the one thing that IS his alone — that it died, that
+  // nobody matched, that it expired — still reaches him on its own.
   return res;
 }
 
@@ -395,10 +457,17 @@ async function afterOptOut(client, actor, meetingId, res) {
       res.data.meetingStatus === 'no_match'
         ? ['meeting_slot_proposed', 'meeting_invite'] : ['meeting_slot_proposed']);
   }
-  await fanout(client, [Number(brief.initiator_id)],
-    res.data.meetingStatus === 'no_match' ? 'meeting_no_match' : 'meeting_opt_out', {
+  // `no_match` is the RESULT — the coordination is over and nobody matched —
+  // and it is the one thing only the person who opened it can be told, so it
+  // still goes on its own. Somebody merely stepping OUT of one that carries on
+  // is an update like any other and no longer is (owner, 2026-09-22; see the
+  // decline in `afterSlotResponse`): the table he is shown counts the people
+  // still in, and the next thing the coordination asks him carries it.
+  if (res.data.meetingStatus === 'no_match') {
+    await fanout(client, [Number(brief.initiator_id)], 'meeting_no_match', {
       meetingId: Number(meetingId), title: brief.title || 'meeting', byName: actorName(actor),
     }, { key: `mexit:${meetingId}:${actor.id}` });
+  }
   if (res.data.meetingStatus === 'settling') {
     // Their exit left the rest agreed. Same silence as any other arming: the
     // people left are about to be told once, a minute from now.

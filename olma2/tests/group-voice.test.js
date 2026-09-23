@@ -60,8 +60,33 @@ async function room(n, { subject = 'פאדל' } = {}) {
 // coordinations due for their chase line, which then lands in this test's
 // array and is counted as one of its own messages. That is not flakiness — the
 // sweep is behaving correctly and the collection was too wide.
+// ONE clock for every pass in this file, computed once (rules/testing.md):
+// 11:00 UTC today, which is inside every fixture room's daytime window whatever
+// hour the suite runs at. `DAY_AT(n)` is n minutes along it.
+//
+// The database stamps its own rows with its own `now()`, which is hours away
+// from this one, and three of the decisions below are DIFFERENCES — the chase
+// is an hour after she started, and both lines about the table wait a quarter
+// of an hour after it moved. A test that leaves those rows where the database
+// put them passes or fails according to the time of day, so the ones that
+// measure against them place them on this clock by hand.
+const DAY = (() => { const d = new Date(); d.setUTCHours(11, 0, 0, 0); return d; })();
+const DAY_AT = (minutes) => new Date(DAY.getTime() + minutes * 60_000);
+
+// She started `minutes` before the clock's zero — the only thing the chase is
+// measured from.
+async function startedAt(meetingId, minutes) {
+  await db.pool.query('UPDATE meetings SET created_at = $2 WHERE id = $1', [meetingId, DAY_AT(minutes)]);
+}
+// …and an option went on, or came off, at that moment: what the settle counts.
+async function optionMovedAt(optionId, minutes, column) {
+  await db.pool.query(
+    `UPDATE meeting_options SET ${column === 'off' ? 'decided_at' : 'created_at'} = $2 WHERE id = $1`,
+    [optionId, DAY_AT(minutes)]);
+}
+
 async function pass(sent, at = null, onlyJid = null) {
-  const now = at || (() => { const d = new Date(); d.setUTCHours(11, 0, 0, 0); return d; })();
+  const now = at || DAY;
   const decided = await withTx(db.pool, (c) => groupsJob.sweepGroupVoice(c, { now }));
   const drained = await groupOutbox.drainOnce(db.pool, {
     now,
@@ -95,6 +120,11 @@ test('a room hears "there is a direction" once, when two people can make the sam
   const when = slotStart('שלישי', { hours: 72 });
 
   await deliverInvites(meetingId);
+  // She started at the clock's zero, so the mid-way chase — an hour in since
+  // 2026-09-22 — is not due at any point in this test. Left where the database
+  // stamped it, the row is hours old against `DAY` and the chase lands in the
+  // middle of a test about the base line, at every hour of the day but one.
+  await startedAt(meetingId, 0);
   // Since 2026-09-22 the room hears that she has STARTED before it hears
   // anything else, so that line is spent here with a real pass rather than
   // stamped by hand — a fixture that writes the column cannot notice the column
@@ -256,10 +286,18 @@ test('the room hears again when the time it was told about left the table', () =
     optionId: id, slot, startsAt: new Date(Date.now() + 86400e3).toISOString(),
     yes, no: [], missing, quorum: { known: false },
   });
-  const co = (opts) => ({
+  // One moment for the whole test. The room was told a direction half an hour
+  // ago and the table moved twenty minutes ago — past the quarter of an hour it
+  // waits before saying so (`group-voice.TABLE_SETTLE_MS`), which every case
+  // below except the last one is on the far side of.
+  const NOW = Date.now();
+  const co = (opts, movedMinutesAgo = 20) => ({
     status: 'negotiating', participants: 3, silent: [], settleDueAt: null, options: opts,
+    tableChangedAts: [new Date(NOW - movedMinutesAgo * 60_000).toISOString()],
   });
-  const said = { saidStarted: true, saidBase: true, nowMs: Date.now() };
+  const said = {
+    saidStarted: true, saidBase: true, nowMs: NOW, tableSaidAtMs: NOW - 30 * 60_000,
+  };
 
   // The time the room heard is gone, and another one leads.
   const gone = co([opt(2, 'שבת 17:00', [p(1), p(2)], [p(3)])]);
@@ -269,29 +307,57 @@ test('the room hears again when the time it was told about left the table', () =
   assert.equal(moved.slot, 'שבת 17:00');
   assert.deepEqual(moved.missing, ['+972500000003'], 'and it still says who is owed');
 
-  // Merely OVERTAKEN is not news: the room's picture is still true, and a line
-  // for every change of lead is how this becomes chatter.
+  // Merely OVERTAKEN is not this line's news: the time the room heard is still
+  // on the table, so nobody is told it vanished, and a "כבר לא על השולחן" for
+  // every change of lead is how this becomes chatter. What the room does hear
+  // is that the table MOVED — a time was added — which is one sentence about
+  // the whole shape and names no slot as gone.
   const stillThere = co([
     opt(1, 'שבת 16:00', [p(1)], [p(2), p(3)]),
     opt(2, 'שבת 17:00', [p(1), p(2)], [p(3)]),
   ]);
-  assert.equal(groupVoice.decideGroupLine(stillThere, { ...said, saidBaseSlot: 'שבת 16:00' }).kind, 'none');
+  const overtaken = groupVoice.decideGroupLine(stillThere, { ...said, saidBaseSlot: 'שבת 16:00' });
+  assert.equal(overtaken.kind, 'table', 'the addition is news; the time it heard about going is not');
+  assert.equal(overtaken.count, 2);
+  // …and with nothing having moved since the room was last told, neither line
+  // has anything to say.
+  assert.equal(
+    groupVoice.decideGroupLine(stillThere, { ...said, saidBaseSlot: 'שבת 16:00', tableSaidAtMs: NOW }).kind,
+    'none');
 
-  // Said once per gone slot: after the moved line the stamp names 17:00, so the
-  // same table says nothing more.
-  assert.equal(groupVoice.decideGroupLine(gone, { ...said, saidBaseSlot: 'שבת 17:00' }).kind, 'none');
+  // Said once per gone slot: the moved line stamps the base column, so the next
+  // pass reads 17:00 as the time the room was told and NOW as when it heard it,
+  // and the same table says nothing more — neither sentence.
+  assert.equal(
+    groupVoice.decideGroupLine(gone, { ...said, saidBaseSlot: 'שבת 17:00', tableSaidAtMs: NOW }).kind,
+    'none');
 
-  // Nothing to say yet: the replacement has one yes, so the room waits rather
-  // than hearing "יש כיוון" about a time nobody else has agreed to. The stamp
-  // still names the gone slot, so the line goes out when a direction appears.
+  // No new DIRECTION yet: the replacement has one yes, so the room is not told
+  // "יש כיוון" about a time nobody else has agreed to, and the stamp goes on
+  // naming the gone slot so that sentence lands when a direction appears. It
+  // is not silence, though — the table moved, and the line that says only the
+  // shape can say that much without claiming an agreement nobody made.
   const thin = co([opt(2, 'שבת 17:00', [p(1)], [p(2), p(3)])]);
-  assert.equal(groupVoice.decideGroupLine(thin, { ...said, saidBaseSlot: 'שבת 16:00' }).kind, 'none');
+  const waiting = groupVoice.decideGroupLine(thin, { ...said, saidBaseSlot: 'שבת 16:00' });
+  assert.equal(waiting.kind, 'table');
+  assert.equal(waiting.count, 1, 'one time on the table, and no claim that anyone agreed to it');
 
-  // A coordination from before the column existed has no slot to compare, and
-  // says nothing new rather than guessing.
-  assert.equal(groupVoice.decideGroupLine(gone, { ...said, saidBaseSlot: null }).kind, 'none');
-  // And the first base line is unchanged.
-  assert.equal(groupVoice.decideGroupLine(gone, { saidStarted: true, nowMs: Date.now() }).kind, 'base');
+  // A coordination from before the column existed has no slot to compare, so
+  // it never says a named time went — the shape is all it can honestly report.
+  assert.equal(groupVoice.decideGroupLine(gone, { ...said, saidBaseSlot: null }).kind, 'table');
+
+  // It only just moved, so the room is not told yet (owner, 2026-09-22): the
+  // commonest removal is somebody taking back a time they typed a minute ago,
+  // and a deletion said at once is followed a minute later by the replacement
+  // being news all over again. The same sentence covers both, a quarter of an
+  // hour in.
+  const justNow = co([opt(2, 'שבת 17:00', [p(1), p(2)], [p(3)])], 3);
+  assert.equal(groupVoice.decideGroupLine(justNow, { ...said, saidBaseSlot: 'שבת 16:00' }).kind, 'none',
+    'inside the settle the room hears nothing about the table at all');
+
+  // And the first base line is unchanged — a room that has never been told a
+  // time is not waiting out anything.
+  assert.equal(groupVoice.decideGroupLine(gone, { saidStarted: true, nowMs: NOW }).kind, 'base');
 });
 
 // End to end, the real sequence: the room is told 16:00, that option is
@@ -307,6 +373,7 @@ test('the sweep says the time moved, once, and then has nothing more to say', as
   // The room may only name somebody an invite actually reached (`asked`), so
   // the private half has to happen before any line here names anyone.
   await deliverInvites(meetingId);
+  await startedAt(meetingId, 0);
   const sent = [];
   // The opening line first — `started` comes before anything else this room
   // hears, and spending it here is what lets the base line be next.
@@ -329,15 +396,26 @@ test('the sweep says the time moved, once, and then has nothing more to say', as
     (await options.add(c, a.id, meetingId, 'שבת 17:00', later)).data.option.id);
   await withTx(db.pool, (c) => options.remove(c, b.id, meetingId, first));
   await withTx(db.pool, (c) => options.answer(c, b.id, meetingId, second, 'y'));
+  // Both halves of the movement happened five minutes after the room was told
+  // 16:00 — so the quarter of an hour the room waits before saying anything
+  // about it (`group-voice.TABLE_SETTLE_MS`) is up at +20, and not before.
+  await optionMovedAt(second, 5, 'on');
+  await optionMovedAt(first, 5, 'off');
 
-  await pass(sent, null, mine);
+  // Ten minutes in, the table has moved and the room has not been told: that
+  // is the owner's quarter of an hour doing its job, not a coordination with
+  // nothing to say.
+  await pass(sent, DAY_AT(10), mine);
+  assert.equal(sent.length, 2, 'the room is not told inside the settle');
+
+  await pass(sent, DAY_AT(25), mine);
   assert.equal(sent.length, 3, JSON.stringify(sent));
   assert.match(sent[2].body, /\*שבת 16:00\* כבר לא על השולחן/);
   assert.match(sent[2].body, /יש כיוון: \*שבת 17:00\*/);
   const after = await db.pool.query(`SELECT group_base_slot FROM meetings WHERE id = $1`, [meetingId]);
   assert.equal(after.rows[0].group_base_slot, 'שבת 17:00');
 
-  await pass(sent, null, mine);
+  await pass(sent, DAY_AT(30), mine);
   assert.equal(sent.length, 3, 'and not again for the same change');
 });
 
@@ -664,4 +742,87 @@ test('a room with members who never wrote is told they are not counted, without 
   assert.match(sent[0].body, /לא נספר/, 'and that somebody here is not counted');
   assert.equal(sent[0].body.includes('חדש'), false, 'never by name');
   assert.equal(sent[0].body.includes('972609990041'), false, 'and never by number');
+});
+
+// ── מירון's padel room, 2026-09-22 ───────────────────────────────────────────
+// The room was told she had started (16:11) and that there was a direction
+// (16:15). Then שבת 16:00 came off the table, three other times went on, two
+// people turned Wednesday down — and it heard nothing for the rest of the
+// afternoon. Two reasons, and the owner asked for both to change: the mid-way
+// chase was scheduled half way to the earliest option, twenty-six hours out,
+// so 05:11 the next morning; and the base line is said ONCE, so nothing was
+// left that could say the table had changed shape.
+const padel = (opts) => ({
+  status: 'negotiating',
+  options: [
+    { optionId: 1, slot: 'רביעי 18:00', startsAt: new Date(Date.now() + 26 * 3600_000).toISOString(),
+      yes: [{ phone: '+972500000001' }], no: [], missing: [{ phone: '+972500000004' }], quorum: { known: false } },
+    { optionId: 2, slot: 'שבת 17:00', startsAt: new Date(Date.now() + 96 * 3600_000).toISOString(),
+      yes: [{ phone: '+972500000001' }, { phone: '+972500000002' }], no: [],
+      missing: [{ phone: '+972500000004' }], quorum: { known: false } },
+  ],
+  silent: [{ phone: '+972500000004' }],
+  ...opts,
+});
+
+test('the room is chased an hour in, not half way to a game a day away', () => {
+  const co = padel();
+  const now = Date.now();
+  const said = { saidStarted: true, saidBase: true, saidChase: false, saidDone: false, nowMs: now };
+
+  // 16:11 + an hour is 17:11, and the old rule put it at 05:11 the next day.
+  assert.equal(groupVoice.decideGroupLine(co, { ...said, startedAtMs: now - 61 * 60_000 }).kind, 'chase');
+  assert.equal(groupVoice.decideGroupLine(co, { ...said, startedAtMs: now - 59 * 60_000 }).kind, 'none',
+    'silence in the first hour is people being at work');
+
+  // …and the half-way instinct is kept for the case it was written for: a game
+  // in ninety minutes is chased in forty-five, never in sixty.
+  const soon = padel({ options: [{ ...padel().options[0], startsAt: new Date(now + 15 * 60_000).toISOString() }] });
+  assert.equal(groupVoice.decideGroupLine(soon, { ...said, startedAtMs: now - 46 * 60_000 }).kind, 'chase');
+});
+
+test('the table moving is news every time it moves, and never says who said what', () => {
+  const now = Date.now();
+  const base = {
+    saidStarted: true, saidBase: true, saidChase: true, saidDone: false,
+    startedAtMs: now - 3 * 3600_000, nowMs: now,
+  };
+  // The table moved twenty minutes ago: past the quarter of an hour the room
+  // waits before it says so.
+  const co = padel({ tableChangedAts: [new Date(now - 20 * 60_000).toISOString()] });
+
+  const line = groupVoice.decideGroupLine(co, { ...base, tableSaidAtMs: now - 30 * 60_000 });
+  assert.equal(line.kind, 'table');
+  assert.equal(line.count, 2);
+  assert.equal(line.lead, 'שבת 17:00', 'the one furthest along — a count, never a person');
+  assert.equal(JSON.stringify(line).includes('+9725'), false, 'nobody is named on this line');
+
+  // Nothing has moved since the room last heard the table.
+  assert.equal(groupVoice.decideGroupLine(co, { ...base, tableSaidAtMs: now }).kind, 'none');
+
+  // A burst is ONE sentence, not one a minute. מירון's table moved at 16:14,
+  // 16:22, 16:23 and 16:25 and this sweep runs every sixty seconds, so the
+  // room would have read four messages in eleven minutes — the private
+  // complaint, said out loud (owner, 2026-09-22). The clock starts at the
+  // FIRST change the room has not heard about and not at the newest, so the
+  // sentence always comes: waiting for the table to go quiet would never say
+  // anything at all to a room that keeps adding times.
+  const burst = padel({ tableChangedAts: [8, 7, 5].map((m) => new Date(now - m * 60_000).toISOString()) });
+  const watermark = { ...base, tableSaidAtMs: now - 10 * 60_000 };
+  assert.equal(groupVoice.decideGroupLine(burst, watermark).kind, 'none',
+    'eight minutes in, with the table still moving, the room hears nothing');
+  assert.equal(
+    groupVoice.decideGroupLine(burst, { ...watermark, nowMs: now + 8 * 60_000 }).kind, 'table',
+    'and a quarter of an hour after the FIRST of them, once, about all of them');
+
+  // And a room that has never been told a table has none to have moved: the
+  // first time somebody puts a time up is the table being LAID, which is the
+  // base line's to speak about when it becomes a direction. Here that line is
+  // still owed, so it is what comes back — never "השולחן זז" about a table the
+  // room has not been shown.
+  assert.equal(groupVoice.decideGroupLine(co, { ...base, saidBase: false, tableSaidAtMs: 0 }).kind, 'base');
+  const noLead = padel({ tableChangedAts: [new Date(now - 20 * 60_000).toISOString()],
+    options: [{ ...padel().options[0], yes: [] }] });
+  assert.equal(groupVoice.decideGroupLine(noLead, { ...base, saidBase: false, tableSaidAtMs: 0 }).kind, 'none',
+    'no direction yet and no table ever said: there is nothing to report');
 });

@@ -299,6 +299,51 @@ have already had to be argued for.
   left as a cost, because the sentence for a room waiting on somebody we cannot
   name is his to write (`incidents.md`, "The room asked three numbers that were
   nobody").
+
+- **Every line a room hears is said once, except the TABLE moving, which is
+  news every time** (migration 084, `meetings.group_table_at`; owner,
+  2026-09-22). מירון's padel room was told she had started and that there was
+  a direction, and then heard nothing all afternoon while שבת 16:00 came off,
+  three times went on and two people turned Wednesday down. So that one line
+  is a WATERMARK rather than a flag — the moment the room was last told what
+  is on the table, against every change to any option (`created_at` for one
+  added, `decided_at` for one removed). **The watermark is the BASE line
+  and never the started line**: the first time somebody puts a time up, the
+  table is being LAID, not moving, and the first cut of this said "השולחן זז —
+  עכשיו מועד אחד" about it until `tests/group-voice.test.js` refused. It says
+  the SHAPE only — how many times are on the table, which is furthest along —
+  because whose answer is whose is still nobody else's to hear. Its
+  idempotency key carries the change's own timestamp, so one line per
+  movement and a re-run of the pass collapses onto it.
+
+- **…and it waits a quarter of an hour, so a burst of changes is ONE sentence**
+  (`group-voice.TABLE_SETTLE_MS`, owner 2026-09-22: the room should wait before
+  it announces a change, so that changes which overlap in that time do not each
+  get their own message). The same fifteen minutes as the private side's
+  `meeting-fanout.PACE_MS`, off the same afternoon: מירון's table moved at
+  16:14, 16:22, 16:23 and 16:25, and `group_voice` runs every sixty seconds, so
+  an ungated line is the private complaint said out loud in the room. **The
+  clock starts at the FIRST change the room has not heard about, never at the
+  newest** — waiting for the table to go QUIET reads better and starves, since a
+  room that keeps adding times would never be told anything at all. It gates
+  BOTH lines about the table moving, `table` and `moved`: a time deleted and
+  replaced thirty seconds later is one thing that happened, and said at once it
+  is "שבת 16:00 כבר לא על השולחן" followed a minute later by the table having
+  moved again. Nothing else waits — "she has started" is the line whose whole
+  value is being early, and a base, a chase and a "סגור" are each said once.
+  **The stamp is the clock the DECISION was made on and never SQL's `now()`**:
+  two of those columns are read back as moments rather than flags, so a stamp
+  from a different clock is a quarter of an hour that measures nothing.
+
+- **The room is chased an HOUR after she starts, not half way to the thing**
+  (`group-voice.CHASE_AFTER_MS`). Half the distance, clamped to [1h, 24h],
+  put מירון's room at 05:11 the next morning with the night in front of it,
+  because the earliest option was twenty-six hours out. `Math.min` keeps the
+  old instinct as a ceiling rather than a formula: a game in ninety minutes is
+  still chased in forty-five. Who may be NAMED is unchanged and was re-checked
+  on this room — גל had been written to four times and not answered, so he is
+  nameable; גיא had every message dropped at the gate as `quiet`, was never
+  actually asked, and must not be.
 - **The "סגור" line names who can make it, a calendar line is said only for
   a SHARED event, and a base line is never said to nobody** (owner,
   2026-09-20, off coordinations 35–37). `group-meetings.statusOf` exposes
