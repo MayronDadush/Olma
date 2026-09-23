@@ -326,6 +326,19 @@ title means this file. Grep the title, not the filename.
   same way `INTERNAL_NAMES` is — a verb or a noun goes on it because a real
   message carried it, and every count in the module header names what the
   pattern was measured against.
+  **…and since 2026-09-23 the working-out is caught in Hebrew too**
+  (`incidents.md`, "The working-out arrived in Hebrew"). Every drop tier was
+  English, so Miron got thirteen lines of "אני צריך להבין… אכתוב לו ש…" and
+  the gate said `pass`. `reply-leak.hebrewStepIn` drops the model's first-person
+  next step ("אני צריך/צריכה ל" plus a closed verb list). On 2,697 real messages
+  over 21 days it changed 3, all working-out, and 0 real replies. **The verbs
+  Olma says TO somebody stay off the list** — לדעת, לבדוק, לוודא — and the
+  test holds those sentences. The reader-in-the-third-person shape is REPORTED
+  as `hebrew-narration`, never dropped: its only hit was a message the step
+  already cancels, and its tells are also in real relays. **And a block name
+  is ours even inside quotation marks** — `BLOCK_RE` reads the raw line as
+  well, because `scannable` strips quotations and Miron's leak quoted
+  "Reply target of current user message".
 
 - **The last tier's missing input was not a pattern, it was the READER**
   (2026-09-22; `incidents.md`, "The gate had no idea who was reading"). The
