@@ -133,6 +133,7 @@ never trust a dated narrative for something you are about to act on.
 - [The night the evals cried wolf — and once for real (fixed 2026-08-30)](#the-night-the-evals-cried-wolf--and-once-for-real-fixed-2026-08-30)
 - [A turn the model forgot to open (fixed 2026-08-30)](#a-turn-the-model-forgot-to-open-fixed-2026-08-30)
 - [The judge kept failing, three different ways (fixed 2026-08-30)](#the-judge-kept-failing-three-different-ways-fixed-2026-08-30)
+- [The eval partner was a real WhatsApp recipient, and the broken nightly was what stopped it (fixed 2026-09-23)](#the-eval-partner-was-a-real-whatsapp-recipient-and-the-broken-nightly-was-what-stopped-it-fixed-2026-09-23)
 
 **Cost, billing and the money page**
 
@@ -5577,6 +5578,68 @@ next and only the last one was measured first.
   **a failure named after the wrong culprit costs a morning.** `finishReason`
   was added for this reason one change earlier, and the very next bug was the
   same mistake one layer down.
+
+### The eval partner was a real WhatsApp recipient, and the broken nightly was what stopped it (fixed 2026-09-23)
+
+Every nightly from 2026-09-12 to 09-23 (`eval_runs` 65–77) errored on every
+scenario in about a second, with an empty `agent_model`. The cause, printed
+for each one: `eval user 15 is not on a blank slate: meeting_option_answers.
+user_id (4)`. Pulling on that turned up something worse than a dead suite.
+
+- **The seed made a person.** `meeting-second-option` needs somebody to
+  coordinate with, and created them with `users.createUser` at
+  `+972500000777` — a well-formed Israeli mobile number that may belong to
+  somebody — without `is_eval`. So user 31, "דנה", was an ordinary user to
+  every part of the system.
+- **And the system treated her as one.** The first run's invite queued a
+  `meeting_slot_proposed` row for her; quiet hours held it to 08:03 Israel;
+  the intake agent then gave the number Olma's opening and the invite,
+  provisioned agent `u-31` with a WhatsApp binding, and the onboarding
+  ladder took over. The gateway journal has **twelve `Sent message` lines to
+  `972500000777@s.whatsapp.net`** between 2026-09-08 05:03 and 09-09 06:03
+  UTC — the intro with the invite, the day-one check-ins (the 15-minute one
+  going out several times over while its turn kept timing out) and, a day
+  in, a dashboard magic link. One of those turns also
+  emitted the identity token as text (issue 152; rotated the same morning).
+  Nothing ever came back from the number, and whether a real phone holds it
+  is not something the box can know.
+- **It looked like a real person from the inside, too.** `last_inbound_at`,
+  `first_turn_at` and a `message.received` row all say she wrote at 05:36:45.
+  She did not: all eleven user-role turns in her transcript are Olma's own
+  check-in instructions, and the stamp is a self-initiated `turn_start` being
+  counted as inbound — the shape "Olma's own check-in counted as the user
+  writing back" was meant to have closed. So a careful read of the database
+  said "real person, onboarded, has written in", and a session nearly
+  protected the eval's own fixture as somebody's data.
+- **The dead suite was the safety.** After 09-11, `assertCleanSlate` (PR #342)
+  refused every scenario before its seed ran, so the seed never ran again and
+  nothing more went to the number. Fixing only the reset would have re-armed
+  it.
+- **Why the slate never came clean.** Before #342 the reset deleted only the
+  meetings the eval user STARTED, then deleted their participant rows —
+  leaving their answers on the partner's meetings behind with no participant
+  row pointing at them. #342 widened the meeting delete to "every meeting the
+  eval user is in", which by then could not reach those answers, so the guard
+  failed on the same four rows every night. The guard was right; the reset
+  had no line for the eval user's own answers.
+- **The alert did go out, and did not read as an outage.** The morning alert
+  was sent (the pending flag clears only on a confirmed send) — as sixteen
+  near-identical "⚠️ X: הבדיקה עצמה נשברה (…)" lines, one per scenario. The
+  `eval_sweep` heartbeat stayed green, and the admin strip showed the same
+  "N red evals last night" warn it shows for an ordinary bad night. Nothing
+  distinguished "the model got worse" from "nothing ran".
+
+Fixed in three pieces, one PR each: the partner is `is_eval` (set on every
+run, so the row already on the box is marked by the next one) at a number from
+NANP's fictional range, and `getEvalUser` picks by `EVAL_PHONE` because two
+`is_eval` rows made "lowest id" ambiguous; the reset clears the eval user's
+own answers, availability and picker links by `user_id` and deletes only
+meetings an `is_eval` user started; and a night where no scenario reached a
+verdict is its own one-line alert and a red pill, not N warnings.
+
+The shape, again: **absence of evidence scored as evidence** in both
+directions — a stamp that said somebody wrote when nobody had, and a green
+heartbeat on a sweep that had judged nothing.
 
 
 ## Cost, billing and the money page
