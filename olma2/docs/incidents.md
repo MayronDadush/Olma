@@ -135,6 +135,7 @@ never trust a dated narrative for something you are about to act on.
 - [A turn the model forgot to open (fixed 2026-08-30)](#a-turn-the-model-forgot-to-open-fixed-2026-08-30)
 - [The judge kept failing, three different ways (fixed 2026-08-30)](#the-judge-kept-failing-three-different-ways-fixed-2026-08-30)
 - [The eval partner was a real WhatsApp recipient, and the broken nightly was what stopped it (fixed 2026-09-23)](#the-eval-partner-was-a-real-whatsapp-recipient-and-the-broken-nightly-was-what-stopped-it-fixed-2026-09-23)
+- [Three reds the model did not earn, and one it did (fixed 2026-09-24)](#three-reds-the-model-did-not-earn-and-one-it-did-fixed-2026-09-24)
 
 **Cost, billing and the money page**
 
@@ -3904,6 +3905,31 @@ help in `tests/reminder-chase.test.js`:
   `set_task_reminder`), and the armed branch says the shape, so neither answer
   leaves the model reading the hint as the result.
 
+**…and then the model stopped reading the sentence as a chase at all
+(2026-09-23 → 24).** With the server path fixed, runs 81 and 82 were red six
+samples out of six for a different reason: the model dated "take the camera
+in" for tomorrow or Friday, took "ready by next week" as the goal, saved a
+two-day deadline, and `chaseAvailable` — which fires only on a deadline more
+than two days out — never had anything to ask about. Each reply read sensibly.
+Two readings of one sentence, both defensible, and the owner's rule of
+2026-09-22 picks one. A hint cannot make a model choose between two
+reasonable readings every time, so the owner's answer was that this goes
+through code: "אני רוצה שהפתרון לחיים יפטר דרך קוד".
+
+The detector was measured before it was written, on every real inbound
+message on the box (861, live and archived, eval and test users excluded):
+112 carry a request word (תזכיר, תעזור, תנדנד…), 10 carry "עד", and exactly ONE
+carries both, and it is חיים's. The nine "עד"-only messages are hour ranges, a
+trip abroad, a work shift, and u-18's "wake me every three minutes until I say
+I'm up" — none asks for anything, and all nine are in
+`tests/chase-deadline.test.js`, reworded, as readings it must never make. So
+the hook classifies, only the verdict leaves the gateway, brokerd resolves the
+day against the person's clock, and the task the turn saves is due that day
+with a chase on it. The eval harness had been opening every turn with no
+verdicts at all — thanks and "stop reminding me" included — since the day the
+harness learned to open turns; it sends all three now, read by the same
+functions.
+
 ### The reminder that was only a sentence (fixed 2026-09-22)
 
 עמית, 2026-09-15, 16:44 Israel:
@@ -5711,6 +5737,61 @@ The shape, again: **absence of evidence scored as evidence** in both
 directions — a stamp that said somebody wrote when nobody had, and a green
 heartbeat on a sweep that had judged nothing.
 
+
+### Three reds the model did not earn, and one it did (fixed 2026-09-24)
+
+The second real nightly since the evals came back (run 84) had two reds, both
+"the drawn list never reached the reply". Reading the transcripts instead of the
+scores split them into two different stories.
+
+**Two scenarios were asking for something the server had correctly refused.**
+Since 2026-09-10 a list of `DEFAULT_CARD_MIN_ITEMS` (3) items or more is drawn as
+a picture and the turn is told "there is NO block this turn"
+(`digest-block.drawInsteadOfBlock`). `digest-block-relayed-untouched` seeded
+exactly three tasks, so for a fortnight its only possible outcome was the model
+obeying `hints.card` — a card, one sentence, a `MEDIA:` line — scored red.
+`list-reads-as-a-list` seeded three as well; "מה פתוח לי?" is answered through
+`list_my_tasks` OR `get_my_digest`, and five trials (run 85) went block, block,
+card, card, card. Every one of those gave the person their tasks. Both
+scenarios now seed one item short of the threshold, derived from the constant,
+and a test asks the server's own rule what the seed becomes (#486).
+
+**The third was ours and it was true.** With the card out of the way, one
+trial in three (run 86), and the nightly's own red before it, answered "מה פתוח
+לי?" with "כרגע אין לך כלום פתוח להיום — הכל נקי" while two to-dos sat open —
+and called no tool at all. It read the Turn context's `today` block, which
+lists only what is DATED on or before today, under a hint that said to answer
+"מה יש לי היום" **and "מה על הפרק"** from it and that "empty lists mean nothing is
+filed". Both undated to-dos were invisible to it, and the hint had told it the
+emptiness was the answer. Measured on the box the same night: 10 of 25 active
+people had undated open to-dos (76 of them), and 6 had nothing else — for
+those six, "what is open" could be answered "nothing" every time. The block
+now COUNTS undated open to-dos (`undated`, only when there are any), the hint
+says an empty list means nothing FOR TODAY and never that nothing is open, and
+"מה פתוח לי" / "מה על הפרק" are sent to `list_my_tasks`.
+
+The shape is the old one: a fixture and a threshold that both said "3" by hand
+are two readers of one number, and a block written to REPLACE a tool call has
+to say what it does not hold, or its silence is read as an answer.
+
+**And the hint was not the fix.** Deployed (#488) and re-run five times the
+same morning (run 87): four trials listed both to-dos, one still answered
+"כרגע אין לך כלום פתוח להיום — לא משימות ולא אירועים. יום פנוי לגמרי" with
+`undated: 2` in the block and a sentence about it in the hint. Same lesson as
+the chase the night before: a model that has two readings available picks the
+wrong one some of the time, and no wording removes the second reading. The
+turn-open hook now reads the question itself — `asksOpenList`, a question
+about their tasks or "what is open" with no day named — and brokerd drops the
+`today` block from that one turn, so there is no empty list left in the
+prompt. Measured on the 879 real inbound messages on the box: 8 hits, all
+eight a question about the list ("מה המשימות שלי?", "איזה משימות פתוחות?",
+"איזה משימות משותפות יש לי עם מאיה?"), and the three that named a day
+("…להיום?", "…של מחר") left alone. A bare "מה פתוח" counts only about THEM
+("לי", "אצלי") or at the end of the sentence — "מה פתוח עכשיו באזור" is a shop.
+
+Also from run 87: `digest-block-relayed-untouched` went red twice with the
+tool called and the right two items in the reply, each as a bold line instead
+of a list line — the model reformatting a drawn block. That one is the model's.
 
 ## Cost, billing and the money page
 

@@ -163,7 +163,7 @@ async function loadTasks(client, userId, zone, calendarSyncTasks) {
   // THIS person's reminders only: on a shared task each participant has their
   // own (migration 073), and the switch on the sheet is about theirs.
   const { rows: rems } = await client.query(
-    `SELECT r.id, r.task_id, r.remind_at, r.repeat_rule
+    `SELECT r.id, r.task_id, r.remind_at, r.repeat_rule, r.repeat_until
      FROM task_reminders r JOIN tasks t ON t.id = r.task_id
      WHERE r.task_id = ANY($1::bigint[]) AND COALESCE(r.user_id, t.owner_id) = $2
        AND r.cancelled_at IS NULL AND r.attempts = 0
@@ -229,7 +229,9 @@ async function loadTasks(client, userId, zone, calendarSyncTasks) {
       // The id travels with it because switching the reminder off cancels one
       // specific row, and (task, time) is not an identity — a task can carry
       // more than one pending reminder and the page must not guess which.
-      reminder: rem ? { id: rem.id, at: rem.remind_at, repeat: rem.repeat_rule } : null,
+      // `until` is what makes a daily rule a CHASE rather than a rhythm —
+      // the sheet draws "כל יום עד התאריך" off it, never off the rule alone.
+      reminder: rem ? { id: rem.id, at: rem.remind_at, repeat: rem.repeat_rule, until: rem.repeat_until || null } : null,
       // The EFFECTIVE answer, resolved here rather than in the browser: the
       // page draws one switch and the precedence rule belongs on the side that
       // enforces it. `inCalendar` is the separate question of whether the

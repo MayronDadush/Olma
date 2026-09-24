@@ -14,7 +14,7 @@
 //
 // Everything else here is measured because it was cheap to ask on the same
 // call, and because the numbers decide whether a second PR exists at all
-// (docs/model-experiments.md, run #81). Hebrew is the whole question: the
+// (docs/model-experiments.md, run #91). Hebrew is the whole question: the
 // vendor says English is the primary training language and "other languages
 // are handled but not equally well", and nobody has measured Hebrew.
 //

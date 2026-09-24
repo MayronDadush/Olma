@@ -281,7 +281,7 @@ test('the hook handler sends exactly one turn_open line for an inbound message, 
   assert.equal(written.length, 1);
   const msg = JSON.parse(written[0]);
   assert.equal(msg.method, 'turn_open');
-  assert.deepEqual(msg.params, { agentId: 'u-3', messageId: '3EB0HOOK0001', kind: 'voice', senderName: 'Miron', replyToId: null, thanks: false, stopReminders: false, at: '2026-09-05T10:00:00.000Z' });
+  assert.deepEqual(msg.params, { agentId: 'u-3', messageId: '3EB0HOOK0001', kind: 'voice', senderName: 'Miron', replyToId: null, thanks: false, stopReminders: false, chase: null, openList: false, at: '2026-09-05T10:00:00.000Z' });
   assert.ok(!written[0].includes('סודי'), 'the text never leaves the gateway');
   // The shape the gateway ACTUALLY sends (OpenClaw 2026.8.1, measured
   // 2026-09-06): `message:preprocessed`, sender name and media type flat on
@@ -291,7 +291,7 @@ test('the hook handler sends exactly one turn_open line for an inbound message, 
     context: { from: '+972500000000', body: 'סודי', bodyForAgent: 'סודי', messageId: '3EB0HOOK0002', senderName: 'Miron', mediaType: 'audio/ogg', transcript: 'שלום', provider: 'whatsapp', cfg: {} },
   }, { connect: fakeSocket }), true);
   assert.equal(written.length, 2);
-  assert.deepEqual(JSON.parse(written[1]).params, { agentId: 'u-3', messageId: '3EB0HOOK0002', kind: 'voice', senderName: 'Miron', replyToId: null, thanks: false, stopReminders: false, at: '2026-09-05T10:00:05.000Z' });
+  assert.deepEqual(JSON.parse(written[1]).params, { agentId: 'u-3', messageId: '3EB0HOOK0002', kind: 'voice', senderName: 'Miron', replyToId: null, thanks: false, stopReminders: false, chase: null, openList: false, at: '2026-09-05T10:00:05.000Z' });
   assert.ok(!written[1].includes('סודי') && !written[1].includes('שלום'), 'neither text nor transcript leaves the gateway');
   // A gateway that fires BOTH for one message opens it once.
   assert.equal(await hook({
@@ -522,6 +522,32 @@ test('the hook reads a stop request and sends the verdict, never the words', () 
   assert.equal(hook.stopRemindersOnly('[Replying to Olma id:3EB0X]\nתזכורת: לארוז תיק\n[/Replying]\nלהפסיק להזכיר'), true);
 });
 
+// "מה פתוח לי?" — a question about their whole list, which brokerd answers by
+// leaving the today block out of the turn. Every "yes" below but the English
+// ones and the eval's own is a real message from the box (879 read, 8 hits,
+// 2026-09-24); every "no" is what must keep its today block, or is not about
+// their list at all.
+test('the hook reads a question about their whole list, and not one about a day', () => {
+  const yes = [
+    'מה פתוח לי?', 'מה עוד פתוח?', 'מה פתוח אצלי בינתיים', 'מה על הפרק',
+    'מה המשימות הפתוחות שיש לי?', 'מה המשימות שלי?', 'איזה משימות פתוחות?',
+    'איזה משימות משותפות יש לי עם מאיה?', 'מה יש ברשימה עכשיו?', 'מה נשאר לי לעשות?',
+    "what's open?", 'show me my tasks',
+  ];
+  const no = [
+    'מה פתוח לי היום?', 'מה המשימות שלי להיום?', 'מה המשימות שלי של מחר', 'מה יש לי היום',
+    'מה יש לי מחר בבוקר?', 'מה יש לי שבוע הבא?', 'מה יש לי היום ביומן?',
+    'מה פתוח במשרד בשבת?',            // a day, and not their list
+    'מה פתוח עכשיו באזור?',           // a shop — "פתוח" is about THEM or it is nothing
+    'תוסיף משימה לקנות חלב', 'תעשי לי סדר — מה יש לי על הראש?', 'תודה', '',
+    'מה המשימות שלי? '.repeat(20),    // a long message only mentions it
+  ];
+  for (const t of yes) assert.equal(hook.asksOpenList(t), true, `open list: ${JSON.stringify(t)}`);
+  for (const t of no) assert.equal(hook.asksOpenList(t), false, `not: ${JSON.stringify(t)}`);
+  assert.equal(hook.asksOpenList('[Replying to Olma id:3EB0X]\nמה פתוח לי היום?\n[/Replying]\nמה פתוח לי?'), true,
+    'the quoted half of a reply is not what they just wrote');
+});
+
 // Two ladders chasing her, one message, and both stop — with no question about
 // which, because "stop" was never ambiguous to the person who wrote it.
 test('"להפסיק להזכיר" stops every ladder that has spoken to them, and earns a 👍', async () => {
@@ -613,4 +639,77 @@ test('a stop request with nothing chasing changes nothing and asks for no silenc
   const res = await call(u, 'turn_start', { message_id: '3EB0STOP02' }, newTurn());
   assert.doesNotMatch(res.text, /stoppedReminders/,
     'a hint that asks for silence must never reach a turn that owes an answer');
+});
+
+// ── "help me until next week": the chase is armed by code ────────────────────
+// חיים, 2026-09-22 (tests/reminder-chase.test.js holds the whole story). The
+// hook reads a deadline plus a request for help and sends a KIND; brokerd
+// resolves it against the person's clock and add_task arms the chase, whatever
+// date the model gave the errand. `days: 5` rather than a weekday, so nothing
+// here depends on the day it runs (rules/testing.md).
+test('a deadline heard by the hook becomes a daily chase on the task the turn saves', async () => {
+  const u = await agentUser('+972641100061', 'u-961');
+  await open({ agentId: 'u-961', messageId: '3EB0CHASE01', kind: 'text', chase: { kind: 'days', n: 5, namedHour: false } });
+  const turn = newTurn();
+  const ts = await call(u, 'turn_start', { message_id: '3EB0CHASE01' }, turn);
+  assert.match(ts.text, /is a CHASE/, 'the model is told what the server will do');
+
+  // The model's own reading: the errand tomorrow, an hour it picked. Neither stands.
+  const tomorrow = new Date(now + 86400_000).toISOString().replace('Z', '+00:00');
+  const res = await call(u, 'add_task', { title: 'לקחת את המצלמה לתיקון', due_at: tomorrow, remind_at: tomorrow }, turn);
+  assert.equal(res.ok, true, res.text);
+  const { rows } = await db.pool.query(
+    `SELECT t.due_at, r.repeat_rule, r.repeat_until, r.nudge FROM tasks t
+       JOIN task_reminders r ON r.task_id = t.id AND r.sent_at IS NULL AND r.cancelled_at IS NULL
+      WHERE t.owner_id = $1`, [u.id]);
+  assert.equal(rows.length, 1, 'one row: the chase replaced the automatic one, never joined it');
+  assert.equal(rows[0].repeat_rule, 'daily');
+  assert.equal(rows[0].nudge, true);
+  const day = require('../src/domain/chase-deadline').forTurn({ kind: 'days', n: 5 },
+    { now: new Date(now), timezone: u.timezone }).day;
+  assert.ok(require('../src/domain/chase-deadline').onDay(rows[0].due_at, day, u.timezone),
+    'the task is due on the day they said, not the day the model guessed');
+  assert.ok(require('../src/domain/chase-deadline').onDay(rows[0].repeat_until, day, u.timezone),
+    'and the chase ends with it');
+  assert.match(res.text, /daily chase is armed/);
+
+  // Spent once: a second task in the same turn is an ordinary one.
+  const other = await call(u, 'add_task', { title: 'לקנות סוללה', due_at: tomorrow }, turn);
+  assert.equal(other.ok, true, other.text);
+  assert.doesNotMatch(other.text, /daily chase is armed/);
+});
+
+test('a task already on their list is chased to the heard deadline through set_task_reminder', async () => {
+  const u = await agentUser('+972641100062', 'u-962');
+  const tomorrow = new Date(now + 86400_000).toISOString().replace('Z', '+00:00');
+  const first = await call(u, 'add_task', { title: 'לשלוח את הדוח', due_at: tomorrow }, newTurn());
+  assert.equal(first.ok, true, first.text);
+  const taskId = (await db.pool.query(`SELECT id FROM tasks WHERE owner_id = $1`, [u.id])).rows[0].id;
+  await open({ agentId: 'u-962', messageId: '3EB0CHASE02', kind: 'text', chase: { kind: 'days', n: 4, namedHour: false } });
+  const turn = newTurn();
+  const res = await call(u, 'set_task_reminder', { task_id: taskId, remind_at: tomorrow }, turn);
+  assert.equal(res.ok, true, res.text);
+  assert.match(res.text, /daily chase is armed/);
+  const { rows } = await db.pool.query(
+    `SELECT repeat_rule, repeat_until FROM task_reminders WHERE task_id = $1 AND sent_at IS NULL AND cancelled_at IS NULL`, [taskId]);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].repeat_rule, 'daily');
+  const day = require('../src/domain/chase-deadline').forTurn({ kind: 'days', n: 4 },
+    { now: new Date(now), timezone: u.timezone }).day;
+  assert.ok(require('../src/domain/chase-deadline').onDay(rows[0].repeat_until, day, u.timezone));
+});
+
+test('a turn with no deadline heard arms nothing it was not asked to', async () => {
+  const u = await agentUser('+972641100063', 'u-963');
+  await open({ agentId: 'u-963', messageId: '3EB0CHASE03', kind: 'text' });
+  const turn = newTurn();
+  const ts = await call(u, 'turn_start', { message_id: '3EB0CHASE03' }, turn);
+  assert.doesNotMatch(ts.text, /is a CHASE/);
+  const res = await call(u, 'add_task', { title: 'לקנות חלב', due_at: new Date(now + 3 * 86400_000).toISOString().replace('Z', '+00:00') }, turn);
+  assert.equal(res.ok, true, res.text);
+  assert.doesNotMatch(res.text, /daily chase is armed/);
+  // and a verdict that is not one is dropped at the door
+  await open({ agentId: 'u-963', messageId: '3EB0CHASE04', kind: 'text', chase: { kind: 'forever' } });
+  const ts2 = await call(u, 'turn_start', { message_id: '3EB0CHASE04' }, newTurn());
+  assert.doesNotMatch(ts2.text, /is a CHASE/);
 });

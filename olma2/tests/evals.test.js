@@ -909,6 +909,48 @@ test('the harness opens each turn through brokerd, with no message id to react t
   assert.deepEqual(opened, ['u-15', 'u-15']);
 });
 
+// The CLI fires no hook, so the verdicts the hook reads off a real message are
+// read by the harness with the same functions. Without them `chase-until-done`
+// measured the model's reading of חיים's sentence, which production stopped
+// asking it for (domain/chase-deadline, 2026-09-24).
+test('the harness sends the hook\'s own verdicts with the opening', async () => {
+  const written = [];
+  const fakeSocket = () => {
+    const h = {};
+    const s = {
+      on(ev, fn) { h[ev] = fn; return s; },
+      write(x) { written.push(x); setTimeout(() => h.data && h.data('{"ok":true}\n'), 0); },
+      end() {}, destroy() {},
+    };
+    setTimeout(() => h.connect && h.connect(), 0);
+    return s;
+  };
+  process.env.OLMA_HOOK_TRACE = require('node:path').join(require('node:os').tmpdir(), `evals-hook-${process.pid}.log`);
+  const chaim = scenarios.SCENARIOS.find((s) => s.id === 'chase-until-done').turns[0];
+  await harness.openTurnForEval('u-15', { connect: fakeSocket, message: chaim });
+  await harness.openTurnForEval('u-15', { connect: fakeSocket, message: 'תודה רבה' });
+  const [first, second] = written.map((w) => JSON.parse(w).params);
+  assert.deepEqual(first.chase, { kind: 'next_week', namedHour: false });
+  assert.equal(first.thanks, false);
+  assert.equal(second.thanks, true);
+  assert.equal(second.chase, null);
+  assert.equal(first.openList, false);
+  const list = scenarios.SCENARIOS.find((s) => s.id === 'list-reads-as-a-list').turns[0];
+  await harness.openTurnForEval('u-15', { connect: fakeSocket, message: list });
+  assert.equal(JSON.parse(written[2]).params.openList, true,
+    'the eval measures the turn production runs, today block left out');
+
+  // and the runner hands the message over
+  const seen = [];
+  const runTurn = harness.makeTurnRunner({ agentId: 'u-15', sessionKey: 'k' }, {
+    openTurn: async (a, o) => { seen.push(o && o.message); },
+    runOpenclawJson: async () => ({ result: { payloads: [{ text: 'ok' }], meta: {} } }),
+    readSessionEventsSlice: () => null,
+  });
+  await runTurn('שלום');
+  assert.deepEqual(seen, ['שלום']);
+});
+
 // ── The blank slate, and the two ways it has already not been one ───────────
 //
 // `resetEvalUser` is a hand-written list of DELETEs and the schema keeps
@@ -1273,5 +1315,28 @@ test('the admin strip is RED for a run that measured nothing, and for a nightly 
   } finally {
     await c.query('ROLLBACK');
     c.release();
+  }
+});
+
+// digest-block-relayed-untouched asks for the TEXT block, and from 2026-09-10
+// a list at the card threshold is drawn as a picture with no block at all. It
+// seeded exactly the threshold for a fortnight and scored the model's
+// obedience as a red (runs 79, 84). Run its seed against a counting stub and
+// ask the server's own rule what that many items become.
+// list-reads-as-a-list is the same question from "מה פתוח לי?", which the
+// model answers through either list tool (run 85: 2 of 5 block, 3 of 5 card).
+test('the block-relay scenarios seed a list the server sends as a block, not a card', async () => {
+  const tasksDomain = require('../src/domain/tasks');
+  const { drawInsteadOfBlock, DEFAULT_CARD_MIN_ITEMS } = require('../src/domain/digest-block');
+  for (const id of ['digest-block-relayed-untouched', 'list-reads-as-a-list']) {
+    const real = tasksDomain.addTask;
+    let n = 0;
+    tasksDomain.addTask = async () => { n += 1; return { ok: true }; };
+    try {
+      await scenarios.SCENARIOS.find((s) => s.id === id).seed({}, 1);
+    } finally { tasksDomain.addTask = real; }
+    assert.ok(n >= 2, `${id}: a list, not one line`);
+    assert.equal(drawInsteadOfBlock(n, DEFAULT_CARD_MIN_ITEMS), false,
+      `${id}: ${n} items become a card at the default threshold, so this scenario could only ever go red`);
   }
 });

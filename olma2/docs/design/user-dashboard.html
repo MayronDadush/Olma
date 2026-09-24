@@ -3448,6 +3448,11 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
         <button class="chip mini" aria-pressed="false" data-rep="day" data-i18n="rep.day"></button>
         <button class="chip mini" aria-pressed="false" data-rep="week" data-i18n="rep.week"></button>
         <button class="chip mini" aria-pressed="false" data-rep="month" data-i18n="rep.month"></button>
+        <!-- A CHASE: one a day until the task's own date, stopping when it is
+             done (domain/reminders.startChase — the same one חיים gets in
+             chat). Offered only on a dated task; the date IS the deadline, so
+             there is no second date to pick. -->
+        <button class="chip mini" aria-pressed="false" data-rep="until" data-i18n="rep.until"></button>
       </div>
     </div></div></div>
     <div class="row no-icon" id="sRemindRow">
@@ -3468,6 +3473,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
            date has no before. The same fold then asks the only thing a
            standing nudge actually needs: which hour. Same clock wheel as
            everywhere else on the page. -->
+      <div class="row-sub" id="sChaseSub" hidden data-i18n="sheet.chaseSub"></div>
       <span class="vseg" id="sRemindAtSeg" hidden>
         <button class="vseg-b set" id="sRemindAtChip" data-i18n-label="sheet.remindAt">
           <svg class="vic"><use href="#i-clock"/></svg><span id="sRemindAtVal"></span></button>
@@ -4232,6 +4238,10 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
         if(x.rem){
           payload.remindAt = remindIso(x);
           payload.repeatRule = REPEAT_RULE[x.rep || "none"] || null;
+          /* A chase carries no hour and no rule: the server's rule picks both
+             (user-dashboard-write.setTaskReminder), and an hour computed here
+             would be read as one they named. */
+          if(x.rep === "until"){ API.send("setTaskReminder", {taskId:id, on:true, chase:true}); return; }
           /* A backstop, not the dateless case — that one now builds its own
              moment above. `setTaskReminder` refuses `on` without a `remindAt`
              and would cancel nothing, so there is no call worth making. */
@@ -4728,7 +4738,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "cal.showIn":"להצגה ביומן",
       "off.at":"בזמן","off.m10":"10 דק׳ לפני","off.h1":"שעה לפני","off.d1":"יום לפני",
       "sheet.remindAt":"שעת התזכורת","sheet.remindAtVal":"להזכיר ב־{time}",
-      "rep.once":"ללא","rep.day":"כל יום","rep.week":"כל שבוע","rep.month":"כל חודש",
+      "rep.once":"ללא","rep.day":"כל יום","rep.week":"כל שבוע","rep.month":"כל חודש","rep.until":"כל יום עד התאריך",
+      "rep.untilVal":"כל יום עד {date}","sheet.chaseSub":"פעם ביום, בשעה שבה עולמה כבר כותבת לך, עד שזה בוצע",
       "sheet.repeatNeedsRemind":"החזרה נשמרת על התזכורת — צריך להדליק תזכורת קודם",
 
       "toast.on":"השירות הופעל","toast.off":"השירות כובה",
@@ -5051,7 +5062,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "cal.showIn":"Show in calendar",
       "off.at":"On time","off.m10":"10 min before","off.h1":"1 hour before","off.d1":"1 day before",
       "sheet.remindAt":"Reminder time","sheet.remindAtVal":"Remind at {time}",
-      "rep.once":"Never","rep.day":"Every day","rep.week":"Every week","rep.month":"Every month",
+      "rep.once":"Never","rep.day":"Every day","rep.week":"Every week","rep.month":"Every month","rep.until":"Daily until the date",
+      "rep.untilVal":"Daily until {date}","sheet.chaseSub":"Once a day, at the hour Allma already writes to you, until it is done",
       "sheet.repeatNeedsRemind":"A repeat lives on the reminder — switch one on first",
 
       "toast.on":"Service turned on","toast.off":"Service turned off",
@@ -7702,11 +7714,26 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
        drop it, the row says why it is unavailable. That lock is applied in
        syncSheetSource below, together with the source's own limit on the same
        row, because two lockRow calls on one row leave only the last. */
+    /* "Daily until the date" has no date to run to on an undated task, so the
+       chip goes with the date — and if the date goes while it is chosen, the
+       choice falls back to none rather than sending a chase with no end. */
+    var untilChip = $('#sRepeat [data-rep="until"]');
+    untilChip.hidden = !dated;
+    if(!dated && untilChip.getAttribute("aria-pressed") === "true"){
+      $$("#sRepeat .chip").forEach(function(c){ c.setAttribute("aria-pressed", c.dataset.rep === "none" ? "true" : "false"); });
+      editing.rep = "none";
+    }
     var chosen = $$("#sRepeat .chip").filter(function(c){ return c.getAttribute("aria-pressed") === "true"; })[0];
-    $("#sRepeatVal").textContent = t("rep." + ({none:"once", day:"day", week:"week", month:"month"}[chosen ? chosen.dataset.rep : "none"] || "once"));
+    var chosenRep = chosen ? chosen.dataset.rep : "none";
+    $("#sRepeatVal").textContent = chosenRep === "until" ? t("rep.untilVal", {date:longDate(editing.d)})
+      : t("rep." + ({none:"once", day:"day", week:"week", month:"month"}[chosenRep] || "once"));
     /* The reminder fold asks one question or the other, never both: how long
-       before a moment there is, or what hour when there is none. */
-    $("#sOffset").hidden = !dated;
+       before a moment there is, or what hour when there is none. A chase asks
+       neither — its hour is the one they already hear from Olma, and the
+       fold says so instead of offering chips the server would ignore. */
+    var chasing = chosenRep === "until";
+    $("#sOffset").hidden = !dated || chasing;
+    $("#sChaseSub").hidden = !chasing;
     $("#sRemindAtSeg").hidden = dated;
     $("#sRemindAtVal").textContent = t("sheet.remindAtVal", {time:editing.remAt || remDefaultAt()});
     var ck = editing.cat || "none";
@@ -11817,7 +11844,10 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       id:x.id,
       d:x.date || "", tm:x.time || "", all:!!x.allDay,
       t:x.title,
-      rem:!!x.reminder, rep:repShape(x.reminder && x.reminder.repeat),
+      rem:!!x.reminder,
+      /* A daily rule WITH an end is a chase, and only `until` says so — read
+         as "every day" it would be a promise to go on for ever. */
+      rep:(x.reminder && x.reminder.until) ? "until" : repShape(x.reminder && x.reminder.repeat),
       /* Minutes before the task's own moment, recovered from the two the
          server actually stores. Anything that is not one of the four offered
          offsets lands on the nearest one below it rather than inventing a

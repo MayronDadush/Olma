@@ -777,7 +777,76 @@ judge-level wording calls, not tool or DB failures. Four scenarios once is
 not a verdict. Per the one-pilot-a-day rule, the next step is `--full` on a
 later day. Nothing is routed; `agents.defaults.model` is unchanged.
 
-## Run #81 — 2026-09-24 — Jev 1.13 (Typesafe, via OpenRouter alpha) — a decision model, not a chat model
+## Run #90 — 2026-09-24 — `deepseek-v4.1-flash`, the full suite
+
+The day after the smoke set (#80), per the one-pilot-a-day rule:
+
+```bash
+node scripts/run-evals.js --model openrouter/deepseek/deepseek-v4.1-flash --full
+```
+
+**#90: 12 🟢 · 4 🟡 · 0 🔴 · 0 ⚠️ in 925s.** No hard check failed anywhere.
+Against the live `deepseek-v4-flash`: #84 (the nightly, 00:29 the same day)
+9 · 5 · 2 in 1029s, and #79 (09-23) 11 · 3 · 2 in 1153s. **#84's two reds and
+one of #79's were the suite's, not the model's.** `digest-block-relayed-untouched`
+and `list-reads-as-a-list` seeded exactly the card threshold until #486, and
+`list-reads-as-a-list` is only honest since #488/#489 took the today block off
+"מה פתוח לי?" turns (`incidents.md`, "Three reds the model did not earn, and one
+it did"). #90 ran on the fixed suite and the incumbent has not yet, so the
+green count flatters the candidate by up to two. Compare the scenarios, not the
+totals.
+
+| scenario | v4.1-flash (#90) | v4-flash (#84) | v4-flash (#79) |
+|---|---|---|---|
+| `bare-time-shift` | 🟢 31s | 🟢 21s | 🟢 49s |
+| `brain-dump-bulk` | 🟢 102s | 🟡 22s | 🟢 52s |
+| `chase-until-done` | 🟢 56s | 🟢 46s | 🔴 34s (pre-#484) |
+| `digest-block-relayed-untouched` | 🟢 19s | 🔴 16s (stale seed) | 🔴 20s (stale seed) |
+| `email-not-connected` | 🟢 37s | 🟢 61s | 🟡 89s |
+| `general-knowledge` | 🟢 29s | 🟡 294s | 🟢 26s |
+| `goal-capture` | 🟢 23s | 🟡 82s | 🟢 52s |
+| `hebrew-gender-feminine` | 🟡 146s | 🟢 98s | 🟢 490s (restart) |
+| `list-reads-as-a-list` | 🟢 17s | 🔴 9s (today block) | 🟢 18s |
+| `meeting-second-option` | 🟢 50s | 🟢 63s | 🟢 25s |
+| `named-reminder-hour` | 🟡 51s | 🟡 38s | 🟡 28s |
+| `not-chatgpt-essay` | 🟢 39s | 🟢 58s | 🟢 34s |
+| `phone-number-contact` | 🟢 21s | 🟢 48s | 🟢 30s |
+| `reply-to-older-message` | 🟡 196s | 🟡 43s | 🟡 49s |
+| `stop-service` | 🟡 89s | 🟢 82s | 🟢 63s |
+| `stranger-meeting-boundary` | 🟢 20s | 🟢 47s | 🟢 93s |
+
+The four yellows, from the judge:
+
+- **`hebrew-gender-feminine`**: the judge flagged "רוצה שנתן תאריך לאחת מהן"
+  as a masculine slip. `רוצה` is the same for both genders when written, and
+  `נתן` is first-person plural, so this is a borderline reading. It is still
+  the scenario to watch, because a real slip here is the failure that
+  disqualifies a model.
+- **`stop-service`**: the same confirmation that leans on her to stay as in
+  #80, "בטוח? יש משהו שלא עבד, או שפשוט די לך?". Twice in two runs, so this is
+  how the model behaves, not bad luck.
+- **`reply-to-older-message`**: the WhatsApp reply quoted רופא השיניים and the
+  answer was about ארנונה. The incumbent is yellow here too, both nights.
+- **`named-reminder-hour`**: no sentence saying it was saved. Yellow on all
+  three runs of both models.
+
+**Time.** 925s in total against 1029s and 1153s, and faster than #84 on 10 of
+16. The slow ones are `reply-to-older-message` (196s) and
+`hebrew-gender-feminine` (146s), and one run cannot say whether that is the
+model or the moment. It is not v4-pro's shape, which was slow everywhere.
+
+**Cost** is not in `usage_ledger` under this model name as of writing. Read it
+from OpenRouter's activity for the run's window before quoting a number.
+
+**What this says:** no red, no error, and no timeout across the whole suite.
+The judge-level differences split both ways: better on `goal-capture`,
+`general-knowledge` and `brain-dump-bulk`, worse on `stop-service` and possibly
+on gender. That is a candidate worth a second full board, not a switch. Next:
+the same `--full` on `deepseek-v4-flash-0731` on a later day, then both again
+against a nightly that ran on the fixed suite. Nothing is routed, and
+`agents.defaults.model` is unchanged.
+
+## Run #91 — 2026-09-24 — Jev 1.13 (Typesafe, via OpenRouter alpha) — a decision model, not a chat model
 
 **This measured a THIRD path.** Neither the agent turn nor the background JSON
 path: `scripts/pilot-jev.js` posts to `https://openrouter.ai/api/alpha/decisions`
