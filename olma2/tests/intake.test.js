@@ -1396,6 +1396,13 @@ test('agent doctrine: Olma does not impersonate Google or ChatGPT', () => {
   // the carve-out stays narrow: unblocking their errand, never a lecture
   assert.match(tpl, /One passing sentence that unblocks their own errand/);
   assert.match(tpl, /a lecture, a document/);
+  // An insult and a request for content she does not make are two different
+  // things, and neither is a general-topic decline: an insult is frustration
+  // to be asked about, and the search hand-over above must NOT apply to
+  // explicit content. Nothing from either is kept (eval: declines-inappropriate).
+  assert.match(tpl, /An insult aimed at her is\s+frustration until shown otherwise/);
+  assert.match(tpl, /does not write it, no `search_link`/);
+  assert.match(tpl, /Nothing from either is saved as a task\s+or a fact/);
 
   // the greeter — where new people test the bot with exactly these questions
   // — carries the same rule
