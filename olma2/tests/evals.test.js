@@ -934,6 +934,11 @@ test('the harness sends the hook\'s own verdicts with the opening', async () => 
   assert.equal(first.thanks, false);
   assert.equal(second.thanks, true);
   assert.equal(second.chase, null);
+  assert.equal(first.openList, false);
+  const list = scenarios.SCENARIOS.find((s) => s.id === 'list-reads-as-a-list').turns[0];
+  await harness.openTurnForEval('u-15', { connect: fakeSocket, message: list });
+  assert.equal(JSON.parse(written[2]).params.openList, true,
+    'the eval measures the turn production runs, today block left out');
 
   // and the runner hands the message over
   const seen = [];
@@ -1311,4 +1316,45 @@ test('the admin strip is RED for a run that measured nothing, and for a nightly 
     await c.query('ROLLBACK');
     c.release();
   }
+});
+
+// digest-block-relayed-untouched asks for the TEXT block, and from 2026-09-10
+// a list at the card threshold is drawn as a picture with no block at all. It
+// seeded exactly the threshold for a fortnight and scored the model's
+// obedience as a red (runs 79, 84). Run its seed against a counting stub and
+// ask the server's own rule what that many items become.
+// list-reads-as-a-list is the same question from "מה פתוח לי?", which the
+// model answers through either list tool (run 85: 2 of 5 block, 3 of 5 card).
+test('the block-relay scenarios seed a list the server sends as a block, not a card', async () => {
+  const tasksDomain = require('../src/domain/tasks');
+  const { drawInsteadOfBlock, DEFAULT_CARD_MIN_ITEMS } = require('../src/domain/digest-block');
+  for (const id of ['digest-block-relayed-untouched', 'list-reads-as-a-list']) {
+    const real = tasksDomain.addTask;
+    let n = 0;
+    tasksDomain.addTask = async () => { n += 1; return { ok: true }; };
+    try {
+      await scenarios.SCENARIOS.find((s) => s.id === id).seed({}, 1);
+    } finally { tasksDomain.addTask = real; }
+    assert.ok(n >= 2, `${id}: a list, not one line`);
+    assert.equal(drawInsteadOfBlock(n, DEFAULT_CARD_MIN_ITEMS), false,
+      `${id}: ${n} items become a card at the default threshold, so this scenario could only ever go red`);
+  }
+});
+
+// 2026-09-24: `run-evals.js --help` was not a flag it knew, so it ran the
+// whole suite on the shared eval user until somebody killed it (run 88). A
+// typo is refused now, before a pool is opened or a scenario runs.
+test('run-evals refuses a flag or a scenario it does not know, instead of running the default', () => {
+  const { checkArgs } = require('../scripts/run-evals');
+  const ids = ['stop-service', 'goal-capture'];
+  assert.deepEqual(checkArgs([], ids), {}, 'no flags is still the full suite, on purpose');
+  assert.deepEqual(checkArgs(['--only', 'stop-service', '--trials', '5'], ids), {});
+  assert.deepEqual(checkArgs(['--model', 'openrouter/x/y', '--full', '--no-judge'], ids), {});
+  assert.deepEqual(checkArgs(['--help'], ids), { help: true });
+  assert.match(checkArgs(['--ful'], ids).error, /unknown argument "--ful"/);
+  assert.match(checkArgs(['full'], ids).error, /unknown argument/);
+  assert.match(checkArgs(['--only', 'stop-service,stop-servise'], ids).error, /no scenario called stop-servise/);
+  assert.match(checkArgs(['--only'], ids).error, /needs a value/);
+  assert.match(checkArgs(['--model', '--full'], ids).error, /needs a value/);
+  assert.match(checkArgs(['--only', 'goal-capture', '--trials', 'five'], ids).error, /whole number/);
 });

@@ -211,6 +211,8 @@ module.exports = [
         // And the deadline it heard, which add_task on this turn will arm.
         chaseUntil: (ctx && ctx.turn && ctx.turn.chase && !ctx.turn.chaseUsed && ctx.turn.chase.day) || null,
         chaseNamedHour: Boolean(ctx && ctx.turn && ctx.turn.chase && ctx.turn.chase.namedHour),
+        // "מה פתוח לי?" — no today block on this turn (domain/turn.advise).
+        openList: Boolean(ctx && ctx.turn && ctx.turn.openList),
       });
       return stale(ok(data), namedNow);
     }),
