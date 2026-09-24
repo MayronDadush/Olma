@@ -934,6 +934,11 @@ test('the harness sends the hook\'s own verdicts with the opening', async () => 
   assert.equal(first.thanks, false);
   assert.equal(second.thanks, true);
   assert.equal(second.chase, null);
+  assert.equal(first.openList, false);
+  const list = scenarios.SCENARIOS.find((s) => s.id === 'list-reads-as-a-list').turns[0];
+  await harness.openTurnForEval('u-15', { connect: fakeSocket, message: list });
+  assert.equal(JSON.parse(written[2]).params.openList, true,
+    'the eval measures the turn production runs, today block left out');
 
   // and the runner hands the message over
   const seen = [];

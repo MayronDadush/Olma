@@ -5774,6 +5774,25 @@ The shape is the old one: a fixture and a threshold that both said "3" by hand
 are two readers of one number, and a block written to REPLACE a tool call has
 to say what it does not hold, or its silence is read as an answer.
 
+**And the hint was not the fix.** Deployed (#488) and re-run five times the
+same morning (run 87): four trials listed both to-dos, one still answered
+"כרגע אין לך כלום פתוח להיום — לא משימות ולא אירועים. יום פנוי לגמרי" with
+`undated: 2` in the block and a sentence about it in the hint. Same lesson as
+the chase the night before: a model that has two readings available picks the
+wrong one some of the time, and no wording removes the second reading. The
+turn-open hook now reads the question itself — `asksOpenList`, a question
+about their tasks or "what is open" with no day named — and brokerd drops the
+`today` block from that one turn, so there is no empty list left in the
+prompt. Measured on the 879 real inbound messages on the box: 8 hits, all
+eight a question about the list ("מה המשימות שלי?", "איזה משימות פתוחות?",
+"איזה משימות משותפות יש לי עם מאיה?"), and the three that named a day
+("…להיום?", "…של מחר") left alone. A bare "מה פתוח" counts only about THEM
+("לי", "אצלי") or at the end of the sentence — "מה פתוח עכשיו באזור" is a shop.
+
+Also from run 87: `digest-block-relayed-untouched` went red twice with the
+tool called and the right two items in the reply, each as a bold line instead
+of a list line — the model reformatting a drawn block. That one is the model's.
+
 ## Cost, billing and the money page
 
 ### Twelve people off the bottom of the money page (fixed 2026-09-10)
