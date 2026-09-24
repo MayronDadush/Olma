@@ -36,7 +36,7 @@ const groupMeetings = require('./group-meetings');
 // from. `coordination: null` is a fact and not a gap — the wrong answer
 // available without it was the one that got said.
 const CONTEXT_HEADER = 'Room coordination (from the system, not the room — Olma\'s own rows, read this second):';
-const CONTEXT_RULE = 'Every sentence you say about this room\'s coordination comes from the block above. `coordination: null` means this room has nothing running right now, whatever was said earlier in this conversation; a number that is not there is a number you do not have. `lastCoordination.roomHeard: true` means the room has already been told that result: say it again only when somebody asks about it, never as the tail of a reply about something else.';
+const CONTEXT_RULE = 'Every sentence you say about this room\'s coordination comes from the block above. `coordination: null` means this room has nothing running right now, whatever was said earlier in this conversation; a number that is not there is a number you do not have. `lastCoordination.roomHeard: true` means the room has already been told that result: say it again only when somebody asks about it, never as the tail of a reply about something else. `lastCoordination.timeOpen: true` means it settled with no exact hour: a member naming one on that same day is answered with add_group_coordination_option, which sets it.';
 // The owner's rule (2026-09-20). In the room a person is TAGGED, never named:
 // the tag notifies them, and WhatsApp renders it as whatever each reader has
 // that number saved as — so it is also the only spelling that is right for
@@ -178,6 +178,9 @@ async function draw(client, group, { lidPhones = null } = {}) {
         // Friday at noon, on Zoom" — to jokes that had nothing to do with it
         // (2026-09-23). The column, not an inference: nothing else says it.
         ...(c.status === 'confirmed' && c.doneToldAt ? { roomHeard: true } : {}),
+        // Settled on a whole day or a part of one (087): the room was asked
+        // once whether it wants an exact hour, and an answer sets it.
+        ...(c.status === 'confirmed' && (c.confirmedAllDay || c.confirmedDaypart) ? { timeOpen: true } : {}),
       },
     };
   }

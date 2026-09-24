@@ -124,7 +124,7 @@ function leadingOption(options) {
 // saying the base of a plan that is already settled is worse than saying
 // nothing.
 function decideGroupLine(co, {
-  saidStarted, saidBase, saidBaseSlot, saidChase, saidDone, saidCalendar, saidDayOf, saidHour,
+  saidStarted, saidBase, saidBaseSlot, saidChase, saidDone, saidCalendar, saidDayOf, saidHour, saidTime,
   pendingRelay, startedAtMs, nowMs, timezone, tableSaidAtMs,
 } = {}) {
   if (!co) return { kind: 'none', reason: 'nothing being coordinated' };
@@ -136,8 +136,18 @@ function decideGroupLine(co, {
     // this covers the ones opened before that, and a time like "שישי בזום".
     const saidOnline = onlinePlace(co.title) || onlinePlace(co.confirmedSlot);
     if (!saidDone) {
-      return { kind: 'done', slot: co.confirmedSlot, who: whoIsIn(co), placeAsk: !co.location && !saidOnline };
+      // `timeAsk`: it settled on a whole day or a part of one, so the same
+      // line asks ONCE whether they want an exact hour (owner, 2026-09-24).
+      // Once because this line is stamped once; an answer goes through
+      // add_group_coordination_option, which sets it on a settled meeting.
+      return {
+        kind: 'done', slot: co.confirmedSlot, who: whoIsIn(co), placeAsk: !co.location && !saidOnline,
+        timeAsk: Boolean(co.confirmedAllDay || co.confirmedDaypart),
+      };
     }
+    // Somebody gave it its exact hour in a private chat. Said once; set in
+    // the room, it is stamped as heard at once (meeting-fanout.afterTimeSet).
+    if (co.timeSetAt && !saidTime) return { kind: 'time', slot: co.confirmedSlot };
     // Once, after the done line, and only when a SHARED calendar event exists
     // for this coordination — `calendar_event_id` is written by nothing but
     // calendar.createSharedMeetingEvent. "הוספתי ליומן של כולם" would have

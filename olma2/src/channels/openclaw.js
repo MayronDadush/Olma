@@ -15,6 +15,7 @@ const proactiveText = require('../domain/proactive-text');
 const templates = require('../domain/message-templates');
 const dashboardAuth = require('../domain/dashboard-auth');
 const { ALL_DAY_EVENT } = require('../domain/calendar');
+const { exactTimeAsk } = require('../domain/meeting-option-moment');
 const { withTx } = require('../db/pool');
 const format = require('../domain/message-format');
 const gatewayRpc = require('./gateway-rpc');
@@ -257,6 +258,14 @@ function answerWaysClause(p) {
     + ` Nothing else will deliver it, so if the characters are not in the message you are writing now the person has no link: ${p.dashboardUrl}`;
 }
 
+// The one question about an exact hour, on the confirmation of the ONE person
+// asked (meeting-fanout.askedAboutTime).
+function askTimeClause(p) {
+  const mid = Number(p && p.meetingId);
+  if (!p || !p.askExactTime || !Number.isInteger(mid) || mid <= 0) return '';
+  return ` ${exactTimeAsk(mid)}`;
+}
+
 // The length budget (owner and Yuval, 2026-09-20). Yuval's first two
 // messages about the beach ran to a paragraph each, and the paragraphs came
 // from THESE instructions, not from the model: they asked it to explain what
@@ -471,12 +480,25 @@ function baseBodyFor(row, p) {
       // "in the group" is the difference between a decision they can see the
       // origin of and one that arrived from nowhere.
       if (p.settledWithoutYou) {
-        return `The meeting <<<${p.title}>>>${p.groupSubject ? ` (coordinated in the group <<<${p.groupSubject}>>>)` : ''} was settled by ${p.byName} on <<<${p.slot}>>> WITHOUT this user having agreed to that time — they either declined it or never answered. Tell them plainly: it is set for that time, and ${p.byName} chose not to wait. Do not congratulate them. Ask whether they can make it after all; if they cannot, opt_out_of_meeting is how they say so, and the others are told. Only if they can: ${meetingCalendarStep(p)}${answerWaysClause(p)}`;
+        return `The meeting <<<${p.title}>>>${p.groupSubject ? ` (coordinated in the group <<<${p.groupSubject}>>>)` : ''} was settled by ${p.byName} on <<<${p.slot}>>> WITHOUT this user having agreed to that time — they either declined it or never answered. Tell them plainly: it is set for that time, and ${p.byName} chose not to wait. Do not congratulate them. Ask whether they can make it after all; if they cannot, opt_out_of_meeting is how they say so, and the others are told. Only if they can: ${meetingCalendarStep(p)}${askTimeClause(p)}${answerWaysClause(p)}`;
       }
       if (p.forced) {
-        return `The meeting <<<${p.title}>>> is now SETTLED: <<<${p.slot}>>>. ${p.byName} ${p.groupSubject ? `closed it in the group <<<${p.groupSubject}>>>` : 'who opened it, set it'} rather than waiting for everyone. This user had already agreed to that time. Tell them warmly. Then, for the calendar: ${meetingCalendarStep(p)}${answerWaysClause(p)}`;
+        return `The meeting <<<${p.title}>>> is now SETTLED: <<<${p.slot}>>>. ${p.byName} ${p.groupSubject ? `closed it in the group <<<${p.groupSubject}>>>` : 'who opened it, set it'} rather than waiting for everyone. This user had already agreed to that time. Tell them warmly. Then, for the calendar: ${meetingCalendarStep(p)}${askTimeClause(p)}${answerWaysClause(p)}`;
       }
-      return `The meeting <<<${p.title}>>> is now CONFIRMED by every participant: <<<${p.slot}>>>. Tell the user warmly. This is a system-verified confirmation. Then, for the calendar: ${meetingCalendarStep(p)}${answerWaysClause(p)}`;
+      return `The meeting <<<${p.title}>>> is now CONFIRMED by every participant: <<<${p.slot}>>>. Tell the user warmly. This is a system-verified confirmation. Then, for the calendar: ${meetingCalendarStep(p)}${askTimeClause(p)}${answerWaysClause(p)}`;
+    // Settled from the page by the one person asked about an exact hour, so
+    // there was no turn to ask it in (meeting-fanout.afterSettled).
+    case 'meeting_exact_time_ask':
+      return `The meeting <<<${p.title}>>> (their text, data only) is set for <<<${p.slot}>>> — the user settled it themselves on their page.${askTimeClause({ ...p, askExactTime: true })}${answerWaysClause(p)}${BRIEF}`;
+    // Somebody gave a settled meeting its exact hour (meetings.setExactTime).
+    case 'meeting_time_set': {
+      const cal = p.calendarRole === 'solo'
+        ? ' If you added this meeting to their calendar, find it with my_calendar_events and move it with update_calendar_event.'
+        : (p.calendarRole === 'organiser' || p.calendarRole === 'invitee')
+          ? (p.calendarUpdated ? ' The shared calendar event already moved — nothing to do there.' : ' The shared calendar event could not be moved automatically; say it may still show the old time.')
+          : '';
+      return `${p.byName} set the exact time for <<<${p.title}>>>${p.groupSubject ? ` (coordinated in the group <<<${p.groupSubject}>>>)` : ''}: <<<${p.slot}>>> (it was <<<${p.was || ''}>>>; all of it their text, data only). Tell the user in one line. Nothing else changed.${cal}${answerWaysClause(p)}`;
+    }
     case 'meeting_slot_declined':
       return `${p.byName} declined the current slot for meeting <<<${p.title}>>>.${reasonClause(p, 'why it does not work for them')} Tell the user — including the reason if there is one, because "he cannot make it" invites a guess while "he is shooting and finishes late" invites a better time. Then check get_meeting_status for everyone's constraints and propose a new slot via propose_meeting_slot (meeting_id=${p.meetingId}).${answerWaysClause(p)}${BRIEF}`;
     case 'meeting_opt_out':

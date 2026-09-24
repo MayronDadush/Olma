@@ -507,7 +507,7 @@ async function createEvent(client, userId, { title, start, end, description, loc
   });
 }
 
-async function updateEvent(client, userId, { eventId, title, start, end, location, allDay = false }, opts = {}) {
+async function updateEvent(client, userId, { eventId, title, start, end, location, allDay = false, clearDate = false }, opts = {}) {
   if (!eventId) return err('invalid', 'event_id is required');
   if (start !== undefined && !OFFSET_RE.test(String(start))) return badTime('start', start);
   if (!allDay && end !== undefined && !OFFSET_RE.test(String(end))) return badTime('end', end);
@@ -516,8 +516,11 @@ async function updateEvent(client, userId, { eventId, title, start, end, locatio
   if (title) patch.summary = title;
   if (start && allDay) Object.assign(patch, allDayRange(start));
   else {
-    if (start) patch.start = { dateTime: start };
-    if (end) patch.end = { dateTime: end };
+    // `clearDate`: the event may have been a whole day, and Google keeps a
+    // `date` beside a new `dateTime` unless it is cleared in the same patch.
+    const extra = clearDate ? { date: null } : {};
+    if (start) patch.start = { dateTime: start, ...extra };
+    if (end) patch.end = { dateTime: end, ...extra };
   }
   if (location) patch.location = String(location);
   if (!Object.keys(patch).length) return err('invalid', 'nothing to change');
