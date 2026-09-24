@@ -158,7 +158,7 @@ Loads when you **Read** a file under `src/outbox/**`, `src/domain/message-format
 - **What is the same every time is DRAWN, and only the sentence about it is a model's**
 - **…and since 2026-09-10 the lists and choices a person ASKS for are drawn the same way**
 - **…and a drawn table says where the READER stands, plus the one line that needs only their yes**
-- **The invite and the table question offer the coordination's own page, on a bare line; nothing else in the negotiation does** — and the characters are handed over, never asked for: a prompt that named a meeting id got three invented domains in one minute
+- **EVERY private message about a coordination offers its own page, after one fixed sentence ("אפשר לענות לי כאן בצ'אט או דרך הקישור:") and on a bare line** — since 2026-09-24, reversing 2026-09-20; and the characters are handed over, never asked for: a prompt that named a meeting id got three invented domains in one minute
 - **A private message about a coordination is one sentence of context and one question** — two options are a sentence, a game room counts heads, and the length is measured
 - **The same thing does not go out twice inside a few minutes unless the person ASKED**
 - **The delivery gate is the chokepoint and a paused user has no exceptions** — save one room-coordination invite per pause, and one per run of silence

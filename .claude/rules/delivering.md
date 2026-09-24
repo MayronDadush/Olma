@@ -189,9 +189,23 @@ title means this file. Grep the title, not the filename.
   a line the block carries is carried, and a sentence about it is a second
   notification for the same fact.
 
-- **The invite and the table question offer the coordination's own page, on
+- **EVERY private message about a coordination offers its own page, after one
+  fixed sentence — "אפשר לענות לי כאן בצ'אט או דרך הקישור:" — and the link on a
+  bare line** (owner, 2026-09-24: "תמיד"; `answerWaysClause` in
+  `channels/openclaw.js`). Every `meeting_*` kind, the confirmation and the
+  cancellation included, and the `stuck_meeting` check-in, which now carries
+  `meetingId` for exactly this. A merged message prints it only inside the part
+  about the coordination it was minted for. **This reverses the afternoon of
+  2026-09-20, told below, on purpose**: the owner weighed the length against
+  people not knowing the page is there and chose the page. What keeps it from
+  becoming the paragraph that afternoon removed is that the sentence is handed
+  over WORD FOR WORD — the model may not explain it, add to it, or say it twice
+  (`incidents.md`, "The link came back on every coordination message").
+  Everything below about how the characters are handed over is unchanged.
+
+  *Until 2026-09-24:* **The invite and the table question offer the coordination's own page, on
   a bare line; nothing else in the negotiation does** (owner, 2026-09-20,
-  twice in one day; `inviteLinkClause` in `channels/openclaw.js`). The morning
+  twice in one day; then `inviteLinkClause`). The morning
   put it on every negotiation message, because by the time a time is added
   or declined the invite's link is above whatever the person is reading. The
   afternoon took it back off the plain proposal and the decline: Yuval read
@@ -211,7 +225,7 @@ title means this file. Grep the title, not the filename.
   five people are in the transcripts, against zero from the one path that
   mints server-side (`withStartLink`). So `openclaw.makeDeliverer` mints the
   link at DELIVERY (not at enqueue — a link is good for 24 hours and a row the
-  gate holds overnight would arrive with a dead one), `inviteLinkClause` prints
+  gate holds overnight would arrive with a dead one), `answerWaysClause` prints
   it or prints NOTHING, and `offersDashboardLink` decides which rows get one by
   asking `instructionFor` itself with a probe rather than keeping a second list
   of kinds. `tools/meetings.offerDashboardOnce` mints on the result the same
@@ -231,7 +245,11 @@ title means this file. Grep the title, not the filename.
   it, offer the link and say answering here works, and it did all of that in
   order. The checks are still things the model DOES; they stopped being
   things it SAYS — no calendar remark unless there is a clash, no reason
-  unless one was given. Three things ride with it. **Two options are a
+  unless one was given. **The one exception since 2026-09-24 is the fixed
+  answer-here-or-by-link sentence** (the bullet above): `BRIEF` forbids every
+  other word about how answering works, and `tests/private-brevity.test.js`
+  asserts the sentence is there verbatim and the old paragraph is not.
+  Three things ride with it. **Two options are a
   sentence, not a table**: `list-block.MEETING_MIN_LINES` is 3, and below it
   `get_meeting_status` hands the reader's position over as `marks` (their
   own y/n per option, and `needsYou` as a boolean about the others) with a
