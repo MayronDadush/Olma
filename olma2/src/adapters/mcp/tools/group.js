@@ -88,7 +88,8 @@ module.exports = [
   groupTool('add_group_coordination_option',
     'GROUP AGENTS ONLY. The member who tagged you named a time for this room\'s coordination: put it on the table as THEIR option, with their yes. The others are asked about it privately.',
     { slot_description: S('string', 'The time in their words, day included'),
-      starts_at: S('string', 'The same moment and DAY, ISO-8601 with offset') },
+      starts_at: S('string', 'The same moment and DAY, ISO-8601 with offset'),
+      all_day: S('boolean', 'The whole day'), daypart: S('string', 'morning|noon|evening|night, when no hour') },
     ['slot_description', 'starts_at'],
     async (client, ctx, a) => {
       if (!ctx.actingUser) {
@@ -99,7 +100,8 @@ module.exports = [
         return err('invalid', 'nothing is being coordinated in this room — call start_group_coordination first');
       }
       const meetingId = Number(meeting.id);
-      const res = await meetings.proposeSlot(client, ctx.actingUser.id, meetingId, a.slot_description, a.starts_at);
+      const res = await meetings.proposeSlot(client, ctx.actingUser.id, meetingId, a.slot_description, a.starts_at,
+        { allDay: a.all_day === true, daypart: a.daypart || null });
       if (!res.ok) {
         // The full-table refusal carries every option with its per-person
         // answers keyed by user id. A room is told the times, never whose

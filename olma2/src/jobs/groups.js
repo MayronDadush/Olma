@@ -505,7 +505,10 @@ async function sweepGroupVoice(client, deps) {
                       -- a shared calendar event the room has not heard about
                       OR (m.calendar_event_id IS NOT NULL AND m.group_calendar_at IS NULL)
                       -- still ahead of us, and one of the two reminders unsaid
-                      OR (m.confirmed_start_at IS NOT NULL AND m.confirmed_start_at > now()
+                      -- (a whole day stays ahead of us until its day is over, 087)
+                      OR (m.confirmed_start_at IS NOT NULL
+                          AND (m.confirmed_start_at > now()
+                               OR (m.confirmed_all_day AND m.confirmed_start_at > now() - interval '15 hours'))
                           AND (m.group_dayof_at IS NULL OR m.group_hour_at IS NULL)))))
       ORDER BY (m.status = 'confirmed') DESC, m.id DESC`);
 
@@ -516,7 +519,7 @@ async function sweepGroupVoice(client, deps) {
     if (spoken.has(String(row.id))) continue;
     const { rows: full } = await client.query(
       `SELECT id, title, status, confirmed_slot, confirmed_start_at, initiator_id,
-              settle_due_at, calendar_event_id, location
+              settle_due_at, calendar_event_id, location, confirmed_all_day, confirmed_daypart
          FROM meetings WHERE id = $1`, [row.meeting_id]);
     const st = await groupMeetings.statusOf(client, row, full[0] || null);
     // Read HERE and not on `statusOf`, on purpose: `statusOf` is also the block

@@ -18,6 +18,7 @@ const audit = require('./audit');
 const grants = require('./grants');
 const { hasOffset, badTime, weekdayClash } = require('./datetime');
 const options = require('./meeting-options');
+const optionMoment = require('./meeting-option-moment');
 const { onlinePlace } = require('./online-place');
 
 // How long a slot stays "live" after its start before the negotiation is
@@ -227,12 +228,21 @@ async function badSlot(client, userId, label, slotText, startsAt) {
 // lets anything in the system ask whether the moment has passed. Without it
 // a dead slot looks exactly like a live one — which is how a Saturday
 // check-in asked someone about Friday's poker game.
-async function proposeSlot(client, userId, meetingId, slotText, startsAt) {
+async function proposeSlot(client, userId, meetingId, slotText, startsAt, { allDay = false, daypart = null } = {}) {
   // Since 2026-09-05 a proposal ADDS a candidate rather than replacing the
   // one on the table (domain/meeting-options.js: up to four, a fifth from a
   // non-initiator waits for the initiator). The single-slot columns mirror
   // the newest active option, so everything that reads them is unchanged.
-  const res = await options.add(client, userId, meetingId, slotText, startsAt);
+  // A whole day or a part of one keeps its precision on the option (039/040)
+  // and sits on the same stand-in hour the dashboard uses.
+  if ((allDay || daypart) && hasOffset(startsAt)) {
+    const { rows: [u] } = await client.query('SELECT timezone FROM users WHERE id = $1', [userId]);
+    const stand = optionMoment.standInFor(u && u.timezone, startsAt, { allDay, daypart });
+    if (!stand.ok) return stand;
+    ({ startsAt } = stand.data);
+    ({ allDay, daypart } = stand.data);
+  }
+  const res = await options.add(client, userId, meetingId, slotText, startsAt, { allDay, daypart });
   if (!res.ok) return res;
   return ok({
     meetingId, proposedSlot: res.data.option.slotText,

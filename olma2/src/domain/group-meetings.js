@@ -245,6 +245,7 @@ async function statusOf(client, group, meeting) {
     }
     return {
       optionId: o.id, slot: o.slotText, startsAt: o.startsAt,
+      allDay: Boolean(o.allDay), daypart: o.daypart || null,
       yes, no, missing: active.filter((uid) => !(uid in (o.answers || {}))).map(who),
       // What that many yeses MEANS in this room — nothing at all until
       // somebody has said what kind of room it is (groups.quorumFor).
@@ -264,6 +265,10 @@ async function statusOf(client, group, meeting) {
       meetingId: Number(meeting.id), title: meeting.title, status: meeting.status,
       confirmedSlot: meeting.confirmed_slot || null,
       confirmedStartAt: meeting.confirmed_start_at || null,
+      // A whole day or a part of one (087): its start is a stand-in hour, and
+      // nothing may remind the room "in an hour" off it.
+      confirmedAllDay: Boolean(meeting.confirmed_all_day),
+      confirmedDaypart: meeting.confirmed_daypart || null,
       confirmedOption,
       // The minute between the last yes and the announcement, and whether a
       // shared calendar event exists for it — both undefined when the caller

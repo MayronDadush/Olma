@@ -593,6 +593,28 @@ test('the chase names only the people who answered nothing at all', () => {
   assert.equal(early.kind, 'none');
 });
 
+// A whole day or a part of one sits on a stand-in hour (087): "in an hour"
+// off it is a time nobody named, and a whole day is still today after 09:00.
+test('an all-day or part-of-day meeting gets the day-of line and never the hour-before', () => {
+  const tz = 'Asia/Jerusalem';
+  const nine = new Date(); nine.setUTCHours(6, 0, 0, 0); // 09:00 Israel, today
+  const base = { saidBase: true, saidChase: true, saidDone: true, startedAtMs: 0, timezone: tz };
+  const allDay = { status: 'confirmed', confirmedSlot: 'היום כל היום', confirmedStartAt: nine.toISOString(),
+    confirmedAllDay: true, options: [], silent: [] };
+  assert.equal(groupVoice.decideGroupLine(allDay, { ...base, nowMs: nine.getTime() - 30 * 60_000 }).kind, 'dayof',
+    'half past eight is today, and not "in an hour"');
+  assert.equal(groupVoice.decideGroupLine(allDay, { ...base, nowMs: nine.getTime() + 3 * 3600_000 }).kind, 'dayof',
+    'noon on the day is still that day');
+  assert.equal(groupVoice.decideGroupLine(allDay, { ...base, saidDayOf: true, nowMs: nine.getTime() - 30 * 60_000 }).kind, 'none',
+    'said once, and no hour-before after it');
+  const evening = new Date(nine.getTime() + 10 * 3600_000); // 19:00 stand-in
+  const part = { ...allDay, confirmedAllDay: false, confirmedDaypart: 'evening', confirmedSlot: 'היום בערב',
+    confirmedStartAt: evening.toISOString() };
+  assert.equal(groupVoice.decideGroupLine(part, { ...base, saidDayOf: true, nowMs: evening.getTime() - 30 * 60_000 }).kind, 'none');
+  assert.equal(groupVoice.decideGroupLine(part, { ...base, nowMs: evening.getTime() - 60 * 60_000 }).kind, 'dayof',
+    'an hour before a part of a day is still worth the day-of line');
+});
+
 test('a coordination that is already set is never chased', () => {
   const line = groupVoice.decideGroupLine(
     { status: 'confirmed', confirmedSlot: 'שלישי 20:00', options: [], silent: [{ phone: '+972500000009' }] },

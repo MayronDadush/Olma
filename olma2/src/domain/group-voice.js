@@ -148,10 +148,20 @@ function decideGroupLine(co, {
     // Then the two reminders, and the NEARER one wins when both are due in
     // the same pass: "in an hour" is true and "today" is merely also true.
     const at = co.confirmedStartAt ? new Date(co.confirmedStartAt).getTime() : 0;
-    if (!at || nowMs >= at) return { kind: 'none', reason: 'nothing left to remind about' };
-    if (!saidHour && nowMs >= at - HOUR_BEFORE_MS) return { kind: 'soon', slot: co.confirmedSlot };
-    if (!saidDayOf && localDay(nowMs, timezone) === localDay(at, timezone)
-      && at - nowMs > DAY_OF_MIN_LEAD_MS) {
+    // A whole day is still "today" after its stand-in 09:00 (087); anything
+    // else is over at its start.
+    const sameDay = at && localDay(nowMs, timezone) === localDay(at, timezone);
+    if (!at || (nowMs >= at && !(co.confirmedAllDay && sameDay))) {
+      return { kind: 'none', reason: 'nothing left to remind about' };
+    }
+    // A whole day or a part of one sits on a stand-in hour, so "in an hour"
+    // off it would be a time nobody named — 08:00 for an all-day meeting —
+    // and the three-hour lead the day-of line wants of an exact time would
+    // leave a morning one with no line at all. Those get the day-of line,
+    // any time that day before it is over.
+    const exact = !co.confirmedAllDay && !co.confirmedDaypart;
+    if (exact && !saidHour && nowMs >= at - HOUR_BEFORE_MS) return { kind: 'soon', slot: co.confirmedSlot };
+    if (!saidDayOf && sameDay && (!exact || at - nowMs > DAY_OF_MIN_LEAD_MS)) {
       return { kind: 'dayof', slot: co.confirmedSlot };
     }
     return { kind: 'none', reason: 'already reminded, or not yet due' };

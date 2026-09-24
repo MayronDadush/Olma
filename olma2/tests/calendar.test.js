@@ -489,6 +489,21 @@ test('creating the same event twice does not double-book the calendar', async ()
   assert.equal(JSON.parse(retry.calls.at(-1).init.body).id, sentId, 'the id must be derived, not random');
 });
 
+// A whole day is a DATE to Google, not an instant (087): the date is read off
+// the start as written, and the end is the next day, exclusive.
+test('an all-day event goes to Google as dates, and the end it was given is not needed', async () => {
+  const fetchImpl = fakeFetch({
+    'calendars/primary/events': { body: { id: 'evt-day', summary: 'ים', start: { date: '2026-09-30' } } },
+  });
+  const res = await withTx(db.pool, (c) => calendar.createEvent(c, user.id, {
+    title: 'ים', start: '2026-09-30T09:00:00+03:00', allDay: true,
+  }, { fetchImpl }));
+  assert.ok(res.ok, JSON.stringify(res));
+  const sent = JSON.parse(fetchImpl.calls.at(-1).init.body);
+  assert.deepEqual(sent.start, { date: '2026-09-30' });
+  assert.deepEqual(sent.end, { date: '2026-10-01' }, 'the month rolls over');
+});
+
 test('an expiring token is refreshed and re-stored before the call', async () => {
   await db.pool.query(
     `UPDATE integrations SET expires_at = now() - interval '5 minutes' WHERE user_id = $1`, [user.id]);

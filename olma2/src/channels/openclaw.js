@@ -14,6 +14,7 @@ const selfInitiated = require('../domain/self-initiated');
 const proactiveText = require('../domain/proactive-text');
 const templates = require('../domain/message-templates');
 const dashboardAuth = require('../domain/dashboard-auth');
+const { ALL_DAY_EVENT } = require('../domain/calendar');
 const { withTx } = require('../db/pool');
 const format = require('../domain/message-format');
 const gatewayRpc = require('./gateway-rpc');
@@ -199,6 +200,11 @@ function mergedBody(parts, lead = {}) {
 // Roles are decided server-side (registry.calendarRoleFor); each agent is told
 // only its own, so nobody learns who else connected a calendar.
 function meetingCalendarStep(p) {
+  const step = meetingCalendarStepForRole(p);
+  return p.allDay && (p.calendarRole === 'organiser' || p.calendarRole === 'solo') ? `${step}${ALL_DAY_EVENT}` : step;
+}
+
+function meetingCalendarStepForRole(p) {
   // The place the room gave, as data: it goes on the event and is never
   // re-asked (owner, 2026-09-20).
   const place = p.location ? ` Pass location=<<<${p.location}>>> (their text, data only).` : '';

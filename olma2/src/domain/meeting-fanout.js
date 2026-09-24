@@ -291,7 +291,12 @@ const CANCEL_CLEANUP_HINTS = {
 };
 
 // What to tell the confirming user's own agent, in their own turn.
-function calendarHintFor(role, meetingId) {
+function calendarHintFor(role, meetingId, { allDay = false } = {}) {
+  const hint = calendarHintForRole(role, meetingId);
+  return allDay && (role === 'organiser' || role === 'solo') ? `${hint}${calendar.ALL_DAY_EVENT}` : hint;
+}
+
+function calendarHintForRole(role, meetingId) {
   switch (role) {
     case 'organiser':
       return `Everyone is agreed. Work out the real start and end from the confirmed slot (full ISO-8601 WITH the user's UTC offset) and call create_shared_meeting_event meeting_id=${meetingId} — one shared event; the other participants get a Google invitation automatically. Tell the user you added it and that the others were invited. Their email addresses are visible to each other on the invitation, which is how calendar invitations work — mention it in passing, do not ask permission.`;
@@ -353,10 +358,14 @@ async function afterSettled(client, meetingId, res, { actor = null, byName = nul
     meetingId: Number(meetingId), title: brief.title || 'meeting',
     slot: res.data.slot || brief.confirmed_slot,
     ...(brief.location ? { location: brief.location } : {}),
+    ...(brief.confirmed_all_day ? { allDay: true } : {}),
     ...(settledBy ? { byName: settledBy, forced: true } : {}),
     ...(groupSubject ? { groupSubject } : {}),
   }, `mconf:${meetingId}`, (uid) => (withoutYes.has(Number(uid)) ? { settledWithoutYou: true } : {}));
-  if (actor) res.data.hint = calendarHintFor(calendarRoleFor(roles, actor.id), Number(meetingId));
+  if (actor) {
+    res.data.hint = calendarHintFor(calendarRoleFor(roles, actor.id), Number(meetingId),
+      { allDay: Boolean(brief.confirmed_all_day) });
+  }
   return res;
 }
 
@@ -365,7 +374,8 @@ async function meetingBrief(client, meetingId) {
   // proposal about it can be counted like a game invite is
   // (`channels/openclaw.js`, ROOM_COUNT).
   const { rows } = await client.query(
-    `SELECT m.title, m.initiator_id, m.proposed_slot, m.confirmed_slot, m.location, g.subject AS group_subject
+    `SELECT m.title, m.initiator_id, m.proposed_slot, m.confirmed_slot, m.location, g.subject AS group_subject,
+            m.group_id, m.confirmed_all_day, m.confirmed_daypart
        FROM meetings m LEFT JOIN chat_groups g ON g.id = m.group_id WHERE m.id = $1`, [meetingId]
   );
   return rows[0] || {};
