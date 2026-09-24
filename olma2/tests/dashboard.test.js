@@ -845,10 +845,22 @@ test('an operator can queue a proactive message, and it shows up as planned', as
   const html = await (await fetch(base + `/user?id=${u.id}`, { headers: { Authorization: AUTH } })).text();
   assert.match(html, /שאלי אותו איך הלך הראיון אתמול/, 'what the operator wrote is shown back to them');
 
+  // …and it goes into the owner's log, pointing at the row it queued
+  const { rows: logged } = await db.pool.query(
+    `SELECT m.instruction, m.outbox_id = o.id AS same FROM owner_messages m, outbox o
+      WHERE m.user_id = $1 AND o.user_id = $1`, [u.id]);
+  assert.equal(logged.length, 1);
+  assert.equal(logged[0].instruction, 'שאלי אותו איך הלך הראיון אתמול');
+  assert.ok(logged[0].same);
+  const log = await (await fetch(base + '/g/sending', { headers: { Authorization: AUTH } })).text();
+  assert.match(log, /id="owner-log"[\s\S]*שאלי אותו איך הלך הראיון אתמול/, 'the log is on the messages page');
+
   // an empty instruction queues nothing rather than an empty message
   await adminPost('/outbox/new', { user_id: u.id, instruction: '   ', back: `/user?id=${u.id}` });
   const { rows: after } = await db.pool.query(`SELECT count(*)::int AS n FROM outbox WHERE user_id = $1`, [u.id]);
   assert.equal(after[0].n, 1);
+  const { rows: logAfter } = await db.pool.query(`SELECT count(*)::int AS n FROM owner_messages WHERE user_id = $1`, [u.id]);
+  assert.equal(logAfter[0].n, 1, 'nothing queued, nothing logged');
 });
 
 test('rescheduling moves the time in the person\'s zone and unsticks a budget hold', async () => {
