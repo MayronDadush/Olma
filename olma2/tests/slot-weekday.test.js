@@ -24,6 +24,27 @@ test('reads the Hebrew weekday names people actually write', () => {
   assert.deepEqual(weekdaysInText('ביום שלישי בטלפון'), [2]);
   assert.deepEqual(weekdaysInText("יום א' 09:00"), [0]);
   assert.deepEqual(weekdaysInText('יום ו׳ 20:00'), [5]);
+  assert.deepEqual(weekdaysInText('ביום ב׳ ב-20:00'), [1]);  // prefix, abbreviation and an hour in one string
+  assert.deepEqual(weekdaysInText('ביום ג בערב'), [2]);
+});
+
+// "היום" is a word, not ה + יום, and the letter after it is not a day. The
+// abbreviation reader had ה in its prefix set, so the commonest way in Hebrew
+// to say an hour — "היום ב-17:00", today at 17:00 — came back as MONDAY, and
+// weekdayClash is live on the meetings path, where a match REFUSES the write.
+// Found while wiring the same check into tasks, where the text being read is
+// the person's own typed words rather than a title a model tidied up
+// (`incidents.md`, "Today at five is not Monday").
+test('"היום" plus a letter is today, not a weekday abbreviation', () => {
+  assert.deepEqual(weekdaysInText('היום ב-17:00'), []);      // today at 17:00, not Monday
+  assert.deepEqual(weekdaysInText('היום ג-17:00'), []);      // …not Tuesday
+  assert.deepEqual(weekdaysInText('היום ה-20 בחודש'), []);   // the 20th, not Thursday
+  assert.deepEqual(weekdaysInText('היום ו-מחר'), []);        // today AND tomorrow, not Friday
+  assert.deepEqual(weekdaysInText('היום ב׳'), []);           // the one real form given up for it
+  // and the day words are untouched — ה still prefixes those, which is what
+  // makes "ביום הראשון" Sunday at all.
+  assert.deepEqual(weekdaysInText('ביום הראשון הקרוב'), [0]);
+  assert.deepEqual(weekdaysInText('היום שבת'), [6]);
 });
 
 test('reads English weekdays and their abbreviations', () => {
