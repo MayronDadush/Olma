@@ -125,6 +125,18 @@ title means this file. Grep the title, not the filename.
   miss is audited too (`turn.duplicate_open_skipped`) — a check that goes
   quiet is indistinguishable from one that never ran.
 
+- **A block written to REPLACE a tool call has to say what it does not hold,
+  or its silence is read as the answer.** The Turn context's `today` block
+  lists only what is dated on or before today, and its hint said to answer
+  "מה על הפרק" from it and that "empty lists mean nothing is filed" — so "מה
+  פתוח לי?" from somebody whose to-dos have no date was answered "הכל נקי",
+  with no tool called (eval runs 84 and 86, 2026-09-24; 6 of 25 real people
+  had only undated to-dos that night). `turn.todayBlock` now carries `undated`,
+  a COUNT like `overdue`, and the hint sends a question about what is OPEN to
+  `list_my_tasks` (`incidents.md`, "Three reds the model did not earn, and one
+  it did"). Anything else added to the opening to save a tool call owes the
+  same sentence about its edges.
+
 - **`messages.queue.mode` stays `followup`.** The gateway default, `steer`,
   pushes a message that arrives mid-turn INTO the running turn and cancels
   the tool calls the model just made ("Skipped due to queued user message").

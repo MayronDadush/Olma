@@ -75,7 +75,30 @@ test('an empty day is still a block, so the model knows nothing is filed without
   assert.deepEqual(data.today.events, []);
   assert.deepEqual(data.today.tasks, []);
   assert.equal(data.today.overdue, 0);
-  assert.match(data.hints.today, /empty lists mean nothing is filed/);
+  assert.match(data.hints.today, /empty lists mean nothing is filed FOR TODAY, never that nothing is open/);
+  assert.equal(data.today.undated, undefined, 'nothing undated, nothing said');
+  assert.doesNotMatch(data.hints.today, /undated/);
+});
+
+// "מה פתוח לי?" with two undated to-dos and an empty day was answered "הכל
+// נקי" off this block, with no tool called (eval runs 84 and 86, 2026-09-24).
+// The block never lists a to-do with no date; it has to COUNT them, and say
+// that a question about what is open is about those too.
+test('undated open to-dos are counted, so an empty day is never read as an empty list', async () => {
+  const u = await makeUser(db.pool, '+972612200009', { firstName: 'Gal', timezone: TZ });
+  await task(u, 'לשלם ארנונה');
+  await task(u, 'לקבוע תור לרופא שיניים');
+  await task(u, 'יום הולדת', { kind: 'event' });           // an undated event is not a to-do
+  await task(u, 'סגור כבר');
+  await db.pool.query(`UPDATE tasks SET status = 'done' WHERE owner_id = $1 AND title = 'סגור כבר'`, [u.id]);
+  const data = await advise(u);
+  assert.deepEqual(data.today.tasks, [], 'still nothing FOR TODAY');
+  assert.equal(data.today.undated, 2);
+  assert.match(data.hints.today, /`undated` counts open to-dos with NO date/);
+  assert.match(data.hints.today, /"מה פתוח לי"/);
+  assert.match(data.hints.today, /list_my_tasks/);
+  assert.doesNotMatch(data.hints.today, /Answer "מה יש לי היום" \/ "מה על הפרק" from it/,
+    '"מה על הפרק" is not a question about today');
 });
 
 test('a crowded day is capped and says so; a connected Google calendar is named as NOT in the block', async () => {

@@ -224,9 +224,20 @@ function turnHints({ offerResume, languageNudge, recentReminders, recentMeetings
     // again with a tool call — the thing the block exists to replace.
     hints.today = 'today = everything filed with Olma for TODAY (' + today.date + '), in their own '
       + 'local time; an item with no `at` is for the day, not an hour — never invent one. '
-      + '`overdue` counts to-dos due before today. Answer "מה יש לי היום" / "מה על הפרק" from it '
+      + '`overdue` counts to-dos due before today. Answer "מה יש לי היום" from it '
       + 'and do NOT call get_my_digest, list_my_tasks or my_calendar_events for today; empty '
-      + 'lists mean nothing is filed. Those tools are still for another day, the week, the '
+      + 'lists mean nothing is filed FOR TODAY, never that nothing is open. '
+      // Two people in the eval, on two nights, asked "מה פתוח לי?" with two
+      // undated to-dos on their list and were told "הכל נקי" off an empty
+      // block — no tool called (2026-09-24, runs 84 and 86). The block only
+      // ever held what is DATED to today, and "מה על הפרק" used to be one of
+      // the questions it was said to answer. 10 of 25 real people had undated
+      // open to-dos that day, 6 of them nothing else.
+      + (today.undated
+        ? '`undated` counts open to-dos with NO date, which this block does not list: "מה פתוח לי", '
+          + '"מה על הפרק" and "מה יש לי" are about those too — list_my_tasks. '
+        : '')
+      + 'Those tools are still for another day, the week, the '
       + 'overdue items themselves, reminders'
       + (today.googleCalendar
         ? ', and their connected Google calendar, whose events this block does NOT hold — '
@@ -739,6 +750,12 @@ async function todayBlock(client, userId, now = null) {
     ...(r.kind === 'event' && r.until && !r.day_shaped ? { until: r.until } : {}),
     ...(r.kind === 'event' && r.location ? { location: String(r.location).slice(0, 80) } : {}),
   });
+  // The open to-dos this block never lists — no date, so never "today" — as a
+  // COUNT, like `overdue`: without it an empty block reads as an empty list.
+  const { rows: [{ undated }] } = await client.query(
+    `SELECT count(*)::int AS undated FROM tasks
+      WHERE owner_id = $1 AND status = 'open' AND archived_at IS NULL
+        AND due_at IS NULL AND kind <> 'event'`, [userId]);
   const onToday = rows.filter((r) => !r.overdue);
   const overdue = rows.filter((r) => r.overdue && r.kind !== 'event').length;
   const events = onToday.filter((r) => r.kind === 'event');
@@ -750,6 +767,7 @@ async function todayBlock(client, userId, now = null) {
     events: shown.filter((r) => r.kind === 'event').map(item),
     tasks: shown.filter((r) => r.kind !== 'event').map(item),
     overdue,
+    ...(undated > 0 ? { undated } : {}),
     ...(more > 0 ? { more } : {}),
     ...(day.google ? { googleCalendar: true } : {}),
     ...(holiday ? {
