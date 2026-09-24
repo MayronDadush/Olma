@@ -52,6 +52,7 @@ never trust a dated narrative for something you are about to act on.
 - [The table that did not say where she stood (2026-09-20)](#the-table-that-did-not-say-where-she-stood-2026-09-20)
 - [Five messages in twelve minutes, about one coordination (fixed 2026-09-22)](#five-messages-in-twelve-minutes-about-one-coordination-fixed-2026-09-22)
 - [Four messages in sixty-two seconds (fixed 2026-09-20)](#four-messages-in-sixty-two-seconds-fixed-2026-09-20)
+- [Today at five is not Monday (fixed 2026-09-24)](#today-at-five-is-not-monday-fixed-2026-09-24)
 - [The constraint that was an answer (fixed 2026-09-20)](#the-constraint-that-was-an-answer-fixed-2026-09-20)
 - [Two paragraphs where two sentences would do (fixed 2026-09-20)](#two-paragraphs-where-two-sentences-would-do-fixed-2026-09-20)
 - [The slot that was already closed (fixed 2026-09-20)](#the-slot-that-was-already-closed-fixed-2026-09-20)
@@ -1874,6 +1875,61 @@ correctly (what counts is what REACHED them); the fold now does too, through
 `unheardInvite`: when every invite row for that person and coordination is a
 dropped one, the next time goes out as the invite it should have been, with
 `tableChanged` on it.
+
+### Today at five is not Monday (fixed 2026-09-24)
+
+`datetime.weekdaysInText` reads the Hebrew abbreviation for a weekday — "יום
+א׳", "יום ב׳" — and allowed the one-letter prefixes ב/ה/ו in front of it, the
+same set the day WORDS take (בשני, ושבת, השני). With ה in that set, **היום**
+("today") parses as ה + יום, and whatever single letter comes next is read as
+the day:
+
+| what a person writes | what it means | what we read |
+|---|---|---|
+| `היום ב-17:00` | today at 17:00 | **Monday** |
+| `היום ג-17:00` | today at 17:00 | **Tuesday** |
+| `היום ה-20 בחודש` | today, the 20th | **Thursday** |
+| `היום ו-מחר` | today and tomorrow | **Friday** |
+
+`היום בערב` was always safe, which is why this survived: the trailing
+`(?!HE_LETTER)` stops a letter followed by more Hebrew, so only a letter
+against a digit, a dash or the end of the string trips it — which is exactly
+the shape an hour takes.
+
+**Nobody had been bitten, and that was luck rather than design.**
+`weekdayClash` has been live on the meetings path since the meetings work
+(`meeting-options.js`, `meetings.js`), and there a match does not warn, it
+REFUSES the write. Measured on the box the day this was found: **0 of 35**
+meeting slot texts and **1 of 302** task titles carry the shape. Both of those
+corpora are model-written — a slot text is tidied into "יום שני 20:00" and a
+title into "טכנאי בר מים" — and a model that has already decided on a weekday
+writes the weekday out. The trap needs a HUMAN sentence.
+
+**Which is what made it urgent.** It was found while measuring whether the
+task-side weekday guard (`add_task`'s `when_said`) was worth shipping: that
+parameter feeds the same reader the person's **own typed words**, where "תוסיף
+לי היום ב-17:00" is simply how an hour is said. The guard would have refused a
+perfectly correct request and told the model to go and ask which day was meant
+— a hint firing on ordinary input, which `rules/detectors.md` puts above
+almost everything else as the thing not to do. A latent bug in one path became
+a live one the moment a second caller was pointed at it.
+
+**The fix is one constant.** The abbreviation reader gets its own prefix set
+with ה removed (`HE_PREFIX_BEFORE_DAY_LETTER`, ב and ו); the day WORDS keep
+`HE_PREFIX` untouched, and they have to — "ביום הראשון" is ה + ראשון, and
+without it Sunday stops being readable at all, which is the founding sentence
+of the task guard itself. What is given up is "היום ב׳" meaning "today,
+Monday", and that is the trade this file already states one comment higher up
+for ל: a missed check leaves things exactly as they were before the rule
+existed, while a false refusal costs somebody a real request.
+
+**Found but NOT fixed, deliberately.** The same ה on the WORD pattern makes
+`המקום השני` / `החלק השני` / `השני בתור` read as Monday. The obvious cure —
+dropping ה there too — is the one that breaks `ביום הראשון` and `השבת`, so it
+is not a prefix problem but an ordinal-versus-weekday problem, and it wants a
+different mechanism. Measured incidence of that shape on the box: **0 of 302**
+task titles and **0 of 35** slot texts. Left open on purpose rather than
+traded for the reading that matters more.
 
 ### The constraint that was an answer (fixed 2026-09-20)
 
