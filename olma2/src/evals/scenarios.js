@@ -27,6 +27,8 @@ const { DEFAULT_CARD_MIN_ITEMS } = require('../domain/digest-block');
 
 // digest-block-relayed-untouched: one line short of a picture (see there).
 const BLOCK_TITLES = ['לשלם ארנונה', 'להחזיר את הטופס לגן', 'לתקן את הדוד'].slice(0, DEFAULT_CARD_MIN_ITEMS - 1);
+// list-reads-as-a-list: the same, for "מה פתוח לי?" (see there).
+const LIST_TITLES = ['לשלם ארנונה', 'לקבוע תור לרופא שיניים', 'להחזיר את הטופס לגן'].slice(0, DEFAULT_CARD_MIN_ITEMS - 1);
 
 // Every turn must open with turn_start — the rule everything else (quota,
 // pause, offerResume, name capture) hangs off. Checked for every scenario
@@ -476,22 +478,25 @@ const SCENARIOS = [
   // the same risk — a block handed over finished can still be retyped,
   // reordered or summarised on the way out, and nothing in the code can stop
   // that. So the check is per TITLE rather than a count of bullets: three
-  // lines is not evidence that these three lines survived.
+  // lines is not evidence that these lines survived.
+  //
+  // Below the card threshold for the same reason as the scenario above: "מה
+  // פתוח לי?" is answered by list_my_tasks OR get_my_digest, and at three
+  // items the digest correctly says "draw a picture, there is no block". Run
+  // 85 measured it — 2 of 5 trials took the list tool and relayed the block,
+  // 3 drew the card, and every one of the five gave the person their tasks.
   {
     id: 'list-reads-as-a-list',
     title: 'הרשימה שהקוד צייר מגיעה שורה־שורה, בלי שכתוב',
     seed: async (client, userId) => {
-      await tasks.addTask(client, userId, { title: 'לשלם ארנונה', source: 'chat' });
-      await tasks.addTask(client, userId, { title: 'לקבוע תור לרופא שיניים', source: 'chat' });
-      await tasks.addTask(client, userId, { title: 'להחזיר את הטופס לגן', source: 'chat' });
+      for (const title of LIST_TITLES) await tasks.addTask(client, userId, { title, source: 'chat' });
     },
     turns: ['מה פתוח לי?'],
     hard: async (client, ctx) => {
       const reply = ctx.turns[0].reply || '';
       const lines = reply.split('\n').filter((l) => /^\s*[-*]\s+\S/.test(l));
       const onItsOwnLine = (t) => lines.some((l) => l.includes(t));
-      const titles = ['לשלם ארנונה', 'לקבוע תור לרופא שיניים', 'להחזיר את הטופס לגן'];
-      const missing = titles.filter((t) => !onItsOwnLine(t));
+      const missing = LIST_TITLES.filter((t) => !onItsOwnLine(t));
       const bolds = (reply.match(/\*[^*\n]+\*/g) || []).length;
       return [
         ...await turnOpening(client, ctx),
@@ -510,7 +515,7 @@ const SCENARIOS = [
           pass: reply.length < 900, detail: `${reply.length} chars` },
       ];
     },
-    rubric: 'המשתמש שאל מה פתוח לו, ויש לו שלוש משימות. הרשימה עצמה מגיעה למודל מצוירת מראש. בדוק: (1) שלושתן מופיעות, כל אחת בשורה משלה. (2) הרשימה לא נאמרת פעמיים — לא רשימה ואז גם פסקה שמסכמת אותה. (3) לכל היותר כותרת מודגשת אחת, בלי הדגשה על כל פריט. (4) לכל היותר שאלה אחת בסוף.',
+    rubric: 'המשתמש שאל מה פתוח לו, ויש לו שתי משימות. הרשימה עצמה מגיעה למודל מצוירת מראש. בדוק: (1) שתיהן מופיעות, כל אחת בשורה משלה. (2) הרשימה לא נאמרת פעמיים — לא רשימה ואז גם פסקה שמסכמת אותה. (3) לכל היותר כותרת מודגשת אחת, בלי הדגשה על כל פריט. (4) לכל היותר שאלה אחת בסוף.',
   },
   {
     // 2026-09-05, a real user: she used WhatsApp reply on one older message and
