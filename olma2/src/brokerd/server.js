@@ -215,6 +215,9 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers }) {
         // or set_task_reminder on this turn (domain/chase-deadline). Nothing is
         // written now — there is no task yet to chase.
         chase: rec.skipped ? null : chaseDeadline.forTurn(params.chase, { now: new Date(clock()), timezone: user.timezone }),
+        // "מה פתוח לי?": the turn is told about their list, not their day —
+        // domain/turn.advise leaves the today block out (see the hook).
+        openList: !rec.skipped && params.openList === true,
         marked: new Set(), contextSent: false,
       };
       if (!rec.skipped && messageId) {
@@ -439,6 +442,7 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers }) {
         stoppedReminders: (pre && pre.stoppedReminders) || 0,
         chaseUntil: pre && pre.chase ? pre.chase.day : null,
         chaseNamedHour: Boolean(pre && pre.chase && pre.chase.namedHour),
+        openList: Boolean(pre && pre.openList),
       });
       if (pre) pre.contextSent = true;
       out = {
@@ -574,6 +578,7 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers }) {
           turn.thanksOnly = pre.thanksOnly;
           turn.stoppedReminders = pre.stoppedReminders || 0;
           turn.chase = pre.chase || null; turn.chaseUsed = false;
+          turn.openList = Boolean(pre.openList);
           turn.openedByGateway = true;
         } else if (!turn.opened) {
           // No gateway open on file and this connection has not served a turn

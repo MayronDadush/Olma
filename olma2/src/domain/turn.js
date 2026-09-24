@@ -216,7 +216,7 @@ async function openTurnImplicitly(client, user, { firstTool } = {}) {
 // turn by every user, for fields that appear on a handful of turns in a
 // person's life. The budget rule (CLAUDE.md, "Doctrine"): guidance about a
 // RESULT rides the result.
-function turnHints({ offerResume, languageNudge, recentReminders, recentMeetings, planHeadline, replyTarget, genderForms, thanksOnly, stoppedReminders, chaseUntil, chaseNamedHour, today }) {
+function turnHints({ offerResume, languageNudge, recentReminders, recentMeetings, planHeadline, replyTarget, genderForms, thanksOnly, stoppedReminders, chaseUntil, chaseNamedHour, openList, today }) {
   const hints = {};
   if (today) {
     // Rides beside the block on every turn it is on, because a block the
@@ -330,6 +330,15 @@ function turnHints({ offerResume, languageNudge, recentReminders, recentMeetings
         : 'nudge, a repeat or a remind_at: the hour is one they already hear from Olma. ')
       + 'The result says the shape; say it back in ONE short line.';
   }
+  if (openList) {
+    // The gateway read "מה פתוח לי?" — a question about their whole list —
+    // and advise() left the today block out of this turn (gateway-hooks/
+    // olma-turn-open .asksOpenList). Answered off that block, an empty day
+    // came back as "הכל נקי" to somebody with two undated to-dos on file, in
+    // 1 of 5 trials even with a hint beside it (runs 84, 86, 87, 2026-09-24).
+    hints.openList = 'They asked what is OPEN on their list, not what is on today, so this turn '
+      + 'carries no today block: the answer is list_my_tasks, and nothing here says their list is empty.';
+  }
   if (offerResume) {
     hints.offerResume = 'First message since they paused: answer what they actually asked, then add '
       + 'ONE line asking if they would like Olma to start reaching out again.';
@@ -416,7 +425,7 @@ function requireAdviseColumns(user) {
   }
 }
 
-async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, languageNudge, thanksOnly, stoppedReminders, chaseUntil, chaseNamedHour, now }) {
+async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, languageNudge, thanksOnly, stoppedReminders, chaseUntil, chaseNamedHour, openList, now }) {
   requireAdviseColumns(user);
   // A paused person who writes gets answered — pausing stops Olma
   // INITIATING, not answering (see domain/pause.js) — but before this, that
@@ -645,7 +654,11 @@ async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, 
       })
     : null;
 
-  const today = counted.data.blocked ? null : await todayBlock(client, user.id, now || null);
+  // Not on a turn that asked for their whole list: the block holds only what
+  // is dated to today, and an empty one was read as an empty list (turnHints
+  // .openList). The holiday offer it may carry waits for the next turn, which
+  // is safe because it is stamped only below, when it was handed out.
+  const today = counted.data.blocked || openList ? null : await todayBlock(client, user.id, now || null);
 
   // Spent on the HAND-OUT, not on their answer, and guarded by `IS NULL` so
   // two routes can never each spend it. Same doctrine and same shape as
@@ -672,7 +685,7 @@ async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, 
       ...(replyTarget ? { replyTarget: true } : {}),
       ...(genderForms ? { genderForms } : {}),
       ...(today ? { today } : {}),
-      ...turnHints({ offerResume, languageNudge, recentReminders, recentMeetings, planHeadline, replyTarget, genderForms, thanksOnly, stoppedReminders, chaseUntil, chaseNamedHour, today }),
+      ...turnHints({ offerResume, languageNudge, recentReminders, recentMeetings, planHeadline, replyTarget, genderForms, thanksOnly, stoppedReminders, chaseUntil, chaseNamedHour, openList, today }),
     };
   }
   const shouldNotice = await quota.shouldSendBlockNotice(client, user.id);

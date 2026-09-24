@@ -223,6 +223,42 @@ function chaseDeadline(text) {
   return null;
 }
 
+// "מה פתוח לי?" — a question about their whole LIST, not about today. The turn
+// context carries a today block, and a model answering this from it told the
+// eval user "הכל נקי" with two undated to-dos on file — no tool called, in 1
+// of 5 trials even with a hint naming the undated count (runs 84, 86, 87,
+// 2026-09-24). brokerd drops the block from this turn instead, so there is no
+// empty list left to misread. Measured on 879 real messages: 8 hits, every one
+// a question about the list ("מה המשימות שלי?", "איזה משימות פתוחות?"), and
+// the three that named a day ("…להיום?", "…של מחר") correctly not.
+// A bare "מה פתוח" must be about THEM ("לי", "אצלי") or end the sentence —
+// "מה פתוח עכשיו באזור" is about a shop.
+const B = `(?<![${HE}])`;
+const E = `(?![${HE}])`;
+const OPEN_LIST_RE = new RegExp([
+  `${B}מה\\s+(?:עוד\\s+)?פתוח(?:ים|ות)?(?=\\s*(?:לי|אצלי|עליי|עלי|לנו|אצלנו|עדיין)${E}|\\s*[?!.]*\\s*$)`,
+  `${B}מה\\s+(?:יש\\s+)?על\\s+הפרק${E}`,
+  `${B}(?:מה|איזה|אילו)\\s+(?:עוד\\s+)?(?:ה)?משימות${E}`,
+  `${B}מה\\s+(?:יש\\s+)?(?:לי\\s+)?ב?רשימ(?:ה|ת\\s+(?:ה)?משימות)${E}`,
+  `${B}מה\\s+נשאר\\s+לי${E}`,
+  `${B}מה\\s+יש\\s+לי\\s+לעשות${E}`,
+  `(?:what'?s|what\\s+is)\\s+(?:still\\s+)?open`,
+  `\\bmy\\s+(?:open\\s+)?tasks\\b`,
+  `\\bmy\\s+(?:to-?do|task)\\s+list\\b`,
+].join('|'), 'iu');
+// A day named anywhere makes it a question about that day, which the today
+// block (or a tool) answers — never this verdict.
+const A_DAY_RE = new RegExp(`${B}(?:[לו]?(?:היום|מחר|מחרתיים|הערב|אתמול|השבוע|בשבוע|לשבוע|בחודש|לחודש|ביומן|בבוקר|בערב|בצהריים)`
+  + `|[בל]?(?:${HE_WEEKDAYS.join('|')}|סופ"?ש)|יום\\s+[${HE}]+|שבוע\\s+הבא)${E}`
+  + `|\\b(?:today|tonight|tomorrow|this\\s+week|next\\s+week|calendar)\\b`, 'iu');
+const MAX_OPEN_LIST_CHARS = 160;
+
+function asksOpenList(text) {
+  const raw = String(text || '').replace(REPLY_BLOCK_RE, ' ').replace(/[‎‏‪-‮]/g, '').trim();
+  if (!raw || raw.length > MAX_OPEN_LIST_CHARS) return false;
+  return OPEN_LIST_RE.test(raw) && !A_DAY_RE.test(raw);
+}
+
 // Which inbound events open a turn. Measured on OpenClaw 2026.8.1 (2026-09-06,
 // olma-hook-probe): a WhatsApp DM fires `message:preprocessed` ~300ms after
 // the inbound log line and `agent:bootstrap` a second later — and NEVER
@@ -267,6 +303,9 @@ function handle(event, { connect = net.connect, sock = SOCK } = {}) {
     // "help me until next week" — brokerd arms a daily chase to that day on
     // the task this turn saves (domain/chase-deadline). A kind, never words.
     chase: chaseDeadline(ctx.transcript || ctx.body),
+    // "מה פתוח לי?" — brokerd leaves the today block out of this turn, so
+    // the answer comes from their list and not from an empty day.
+    openList: asksOpenList(ctx.transcript || ctx.body),
     at: new Date(event.timestamp || Date.now()).toISOString(),
   };
   return new Promise((resolve) => {
@@ -307,4 +346,5 @@ module.exports.replyToIdOf = replyToIdOf;
 module.exports.thanksOnly = thanksOnly;
 module.exports.stopRemindersOnly = stopRemindersOnly;
 module.exports.chaseDeadline = chaseDeadline;
+module.exports.asksOpenList = asksOpenList;
 module.exports._resetSeen = () => seen.clear();

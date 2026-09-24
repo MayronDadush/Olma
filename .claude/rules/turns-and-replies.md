@@ -135,7 +135,13 @@ title means this file. Grep the title, not the filename.
   a COUNT like `overdue`, and the hint sends a question about what is OPEN to
   `list_my_tasks` (`incidents.md`, "Three reds the model did not earn, and one
   it did"). Anything else added to the opening to save a tool call owes the
-  same sentence about its edges.
+  same sentence about its edges. **The count and the hint were not enough**:
+  run 87 still answered "יום פנוי לגמרי" in 1 of 5 trials with `undated: 2`
+  in front of it. So the question is now read by CODE — the turn-open hook's
+  `asksOpenList` (a question about their list with no day in it; 8 hits in
+  879 real messages, every one right) sends `openList`, and `turn.advise`
+  leaves the `today` block OUT of that turn. An empty day that is not there
+  cannot be read as an empty list. Needs a gateway restart, like every hook.
 
 - **`messages.queue.mode` stays `followup`.** The gateway default, `steer`,
   pushes a message that arrives mid-turn INTO the running turn and cancels

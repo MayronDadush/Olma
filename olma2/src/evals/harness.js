@@ -237,7 +237,8 @@ async function assertCleanSlate(client, userId) {
 // `finish` runs.
 //
 // The CLI fires no hook, so the three verdicts the gateway hook reads off a
-// real message — thanks, "stop reminding me", and a deadline to chase to —
+// real message — thanks, "stop reminding me", a deadline to chase to, and a
+// question about their whole list —
 // are read here with the SAME functions and sent the same way. Until
 // 2026-09-24 the opening carried none of them, so every eval measured a turn
 // the classifiers had never seen, and `chase-until-done` scored the model's
@@ -253,6 +254,7 @@ function evalVerdicts(message) {
     thanks: hook.thanksOnly(message),
     stopReminders: hook.stopRemindersOnly(message),
     chase: hook.chaseDeadline(message),
+    openList: hook.asksOpenList(message),
   };
 }
 

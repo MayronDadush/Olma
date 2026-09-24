@@ -281,7 +281,7 @@ test('the hook handler sends exactly one turn_open line for an inbound message, 
   assert.equal(written.length, 1);
   const msg = JSON.parse(written[0]);
   assert.equal(msg.method, 'turn_open');
-  assert.deepEqual(msg.params, { agentId: 'u-3', messageId: '3EB0HOOK0001', kind: 'voice', senderName: 'Miron', replyToId: null, thanks: false, stopReminders: false, chase: null, at: '2026-09-05T10:00:00.000Z' });
+  assert.deepEqual(msg.params, { agentId: 'u-3', messageId: '3EB0HOOK0001', kind: 'voice', senderName: 'Miron', replyToId: null, thanks: false, stopReminders: false, chase: null, openList: false, at: '2026-09-05T10:00:00.000Z' });
   assert.ok(!written[0].includes('סודי'), 'the text never leaves the gateway');
   // The shape the gateway ACTUALLY sends (OpenClaw 2026.8.1, measured
   // 2026-09-06): `message:preprocessed`, sender name and media type flat on
@@ -291,7 +291,7 @@ test('the hook handler sends exactly one turn_open line for an inbound message, 
     context: { from: '+972500000000', body: 'סודי', bodyForAgent: 'סודי', messageId: '3EB0HOOK0002', senderName: 'Miron', mediaType: 'audio/ogg', transcript: 'שלום', provider: 'whatsapp', cfg: {} },
   }, { connect: fakeSocket }), true);
   assert.equal(written.length, 2);
-  assert.deepEqual(JSON.parse(written[1]).params, { agentId: 'u-3', messageId: '3EB0HOOK0002', kind: 'voice', senderName: 'Miron', replyToId: null, thanks: false, stopReminders: false, chase: null, at: '2026-09-05T10:00:05.000Z' });
+  assert.deepEqual(JSON.parse(written[1]).params, { agentId: 'u-3', messageId: '3EB0HOOK0002', kind: 'voice', senderName: 'Miron', replyToId: null, thanks: false, stopReminders: false, chase: null, openList: false, at: '2026-09-05T10:00:05.000Z' });
   assert.ok(!written[1].includes('סודי') && !written[1].includes('שלום'), 'neither text nor transcript leaves the gateway');
   // A gateway that fires BOTH for one message opens it once.
   assert.equal(await hook({
@@ -520,6 +520,32 @@ test('the hook reads a stop request and sends the verdict, never the words', () 
   for (const t of no) assert.equal(hook.stopRemindersOnly(t), false, `not stop: ${JSON.stringify(t)}`);
   // The quoted half of a WhatsApp reply is not what they just wrote.
   assert.equal(hook.stopRemindersOnly('[Replying to Olma id:3EB0X]\nתזכורת: לארוז תיק\n[/Replying]\nלהפסיק להזכיר'), true);
+});
+
+// "מה פתוח לי?" — a question about their whole list, which brokerd answers by
+// leaving the today block out of the turn. Every "yes" below but the English
+// ones and the eval's own is a real message from the box (879 read, 8 hits,
+// 2026-09-24); every "no" is what must keep its today block, or is not about
+// their list at all.
+test('the hook reads a question about their whole list, and not one about a day', () => {
+  const yes = [
+    'מה פתוח לי?', 'מה עוד פתוח?', 'מה פתוח אצלי בינתיים', 'מה על הפרק',
+    'מה המשימות הפתוחות שיש לי?', 'מה המשימות שלי?', 'איזה משימות פתוחות?',
+    'איזה משימות משותפות יש לי עם מאיה?', 'מה יש ברשימה עכשיו?', 'מה נשאר לי לעשות?',
+    "what's open?", 'show me my tasks',
+  ];
+  const no = [
+    'מה פתוח לי היום?', 'מה המשימות שלי להיום?', 'מה המשימות שלי של מחר', 'מה יש לי היום',
+    'מה יש לי מחר בבוקר?', 'מה יש לי שבוע הבא?', 'מה יש לי היום ביומן?',
+    'מה פתוח במשרד בשבת?',            // a day, and not their list
+    'מה פתוח עכשיו באזור?',           // a shop — "פתוח" is about THEM or it is nothing
+    'תוסיף משימה לקנות חלב', 'תעשי לי סדר — מה יש לי על הראש?', 'תודה', '',
+    'מה המשימות שלי? '.repeat(20),    // a long message only mentions it
+  ];
+  for (const t of yes) assert.equal(hook.asksOpenList(t), true, `open list: ${JSON.stringify(t)}`);
+  for (const t of no) assert.equal(hook.asksOpenList(t), false, `not: ${JSON.stringify(t)}`);
+  assert.equal(hook.asksOpenList('[Replying to Olma id:3EB0X]\nמה פתוח לי היום?\n[/Replying]\nמה פתוח לי?'), true,
+    'the quoted half of a reply is not what they just wrote');
 });
 
 // Two ladders chasing her, one message, and both stop — with no question about
