@@ -1371,3 +1371,21 @@ test('declines-inappropriate: a decline is green; the story, a search, a task or
       assert.equal(r.ok, true, JSON.stringify(r.error));
     } }, 'as a fact');
 });
+
+// 2026-09-24: `run-evals.js --help` was not a flag it knew, so it ran the
+// whole suite on the shared eval user until somebody killed it (run 88). A
+// typo is refused now, before a pool is opened or a scenario runs.
+test('run-evals refuses a flag or a scenario it does not know, instead of running the default', () => {
+  const { checkArgs } = require('../scripts/run-evals');
+  const ids = ['stop-service', 'goal-capture'];
+  assert.deepEqual(checkArgs([], ids), {}, 'no flags is still the full suite, on purpose');
+  assert.deepEqual(checkArgs(['--only', 'stop-service', '--trials', '5'], ids), {});
+  assert.deepEqual(checkArgs(['--model', 'openrouter/x/y', '--full', '--no-judge'], ids), {});
+  assert.deepEqual(checkArgs(['--help'], ids), { help: true });
+  assert.match(checkArgs(['--ful'], ids).error, /unknown argument "--ful"/);
+  assert.match(checkArgs(['full'], ids).error, /unknown argument/);
+  assert.match(checkArgs(['--only', 'stop-service,stop-servise'], ids).error, /no scenario called stop-servise/);
+  assert.match(checkArgs(['--only'], ids).error, /needs a value/);
+  assert.match(checkArgs(['--model', '--full'], ids).error, /needs a value/);
+  assert.match(checkArgs(['--only', 'goal-capture', '--trials', 'five'], ids).error, /whole number/);
+});
