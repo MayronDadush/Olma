@@ -23,6 +23,10 @@ const preferences = require('../domain/preferences');
 const users = require('../domain/users');
 const meetings = require('../domain/meetings');
 const hebrewQuality = require('../domain/hebrew-quality');
+const { DEFAULT_CARD_MIN_ITEMS } = require('../domain/digest-block');
+
+// digest-block-relayed-untouched: one line short of a picture (see there).
+const BLOCK_TITLES = ['לשלם ארנונה', 'להחזיר את הטופס לגן', 'לתקן את הדוד'].slice(0, DEFAULT_CARD_MIN_ITEMS - 1);
 
 // Every turn must open with turn_start — the rule everything else (quota,
 // pause, offerResume, name capture) hangs off. Checked for every scenario
@@ -428,26 +432,33 @@ const SCENARIOS = [
   // split at runtime, so this is where it is checked: the block has to arrive
   // on the person's phone character for character, and the sentence has to
   // stay a sentence rather than becoming the list again in prose.
+  //
+  // ONE item under the card threshold, and derived from it. From 2026-09-10 a
+  // list of `DEFAULT_CARD_MIN_ITEMS` lines or more is drawn as a picture and
+  // the turn is told there is NO block (digest-block.drawInsteadOfBlock); this
+  // scenario seeded exactly three, so for a fortnight it asked for a block the
+  // server had correctly declined to hand over, and every red it scored was
+  // the model obeying `hints.card` (runs 79 and 84 — a card, a sentence and a
+  // MEDIA line). A threshold and a fixture that both say "3" by hand are two
+  // readers of one number.
   {
     id: 'digest-block-relayed-untouched',
     title: 'רשימת הבוקר מגיעה כמו שהקוד צייר אותה, עם משפט אחד סביבה',
     seed: async (client, userId) => {
-      await tasks.addTask(client, userId, { title: 'לשלם ארנונה', source: 'chat' });
-      await tasks.addTask(client, userId, { title: 'להחזיר את הטופס לגן', source: 'chat' });
-      await tasks.addTask(client, userId, { title: 'לתקן את הדוד', source: 'chat' });
+      for (const title of BLOCK_TITLES) await tasks.addTask(client, userId, { title, source: 'chat' });
     },
     turns: ['תעשי לי סדר — מה יש לי על הראש?'],
     hard: async (client, ctx) => {
       const reply = ctx.turns[0].reply || '';
       const bullets = reply.split('\n').filter((l) => /^\s*-\s+\S/.test(l));
       const heading = /^\*[^*\n]+\*$/m.test(reply);
-      // What the block is FOR: the same three lines, laid out once. A model
-      // that retyped them would produce a comma-separated sentence instead,
-      // which is the shape this replaced.
+      // What the block is FOR: the same lines, laid out once. A model that
+      // retyped them would produce a comma-separated sentence instead, which
+      // is the shape this replaced.
       return [
         ...await turnOpening(client, ctx),
         { name: 'the drawn block reached the reply as list lines',
-          pass: bullets.length >= 3, detail: `${bullets.length} list lines in: ${reply.slice(0, 300)}` },
+          pass: bullets.length >= BLOCK_TITLES.length, detail: `${bullets.length} list lines in: ${reply.slice(0, 300)}` },
         { name: 'it kept its bold heading rather than being rewritten',
           pass: heading, detail: reply.slice(0, 300) },
         // The ceiling on the other half: the sentence around it is a
@@ -457,7 +468,7 @@ const SCENARIOS = [
           pass: reply.length < 900, detail: `${reply.length} chars` },
       ];
     },
-    rubric: 'למשתמש שלוש משימות פתוחות והוא ביקש סדר. בדוק: (1) שלושתן מופיעות, כרשימה. (2) הרשימה לא נאמרת פעמיים — לא רשימה ואז גם פסקה שמסכמת אותה. (3) מסביב לרשימה יש לכל היותר משפט או שניים. (4) לכל היותר שאלה אחת בסוף.',
+    rubric: 'למשתמש שתי משימות פתוחות והוא ביקש סדר. בדוק: (1) שתיהן מופיעות, כרשימה. (2) הרשימה לא נאמרת פעמיים — לא רשימה ואז גם פסקה שמסכמת אותה. (3) מסביב לרשימה יש לכל היותר משפט או שניים. (4) לכל היותר שאלה אחת בסוף.',
   },
   // The task list is DRAWN since 2026-09-10 (domain/list-block.js), and this
   // scenario changed with it. What it used to hold open was whether an

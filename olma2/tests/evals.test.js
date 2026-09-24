@@ -1312,3 +1312,22 @@ test('the admin strip is RED for a run that measured nothing, and for a nightly 
     c.release();
   }
 });
+
+// digest-block-relayed-untouched asks for the TEXT block, and from 2026-09-10
+// a list at the card threshold is drawn as a picture with no block at all. It
+// seeded exactly the threshold for a fortnight and scored the model's
+// obedience as a red (runs 79, 84). Run its seed against a counting stub and
+// ask the server's own rule what that many items become.
+test('the digest-block scenario seeds a list the server sends as a block, not a card', async () => {
+  const tasksDomain = require('../src/domain/tasks');
+  const { drawInsteadOfBlock, DEFAULT_CARD_MIN_ITEMS } = require('../src/domain/digest-block');
+  const real = tasksDomain.addTask;
+  let n = 0;
+  tasksDomain.addTask = async () => { n += 1; return { ok: true }; };
+  try {
+    await scenarios.SCENARIOS.find((s) => s.id === 'digest-block-relayed-untouched').seed({}, 1);
+  } finally { tasksDomain.addTask = real; }
+  assert.ok(n >= 2, 'a list, not one line');
+  assert.equal(drawInsteadOfBlock(n, DEFAULT_CARD_MIN_ITEMS), false,
+    `${n} items become a card at the default threshold, so this scenario could only ever go red`);
+});
