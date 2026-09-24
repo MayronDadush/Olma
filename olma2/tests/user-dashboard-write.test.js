@@ -223,7 +223,11 @@ test('the daily-until chip arms a chase to the task\'s own date, and the page re
 });
 
 test('a chase too close to its date is refused, and the reminder that was there stays', async () => {
-  const t = await mkTask({ dueAt: iso(10 * 3600e3) });
+  // Due NOW, so the chase would end with today (reminders.chaseUntil) and two
+  // daily fires never fit, whatever the hour. It was `+10h` until 2026-09-24:
+  // from 14:00 in Jerusalem that lands on tomorrow, where a two-day chase is
+  // legitimate, and the test went red every afternoon (rules/testing.md).
+  const t = await mkTask({ dueAt: iso(0) });
   const before = (await db.pool.query(
     `SELECT id FROM task_reminders WHERE task_id = $1 AND sent_at IS NULL AND cancelled_at IS NULL`, [t.id])).rows;
   const r = await act('setTaskReminder', { taskId: t.id, on: true, chase: true });

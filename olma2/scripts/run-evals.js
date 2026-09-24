@@ -32,6 +32,39 @@ function arg(name) {
   return i >= 0 ? process.argv[i + 1] : null;
 }
 
+// The flags this script knows, and nothing else. Until 2026-09-24 an unknown
+// one was ignored, and ignoring it meant the DEFAULT — the whole suite, the
+// judge on every reply, on the one eval user the nightly and the pilots share.
+// `--help` started a full run that morning and was killed a minute in (run 88,
+// left unfinished), and `--only a,tyop` quietly ran `a` alone and reported it.
+// A typo costs money and a collision, so it is refused before anything runs.
+const VALUE_FLAGS = ['only', 'model', 'trials'];
+const BARE_FLAGS = ['full', 'no-judge'];
+function checkArgs(argv, knownIds) {
+  if (argv.includes('--help') || argv.includes('-h')) return { help: true };
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    const name = a.replace(/^--/, '');
+    if (a.startsWith('--') && VALUE_FLAGS.includes(name)) {
+      if (argv[i + 1] === undefined || argv[i + 1].startsWith('--')) return { error: `${a} needs a value` };
+      i++;
+      continue;
+    }
+    if (a.startsWith('--') && BARE_FLAGS.includes(name)) continue;
+    return { error: `unknown argument ${JSON.stringify(a)} — nothing was run` };
+  }
+  const i = argv.indexOf('--only');
+  if (i >= 0) {
+    const unknown = argv[i + 1].split(',').filter((id) => !knownIds.includes(id));
+    if (unknown.length) return { error: `no scenario called ${unknown.join(', ')} — nothing was run; known: ${knownIds.join(', ')}` };
+  }
+  const t = argv.indexOf('--trials');
+  if (t >= 0 && !/^[1-9]\d*$/.test(argv[t + 1])) return { error: `--trials takes a whole number, not ${JSON.stringify(argv[t + 1])}` };
+  return {};
+}
+const USAGE = require('node:fs').readFileSync(__filename, 'utf8')
+  .split('\n').filter((l) => /^\/\/ {3}node scripts\/run-evals\.js/.test(l)).map((l) => l.slice(3)).join('\n');
+
 const ICONS = { green: '🟢', yellow: '🟡', red: '🔴', error: '⚠️' };
 // The scenarios a candidate model has actually failed before (docs/
 // model-experiments.md): a skipped turn_start on the confirmation turn, a
@@ -39,7 +72,10 @@ const ICONS = { green: '🟢', yellow: '🟡', red: '🔴', error: '⚠️' };
 // A model that survives these has earned the other nine.
 const SMOKE = ['stop-service', 'goal-capture', 'bare-time-shift', 'hebrew-gender-feminine'];
 
-(async () => {
+if (require.main === module) (async () => {
+  const checked = checkArgs(process.argv.slice(2), SCENARIOS.map((s) => s.id));
+  if (checked.help) { console.log(USAGE); process.exit(0); }
+  if (checked.error) { console.error(checked.error); console.error(USAGE); process.exit(2); }
   const only = arg('only');
   const scenarios = only
     ? SCENARIOS.filter((s) => only.split(',').includes(s.id))
@@ -133,3 +169,5 @@ const SMOKE = ['stop-service', 'goal-capture', 'bare-time-shift', 'hebrew-gender
   await pool.end();
   process.exit(t.red + t.error > 0 ? 1 : 0);
 })().catch((e) => { console.error(e.message); process.exit(1); });
+
+module.exports = { checkArgs };
