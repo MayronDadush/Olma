@@ -186,6 +186,7 @@ Loads when you **Read** a file under `src/brokerd/**`, `src/domain/turn.js`, `sr
 - **The turn opens itself, from the gateway's own hook, before the model's first call.**
 - **A function shared by two openers is handed the WHOLE user row, never a projection** — `undefined` is falsy too, and a test through one door proves nothing about the other
 - **A repeat of the same message must never be read as a new one.**
+- **A block written to REPLACE a tool call has to say what it does not hold, or its silence is read as the answer** — `today` counts `undated` to-dos, and "what is open" goes to `list_my_tasks`
 - **`messages.queue.mode` stays `followup`.**
 - **A turn Olma started is not a message from the person.**
 - **A WhatsApp reply names ONE message, and only the MODEL is ever told which.**
