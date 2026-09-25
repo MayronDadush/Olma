@@ -289,6 +289,18 @@ test('the home tab shows only what is live, and its two counts are doors', () =>
     'the same arrays the tabs draw — the server already decided what is open and active');
 });
 
+// A zero is not something to show a new person; the first thing to do is.
+test('an empty home card invites, and a tap on it opens the sheet that starts one', () => {
+  assert.match(page, /homeZero\(\$\("#homeTasksN"\), !nT, "addTask"\);/);
+  assert.match(page, /homeZero\(\$\("#homeMeetsN"\), !nM, "mtNew"\);/);
+  assert.match(page, /\.homecard\.zero \.homenum\{display:none\}/, 'no bare 0 on the card');
+  assert.match(page, /\.homecard\.zero \.homeplus\{display:grid\}/);
+  // the same buttons the tabs' own empty states press — no second way to add
+  assert.match(page, /id="addTask"/);
+  assert.match(page, /id="mtNew"/);
+  assert.match(page, /closest\("\.homecard\[data-start\]"\)/);
+});
+
 test('the tab bar is pointed at once per device, and never on the stranger screen', () => {
   assert.match(page, /localStorage\.getItem\("olma-navhint"\) === "1"/);
   assert.match(page, /if\(NEWUSER\) startWelcome\(\); else \{ startIntro\(\); navHint\(\); \}/);

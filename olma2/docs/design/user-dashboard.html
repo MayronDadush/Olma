@@ -800,6 +800,15 @@ button.row:active{background:var(--bg-tint)}
 .homenum{color:var(--text);font-family:'Rubik',sans-serif;font-weight:700;font-size:38px;line-height:1;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
 .homecard b{font-size:15px;font-weight:600;margin-top:2px}
 .homecard > i{font-style:normal;font-size:12.5px;color:var(--text-3);line-height:1.35;min-height:1.35em}
+/* Nothing to count is not a zero to show — it is the first thing to do. The
+   number gives its place to a plus in the same spot, the label becomes the
+   invitation, and the tap goes on to open the sheet that starts one. */
+.homeplus{display:none;width:38px;height:38px;border-radius:50%;place-items:center;
+  background:var(--accent);color:var(--on-accent);box-shadow:var(--shadow-s)}
+.homeplus svg{width:17px;height:17px}
+.homecard.zero .homenum{display:none}
+.homecard.zero .homeplus{display:grid}
+.homecard.zero{background:linear-gradient(160deg,var(--accent-soft),var(--surface) 70%)}
 .homecard > i.hot{color:var(--accent);font-weight:600}
 .homechev{position:absolute;top:22px;inset-inline-end:16px}
 @media (max-width:340px){.homenum{font-size:32px}.homecard{padding:14px 12px 13px}}
@@ -3051,6 +3060,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       <button class="homecard" data-go="tasks">
         <span class="tile hometasks"><svg><use href="#i-list"/></svg></span>
         <span class="homenum" id="homeTasksN">0</span>
+        <span class="homeplus" aria-hidden="true"><svg><use href="#i-plus"/></svg></span>
         <b id="homeTasksL"></b>
         <i id="homeTasksSub"></i>
         <svg class="chev homechev"><use href="#i-chev"/></svg>
@@ -3058,6 +3068,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       <button class="homecard" data-go="cal">
         <span class="tile homemeets"><svg><use href="#i-cal24"/></svg></span>
         <span class="homenum" id="homeMeetsN">0</span>
+        <span class="homeplus" aria-hidden="true"><svg><use href="#i-plus"/></svg></span>
         <b id="homeMeetsL"></b>
         <i id="homeMeetsSub"></i>
         <svg class="chev homechev"><use href="#i-chev"/></svg>
@@ -4565,7 +4576,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "home.p":"עולמה עוזרת לך בוואטסאפ. כאן רואים את כל מה שהיא מחזיקה בשבילך.",
       "home.tasks.n0":"משימות פתוחות","home.tasks.n1":"משימה פתוחה","home.tasks.nN":"משימות פתוחות",
       "home.meets.n0":"תיאומי פגישה","home.meets.n1":"תיאום פגישה","home.meets.nN":"תיאומי פגישה",
-      "home.tasksNone":"אין כרגע","home.meetsNone":"אין כרגע",
+      "home.tasksStart":"הוסיפו משימה","home.tasksStartSub":"או פשוט כתבו לעולמה בוואטסאפ",
+      "home.meetsStart":"תאמו פגישה","home.meetsStartSub":"עולמה תמצא זמן שמתאים לכולם",
       "home.tasksToday":"{n} להיום","home.tasksGo":"לרשימה המלאה","home.meetsGo":"לכל התיאומים",
       "nav.hint":"כאן למטה עוברים בין העמודים",
       "tools.accounts":"חשבונות","tools.accountsHint":"התחברות אחת לכל ספק",
@@ -4903,7 +4915,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "home.p":"Allma helps you on WhatsApp. Here you see everything she is holding for you.",
       "home.tasks.n0":"open tasks","home.tasks.n1":"open task","home.tasks.nN":"open tasks",
       "home.meets.n0":"meeting coordinations","home.meets.n1":"meeting coordination","home.meets.nN":"meeting coordinations",
-      "home.tasksNone":"Nothing right now","home.meetsNone":"Nothing right now",
+      "home.tasksStart":"Add a task","home.tasksStartSub":"or just tell Allma on WhatsApp",
+      "home.meetsStart":"Set up a meeting","home.meetsStartSub":"Allma finds a time that suits everyone",
       "home.tasksToday":"{n} for today","home.tasksGo":"See the full list","home.meetsGo":"See them all",
       "nav.hint":"Switch between pages down here",
       "tools.accounts":"Accounts","tools.accountsHint":"One sign-in per provider",
@@ -6480,12 +6493,21 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     var dueNow = (open || []).filter(function(x){ var b = bucketFor(x.d); return x.d && (b === "late" || b === "today"); }).length;
     rollText($("#homeTasksN"), String(nT));
     rollText($("#homeMeetsN"), String(nM));
-    $("#homeTasksL").textContent = pl("home.tasks", nT);
-    $("#homeMeetsL").textContent = pl("home.meets", nM);
+    homeZero($("#homeTasksN"), !nT, "addTask");
+    homeZero($("#homeMeetsN"), !nM, "mtNew");
+    $("#homeTasksL").textContent = nT ? pl("home.tasks", nT) : t("home.tasksStart");
+    $("#homeMeetsL").textContent = nM ? pl("home.meets", nM) : t("home.meetsStart");
     var ts = $("#homeTasksSub"), ms = $("#homeMeetsSub");
-    ts.textContent = !nT ? t("home.tasksNone") : dueNow ? t("home.tasksToday", {n:dueNow}) : t("home.tasksGo");
+    ts.textContent = !nT ? t("home.tasksStartSub") : dueNow ? t("home.tasksToday", {n:dueNow}) : t("home.tasksGo");
     ts.classList.toggle("hot", nT > 0 && dueNow > 0);
-    ms.textContent = nM ? t("home.meetsGo") : t("home.meetsNone");
+    ms.textContent = nM ? t("home.meetsGo") : t("home.meetsStartSub");
+  }
+  /* An empty card names the control that starts one — the same button the
+     tab's own empty state presses, so there is no second way to add a task. */
+  function homeZero(numEl, zero, start){
+    var card = numEl.closest(".homecard");
+    card.classList.toggle("zero", zero);
+    if(zero) card.dataset.start = start; else delete card.dataset.start;
   }
   function renderTools(){
     $("#toolsStack").innerHTML =
@@ -7498,6 +7520,14 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     $("#taskStack").classList.remove("swap"); void $("#taskStack").offsetWidth;
     $("#taskStack").classList.add("swap");
     renderTasks();
+  });
+  /* An empty home card goes to its tab (the [data-go] handler) and then opens
+     the sheet that starts one, once the tab has slid in under it. */
+  document.addEventListener("click", function(e){
+    var c = e.target.closest(".homecard[data-start]");
+    if(!c) return;
+    var real = $("#" + c.dataset.start);
+    if(real) setTimeout(function(){ real.click(); }, 320);
   });
   /* Every empty state's button, wherever it is drawn. */
   document.addEventListener("click", function(e){
