@@ -74,7 +74,8 @@ export function stampRegistration(fields, file = stampPath()) {
 // an agent nobody has answered for is `undefined`, which arms nothing. That is
 // the honest state for `intake` and `ggreet` in particular — the two agents
 // that speak to people whose language nobody knows yet, and which never reach
-// `before_prompt_build` at all.
+// the person's `turn_context` path (the greeter's own branch below asks only
+// for its room line).
 const LANG = new Map();
 export function rememberReader(agentId, value) {
   if (value === true || value === false) LANG.set(agentId, value);
@@ -135,6 +136,12 @@ export function buildHandler({ agents, connect, sock, timeoutMs, log = trace } =
     // told anything.
     const group = GROUP_KEY_RE.exec(String((ctx && ctx.sessionKey) || ''));
     if (group) return groupTurnContext(group, { connect, sock, timeoutMs, log });
+    // The DM greeter's turn: the one line about the room this newcomer came
+    // from (brokerd `intake_context` → domain/intake-room.js). Not narrowed by
+    // `agents` either — that list is which PEOPLE get their opening, and the
+    // greeter speaks to nobody the list could name.
+    const intake = INTAKE_KEY_RE.exec(String((ctx && ctx.sessionKey) || ''));
+    if (intake) return intakeTurnContext(String(ctx.sessionKey), { connect, sock, timeoutMs, log });
     const agentId = (ctx && ctx.agentId) || agentIdOf(ctx && ctx.sessionKey);
     if (!agentId || !/^u-\d+$/.test(agentId)) return undefined;
     if (only && !only.has(agentId)) return undefined;
@@ -171,6 +178,24 @@ export function buildHandler({ agents, connect, sock, timeoutMs, log = trace } =
     log({ agentId, outcome: "prepended", directive: reply.directive || null, chars: reply.context.length, promptChars: prompt.length, replyInPrompt: params.replyTarget, ms });
     return { prependContext: reply.context };
   };
+}
+
+// ---- the greeter's room line ------------------------------------------------
+// Somebody a room sent to write "היי" in private reads the owner's opening copy
+// first, and until 2026-09-25 nothing else: not a word about the group that
+// sent them, so they wrote again before anything happened (`incidents.md`,
+// "Twice 'היי' before a word about the room"). The greeter has no tools, so
+// brokerd hands it the line. Fails open like everything here: no answer is the
+// old greeting, never a turn that does not happen.
+const INTAKE_KEY_RE = /^agent:intake:whatsapp:direct:\+\d{7,15}$/;
+async function intakeTurnContext(sessionKey, { connect, sock, timeoutMs, log = trace } = {}) {
+  const t0 = Date.now();
+  const reply = await askBroker("intake_context", { sessionKey }, { connect, sock, timeoutMs });
+  const ms = Date.now() - t0;
+  if (!reply || reply.ok !== true) { log({ intake: reply ? "refused" : "unreachable", ms }); return undefined; }
+  if (typeof reply.context !== "string" || !reply.context) { log({ intake: "no-room", ms }); return undefined; }
+  log({ intake: "prepended", groupId: reply.groupId || null, meetingId: reply.meetingId || null, ms });
+  return { prependContext: reply.context };
 }
 
 // ---- a room's own turn context ---------------------------------------------
@@ -498,7 +523,7 @@ const URL_RE = /\b(?:https?:\/\/|www\.)\S+/gi;
 const ADDRESS_RE = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g;
 const QUOTED_RE = /["״'][^"״'\n]{1,80}["״']/g;
 const TOKEN_RE = /\bolma_(?:tok|grp)_[0-9a-f]{8,}/g;
-const KEEPS_LINE = new Set(["identifier", "sentinel", "narration", "hebrew-narration"]);
+const KEEPS_LINE = new Set(["identifier", "sentinel", "narration", "hebrew-narration", "deliberation-tail"]);
 const REPORT_ONLY = new Set(["identifier", "narration", "hebrew-narration"]);
 const SENTINEL = "NO_REPLY";
 
@@ -543,6 +568,20 @@ export function leaksIn(line, { readerWritesHebrew = null } = {}) {
   return out;
 }
 export function drops(leaks) { return leaks.some((l) => !KEEPS_LINE.has(l.kind)); }
+
+// Ported from `domain/reply-leak.hebrewReplyTail` (2026-09-25): a Hebrew reply
+// with only an English next step on its end loses the tail, not the reply.
+export function hebrewReplyTail(line, found) {
+  const dropping = found.filter((l) => !KEEPS_LINE.has(l.kind));
+  if (!dropping.length || !dropping.every((l) => l.kind === "deliberation")) return null;
+  const at = dropping.map((l) => line.indexOf(l.at)).filter((i) => i >= 0);
+  if (at.length !== dropping.length) return null;
+  const head = line.slice(0, Math.min(...at));
+  const before = scannable(head);
+  if (!HEBREW_LETTER_RE.test(before) || /[A-Za-z]{2,}/.test(before)) return null;
+  const kept = head.replace(/[\s,;:—–-]+$/, "");
+  return kept.trim() ? kept : null;
+}
 export function hasEarlierContent(lines, i) {
   for (let j = 0; j < i; j++) if (lines[j].trim()) return true;
   return false;
@@ -557,6 +596,12 @@ export function gateReply(text, { readerWritesHebrew = null } = {}) {
   if (raw.trim() === SENTINEL) return { action: "pass", text: raw, leaks: [], reported: [] };
   const lines = raw.split("\n");
   const found = lines.map((l) => leaksIn(l, { readerWritesHebrew }));
+  for (let i = 0; i < lines.length; i++) {
+    const head = hebrewReplyTail(lines[i], found[i]);
+    if (head === null) continue;
+    lines[i] = head;
+    found[i] = found[i].map((l) => (l.kind === "deliberation" ? { ...l, kind: "deliberation-tail" } : l));
+  }
   const reported = [];
   let last = -1;
   for (let i = 0; i < lines.length; i++) {
@@ -569,6 +614,21 @@ export function gateReply(text, { readerWritesHebrew = null } = {}) {
   const kept = lines.slice(last + 1).join("\n").replace(SENTINEL_STRIP_RE, " ").trim();
   if (!kept) return { action: "cancel", text: "", leaks, reported };
   return { action: "trim", text: kept, leaks, reported };
+}
+
+// A reply that says it saved something — a PORT of `domain/phantom-save
+// .claimedWrite`, held against it by `tests/phantom-save.test.js`. Only the
+// word leaves the gateway, never the reply: brokerd alone knows whether a tool
+// ran on this turn, and it files what it decides. Report-only, and never
+// awaited — a reply must not wait on a question about itself.
+const HE_CLAIM_RE = /(?:^|[^\u0590-\u05FF])[וש]?(רשמתי|שמרתי|הוספתי|קבעתי|עדכנתי|מחקתי|ביטלתי|תזמנתי|הגדרתי)(?![\u0590-\u05FF])/;
+const EN_CLAIM_RE = /\bI(?:'ve| have)\s+(saved|added|noted|scheduled|updated|deleted|removed|cancel+ed|set)\b/i;
+export function claimedWrite(text) {
+  const s = String(text == null ? "" : text);
+  const he = HE_CLAIM_RE.exec(s);
+  if (he) return he[1];
+  const en = EN_CLAIM_RE.exec(s);
+  return en ? en[1].toLowerCase() : null;
 }
 
 // Whose text this gate is for: every agent that puts MODEL output in front of
@@ -600,6 +660,11 @@ export function buildReplyGateHandler({ connect, sock, timeoutMs = 1500, log = t
       if (!text.trim()) return undefined;
       const agentId = m[1];
       const verdict = gateReply(text, { readerWritesHebrew: readerOf(agentId) });
+      // Read off what will actually be SENT — a claim inside notes the gate
+      // just cut never reaches anybody. Only a person's own agent: a room has
+      // no turn brokerd can speak for.
+      const claim = /^u-\d+$/.test(agentId) && verdict.action !== "cancel" ? claimedWrite(verdict.text) : null;
+      if (claim) askBroker("reply_claim", { agentId, word: claim }, { connect, sock, timeoutMs }).catch(() => {});
       if (verdict.action === "pass" && !verdict.reported.length) return undefined;
       // brokerd is asked only when something was found, so the ordinary reply
       // never waits on a socket. It is asked BEFORE the text goes (or does

@@ -257,6 +257,22 @@ have already had to be argued for.
   given in the room returns that one answer and never the table's — the room
   still hears nobody else's (`tests/group-room-actions.test.js`).
 
+- **Somebody a room sent to the greeter hears about that room in the FIRST
+  reply, and its coordination follows that same night if they are awake**
+  (2026-09-25). The greeter is handed the room by brokerd `intake_context`
+  (the intake session key ends in the sender's number) through the plugin, and
+  says one fixed line under the opening copy (`domain/intake-room.js`) — the
+  "תכף אשלח" shape only where `admitLateMembers` will actually let them in (an
+  open room, a coordination negotiating and not in its settle minute), the
+  shape that promises nothing everywhere else. **While the room sleeps, only
+  somebody who wrote in the last fifteen minutes is let in** — to their own
+  agent or to the greeter — marked `quiet` on the admission's audit row, and
+  the room's "joined" line about them waits for the room's morning
+  (`group-meetings.quietJoinersToAnnounce`). Letting in used to wait for the
+  room's hours because it and the line were one step; they are two now, and the
+  line is still never said at night (`incidents.md`, "Twice 'היי' before a word
+  about the room").
+
 - **The person who asked the ROOM for a coordination is asked privately too.**
   `startMeeting` inserts every participant at `awaiting`, the initiator
   included, and for a person-to-person coordination the fan-out rightly skips
@@ -774,3 +790,15 @@ have already had to be argued for.
   `group-turn.CLOCK_RULE` is said only in a room that spans clocks. Each member
   there carries `clock`, so "at four" from somebody in New York is put on the
   table at New York's four (`incidents.md`, "פנתרה: one time, four clocks").
+
+- **The private side knows every room a person shares with Olma, off the
+  ROSTER, and says the list is complete** (`groups.roomsOf`, 2026-09-25). It
+  rides the turn context as `rooms` on every turn of somebody in a room, and
+  `list_my_meetings` returns it too. Until then no private read touched
+  `chat_group_members`: `list_my_meetings` reads `meeting_participants` and
+  `recentMeetings` reads the outbox, so a member with no participant row asked
+  "אני בקבוצה שאת בה?" and was told no. Keyed on the roster and never on a
+  participant row, because being in the room is the fact being asked about;
+  each room carries its live coordination and whether THIS person is in it,
+  and nothing about anybody else. A room that is `retired`, or that they left,
+  is not one they share (`incidents.md`, "She said there was no group").

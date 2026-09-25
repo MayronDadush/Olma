@@ -40,10 +40,16 @@
 const occ = require('../src/intake/openclaw-config');
 
 const DEFAULT_TARGET = {
-  primary: 'openrouter/deepseek/deepseek-v4-flash',
-  // pro is the same provider pipe with a stronger model; Anthropic stays
-  // last so a future top-up quietly becomes a safety net again.
-  fallbacks: ['openrouter/deepseek/deepseek-v4-pro', 'anthropic/claude-haiku-4-5'],
+  // v4.1-flash since 2026-09-25, the owner's call on two full boards: run #90
+  // 12/4/0 in 925s against the incumbent's 9/5/2 (#84) and 11/3/2 (#79), no
+  // hard check failed, faster on 10 of 16 (docs/model-experiments.md). It is
+  // ~2x the incumbent's price on Novita, which on this bill is ~$1 a week.
+  primary: 'openrouter/deepseek/deepseek-v4.1-flash',
+  // The model it replaced is the first fallback: measured for a month on these
+  // users, and on the same pinned provider. pro is the same pipe with a
+  // stronger model; Anthropic stays last so a future top-up quietly becomes a
+  // safety net again.
+  fallbacks: ['openrouter/deepseek/deepseek-v4-flash', 'openrouter/deepseek/deepseek-v4-pro', 'anthropic/claude-haiku-4-5'],
 };
 const ANTHROPIC_DEFAULT = {
   primary: 'anthropic/claude-haiku-4-5',

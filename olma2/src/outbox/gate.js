@@ -487,8 +487,19 @@ function decide(facts) {
   const rung = Number(row.payload && row.payload.rung) || 1;
   const userChoseThisTime = row.kind === 'digest' || (row.kind === 'reminder' && rung <= 1);
   const lastInbound = facts.lastInboundAt ? new Date(facts.lastInboundAt).getTime() : 0;
+  // Somebody the intake GREETER just answered is in a conversation too, and
+  // it is the only one they have had: their "היי" went to the greeter, so
+  // `last_inbound_at` is still NULL and must stay so (`rules/groups.md`, two
+  // columns). Scoped to a coordination row, like `groupWroteAt`: a person a
+  // room sent to her at 02:25 is awake and waiting for exactly that invite,
+  // and it was the row that sat until they wrote a second time (`incidents.md`,
+  // "Twice 'היי' before a word about the room"). Nothing else Olma decided to
+  // say rides on it — the day-one check-ins still wait for the morning.
+  const greeted = facts.greetedAt ? new Date(facts.greetedAt).getTime() : 0;
+  const greeterGrace = greeted > 0 && (now.getTime() - greeted) < CONVERSATION_GRACE_MS
+    && Boolean(row.payload && row.payload.meetingId);
   const midConversation = (lastInbound > 0 && (now.getTime() - lastInbound) < CONVERSATION_GRACE_MS)
-    || inRoomGrace || onPageGrace;
+    || inRoomGrace || onPageGrace || greeterGrace;
   if (!userChoseThisTime && !midConversation && !withinWindow(window, tz, now)) {
     return {
       action: 'hold', holdReason: 'night',

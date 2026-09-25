@@ -80,6 +80,16 @@ async function currentMeeting(client, groupId, { includeClosed = false } = {}) {
   return rows[0] || null;
 }
 
+// Whether the people this coordination asks are on more than one clock. It
+// rides the private invite as `roomZones`, and the delivery worker spends it
+// on the one question it earns: somebody whose own zone was never confirmed is
+// asked, once ever, whether it is right (`users.room_zone_asked_at`, migration
+// 092) — because in such a room every time she says is converted from it.
+function roomZonesFlag(members, group) {
+  const zones = members.map((m) => m.timezone).filter(Boolean);
+  return meetingTime.spansZones(zones, group.timezone || null) ? { roomZones: true } : {};
+}
+
 // Start one. `actingUser` is the member whose tag started this turn, chosen by
 // the server (groups.actingMember) — never by the model.
 async function startCoordination(client, group, actingUser, title, { where = null } = {}) {
@@ -132,6 +142,7 @@ async function startCoordination(client, group, actingUser, title, { where = nul
     meetingId: Number(meeting.id), title: finalTitle,
     byName: memberLabel(members.find((m) => Number(m.user_id) === Number(actingUser.id)) || {}),
     groupSubject: group.subject || null,
+    ...roomZonesFlag(members, group),
   };
   await fanout.fanout(client, others, 'meeting_invite', invitePayload,
     { key: `minvite:${meeting.id}` });
@@ -196,7 +207,16 @@ async function startCoordination(client, group, actingUser, title, { where = nul
 // nothing left to ask them, so what reaches them is the settled time in their
 // own clock, whether they can make it, and the calendar step — a confirmation
 // written for somebody who arrived after it (`joinedLate`).
-async function admitLateMembers(client, group, meeting, now = new Date()) {
+//
+// …and at NIGHT, only somebody who is demonstrably awake (`awakeSince`, owner
+// 2026-09-25: "מיד, הוא ער עכשיו"). ORGETZ wrote to the greeter at 02:27 and
+// would have been let in at 09:00, because letting in and telling the room
+// were one step and the room sleeps. Now they are two: the person is let in
+// and invited the moment they have written — to their own agent or to the
+// greeter, the two columns the gate already reads — and the admission is
+// marked `quiet`, so the room's one line about it waits for the room's
+// morning (`quietJoinersToAnnounce`). Nobody else is let in at night.
+async function admitLateMembers(client, group, meeting, now = new Date(), { awakeSince = null } = {}) {
   if (!group || group.state !== 'open' || !meeting) return [];
   const settled = meeting.status === 'confirmed' && meeting.confirmed_start_at
     && new Date(meeting.confirmed_start_at).getTime() > now.getTime();
@@ -206,7 +226,10 @@ async function admitLateMembers(client, group, meeting, now = new Date()) {
   const { rows } = await client.query(
     `SELECT user_id FROM meeting_participants WHERE meeting_id = $1`, [meeting.id]);
   const inIt = new Set(rows.map((r) => Number(r.user_id)));
-  const late = members.filter((m) => !inIt.has(Number(m.user_id)) && !pause.roomInviteSpent(m));
+  const wroteSince = (m) => [m.last_inbound_at, m.opening_sent_at]
+    .some((t) => t && new Date(t).getTime() >= awakeSince.getTime());
+  const late = members.filter((m) => !inIt.has(Number(m.user_id)) && !pause.roomInviteSpent(m)
+    && (!awakeSince || wroteSince(m)));
   if (!late.length) return [];
   // Whoever opened it, as the room calls them — including somebody who has
   // since left the room or stopped counting as connected, or the invite would
@@ -220,7 +243,7 @@ async function admitLateMembers(client, group, meeting, now = new Date()) {
       `INSERT INTO meeting_participants (meeting_id, user_id) VALUES ($1, $2)
        ON CONFLICT (meeting_id, user_id) DO NOTHING`, [meeting.id, m.user_id]);
     await audit.record(client, Number(m.user_id), 'group.member_joined_late', {
-      groupId: group.id, meetingId: Number(meeting.id),
+      groupId: group.id, meetingId: Number(meeting.id), ...(awakeSince ? { quiet: true } : {}),
     });
   }
   if (settled) {
@@ -229,6 +252,7 @@ async function admitLateMembers(client, group, meeting, now = new Date()) {
       ...(await fanout.slotMoment(client, Number(meeting.id), meeting.confirmed_slot)),
       ...(meeting.location ? { location: meeting.location } : {}),
       groupSubject: group.subject || null, joinedLate: true,
+      ...roomZonesFlag([...members.filter((m) => inIt.has(Number(m.user_id))), ...late], group),
     }, { key: `mconf:${meeting.id}` });
     return late;
   }
@@ -239,8 +263,37 @@ async function admitLateMembers(client, group, meeting, now = new Date()) {
     byName: (opener && memberLabel(opener)) || 'someone in the group',
     groupSubject: group.subject || null,
     ...(onTable > 0 ? { tableChanged: true } : {}),
+    ...roomZonesFlag([...members.filter((m) => inIt.has(Number(m.user_id))), ...late], group),
   }, { key: `minvite:${meeting.id}` });
   return late;
+}
+
+// Who was let in at night and has not yet been named to the room. Read off
+// what already exists rather than a new column: the admission's own audit row
+// (`quiet: true`) and the room's `joined` lines, whose keys name the
+// coordination. Somebody let in before the room's opening line is counted by
+// that line and is never named again; somebody who has since left is not.
+async function quietJoinersToAnnounce(client, group, meeting, startedAt) {
+  if (!startedAt) return [];
+  const { rows: quiet } = await client.query(
+    `SELECT DISTINCT a.actor_id FROM audit_log a
+      WHERE a.event = 'group.member_joined_late'
+        AND a.detail->>'quiet' = 'true'
+        AND (a.detail->>'meetingId')::bigint = $1
+        AND a.created_at > $2`, [meeting.id, startedAt]);
+  if (!quiet.length) return [];
+  const { rows: said } = await client.query(
+    `SELECT payload FROM group_outbox
+      WHERE group_id = $1 AND idempotency_key LIKE $2`,
+    [group.id, `g${group.id}:m${meeting.id}:joined:%`]);
+  const named = new Set(said.flatMap((r) => ((r.payload || {}).line || {}).phones || []));
+  const ids = new Set(quiet.map((r) => Number(r.actor_id)));
+  const { rows: stillIn } = await client.query(
+    `SELECT user_id FROM meeting_participants
+      WHERE meeting_id = $1 AND state <> 'opted_out'`, [meeting.id]);
+  const inIt = new Set(stillIn.map((r) => Number(r.user_id)));
+  return (await groups.listMembers(client, group.id))
+    .filter((m) => ids.has(Number(m.user_id)) && inIt.has(Number(m.user_id)) && !named.has(m.phone));
 }
 
 // Where it stands, in the room's terms. Answers only — never a reason.
@@ -745,7 +798,7 @@ async function markRelaySaid(client, meetingId, userId) {
 
 module.exports = {
   roomMeetingFor,
-  startCoordination, admitLateMembers, coordinationStatus, statusOf, roomView, settle, setPlace,
+  startCoordination, admitLateMembers, quietJoinersToAnnounce, coordinationStatus, statusOf, roomView, settle, setPlace,
   sweepSilentPausedMembers, currentMeeting, coordinatingMembers, memberLabel, participantFor,
   relayToRoom, pendingRelay, markRelaySaid, cleanRelay, relayRoomEnabled, RELAY_MAX_CHARS, RELAY_FLAG,
 };

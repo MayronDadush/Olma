@@ -94,6 +94,19 @@ test('a dated snapshot is priced as itself, not as the model its id contains', (
   assert.equal(pricing.rateFor('deepseek/deepseek-v4.1-flash').key, 'deepseek/deepseek-v4.1-flash');
 });
 
+// v4.1-flash went live pinned to DeepInfra on 2026-09-25; the pilots before
+// that ran unpinned at DeepSeek's listing. Re-pricing the pilots at the pinned
+// provider's rate would restate two days of history at a price they never paid.
+test('v4.1-flash is priced at the pinned provider from the switch, and at the listing before it', () => {
+  const before = pricing.rateFor('openrouter/deepseek/deepseek-v4.1-flash', '2026-09-24').rate;
+  const after = pricing.rateFor('openrouter/deepseek/deepseek-v4.1-flash', '2026-09-25').rate;
+  assert.equal(before.input, 0.15);
+  assert.equal(before.output, 0.60);
+  assert.equal(after.input, 0.14);
+  assert.equal(after.output, 0.42);
+  assert.equal(pricing.rateFor('openrouter/deepseek/deepseek-v4.1-flash').rate.input, 0.14, 'no day = today');
+});
+
 // ---- the three failures migration 010 exists for -----------------------------
 
 test('cost comes from the transcript, not from the context-size gauge', async () => {

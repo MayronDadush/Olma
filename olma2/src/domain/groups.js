@@ -327,6 +327,47 @@ async function listMembers(client, groupId, { includeLeft = false } = {}) {
   return rows;
 }
 
+// The rooms a PERSON shares with Olma, read from their private side, and the
+// coordination each is negotiating right now. Until 2026-09-25 nothing on the
+// private side could see a room at all: ORGETZ joined Olma three minutes after
+// "Shabi OG" started one, asked her privately "אני בקבוצה כלשהי שגם את נמצאת?",
+// and was told no — `list_my_meetings` reads `meeting_participants`, he had no
+// row, and that was the only thing she could look at (`incidents.md`, "She said
+// there was no group"). Keyed on the ROSTER, not on a participant row, because
+// being in the room is the fact they asked about.
+//
+// Carries the room's name, whether it can coordinate yet, and the live
+// coordination's id, title and whether THIS person is in it — never who else
+// is there or anybody's reasons (`rules/groups.md`, "Nothing a group tool
+// returns may carry the room's own row or anybody's reasons"). A room that is
+// retired is not a room she is in. Newest first, five at most.
+async function roomsOf(client, userId) {
+  const { rows } = await client.query(
+    `SELECT g.id, g.subject, g.state, g.kind,
+            m.id AS meeting_id, m.title AS meeting_title,
+            (p.user_id IS NOT NULL AND p.state <> 'opted_out') AS in_it
+       FROM chat_group_members cm
+       JOIN chat_groups g ON g.id = cm.group_id AND g.state <> 'retired'
+       LEFT JOIN LATERAL (
+         SELECT id, title FROM meetings
+          WHERE group_id = g.id AND status = 'negotiating'
+          ORDER BY id DESC LIMIT 1) m ON true
+       LEFT JOIN meeting_participants p ON p.meeting_id = m.id AND p.user_id = cm.user_id
+      WHERE cm.user_id = $1 AND cm.left_at IS NULL
+      ORDER BY g.id DESC LIMIT 5`,
+    [userId]
+  );
+  return rows.map((r) => ({
+    groupId: Number(r.id),
+    subject: r.subject || null,
+    open: r.state === 'open',
+    ...(r.kind ? { kind: r.kind } : {}),
+    coordination: r.meeting_id
+      ? { meetingId: Number(r.meeting_id), title: r.meeting_title || null, inIt: Boolean(r.in_it) }
+      : null,
+  }));
+}
+
 // ---- roster reconciliation --------------------------------------------------
 
 // Idempotent: the same roster twice is a no-op. Three things move —
@@ -780,7 +821,7 @@ function quorumFor(group, yesCount) {
 module.exports = {
   DEFAULT_TIMEZONE,
   parseRoster, normalizePhone, majorityTimezone, SELF_PHONE, resolveLidMembers,
-  registerGroup, getById, getByExternalId, listMembers, syncRoster,
+  registerGroup, getById, getByExternalId, listMembers, roomsOf, syncRoster,
   ensureRosterUsers, ROSTER_USERS_FLAG,
   decideState, evaluate, applyState, isConnected, MIN_CONNECTED_TO_OPEN,
   decideNotice, noteNoticeSent, seenAt, noteSeen, lastMemberWriteAt,

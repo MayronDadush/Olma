@@ -555,12 +555,21 @@ async function sweepGroupVoice(client, deps) {
          FROM meetings WHERE id = $1`, [row.meeting_id]);
     // Somebody who has written to her since it started is let in now, and the
     // room hears it once (`group-meetings.admitLateMembers`, owner 2026-09-25).
-    // Only while the room is awake: letting them in and saying so are one
-    // piece of news, and a line held for the morning with nothing stamped is
-    // simply the same admission found again then. It is this pass's one line
-    // for the room, so everything else waits for the next one.
-    if (full[0] && mayAnnounce(row, now)) {
-      const joined = await groupMeetings.admitLateMembers(client, row, full[0], now);
+    // While the room SLEEPS only somebody awake right now is let in — they just
+    // wrote to her, to their own agent or to the greeter — and quietly: the
+    // room's line about them waits for its morning, where the pass below names
+    // them beside anybody let in then (`quietJoinersToAnnounce`). It is this
+    // pass's one line for the room, so everything else waits for the next one.
+    const awake = full[0] ? mayAnnounce(row, now) : false;
+    if (full[0] && !awake) {
+      await groupMeetings.admitLateMembers(client, row, full[0], now, {
+        awakeSince: new Date(now.getTime() - gate.CONVERSATION_GRACE_MS),
+      });
+    }
+    if (full[0] && awake) {
+      const admitted = await groupMeetings.admitLateMembers(client, row, full[0], now);
+      const overnight = await groupMeetings.quietJoinersToAnnounce(client, row, full[0], row.group_started_at);
+      const joined = [...admitted, ...overnight.filter((m) => !admitted.some((a) => a.phone === m.phone))];
       const phones = joined.map((m) => m.phone).filter(isTaggableNumber);
       // Before the opening line, there is nothing to add: it counts them.
       if (phones.length && row.group_started_at) {

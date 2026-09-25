@@ -236,3 +236,31 @@ test('a settled coordination stays in the list, and the card says so', () => {
     'and the marker tints the whole card, not only the chip');
   assert.match(page, /\.group\.mtset \.mtpill\.settled\{/);
 });
+
+// The page never zooms, double tap or pinch (the owner, 2026-09-25: it should
+// feel like an app). Three layers, because each browser honours a different one.
+test('the page cannot be zoomed, on Android or on iOS', () => {
+  assert.match(page, /html\{touch-action:pan-x pan-y\}/);
+  const meta = page.match(/<meta name="viewport" content="([^"]+)">/);
+  assert.ok(meta, 'the viewport meta is there');
+  assert.match(meta[1], /user-scalable=no/);
+  assert.match(meta[1], /maximum-scale=1/);
+  assert.match(meta[1], /viewport-fit=cover/, 'the safe-area insets still need this');
+  assert.match(page, /"gesturestart", "gesturechange", "gestureend"/);
+  assert.match(page, /e\.touches\.length > 1\) e\.preventDefault\(\)/);
+});
+
+// Every date on the page picks its year the same way: one popover, with a
+// pane of years, opened by the two value fields AND by the three grids' titles.
+test('every date control opens the one popover, and it has a years pane', () => {
+  assert.match(page, /calPane === "years"/);
+  assert.match(page, /data-calyear="/);
+  assert.match(page, /data-calpane="years"/, 'the year is one tap from the days pane');
+  for (const id of ['bday', 'sDateRow', 'stripTtl']) {
+    assert.match(page, new RegExp(`id="${id}"[^>]*data-cal=|data-cal="[^"]+"[^>]*id="${id}"|id="${id}" data-cal=`),
+      `#${id} opens the date popover`);
+  }
+  assert.match(page, /class="dgttl" data-cal="jump"/, 'both coordination grids open it from their title');
+  assert.match(page, /dgJump\("#mtOptDays", "#mtOptMon"\)/);
+  assert.match(page, /dgJump\("#mtDays", "#mtDayMon"\)/);
+});

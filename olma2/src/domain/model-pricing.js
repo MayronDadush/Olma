@@ -58,7 +58,11 @@ const RATES = {
   // NOT optional: `rateFor` matches by substring, longest key first, and
   // "deepseek-v4-flash-0731" contains "deepseek-v4-flash" — without its own
   // row it would be billed at the incumbent's rates, output under by ~4x.
-  'deepseek/deepseek-v4.1-flash':     { input: 0.15, output: 0.60, cacheWrite: 0.15, cacheRead: 0.003 },
+  // v4.1-flash is the live default from 2026-09-25, pinned to DeepInfra first
+  // (scripts/pin-openrouter-provider.js), so RATES carries DeepInfra's listing
+  // that day; the unpinned pilot rows before it keep the DeepSeek listing
+  // through PAST_RATES below.
+  'deepseek/deepseek-v4.1-flash':     { input: 0.14, output: 0.42, cacheWrite: 0.14, cacheRead: 0.0042 },
   'deepseek/deepseek-v4-flash-0731':  { input: 0.04, output: 0.64, cacheWrite: 0.04, cacheRead: 0.016 },
 
   // Every model a pilot or the evals judge has actually run on. Absent from
@@ -100,6 +104,11 @@ const PAST_RATES = {
   // (gateway restarted 2026-09-09 20:18 UTC, so the 10th is the first whole day).
   'deepseek/deepseek-v4-flash': [
     { until: '2026-09-10', input: 0.08092, output: 0.16184, cacheWrite: 0.08092, cacheRead: 0.016184 },
+  ],
+  // The pilots (runs 80 and 90) ran unpinned, at the listing OpenRouter showed
+  // then; the switch to the Novita pin was made on the 25th.
+  'deepseek/deepseek-v4.1-flash': [
+    { until: '2026-09-25', input: 0.15, output: 0.60, cacheWrite: 0.15, cacheRead: 0.003 },
   ],
 };
 

@@ -9,7 +9,11 @@
      env(safe-area-inset-*) values this stylesheet positions the tab bar and
      the preview buttons with all resolve to 0 without it, so the bar sat above
      the home indicator instead of clearing it. -->
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- No zoom at all, pinch included: the owner wants the page to feel like an
+     app (Instagram has none), 2026-09-25. Android obeys these two words; iOS
+     Safari ignores them on purpose, which is why the script also cancels the
+     pinch gesture itself (search "zoom" in the script). -->
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <!-- The page defines both palettes; this is what stops the browser painting
      its own white behind them for the instant before the CSS lands. -->
 <meta name="color-scheme" content="light dark">
@@ -233,6 +237,13 @@
 
 /* ─────────────────────────  base  ───────────────────────── */
 *{box-sizing:border-box}
+/* The page never zooms, the way an app never does (the owner, 2026-09-25).
+   A phone browser zooms on a double tap and on a pinch unless the page opts
+   out, so tapping a calendar arrow twice blew the page up. `pan-x pan-y`
+   allows scrolling and nothing else: no double tap, no pinch. The viewport
+   meta says the same for Android, and the script cancels iOS's pinch, which
+   ignores both. Larger text is the phone's own setting, not a zoom here. */
+html{touch-action:pan-x pan-y}
 [hidden]{display:none !important}
 body{
   margin:0;
@@ -1693,8 +1704,9 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 .dgmon{display:flex;align-items:center;gap:4px;padding:0 0 6px}
 .dgttl{
   flex:1;text-align:center;font-size:11.5px;font-weight:650;color:var(--text-3);
-  letter-spacing:.02em;
+  letter-spacing:.02em;padding:6px 4px;border-radius:9px;transition:background .3s var(--ease-io)
 }
+.dgttl:active{background:var(--bg-tint)}
 .dgmon .calnav[disabled]{opacity:.24;pointer-events:none}
 /* A day that already has something on it. Hollow, under the number, so it
    cannot be read as the selection — which is a filled circle around it. */
@@ -2000,8 +2012,13 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 /* The arrows sit at the two ends and the label floats between them, so the
    row reads as one control rather than three things that happen to be
    adjacent. `auto` on both sides of the label does that at any string width. */
-#stripMonth{margin-inline-start:auto}
-#stripYear{margin-inline-end:auto}
+/* Both sit inside one button now, the one that opens the date popover, so
+   the auto margins moved onto it. */
+.stripttl{
+  margin-inline:auto;display:flex;align-items:baseline;gap:7px;
+  padding:4px 8px;border-radius:9px;transition:background .3s var(--ease-io)
+}
+.stripttl:active{background:var(--bg-tint)}
 .wkback{
   font-size:12.5px;font-weight:600;color:var(--accent);
   padding:5px 10px;border-radius:99px;background:var(--bg-tint);flex:none;
@@ -2717,6 +2734,16 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   color:var(--text);padding:6px 4px;border-radius:9px
 }
 .calttl:active{background:var(--bg-tint)}
+/* On the days pane the title is two buttons, the month and the year, so the
+   year is one tap from any day rather than two. The year carries the accent
+   because it is the one people did not know was there. */
+.calttls{flex:1;display:flex;justify-content:center;gap:2px;min-width:0}
+.calttls .calttl{flex:none}
+.calttl.calyr{color:var(--accent);font-variant-numeric:tabular-nums}
+.calpop .calnav[disabled],.calpop .calgrid button:disabled,.calpop .calmg button:disabled{
+  opacity:.24;pointer-events:none
+}
+.calmg button{font-variant-numeric:tabular-nums}
 .calgrid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
 .caldow{font-size:10.5px;font-weight:700;color:var(--text-3);text-align:center;padding-bottom:5px}
 .calgrid button{
@@ -3040,7 +3067,10 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
                asked Google about them. -->
           <div class="stripmonth">
             <button class="calnav wknav" data-wk="-1" id="wkPrev"><svg viewBox="0 0 16 16"><path d="M10 2 4 8l6 6"/></svg></button>
-            <span id="stripMonth"></span><span id="stripYear"></span>
+            <!-- The label is also the way to a far day: it opens the same date
+                 popover every other date on this page does, bounded to the
+                 same window the arrows are. -->
+            <button class="stripttl" id="stripTtl" data-cal="jump"><span id="stripMonth"></span><span id="stripYear"></span></button>
             <button class="wkback" id="wkToday" hidden data-i18n="cal.thisWeek"></button>
             <button class="calnav wknav" data-wk="1" id="wkNext"><svg viewBox="0 0 16 16"><path d="M6 2l6 6-6 6"/></svg></button>
           </div>
@@ -3147,7 +3177,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
           <div class="fgrid">
             <div class="ffield"><label for="fname" data-i18n="me.first"></label><input id="fname" type="text" maxlength="40" autocomplete="given-name"></div>
             <div class="ffield"><label for="lname" data-i18n="me.last"></label><input id="lname" type="text" maxlength="40" autocomplete="family-name"></div>
-            <div class="ffield"><label for="bday" data-i18n="me.bday"></label><button class="dateval" id="bday" data-cal="bday" data-calstart="1990-06-15" data-val=""></button></div>
+            <div class="ffield"><label for="bday" data-i18n="me.bday"></label><button class="dateval" id="bday" data-cal="bday" data-calstart="1990-06-15" data-calmin="1900-01-01" data-val=""></button></div>
             <div class="ffield">
               <label id="genderLabel" data-i18n="me.form"></label>
               <div class="seg" id="genderSeg" role="group" aria-labelledby="genderLabel">
@@ -3785,6 +3815,15 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 <script>
 (function(){
   "use strict";
+  /* No zoom, iOS edition. Safari ignores user-scalable=no on purpose, so the
+     pinch is cancelled where it starts: Safari's own gesture events, and any
+     move with two fingers down. Nothing on this page is a two-finger control. */
+  ["gesturestart", "gesturechange", "gestureend"].forEach(function(ev){
+    document.addEventListener(ev, function(e){ e.preventDefault(); }, {passive:false});
+  });
+  document.addEventListener("touchmove", function(e){
+    if(e.touches.length > 1) e.preventDefault();
+  }, {passive:false});
   var $  = function(s,r){ return (r||document).querySelector(s); };
   var $$ = function(s,r){ return Array.prototype.slice.call((r||document).querySelectorAll(s)); };
   /* A value written into an input only when the person is not standing in
@@ -8369,6 +8408,42 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      order the way the time picker does. Any control marked [data-cal]
      opens it and reads its answer back out of `dataset.val`. */
   var calAnchor = null, calY = 0, calM = 0, calPane = "days";
+  /* Three panes: days, months, and twelve years at a time. The years pane
+     exists because a birthday was one tap per year away (the owner,
+     2026-09-25), and it is here rather than on one field so that every date
+     on the page picks its year the same way. */
+  var CAL_YEARS = 12;
+  /* An anchor may bound the popover with data-calmin / data-calmax (ymd).
+     Anything wholly outside is drawn and inert, like the past days in the
+     coordination grid, and an arrow stops rather than paging into it. */
+  function calIn(a, z){
+    var lo = calAnchor && calAnchor.dataset.calmin, hi = calAnchor && calAnchor.dataset.calmax;
+    return (!lo || z >= lo) && (!hi || a <= hi);
+  }
+  function calYearsFrom(y){ return y - (((y % CAL_YEARS) + CAL_YEARS) % CAL_YEARS); }
+  /* the first and last day a pane shows, for the pane and position given */
+  function calSpan(pane, y, m){
+    if(pane === "days") return [ymd(new Date(y, m, 1)), ymd(new Date(y, m + 1, 0))];
+    if(pane === "months") return [y + "-01-01", y + "-12-31"];
+    var ys = calYearsFrom(y);
+    return [ys + "-01-01", (ys + CAL_YEARS - 1) + "-12-31"];
+  }
+  /* where one arrow press lands, without moving there */
+  function calStep(step){
+    if(calPane === "years") return {y:calY + step * CAL_YEARS, m:calM};
+    if(calPane === "months") return {y:calY + step, m:calM};
+    var d = new Date(calY, calM + step, 1);
+    return {y:d.getFullYear(), m:d.getMonth()};
+  }
+  function calNavOk(step){
+    var to = calStep(step), sp = calSpan(calPane, to.y, to.m);
+    return calIn(sp[0], sp[1]);
+  }
+  /* The dates that are not a VALUE but a place to go: the calendar tab's week
+     strip and the two coordination grids open the same popover from their
+     title, and a day picked there moves the grid. Each registers what it is
+     showing now and how to go somewhere else, by the anchor's id. */
+  var calJump = {};
   function ymd(d){
     return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
   }
@@ -8390,18 +8465,38 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   }
   function calHTML(){
     var val = calAnchor ? (calAnchor.dataset.val || "") : "", today = ymd(new Date()), i = 0;
-    var head = '<div class="calhead">' +
-      '<button class="calnav" data-calnav="-1" aria-label="prev"><svg viewBox="0 0 16 16"><path d="M10 2 4 8l6 6"/></svg></button>' +
-      '<button class="calttl" data-calpane="1">' +
-        (calPane === "days"
-          ? esc(new Date(calY, calM, 1).toLocaleDateString(loc(), {month:"long", year:"numeric"}))
-          : esc(String(calY))) +
-      "</button>" +
-      '<button class="calnav" data-calnav="1" aria-label="next"><svg viewBox="0 0 16 16"><path d="M6 2l6 6-6 6"/></svg></button>' +
-      "</div>";
+    var valY = val ? +val.slice(0, 4) : null, valM = val ? +val.slice(5, 7) - 1 : null;
+    function nav(step, path){
+      return '<button class="calnav" data-calnav="' + step + '" aria-label="' + (step < 0 ? "prev" : "next") + '"' +
+        (calNavOk(step) ? "" : " disabled") + '><svg viewBox="0 0 16 16"><path d="' + path + '"/></svg></button>';
+    }
+    var ttl;
+    if(calPane === "days"){
+      ttl = '<div class="calttls">' +
+        '<button class="calttl" data-calpane="months">' +
+          esc(new Date(calY, calM, 1).toLocaleDateString(loc(), {month:"long"})) + "</button>" +
+        '<button class="calttl calyr" data-calpane="years">' + calY + "</button></div>";
+    } else if(calPane === "months"){
+      ttl = '<button class="calttl calyr" data-calpane="years">' + calY + "</button>";
+    } else {
+      var ys = calYearsFrom(calY);
+      ttl = '<button class="calttl" data-calpane="days">' + ys + "–" + (ys + CAL_YEARS - 1) + "</button>";
+    }
+    var head = '<div class="calhead">' + nav(-1, "M10 2 4 8l6 6") + ttl + nav(1, "M6 2l6 6-6 6") + "</div>";
+    if(calPane === "years"){
+      var y0 = calYearsFrom(calY), yrs = "";
+      for(var y = y0; y < y0 + CAL_YEARS; y++){
+        var ysp = calSpan("months", y, 0);
+        yrs += '<button style="--i:' + (i++) + '" aria-pressed="' + (y === (valY === null ? calY : valY)) +
+          '" data-calyear="' + y + '"' + (calIn(ysp[0], ysp[1]) ? "" : " disabled") + ">" + y + "</button>";
+      }
+      return head + '<div class="calmg">' + yrs + "</div>";
+    }
     if(calPane === "months"){
       return head + '<div class="calmg">' + monthNames().map(function(n, m){
-        return '<button style="--i:' + (i++) + '" aria-pressed="' + (m === calM) + '" data-calmonth="' + m + '">' + esc(n) + "</button>";
+        var msp = calSpan("days", calY, m);
+        return '<button style="--i:' + (i++) + '" aria-pressed="' + (valY === null ? m === calM : valY === calY && m === valM) +
+          '" data-calmonth="' + m + '"' + (calIn(msp[0], msp[1]) ? "" : " disabled") + ">" + esc(n) + "</button>";
       }).join("") + "</div>";
     }
     var first = new Date(calY, calM, 1), start = new Date(calY, calM, 1 - first.getDay());
@@ -8410,7 +8505,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       var d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + k), v = ymd(d);
       var cls = (d.getMonth() === calM ? "" : "out") + (v === today ? " now" : "");
       cells += '<button style="--i:' + (i++) + '" class="' + cls.trim() + '" aria-pressed="' + (v === val) +
-        '" data-calday="' + v + '">' + d.getDate() + "</button>";
+        '" data-calday="' + v + '"' + (calIn(v, v) ? "" : " disabled") + ">" + d.getDate() + "</button>";
       if(k === 34 && new Date(start.getFullYear(), start.getMonth(), start.getDate() + 35).getMonth() !== calM) break;
     }
     var quick = calAnchor && calAnchor.dataset.quick
@@ -8435,11 +8530,24 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   }
   function renderCal(){ $("#calPop").innerHTML = calHTML(); placeCal(); }
   function openCal(el){
+    var jump = el.dataset.cal === "jump" && calJump[el.id];
+    if(el.dataset.cal === "jump" && !jump) return;
     calAnchor = el; calPane = "days";
+    if(jump){
+      var b = jump.bounds();
+      el.dataset.val = jump.now();
+      el.dataset.calmin = b[0] || "";
+      el.dataset.calmax = b[1] || "";
+    }
+    /* A birthday cannot be tomorrow. Set on every open, because a page left
+       open past midnight would otherwise keep yesterday's edge. */
+    if(el.id === "bday") el.dataset.calmax = ymd(new Date());
     /* An empty field may name where to start: a birthday picker that opens on
-       this month would be thirty taps from anybody's actual birthday. */
+       this month would be thirty taps from anybody's actual birthday — and
+       with nothing chosen yet, the year is the first thing to choose. */
     var v = el.dataset.val || el.dataset.calstart, d = v ? new Date(v + "T00:00:00") : new Date();
     calY = d.getFullYear(); calM = d.getMonth();
+    if(el.id === "bday" && !el.dataset.val) calPane = "years";
     $("#calScrim").hidden = false; $("#calPop").hidden = false;
     renderCal();
     requestAnimationFrame(function(){ $("#calPop").classList.add("show"); });
@@ -8456,14 +8564,15 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   $("#calPop").addEventListener("click", function(e){
     var nav = e.target.closest("[data-calnav]");
     if(nav){
-      var step = +nav.dataset.calnav;
-      if(calPane === "months"){ calY += step; }
-      else { calM += step; if(calM > 11){ calM = 0; calY++; } if(calM < 0){ calM = 11; calY--; } }
+      if(nav.disabled) return;
+      var to = calStep(+nav.dataset.calnav);
+      calY = to.y; calM = to.m;
       renderCal(); return;
     }
-    if(e.target.closest("[data-calpane]")){
-      calPane = calPane === "days" ? "months" : "days"; renderCal(); return;
-    }
+    var pane = e.target.closest("[data-calpane]");
+    if(pane){ calPane = pane.dataset.calpane; renderCal(); return; }
+    var yr = e.target.closest("[data-calyear]");
+    if(yr){ calY = +yr.dataset.calyear; calPane = "months"; renderCal(); return; }
     var mo = e.target.closest("[data-calmonth]");
     if(mo){ calM = +mo.dataset.calmonth; calPane = "days"; renderCal(); return; }
     var day = e.target.closest("[data-calday]");
@@ -8482,6 +8591,11 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   function pickDate(v){
     var el = calAnchor;
     if(!el) return;
+    if(el.dataset.cal === "jump"){
+      closeCal();
+      if(v && calJump[el.id]) calJump[el.id].go(v);
+      return;
+    }
     el.dataset.val = v;
     if(el.dataset.cal === "task"){
       setTaskDate(v);
@@ -9471,7 +9585,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     lbl.innerHTML =
       '<button class="calnav" data-dgpage="-1"' + (page ? "" : " disabled") +
       ' aria-label="' + esc(t("mt.prevWeeks")) + '"><svg viewBox="0 0 16 16"><path d="M10 2 4 8l6 6"/></svg></button>' +
-      '<span class="dgttl">' + esc(months.map(function(mi){ return D.monthsBare[mi]; }).join(" · ")) + "</span>" +
+      '<button class="dgttl" data-cal="jump" id="' + labelHost.slice(1) + 'Ttl">' +
+        esc(months.map(function(mi){ return D.monthsBare[mi]; }).join(" · ")) + "</button>" +
       '<button class="calnav" data-dgpage="1" aria-label="' + esc(t("mt.nextWeeks")) +
       '"><svg viewBox="0 0 16 16"><path d="M6 2l6 6-6 6"/></svg></button>';
   }
@@ -9519,6 +9634,33 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   }
   dgRedraw["#mtOptDays"] = function(){ renderOptSheet(); };
   dgRedraw["#mtDays"]    = function(){ renderMtDays(); };
+  /* The grid's title opens the same date popover every date on the page does
+     (the owner, 2026-09-25: one way to pick a date, everywhere). It never
+     reaches behind today, like the arrows; a day picked there pages the grid
+     to it and chooses it, through the grid's own click, so the one-day and
+     the several-days grid each keep their own rule for what a tap means. */
+  function dgJump(host, labelHost){
+    calJump[labelHost.slice(1) + "Ttl"] = {
+      now: function(){
+        var on = $(host + " .dgc.on");
+        if(on) return dayISO(+on.dataset.day);
+        var start = new Date(base);
+        start.setDate(start.getDate() - start.getDay() + (dgPage[host] || 0) * 14);
+        return ymd(start < base ? base : start);
+      },
+      bounds: function(){ return [ymd(base), ""]; },
+      go: function(v){
+        var off = dayOffset(v);
+        if(off < 0) return;
+        dgPage[host] = Math.floor((off + base.getDay()) / 14);
+        if(dgRedraw[host]) dgRedraw[host]();
+        var b = $(host + ' [data-day="' + off + '"]');
+        if(b && b.getAttribute("aria-pressed") !== "true") b.click();
+      }
+    };
+  }
+  dgJump("#mtOptDays", "#mtOptMon");
+  dgJump("#mtDays", "#mtDayMon");
   function renderOptSheet(){
     dayGridHTML("#mtOptDays", "#mtOptMon", optDay, false);
     $("#mtOptWhen").hidden = !!(mtOpen && mtOpen.allDay);
@@ -10262,6 +10404,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   var weekOff = 0, WEEK_MIN = -2, WEEK_MAX = 3;
   function dayAt(i){ return new Date(base.getFullYear(), base.getMonth(), base.getDate() + i); }
   function dayISO(i){ return ymd(dayAt(i)); }
+  /* the inverse: how many days from today a ymd is, in the person's own days */
+  function dayOffset(v){ return Math.round((new Date(v + "T12:00:00") - base) / 86400000); }
   /* Dated tasks stand in the day next to the real events, in time order,
      because that is where a person looks to ask what the day holds — and
      they open the very same editor the list does, never a copy of it. */
@@ -10429,6 +10573,17 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     weekOff = Math.max(WEEK_MIN, Math.min(WEEK_MAX, w));
     renderStrip(weekOff === 0 ? 0 : weekOff * 7, weekOff === was ? 0 : weekOff > was ? 1 : -1);
   }
+  /* The strip's label opens the date popover, bounded to the same window
+     the arrows are — the window /me/events actually fetched. */
+  calJump.stripTtl = {
+    now: function(){ return dayISO(selDay); },
+    bounds: function(){ return [dayISO(WEEK_MIN * 7), dayISO(WEEK_MAX * 7 + 6)]; },
+    go: function(v){
+      var off = dayOffset(v), was = weekOff;
+      weekOff = Math.max(WEEK_MIN, Math.min(WEEK_MAX, Math.floor(off / 7)));
+      renderStrip(off, weekOff === was ? 0 : weekOff > was ? 1 : -1);
+    }
+  };
   $(".stripmonth").addEventListener("click", function(e){
     if(e.target.closest("#wkToday")) return goWeek(0);
     var n = e.target.closest("[data-wk]");
@@ -11755,7 +11910,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     renderCityRow();
     renderPause();
     renderMe();
-    $$("[data-cal]:not(#sDateRow)").forEach(function(el){
+    /* only the fields that HOLD a date; a "jump" title draws its own label */
+    $$("[data-cal]:not(#sDateRow):not([data-cal=\"jump\"])").forEach(function(el){
       el.textContent = el.dataset.val ? longDate(el.dataset.val) : t("sheet.noDate");
     });
     /* a sheet open across a language switch keeps its VALUES until it is

@@ -621,6 +621,32 @@ test('english: writesHebrew is a tri-state read off the columns, never a guess',
   assert.equal(writesHebrew(null), null);
 });
 
+// A Hebrew reply with only the model's English next step on its end loses the
+// tail and keeps the reply (2026-09-25, Dana: "רשמתי חמישי…" went out as
+// nothing). The three shapes beside it are the ones the same measurement said
+// must STILL drop whole, and each is a real line off the box.
+const TAILS = {
+  dana: 'רשמתי חמישי בערב החל מ-20:00 👍 let me see if the others are free.',
+  quotesTheirHebrew: 'He wants me to remind him to talk to מיכאל tomorrow morning. Let me save the contact first.',
+  hebrewWorkingOutEnglishTail: 'הם אמרו 13:00 — `due_at` נקבע ל-13:00. The reminder is set for 13:00 their time.',
+  hebrewStep: 'יהב אמר שהכל בוצע. אני צריך לסמן את כל המשימות האחרות כהושלמו.',
+};
+
+test('a Hebrew reply keeps its words when only an English next step is stuck on its end', () => {
+  for (const readerWritesHebrew of [true, false, null]) {
+    const v = leak.gateReply(TAILS.dana, { readerWritesHebrew });
+    assert.equal(v.action, 'trim', readerWritesHebrew);
+    assert.equal(v.text, 'רשמתי חמישי בערב החל מ-20:00 👍');
+    assert.deepEqual(v.leaks.map((l) => l.kind), ['deliberation-tail'], 'still reported, under its own name');
+  }
+  for (const key of ['quotesTheirHebrew', 'hebrewWorkingOutEnglishTail', 'hebrewStep']) {
+    assert.equal(leak.gateReply(TAILS[key], { readerWritesHebrew: true }).action, 'cancel', key);
+  }
+  // A paragraph ABOVE still goes, and the kept head survives beneath it.
+  const both = leak.gateReply('Let me check the table first.\n\n' + TAILS.dana);
+  assert.equal(both.text, 'רשמתי חמישי בערב החל מ-20:00 👍');
+});
+
 // The plugin carries a port of domain/reply-leak.js because it loads in the
 // gateway's own loader with nothing of ours beside it. This is what keeps the
 // two from drifting: one corpus, both implementations, first disagreement wins.
@@ -636,7 +662,8 @@ test('the gateway plugin\'s copy and the domain module answer identically', () =
     'The meeting is on יום שלישי at four',
     MIRON_POKER, ...HEBREW_DELIBERATION.map(([text]) => text), ...HEBREW_ORDINARY,
     'אני צריכה למצוא את המשימה הזו.\n\nמצאתי — הוספתי תזכורת למחר ב-9:00 👍',
-    'הוא אומר "צריך שכולם יהיו פנויים"', 'כתבת "Reply target of current user message"'];
+    'הוא אומר "צריך שכולם יהיו פנויים"', 'כתבת "Reply target of current user message"',
+    ...Object.values(TAILS)];
   assert.deepEqual(plugin.INTERNAL_NAMES, leak.INTERNAL_NAMES, 'the closed lists are the same list');
   assert.equal(plugin.MIN_ENGLISH_WORDS, leak.MIN_ENGLISH_WORDS, 'the same floor');
   // Every case under every value the reader flag can take, because the option

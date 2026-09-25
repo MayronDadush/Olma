@@ -57,24 +57,31 @@ title means this file. Grep the title, not the filename.
   and invisible until an override is tried.
 
 - **The live OpenRouter model names its providers in order**
-  (`agents.defaults.models["openrouter/deepseek/deepseek-v4-flash"].params
-  .provider.order`, `scripts/pin-openrouter-provider.js --apply`, restart the
-  gateway). Unpinned, OpenRouter picked a different provider per request —
+  (`agents.defaults.models["<primary>"].params.provider.order`,
+  `scripts/pin-openrouter-provider.js --apply`, restart the gateway). Since
+  2026-09-25 the primary is `deepseek-v4.1-flash` with `deepseek-v4-flash` as
+  its first fallback, and the script pins BOTH, **each with its own order**: a
+  fallback call on an unpinned model goes wherever OpenRouter sends it, and a
+  cache is per provider AND per model — Novita kept 60-67% of v4-flash's input
+  and 24% of v4.1-flash's, DeepInfra 70% of v4.1-flash's at half the price
+  (`incidents.md`, "Novita cached the probe and not the turns"). **Measure a
+  provider on real turns, never on a repeated prompt alone** — every provider
+  passed that probe, the one that failed included. Unpinned, OpenRouter picked a different provider per request —
   three in six hours on 2026-09-09 — and a prompt cache is per provider, so
   the first call of nearly every message paid the whole prompt: 0–9% cached
   for any gap over two minutes, ~90% for the second call of the same turn
   (`incidents.md`, "The conversation that never ended"). **Only a provider
   MEASURED keeping a prefix cache may lead** — DigitalOcean led from 9/09 for
   its price and cached 0 of 8 repeat calls (`incidents.md`, "DigitalOcean
-  never cached"). Novita first (US-headquartered, the owner's call over the
-  cheaper CN StreamLake behind it), `data_collection: "deny"`,
+  never cached"). For v4-flash, Novita first (US-headquartered, the owner's
+  call over the cheaper CN StreamLake behind it); for v4.1-flash, DeepInfra
+  then Together (both US) then Novita. `data_collection: "deny"`,
   `allow_fallbacks: true` so an outage costs the cache and never a reply.
   `register-openrouter-models.js` writes `{}` per model and would wipe
   this; `config_guard` goes red when the order is gone. **A rate change in
   `model-pricing.js` restates HISTORY, not new rows** — the admin cost page
-  re-prices every ledger row at the table's current rate — so it still holds
-  DigitalOcean's 0.068 and under-reads Novita by about half until rates carry
-  an effective date.
+  re-prices every ledger row at the table's current rate — so a new rate goes
+  in `PAST_RATES` with the day it stopped holding, never over the old one.
 
 - **The `Conversation info` block is prompt-only: the transcript keeps the
   bare text.** On 2026.8.1 the roster, the tag and the message id of a group
