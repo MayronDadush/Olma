@@ -491,13 +491,39 @@ function leaksIn(line, { readerWritesHebrew = null } = {}) {
 // only the closed, unmistakable markers are allowed in here.
 // `link` is here for the same reason `sentinel` is: it is taken OUT of its
 // line and the line stays. The words around a dead link are the message.
-const KEEPS_LINE = new Set(['identifier', 'sentinel', 'narration', 'hebrew-narration', 'link']);
+const KEEPS_LINE = new Set(['identifier', 'sentinel', 'narration', 'hebrew-narration', 'link', 'deliberation-tail']);
 
 // The subset of those that also change NOTHING about the text. `sentinel` is
 // not in here: it leaves its line standing but is stripped out of it, so it is
 // a real change and belongs in `leaks`.
 const REPORT_ONLY = new Set(['identifier', 'narration', 'hebrew-narration']);
 function drops(leaks) { return leaks.some((l) => !KEEPS_LINE.has(l.kind)); }
+
+// A real Hebrew reply with the model's English next step stuck on its END:
+// "רשמתי חמישי בערב החל מ-20:00 👍 let me see if the others are free." went to
+// Dana as NOTHING — the line was condemned whole, and it was the whole reply,
+// so she never heard that her time was saved (2026-09-25, `incidents.md`,
+// "The answer was cut with its tail"). The tail goes and the answer stays, but
+// only on the shape that was measured: every finding that would drop the line
+// is `deliberation`, and everything before the first one is Hebrew with no
+// English word once quotations are blanked. That keeps both of the shapes the
+// gate exists for — English working-out that QUOTES their Hebrew ("He said
+// \"תמחק את המשימה\" — Let me…") has English before the cue, and Hebrew
+// working-out trips a different tier. Measured over 21 days on the box: 1,461
+// replies, 81 condemned lines with Hebrew before the cue, 9 with only Hebrew
+// before it, and exactly ONE of those whose findings were all `deliberation`:
+// Dana's. Returns the kept head, or null to leave the line to the old rule.
+function hebrewReplyTail(line, found) {
+  const dropping = found.filter((l) => !KEEPS_LINE.has(l.kind));
+  if (!dropping.length || !dropping.every((l) => l.kind === 'deliberation')) return null;
+  const at = dropping.map((l) => line.indexOf(l.at)).filter((i) => i >= 0);
+  if (at.length !== dropping.length) return null;
+  const head = line.slice(0, Math.min(...at));
+  const before = scannable(head);
+  if (!HEBREW_LETTER_RE.test(before) || /[A-Za-z]{2,}/.test(before)) return null;
+  const kept = head.replace(/[\s,;:—–-]+$/, '');
+  return kept.trim() ? kept : null;
+}
 
 // Is there real content BEFORE line `i` — any earlier line that is not blank?
 // This is the one fact that tells "בוצע NO_REPLY" (a real short answer with
@@ -573,6 +599,12 @@ function gateReply(text, { readerWritesHebrew = null } = {}) {
   if (raw.trim() === SENTINEL) return { action: 'pass', text: raw, leaks: [], reported: [] };
   const lines = raw.split('\n');
   const found = lines.map((l) => leaksIn(l, { readerWritesHebrew }));
+  for (let i = 0; i < lines.length; i++) {
+    const head = hebrewReplyTail(lines[i], found[i]);
+    if (head === null) continue;
+    lines[i] = head;
+    found[i] = found[i].map((l) => (l.kind === 'deliberation' ? { ...l, kind: 'deliberation-tail' } : l));
+  }
   const reported = [];
   let last = -1;
   for (let i = 0; i < lines.length; i++) {
@@ -601,7 +633,7 @@ function gateReply(text, { readerWritesHebrew = null } = {}) {
 }
 
 module.exports = {
-  leaksIn, gateReply, drops, scannable, redact, paragraphEnd, hasEarlierContent,
+  leaksIn, gateReply, drops, hebrewReplyTail, scannable, redact, paragraphEnd, hasEarlierContent,
   deadLink, firstDeadLink, OUR_HOSTS,
   FRAME_RE, INTERNAL_RE, BLOCK_RE, INSTANT_RE, SENTINEL_RE, IDENTIFIER_RE,
   MARK_RE, NARRATION_RE, deliberationIn, englishToHebrewReader,

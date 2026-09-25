@@ -358,6 +358,16 @@ title means this file. Grep the title, not the filename.
   well, because `scannable` strips quotations and Miron's leak quoted
   "Reply target of current user message".
 
+- **…and a Hebrew reply with only an English next step on its END keeps the
+  reply** (`reply-leak.hebrewReplyTail`, 2026-09-25). The unit is otherwise the
+  whole line or paragraph, which cancelled Dana's entire "רשמתי חמישי… 👍 let
+  me see if the others are free." Only where every dropping finding is
+  `deliberation` and the head is Hebrew with no English word (quotations
+  blanked); measured on 1,461 replies over 21 days it changes that one line and
+  nothing else. Reported as `deliberation-tail`. English working-out that
+  QUOTES their Hebrew still drops whole, and so does Hebrew working-out, which
+  trips another tier (`incidents.md`, "The answer was cut with its tail").
+
 - **The last tier's missing input was not a pattern, it was the READER**
   (2026-09-22; `incidents.md`, "The gate had no idea who was reading"). The
   residue the measurement above left behind was English prose with no tell of
