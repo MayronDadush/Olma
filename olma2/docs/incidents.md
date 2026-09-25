@@ -64,6 +64,7 @@ never trust a dated narrative for something you are about to act on.
 - [The room was told twice (fixed 2026-09-08)](#the-room-was-told-twice-fixed-2026-09-08)
 - [The room was greeted twice, by its own registration (fixed 2026-09-11)](#the-room-was-greeted-twice-by-its-own-registration-fixed-2026-09-11)
 - [The room coordinated without the person who opened it (fixed 2026-09-19)](#the-room-coordinated-without-the-person-who-opened-it-fixed-2026-09-19)
+- [Twice 'היי' before a word about the room (fixed 2026-09-25)](#twice-היי-before-a-word-about-the-room-fixed-2026-09-25)
 - [היא שבורה: the room waited for somebody who had already written (fixed 2026-09-09)](#היא-שבורה-the-room-waited-for-somebody-who-had-already-written-fixed-2026-09-09)
 - [The room was told about a meeting at 01:12 (fixed 2026-09-09)](#the-room-was-told-about-a-meeting-at-0112-fixed-2026-09-09)
 - [The room window opened on a row nobody would look at (fixed 2026-09-19)](#the-room-window-opened-on-a-row-nobody-would-look-at-fixed-2026-09-19)
@@ -2379,6 +2380,55 @@ this.
 had been reset to a genuine cold start. A user who has been on the system for
 weeks cannot reproduce it; only somebody meeting Olma for the first time can,
 and every real one of those is a person we would rather not learn from.
+
+### Twice 'היי' before a word about the room (fixed 2026-09-25)
+
+"Shabi OG", 24 September, 02:23-02:31 Israel time. The room asked its members
+who had never written to Olma to send "היי" in private. Dana did at 23:23:36
+UTC; the intake greeter answered in five seconds with the owner's opening copy
+and nothing else — the same words somebody off an advert reads, with no sign
+she knew which group had sent them. The coordination began at 23:24:59 and
+her invite was queued at once, and then held: it was the middle of the night,
+and nothing she had done counted as being in a conversation, because her
+"היי" went to the GREETER and `last_inbound_at` is her own agent's column. It
+went out at 23:31:03 — twelve seconds after she wrote "היי" a second time.
+ORGETZ wrote at 23:27:52, got the same copy, and was provisioned three
+minutes after the coordination started; nothing let him in until the late-join
+door shipped the next morning, and even that door lets nobody in while the
+room is asleep. Both of them, reasonably, told the owner they had to say hello
+twice before Olma said anything.
+
+Three things, none of them a bug in the usual sense — each part did what it
+was written to do:
+
+- **The greeter could not know.** It has no tools and no database, and the
+  opening copy is said word for word. It now gets the room from brokerd
+  (`intake_context`, keyed on the intake session key, whose last part is the
+  sender's number) through the same plugin hook that hands a person and a room
+  their turn context, and says ONE fixed line under the copy
+  (`domain/intake-room.js`). Two shapes, chosen by the owner: with a live
+  coordination to join, "הגעת מהקבוצה «X» — תכף אשלח לך כאן את התיאום שפתוח
+  שם."; without one, "…שם אני עוזרת לתאם, וכאן אני בשבילך באופן אישי.".
+  Gender-neutral, because the greeter knows nothing about who is writing.
+- **"תכף" is a promise, so the night had to stop swallowing it.** The owner's
+  answer (2026-09-25, "מיד, הוא ער עכשיו"): somebody who has just written is
+  awake. At night the room sweep now lets in only people who wrote in the last
+  fifteen minutes — to their own agent or to the greeter — and marks the
+  admission `quiet`; the room's "joined" line waits for its own morning, which
+  names them beside anybody let in then (`group-meetings
+  .quietJoinersToAnnounce`, read off the admission's audit row and the room's
+  own lines, no new column).
+- **The gate had one column where there are two.** The greeter answering is
+  proof the person wrote, and `opening_sent_at` is that proof (the same
+  argument as "היא שבורה" below, one layer down). For fifteen minutes after
+  it, a COORDINATION row is mid-conversation; nothing else Olma decided to say
+  rides on it, so the day-one check-ins still wait for the morning.
+
+The line is said only where something keeps it: an open room, a coordination
+still negotiating and not inside its settle minute — exactly the conditions
+`admitLateMembers` lets a newly connected member in on. Anywhere else the line
+promises nothing. A roster row that is a LID matches no phone and gets no line
+at all.
 
 ### היא שבורה: the room waited for somebody who had already written (fixed 2026-09-09)
 

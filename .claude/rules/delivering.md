@@ -487,6 +487,16 @@ title means this file. Grep the title, not the filename.
   day-one calendar offer were both due at 08:00, from an assistant that had
   not yet said what she was (2026-09-08).
 
+- **The greeter answering them is a conversation too, for a coordination row
+  and nothing else.** `users.opening_sent_at` is stamped only off the greeter's
+  real reply, so it is proof the person wrote, and for `CONVERSATION_GRACE_MS`
+  after it a row carrying `payload.meetingId` passes the night window
+  (`gate.decide`, fact `greetedAt`). `last_inbound_at` stays their own agent's
+  column (`rules/groups.md`, two columns). Without it an invite queued at 02:25
+  for somebody who had just written "היי" waited until they wrote a second time;
+  the day-one check-ins still wait for the morning (`incidents.md`, "Twice
+  'היי' before a word about the room").
+
 - **Reminders that come due in the same tick go out as ONE message, and the
   coalescing happens at DELIVERY, never at enqueue.** A batch enqueued under
   one idempotency key would let cancelling a single reminder re-create the

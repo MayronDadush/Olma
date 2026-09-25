@@ -74,7 +74,8 @@ export function stampRegistration(fields, file = stampPath()) {
 // an agent nobody has answered for is `undefined`, which arms nothing. That is
 // the honest state for `intake` and `ggreet` in particular — the two agents
 // that speak to people whose language nobody knows yet, and which never reach
-// `before_prompt_build` at all.
+// the person's `turn_context` path (the greeter's own branch below asks only
+// for its room line).
 const LANG = new Map();
 export function rememberReader(agentId, value) {
   if (value === true || value === false) LANG.set(agentId, value);
@@ -135,6 +136,12 @@ export function buildHandler({ agents, connect, sock, timeoutMs, log = trace } =
     // told anything.
     const group = GROUP_KEY_RE.exec(String((ctx && ctx.sessionKey) || ''));
     if (group) return groupTurnContext(group, { connect, sock, timeoutMs, log });
+    // The DM greeter's turn: the one line about the room this newcomer came
+    // from (brokerd `intake_context` → domain/intake-room.js). Not narrowed by
+    // `agents` either — that list is which PEOPLE get their opening, and the
+    // greeter speaks to nobody the list could name.
+    const intake = INTAKE_KEY_RE.exec(String((ctx && ctx.sessionKey) || ''));
+    if (intake) return intakeTurnContext(String(ctx.sessionKey), { connect, sock, timeoutMs, log });
     const agentId = (ctx && ctx.agentId) || agentIdOf(ctx && ctx.sessionKey);
     if (!agentId || !/^u-\d+$/.test(agentId)) return undefined;
     if (only && !only.has(agentId)) return undefined;
@@ -171,6 +178,24 @@ export function buildHandler({ agents, connect, sock, timeoutMs, log = trace } =
     log({ agentId, outcome: "prepended", directive: reply.directive || null, chars: reply.context.length, promptChars: prompt.length, replyInPrompt: params.replyTarget, ms });
     return { prependContext: reply.context };
   };
+}
+
+// ---- the greeter's room line ------------------------------------------------
+// Somebody a room sent to write "היי" in private reads the owner's opening copy
+// first, and until 2026-09-25 nothing else: not a word about the group that
+// sent them, so they wrote again before anything happened (`incidents.md`,
+// "Twice 'היי' before a word about the room"). The greeter has no tools, so
+// brokerd hands it the line. Fails open like everything here: no answer is the
+// old greeting, never a turn that does not happen.
+const INTAKE_KEY_RE = /^agent:intake:whatsapp:direct:\+\d{7,15}$/;
+async function intakeTurnContext(sessionKey, { connect, sock, timeoutMs, log = trace } = {}) {
+  const t0 = Date.now();
+  const reply = await askBroker("intake_context", { sessionKey }, { connect, sock, timeoutMs });
+  const ms = Date.now() - t0;
+  if (!reply || reply.ok !== true) { log({ intake: reply ? "refused" : "unreachable", ms }); return undefined; }
+  if (typeof reply.context !== "string" || !reply.context) { log({ intake: "no-room", ms }); return undefined; }
+  log({ intake: "prepended", groupId: reply.groupId || null, meetingId: reply.meetingId || null, ms });
+  return { prependContext: reply.context };
 }
 
 // ---- a room's own turn context ---------------------------------------------
