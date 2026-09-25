@@ -131,8 +131,23 @@ async function connectPair(client, aId, bId, detail) {
 // the row's `requester_id` would be decided by roster order, and a pair that
 // swapped direction between two passes would become two live rows.
 async function connectRoom(client, groupId) {
+  // Line 1 of the three above — "only people who are ALREADY users" — was
+  // written when `m.user_id IS NOT NULL` said exactly that. Since 2026-09-25 it
+  // does not: `groups.ensureRosterUsers` mints a `users` row from a number seen
+  // on the roster, `syncRoster` links it here, and a complete stranger would be
+  // auto-connected to everybody in the room with every grant on. The join is the
+  // whole of the fix, and it also closes the same hole for the case that
+  // predates roster rows — an invited stranger with a `pending` row who happened
+  // to be in the room (`intake/invites.ensurePendingUser`).
+  //
+  // Deliberately `status`, not `groups.isConnected`: the question here is whether
+  // Olma has taken this person on. `isConnected` asks the stricter "has WRITTEN to
+  // her", and using it would also stop connecting people who were provisioned and
+  // have not spoken yet — a live behaviour change nobody asked for, in a function
+  // whose own argument is that standing in the room is the consent moment.
   const { rows: members } = await client.query(
     `SELECT DISTINCT m.user_id FROM chat_group_members m
+       JOIN users u ON u.id = m.user_id AND u.status <> 'pending'
       WHERE m.group_id = $1 AND m.left_at IS NULL AND m.user_id IS NOT NULL
       ORDER BY m.user_id`,
     [groupId]);

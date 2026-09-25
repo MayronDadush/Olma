@@ -245,8 +245,14 @@ const EN_MOVING_RE = /\b(today|tomorrow|tonight|yesterday|this week|next week)\b
 // two neighbours that give it away are cheap to read. Followed by a ה- or ש-
 // word it is the noun ("היום הראשון שלו בעבודה", "היום שבו התחיל"); preceded
 // by כל / במשך it is a duration ("עובד כל היום"). Both are durable text.
-const HE_TODAY_RE = /^[מלבו]?היום$/u;
-const HE_TODAY_NOUN_PREV_RE = /^(?:כל|במשך|לאורך|באמצע)$/u;
+// "הבוקר" is the same word twice over — "this morning" and "the morning" —
+// and the same two neighbours tell them apart: "כל הבוקר" is a duration,
+// "על הבוקר" is "first thing in the morning" (a task title on the box said
+// exactly that), and "הבוקר שלו" / "הבוקר הוא" is the noun. It was missing from the moving words
+// until 2026-09-25, and "עמית טס הבוקר ללרנקה" sat on a card with no expiry.
+// "בבוקר" ("in the morning", recurring) is a different word and never matches.
+const HE_TODAY_RE = /^[מלבו]?(?:היום|הבוקר)$/u;
+const HE_TODAY_NOUN_PREV_RE = /^(?:כל|במשך|לאורך|באמצע|על)$/u;
 const HE_TODAY_NOUN_NEXT_RE = /^[הש][֐-׿]/u;
 function namesToday(text) {
   const words = String(text).split(/[\s,.;:!?()"'׳״’-]+/).filter(Boolean);
@@ -268,6 +274,57 @@ const HE_MONTH_RE = new RegExp(
 // [a-z]* would turn "market" into March.
 const EN_MONTH_RE = /\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b/i;
 
+// A RANGE of two dotted dates — "מ-9.9 עד 14.9", "9.9-14.9" — is a date on
+// its own, with no weekday or month to confirm it: "טס לפאפוס, קפריסין מ-9.9
+// עד 14.9" went onto a card twice with no expiry (2026-09-06 and -08) and was
+// still in front of the model eleven days after the trip. What the same shape
+// looks like when it is NOT a date is a quantity range, and a quantity carries
+// its unit straight after it ("6.5-7.5 שעות"), so a unit there refuses it.
+const DM = '(0?[1-9]|[12]\\d|3[01])\\.(0?[1-9]|1[0-2])(?:\\.(\\d{2}|\\d{4}))?';
+const DOTTED_RANGE_RE = new RegExp(
+  `(?:^|[^\\d.])${DM}\\s*(?:-|–|—|עד(?:\\s+|\\s*[הל]-?))\\s*${DM}(?![\\d.])`, 'u');
+const UNIT_AFTER_RE = /^\s*(?:שעות|שעה|דקות|ימים|שנים|שבועות|ק"מ|קמ|קילו|ק"ג|גרם|ליטר|מטר|אחוז|%|ש"ח|₪|\$|km|kg|hours?|min)/u;
+// …and a version range carries its word straight BEFORE it ("גרסה 2.1-2.3").
+const VERSION_BEFORE_RE = /(?:גרסה|גרסת|גרסאות|version|ver|v)\.?\s*$/iu;
+function dottedRange(text) {
+  const t = typeof text === 'string' ? text : '';
+  const m = DOTTED_RANGE_RE.exec(t);
+  if (!m) return null;
+  if (VERSION_BEFORE_RE.test(t.slice(0, m.index + 1))) return null;
+  if (UNIT_AFTER_RE.test(t.slice(m.index + m[0].length))) return null;
+  return {
+    from: { d: Number(m[1]), m: Number(m[2]), y: m[3] ? Number(m[3]) : null },
+    to: { d: Number(m[4]), m: Number(m[5]), y: m[6] ? Number(m[6]) : null },
+  };
+}
+
+// When a fact carrying a range stops being true: the start of the day AFTER
+// its last date, in the person's zone. The year is theirs to have said; when
+// they did not, it is whichever of last year, this year and next year puts that
+// day NEAREST to now — "עד 3.1" said in September is next January, and "הייתי
+// בחופש 20.7-25.7" said in September is the July just gone, which a "roll
+// forward once it is past" rule would have kept on the card until next summer.
+// `null` when there is no range to read. A past answer is returned as it is: a
+// thing already over is the CALLER's to refuse, not ours to move.
+function rangeEnd(text, tz, now = Date.now()) {
+  const r = dottedRange(text);
+  if (!r) return null;
+  const zone = tz || 'UTC';
+  const endOf = (year) => {
+    if (r.to.d > daysInMonth(year, r.to.m)) return null;
+    const next = new Date(Date.UTC(year, r.to.m - 1, r.to.d + 1));
+    return instantInZone(zone, { y: next.getUTCFullYear(), m: next.getUTCMonth() + 1, d: next.getUTCDate(), hh: 0, mi: 0, ss: 0 });
+  };
+  if (r.to.y != null) return endOf(r.to.y < 100 ? 2000 + r.to.y : r.to.y);
+  const y = partsInZone(zone, new Date(now)).y;
+  let best = null;
+  for (const year of [y - 1, y, y + 1]) {
+    const end = endOf(year);
+    if (end && (!best || Math.abs(end.getTime() - now) < Math.abs(best.getTime() - now))) best = end;
+  }
+  return best;
+}
+
 function namesAMoment(text) {
   const t = typeof text === 'string' ? text : '';
   if (!t.trim()) return false;
@@ -275,6 +332,7 @@ function namesAMoment(text) {
   if (HE_MOVING_RES.some((re) => re.test(t))) return true;
   if (namesToday(t)) return true;
   if (ISO_DATE_RE.test(t) || SLASH_DATE_RE.test(t)) return true;
+  if (dottedRange(t)) return true;
   if (DOTTED_DATE_RE.test(t)
     && (weekdaysInText(t).length > 0 || HE_MONTH_RE.test(t) || EN_MONTH_RE.test(t))) return true;
   return false;
@@ -340,6 +398,6 @@ module.exports = {
   datesTheObject,
   OFFSET_RE, hasOffset, badTime,
   weekdaysInText, weekdayInZone, weekdayClash, taskWeekdayClash,
-  namesAMoment,
+  namesAMoment, dottedRange, rangeEnd,
   partsInZone, zoneOffsetMs, instantInZone, daysInMonth, weekdayOfParts,
 };

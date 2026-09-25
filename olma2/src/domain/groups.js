@@ -26,6 +26,14 @@ const { ok, err } = require('./results');
 const flags = require('./flags');
 const audit = require('./audit');
 const { mentionToken } = require('./proactive-text');
+const users = require('./users');
+const language = require('./language');
+const { isRealPhone, timezoneForPhone } = require('./phone-timezone');
+
+// Closed by default. Measured on the box the day this shipped, it creates
+// exactly ONE row across every group — a member of "פנתרה" with a real Israeli
+// number and no user — and refuses two, the LID-only members of Padel Gang.
+const ROSTER_USERS_FLAG = 'group_roster_users';
 
 const DEFAULT_TIMEZONE = 'Asia/Jerusalem';
 
@@ -167,17 +175,33 @@ async function registerGroup(client, { channel = 'whatsapp', externalId, subject
   if (!roster.length) return err('invalid', 'group needs at least one parsed member');
 
   const known = await knownUsers(client, roster.map((m) => m.phone));
-  if (!known.size) return err('forbidden', 'no member of this group is an Olma user');
+  // A real user, not merely a row. Since 2026-09-25 `ensureRosterUsers` can have
+  // minted a `pending` row for a member of ANOTHER group who has never met Olma,
+  // so counting rows would let a room of strangers register on the strength of
+  // one of them — and registering is an agent, a workspace, a line in the live
+  // gateway config and an intro said out loud to eleven people who never asked.
+  //
+  // `status <> 'pending'` and deliberately not `isConnected`: the gate's question
+  // ("has this person WRITTEN to her") is stricter, and a room with one
+  // hand-provisioned, silent member registers today and stays locked — which is
+  // the behaviour the test two files over is about. Only the rows that stand for
+  // nobody are excluded.
+  const vouching = [...known.values()].filter((u) => u.status !== 'pending');
+  if (!vouching.length) return err('forbidden', 'no member of this group is an Olma user');
 
   const existing = await getByExternalId(client, channel, externalId);
   if (existing) return ok({ group: existing, created: false });
 
-  const registeredBy = [...known.values()].sort((a, b) => a.id - b.id)[0];
+  // …and the room is registered BY one of those, never by a roster row: this id
+  // becomes `chat_groups.registered_by_user_id`, the actor on every `group.*`
+  // audit row and on `group_outbox`, and a number nobody has ever spoken to must
+  // not be the name on any of them.
+  const registeredBy = [...vouching].sort((a, b) => a.id - b.id)[0];
   const { rows } = await client.query(
     `INSERT INTO chat_groups (channel, external_id, subject, registered_by_user_id, timezone)
      VALUES ($1, $2, $3, $4, $5) RETURNING *`,
     [channel, externalId, subject || null, registeredBy.id,
-      majorityTimezone([...known.values()].map((u) => u.timezone))]
+      majorityTimezone(vouching.map((u) => u.timezone))]
   );
   const group = rows[0];
   await syncRoster(client, group.id, roster);
@@ -187,13 +211,93 @@ async function registerGroup(client, { channel = 'whatsapp', externalId, subject
   return ok({ group: await getById(client, group.id), created: true });
 }
 
+// `status` rides along because `registerGroup` above has to be able to ask
+// whether a member is a real user and not merely a row. Since `ensureRosterUsers`
+// below can create a `pending` row for somebody who has never written, a plain
+// `known.size` would let a room of eleven strangers plus one roster row through
+// the refusal that exists to stop exactly that — the back door into an agent, a
+// workspace and a line in the live gateway config. `syncRoster` reads it too, to
+// keep a guessed zone out of the room's quiet hours.
 async function knownUsers(client, phones) {
   if (!phones.length) return new Map();
   const { rows } = await client.query(
-    `SELECT id, phone, timezone, last_inbound_at, paused_at FROM users WHERE phone = ANY($1)`,
+    `SELECT id, phone, status, timezone, last_inbound_at, opening_sent_at, paused_at, agent_id
+       FROM users WHERE phone = ANY($1)`,
     [phones]
   );
   return new Map(rows.map((r) => [r.phone, r]));
+}
+
+// ---- a member we have only ever seen on a roster -----------------------------
+
+// The roster names people Olma has never heard from. Until 2026-09-25 they were
+// nothing at all — no `users` row — so a coordination could not ask them, the
+// room could not reach them, and the only way in was for them to write first.
+// The owner asked for the row to exist ("ליצור משתמש ממספר טלפון שראינו ברשימת
+// חברים של קבוצה"). What it must NOT do is pretend they have met her:
+//
+//   * `status = 'pending'`, `agent_id`/`workspace_path`/`onboarded_at` NULL.
+//     That conjunction is what every dangerous reader already keys on —
+//     `jobs/groups.syncSenderGate` (which writes the LIVE gateway allow-from)
+//     filters `status='active'`, and `jobs/checkin.eligibleUsers`, the one that
+//     SENDS, filters both that and `onboarded_at IS NOT NULL`.
+//   * `isConnected` is untouched, so the gate, the quorum, `decideState.missing`
+//     and `roomStatus.wroteToHer` all answer exactly as they did. A row is not
+//     an introduction, and nothing here opens a room that would not have
+//     opened anyway (`MIN_CONNECTED_TO_OPEN` still reads `isConnected`).
+//   * `timezone` is never NULL — the rule that outranks everything here, since
+//     NULL silently becomes UTC in the delivery gate and the digest sweep.
+//     `timezoneForPhone` can answer it because `isRealPhone` has already
+//     established the dialling code is one we know.
+//
+// **A LID never becomes a row.** `phone-timezone.isRealPhone` is the gate, and
+// `'unknown'` is refused as firmly as `'not_phone'`: `users.phone` is
+// `NOT NULL UNIQUE` and feeds `user_channels.channel_identifier`, no merge
+// primitive exists anywhere in this codebase for the day the LID resolves to a
+// number that is already a row, and a queued message to a non-dialable target
+// is retried every ten minutes for ever because `outbox/worker`'s backoff caps
+// there and the gate has no "cannot be reached". The cost of refusing is only
+// delay: the gateway writes `lid-mapping-<digits>_reverse.json` the moment it
+// first resolves a LID, `resolveLidMembers` runs on the pass before this one,
+// and so the row appears by itself as soon as anybody learns the number —
+// which for Gal was the second he first wrote (`incidents.md`, "The room asked
+// three numbers that were nobody").
+//
+// Pure of the filesystem and of the gateway, like everything else here: it
+// takes the roster it is given and writes rows.
+async function ensureRosterUsers(client, groupId, members) {
+  const skipped = { existing: 0, notAPhone: 0 };
+  const created = [];
+  if ((await flags.getFlag(client, ROSTER_USERS_FLAG)) !== true) {
+    return ok({ created, skipped, flag: false });
+  }
+  const roster = dedupe((members || []).filter((m) => m && m.phone));
+  const known = await knownUsers(client, roster.map((m) => m.phone));
+  for (const m of roster) {
+    if (known.has(m.phone)) { skipped.existing++; continue; }
+    if (!isRealPhone(m.phone)) { skipped.notAPhone++; continue; }
+    const res = await users.createUser(client, {
+      phone: m.phone,
+      timezone: timezoneForPhone(m.phone),
+      locale: language.resolveLocale({ phone: m.phone }).locale,
+      status: 'pending',
+      audit: { event: 'group.roster_user_created', actorId: null, detail: { groupId } },
+    });
+    // A race with another writer on the same phone is not an error here: the
+    // row we wanted now exists, which is the whole point.
+    if (!res.ok) { if (res.error.code === 'conflict') skipped.existing++; continue; }
+    created.push(m.phone);
+  }
+  // Actor `null`, and it is not a placeholder: NOBODY did this. Naming the room's
+  // registrar would put it on their record and, worse, make them "active" that
+  // day — `jobs/metrics.active_users` is `count(DISTINCT actor_id)` over every
+  // event of the day with an actor, so one audit row is a person who did nothing
+  // counted as a person who did something.
+  if (created.length) {
+    await audit.record(client, null, 'group.roster_users_created',
+      { groupId, created: created.length });
+  }
+  return ok({ created, skipped, flag: true });
 }
 
 async function getById(client, id) {
@@ -312,8 +416,17 @@ async function syncRoster(client, groupId, members) {
     left.push(row.phone);
   }
 
+  // The room's zone is the room's quiet hours, so the vote is taken among people
+  // who actually have a conversation with her. A roster row (`status =
+  // 'pending'`, minted by `ensureRosterUsers` from a number we merely SAW)
+  // carries a zone guessed from its dialling code, and three Israelis Olma talks
+  // to must not be put on American hours by five numbers she has never reached.
+  // Nothing changes for the rows that already existed: `invites.ensurePendingUser`
+  // leaves `timezone` NULL and the vote skipped it anyway.
   const tz = majorityTimezone(
-    roster.map((m) => (known.get(m.phone) || {}).timezone)
+    roster.map((m) => known.get(m.phone))
+      .filter((u) => u && u.status !== 'pending')
+      .map((u) => u.timezone)
   );
   await client.query(`UPDATE chat_groups SET timezone = $2 WHERE id = $1`, [groupId, tz]);
   return { joined, rejoined, left, timezone: tz };
@@ -709,6 +822,7 @@ module.exports = {
   DEFAULT_TIMEZONE,
   parseRoster, normalizePhone, majorityTimezone, SELF_PHONE, resolveLidMembers,
   registerGroup, getById, getByExternalId, listMembers, roomsOf, syncRoster,
+  ensureRosterUsers, ROSTER_USERS_FLAG,
   decideState, evaluate, applyState, isConnected, MIN_CONNECTED_TO_OPEN,
   decideNotice, noteNoticeSent, seenAt, noteSeen, lastMemberWriteAt,
   GROUP_KINDS, validKind, setKind, noteKindAsked, quorumFor,

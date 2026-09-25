@@ -166,7 +166,12 @@ const SAYS_IT_ONCE = new Set([
   'tasks_auto_archived', 'calendar_connected', 'contacts_connected', 'email_connected',
 ]);
 
-// facts: { row, plan, blocked, paused, window, quietDays, tz, sentToday, budget, now, lastInboundAt, dashboardWroteAt }
+// The two kinds a `pending` row is MEANT to receive, both delivered through the
+// intake session because that is the only voice such a person has ever heard.
+// Adding a third means asking who sends it and in whose session.
+const PENDING_USER_KINDS = new Set(['connection_intro', 'registration_reopened']);
+
+// facts: { row, plan, blocked, paused, pendingUser, window, quietDays, tz, sentToday, budget, now, lastInboundAt, dashboardWroteAt }
 // returns { action: 'deliver' | 'hold' | 'expire' | 'drop', holdReason?, releaseAfter? }
 function decide(facts) {
   const { row, plan, blocked, paused, window, tz, sentToday, budget } = facts;
@@ -199,6 +204,45 @@ function decide(facts) {
   // be enqueued by paths that neither know nor should know about evals.
   if (facts.evalUser) {
     return { action: 'drop', holdReason: 'eval_user' };
+  }
+
+  // A `pending` row stands for somebody Olma has not taken on. Since 2026-09-25
+  // there can be a great many of them: `groups.ensureRosterUsers` mints one from
+  // a number merely SEEN on a group's roster, so the outbox can be handed a row
+  // for a person who has never written, never been greeted and has no session to
+  // answer in — and `channels/openclaw.js` would send it anyway, because
+  // `row.agent_id || 'intake'` runs the turn on the GREETER's agent. That is not
+  // a message from their assistant; it is the front door speaking to somebody who
+  // never knocked.
+  //
+  // Same chokepoint argument as pause and the eval user directly above: the
+  // sweeps that SEND already filter `status = 'active' AND onboarded_at IS NOT
+  // NULL` and none of them can reach these rows, but a row can be enqueued by
+  // somebody ELSE's action — a room's coordination, a connection request, a
+  // group sweep resolving the sender of a message — and none of those paths know
+  // or should have to know what provisioning is.
+  //
+  // The column is `status`, not `agent_id`, although `provisionUser` writes both
+  // in one statement and they never disagree in production. `agent_id` would also
+  // catch an `active` row that has no agent — a half-finished provisioning — and
+  // silencing that person is a change nobody asked for, in the direction of
+  // saying nothing, where `config_guard.checkUnreachableJoiners` already reports
+  // them by name.
+  //
+  // `PENDING_USER_KINDS` is the closed list of things ADDRESSED to exactly such a
+  // person, built that way long before this: the stranger intro an invite sends
+  // (`intake/invites.js`) and the waitlist's "we are open now"
+  // (`jobs/intake.sweepReopen`). Both go through the intake session on purpose.
+  // Anything else drops, with its own reason so the dashboard can count it — a
+  // row silently swallowed here is the one shape this repo has paid for twice.
+  //
+  // Only an explicit `true` drops. A caller that does not compute this fact — a
+  // test, a future second worker — must not have its rows dropped by a gate it
+  // never told anything (`CLAUDE.md`, "A function shared by two openers is handed
+  // the WHOLE user row, never a projection"). The worker sets it from the same
+  // `users` row it already reads for `paused`.
+  if (facts.pendingUser === true && !PENDING_USER_KINDS.has(row.kind)) {
+    return { action: 'drop', holdReason: 'pending_user' };
   }
 
   if (row.expires_at && new Date(row.expires_at) <= now) {

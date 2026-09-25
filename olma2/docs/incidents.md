@@ -180,6 +180,7 @@ never trust a dated narrative for something you are about to act on.
 - [The deploy that went red for one minute a day (2026-09-08)](#the-deploy-that-went-red-for-one-minute-a-day-2026-09-08)
 - [The door Google's screen is behind, closed until the screen is fixed (2026-09-08)](#the-door-googles-screen-is-behind-closed-until-the-screen-is-fixed-2026-09-08)
 - [The carryover detector checked the wrong half of the pair, so the flagged case was innocent and the real leaks were invisible (fixed 2026-09-03)](#the-carryover-detector-checked-the-wrong-half-of-the-pair-so-the-flagged-case-was-innocent-and-the-real-leaks-were-invisible-fixed-2026-09-03)
+- [A trip to Paphos, on the card for ever (fixed 2026-09-25)](#a-trip-to-paphos-on-the-card-for-ever-fixed-2026-09-25)
 - [One carryover leak filed itself seven times — `config_guard`'s dedup key wasn't deterministic (fixed 2026-09-03)](#one-carryover-leak-filed-itself-seven-times--config_guards-dedup-key-wasnt-deterministic-fixed-2026-09-03)
 
 **Time, timezones and scheduling**
@@ -3150,6 +3151,114 @@ gets an answer (he removed a cooldown for exactly that reason), and it is left
 as a cost on purpose: what to say to a room waiting on somebody we cannot name
 is a sentence in `message_templates`, which is his to write, and inventing one
 here would be editing his copy on his behalf.
+
+**The gap was half closable, and "no local test can tell" above was wrong
+(2026-09-24).** The sentence two paragraphs up is the one this session set out
+to build a whole identity-merge mechanism around, on the premise that a LID and
+a number are indistinguishable. They are not, and the reason the premise stood
+for two days is that nobody had measured the other half of the signal: LENGTH
+alone is blind inside its own window, but length **for a given dialling code**
+is not. The same corpus that produced the 13-digit cut answers this too — the
+2,673 reverse mappings the gateway itself had resolved — and the split is
+1,654 refused outright (a country we know, at a length it does not issue),
+1,013 unknown (a dialling code the table has never heard of), and **6 that pass
+as real numbers**, 0.22%, every one of them Italian, German, Mexican or
+Brazilian, the four countries in `PREFIXES` that genuinely carry two mobile
+lengths. Zero Israeli, zero British, zero American. Of the 95 that used to get
+through the length cut, **44 do not any more**.
+
+Three consequences worth keeping. **The third state is load-bearing, and
+`isTaggableNumber` only ever consults the refusal**: `'unknown'` leaves exactly
+the old behaviour, because a member from a country the table does not list would
+otherwise lose their tag to make a LID lose one, which is the direction the
+original cut was chosen to avoid. **The lengths went onto the `PREFIXES` rows
+that already carry the timezone guess** rather than into a table of their own —
+one row per country to keep right, the argument `CLAUDE.md` makes about every
+second copy of a predicate. **And the check found a bug in the suite on its
+first run**: `tests/group-text.test.js` built twelve fixture "numbers" as
+`+97250000000${i}`, which for `i = 10, 11` is a 13-digit Israeli number, i.e.
+exactly the shape now refused — the overflow assertion went from `ועוד 4` to
+`ועוד 2` and named it.
+
+What is still open is the **51**: 45 unknown prefixes and the 6. The airtight
+answer has not moved — it is upstream, in a roster that carries JIDs or in the
+gateway's own map — and this is still a filter, never a guarantee. The reason to
+write it down anyway is that the expensive alternative was live: a second
+`users` row keyed on a LID, with a merge across the 41 foreign keys that point
+at `users.id` and the 21 unique constraints that include one, of which **no
+merge primitive exists anywhere in the codebase**. A LID in `users.phone` would
+also have been retried by the outbox every ten minutes for ever (the backoff
+caps there and the gate has no "cannot be reached"), told its owner a guessed
+city by name from `checkin.js`, and left the system as `{{inviter_phone}}` in a
+message a stranger reads.
+
+**And then the row was built anyway, on the other half of that measurement
+(2026-09-25).** The owner's ask was the plain one — "ליצור משתמש ממספר טלפון
+שראינו ברשימת חברים של קבוצה" — and everything in the paragraph above is the
+reason it was safe to do only once the shape filter existed. `isRealPhone` is
+the gate on the write, so a LID never reaches `users.phone` and the whole merge
+problem stays unbuilt; what a refused number costs is delay, because the gateway
+writes the reverse-map file the second it first resolves one and the row appears
+by itself on the next pass. Measured before it shipped: with the flag open it
+mints exactly ONE row across every registered group — a member of "פנתרה" with a
+real Israeli number and no user — and refuses the two Padel Gang members the
+gateway only ever named by LID.
+
+The work was not the write. It was that **"is there a `users` row" had been
+standing in for "is this one of ours" in six different places**, and every one of
+them would have been wrong the moment a roster row existed:
+
+* the delivery gate would have sent to them — and `channels/openclaw.js` routes
+  `row.agent_id || 'intake'`, so the message would have gone out as a turn on the
+  GREETER's agent: not their assistant writing, the front door writing to
+  somebody who never knocked;
+* `connections.requestConnection` would have read `targetKnown` as true and sent
+  "X wants to connect with you" with no introduction in front of it, because the
+  branch that explains who Olma is and who is asking is the other one;
+* `group-connections.connectRoom` would have auto-connected them to everybody in
+  the room with every grant on — the exact thing line 1 of its own header comment
+  forbids, written when `m.user_id IS NOT NULL` still meant what it said;
+* `registerGroup` refused a room of strangers by asking `known.size`, which one
+  roster row from an unrelated group would have satisfied — an agent, a
+  workspace, a line in the live gateway config and an intro said out loud to
+  eleven people who never asked;
+* `syncRoster`'s timezone vote would have let three numbers nobody has spoken to
+  outvote the one person in the room, and the room's zone IS the room's quiet
+  hours;
+* `config_guard.checkUnansweredStrangers` would have gone quiet for exactly the
+  person it exists to find — somebody whose message the gateway swallowed, who
+  happens to be in a room with one of our users. A row is not a record their
+  message could land in.
+
+The discriminator is `status = 'pending'` and not `agent_id`, although
+`provisionUser` writes both in one statement and they never disagree in
+production. `agent_id` would also catch an `active` row with no agent — a
+half-finished provisioning — and silencing that person is a change nobody asked
+for, in the direction of saying nothing, where
+`config_guard.checkUnreachableJoiners` already reports them by name. It is also
+what the test fixtures are: `makeUser` creates `active` rows with no agent, so
+`agent_id` as the gate would have dropped most of the suite's outbox rows and the
+first green run would have been lying about which predicate was under test.
+
+Two things went the other way and are worth keeping. The **upgrade path already
+existed**: `provisionUser` reuses an existing `pending` row, fills a NULL
+timezone and flips it to active with an agent in one statement — the path the
+waitlist and the invited stranger have used in production since Phase E — so
+nothing new had to be written for the day a roster row writes her first message.
+And **two numbers on the admin pages read the audit row rather than the `users`
+table** (`jobs/metrics.users_provisioned`, `active_users`), so `createUser` took
+an `audit` override and the summary row's actor is `null`: a roster row is not a
+person provisioned, not a person active, and not anything on the room
+registrar's own record.
+
+The suite check that mattered was the negative one. Reverting each of the six
+guards one at a time turned 7 of the 12 new tests red and left 5 green — and the
+5 are the right 5: the flag, the row's shape and the LID refusal are about the
+write itself, while the sender-gate and check-in assertions stayed green because
+`syncSenderGate` and `checkin.eligibleUsers` already filtered
+`status = 'active'`. Those two are regression locks on filters that were already
+correct, not proofs of new code, and they are in the file precisely because the
+next person to widen one of those queries needs to find out from a test.
 
 ### The room chased three people, two of whom had never been asked (fixed 2026-09-22)
 
@@ -7736,6 +7845,51 @@ with `ORDER BY id` on the query plus sorting the pair before interpolating
 (`[a, b] = [prior, u.id].sort(...)`), so the same condition always produces
 the same title regardless of iteration order. Verified live post-deploy: one
 tick did the final flip, the next reported zero new/closed issues — stable.
+
+### A trip to Paphos, on the card for ever (fixed 2026-09-25)
+
+The owner asked whether Jev should clean irrelevant facts out of people's
+memory, and gave the row that prompted it: **"טס לפאפוס, קפריסין מ-9.9 עד
+14.9"**. It was active TWICE on one person's card, character for character
+(written 2026-09-06 and again on the 8th), with `expires_at` NULL on both —
+so it sat in `topFacts` on every turn, eleven days after the trip ended.
+
+The rule it broke already existed: a fact that names a moment carries an
+expiry, refused at `facts.rememberFact` by `datetime.namesAMoment`. Three
+holes let it through, and none of them was a model's judgement:
+
+- **The guard could not read a range.** A dotted date only counts when the
+  sentence also names a weekday or a month, because "3.5 שעות" is the same
+  shape. "מ-9.9 עד 14.9" has neither. Two dotted dates joined by עד or a
+  dash now count on their own (`dottedRange`), unless a unit follows
+  ("6.5-7.5 שעות") or a version word precedes ("גרסה 2.1-2.3"). The same
+  pass added "הבוקר" to the moving words — "עמית טס הבוקר ללרנקה" had gone
+  through the same way — with "כל", "במשך" and "על" before it read as a
+  time of day. "על הבוקר" was the one false catch across 127 facts and 320
+  task titles on the box, and is a test now.
+- **The extraction job turned a bad expiry into none.** A past or
+  unparseable `expires_at` was dropped and the fact KEPT (the model had
+  once given a trip the wrong year), so "the shelf life was a guess" became
+  "for ever". When the sentence carries a range, the end is now read off
+  the person's own words in their zone (`datetime.rangeEnd`: the day after
+  the last date, in whichever year puts it nearest) and wins over the
+  model's; a range already over is not written at all
+  (`refused.already_over`). Any other dated sentence with no usable expiry
+  meets the guard and is refused (`needs_expiry`).
+- **Nothing compared text.** `rememberFact` now answers an identical active
+  sentence with the row already there (`duplicate: true`, an OK, never an
+  error — the fact IS known, and a refusal would lose a 👍 or make the model
+  retry), and a second saying that knows the end date gives it to the old
+  row. Other words stay a judgement, and not this door's.
+
+**Why not Jev**: every case here is a date, and Jev documents that it cannot
+do dates. What it could still add — facts that pass with no date in them,
+and the same fact in other words — is a separate, report-only measurement.
+
+`scripts/retire-refused-facts.js` went back for the rows already stored: on
+the box it found exactly the two Paphos rows (the older retired as over, the
+younger as a duplicate), and it now gives a range still AHEAD its end date
+instead of retiring it.
 
 
 ## Time, timezones and scheduling

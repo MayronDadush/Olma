@@ -1323,3 +1323,81 @@ test('an ACCEPTED date takes the hour out of the title, end to end', async () =>
     assert.equal(new Date(rows[0].due_at).getTime(), due.getTime());
   });
 });
+
+// ---------------------------------------------------------------- shelf life
+// "טס לפאפוס, קפריסין מ-9.9 עד 14.9" was on a card twice, with no expiry,
+// eleven days after the trip (2026-09-25): a dotted range the date guard did
+// not read, an expiry the extraction pass dropped as "unusable", and no check
+// for the same sentence twice. Dates are built off the live clock so these
+// read the same on any day; `rangeEnd`'s own arithmetic is pinned in
+// slot-weekday.test.js against an injected clock.
+const dm = (daysFromNow) => {
+  const d = new Date(Date.now() + daysFromNow * 86400_000);
+  return `${d.getUTCDate()}.${d.getUTCMonth() + 1}`;
+};
+
+test('the same sentence twice is one row, and a later expiry lands on it', async () => {
+  const u = await makeUser(db.pool, '+972590019301', { firstName: 'X' });
+  await withClient(async (c) => {
+    const first = await facts.rememberFact(c, u.id, { category: 'context', fact: 'עובד  בהוד השרון' });
+    const again = await facts.rememberFact(c, u.id, { category: 'context', fact: 'עובד בהוד השרון' });
+    assert.equal(first.ok, true);
+    assert.equal(again.ok, true, 'a known fact is not an error');
+    assert.equal(again.data.duplicate, true);
+    assert.equal(Number(again.data.fact.id), Number(first.data.fact.id));
+    const { rows } = await c.query('SELECT count(*)::int n FROM user_facts WHERE user_id = $1', [u.id]);
+    assert.equal(rows[0].n, 1);
+
+    const until = new Date(Date.now() + 5 * 86400_000).toISOString();
+    const dated = await facts.rememberFact(c, u.id, { category: 'context', fact: 'עובד בהוד השרון', expiresAt: until });
+    assert.equal(dated.data.duplicate, true);
+    assert.ok(dated.data.fact.expires_at, 'the second saying knew when it ends');
+
+    // other words are a judgement, and this door does not make it
+    const other = await facts.rememberFact(c, u.id, { category: 'context', fact: 'עובדת בהוד השרון' });
+    assert.equal(other.data.duplicate, false);
+  });
+});
+
+test('a dated range with no expiry is refused at the door', async () => {
+  const u = await makeUser(db.pool, '+972590019302', { firstName: 'X' });
+  await withClient(async (c) => {
+    const res = await facts.rememberFact(c, u.id, { category: 'plans', fact: `טס לפאפוס, קפריסין מ-${dm(10)} עד ${dm(14)}` });
+    assert.equal(res.ok, false);
+    assert.equal(res.error.reason, 'needs_expiry');
+  });
+});
+
+test('extraction dates a range off their words, and never keeps one for ever', async () => {
+  const u = await seedChatter('+972590019303', 40);
+  await withClient(async (c) => {
+    const ahead = `טס לפאפוס, קפריסין מ-${dm(10)} עד ${dm(14)}`;
+    const applied = await extraction.applyExtraction(c, u, {
+      // the model's year is wrong, as it was on the first live call
+      facts: [{ category: 'plans', fact: ahead, expires_at: '2020-01-01' }],
+      tasks: [],
+    }, new Set());
+    assert.equal(applied.recorded, 1);
+    const { rows } = await c.query('SELECT expires_at FROM user_facts WHERE user_id = $1', [u.id]);
+    const t = new Date(rows[0].expires_at).getTime();
+    assert.ok(t > Date.now() + 13 * 86400_000 && t < Date.now() + 16.5 * 86400_000,
+      `ends the day after the trip, not never: ${rows[0].expires_at}`);
+
+    // the same trip read again is not a second row
+    const again = await extraction.applyExtraction(c, u, {
+      facts: [{ category: 'plans', fact: ahead, expires_at: null }], tasks: [],
+    }, new Set());
+    assert.equal(again.recorded, 0);
+    assert.equal(again.duplicates, 1);
+    assert.equal('duplicate' in again.refused, false, 'a known fact is not a refusal');
+
+    // a trip already over is not a fact about them any more
+    const over = await extraction.applyExtraction(c, u, {
+      facts: [{ category: 'plans', fact: `היה בחופש מ-${dm(-20)} עד ${dm(-15)}`, expires_at: null }], tasks: [],
+    }, new Set());
+    assert.equal(over.recorded, 0);
+    assert.equal(over.refused.already_over, 1);
+    const { rows: all } = await c.query('SELECT count(*)::int n FROM user_facts WHERE user_id = $1', [u.id]);
+    assert.equal(all[0].n, 1);
+  });
+});
