@@ -321,9 +321,18 @@ const TEMPLATES = [
   {
     key: 'group_coord_done', audience: 'group', label: 'תיאום — נסגר',
     help: 'פעם אחת, כשהתיאום נסגר על זמן. כל אחד מקבל את זה גם בפרטי; זאת השורה בקבוצה.',
-    vars: { slot: 'הזמן שנסגר', who: '"כולם בפנים", או "בפנים:" ותיוגים של מי שאמר כן', place_ask: 'שאלה איפה נפגשים — רק כשאף אחד לא אמר מקום' }, required: ['slot'],
-    sample: { slot: 'יום שלישי 20:00', who: 'כולם בפנים', place_ask: 'איפה נפגשים? תכתבו לי ואני אוסיף ליומן 📍' },
-    text: 'סגור: *{{slot}}* 🎉 {{who}}\n{{place_ask}}',
+    vars: { slot: 'הזמן שנסגר', who: '"כולם בפנים", או "בפנים:" ותיוגים של מי שאמר כן', place_ask: 'שאלה איפה נפגשים — רק כשאף אחד לא אמר מקום', time_ask: 'שאלה אם לקבוע שעה מדויקת — רק כשנסגר על יום שלם או חלק מיום (כולל המקום, כשגם הוא חסר)' }, required: ['slot'],
+    // The sample shows the place question; the time question takes its
+    // place (and asks both) only when it settled without an exact hour.
+    sample: { slot: 'יום שלישי 20:00', who: 'כולם בפנים', place_ask: 'איפה נפגשים? תכתבו לי ואני אוסיף ליומן 📍', time_ask: '' },
+    text: 'סגור: *{{slot}}* 🎉 {{who}}\n{{place_ask}}{{time_ask}}',
+  },
+  {
+    key: 'group_coord_time', audience: 'group', label: 'תיאום — נקבעה שעה',
+    help: 'פעם אחת, כשמישהו קבע שעה מדויקת בפרטי לתיאום שנסגר על יום שלם או חלק מיום. כשהשעה נקבעה בקבוצה עצמה, זה לא נשלח — הקבוצה כבר שמעה.',
+    vars: { slot: 'הזמן המדויק שנקבע' }, required: ['slot'],
+    sample: { slot: 'יום שלישי 18:00' },
+    text: 'השעה נקבעה: *{{slot}}* 🕐',
   },
   {
     key: 'group_coord_calendar', audience: 'group', label: 'תיאום — ביומן',
@@ -450,6 +459,13 @@ const TEMPLATES = [
       who: 'כולם בפנים', place_ask: 'איך מתחברים? זום, מיט, וידאו בוואטסאפ — תכתבו לי ואני אוסיף ליומן 🎥',
     },
     text: 'סגור: *{{day}}* 🎉 {{who}}\n{{zones}}\n{{place_ask}}',
+  },
+  {
+    key: 'group_coord_time_zones', audience: 'group', label: 'תיאום — נקבעה שעה',
+    help: '',
+    vars: { slot: 'השעה שנקבעה, בכל אזורי הזמן' }, required: ['slot'],
+    sample: { slot: 'יום שבת 26.9 · 12:00 ישראל · 05:00 ניו יורק · 19:00 סידני' },
+    text: 'השעה נקבעה: *{{slot}}* 🕐',
   },
   {
     key: 'group_coord_dayof_zones', audience: 'group', label: 'תיאום — תזכורת ביום עצמו',

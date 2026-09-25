@@ -55,6 +55,7 @@ never trust a dated narrative for something you are about to act on.
 - [Today at five is not Monday (fixed 2026-09-24)](#today-at-five-is-not-monday-fixed-2026-09-24)
 - [The constraint that was an answer (fixed 2026-09-20)](#the-constraint-that-was-an-answer-fixed-2026-09-20)
 - [Two paragraphs where two sentences would do (fixed 2026-09-20)](#two-paragraphs-where-two-sentences-would-do-fixed-2026-09-20)
+- [The link came back on every coordination message (2026-09-24)](#the-link-came-back-on-every-coordination-message-2026-09-24)
 - [The slot that was already closed (fixed 2026-09-20)](#the-slot-that-was-already-closed-fixed-2026-09-20)
 - [The room asked five and reached four (fixed 2026-09-22)](#the-room-asked-five-and-reached-four-fixed-2026-09-22)
 - [A room counted in somebody who had paused (fixed 2026-09-13)](#a-room-counted-in-somebody-who-had-paused-fixed-2026-09-13)
@@ -93,6 +94,7 @@ never trust a dated narrative for something you are about to act on.
 - [A hundred and five pending reminders, thirteen of them pending (fixed 2026-09-07)](#a-hundred-and-five-pending-reminders-thirteen-of-them-pending-fixed-2026-09-07)
 - [The reminder that would not stop (fixed 2026-09-09)](#the-reminder-that-would-not-stop-fixed-2026-09-09)
 - [A week of help, delivered as one reminder the night before (fixed 2026-09-22)](#a-week-of-help-delivered-as-one-reminder-the-night-before-fixed-2026-09-22)
+- [The first day coming up (fixed 2026-09-23)](#the-first-day-coming-up-fixed-2026-09-23)
 - [The reminder that was only a sentence (fixed 2026-09-22)](#the-reminder-that-was-only-a-sentence-fixed-2026-09-22)
 - [התיק לבית חולים: one reminder asked for, six messages delivered (fixed 2026-09-18)](#התיק-לבית-חולים-one-reminder-asked-for-six-messages-delivered-fixed-2026-09-18)
 - [The hook's timer fired late, and brokerd took the blame (fixed 2026-09-07)](#the-hooks-timer-fired-late-and-brokerd-took-the-blame-fixed-2026-09-07)
@@ -2092,6 +2094,30 @@ title fenced as other people's text. The hint says a confirmed one is
 closed and never re-offered, and that "סימנתי" means the answers it can see.
 Three at most, newest first.
 
+### The link came back on every coordination message (2026-09-24)
+
+Not an incident: a decision, recorded here because it reverses one. On
+2026-09-20 the link came off everything but the invite and the table
+question (the entry below), because the link and a sentence about answering
+here made up a third of each message. Four days later the owner asked for the
+opposite, on every private message about a coordination: "תמיד ההודעה
+שהמשתמשים מקבלים בפרטי עולמה תגיד להם שהם יכולים לכתוב לה בהודעה בשיחה וגם
+דרך הלינק". Once the first message has scrolled away, a person who is only told
+about a coordination has no way to find its page.
+
+**What changed.** `answerWaysClause` replaced `inviteLinkClause`, and every
+`meeting_*` kind calls it: invite, proposal, table question, confirmation (all
+three), decline, opt-out, no-match, cancellation, rejoined, withdrawn and
+expired. The `stuck_meeting` check-in calls it too, because it now carries
+`meetingId`.
+
+**What stops it growing back into the paragraph.** The sentence is handed over
+WORD FOR WORD: "אפשר לענות לי כאן בצ'אט או דרך הקישור:", with an English
+twin. The link goes on a bare line after it. `BRIEF` still forbids every other
+word about how answering works, and `tests/private-brevity.test.js` asserts
+that both are true. `rollupVoiceDay`'s length-per-window number on the metrics
+page is where to look if the messages get longer.
+
 ### Two paragraphs where two sentences would do (fixed 2026-09-20)
 
 Coordination 37, the "בדיקה יובל" room, the same afternoon. Yuval's first
@@ -4025,6 +4051,81 @@ with a chase on it. The eval harness had been opening every turn with no
 verdicts at all — thanks and "stop reminding me" included — since the day the
 harness learned to open turns; it sends all three now, read by the same
 functions.
+### The first day coming up (fixed 2026-09-23)
+
+מירון, 15:33: "תוסיף לי ביומן שביום הראשון הקרוב בין 14 ל18 אמור להגיע טכנאי
+לבר מים". A minute later Olma answered "רשמתי — יום רביעי 14:00–18:00, טכנאי
+בר מים. תזכורת תישלח ב-13:00", and everything she said was true of what she
+had written. Task 732 was stored for Wednesday 2026-09-23, its automatic
+reminder armed for 13:00 that day, and the Google event created on the same
+date. Row, event and reminder all agreed with each other, and all three were
+four days early. He found it by reading the confirmation.
+
+**The first hypothesis was wrong and the transcript said so.** The obvious
+suspect is a turn with no clock in it — `todayBlock` hands the model a bare
+`YYYY-MM-DD`, and a model that does not know what day it is cannot resolve
+"the coming Sunday". But the model's own working-out is in the transcript and
+it states the weekday correctly: it knew it was Tuesday, and it read
+"יום ראשון" as an **ordinal** — the first day that comes up — rather than as
+the name of a day. In Hebrew ראשון is both, and the reading it picked is
+grammatical. Nothing about the prompt was missing; the sentence was genuinely
+ambiguous and it resolved the ambiguity the wrong way, silently, in a field
+nobody reads twice.
+
+**The guard already existed and had never been given the words.**
+`datetime.weekdayClash` has refused this exact disagreement for a meeting slot
+since the meetings work: the slot's text names a day, `starts_at` falls on
+another, and the tool refuses rather than picking one. A task had no such
+check — and, more to the point, nothing on the task path carried anything to
+check it against. The title the model wrote was "טכנאי בר מים", which names no
+day at all, and `due_at` is an instant, which agrees with itself by
+construction. The only copy of "יום ראשון" in the whole system was in his
+message, which no argument of `add_task` carried. So this was never a missing
+detector; it was the shape this project keeps finding from the other side —
+the check understood the problem and had nowhere to read the input from.
+
+**A title fallback was tried on the measurement and rejected.** The cheap fix
+is to run the check over the TITLE, which costs no schema budget at all.
+`weekdaysInText('לקנות מתנה ליום שישי')` returns Friday — and under the rule
+this repo already holds ("A day named with ל־ in a title dates the THING, not
+the task"), a Wednesday `due_at` for that task is *correct*: you buy the gift
+before Friday. The fallback would have refused ordinary, correct input, which
+is the one thing `rules/detectors.md` says a hint may never do.
+
+**What shipped.** `add_task` takes `when_said` — the person's own words for
+when, copied rather than retold, the same shape as a meeting's
+`slot_description` — and `datetime.taskWeekdayClash` checks it before the
+write, beside the past-moment guards already on that door. It is not
+`weekdayClash` itself: ל־ plus a weekday is stripped first, so the object-dating
+shape above stays silent while ב־ and a bare "יום ראשון", which date the task,
+are compared. It is not in `tasks.addTask`, because `addTasksBulk` and
+`jobs/fact-extraction.js` reach the domain with nobody's words to check. And
+it compares ONE moment — `due_at` when there is one, `remind_at` only for a
+task with no date of its own — because a reminder deliberately set for the
+evening before a named day disagrees with it on purpose.
+
+**Two things it does not fix, stated rather than papered over.** It can only
+check words it is given: a model that omits `when_said` gets exactly the
+behaviour that shipped this bug, and no code here can make it populate a
+field. And `edit_task`, `snooze_task` and `set_task_reminder` stay unguarded —
+the tool-schema surface had 255 chars of margin (not the 449 its own comment
+claimed, which had been true for one day), this spent 183 of it, and four
+copies do not fit. One guarded door on the tool that WRITES the row was worth
+more than an argument about the ceiling.
+
+**The live row was corrected through the production functions**, inside a
+transaction rehearsed with `ROLLBACK` first: `tasks.editTask` for the pair of
+moments (not `snoozeTask`, which would have written a `task.snoozed` audit row
+about a postponement nobody made), then `reminders.retireForMovedTask`, which
+is the half `snoozeTask` was wanted for — `editTask`'s own `attachAutoReminder`
+refuses to stack onto the live wrong-day row, so without it the reminder would
+have stayed on Wednesday. The Google event moved on its own: `task_calendar.syncOne`
+deletes and recreates one whose stored `calendar_event_id` no longer matches
+`calendar.eventIdFor(owner|title|start)`. Sunday 27.9 14:00–18:00, reminder
+armed for Sunday 13:00, and he was told in fixed text on the raw pipe — the
+whole content of that message is two weekdays and a correction about a model
+getting a weekday wrong, which is the last sentence anybody should hand to a
+model to phrase.
 
 ### The reminder that was only a sentence (fixed 2026-09-22)
 
