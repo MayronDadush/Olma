@@ -48,6 +48,7 @@ never trust a dated narrative for something you are about to act on.
 - [Rotating a token that leaked: the file first, then the DB, then the doctrine (2026-09-03)](#rotating-a-token-that-leaked-the-file-first-then-the-db-then-the-doctrine-2026-09-03)
 
 **Delivery, outbox and proactive messages**
+- [שלח לי קישור, and the new person's page (2026-09-25)](#שלח-לי-קישור-and-the-new-persons-page-2026-09-25)
 - [The stop that waited for a yes (fixed 2026-09-22)](#the-stop-that-waited-for-a-yes-fixed-2026-09-22)
 - [The table that did not say where she stood (2026-09-20)](#the-table-that-did-not-say-where-she-stood-2026-09-20)
 - [Five messages in twelve minutes, about one coordination (fixed 2026-09-22)](#five-messages-in-twelve-minutes-about-one-coordination-fixed-2026-09-22)
@@ -1657,6 +1658,55 @@ down; the audit row carries fingerprints, which is what `token-leak.js`
 compares on anyway. (`domain/identity-repair.js`, `rotateIdentityToken`.)
 
 ## Delivery, outbox and proactive messages
+
+### שלח לי קישור, and the new person's page (2026-09-25)
+
+Not an outage — a request from the owner, and it moved two rules, so the
+reasoning is kept here.
+
+**The link on request cost a whole turn.** "שלח לי קישור" ran the model,
+which called `open_my_dashboard`, read the url back and worded one line: a
+full prompt's tokens and several seconds for a sentence that is the same
+every time. The owner asked for it to be answered by code. `before_dispatch`
+had already been found to be a CLAIMING hook for the rooms
+(`incidents.md`, "A message in the room, with no tag on it"), and reading the
+gateway's own dispatcher on the box showed the rest: a handler that returns
+`{handled: true, text}` has the GATEWAY send `text` through its ordinary final
+reply path (`sendFinalPayload`, `deliveryId: "before-dispatch"`) and no model
+turn starts. Several handlers on the hook run in order and the first claim
+wins, so the room handler (`g-N` only) and this one (`u-N` only) sit side by
+side. The match is exact after normalising, from one table keyed by language,
+and the list lives only in `domain/link-request.js` — the plugin sends brokerd
+any direct message of 80 characters or less and carries no keyword, so a new
+language is a deploy and never a gateway restart. The turn-open hook runs
+fire-and-forget beside it and can land either side, so brokerd remembers the
+message ids it answered: an open already queued is dropped, a late one marks
+👍 and queues nothing.
+
+**A new person never got their page, and could not have.** The greeter speaks
+before they have a user row, so there is no id to mint a link for — the
+owner's first idea, a fixed template sent straight from the gateway with the
+link in it, cannot exist for that reason. What he chose instead: the greeter
+keeps its (now shorter) copy, and their own agent speaks next, unasked, and
+does what the greeter cannot. The greeter has no tools, so a first message
+like "תזכירי לי מחר ב-9" was carried into USER.md and done by nobody until
+they wrote again; `welcome_followup` acts on it and ends with the page. The
+three ways it could have been a duplicate are each closed in code, not in the
+prompt: the worker clears `intake_note_at` once it is out, the gate drops it
+if they wrote to their own agent first, and the first turn hands the page
+only when no follow-up reached them. It passes the night and the quiet day
+inside the greeter's fifteen minutes, because somebody who wrote at 02:00 is
+awake and a reminder for 09:00 answered at 09:00 is not an answer.
+
+**Every language, from the templates.** The owner's second instruction was
+that all of this must work in English and be easy to extend to any language.
+`templates.keyFor` is now the one place a family and a language become a key;
+the greeter's prompt and `saidTheOpening` build from every `opening_<lang>`
+template rather than a fixed Hebrew/English pair; the follow-up is an English
+instruction that answers in the language they wrote in, so it needs no
+template at all. The copy the code shipped before stays recognisable
+(`onboarding.PREVIOUS_OPENINGS`) for the minute after a deploy in which the
+greeter's file still quotes it.
 
 
 ### Five messages in twelve minutes, about one coordination (fixed 2026-09-22)

@@ -231,9 +231,10 @@ const deployDrift = require('./deploy-drift');
     // 5s, and it costs a small file read: discovery reads the gateway's own
     // session index off disk instead of spawning `openclaw sessions list`
     // (2.9s of CPU per call, previously every 15s — see channels/sessions.js).
-    // Provisioning is the whole job now — no welcome message follows it (see
-    // intake/provision.js), so there is nothing left to drain eagerly; the
-    // regular 30s outbox_worker tick is enough.
+    // Provisioning queues one `welcome_followup` for somebody the greeter
+    // introduced (jobs/intake.js) and the regular 30s outbox_worker tick sends
+    // it — which also leaves the gateway its few seconds to hot-load the new
+    // agent before anything is delivered on it.
     // runIntakeSweep, not withTx directly: provisioning writes a workspace and
     // a gateway agent entry that no ROLLBACK can take back, so the sweep owns
     // its own transaction and undoes those on the way out of a failure.

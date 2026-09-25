@@ -173,7 +173,7 @@ Loads when you **Read** a file under `src/outbox/**`, `src/domain/message-format
 - **Only rung 1 of a reminder is a moment THEY chose; every rung after it is one OLMA chose, and quiet hours apply to it.**
 - **A reminder rung the GATE held is never chased; a rung OUR pipe lost is redone at once.**
 - **Nothing Olma DECIDED to say goes out in front of an introduction she still owes.**
-- **The greeter answering them is a conversation too, for a coordination row and nothing else** (`opening_sent_at` → the gate's `greetedAt`)
+- **The greeter answering them is a conversation too, for a coordination row and the welcome follow-up, nothing else** (`opening_sent_at` → the gate's `greetedAt`)
 - **Reminders that come due in the same tick go out as ONE message, and the coalescing happens at DELIVERY, never at enqueue.**
 - **On the model path a retry is not a retry — it is a NEW message, composed against a world the failed sends themselves created.**
 - **A `--deliver` that TIMES OUT has very likely gone out, and is never retried.**
@@ -329,12 +329,12 @@ Loads when you **Read** a file under `src/intake/agents-template.md`, `src/intak
 - **Telling the model to call a tool is not telling it what the reader of that tool's write actually checks.**
 - **A fixture that writes the state by hand cannot notice the state is only ever reached the other way.**
 - **The owner's opening copy is said ONCE, by whichever voice reaches the person first.**
-- **A first message is not a hello, and the newest arrivals prove it.** …and carrying their words into USER.md is only half of it: the first-turn instruction has to SAY they are unanswered (`users.intake_note_at`)
+- **A first message is not a hello, and the newest arrivals prove it.** …and carrying their words into USER.md is only half of it: the first-turn instruction has to SAY they are unanswered (`users.intake_note_at`) — and since 2026-09-25 their own agent answers them unasked, seconds after the greeter, with their page (`welcome_followup`)
 - **`gmail.readonly` is a RESTRICTED scope and everything else Olma asks for is merely SENSITIVE — the two words are different verification tracks, and one restricted scope prices the whole app onto the paid one**
 - **Every NEW Google consent link goes through one door, and it is CLOSED**
 - **A display name is not a word to be translated.**
 - **Olma never claims a lookup it did not perform.**
-- **A `url` in a tool result is delivered by the MODEL or not at all**
+- **A `url` in a tool result is delivered by the MODEL or not at all** — save a whole message that is only "שלח לי קישור", answered by code before any turn (`domain/link-request.js`, one table per language)
 
 ### In a group
 
