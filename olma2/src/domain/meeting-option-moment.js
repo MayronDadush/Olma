@@ -73,4 +73,34 @@ function pickFor(tz, startsAt, now = new Date()) {
   return { day: dayNo(t) - dayNo(today), time: `${pad(t.hh)}:${pad(t.mi)}` };
 }
 
-module.exports = { momentFor, pickFor, isoWithOffset, PART_HOURS, MAX_DAYS_AHEAD };
+// A time named in CHAT as a whole day or a part of one ("all day Tuesday",
+// "Tuesday evening"): the model hands over some instant on that day, and this
+// moves it to the same stand-in hour the page uses (09:00 for a whole day, the
+// daypart's hour otherwise), in the proposer's zone. One stand-in per day and
+// precision is what makes "the same moment twice is one option" hold whichever
+// door it came in by.
+function standInFor(tz, startsAt, { allDay = false, daypart = null } = {}) {
+  if (!allDay && !daypart) return ok({ startsAt, allDay: false, daypart: null });
+  if (daypart && !Object.hasOwn(PART_HOURS, daypart)) {
+    return err('invalid', 'daypart must be morning|noon|evening|night', { reason: 'bad_part' });
+  }
+  const t = new Date(startsAt);
+  if (Number.isNaN(t.getTime())) return err('invalid', 'starts_at is not a time', { reason: 'bad_time' });
+  const d = partsInZone(tz || 'UTC', t);
+  const hh = allDay ? 9 : PART_HOURS[daypart];
+  const instant = instantInZone(tz || 'UTC', { y: d.y, m: d.m, d: d.d, hh, mi: 0, ss: 0 });
+  return ok({ startsAt: isoWithOffset(instant, tz || 'UTC'), allDay: Boolean(allDay), daypart: allDay ? null : daypart });
+}
+
+// The question, for the ONE person asked when a private coordination settles
+// on a whole day or a part of one (owner, 2026-09-24). Here rather than in
+// the fanout because both the settler's own hint and the queued confirmation
+// read it, and the delivery layer may not require the fanout. Said once: a
+// no, or a silence, is an answer.
+function exactTimeAsk(meetingId) {
+  return 'It settled without an exact hour (a whole day, or a part of one). Ask the user ONCE, in this same'
+    + ' message, whether they want to fix an exact time; if they name one, record it with propose_meeting_slot'
+    + ` meeting_id=${meetingId} — the same day only, and everyone else is told. A no, or no answer, ends it: never ask again.`;
+}
+
+module.exports = { momentFor, pickFor, isoWithOffset, standInFor, exactTimeAsk, PART_HOURS, MAX_DAYS_AHEAD };

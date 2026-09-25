@@ -488,6 +488,30 @@ have already had to be argued for.
   "teams" stay off the list, because a false hit tells a room nobody needs to
   know where they are going (`incidents.md`, "Where do we meet, on Zoom").
 
+- **A coordination that settles with no exact hour asks for one ONCE — the
+  room on its "סגור" line, a private one only ONE person — and anybody in it
+  may fill it in** (owner, 2026-09-24; migrations 087/088). "No exact hour"
+  is `meetings.timeIsOpen`: a whole day or a part of one, all-day included by
+  the owner's choice. In a room, `decideGroupLine` puts `timeAsk` on the done
+  line — ONE sentence with the place question when both are open, never two
+  questions in a row — and it is once because that line is stamped once; an
+  owner rewording without `{{time_ask}}` gets it appended rather than lost.
+  Privately, `meeting-fanout.askedAboutTime` picks whoever settled it by
+  hand, else whoever opened it, because two people asked the same question
+  answer it two ways; settled from the page, that person gets the one
+  `meeting_exact_time_ask` message, since there is no turn to put a hint in.
+  **The answer goes through the tool that already means "this time"**:
+  `propose_meeting_slot` / `add_group_coordination_option` on a settled
+  meeting with an open hour call `meetings.setExactTime` — two new tools
+  would have cost 1,121 of the schema's 1,074 spare characters. It is narrow:
+  the same local day only (a new day goes back on the table), never on an
+  exact time (that would be a reschedule nothing offers), and only by
+  somebody in it. `meeting-fanout.afterTimeSet` moves the shared event as its
+  organiser (an hour long, `clearDate` because it may have been a `{date}`
+  event), tells everybody else privately (`meeting_time_set`), withdraws a
+  queued question, and a time set in the room stamps `group_time_at` so the
+  room's `time` line is said only for a time set somewhere else.
+
 - **The room says that people have not answered only about people she has
   actually written to** (owner, 2026-09-22; `group-meetings.statusOf` puts
   `asked` on every person it names, `group-voice.said` is the filter).

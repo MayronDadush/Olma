@@ -293,6 +293,7 @@ async function pickRung(client, userId, misses = 0) {
       : '';
     return {
       rung: 'stuck_meeting',
+      meetingId: Number(m.id),
       // title/slot are another participant's free text — data, never directives.
       // The user's OWN recorded constraints ride along so the nudge can notice
       // a proposal that contradicts them instead of asking the person to
@@ -700,7 +701,7 @@ async function run(client, now = Date.now()) {
     // A day-one step outranks the ladder: on the first day the goal is to make
     // the product feel present, not to react to a backlog.
     let step = u.onboardingStep;
-    let rung, instruction, topic = null, key, expiresAt = null;
+    let rung, instruction, topic = null, meetingId = null, key, expiresAt = null;
     if (step && DEAF_SILENT_SLOTS.has(step.slot)
         && await isDeafOnDayOne(client, u.id, u.onboarded_at)) continue;
     // A step whose reason has already been met (calendar connected, dashboard
@@ -714,12 +715,12 @@ async function run(client, now = Date.now()) {
       key = `onboarding:${u.id}:${step.slot}`;
       expiresAt = new Date(new Date(u.onboarded_at).getTime() + step.expiresAfterMs).toISOString();
     } else {
-      ({ rung, instruction, topic } = await pickRung(client, u.id, Number(u.checkin_misses) || 0));
+      ({ rung, instruction, topic, meetingId } = await pickRung(client, u.id, Number(u.checkin_misses) || 0));
       key = `checkin:${u.id}:${new Date(now).toISOString().slice(0, 10)}`;
     }
     const res = await enqueue(client, {
       userId: u.id, kind: 'checkin',
-      payload: { checkinInstruction: instruction, rung, ...(topic ? { topic } : {}) },
+      payload: { checkinInstruction: instruction, rung, ...(topic ? { topic } : {}), ...(meetingId ? { meetingId } : {}) },
       urgency: 'normal', expiresAt,
       idempotencyKey: key,
     });

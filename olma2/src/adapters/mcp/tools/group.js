@@ -86,9 +86,10 @@ module.exports = [
   // moment being a yes, the weekday check and the fold into a still-queued
   // private invite are all the same code.
   groupTool('add_group_coordination_option',
-    'GROUP AGENTS ONLY. The member who tagged you named a time for this room\'s coordination: put it on the table as THEIR option, with their yes. The others are asked about it privately.',
+    'GROUP AGENTS ONLY. The member who tagged you named a time for this room\'s coordination: put it on the table as THEIR option, with their yes. The others are asked about it privately. Settled with no exact hour: this sets it.',
     { slot_description: S('string', 'The time in their words, day included'),
-      starts_at: S('string', 'The same moment and DAY, ISO-8601 with offset') },
+      starts_at: S('string', 'The same moment and DAY, ISO-8601 with offset'),
+      all_day: S('boolean', 'The whole day'), daypart: S('string', 'morning|noon|evening|night, when no hour') },
     ['slot_description', 'starts_at'],
     async (client, ctx, a) => {
       if (!ctx.actingUser) {
@@ -96,10 +97,25 @@ module.exports = [
       }
       const meeting = await groupMeetings.currentMeeting(client, ctx.group.id);
       if (!meeting) {
+        // Settled on a whole day or a part of one, and the done line asked
+        // whether they want an exact hour: this is the answer (owner,
+        // 2026-09-24). Anybody in the room, the same day only.
+        const last = await groupMeetings.roomMeetingFor(client, ctx.group, ctx.actingUser);
+        if (last.ok && meetings.timeIsOpen(last.data)) {
+          const set = await meetingFanout.afterTimeSet(client, ctx.actingUser,
+            await meetings.setExactTime(client, ctx.actingUser.id, Number(last.data.id), a.slot_description, a.starts_at),
+            { fromRoom: true });
+          if (!set.ok) return set;
+          return ok({
+            meetingId: set.data.meetingId, slot: set.data.slot, timeSet: true,
+            hints: { room: 'Say ONE short line in the room: the time is set. Everyone else is told privately.' },
+          });
+        }
         return err('invalid', 'nothing is being coordinated in this room — call start_group_coordination first');
       }
       const meetingId = Number(meeting.id);
-      const res = await meetings.proposeSlot(client, ctx.actingUser.id, meetingId, a.slot_description, a.starts_at);
+      const res = await meetings.proposeSlot(client, ctx.actingUser.id, meetingId, a.slot_description, a.starts_at,
+        { allDay: a.all_day === true, daypart: a.daypart || null });
       if (!res.ok) {
         // The full-table refusal carries every option with its per-person
         // answers keyed by user id. A room is told the times, never whose

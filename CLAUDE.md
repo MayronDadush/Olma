@@ -158,7 +158,7 @@ Loads when you **Read** a file under `src/outbox/**`, `src/domain/message-format
 - **What is the same every time is DRAWN, and only the sentence about it is a model's**
 - **…and since 2026-09-10 the lists and choices a person ASKS for are drawn the same way**
 - **…and a drawn table says where the READER stands, plus the one line that needs only their yes**
-- **The invite and the table question offer the coordination's own page, on a bare line; nothing else in the negotiation does** — and the characters are handed over, never asked for: a prompt that named a meeting id got three invented domains in one minute
+- **EVERY private message about a coordination offers its own page, after one fixed sentence ("אפשר לענות לי כאן בצ'אט או דרך הקישור:") and on a bare line** — since 2026-09-24, reversing 2026-09-20; and the characters are handed over, never asked for: a prompt that named a meeting id got three invented domains in one minute
 - **A private message about a coordination is one sentence of context and one question** — two options are a sentence, a game room counts heads, and the length is measured
 - **The same thing does not go out twice inside a few minutes unless the person ASKED**
 - **The delivery gate is the chokepoint and a paused user has no exceptions** — save one room-coordination invite per pause, and one per run of silence
@@ -226,6 +226,7 @@ Loads when you **Read** a file under `src/domain/reminders.js`, `src/domain/task
 - **A model asked to date something must first be told what time it is.**
 - **A title need not restate the hour the row now carries, but only the SERVER may take it out.**
 - **A day named with ל־ in a title dates the THING, not the task.**
+- **…and a weekday they SAID travels with the time, so the two can be checked against each other** — `add_task`'s `when_said`, refused before the write; ל־ is stripped first, because that shape dates the object.
 - **`due_at` is when the THING is; `remind_at` is the hour THEY named.**
 - **A calendar event reminds NOBODY, and `create_calendar_event`'s result says so rather than leaving it to be guessed** — `add_task kind:'event'` is what arms one, and `eventIdFor` hashes the instant so the same moment saved both ways is one entry.
 - **Everyone on a shared task is equal, and a write on it is made AS its owner** — "delete" with others on it is leaving, and only the last one left can archive.
@@ -357,6 +358,7 @@ Loads when you **Read** a file under `src/domain/group-connections.js`, `src/dom
 - **The "סגור" line names who can make it, a calendar line is said only for a SHARED event, and a base line is never said to nobody**
 - **A time the room was TOLD about and that has since left the table is said again; a time merely overtaken is not**
 - **The place is the room's own words, asked for only when nobody said one, and it rides the confirmation onto the calendar event** — and a name that says it happens on Zoom has said one (`online-place.onlinePlace`, a closed list, code only)
+- **A coordination that settles with no exact hour asks for one ONCE — the room on its "סגור" line, a private one only ONE person — and anybody in it may fill it in**, the same day only, through the tool that already means "this time"
 - **A tag is a NUMBER, and the roster hands us LIDs in the same column** — the cut is 13 digits, measured; a line that can name nobody is not said
 - **The room says that people have not answered only about people she has actually written to** — `silent` is still the exact count; `asked` is what may be SAID
 - **A group turn is told the room's coordination state before the model's first word, and that block is the only thing it may speak from.** — and a result the room has already heard is marked `roomHeard`, so it is not the tail of every reply

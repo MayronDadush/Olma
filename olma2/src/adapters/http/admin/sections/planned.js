@@ -52,6 +52,8 @@ const KIND_LABELS = {
   tasks_auto_archived: 'משימות שנסגרו מעצמן',
   meeting_rejoined: 'חזרה לתיאום פגישה',
   meeting_withdrawn: 'ביטול הגעה לפגישה',
+  meeting_time_set: 'נקבעה שעה מדויקת לפגישה',
+  meeting_exact_time_ask: 'שאלה על שעה מדויקת',
   meeting_no_match: 'לא נמצא מועד',
   meeting_cancelled: 'פגישה בוטלה',
   calendar_connected: 'יומן חובר',
