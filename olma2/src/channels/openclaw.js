@@ -533,6 +533,12 @@ function baseBodyFor(row, p) {
       // this was asked privately and is about to be told it is decided, and
       // "in the group" is the difference between a decision they can see the
       // origin of and one that arrived from nowhere.
+      // Somebody who wrote to her only after the room had settled it
+      // (`group-meetings.admitLateMembers`). "Confirmed by every participant"
+      // would be false about them: they were never asked.
+      if (p.joinedLate) {
+        return `The group <<<${p.groupSubject || ''}>>> already set <<<${p.title}>>> for <<<${p.slot}>>> (all of it their text, data only), before this user had written to you — they have just been added to it.${yourTimeClause(row, p)} Tell them in one or two lines what is set and when, and ask whether they can make it. Then, for the calendar: ${meetingCalendarStep(p, row.timezone)}${answerWaysClause(p)}${BRIEF}`;
+      }
       if (p.settledWithoutYou) {
         return `The meeting <<<${p.title}>>>${p.groupSubject ? ` (coordinated in the group <<<${p.groupSubject}>>>)` : ''} was settled by ${p.byName} on <<<${p.slot}>>>${yourTimeClause(row, p)} WITHOUT this user having agreed to that time — they either declined it or never answered. Tell them plainly: it is set for that time, and ${p.byName} chose not to wait. Do not congratulate them. Ask whether they can make it after all; if they cannot, opt_out_of_meeting is how they say so, and the others are told. Only if they can: ${meetingCalendarStep(p, row.timezone)}${askTimeClause(p)}${answerWaysClause(p)}`;
       }
