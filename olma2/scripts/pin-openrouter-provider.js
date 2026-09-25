@@ -91,21 +91,30 @@ const occ = require('../src/intake/openclaw-config');
 
 const APPLY = process.argv.includes('--apply');
 const RESET = process.argv.includes('--reset');
-// The live default AND its first fallback. A cache is per provider and per
-// model, and the fallback is what a Novita hiccup on the primary lands on —
-// unpinned, that one call would go wherever OpenRouter sends it.
-// v4.1-flash became the default on 2026-09-25 (scripts/set-default-model.js).
-const MODELS = ['openrouter/deepseek/deepseek-v4.1-flash', 'openrouter/deepseek/deepseek-v4-flash'];
-// Only providers that were MEASURED keeping a prefix cache (see the 9/14
-// correction above), US-headquartered first. DigitalOcean is deliberately
-// absent: it is still reachable as a fallback, it just never leads.
-const ORDER = ['novita', 'streamlake'];
+// The live default AND its first fallback, each with its OWN order: a cache is
+// per provider AND per model, and one provider keeping it for one model says
+// nothing about the other. Measured 2026-09-25 on the real turn pattern (a
+// tool call between two model calls, ~34k tokens): Novita cached v4-flash
+// 60-67% of input and v4.1-flash 24%, at $0.0082 a call; DeepInfra cached
+// v4.1-flash 70%, at $0.0017 — cheaper than the incumbent on Novita. A
+// three-call probe of identical requests hit on every provider and could not
+// tell them apart, so a provider is measured on turns, never on a probe
+// (`docs/incidents.md`, "Novita cached the probe and not the turns").
+const ORDERS = {
+  // v4.1-flash became the default on 2026-09-25 (scripts/set-default-model.js).
+  // DeepInfra and Together are both US-headquartered; Novita is the fallback.
+  'openrouter/deepseek/deepseek-v4.1-flash': ['deepinfra', 'together', 'novita'],
+  // Only providers MEASURED keeping a prefix cache on this model (see the 9/14
+  // correction above), US-headquartered first. DigitalOcean is deliberately
+  // absent: it is still reachable as a fallback, it just never leads.
+  'openrouter/deepseek/deepseek-v4-flash': ['novita', 'streamlake'],
+};
 
 const cfg = occ.loadConfig();
 cfg.agents = cfg.agents || {};
 cfg.agents.defaults = cfg.agents.defaults || {};
 cfg.agents.defaults.models = cfg.agents.defaults.models || {};
-for (const MODEL of MODELS) {
+for (const [MODEL, ORDER] of Object.entries(ORDERS)) {
   const entry = cfg.agents.defaults.models[MODEL] || {};
   const before = entry.params && entry.params.provider ? JSON.stringify(entry.params.provider) : '(unset — OpenRouter picks per request)';
   if (RESET) {
