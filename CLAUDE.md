@@ -317,12 +317,13 @@ Loads when you **Read** a file under `src/intake/agents-template.md`, `src/intak
 - **When brokerd has put a 👍 on their message, the result says so (`hints.markPlaced`) and the model answers `NO_REPLY` unless words add something**
 - **The owner's rule is that anything which CAN end in a like should**
 - **The hint follows the MARK, not the spawn.**
-- **A message that is only thanks is answered by a 🙏 and by nothing else.**
+- **A message that is only thanks is answered by a 🙏 and by nothing else** — in any language, and not right after Olma asked a question: then it is their answer, most likely a yes, and the model decides
 - **`markPlaced` is CONDITIONAL, so nothing else on the same result may be an unconditional instruction to write.**
 - **One in-flight reaction per message.**
 - **The shim's connection outlives the turn, so nothing per-turn may be latched to it.**
 - **A model with nothing to relay passes something, not nothing.**
 - **The acknowledgement mark is OURS ALONE, and the gateway's own ack stays off**
+- **The 👀 waits for a slow answer** — held `eyes_delay_seconds` (15), dropped by a reply, a closing mark or the turn's end; inert until the gateway restarts onto the plugin with `agent_end`
 - **`placeMark` claims nothing and therefore must SAY something.**
 - **Olma never offers a capability without asking the thing that owns it.**
 - **A carryover leak is repaired on a schedule, because nothing can name the writer.**
@@ -376,7 +377,7 @@ Loads when you **Read** a file under `src/domain/group-connections.js`, `src/dom
 - **…and that line carries what the same person did to the TABLE, because the reason and the change are one piece of news** — three shapes, chosen by what is true
 - **A joke in the room is answered with a joke, built only from what the room said** — one short line; nothing invented, nothing private, nobody really mocked
 - **A paused member is counted into a room's coordination only until their one invite is spent; a day of silence takes them out**
-- **A room on more than one clock hears every time in each, by city, from the owner's own `_zones` templates; a time with no clock in it is never converted, and a one-clock room is untouched**
+- **A room on more than one clock hears every time in each, by city, from the owner's own `_zones` templates; a time with no clock in it is never converted, and a one-clock room is untouched** — and asked for hours that suit everyone, she answers from `meeting-time.commonHours`, where only a confirmed clock is counted
 - **A member's message in the room opens the gate's fifteen-minute window for that room's coordination — and, since 2026-09-09, the room's own announcement window; nothing else**
 - **The private side knows every room a person shares with Olma, off the ROSTER, and says the list is complete** (`groups.roomsOf` → the turn context's `rooms` and `list_my_meetings`)
 

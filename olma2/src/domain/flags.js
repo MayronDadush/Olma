@@ -33,6 +33,12 @@ const DEFAULTS = {
   // with no default beside it — a number nobody can see the default of is one
   // nobody can safely change.
   proactive_daily_budget: 4,
+  // domain/reactions.openingDelayMs: how long a message may go unanswered
+  // before the 👀 (or 👂) goes on it. A reply inside it needs no "I'm on it",
+  // and a 👀 landing under the answer is noise. The owner's number
+  // (2026-09-25), read off 123 real messages: a quarter answered inside 10s,
+  // 42% inside 15s. 0 puts the mark on at once.
+  eyes_delay_seconds: 15,
   // Group mode (domain/groups.js): the largest group she will work in. Above
   // it she says so once and stops — a 50-person group never realistically gets
   // every member to write to her privately, and each tag costs a model turn.

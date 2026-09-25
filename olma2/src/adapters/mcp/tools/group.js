@@ -338,6 +338,9 @@ module.exports = [
 
   groupTool('group_coordination_status',
     'GROUP AGENTS ONLY. Where this room\'s coordination stands: the times on the table, who said yes or no to each, who has not answered. Answers only — a REASON somebody gave lives in their private chat and is never read out here. Check it before saying anything about progress.',
-    {}, [],
-    async (client, ctx) => ok(await groupMeetings.coordinationStatus(client, ctx.group))),
+    // Asked for hours that suit everyone, with places the room's own clocks do
+    // not cover (פנתרה, 2026-09-25): `commonHours` is drawn by code.
+    { places: S('array', 'IANA zones of cities members named, for hours that suit all (commonHours)', { items: { type: 'string' } }) }, [],
+    async (client, ctx, a) => ok(await groupMeetings.coordinationStatus(client, ctx.group,
+      Array.isArray(a && a.places) ? { places: a.places } : {}))),
 ];

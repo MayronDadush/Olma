@@ -218,7 +218,7 @@ async function openTurnImplicitly(client, user, { firstTool } = {}) {
 // turn by every user, for fields that appear on a handful of turns in a
 // person's life. The budget rule (CLAUDE.md, "Doctrine"): guidance about a
 // RESULT rides the result.
-function turnHints({ offerResume, languageNudge, recentReminders, recentMeetings, rooms, planHeadline, replyTarget, genderForms, thanksOnly, stoppedReminders, chaseUntil, chaseNamedHour, openList, today }) {
+function turnHints({ offerResume, languageNudge, recentReminders, recentMeetings, rooms, planHeadline, replyTarget, genderForms, thanksOnly, thanksAfterQuestion, stoppedReminders, chaseUntil, chaseNamedHour, openList, today }) {
   const hints = {};
   if (today) {
     // Rides beside the block on every turn it is on, because a block the
@@ -298,6 +298,19 @@ function turnHints({ offerResume, languageNudge, recentReminders, recentMeetings
       + 'sign-off, no wishing them a good evening: the exchange is closed and another message '
       + 'reopens it. Write only if the message actually asks something, or something here needs '
       + 'saying that the mark cannot carry.';
+  }
+  if (thanksAfterQuestion) {
+    // The mirror of thanksOnly, and why it exists: the last thing Olma said to
+    // them was a question, so a bare "תודה" is their ANSWER to it. Owner,
+    // 2026-09-26: the model decides, and it most likely means yes. No 🙏 was
+    // placed and silence is not the default here — silence is how "להוסיף לך
+    // את המשימה ליומן?" → "תודה" used to drop the offer on the floor.
+    hints.thanksAfterQuestion = 'Their message reads as thanks and nothing else, but the last '
+      + 'thing you said to them was a question — so this is their answer to it, and most likely a '
+      + 'yes. If you offered to do something, do it now and say so in one short line. If it '
+      + 'cannot be a yes (your question was not an offer, or they are plainly closing the '
+      + 'exchange), treat it as thanks: reply with exactly NO_REPLY. If you cannot see that '
+      + 'question in this conversation, it is thanks: NO_REPLY.';
   }
   if (stoppedReminders) {
     // Their message asked for the reminders to stop and brokerd already did it
@@ -449,7 +462,7 @@ async function firstTurnPageLink(client, userId) {
   } catch { return null; }
 }
 
-async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, languageNudge, thanksOnly, stoppedReminders, chaseUntil, chaseNamedHour, openList, now }) {
+async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, languageNudge, thanksOnly, thanksAfterQuestion, stoppedReminders, chaseUntil, chaseNamedHour, openList, now }) {
   requireAdviseColumns(user);
   // A paused person who writes gets answered — pausing stops Olma
   // INITIATING, not answering (see domain/pause.js) — but before this, that
@@ -747,7 +760,7 @@ async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, 
       ...(replyTarget ? { replyTarget: true } : {}),
       ...(genderForms ? { genderForms } : {}),
       ...(today ? { today } : {}),
-      ...turnHints({ offerResume, languageNudge, recentReminders, recentMeetings, rooms, planHeadline, replyTarget, genderForms, thanksOnly, stoppedReminders, chaseUntil, chaseNamedHour, openList, today }),
+      ...turnHints({ offerResume, languageNudge, recentReminders, recentMeetings, rooms, planHeadline, replyTarget, genderForms, thanksOnly, thanksAfterQuestion, stoppedReminders, chaseUntil, chaseNamedHour, openList, today }),
     };
   }
   const shouldNotice = await quota.shouldSendBlockNotice(client, user.id);

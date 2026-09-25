@@ -276,5 +276,5 @@ test('the plugin registers before_dispatch beside its other hooks', async () => 
     pluginConfig: {},
     on: (name) => hooks.push(name),
   });
-  assert.deepEqual(hooks, ['before_prompt_build', 'llm_input', 'before_dispatch', 'before_dispatch', 'reply_payload_sending']);
+  assert.deepEqual(hooks, ['before_prompt_build', 'llm_input', 'before_dispatch', 'before_dispatch', 'reply_payload_sending', 'agent_end']);
 });

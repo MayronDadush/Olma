@@ -110,14 +110,21 @@ const { IDENTITY_PARAM } = require('../src/adapters/mcp/identity-param');
 // person's only theirs (`intake/agent-tool-policy.js`). Margin 93 — not one
 // more ordinary tool, again.
 //
-// Raised the fifth time, on 2026-09-25: 59,500 -> 60,300, for reopening a
+// Raised the fifth time, on 2026-09-25: 59,500 -> 59,650, for ONE optional
+// parameter — `places` on `group_coordination_status`, 142 chars. What it buys
+// is the answer to "hours that suit Australia, New York and Israel" in פנתרה,
+// where only Israel was a confirmed clock on anybody's record, so the room's
+// own block could not answer and the model needs a way to pass the places the
+// room NAMED. Folded into the existing status tool rather than a new one, which
+// would have cost ~500. PUT TO THE OWNER WITH ITS COST BEFORE MERGING.
+//
+// Raised the sixth time, the same day: 59,650 -> 60,450, for reopening a
 // settled coordination in both places (owner: "צריך להוסיף כלי כזה לדאשבורד
-// לשיחה הפרטית ולשיחה בקבוצה"). Measured 59,452 before and 60,236 after:
-// `reopen_meeting` and `reopen_group_coordination`, +784 between them, the
-// room's guidance in `hints`. PUT TO THE OWNER WITH ITS COST BEFORE MERGING.
-// If #523 (`places` on group_coordination_status, +142) lands first, the
-// merge needs 60,450.
-const JSON_CEILING = 60_300;
+// לשיחה הפרטית ולשיחה בקבוצה"). `reopen_meeting` and
+// `reopen_group_coordination`, +784 between them, the room's guidance in
+// `hints`. Put to the owner with its cost and approved together with the
+// raise above ("מאשר את שתי התקרות").
+const JSON_CEILING = 60_450;
 const DESCRIPTION_CEILING = 700;
 const IDENTITY_DESCRIPTION_CEILING = 40;
 

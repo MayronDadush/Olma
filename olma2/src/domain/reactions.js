@@ -119,11 +119,12 @@ function vocabulary(overrides) {
   return out;
 }
 
-// Returns an argv array for `openclaw message react`, or null when we should
-// stay silent. Null is a real answer and every caller must treat it as one.
-// `emoji` overrides the table for this one call; an unusable one falls back to
-// the default rather than refusing, so a bad setting never costs a mark.
-function buildReactArgs({ channel, target, messageId, state, remove = false, emoji: override } = {}) {
+// The one decision about WHAT to react with, shared by both transports: the
+// gateway socket and the CLI behind it. Null when we should stay silent, and
+// null is a real answer every caller must treat as one. `emoji` overrides the
+// table for this one call; an unusable one falls back to the default rather
+// than refusing, so a bad setting never costs a mark.
+function buildReactRequest({ channel, target, messageId, state, remove = false, emoji: override } = {}) {
   const emoji = isUsableEmoji(override) ? String(override).trim() : REACTION_STATES[state];
   if (!emoji) return null;
   if (!REACTION_STATES[state]) return null;
@@ -133,14 +134,27 @@ function buildReactArgs({ channel, target, messageId, state, remove = false, emo
   // is worse than not reacting, because the mark would then assert something
   // about a message we never processed.
   if (!target || !messageId) return null;
+  return {
+    channel: String(channel).toLowerCase(),
+    target: String(target),
+    messageId: String(messageId),
+    emoji,
+    remove: Boolean(remove),
+  };
+}
+
+// Returns an argv array for `openclaw message react`, or null.
+function buildReactArgs(opts) {
+  const req = buildReactRequest(opts);
+  if (!req) return null;
   const args = [
     'message', 'react',
-    '--channel', String(channel).toLowerCase(),
-    '--target', String(target),
-    '--message-id', String(messageId),
-    '--emoji', emoji,
+    '--channel', req.channel,
+    '--target', req.target,
+    '--message-id', req.messageId,
+    '--emoji', req.emoji,
   ];
-  if (remove) args.push('--remove');
+  if (req.remove) args.push('--remove');
   return args;
 }
 
@@ -174,6 +188,7 @@ function outcomeState({ failed = false, needsInput = false, scheduled = false } 
 // supplied. The worst a wrong id can do is put an emoji on a different message
 // in that same person's own chat with Olma.
 const { spawn } = require('node:child_process');
+const gatewayRpc = require('../channels/gateway-rpc');
 
 // A mark may only be placed while the person is actually there — the same
 // 15 minutes the delivery gate calls a conversation (outbox/gate.js
@@ -207,32 +222,52 @@ function isLive(lastInboundAt, now = Date.now()) {
 
 // Fire-and-forget, deliberately, and each part of that costs something:
 //
-//   No await — `openclaw message react` is a whole Node CLI start-up, and a
-//   decoration is worth zero milliseconds of somebody's reply.
+//   No await — a decoration is worth zero milliseconds of somebody's reply, so
+//   the caller is answered before the mark has gone anywhere.
 //
-//   Detached and unref'd — handlers run in brokerd, which outlives the turn, so
-//   an attached child would PROBABLY survive. "Probably survives" is precisely
-//   how an outbound send reports success and dies (CLAUDE.md, the MCP-shim
-//   rule), and getting it right costs nothing.
+//   Therefore no claim. This returns `attempted`, never `sent`. Nothing
+//   downstream may read it as "they saw a ✅" — and that is why no user-visible
+//   text anywhere depends on the mark having landed.
 //
-//   Therefore no exit code, therefore no claim. This returns `attempted`, never
-//   `sent`. Nothing downstream may read it as "they saw a ✅" — and that is why
-//   no user-visible text anywhere depends on the mark having landed.
+// ── The gateway's socket first, the CLI behind it ───────────────────────────
+// Until 2026-09-25 every mark was a whole `openclaw message react` process:
+// 15s of Node start-up idle (2026-09-05), 54s measured on a busy box the day it
+// was replaced. Once the gateway's own instant ack went (2026-09-14, rules
+// "The acknowledgement mark is OURS ALONE"), that start-up WAS the 👀's
+// latency, and a short reply beat it: the owner, "הרבה פעמים האייקון של
+// העיניים מגיע אחרי שמגיעה כבר הודעה" (`incidents.md`, "The eyes arrived after
+// the answer"). The CLI never did anything but start up and then call
+// `message.action` on the gateway's WebSocket, so `channels/gateway-rpc
+// .messageAction` makes that same call on the socket brokerd already holds.
+//
+// The fallback is the raw pipe's (`channels/openclaw.sendRawMessage`) and as
+// narrow: a request that never reached the gateway (switched off, no socket,
+// cooling off, and always inside `node --test`) goes down the CLI; one the
+// gateway refused, or that timed out on the wire, is logged and left. A
+// reaction retried is harmless on its own — WhatsApp replaces it — but a slow
+// CLI retry of a 👀 is exactly the late mark this exists to stop.
+//
+// The CLI, when it runs, is detached and unref'd: handlers run in brokerd,
+// which outlives the turn, so an attached child would PROBABLY survive.
+// "Probably survives" is precisely how an outbound send reports success and
+// dies (CLAUDE.md, the MCP-shim rule), and getting it right costs nothing.
+//
 // ── Two marks on one message must never race ─────────────────────────────────
-// Each mark is a whole `openclaw` CLI start-up, measured at 15 seconds of
-// wall time on the box (2026-09-05, `message react --dry-run`). A short turn
-// asks for 👀 at turn_start and 👍 a few seconds later, so two CLIs are alive
-// at once and whichever finishes LAST decides what the person sees — a 👀
-// landing after the 👍 leaves "working" on a message that is done, for ever.
-// Miron saw the shape of it: his "deleted" text arrived before the 👍.
+// A short turn asks for 👀 at turn_start and 👍 a few seconds later. On the
+// CLI both are alive at once and whichever finishes LAST decides what the
+// person sees — a 👀 landing after the 👍 leaves "working" on a message that is
+// done, for ever. Miron saw the shape of it: his "deleted" text arrived before
+// the 👍.
 //
-// So one in-flight mark per message. A newer mark for the same message kills
-// the older child if it has not exited: a 👀 that could not land before the
-// work finished was never needed, and the 👍 goes out sooner. If the older
-// child has already exited, the newer mark simply replaces it on the phone,
-// which is the lifecycle this feature was built on. Killing is best-effort and
-// claim-free, like everything else here.
-const inFlight = new Map(); // messageId → child
+// So one in-flight mark per message. On the socket a newer mark waits for the
+// older one to be answered and then goes — milliseconds, and the order is the
+// order they were asked in. On the CLI a newer mark kills the older child if it
+// has not exited: a 👀 that could not land before the work finished was never
+// needed, and the 👍 goes out sooner. If the older child has already exited,
+// the newer mark simply replaces it on the phone, which is the lifecycle this
+// feature was built on. Killing is best-effort and claim-free, like everything
+// else here.
+const inFlight = new Map(); // messageId → { child } | { promise }
 
 // Injectable for the suite, which must be able to assert on what was said
 // without a journal — and so a test never writes into the on-box one.
@@ -240,19 +275,72 @@ let log = (line) => console.log(line);
 let logError = (line) => console.error(line);
 function _setLogs(out, err) { log = out || log; logError = err || logError; }
 
+// `deps.rpc` is the suite's door onto the socket path. Left out, the real one
+// is used only where it can be — `gateway-rpc.available()` is false in a test
+// process, so no test reaches the live gateway by forgetting to stub it.
 function placeMark(opts = {}, deps = {}) {
-  const args = buildReactArgs(opts);
-  if (!args) return { attempted: false, reason: 'not_applicable' };
-  const spawnFn = deps.spawn || spawn;
-  const key = String(opts.messageId);
-  let superseded = false;
+  const req = buildReactRequest(opts);
+  if (!req) return { attempted: false, reason: 'not_applicable' };
+  const rpc = deps.rpc !== undefined ? deps.rpc
+    : (gatewayRpc.available() ? gatewayRpc.messageAction : null);
+  const out = rpc ? placeViaGateway(req, opts, rpc, deps) : placeViaCli(req, opts, deps);
+  if (!out.attempted) return out;
+  return { attempted: true, state: opts.state, emoji: REACTION_STATES[opts.state], ...(out.superseded ? { superseded: true } : {}) };
+}
+
+// Stops a CLI child still starting up for this message. An RPC entry is never
+// stopped — it is milliseconds from done, and the newer mark queues behind it.
+function supersede(key) {
   const prev = inFlight.get(key);
-  if (prev && !prev.exited) {
-    superseded = true;
-    prev.killed = true;
-    try { if (typeof prev.child.kill === 'function') prev.child.kill(); } catch { /* already gone */ }
-    inFlight.delete(key);
-  }
+  if (!prev || !prev.child || prev.exited) return false;
+  prev.killed = true;
+  try { if (typeof prev.child.kill === 'function') prev.child.kill(); } catch { /* already gone */ }
+  inFlight.delete(key);
+  return true;
+}
+
+function placeViaGateway(req, opts, rpc, deps) {
+  const key = req.messageId;
+  const superseded = supersede(key);
+  const prev = inFlight.get(key);
+  const before = prev && prev.promise ? prev.promise : Promise.resolve();
+  log(`[reactions] ${opts.state} → ${key}${superseded ? ' (superseded a mark still starting up)' : ''} via gateway`);
+  const entry = {};
+  entry.promise = before.then(() => rpc({
+    channel: req.channel,
+    action: 'react',
+    params: {
+      chatJid: req.target,
+      messageId: req.messageId,
+      emoji: req.emoji,
+      ...(req.remove ? { remove: true } : {}),
+    },
+  })).then(
+    () => {},
+    (err) => {
+      // Never reached the gateway: the CLI is a clean retry — unless a newer
+      // mark for this message has been asked for since, which says more than
+      // this one and is already on its way.
+      if (err && err.dispatched === false) {
+        if (inFlight.get(key) !== entry) return;
+        inFlight.delete(key);
+        placeViaCli(req, opts, deps, { fallback: err.message });
+        return;
+      }
+      logError(`[reactions] ${opts.state} ${key} failed via gateway: ${err && err.message}`);
+    },
+  ).finally(() => {
+    if (inFlight.get(key) === entry) inFlight.delete(key);
+  });
+  inFlight.set(key, entry);
+  return { attempted: true, ...(superseded ? { superseded: true } : {}) };
+}
+
+function placeViaCli(req, opts, deps, { fallback } = {}) {
+  const args = buildReactArgs(opts);
+  const spawnFn = deps.spawn || spawn;
+  const key = req.messageId;
+  const superseded = supersede(key);
   try {
     const child = spawnFn('openclaw', args, { detached: true, stdio: 'ignore' });
     // ── Say what was tried, and say when it failed ────────────────────────────
@@ -265,7 +353,7 @@ function placeMark(opts = {}, deps = {}) {
     // and the shape above it in CLAUDE.md: null and [] must never collapse).
     // A trace, not an alarm: one line per mark asked for, one more only when
     // the CLI exits non-zero.
-    log(`[reactions] ${opts.state} → ${key}${superseded ? ' (superseded a mark still starting up)' : ''}`);
+    log(`[reactions] ${opts.state} → ${key}${superseded ? ' (superseded a mark still starting up)' : ''} via cli${fallback ? ` (gateway: ${fallback})` : ''}`);
     // An ENOENT on a box without the CLI arrives as an event, not a throw, and
     // an unhandled 'error' on a child process takes the whole daemon down.
     const entry = { child, exited: false, killed: false };
@@ -289,8 +377,61 @@ function placeMark(opts = {}, deps = {}) {
     logError(`[reactions] ${opts.state} ${key} could not spawn: ${e && e.message}`);
     return { attempted: false, reason: 'spawn_failed' };
   }
-  return { attempted: true, state: opts.state, emoji: REACTION_STATES[opts.state], ...(superseded ? { superseded: true } : {}) };
+  return { attempted: true, ...(superseded ? { superseded: true } : {}) };
 }
+
+// ── The opening mark waits for a slow answer ────────────────────────────────
+// A 👀 means "I'm on it". Under a reply that has already arrived it means
+// nothing, and measured on 123 real messages (2026-09-15..25) that was most of
+// them: a quarter were answered inside 10s, and the 👀 landed AFTER the reply
+// in 57 of 77. So the owner's rule (2026-09-25): the opening mark goes on only
+// if nothing has answered within `eyes_delay_seconds` (default 15). brokerd
+// holds the timer; a reply, a closing mark or the end of the turn cancels it
+// (`incidents.md`, "The eyes arrived after the answer").
+//
+// Only the two marks that PROMISE an answer wait. 🙏 on a thanks and the 👍 of
+// a "stop reminding me" are the answer, and go on at once.
+const DELAYABLE_OPENING = new Set(['working', 'listening']);
+// A bare "תודה" right after Olma asked them something is their ANSWER — to
+// "להוסיף לך את המשימה ליומן?" it most likely means yes (owner, 2026-09-26) —
+// so it gets no 🙏 and no silence, and the model decides what it meant. The
+// question has to be recent: after this long, a thanks closes the day.
+const THANKS_AFTER_QUESTION_MS = 3 * 60 * 60 * 1000;
+
+const EYES_DELAY_FLAG = 'eyes_delay_seconds';
+const MAX_EYES_DELAY_S = 120;
+
+// `endSignalsLive` is false while the gateway runs a plugin from before the
+// turn signals existed: nothing would ever cancel the timer, so every message
+// would get a 👀 fifteen seconds in whether or not it had been answered. Then
+// the mark goes on at once, as it did before this existed.
+function openingDelayMs(state, flagValue, endSignalsLive) {
+  if (!DELAYABLE_OPENING.has(state) || !endSignalsLive) return 0;
+  const n = Number(flagValue);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return Math.min(n, MAX_EYES_DELAY_S) * 1000;
+}
+
+// Is the running gateway's plugin one that says when a reply goes out and when
+// a turn ends? Read off the stamp the plugin writes at register (the same file
+// `config-guard.checkReplyGateLive` reads), per call with a minute's cache —
+// a gateway restart is what makes it true, and nothing tells brokerd one
+// happened. Unreadable is false: the honest fallback is the old immediate 👀.
+const TURN_END_HOOK = 'agent_end';
+const STAMP_CACHE_MS = 60_000;
+let stampCache = { at: 0, live: false };
+function endSignalsLive({ now = Date.now(), readFileSync = require('node:fs').readFileSync } = {}) {
+  if (now - stampCache.at < STAMP_CACHE_MS) return stampCache.live;
+  let live = false;
+  try {
+    const file = process.env.OLMA_PLUGIN_REGISTER_STAMP || '/opt/olma2/run/turn-context-plugin.registered';
+    const rec = JSON.parse(String(readFileSync(file, 'utf8')));
+    live = Array.isArray(rec.hooks) && rec.hooks.map(String).includes(TURN_END_HOOK);
+  } catch { live = false; }
+  stampCache = { at: now, live };
+  return live;
+}
+function _resetStampCache() { stampCache = { at: 0, live: false }; }
 
 // Which tools earn which mark. A table rather than calls sprinkled through the
 // handlers, because the dispatcher is the one place every tool already passes
@@ -535,7 +676,8 @@ const VOCAB_FLAG = 'reaction_emoji';
 
 module.exports = {
   REACTION_STATES, REACTION_CAPABLE, TOOL_MARKS, LIVE_WINDOW_MS, VOCAB_FLAG,
+  THANKS_AFTER_QUESTION_MS, EYES_DELAY_FLAG, TURN_END_HOOK, openingDelayMs, endSignalsLive, _resetStampCache,
   noteMarkAttempted, doneMarkStands,
-  isReactionCapable, buildReactArgs, outcomeState, placeMark, markFor, isLive,
+  isReactionCapable, buildReactRequest, buildReactArgs, outcomeState, placeMark, markFor, isLive,
   cleanMessageId, vocabulary, isUsableEmoji, _setLogs,
 };
