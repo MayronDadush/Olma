@@ -2802,6 +2802,20 @@ exact start in the reader's own offset and says not to recompute it
 (`channels/openclaw.js`, `startPhrase`). A daypart or a whole day keeps the old
 wording, because there is no exact instant to hand over.
 
+**The member who heard nothing, the same day.** The count line did what it
+said, and that was the fault: it pinged nobody, and it promised "״היי״ בפרטי
+וזה מסתדר" about a door that was shut. `startCoordination` swept in whoever had
+written to her at that moment, and nothing ever let anybody in afterwards, so
+the member in Australia would have stayed outside the call being arranged for
+everyone even if she had written the minute she read it. The opening line now
+TAGS whoever has not written (owner: "לתייג אותם בשורת הפתיחה"), and
+`group-meetings.admitLateMembers` keeps the promise. On the room's slower
+sweep, anybody the gate now counts as connected with no participant row gets
+one, plus the same invite everybody got. The room hears one line about it:
+"@… הצטרפה — שאלתי בפרטי 👋". The one test that pinned the old "never a
+tag" behaviour (`group-voice.test.js`) was rewritten to the new rule, not
+deleted.
+
 ### The room's joke got a lecture (2026-09-23)
 
 Meeting 42 had just been confirmed in פחם הסעות. At 12:13 UTC Bar tagged

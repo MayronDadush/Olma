@@ -250,6 +250,35 @@ const TEMPLATES = [
     },
     text: 'מתחילה לתאם *{{title}}* 🎯\nשאלתי בפרטי {{asked}} מכם שכתבו לי, ואחזור לכאן עם מה שמסתדר.\n{{outside_note}}',
   },
+  // Who has not written to her yet, TAGGED in the opening line (owner,
+  // 2026-09-25, פנתרה: the member in Australia heard only the count, and a
+  // count pings nobody). Two keys because Hebrew says "you" differently to one
+  // person and to several; the count line above is what is left when none of
+  // them can be tagged.
+  {
+    key: 'group_coord_outside', audience: 'group', label: 'תיאום — מי שעוד לא כתב לה (אחד)',
+    help: 'בתוך שורת הפתיחה של תיאום, כשאדם אחד בקבוצה עוד לא כתב לה בפרטי. מתייגת אותו, כדי שיכתוב לה ותצרף אותו.',
+    vars: { who: 'התיוג שלו' }, required: ['who'],
+    sample: { who: '@+972501234567' },
+    text: '{{who}} עוד לא כתבת לי בפרטי — ״היי״ שם ואצרף אותך לתיאום ☺️',
+  },
+  {
+    key: 'group_coord_outside_many', audience: 'group', label: 'תיאום — מי שעוד לא כתבו לה (כמה)',
+    help: 'אותה שורה, כשכמה אנשים בקבוצה עוד לא כתבו לה בפרטי.',
+    vars: { who: 'התיוגים שלהם' }, required: ['who'],
+    sample: { who: '@+972501234567 @+972521234567' },
+    text: '{{who}} עוד לא כתבתם לי בפרטי — ״היי״ שם ואצרף אתכם לתיאום ☺️',
+  },
+  // Somebody let into a coordination after it started, because they have now
+  // written to her (`group-meetings.admitLateMembers`). Once per person.
+  {
+    key: 'group_coord_joined', audience: 'group', label: 'תיאום — מישהו הצטרף באמצע',
+    help: 'כשמי שעוד לא היה בתיאום כתב לה בפרטי והיא צירפה אותו. נאמרת פעם אחת לכל אדם, בשעות היום של הקבוצה.',
+    vars: { who: 'התיוג של מי שהצטרף', verb: 'הצטרף / הצטרפה / הצטרפו — לפי מה שהם הגדירו, זכר כשלא הגדירו' },
+    required: ['who'],
+    sample: { who: '@+972501234567', verb: 'הצטרפה' },
+    text: '{{who}} {{verb}} — שאלתי בפרטי 👋',
+  },
   {
     key: 'group_coord_base', audience: 'group', label: 'תיאום — יש כיוון',
     help: 'פעם אחת בכל תיאום, ברגע שיש זמן שכמה אנשים אמרו לו כן (או שהגיע למינימום, בקבוצת משחק).',

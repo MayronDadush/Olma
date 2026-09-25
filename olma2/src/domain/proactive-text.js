@@ -279,16 +279,23 @@ const tidy = (s) => s.replace(/\n[ \t]*(?=\n)/g, '').replace(/\n{2,}/g, '\n');
 
 function renderGroupCoordination(line, overrides) {
   if (line.kind === 'started') {
-    // A COUNT, never people. Who has not written is already the gate notice's
-    // sentence, and saying it twice in two voices is the one thing this family
-    // of lines is careful not to do — so this line only says that such people
-    // exist, and only when they do (the same rule as a base line never said to
-    // nobody).
+    // Until 2026-09-25 a COUNT, never people: who had not written was the gate
+    // notice's sentence. An open room says no gate notice, though, and in
+    // פנתרה the one member who had never written heard only "somebody here is
+    // not counted", which pings nobody. So the owner's rule now is to TAG them
+    // here (`outsideNote`), once, in the line that starts the coordination —
+    // and the promise it makes is kept by `group-meetings.admitLateMembers`.
     return templates.render(keyFor('group_coord_started', line), {
       title: slotText(line.title), asked: String(line.asked),
       cities: line.multiZone ? meetingTime.citiesPhrase(line.zones, line.roomTz) : '',
-      outside_note: line.outside ? OUTSIDE_NOTE : '',
+      outside_note: outsideNote(line, overrides),
     }, overrides).trim();
+  }
+  if (line.kind === 'joined') {
+    const phones = (line.phones || []).filter(isTaggableNumber);
+    if (!phones.length) return null;
+    const verb = phones.length > 1 ? 'הצטרפו' : (line.address === 'feminine' ? 'הצטרפה' : 'הצטרף');
+    return templates.render('group_coord_joined', { who: mentionTokens(phones), verb }, overrides);
   }
   if (line.kind === 'base' || line.kind === 'moved') {
     const vars = { yes: String(line.yes), missing: mentionTokens(line.missing || []) };
@@ -362,6 +369,19 @@ const ONE_OPTION = 'מועד אחד';
 const MANY_OPTIONS = 'מועדים';
 const PLACE_ASK = 'איפה נפגשים? תכתבו לי ואני אוסיף ליומן 📍';
 const PLACE_ASK_ONLINE = 'איך מתחברים? זום, מיט, וידאו בוואטסאפ — תכתבו לי ואני אוסיף ליומן 🎥';
+// The opening line's note about members who have not written to her: their
+// tags when the room can tag any of them (owner, 2026-09-25), and the count
+// sentence below when it cannot. A LID is never a tag, so a room whose missing
+// members are all LIDs keeps the old line rather than going silent about them.
+function outsideNote(line, overrides) {
+  const phones = (line.outsidePhones || []).filter(isTaggableNumber);
+  if (phones.length) {
+    return templates.render(phones.length > 1 ? 'group_coord_outside_many' : 'group_coord_outside',
+      { who: mentionTokens(phones) }, overrides);
+  }
+  return line.outside ? OUTSIDE_NOTE : '';
+}
+
 const OUTSIDE_NOTE = 'מי שעוד לא כתב לי בפרטי לא נספר פה — ״היי״ בפרטי וזה מסתדר ☺️';
 const WHO_ALL = 'כולם בפנים';
 const WHO_IN = 'בפנים:';

@@ -188,7 +188,12 @@ function decideLine(co, {
   // time, which in the rooms measured so far took hours, and until then the room
   // that asked her for something heard nothing at all.
   if (!saidStarted) {
-    return { kind: 'started', title: co.title, asked: co.participants, outside: co.outside || 0 };
+    return {
+      kind: 'started', title: co.title, asked: co.participants, outside: co.outside || 0,
+      // Who of them the line can TAG (owner, 2026-09-25). The count stays: it
+      // is what a room whose missing members are all LIDs still hears.
+      outsidePhones: co.outsidePhones || [],
+    };
   }
 
   // Then anything a MEMBER asked her to say here (owner, 2026-09-22). It comes

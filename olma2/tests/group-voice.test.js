@@ -890,7 +890,10 @@ test('the three shapes of that line, exactly', () => {
     '@+972542636760: ב-4 קצת חם 📣');
 });
 
-test('a room with members who never wrote is told they are not counted, without a name or a tag', async () => {
+// Until 2026-09-25 this line counted them and never tagged them. The owner
+// reversed that off פנתרה (a count pings nobody, and an open room says no gate
+// notice), so it now TAGS them — still never by name.
+test('a room with members who never wrote hears them tagged, never named', async () => {
   const { group, people } = await room(41);
   const [a] = people;
   // Somebody joins who has never written to her — the Padel Gang shape.
@@ -905,9 +908,8 @@ test('a room with members who never wrote is told they are not counted, without 
   await pass(sent, null, group.external_id);
   assert.equal(sent.length, 1);
   assert.match(sent[0].body, /שאלתי בפרטי 3 מכם/, 'the three she can reach, not the four in the room');
-  assert.match(sent[0].body, /לא נספר/, 'and that somebody here is not counted');
+  assert.ok(sent[0].body.includes('@+972609990041 עוד לא כתבת לי בפרטי'), 'tagged, so it pings them');
   assert.equal(sent[0].body.includes('חדש'), false, 'never by name');
-  assert.equal(sent[0].body.includes('972609990041'), false, 'and never by number');
 });
 
 // ── מירון's padel room, 2026-09-22 ───────────────────────────────────────────
