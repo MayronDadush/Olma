@@ -116,6 +116,12 @@ const DEFAULTS = {
   // feature nobody was offered yet. Blocks new links only; anyone already
   // connected keeps working.
   google_connect_phones: '',
+  // jobs/twin-shadow.js: Jev (Typesafe) answers "is this new task already on
+  // their list?" beside the code, on real tasks, and nothing acts on it. OFF
+  // by default and read every tick: turning it on sends new task titles and
+  // the open list beside them to OpenRouter, which the owner allowed for this
+  // on 2026-09-24, and turning it off stops that on the next tick.
+  jev_shadow_twins: false,
 };
 
 async function getFlag(client, key) {
