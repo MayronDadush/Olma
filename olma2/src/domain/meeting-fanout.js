@@ -290,6 +290,24 @@ const CANCEL_CLEANUP_HINTS = {
   none: '',
 };
 
+// What the person leaving a confirmed meeting is told about their calendar
+// (calendar.removeMeetingAttendee's answer). Taken off → say so, that is the
+// owner's line. No shared event of theirs → their own copy, if any, is still
+// theirs to offer to delete. Anything that did not work is said as it is, and
+// deleting the shared event is never offered: it would take it off everyone.
+function withdrawCalendarHint(cal) {
+  if (cal.removed) {
+    return 'It has also been taken off their Google calendar — tell them that, in the same breath. Nobody else\'s calendar changed.';
+  }
+  if (['no_event', 'not_connected', 'not_on_event'].includes(cal.reason)) {
+    return 'If they put it on their own calendar themselves, offer to take it off: find it with my_calendar_events and call delete_calendar_event.';
+  }
+  if (cal.reason === 'no_successor') {
+    return 'It is still on their Google calendar: they host that event and nobody else in the meeting has a calendar that can, and deleting it would take it off everyone\'s. Say so plainly; do NOT offer to delete it.';
+  }
+  return 'Taking it off their Google calendar did not work just now — tell them it may still show there, and that they can decline it from the calendar itself. Do NOT delete the event: it is everyone\'s.';
+}
+
 // What to tell the confirming user's own agent, in their own turn.
 function calendarHintFor(role, meetingId) {
   switch (role) {
@@ -442,7 +460,11 @@ async function afterOptOut(client, actor, meetingId, res) {
       meetingId: Number(meetingId), title: brief.title || 'meeting',
       byName: actorName(actor), slot: brief.confirmed_slot,
     }, { key: `mwithdraw:${meetingId}:${actor.id}` });
-    res.data.hint = 'The meeting is still on for the others — say so. If it sits on this user\'s calendar, offer to take it off: their own event goes via delete_calendar_event; a Google invitation they decline from the calendar itself.';
+    // Off THEIR calendar, and only theirs (owner, 2026-09-24) — never the
+    // event, never anybody else's copy (calendar.removeMeetingAttendee).
+    const cal = (await calendar.removeMeetingAttendee(client, meetingId, actor.id)).data;
+    res.data.calendar = cal;
+    res.data.hint = `The meeting is still on for the others — say so. ${withdrawCalendarHint(cal)}`;
     return res;
   }
 

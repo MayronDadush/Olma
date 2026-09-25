@@ -518,7 +518,7 @@ async function updateEvent(client, userId, { eventId, title, start, end, locatio
   });
 }
 
-async function deleteEvent(client, userId, { eventId }, opts = {}) {
+async function deleteEvent(client, userId, { eventId, notify = true }, opts = {}) {
   if (!eventId) return err('invalid', 'event_id is required');
   return withAccessToken(client, userId, opts, async (token, accessLevel, o) => {
     const refusal = requireWritable(accessLevel);
@@ -527,8 +527,11 @@ async function deleteEvent(client, userId, { eventId }, opts = {}) {
       // sendUpdates=all: if the user organised this event with invitees,
       // Google mails each of them a cancellation — deleting silently would
       // leave everyone else planning around a ghost.
+      // `notify: false` is only for an event being REPLACED by another one
+      // that already mailed everybody (removeMeetingAttendee's hand-over): a
+      // cancellation beside the new invitation reads as the meeting being off.
       await google.calendarFetch(token,
-        `/calendars/primary/events/${encodeURIComponent(eventId)}?sendUpdates=all`,
+        `/calendars/primary/events/${encodeURIComponent(eventId)}?sendUpdates=${notify ? 'all' : 'none'}`,
         { ...o, method: 'DELETE' });
     } catch (e) {
       if (e.code === 'unauthorized') throw e;
@@ -696,10 +699,80 @@ async function removeMeetingEvent(client, meetingId, opts = {}) {
   return ok({ removed: true });
 }
 
+// One person leaving a CONFIRMED meeting that carries on (owner, 2026-09-24):
+// the event comes off THEIR calendar and stays exactly as it was on everybody
+// else's — "רק תוציא אותו מהאירוע ביומן (לא את כולם או תמחק בטעות את
+// האירוע)". Two shapes, because Google has two:
+//   - they are a GUEST: the organiser's copy is patched with the guest list
+//     minus their address, which is what takes it off their calendar;
+//   - they are the ORGANISER: the event lives on their calendar, and deleting
+//     it there deletes it for everyone. So it is handed over first — the same
+//     event is created on the next writer's calendar with the others invited
+//     (createSharedMeetingEvent, which re-points the meeting row) — and only
+//     once that has succeeded is the old one deleted, quietly, since the
+//     new invitation has already gone to everybody. Nobody left who can host
+//     it: the old one stays where it is, and the result says so.
+// Best-effort like removeMeetingEvent: never an error, so leaving still works
+// when Google does not, and the caller learns only what really happened.
+async function removeMeetingAttendee(client, meetingId, userId, opts = {}) {
+  const { rows: [m] } = await client.query(
+    `SELECT calendar_event_id, calendar_organiser_id FROM meetings WHERE id = $1`, [meetingId]);
+  if (!m || !m.calendar_event_id || !m.calendar_organiser_id) return ok({ removed: false, reason: 'no_event' });
+  const organiserId = Number(m.calendar_organiser_id);
+  try {
+    if (organiserId !== Number(userId)) {
+      const email = await accountEmail(client, userId, opts);
+      if (!email) return ok({ removed: false, reason: 'not_connected' });
+      const res = await withAccessToken(client, organiserId, opts, async (token, _access, o) => {
+        const path = `/calendars/primary/events/${encodeURIComponent(m.calendar_event_id)}`;
+        const ev = await google.calendarFetch(token, path, o);
+        const before = Array.isArray(ev.attendees) ? ev.attendees : [];
+        const after = before.filter((a) => String(a.email || '').toLowerCase() !== email.toLowerCase());
+        if (after.length === before.length) return ok({ removed: false, reason: 'not_on_event' });
+        await google.calendarFetch(token, `${path}?sendUpdates=none`, {
+          ...o, method: 'PATCH', body: JSON.stringify({ attendees: after }),
+        });
+        return ok({ removed: true });
+      });
+      if (!res.ok || !res.data.removed) return ok({ removed: false, reason: res.ok ? res.data.reason : 'patch_failed' });
+      await audit.record(client, organiserId, 'calendar.meeting_attendee_removed', {
+        meetingId: Number(meetingId), userId: Number(userId),
+      });
+      return ok({ removed: true });
+    }
+
+    // They host it. Read it as it stands (a time moved on Google is still
+    // the time), then hand it over before anything is deleted.
+    const cur = await withAccessToken(client, organiserId, opts, async (token, _access, o) => ok(
+      await google.calendarFetch(token, `/calendars/primary/events/${encodeURIComponent(m.calendar_event_id)}`, o)));
+    if (!cur.ok || !cur.data.start || !cur.data.start.dateTime) return ok({ removed: false, reason: 'read_failed' });
+    const roles = await meetingCalendarRoles(client, meetingId);
+    if (!roles.organiserId || roles.organiserId === organiserId) {
+      return ok({ removed: false, reason: 'no_successor' });
+    }
+    const made = await createSharedMeetingEvent(client, roles.organiserId, {
+      meetingId, start: cur.data.start.dateTime, end: cur.data.end.dateTime, location: cur.data.location,
+    }, opts);
+    if (!made.ok) return ok({ removed: false, reason: 'handover_failed' });
+    const gone = await deleteEvent(client, organiserId, { eventId: m.calendar_event_id, notify: false }, opts);
+    if (!gone.ok) {
+      // Two events now, and the new one is the one the meeting row names. The
+      // old one is theirs to delete; say so rather than pretend.
+      return ok({ removed: false, reason: 'delete_failed', handedOver: true });
+    }
+    await audit.record(client, organiserId, 'calendar.meeting_event_handed_over', {
+      meetingId: Number(meetingId), to: roles.organiserId,
+    });
+    return ok({ removed: true, handedOver: true });
+  } catch {
+    return ok({ removed: false, reason: 'failed' });
+  }
+}
+
 module.exports = {
   PROVIDER, MAX_EVENTS,
   beginConnection, completeOAuth, getStatus, disconnect, loadIntegration,
   listEvents, createEvent, updateEvent, deleteEvent, eventIdFor,
   usableAccessToken,
-  accountEmail, meetingCalendarRoles, createSharedMeetingEvent, removeMeetingEvent,
+  accountEmail, meetingCalendarRoles, createSharedMeetingEvent, removeMeetingEvent, removeMeetingAttendee,
 };

@@ -852,6 +852,97 @@ test('deleteEvent tolerates already-gone and refuses view-only access', async ()
   assert.equal(refused.error.reason, 'read_only');
 });
 
+// ---- one person leaving a confirmed meeting ----------------------------------
+// Owner, 2026-09-24: off THEIR calendar, and only theirs — "לא את כולם או
+// תמחק בטעות את האירוע". The one thing none of these may ever do is DELETE the
+// event while anybody is still going to it.
+
+const deletes = (f) => f.calls.filter((c) => c.init.method === 'DELETE');
+
+test('a guest leaving is taken off the guest list; the event and everyone else stay', async () => {
+  const { a, b, meetingId } = await confirmedMeetingFixture('+972632000031', '+972632000032');
+  await db.pool.query(`UPDATE integrations SET account_label = 'bet@example.com' WHERE user_id = $1`, [b.id]);
+  await db.pool.query(`UPDATE meetings SET calendar_event_id = 'evt-g', calendar_organiser_id = $2 WHERE id = $1`,
+    [meetingId, a.id]);
+  let patched = null;
+  const fetchImpl = fakeFetch({
+    'calendars/primary/events/evt-g': (url, init) => {
+      if (init.method === 'PATCH') { patched = { url: String(url), body: JSON.parse(init.body) }; return { body: {} }; }
+      return { body: { id: 'evt-g', attendees: [{ email: 'Bet@Example.com' }, { email: 'gimel@example.com' }] } };
+    },
+  });
+  const res = await withTx(db.pool, (c) => calendar.removeMeetingAttendee(c, meetingId, b.id, { fetchImpl }));
+  assert.deepEqual(res.data, { removed: true });
+  assert.deepEqual(patched.body.attendees, [{ email: 'gimel@example.com' }], 'only them, whatever the case of the address');
+  assert.match(patched.url, /sendUpdates=none/, 'the others are not mailed about somebody else leaving');
+  assert.equal(deletes(fetchImpl).length, 0, 'the event is never deleted');
+});
+
+test('the host leaving hands the event over first, and only then removes theirs, quietly', async () => {
+  const { a, b, meetingId } = await confirmedMeetingFixture('+972632000033', '+972632000034');
+  await db.pool.query(`UPDATE meetings SET calendar_event_id = 'evt-h', calendar_organiser_id = $2 WHERE id = $1`,
+    [meetingId, a.id]);
+  await db.pool.query(`UPDATE meeting_participants SET state = 'opted_out' WHERE meeting_id = $1 AND user_id = $2`,
+    [meetingId, a.id]);
+  const order = [];
+  let created = null;
+  const fetchImpl = fakeFetch({
+    'calendars/primary/events/evt-h': (url, init) => {
+      order.push(init.method || 'GET');
+      return init.method === 'DELETE' ? { status: 204, body: {} } : { body: {
+        id: 'evt-h', location: 'הקפה',
+        start: { dateTime: '2026-08-20T13:00:00+03:00' }, end: { dateTime: '2026-08-20T14:00:00+03:00' },
+      } };
+    },
+    'calendars/primary/events': (url, init) => {
+      order.push('CREATE');
+      created = JSON.parse(init.body);
+      return { body: { id: 'evt-new', summary: 'קפה' } };
+    },
+  });
+  const res = await withTx(db.pool, (c) => calendar.removeMeetingAttendee(c, meetingId, a.id, { fetchImpl }));
+  assert.deepEqual(res.data, { removed: true, handedOver: true });
+  assert.deepEqual(order, ['GET', 'CREATE', 'DELETE'], 'the new one exists before the old one goes');
+  assert.equal(created.start.dateTime, '2026-08-20T13:00:00+03:00', 'the same time, as it stands on Google');
+  assert.equal(created.location, 'הקפה');
+  assert.match(deletes(fetchImpl)[0].url, /sendUpdates=none/, 'no cancellation beside the new invitation');
+  const row = (await db.pool.query(
+    `SELECT calendar_event_id, calendar_organiser_id FROM meetings WHERE id = $1`, [meetingId])).rows[0];
+  assert.equal(row.calendar_event_id, 'evt-new');
+  assert.equal(Number(row.calendar_organiser_id), Number(b.id), 'a later cancellation reaches the new host');
+});
+
+test('a host nobody can replace keeps the event — it is never deleted out from under the others', async () => {
+  const { a, meetingId } = await confirmedMeetingFixture('+972632000035', '+972632000036', { connectB: false });
+  await db.pool.query(`UPDATE meetings SET calendar_event_id = 'evt-s', calendar_organiser_id = $2 WHERE id = $1`,
+    [meetingId, a.id]);
+  await db.pool.query(`UPDATE meeting_participants SET state = 'opted_out' WHERE meeting_id = $1 AND user_id = $2`,
+    [meetingId, a.id]);
+  const fetchImpl = fakeFetch({
+    'calendars/primary/events/evt-s': { body: { id: 'evt-s',
+      start: { dateTime: '2026-08-20T13:00:00+03:00' }, end: { dateTime: '2026-08-20T14:00:00+03:00' } } },
+  });
+  const res = await withTx(db.pool, (c) => calendar.removeMeetingAttendee(c, meetingId, a.id, { fetchImpl }));
+  assert.deepEqual(res.data, { removed: false, reason: 'no_successor' });
+  assert.equal(deletes(fetchImpl).length, 0);
+});
+
+test('leaving with no shared event, no calendar, or Google down reports and never throws', async () => {
+  const { a, b, meetingId } = await confirmedMeetingFixture('+972632000037', '+972632000038');
+  const none = await withTx(db.pool, (c) => calendar.removeMeetingAttendee(c, meetingId, b.id, { fetchImpl: fakeFetch({}) }));
+  assert.deepEqual(none.data, { removed: false, reason: 'no_event' });
+
+  await db.pool.query(`UPDATE meetings SET calendar_event_id = 'evt-d', calendar_organiser_id = $2 WHERE id = $1`,
+    [meetingId, a.id]);
+  const down = await withTx(db.pool, (c) => calendar.removeMeetingAttendee(c, meetingId, b.id, { fetchImpl: fakeFetch({}) }));
+  assert.equal(down.ok, true, 'leaving must still work when Google does not');
+  assert.equal(down.data.removed, false);
+
+  await db.pool.query(`UPDATE integrations SET status = 'disconnected' WHERE user_id = $1`, [b.id]);
+  const off = await withTx(db.pool, (c) => calendar.removeMeetingAttendee(c, meetingId, b.id, { fetchImpl: fakeFetch({}) }));
+  assert.deepEqual(off.data, { removed: false, reason: 'not_connected' }, 'no calendar, nothing to take off');
+});
+
 // ---- my_calendar_events draws the block (domain/list-block.js) -------------
 // The tool itself, not just calendar.listEvents — the wiring that attaches
 // `block` and swaps the instruction hints for the relay contract is worth
