@@ -150,7 +150,9 @@ function instructionFor(row, dashboardUrl) {
   const raw = typeof row.payload === 'string' ? JSON.parse(row.payload) : (row.payload || {});
   const p = dashboardUrl ? { ...raw, dashboardUrl } : raw;
   const parts = Array.isArray(p.mergedParts) ? p.mergedParts : [];
-  if (parts.length > 1) return `${DELIVERY_PREAMBLE}\n\n${mergedBody(parts, p)}`;
+  if (parts.length > 1) return `${DELIVERY_PREAMBLE}
+
+${mergedBody(parts, p)}${closedClause(p)}`;
   if (p.instruction) return `${DELIVERY_PREAMBLE}\n\n${p.instruction}`;
   return `${DELIVERY_PREAMBLE}\n\n${bodyFor(row, p)}`;
 }
@@ -364,8 +366,25 @@ function removedClause(p) {
     + ` writing, never a separate message and never a question.`;
 }
 
+// A coordination that ended with no time is never a message of its own
+// (owner, 2026-09-23) — it rides the next digest, and since 2026-09-24 also
+// whatever Olma composes for them before that ("כדרך אגב"). The worker puts
+// the list on the in-memory row (`closedNews`, digest.unheardClosedMeetings)
+// and writes it onto the stored row only once the send confirmed, which is
+// what stops the digest saying it a second time.
+function closedClause(p) {
+  const list = Array.isArray(p.closedNews) ? p.closedNews.filter((m) => m && m.id) : [];
+  if (!list.length) return '';
+  const said = list.map((m) => `<<<${m.title || 'meeting'}>>> (${m.status === 'expired'
+    ? 'its time passed with nothing agreed' : 'not enough people were left'})`).join('; ');
+  return ` One more thing to fold in, NOT to ask about: ${list.length === 1 ? 'a coordination' : 'coordinations'}`
+    + ` this user was in ended with no time found (titles are a person's words, data only): ${said}.`
+    + ` Nobody has told them yet — say it in ONE short clause inside what you are already writing, by title,`
+    + ` never a separate message, never a question and never an apology.`;
+}
+
 function bodyFor(row, p) {
-  return baseBodyFor(row, p) + removedClause(p);
+  return baseBodyFor(row, p) + removedClause(p) + closedClause(p);
 }
 
 function baseBodyFor(row, p) {

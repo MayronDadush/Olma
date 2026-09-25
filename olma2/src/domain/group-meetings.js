@@ -32,7 +32,6 @@
 const { ok, err } = require('./results');
 const audit = require('./audit');
 const meetings = require('./meetings');
-const calendar = require('./calendar');
 const options = require('./meeting-options');
 const fanout = require('./meeting-fanout');
 const groups = require('./groups');
@@ -497,21 +496,55 @@ async function setPlace(client, group, actingUser, where, opts = {}) {
   if (!members.some((m) => Number(m.user_id) === Number(actingUser.id))) {
     return err('forbidden', 'that person is not a member of this group');
   }
-  const location = meetings.cleanLocation(where);
-  if (!location) return err('invalid', 'where is required');
+  if (!meetings.cleanLocation(where)) return err('invalid', 'where is required');
   const meeting = await currentMeeting(client, group.id, { includeClosed: true });
   if (!meeting || !['negotiating', 'confirmed'].includes(meeting.status)) {
     return err('not_found', 'nothing is being coordinated in this group right now');
   }
-  await client.query(`UPDATE meetings SET location = $2, updated_at = now() WHERE id = $1`, [meeting.id, location]);
-  await audit.record(client, actingUser.id, 'meeting.place_set', { meetingId: Number(meeting.id), groupId: group.id });
-  let calendarUpdated = false;
-  if (meeting.calendar_event_id && meeting.calendar_organiser_id) {
-    const upd = await calendar.updateEvent(client, Number(meeting.calendar_organiser_id),
-      { eventId: meeting.calendar_event_id, location }, opts);
-    calendarUpdated = Boolean(upd.ok);
+  // Any member of the room may say where, in it or not — the room's check
+  // above is the whole of it — so the one writer is asked not to repeat the
+  // participant test (`meetings.setPlace`, which the private chat shares).
+  const set = await meetings.setPlace(client, actingUser.id, Number(meeting.id), where,
+    { requireIn: false, groupId: group.id });
+  if (!set.ok) return set;
+  const res = await fanout.patchSharedEvent(client, set, { location: set.data.location }, opts);
+  return ok({ meetingId: res.data.meetingId, location: res.data.location,
+    calendarUpdated: res.data.calendarUpdated, status: res.data.meetingStatus });
+}
+
+// ── The rest of what a person can do to a coordination, from the room ────────
+// Owner, 2026-09-25: he asked the room to cancel its coordination and was told
+// that was only possible privately — true, because the room had no tool for
+// it (`incidents.md`, "The room could not cancel its own coordination"). Every
+// action on his list now has a door in the room as well as in the chat, and
+// every room door is a SECOND door into the same domain call and the same
+// fan-out the private tool uses, never a copy of it.
+//
+// What the room adds is only WHO: `actingUser` is the member whose tag started
+// the turn, chosen by the server, and they act as themselves. Unlike `settle`,
+// nobody acts through somebody else — a yes, a no, an exit are one person's,
+// and cancel/rename/remove are "anybody still IN it" in the private rule, so a
+// room member who is not in this coordination (joined after it opened, or
+// left it) is refused by name rather than borrowing a participant.
+//
+// `statuses` is which coordinations the action can touch: the negotiation
+// steps need one still negotiating; cancel, rename and leaving also reach a
+// confirmed one (the domain refuses one that has already started).
+async function participantFor(client, group, actingUser, { statuses = ['negotiating'] } = {}) {
+  const found = await roomMeetingFor(client, group, actingUser);
+  if (!found.ok) return found;
+  const meeting = found.data;
+  if (!statuses.includes(meeting.status)) {
+    return err('not_found', 'nothing is being coordinated in this group right now', { status: meeting.status });
   }
-  return ok({ meetingId: Number(meeting.id), location, calendarUpdated, status: meeting.status });
+  const { rows: [p] } = await client.query(
+    `SELECT state FROM meeting_participants WHERE meeting_id = $1 AND user_id = $2`,
+    [meeting.id, actingUser.id]);
+  if (!p || p.state === 'opted_out') {
+    return err('forbidden', 'the person who asked is not in this coordination, so they cannot change it',
+      { reason: 'not_in_it' });
+  }
+  return ok({ meeting, meetingId: Number(meeting.id), user: actingUser });
 }
 
 
@@ -635,6 +668,6 @@ async function markRelaySaid(client, meetingId, userId) {
 module.exports = {
   roomMeetingFor,
   startCoordination, coordinationStatus, statusOf, roomView, settle, setPlace, sweepSilentPausedMembers,
-  currentMeeting, coordinatingMembers, memberLabel,
+  currentMeeting, coordinatingMembers, memberLabel, participantFor,
   relayToRoom, pendingRelay, markRelaySaid, cleanRelay, relayRoomEnabled, RELAY_MAX_CHARS, RELAY_FLAG,
 };
