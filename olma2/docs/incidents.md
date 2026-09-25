@@ -79,6 +79,7 @@ never trust a dated narrative for something you are about to act on.
 - [The room that did not know its own member (fixed 2026-09-23)](#the-room-that-did-not-know-its-own-member-fixed-2026-09-23)
 - [Where do we meet, on Zoom (fixed 2026-09-23)](#where-do-we-meet-on-zoom-fixed-2026-09-23)
 - [פנתרה: one time, four clocks (fixed 2026-09-25)](#פנתרה-one-time-four-clocks-fixed-2026-09-25)
+- [A settled time could not be changed, only cancelled (fixed 2026-09-25)](#a-settled-time-could-not-be-changed-only-cancelled-fixed-2026-09-25)
 - [The room's joke got a lecture (2026-09-23)](#the-rooms-joke-got-a-lecture-2026-09-23)
 - [She called Bar את (fixed 2026-09-23)](#she-called-bar-את-fixed-2026-09-23)
 - [The poker, seven times (fixed 2026-09-23)](#the-poker-seven-times-fixed-2026-09-23)
@@ -3023,6 +3024,45 @@ decided he should be asked, so it is a new occasion with its own once-ever
 stamp (`users.room_zone_asked_at`, migration 092): one line in the private
 invite to a room coordination on several clocks, for an unconfirmed zone only,
 stamped after the send confirms. His zone was not changed by hand.
+
+### A settled time could not be changed, only cancelled (fixed 2026-09-25)
+
+Late on 2026-09-25 in פנתרה, the time was already set (meeting 46, Saturday
+12:00 Israel), and Miron asked the room to look at other dates that suit
+Australia, New York and Israel. Nothing could do that. `confirmOn` is the only
+writer of `status = 'confirmed'`, and nothing wrote it back. The only ways
+out of a settled coordination were cancelling it for everyone, which tells
+everybody twice and loses every answer already given, or leaving it. The owner's
+ask: "לפתוח מאיפה שעצרו תיאום שכבר נקבע — ולהמשיך אותו מאיפה שעצרו", from
+the private chat, the room and the page alike, by anybody still in it.
+
+`meetings.reopenMeeting` puts it back to `negotiating`. Three things decide
+what "from where it stopped" means, and each was a choice:
+
+- Every other time on the table stays there, with every answer to it.
+- The time that WAS set stays on the table with its answers cleared.
+  Otherwise every one of them is still a yes, and the next answer to anything
+  re-arms the settle onto the time that somebody just said no longer works.
+- The room's stamps about the SETTLED meeting are cleared (done, calendar,
+  day-of, hour, exact time). The ones about the negotiation keep theirs.
+
+The trap was the keys. The room's lines and the private confirmation were
+keyed once per MEETING (`g…:m…:done`, `mconf:<id>:<uid>`). A second settle
+would therefore have collided with the first and written nothing, and it
+would have been silent, because `ON CONFLICT DO NOTHING` is the design.
+After a reopening, every such key carries `:r<reopened_at>`
+(`jobs/groups.idempotencyKeyFor`, `meeting-fanout.roundOf`). A coordination
+never reopened keys exactly as before.
+
+`meeting-fanout.reopenAndTell` is the one door for all three places:
+- the shared calendar event comes off and the row forgets it;
+- queued confirmations are superseded;
+- everybody else gets one `meeting_reopened`.
+
+The room hears `group_coord_reopened`, which comes before its opening line,
+because a room that heard "סגור" and then "מתחילה לתאם" has been told the
+wrong story. Reopened from the room itself, the member's own turn says it and
+the sweep's line is stamped as heard.
 
 ### The room's joke got a lecture (2026-09-23)
 

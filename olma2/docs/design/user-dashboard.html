@@ -3628,6 +3628,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
        nobody else notices; the other tells four people you are not coming. -->
   <div class="sheetbtns wrap">
     <button class="btn ghost" id="mtCal" hidden></button>
+    <button class="btn ghost" id="mtReopen" hidden></button>
     <button class="btn ghost danger" id="mtLeave"></button>
     <button class="btn ghost" id="mtClose" data-i18n="sheet.close"></button>
   </div>
@@ -3971,6 +3972,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     leaveMeeting:        "leave_meeting",              /* NO TOOL YET — meeting_participants.left_at */
     cancelMeeting:       "cancel_meeting",             /* the page offers it only between two people */
     rejoinMeeting:       "rejoin_meeting",             /* NO TOOL YET — dashboard only */
+    reopenMeeting:       "reopen_meeting",             /* a settled time back on the table */
     pause:               "pause_olma",
     resume:              "resume_olma",
     setName:             "set_my_name",
@@ -4002,7 +4004,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     requestMoreCalls:"requestMoreCalls",
     inviteContact:"inviteContact",
     respondToMeeting:"respondToMeeting", leaveMeeting:"leaveMeeting", cancelMeeting:"cancelMeeting",
-    rejoinMeeting:"rejoinMeeting",
+    rejoinMeeting:"rejoinMeeting", reopenMeeting:"reopenMeeting",
     startMeeting:"startMeeting", addOption:"addOption", answerOption:"answerOption",
     settleMeeting:"settleMeeting",
     removeOption:"removeOption", swapOption:"swapOption", setQuorum:"setQuorum",
@@ -4655,6 +4657,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "mt.leaveAsk":"לצאת מ{name}? התשובות שלך יורדות מהספירה והתיאום יימחק מהרשימה שלך.",
       "mt.del":"מחיקת התיאום","mt.delAsk":"למחוק את {name}? נשלח ל{who} הודעה שהתיאום בוטל.",
       "toast.mtDeleted":"{name} נמחק","toast.mtDeleteFailed":"לא הצלחתי למחוק את {name}",
+      "mt.reopen":"פתיחה מחדש של הזמן","mt.reopenAgain":"עוד לחיצה — כולם יקבלו הודעה",
+      "toast.mtReopened":"{name} נפתח מחדש — שאלתי את כולם","toast.mtReopenFailed":"לא הצלחתי לפתוח מחדש את {name}",
       "sw.delete":"מחיקה","sw.leave":"יציאה","sw.again":"עוד לחיצה כדי למחוק","sw.againLeave":"עוד לחיצה כדי לצאת",
       "sw.hintTasks":"מחליקים משימה הצידה כדי למחוק אותה","sw.hintMeets":"מחליקים תיאום הצידה כדי לצאת ממנו",
       "sw.imported":"משימה מ־{name} מוחקים ב־{name}",
@@ -4980,6 +4984,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "mt.leaveAsk":"Leave {name}? Your answers stop counting and it goes off your list.",
       "mt.del":"Delete the coordination","mt.delAsk":"Delete {name}? {who} will get a message that it is off.",
       "toast.mtDeleted":"{name} deleted","toast.mtDeleteFailed":"Could not delete {name}",
+      "mt.reopen":"Reopen the time","mt.reopenAgain":"Press again — everyone will be told",
+      "toast.mtReopened":"{name} is open again — everyone was asked","toast.mtReopenFailed":"Could not reopen {name}",
       "sw.delete":"Delete","sw.leave":"Leave","sw.again":"Press again to delete","sw.againLeave":"Press again to leave",
       "sw.hintTasks":"Slide a task sideways to delete it","sw.hintMeets":"Slide a coordination sideways to leave it",
       "sw.imported":"A task from {name} is deleted in {name}",
@@ -9237,6 +9243,10 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
        actually find the event. */
     $("#mtCal").hidden = LIVE || !m.settled;
     $("#mtCal").textContent = t(m.inCal ? "mt.calRemove" : "mt.calAdd");
+    /* A settled time back on the table, while it is still ahead — the server
+       refuses one that started, and re-asks everything else (mtReopen). */
+    $("#mtReopen").hidden = !m.settled || (!!m.startsAt && new Date(m.startsAt).getTime() <= Date.now());
+    $("#mtReopen").textContent = t(mtReopenAsk === m.id ? "mt.reopenAgain" : "mt.reopen");
     /* The same answer as the list row (mtVerb): delete between two, leave
        with more — for whoever opened it too, since nobody manages one. */
     var verb = mtVerb(m);
@@ -9526,6 +9536,27 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     renderMeets(); renderStrip(selDay);
     toast(t("toast.mtDeleted", {name:L(m.t)}));
   }
+  /* Reopening tells everybody in it, so it takes a second tap, like a swipe
+     to delete does. The row stays where it is: the coordination carries on
+     from where it stopped, with every other answer standing. */
+  var mtReopenAsk = null;
+  $("#mtReopen").addEventListener("click", function(){
+    if(!mtOpen || !mtOpen.settled) return;
+    var m = mtOpen;
+    if(mtReopenAsk !== m.id){ mtReopenAsk = m.id; renderMeet(); return; }
+    mtReopenAsk = null;
+    API.call("reopenMeeting", {meeting_id:m.id});
+    if(LIVE) API.send("reopenMeeting", {meetingId:m.id}, function(data){
+      if(!data) toast(t("toast.mtReopenFailed", {name:L(m.t)}), null, true);
+      API.reload();
+    });
+    var was = m.settled;
+    m.settled = null;
+    /* Only the answers to the time that was set are asked again. */
+    Object.keys(m.ans || {}).forEach(function(k){ if(m.ans[k] && typeof m.ans[k] === "object") delete m.ans[k][was]; });
+    renderMeet(); renderMeets(); renderStrip(selDay);
+    toast(t("toast.mtReopened", {name:L(m.t)}));
+  });
   $("#mtLeave").addEventListener("click", function(){
     if(!mtOpen) return;
     var m = mtOpen;

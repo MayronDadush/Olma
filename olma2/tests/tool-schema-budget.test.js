@@ -109,7 +109,15 @@ const { IDENTITY_PARAM } = require('../src/adapters/mcp/identity-param');
 // than the total says: a room's agent is shown only group tools and a
 // person's only theirs (`intake/agent-tool-policy.js`). Margin 93 — not one
 // more ordinary tool, again.
-const JSON_CEILING = 59_500;
+//
+// Raised the fifth time, on 2026-09-25: 59,500 -> 60,300, for reopening a
+// settled coordination in both places (owner: "צריך להוסיף כלי כזה לדאשבורד
+// לשיחה הפרטית ולשיחה בקבוצה"). Measured 59,452 before and 60,236 after:
+// `reopen_meeting` and `reopen_group_coordination`, +784 between them, the
+// room's guidance in `hints`. PUT TO THE OWNER WITH ITS COST BEFORE MERGING.
+// If #523 (`places` on group_coordination_status, +142) lands first, the
+// merge needs 60,450.
+const JSON_CEILING = 60_300;
 const DESCRIPTION_CEILING = 700;
 const IDENTITY_DESCRIPTION_CEILING = 40;
 

@@ -547,6 +547,76 @@ async function cancelMeeting(client, userId, meetingId, now = Date.now()) {
   return ok({ meetingId, meetingStatus: 'cancelled', wasConfirmed });
 }
 
+// A settled time put back on the table, and the coordination carried on from
+// where it stopped (owner, 2026-09-25, פנתרה: the time was set, and then the
+// room wanted dates that suit Australia too). Anybody still in it, like every
+// other action on a coordination — nobody manages one. Only a CONFIRMED one
+// whose start is still ahead: one that already started happened, or did not.
+//
+// What "from where it stopped" means, concretely:
+//   * every option still on the table stays there, with every answer to it —
+//     nobody is asked again about a time they already answered;
+//   * EXCEPT the time that was set. Its answers are cleared, because every one
+//     of them is still a yes and the table would settle straight back onto it
+//     at the next answer to anything. It stays on the table, to be answered
+//     again; the reason somebody reopened is usually that it no longer suits;
+//   * the room's lines about the SETTLED meeting (done, calendar, the two
+//     reminders, the exact hour) are unstamped, so the next settle is told
+//     afresh; the lines about the negotiation keep theirs, and the room hears
+//     one line of its own that this happened (`group_reopened_at`).
+// The shared calendar event is the caller's (meeting-fanout.reopenAndTell),
+// since it is Google's and a rollback cannot reach it.
+async function reopenMeeting(client, userId, meetingId, now = Date.now()) {
+  const { rows: existing } = await client.query(
+    `SELECT status, confirmed_slot, confirmed_start_at, calendar_event_id FROM meetings m
+     WHERE id = $1 AND status IN ('negotiating', 'confirmed') AND ${IN_IT}`,
+    [meetingId, userId]
+  );
+  const m = existing[0];
+  if (!m) return err('not_found', 'open meeting you are in not found');
+  if (m.status !== 'confirmed') {
+    return err('invalid', 'this coordination is still open — nothing to reopen; add or answer a time instead',
+      { reason: 'not_confirmed' });
+  }
+  if (m.confirmed_start_at && new Date(m.confirmed_start_at).getTime() < now) {
+    return err('invalid', 'that meeting has already started — there is nothing left to reopen',
+      { reason: 'started' });
+  }
+  const { rows } = await client.query(
+    `UPDATE meetings m SET status = 'negotiating',
+            confirmed_slot = NULL, confirmed_start_at = NULL, confirmed_all_day = false,
+            confirmed_daypart = NULL, settled_by = NULL, settle_due_at = NULL,
+            settling_option_id = NULL, closed_at = NULL, time_set_at = NULL,
+            group_done_at = NULL, group_calendar_at = NULL, group_dayof_at = NULL,
+            group_hour_at = NULL, group_time_at = NULL, group_reopened_at = NULL,
+            group_started_at = coalesce(group_started_at, now()),
+            reopened_at = to_timestamp($3 / 1000.0), reopened_from = $4, updated_at = now()
+      WHERE id = $1 AND status = 'confirmed' AND ${IN_IT} RETURNING id`,
+    [meetingId, userId, now, m.confirmed_slot]
+  );
+  if (!rows[0]) return err('not_found', 'open meeting you are in not found');
+  // The option it settled on: the same words and the same instant. Two with
+  // both is not a shape the table allows, so the newest is taken.
+  const { rows: settledOn } = await client.query(
+    `SELECT id FROM meeting_options
+      WHERE meeting_id = $1 AND status = 'active' AND slot_text = $2
+        AND starts_at IS NOT DISTINCT FROM $3
+      ORDER BY id DESC LIMIT 1`, [meetingId, m.confirmed_slot, m.confirmed_start_at]);
+  if (settledOn[0]) {
+    await client.query('DELETE FROM meeting_option_answers WHERE option_id = $1', [settledOn[0].id]);
+  }
+  await options.mirrorCurrent(client, meetingId);
+  await audit.record(client, userId, 'meeting.reopened', {
+    meetingId: Number(meetingId), was: m.confirmed_slot,
+    optionId: settledOn[0] ? Number(settledOn[0].id) : null,
+  });
+  return ok({
+    meetingId: Number(meetingId), meetingStatus: 'negotiating', reopened: true,
+    reopenedAt: new Date(now).toISOString(), was: m.confirmed_slot, hadCalendarEvent: Boolean(m.calendar_event_id),
+    table: await options.list(client, meetingId),
+  });
+}
+
 // Rename — anybody still in it, while the meeting is still alive. The title is
 // what every invite, nudge and calendar event shows, so having no way to fix
 // it is how a meeting stays called "פגישה" forever ("עדכנתי את הפגישה" was
@@ -875,7 +945,7 @@ async function listNegotiating(client, userId = null) {
 module.exports = {
   cleanLocation,
   startMeeting, recordConstraint, proposeSlot, respondToSlot,
-  optOut, rejoin, applyExit, withdrawConfirmed, cancelMeeting, setTitle, setPlace, setQuorum,
+  optOut, rejoin, applyExit, withdrawConfirmed, cancelMeeting, reopenMeeting, setTitle, setPlace, setQuorum,
   getStatus, listMine, pendingMeetingFor, tryConfirm, settleNow, timeIsOpen, setExactTime,
   expireStaleMeetings, dropPassedOptions, expireOne, listNegotiating,
   EXPIRE_AFTER_START_MS, LEGACY_STALE_DAYS, ALL_DAY_EXTRA_MS,

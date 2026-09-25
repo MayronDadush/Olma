@@ -155,6 +155,7 @@ const EVERY_MEETING_ROW = [
   { kind: 'meeting_cancelled', payload: { meetingId: 43, title: 'x', byName: 'Ann' } },
   { kind: 'meeting_rejoined', payload: { meetingId: 43, title: 'x', byName: 'Ann' } },
   { kind: 'meeting_withdrawn', payload: { meetingId: 43, title: 'x', byName: 'Ann', slot: 'a' } },
+  { kind: 'meeting_reopened', payload: { meetingId: 43, title: 'x', byName: 'Ann', was: 'a' } },
   { kind: 'meeting_expired', payload: { meetingId: 43, title: 'x', slot: 'a' } },
   { kind: 'checkin', payload: { rung: 'stuck_meeting', meetingId: 43, checkinInstruction: 'ask about it' } },
 ];
