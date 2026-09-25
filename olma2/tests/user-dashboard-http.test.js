@@ -394,3 +394,29 @@ test('a signed-in page and its sign-in page speak the language on file', async (
   assert.match(heFront, /<html dir="rtl" lang="he">/);
   assert.ok(heFront.includes('שלום Miron'));
 });
+
+// A dead link used to answer in Hebrew only, whoever held it (owner,
+// 2026-09-26: an English page is English everywhere). A dead link names
+// nobody, so the language comes from the phone's own session, and with no
+// session the page says it in both.
+test('a dead link speaks the holder\'s language, and both when nobody is known', async () => {
+  assert.match(await (await get('/d/' + await newToken())).text(), /<title>עולמה<\/title>/);
+
+  const dead = await (await get('/d/' + 'f'.repeat(64))).text();
+  assert.ok(dead.includes('הקישור כבר לא פעיל') && dead.includes('This link has expired'),
+    'with no session the dead-link page must say it in both languages');
+
+  const sam = await makeUser(db.pool, '+972531930004', { firstName: 'Sam', locale: 'en' });
+  const link = await withTx(db.pool, (c) => auth.createLink(c, sam.id));
+  const front = await (await get('/d/' + link.data.token)).text();
+  assert.match(front, /<title>Allma<\/title>/, 'an English sign-in page still had a Hebrew tab title');
+  const opened = await get('/d/' + link.data.token, { method: 'POST' });
+  const cookie = cookieFrom(opened);
+
+  const spent = await get('/d/' + link.data.token, { method: 'POST', headers: { cookie } });
+  assert.equal(spent.status, 410);
+  const html = await spent.text();
+  assert.match(html, /<html dir="ltr" lang="en">/);
+  assert.ok(html.includes('This link has expired'));
+  assert.ok(!/[\u0590-\u05FF]/.test(html), 'Hebrew on a dead-link page for somebody whose page is English');
+});

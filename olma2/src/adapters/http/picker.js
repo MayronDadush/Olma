@@ -502,11 +502,21 @@ function deadLinkPage(res, error) {
 // working form whose submit would land in a flow nobody is watching.
 const PICKER_RETIRED = true;
 
+// In both languages: a /pick/ link carries no person we could read a
+// language off, and somebody whose conversation is in English was sent these
+// too. Hebrew first, the same order as every page that cannot tell.
 function retiredPage(res) {
   res.writeHead(410, headers());
-  return res.end(messagePage('הדף הזה נסגר',
-    'תיאום הפגישות עבר לעמוד האישי שלך, ושם אפשר לסמן מתי מתאים ולראות מה מתאים לכולם. '
-    + 'בקשו מעולמה בוואטסאפ קישור לעמוד שלכם.'));
+  return res.end(`<!doctype html><html dir="rtl" lang="he"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
+<title>עולמה · Allma</title><style>${BASE_CSS}
+hr{border:0;height:1px;background:currentColor;opacity:.12;margin:18px 0}</style></head>
+<body><div class="card center">
+<div lang="he" dir="rtl"><h1>הדף הזה נסגר</h1><p>${esc('תיאום הפגישות עבר לעמוד האישי שלך, ושם אפשר לסמן מתי מתאים ולראות מה מתאים לכולם. '
+    + 'בקשו מעולמה בוואטסאפ קישור לעמוד שלכם.')}</p></div><hr>
+<div lang="en" dir="ltr"><h1>This page has closed</h1><p>${esc('Meeting coordination has moved to your own page, where you can mark when suits you '
+    + 'and see what suits everyone. Ask Allma on WhatsApp for a link to your page.')}</p></div>
+</div></body></html>`);
 }
 
 async function handle(req, res, pool, token, opts = {}) {

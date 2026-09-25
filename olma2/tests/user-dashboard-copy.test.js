@@ -94,3 +94,54 @@ test('the empty coordination list points at a button that is really there', () =
   assert.match(PAGE, /API\.send\("startMeeting"/,
     'and pressing it has to reach the server, not just draw a card');
 });
+
+// Switching the page to English left parts of it in Hebrew (owner,
+// 2026-09-26), and the table checks above could not see it: the leaks were
+// all OUTSIDE the tables — a tab title, a seed title with no English, a date
+// formatted once at load. So this reads everything that is not a table and
+// not a comment, and every Hebrew string literal left must be the `he` half
+// of a `{he, en}` pair, where L() picks the reader's. The few Hebrew that is
+// not interface text is named below, by its text, so a new one fails here
+// with its line number instead of on somebody's English screen.
+test('no Hebrew reaches the page outside the string tables, unless it has an English twin', () => {
+  const heStart = PAGE.indexOf('\n    he:{ dir:');
+  const enEnd = PAGE.indexOf('\n  };', PAGE.indexOf('\n    en:{ dir:'));
+  assert.ok(heStart > 0 && enEnd > heStart, 'the tables have moved — this test is reading the wrong thing');
+  // Blanked rather than cut, so a finding keeps its real line number.
+  const blank = (s) => s.replace(/[^\n]/g, ' ');
+  const rest = (PAGE.slice(0, heStart) + blank(PAGE.slice(heStart, enEnd)) + PAGE.slice(enEnd))
+    .replace(/\/\*[\s\S]*?\*\//g, blank)
+    .replace(/<!--[\s\S]*?-->/g, blank)
+    .replace(/^\s*\/\/.*$/gm, blank);
+  const HEB = /[֐-׿]/;
+  // Not interface text, each for a stated reason.
+  const ALLOWED = [
+    // what shows in the tab for the instant before the script sets it from
+    // the table ("page.title", paintStatic)
+    '<title>עולמה שלי</title>',
+    // these READ what the person types, in either language
+    'if(/(^|\\s)(היום|today)(\\s|$)/.test(s)) push(0);',
+    'if(/(^|\\s)(מחר|tomorrow)(\\s|$)/.test(s)) push(1);',
+    'if(/(^|\\s)(מחרתיים|day after tomorrow)(\\s|$)/.test(s)) push(2);',
+    'if(/(השבוע הבא|שבוע הבא|next week)/.test(s)){',
+    'if(/(סוף השבוע|סופ״ש|weekend)/.test(s)){',
+    // each language is named in its own script
+    'var LANGS = [{v:"he", n:"עברית"}, {v:"en", n:"English"}];',
+    // the design preview's language key on a Hebrew keyboard; off when served
+    'if(e.key !== "l" && e.key !== "L" && e.key !== "ל") return;',
+  ];
+  const lines = rest.split('\n');
+  const found = [];
+  lines.forEach((line, i) => {
+    if (!HEB.test(line)) return;
+    if (ALLOWED.includes(line.trim())) return;
+    // A `he:"…"` value is fine when its object also says `en:` — on this line
+    // or the next, which is as far as any seed object in the file wraps.
+    const withNext = line + (lines[i + 1] || '');
+    const stray = [...line.matchAll(/(he\s*:\s*)?"([^"\\\n]*)"/g)]
+      .filter((m) => HEB.test(m[2]) && !(m[1] && /\ben\s*:/.test(withNext)));
+    const bare = line.replace(/"[^"\\\n]*"/g, '""');
+    if (stray.length || HEB.test(bare)) found.push(`${i + 1}: ${line.trim().slice(0, 100)}`);
+  });
+  assert.deepEqual(found, [], 'Hebrew an English page would show — put it in the tables, or give it an en');
+});
