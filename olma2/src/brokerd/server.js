@@ -81,7 +81,7 @@ const PENDING_MAX_PER_USER = 8;
 // production gets the worker facade, never `channels/sessions.js` directly,
 // because every export there is synchronous and this daemon answers live
 // users on the same loop.
-function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers }) {
+function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, timers, endSignalsLive }) {
   flood = flood || new FloodCounter();
   const readLidPhones = typeof lidPhoneNumbers === 'function'
     ? lidPhoneNumbers
@@ -150,6 +150,49 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers }) {
     claimOpens.set(userId, list);
   }
 
+  // ── The 👀 that waits (domain/reactions.openingDelayMs) ─────────────────────
+  // agentId → [{ messageId, timer, running, openedAt }], oldest first: one
+  // entry per message whose opening mark is due or whose turn has not ended.
+  // The gateway runs one turn per person at a time (`messages.queue.mode`
+  // followup), so the entry whose prompt was built last (`running`) is the
+  // turn that a "reply" or "end" signal from the plugin is about. A message
+  // that arrived while another turn ran keeps its own timer: it IS waiting.
+  // A turn Olma started never marks anything running (`handleTurnContext`
+  // peeks no open for it), so its reply cancels nobody's 👀.
+  const setTimer = (timers && timers.set) || ((fn, ms) => { const t = setTimeout(fn, ms); if (t.unref) t.unref(); return t; });
+  const clearTimer = (timers && timers.clear) || clearTimeout;
+  const signalsLive = typeof endSignalsLive === 'function' ? endSignalsLive : () => reactions.endSignalsLive({ now: clock() });
+  const pendingEyes = new Map();
+  function eyesOf(agentId) {
+    const list = (pendingEyes.get(agentId) || []).filter((e) => clock() - e.openedAt <= reactions.LIVE_WINDOW_MS || e.timer);
+    if (list.length) pendingEyes.set(agentId, list); else pendingEyes.delete(agentId);
+    return list;
+  }
+  function holdEyes(agentId, mark, delayMs) {
+    const list = eyesOf(agentId);
+    const entry = { messageId: mark.messageId, running: false, openedAt: clock(), timer: null };
+    entry.timer = setTimer(() => { entry.timer = null; placeMark(mark); }, delayMs);
+    list.push(entry);
+    pendingEyes.set(agentId, list);
+  }
+  function stopEyes(entry) {
+    if (entry && entry.timer) { clearTimer(entry.timer); entry.timer = null; }
+  }
+  // Its prompt is being built: this message's turn has started, so every older
+  // entry's turn is over whether or not its end was heard.
+  function eyesRunning(agentId, messageId) {
+    const list = eyesOf(agentId);
+    const idx = list.findIndex((e) => e.messageId === messageId);
+    if (idx < 0) return;
+    for (const old of list.splice(0, idx)) stopEyes(old);
+    list[0].running = true;
+    pendingEyes.set(agentId, list);
+  }
+  // A closing mark on the message says more than the 👀 would have.
+  function eyesAnswered(messageId) {
+    for (const list of pendingEyes.values()) for (const e of list) if (e.messageId === messageId) stopEyes(e);
+  }
+
   // Injectable for the same reason `send` is everywhere else here: the test
   // that matters for this feature is the one that watches a real turn place a
   // real mark, and it must do that without spawning anything.
@@ -187,6 +230,7 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers }) {
     const kind = params.kind === 'voice' ? 'voice' : 'text';
     let out = null;
     let mark = null;
+    let delayMs = 0;
     await withTx(pool, async (client) => {
       lap('tx');
       const { rows } = await client.query(
@@ -238,9 +282,14 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers }) {
         marked: new Set(), contextSent: false,
       };
       if (!rec.skipped && messageId) {
-        // The 👀 (or 👂) goes on now, from here, while the model is still reading
-        // the prompt — the ack the feature promised, given before any model latency.
-        const vocab = reactions.vocabulary(await require('../domain/flags').getFlag(client, reactions.VOCAB_FLAG));
+        // The 👀 (or 👂) is decided here, before any model latency — and held
+        // for `eyes_delay_seconds` when the plugin can tell us the answer went
+        // out first (domain/reactions.openingDelayMs): a message answered
+        // inside that needs no "I'm on it". 🙏 and the stop-reminders 👍 are
+        // the answer and go on at once.
+        const flags = require('../domain/flags');
+        const vocab = reactions.vocabulary(await flags.getFlag(client, reactions.VOCAB_FLAG));
+        delayMs = reactions.openingDelayMs(state, await flags.getFlag(client, reactions.EYES_DELAY_FLAG), signalsLive());
         lap('vocab');
         mark = { channel: 'whatsapp', target: user.phone, messageId, state, emoji: vocab[state] };
         entry.marked.add(`${messageId}:${state}`);
@@ -250,7 +299,8 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers }) {
       out = { ok: true, opened: !rec.skipped, skipped: rec.skipped || null, userId: Number(user.id), counted: rec.counted };
     });
     lap('commit');
-    if (mark) placeMark(mark);
+    if (mark && delayMs > 0) holdEyes(agentId, mark, delayMs);
+    else if (mark) placeMark(mark);
     return out;
   }
 
@@ -455,6 +505,26 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers }) {
     return out;
   }
 
+  // The plugin telling us a person's turn has put something in front of them
+  // (`reply`, from reply_payload_sending) or has ended (`end`, from agent_end —
+  // the only signal for a turn that ends in silence). Either way the 👀 held
+  // for the message that turn is answering is no longer needed. In memory, no
+  // database: this is about a timer in this process, and it runs on every
+  // reply, so it must cost nothing.
+  function handleTurnProgress(params = {}) {
+    const agentId = String(params.agentId || '').trim();
+    if (!/^u-\d+$/.test(agentId)) return { ok: false, error: 'bad agentId' };
+    const what = params.what === 'end' ? 'end' : params.what === 'reply' ? 'reply' : null;
+    if (!what) return { ok: false, error: 'bad what' };
+    const list = eyesOf(agentId);
+    const idx = list.findIndex((e) => e.running);
+    if (idx < 0) return { ok: true, held: false };
+    const held = Boolean(list[idx].timer);
+    stopEyes(list[idx]);
+    if (what === 'end') { list.splice(idx, 1); if (!list.length) pendingEyes.delete(agentId); }
+    return { ok: true, held };
+  }
+
   async function handleTurnContext(params = {}) {
     const agentId = String(params.agentId || '').trim();
     if (!/^u-\d+$/.test(agentId)) return { ok: false, error: 'bad agentId' };
@@ -509,7 +579,7 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers }) {
         chaseNamedHour: Boolean(pre && pre.chase && pre.chase.namedHour),
         openList: Boolean(pre && pre.openList),
       });
-      if (pre) pre.contextSent = true;
+      if (pre) { pre.contextSent = true; eyesRunning(agentId, pre.messageId); }
       out = {
         ok: true, enabled: true, context: turnDomain.renderContext(data), directive: data.directive,
         // Not for the model — for the GATE. `reply_payload_sending` fires in
@@ -713,6 +783,7 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers }) {
       const mark = reactions.markFor(name, result, turn, clock());
       let placed = null;
       if (mark && actorPhone) {
+        if (mark !== 'working' && mark !== 'listening') eyesAnswered(turn.messageId);
         placed = placeMark({
           channel: 'whatsapp', // the one channel whose reactions we have verified
           target: actorPhone,
@@ -792,6 +863,8 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers }) {
         return handleReplyGate(msg.params || {});
       case 'reply_claim':
         return handleReplyClaim(msg.params || {});
+      case 'turn_progress':
+        return handleTurnProgress(msg.params || {});
       default:
         return { ok: false, error: `unknown method ${msg.method}` };
     }

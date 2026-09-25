@@ -300,8 +300,38 @@ async function channelsStatus() {
   return payload;
 }
 
+// A channel action — today only a reaction (`domain/reactions.placeMark`). The
+// method is the one `openclaw message react` itself calls once its process is
+// up: the CLI builds `{ channel, action, params }` and sends `message.action`
+// over this same socket, so we skip only the Node start-up in front of it —
+// 15s idle and 54s measured under load on 2026-09-25, which is what put the 👀
+// on a message Olma had already answered. For WhatsApp `react` the params are
+// `{ chatJid, messageId, emoji, remove? }`, and `chatJid` takes a phone the
+// same way `send` takes `to` (the channel plugin's
+// `resolveAuthorizedWhatsAppOutboundTarget`, against the same allowFrom).
+//
+// Its own short deadline: a mark that has not landed in ten seconds is not an
+// acknowledgement any more, and a caller must never wait out the 45s send
+// budget for one.
+const ACTION_TIMEOUT_MS = 10_000;
+
+async function messageAction({ channel, action, params }) {
+  if (!available()) throw failed('gateway rpc is switched off', { dispatched: false });
+  const state = await connect();
+  armIdleClose();
+  const payload = await send(state, 'message.action', {
+    channel,
+    action,
+    params: params || {},
+    idempotencyKey: randomUUID(),
+    ...(state.systemAgentId ? { agentId: state.systemAgentId } : {}),
+  }, ACTION_TIMEOUT_MS);
+  armIdleClose();
+  return payload;
+}
+
 function shutdown() {
   dropConnection(failed('gateway rpc shutting down', { dispatched: true }));
 }
 
-module.exports = { sendMessage, channelsStatus, available, shutdown, CLIENT_ID, CLIENT_MODE };
+module.exports = { sendMessage, messageAction, channelsStatus, available, shutdown, CLIENT_ID, CLIENT_MODE };

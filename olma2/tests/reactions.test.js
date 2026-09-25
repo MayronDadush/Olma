@@ -267,6 +267,100 @@ test('reactions: a mark says what it tried, and says when the CLI failed', () =>
   }
 });
 
+// The 👀 arrived after the answer (owner, 2026-09-25): a CLI start-up was the
+// whole latency of the mark. The socket goes first; the CLI is only for a
+// request that never reached the gateway.
+const tick = () => new Promise((res) => setImmediate(res));
+const gwBase = { channel: 'whatsapp', target: '+972500000000' };
+
+test('reactions: a mark goes over the gateway socket, with no process at all', async () => {
+  const calls = [];
+  const spawn = () => { throw new Error('the CLI must not start when the socket answered'); };
+  const rpc = async (req) => { calls.push(req); return { ok: true }; };
+  const out = r.placeMark({ ...gwBase, messageId: '3EB0GW000001', state: 'working', emoji: '👀' }, { rpc, spawn });
+  // Same answer to the caller as ever: attempted, never sent.
+  assert.deepEqual(out, { attempted: true, state: 'working', emoji: '👀' });
+  await tick();
+  assert.deepEqual(calls, [{
+    channel: 'whatsapp', action: 'react',
+    params: { chatJid: '+972500000000', messageId: '3EB0GW000001', emoji: '👀' },
+  }]);
+  // The operator's emoji rides the socket exactly as it rode the argv.
+  r.placeMark({ ...gwBase, messageId: '3EB0GW000002', state: 'done', emoji: '✅' }, { rpc, spawn });
+  await tick();
+  assert.equal(calls[1].params.emoji, '✅');
+});
+
+test('reactions: a request that never reached the gateway falls back to the CLI', async () => {
+  const spawned = [];
+  const spawn = (cmd, args) => { spawned.push(args); return { on() {}, unref() {} }; };
+  const rpc = async () => { throw Object.assign(new Error('no socket'), { dispatched: false }); };
+  r.placeMark({ ...gwBase, messageId: '3EB0GW000003', state: 'working' }, { rpc, spawn });
+  await tick(); await tick();
+  assert.equal(spawned.length, 1);
+  assert.deepEqual(spawned[0], r.buildReactArgs({ ...gwBase, messageId: '3EB0GW000003', state: 'working' }));
+});
+
+test('reactions: a refused or timed-out mark is never retried on the slow pipe', async () => {
+  const spawned = [];
+  const spawn = (cmd, args) => { spawned.push(args); return { on() {}, unref() {} }; };
+  const refused = async () => { throw Object.assign(new Error('INVALID_REQUEST'), { dispatched: true, refused: true }); };
+  const timedOut = async () => { throw Object.assign(new Error('message.action timed out'), { dispatched: true }); };
+  const err = [];
+  r._setLogs(() => {}, (l) => err.push(l));
+  try {
+    r.placeMark({ ...gwBase, messageId: '3EB0GW000004', state: 'working' }, { rpc: refused, spawn });
+    r.placeMark({ ...gwBase, messageId: '3EB0GW000005', state: 'working' }, { rpc: timedOut, spawn });
+    await tick(); await tick();
+    assert.equal(spawned.length, 0, 'a 👀 retried through a 15-second CLI is the late mark this replaced');
+    assert.equal(err.length, 2);
+    assert.match(err[0], /failed via gateway: INVALID_REQUEST/);
+  } finally {
+    r._setLogs(() => {}, () => {});
+  }
+});
+
+test('reactions: on the socket, 👀 then 👍 on one message go out in that order', async () => {
+  const order = [];
+  let releaseFirst;
+  const rpc = (req) => {
+    order.push(`start ${req.params.emoji}`);
+    if (req.params.emoji === '👀') return new Promise((res) => { releaseFirst = () => { order.push('end 👀'); res({}); }; });
+    order.push(`end ${req.params.emoji}`);
+    return Promise.resolve({});
+  };
+  const spawn = () => { throw new Error('no CLI'); };
+  r.placeMark({ ...gwBase, messageId: '3EB0GW000006', state: 'working' }, { rpc, spawn });
+  r.placeMark({ ...gwBase, messageId: '3EB0GW000006', state: 'done' }, { rpc, spawn });
+  await tick();
+  assert.deepEqual(order, ['start 👀'], 'the 👍 waits for the 👀 to be answered');
+  releaseFirst();
+  await tick(); await tick();
+  assert.deepEqual(order, ['start 👀', 'end 👀', 'start 👍', 'end 👍']);
+});
+
+test('reactions: a 👀 that could not reach the gateway is not sent on the CLI once a 👍 is queued behind it', async () => {
+  const spawned = [];
+  const spawn = (cmd, args) => { spawned.push(args); return { on() {}, unref() {} }; };
+  let failFirst;
+  const rpc = (req) => (req.params.emoji === '👀'
+    ? new Promise((res, rej) => { failFirst = () => rej(Object.assign(new Error('no socket'), { dispatched: false })); })
+    : Promise.reject(Object.assign(new Error('no socket'), { dispatched: false })));
+  r.placeMark({ ...gwBase, messageId: '3EB0GW000007', state: 'working' }, { rpc, spawn });
+  r.placeMark({ ...gwBase, messageId: '3EB0GW000007', state: 'done' }, { rpc, spawn });
+  await tick();
+  failFirst();
+  for (let i = 0; i < 5; i++) await tick();
+  assert.equal(spawned.length, 1, 'only the newest mark falls back');
+  assert.ok(spawned[0].includes('👍'));
+});
+
+test('reactions: the real socket is never used inside the suite', () => {
+  // The CLI tests above pass no `rpc` and still spawn: that is this guard
+  // holding, because the box runs the suite beside the gateway serving people.
+  assert.equal(require('../src/channels/gateway-rpc').available(), false);
+});
+
 test('reactions: every marked tool exists, and the table is the only list', () => {
   const { TOOLS } = require('../src/adapters/mcp/registry');
   const names = new Set(TOOLS.map((t) => t.name));

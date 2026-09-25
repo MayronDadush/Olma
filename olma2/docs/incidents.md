@@ -12454,3 +12454,69 @@ WhatsApp channel — it does not, because the key sits under `messages` and not
 under `channels.whatsapp`. `config_guard` goes red if a gateway upgrade
 restores it. The companion `ackReactionScope` is left in place: inert without
 the emoji, and `--set` needs it to put the original setting back exactly.
+
+### The eyes arrived after the answer (2026-09-25)
+
+The owner: "הרבה פעמים האייקון של העיניים מגיע אחרי שמגיעה כבר הודעה" — the 👀
+often landed on a message Olma had already answered, when it no longer meant
+anything.
+
+This was the cost the entry above wrote down and left open. With the gateway's
+instant ack gone, every 👀 was `placeMark` spawning `openclaw message react`,
+and the whole latency of the mark was that process starting: 15s idle
+(2026-09-05), and **54s** for one `--dry-run` measured on the box the day this
+was fixed. A short reply is faster than that. The supersede-kill in `placeMark`
+only rescued the case where a closing 👍 came next; a turn that answered in
+words and earned no mark left the 👀 to land late on its own.
+
+The CLI never did anything but start up and then call the gateway's
+`message.action` over its WebSocket — read off the installed dist, not
+guessed: the CLI builds `{ channel, action: 'react', params, idempotencyKey }`,
+and the WhatsApp plugin's handler reads `{ chatJid, messageId, emoji, remove }`
+with `chatJid` resolved against allowFrom exactly as `send` resolves `to`. An
+operator client with no agent-runtime identity passes the same checks the CLI
+does. So `gateway-rpc.messageAction` makes that call on the socket brokerd
+already holds for the raw pipe, and `placeMark` goes there first.
+
+The fallback copies the raw pipe's and is as narrow: never reached the gateway
+→ the CLI; refused, or timed out after it was written → logged and left,
+because a CLI retry of a 👀 is the late mark itself. On the socket, a 👍 asked
+for while the 👀 is still in flight waits for it, so the order on the phone is
+the order they were asked; a 👀 that falls back after a newer mark was queued
+behind it is dropped rather than sent slowly over the top.
+
+**Then the owner asked for the data before deciding anything else**, and it
+changed the fix. Read-only, off the box: every private message from a real
+user 2026-09-15 → 2026-09-25, the gateway journal's `Inbound message`, `Sent
+message -> sha256:<jid>` and `Sent reaction` lines joined to
+`turn.opened_by_gateway`, aggregates only.
+
+| | n | median | avg | p90 |
+|---|---|---|---|---|
+| reply after the message | 113 | 18.8s | 36.7s | ~68s |
+| 👀 after the message (CLI) | 81 | 27.4s | 32.8s | 63.6s |
+
+Replies: under 10s 25% · 10–15s 17% · 15–20s 10% · 20–30s 18% · 30–60s 17% ·
+over a minute 12%. Where a message got both, the 👀 landed AFTER the reply in
+57 of 77 (74%), and 36 replies got none at all — superseded by a 👍 before the
+CLI finished starting.
+
+A fast 👀 fixes the order but not the point: a mark that says "I'm on it"
+under a reply that already arrived eight seconds in is still noise. So the
+owner's decision was **👀 only if nothing has answered within 15 seconds**
+(`eyes_delay_seconds`, a flag, so the number can move without a deploy). At 15s,
+by the table, ~42% of messages get no eyes at all and the rest get them before
+the answer.
+
+brokerd can hold a timer; what it could not do was know the answer had gone
+out. The plugin now tells it twice — `reply_payload_sending` as a payload
+leaves, and `agent_end` when the run ends — because neither is enough alone:
+`agent_end` is the only signal for a turn that ends in silence, and it arrives
+~6s AFTER a reply that was sent (19:07:16 sent, 19:07:22 ended, the example the
+measurement started from). `trigger` could not tell a person's turn from one
+Olma started — 626 of 626 traced prompts say `user` — so the signal is matched
+to the message whose prompt brokerd built last, which a turn Olma started never
+touches. And the hold is only armed when the plugin's registration stamp lists
+`agent_end`: the plugin loads at gateway start, the deploy does not restart it,
+and a held 👀 with nothing to cancel it would put eyes under every fast reply —
+the exact thing this was for.

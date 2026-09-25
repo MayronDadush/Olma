@@ -657,9 +657,19 @@ export function buildReplyGateHandler({ connect, sock, timeoutMs = 1500, log = t
       if (!m) return undefined;
       const payload = event && event.payload;
       const text = payload && typeof payload.text === "string" ? payload.text : "";
-      if (!text.trim()) return undefined;
       const agentId = m[1];
+      const person = /^u-\d+$/.test(agentId);
+      const hasMedia = Boolean(payload && (payload.mediaUrl || (Array.isArray(payload.mediaUrls) && payload.mediaUrls.length) || payload.presentation || payload.location));
+      if (!text.trim()) {
+        if (person && hasMedia) turnProgress(agentId, "reply", { connect, sock, timeoutMs });
+        return undefined;
+      }
       const verdict = gateReply(text, { readerWritesHebrew: readerOf(agentId) });
+      // Something is about to reach them, so the 👀 brokerd is holding for this
+      // turn's message is no longer needed (`turnProgress` below). Not for a
+      // reply the gate is about to stop entirely: nothing reached anybody, and
+      // the turn's end will say so.
+      if (person && (verdict.action !== "cancel" || hasMedia)) turnProgress(agentId, "reply", { connect, sock, timeoutMs });
       // Read off what will actually be SENT — a claim inside notes the gate
       // just cut never reaches anybody. Only a person's own agent: a room has
       // no turn brokerd can speak for.
@@ -685,7 +695,6 @@ export function buildReplyGateHandler({ connect, sock, timeoutMs = 1500, log = t
       // that leaked — so when there is one, the text is emptied and the card
       // still lands. `cancelled_by_reply_payload_sending_hook` is only for a
       // payload that is nothing but the words.
-      const hasMedia = Boolean(payload && (payload.mediaUrl || (Array.isArray(payload.mediaUrls) && payload.mediaUrls.length) || payload.presentation || payload.location));
       if (hasMedia) return { payload: { ...payload, text: "" } };
       return { cancel: true, reason: "olma_reply_leak" };
     } catch (e) {
@@ -697,6 +706,30 @@ export function buildReplyGateHandler({ connect, sock, timeoutMs = 1500, log = t
   };
 }
 
+// ── Telling brokerd the answer went out ──────────────────────────────────────
+// brokerd holds the 👀 for `eyes_delay_seconds` (owner, 2026-09-25) and puts it
+// on only if nothing has answered by then — measured, the 👀 used to land under
+// the reply in 74% of the messages that had both. Two signals, because neither
+// is enough alone: `reply` as a payload goes out, and `end` when the run ends,
+// which for a turn that says nothing (NO_REPLY, a 👍 only, a failure) is the
+// only one there is — and which arrives ~6s AFTER a reply that was sent, too
+// late to use alone. Fire-and-forget: the reply never waits on it, and a lost
+// signal costs one late 👀, which is what every message had before.
+export function turnProgress(agentId, what, { connect, sock, timeoutMs = 1500 } = {}) {
+  askBroker("turn_progress", { agentId, what }, { connect, sock, timeoutMs }).catch(() => {});
+}
+
+export function buildTurnEndHandler({ connect, sock, timeoutMs = 1500 } = {}) {
+  return async (event, ctx) => {
+    try {
+      const agentId = (ctx && ctx.agentId) || agentIdOf(ctx && ctx.sessionKey);
+      if (!agentId || !/^u-\d+$/.test(agentId)) return undefined;
+      turnProgress(agentId, "end", { connect, sock, timeoutMs });
+    } catch { /* observe-only: nothing here may touch the turn */ }
+    return undefined;
+  };
+}
+
 export default {
   id: "olma-turn",
   name: "Olma turn context",
@@ -704,7 +737,10 @@ export default {
   register(api) {
     const cfg = (api && api.pluginConfig) || {};
     const agents = Array.isArray(cfg.agents) ? cfg.agents : "all";
-    const hooks = ["before_prompt_build", "llm_input", "before_dispatch", "reply_payload_sending"];
+    // `agent_end` is also what brokerd reads off the stamp to know the 👀 may
+    // wait (domain/reactions.endSignalsLive): a gateway on a build without it
+    // would never cancel a held mark.
+    const hooks = ["before_prompt_build", "llm_input", "before_dispatch", "reply_payload_sending", "agent_end"];
     trace({ registered: true, agents, hooks });
     stampRegistration({ agents, hooks });
     api.on("before_prompt_build", buildHandler({ agents: cfg.agents }));
@@ -716,5 +752,6 @@ export default {
     // their turn context in the prompt, and a reply reaching the wrong person
     // is not a thing to roll out per person.
     api.on("reply_payload_sending", buildReplyGateHandler());
+    api.on("agent_end", buildTurnEndHandler());
   },
 };

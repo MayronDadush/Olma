@@ -405,7 +405,7 @@ test('the plugin fails open: not enabled, no open, a refusal, a dead socket, a t
   assert.equal(log.at(-1).outcome, 'unreachable');
 });
 
-test('the plugin module registers its four hooks under its own id and reads the agent list from its config', async () => {
+test('the plugin module registers its five hooks under its own id and reads the agent list from its config', async () => {
   const on = [];
   const def = plugin.default;
   assert.equal(def.id, 'olma-turn');
@@ -414,9 +414,10 @@ test('the plugin module registers its four hooks under its own id and reads the 
   // gateway says about a group turn (tests/group-context.test.js);
   // before_dispatch ends an untagged room message before any turn exists
   // (tests/group-untagged.test.js); reply_payload_sending is the delivery gate
-  // (tests/reply-leak.test.js).
+  // (tests/reply-leak.test.js); agent_end tells brokerd a turn is over, so a
+  // held 👀 is dropped (tests/eyes-delay.test.js).
   assert.deepEqual(on.map(([name]) => name),
-    ['before_prompt_build', 'llm_input', 'before_dispatch', 'reply_payload_sending']);
+    ['before_prompt_build', 'llm_input', 'before_dispatch', 'reply_payload_sending', 'agent_end']);
   for (const [, fn] of on) assert.equal(typeof fn, 'function');
   // Registering STAMPS, and on the box this suite runs inside deploy.sh: the
   // stamp must land in the temp home tests/helpers.js chose, never in
