@@ -10,6 +10,7 @@ const pauseDomain = require('../domain/pause');
 const quota = require('../domain/quota');
 const flagsDomain = require('../domain/flags');
 const proactiveText = require('../domain/proactive-text');
+const meetingTime = require('../domain/meeting-time');
 const digestDomain = require('../domain/digest');
 const { decide } = require('./gate');
 const audit = require('../domain/audit');
@@ -130,7 +131,8 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
   // anyway, and only mislead readers into thinking it protects something).
   const { rows: candidates } = await pool.query(
     `SELECT o.*, u.timezone, u.agent_id, u.quota_blocked_until, u.first_name, u.last_inbound_at, u.last_dashboard_at,
-            u.digest_times, u.paused_at, u.paused_reason, u.room_invite_sent_at, u.is_eval, u.checkin_misses, u.locale
+            u.digest_times, u.paused_at, u.paused_reason, u.room_invite_sent_at, u.is_eval, u.checkin_misses, u.locale,
+            u.timezone_confirmed, u.room_zone_asked_at
      FROM outbox o JOIN users u ON u.id = o.user_id
      WHERE o.sent_at IS NULL AND (o.release_after IS NULL OR o.release_after <= $1)
        -- A budget hold with no release time is waiting for the next digest to
@@ -480,13 +482,24 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
         // `down` stops the send; see channelProbe above for why `unknown` does
         // not, and why this is asked here rather than at the top of the tick
         // (a tick with nothing deliverable never reaches this line).
+        // A room coordination on several clocks, reaching somebody whose own
+        // zone was never confirmed and who has not been asked this before:
+        // the invite asks, in one line, whether the zone we hold is right
+        // (owner, 2026-09-25; `users.room_zone_asked_at`). Also on the settled
+        // time sent to somebody let in late, which is their invite. Only on a
+        // row going out alone, so the question never rides a merge.
+        const zoneAsk = (row.kind === 'meeting_invite' || (row.kind === 'meeting_confirmed' && payloadOf(row).joinedLate))
+          && !mergedParts && ids.length === 1
+          && payloadOf(row).roomZones && row.timezone_confirmed === false && !row.room_zone_asked_at
+          && meetingTime.zoneLabel(row.timezone)
+          ? { askZone: meetingTime.zoneLabel(row.timezone) } : {};
         const channels = await channelsCanCarry();
         const sendRow = mergedParts ? { ...row, payload: { ...payloadOf(row), mergedParts } }
           : ids.length > 1 ? { ...row, payload: { ...payloadOf(row), items: titles } }
             // In memory only, like `items`: the reader tells the model
             // this person is paused and this is the one message about it.
-            : pausedRoomInvite ? { ...row, payload: { ...payloadOf(row), pausedNotice: true } }
-              : row;
+            : pausedRoomInvite ? { ...row, payload: { ...payloadOf(row), pausedNotice: true, ...zoneAsk } }
+              : zoneAsk.askZone ? { ...row, payload: { ...payloadOf(row), ...zoneAsk } } : row;
         const closedNews = channels.status === 'down' ? null : await closedNewsFor(client, row, mergedParts);
         const result = channels.status === 'down'
           ? { ok: false, error: `channel unavailable, no turn spent: ${channels.detail}` }
@@ -508,7 +521,19 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
         // back. The quiet half is spent only when the GATE says the row got
         // through on it (verdict.spendsQuietRoomInvite) — a row the room
         // window or the page carried is not an allowance being used.
+        // The once-ever zone question (migration 092), stamped with the same
+        // "only once the send confirmed" as the allowance below.
+        const spendZoneAsk = async () => {
+          if (!zoneAsk.askZone) return;
+          await client.query(
+            `UPDATE users SET room_zone_asked_at = now() WHERE id = $1 AND room_zone_asked_at IS NULL`,
+            [row.user_id]);
+          await audit.record(client, row.user_id, 'timezone.room_zone_asked', {
+            outboxId: Number(row.id), meetingId, timezone: row.timezone,
+          });
+        };
         const spendRoomInvite = async () => {
+          await spendZoneAsk();
           const quiet = Boolean(verdict.spendsQuietRoomInvite);
           if (!pausedRoomInvite && !quiet) return;
           await client.query(`UPDATE users SET room_invite_sent_at = now() WHERE id = $1`, [row.user_id]);

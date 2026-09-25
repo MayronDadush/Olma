@@ -158,6 +158,19 @@ title means this file. Grep the title, not the filename.
   below `stuck_meeting`/`deadline_risk` and above Olma's own opinions, and it
   never reaches somebody at `misses >= 1`. It is spent on the enqueue in
   `checkin.run`, and the copy is quoted, not described, and asks nothing.
+  **`users.room_zone_asked_at` (migration 092) is the fourth**: the one time
+  somebody whose zone was never confirmed (`timezone_confirmed = false`) is
+  asked whether it is right, because a room they are in spans several clocks
+  and every time said there is converted from it (owner, 2026-09-25, פנתרה).
+  It is a NEW occasion, not a second go at `timezone_asked_at`: "nobody is
+  asked twice" still holds for the check-in rung, and this one is bounded the
+  same way. It never gets its own send. It rides the room coordination's
+  private invite (`roomZones` on the payload, from
+  `group-meetings.roomZonesFlag`), is decided at delivery by the worker
+  (`zoneAsk`, a row going out alone, never inside a merge), and is stamped
+  only once that send confirmed, like `room_invite_sent_at` beside it. The
+  city comes from the server (`meeting-time.zoneLabel`), and an answer goes
+  through `set_my_timezone confirmed:true`, which runs `timezone-repair`.
 
 - **Deleting a user is not deleting a person until the GATEWAY's intake
   session goes too.** `deprovisionUser` removes everything olma2 owns — row,

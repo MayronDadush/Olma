@@ -80,6 +80,16 @@ async function currentMeeting(client, groupId, { includeClosed = false } = {}) {
   return rows[0] || null;
 }
 
+// Whether the people this coordination asks are on more than one clock. It
+// rides the private invite as `roomZones`, and the delivery worker spends it
+// on the one question it earns: somebody whose own zone was never confirmed is
+// asked, once ever, whether it is right (`users.room_zone_asked_at`, migration
+// 092) — because in such a room every time she says is converted from it.
+function roomZonesFlag(members, group) {
+  const zones = members.map((m) => m.timezone).filter(Boolean);
+  return meetingTime.spansZones(zones, group.timezone || null) ? { roomZones: true } : {};
+}
+
 // Start one. `actingUser` is the member whose tag started this turn, chosen by
 // the server (groups.actingMember) — never by the model.
 async function startCoordination(client, group, actingUser, title, { where = null } = {}) {
@@ -132,6 +142,7 @@ async function startCoordination(client, group, actingUser, title, { where = nul
     meetingId: Number(meeting.id), title: finalTitle,
     byName: memberLabel(members.find((m) => Number(m.user_id) === Number(actingUser.id)) || {}),
     groupSubject: group.subject || null,
+    ...roomZonesFlag(members, group),
   };
   await fanout.fanout(client, others, 'meeting_invite', invitePayload,
     { key: `minvite:${meeting.id}` });
@@ -229,6 +240,7 @@ async function admitLateMembers(client, group, meeting, now = new Date()) {
       ...(await fanout.slotMoment(client, Number(meeting.id), meeting.confirmed_slot)),
       ...(meeting.location ? { location: meeting.location } : {}),
       groupSubject: group.subject || null, joinedLate: true,
+      ...roomZonesFlag([...members.filter((m) => inIt.has(Number(m.user_id))), ...late], group),
     }, { key: `mconf:${meeting.id}` });
     return late;
   }
@@ -239,6 +251,7 @@ async function admitLateMembers(client, group, meeting, now = new Date()) {
     byName: (opener && memberLabel(opener)) || 'someone in the group',
     groupSubject: group.subject || null,
     ...(onTable > 0 ? { tableChanged: true } : {}),
+    ...roomZonesFlag([...members.filter((m) => inIt.has(Number(m.user_id))), ...late], group),
   }, { key: `minvite:${meeting.id}` });
   return late;
 }

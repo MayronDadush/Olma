@@ -255,6 +255,7 @@ Loads when you **Read** a file under `src/jobs/checkin.js`, `src/jobs/onboarding
 - **A "once ever" question is stamped on the PERSON, never deduped on the route that asks it.**
 - **The chag offer is that shape's second column (`holiday_quiet_asked_at`, migration 062), with two routes from the start.**
 - **…and the offer to add her to more groups is its third (`more_groups_offered_at`, migration 086)** — earned by a yes on the time a ROOM locked, and it rides the next check-in
+- **…and the zone question in a room on several clocks is its fourth (`room_zone_asked_at`, migration 092)** — only for an unconfirmed zone, riding the room invite, stamped after the send confirms
 - **Deleting a user is not deleting a person until the GATEWAY's intake session goes too.**
 - **The ledgers are append-only.**
 - **The assistant is עולמה / Allma; the system is still olma2.**
