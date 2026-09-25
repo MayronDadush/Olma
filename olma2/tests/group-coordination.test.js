@@ -163,7 +163,7 @@ test('one row each, so asking twice cannot ask the same man twice', async () => 
 async function roomWithAGreeterJoiner(n, { size = 3 } = {}) {
   const people = [];
   for (let i = 0; i < size; i++) {
-    const u = await makeUser(db.pool, `+9726077${n}000${i}`, { firstName: ['דני', 'דנה', 'יובל'][i] });
+    const u = await makeUser(db.pool, `+9726077${String(n).padStart(2, '0')}00${i}`, { firstName: ['דני', 'דנה', 'יובל'][i] });
     // The LAST of them is the joiner: the greeter answered their first
     // message, so their own agent has never heard them and the column every
     // other test leans on is NULL.

@@ -132,7 +132,11 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
   const { rows: candidates } = await pool.query(
     `SELECT o.*, u.timezone, u.agent_id, u.quota_blocked_until, u.first_name, u.last_inbound_at, u.last_dashboard_at,
             u.digest_times, u.paused_at, u.paused_reason, u.room_invite_sent_at, u.is_eval, u.checkin_misses, u.locale, u.opening_sent_at,
-            u.timezone_confirmed, u.room_zone_asked_at
+            u.timezone_confirmed, u.room_zone_asked_at,
+            -- Aliased, because the select above is o.* : an outbox.status column
+            -- added one day would shadow this silently and the gate below would
+            -- read a row's state as a person's.
+            u.status AS user_status
      FROM outbox o JOIN users u ON u.id = o.user_id
      WHERE o.sent_at IS NULL AND (o.release_after IS NULL OR o.release_after <= $1)
        -- A budget hold with no release time is waiting for the next digest to
@@ -340,6 +344,10 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
         const facts = {
           row, plan, blocked, paused: Boolean(row.paused_at),
           evalUser: Boolean(row.is_eval),
+          // A row that stands for somebody Olma has not taken on — a number seen
+          // on a group's roster, an invited stranger, the waitlist. Explicitly
+          // boolean, because the gate drops on `true` and ignores anything else.
+          pendingUser: row.user_status === 'pending',
           checkinMisses: Number(row.checkin_misses) || 0,
           blockedUntil: row.quota_blocked_until,
           window: win.data.window, quietDays, quietDates, shabbatWindow, tz: row.timezone,

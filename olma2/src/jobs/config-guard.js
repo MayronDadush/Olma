@@ -707,7 +707,17 @@ async function checkUnansweredStrangers(client, deps = {}) {
   const peersWithSession = new Set();
   for (const s of seen) if (s && s.peer) peersWithSession.add(String(s.peer).replace(/^\+/, ''));
 
-  const { rows } = await client.query('SELECT phone FROM users WHERE phone IS NOT NULL');
+  // A row is not a record that can ACT, and since 2026-09-25 the difference
+  // matters: `groups.ensureRosterUsers` mints a `users` row from a number seen on
+  // a group's roster, for somebody who has never written. Counting that as
+  // "the system has a record of them" would make this check go quiet for exactly
+  // the person it exists to find — a stranger whose message the gateway
+  // swallowed, who happens to be in a room with one of our users. A `pending` row
+  // has nothing their message could land in. No false positive comes back with
+  // it: somebody mid-provisioning has a SESSION, and the clause below already
+  // skips on that.
+  const { rows } = await client.query(
+    "SELECT phone FROM users WHERE phone IS NOT NULL AND status <> 'pending'");
   const known = new Set(rows.map((r) => String(r.phone).replace(/^\+/, '')));
 
   const violations = [];

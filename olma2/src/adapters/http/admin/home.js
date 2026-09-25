@@ -164,8 +164,16 @@ async function homeMetrics(client, { now = new Date(), infra = null } = {}) {
   const p = [b.now, b.dayStart, b.weekStart, b.monthStart];
   const q = async (sql) => (await client.query(sql, p)).rows[0];
 
+  // People who were taken on, not rows that exist. Since 2026-09-25 a row can be
+  // minted from a number merely SEEN on a group's roster
+  // (`groups.ensureRosterUsers`), and counting those here would report growth
+  // nobody achieved — on the one page the owner reads every day, where a number
+  // that drifts is worse than no number. Measured on the box the day this
+  // shipped: not one `pending` row existed and the figures were 3/9/21 for
+  // day/week/month either way, so nothing on the page moves.
   const users = pick(await q(
-    `SELECT ${periodCounts('created_at')} FROM users WHERE NOT is_eval AND NOT is_test`));
+    `SELECT ${periodCounts('created_at')} FROM users
+      WHERE NOT is_eval AND NOT is_test AND status <> 'pending'`));
 
   const active = await client.query(
     `SELECT count(DISTINCT a.actor_id) FILTER (WHERE a.created_at > $1::timestamptz - interval '1 day')::int AS d1,
