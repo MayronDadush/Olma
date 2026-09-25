@@ -861,6 +861,16 @@ test('an operator can queue a proactive message, and it shows up as planned', as
   assert.equal(after[0].n, 1);
   const { rows: logAfter } = await db.pool.query(`SELECT count(*)::int AS n FROM owner_messages WHERE user_id = $1`, [u.id]);
   assert.equal(logAfter[0].n, 1, 'nothing queued, nothing logged');
+
+  // an idea and an insight go through the section's own forms
+  await adminPost('/owner-log/idea', { title: 'אחרי ראיון — לשאול איך הלך', back: '/#owner-log' });
+  const { rows: [idea] } = await db.pool.query(`SELECT id FROM feature_ideas WHERE title = 'אחרי ראיון — לשאול איך הלך'`);
+  const { rows: [msg] } = await db.pool.query(`SELECT id FROM owner_messages WHERE user_id = $1`, [u.id]);
+  const saved = await adminPost('/owner-log/note', { id: msg.id, insight: 'הוא סיפר על הראיון יום קודם', idea_id: idea.id, back: '/#owner-log' });
+  assert.equal(saved.headers.get('location'), '/g/sending#owner-log', 'a save lands back on the log');
+  const { rows: [noted] } = await db.pool.query(`SELECT insight, idea_id FROM owner_messages WHERE id = $1`, [msg.id]);
+  assert.equal(noted.insight, 'הוא סיפר על הראיון יום קודם');
+  assert.equal(String(noted.idea_id), String(idea.id));
 });
 
 test('rescheduling moves the time in the person\'s zone and unsticks a budget hold', async () => {

@@ -17,6 +17,20 @@
 -- 089: SELECT max(version) FROM schema_migrations on the box was 86 on
 -- 2026-09-24, and 087/088 are claimed by open PRs (coord-exact-time,
 -- coord-all-day).
+-- What the log is FOR (owner, 2026-09-25): the insight each message taught,
+-- and the feature it might become. An idea is a place to collect them until
+-- the owner decides to go through them — nothing is built off this table on
+-- its own, and a status is only ever set by hand.
+CREATE TABLE feature_ideas (
+  id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  title       TEXT NOT NULL,
+  detail      TEXT,
+  status      TEXT NOT NULL DEFAULT 'open'
+              CHECK (status IN ('open', 'building', 'built', 'dropped')),
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE TABLE owner_messages (
   id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   user_id     BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -26,7 +40,9 @@ CREATE TABLE owner_messages (
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
   sent_at     TIMESTAMPTZ,
   sent_text   TEXT,
-  replied_at  TIMESTAMPTZ
+  replied_at  TIMESTAMPTZ,
+  insight     TEXT,
+  idea_id     BIGINT REFERENCES feature_ideas(id) ON DELETE SET NULL
 );
 CREATE INDEX owner_messages_created ON owner_messages (created_at DESC);
 

@@ -89,3 +89,40 @@ test('the log outlives its outbox row, and goes with the person', async () => {
   await db.pool.query(`DELETE FROM users WHERE id = $1`, [u.id]);
   assert.equal(await row('outlives the outbox'), undefined, 'deleting a person deletes what was written to them');
 });
+
+test('an insight and an idea are the owner\'s own words, and a bad form changes nothing', async () => {
+  const u = await makeUser(db.pool, '+972611000954', { firstName: 'Eli' });
+  await writeOne(u.id, 'the pill one');
+  const msg = await row('the pill one');
+
+  const ideaId = await withTx(db.pool, (c) => ownerMessages.saveIdea(c, { title: 'תרופה חד־פעמית → להציע קבועה' }));
+  await withTx(db.pool, (c) => ownerMessages.setNote(c, msg.id, { insight: 'ענה תוך דקה', ideaId }));
+  let got = await row('the pill one');
+  assert.equal(got.insight, 'ענה תוך דקה');
+  assert.equal(String(got.idea_id), String(ideaId));
+
+  // an idea id that does not exist links to nothing rather than failing the save
+  await withTx(db.pool, (c) => ownerMessages.setNote(c, msg.id, { insight: 'still saved', ideaId: 999999 }));
+  got = await row('the pill one');
+  assert.equal(got.insight, 'still saved');
+  assert.equal(got.idea_id, null);
+  await withTx(db.pool, (c) => ownerMessages.setNote(c, msg.id, { insight: 'ענה תוך דקה', ideaId }));
+
+  // an empty title or an unknown status never blanks a row
+  assert.equal(await withTx(db.pool, (c) => ownerMessages.saveIdea(c, { title: '   ' })), null);
+  await withTx(db.pool, (c) => ownerMessages.saveIdea(c, { id: ideaId, title: '', status: 'built' }));
+  await withTx(db.pool, (c) => ownerMessages.saveIdea(c, { id: ideaId, title: 'תרופה חד־פעמית → להציע קבועה', status: 'shipped!' }));
+  const { rows: [idea] } = await db.pool.query(`SELECT * FROM feature_ideas WHERE id = $1`, [ideaId]);
+  assert.equal(idea.title, 'תרופה חד־פעמית → להציע קבועה');
+  assert.equal(idea.status, 'open', 'a status outside the list keeps the one it had');
+
+  const html = await withTx(db.pool, (c) => renderOwnerLogAt(c, { scan: async () => null, now: NOW, csrf: 'tok' }));
+  assert.match(html, /פיצ'רים אפשריים[\s\S]*תרופה חד־פעמית[\s\S]*1 הודעות מאחוריו/, 'the idea counts the messages behind it');
+  assert.match(html, /<option value="\d+" selected>תרופה חד־פעמית/, 'the row shows the idea it was linked to');
+
+  // dropping an idea keeps the message and its insight
+  await db.pool.query(`DELETE FROM feature_ideas WHERE id = $1`, [ideaId]);
+  got = await row('the pill one');
+  assert.equal(got.insight, 'ענה תוך דקה');
+  assert.equal(got.idea_id, null);
+});

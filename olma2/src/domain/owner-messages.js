@@ -89,4 +89,54 @@ async function list(client, limit = 100) {
   return rows;
 }
 
-module.exports = { record, fillOutcomes, list, sentTextFrom, SENT_TEXT_WINDOW_MS, LOOK_BACK_DAYS };
+// ---- what it taught, and what it might become --------------------------------
+// Both written by the owner, by hand, from the section. Nothing reads them but
+// people: an idea is a place to collect evidence until he decides to go
+// through it, never a queue anything acts on.
+const IDEA_STATUSES = ['open', 'building', 'built', 'dropped'];
+const clip = (v, n) => String(v || '').trim().slice(0, n) || null;
+
+async function setNote(client, id, { insight, ideaId }) {
+  const idea = Number(ideaId) || null;
+  await client.query(
+    `UPDATE owner_messages SET insight = $2,
+            idea_id = (SELECT id FROM feature_ideas WHERE id = $3)
+      WHERE id = $1`,
+    [Number(id) || 0, clip(insight, 1000), idea]);
+}
+
+// A new idea when no id is given. A status outside the list, or an empty
+// title, changes nothing — an unreadable form must never blank a row.
+async function saveIdea(client, { id, title, detail, status }) {
+  const t = clip(title, 200);
+  if (!t) return null;
+  const s = IDEA_STATUSES.includes(status) ? status : null;
+  if (id) {
+    await client.query(
+      `UPDATE feature_ideas SET title = $2, detail = $3, status = COALESCE($4, status), updated_at = now()
+        WHERE id = $1`,
+      [Number(id) || 0, t, clip(detail, 2000), s]);
+    return Number(id);
+  }
+  const { rows } = await client.query(
+    `INSERT INTO feature_ideas (title, detail, status) VALUES ($1, $2, COALESCE($3, 'open')) RETURNING id`,
+    [t, clip(detail, 2000), s]);
+  return rows[0].id;
+}
+
+// Open ones first, then by how much evidence they have: the idea with the
+// most messages behind it is the one worth talking about next.
+async function listIdeas(client) {
+  const { rows } = await client.query(
+    `SELECT f.*, count(m.id)::int AS evidence
+       FROM feature_ideas f LEFT JOIN owner_messages m ON m.idea_id = f.id
+      GROUP BY f.id
+      ORDER BY array_position(ARRAY['building','open','built','dropped'], f.status),
+               count(m.id) DESC, f.created_at DESC`);
+  return rows;
+}
+
+module.exports = {
+  record, fillOutcomes, list, sentTextFrom, setNote, saveIdea, listIdeas,
+  IDEA_STATUSES, SENT_TEXT_WINDOW_MS, LOOK_BACK_DAYS,
+};
