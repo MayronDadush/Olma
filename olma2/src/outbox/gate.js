@@ -249,6 +249,15 @@ function decide(facts) {
     return { action: 'expire' };
   }
 
+  // ── The welcome follow-up (jobs/intake.js, 2026-09-25) ─────────────────────
+  // It exists to answer what they wrote to the greeter and hand over their
+  // page. If they have written to their OWN agent since, that turn is their
+  // first and it does both (turn.advise, PENDING_INTAKE_NOTE and the page), so
+  // this one would be the same answer twice. Dropped with its own reason.
+  if (row.kind === 'welcome_followup' && facts.lastInboundAt) {
+    return { action: 'drop', holdReason: 'answered_in_turn' };
+  }
+
   // A repeat, per the set above. 'drop', not 'hold': the thing was said, and
   // saying it ten minutes later is the same message arriving late rather than
   // a message that has not arrived. Stamped with its own reason so the
@@ -320,6 +329,15 @@ function decide(facts) {
   // a DM does not either, and the page is the DM's equal, not the room's.
   const wroteOnPage = facts.dashboardWroteAt ? new Date(facts.dashboardWroteAt).getTime() : 0;
   const onPageGrace = wroteOnPage > 0 && (now.getTime() - wroteOnPage) < CONVERSATION_GRACE_MS;
+  // The welcome follow-up is the second half of a reply the greeter began a
+  // moment ago — somebody who wrote at 02:00, or on a Saturday, is awake and
+  // talking right then, and a "remind me at 9" answered the next morning is not
+  // an answer. So inside the greeter's conversation window it passes the night
+  // AND the quiet day, the one kind besides a room's meeting row that does;
+  // past that window it waits like everything else (owner, 2026-09-25).
+  const greetedAt = facts.greetedAt ? new Date(facts.greetedAt).getTime() : 0;
+  const welcomeGrace = row.kind === 'welcome_followup'
+    && greetedAt > 0 && (now.getTime() - greetedAt) < CONVERSATION_GRACE_MS;
 
   // An `introduction` is exempt for the same reason the ladder's own check-in
   // is: it is the one thing Olma OWES rather than something she decided to
@@ -413,7 +431,7 @@ function decide(facts) {
   // step. It is opt-in and nothing else about it is special (owner,
   // 2026-09-11): asked once, and the calendar is yom tov only. `inRoomGrace`
   // exempts a meeting row from this one too, same reasoning as above.
-  const quietReason = !askedForInWords(row) && !inRoomGrace && quietDayReason(facts, tz, now);
+  const quietReason = !askedForInWords(row) && !inRoomGrace && !welcomeGrace && quietDayReason(facts, tz, now);
   if (quietReason) {
     return {
       action: 'hold', holdReason: quietReason,
@@ -494,12 +512,13 @@ function decide(facts) {
   // room sent to her at 02:25 is awake and waiting for exactly that invite,
   // and it was the row that sat until they wrote a second time (`incidents.md`,
   // "Twice 'היי' before a word about the room"). Nothing else Olma decided to
-  // say rides on it — the day-one check-ins still wait for the morning.
-  const greeted = facts.greetedAt ? new Date(facts.greetedAt).getTime() : 0;
-  const greeterGrace = greeted > 0 && (now.getTime() - greeted) < CONVERSATION_GRACE_MS
+  // say rides on it — the day-one check-ins still wait for the morning — save
+  // the welcome follow-up, which is the rest of the greeter's own reply
+  // (`welcomeGrace` above).
+  const greeterGrace = greetedAt > 0 && (now.getTime() - greetedAt) < CONVERSATION_GRACE_MS
     && Boolean(row.payload && row.payload.meetingId);
   const midConversation = (lastInbound > 0 && (now.getTime() - lastInbound) < CONVERSATION_GRACE_MS)
-    || inRoomGrace || onPageGrace || greeterGrace;
+    || inRoomGrace || onPageGrace || greeterGrace || welcomeGrace;
   if (!userChoseThisTime && !midConversation && !withinWindow(window, tz, now)) {
     return {
       action: 'hold', holdReason: 'night',

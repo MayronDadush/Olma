@@ -541,7 +541,16 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
             outboxId: Number(row.id), meetingId, timezone: row.timezone,
           });
         };
+        // The welcome follow-up ANSWERS what they wrote to the greeter, so once
+        // it is out those words are no longer waiting: without this their first
+        // own turn would still be told "nobody has answered it yet"
+        // (turn.PENDING_INTAKE_NOTE) and act on the same request a second time.
+        const spendWelcome = async () => {
+          if (row.kind !== 'welcome_followup') return;
+          await client.query(`UPDATE users SET intake_note_at = NULL WHERE id = $1`, [row.user_id]);
+        };
         const spendRoomInvite = async () => {
+          await spendWelcome();
           await spendZoneAsk();
           const quiet = Boolean(verdict.spendsQuietRoomInvite);
           if (!pausedRoomInvite && !quiet) return;
