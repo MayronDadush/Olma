@@ -362,9 +362,25 @@ have already had to be argued for.
   box's own numbers: 2,673 LID keys run 12-15 digits, 5,346 real numbers stop at
   13, so nothing 14 or longer has ever been a number here and no real member is
   silenced. `mentionToken` answers `null` and `mentionTokens` filters before
-  `MAX_TAGS`, so the overflow count counts people. **It is a filter, not a
-  guarantee** — 95 of those LIDs are 12-13 digits and indistinguishable, one of
-  Padel Gang's three among them — so never read a rendered tag list as
+  `MAX_TAGS`, so the overflow count counts people.
+  **…and since 2026-09-24 the SHAPE is asked as well, which halves what the
+  length alone could reach** (`phone-timezone.phoneShape`, `isRealPhone`). The
+  length cut is blind inside its own window by construction, so the dialling
+  code is asked too: a country the table knows, at a length that country
+  issues, is a `'phone'`; one at a length it does not is `'not_phone'`; a code
+  the table has never heard of is `'unknown'`, the honest third state again.
+  `isTaggableNumber` consults it ONLY as a refusal — `'unknown'` keeps exactly
+  the old behaviour, because refusing it would silence a member from an
+  unlisted country to make a LID lose a tag. Measured on the gateway's own
+  reverse map the day it was written, 2,673 real LIDs: 1,654 `'not_phone'`,
+  1,013 `'unknown'`, **6 `'phone'`** (0.22%, all in the four countries whose two
+  mobile lengths are both carried), and of the 95 that used to pass the length
+  cut, **44 now do not**. In the other direction, the one that must never be
+  wrong, all 34 real numbers on the box answered `'phone'`. The lengths live as
+  a `len` field on the `PREFIXES` rows that already carry the timezone guess, so
+  there is one row per country to keep right rather than a second table.
+  **It is a filter, not a guarantee** — 51 LIDs still pass, 45 `'unknown'` and
+  the 6 — so never read a rendered tag list as
   "everybody who is missing"; the airtight answer is upstream. **And a line whose
   whole content is tags is not said when it can name nobody**: the gate notice
   is skipped, uncounted and unstamped rather than going out as

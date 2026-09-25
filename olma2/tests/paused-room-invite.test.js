@@ -35,7 +35,7 @@ function recorder() {
 async function room(n) {
   const people = [];
   for (let i = 0; i < 3; i++) {
-    const u = await makeUser(db.pool, `+9726077${n}000${i}`, { firstName: ['דני', 'דנה', 'קפיש'][i] });
+    const u = await makeUser(db.pool, `+9726077${String(n).padStart(2, '0')}00${i}`, { firstName: ['דני', 'דנה', 'קפיש'][i] });
     await db.pool.query(`UPDATE users SET last_inbound_at = now() WHERE id = $1`, [u.id]);
     people.push(u);
   }

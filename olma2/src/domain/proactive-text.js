@@ -19,6 +19,7 @@
 // sent without needing the session to remember it.
 const templates = require('./message-templates');
 const format = require('./message-format');
+const { phoneShape } = require('./phone-timezone');
 
 // Titles are the user's own words; bound them to one message-safe line — and
 // take the emphasis out of them. A title carrying an asterisk arrives with
@@ -139,19 +140,31 @@ const MAX_TAGS = 8;
 // `channels/sessions.js` already uses for a number it reads out of the
 // gateway's map.
 //
-// **What this does NOT catch: the 95 LIDs of 12-13 digits, which no local test
-// can tell from a number.** One of Padel Gang's own three is 13 digits and
-// still gets through. The airtight answer is upstream — a roster that carries
-// JIDs, or the gateway's LID map consulted — and neither is this change. So
-// this is a filter, never a guarantee, and a caller must not read a rendered
-// tag list as "everybody who is missing".
+// **And since 2026-09-24 the SHAPE catches about half of what the length alone
+// could not** (`phone-timezone.phoneShape`). The length cut above is blind to
+// the 12-13 digit LIDs by construction; asking the dialling code as well —
+// is this a country we know, at a length that country issues — answers
+// 'not_phone' for **44 of those 95**, measured on the same corpus the day the
+// check was written. It is only ever consulted as a REFUSAL here: 'unknown'
+// (a dialling code the table has never heard of) keeps exactly today's
+// behaviour, because a member from an unlisted country must not lose their tag
+// to make a LID lose one. Verified in that direction too — all 34 real
+// numbers on the box answer 'phone'.
+//
+// **What this still does NOT catch: the remaining 51** — 45 whose prefix is
+// unknown and 6 that pass as a real country at a real length. The airtight
+// answer is upstream — a roster that carries JIDs, or the gateway's LID map
+// consulted — and neither is this change. So this is a filter, never a
+// guarantee, and a caller must not read a rendered tag list as "everybody who
+// is missing".
 const TAGGABLE_MIN_DIGITS = 7;
 const TAGGABLE_MAX_DIGITS = 13;
 
 function isTaggableNumber(value) {
   const digits = String(value == null ? '' : value).trim().replace(/^\+/, '');
   if (!/^\d+$/.test(digits)) return false;
-  return digits.length >= TAGGABLE_MIN_DIGITS && digits.length <= TAGGABLE_MAX_DIGITS;
+  if (digits.length < TAGGABLE_MIN_DIGITS || digits.length > TAGGABLE_MAX_DIGITS) return false;
+  return phoneShape(digits) !== 'not_phone';
 }
 
 // One tag, for the places that hand a person to the MODEL rather than render a

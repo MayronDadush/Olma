@@ -43,7 +43,10 @@ test('the nudge is shorter than the explanation and still carries the tags', () 
 
 // Twenty tags in one message is not a nudge, it is a pile-on.
 test('a long list of missing people is capped, and the rest are counted', () => {
-  const many = Array.from({ length: 12 }, (_, i) => `+97250000000${i}`);
+  // Zero-padded to two digits so all twelve are 12 digits long — an Israeli
+  // number is exactly that, and the thirteenth digit `${i}` used to add past
+  // nine is refused by the shape check as the LID it would be.
+  const many = Array.from({ length: 12 }, (_, i) => `+9725000000${String(i).padStart(2, '0')}`);
   const rendered = text.mentionTokens(many);
   assert.equal((rendered.match(/@\+/g) || []).length, text.MAX_TAGS);
   assert.match(rendered, /ועוד 4/);
@@ -101,19 +104,34 @@ test('the overflow count counts people, not LIDs', () => {
 });
 
 test('the taggable cut is 13 digits, measured and not guessed', () => {
-  assert.equal(text.isTaggableNumber('+9725011111111'), true);   // 13
-  assert.equal(text.isTaggableNumber('+97250111111111'), false); // 14
+  // 13 has to stay inside the window, so the example is a country that really
+  // issues one: a 13-digit ISRAELI number is refused by the shape check below,
+  // which is a different rule and has its own test.
+  assert.equal(text.isTaggableNumber('+4915112345678'), true);   // 13, Germany
+  assert.equal(text.isTaggableNumber('+49151123456789'), false); // 14
   assert.equal(text.isTaggableNumber('123456'), false);          // under the floor
   assert.equal(text.isTaggableNumber('+972-50-111'), false);     // not digits
   assert.equal(text.isTaggableNumber(''), false);
   assert.equal(text.isTaggableNumber(null), false);
 });
 
-// The gap, kept in the test rather than only in a comment: 95 of the box's
-// 2,673 LIDs are 12-13 digits and no local test can tell them from a number.
-// One of Padel Gang's own three is exactly that, and it still gets through.
-// Beating this means going upstream — a roster carrying JIDs, or the gateway's
-// LID map — not tightening the length.
-test('a short LID is indistinguishable from a number, and this knows it', () => {
+// The second half, added 2026-09-24: the length cut is blind inside its own
+// window, so the dialling code is asked as well (`phone-timezone.phoneShape`).
+// 44 of the 95 twelve-and-thirteen-digit LIDs on the box are refused by it.
+test('a known country at a length it does not issue is not taggable', () => {
+  assert.equal(text.isTaggableNumber('+9725011111111'), false); // 13, Israel issues 12
+  assert.equal(text.isTaggableNumber('+100000000000'), false);  // 12, US issues 11
+  assert.equal(text.isTaggableNumber('+972501111111'), true);   // 12 — the real thing
+  assert.equal(text.mentionToken('+9725011111111'), null);
+});
+
+// The gap that is LEFT, kept in the test rather than only in a comment: 51 of
+// the box's 2,673 LIDs still pass — 45 whose dialling code the table has never
+// heard of, and 6 that look like a real country at a real length. One of Padel
+// Gang's own is exactly the first kind, and it still gets through, because
+// refusing an unknown code here would silence a member from an unlisted
+// country. Beating this means going upstream — a roster carrying JIDs, or the
+// gateway's LID map — not tightening either rule.
+test('a LID with an unknown dialling code still gets through, and this knows it', () => {
   assert.equal(text.isTaggableNumber('+6266525098172'), true);
 });

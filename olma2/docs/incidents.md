@@ -2923,6 +2923,46 @@ as a cost on purpose: what to say to a room waiting on somebody we cannot name
 is a sentence in `message_templates`, which is his to write, and inventing one
 here would be editing his copy on his behalf.
 
+**The gap was half closable, and "no local test can tell" above was wrong
+(2026-09-24).** The sentence two paragraphs up is the one this session set out
+to build a whole identity-merge mechanism around, on the premise that a LID and
+a number are indistinguishable. They are not, and the reason the premise stood
+for two days is that nobody had measured the other half of the signal: LENGTH
+alone is blind inside its own window, but length **for a given dialling code**
+is not. The same corpus that produced the 13-digit cut answers this too — the
+2,673 reverse mappings the gateway itself had resolved — and the split is
+1,654 refused outright (a country we know, at a length it does not issue),
+1,013 unknown (a dialling code the table has never heard of), and **6 that pass
+as real numbers**, 0.22%, every one of them Italian, German, Mexican or
+Brazilian, the four countries in `PREFIXES` that genuinely carry two mobile
+lengths. Zero Israeli, zero British, zero American. Of the 95 that used to get
+through the length cut, **44 do not any more**.
+
+Three consequences worth keeping. **The third state is load-bearing, and
+`isTaggableNumber` only ever consults the refusal**: `'unknown'` leaves exactly
+the old behaviour, because a member from a country the table does not list would
+otherwise lose their tag to make a LID lose one, which is the direction the
+original cut was chosen to avoid. **The lengths went onto the `PREFIXES` rows
+that already carry the timezone guess** rather than into a table of their own —
+one row per country to keep right, the argument `CLAUDE.md` makes about every
+second copy of a predicate. **And the check found a bug in the suite on its
+first run**: `tests/group-text.test.js` built twelve fixture "numbers" as
+`+97250000000${i}`, which for `i = 10, 11` is a 13-digit Israeli number, i.e.
+exactly the shape now refused — the overflow assertion went from `ועוד 4` to
+`ועוד 2` and named it.
+
+What is still open is the **51**: 45 unknown prefixes and the 6. The airtight
+answer has not moved — it is upstream, in a roster that carries JIDs or in the
+gateway's own map — and this is still a filter, never a guarantee. The reason to
+write it down anyway is that the expensive alternative was live: a second
+`users` row keyed on a LID, with a merge across the 41 foreign keys that point
+at `users.id` and the 21 unique constraints that include one, of which **no
+merge primitive exists anywhere in the codebase**. A LID in `users.phone` would
+also have been retried by the outbox every ten minutes for ever (the backoff
+caps there and the gate has no "cannot be reached"), told its owner a guessed
+city by name from `checkin.js`, and left the system as `{{inviter_phone}}` in a
+message a stranger reads.
+
 ### The room chased three people, two of whom had never been asked (fixed 2026-09-22)
 
 Coordination 38 was opened in the test room at 00:40 to measure something

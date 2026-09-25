@@ -358,6 +358,7 @@ Loads when you **Read** a file under `src/domain/group-connections.js`, `src/dom
 - **A time the room was TOLD about and that has since left the table is said again; a time merely overtaken is not**
 - **The place is the room's own words, asked for only when nobody said one, and it rides the confirmation onto the calendar event** — and a name that says it happens on Zoom has said one (`online-place.onlinePlace`, a closed list, code only)
 - **A tag is a NUMBER, and the roster hands us LIDs in the same column** — the cut is 13 digits, measured; a line that can name nobody is not said
+- **…and since 2026-09-24 the SHAPE is asked too, which halves what the length alone could reach** (`phone-timezone.phoneShape`) — three answers, never two, and `unknown` keeps the old behaviour so no real member is silenced
 - **The room says that people have not answered only about people she has actually written to** — `silent` is still the exact count; `asked` is what may be SAID
 - **A group turn is told the room's coordination state before the model's first word, and that block is the only thing it may speak from.** — and a result the room has already heard is marked `roomHeard`, so it is not the tail of every reply
 - **A message in the room with no tag on it is ENDED, never answered — and the window it opens is the point.** Inert behind a flag, and measuring while it is.
