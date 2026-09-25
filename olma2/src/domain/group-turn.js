@@ -158,7 +158,7 @@ function peopleOf(members, lidPhones, { clocks = false } = {}) {
 // their own record (`users.timezone`, the column, nothing inferred); the second
 // is `roomTimes`, drawn beside every time on the block. Only in a room that
 // spans clocks: anywhere else neither field exists and this rule is not said.
-const CLOCK_RULE = 'This room\'s people live on more than one clock (`room.clocks`). Whenever you say a time in the room, say its `roomTimes` exactly as drawn, never the bare `slot` words and never an hour you converted yourself. A time a member names is on THEIR clock (the `clock` of their entry in `room.people`): pass starts_at with that clock\'s offset, unless they named a different city\'s time. People on several clocks are not meeting in one room — never ask where to meet in person; ask how they connect.';
+const CLOCK_RULE = 'This room\'s people live on more than one clock (`room.clocks`). Whenever you say a time in the room, say its `roomTimes` exactly as drawn, never the bare `slot` words and never an hour you converted yourself. A time a member names is on THEIR clock (the `clock` of their entry in `room.people`): pass starts_at with that clock\'s offset, unless they named a different city\'s time. People on several clocks are not meeting in one room — never ask where to meet in person; ask how they connect. Asked for hours that suit everyone: answer from `room.commonHours` lines exactly as drawn (an `unconfirmed` clock is shown there, never counted). If they name a place whose clock it lacks, call group_coordination_status with `places` (the city\'s IANA zone; a country with several clocks, ask which city) and answer from its `commonHours`. Never answer that you will ask everyone privately.';
 
 // The cities of the members she could coordinate with, when there is more than
 // one — the room's own zone first. Null is "one clock", which says nothing.
@@ -173,12 +173,17 @@ async function draw(client, group, { lidPhones = null } = {}) {
   const status = await groupMeetings.coordinationStatus(client, group);
   const c = status.coordination;
   const clocks = roomClocks(members, group);
+  // Hours that suit every CONFIRMED clock in the room, drawn by code
+  // (`meeting-time.commonHours`); null when fewer than two are confirmed, and
+  // then the model asks the tool with the places the room named.
+  const common = clocks ? (await groupMeetings.commonHoursFor(client, group)).commonHours : null;
   const room = {
     members: members.length,
     // Whoever a coordination could ask — the gate's own question, asked by
     // calling the gate.
     countedIn: members.filter((m) => groups.isConnected(m)).length,
     ...(clocks ? { clocks } : {}),
+    ...(common ? { commonHours: common } : {}),
     // Who they are, so an incoming tag is a person rather than a puzzle. Drawn
     // on EVERY turn and not only during a negotiation: the turn that failed had
     // a settled coordination, which returns early below, so a roster that only

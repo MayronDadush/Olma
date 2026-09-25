@@ -109,7 +109,15 @@ const { IDENTITY_PARAM } = require('../src/adapters/mcp/identity-param');
 // than the total says: a room's agent is shown only group tools and a
 // person's only theirs (`intake/agent-tool-policy.js`). Margin 93 — not one
 // more ordinary tool, again.
-const JSON_CEILING = 59_500;
+//
+// Raised the fifth time, on 2026-09-25: 59,500 -> 59,650, for ONE optional
+// parameter — `places` on `group_coordination_status`, 142 chars. What it buys
+// is the answer to "hours that suit Australia, New York and Israel" in פנתרה,
+// where only Israel was a confirmed clock on anybody's record, so the room's
+// own block could not answer and the model needs a way to pass the places the
+// room NAMED. Folded into the existing status tool rather than a new one, which
+// would have cost ~500. PUT TO THE OWNER WITH ITS COST BEFORE MERGING.
+const JSON_CEILING = 59_650;
 const DESCRIPTION_CEILING = 700;
 const IDENTITY_DESCRIPTION_CEILING = 40;
 

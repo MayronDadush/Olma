@@ -790,6 +790,18 @@ have already had to be argued for.
   `group-turn.CLOCK_RULE` is said only in a room that spans clocks. Each member
   there carries `clock`, so "at four" from somebody in New York is put on the
   table at New York's four (`incidents.md`, "פנתרה: one time, four clocks").
+  **…and asked for hours that suit everyone, she answers from code**
+  (owner, 2026-09-25). `meeting-time.commonHours` walks the coming week hour by
+  hour and keeps the hours that fall inside 08:00–22:00 on every clock. A day
+  with none is widened to 07:00–23:00 and says so. Answers are drawn lines,
+  and days that read the same collapse into one line. **Only a CONFIRMED clock
+  chooses the hour.** A guessed `users.timezone` is shown beside the answer as
+  `לא מאושר`, because a wrong guess would otherwise pick the time for
+  everybody. So in פנתרה, where only Israel is confirmed, the block has no
+  `commonHours`, and the model calls `group_coordination_status` with the
+  `places` the room named (a country with several clocks is asked about,
+  never guessed). A place that is not a real zone comes back as
+  `unknownPlaces` rather than vanishing.
 
 - **The private side knows every room a person shares with Olma, off the
   ROSTER, and says the list is complete** (`groups.roomsOf`, 2026-09-25). It

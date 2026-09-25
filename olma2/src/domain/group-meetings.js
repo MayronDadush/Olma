@@ -297,9 +297,34 @@ async function quietJoinersToAnnounce(client, group, meeting, startedAt) {
 }
 
 // Where it stands, in the room's terms. Answers only — never a reason.
-async function coordinationStatus(client, group) {
+async function coordinationStatus(client, group, { places = null } = {}) {
   const st = await statusOf(client, group, await currentMeeting(client, group.id, { includeClosed: true }));
-  return { ...st, coordination: roomView(st.coordination) };
+  const out = { ...st, coordination: roomView(st.coordination) };
+  if (places === null) return out;
+  return { ...out, ...(await commonHoursFor(client, group, places)) };
+}
+
+// Hours that suit every clock in the room (`meeting-time.commonHours`), for the
+// people she could coordinate with plus any PLACE a member named in the request
+// ("אוסטרליה, ניו יורק וישראל", owner 2026-09-25 in פנתרה). A named place is
+// what somebody SAID, so it counts; a member's zone counts only when they
+// confirmed it, and a guessed one is shown beside the answer, never inside it.
+// A place that is not a real IANA zone comes back as `unknownPlaces` rather
+// than being dropped in silence.
+async function commonHoursFor(client, group, places = []) {
+  const members = (await groups.listMembers(client, group.id))
+    .filter((m) => !m.left_at && groups.isConnected(m) && m.timezone);
+  const named = (Array.isArray(places) ? places : []).map((p) => String(p || '').trim()).filter(Boolean);
+  const unknownPlaces = named.filter((tz) => !meetingTime.validZone(tz));
+  const zones = [
+    ...members.map((m) => ({ tz: m.timezone, confirmed: m.timezone_confirmed === true })),
+    ...named.filter(meetingTime.validZone).map((tz) => ({ tz, confirmed: true })),
+  ];
+  const hours = meetingTime.commonHours(zones, group.timezone || null);
+  return {
+    commonHours: hours,
+    ...(unknownPlaces.length ? { unknownPlaces } : {}),
+  };
 }
 
 // What the room's MODEL is handed — a tool result and the turn block both come
@@ -798,7 +823,7 @@ async function markRelaySaid(client, meetingId, userId) {
 
 module.exports = {
   roomMeetingFor,
-  startCoordination, admitLateMembers, quietJoinersToAnnounce, coordinationStatus, statusOf, roomView, settle, setPlace,
+  startCoordination, admitLateMembers, quietJoinersToAnnounce, coordinationStatus, commonHoursFor, statusOf, roomView, settle, setPlace,
   sweepSilentPausedMembers, currentMeeting, coordinatingMembers, memberLabel, participantFor,
   relayToRoom, pendingRelay, markRelaySaid, cleanRelay, relayRoomEnabled, RELAY_MAX_CHARS, RELAY_FLAG,
 };
