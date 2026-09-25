@@ -131,6 +131,21 @@ async function syncSenderGate(client, configPath) {
   return { ...synced, open: occ.isGroupSenderGateOpen(cfg) };
 }
 
+// A number seen on a roster becomes a `users` row (`status = 'pending'`), behind
+// `group_roster_users`. The whole of the decision is in `domain/groups`; this is
+// only the count, and the reason it is a function at all is that it is called
+// from both arms of the first-sight branch below.
+//
+// Note what `syncSenderGate` directly above does NOT do with these rows: it
+// filters `status = 'active'`, so a roster row never reaches
+// `channels.whatsapp.groups.allowFrom` and cannot make the gateway answerable
+// by somebody who never signed up. That is the one write in this file that
+// leaves the database, and it was already closed against this.
+async function mintRosterUsers(client, group, members) {
+  const res = await groups.ensureRosterUsers(client, group.id, members);
+  return res.ok ? res.data.created.length : 0;
+}
+
 // One pass. deps: { configPath, listGroupSessions, readGroupContext, send, now }
 // `send(jid, text)` is the raw pipe — no model, so nothing here depends on a
 // billing account being in credit.
@@ -182,6 +197,11 @@ async function sweepGroups(client, deps) {
     unreadable: 0, strangers: 0, skipped: 0,
     // Roster rows the reverse map turned from a LID into a phone this pass.
     lidsResolved: 0,
+    // `users` rows minted this pass from a number seen only on a roster
+    // (`groups.ensureRosterUsers`, behind `group_roster_users`). Counts rows
+    // WRITTEN, so a steady state reads 0 — and 0 is also what a closed flag
+    // reads, which is why the flag is reported on the dashboard and not here.
+    rosterUsers: 0,
     // Connections made because two people share a room. Counts the pairs
     // this pass changed, so a steady state reads 0 and a new member reads
     // however many people were already in there with her.
@@ -229,10 +249,19 @@ async function sweepGroups(client, deps) {
       if (!reg.ok) { out.strangers++; continue; }
       group = reg.data.group;
       out.registered.push(jid);
+      // AFTER the refusal above and never before it: a room of strangers must
+      // not leave a trail of `users` rows behind on its way to being ignored.
+      // The member rows `registerGroup` just wrote carry `user_id = NULL` for
+      // these people until the NEXT pass calls `syncRoster` — ten seconds, and
+      // nothing reads the link in between.
+      out.rosterUsers += await mintRosterUsers(client, group, members);
 
       // Tag-only from here, and the deny belt goes on in the same write.
       pg.admitRegisteredGroup({ configPath, jid });
     } else {
+      // Before `syncRoster`, so a row minted this pass is linked to its member
+      // row by the same pass.
+      out.rosterUsers += await mintRosterUsers(client, group, members);
       await groups.syncRoster(client, group.id, members);
     }
 

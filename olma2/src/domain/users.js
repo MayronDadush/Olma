@@ -44,7 +44,17 @@ async function getById(client, id) {
 // Creates the user with everything a user always has: primary whatsapp
 // channel row + free entitlement. One place, so no code path can create a
 // user missing its invariants.
-async function createUser(client, { phone, firstName, lastName, locale, timezone, invitedByConnectionId, status }) {
+//
+// `audit` overrides the row this writes about itself, and it exists because two
+// live NUMBERS read that row rather than the `users` table:
+// `jobs/metrics.users_provisioned` counts `event = 'user.provisioned'` on the
+// day, and `jobs/metrics.active_users` counts `DISTINCT actor_id`, which this
+// row makes the new user themselves. A caller creating a row for somebody who
+// has done nothing — `groups.ensureRosterUsers`, from a roster we merely read —
+// would otherwise report a person joining and a person being active on a day
+// nobody did either. `actorId: null` is the established shape for a system act
+// about somebody who did not act (`jobs/intake`'s `intake.waitlisted`).
+async function createUser(client, { phone, firstName, lastName, locale, timezone, invitedByConnectionId, status, audit: auditOverride }) {
   if (!/^\+\d{7,15}$/.test(phone || '')) return err('invalid', 'phone must be E.164');
   const existing = await getByPhone(client, phone);
   if (existing) return err('conflict', 'user already exists', { userId: existing.id });
@@ -65,7 +75,11 @@ async function createUser(client, { phone, firstName, lastName, locale, timezone
     [user.id, phone]
   );
   await client.query(`INSERT INTO entitlements (user_id) VALUES ($1)`, [user.id]);
-  await audit.record(client, user.id, 'user.provisioned', { phone, invitedByConnectionId: invitedByConnectionId || null });
+  const ev = auditOverride || {};
+  await audit.record(client,
+    'actorId' in ev ? ev.actorId : user.id,
+    ev.event || 'user.provisioned',
+    { phone, invitedByConnectionId: invitedByConnectionId || null, ...(ev.detail || {}) });
   return ok({ user });
 }
 

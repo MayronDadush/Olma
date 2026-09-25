@@ -323,6 +323,10 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
         const facts = {
           row, plan, blocked, paused: Boolean(row.paused_at),
           evalUser: Boolean(row.is_eval),
+          // Off `u.agent_id`, which this query already selects to route the
+          // send. Explicitly boolean, because the gate drops on `false` and
+          // ignores `undefined` — a person with no agent has never met her.
+          hasAgent: Boolean(row.agent_id),
           checkinMisses: Number(row.checkin_misses) || 0,
           blockedUntil: row.quota_blocked_until,
           window: win.data.window, quietDays, quietDates, shabbatWindow, tz: row.timezone,

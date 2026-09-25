@@ -116,6 +116,20 @@ const DEFAULTS = {
   // feature nobody was offered yet. Blocks new links only; anyone already
   // connected keeps working.
   google_connect_phones: '',
+  // domain/groups.ensureRosterUsers: may a number seen on a group's roster become
+  // a `users` row (`status = 'pending'`, no agent, no workspace, nothing sent)?
+  // CLOSED by default and opened by hand, because it is the first write in this
+  // system that creates a person's record from something nobody said. Measured on
+  // the box the day it shipped, opening it mints exactly one row across every
+  // registered group — a member of "פנתרה" with a real Israeli number and no user
+  // — and refuses the two members of Padel Gang the gateway only ever names by
+  // LID (`phone-timezone.isRealPhone`). What the row is FOR is the coordination
+  // that could not reach them; what it must not do is be mistaken for somebody
+  // who has met her, which is why `agent_id IS NULL` is now the question asked by
+  // the delivery gate, `connections.requestConnection`,
+  // `group-connections.connectRoom`, the unanswered-strangers check and the
+  // growth count.
+  group_roster_users: false,
 };
 
 async function getFlag(client, key) {

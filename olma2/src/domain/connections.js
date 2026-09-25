@@ -43,7 +43,23 @@ async function requestConnection(client, requesterId, targetPhone, { reason, mes
     const existing = await activeConnectionBetween(client, requesterId, target.id);
     if (existing) return err('conflict', 'already connected', { connectionId: existing.id });
   }
-  const status = target ? 'pending_target' : 'invited';
+  // "Is this person ON Olma" has meant "is there a row" since this was written,
+  // and a row used to mean somebody who had written to her. Since 2026-09-25 it
+  // does not: `groups.ensureRosterUsers` mints a row from a number seen on a
+  // group's roster, so a complete stranger can already have one. Read as a row,
+  // that stranger would be sent "X wants to connect with you" — with no
+  // introduction, because the branch that explains who Olma is and who is asking
+  // is the OTHER one (`intake/invites.afterConnectionRequest`) — and it would be
+  // spoken by the greeter's agent, since they have no session of their own.
+  //
+  // So the question is asked of the agent: `agent_id` is written by
+  // `provisionUser` and by nothing else, in the same statement as
+  // `status = 'active'`, so it is the one column that says a person has been
+  // taken on. `target_id` is still linked whenever a row exists — the FK is a
+  // true fact and `attachProvisionedTarget` updates `invited` rows in place, so
+  // the state machine still reaches `pending_target` on the day they sign up.
+  const reached = Boolean(target && target.agent_id);
+  const status = reached ? 'pending_target' : 'invited';
   let row;
   try {
     const { rows } = await client.query(
@@ -57,9 +73,9 @@ async function requestConnection(client, requesterId, targetPhone, { reason, mes
     throw e;
   }
   await audit.record(client, requesterId, 'connection.requested', {
-    connectionId: row.id, targetPhone, targetKnown: Boolean(target), reason: reason || null,
+    connectionId: row.id, targetPhone, targetKnown: reached, reason: reason || null,
   });
-  return ok({ connection: row, targetKnown: Boolean(target) });
+  return ok({ connection: row, targetKnown: reached });
 }
 
 // Called when an invited stranger has just been provisioned — links their new
