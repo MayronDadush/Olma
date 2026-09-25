@@ -180,6 +180,7 @@ never trust a dated narrative for something you are about to act on.
 - [The deploy that went red for one minute a day (2026-09-08)](#the-deploy-that-went-red-for-one-minute-a-day-2026-09-08)
 - [The door Google's screen is behind, closed until the screen is fixed (2026-09-08)](#the-door-googles-screen-is-behind-closed-until-the-screen-is-fixed-2026-09-08)
 - [The carryover detector checked the wrong half of the pair, so the flagged case was innocent and the real leaks were invisible (fixed 2026-09-03)](#the-carryover-detector-checked-the-wrong-half-of-the-pair-so-the-flagged-case-was-innocent-and-the-real-leaks-were-invisible-fixed-2026-09-03)
+- [A trip to Paphos, on the card for ever (fixed 2026-09-25)](#a-trip-to-paphos-on-the-card-for-ever-fixed-2026-09-25)
 - [One carryover leak filed itself seven times — `config_guard`'s dedup key wasn't deterministic (fixed 2026-09-03)](#one-carryover-leak-filed-itself-seven-times--config_guards-dedup-key-wasnt-deterministic-fixed-2026-09-03)
 
 **Time, timezones and scheduling**
@@ -7844,6 +7845,51 @@ with `ORDER BY id` on the query plus sorting the pair before interpolating
 (`[a, b] = [prior, u.id].sort(...)`), so the same condition always produces
 the same title regardless of iteration order. Verified live post-deploy: one
 tick did the final flip, the next reported zero new/closed issues — stable.
+
+### A trip to Paphos, on the card for ever (fixed 2026-09-25)
+
+The owner asked whether Jev should clean irrelevant facts out of people's
+memory, and gave the row that prompted it: **"טס לפאפוס, קפריסין מ-9.9 עד
+14.9"**. It was active TWICE on one person's card, character for character
+(written 2026-09-06 and again on the 8th), with `expires_at` NULL on both —
+so it sat in `topFacts` on every turn, eleven days after the trip ended.
+
+The rule it broke already existed: a fact that names a moment carries an
+expiry, refused at `facts.rememberFact` by `datetime.namesAMoment`. Three
+holes let it through, and none of them was a model's judgement:
+
+- **The guard could not read a range.** A dotted date only counts when the
+  sentence also names a weekday or a month, because "3.5 שעות" is the same
+  shape. "מ-9.9 עד 14.9" has neither. Two dotted dates joined by עד or a
+  dash now count on their own (`dottedRange`), unless a unit follows
+  ("6.5-7.5 שעות") or a version word precedes ("גרסה 2.1-2.3"). The same
+  pass added "הבוקר" to the moving words — "עמית טס הבוקר ללרנקה" had gone
+  through the same way — with "כל", "במשך" and "על" before it read as a
+  time of day. "על הבוקר" was the one false catch across 127 facts and 320
+  task titles on the box, and is a test now.
+- **The extraction job turned a bad expiry into none.** A past or
+  unparseable `expires_at` was dropped and the fact KEPT (the model had
+  once given a trip the wrong year), so "the shelf life was a guess" became
+  "for ever". When the sentence carries a range, the end is now read off
+  the person's own words in their zone (`datetime.rangeEnd`: the day after
+  the last date, in whichever year puts it nearest) and wins over the
+  model's; a range already over is not written at all
+  (`refused.already_over`). Any other dated sentence with no usable expiry
+  meets the guard and is refused (`needs_expiry`).
+- **Nothing compared text.** `rememberFact` now answers an identical active
+  sentence with the row already there (`duplicate: true`, an OK, never an
+  error — the fact IS known, and a refusal would lose a 👍 or make the model
+  retry), and a second saying that knows the end date gives it to the old
+  row. Other words stay a judgement, and not this door's.
+
+**Why not Jev**: every case here is a date, and Jev documents that it cannot
+do dates. What it could still add — facts that pass with no date in them,
+and the same fact in other words — is a separate, report-only measurement.
+
+`scripts/retire-refused-facts.js` went back for the rows already stored: on
+the box it found exactly the two Paphos rows (the older retired as over, the
+younger as a duplicate), and it now gives a range still AHEAD its end date
+instead of retiring it.
 
 
 ## Time, timezones and scheduling
