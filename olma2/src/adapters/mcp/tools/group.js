@@ -241,6 +241,20 @@ module.exports = [
       });
     }),
 
+  groupTool('reopen_group_coordination',
+    'GROUP AGENTS ONLY. The member who tagged you reopens this room\'s SETTLED coordination so its time can change; other times stay.',
+    {}, [],
+    async (client, ctx) => {
+      const who = await groupMeetings.participantFor(client, ctx.group, ctx.actingUser, { statuses: ['confirmed'] });
+      if (!who.ok) return who;
+      const res = await meetingFanout.reopenAndTell(client, who.data.user, who.data.meetingId, { fromRoom: true });
+      if (!res.ok) return res;
+      return ok({
+        meetingId: who.data.meetingId, reopened: true, was: res.data.was,
+        hints: { room: 'Say ONE short line: the time that was set is open again, the other times stay on the table, and everyone in it is asked privately.' },
+      });
+    }),
+
   groupTool('rename_group_coordination',
     'GROUP AGENTS ONLY. The member who tagged you renames this room\'s coordination.',
     { title: S('string', 'The new name, in their words') }, ['title'],

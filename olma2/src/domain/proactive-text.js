@@ -367,6 +367,9 @@ function renderGroupCoordination(line, overrides) {
   }
   if (line.kind === 'calendar') return templates.render('group_coord_calendar', {}, overrides);
   // Every time a room on several clocks hears is said in each (owner, 2026-09-25).
+  if (line.kind === 'reopened') {
+    return templates.render(keyFor('group_coord_reopened', line), { title: line.title || '', was: roomInline(line, 'was') }, overrides);
+  }
   if (line.kind === 'time') return templates.render(keyFor('group_coord_time', line), { slot: roomInline(line, 'slot') }, overrides);
   // `who` is a whole phrase, so an owner's rewording can move or drop it:
   // "כולם בפנים", or the tags of those who said yes. Null draws nothing.
