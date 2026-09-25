@@ -76,6 +76,27 @@ const { IDENTITY_PARAM } = require('../src/adapters/mcp/identity-param');
 // lost the "never collect times here" the new tool makes false, and the new
 // description carries no sentence its error message already says. 56,827 now,
 // a margin of 173: not one more ordinary tool.
+//
+// **Every number above went stale, and one of them inside a day.** The line
+// before this one said 449 on 2026-09-22 and measured 255 on 2026-09-23; this
+// one says 173 and does not reproduce either — 55,927 for the same 91 tools,
+// nearly 900 off. Whatever the cause (a description trimmed afterwards, a
+// measurement taken mid-branch), the lesson is the same one this file keeps
+// teaching about numbers nobody reconciles: **ask the code, not the
+// paragraph.** One line answers it, and it is the same call the test makes:
+//
+//   node -e "const{toolDefinitions}=require('./src/adapters/mcp/registry');\
+//            console.log(JSON.stringify(toolDefinitions()).length)"
+//
+// `add_task`'s `when_said` (2026-09-25, 182 chars) takes it to 56,109 — a
+// margin of 891, which is room enough that the thing it was NOT given is now
+// a choice rather than a constraint: `edit_task`, `snooze_task` and
+// `set_task_reminder` still have no weekday guard, and roughly 540 chars would
+// cover all three. It was left at one door because the margin looked like 72
+// at the time, and it is worth re-deciding rather than inheriting.
+// **English on purpose, and that is not a style choice**: JSON escapes every
+// Hebrew character as \uXXXX at six chars each, so the founding example
+// ("ביום הראשון הקרוב") would cost more than the rule it illustrates.
 const JSON_CEILING = 57_000;
 const DESCRIPTION_CEILING = 700;
 const IDENTITY_DESCRIPTION_CEILING = 40;

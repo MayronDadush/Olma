@@ -470,9 +470,11 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
         // A room coordination on several clocks, reaching somebody whose own
         // zone was never confirmed and who has not been asked this before:
         // the invite asks, in one line, whether the zone we hold is right
-        // (owner, 2026-09-25; `users.room_zone_asked_at`). Only on a row going
-        // out alone, so the question never rides a merge it could get lost in.
-        const zoneAsk = row.kind === 'meeting_invite' && !mergedParts && ids.length === 1
+        // (owner, 2026-09-25; `users.room_zone_asked_at`). Also on the settled
+        // time sent to somebody let in late, which is their invite. Only on a
+        // row going out alone, so the question never rides a merge.
+        const zoneAsk = (row.kind === 'meeting_invite' || (row.kind === 'meeting_confirmed' && payloadOf(row).joinedLate))
+          && !mergedParts && ids.length === 1
           && payloadOf(row).roomZones && row.timezone_confirmed === false && !row.room_zone_asked_at
           && meetingTime.zoneLabel(row.timezone)
           ? { askZone: meetingTime.zoneLabel(row.timezone) } : {};

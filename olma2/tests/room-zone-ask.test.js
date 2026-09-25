@@ -103,3 +103,27 @@ test('a room on one clock never asks, however unconfirmed the zone', async () =>
   assert.ok(sent.every((r) => r.payload.askZone === undefined && !r.payload.roomZones));
   assert.equal(await askedAt(people[1]), null);
 });
+
+test('somebody let into a settled coordination on several clocks is asked too, on the time they are sent', async () => {
+  const { group, people } = await room(3, [
+    { tz: IL, confirmed: true }, { tz: LA, confirmed: true },
+  ]);
+  const meetingId = await start(group, people[0]);
+  await drain();
+  await db.pool.query(
+    `UPDATE meetings SET status = 'confirmed', confirmed_slot = 'יום שבת 12:00', confirmed_start_at = $2 WHERE id = $1`,
+    [meetingId, new Date(NOW.getTime() + 2 * 86400e3)]);
+  // A new member, whose zone was only ever guessed off a +972 number.
+  const dana = await makeUser(db.pool, '+61412340077', { firstName: 'דנה' });
+  await db.pool.query(
+    `UPDATE users SET last_inbound_at = now(), timezone = $2, timezone_confirmed = false WHERE id = $1`, [dana.id, IL]);
+  await withTx(db.pool, (c) => groups.syncRoster(c, group.id, [...people, dana].map((u) => ({ phone: u.phone }))));
+  const m = (await db.pool.query('SELECT * FROM meetings WHERE id = $1', [meetingId])).rows[0];
+  const g = (await db.pool.query('SELECT * FROM chat_groups WHERE id = $1', [group.id])).rows[0];
+  const inNow = await withTx(db.pool, (c) => groupMeetings.admitLateMembers(c, g, m, NOW));
+  assert.equal(inNow.length, 1);
+  const toDana = (await drain()).find((r) => Number(r.user_id) === Number(dana.id));
+  assert.equal(toDana.kind, 'meeting_confirmed');
+  assert.equal(toDana.payload.askZone, 'ישראל');
+  assert.notEqual(await askedAt(dana), null);
+});

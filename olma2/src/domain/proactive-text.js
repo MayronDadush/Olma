@@ -291,6 +291,9 @@ function renderGroupCoordination(line, overrides) {
       outside_note: outsideNote(line, overrides),
     }, overrides).trim();
   }
+  // Only the tags of who has not written — a one-off for a room whose opening
+  // line went out before it could tag anybody (פנתרה, 2026-09-25).
+  if (line.kind === 'outside') return outsideNote(line, overrides) || null;
   if (line.kind === 'joined') {
     const phones = (line.phones || []).filter(isTaggableNumber);
     if (!phones.length) return null;
@@ -350,25 +353,38 @@ function renderGroupCoordination(line, overrides) {
     return templates.render(keyFor('group_coord_soon', line), { slot: roomInline(line, 'slot') }, overrides);
   }
   if (line.kind === 'calendar') return templates.render('group_coord_calendar', {}, overrides);
+  // Every time a room on several clocks hears is said in each (owner, 2026-09-25).
+  if (line.kind === 'time') return templates.render(keyFor('group_coord_time', line), { slot: roomInline(line, 'slot') }, overrides);
   // `who` is a whole phrase, so an owner's rewording can move or drop it:
   // "כולם בפנים", or the tags of those who said yes. Null draws nothing.
   const who = !line.who ? '' : line.who.all ? WHO_ALL : (line.who.phones || []).length ? `${WHO_IN} ${mentionTokens(line.who.phones)}` : '';
+  // Both open is one sentence, never two questions in a row.
+  const timeAsk = line.timeAsk
+    ? (line.placeAsk ? (line.multiZone ? TIME_AND_CONNECT_ASK : TIME_AND_PLACE_ASK) : TIME_ASK) : '';
   if (line.multiZone) {
     // People on several clocks are not meeting in one room, so the question is
     // how they connect, never where (owner, 2026-09-25).
-    return tidy(templates.render('group_coord_done_zones', {
-      ...roomBlock(line, 'slot'), who, place_ask: line.placeAsk ? PLACE_ASK_ONLINE : '',
+    const zoned = tidy(templates.render('group_coord_done_zones', {
+      ...roomBlock(line, 'slot'), who, place_ask: line.placeAsk && !line.timeAsk ? PLACE_ASK_ONLINE : '',
     }, overrides)).trim();
+    return timeAsk && !zoned.includes(timeAsk) ? `${zoned}\n${timeAsk}` : zoned;
   }
-  return templates.render('group_coord_done', {
-    slot: slotText(line.slot), who, place_ask: line.placeAsk ? PLACE_ASK : '',
+  const done = templates.render('group_coord_done', {
+    slot: slotText(line.slot), who, place_ask: line.placeAsk && !line.timeAsk ? PLACE_ASK : '', time_ask: timeAsk,
   }, overrides).trim();
+  // An owner's rewording saved before {{time_ask}} existed has nowhere to put
+  // it, and the question is the point of the line — so it goes on the end.
+  return timeAsk && !done.includes(timeAsk) ? `${done}\n${timeAsk}` : done;
 }
 const TABLE_LEAD = 'הכי מתקדם:';
 const ONE_OPTION = 'מועד אחד';
 const MANY_OPTIONS = 'מועדים';
 const PLACE_ASK = 'איפה נפגשים? תכתבו לי ואני אוסיף ליומן 📍';
 const PLACE_ASK_ONLINE = 'איך מתחברים? זום, מיט, וידאו בוואטסאפ — תכתבו לי ואני אוסיף ליומן 🎥';
+const TIME_ASK = 'רוצים לקבוע שעה מדויקת? תכתבו לי ואעדכן 🕐';
+const TIME_AND_PLACE_ASK = 'רוצים לקבוע שעה מדויקת, ואיפה נפגשים? תכתבו לי ואעדכן 🕐📍';
+const TIME_AND_CONNECT_ASK = 'רוצים לקבוע שעה מדויקת, ואיך מתחברים? תכתבו לי ואעדכן 🕐🎥';
+
 // The opening line's note about members who have not written to her: their
 // tags when the room can tag any of them (owner, 2026-09-25), and the count
 // sentence below when it cannot. A LID is never a tag, so a room whose missing

@@ -156,3 +156,51 @@ test('before the opening line has gone out, somebody let in is simply counted by
   assert.ok(!first[0].includes('עוד לא כתב'), first[0]);
   assert.equal((await invitesTo(dana.id, meetingId)).length, 1);
 });
+
+test('a settled coordination still ahead: whoever writes now is told the time privately, and the room hears it once', async () => {
+  const outsider = '+61412340004';
+  const { group, people } = await room(4, outsider);
+  const meetingId = await start(group, people[0]);
+  await pass(group.external_id); // the opening
+  // Settled on a time two days out, and the room already heard "סגור".
+  const at = new Date(DAY.getTime() + 2 * 86400e3);
+  await db.pool.query(
+    `UPDATE meetings SET status = 'confirmed', confirmed_slot = 'יום שבת 12:00', confirmed_start_at = $2,
+            group_done_at = $3 WHERE id = $1`, [meetingId, at, DAY]);
+
+  const dana = await writesToHer(group, outsider, { gender: 'female' });
+  const said = await pass(group.external_id);
+  assert.deepEqual(said, [`@${outsider} הצטרפה — שאלתי בפרטי 👋`]);
+  const { rows } = await db.pool.query(
+    `SELECT kind, payload FROM outbox WHERE user_id = $1 AND (payload->>'meetingId')::bigint = $2`, [dana.id, meetingId]);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].kind, 'meeting_confirmed');
+  assert.equal(rows[0].payload.joinedLate, true);
+  assert.equal(rows[0].payload.slot, 'יום שבת 12:00');
+  const { instructionFor } = require('../src/channels/openclaw');
+  assert.match(instructionFor({ kind: 'meeting_confirmed', payload: rows[0].payload, timezone: 'Asia/Jerusalem' }),
+    /they have just been added to it/);
+
+  // Once: the next pass adds nothing.
+  assert.deepEqual(await pass(group.external_id), []);
+});
+
+test('a coordination that has already happened lets nobody in', async () => {
+  const outsider = '+61412340005';
+  const { group, people } = await room(5, outsider);
+  const meetingId = await start(group, people[0]);
+  await db.pool.query(
+    `UPDATE meetings SET status = 'confirmed', confirmed_slot = 'אתמול', confirmed_start_at = $2 WHERE id = $1`,
+    [meetingId, new Date(DAY.getTime() - 86400e3)]);
+  const dana = await writesToHer(group, outsider);
+  const m = (await db.pool.query('SELECT * FROM meetings WHERE id = $1', [meetingId])).rows[0];
+  const let_in = await withTx(db.pool, (c) => groupMeetings.admitLateMembers(c, { ...group, state: 'open' }, m, DAY));
+  assert.deepEqual(let_in, []);
+  assert.equal((await invitesTo(dana.id, meetingId)).length, 0);
+});
+
+test('the one-off tag line says only the tags', () => {
+  assert.equal(text.renderGroupCoordination({ kind: 'outside', outsidePhones: ['+61412345678'] }),
+    '@+61412345678 עוד לא כתבת לי בפרטי — ״היי״ שם ואצרף אותך לתיאום ☺️');
+  assert.equal(text.renderGroupCoordination({ kind: 'outside', outsidePhones: [] }), null);
+});
