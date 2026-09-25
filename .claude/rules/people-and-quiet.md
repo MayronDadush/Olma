@@ -34,6 +34,13 @@ title means this file. Grep the title, not the filename.
   (`jobs/checkin.js`, `requiredGapMs`, `pickRung(…, misses)`). What is
   THEIRS — a meeting waiting on them, a deadline tomorrow — still outranks
   the quiet.
+  **A miss is a check-in that REACHED them** (2026-09-25): `checkin_misses`
+  goes up in `outbox/worker` on a confirmed or timed-out send of a ladder
+  rung, never at the enqueue. A row held for the night, superseded, failed or
+  dropped asked nothing, and a day-one step never counts. Only the pause stays
+  on the enqueue, and only after two real misses. Counted at the enqueue, the
+  ladder paused עידן for three check-ins not one of which was delivered
+  (`incidents.md`, "Paused for three questions nobody asked").
   **The morning digest obeys the same rule and had to be told so separately**:
   `sweepDigests` puts `mayAsk` on the payload — false when nothing was
   received since the last digest that really went out (`sent_at` set,

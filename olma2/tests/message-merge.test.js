@@ -166,6 +166,13 @@ test('worker: two things due at the same moment are one send, and both rows are 
       WHERE idempotency_key IN ('m-arch', 'm-checkin') ORDER BY idempotency_key`);
   assert.ok(rows.every((r) => r.sent_at && !r.hold_reason),
     'both rows are delivered — the one that rode along is not left pending to be sent again');
+
+  // The check-in that rode along REACHED her, so it is one miss — once, for
+  // one message (jobs/checkin.js, `run`). The tests below share Dana and
+  // assume she is not silent, so she answers.
+  const { rows: [u] } = await db.pool.query(`SELECT checkin_misses FROM users WHERE id = $1`, [user.id]);
+  assert.equal(u.checkin_misses, 1);
+  await db.pool.query(`UPDATE users SET checkin_misses = 0 WHERE id = $1`, [user.id]);
 });
 
 test('worker: a message Olma owes goes alone and is never blended into', async () => {
@@ -230,6 +237,9 @@ test('worker: a merged message costs ONE slot of the daily budget, not one per r
   assert.equal(stamped.length, 1,
     'one UPDATE stamps them, so they share a timestamp to the microsecond — which is what '
     + 'lets the budget count messages instead of rows');
+  // The check-in in that message was a question asked; she answers it, or
+  // the gate would drop the fourth as `quiet` and this would test silence.
+  await db.pool.query(`UPDATE users SET checkin_misses = 0 WHERE id = $1`, [user.id]);
 
   // Three messages have now reached them today, not four, so a fourth still
   // gets through. Counting rows would have spent the budget on the merge.
