@@ -17,6 +17,7 @@ const { renderBrain } = require('./brain');
 const { renderGroups } = require('./groups');
 const { renderTemplates } = require('./templates');
 const { renderOnboardingReviews } = require('./onboarding');
+const { renderOwnerLog } = require('./owner-log');
 
 
 // Since 2026-09-15 each group is its own menu page at /g/<id>, and `/` is the
@@ -52,6 +53,7 @@ const SECTIONS = [
   { id: 'outcomes', group: 'measure', title: 'האם זה עובד', hint: 'המדדים שנבחרו כדי לענות על השאלה הזו: ענו לנו? נסגרו משימות? נאלצו לתקן אותנו? נוצר הרגל? כל מספר עם המכנה שלו.', render: renderOutcomes },
   { id: 'metrics', group: 'measure', title: 'שימוש במוצר', hint: 'מה באמת קורה במוצר: כמה אנשים פעילים, כמה נוצר, מה הצליח.', render: renderMetrics },
   { id: 'planned', group: 'sending', title: 'מה מתוכנן להישלח', hint: 'כל מה שעולמה מתכננת לשלוח, ומתי — בשעון המקומי של כל משתמש, מקובץ לפי מי שיקרא. שורה עם ✓ יוצאת כלשונה וזה בדיוק הטקסט שיגיע; השאר נכתב ברגע השליחה, ולכן מופיע הנושא בלבד.', render: renderPlanned },
+  { id: 'owner-log', group: 'sending', title: 'מה כתבתי בעצמי', hint: 'כל הודעה יזומה שנכתבה ידנית מדף משתמש, מה עולמה ניסחה ממנה בפועל, והאם ענו. כל שורה היא רגע שעולמה הייתה יכולה לזהות לבד: רושמים ליד מה היא מלמדת ומשייכים לפיצ\'ר אפשרי. שום דבר כאן לא נבנה לבד ועולמה לא קוראת את זה — עוברים על זה ביחד כשמחליטים.', render: renderOwnerLog },
   { id: 'groups', group: 'people', title: 'קבוצות', hint: 'קבוצות וואטסאפ שעולמה יושבת בהן. נעולה = מישהו שם עוד לא כתב לה בפרטי, והיא עונה לאף אחד עד שכולם כתבו. הכל נקבע מהשיחה עצמה — אין כאן כפתור לפתוח קבוצה ביד.', render: renderGroups },
   { id: 'brain', group: 'people', title: 'מה עולמה יודעת ועל מה היא מחכה', hint: 'שני צדדים של אותו דבר: מה המערכת למדה על האנשים, ומה תקוע אצלה כי אדם עדיין לא ענה.', render: renderBrain },
   { id: 'flags', group: 'controls', title: 'הגדרות מערכת', hint: 'שינוי כאן חל מיד, בלי עדכון גרסה. כל הגדרה מוסברת בשורה שלה.', render: renderFlags },
