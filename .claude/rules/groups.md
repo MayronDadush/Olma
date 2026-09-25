@@ -719,3 +719,15 @@ have already had to be argued for.
   `group-turn.CLOCK_RULE` is said only in a room that spans clocks. Each member
   there carries `clock`, so "at four" from somebody in New York is put on the
   table at New York's four (`incidents.md`, "פנתרה: one time, four clocks").
+
+- **The private side knows every room a person shares with Olma, off the
+  ROSTER, and says the list is complete** (`groups.roomsOf`, 2026-09-25). It
+  rides the turn context as `rooms` on every turn of somebody in a room, and
+  `list_my_meetings` returns it too. Until then no private read touched
+  `chat_group_members`: `list_my_meetings` reads `meeting_participants` and
+  `recentMeetings` reads the outbox, so a member with no participant row asked
+  "אני בקבוצה שאת בה?" and was told no. Keyed on the roster and never on a
+  participant row, because being in the room is the fact being asked about;
+  each room carries its live coordination and whether THIS person is in it,
+  and nothing about anybody else. A room that is `retired`, or that they left,
+  is not one they share (`incidents.md`, "She said there was no group").

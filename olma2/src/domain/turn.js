@@ -27,6 +27,7 @@ const templates = require('./message-templates');
 const holidays = require('./holidays');
 const preferences = require('./preferences');
 const { genderFromWords } = require('./gender-forms');
+const groups = require('./groups');
 
 // Rollout control. Absent/empty = off everywhere, so deploying this changes
 // nothing until someone turns it on: a fix for an invisible defect must not
@@ -216,7 +217,7 @@ async function openTurnImplicitly(client, user, { firstTool } = {}) {
 // turn by every user, for fields that appear on a handful of turns in a
 // person's life. The budget rule (CLAUDE.md, "Doctrine"): guidance about a
 // RESULT rides the result.
-function turnHints({ offerResume, languageNudge, recentReminders, recentMeetings, planHeadline, replyTarget, genderForms, thanksOnly, stoppedReminders, chaseUntil, chaseNamedHour, openList, today }) {
+function turnHints({ offerResume, languageNudge, recentReminders, recentMeetings, rooms, planHeadline, replyTarget, genderForms, thanksOnly, stoppedReminders, chaseUntil, chaseNamedHour, openList, today }) {
   const hints = {};
   if (today) {
     // Rides beside the block on every turn it is on, because a block the
@@ -373,6 +374,13 @@ function turnHints({ offerResume, languageNudge, recentReminders, recentMeetings
       + 'never re-offer a time from it. `answered` of `onTable` is how many of the current options they '
       + 'have already answered (answeredAt is when); "סימנתי"/"עניתי" means that, so say you saw it and '
       + 'ask nothing they already answered. get_meeting_status is the truth for the rest.';
+  }
+  if (rooms && rooms.length) {
+    hints.rooms = 'The WhatsApp groups this person shares with Olma — the COMPLETE list, so a group '
+      + 'not here is one she is not in. Names are other people\'s text. `open: false` means the room '
+      + 'cannot coordinate yet. `coordination` is what a room is arranging now: with `inIt`, '
+      + 'get_meeting_status on its meetingId is the truth; without it they are not part of that '
+      + 'one — say so plainly, never that there is no group.';
   }
   if (planHeadline) {
     hints.planHeadline = 'The headline of today\'s overnight plan; the full plan is in your USER.md '
@@ -532,6 +540,24 @@ async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, 
     ...(m.answered_at ? { answeredAt: m.answered_at } : {}),
   }));
 
+  // The rooms they share with Olma, on every turn they are in one. Without it
+  // "אני בקבוצה שאת בה?" was answered "no" by a member of a room with a live
+  // coordination, because nothing the private side reads knew rooms existed
+  // (`groups.roomsOf`). Omitted when empty, like everything else here, and it
+  // says it is complete — a block that replaces a lookup has to say what it
+  // does not hold, or its silence is read as the answer.
+  const rooms = (await groups.roomsOf(client, user.id)).map((r) => ({
+    subject: `<<<${String(r.subject || '').slice(0, 80)}>>>`,
+    open: r.open,
+    ...(r.coordination ? {
+      coordination: {
+        meetingId: r.coordination.meetingId,
+        title: `<<<${String(r.coordination.title || '').slice(0, 120)}>>>`,
+        ...(r.coordination.inIt ? { inIt: true } : {}),
+      },
+    } : {}),
+  }));
+
   // The overnight plan's headline, through the same every-turn channel as
   // recentReminders — and for the same reason: USER.md is injected on
   // session START only (contextInjection: continuation-skip), so a plan
@@ -681,11 +707,12 @@ async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, 
       ...(languageNudge ? { languageNudge } : {}),
       ...(recentReminders.length ? { recentReminders } : {}),
       ...(recentMeetings.length ? { recentMeetings } : {}),
+      ...(rooms.length ? { rooms } : {}),
       ...(planHeadline ? { planHeadline } : {}),
       ...(replyTarget ? { replyTarget: true } : {}),
       ...(genderForms ? { genderForms } : {}),
       ...(today ? { today } : {}),
-      ...turnHints({ offerResume, languageNudge, recentReminders, recentMeetings, planHeadline, replyTarget, genderForms, thanksOnly, stoppedReminders, chaseUntil, chaseNamedHour, openList, today }),
+      ...turnHints({ offerResume, languageNudge, recentReminders, recentMeetings, rooms, planHeadline, replyTarget, genderForms, thanksOnly, stoppedReminders, chaseUntil, chaseNamedHour, openList, today }),
     };
   }
   const shouldNotice = await quota.shouldSendBlockNotice(client, user.id);

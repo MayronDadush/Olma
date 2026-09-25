@@ -63,6 +63,7 @@ never trust a dated narrative for something you are about to act on.
 - [Six good mornings for one timeout (fixed 2026-09-09)](#six-good-mornings-for-one-timeout-fixed-2026-09-09)
 - [The room was told twice (fixed 2026-09-08)](#the-room-was-told-twice-fixed-2026-09-08)
 - [The room was greeted twice, by its own registration (fixed 2026-09-11)](#the-room-was-greeted-twice-by-its-own-registration-fixed-2026-09-11)
+- [She said there was no group (fixed 2026-09-25)](#she-said-there-was-no-group-fixed-2026-09-25)
 - [The room coordinated without the person who opened it (fixed 2026-09-19)](#the-room-coordinated-without-the-person-who-opened-it-fixed-2026-09-19)
 - [היא שבורה: the room waited for somebody who had already written (fixed 2026-09-09)](#היא-שבורה-the-room-waited-for-somebody-who-had-already-written-fixed-2026-09-09)
 - [The room was told about a meeting at 01:12 (fixed 2026-09-09)](#the-room-was-told-about-a-meeting-at-0112-fixed-2026-09-09)
@@ -2322,6 +2323,45 @@ the text lives in the transcript with a `MEDIA:` line attached to a card path �
 the same wall `undeliveredReply` hit when it chose "verbatim or nothing". The
 channel outage was the case that actually happened, five times, in one morning.
 
+
+### She said there was no group (fixed 2026-09-25)
+
+"Shabi OG", 24 September, a little after two in the morning Israel time. Miron
+added Olma to the room at 23:22 UTC and started a coordination at 23:24:59.
+ORGETZ wrote "היי" to her privately at 23:27:52, the intake greeter answered
+with the opening copy, and he was provisioned at 23:27:58 — three minutes
+AFTER the coordination had fixed its participants. His next message, twenty
+seconds later, was the question he had come to ask: "אני בקבוצה כלשהי שגם את
+נמצאת?". His own agent called `list_my_connections` and `list_my_meetings`,
+got `{"meetings":[]}`, and answered "לא… אני לא רואה שום קבוצה שאנחנו שנינו
+בה" — to a member of a room with a live coordination in it.
+
+Two faults, and only one of them was the late join. `startCoordination` fixes
+its participants once and nothing let a later member in; another session fixed
+that the same day (`group-meetings.admitLateMembers`, "A room tags who has not
+written to her, and lets them in once they do"), and on its first pass after
+the deploy ORGETZ was let into coordination 49 and invited. But even with a
+participant row he would have been told the same thing about any room with
+nothing running in it: **nothing on the private side could see a room at
+all.** `list_my_meetings` reads `meeting_participants`; the turn's
+`recentMeetings` reads the outbox; no tool and no line of the turn context
+read `chat_group_members`. The agent understood the question perfectly and had
+nowhere to look — the shape this project keeps finding, and the fix is the
+missing read, not a better prompt.
+
+`groups.roomsOf` reads the roster the person is on (not a participant row —
+being in the room is the fact they asked about) and each room's live
+coordination, with whether THEY are in it. It rides the turn context on every
+turn of somebody in a room, fenced like every other person's text, with a hint
+that says the list is COMPLETE — a block that replaces a lookup has to say
+what it does not hold — and `list_my_meetings` returns it too, because that is
+the tool the model already reaches for. Nobody else in the room and nobody's
+reasons travel with it.
+
+The same night showed the other half of the complaint, and it is not fixed
+here: Dana and ORGETZ each had to write twice before hearing anything about
+the room. The greeter's opening says nothing about the group that sent them,
+and at 02:25 the invite waited behind quiet hours until they wrote again.
 
 ### The room coordinated without the person who opened it (fixed 2026-09-19)
 
