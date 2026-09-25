@@ -1,11 +1,11 @@
 'use strict';
 // reminders — one slice of the tool registry (see ../registry.js).
 const {
-  reminders, users, S, tool, ok, pastMoment,
+  reminders, users, S, tool, ok, pastMoment, WHEN_SAID,
 } = require('./_shared');
 const format = require('../../../domain/message-format');
 const listBlock = require('../../../domain/list-block');
-const { partsInZone } = require('../../../domain/datetime');
+const { partsInZone, taskWeekdayClash } = require('../../../domain/datetime');
 const chaseDeadline = require('../../../domain/chase-deadline');
 
 // What set_task_reminder(nudge:true) actually armed, said on the result —
@@ -38,7 +38,8 @@ module.exports = [
   tool('set_task_reminder', 'Attach a reminder to a task, for a moment they ASKED for. A task with a due_at already has one; this is a different time or a repeat, and it cancels the automatic one, never two. remind_at MUST carry a UTC offset (2026-08-20T09:00:00+03:00), their local time (USER.md); never bare digits with a Z.',
     { task_id: S('number', 'Task id'), remind_at: S('string', 'ISO-8601 datetime WITH UTC offset'),
       nudge: S('boolean', 'Chase until done, if they ask'),
-      repeat_rule: S('string', 'Optional repeat, these exact forms or it stores a ONE-OFF: "daily"; "weekly"; "weekly:MO,TH" (SU MO TU WE TH FR SA) — a weekday they NAMED goes HERE, not only in remind_at; "monthly:16"; "monthly:last" (whatever the last day is; a short month clamps).') }, ['task_id', 'remind_at'],
+      repeat_rule: S('string', 'Optional repeat, these exact forms or it stores a ONE-OFF: "daily"; "weekly"; "weekly:MO,TH" (SU MO TU WE TH FR SA) — a weekday they NAMED goes HERE, not only in remind_at; "monthly:16"; "monthly:last" (whatever the last day is; a short month clamps).'),
+      when_said: WHEN_SAID }, ['task_id', 'remind_at'],
     async (client, user, a, ctx) => {
       if (reminders.momentIsPast(a.remind_at)) {
         return pastMoment('remind_at', a.remind_at, user.timezone, 'no reminder was set and none was cancelled');
@@ -48,6 +49,15 @@ module.exports = [
       // chase runs to THAT day whatever the task's own date, and the hour is
       // theirs only if they named one (domain/chase-deadline).
       const heard = !reminders.normalizeRepeatRule(a.repeat_rule) && chaseDeadline.pending(ctx && ctx.turn, ctx && ctx.now ? ctx.now() : Date.now());
+      // Their words against the moment, as add_task does — and skipped under a
+      // heard chase for the same reason: the SERVER reads the day there, off
+      // the very sentence these words carry. "ערב לפני" and "עד חמישי" name an
+      // anchor rather than the moment, and taskWeekdayClash drops them first.
+      if (!heard) {
+        const clash = taskWeekdayClash('remind_at', a.when_said, a.remind_at, user.timezone,
+          'no reminder was set and none was cancelled');
+        if (clash) return clash;
+      }
       if (heard) {
         const chase = await reminders.startChase(client, user.id, a.task_id,
           { at: heard.namedHour ? a.remind_at : null, until: heard.dueAt });

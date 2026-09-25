@@ -123,6 +123,14 @@ function pastMoment(label, value, tz, note) {
     { reason: `${label}_in_past` });
 }
 
+// The person's own words about WHEN, beside the instant the model resolved from
+// them, on every tool that dates a live task or reminder. ONE string, because
+// it is paid for on every turn once per tool that carries it
+// (tests/tool-schema-budget.test.js). The check is `datetime.taskWeekdayClash`,
+// and why it lives at the tool and not in the domain is `incidents.md`, "The
+// first day coming up".
+const WHEN_SAID = S('string', 'Their own words naming WHEN, verbatim. A weekday in them must match the time.');
+
 function tool(name, description, props, required, handler) {
   return {
     name,
@@ -168,5 +176,5 @@ async function connectedUserByPhone(client, actorId, phone, feature) {
 
 
 module.exports = {
-  users, onboardingDomain, selfInitiated, tasks, reminders, preferences, connections, grants, shares, meetings, availability, dashboardAuth, issues, digest, quota, calendar, taskCalendar, googleContacts, mail, googleConnect, scheduleCard, media, liveUpdates, pause, voice, relay, cardStore, facts, searchLink, contacts, reactions, audit, meetingFanout, S, ok, err, scrubTokens, IDENTITY_PARAM, ICON_NAMES, enqueue, actorName, fanout, supersedeQueuedMeetingRows, activeParticipantsExcept, meetingCalendarFanout, calendarRoleFor, cancelCalendarCleanup, calendarHintFor, meetingBrief, CANCEL_CLEANUP_HINTS, captureDisplayName, stale, tool, groupTool, groups, groupMeetings, connectedUserByPhone, flags, pastMoment,
+  users, onboardingDomain, selfInitiated, tasks, reminders, preferences, connections, grants, shares, meetings, availability, dashboardAuth, issues, digest, quota, calendar, taskCalendar, googleContacts, mail, googleConnect, scheduleCard, media, liveUpdates, pause, voice, relay, cardStore, facts, searchLink, contacts, reactions, audit, meetingFanout, S, ok, err, scrubTokens, IDENTITY_PARAM, ICON_NAMES, enqueue, actorName, fanout, supersedeQueuedMeetingRows, activeParticipantsExcept, meetingCalendarFanout, calendarRoleFor, cancelCalendarCleanup, calendarHintFor, meetingBrief, CANCEL_CLEANUP_HINTS, captureDisplayName, stale, tool, groupTool, groups, groupMeetings, connectedUserByPhone, flags, pastMoment, WHEN_SAID,
 };
