@@ -342,6 +342,7 @@ async function statusOf(client, group, meeting) {
     }
     return {
       optionId: o.id, slot: o.slotText, startsAt: o.startsAt,
+      allDay: Boolean(o.allDay), daypart: o.daypart || null,
       yes, no, missing: active.filter((uid) => !(uid in (o.answers || {}))).map(who),
       // What that many yeses MEANS in this room — nothing at all until
       // somebody has said what kind of room it is (groups.quorumFor).
@@ -361,6 +362,13 @@ async function statusOf(client, group, meeting) {
       meetingId: Number(meeting.id), title: meeting.title, status: meeting.status,
       confirmedSlot: meeting.confirmed_slot || null,
       confirmedStartAt: meeting.confirmed_start_at || null,
+      // A whole day or a part of one (087): its start is a stand-in hour, and
+      // nothing may remind the room "in an hour" off it.
+      confirmedAllDay: Boolean(meeting.confirmed_all_day),
+      confirmedDaypart: meeting.confirmed_daypart || null,
+      // When somebody gave it its exact hour afterwards (088), which the room
+      // hears once unless it was said in the room.
+      timeSetAt: meeting.time_set_at || null,
       confirmedOption,
       // The minute between the last yes and the announcement, and whether a
       // shared calendar event exists for it — both undefined when the caller
@@ -518,6 +526,23 @@ async function sweepSilentPausedMembers(client, nowMs = Date.now()) {
   return out;
 }
 
+// The room's newest coordination, for a member acting on it from the room —
+// the same checks setPlace makes, for the tools that write onto a meeting
+// that may already be settled.
+async function roomMeetingFor(client, group, actingUser) {
+  if (!group || group.state !== 'open') return err('forbidden', 'this group is not open');
+  if (!actingUser) {
+    return err('invalid', 'I cannot tell who said this — ask them to say it again in the group');
+  }
+  const members = await coordinatingMembers(client, group.id);
+  if (!members.some((m) => Number(m.user_id) === Number(actingUser.id))) {
+    return err('forbidden', 'that person is not a member of this group');
+  }
+  const meeting = await currentMeeting(client, group.id, { includeClosed: true });
+  if (!meeting) return err('not_found', 'nothing has been coordinated in this group');
+  return ok(meeting);
+}
+
 // The room says where ("אצל יוסי"), before or after the time is set. Written
 // onto the meeting in the room's own words; when a shared calendar event
 // already exists, its organiser's event gets the place too — through the
@@ -668,6 +693,7 @@ async function markRelaySaid(client, meetingId, userId) {
 }
 
 module.exports = {
+  roomMeetingFor,
   startCoordination, admitLateMembers, coordinationStatus, statusOf, roomView, settle, setPlace,
   sweepSilentPausedMembers, currentMeeting, coordinatingMembers, memberLabel,
   relayToRoom, pendingRelay, markRelaySaid, cleanRelay, relayRoomEnabled, RELAY_MAX_CHARS, RELAY_FLAG,

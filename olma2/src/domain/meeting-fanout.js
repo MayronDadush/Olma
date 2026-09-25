@@ -20,6 +20,7 @@
 // there an agent listening" is not a question this module can answer.
 const calendar = require('./calendar');
 const meetings = require('./meetings');
+const optionMoment = require('./meeting-option-moment');
 const { enqueue } = require('../outbox/enqueue');
 const meetingTime = require('./meeting-time');
 const { isoWithOffset } = require('./meeting-option-moment');
@@ -293,10 +294,15 @@ const CANCEL_CLEANUP_HINTS = {
 };
 
 // What to tell the confirming user's own agent, in their own turn.
+function calendarHintFor(role, meetingId, { allDay = false, start = null } = {}) {
+  const hint = calendarHintForRole(role, meetingId, start);
+  return allDay && (role === 'organiser' || role === 'solo') ? `${hint}${calendar.ALL_DAY_EVENT}` : hint;
+}
+
 // `start` is the confirmed instant already written in the actor's own offset,
 // or null when it cannot be known exactly (a daypart, a whole day) — then, and
 // only then, the model reads it off the words.
-function calendarHintFor(role, meetingId, start = null) {
+function calendarHintForRole(role, meetingId, start = null) {
   const when = start
     ? `Start at exactly ${start} (already in the user's offset — never recompute it from the words) and work out the end from the confirmed slot`
     : 'Work out the real start and end from the confirmed slot (full ISO-8601 WITH the user\'s UTC offset)';
@@ -347,7 +353,7 @@ async function activeParticipants(client, meetingId) {
 // mid-turn in the ROOM, where a calendar instruction would be useless — so
 // that path passes `byName`/`groupSubject` and no actor, and everybody
 // including the person who said it hears about it privately.
-async function afterSettled(client, meetingId, res, { actor = null, byName = null, groupSubject = null } = {}) {
+async function afterSettled(client, meetingId, res, { actor = null, byName = null, groupSubject = null, viaPage = false } = {}) {
   if (!res.ok) return res;
   const brief = await meetingBrief(client, meetingId);
   // Every queued question about this meeting is now a wrong question.
@@ -359,6 +365,7 @@ async function afterSettled(client, meetingId, res, { actor = null, byName = nul
   const settledBy = actor ? actorName(actor) : byName;
   const confirmedSlot = res.data.slot || brief.confirmed_slot;
   const moment = await slotMoment(client, meetingId, confirmedSlot);
+  const asked = askedAboutTime(brief, everyone, actor);
   const roles = await meetingCalendarFanout(client, meetingId, recipients, {
     meetingId: Number(meetingId), title: brief.title || 'meeting',
     slot: confirmedSlot,
@@ -367,14 +374,32 @@ async function afterSettled(client, meetingId, res, { actor = null, byName = nul
     // calendar of anybody abroad (`meetingCalendarStep`).
     ...moment,
     ...(brief.location ? { location: brief.location } : {}),
+    ...(brief.confirmed_all_day ? { allDay: true } : {}),
     ...(settledBy ? { byName: settledBy, forced: true } : {}),
     ...(groupSubject ? { groupSubject } : {}),
-  }, `mconf:${meetingId}`, (uid) => (withoutYes.has(Number(uid)) ? { settledWithoutYou: true } : {}));
+  }, `mconf:${meetingId}`, (uid) => ({
+    ...(withoutYes.has(Number(uid)) ? { settledWithoutYou: true } : {}),
+    ...(Number(uid) === asked ? { askExactTime: true } : {}),
+  }));
   if (actor) {
     const exact = moment.startsAtUtc && actor.timezone
       && meetingTime.convertible({ startsAt: moment.startsAtUtc, slot: confirmedSlot, allDay: moment.allDay, daypart: moment.daypart })
       ? isoWithOffset(new Date(moment.startsAtUtc), actor.timezone) : null;
-    res.data.hint = calendarHintFor(calendarRoleFor(roles, actor.id), Number(meetingId), exact);
+    res.data.hint = calendarHintFor(calendarRoleFor(roles, actor.id), Number(meetingId),
+      { allDay: Boolean(brief.confirmed_all_day), start: exact });
+    if (asked === Number(actor.id)) {
+      if (viaPage) {
+        // Settled from the page: there is no turn for a hint to land in, so
+        // the one question goes out as a message of its own.
+        await enqueue(client, {
+          userId: asked, kind: 'meeting_exact_time_ask', urgency: 'urgent',
+          payload: { meetingId: Number(meetingId), title: brief.title || 'meeting', slot: res.data.slot || brief.confirmed_slot },
+          idempotencyKey: `mexact:${meetingId}:${asked}`,
+        });
+      } else {
+        res.data.hint += ` ${optionMoment.exactTimeAsk(Number(meetingId))}`;
+      }
+    }
   }
   return res;
 }
@@ -402,12 +427,81 @@ async function slotMoment(client, meetingId, slotText) {
   };
 }
 
+// Who is asked whether they want an exact time, when a coordination settles
+// on a whole day or a part of one (owner, 2026-09-24). ONE person, so two
+// people cannot answer it two ways: whoever settled it by hand, and when
+// agreement settled it, whoever opened it. A room's coordination asks nobody
+// privately — the room is asked, on its "סגור" line (group-voice).
+function askedAboutTime(brief, everyone, actor) {
+  if (!meetings.timeIsOpen({ status: 'confirmed', ...brief }) || brief.group_id) return null;
+  const pick = actor ? Number(actor.id) : Number(brief.initiator_id);
+  if (everyone.includes(pick)) return pick;
+  return everyone.length ? Math.min(...everyone) : null;
+}
+
+// Somebody gave a settled meeting its exact hour (meetings.setExactTime).
+// The shared calendar event is moved as its organiser — the same door
+// groupMeetings.setPlace uses — and everybody else hears it privately, with
+// their own calendar role, since a solo event is theirs to move. `fromRoom`:
+// said in the room, so the room has heard it and its line is stamped now.
+async function afterTimeSet(client, actor, res, { fromRoom = false, opts = {} } = {}) {
+  if (!res.ok) return res;
+  const { meetingId } = res.data;
+  const brief = await meetingBrief(client, meetingId);
+  const { rows: [m] } = await client.query(
+    'SELECT calendar_event_id, calendar_organiser_id FROM meetings WHERE id = $1', [meetingId]);
+  let calendarUpdated = false;
+  if (m && m.calendar_event_id && m.calendar_organiser_id) {
+    // An hour, because the settled day said nothing about how long; the
+    // organiser can stretch it on their own calendar.
+    const end = new Date(new Date(res.data.startsAt).getTime() + 3600_000);
+    const upd = await calendar.updateEvent(client, Number(m.calendar_organiser_id), {
+      eventId: m.calendar_event_id, start: res.data.startsAt,
+      end: isoLike(res.data.startsAt, end), clearDate: true,
+    }, opts).catch(() => ({ ok: false }));
+    calendarUpdated = Boolean(upd && upd.ok);
+  }
+  if (fromRoom) {
+    await client.query('UPDATE meetings SET group_time_at = now() WHERE id = $1', [meetingId]);
+  }
+  // The question is answered, whoever answered it.
+  await supersedeQueuedMeetingRows(client, meetingId, ['meeting_exact_time_ask']);
+  const roles = await calendar.meetingCalendarRoles(client, meetingId);
+  const others = await activeParticipantsExcept(client, meetingId, actor.id);
+  for (const uid of others) {
+    await enqueue(client, {
+      userId: uid, kind: 'meeting_time_set', urgency: 'urgent',
+      payload: await withRemovals(client, {
+        meetingId: Number(meetingId), title: brief.title || 'meeting',
+        slot: res.data.slot, was: res.data.was, byName: actorName(actor),
+        calendarRole: calendarRoleFor(roles, uid), calendarUpdated,
+        ...(brief.group_subject ? { groupSubject: brief.group_subject } : {}),
+      }, uid),
+      idempotencyKey: `mtime:${meetingId}:${uid}`,
+    });
+  }
+  res.data.calendarUpdated = calendarUpdated;
+  return res;
+}
+
+// The end of an event in the same offset the start was written in, so the
+// calendar reads it as the person's own hour.
+function isoLike(startIso, end) {
+  const off = /([+-]\d{2}:\d{2}|Z)$/.exec(String(startIso));
+  if (!off || off[1] === 'Z') return end.toISOString();
+  const sign = off[1][0] === '-' ? -1 : 1;
+  const [h, mi] = off[1].slice(1).split(':').map(Number);
+  const local = new Date(end.getTime() + sign * (h * 60 + mi) * 60_000);
+  return `${local.toISOString().slice(0, 19)}${off[1]}`;
+}
+
 async function meetingBrief(client, meetingId) {
   // The room's name rides along for a coordination a room started, so a
   // proposal about it can be counted like a game invite is
   // (`channels/openclaw.js`, ROOM_COUNT).
   const { rows } = await client.query(
-    `SELECT m.title, m.initiator_id, m.proposed_slot, m.confirmed_slot, m.location, g.subject AS group_subject
+    `SELECT m.title, m.initiator_id, m.proposed_slot, m.confirmed_slot, m.location, g.subject AS group_subject,
+            m.group_id, m.confirmed_all_day, m.confirmed_daypart
        FROM meetings m LEFT JOIN chat_groups g ON g.id = m.group_id WHERE m.id = $1`, [meetingId]
   );
   return rows[0] || {};
@@ -622,6 +716,7 @@ async function cancelAndTell(client, actor, meetingId) {
 }
 
 module.exports = {
+  afterTimeSet,
   afterSettled, cancelAndTell,
   afterStart, afterOptionAdded, afterOptionRemoved, noteNamedInRoom,
   afterSlotResponse, afterOptOut, afterRejoin,
