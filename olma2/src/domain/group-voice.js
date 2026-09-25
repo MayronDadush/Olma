@@ -22,6 +22,7 @@
 // read about a thing it asked for in four words.
 const { MAX_TAGS } = require('./proactive-text');
 const { onlinePlace } = require('./online-place');
+const meetingTime = require('./meeting-time');
 
 // How long she waits before saying anything about people who have not
 // answered, when the coordination has no dated option to measure against.
@@ -123,7 +124,30 @@ function leadingOption(options) {
 // that just confirmed makes "who has not answered" a wrong question, and
 // saying the base of a plan that is already settled is worse than saying
 // nothing.
-function decideGroupLine(co, {
+function decideGroupLine(co, opts = {}) {
+  return withClocks(decideLine(co, opts), co, opts);
+}
+
+// A room on more than one clock hears every time in each of them (owner,
+// 2026-09-25, פנתרה). What the time IS rides the line — `at[field]` for each
+// slot text it names, `zones` and `roomTz` — and the RENDERER draws the words
+// at delivery, like every other room line. Only when the people this
+// coordination is asking actually span zones at this moment: anywhere else the
+// line is exactly what it was, field for field.
+const SLOT_FIELDS = ['slot', 'was', 'added', 'lead'];
+function withClocks(line, co, { timezone, nowMs } = {}) {
+  if (!line || line.kind === 'none' || line.kind === 'calendar' || line.kind === 'chase') return line;
+  const zones = (co && co.zones) || [];
+  const roomTz = (co && co.roomTz) || timezone || null;
+  if (!meetingTime.spansZones(zones, roomTz, new Date(nowMs || Date.now()))) return line;
+  const at = {};
+  for (const f of SLOT_FIELDS) {
+    if (line[f] && co.moments && co.moments[line[f]]) at[f] = co.moments[line[f]];
+  }
+  return { ...line, multiZone: true, zones, roomTz, at };
+}
+
+function decideLine(co, {
   saidStarted, saidBase, saidBaseSlot, saidChase, saidDone, saidCalendar, saidDayOf, saidHour, saidTime,
   pendingRelay, startedAtMs, nowMs, timezone, tableSaidAtMs,
 } = {}) {

@@ -30,6 +30,7 @@
 // into a count either.
 const groups = require('./groups');
 const groupMeetings = require('./group-meetings');
+const meetingTime = require('./meeting-time');
 
 // Two sentences, and the second one is the whole fix: the block is not extra
 // colour beside what the model remembers, it is the only thing it may speak
@@ -114,8 +115,13 @@ function selfOf(m) {
   return { ...(name ? { name } : {}), ...(address ? { address } : {}) };
 }
 
-function peopleOf(members, lidPhones) {
+// `clocks`: the room spans more than one, so each member who holds a zone on
+// their own record says which city's clock they are on (CLOCK_RULE). Off, the
+// entries are exactly what they were.
+function peopleOf(members, lidPhones, { clocks = false } = {}) {
   const { mentionToken } = require('./proactive-text');
+  const clockOf = (m) => (clocks && m.timezone && groups.isConnected(m)
+    ? { clock: meetingTime.zoneLabel(m.timezone) } : {});
   // Keyed on DIGITS, like `groups.resolveLidMembers`: the roster stores
   // `+972…` and the reverse map's values carry the `+` too, but a comparison
   // that depends on that agreeing is one rewrite away from matching nothing
@@ -130,7 +136,7 @@ function peopleOf(members, lidPhones) {
     const digits = String(m.phone || '').replace(/\D/g, '');
     if (tag) {
       const lid = byPhone.get(digits) || null;
-      return { ...(lid ? { tag, lid } : { tag }), ...selfOf(m) };
+      return { ...(lid ? { tag, lid } : { tag }), ...selfOf(m), ...clockOf(m) };
     }
     // No tag means `proactive-text.isTaggableNumber` refused the digits, which
     // for this column means they are a LID the reverse map has never resolved
@@ -140,25 +146,45 @@ function peopleOf(members, lidPhones) {
     // what having no tag means everywhere else in this file. Dropping them
     // instead would put her back where the incident started — an incoming tag
     // matching nothing, about a person who is standing right there.
-    return /^\d+$/.test(digits) ? { lid: digits, ...selfOf(m) } : null;
+    return /^\d+$/.test(digits) ? { lid: digits, ...selfOf(m), ...clockOf(m) } : null;
   }).filter(Boolean);
+}
+
+// A room whose people live on more than one clock (owner, 2026-09-25, פנתרה).
+// Two things the model could not know before: which clock a member is on —
+// "at four" from somebody in New York is four in New York, and the tool wants
+// the offset of THEIR clock — and how to say a time so every reader gets their
+// own hour. The first is each entry's `clock`, the city of a zone they hold on
+// their own record (`users.timezone`, the column, nothing inferred); the second
+// is `roomTimes`, drawn beside every time on the block. Only in a room that
+// spans clocks: anywhere else neither field exists and this rule is not said.
+const CLOCK_RULE = 'This room\'s people live on more than one clock (`room.clocks`). Whenever you say a time in the room, say its `roomTimes` exactly as drawn, never the bare `slot` words and never an hour you converted yourself. A time a member names is on THEIR clock (the `clock` of their entry in `room.people`): pass starts_at with that clock\'s offset, unless they named a different city\'s time. People on several clocks are not meeting in one room — never ask where to meet in person; ask how they connect.';
+
+// The cities of the members she could coordinate with, when there is more than
+// one — the room's own zone first. Null is "one clock", which says nothing.
+function roomClocks(members, group) {
+  const tzs = members.filter((m) => groups.isConnected(m) && m.timezone).map((m) => m.timezone);
+  const zones = meetingTime.distinctZones(tzs, new Date(), group.timezone || null);
+  return zones.length > 1 ? zones.map((z) => z.label) : null;
 }
 
 async function draw(client, group, { lidPhones = null } = {}) {
   const members = await groups.listMembers(client, group.id);
   const status = await groupMeetings.coordinationStatus(client, group);
   const c = status.coordination;
+  const clocks = roomClocks(members, group);
   const room = {
     members: members.length,
     // Whoever a coordination could ask — the gate's own question, asked by
     // calling the gate.
     countedIn: members.filter((m) => groups.isConnected(m)).length,
+    ...(clocks ? { clocks } : {}),
     // Who they are, so an incoming tag is a person rather than a puzzle. Drawn
     // on EVERY turn and not only during a negotiation: the turn that failed had
     // a settled coordination, which returns early below, so a roster that only
     // existed while something was on the table would have been absent exactly
     // when it was needed.
-    people: peopleOf(members, lidPhones),
+    people: peopleOf(members, lidPhones, { clocks: Boolean(clocks) }),
     // NULL is the honest third state: until somebody in the room has said what
     // kind of room it is there is no true sentence about "enough people", so
     // the minimum is not here to be reasoned from either.
@@ -172,6 +198,7 @@ async function draw(client, group, { lidPhones = null } = {}) {
       lastCoordination: {
         meetingId: c.meetingId, title: c.title, status: c.status,
         ...(c.confirmedSlot ? { slot: c.confirmedSlot } : {}),
+        ...(c.confirmedRoomTimes ? { roomTimes: c.confirmedRoomTimes } : {}),
         // The room's own "סגור" line went out (`meetings.group_done_at`). A
         // result the room has heard is not news, and with nothing marking it
         // she closed seven replies running in פחם הסעות with "the poker is on
@@ -211,7 +238,8 @@ async function draw(client, group, { lidPhones = null } = {}) {
       ...(c.silent.some((p) => p.asked === false)
         ? { notYetAsked: c.silent.filter((p) => p.asked === false).length } : {}),
       onTable: c.options.map((o) => ({
-        optionId: o.optionId, slot: o.slot, yes: o.yes.length, no: o.no.length,
+        optionId: o.optionId, slot: o.slot, ...(o.roomTimes ? { roomTimes: o.roomTimes } : {}),
+        yes: o.yes.length, no: o.no.length,
       })),
     },
   };
@@ -222,7 +250,9 @@ async function draw(client, group, { lidPhones = null } = {}) {
 // every group tool.
 async function renderContext(client, group, opts = {}) {
   const { renderResult } = require('../adapters/mcp/render');
-  return `${CONTEXT_HEADER}\n${renderResult({ ok: true, data: await draw(client, group, opts) })}\n${CONTEXT_RULE} ${TAG_RULE}`;
+  const data = await draw(client, group, opts);
+  const clockRule = data.room && data.room.clocks ? ` ${CLOCK_RULE}` : '';
+  return `${CONTEXT_HEADER}\n${renderResult({ ok: true, data })}\n${CONTEXT_RULE} ${TAG_RULE}${clockRule}`;
 }
 
-module.exports = { draw, peopleOf, addressOf, renderContext, CONTEXT_HEADER, CONTEXT_RULE, TAG_RULE };
+module.exports = { draw, peopleOf, addressOf, renderContext, CONTEXT_HEADER, CONTEXT_RULE, TAG_RULE, CLOCK_RULE };
