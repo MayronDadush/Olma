@@ -292,17 +292,25 @@ function renderGroupCoordination(line, overrides) {
   if (line.kind === 'dayof') return templates.render('group_coord_dayof', { slot: slotText(line.slot) }, overrides);
   if (line.kind === 'soon') return templates.render('group_coord_soon', { slot: slotText(line.slot) }, overrides);
   if (line.kind === 'calendar') return templates.render('group_coord_calendar', {}, overrides);
+  if (line.kind === 'time') return templates.render('group_coord_time', { slot: slotText(line.slot) }, overrides);
   // `who` is a whole phrase, so an owner's rewording can move or drop it:
   // "כולם בפנים", or the tags of those who said yes. Null draws nothing.
   const who = !line.who ? '' : line.who.all ? WHO_ALL : (line.who.phones || []).length ? `${WHO_IN} ${mentionTokens(line.who.phones)}` : '';
-  return templates.render('group_coord_done', {
-    slot: slotText(line.slot), who, place_ask: line.placeAsk ? PLACE_ASK : '',
+  // Both open is one sentence, never two questions in a row.
+  const timeAsk = line.timeAsk ? (line.placeAsk ? TIME_AND_PLACE_ASK : TIME_ASK) : '';
+  const done = templates.render('group_coord_done', {
+    slot: slotText(line.slot), who, place_ask: line.placeAsk && !line.timeAsk ? PLACE_ASK : '', time_ask: timeAsk,
   }, overrides).trim();
+  // An owner's rewording saved before {{time_ask}} existed has nowhere to put
+  // it, and the question is the point of the line — so it goes on the end.
+  return timeAsk && !done.includes(timeAsk) ? `${done}\n${timeAsk}` : done;
 }
 const TABLE_LEAD = 'הכי מתקדם:';
 const ONE_OPTION = 'מועד אחד';
 const MANY_OPTIONS = 'מועדים';
 const PLACE_ASK = 'איפה נפגשים? תכתבו לי ואני אוסיף ליומן 📍';
+const TIME_ASK = 'רוצים לקבוע שעה מדויקת? תכתבו לי ואעדכן 🕐';
+const TIME_AND_PLACE_ASK = 'רוצים לקבוע שעה מדויקת, ואיפה נפגשים? תכתבו לי ואעדכן 🕐📍';
 const OUTSIDE_NOTE = 'מי שעוד לא כתב לי בפרטי לא נספר פה — ״היי״ בפרטי וזה מסתדר ☺️';
 const WHO_ALL = 'כולם בפנים';
 const WHO_IN = 'בפנים:';

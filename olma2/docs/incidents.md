@@ -55,6 +55,7 @@ never trust a dated narrative for something you are about to act on.
 - [Today at five is not Monday (fixed 2026-09-24)](#today-at-five-is-not-monday-fixed-2026-09-24)
 - [The constraint that was an answer (fixed 2026-09-20)](#the-constraint-that-was-an-answer-fixed-2026-09-20)
 - [Two paragraphs where two sentences would do (fixed 2026-09-20)](#two-paragraphs-where-two-sentences-would-do-fixed-2026-09-20)
+- [The link came back on every coordination message (2026-09-24)](#the-link-came-back-on-every-coordination-message-2026-09-24)
 - [The slot that was already closed (fixed 2026-09-20)](#the-slot-that-was-already-closed-fixed-2026-09-20)
 - [The room asked five and reached four (fixed 2026-09-22)](#the-room-asked-five-and-reached-four-fixed-2026-09-22)
 - [A room counted in somebody who had paused (fixed 2026-09-13)](#a-room-counted-in-somebody-who-had-paused-fixed-2026-09-13)
@@ -2091,6 +2092,30 @@ closed, `onTable` and `answered` with `answeredAt` for this person, and the
 title fenced as other people's text. The hint says a confirmed one is
 closed and never re-offered, and that "סימנתי" means the answers it can see.
 Three at most, newest first.
+
+### The link came back on every coordination message (2026-09-24)
+
+Not an incident: a decision, recorded here because it reverses one. On
+2026-09-20 the link came off everything but the invite and the table
+question (the entry below), because the link and a sentence about answering
+here made up a third of each message. Four days later the owner asked for the
+opposite, on every private message about a coordination: "תמיד ההודעה
+שהמשתמשים מקבלים בפרטי עולמה תגיד להם שהם יכולים לכתוב לה בהודעה בשיחה וגם
+דרך הלינק". Once the first message has scrolled away, a person who is only told
+about a coordination has no way to find its page.
+
+**What changed.** `answerWaysClause` replaced `inviteLinkClause`, and every
+`meeting_*` kind calls it: invite, proposal, table question, confirmation (all
+three), decline, opt-out, no-match, cancellation, rejoined, withdrawn and
+expired. The `stuck_meeting` check-in calls it too, because it now carries
+`meetingId`.
+
+**What stops it growing back into the paragraph.** The sentence is handed over
+WORD FOR WORD: "אפשר לענות לי כאן בצ'אט או דרך הקישור:", with an English
+twin. The link goes on a bare line after it. `BRIEF` still forbids every other
+word about how answering works, and `tests/private-brevity.test.js` asserts
+that both are true. `rollupVoiceDay`'s length-per-window number on the metrics
+page is where to look if the messages get longer.
 
 ### Two paragraphs where two sentences would do (fixed 2026-09-20)
 

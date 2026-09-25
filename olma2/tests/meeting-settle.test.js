@@ -91,6 +91,46 @@ after(async () => { await db.teardown(); });
 
 // ---- the minute -------------------------------------------------------------
 
+// A whole day or a part of one said in CHAT keeps its precision all the way
+// onto the settled meeting (087), on the same stand-in hour the page uses.
+test('a whole day named in chat settles as a whole day, and the calendar is told so', async () => {
+  const id = Number((await tx((c) =>
+    meetings.startMeeting(c, ann.id, 'ים', [ben.id]))).data.meeting.id);
+  const put = await call('propose_meeting_slot', ann, {
+    meeting_id: id, slot_description: 'מחר כל היום', starts_at: tomorrowAt('14'), all_day: true });
+  assert.ok(put.ok, JSON.stringify(put));
+  const [opt] = await tx((c) => meetings.options.list(c, id));
+  assert.equal(opt.allDay, true);
+  assert.equal(new Date(opt.startsAt).toISOString(), new Date(tomorrowAt('09')).toISOString(),
+    'moved onto the 09:00 stand-in, so the same day named twice is one option');
+  const settled = await call('settle_meeting', ann, { meeting_id: id, option_id: opt.id });
+  assert.ok(settled.ok, JSON.stringify(settled));
+  const { rows: [m] } = await db.pool.query(
+    'SELECT confirmed_all_day, confirmed_daypart FROM meetings WHERE id = $1', [id]);
+  assert.equal(m.confirmed_all_day, true);
+  assert.equal(m.confirmed_daypart, null);
+  const [row] = await told(id);
+  assert.equal(row.payload.allDay, true, 'the confirmation knows it is a whole day');
+});
+
+test('a part of a day keeps its daypart through settling, and a bad one is refused', async () => {
+  const id = Number((await tx((c) =>
+    meetings.startMeeting(c, ann.id, 'קפה', [ben.id]))).data.meeting.id);
+  const bad = await call('propose_meeting_slot', ann, {
+    meeting_id: id, slot_description: 'מחר', starts_at: tomorrowAt('14'), daypart: 'brunch' });
+  assert.equal(bad.ok, false);
+  await call('propose_meeting_slot', ann, {
+    meeting_id: id, slot_description: 'מחר בערב', starts_at: tomorrowAt('14'), daypart: 'evening' });
+  const [opt] = await tx((c) => meetings.options.list(c, id));
+  assert.equal(opt.daypart, 'evening');
+  assert.equal(new Date(opt.startsAt).toISOString(), new Date(tomorrowAt('19')).toISOString());
+  await call('settle_meeting', ann, { meeting_id: id, option_id: opt.id });
+  const { rows: [m] } = await db.pool.query(
+    'SELECT confirmed_all_day, confirmed_daypart FROM meetings WHERE id = $1', [id]);
+  assert.equal(m.confirmed_all_day, false);
+  assert.equal(m.confirmed_daypart, 'evening');
+});
+
 test('the last yes arms the minute and tells nobody; the sweep ends it and tells everybody', async () => {
   const { id, a } = await table('פוקר');
   await actAs(ben, 'answerOption', { meetingId: id, optionId: a.id, answer: 'y' });

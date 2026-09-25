@@ -17,12 +17,16 @@ const NEGOTIATION = [
   { kind: 'meeting_slot_declined', payload: { meetingId: 5, title: 'ים', byName: 'מירון' } },
 ];
 
-test('every negotiation instruction ends on the length budget and no longer explains how answering works', () => {
+// Since 2026-09-24 the one sentence about how to answer IS said — the owner
+// wants it on every message — but it is handed over word for word, so it is
+// one line and cannot grow back into the explanation this budget removed.
+test('every negotiation instruction ends on the length budget, and the only how-to-answer is the fixed sentence', () => {
   assert.match(BRIEF, /one sentence of context and one question/);
   for (const row of NEGOTIATION) {
-    const body = instructionFor(row);
+    const body = instructionFor(row, 'https://allma.world/d/AbCdEfGhIjKlMnOpQrStUv');
     assert.ok(body.endsWith(BRIEF.trim()) || body.includes(BRIEF), `${row.kind}: budget missing`);
-    assert.doesNotMatch(body, /answering here in chat works/, `${row.kind}: the how-to-answer sentence is back`);
+    assert.doesNotMatch(body, /answering here in chat works/, `${row.kind}: the old how-to-answer paragraph is back`);
+    assert.ok(body.includes("אפשר לענות לי כאן בצ'אט או דרך הקישור:"), `${row.kind}: the fixed sentence is missing`);
   }
 });
 
