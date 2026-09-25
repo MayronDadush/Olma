@@ -23,6 +23,7 @@ const occ = require('../../intake/openclaw-config');
 const boostDomain = require('../../domain/boost');
 const boostJob = require('../../jobs/boost');
 const issuesDomain = require('../../domain/issues');
+const ownerMessages = require('../../domain/owner-messages');
 const auditDomain = require('../../domain/audit');
 const reactionsDomain = require('../../domain/reactions');
 const groupsDomain = require('../../domain/groups');
@@ -431,6 +432,10 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
               max: body.maximum === '' ? null : body.maximum,
               closeAtTarget: body.close_at_target === 'on',
             }, null);
+          } else if (url.pathname === '/owner-log/note') {
+            await ownerMessages.setNote(client, body.id, { insight: body.insight, ideaId: body.idea_id });
+          } else if (url.pathname === '/owner-log/idea') {
+            await ownerMessages.saveIdea(client, body);
           } else if (url.pathname === '/issues/status') {
             await issuesDomain.setStatus(client, Number(body.id), body.status);
           } else if (url.pathname === '/users/quota') {

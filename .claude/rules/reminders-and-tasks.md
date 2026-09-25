@@ -253,7 +253,20 @@ title means this file. Grep the title, not the filename.
   now enqueued by nothing; whoever was still in it reads the ending in their
   next digest (`digest.assemble` → `crossUser.closedMeetings`, since their
   last digest that really went out, three days at most), which is the owner's
-  choice between "everybody" and "nobody". **Revoking a connection is an exit**
+  choice between "everybody" and "nobody" — **and, since 2026-09-24, in
+  passing on whatever Olma composes for them before that** ("כדרך אגב"):
+  `outbox/worker.closedNewsFor` puts it on a model-path row (never a reminder,
+  a hand-written `instruction`, or a digest, which says it itself),
+  `channels/openclaw.closedClause` asks for one clause, and the worker writes
+  `payload.closedNews` onto the row only after the send confirmed.
+  `digest.unheardClosedMeetings` is the ONE query both read, so it is said
+  once between them. **Leaving a CONFIRMED one takes it off THEIR calendar
+  and nobody else's** (`calendar.removeMeetingAttendee`, owner 2026-09-24: "לא
+  את כולם או תמחק בטעות את האירוע"): a guest is patched off the guest list; a
+  host's event is re-created on the next writer's calendar FIRST and only then
+  deleted, quietly; with nobody to take it over it stays, and is never offered
+  for deletion. They are told it came off only when it really did.
+  **Revoking a connection is an exit**
   whoever opened the pair's coordination, so it closes `no_match`, never
   `cancelled`. The chat tools' descriptions and the doctrine's "תבטל את
   הפגישה" line say "anyone in it"; a test still asserting "initiator only" is

@@ -217,7 +217,7 @@ Loads when you **Read** a file under `src/domain/reminders.js`, `src/domain/task
 - **A time ADDED to it rides the same thing, as long as that thing has not gone out yet** — four messages in sixty-two seconds is what queueing beside it looks like
 - **A negotiation message WAITS a quarter of an hour behind the last one that reached that person, and everything meanwhile folds into it** — the fold already existed and `urgent` never let it run; a RESULT never waits.
 - **Opening a coordination is not a subscription to every answer in it** — a decline and an exit stop being messages of their own; the reason moves from a push to a pull.
-- **Nobody manages a coordination** — `initiator_id` is who opened it and grants nothing: anybody still in it settles, renames, cancels (in the chat or the room) or leaves; its ending rides the next digest (`crossUser.closedMeetings`), never a message of its own.
+- **Nobody manages a coordination** — `initiator_id` is who opened it and grants nothing: anybody still in it settles, renames, cancels (in the chat or the room) or leaves; its ending rides the next digest (`crossUser.closedMeetings`) or, in passing, whatever she says first (`digest.unheardClosedMeetings`, said once between them), never a message of its own; and leaving a confirmed one takes it off THEIR calendar only (`calendar.removeMeetingAttendee`) — the event is never deleted from under the others.
 - **An explicit reminder replaces the automatic one only on the SAME local day; on another day it stands beside it.**
 - **An event is SAID, never only guessed, and it is never told back as a task.**
 - **A task already OPEN on somebody's list is never saved a second time.**
