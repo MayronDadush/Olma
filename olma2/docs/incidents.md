@@ -63,7 +63,9 @@ never trust a dated narrative for something you are about to act on.
 - [Six good mornings for one timeout (fixed 2026-09-09)](#six-good-mornings-for-one-timeout-fixed-2026-09-09)
 - [The room was told twice (fixed 2026-09-08)](#the-room-was-told-twice-fixed-2026-09-08)
 - [The room was greeted twice, by its own registration (fixed 2026-09-11)](#the-room-was-greeted-twice-by-its-own-registration-fixed-2026-09-11)
+- [She said there was no group (fixed 2026-09-25)](#she-said-there-was-no-group-fixed-2026-09-25)
 - [The room coordinated without the person who opened it (fixed 2026-09-19)](#the-room-coordinated-without-the-person-who-opened-it-fixed-2026-09-19)
+- [Twice 'היי' before a word about the room (fixed 2026-09-25)](#twice-היי-before-a-word-about-the-room-fixed-2026-09-25)
 - [היא שבורה: the room waited for somebody who had already written (fixed 2026-09-09)](#היא-שבורה-the-room-waited-for-somebody-who-had-already-written-fixed-2026-09-09)
 - [The room was told about a meeting at 01:12 (fixed 2026-09-09)](#the-room-was-told-about-a-meeting-at-0112-fixed-2026-09-09)
 - [The room window opened on a row nobody would look at (fixed 2026-09-19)](#the-room-window-opened-on-a-row-nobody-would-look-at-fixed-2026-09-19)
@@ -141,6 +143,7 @@ never trust a dated narrative for something you are about to act on.
 - [The judge kept failing, three different ways (fixed 2026-08-30)](#the-judge-kept-failing-three-different-ways-fixed-2026-08-30)
 - [The eval partner was a real WhatsApp recipient, and the broken nightly was what stopped it (fixed 2026-09-23)](#the-eval-partner-was-a-real-whatsapp-recipient-and-the-broken-nightly-was-what-stopped-it-fixed-2026-09-23)
 - [Three reds the model did not earn, and one it did (fixed 2026-09-24)](#three-reds-the-model-did-not-earn-and-one-it-did-fixed-2026-09-24)
+- ["רשמתי לך הכל", and nothing was (watched from 2026-09-25)](#רשמתי-לך-הכל-and-nothing-was-watched-from-2026-09-25)
 
 **Cost, billing and the money page**
 
@@ -149,6 +152,7 @@ never trust a dated narrative for something you are about to act on.
 - [The conversation that never ended (fixed 2026-09-09)](#the-conversation-that-never-ended-fixed-2026-09-09)
 - [The pin held the order and the cache still died (measured 2026-09-11)](#the-pin-held-the-order-and-the-cache-still-died-measured-2026-09-11)
 - [DigitalOcean never cached (measured 2026-09-14)](#digitalocean-never-cached-measured-2026-09-14)
+- [Novita cached the probe and not the turns (measured 2026-09-25)](#novita-cached-the-probe-and-not-the-turns-measured-2026-09-25)
 - [The pilot that read as an expensive day (fixed 2026-09-09)](#the-pilot-that-read-as-an-expensive-day-fixed-2026-09-09)
 - [The heartbeat was the bill (fixed 2026-09-05)](#the-heartbeat-was-the-bill-fixed-2026-09-05)
 - [The ledger overstated OpenRouter by 65%, in both directions at once (fixed 2026-09-03)](#the-ledger-overstated-openrouter-by-65-in-both-directions-at-once-fixed-2026-09-03)
@@ -2322,6 +2326,45 @@ the same wall `undeliveredReply` hit when it chose "verbatim or nothing". The
 channel outage was the case that actually happened, five times, in one morning.
 
 
+### She said there was no group (fixed 2026-09-25)
+
+"Shabi OG", 24 September, a little after two in the morning Israel time. Miron
+added Olma to the room at 23:22 UTC and started a coordination at 23:24:59.
+ORGETZ wrote "היי" to her privately at 23:27:52, the intake greeter answered
+with the opening copy, and he was provisioned at 23:27:58 — three minutes
+AFTER the coordination had fixed its participants. His next message, twenty
+seconds later, was the question he had come to ask: "אני בקבוצה כלשהי שגם את
+נמצאת?". His own agent called `list_my_connections` and `list_my_meetings`,
+got `{"meetings":[]}`, and answered "לא… אני לא רואה שום קבוצה שאנחנו שנינו
+בה" — to a member of a room with a live coordination in it.
+
+Two faults, and only one of them was the late join. `startCoordination` fixes
+its participants once and nothing let a later member in; another session fixed
+that the same day (`group-meetings.admitLateMembers`, "A room tags who has not
+written to her, and lets them in once they do"), and on its first pass after
+the deploy ORGETZ was let into coordination 49 and invited. But even with a
+participant row he would have been told the same thing about any room with
+nothing running in it: **nothing on the private side could see a room at
+all.** `list_my_meetings` reads `meeting_participants`; the turn's
+`recentMeetings` reads the outbox; no tool and no line of the turn context
+read `chat_group_members`. The agent understood the question perfectly and had
+nowhere to look — the shape this project keeps finding, and the fix is the
+missing read, not a better prompt.
+
+`groups.roomsOf` reads the roster the person is on (not a participant row —
+being in the room is the fact they asked about) and each room's live
+coordination, with whether THEY are in it. It rides the turn context on every
+turn of somebody in a room, fenced like every other person's text, with a hint
+that says the list is COMPLETE — a block that replaces a lookup has to say
+what it does not hold — and `list_my_meetings` returns it too, because that is
+the tool the model already reaches for. Nobody else in the room and nobody's
+reasons travel with it.
+
+The same night showed the other half of the complaint, and it is not fixed
+here: Dana and ORGETZ each had to write twice before hearing anything about
+the room. The greeter's opening says nothing about the group that sent them,
+and at 02:25 the invite waited behind quiet hours until they wrote again.
+
 ### The room coordinated without the person who opened it (fixed 2026-09-19)
 
 Same two columns as "היא שבורה" below, ten days later, in the two readers that
@@ -2380,6 +2423,55 @@ this.
 had been reset to a genuine cold start. A user who has been on the system for
 weeks cannot reproduce it; only somebody meeting Olma for the first time can,
 and every real one of those is a person we would rather not learn from.
+
+### Twice 'היי' before a word about the room (fixed 2026-09-25)
+
+"Shabi OG", 24 September, 02:23-02:31 Israel time. The room asked its members
+who had never written to Olma to send "היי" in private. Dana did at 23:23:36
+UTC; the intake greeter answered in five seconds with the owner's opening copy
+and nothing else — the same words somebody off an advert reads, with no sign
+she knew which group had sent them. The coordination began at 23:24:59 and
+her invite was queued at once, and then held: it was the middle of the night,
+and nothing she had done counted as being in a conversation, because her
+"היי" went to the GREETER and `last_inbound_at` is her own agent's column. It
+went out at 23:31:03 — twelve seconds after she wrote "היי" a second time.
+ORGETZ wrote at 23:27:52, got the same copy, and was provisioned three
+minutes after the coordination started; nothing let him in until the late-join
+door shipped the next morning, and even that door lets nobody in while the
+room is asleep. Both of them, reasonably, told the owner they had to say hello
+twice before Olma said anything.
+
+Three things, none of them a bug in the usual sense — each part did what it
+was written to do:
+
+- **The greeter could not know.** It has no tools and no database, and the
+  opening copy is said word for word. It now gets the room from brokerd
+  (`intake_context`, keyed on the intake session key, whose last part is the
+  sender's number) through the same plugin hook that hands a person and a room
+  their turn context, and says ONE fixed line under the copy
+  (`domain/intake-room.js`). Two shapes, chosen by the owner: with a live
+  coordination to join, "הגעת מהקבוצה «X» — תכף אשלח לך כאן את התיאום שפתוח
+  שם."; without one, "…שם אני עוזרת לתאם, וכאן אני בשבילך באופן אישי.".
+  Gender-neutral, because the greeter knows nothing about who is writing.
+- **"תכף" is a promise, so the night had to stop swallowing it.** The owner's
+  answer (2026-09-25, "מיד, הוא ער עכשיו"): somebody who has just written is
+  awake. At night the room sweep now lets in only people who wrote in the last
+  fifteen minutes — to their own agent or to the greeter — and marks the
+  admission `quiet`; the room's "joined" line waits for its own morning, which
+  names them beside anybody let in then (`group-meetings
+  .quietJoinersToAnnounce`, read off the admission's audit row and the room's
+  own lines, no new column).
+- **The gate had one column where there are two.** The greeter answering is
+  proof the person wrote, and `opening_sent_at` is that proof (the same
+  argument as "היא שבורה" below, one layer down). For fifteen minutes after
+  it, a COORDINATION row is mid-conversation; nothing else Olma decided to say
+  rides on it, so the day-one check-ins still wait for the morning.
+
+The line is said only where something keeps it: an open room, a coordination
+still negotiating and not inside its settle minute — exactly the conditions
+`admitLateMembers` lets a newly connected member in on. Anywhere else the line
+promises nothing. A roster row that is a LID matches no phone and gets no line
+at all.
 
 ### היא שבורה: the room waited for somebody who had already written (fixed 2026-09-09)
 
@@ -6063,6 +6155,40 @@ of a list line — the model reformatting a drawn block. That one is the model's
 
 ## Cost, billing and the money page
 
+### "רשמתי לך הכל", and nothing was (watched from 2026-09-25)
+
+Nightly eval #91 went red on `brain-dump-bulk`: the eval user sent a list of
+things to remember and Olma answered "רשמתי לך הכל" with no tool call in the
+turn at all (session 71822c49, 00:38:58Z). A person reading that believes
+their list exists. Same family as "Olma never claims a lookup it did not
+perform" and the link nobody minted — an action asserted that nothing did.
+
+**Read against real traffic before anything was built.** 4,636 real user
+turns, 126 replies with a first-person save word ("רשמתי", "שמרתי", "הוספתי",
+"קבעתי"), 11 of them with no tool call. Every one of the 11 was a turn Olma had
+STARTED — a delivery reporting an earlier turn's write, which is true — or not
+a claim at all; u-29's looked like one and the constraint was recorded in the
+very next turn. **So zero confirmed on a real person**, one in the evals.
+
+That is the moment a detector is cheap, so it was built REPORT-ONLY
+(`domain/phantom-save.js`). The reply gate notices the word — on the text that
+will actually be sent, so a claim inside cut working-out is not asked about —
+and tells brokerd the word alone, never awaited. brokerd is the only thing that
+knows whether a tool ran: it keeps when this person's turns opened and when a
+tool last ran for them (turn_start excepted — it runs on every message and
+saves nothing), and files `reply.claim` with one of four verdicts: `backed`,
+`unbacked`, `ours` (a turn Olma started, not judged), and `unknown` (brokerd
+restarted and holds nothing — never read as "no tool ran"). Two messages close
+together are judged leniently: a tool after the EARLIEST open in the window
+backs the claim.
+
+**What would make it block, and what it is waiting for:** the `unbacked` rate
+on real people, read by hand. Blocking a reply that claims a save is only right
+if every `unbacked` row is a real phantom; the transcript scan says the shape is
+rare and the false-positive classes are known, so the bar is a couple of weeks
+of rows before anyone argues for more. Needs a gateway restart to go live, like
+every change to the plugin.
+
 ### Twelve people off the bottom of the money page (fixed 2026-09-10)
 
 The owner read the per-user cost table and asked why he could not see what
@@ -6351,6 +6477,52 @@ few dollars a month) and the case is the seconds on the first token. A
 `params` change needs a gateway restart, and the proof is a fresh responseId
 answered by OpenRouter with `provider_name` "Novita" — then
 `scripts/cache-probe.js` again after a few days of traffic.
+
+### Novita cached the probe and not the turns (measured 2026-09-25)
+
+`deepseek-v4.1-flash` went live at 12:28Z on 2026-09-25 (#509), pinned to the
+same order as the incumbent, `novita, streamlake`, on the strength of the entry
+above. The first real turns read back 0 cached tokens on their second call,
+about $0.0098 a call against $0.0023 for v4-flash, and the default was put
+back at 12:30:23Z. About a minute and a half of exposure.
+
+**The first reading of it was wrong the other way.** One pair of calls was
+taken to mean Novita does not cache v4.1 at all, and a direct probe (the same
+~21k-token prompt three times, `allow_fallbacks: false`) disproved it at once:
+Novita, DeepInfra, Together, Fireworks, StreamLake and four others all hit on
+the second and third call. **So the probe could not tell the providers apart,
+and it could not see the failure.** What it does not reproduce is the real
+turn: a model call, a tool call, and a second model call carrying the first
+one's prefix plus the tool result.
+
+Measured instead on the eval user's own turns, same scenarios, `--no-judge`,
+one provider led at a time:
+
+| setup | calls | of input cached | $ per call |
+|---|---|---|---|
+| v4-flash on Novita (nightly #91 / #84) | 42 / 41 | 60% / 67% | 0.0025 / 0.0023 |
+| v4.1-flash unpinned (pilot #90) | 47 | 57% | 0.0039 |
+| v4.1-flash on Novita (runs 93-94) | 12 | 24% | 0.0082 |
+| **v4.1-flash on DeepInfra (run 95)** | **19** | **70%** | **0.0017** |
+
+Every generation sampled from run 95 was served by DeepInfra; some of its
+calls still read 0 from cache, and the average is better than the incumbent
+on both cache and price. DeepInfra lists v4.1-flash at $0.14/M input, $0.42/M
+output and $0.0042/M cache read — under half Novita's listing for the same
+model (0.285 / 1.14).
+
+**The change:** the pin is per model now (`ORDERS` in
+`scripts/pin-openrouter-provider.js`): v4.1-flash leads with DeepInfra, then
+Together (both US-headquartered, the owner's residency line from the entry
+above), then Novita; v4-flash keeps `novita, streamlake` as its first fallback.
+`model-pricing.js` carries DeepInfra's rate from 09-25, and the pilot days
+before it keep the DeepSeek listing through `PAST_RATES`.
+
+**The lesson is the entry above's, one level finer:** a cache is per provider
+AND per model, and a provider measured on one model says nothing about
+another. And a probe that repeats one prompt is a floor, not a verdict — it
+catches a provider with no cache at all (DigitalOcean) and misses one whose
+cache does not survive the shape of a real turn. Measure on turns.
 
 ### The pilot that read as an expensive day (fixed 2026-09-09)
 

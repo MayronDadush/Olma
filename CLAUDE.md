@@ -173,6 +173,7 @@ Loads when you **Read** a file under `src/outbox/**`, `src/domain/message-format
 - **Only rung 1 of a reminder is a moment THEY chose; every rung after it is one OLMA chose, and quiet hours apply to it.**
 - **A reminder rung the GATE held is never chased; a rung OUR pipe lost is redone at once.**
 - **Nothing Olma DECIDED to say goes out in front of an introduction she still owes.**
+- **The greeter answering them is a conversation too, for a coordination row and nothing else** (`opening_sent_at` → the gate's `greetedAt`)
 - **Reminders that come due in the same tick go out as ONE message, and the coalescing happens at DELIVERY, never at enqueue.**
 - **On the model path a retry is not a retry — it is a NEW message, composed against a world the failed sends themselves created.**
 - **A `--deliver` that TIMES OUT has very likely gone out, and is never retried.**
@@ -199,6 +200,7 @@ Loads when you **Read** a file under `src/brokerd/**`, `src/domain/turn.js`, `sr
 - **…and since 2026-09-23 the working-out is caught in Hebrew too** — a first-person next step off a closed verb list drops, the third-person shape is only reported, and a block name counts even inside quotes
 - **…and a Hebrew reply with only an English next step on its END keeps the reply** — `hebrewReplyTail`, measured: one line in 1,461 replies, and quoted Hebrew inside English working-out still drops whole
 - **The last tier's missing input was not a pattern, it was the READER** — `writesHebrew` is a tri-state, `null` acts like `false`, and the value rides `turn_context` to a gate with no database
+- **A reply that says it SAVED something is checked against whether a tool ran — `reply.claim`, report-only** — `unknown` is not `unbacked`, and a turn Olma started is not judged
 
 ### Reminders, tasks and dates
 
@@ -351,6 +353,7 @@ Loads when you **Read** a file under `src/domain/group-connections.js`, `src/dom
 - **A room opens on TWO connected members, not on everybody — and it still says who is not here**
 - **The room reaches each member's OWN page as a group already made**
 - **The room is a second door to every action on its coordination, and it acts only as somebody still IN it** — cancel, rename, remove a time, leave and answer from the room; place and minimum from the chat; each the private twin's own domain call, results picked
+- **Somebody a room sent to the greeter hears about that room in the FIRST reply, and its coordination follows that same night if they are awake** (`intake_context` → `domain/intake-room.js`; `admitLateMembers({ awakeSince })`; the room's line waits for its morning)
 - **The person who asked the ROOM for a coordination is asked privately too** — a tag carries no times, and the test asserted the bug
 - **…and a time said in the room is that person's proposal, put on the table in their name from the room** (`add_group_coordination_option`) — never the room's voice, and never "sent to everyone" when nothing was written
 - **In the room a person is addressed by their TAG and never by their name; in a private chat, by their name** — and a tag coming IN is a member to look up in `room.people`, never a token to discard — and since 2026-09-23 a CONFIRMED name and the form of address they set may be said too (`group-turn.peopleOf`), with masculine when none was set, and a member stating their own is saved (`remember_sender_gender`, the sender only), and the profile column and the private chat's `gender_forms` follow each other (`src/domain/gender-forms.js`)
@@ -372,6 +375,7 @@ Loads when you **Read** a file under `src/domain/group-connections.js`, `src/dom
 - **A paused member is counted into a room's coordination only until their one invite is spent; a day of silence takes them out**
 - **A room on more than one clock hears every time in each, by city, from the owner's own `_zones` templates; a time with no clock in it is never converted, and a one-clock room is untouched**
 - **A member's message in the room opens the gate's fifteen-minute window for that room's coordination — and, since 2026-09-09, the room's own announcement window; nothing else**
+- **The private side knows every room a person shares with Olma, off the ROSTER, and says the list is complete** (`groups.roomsOf` → the turn context's `rooms` and `list_my_meetings`)
 
 ### Testing
 
