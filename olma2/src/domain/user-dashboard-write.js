@@ -537,7 +537,7 @@ const ACTIONS = {
     const res = await meetings.settleNow(client, userId, p.meetingId, p.optionId);
     if (!res.ok) return res;
     const me = await users.getById(client, userId);
-    return meetingFanout.afterSettled(client, p.meetingId, res, { actor: me });
+    return meetingFanout.afterSettled(client, p.meetingId, res, { actor: me, viaPage: true });
   },
 
   // The swipe on a row, and the trash a desktop hover shows. Anyone in the

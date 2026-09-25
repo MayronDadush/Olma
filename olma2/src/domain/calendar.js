@@ -437,11 +437,29 @@ function eventIdFor(userId, title, start) {
     .update(`${userId}|${title}|${instant}`).digest('hex').slice(0, 32);
 }
 
-async function createEvent(client, userId, { title, start, end, description, location, attendees }, opts = {}) {
+// A whole day is a DATE to Google, not an instant: `{date}` on both ends, the
+// end exclusive. The date is read off the start as it was written — its own
+// offset is the person's, so "2026-09-29T09:00:00+03:00" is the 29th wherever
+// the box is (owner, 2026-09-24: all-day meetings).
+function allDayRange(start) {
+  const day = String(start).slice(0, 10);
+  const next = new Date(`${day}T00:00:00Z`);
+  next.setUTCDate(next.getUTCDate() + 1);
+  return { start: { date: day }, end: { date: next.toISOString().slice(0, 10) } };
+}
+
+// What a confirmation tells the person who puts a whole-day meeting on a
+// calendar (087). One sentence, read by both the settler's hint and the
+// queued confirmation, so the two cannot say it differently.
+const ALL_DAY_EVENT = ' It is a WHOLE-DAY meeting: it goes on the calendar as an all-day event'
+  + ' (create_shared_meeting_event does that by itself; create_calendar_event needs all_day=true).';
+
+async function createEvent(client, userId, { title, start, end, description, location, attendees, allDay = false }, opts = {}) {
   if (!title) return err('invalid', 'title is required');
   if (!OFFSET_RE.test(String(start))) return badTime('start', start);
-  if (!OFFSET_RE.test(String(end))) return badTime('end', end);
-  if (new Date(end) <= new Date(start)) return err('invalid', 'end must be after start');
+  if (!allDay && !OFFSET_RE.test(String(end))) return badTime('end', end);
+  if (!allDay && new Date(end) <= new Date(start)) return err('invalid', 'end must be after start');
+  const range = allDay ? allDayRange(start) : { start: { dateTime: start }, end: { dateTime: end } };
 
   // A deterministic id makes creation idempotent. It matters because the MCP
   // shim gives up at 30s while brokerd commits regardless: without this, one
@@ -466,8 +484,8 @@ async function createEvent(client, userId, { title, start, end, description, loc
           summary: title,
           description: description || undefined,
           location: location || undefined,
-          start: { dateTime: start },
-          end: { dateTime: end },
+          start: range.start,
+          end: range.end,
           // Only ever set by createSharedMeetingEvent, from addresses this
           // module resolved itself — never from anything the agent typed.
           attendees: attendees && attendees.length
@@ -489,15 +507,21 @@ async function createEvent(client, userId, { title, start, end, description, loc
   });
 }
 
-async function updateEvent(client, userId, { eventId, title, start, end, location }, opts = {}) {
+async function updateEvent(client, userId, { eventId, title, start, end, location, allDay = false, clearDate = false }, opts = {}) {
   if (!eventId) return err('invalid', 'event_id is required');
   if (start !== undefined && !OFFSET_RE.test(String(start))) return badTime('start', start);
-  if (end !== undefined && !OFFSET_RE.test(String(end))) return badTime('end', end);
+  if (!allDay && end !== undefined && !OFFSET_RE.test(String(end))) return badTime('end', end);
 
   const patch = {};
   if (title) patch.summary = title;
-  if (start) patch.start = { dateTime: start };
-  if (end) patch.end = { dateTime: end };
+  if (start && allDay) Object.assign(patch, allDayRange(start));
+  else {
+    // `clearDate`: the event may have been a whole day, and Google keeps a
+    // `date` beside a new `dateTime` unless it is cleared in the same patch.
+    const extra = clearDate ? { date: null } : {};
+    if (start) patch.start = { dateTime: start, ...extra };
+    if (end) patch.end = { dateTime: end, ...extra };
+  }
   if (location) patch.location = String(location);
   if (!Object.keys(patch).length) return err('invalid', 'nothing to change');
 
@@ -608,7 +632,7 @@ async function meetingCalendarRoles(client, meetingId) {
 // Called by the organiser's own agent once it has worked out real times.
 async function createSharedMeetingEvent(client, userId, { meetingId, start, end, location }, opts = {}) {
   const { rows } = await client.query(
-    `SELECT m.id, m.title, m.status, m.confirmed_slot
+    `SELECT m.id, m.title, m.status, m.confirmed_slot, m.confirmed_all_day
        FROM meetings m
        JOIN meeting_participants mp ON mp.meeting_id = m.id AND mp.user_id = $2
       WHERE m.id = $1 AND mp.state <> 'opted_out'`,
@@ -645,6 +669,9 @@ async function createSharedMeetingEvent(client, userId, { meetingId, start, end,
   const res = await createEvent(client, userId, {
     title: meeting.title || 'פגישה',
     start, end, location,
+    // Settled on a whole day (087): the event is a whole day too, whatever
+    // end the model worked out.
+    allDay: Boolean(meeting.confirmed_all_day),
     description: meeting.confirmed_slot || undefined,
     attendees,
   }, opts);
@@ -697,6 +724,7 @@ async function removeMeetingEvent(client, meetingId, opts = {}) {
 }
 
 module.exports = {
+  ALL_DAY_EVENT,
   PROVIDER, MAX_EVENTS,
   beginConnection, completeOAuth, getStatus, disconnect, loadIntegration,
   listEvents, createEvent, updateEvent, deleteEvent, eventIdFor,

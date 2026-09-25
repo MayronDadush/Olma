@@ -267,6 +267,7 @@ module.exports = [
       ends_at: S('string', 'Optional end of a range, same format: a shift is title \'משמרת\', due_at 12:00, ends_at 19:00 — never hours in the title.'),
       remind_at: S('string', 'The hour THEY named to be reminded, same format. Replaces the automatic one.'),
       nudge: S('boolean', 'They asked to be chased until it is done ("עד שאעשה"): one a day up to due_at'),
+      when_said: S('string', 'Their own words naming WHEN, copied not retold. A weekday in them is checked against the date you resolved; a mismatch refuses the save.'),
       parent_task_id: S('number', 'Optional parent (project) id') }, ['title'],
     async (client, user, a, ctx) => {
       // Same guard set_task_reminder already has for remind_at — a model
@@ -294,6 +295,36 @@ module.exports = [
       let { due_at: dueAt, ends_at: endsAt, remind_at: remindAt } = a;
       if (chase && !chaseDeadline.onDay(dueAt, chase.day, user.timezone)) { dueAt = chase.dueAt; endsAt = undefined; }
       if (chase && !chase.namedHour) remindAt = undefined;
+
+      // Miron, 2026-09-22: "תוסיף לי ביומן שביום הראשון הקרוב … אמור להגיע
+      // טכנאי לבר מים" was saved for Wednesday and told back as Wednesday —
+      // יום ראשון read as an ordinal, "the first day coming up", rather than
+      // as Sunday. Nothing in the system could see it. The guard for exactly
+      // this already existed (`datetime.weekdayClash`, for a meeting slot) and
+      // what it never had here was WORDS: the title the model wrote ("טכנאי
+      // בר מים") carries no weekday at all, and the only copy of the day he
+      // named was in his own message, which no tool argument carried. So the
+      // words are an argument now, and the check is at the tool rather than in
+      // `addTask` — `addTasksBulk` and `jobs/fact-extraction.js` reach the
+      // domain with nobody's words to check (`incidents.md`, "The first day
+      // coming up").
+      //
+      // ONE moment is checked, never both: a reminder deliberately set for the
+      // evening before a named day disagrees with it on purpose, so `due_at`
+      // answers when it is there and `remind_at` only stands in when the task
+      // has no date of its own.
+      //
+      // And NOT under a chase, which is the case above: there the SERVER picks
+      // the day, off the very sentence `when_said` carries, so a disagreement
+      // would be this check refusing `chase-deadline`'s own reading rather than
+      // the model's. The model's date is not what gets written there at all.
+      const dated = chase ? null : (a.due_at || a.remind_at);
+      if (a.when_said && dated) {
+        const clash = dt.taskWeekdayClash(a.due_at ? 'due_at' : 'remind_at',
+          a.when_said, dated, user.timezone, 'no task was saved');
+        if (clash) return clash;
+      }
+
       const res = await tasks.addTask(client, user.id, {
         title: a.title, kind: a.kind, location: a.location, category: a.category, dueAt, endsAt,
         remindAt, nudge: Boolean(chase) || a.nudge === true, parentId: a.parent_task_id,

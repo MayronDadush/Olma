@@ -81,10 +81,10 @@ module.exports = [
     { title: S('string', 'Event title'),
       start: S('string', 'ISO-8601 with offset, e.g. 2026-08-20T09:00:00+03:00'),
       end: S('string', 'ISO-8601 with offset'),
-      description: S('string', 'Optional description') }, ['title', 'start', 'end'],
+      description: S('string', 'Optional description'), all_day: S('boolean', 'A whole-day event') }, ['title', 'start', 'end'],
     async (client, user, a) => {
       const res = await calendar.createEvent(client, user.id, {
-        title: a.title, start: a.start, end: a.end, description: a.description,
+        title: a.title, start: a.start, end: a.end, description: a.description, allDay: a.all_day === true,
       });
       if (!res || !res.ok || !res.data) return res;
       // The whole point of this hint is that the model has no column here
