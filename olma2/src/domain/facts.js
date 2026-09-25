@@ -22,6 +22,17 @@ const KNOWN_FACT_CATEGORIES = ['work', 'family', 'people', 'health', 'plans', 'h
 // of them is evidence.
 const KNOWN_SOURCES = ['conversation', 'user_stated', 'admin'];
 
+// A PLAN is the one category that is about something that has not happened
+// yet, and so the one that goes stale by itself — "טסה לקפריסין", a hair
+// appointment on Tuesday, an Amazon email being waited for. `needs_expiry`
+// below only catches a plan that names a date, and on the box 6 of the 7
+// undated plans named none, so they sat in USER.md weeks after the thing was
+// over (`incidents.md`, "The trip that never ended"). An undated plan now
+// lasts this long unless the writer says otherwise. A plan answered on the
+// profile page (`prompt_key`: studying, current goal) is a standing answer
+// the person can see and edit there, and keeps no expiry.
+const PLAN_DEFAULT_DAYS = 14;
+
 // A fact is rendered as ONE line of USER.md, and USER.md has a structural
 // contract: everything from the first "\n## " onward is treated as the
 // preserved intake tail. A fact carrying a newline and a "## " would therefore
@@ -168,6 +179,9 @@ async function rememberFact(client, userId, { category, fact, importance, expire
   if (!expiry.value && namesAMoment(text)) {
     return err('invalid', 'this names a specific date or day ("היום", "29.8") — set expires_at to when it stops being true, or, if it is something they need to DO, save it with add_task instead', { reason: 'needs_expiry' });
   }
+  const expiresAtValue = expiry.value || (category === 'plans' && !promptKey
+    ? new Date(Date.now() + PLAN_DEFAULT_DAYS * 86_400_000).toISOString()
+    : null);
 
   // The same sentence twice is one row. Nothing here compared text, so
   // "טס לפאפוס, קפריסין מ-9.9 עד 14.9" was written on 2026-09-06 and again,
@@ -202,7 +216,7 @@ async function rememberFact(client, userId, { category, fact, importance, expire
       // NULL for every fact that came from a conversation.
       `INSERT INTO user_facts (user_id, category, fact, importance, source, expires_at, prompt_key)
        VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-      [userId, category, text, imp, src, expiry.value, promptKey || null]
+      [userId, category, text, imp, src, expiresAtValue, promptKey || null]
     ));
     await audit.record(client, userId, 'fact.remembered', { factId: Number(rows[0].id), category, importance: imp });
   }
@@ -288,6 +302,6 @@ async function topFacts(client, userId, k = 10) {
 module.exports = {
   firstPerson,
   rememberFact, forgetFact, listFacts, topFacts,
-  KNOWN_FACT_CATEGORIES, KNOWN_SOURCES, MAX_FACT_CHARS, cleanFact,
+  KNOWN_FACT_CATEGORIES, KNOWN_SOURCES, MAX_FACT_CHARS, PLAN_DEFAULT_DAYS, cleanFact,
   phoneLike, bareNameStatement, systemState,
 };

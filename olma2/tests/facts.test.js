@@ -163,6 +163,44 @@ test('a fact anchored to a date or a moving day must say when it expires', async
   });
 });
 
+// The live case the guard above cannot see: "טסה לקפריסין" names no date, so
+// it passed, and sat in USER.md weeks after the trip (2026-09-26, 6 of 7
+// undated plans on the box). A plan is the one category that is about
+// something that has not happened yet, so an undated one now ends by itself.
+test('an undated plan expires after PLAN_DEFAULT_DAYS; nothing else does', async () => {
+  await withClient(async (c) => {
+    const before = Date.now();
+    const plan = await facts.rememberFact(c, user.id, { category: 'plans', fact: 'טסה לקפריסין' });
+    assert.equal(plan.ok, true);
+    const ends = new Date(plan.data.fact.expires_at).getTime();
+    const days = facts.PLAN_DEFAULT_DAYS * 86_400_000;
+    assert.ok(ends >= before + days && ends <= Date.now() + days, 'fourteen days from the write');
+
+    // What the writer said wins over the default.
+    const dated = await facts.rememberFact(c, user.id, {
+      category: 'plans', fact: 'מתכננת לעבור דירה', expiresAt: '2099-01-01T00:00:00Z',
+    });
+    assert.equal(new Date(dated.data.fact.expires_at).toISOString(), '2099-01-01T00:00:00.000Z');
+
+    // A profile-page answer is a standing one the person edits themselves.
+    const profile = await facts.rememberFact(c, user.id, {
+      category: 'plans', fact: 'לימודים: תואר', promptKey: 'studying', source: 'user_stated',
+    });
+    assert.equal(profile.data.fact.expires_at, null);
+
+    // Every other category is durable by default, exactly as before.
+    const work = await facts.rememberFact(c, user.id, { category: 'work', fact: 'עובד מהבית' });
+    assert.equal(work.data.fact.expires_at, null);
+
+    // …and an expired plan leaves the card the way every expired fact does.
+    await c.query(`UPDATE user_facts SET expires_at = now() - interval '1 minute' WHERE id = $1`,
+      [plan.data.fact.id]);
+    const top = await facts.topFacts(c, user.id, 50);
+    assert.equal(top.some((f) => f.fact === 'טסה לקפריסין'), false);
+    await c.query(`UPDATE user_facts SET active = false WHERE user_id = $1`, [user.id]);
+  });
+});
+
 test('remembering a fact can replace an earlier one in the same breath', async () => {
   await withClient(async (c) => {
     // The live pair this feature exists for: #29/#33 on a real card, one
@@ -537,7 +575,11 @@ test('a model answer that validates nowhere writes nothing — the server is the
     const { rows } = await c.query(
       `SELECT fact, expires_at FROM user_facts WHERE user_id = $1 ORDER BY id`, [u.id]);
     assert.deepEqual(rows.map((r) => r.fact), ['מתאמן בבקרים', 'טס לרומא בספטמבר']);
-    assert.equal(rows[1].expires_at, null, 'a past expiry is the model guessing, not the person saying');
+    // The guessed past date is dropped; what the plan gets instead is the
+    // default every undated plan gets (facts.PLAN_DEFAULT_DAYS), never 2020.
+    const ends = new Date(rows[1].expires_at).getTime();
+    assert.ok(ends > Date.now(), 'a past expiry is the model guessing, not the person saying');
+    assert.ok(ends <= Date.now() + facts.PLAN_DEFAULT_DAYS * 86_400_000);
     const { rows: name } = await c.query(`SELECT first_name FROM users WHERE id = $1`, [u.id]);
     assert.equal(name[0].first_name, 'X', 'a named person is never re-named by a guess');
   });

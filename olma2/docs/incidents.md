@@ -170,6 +170,7 @@ never trust a dated narrative for something you are about to act on.
 
 **Facts, names and the user card**
 
+- [The trip that never ended (fixed 2026-09-26)](#the-trip-that-never-ended-fixed-2026-09-26)
 - [The carryover leak came back, and the code cannot say how (2026-09-06)](#the-carryover-leak-came-back-and-the-code-cannot-say-how-2026-09-06)
 - [The fact table admitted everything and ranked by recency (fixed 2026-08-28)](#the-fact-table-admitted-everything-and-ranked-by-recency-fixed-2026-08-28)
 - [The name was in front of us on every turn (fixed 2026-08-22)](#the-name-was-in-front-of-us-on-every-turn-fixed-2026-08-22)
@@ -7170,6 +7171,30 @@ never `T...Z`.
 
 ## Facts, names and the user card
 
+
+### The trip that never ended (fixed 2026-09-26)
+
+Found by the owner's question, not by an alarm: what do the facts about people
+cost, and are they useful? The cost was nothing — ten facts are ~1% of a turn,
+under a dollar a month with the extraction job — and the problem was
+staleness. On the box, 7 of 11 live `plans` had no `expires_at`: a hair
+appointment from 1.9, a flight abroad, an Amazon email being waited for,
+"cancel the card next Tuesday" from 16.9. For a person with few facts all of
+them sat in USER.md on every turn, as though still true.
+
+`needs_expiry` (the guard on `rememberFact`) was right and did not help: it
+refuses a fact that NAMES a moment, and 6 of the 7 named none ("טסה
+לקפריסין"), or named a weekday, which it treats as recurring by design. A
+plan is the one category that is about something that has not happened yet,
+so an undated one now gets `PLAN_DEFAULT_DAYS` (14) from the write; an
+explicit expiry wins, and a profile-page answer (`prompt_key`: studying,
+current goal) keeps none, because the person edits that one themselves.
+Nothing is deleted: an expired fact simply stops being read.
+
+**The rows already on file are NOT covered by this change.** A one-time
+UPDATE giving them the same fourteen days from `learned_at` was written and
+held back for the owner's explicit go-ahead, because it changes production
+data on merge.
 
 ### The carryover leak came back, and the code cannot say how (2026-09-06)
 
