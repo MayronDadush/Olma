@@ -2816,6 +2816,16 @@ one, plus the same invite everybody got. The room hears one line about it:
 tag" behaviour (`group-voice.test.js`) was rewritten to the new rule, not
 deleted.
 
+**The member abroad, the same day.** Converting every time is only as right
+as the zone it converts from. User 11 is `America/Los_Angeles`, inferred on
+2026-08-31 and never confirmed. He was asked once, on 2026-09-05, and never
+answered, and the owner thinks he is in New York. The rule "nobody is asked a
+question they have already not answered once" forbade asking again. The owner
+decided he should be asked, so it is a new occasion with its own once-ever
+stamp (`users.room_zone_asked_at`, migration 090): one line in the private
+invite to a room coordination on several clocks, for an unconfirmed zone only,
+stamped after the send confirms. His zone was not changed by hand.
+
 ### The room's joke got a lecture (2026-09-23)
 
 Meeting 42 had just been confirmed in פחם הסעות. At 12:13 UTC Bar tagged

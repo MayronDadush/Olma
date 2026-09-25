@@ -1,0 +1,13 @@
+-- The one time Olma asks somebody whose zone was never confirmed whether it
+-- is right, because a room they are in spans several clocks and every time
+-- she says there is converted from it (owner, 2026-09-25, פנתרה: user 11 was
+-- inferred as Los Angeles, asked once on 2026-09-05, never answered, and is
+-- probably in New York). It rides the room coordination's private invite and
+-- is stamped only after that send confirms. Stamped on the PERSON, like
+-- timezone_asked_at (045), holiday_quiet_asked_at (062) and
+-- more_groups_offered_at (086): a once-ever question lives on the person.
+--
+-- 090: SELECT max(version) FROM schema_migrations on the box was 86 on
+-- 2026-09-25 (never `ls migrations/`); 087-089 are claimed by open branches
+-- (coord-exact-time, owner-messages-log).
+ALTER TABLE users ADD COLUMN room_zone_asked_at TIMESTAMPTZ;
