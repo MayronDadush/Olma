@@ -437,11 +437,29 @@ function eventIdFor(userId, title, start) {
     .update(`${userId}|${title}|${instant}`).digest('hex').slice(0, 32);
 }
 
-async function createEvent(client, userId, { title, start, end, description, location, attendees }, opts = {}) {
+// A whole day is a DATE to Google, not an instant: `{date}` on both ends, the
+// end exclusive. The date is read off the start as it was written — its own
+// offset is the person's, so "2026-09-29T09:00:00+03:00" is the 29th wherever
+// the box is (owner, 2026-09-24: all-day meetings).
+function allDayRange(start) {
+  const day = String(start).slice(0, 10);
+  const next = new Date(`${day}T00:00:00Z`);
+  next.setUTCDate(next.getUTCDate() + 1);
+  return { start: { date: day }, end: { date: next.toISOString().slice(0, 10) } };
+}
+
+// What a confirmation tells the person who puts a whole-day meeting on a
+// calendar (087). One sentence, read by both the settler's hint and the
+// queued confirmation, so the two cannot say it differently.
+const ALL_DAY_EVENT = ' It is a WHOLE-DAY meeting: it goes on the calendar as an all-day event'
+  + ' (create_shared_meeting_event does that by itself; create_calendar_event needs all_day=true).';
+
+async function createEvent(client, userId, { title, start, end, description, location, attendees, allDay = false }, opts = {}) {
   if (!title) return err('invalid', 'title is required');
   if (!OFFSET_RE.test(String(start))) return badTime('start', start);
-  if (!OFFSET_RE.test(String(end))) return badTime('end', end);
-  if (new Date(end) <= new Date(start)) return err('invalid', 'end must be after start');
+  if (!allDay && !OFFSET_RE.test(String(end))) return badTime('end', end);
+  if (!allDay && new Date(end) <= new Date(start)) return err('invalid', 'end must be after start');
+  const range = allDay ? allDayRange(start) : { start: { dateTime: start }, end: { dateTime: end } };
 
   // A deterministic id makes creation idempotent. It matters because the MCP
   // shim gives up at 30s while brokerd commits regardless: without this, one
@@ -466,8 +484,8 @@ async function createEvent(client, userId, { title, start, end, description, loc
           summary: title,
           description: description || undefined,
           location: location || undefined,
-          start: { dateTime: start },
-          end: { dateTime: end },
+          start: range.start,
+          end: range.end,
           // Only ever set by createSharedMeetingEvent, from addresses this
           // module resolved itself — never from anything the agent typed.
           attendees: attendees && attendees.length
@@ -489,15 +507,21 @@ async function createEvent(client, userId, { title, start, end, description, loc
   });
 }
 
-async function updateEvent(client, userId, { eventId, title, start, end, location }, opts = {}) {
+async function updateEvent(client, userId, { eventId, title, start, end, location, allDay = false, clearDate = false }, opts = {}) {
   if (!eventId) return err('invalid', 'event_id is required');
   if (start !== undefined && !OFFSET_RE.test(String(start))) return badTime('start', start);
-  if (end !== undefined && !OFFSET_RE.test(String(end))) return badTime('end', end);
+  if (!allDay && end !== undefined && !OFFSET_RE.test(String(end))) return badTime('end', end);
 
   const patch = {};
   if (title) patch.summary = title;
-  if (start) patch.start = { dateTime: start };
-  if (end) patch.end = { dateTime: end };
+  if (start && allDay) Object.assign(patch, allDayRange(start));
+  else {
+    // `clearDate`: the event may have been a whole day, and Google keeps a
+    // `date` beside a new `dateTime` unless it is cleared in the same patch.
+    const extra = clearDate ? { date: null } : {};
+    if (start) patch.start = { dateTime: start, ...extra };
+    if (end) patch.end = { dateTime: end, ...extra };
+  }
   if (location) patch.location = String(location);
   if (!Object.keys(patch).length) return err('invalid', 'nothing to change');
 
@@ -518,7 +542,7 @@ async function updateEvent(client, userId, { eventId, title, start, end, locatio
   });
 }
 
-async function deleteEvent(client, userId, { eventId }, opts = {}) {
+async function deleteEvent(client, userId, { eventId, notify = true }, opts = {}) {
   if (!eventId) return err('invalid', 'event_id is required');
   return withAccessToken(client, userId, opts, async (token, accessLevel, o) => {
     const refusal = requireWritable(accessLevel);
@@ -527,8 +551,11 @@ async function deleteEvent(client, userId, { eventId }, opts = {}) {
       // sendUpdates=all: if the user organised this event with invitees,
       // Google mails each of them a cancellation — deleting silently would
       // leave everyone else planning around a ghost.
+      // `notify: false` is only for an event being REPLACED by another one
+      // that already mailed everybody (removeMeetingAttendee's hand-over): a
+      // cancellation beside the new invitation reads as the meeting being off.
       await google.calendarFetch(token,
-        `/calendars/primary/events/${encodeURIComponent(eventId)}?sendUpdates=all`,
+        `/calendars/primary/events/${encodeURIComponent(eventId)}?sendUpdates=${notify ? 'all' : 'none'}`,
         { ...o, method: 'DELETE' });
     } catch (e) {
       if (e.code === 'unauthorized') throw e;
@@ -608,7 +635,7 @@ async function meetingCalendarRoles(client, meetingId) {
 // Called by the organiser's own agent once it has worked out real times.
 async function createSharedMeetingEvent(client, userId, { meetingId, start, end, location }, opts = {}) {
   const { rows } = await client.query(
-    `SELECT m.id, m.title, m.status, m.confirmed_slot
+    `SELECT m.id, m.title, m.status, m.confirmed_slot, m.confirmed_all_day
        FROM meetings m
        JOIN meeting_participants mp ON mp.meeting_id = m.id AND mp.user_id = $2
       WHERE m.id = $1 AND mp.state <> 'opted_out'`,
@@ -645,6 +672,9 @@ async function createSharedMeetingEvent(client, userId, { meetingId, start, end,
   const res = await createEvent(client, userId, {
     title: meeting.title || 'פגישה',
     start, end, location,
+    // Settled on a whole day (087): the event is a whole day too, whatever
+    // end the model worked out.
+    allDay: Boolean(meeting.confirmed_all_day),
     description: meeting.confirmed_slot || undefined,
     attendees,
   }, opts);
@@ -696,10 +726,81 @@ async function removeMeetingEvent(client, meetingId, opts = {}) {
   return ok({ removed: true });
 }
 
+// One person leaving a CONFIRMED meeting that carries on (owner, 2026-09-24):
+// the event comes off THEIR calendar and stays exactly as it was on everybody
+// else's — "רק תוציא אותו מהאירוע ביומן (לא את כולם או תמחק בטעות את
+// האירוע)". Two shapes, because Google has two:
+//   - they are a GUEST: the organiser's copy is patched with the guest list
+//     minus their address, which is what takes it off their calendar;
+//   - they are the ORGANISER: the event lives on their calendar, and deleting
+//     it there deletes it for everyone. So it is handed over first — the same
+//     event is created on the next writer's calendar with the others invited
+//     (createSharedMeetingEvent, which re-points the meeting row) — and only
+//     once that has succeeded is the old one deleted, quietly, since the
+//     new invitation has already gone to everybody. Nobody left who can host
+//     it: the old one stays where it is, and the result says so.
+// Best-effort like removeMeetingEvent: never an error, so leaving still works
+// when Google does not, and the caller learns only what really happened.
+async function removeMeetingAttendee(client, meetingId, userId, opts = {}) {
+  const { rows: [m] } = await client.query(
+    `SELECT calendar_event_id, calendar_organiser_id FROM meetings WHERE id = $1`, [meetingId]);
+  if (!m || !m.calendar_event_id || !m.calendar_organiser_id) return ok({ removed: false, reason: 'no_event' });
+  const organiserId = Number(m.calendar_organiser_id);
+  try {
+    if (organiserId !== Number(userId)) {
+      const email = await accountEmail(client, userId, opts);
+      if (!email) return ok({ removed: false, reason: 'not_connected' });
+      const res = await withAccessToken(client, organiserId, opts, async (token, _access, o) => {
+        const path = `/calendars/primary/events/${encodeURIComponent(m.calendar_event_id)}`;
+        const ev = await google.calendarFetch(token, path, o);
+        const before = Array.isArray(ev.attendees) ? ev.attendees : [];
+        const after = before.filter((a) => String(a.email || '').toLowerCase() !== email.toLowerCase());
+        if (after.length === before.length) return ok({ removed: false, reason: 'not_on_event' });
+        await google.calendarFetch(token, `${path}?sendUpdates=none`, {
+          ...o, method: 'PATCH', body: JSON.stringify({ attendees: after }),
+        });
+        return ok({ removed: true });
+      });
+      if (!res.ok || !res.data.removed) return ok({ removed: false, reason: res.ok ? res.data.reason : 'patch_failed' });
+      await audit.record(client, organiserId, 'calendar.meeting_attendee_removed', {
+        meetingId: Number(meetingId), userId: Number(userId),
+      });
+      return ok({ removed: true });
+    }
+
+    // They host it. Read it as it stands (a time moved on Google is still
+    // the time), then hand it over before anything is deleted.
+    const cur = await withAccessToken(client, organiserId, opts, async (token, _access, o) => ok(
+      await google.calendarFetch(token, `/calendars/primary/events/${encodeURIComponent(m.calendar_event_id)}`, o)));
+    if (!cur.ok || !cur.data.start || !cur.data.start.dateTime) return ok({ removed: false, reason: 'read_failed' });
+    const roles = await meetingCalendarRoles(client, meetingId);
+    if (!roles.organiserId || roles.organiserId === organiserId) {
+      return ok({ removed: false, reason: 'no_successor' });
+    }
+    const made = await createSharedMeetingEvent(client, roles.organiserId, {
+      meetingId, start: cur.data.start.dateTime, end: cur.data.end.dateTime, location: cur.data.location,
+    }, opts);
+    if (!made.ok) return ok({ removed: false, reason: 'handover_failed' });
+    const gone = await deleteEvent(client, organiserId, { eventId: m.calendar_event_id, notify: false }, opts);
+    if (!gone.ok) {
+      // Two events now, and the new one is the one the meeting row names. The
+      // old one is theirs to delete; say so rather than pretend.
+      return ok({ removed: false, reason: 'delete_failed', handedOver: true });
+    }
+    await audit.record(client, organiserId, 'calendar.meeting_event_handed_over', {
+      meetingId: Number(meetingId), to: roles.organiserId,
+    });
+    return ok({ removed: true, handedOver: true });
+  } catch {
+    return ok({ removed: false, reason: 'failed' });
+  }
+}
+
 module.exports = {
+  ALL_DAY_EVENT,
   PROVIDER, MAX_EVENTS,
   beginConnection, completeOAuth, getStatus, disconnect, loadIntegration,
   listEvents, createEvent, updateEvent, deleteEvent, eventIdFor,
   usableAccessToken,
-  accountEmail, meetingCalendarRoles, createSharedMeetingEvent, removeMeetingEvent,
+  accountEmail, meetingCalendarRoles, createSharedMeetingEvent, removeMeetingEvent, removeMeetingAttendee,
 };

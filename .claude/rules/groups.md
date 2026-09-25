@@ -236,6 +236,27 @@ have already had to be argued for.
   for a DM and re-hears `night` alone — a DM at 03:00 is not evidence that
   somebody's Shabbat is over.
 
+- **The room is a second door to every action on its coordination, and it
+  acts only as somebody still IN it** (owner, 2026-09-25: "אני רוצה את כל אלה
+  שיהיו גם בפרטי וגם בקבוצה"). He asked the room to cancel and was told it
+  could only be done privately (`incidents.md`, "The room could not cancel its
+  own coordination"). Cancel, rename, take a time off, leave and answer yes/no
+  are now room tools, and the chat gained the two the room had first — the
+  place (`meetings.setPlace`, the ONE writer of `meetings.location` after a
+  coordination opens; the room's tool calls it with `requireIn: false`,
+  because any member of the room may say where) and the minimum
+  (`set_meeting_minimum` over `meetings.setQuorum`). Three things hold it.
+  **Each room tool calls its private twin's domain function and fan-out**,
+  never a copy, so a cancel from the room tells the same people the same
+  thing and removes the same calendar event. **`groupMeetings.participantFor`
+  refuses anybody not still in the coordination** (`reason: 'not_in_it'`) —
+  unlike `settle`, which acts through a participant, because a yes, a no and
+  an exit are one person's and "anybody in it" is the private rule for the
+  rest. **The results are PICKED, never passed through**: the private ones
+  carry hints about the person's own calendar and dashboard, and an answer
+  given in the room returns that one answer and never the table's — the room
+  still hears nobody else's (`tests/group-room-actions.test.js`).
+
 - **The person who asked the ROOM for a coordination is asked privately too.**
   `startMeeting` inserts every participant at `awaiting`, the initiator
   included, and for a person-to-person coordination the fan-out rightly skips
@@ -346,13 +367,31 @@ have already had to be argued for.
   family so a line held for the night goes out in the morning and never twice.
   Before it, the room's first word was `base` — which waits for two people to
   agree on a time, hours later — so a room that had just asked her for something
-  heard nothing at all. **It carries a COUNT and no tags**: `co.participants` is
-  who she is actually asking, and `co.outside` is how many members of the room
-  she could not sweep in, said only as "somebody here is not counted" and only
-  when there is one. Who those people are is the gate notice's own sentence, and
-  a room hearing the same list in two voices is what this whole family of lines
-  avoids — which is also why nobody is named, in a line that would otherwise be
-  the easiest place to break the tag-not-name rule below.
+  heard nothing at all. `co.participants` is who she is actually asking.
+  **Since 2026-09-25 it TAGS the members she could not sweep in**
+  (`co.outsidePhones`, `group_coord_outside` / `_many`; owner: "לתייג אותם
+  בשורת הפתיחה"). Until then it carried only a count ("somebody here is not
+  counted"), on the reasoning that who they are was the gate notice's own
+  sentence, but an OPEN room says no gate notice, and in פנתרה the one member
+  who had never written heard a count that pinged nobody. A LID tags nobody, so
+  a room whose missing members are all LIDs still hears the count line. Tagged,
+  never named: the tag-not-name rule below holds here too.
+  **And the tag's promise is kept**: `group-meetings.admitLateMembers`, run by
+  `sweepGroupVoice` in the room's daytime, lets anybody the gate now counts as
+  connected into a negotiating coordination they have NO participant row in,
+  with the same invite everybody got (as the whole table when there is one),
+  keyed `minvite:<meeting>` so nobody is invited twice. The room hears
+  `group_coord_joined` once per admission ("הצטרף/הצטרפה/הצטרפו", masculine when
+  they set nothing), as that pass's one line, and only after the opening has
+  gone out; before it, the opening simply counts them. Somebody who LEFT has an
+  `opted_out` row and is never swept back in, a paused member whose room invite
+  is spent is left out as `startCoordination` leaves them out, and nobody is
+  let in during the settle minute. **A coordination SETTLED but still ahead
+  lets them in too** (owner, same day): they get `meeting_confirmed` with
+  `joinedLate` (the time in their own clock, can they make it, the calendar
+  step), never a "confirmed by every participant" they were not part of; one
+  that has already happened lets nobody in (`incidents.md`, "פנתרה: one time,
+  four clocks").
 
 - **A tag is a NUMBER, and the roster hands us LIDs in the same column** (owner,
   2026-09-22). `chat_group_members.phone` holds a WhatsApp LID for members the
@@ -504,6 +543,30 @@ have already had to be argued for.
   "teams" stay off the list, because a false hit tells a room nobody needs to
   know where they are going (`incidents.md`, "Where do we meet, on Zoom").
 
+- **A coordination that settles with no exact hour asks for one ONCE — the
+  room on its "סגור" line, a private one only ONE person — and anybody in it
+  may fill it in** (owner, 2026-09-24; migrations 087/088). "No exact hour"
+  is `meetings.timeIsOpen`: a whole day or a part of one, all-day included by
+  the owner's choice. In a room, `decideGroupLine` puts `timeAsk` on the done
+  line — ONE sentence with the place question when both are open, never two
+  questions in a row — and it is once because that line is stamped once; an
+  owner rewording without `{{time_ask}}` gets it appended rather than lost.
+  Privately, `meeting-fanout.askedAboutTime` picks whoever settled it by
+  hand, else whoever opened it, because two people asked the same question
+  answer it two ways; settled from the page, that person gets the one
+  `meeting_exact_time_ask` message, since there is no turn to put a hint in.
+  **The answer goes through the tool that already means "this time"**:
+  `propose_meeting_slot` / `add_group_coordination_option` on a settled
+  meeting with an open hour call `meetings.setExactTime` — two new tools
+  would have cost 1,121 of the schema's 1,074 spare characters. It is narrow:
+  the same local day only (a new day goes back on the table), never on an
+  exact time (that would be a reschedule nothing offers), and only by
+  somebody in it. `meeting-fanout.afterTimeSet` moves the shared event as its
+  organiser (an hour long, `clearDate` because it may have been a `{date}`
+  event), tells everybody else privately (`meeting_time_set`), withdraws a
+  queued question, and a time set in the room stamps `group_time_at` so the
+  room's `time` line is said only for a time set somewhere else.
+
 - **The room says that people have not answered only about people she has
   actually written to** (owner, 2026-09-22; `group-meetings.statusOf` puts
   `asked` on every person it names, `group-voice.said` is the filter).
@@ -651,3 +714,24 @@ have already had to be argued for.
   because there is no state to draw: it is a judgement about tone, and
   `resync-agent-templates.js` carries it to every room on deploy
   (`incidents.md`, "The room's joke got a lecture").
+
+- **A room whose people live on more than one clock hears every time in each
+  of them, by city, and a room on one clock hears exactly what it did before**
+  (owner, 2026-09-25, פנתרה). The zones are those of the people the
+  coordination is ASKING (`statusOf`'s `zones`, off `users.timezone`), plus
+  the room's own, and "more than one" is decided per moment
+  (`meeting-time.spansZones`): Israel and Athens are one clock in some weeks
+  and two in others. **The owner's words are separate templates**, `<key>_zones`,
+  a VARIANT on the family and never a language (`message-templates.variantOf`),
+  shown as a second column on the templates page. A test fails when a room
+  line that carries a time has no twin. What rides the line is the instant
+  behind each slot text (`at[field]`), not words: the renderer draws them at
+  delivery, like every room line. **A time that names no clock is never
+  converted.** "בערב" went into `starts_at` as a representative 19:00, so
+  saying "12:00 ניו יורק" about it is precision nobody said; it keeps its
+  author's words and city. **The model gets the drawn line, never the
+  clocks**: `coordinationStatus` (the group tool and the turn block) strips
+  `moments` and `zones` and hands over `roomTimes` and the cities, and
+  `group-turn.CLOCK_RULE` is said only in a room that spans clocks. Each member
+  there carries `clock`, so "at four" from somebody in New York is put on the
+  table at New York's four (`incidents.md`, "פנתרה: one time, four clocks").

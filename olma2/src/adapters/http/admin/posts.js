@@ -9,6 +9,7 @@ const factsDomain = require('../../../domain/facts');
 const auditDomain = require('../../../domain/audit');
 const { enqueue } = require('../../../outbox/enqueue');
 const pauseDomain = require('../../../domain/pause');
+const ownerMessages = require('../../../domain/owner-messages');
 
 // Only ever back to a user page this dashboard itself renders. `back` arrives
 // inside a form body, so without this check any admin action could be turned
@@ -100,11 +101,17 @@ async function handleUserEdit(client, pathname, body) {
     // No idempotencyKey: this is a one-off an operator wrote, not a sweep's
     // output, so there is nothing for a key to deduplicate against — and a
     // fixed one would silently swallow the second message they meant to send.
-    await enqueue(client, {
+    const urgency = body.urgency === 'urgent' ? 'urgent' : 'normal';
+    const queued = await enqueue(client, {
       userId, kind: 'checkin',
       payload: { checkinInstruction: instruction, rung: 'admin' },
-      urgency: body.urgency === 'urgent' ? 'urgent' : 'normal',
+      urgency,
       releaseAfter: when[0].at,
+    });
+    // The outbox row ages out; this log is what the owner reads back to find
+    // the moments Olma should have noticed on her own (migration 089).
+    await ownerMessages.record(client, {
+      userId, outboxId: queued.data && queued.data.outboxId, instruction, urgency,
     });
     await auditDomain.record(client, userId, 'admin.outbox.queued',
       { urgency: body.urgency === 'urgent' ? 'urgent' : 'normal', releaseAfter: release });

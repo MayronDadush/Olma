@@ -4625,6 +4625,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "mt.stateNone":"עוד אף אחד לא ענה",
       "mt.stateNoOpts":"עוד לא הוצע מועד",
       "mt.settledAs":"נקבע — {when}",
+      "mt.yourTime":"{when} · אצלך {local}",
       "mt.newTitle":"תיאום פגישה חדש","mt.name":"על מה הפגישה","mt.namePh":"פוקר, קפה, פגישת עבודה…",
       "mt.qWho":"עם מי נפגשים?","mt.qDays":"אילו ימים להציע?","mt.qWhen":"מתי ביום?",
       "mt.step":"שלב {n} מתוך 3","mt.next":"המשך","mt.back":"חזרה","mt.optional":"לא חובה",
@@ -4642,7 +4643,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "toast.mtOptAdded":"נוסף — {when}","toast.mtOptDupe":"{when} כבר מוצע בתיאום",
       "toast.mtCapReached":"הגעתם למקסימום {n} מועדים — בחרו מה למחוק כדי להוסיף",
       "toast.mtSwapped":"{out} הוחלף ב{in}",
-      "toast.mtLeft":"יצאת מ{name}","toast.mtLeaveFailed":"לא הצלחתי להוציא אותך מ{name}",
+      "toast.mtLeft":"יצאת מ{name}","toast.mtLeftCal":"יצאת מ{name} — וזה ירד גם מהיומן שלך","toast.mtLeaveFailed":"לא הצלחתי להוציא אותך מ{name}",
       "toast.mtWhen":"סומנו {n} ימים",
       "toast.mtCalAdd":"נוסף ליומן שלך","toast.mtCalGone":"הוסר מהיומן שלך",
       "toast.mtStarted":"נשלחה בקשה ל{list} — כשיענו זה יופיע כאן",
@@ -4949,6 +4950,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "mt.stateNone":"Nobody has answered yet",
       "mt.stateNoOpts":"No time proposed yet",
       "mt.settledAs":"Settled \u2014 {when}",
+      "mt.yourTime":"{when} \u00b7 your time {local}",
       "mt.newTitle":"New coordination","mt.name":"What is it for","mt.namePh":"Poker, coffee, a work meeting\u2026",
       "mt.qWho":"Who is it with?","mt.qDays":"Which days to offer?","mt.qWhen":"When in the day?",
       "mt.step":"Step {n} of 3","mt.next":"Continue","mt.back":"Back","mt.optional":"Optional",
@@ -4966,7 +4968,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "toast.mtOptAdded":"Added \u2014 {when}","toast.mtOptDupe":"{when} is already offered here",
       "toast.mtCapReached":"You're at the max of {n} \u2014 pick one to delete to add it",
       "toast.mtSwapped":"{out} replaced by {in}",
-      "toast.mtLeft":"You left {name}","toast.mtLeaveFailed":"Could not take you off {name}",
+      "toast.mtLeft":"You left {name}","toast.mtLeftCal":"You left {name} — it came off your calendar too","toast.mtLeaveFailed":"Could not take you off {name}",
       "toast.mtWhen":"{n} days marked",
       "toast.mtCalAdd":"Added to your calendar","toast.mtCalGone":"Removed from your calendar",
       "toast.mtStarted":"Request sent to {list} — answers show up here",
@@ -8755,6 +8757,9 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      watching the others answer a coordination you stepped out of is not
      something to offer. The server takes the same view and sends only these
      two fields (`meetingsLeft`, domain/user-dashboard.js). */
+  function mtWithLocal(words, local){
+    return words && local ? t("mt.yourTime", {when:words, local:local}) : words;
+  }
   function mtLeftHTML(m){
     /* Two kinds of row share this list: one you left (a way back in) and one
        that settled and happened (nothing to do — it is over). */
@@ -9379,6 +9384,9 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
        given. */
     API.send("leaveMeeting", {meetingId:m.id}, function(data){
       if(!data) toast(t("toast.mtLeaveFailed", {name:L(m.t)}));
+      /* Off their Google calendar too, and only theirs — said only when the
+         server really took it off (calendar.removeMeetingAttendee). */
+      else if(data.calendar && data.calendar.removed) toast(t("toast.mtLeftCal", {name:L(m.t)}));
       API.reload();
     });
     MEETS = MEETS.filter(function(x){ return x !== m; });
@@ -12051,7 +12059,12 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
         return acc;
       }, {}),
       settled:settled,
-      slotText:(settledOpt ? m.confirmedSlot : m.slot) || "",
+      /* The proposer's words, plus this reader's own hour when they are on
+         another clock — the server decides when that is (`slotLocal`,
+         `confirmedLocal` in domain/user-dashboard.js) and the page never
+         converts a time itself. */
+      slotText:mtWithLocal((settledOpt ? m.confirmedSlot : m.slot) || "",
+        settledOpt ? m.confirmedLocal : m.slotLocal),
       /* Whether the settled slot sits on THIS person's own calendar is not
          something we record per participant, so it is not claimed. */
       inCal:false,

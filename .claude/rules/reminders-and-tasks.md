@@ -126,6 +126,17 @@ title means this file. Grep the title, not the filename.
   (`add/answer/remove/swap`), which re-mirrors after every change.
   A yes must name one of the options on the table; the meeting confirms the
   moment one option is unanimous among the people still in it.
+  **A whole day or a part of one keeps its PRECISION all the way onto the
+  settled meeting** (owner, 2026-09-24; migration 087,
+  `meetings.confirmed_all_day/confirmed_daypart`, written by
+  `meeting-options.confirmOn` and nothing else). Its `starts_at` is a stand-in
+  hour — 09:00 for a whole day, `PART_HOURS` for a part — put there by
+  `meeting-option-moment.standInFor` whichever door the time came in by, so the
+  same day named twice is still one option. Everything that reads the settled
+  moment has to ask the precision first: the calendar makes a whole day a
+  `{date}` event (`calendar.createEvent`, `allDay`), and the room gets the
+  day-of line and never an hour-before one off a stand-in hour
+  (`group-voice.decideGroupLine`).
   **A sixth option is refused to EVERYBODY, the initiator included, and the
   refusal carries the five** — the answer to a full table is a question ("which
   of these goes?"), which `swap` answers in one transaction. What this replaced
@@ -233,14 +244,29 @@ title means this file. Grep the title, not the filename.
   (a participant not `opted_out`; `IN_IT` in `meetings.js`) may settle it by
   hand (`options.settleNow`), rename it, cancel it for everybody, or LEAVE it,
   the opener included; somebody who has left may do none of those. Three
-  things follow. **Cancelling for everybody is the chat's alone** — the page
-  offers leaving, and deleting only between two people (either of them), where
-  leaving would end it anyway. **The ending is never a message of its own**:
+  things follow. **Cancelling for everybody is the chat's and the room's
+  alone** — the page offers leaving, and deleting only between two people
+  (either of them), where leaving would end it anyway. The ROOM got it on
+  2026-09-25 (`cancel_group_coordination`; `rules/groups.md`, "The room is a
+  second door to every action on its coordination"). **The ending is never a message of its own**:
   `meeting_expired` and `meeting_no_match` went to the opener alone and are
   now enqueued by nothing; whoever was still in it reads the ending in their
   next digest (`digest.assemble` → `crossUser.closedMeetings`, since their
   last digest that really went out, three days at most), which is the owner's
-  choice between "everybody" and "nobody". **Revoking a connection is an exit**
+  choice between "everybody" and "nobody" — **and, since 2026-09-24, in
+  passing on whatever Olma composes for them before that** ("כדרך אגב"):
+  `outbox/worker.closedNewsFor` puts it on a model-path row (never a reminder,
+  a hand-written `instruction`, or a digest, which says it itself),
+  `channels/openclaw.closedClause` asks for one clause, and the worker writes
+  `payload.closedNews` onto the row only after the send confirmed.
+  `digest.unheardClosedMeetings` is the ONE query both read, so it is said
+  once between them. **Leaving a CONFIRMED one takes it off THEIR calendar
+  and nobody else's** (`calendar.removeMeetingAttendee`, owner 2026-09-24: "לא
+  את כולם או תמחק בטעות את האירוע"): a guest is patched off the guest list; a
+  host's event is re-created on the next writer's calendar FIRST and only then
+  deleted, quietly; with nobody to take it over it stays, and is never offered
+  for deletion. They are told it came off only when it really did.
+  **Revoking a connection is an exit**
   whoever opened the pair's coordination, so it closes `no_match`, never
   `cancelled`. The chat tools' descriptions and the doctrine's "תבטל את
   הפגישה" line say "anyone in it"; a test still asserting "initiator only" is

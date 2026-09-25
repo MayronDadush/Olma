@@ -593,6 +593,28 @@ test('the chase names only the people who answered nothing at all', () => {
   assert.equal(early.kind, 'none');
 });
 
+// A whole day or a part of one sits on a stand-in hour (087): "in an hour"
+// off it is a time nobody named, and a whole day is still today after 09:00.
+test('an all-day or part-of-day meeting gets the day-of line and never the hour-before', () => {
+  const tz = 'Asia/Jerusalem';
+  const nine = new Date(); nine.setUTCHours(6, 0, 0, 0); // 09:00 Israel, today
+  const base = { saidBase: true, saidChase: true, saidDone: true, startedAtMs: 0, timezone: tz };
+  const allDay = { status: 'confirmed', confirmedSlot: 'היום כל היום', confirmedStartAt: nine.toISOString(),
+    confirmedAllDay: true, options: [], silent: [] };
+  assert.equal(groupVoice.decideGroupLine(allDay, { ...base, nowMs: nine.getTime() - 30 * 60_000 }).kind, 'dayof',
+    'half past eight is today, and not "in an hour"');
+  assert.equal(groupVoice.decideGroupLine(allDay, { ...base, nowMs: nine.getTime() + 3 * 3600_000 }).kind, 'dayof',
+    'noon on the day is still that day');
+  assert.equal(groupVoice.decideGroupLine(allDay, { ...base, saidDayOf: true, nowMs: nine.getTime() - 30 * 60_000 }).kind, 'none',
+    'said once, and no hour-before after it');
+  const evening = new Date(nine.getTime() + 10 * 3600_000); // 19:00 stand-in
+  const part = { ...allDay, confirmedAllDay: false, confirmedDaypart: 'evening', confirmedSlot: 'היום בערב',
+    confirmedStartAt: evening.toISOString() };
+  assert.equal(groupVoice.decideGroupLine(part, { ...base, saidDayOf: true, nowMs: evening.getTime() - 30 * 60_000 }).kind, 'none');
+  assert.equal(groupVoice.decideGroupLine(part, { ...base, nowMs: evening.getTime() - 60 * 60_000 }).kind, 'dayof',
+    'an hour before a part of a day is still worth the day-of line');
+});
+
 test('a coordination that is already set is never chased', () => {
   const line = groupVoice.decideGroupLine(
     { status: 'confirmed', confirmedSlot: 'שלישי 20:00', options: [], silent: [{ phone: '+972500000009' }] },
@@ -890,7 +912,10 @@ test('the three shapes of that line, exactly', () => {
     '@+972542636760: ב-4 קצת חם 📣');
 });
 
-test('a room with members who never wrote is told they are not counted, without a name or a tag', async () => {
+// Until 2026-09-25 this line counted them and never tagged them. The owner
+// reversed that off פנתרה (a count pings nobody, and an open room says no gate
+// notice), so it now TAGS them — still never by name.
+test('a room with members who never wrote hears them tagged, never named', async () => {
   const { group, people } = await room(41);
   const [a] = people;
   // Somebody joins who has never written to her — the Padel Gang shape.
@@ -905,9 +930,8 @@ test('a room with members who never wrote is told they are not counted, without 
   await pass(sent, null, group.external_id);
   assert.equal(sent.length, 1);
   assert.match(sent[0].body, /שאלתי בפרטי 3 מכם/, 'the three she can reach, not the four in the room');
-  assert.match(sent[0].body, /לא נספר/, 'and that somebody here is not counted');
+  assert.ok(sent[0].body.includes('@+972609990041 עוד לא כתבת לי בפרטי'), 'tagged, so it pings them');
   assert.equal(sent[0].body.includes('חדש'), false, 'never by name');
-  assert.equal(sent[0].body.includes('972609990041'), false, 'and never by number');
 });
 
 // ── מירון's padel room, 2026-09-22 ───────────────────────────────────────────
@@ -991,4 +1015,37 @@ test('the table moving is news every time it moves, and never says who said what
     options: [{ ...padel().options[0], yes: [] }] });
   assert.equal(groupVoice.decideGroupLine(noLead, { ...base, saidBase: false, tableSaidAtMs: 0 }).kind, 'none',
     'no direction yet and no table ever said: there is nothing to report');
+});
+
+// Settled on a whole day or a part of one: the "סגור" line asks ONCE whether
+// they want an exact hour, joined with the place question when both are open
+// (owner, 2026-09-24). A time set afterwards in private is told to the room
+// once; set in the room, it is stamped as heard and never repeated.
+test('the done line asks about an exact hour only when there is none, and the room hears a time set elsewhere once', () => {
+  const said = { saidBase: true, saidChase: true, startedAtMs: 0, nowMs: Date.now() };
+  const base = { status: 'confirmed', confirmedSlot: 'שלישי כל היום', options: [], silent: [], location: 'אצל יוסי' };
+  const open = groupVoice.decideGroupLine({ ...base, confirmedAllDay: true }, said);
+  assert.equal(open.kind, 'done');
+  assert.equal(open.timeAsk, true);
+  assert.match(proactiveText.renderGroupCoordination(open), /שעה מדויקת/);
+  assert.doesNotMatch(proactiveText.renderGroupCoordination(open), /איפה נפגשים\?/);
+  const both = groupVoice.decideGroupLine({ ...base, location: null, confirmedDaypart: 'evening' }, said);
+  const text = proactiveText.renderGroupCoordination(both);
+  assert.equal((text.match(/\?/g) || []).length, 1, 'one question, never two in a row');
+  assert.match(text, /שעה מדויקת, ואיפה נפגשים/);
+  const exact = groupVoice.decideGroupLine({ ...base, confirmedSlot: 'שלישי 20:00' }, said);
+  assert.equal(exact.timeAsk, false);
+  assert.doesNotMatch(proactiveText.renderGroupCoordination(exact), /שעה מדויקת/);
+
+  // An owner's rewording saved before the placeholder existed still asks.
+  const old = proactiveText.renderGroupCoordination(open, { group_coord_done: 'סגור: *{{slot}}* {{who}}' });
+  assert.match(old, /שעה מדויקת/);
+
+  const setAt = new Date().toISOString();
+  const line = groupVoice.decideGroupLine({ ...base, confirmedSlot: 'שלישי 18:00', timeSetAt: setAt },
+    { ...said, saidDone: true, saidCalendar: true });
+  assert.equal(line.kind, 'time');
+  assert.match(proactiveText.renderGroupCoordination(line), /השעה נקבעה: \*שלישי 18:00\*/);
+  assert.notEqual(groupVoice.decideGroupLine({ ...base, confirmedSlot: 'שלישי 18:00', timeSetAt: setAt },
+    { ...said, saidDone: true, saidCalendar: true, saidTime: true }).kind, 'time');
 });

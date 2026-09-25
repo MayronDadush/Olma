@@ -86,9 +86,10 @@ module.exports = [
   // moment being a yes, the weekday check and the fold into a still-queued
   // private invite are all the same code.
   groupTool('add_group_coordination_option',
-    'GROUP AGENTS ONLY. The member who tagged you named a time for this room\'s coordination: put it on the table as THEIR option, with their yes. The others are asked about it privately.',
+    'GROUP AGENTS ONLY. The member who tagged you named a time for this room\'s coordination: put it on the table as THEIR option, with their yes. The others are asked about it privately. Settled with no exact hour: this sets it.',
     { slot_description: S('string', 'The time in their words, day included'),
-      starts_at: S('string', 'The same moment and DAY, ISO-8601 with offset') },
+      starts_at: S('string', 'The same moment and DAY, ISO-8601 with offset'),
+      all_day: S('boolean', 'The whole day'), daypart: S('string', 'morning|noon|evening|night, when no hour') },
     ['slot_description', 'starts_at'],
     async (client, ctx, a) => {
       if (!ctx.actingUser) {
@@ -96,10 +97,25 @@ module.exports = [
       }
       const meeting = await groupMeetings.currentMeeting(client, ctx.group.id);
       if (!meeting) {
+        // Settled on a whole day or a part of one, and the done line asked
+        // whether they want an exact hour: this is the answer (owner,
+        // 2026-09-24). Anybody in the room, the same day only.
+        const last = await groupMeetings.roomMeetingFor(client, ctx.group, ctx.actingUser);
+        if (last.ok && meetings.timeIsOpen(last.data)) {
+          const set = await meetingFanout.afterTimeSet(client, ctx.actingUser,
+            await meetings.setExactTime(client, ctx.actingUser.id, Number(last.data.id), a.slot_description, a.starts_at),
+            { fromRoom: true });
+          if (!set.ok) return set;
+          return ok({
+            meetingId: set.data.meetingId, slot: set.data.slot, timeSet: true,
+            hints: { room: 'Say ONE short line in the room: the time is set. Everyone else is told privately.' },
+          });
+        }
         return err('invalid', 'nothing is being coordinated in this room — call start_group_coordination first');
       }
       const meetingId = Number(meeting.id);
-      const res = await meetings.proposeSlot(client, ctx.actingUser.id, meetingId, a.slot_description, a.starts_at);
+      const res = await meetings.proposeSlot(client, ctx.actingUser.id, meetingId, a.slot_description, a.starts_at,
+        { allDay: a.all_day === true, daypart: a.daypart || null });
       if (!res.ok) {
         // The full-table refusal carries every option with its per-person
         // answers keyed by user id. A room is told the times, never whose
@@ -118,8 +134,14 @@ module.exports = [
       // them the question they just answered in front of everyone.
       await meetingFanout.noteNamedInRoom(client, ctx.actingUser.id, meetingId);
       const onTable = await meetings.options.activeCount(client, meetingId);
+      // In a room on more than one clock, the time as every reader will hear
+      // it — the one line the model may say about it (group-turn.CLOCK_RULE).
+      const st = await groupMeetings.coordinationStatus(client, ctx.group);
+      const drawn = st.coordination && (st.coordination.options || [])
+        .find((o) => Number(o.optionId) === Number(res.data.optionId));
       return ok({
         meetingId, optionId: res.data.optionId, slot: res.data.proposedSlot,
+        ...(drawn && drawn.roomTimes ? { roomTimes: drawn.roomTimes } : {}),
         duplicate: res.data.duplicate, onTable,
         hints: {
           room: res.data.duplicate
@@ -193,6 +215,110 @@ module.exports = [
       return ok({
         gender: res.data.gender,
         hints: { room: 'Saved. If a word is needed, ONE short line in their form — no apology speech.' },
+      });
+    }),
+
+  // ── Everything else a person can do to a coordination, from the room ──────
+  // Owner, 2026-09-25: he asked the room to cancel and was told it could only
+  // be done privately (`incidents.md`, "The room could not cancel its own
+  // coordination"). Each tool below is a second door into exactly the domain
+  // call and fan-out its private twin uses, as the member who tagged her
+  // (`groupMeetings.participantFor`, which refuses anybody not in it). Every
+  // result is PICKED field by field rather than passed through: the private
+  // results carry hints written for a person's own agent (their calendar,
+  // their dashboard), and nothing of that belongs in front of a room.
+  groupTool('cancel_group_coordination',
+    'GROUP AGENTS ONLY. The member who tagged you calls this room\'s coordination off for EVERYONE; all are told privately. "I can\'t make it" is leave_group_coordination — ask if unclear.',
+    {}, [],
+    async (client, ctx) => {
+      const who = await groupMeetings.participantFor(client, ctx.group, ctx.actingUser, { statuses: ['negotiating', 'confirmed'] });
+      if (!who.ok) return who;
+      const res = await meetingFanout.cancelAndTell(client, who.data.user, who.data.meetingId);
+      if (!res.ok) return res;
+      return ok({
+        meetingId: who.data.meetingId, cancelled: true, wasConfirmed: Boolean(res.data.wasConfirmed),
+        hints: { room: 'Say ONE short line: it is cancelled, and everyone in it is told privately. No names, no reasons.' },
+      });
+    }),
+
+  groupTool('rename_group_coordination',
+    'GROUP AGENTS ONLY. The member who tagged you renames this room\'s coordination.',
+    { title: S('string', 'The new name, in their words') }, ['title'],
+    async (client, ctx, a) => {
+      const who = await groupMeetings.participantFor(client, ctx.group, ctx.actingUser, { statuses: ['negotiating', 'confirmed'] });
+      if (!who.ok) return who;
+      const set = await meetings.setTitle(client, who.data.user.id, who.data.meetingId, a.title);
+      if (!set.ok) return set;
+      const res = await meetingFanout.patchSharedEvent(client, set, { title: set.data.title });
+      return ok({
+        meetingId: who.data.meetingId, title: res.data.title, calendarUpdated: res.data.calendarUpdated,
+        hints: { room: 'Say ONE short line with the new name.' },
+      });
+    }),
+
+  groupTool('remove_group_coordination_option',
+    'GROUP AGENTS ONLY. The member who tagged you takes ONE time off the table (option_id from group_coordination_status).',
+    { option_id: S('number', 'The time to take off') }, ['option_id'],
+    async (client, ctx, a) => {
+      const who = await groupMeetings.participantFor(client, ctx.group, ctx.actingUser);
+      if (!who.ok) return who;
+      const res = await meetingFanout.afterOptionRemoved(client, who.data.user, who.data.meetingId,
+        await meetings.options.remove(client, who.data.user.id, who.data.meetingId, a.option_id));
+      if (!res.ok) return res;
+      return ok({
+        meetingId: who.data.meetingId, optionId: Number(a.option_id), meetingStatus: res.data.meetingStatus,
+        hints: { room: res.data.meetingStatus === 'settling'
+          ? 'That time is off. Everyone left agrees on another, so it closes on its own shortly — do not announce it closed.'
+          : 'Say ONE short line: that time is off the table. Nobody else is messaged about it.' },
+      });
+    }),
+
+  groupTool('leave_group_coordination',
+    'GROUP AGENTS ONLY. The member who tagged you says THEY cannot make it: they leave, and it carries on for the others.',
+    {}, [],
+    async (client, ctx) => {
+      const who = await groupMeetings.participantFor(client, ctx.group, ctx.actingUser, { statuses: ['negotiating', 'confirmed'] });
+      if (!who.ok) return who;
+      const out = await meetings.optOut(client, who.data.user.id, who.data.meetingId);
+      if (!out.ok) return out;
+      const res = await meetingFanout.afterOptOut(client, who.data.user, who.data.meetingId, out);
+      return ok({
+        meetingId: who.data.meetingId, meetingStatus: res.data.meetingStatus,
+        cancelledForEveryone: Boolean(res.data.cascadeCancelled),
+        hints: { room: res.data.cascadeCancelled
+          ? 'Say ONE short line: with them out there are not enough people, so it is off for everyone, and everyone is told privately.'
+          : 'Say ONE short line to them: noted, it carries on for the others. No reason, and nothing about anybody else.' },
+      });
+    }),
+
+  // Their OWN answer, said in front of everyone — so the room hears nothing
+  // it had not just heard from them. What it never hears is anybody else's:
+  // the result carries this one answer and not the table's.
+  groupTool('answer_group_coordination_option',
+    'GROUP AGENTS ONLY. The member who tagged you says yes or no to ONE time on the table (option_id from group_coordination_status). Their own answer only.',
+    { option_id: S('number', 'The time they answered'), accept: S('boolean', 'true = yes, false = no') },
+    ['option_id', 'accept'],
+    async (client, ctx, a) => {
+      const who = await groupMeetings.participantFor(client, ctx.group, ctx.actingUser);
+      if (!who.ok) return who;
+      const { meetingId, user } = who.data;
+      const option = (await meetings.options.list(client, meetingId))
+        .find((o) => o.status === 'active' && Number(o.id) === Number(a.option_id));
+      if (!option) return err('not_found', 'no such time on the table', { reason: 'option_not_active' });
+      // The yes has to land on THIS option and not "whatever is newest":
+      // respondToSlot finds the option by its moment, so the moment is handed
+      // over from the row, never typed by a model.
+      const res = await meetings.respondToSlot(client, user.id, meetingId, a.accept === true, null, null, option.startsAt);
+      if (!res.ok) return res;
+      await meetingFanout.afterSlotResponse(client, user, meetingId, res, { accept: a.accept === true });
+      // Their private invite must stop asking what they just answered here.
+      await meetingFanout.noteNamedInRoom(client, user.id, meetingId);
+      return ok({
+        meetingId, optionId: Number(option.id), slot: option.slotText, answer: a.accept === true ? 'yes' : 'no',
+        meetingStatus: res.data.meetingStatus,
+        hints: { room: res.data.meetingStatus === 'settling'
+          ? 'Their yes made it unanimous: it closes on its own shortly and everyone is told. Say ONE short line, and do not announce it closed.'
+          : 'Noted. If words are needed, ONE short line — never anybody else\'s answer.' },
       });
     }),
 

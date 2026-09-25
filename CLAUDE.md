@@ -158,7 +158,7 @@ Loads when you **Read** a file under `src/outbox/**`, `src/domain/message-format
 - **What is the same every time is DRAWN, and only the sentence about it is a model's**
 - **…and since 2026-09-10 the lists and choices a person ASKS for are drawn the same way**
 - **…and a drawn table says where the READER stands, plus the one line that needs only their yes**
-- **The invite and the table question offer the coordination's own page, on a bare line; nothing else in the negotiation does** — and the characters are handed over, never asked for: a prompt that named a meeting id got three invented domains in one minute
+- **EVERY private message about a coordination offers its own page, after one fixed sentence ("אפשר לענות לי כאן בצ'אט או דרך הקישור:") and on a bare line** — since 2026-09-24, reversing 2026-09-20; and the characters are handed over, never asked for: a prompt that named a meeting id got three invented domains in one minute
 - **A private message about a coordination is one sentence of context and one question** — two options are a sentence, a game room counts heads, and the length is measured
 - **The same thing does not go out twice inside a few minutes unless the person ASKED**
 - **The delivery gate is the chokepoint and a paused user has no exceptions** — save one room-coordination invite per pause, and one per run of silence
@@ -177,6 +177,7 @@ Loads when you **Read** a file under `src/outbox/**`, `src/domain/message-format
 - **On the model path a retry is not a retry — it is a NEW message, composed against a world the failed sends themselves created.**
 - **A `--deliver` that TIMES OUT has very likely gone out, and is never retried.**
 - **Anything else due in the same moment is ONE message too, and two rules say what may travel together**
+- **A meeting time reaches each reader in THEIR clock too, beside the proposer's words** — and the confirmed calendar step hands over the exact start, never "work it out from the words"
 
 ### Turns, and what reaches the person
 
@@ -217,7 +218,7 @@ Loads when you **Read** a file under `src/domain/reminders.js`, `src/domain/task
 - **A time ADDED to it rides the same thing, as long as that thing has not gone out yet** — four messages in sixty-two seconds is what queueing beside it looks like
 - **A negotiation message WAITS a quarter of an hour behind the last one that reached that person, and everything meanwhile folds into it** — the fold already existed and `urgent` never let it run; a RESULT never waits.
 - **Opening a coordination is not a subscription to every answer in it** — a decline and an exit stop being messages of their own; the reason moves from a push to a pull.
-- **Nobody manages a coordination** — `initiator_id` is who opened it and grants nothing: anybody still in it settles, renames, cancels (in the chat) or leaves; its ending rides the next digest (`crossUser.closedMeetings`), never a message of its own.
+- **Nobody manages a coordination** — `initiator_id` is who opened it and grants nothing: anybody still in it settles, renames, cancels (in the chat or the room) or leaves; its ending rides the next digest (`crossUser.closedMeetings`) or, in passing, whatever she says first (`digest.unheardClosedMeetings`, said once between them), never a message of its own; and leaving a confirmed one takes it off THEIR calendar only (`calendar.removeMeetingAttendee`) — the event is never deleted from under the others.
 - **An explicit reminder replaces the automatic one only on the SAME local day; on another day it stands beside it.**
 - **An event is SAID, never only guessed, and it is never told back as a task.**
 - **A task already OPEN on somebody's list is never saved a second time.**
@@ -347,16 +348,18 @@ Loads when you **Read** a file under `src/domain/group-connections.js`, `src/dom
 - **The roster's digits may be a LID, and the gateway's own reverse map is the only way back to a number**
 - **A room opens on TWO connected members, not on everybody — and it still says who is not here**
 - **The room reaches each member's OWN page as a group already made**
+- **The room is a second door to every action on its coordination, and it acts only as somebody still IN it** — cancel, rename, remove a time, leave and answer from the room; place and minimum from the chat; each the private twin's own domain call, results picked
 - **The person who asked the ROOM for a coordination is asked privately too** — a tag carries no times, and the test asserted the bug
 - **…and a time said in the room is that person's proposal, put on the table in their name from the room** (`add_group_coordination_option`) — never the room's voice, and never "sent to everyone" when nothing was written
 - **In the room a person is addressed by their TAG and never by their name; in a private chat, by their name** — and a tag coming IN is a member to look up in `room.people`, never a token to discard — and since 2026-09-23 a CONFIRMED name and the form of address they set may be said too (`group-turn.peopleOf`), with masculine when none was set, and a member stating their own is saved (`remember_sender_gender`, the sender only), and the profile column and the private chat's `gender_forms` follow each other (`src/domain/gender-forms.js`)
-- **The first thing a room hears about its own coordination is that she has STARTED, and it counts people rather than naming them**
+- **The first thing a room hears about its own coordination is that she has STARTED, and it counts people rather than naming them** — and since 2026-09-25 it TAGS who has not written, and `admitLateMembers` lets them in once they do
 - **Every line a room hears is said once, except the TABLE moving, which is news every time** — a watermark rather than a flag, anchored on the base line, and it says the shape and never an answer.
 - **…and it waits a quarter of an hour, so a burst of changes is ONE sentence** — the same fifteen minutes as the private side, measured from the FIRST change the room has not heard about, and it gates both lines about the table.
 - **The room is chased an HOUR after she starts, not half way to the thing** — half the distance put one room at 05:11 the next morning; who may be NAMED is unchanged.
 - **The "סגור" line names who can make it, a calendar line is said only for a SHARED event, and a base line is never said to nobody**
 - **A time the room was TOLD about and that has since left the table is said again; a time merely overtaken is not**
 - **The place is the room's own words, asked for only when nobody said one, and it rides the confirmation onto the calendar event** — and a name that says it happens on Zoom has said one (`online-place.onlinePlace`, a closed list, code only)
+- **A coordination that settles with no exact hour asks for one ONCE — the room on its "סגור" line, a private one only ONE person — and anybody in it may fill it in**, the same day only, through the tool that already means "this time"
 - **A tag is a NUMBER, and the roster hands us LIDs in the same column** — the cut is 13 digits, measured; a line that can name nobody is not said
 - **…and since 2026-09-24 the SHAPE is asked too, which halves what the length alone could reach** (`phone-timezone.phoneShape`) — three answers, never two, and `unknown` keeps the old behaviour so no real member is silenced
 - **The room says that people have not answered only about people she has actually written to** — `silent` is still the exact count; `asked` is what may be SAID
@@ -366,6 +369,7 @@ Loads when you **Read** a file under `src/domain/group-connections.js`, `src/dom
 - **…and that line carries what the same person did to the TABLE, because the reason and the change are one piece of news** — three shapes, chosen by what is true
 - **A joke in the room is answered with a joke, built only from what the room said** — one short line; nothing invented, nothing private, nobody really mocked
 - **A paused member is counted into a room's coordination only until their one invite is spent; a day of silence takes them out**
+- **A room on more than one clock hears every time in each, by city, from the owner's own `_zones` templates; a time with no clock in it is never converted, and a one-clock room is untouched**
 - **A member's message in the room opens the gate's fifteen-minute window for that room's coordination — and, since 2026-09-09, the room's own announcement window; nothing else**
 
 ### Testing

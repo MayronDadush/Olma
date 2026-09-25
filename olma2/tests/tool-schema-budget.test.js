@@ -97,7 +97,19 @@ const { IDENTITY_PARAM } = require('../src/adapters/mcp/identity-param');
 // **English on purpose, and that is not a style choice**: JSON escapes every
 // Hebrew character as \uXXXX at six chars each, so the founding example
 // ("ביום הראשון הקרוב") would cost more than the rule it illustrates.
-const JSON_CEILING = 57_000;
+//
+// Raised the fourth time, on 2026-09-25: 57,000 -> 59,500, for SEVEN tools at
+// once — the owner asked for every action on a coordination to exist in both
+// the private chat and the room ("אני רוצה את כל אלה שיהיו גם בפרטי וגם
+// בקבוצה"), after the room told him it could not cancel its own coordination.
+// Measured 56,558 before and 59,407 after: five room tools (cancel, rename,
+// remove a time, leave, answer) at ~1,900 and two private ones (place,
+// minimum) at ~350, every description trimmed once before it was counted and
+// the guidance moved into the results' `hints`. The per-turn cost is smaller
+// than the total says: a room's agent is shown only group tools and a
+// person's only theirs (`intake/agent-tool-policy.js`). Margin 93 — not one
+// more ordinary tool, again.
+const JSON_CEILING = 59_500;
 const DESCRIPTION_CEILING = 700;
 const IDENTITY_DESCRIPTION_CEILING = 40;
 

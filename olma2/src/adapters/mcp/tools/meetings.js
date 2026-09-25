@@ -1,10 +1,11 @@
 'use strict';
 // meetings — one slice of the tool registry (see ../registry.js).
 const {
-  dashboardAuth, meetings, calendar, meetingFanout, S, actorName, fanout, tool, connectedUserByPhone, users, groupMeetings, ok, err,
+  dashboardAuth, meetings, meetingFanout, S, actorName, fanout, tool, connectedUserByPhone, users, groupMeetings, ok, err,
 } = require('./_shared');
 const format = require('../../../domain/message-format');
 const listBlock = require('../../../domain/list-block');
+const meetingTime = require('../../../domain/meeting-time');
 
 // After the person has put real substance on the table from chat — two or more
 // options to look at — the page is genuinely better than prose for the rest:
@@ -17,6 +18,12 @@ const listBlock = require('../../../domain/list-block');
 //
 // Nothing here changes what the tool DID; a hint is added to a result that is
 // already ok, and only then.
+async function settledWithOpenTime(client, meetingId) {
+  const { rows: [m] } = await client.query(
+    'SELECT status, confirmed_all_day, confirmed_daypart FROM meetings WHERE id = $1', [meetingId]);
+  return meetings.timeIsOpen(m);
+}
+
 async function offerDashboardOnce(client, user, meetingId, res) {
   if (!res || !res.ok || !res.data || res.data.meetingStatus === 'confirmed') return res;
   const mid = Number(meetingId);
@@ -158,12 +165,23 @@ module.exports = [
       };
       return res;
     }),
-  tool('propose_meeting_slot', 'Add ONE candidate time to the table (up to 5; at five it is refused with the five listed — ask which to drop, remove_meeting_option, propose again). Proposing means your user agrees to it, every part from what they said; a time without a day: say the full slot back and get their yes first. starts_at is the same moment as slot_description, ISO-8601 with offset; past times, or a weekday the text does not name, are refused. Calendar connected? Check my_calendar_events for that day first.',
+  tool('propose_meeting_slot', 'Add ONE candidate time to the table (up to 5; at five it is refused with the five listed — ask which to drop, remove_meeting_option, propose again). Proposing means your user agrees to it, every part from what they said; a time without a day: say the full slot back and get their yes first. starts_at is the same moment as slot_description, ISO-8601 with offset; past times, or a weekday the text does not name, are refused. Calendar connected? Check my_calendar_events for that day first. Settled on a whole day/part of one: this sets its hour.',
     { meeting_id: S('number', 'Meeting id'), slot_description: S('string', 'e.g. "Tuesday 17:00 at the office"'),
-      starts_at: S('string', 'The same moment — same DAY — as slot_description, ISO-8601 with offset, e.g. 2026-08-25T17:00:00+03:00') },
+      starts_at: S('string', 'The same moment — same DAY — as slot_description, ISO-8601 with offset, e.g. 2026-08-25T17:00:00+03:00'),
+      all_day: S('boolean', 'The whole day'), daypart: S('string', 'morning|noon|evening|night, when no hour') },
     ['meeting_id', 'slot_description', 'starts_at'],
     async (client, user, a) => {
-      const res = await meetings.proposeSlot(client, user.id, a.meeting_id, a.slot_description, a.starts_at);
+      // A meeting that settled on a whole day or a part of one gets its exact
+      // hour through the same door (owner, 2026-09-24): anybody in it, the
+      // same day only, and everyone else is told (meetings.setExactTime).
+      if (await settledWithOpenTime(client, a.meeting_id)) {
+        const set = await meetingFanout.afterTimeSet(client, user,
+          await meetings.setExactTime(client, user.id, a.meeting_id, a.slot_description, a.starts_at));
+        if (set.ok) set.data.hints = { said: 'The exact time is set and everyone else is told. Say it back in one line.' };
+        return set;
+      }
+      const res = await meetings.proposeSlot(client, user.id, a.meeting_id, a.slot_description, a.starts_at,
+        { allDay: a.all_day === true, daypart: a.daypart || null });
       // A proposal JOINS the table (2026-09-05); the asks about the other
       // options stand. afterOptionAdded knows the two outcomes — on the table,
       // or a moment somebody had already put there.
@@ -219,6 +237,19 @@ module.exports = [
       const res = await meetings.getStatus(client, user.id, a.meeting_id);
       if (!res || !res.ok || !res.data) return res;
       const options = Array.isArray(res.data.options) ? res.data.options : [];
+      // The reader's own hour beside each time written on another clock
+      // (owner, 2026-09-25) — drawn here, never converted by the model.
+      const authors = [...new Set(options.map((o) => o.addedBy).filter((id) => id !== null && id !== undefined))];
+      if (authors.length && user.timezone) {
+        const { rows } = await client.query(`SELECT id, timezone FROM users WHERE id = ANY($1::bigint[])`, [authors]);
+        const tzOf = new Map(rows.map((r) => [Number(r.id), r.timezone]));
+        for (const o of options) {
+          const t = meetingTime.readerSlot(
+            { startsAt: o.startsAt, slot: o.slotText, allDay: o.allDay, daypart: o.daypart },
+            user.timezone, tzOf.get(Number(o.addedBy)));
+          if (t) o.yourTime = t;
+        }
+      }
       // Drawn rather than left to the model to number afresh each turn
       // (domain/list-block.js): "2" has to name the same option every time it
       // is read back, which a model composing the list from scratch cannot
@@ -300,11 +331,22 @@ module.exports = [
       if (!res.ok) return res;
       // The calendar copy follows the rename (best-effort, as the organiser,
       // server-side) so the event does not keep the stale name forever.
-      if (res.data.calendarEventId && res.data.calendarOrganiserId) {
-        const patched = await calendar.updateEvent(client, res.data.calendarOrganiserId,
-          { eventId: res.data.calendarEventId, title: res.data.title }).catch(() => null);
-        res.data.calendarUpdated = Boolean(patched && patched.ok);
-      }
-      return res;
+      return meetingFanout.patchSharedEvent(client, res, { title: res.data.title });
     }),
+  // The two the room had and the chat did not (owner, 2026-09-25: every
+  // action on a coordination, in both places). The place is the same writer
+  // the room's `set_group_coordination_place` uses; the minimum is
+  // `meetings.setQuorum`, which the personal page already calls.
+  tool('set_meeting_place', 'Where a meeting you are in happens, in the user\'s words — anyone in it may. A shared calendar event follows.',
+    { meeting_id: S('number', 'Meeting id'), where: S('string', 'The place, in their words') },
+    ['meeting_id', 'where'],
+    async (client, user, a) => {
+      const res = await meetings.setPlace(client, user.id, a.meeting_id, a.where);
+      if (!res.ok) return res;
+      return meetingFanout.patchSharedEvent(client, res, { location: res.data.location });
+    }),
+  tool('set_meeting_minimum', 'How many yeses a meeting you are in needs (a game) — anyone in it may; null clears it. Reaching it settles nothing.',
+    { meeting_id: S('number', 'Meeting id'), minimum: S('number', 'Whole number, 2 or more; null clears it') },
+    ['meeting_id'],
+    (client, user, a) => meetings.setQuorum(client, user.id, a.meeting_id, a.minimum === undefined ? null : a.minimum)),
 ];

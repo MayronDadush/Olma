@@ -51,8 +51,8 @@ function varsLine(t) {
 // refused for it. An empty cell is a message that exists in Hebrew only —
 // everything said in a group, today — and says so rather than offering a box
 // that nothing would ever send.
-function cell(t, stored, rejected) {
-  if (!t) return '<td class="dim small">רק בעברית — אין גרסה באנגלית להודעה הזו.</td>';
+function cell(t, stored, rejected, empty = 'רק בעברית — אין גרסה באנגלית להודעה הזו.') {
+  if (!t) return `<td class="dim small">${empty}</td>`;
   const override = typeof stored[t.key] === 'string' ? stored[t.key] : '';
   const live = templates.textFor(t.key, stored);
   const badge = override && live === override ? ' <span class="pill ok">מנוסח מחדש</span>' : '';
@@ -75,11 +75,27 @@ function row(f, stored, rejected) {
   </tr>`;
 }
 
+// A room is Hebrew by design, so its second column is not a language: it is the
+// same line as a room on more than one clock hears it (owner, 2026-09-25). A
+// line with no time in it is the same in every room and says so.
+function groupRow(f, stored, rejected) {
+  return `<tr id="tpl-${esc(f.id)}">
+    <td><div>${esc(f.label)}</div><div class="dim small">${esc(f.help)}</div></td>
+    ${cell(f.he, stored, rejected)}
+    ${cell(f.zones, stored, rejected, 'אין שעה בהודעה הזו — אותו נוסח בכל קבוצה.')}
+  </tr>`;
+}
+
 async function renderTemplates(client, csrf) {
   const stored = await templates.load(client);
   const rejected = await lastRejections(client);
   const tables = AUDIENCES.map(({ id, title }) => {
-    const rows = templates.families().filter((f) => f.audience === id).map((f) => row(f, stored, rejected)).join('');
+    const fams = templates.families().filter((f) => f.audience === id);
+    if (id === 'group') {
+      const rows = fams.map((f) => groupRow(f, stored, rejected)).join('');
+      return `<h4>${title}</h4><table class="settings templates bilingual"><tr><th>ההודעה</th><th>אזור זמן אחד</th><th>כמה אזורי זמן</th></tr>${rows}</table>`;
+    }
+    const rows = fams.map((f) => row(f, stored, rejected)).join('');
     return `<h4>${title}</h4><table class="settings templates bilingual"><tr><th>ההודעה</th><th>עברית</th><th>אנגלית</th></tr>${rows}</table>`;
   }).join('');
   return `<form method="post" action="/templates">

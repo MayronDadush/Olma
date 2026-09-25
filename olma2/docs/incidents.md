@@ -55,6 +55,7 @@ never trust a dated narrative for something you are about to act on.
 - [Today at five is not Monday (fixed 2026-09-24)](#today-at-five-is-not-monday-fixed-2026-09-24)
 - [The constraint that was an answer (fixed 2026-09-20)](#the-constraint-that-was-an-answer-fixed-2026-09-20)
 - [Two paragraphs where two sentences would do (fixed 2026-09-20)](#two-paragraphs-where-two-sentences-would-do-fixed-2026-09-20)
+- [The link came back on every coordination message (2026-09-24)](#the-link-came-back-on-every-coordination-message-2026-09-24)
 - [The slot that was already closed (fixed 2026-09-20)](#the-slot-that-was-already-closed-fixed-2026-09-20)
 - [The room asked five and reached four (fixed 2026-09-22)](#the-room-asked-five-and-reached-four-fixed-2026-09-22)
 - [A room counted in somebody who had paused (fixed 2026-09-13)](#a-room-counted-in-somebody-who-had-paused-fixed-2026-09-13)
@@ -67,12 +68,14 @@ never trust a dated narrative for something you are about to act on.
 - [The room was told about a meeting at 01:12 (fixed 2026-09-09)](#the-room-was-told-about-a-meeting-at-0112-fixed-2026-09-09)
 - [The room window opened on a row nobody would look at (fixed 2026-09-19)](#the-room-window-opened-on-a-row-nobody-would-look-at-fixed-2026-09-19)
 - [The times the room said went nowhere (fixed 2026-09-23)](#the-times-the-room-said-went-nowhere-fixed-2026-09-23)
+- [The room could not cancel its own coordination (fixed 2026-09-25)](#the-room-could-not-cancel-its-own-coordination-fixed-2026-09-25)
 - [The coordination waited on the man who started it (fixed 2026-09-19)](#the-coordination-waited-on-the-man-who-started-it-fixed-2026-09-19)
 - [The room heard its own state from memory (fixed 2026-09-19)](#the-room-heard-its-own-state-from-memory-fixed-2026-09-19)
 - [The room held a time that no longer existed (fixed 2026-09-22)](#the-room-held-a-time-that-no-longer-existed-fixed-2026-09-22)
 - [The room waited for nobody (fixed 2026-09-20)](#the-room-waited-for-nobody-fixed-2026-09-20)
 - [The room that did not know its own member (fixed 2026-09-23)](#the-room-that-did-not-know-its-own-member-fixed-2026-09-23)
 - [Where do we meet, on Zoom (fixed 2026-09-23)](#where-do-we-meet-on-zoom-fixed-2026-09-23)
+- [פנתרה: one time, four clocks (fixed 2026-09-25)](#פנתרה-one-time-four-clocks-fixed-2026-09-25)
 - [The room's joke got a lecture (2026-09-23)](#the-rooms-joke-got-a-lecture-2026-09-23)
 - [She called Bar את (fixed 2026-09-23)](#she-called-bar-את-fixed-2026-09-23)
 - [The poker, seven times (fixed 2026-09-23)](#the-poker-seven-times-fixed-2026-09-23)
@@ -2092,6 +2095,30 @@ title fenced as other people's text. The hint says a confirmed one is
 closed and never re-offered, and that "סימנתי" means the answers it can see.
 Three at most, newest first.
 
+### The link came back on every coordination message (2026-09-24)
+
+Not an incident: a decision, recorded here because it reverses one. On
+2026-09-20 the link came off everything but the invite and the table
+question (the entry below), because the link and a sentence about answering
+here made up a third of each message. Four days later the owner asked for the
+opposite, on every private message about a coordination: "תמיד ההודעה
+שהמשתמשים מקבלים בפרטי עולמה תגיד להם שהם יכולים לכתוב לה בהודעה בשיחה וגם
+דרך הלינק". Once the first message has scrolled away, a person who is only told
+about a coordination has no way to find its page.
+
+**What changed.** `answerWaysClause` replaced `inviteLinkClause`, and every
+`meeting_*` kind calls it: invite, proposal, table question, confirmation (all
+three), decline, opt-out, no-match, cancellation, rejoined, withdrawn and
+expired. The `stuck_meeting` check-in calls it too, because it now carries
+`meetingId`.
+
+**What stops it growing back into the paragraph.** The sentence is handed over
+WORD FOR WORD: "אפשר לענות לי כאן בצ'אט או דרך הקישור:", with an English
+twin. The link goes on a bare line after it. `BRIEF` still forbids every other
+word about how answering works, and `tests/private-brevity.test.js` asserts
+that both are true. `rollupVoiceDay`'s length-per-window number on the metrics
+page is where to look if the messages get longer.
+
 ### Two paragraphs where two sentences would do (fixed 2026-09-20)
 
 Coordination 37, the "בדיקה יובל" room, the same afternoon. Yuval's first
@@ -2404,6 +2431,32 @@ NULL is the **once-per-life first-turn signal** (`openRecord` computes
 is the **silence test** behind the name-confirm rung. Stamping it early would
 have spent the first-turn signal and broken the silence test to fix a gate.
 The narrow column was the right lever.
+
+### The room could not cancel its own coordination (fixed 2026-09-25)
+
+The owner tagged her in a room and asked her to cancel the coordination it was
+running. She answered that this could only be done privately — which was
+true. The room's agent had seven tools (open, add a time, settle, place, kind,
+status, gender), and cancelling, renaming, taking a time off, leaving and
+answering yes/no existed only as a person's tools, which brokerd refuses to a
+group token. The doctrine had also written the gap in as a rule: "Cancelling
+for everybody is the chat's alone" (`.claude/rules/reminders-and-tasks.md`),
+where "chat" meant "not the page" and nobody had asked about the room.
+
+Same shape as "The times the room said went nowhere": the agent understood,
+and the outcome had nowhere to go. He asked for every action on his list in
+BOTH places, so the fix is five room tools (`cancel_group_coordination`,
+`rename_group_coordination`, `remove_group_coordination_option`,
+`leave_group_coordination`, `answer_group_coordination_option`) and two
+private ones the room already had (`set_meeting_place`,
+`set_meeting_minimum`). Each room tool is a second door into the private
+twin's domain call and fan-out, as the member who tagged her, through
+`groupMeetings.participantFor` — which refuses anybody not still IN the
+coordination, unlike `settle`, which acts through a participant. The results
+are picked field by field: the private ones carry hints about a person's own
+calendar and dashboard, and an answer from the room returns that one answer,
+never the table's. It cost the fourth raise of the tool-schema ceiling
+(57,000 → 59,500, measured 56,558 → 59,407).
 
 ### The times the room said went nowhere (fixed 2026-09-23)
 
@@ -2743,6 +2796,78 @@ title and the confirmed slot for the coordinations opened before this. The
 list leaves out "וידאו" alone ("צילום וידאו" is a shoot), a bare "meet" and
 "teams", because a miss costs one question and a false hit costs a room its
 real place.
+
+### פנתרה: one time, four clocks (fixed 2026-09-25)
+
+Room 10, פנתרה, was coordinating a video call for everybody (meeting 46). Two
+members are in Israel, one is abroad, and one is in Australia. All four have
++972 numbers, so nothing about a number says where anybody is. The owner
+watched it on 2026-09-24 and asked two things: why one member had heard
+nothing, and why nobody was told the time on their own clock.
+
+The member who heard nothing had never written to Olma. No user row matched
+her number, so she was never in the coordination; the room heard only the
+counted line ("מי שעוד לא כתב לי בפרטי לא נספר פה"), which names nobody. That
+part is the fixed text doing what it said, and the late-join fix is separate.
+
+The time was the real fault. Every time anybody read, in the room and in
+private, was `slot_text`: the proposer's own words or a string built in the
+proposer's zone, stored once and passed on unchanged. The member abroad
+(user 11, `America/Los_Angeles`, unconfirmed) was asked about "יום שבת 26.9
+20:00", which was ten in the morning for him, and the time leading when the
+owner looked, 13:50 in Israel, was 03:50 for him. Nothing in the system
+converted a meeting time to anybody's zone. `chat_groups.timezone` existed,
+and it decided the room's quiet hours and nothing else.
+
+`domain/meeting-time.js` says one moment in every zone, by city (ICU's Hebrew
+`shortGeneric` names, identical on the Mac and the box). `statusOf` hands the
+sweep each slot text's moment and the zones of the people being asked;
+`group-voice.decideGroupLine` marks a line `multiZone` only when those span
+clocks at that instant; and the renderer draws the owner's own `_zones`
+templates from it at delivery. They are separate templates by his decision,
+edited on the templates page as a second column beside the one-clock line.
+"סגור" and "יש כיוון" get a line per clock; the rest put every clock on one
+line. The morning reminder drops "היום", which in Sydney may already be
+tomorrow, and "איפה נפגשים?" becomes "איך מתחברים?" because people on four
+clocks are not meeting in one room. A time that names no clock ("שבת בערב")
+is never converted: it keeps its author's words and city. The group turn's
+block carries the same drawn `roomTimes`, a `clock` per member, and a rule
+said only in such a room, so her own replies say what the fixed lines say.
+
+A one-clock room is untouched, field for field, and a test asserts it.
+
+**The private side, the same day.** The room was only half of it. In
+private, on the dashboard, in the morning digest and in the stuck-meeting
+check-in, the reader still got the proposer's words and nothing else. Each of
+those now adds the reader's own hour beside the words (`meeting-time.readerSlot`,
+drawn by the server; the words stay because they are what everybody else
+read). It is added only when the reader's clock differs from the AUTHOR's at
+that instant, which means the payload carries the option author's zone
+(`meeting-fanout.slotMoment`). A row queued before that has no author zone, and
+it says nothing rather than guessing whose hour "20:00" was.
+
+Reading every path turned up a second bug that no report had reached. On a
+confirmed meeting each person's agent was told to "work out the real start …
+from the slot text WITH their UTC offset". For the member abroad that meant
+reading "20:00" as 20:00 in Los Angeles, which is a calendar event at the wrong
+hour on the one day the time was final. The calendar step now hands over the
+exact start in the reader's own offset and says not to recompute it
+(`channels/openclaw.js`, `startPhrase`). A daypart or a whole day keeps the old
+wording, because there is no exact instant to hand over.
+
+**The member who heard nothing, the same day.** The count line did what it
+said, and that was the fault: it pinged nobody, and it promised "״היי״ בפרטי
+וזה מסתדר" about a door that was shut. `startCoordination` swept in whoever had
+written to her at that moment, and nothing ever let anybody in afterwards, so
+the member in Australia would have stayed outside the call being arranged for
+everyone even if she had written the minute she read it. The opening line now
+TAGS whoever has not written (owner: "לתייג אותם בשורת הפתיחה"), and
+`group-meetings.admitLateMembers` keeps the promise. On the room's slower
+sweep, anybody the gate now counts as connected with no participant row gets
+one, plus the same invite everybody got. The room hears one line about it:
+"@… הצטרפה — שאלתי בפרטי 👋". The one test that pinned the old "never a
+tag" behaviour (`group-voice.test.js`) was rewritten to the new rule, not
+deleted.
 
 ### The room's joke got a lecture (2026-09-23)
 

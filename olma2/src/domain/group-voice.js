@@ -22,6 +22,7 @@
 // read about a thing it asked for in four words.
 const { MAX_TAGS } = require('./proactive-text');
 const { onlinePlace } = require('./online-place');
+const meetingTime = require('./meeting-time');
 
 // How long she waits before saying anything about people who have not
 // answered, when the coordination has no dated option to measure against.
@@ -123,8 +124,31 @@ function leadingOption(options) {
 // that just confirmed makes "who has not answered" a wrong question, and
 // saying the base of a plan that is already settled is worse than saying
 // nothing.
-function decideGroupLine(co, {
-  saidStarted, saidBase, saidBaseSlot, saidChase, saidDone, saidCalendar, saidDayOf, saidHour,
+function decideGroupLine(co, opts = {}) {
+  return withClocks(decideLine(co, opts), co, opts);
+}
+
+// A room on more than one clock hears every time in each of them (owner,
+// 2026-09-25, פנתרה). What the time IS rides the line — `at[field]` for each
+// slot text it names, `zones` and `roomTz` — and the RENDERER draws the words
+// at delivery, like every other room line. Only when the people this
+// coordination is asking actually span zones at this moment: anywhere else the
+// line is exactly what it was, field for field.
+const SLOT_FIELDS = ['slot', 'was', 'added', 'lead'];
+function withClocks(line, co, { timezone, nowMs } = {}) {
+  if (!line || line.kind === 'none' || line.kind === 'calendar' || line.kind === 'chase') return line;
+  const zones = (co && co.zones) || [];
+  const roomTz = (co && co.roomTz) || timezone || null;
+  if (!meetingTime.spansZones(zones, roomTz, new Date(nowMs || Date.now()))) return line;
+  const at = {};
+  for (const f of SLOT_FIELDS) {
+    if (line[f] && co.moments && co.moments[line[f]]) at[f] = co.moments[line[f]];
+  }
+  return { ...line, multiZone: true, zones, roomTz, at };
+}
+
+function decideLine(co, {
+  saidStarted, saidBase, saidBaseSlot, saidChase, saidDone, saidCalendar, saidDayOf, saidHour, saidTime,
   pendingRelay, startedAtMs, nowMs, timezone, tableSaidAtMs,
 } = {}) {
   if (!co) return { kind: 'none', reason: 'nothing being coordinated' };
@@ -136,8 +160,18 @@ function decideGroupLine(co, {
     // this covers the ones opened before that, and a time like "שישי בזום".
     const saidOnline = onlinePlace(co.title) || onlinePlace(co.confirmedSlot);
     if (!saidDone) {
-      return { kind: 'done', slot: co.confirmedSlot, who: whoIsIn(co), placeAsk: !co.location && !saidOnline };
+      // `timeAsk`: it settled on a whole day or a part of one, so the same
+      // line asks ONCE whether they want an exact hour (owner, 2026-09-24).
+      // Once because this line is stamped once; an answer goes through
+      // add_group_coordination_option, which sets it on a settled meeting.
+      return {
+        kind: 'done', slot: co.confirmedSlot, who: whoIsIn(co), placeAsk: !co.location && !saidOnline,
+        timeAsk: Boolean(co.confirmedAllDay || co.confirmedDaypart),
+      };
     }
+    // Somebody gave it its exact hour in a private chat. Said once; set in
+    // the room, it is stamped as heard at once (meeting-fanout.afterTimeSet).
+    if (co.timeSetAt && !saidTime) return { kind: 'time', slot: co.confirmedSlot };
     // Once, after the done line, and only when a SHARED calendar event exists
     // for this coordination — `calendar_event_id` is written by nothing but
     // calendar.createSharedMeetingEvent. "הוספתי ליומן של כולם" would have
@@ -148,10 +182,20 @@ function decideGroupLine(co, {
     // Then the two reminders, and the NEARER one wins when both are due in
     // the same pass: "in an hour" is true and "today" is merely also true.
     const at = co.confirmedStartAt ? new Date(co.confirmedStartAt).getTime() : 0;
-    if (!at || nowMs >= at) return { kind: 'none', reason: 'nothing left to remind about' };
-    if (!saidHour && nowMs >= at - HOUR_BEFORE_MS) return { kind: 'soon', slot: co.confirmedSlot };
-    if (!saidDayOf && localDay(nowMs, timezone) === localDay(at, timezone)
-      && at - nowMs > DAY_OF_MIN_LEAD_MS) {
+    // A whole day is still "today" after its stand-in 09:00 (087); anything
+    // else is over at its start.
+    const sameDay = at && localDay(nowMs, timezone) === localDay(at, timezone);
+    if (!at || (nowMs >= at && !(co.confirmedAllDay && sameDay))) {
+      return { kind: 'none', reason: 'nothing left to remind about' };
+    }
+    // A whole day or a part of one sits on a stand-in hour, so "in an hour"
+    // off it would be a time nobody named — 08:00 for an all-day meeting —
+    // and the three-hour lead the day-of line wants of an exact time would
+    // leave a morning one with no line at all. Those get the day-of line,
+    // any time that day before it is over.
+    const exact = !co.confirmedAllDay && !co.confirmedDaypart;
+    if (exact && !saidHour && nowMs >= at - HOUR_BEFORE_MS) return { kind: 'soon', slot: co.confirmedSlot };
+    if (!saidDayOf && sameDay && (!exact || at - nowMs > DAY_OF_MIN_LEAD_MS)) {
       return { kind: 'dayof', slot: co.confirmedSlot };
     }
     return { kind: 'none', reason: 'already reminded, or not yet due' };
@@ -164,7 +208,12 @@ function decideGroupLine(co, {
   // time, which in the rooms measured so far took hours, and until then the room
   // that asked her for something heard nothing at all.
   if (!saidStarted) {
-    return { kind: 'started', title: co.title, asked: co.participants, outside: co.outside || 0 };
+    return {
+      kind: 'started', title: co.title, asked: co.participants, outside: co.outside || 0,
+      // Who of them the line can TAG (owner, 2026-09-25). The count stays: it
+      // is what a room whose missing members are all LIDs still hears.
+      outsidePhones: co.outsidePhones || [],
+    };
   }
 
   // Then anything a MEMBER asked her to say here (owner, 2026-09-22). It comes

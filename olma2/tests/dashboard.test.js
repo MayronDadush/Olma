@@ -845,10 +845,32 @@ test('an operator can queue a proactive message, and it shows up as planned', as
   const html = await (await fetch(base + `/user?id=${u.id}`, { headers: { Authorization: AUTH } })).text();
   assert.match(html, /שאלי אותו איך הלך הראיון אתמול/, 'what the operator wrote is shown back to them');
 
+  // …and it goes into the owner's log, pointing at the row it queued
+  const { rows: logged } = await db.pool.query(
+    `SELECT m.instruction, m.outbox_id = o.id AS same FROM owner_messages m, outbox o
+      WHERE m.user_id = $1 AND o.user_id = $1`, [u.id]);
+  assert.equal(logged.length, 1);
+  assert.equal(logged[0].instruction, 'שאלי אותו איך הלך הראיון אתמול');
+  assert.ok(logged[0].same);
+  const log = await (await fetch(base + '/g/sending', { headers: { Authorization: AUTH } })).text();
+  assert.match(log, /id="owner-log"[\s\S]*שאלי אותו איך הלך הראיון אתמול/, 'the log is on the messages page');
+
   // an empty instruction queues nothing rather than an empty message
   await adminPost('/outbox/new', { user_id: u.id, instruction: '   ', back: `/user?id=${u.id}` });
   const { rows: after } = await db.pool.query(`SELECT count(*)::int AS n FROM outbox WHERE user_id = $1`, [u.id]);
   assert.equal(after[0].n, 1);
+  const { rows: logAfter } = await db.pool.query(`SELECT count(*)::int AS n FROM owner_messages WHERE user_id = $1`, [u.id]);
+  assert.equal(logAfter[0].n, 1, 'nothing queued, nothing logged');
+
+  // an idea and an insight go through the section's own forms
+  await adminPost('/owner-log/idea', { title: 'אחרי ראיון — לשאול איך הלך', back: '/#owner-log' });
+  const { rows: [idea] } = await db.pool.query(`SELECT id FROM feature_ideas WHERE title = 'אחרי ראיון — לשאול איך הלך'`);
+  const { rows: [msg] } = await db.pool.query(`SELECT id FROM owner_messages WHERE user_id = $1`, [u.id]);
+  const saved = await adminPost('/owner-log/note', { id: msg.id, insight: 'הוא סיפר על הראיון יום קודם', idea_id: idea.id, back: '/#owner-log' });
+  assert.equal(saved.headers.get('location'), '/g/sending#owner-log', 'a save lands back on the log');
+  const { rows: [noted] } = await db.pool.query(`SELECT insight, idea_id FROM owner_messages WHERE id = $1`, [msg.id]);
+  assert.equal(noted.insight, 'הוא סיפר על הראיון יום קודם');
+  assert.equal(String(noted.idea_id), String(idea.id));
 });
 
 test('rescheduling moves the time in the person\'s zone and unsticks a budget hold', async () => {
@@ -1459,7 +1481,15 @@ test('the templates section rewords a fixed sentence, refuses a broken one by na
   assert.ok(!html0.includes('id="tpl-reminder_en"'), 'the English twin is a column, not a row of its own');
   assert.ok(html0.includes('name="reminder_en"') && html0.includes('name="opening_he"') && html0.includes('name="opening_en"'));
   assert.equal((html0.match(/רק בעברית — אין גרסה באנגלית/g) || []).length,
-    templates.families().filter((f) => !f.en).length, 'every Hebrew-only message says so, once');
+    templates.families().filter((f) => f.audience !== 'group' && !f.en).length, 'every Hebrew-only message says so, once');
+  // A room is Hebrew by design; its second column is the same line in a room
+  // on more than one clock (owner, 2026-09-25), and a line with no time in it
+  // says it is the same everywhere.
+  assert.ok(html0.includes('<th>אזור זמן אחד</th><th>כמה אזורי זמן</th>'), 'rooms get a clocks column');
+  assert.ok(html0.includes('name="group_coord_done_zones"'), 'the several-clocks twin is an editable box');
+  assert.ok(!html0.includes('id="tpl-group_coord_done_zones"'), 'the twin is a column, not a row of its own');
+  assert.equal((html0.match(/אין שעה בהודעה הזו/g) || []).length,
+    templates.families().filter((f) => f.audience === 'group' && !f.zones).length, 'every clock-free room line says so, once');
   const post = (fields) => fetch(base + '/templates', {
     method: 'POST', redirect: 'manual',
     headers: { Authorization: AUTH, Cookie: `csrf=${csrf}`, 'Content-Type': 'application/x-www-form-urlencoded' },

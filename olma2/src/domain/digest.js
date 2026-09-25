@@ -13,8 +13,35 @@
 const { ok, err } = require('./results');
 const audit = require('./audit');
 const reminders = require('./reminders');
+const meetingTime = require('./meeting-time');
 
 const SCOPES = ['summary', 'full', 'today', 'block_view'];
+
+// Coordinations that ENDED with no time which this person has not yet been
+// told about. Two things tell them, and each counts for the other: their next
+// digest that really went out (every closing before its `sent_at`), and any
+// other message Olma composed for them that carried the news in passing
+// (`outbox.payload.closedNews`, written by the worker only once the send
+// confirmed). The owner asked for both (2026-09-24, "כדרך אגב") — and for it
+// to be said once, which is why this is one query with two readers
+// (`assemble` and `outbox/worker`), never a copy in each.
+async function unheardClosedMeetings(client, userId) {
+  return (await client.query(
+    `SELECT m.id, m.title, m.status
+       FROM meetings m
+       JOIN meeting_participants me ON me.meeting_id = m.id AND me.user_id = $1 AND me.state <> 'opted_out'
+      WHERE m.status IN ('expired', 'no_match')
+        AND m.closed_at > GREATEST(now() - interval '3 days',
+              COALESCE((SELECT max(o.sent_at) FROM outbox o
+                         WHERE o.user_id = $1 AND o.kind = 'digest' AND o.hold_reason IS NULL),
+                       '-infinity'::timestamptz))
+        AND NOT EXISTS (SELECT 1 FROM outbox o
+                         WHERE o.user_id = $1 AND o.sent_at IS NOT NULL AND o.hold_reason IS NULL
+                           AND o.payload->'closedNews' @> jsonb_build_array(jsonb_build_object('id', m.id)))
+      ORDER BY m.closed_at`,
+    [userId]
+  )).rows.map((r) => ({ id: Number(r.id), title: r.title, status: r.status }));
+}
 
 async function assemble(client, userId, scope) {
   if (!SCOPES.includes(scope)) return err('invalid', `scope must be one of ${SCOPES.join('|')}`);
@@ -78,26 +105,30 @@ async function assemble(client, userId, scope) {
       GROUP BY m.id, m.title, m.proposed_slot, m.proposed_start_at`,
     [userId]
   )).rows;
+  // A proposed slot is somebody's words on THEIR clock; a reader on another one
+  // gets their own hour beside it (`your_time`, owner 2026-09-25), drawn here
+  // so the digest never has the model convert an hour. Nothing when the two
+  // clocks agree or the words name no clock.
+  const { rows: [reader] } = await client.query('SELECT timezone FROM users WHERE id = $1', [userId]);
+  const { slotMoment } = require('./meeting-fanout');
+  for (const m of [...pendingMeetings, ...awaitingOthers]) {
+    if (!m.proposed_slot || !reader || !reader.timezone) continue;
+    const moment = await slotMoment(client, m.id, m.proposed_slot);
+    const local = meetingTime.readerSlot(
+      { startsAt: moment.startsAtUtc, slot: m.proposed_slot, allDay: moment.allDay, daypart: moment.daypart },
+      reader.timezone, moment.authorTz);
+    if (local) m.your_time = `${local.slot} (${local.city})`;
+  }
   // Coordinations that ENDED with no time, since the last digest that reached
   // them — expired (the moment passed) or no_match (not enough people left).
   // Until 2026-09-23 that was a message of its own, to the opener alone; now
   // nobody manages a coordination, and the owner chose that its ending is
   // never a message of its own: it is said here, in passing, to everybody who
-  // was still in it. Bounded to three days so a first digest after a long gap
-  // does not dig up the month. A cancellation is not here — that one was
+  // was still in it — or before it, in passing, on whatever Olma says to them
+  // first (unheardClosedMeetings). Bounded to three days so a first digest
+  // after a long gap does not dig up the month. A cancellation is not here — that one was
   // somebody's act and was told at the time.
-  const closedMeetings = (await client.query(
-    `SELECT m.id, m.title, m.status
-       FROM meetings m
-       JOIN meeting_participants me ON me.meeting_id = m.id AND me.user_id = $1 AND me.state <> 'opted_out'
-      WHERE m.status IN ('expired', 'no_match')
-        AND m.closed_at > GREATEST(now() - interval '3 days',
-              COALESCE((SELECT max(o.sent_at) FROM outbox o
-                         WHERE o.user_id = $1 AND o.kind = 'digest' AND o.hold_reason IS NULL),
-                       '-infinity'::timestamptz))
-      ORDER BY m.closed_at`,
-    [userId]
-  )).rows;
+  const closedMeetings = await unheardClosedMeetings(client, userId);
   const pendingConnections = (await client.query(
     `SELECT c.id, c.invite_reason, u.first_name, u.last_name, u.phone
      FROM connections c JOIN users u ON u.id = c.requester_id
@@ -229,4 +260,4 @@ async function setPreferences(client, userId, times, scope) {
   });
 }
 
-module.exports = { assemble, setPreferences, SCOPES, USER_SCOPES, MAX_TIMES };
+module.exports = { assemble, unheardClosedMeetings, setPreferences, SCOPES, USER_SCOPES, MAX_TIMES };

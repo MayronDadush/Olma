@@ -32,14 +32,14 @@
 const { ok, err } = require('./results');
 const audit = require('./audit');
 const meetings = require('./meetings');
-const calendar = require('./calendar');
 const options = require('./meeting-options');
 const fanout = require('./meeting-fanout');
 const groups = require('./groups');
 const pause = require('./pause');
-const { mentionToken } = require('./proactive-text');
+const { mentionToken, isTaggableNumber } = require('./proactive-text');
 const format = require('./message-format');
 const flags = require('./flags');
+const meetingTime = require('./meeting-time');
 
 // What the room calls a member. The display name the group itself shows comes
 // first, because that is the name the other people in the room use; their
@@ -172,9 +172,106 @@ async function startCoordination(client, group, actingUser, title, { where = nul
   return ok({ meeting, created: true, participants: members.length, askKind });
 }
 
+// ── A member who arrives after it started ─────────────────────────────────────
+// Until 2026-09-25 nothing let anybody in once a coordination had started:
+// `startCoordination` swept in who had written to her at that moment, and the
+// room's own line promised the rest "״היי״ בפרטי וזה מסתדר" about a door that
+// was shut. In פנתרה the member in Australia had never written, so she was
+// never in the call being arranged for everyone (`incidents.md`, "פנתרה: one
+// time, four clocks"). This is the door: somebody the gate now counts as
+// connected (`coordinatingMembers`, the gate's own question) with no row in a
+// negotiating coordination gets one, and the same invite everybody got, framed
+// as the whole table because there may already be several times on it.
+//
+// No row at all is the whole condition. Somebody who LEFT has an `opted_out`
+// row and is never swept back in (rejoining is theirs to ask for), and a
+// paused member whose one room invite is spent is left out exactly as
+// `startCoordination` leaves them out. Nobody is let in during the settle
+// minute: the time is about to be announced, and a fresh "when suits you?"
+// arriving after it would be a question about something already decided.
+// Returns who was let in, for the room's one line about it.
+//
+// …and since the same day, a coordination that is SETTLED but still ahead
+// (owner, פנתרה: "המשתמשים שלא כתבו יקבלו הודעה בפרטי על התיאום"). There is
+// nothing left to ask them, so what reaches them is the settled time in their
+// own clock, whether they can make it, and the calendar step — a confirmation
+// written for somebody who arrived after it (`joinedLate`).
+async function admitLateMembers(client, group, meeting, now = new Date()) {
+  if (!group || group.state !== 'open' || !meeting) return [];
+  const settled = meeting.status === 'confirmed' && meeting.confirmed_start_at
+    && new Date(meeting.confirmed_start_at).getTime() > now.getTime();
+  if (meeting.status !== 'negotiating' && !settled) return [];
+  if (meeting.settle_due_at) return [];
+  const members = await coordinatingMembers(client, group.id);
+  const { rows } = await client.query(
+    `SELECT user_id FROM meeting_participants WHERE meeting_id = $1`, [meeting.id]);
+  const inIt = new Set(rows.map((r) => Number(r.user_id)));
+  const late = members.filter((m) => !inIt.has(Number(m.user_id)) && !pause.roomInviteSpent(m));
+  if (!late.length) return [];
+  // Whoever opened it, as the room calls them — including somebody who has
+  // since left the room or stopped counting as connected, or the invite would
+  // read "undefined asked for it there".
+  const opener = (await groups.listMembers(client, group.id, { includeLeft: true }))
+    .find((m) => Number(m.user_id) === Number(meeting.initiator_id));
+  const { rows: [{ n: onTable }] } = await client.query(
+    `SELECT count(*)::int AS n FROM meeting_options WHERE meeting_id = $1 AND status = 'active'`, [meeting.id]);
+  for (const m of late) {
+    await client.query(
+      `INSERT INTO meeting_participants (meeting_id, user_id) VALUES ($1, $2)
+       ON CONFLICT (meeting_id, user_id) DO NOTHING`, [meeting.id, m.user_id]);
+    await audit.record(client, Number(m.user_id), 'group.member_joined_late', {
+      groupId: group.id, meetingId: Number(meeting.id),
+    });
+  }
+  if (settled) {
+    await fanout.fanout(client, late.map((m) => Number(m.user_id)), 'meeting_confirmed', {
+      meetingId: Number(meeting.id), title: meeting.title, slot: meeting.confirmed_slot,
+      ...(await fanout.slotMoment(client, Number(meeting.id), meeting.confirmed_slot)),
+      ...(meeting.location ? { location: meeting.location } : {}),
+      groupSubject: group.subject || null, joinedLate: true,
+    }, { key: `mconf:${meeting.id}` });
+    return late;
+  }
+  // The same key shape as the first fan-out, so an invite can never be
+  // written twice for one person in one coordination, however they got in.
+  await fanout.fanout(client, late.map((m) => Number(m.user_id)), 'meeting_invite', {
+    meetingId: Number(meeting.id), title: meeting.title,
+    byName: (opener && memberLabel(opener)) || 'someone in the group',
+    groupSubject: group.subject || null,
+    ...(onTable > 0 ? { tableChanged: true } : {}),
+  }, { key: `minvite:${meeting.id}` });
+  return late;
+}
+
 // Where it stands, in the room's terms. Answers only — never a reason.
 async function coordinationStatus(client, group) {
-  return statusOf(client, group, await currentMeeting(client, group.id, { includeClosed: true }));
+  const st = await statusOf(client, group, await currentMeeting(client, group.id, { includeClosed: true }));
+  return { ...st, coordination: roomView(st.coordination) };
+}
+
+// What the room's MODEL is handed — a tool result and the turn block both come
+// through `coordinationStatus`. The raw clocks stay behind (`moments` and
+// `zones` are about individual people; the sweep reads them off `statusOf`),
+// and in a room on more than one clock every time is handed over already said
+// in each of them (`roomTimes`), with the cities as `clocks`, so the model
+// repeats a drawn line instead of converting hours itself (owner, 2026-09-25).
+// A room on one clock gets exactly what it got before.
+function roomView(co, now = new Date()) {
+  if (!co) return co;
+  // `outsidePhones` stays behind too: it is for the opening line alone, and the
+  // model already has every member it may tag in `room.people`.
+  const { moments = {}, zones = [], roomTz = null, outsidePhones: _outside, ...rest } = co;
+  if (!meetingTime.spansZones(zones, roomTz, now)) return rest;
+  const said = (slot) => {
+    const t = meetingTime.roomTimes({ ...(moments[slot] || {}), slot }, zones, roomTz);
+    return t ? t.inline : null;
+  };
+  return {
+    ...rest,
+    clocks: meetingTime.distinctZones(zones, now, roomTz).map((z) => z.label),
+    options: (rest.options || []).map((o) => ({ ...o, roomTimes: said(o.slot) })),
+    confirmedRoomTimes: rest.confirmedSlot ? said(rest.confirmedSlot) : null,
+  };
 }
 
 // The same, for a meeting the caller already has. The sweep needs this one:
@@ -230,9 +327,26 @@ async function statusOf(client, group, meeting) {
   // — which is the one thing a `max()` throws away. It is bounded by the five
   // options a coordination may hold plus whatever has been taken off it.
   const { rows: changes } = await client.query(
-    `SELECT GREATEST(created_at, decided_at) AS at FROM meeting_options
+    `SELECT GREATEST(created_at, decided_at) AS at, slot_text, starts_at, all_day, daypart, added_by
+       FROM meeting_options
       WHERE meeting_id = $1 ORDER BY at`, [meeting.id]);
   const changedAts = changes.map((r) => r.at).filter(Boolean);
+
+  // What each slot text the room may hear MEANS as a moment, including times
+  // that have since left the table — a "moved" line names one of those, and a
+  // room on several clocks has to hear it in each (`meeting-time`, owner
+  // 2026-09-25). Keyed on the text because that is what every line carries;
+  // the newest row wins when a time was taken off and put back. `authorTz` is
+  // whose clock the words were written on, which is what a time with no clock
+  // in it ("שבת בערב") is said beside.
+  const tzByUser = new Map(members.filter((m) => m.user_id).map((m) => [Number(m.user_id), m.timezone || null]));
+  const moments = {};
+  for (const r of changes) {
+    moments[r.slot_text] = {
+      startsAt: r.starts_at || null, allDay: Boolean(r.all_day), daypart: r.daypart || null,
+      authorTz: r.added_by === null || r.added_by === undefined ? null : tzByUser.get(Number(r.added_by)) || null,
+    };
+  }
   const all = await options.list(client, Number(meeting.id));
   const onTable = all.filter((o) => o.status === 'active');
   const answeredSomething = new Set();
@@ -245,6 +359,7 @@ async function statusOf(client, group, meeting) {
     }
     return {
       optionId: o.id, slot: o.slotText, startsAt: o.startsAt,
+      allDay: Boolean(o.allDay), daypart: o.daypart || null,
       yes, no, missing: active.filter((uid) => !(uid in (o.answers || {}))).map(who),
       // What that many yeses MEANS in this room — nothing at all until
       // somebody has said what kind of room it is (groups.quorumFor).
@@ -264,6 +379,13 @@ async function statusOf(client, group, meeting) {
       meetingId: Number(meeting.id), title: meeting.title, status: meeting.status,
       confirmedSlot: meeting.confirmed_slot || null,
       confirmedStartAt: meeting.confirmed_start_at || null,
+      // A whole day or a part of one (087): its start is a stand-in hour, and
+      // nothing may remind the room "in an hour" off it.
+      confirmedAllDay: Boolean(meeting.confirmed_all_day),
+      confirmedDaypart: meeting.confirmed_daypart || null,
+      // When somebody gave it its exact hour afterwards (088), which the room
+      // hears once unless it was said in the room.
+      timeSetAt: meeting.time_set_at || null,
       confirmedOption,
       // The minute between the last yes and the announcement, and whether a
       // shared calendar event exists for it — both undefined when the caller
@@ -285,6 +407,11 @@ async function statusOf(client, group, meeting) {
       // people — who is missing is the gate notice's own sentence, and the room
       // hearing the same list in two voices is what this family of lines avoids.
       outside: members.filter((m) => !m.left_at && !groups.isConnected(m)).length,
+      // …and the ones of them the room CAN tag, for the opening line only
+      // (owner, 2026-09-25: "לתייג אותם בשורת הפתיחה"). A LID tags nobody, so
+      // it stays in the count and out of this list.
+      outsidePhones: members.filter((m) => !m.left_at && !groups.isConnected(m))
+        .map((m) => m.phone).filter(isTaggableNumber),
       options: table,
       // The two the room actually asks about: nobody has heard from these
       // people at all, and these ones are out. `silent` stays the exact answer
@@ -293,6 +420,13 @@ async function statusOf(client, group, meeting) {
       // is what decides whether they may be NAMED.
       silent: active.filter((uid) => !answeredSomething.has(uid)).map(who),
       optedOut,
+      // Whose clocks this coordination is heard on: the zones of the people it
+      // is asking, and the room's own. Somebody who never wrote to her has no
+      // zone and is not being asked, so they are not in it — the room line
+      // says the times of the people it is actually coordinating.
+      zones: [...new Set(active.map((uid) => tzByUser.get(uid)).filter(Boolean))],
+      roomTz: group.timezone || null,
+      moments,
       // The room's own settings, so she never has to infer them from the
       // options: kind null means nobody has told her, and then there is no
       // true sentence about "enough people" available to say.
@@ -409,6 +543,23 @@ async function sweepSilentPausedMembers(client, nowMs = Date.now()) {
   return out;
 }
 
+// The room's newest coordination, for a member acting on it from the room —
+// the same checks setPlace makes, for the tools that write onto a meeting
+// that may already be settled.
+async function roomMeetingFor(client, group, actingUser) {
+  if (!group || group.state !== 'open') return err('forbidden', 'this group is not open');
+  if (!actingUser) {
+    return err('invalid', 'I cannot tell who said this — ask them to say it again in the group');
+  }
+  const members = await coordinatingMembers(client, group.id);
+  if (!members.some((m) => Number(m.user_id) === Number(actingUser.id))) {
+    return err('forbidden', 'that person is not a member of this group');
+  }
+  const meeting = await currentMeeting(client, group.id, { includeClosed: true });
+  if (!meeting) return err('not_found', 'nothing has been coordinated in this group');
+  return ok(meeting);
+}
+
 // The room says where ("אצל יוסי"), before or after the time is set. Written
 // onto the meeting in the room's own words; when a shared calendar event
 // already exists, its organiser's event gets the place too — through the
@@ -423,21 +574,55 @@ async function setPlace(client, group, actingUser, where, opts = {}) {
   if (!members.some((m) => Number(m.user_id) === Number(actingUser.id))) {
     return err('forbidden', 'that person is not a member of this group');
   }
-  const location = meetings.cleanLocation(where);
-  if (!location) return err('invalid', 'where is required');
+  if (!meetings.cleanLocation(where)) return err('invalid', 'where is required');
   const meeting = await currentMeeting(client, group.id, { includeClosed: true });
   if (!meeting || !['negotiating', 'confirmed'].includes(meeting.status)) {
     return err('not_found', 'nothing is being coordinated in this group right now');
   }
-  await client.query(`UPDATE meetings SET location = $2, updated_at = now() WHERE id = $1`, [meeting.id, location]);
-  await audit.record(client, actingUser.id, 'meeting.place_set', { meetingId: Number(meeting.id), groupId: group.id });
-  let calendarUpdated = false;
-  if (meeting.calendar_event_id && meeting.calendar_organiser_id) {
-    const upd = await calendar.updateEvent(client, Number(meeting.calendar_organiser_id),
-      { eventId: meeting.calendar_event_id, location }, opts);
-    calendarUpdated = Boolean(upd.ok);
+  // Any member of the room may say where, in it or not — the room's check
+  // above is the whole of it — so the one writer is asked not to repeat the
+  // participant test (`meetings.setPlace`, which the private chat shares).
+  const set = await meetings.setPlace(client, actingUser.id, Number(meeting.id), where,
+    { requireIn: false, groupId: group.id });
+  if (!set.ok) return set;
+  const res = await fanout.patchSharedEvent(client, set, { location: set.data.location }, opts);
+  return ok({ meetingId: res.data.meetingId, location: res.data.location,
+    calendarUpdated: res.data.calendarUpdated, status: res.data.meetingStatus });
+}
+
+// ── The rest of what a person can do to a coordination, from the room ────────
+// Owner, 2026-09-25: he asked the room to cancel its coordination and was told
+// that was only possible privately — true, because the room had no tool for
+// it (`incidents.md`, "The room could not cancel its own coordination"). Every
+// action on his list now has a door in the room as well as in the chat, and
+// every room door is a SECOND door into the same domain call and the same
+// fan-out the private tool uses, never a copy of it.
+//
+// What the room adds is only WHO: `actingUser` is the member whose tag started
+// the turn, chosen by the server, and they act as themselves. Unlike `settle`,
+// nobody acts through somebody else — a yes, a no, an exit are one person's,
+// and cancel/rename/remove are "anybody still IN it" in the private rule, so a
+// room member who is not in this coordination (joined after it opened, or
+// left it) is refused by name rather than borrowing a participant.
+//
+// `statuses` is which coordinations the action can touch: the negotiation
+// steps need one still negotiating; cancel, rename and leaving also reach a
+// confirmed one (the domain refuses one that has already started).
+async function participantFor(client, group, actingUser, { statuses = ['negotiating'] } = {}) {
+  const found = await roomMeetingFor(client, group, actingUser);
+  if (!found.ok) return found;
+  const meeting = found.data;
+  if (!statuses.includes(meeting.status)) {
+    return err('not_found', 'nothing is being coordinated in this group right now', { status: meeting.status });
   }
-  return ok({ meetingId: Number(meeting.id), location, calendarUpdated, status: meeting.status });
+  const { rows: [p] } = await client.query(
+    `SELECT state FROM meeting_participants WHERE meeting_id = $1 AND user_id = $2`,
+    [meeting.id, actingUser.id]);
+  if (!p || p.state === 'opted_out') {
+    return err('forbidden', 'the person who asked is not in this coordination, so they cannot change it',
+      { reason: 'not_in_it' });
+  }
+  return ok({ meeting, meetingId: Number(meeting.id), user: actingUser });
 }
 
 
@@ -559,7 +744,8 @@ async function markRelaySaid(client, meetingId, userId) {
 }
 
 module.exports = {
-  startCoordination, coordinationStatus, statusOf, settle, setPlace, sweepSilentPausedMembers,
-  currentMeeting, coordinatingMembers, memberLabel,
+  roomMeetingFor,
+  startCoordination, admitLateMembers, coordinationStatus, statusOf, roomView, settle, setPlace,
+  sweepSilentPausedMembers, currentMeeting, coordinatingMembers, memberLabel, participantFor,
   relayToRoom, pendingRelay, markRelaySaid, cleanRelay, relayRoomEnabled, RELAY_MAX_CHARS, RELAY_FLAG,
 };
