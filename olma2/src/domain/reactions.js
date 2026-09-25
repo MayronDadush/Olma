@@ -368,6 +368,11 @@ const TOOL_MARKS = Object.freeze({
   // a decline is a negotiation step — the same reason respond_to_meeting_slot
   // has no row.
   set_meeting_title: 'done',
+  // The two the room had first (2026-09-25). Each is in hand when it returns
+  // and waits on nobody — a place and a minimum are settings of the table,
+  // not a step in the negotiation over it.
+  set_meeting_place: 'done',
+  set_meeting_minimum: 'done',
 
   // Doors this person opens and closes on their own account. Opening one
   // returns a LINK and is excluded below; closing one is just closed.

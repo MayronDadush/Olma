@@ -244,9 +244,11 @@ title means this file. Grep the title, not the filename.
   (a participant not `opted_out`; `IN_IT` in `meetings.js`) may settle it by
   hand (`options.settleNow`), rename it, cancel it for everybody, or LEAVE it,
   the opener included; somebody who has left may do none of those. Three
-  things follow. **Cancelling for everybody is the chat's alone** — the page
-  offers leaving, and deleting only between two people (either of them), where
-  leaving would end it anyway. **The ending is never a message of its own**:
+  things follow. **Cancelling for everybody is the chat's and the room's
+  alone** — the page offers leaving, and deleting only between two people
+  (either of them), where leaving would end it anyway. The ROOM got it on
+  2026-09-25 (`cancel_group_coordination`; `rules/groups.md`, "The room is a
+  second door to every action on its coordination"). **The ending is never a message of its own**:
   `meeting_expired` and `meeting_no_match` went to the opener alone and are
   now enqueued by nothing; whoever was still in it reads the ending in their
   next digest (`digest.assemble` → `crossUser.closedMeetings`, since their

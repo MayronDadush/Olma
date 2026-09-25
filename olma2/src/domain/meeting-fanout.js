@@ -659,6 +659,23 @@ async function afterStart(client, actor, res, participantIds, title) {
   return res;
 }
 
+// A rename or a place said after the shared event exists: the calendar copy
+// follows it (best-effort, as the organiser, server-side), so the event does
+// not keep the stale words for ever. One copy for the chat and the room —
+// `res` is the ok result of `meetings.setTitle` / `meetings.setPlace`, which
+// carry the event and its organiser, and `fields` is what the event takes
+// (`{ title }` or `{ location }`). Never fails the write it follows.
+async function patchSharedEvent(client, res, fields, opts = {}) {
+  if (!res || !res.ok || !res.data.calendarEventId || !res.data.calendarOrganiserId) {
+    if (res && res.ok) res.data.calendarUpdated = false;
+    return res;
+  }
+  const patched = await calendar.updateEvent(client, res.data.calendarOrganiserId,
+    { eventId: res.data.calendarEventId, ...fields }, opts).catch(() => null);
+  res.data.calendarUpdated = Boolean(patched && patched.ok);
+  return res;
+}
+
 // The opener calling a coordination off, for everyone — and everything that
 // has to go with it. Lived inside the cancel_meeting tool until the personal
 // page needed the same door (a two-person coordination deleted from the list,
@@ -697,7 +714,7 @@ async function cancelAndTell(client, actor, meetingId) {
 
 module.exports = {
   afterTimeSet,
-  afterSettled, cancelAndTell,
+  afterSettled, cancelAndTell, patchSharedEvent,
   afterStart, afterOptionAdded, afterOptionRemoved, noteNamedInRoom,
   afterSlotResponse, afterOptOut, afterRejoin,
   actorName, fanout, supersedeQueuedMeetingRows, activeParticipantsExcept,
