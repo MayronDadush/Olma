@@ -229,6 +229,7 @@ never trust a dated narrative for something you are about to act on.
 - [The sentinel that only stripped itself (fixed 2026-09-15)](#the-sentinel-that-only-stripped-itself-fixed-2026-09-15)
 - [The working-out, measured (fixed 2026-09-15)](#the-working-out-measured-fixed-2026-09-15)
 - [The gate had no idea who was reading (fixed 2026-09-22)](#the-gate-had-no-idea-who-was-reading-fixed-2026-09-22)
+- [The answer was cut with its tail (fixed 2026-09-25)](#the-answer-was-cut-with-its-tail-fixed-2026-09-25)
 - [The working-out arrived in Hebrew (fixed 2026-09-23)](#the-working-out-arrived-in-hebrew-fixed-2026-09-23)
 - [The working-out arrived instead of the message (fixed 2026-09-10)](#the-working-out-arrived-instead-of-the-message-fixed-2026-09-10)
 - [The greeter's own message id (fixed 2026-09-19)](#the-greeters-own-message-id-fixed-2026-09-19)
@@ -9996,6 +9997,35 @@ working-out and the real work was a tool call, and not one real reply touched.
 The parity corpus now runs every case through both implementations under all
 three values of the flag, because an option is the newest way for the port and
 the module to drift and the default is only one of its three answers.
+
+### The answer was cut with its tail (fixed 2026-09-25)
+
+Dana, "Shabi OG", 24 September at 23:32 UTC. She had said no to both times on
+the table and offered Thursday; her agent saved it (`propose_meeting_slot`,
+option 73) and wrote one line back:
+
+> רשמתי חמישי בערב החל מ-20:00 👍 let me see if the others are free.
+
+The gate's `deliberation` tier caught "let me see", condemned the LINE, and
+the line was the whole reply: `reply.gated`, `kept: 0`, `action: cancel`.
+She never heard that her time had been saved, and the unanswered-repair job
+went looking for a reply that had been thrown away on purpose. Every drop tier
+works on a whole paragraph because the working-out comes FIRST and the answer
+under it — and here the order was the other way round, on one line.
+
+Measured before anything was written, as the module requires: 21 days of
+every `u-N` transcript on the box, 1,461 replies, 247 the gate changes, 81
+condemned lines with Hebrew somewhere before the cue. Nearly all are English
+working-out quoting the person's Hebrew ("He said \"תמחק את המשימה\" — Let
+me…"), which must still go whole. Nine have ONLY Hebrew before the cue once
+quotations are blanked; eight of those are Hebrew working-out caught by
+another tier (`internal`, `block`, `hebrew`, `mark`). One — Dana's — was
+caught by `deliberation` alone. `reply-leak.hebrewReplyTail` is exactly that
+shape: every dropping finding on the line is `deliberation` and the head is
+Hebrew with no English word. The tail goes, the head is delivered, and the
+finding is reported as `deliberation-tail` so the dashboard still counts it.
+Ported to the plugin, held by the parity corpus with the three shapes that
+must still drop beside it, and inert until the gateway restarts.
 
 ### The working-out arrived in Hebrew (fixed 2026-09-23)
 

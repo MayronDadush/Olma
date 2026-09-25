@@ -523,7 +523,7 @@ const URL_RE = /\b(?:https?:\/\/|www\.)\S+/gi;
 const ADDRESS_RE = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g;
 const QUOTED_RE = /["״'][^"״'\n]{1,80}["״']/g;
 const TOKEN_RE = /\bolma_(?:tok|grp)_[0-9a-f]{8,}/g;
-const KEEPS_LINE = new Set(["identifier", "sentinel", "narration", "hebrew-narration"]);
+const KEEPS_LINE = new Set(["identifier", "sentinel", "narration", "hebrew-narration", "deliberation-tail"]);
 const REPORT_ONLY = new Set(["identifier", "narration", "hebrew-narration"]);
 const SENTINEL = "NO_REPLY";
 
@@ -568,6 +568,20 @@ export function leaksIn(line, { readerWritesHebrew = null } = {}) {
   return out;
 }
 export function drops(leaks) { return leaks.some((l) => !KEEPS_LINE.has(l.kind)); }
+
+// Ported from `domain/reply-leak.hebrewReplyTail` (2026-09-25): a Hebrew reply
+// with only an English next step on its end loses the tail, not the reply.
+export function hebrewReplyTail(line, found) {
+  const dropping = found.filter((l) => !KEEPS_LINE.has(l.kind));
+  if (!dropping.length || !dropping.every((l) => l.kind === "deliberation")) return null;
+  const at = dropping.map((l) => line.indexOf(l.at)).filter((i) => i >= 0);
+  if (at.length !== dropping.length) return null;
+  const head = line.slice(0, Math.min(...at));
+  const before = scannable(head);
+  if (!HEBREW_LETTER_RE.test(before) || /[A-Za-z]{2,}/.test(before)) return null;
+  const kept = head.replace(/[\s,;:—–-]+$/, "");
+  return kept.trim() ? kept : null;
+}
 export function hasEarlierContent(lines, i) {
   for (let j = 0; j < i; j++) if (lines[j].trim()) return true;
   return false;
@@ -582,6 +596,12 @@ export function gateReply(text, { readerWritesHebrew = null } = {}) {
   if (raw.trim() === SENTINEL) return { action: "pass", text: raw, leaks: [], reported: [] };
   const lines = raw.split("\n");
   const found = lines.map((l) => leaksIn(l, { readerWritesHebrew }));
+  for (let i = 0; i < lines.length; i++) {
+    const head = hebrewReplyTail(lines[i], found[i]);
+    if (head === null) continue;
+    lines[i] = head;
+    found[i] = found[i].map((l) => (l.kind === "deliberation" ? { ...l, kind: "deliberation-tail" } : l));
+  }
   const reported = [];
   let last = -1;
   for (let i = 0; i < lines.length; i++) {
