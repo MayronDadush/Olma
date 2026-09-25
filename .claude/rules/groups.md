@@ -365,8 +365,12 @@ have already had to be argued for.
   gone out; before it, the opening simply counts them. Somebody who LEFT has an
   `opted_out` row and is never swept back in, a paused member whose room invite
   is spent is left out as `startCoordination` leaves them out, and nobody is
-  let in during the settle minute (`incidents.md`, "פנתרה: one time, four
-  clocks").
+  let in during the settle minute. **A coordination SETTLED but still ahead
+  lets them in too** (owner, same day): they get `meeting_confirmed` with
+  `joinedLate` (the time in their own clock, can they make it, the calendar
+  step), never a "confirmed by every participant" they were not part of; one
+  that has already happened lets nobody in (`incidents.md`, "פנתרה: one time,
+  four clocks").
 
 - **A tag is a NUMBER, and the roster hands us LIDs in the same column** (owner,
   2026-09-22). `chat_group_members.phone` holds a WhatsApp LID for members the

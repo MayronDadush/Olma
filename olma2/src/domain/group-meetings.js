@@ -191,8 +191,17 @@ async function startCoordination(client, group, actingUser, title, { where = nul
 // minute: the time is about to be announced, and a fresh "when suits you?"
 // arriving after it would be a question about something already decided.
 // Returns who was let in, for the room's one line about it.
-async function admitLateMembers(client, group, meeting) {
-  if (!group || group.state !== 'open' || !meeting || meeting.status !== 'negotiating') return [];
+//
+// …and since the same day, a coordination that is SETTLED but still ahead
+// (owner, פנתרה: "המשתמשים שלא כתבו יקבלו הודעה בפרטי על התיאום"). There is
+// nothing left to ask them, so what reaches them is the settled time in their
+// own clock, whether they can make it, and the calendar step — a confirmation
+// written for somebody who arrived after it (`joinedLate`).
+async function admitLateMembers(client, group, meeting, now = new Date()) {
+  if (!group || group.state !== 'open' || !meeting) return [];
+  const settled = meeting.status === 'confirmed' && meeting.confirmed_start_at
+    && new Date(meeting.confirmed_start_at).getTime() > now.getTime();
+  if (meeting.status !== 'negotiating' && !settled) return [];
   if (meeting.settle_due_at) return [];
   const members = await coordinatingMembers(client, group.id);
   const { rows } = await client.query(
@@ -214,6 +223,15 @@ async function admitLateMembers(client, group, meeting) {
     await audit.record(client, Number(m.user_id), 'group.member_joined_late', {
       groupId: group.id, meetingId: Number(meeting.id),
     });
+  }
+  if (settled) {
+    await fanout.fanout(client, late.map((m) => Number(m.user_id)), 'meeting_confirmed', {
+      meetingId: Number(meeting.id), title: meeting.title, slot: meeting.confirmed_slot,
+      ...(await fanout.slotMoment(client, Number(meeting.id), meeting.confirmed_slot)),
+      ...(meeting.location ? { location: meeting.location } : {}),
+      groupSubject: group.subject || null, joinedLate: true,
+    }, { key: `mconf:${meeting.id}` });
+    return late;
   }
   // The same key shape as the first fan-out, so an invite can never be
   // written twice for one person in one coordination, however they got in.

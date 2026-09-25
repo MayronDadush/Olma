@@ -530,8 +530,8 @@ async function sweepGroupVoice(client, deps) {
     // piece of news, and a line held for the morning with nothing stamped is
     // simply the same admission found again then. It is this pass's one line
     // for the room, so everything else waits for the next one.
-    if (row.status === 'negotiating' && full[0] && mayAnnounce(row, now)) {
-      const joined = await groupMeetings.admitLateMembers(client, row, full[0]);
+    if (full[0] && mayAnnounce(row, now)) {
+      const joined = await groupMeetings.admitLateMembers(client, row, full[0], now);
       const phones = joined.map((m) => m.phone).filter(isTaggableNumber);
       // Before the opening line, there is nothing to add: it counts them.
       if (phones.length && row.group_started_at) {

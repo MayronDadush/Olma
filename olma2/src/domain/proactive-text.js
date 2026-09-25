@@ -291,6 +291,9 @@ function renderGroupCoordination(line, overrides) {
       outside_note: outsideNote(line, overrides),
     }, overrides).trim();
   }
+  // Only the tags of who has not written — a one-off for a room whose opening
+  // line went out before it could tag anybody (פנתרה, 2026-09-25).
+  if (line.kind === 'outside') return outsideNote(line, overrides) || null;
   if (line.kind === 'joined') {
     const phones = (line.phones || []).filter(isTaggableNumber);
     if (!phones.length) return null;
