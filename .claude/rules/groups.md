@@ -236,6 +236,27 @@ have already had to be argued for.
   for a DM and re-hears `night` alone — a DM at 03:00 is not evidence that
   somebody's Shabbat is over.
 
+- **The room is a second door to every action on its coordination, and it
+  acts only as somebody still IN it** (owner, 2026-09-25: "אני רוצה את כל אלה
+  שיהיו גם בפרטי וגם בקבוצה"). He asked the room to cancel and was told it
+  could only be done privately (`incidents.md`, "The room could not cancel its
+  own coordination"). Cancel, rename, take a time off, leave and answer yes/no
+  are now room tools, and the chat gained the two the room had first — the
+  place (`meetings.setPlace`, the ONE writer of `meetings.location` after a
+  coordination opens; the room's tool calls it with `requireIn: false`,
+  because any member of the room may say where) and the minimum
+  (`set_meeting_minimum` over `meetings.setQuorum`). Three things hold it.
+  **Each room tool calls its private twin's domain function and fan-out**,
+  never a copy, so a cancel from the room tells the same people the same
+  thing and removes the same calendar event. **`groupMeetings.participantFor`
+  refuses anybody not still in the coordination** (`reason: 'not_in_it'`) —
+  unlike `settle`, which acts through a participant, because a yes, a no and
+  an exit are one person's and "anybody in it" is the private rule for the
+  rest. **The results are PICKED, never passed through**: the private ones
+  carry hints about the person's own calendar and dashboard, and an answer
+  given in the room returns that one answer and never the table's — the room
+  still hears nobody else's (`tests/group-room-actions.test.js`).
+
 - **The person who asked the ROOM for a coordination is asked privately too.**
   `startMeeting` inserts every participant at `awaiting`, the initiator
   included, and for a person-to-person coordination the fan-out rightly skips

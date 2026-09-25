@@ -293,6 +293,24 @@ const CANCEL_CLEANUP_HINTS = {
   none: '',
 };
 
+// What the person leaving a confirmed meeting is told about their calendar
+// (calendar.removeMeetingAttendee's answer). Taken off → say so, that is the
+// owner's line. No shared event of theirs → their own copy, if any, is still
+// theirs to offer to delete. Anything that did not work is said as it is, and
+// deleting the shared event is never offered: it would take it off everyone.
+function withdrawCalendarHint(cal) {
+  if (cal.removed) {
+    return 'It has also been taken off their Google calendar — tell them that, in the same breath. Nobody else\'s calendar changed.';
+  }
+  if (['no_event', 'not_connected', 'not_on_event'].includes(cal.reason)) {
+    return 'If they put it on their own calendar themselves, offer to take it off: find it with my_calendar_events and call delete_calendar_event.';
+  }
+  if (cal.reason === 'no_successor') {
+    return 'It is still on their Google calendar: they host that event and nobody else in the meeting has a calendar that can, and deleting it would take it off everyone\'s. Say so plainly; do NOT offer to delete it.';
+  }
+  return 'Taking it off their Google calendar did not work just now — tell them it may still show there, and that they can decline it from the calendar itself. Do NOT delete the event: it is everyone\'s.';
+}
+
 // What to tell the confirming user's own agent, in their own turn.
 function calendarHintFor(role, meetingId, { allDay = false, start = null } = {}) {
   const hint = calendarHintForRole(role, meetingId, start);
@@ -579,7 +597,11 @@ async function afterOptOut(client, actor, meetingId, res) {
       meetingId: Number(meetingId), title: brief.title || 'meeting',
       byName: actorName(actor), slot: brief.confirmed_slot,
     }, { key: `mwithdraw:${meetingId}:${actor.id}` });
-    res.data.hint = 'The meeting is still on for the others — say so. If it sits on this user\'s calendar, offer to take it off: their own event goes via delete_calendar_event; a Google invitation they decline from the calendar itself.';
+    // Off THEIR calendar, and only theirs (owner, 2026-09-24) — never the
+    // event, never anybody else's copy (calendar.removeMeetingAttendee).
+    const cal = (await calendar.removeMeetingAttendee(client, meetingId, actor.id)).data;
+    res.data.calendar = cal;
+    res.data.hint = `The meeting is still on for the others — say so. ${withdrawCalendarHint(cal)}`;
     return res;
   }
 
@@ -679,6 +701,23 @@ async function afterStart(client, actor, res, participantIds, title) {
   return res;
 }
 
+// A rename or a place said after the shared event exists: the calendar copy
+// follows it (best-effort, as the organiser, server-side), so the event does
+// not keep the stale words for ever. One copy for the chat and the room —
+// `res` is the ok result of `meetings.setTitle` / `meetings.setPlace`, which
+// carry the event and its organiser, and `fields` is what the event takes
+// (`{ title }` or `{ location }`). Never fails the write it follows.
+async function patchSharedEvent(client, res, fields, opts = {}) {
+  if (!res || !res.ok || !res.data.calendarEventId || !res.data.calendarOrganiserId) {
+    if (res && res.ok) res.data.calendarUpdated = false;
+    return res;
+  }
+  const patched = await calendar.updateEvent(client, res.data.calendarOrganiserId,
+    { eventId: res.data.calendarEventId, ...fields }, opts).catch(() => null);
+  res.data.calendarUpdated = Boolean(patched && patched.ok);
+  return res;
+}
+
 // The opener calling a coordination off, for everyone — and everything that
 // has to go with it. Lived inside the cancel_meeting tool until the personal
 // page needed the same door (a two-person coordination deleted from the list,
@@ -717,7 +756,7 @@ async function cancelAndTell(client, actor, meetingId) {
 
 module.exports = {
   afterTimeSet,
-  afterSettled, cancelAndTell,
+  afterSettled, cancelAndTell, patchSharedEvent,
   afterStart, afterOptionAdded, afterOptionRemoved, noteNamedInRoom,
   afterSlotResponse, afterOptOut, afterRejoin,
   actorName, fanout, supersedeQueuedMeetingRows, activeParticipantsExcept,

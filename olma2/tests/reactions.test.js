@@ -684,7 +684,9 @@ test('reactions: what cannot end in a like stays out of the table, by reason', (
   //     the table on offer is still changing. `create_shared_meeting_event`
   //     is the confirmed write itself, same shape as create_calendar_event.
   for (const name of ['revoke_share', 'respond_to_share', 'opt_out_of_meeting',
-    'cancel_meeting', 'create_shared_meeting_event']) {
+    'cancel_meeting', 'create_shared_meeting_event',
+    // settings of a meeting that wait on nobody, beside set_meeting_title
+    'set_meeting_title', 'set_meeting_place', 'set_meeting_minimum']) {
     assert.equal(marked(name), true, `${name} is the actor's own action, done when it returns`);
   }
 
