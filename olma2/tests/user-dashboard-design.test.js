@@ -236,3 +236,29 @@ test('a settled coordination stays in the list, and the card says so', () => {
     'and the marker tints the whole card, not only the chip');
   assert.match(page, /\.group\.mtset \.mtpill\.settled\{/);
 });
+
+// A phone zooms on a double tap on any page that does not opt out, and on this
+// one a quick second tap on a calendar arrow or a checkbox blew the page up
+// (the owner, 2026-09-25). `manipulation` stops only that: pinching still
+// zooms, which is why the viewport meta must not take zoom away instead.
+test('a double tap is two taps, and pinch-zoom is left alone', () => {
+  assert.match(page, /html\{touch-action:manipulation\}/);
+  const meta = page.match(/<meta name="viewport" content="([^"]+)">/);
+  assert.ok(meta, 'the viewport meta is there');
+  assert.doesNotMatch(meta[1], /user-scalable|maximum-scale/);
+});
+
+// Every date on the page picks its year the same way: one popover, with a
+// pane of years, opened by the two value fields AND by the three grids' titles.
+test('every date control opens the one popover, and it has a years pane', () => {
+  assert.match(page, /calPane === "years"/);
+  assert.match(page, /data-calyear="/);
+  assert.match(page, /data-calpane="years"/, 'the year is one tap from the days pane');
+  for (const id of ['bday', 'sDateRow', 'stripTtl']) {
+    assert.match(page, new RegExp(`id="${id}"[^>]*data-cal=|data-cal="[^"]+"[^>]*id="${id}"|id="${id}" data-cal=`),
+      `#${id} opens the date popover`);
+  }
+  assert.match(page, /class="dgttl" data-cal="jump"/, 'both coordination grids open it from their title');
+  assert.match(page, /dgJump\("#mtOptDays", "#mtOptMon"\)/);
+  assert.match(page, /dgJump\("#mtDays", "#mtDayMon"\)/);
+});
