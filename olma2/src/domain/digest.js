@@ -13,6 +13,7 @@
 const { ok, err } = require('./results');
 const audit = require('./audit');
 const reminders = require('./reminders');
+const meetingTime = require('./meeting-time');
 
 const SCOPES = ['summary', 'full', 'today', 'block_view'];
 
@@ -78,6 +79,20 @@ async function assemble(client, userId, scope) {
       GROUP BY m.id, m.title, m.proposed_slot, m.proposed_start_at`,
     [userId]
   )).rows;
+  // A proposed slot is somebody's words on THEIR clock; a reader on another one
+  // gets their own hour beside it (`your_time`, owner 2026-09-25), drawn here
+  // so the digest never has the model convert an hour. Nothing when the two
+  // clocks agree or the words name no clock.
+  const { rows: [reader] } = await client.query('SELECT timezone FROM users WHERE id = $1', [userId]);
+  const { slotMoment } = require('./meeting-fanout');
+  for (const m of [...pendingMeetings, ...awaitingOthers]) {
+    if (!m.proposed_slot || !reader || !reader.timezone) continue;
+    const moment = await slotMoment(client, m.id, m.proposed_slot);
+    const local = meetingTime.readerSlot(
+      { startsAt: moment.startsAtUtc, slot: m.proposed_slot, allDay: moment.allDay, daypart: moment.daypart },
+      reader.timezone, moment.authorTz);
+    if (local) m.your_time = `${local.slot} (${local.city})`;
+  }
   // Coordinations that ENDED with no time, since the last digest that reached
   // them — expired (the moment passed) or no_match (not enough people left).
   // Until 2026-09-23 that was a message of its own, to the opener alone; now

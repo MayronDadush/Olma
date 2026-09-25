@@ -5,6 +5,7 @@ const {
 } = require('./_shared');
 const format = require('../../../domain/message-format');
 const listBlock = require('../../../domain/list-block');
+const meetingTime = require('../../../domain/meeting-time');
 
 // After the person has put real substance on the table from chat — two or more
 // options to look at — the page is genuinely better than prose for the rest:
@@ -219,6 +220,19 @@ module.exports = [
       const res = await meetings.getStatus(client, user.id, a.meeting_id);
       if (!res || !res.ok || !res.data) return res;
       const options = Array.isArray(res.data.options) ? res.data.options : [];
+      // The reader's own hour beside each time written on another clock
+      // (owner, 2026-09-25) — drawn here, never converted by the model.
+      const authors = [...new Set(options.map((o) => o.addedBy).filter((id) => id !== null && id !== undefined))];
+      if (authors.length && user.timezone) {
+        const { rows } = await client.query(`SELECT id, timezone FROM users WHERE id = ANY($1::bigint[])`, [authors]);
+        const tzOf = new Map(rows.map((r) => [Number(r.id), r.timezone]));
+        for (const o of options) {
+          const t = meetingTime.readerSlot(
+            { startsAt: o.startsAt, slot: o.slotText, allDay: o.allDay, daypart: o.daypart },
+            user.timezone, tzOf.get(Number(o.addedBy)));
+          if (t) o.yourTime = t;
+        }
+      }
       // Drawn rather than left to the model to number afresh each turn
       // (domain/list-block.js): "2" has to name the same option every time it
       // is read back, which a model composing the list from scratch cannot

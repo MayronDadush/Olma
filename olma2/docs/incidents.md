@@ -2783,6 +2783,25 @@ said only in such a room, so her own replies say what the fixed lines say.
 
 A one-clock room is untouched, field for field, and a test asserts it.
 
+**The private side, the same day.** The room was only half of it. In
+private, on the dashboard, in the morning digest and in the stuck-meeting
+check-in, the reader still got the proposer's words and nothing else. Each of
+those now adds the reader's own hour beside the words (`meeting-time.readerSlot`,
+drawn by the server; the words stay because they are what everybody else
+read). It is added only when the reader's clock differs from the AUTHOR's at
+that instant, which means the payload carries the option author's zone
+(`meeting-fanout.slotMoment`). A row queued before that has no author zone, and
+it says nothing rather than guessing whose hour "20:00" was.
+
+Reading every path turned up a second bug that no report had reached. On a
+confirmed meeting each person's agent was told to "work out the real start …
+from the slot text WITH their UTC offset". For the member abroad that meant
+reading "20:00" as 20:00 in Los Angeles, which is a calendar event at the wrong
+hour on the one day the time was final. The calendar step now hands over the
+exact start in the reader's own offset and says not to recompute it
+(`channels/openclaw.js`, `startPhrase`). A daypart or a whole day keeps the old
+wording, because there is no exact instant to hand over.
+
 ### The room's joke got a lecture (2026-09-23)
 
 Meeting 42 had just been confirmed in פחם הסעות. At 12:13 UTC Bar tagged

@@ -177,6 +177,7 @@ Loads when you **Read** a file under `src/outbox/**`, `src/domain/message-format
 - **On the model path a retry is not a retry — it is a NEW message, composed against a world the failed sends themselves created.**
 - **A `--deliver` that TIMES OUT has very likely gone out, and is never retried.**
 - **Anything else due in the same moment is ONE message too, and two rules say what may travel together**
+- **A meeting time reaches each reader in THEIR clock too, beside the proposer's words** — and the confirmed calendar step hands over the exact start, never "work it out from the words"
 
 ### Turns, and what reaches the person
 

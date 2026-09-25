@@ -238,6 +238,9 @@ function renderCalendarListBlock(data, opts = {}) {
 //
 // The text is the PROPOSER's own words (`slotText`, from `add()`'s own
 // `label: 'slot_description'`) — cleaned, never recomputed from `startsAt`.
+// Since 2026-09-25 a reader on another clock than the proposer's also gets
+// their own hour BESIDE those words (`yourTime`, owner, פנתרה): the words are
+// still what is numbered and still theirs; the hour is drawn, not the model's.
 // A time re-derived from the instant could disagree with what the person
 // actually said ("יום שלישי בערב" vs. a recomputed "20:00"), and the words are
 // theirs to keep, the same rule a task title or a calendar location already
@@ -272,8 +275,8 @@ function renderCalendarListBlock(data, opts = {}) {
 const MY_YES = '✓';
 const MY_NO = '✗';
 const OPTION_WORDS = {
-  he: { needsYou: 'חסר רק אישור שלך' },
-  en: { needsYou: 'only your yes is missing' },
+  he: { needsYou: 'חסר רק אישור שלך', yourTime: 'אצלך' },
+  en: { needsYou: 'only your yes is missing', yourTime: 'your time' },
 };
 
 // Where THIS reader stands on each active option — their own yes or no, and
@@ -293,7 +296,7 @@ function meetingOptionMarks(options, opts = {}) {
       const answers = o.answers || {};
       const mine = me && (answers[me] === 'y' || answers[me] === 'n') ? answers[me] : null;
       const needsYou = Boolean(me && !mine && others.length && others.every((id) => answers[id] === 'y'));
-      return { id: o.id, slotText: o.slotText, mine, needsYou };
+      return { id: o.id, slotText: o.slotText, mine, needsYou, ...(o.yourTime ? { yourTime: o.yourTime } : {}) };
     });
 }
 
@@ -307,8 +310,12 @@ function renderMeetingOptionsBlock(options, opts = {}) {
   const words = OPTION_WORDS[localeKey(opts.locale)] || OPTION_WORDS.he;
   const lines = meetingOptionMarks(options, opts)
     .map((m) => {
-      const slot = format.stripUserMarkup(String(m.slotText || '').replace(/\s+/g, ' ').trim());
-      if (!slot) return null;
+      const words0 = format.stripUserMarkup(String(m.slotText || '').replace(/\s+/g, ' ').trim());
+      if (!words0) return null;
+      // Their words stay whole; a reader on another clock gets their own hour
+      // beside them (`meeting-time.readerSlot`, drawn by the caller), never in
+      // place of them.
+      const slot = m.yourTime && m.yourTime.short ? `${words0} · ${words.yourTime} ${m.yourTime.short}` : words0;
       if (m.mine === 'y') return `${slot} ${MY_YES}`;
       if (m.mine === 'n') return `${slot} ${MY_NO}`;
       if (m.needsYou) return `${slot} — ${words.needsYou}`;

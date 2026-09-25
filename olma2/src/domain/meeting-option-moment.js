@@ -73,4 +73,4 @@ function pickFor(tz, startsAt, now = new Date()) {
   return { day: dayNo(t) - dayNo(today), time: `${pad(t.hh)}:${pad(t.mi)}` };
 }
 
-module.exports = { momentFor, pickFor, PART_HOURS, MAX_DAYS_AHEAD };
+module.exports = { momentFor, pickFor, isoWithOffset, PART_HOURS, MAX_DAYS_AHEAD };
