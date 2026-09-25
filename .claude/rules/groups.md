@@ -635,3 +635,24 @@ have already had to be argued for.
   because there is no state to draw: it is a judgement about tone, and
   `resync-agent-templates.js` carries it to every room on deploy
   (`incidents.md`, "The room's joke got a lecture").
+
+- **A room whose people live on more than one clock hears every time in each
+  of them, by city, and a room on one clock hears exactly what it did before**
+  (owner, 2026-09-25, פנתרה). The zones are those of the people the
+  coordination is ASKING (`statusOf`'s `zones`, off `users.timezone`), plus
+  the room's own, and "more than one" is decided per moment
+  (`meeting-time.spansZones`): Israel and Athens are one clock in some weeks
+  and two in others. **The owner's words are separate templates**, `<key>_zones`,
+  a VARIANT on the family and never a language (`message-templates.variantOf`),
+  shown as a second column on the templates page. A test fails when a room
+  line that carries a time has no twin. What rides the line is the instant
+  behind each slot text (`at[field]`), not words: the renderer draws them at
+  delivery, like every room line. **A time that names no clock is never
+  converted.** "בערב" went into `starts_at` as a representative 19:00, so
+  saying "12:00 ניו יורק" about it is precision nobody said; it keeps its
+  author's words and city. **The model gets the drawn line, never the
+  clocks**: `coordinationStatus` (the group tool and the turn block) strips
+  `moments` and `zones` and hands over `roomTimes` and the cities, and
+  `group-turn.CLOCK_RULE` is said only in a room that spans clocks. Each member
+  there carries `clock`, so "at four" from somebody in New York is put on the
+  table at New York's four (`incidents.md`, "פנתרה: one time, four clocks").

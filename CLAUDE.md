@@ -364,6 +364,7 @@ Loads when you **Read** a file under `src/domain/group-connections.js`, `src/dom
 - **…and that line carries what the same person did to the TABLE, because the reason and the change are one piece of news** — three shapes, chosen by what is true
 - **A joke in the room is answered with a joke, built only from what the room said** — one short line; nothing invented, nothing private, nobody really mocked
 - **A paused member is counted into a room's coordination only until their one invite is spent; a day of silence takes them out**
+- **A room on more than one clock hears every time in each, by city, from the owner's own `_zones` templates; a time with no clock in it is never converted, and a one-clock room is untouched**
 - **A member's message in the room opens the gate's fifteen-minute window for that room's coordination — and, since 2026-09-09, the room's own announcement window; nothing else**
 
 ### Testing

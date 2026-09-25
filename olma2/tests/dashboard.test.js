@@ -1459,7 +1459,15 @@ test('the templates section rewords a fixed sentence, refuses a broken one by na
   assert.ok(!html0.includes('id="tpl-reminder_en"'), 'the English twin is a column, not a row of its own');
   assert.ok(html0.includes('name="reminder_en"') && html0.includes('name="opening_he"') && html0.includes('name="opening_en"'));
   assert.equal((html0.match(/רק בעברית — אין גרסה באנגלית/g) || []).length,
-    templates.families().filter((f) => !f.en).length, 'every Hebrew-only message says so, once');
+    templates.families().filter((f) => f.audience !== 'group' && !f.en).length, 'every Hebrew-only message says so, once');
+  // A room is Hebrew by design; its second column is the same line in a room
+  // on more than one clock (owner, 2026-09-25), and a line with no time in it
+  // says it is the same everywhere.
+  assert.ok(html0.includes('<th>אזור זמן אחד</th><th>כמה אזורי זמן</th>'), 'rooms get a clocks column');
+  assert.ok(html0.includes('name="group_coord_done_zones"'), 'the several-clocks twin is an editable box');
+  assert.ok(!html0.includes('id="tpl-group_coord_done_zones"'), 'the twin is a column, not a row of its own');
+  assert.equal((html0.match(/אין שעה בהודעה הזו/g) || []).length,
+    templates.families().filter((f) => f.audience === 'group' && !f.zones).length, 'every clock-free room line says so, once');
   const post = (fields) => fetch(base + '/templates', {
     method: 'POST', redirect: 'manual',
     headers: { Authorization: AUTH, Cookie: `csrf=${csrf}`, 'Content-Type': 'application/x-www-form-urlencoded' },

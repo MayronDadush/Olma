@@ -118,8 +118,14 @@ module.exports = [
       // them the question they just answered in front of everyone.
       await meetingFanout.noteNamedInRoom(client, ctx.actingUser.id, meetingId);
       const onTable = await meetings.options.activeCount(client, meetingId);
+      // In a room on more than one clock, the time as every reader will hear
+      // it — the one line the model may say about it (group-turn.CLOCK_RULE).
+      const st = await groupMeetings.coordinationStatus(client, ctx.group);
+      const drawn = st.coordination && (st.coordination.options || [])
+        .find((o) => Number(o.optionId) === Number(res.data.optionId));
       return ok({
         meetingId, optionId: res.data.optionId, slot: res.data.proposedSlot,
+        ...(drawn && drawn.roomTimes ? { roomTimes: drawn.roomTimes } : {}),
         duplicate: res.data.duplicate, onTable,
         hints: {
           room: res.data.duplicate

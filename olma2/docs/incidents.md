@@ -73,6 +73,7 @@ never trust a dated narrative for something you are about to act on.
 - [The room waited for nobody (fixed 2026-09-20)](#the-room-waited-for-nobody-fixed-2026-09-20)
 - [The room that did not know its own member (fixed 2026-09-23)](#the-room-that-did-not-know-its-own-member-fixed-2026-09-23)
 - [Where do we meet, on Zoom (fixed 2026-09-23)](#where-do-we-meet-on-zoom-fixed-2026-09-23)
+- [פנתרה: one time, four clocks (fixed 2026-09-25)](#פנתרה-one-time-four-clocks-fixed-2026-09-25)
 - [The room's joke got a lecture (2026-09-23)](#the-rooms-joke-got-a-lecture-2026-09-23)
 - [She called Bar את (fixed 2026-09-23)](#she-called-bar-את-fixed-2026-09-23)
 - [The poker, seven times (fixed 2026-09-23)](#the-poker-seven-times-fixed-2026-09-23)
@@ -2742,6 +2743,45 @@ title and the confirmed slot for the coordinations opened before this. The
 list leaves out "וידאו" alone ("צילום וידאו" is a shoot), a bare "meet" and
 "teams", because a miss costs one question and a false hit costs a room its
 real place.
+
+### פנתרה: one time, four clocks (fixed 2026-09-25)
+
+Room 10, פנתרה, was coordinating a video call for everybody (meeting 46). Two
+members are in Israel, one is abroad, and one is in Australia. All four have
++972 numbers, so nothing about a number says where anybody is. The owner
+watched it on 2026-09-24 and asked two things: why one member had heard
+nothing, and why nobody was told the time on their own clock.
+
+The member who heard nothing had never written to Olma. No user row matched
+her number, so she was never in the coordination; the room heard only the
+counted line ("מי שעוד לא כתב לי בפרטי לא נספר פה"), which names nobody. That
+part is the fixed text doing what it said, and the late-join fix is separate.
+
+The time was the real fault. Every time anybody read, in the room and in
+private, was `slot_text`: the proposer's own words or a string built in the
+proposer's zone, stored once and passed on unchanged. The member abroad
+(user 11, `America/Los_Angeles`, unconfirmed) was asked about "יום שבת 26.9
+20:00", which was ten in the morning for him, and the time leading when the
+owner looked, 13:50 in Israel, was 03:50 for him. Nothing in the system
+converted a meeting time to anybody's zone. `chat_groups.timezone` existed,
+and it decided the room's quiet hours and nothing else.
+
+`domain/meeting-time.js` says one moment in every zone, by city (ICU's Hebrew
+`shortGeneric` names, identical on the Mac and the box). `statusOf` hands the
+sweep each slot text's moment and the zones of the people being asked;
+`group-voice.decideGroupLine` marks a line `multiZone` only when those span
+clocks at that instant; and the renderer draws the owner's own `_zones`
+templates from it at delivery. They are separate templates by his decision,
+edited on the templates page as a second column beside the one-clock line.
+"סגור" and "יש כיוון" get a line per clock; the rest put every clock on one
+line. The morning reminder drops "היום", which in Sydney may already be
+tomorrow, and "איפה נפגשים?" becomes "איך מתחברים?" because people on four
+clocks are not meeting in one room. A time that names no clock ("שבת בערב")
+is never converted: it keeps its author's words and city. The group turn's
+block carries the same drawn `roomTimes`, a `clock` per member, and a rule
+said only in such a room, so her own replies say what the fixed lines say.
+
+A one-clock room is untouched, field for field, and a test asserts it.
 
 ### The room's joke got a lecture (2026-09-23)
 

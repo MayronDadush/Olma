@@ -19,6 +19,7 @@
 // sent without needing the session to remember it.
 const templates = require('./message-templates');
 const format = require('./message-format');
+const meetingTime = require('./meeting-time');
 
 // Titles are the user's own words; bound them to one message-safe line — and
 // take the emphasis out of them. A title carrying an asterisk arrives with
@@ -232,6 +233,50 @@ function slotText(slot) {
   return format.stripUserMarkup(slot);
 }
 
+// ---- a room on more than one clock (owner, 2026-09-25) ----------------------
+// `group-voice.decideGroupLine` marks a line `multiZone` when the people this
+// coordination is asking live on more than one clock, and hands over what the
+// times ARE — `at[field]` is the instant behind each slot text the line names,
+// `zones` whose clocks they are, `roomTz` the room's own. Everything said here
+// is drawn from those at delivery, so the owner's rewording applies to a row
+// already queued, the same as every other room line. A line without the mark
+// (one clock, or a row queued before this existed) renders exactly as before.
+function keyFor(base, line) {
+  return line && line.multiZone ? `${base}_zones` : base;
+}
+
+function timesOf(line, field) {
+  const m = line.at && line.at[field];
+  if (!m) return null;
+  return meetingTime.roomTimes({ ...m, slot: line[field] }, line.zones, line.roomTz);
+}
+
+// A slot that names no clock, in a room on several: its author's own words,
+// with the author's city, because "שבת בערב" means a different evening in
+// each of them and turning it into an hour would be precision nobody said.
+function authored(line, field) {
+  const m = (line.at && line.at[field]) || {};
+  const city = meetingTime.zoneLabel(m.authorTz || line.roomTz);
+  const text = slotText(line[field]);
+  return city ? `${text} (${city})` : text;
+}
+
+// The slot on ONE line: every zone joined with " · ", or its author's words.
+function roomInline(line, field) {
+  if (!line.multiZone) return slotText(line[field]);
+  const t = timesOf(line, field);
+  return t ? t.inline : authored(line, field);
+}
+
+// The two lines that matter most take the day on their own and a line per
+// zone under the sentence. An unconvertible slot leaves `zones` empty, and the
+// line it would have filled is taken out rather than left as a gap.
+function roomBlock(line, field) {
+  const t = timesOf(line, field);
+  return t ? { day: t.day, zones: t.lines.join('\n') } : { day: authored(line, field), zones: '' };
+}
+const tidy = (s) => s.replace(/\n[ \t]*(?=\n)/g, '').replace(/\n{2,}/g, '\n');
+
 function renderGroupCoordination(line, overrides) {
   if (line.kind === 'started') {
     // A COUNT, never people. Who has not written is already the gate notice's
@@ -239,20 +284,22 @@ function renderGroupCoordination(line, overrides) {
     // of lines is careful not to do — so this line only says that such people
     // exist, and only when they do (the same rule as a base line never said to
     // nobody).
-    return templates.render('group_coord_started', {
+    return templates.render(keyFor('group_coord_started', line), {
       title: slotText(line.title), asked: String(line.asked),
+      cities: line.multiZone ? meetingTime.citiesPhrase(line.zones, line.roomTz) : '',
       outside_note: line.outside ? OUTSIDE_NOTE : '',
     }, overrides).trim();
   }
   if (line.kind === 'base' || line.kind === 'moved') {
-    const lead = templates.render('group_coord_base', {
-      slot: slotText(line.slot), yes: String(line.yes), missing: mentionTokens(line.missing || []),
-    }, overrides);
+    const vars = { yes: String(line.yes), missing: mentionTokens(line.missing || []) };
+    const lead = line.multiZone
+      ? tidy(templates.render('group_coord_base_zones', { ...vars, ...roomBlock(line, 'slot') }, overrides))
+      : templates.render('group_coord_base', { ...vars, slot: slotText(line.slot) }, overrides);
     if (line.kind === 'base') return lead;
     // The new direction is the base line itself, carried whole as one var — so
     // a rewording of "יש כיוון" is said the same way in both places, and the
     // owner has one sentence to edit rather than two that can drift.
-    return templates.render('group_coord_moved', { was: slotText(line.was), lead }, overrides).trim();
+    return templates.render(keyFor('group_coord_moved', line), { was: roomInline(line, 'was'), lead }, overrides).trim();
   }
   // Somebody else's words, over their TAG — never their name, the same rule
   // every room line obeys. The text was bounded and stripped where it was saved
@@ -266,12 +313,12 @@ function renderGroupCoordination(line, overrides) {
   if (line.kind === 'relay') {
     const vars = { from: mentionToken(line.from) || '', what: slotText(line.what) };
     if (line.added && line.was) {
-      return templates.render('group_coord_relay_swapped',
-        { ...vars, was: slotText(line.was), added: slotText(line.added) }, overrides).trim();
+      return templates.render(keyFor('group_coord_relay_swapped', line),
+        { ...vars, was: roomInline(line, 'was'), added: roomInline(line, 'added') }, overrides).trim();
     }
     if (line.added) {
-      return templates.render('group_coord_relay_added',
-        { ...vars, added: slotText(line.added) }, overrides).trim();
+      return templates.render(keyFor('group_coord_relay_added', line),
+        { ...vars, added: roomInline(line, 'added') }, overrides).trim();
     }
     return templates.render('group_coord_relay', vars, overrides).trim();
   }
@@ -282,19 +329,30 @@ function renderGroupCoordination(line, overrides) {
     // `lead` is a whole phrase, so an owner's rewording can move or drop it,
     // and a table nobody has said yes to yet draws nothing rather than an
     // empty label — the same shape as `who` on the done line below.
-    return templates.render('group_coord_table', {
+    return templates.render(keyFor('group_coord_table', line), {
       // A whole phrase, not a number: Hebrew does not say "1 מועדים", and
       // agreement is the renderer's job rather than the template's.
       count: line.count === 1 ? ONE_OPTION : `*${line.count}* ${MANY_OPTIONS}`,
-      lead: line.lead ? `${TABLE_LEAD} *${slotText(line.lead)}*.` : '',
+      lead: line.lead ? `${TABLE_LEAD} *${roomInline(line, 'lead')}*.` : '',
     }, overrides).trim();
   }
-  if (line.kind === 'dayof') return templates.render('group_coord_dayof', { slot: slotText(line.slot) }, overrides);
-  if (line.kind === 'soon') return templates.render('group_coord_soon', { slot: slotText(line.slot) }, overrides);
+  if (line.kind === 'dayof') {
+    return templates.render(keyFor('group_coord_dayof', line), { slot: roomInline(line, 'slot') }, overrides);
+  }
+  if (line.kind === 'soon') {
+    return templates.render(keyFor('group_coord_soon', line), { slot: roomInline(line, 'slot') }, overrides);
+  }
   if (line.kind === 'calendar') return templates.render('group_coord_calendar', {}, overrides);
   // `who` is a whole phrase, so an owner's rewording can move or drop it:
   // "כולם בפנים", or the tags of those who said yes. Null draws nothing.
   const who = !line.who ? '' : line.who.all ? WHO_ALL : (line.who.phones || []).length ? `${WHO_IN} ${mentionTokens(line.who.phones)}` : '';
+  if (line.multiZone) {
+    // People on several clocks are not meeting in one room, so the question is
+    // how they connect, never where (owner, 2026-09-25).
+    return tidy(templates.render('group_coord_done_zones', {
+      ...roomBlock(line, 'slot'), who, place_ask: line.placeAsk ? PLACE_ASK_ONLINE : '',
+    }, overrides)).trim();
+  }
   return templates.render('group_coord_done', {
     slot: slotText(line.slot), who, place_ask: line.placeAsk ? PLACE_ASK : '',
   }, overrides).trim();
@@ -303,6 +361,7 @@ const TABLE_LEAD = 'הכי מתקדם:';
 const ONE_OPTION = 'מועד אחד';
 const MANY_OPTIONS = 'מועדים';
 const PLACE_ASK = 'איפה נפגשים? תכתבו לי ואני אוסיף ליומן 📍';
+const PLACE_ASK_ONLINE = 'איך מתחברים? זום, מיט, וידאו בוואטסאפ — תכתבו לי ואני אוסיף ליומן 🎥';
 const OUTSIDE_NOTE = 'מי שעוד לא כתב לי בפרטי לא נספר פה — ״היי״ בפרטי וזה מסתדר ☺️';
 const WHO_ALL = 'כולם בפנים';
 const WHO_IN = 'בפנים:';
@@ -341,5 +400,5 @@ module.exports = {
   renderReminderText, rawPipeTextFor, reminderTemplateKey, localizedKey,
   renderGroupIntro, renderGroupGateNotice, renderGroupTooLarge, renderGroupOpened,
   renderGroupCoordination, mentionTokens, mentionToken, isTaggableNumber,
-  MAX_TAGS, SELF_NUMBER,
+  MAX_TAGS, SELF_NUMBER, PLACE_ASK_ONLINE,
 };
