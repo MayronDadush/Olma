@@ -571,6 +571,21 @@ export function gateReply(text, { readerWritesHebrew = null } = {}) {
   return { action: "trim", text: kept, leaks, reported };
 }
 
+// A reply that says it saved something — a PORT of `domain/phantom-save
+// .claimedWrite`, held against it by `tests/phantom-save.test.js`. Only the
+// word leaves the gateway, never the reply: brokerd alone knows whether a tool
+// ran on this turn, and it files what it decides. Report-only, and never
+// awaited — a reply must not wait on a question about itself.
+const HE_CLAIM_RE = /(?:^|[^\u0590-\u05FF])[וש]?(רשמתי|שמרתי|הוספתי|קבעתי|עדכנתי|מחקתי|ביטלתי|תזמנתי|הגדרתי)(?![\u0590-\u05FF])/;
+const EN_CLAIM_RE = /\bI(?:'ve| have)\s+(saved|added|noted|scheduled|updated|deleted|removed|cancel+ed|set)\b/i;
+export function claimedWrite(text) {
+  const s = String(text == null ? "" : text);
+  const he = HE_CLAIM_RE.exec(s);
+  if (he) return he[1];
+  const en = EN_CLAIM_RE.exec(s);
+  return en ? en[1].toLowerCase() : null;
+}
+
 // Whose text this gate is for: every agent that puts MODEL output in front of
 // a person or a room. Not `main` — that is the session the raw pipe sends as
 // (`channels/openclaw.sendRawMessage`), carrying the owner's own wording with
@@ -600,6 +615,11 @@ export function buildReplyGateHandler({ connect, sock, timeoutMs = 1500, log = t
       if (!text.trim()) return undefined;
       const agentId = m[1];
       const verdict = gateReply(text, { readerWritesHebrew: readerOf(agentId) });
+      // Read off what will actually be SENT — a claim inside notes the gate
+      // just cut never reaches anybody. Only a person's own agent: a room has
+      // no turn brokerd can speak for.
+      const claim = /^u-\d+$/.test(agentId) && verdict.action !== "cancel" ? claimedWrite(verdict.text) : null;
+      if (claim) askBroker("reply_claim", { agentId, word: claim }, { connect, sock, timeoutMs }).catch(() => {});
       if (verdict.action === "pass" && !verdict.reported.length) return undefined;
       // brokerd is asked only when something was found, so the ordinary reply
       // never waits on a socket. It is asked BEFORE the text goes (or does

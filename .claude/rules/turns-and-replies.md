@@ -358,6 +358,18 @@ title means this file. Grep the title, not the filename.
   well, because `scannable` strips quotations and Miron's leak quoted
   "Reply target of current user message".
 
+- **A reply that says it SAVED something is checked against whether anything
+  ran — reported, never blocked, until the rate is read.** The gate notices a
+  first-person save word ("רשמתי", "הוספתי", "I've added") on the text it will
+  send, and tells brokerd the word alone (`reply_claim`, fire-and-forget);
+  brokerd files `reply.claim` as `backed`, `unbacked`, `ours` or `unknown`
+  (`domain/phantom-save.judge`). **`unknown` is not `unbacked`** — the memory
+  of opens and tool calls is in process, and a restart must never read as "no
+  tool ran". **A turn Olma started is `ours` and not judged**: every no-tool
+  claim in 4,636 real turns was a delivery reporting an earlier write, or not a
+  claim (`incidents.md`, "רשמתי לך הכל, and nothing was"). The plugin carries
+  a port of `claimedWrite`, held by `tests/phantom-save.test.js`.
+
 - **The last tier's missing input was not a pattern, it was the READER**
   (2026-09-22; `incidents.md`, "The gate had no idea who was reading"). The
   residue the measurement above left behind was English prose with no tell of

@@ -25,6 +25,7 @@ const groupContext = require('../domain/group-context');
 const groupsDomain = require('../domain/groups');
 const groupTurn = require('../domain/group-turn');
 const replyLeak = require('../domain/reply-leak');
+const phantomSave = require('../domain/phantom-save');
 
 // One of these per turn. The gateway spawns a fresh MCP shim for every agent
 // turn and the shim holds ONE socket to brokerd for its whole life, so a
@@ -133,6 +134,20 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers }) {
     if (idx > 0) { list.splice(0, idx); pending.set(userId, list); }
     return list[0];
   }
+  // What `reply_claim` judges a reply by (domain/phantom-save.js): when this
+  // person's recent turns opened, and when a tool last ran for them. In
+  // process on purpose — it is only ever asked about a turn still running —
+  // and a restart that loses it answers `unknown`, never `unbacked`.
+  const claimOpens = new Map();
+  const lastToolAt = new Map();
+  function noteOpen(userId) {
+    const at = clock();
+    const list = (claimOpens.get(userId) || []).filter((t) => at - t <= phantomSave.OPEN_WINDOW_MS);
+    list.push(at);
+    while (list.length > PENDING_MAX_PER_USER) list.shift();
+    claimOpens.set(userId, list);
+  }
+
   // Injectable for the same reason `send` is everywhere else here: the test
   // that matters for this feature is the one that watches a real turn place a
   // real mark, and it must do that without spawning anything.
@@ -229,7 +244,7 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers }) {
         entry.marked.add(`${messageId}:${state}`);
         entry.reactionVocab = vocab;
       }
-      if (!rec.skipped) pushPending(Number(user.id), entry);
+      if (!rec.skipped) { pushPending(Number(user.id), entry); noteOpen(Number(user.id)); }
       out = { ok: true, opened: !rec.skipped, skipped: rec.skipped || null, userId: Number(user.id), counted: rec.counted };
     });
     lap('commit');
@@ -388,6 +403,33 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers }) {
       });
     });
     return { ok: true, filed: true };
+  }
+
+  // The reply gate heard its reply claim a save ("רשמתי", "I've added") and
+  // asks whether anything ran. Only the word comes here, never the reply, and
+  // the answer goes nowhere but the audit log: this is a measurement, and a
+  // verdict nobody has calibrated must not touch what the person reads
+  // (domain/phantom-save.js).
+  async function handleReplyClaim(params = {}) {
+    const agentId = String(params.agentId || '').trim();
+    if (!/^u-\d+$/.test(agentId)) return { ok: false, error: 'bad agentId' };
+    const word = String(params.word || '').slice(0, 20);
+    let out = { ok: false, error: 'no active user for agent' };
+    await withTx(pool, async (client) => {
+      const { rows } = await client.query(
+        `SELECT id FROM users WHERE agent_id = $1 AND status = 'active'`, [agentId]);
+      if (!rows[0]) return;
+      const userId = Number(rows[0].id);
+      const judged = phantomSave.judge({
+        ourTurn: selfInitiated.isActive(userId),
+        opens: claimOpens.get(userId) || [],
+        lastToolAt: lastToolAt.has(userId) ? lastToolAt.get(userId) : null,
+        now: clock(),
+      });
+      await require('../domain/audit').record(client, userId, 'reply.claim', { agentId, word, ...judged });
+      out = { ok: true, verdict: judged.verdict };
+    });
+    return out;
   }
 
   async function handleTurnContext(params = {}) {
@@ -627,6 +669,9 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers }) {
         await refreshUserCard(pool, actorId);
       }
       if (groupCardUserId && result && result.ok) await refreshUserCard(pool, groupCardUserId);
+      // Any tool that ran for them backs a reply saying it saved something —
+      // turn_start excepted, which runs on every message and saves nothing.
+      if (actorId && result && result.ok && name !== 'turn_start') lastToolAt.set(Number(actorId), clock());
       // The acknowledgement mark on the person's own message — 👀 as the turn
       // opens, ⏰ or ✅ as the work lands. Here, and not inside the handlers,
       // because every tool already passes through this one line: the table of
@@ -720,6 +765,8 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers }) {
         return handleGroupRoomWrite(msg.params || {});
       case 'reply_gate':
         return handleReplyGate(msg.params || {});
+      case 'reply_claim':
+        return handleReplyClaim(msg.params || {});
       default:
         return { ok: false, error: `unknown method ${msg.method}` };
     }

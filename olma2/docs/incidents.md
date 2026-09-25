@@ -141,6 +141,7 @@ never trust a dated narrative for something you are about to act on.
 - [The judge kept failing, three different ways (fixed 2026-08-30)](#the-judge-kept-failing-three-different-ways-fixed-2026-08-30)
 - [The eval partner was a real WhatsApp recipient, and the broken nightly was what stopped it (fixed 2026-09-23)](#the-eval-partner-was-a-real-whatsapp-recipient-and-the-broken-nightly-was-what-stopped-it-fixed-2026-09-23)
 - [Three reds the model did not earn, and one it did (fixed 2026-09-24)](#three-reds-the-model-did-not-earn-and-one-it-did-fixed-2026-09-24)
+- ["רשמתי לך הכל", and nothing was (watched from 2026-09-25)](#רשמתי-לך-הכל-and-nothing-was-watched-from-2026-09-25)
 
 **Cost, billing and the money page**
 
@@ -149,6 +150,7 @@ never trust a dated narrative for something you are about to act on.
 - [The conversation that never ended (fixed 2026-09-09)](#the-conversation-that-never-ended-fixed-2026-09-09)
 - [The pin held the order and the cache still died (measured 2026-09-11)](#the-pin-held-the-order-and-the-cache-still-died-measured-2026-09-11)
 - [DigitalOcean never cached (measured 2026-09-14)](#digitalocean-never-cached-measured-2026-09-14)
+- [Novita cached the probe and not the turns (measured 2026-09-25)](#novita-cached-the-probe-and-not-the-turns-measured-2026-09-25)
 - [The pilot that read as an expensive day (fixed 2026-09-09)](#the-pilot-that-read-as-an-expensive-day-fixed-2026-09-09)
 - [The heartbeat was the bill (fixed 2026-09-05)](#the-heartbeat-was-the-bill-fixed-2026-09-05)
 - [The ledger overstated OpenRouter by 65%, in both directions at once (fixed 2026-09-03)](#the-ledger-overstated-openrouter-by-65-in-both-directions-at-once-fixed-2026-09-03)
@@ -6061,6 +6063,40 @@ tool called and the right two items in the reply, each as a bold line instead
 of a list line — the model reformatting a drawn block. That one is the model's.
 
 ## Cost, billing and the money page
+
+### "רשמתי לך הכל", and nothing was (watched from 2026-09-25)
+
+Nightly eval #91 went red on `brain-dump-bulk`: the eval user sent a list of
+things to remember and Olma answered "רשמתי לך הכל" with no tool call in the
+turn at all (session 71822c49, 00:38:58Z). A person reading that believes
+their list exists. Same family as "Olma never claims a lookup it did not
+perform" and the link nobody minted — an action asserted that nothing did.
+
+**Read against real traffic before anything was built.** 4,636 real user
+turns, 126 replies with a first-person save word ("רשמתי", "שמרתי", "הוספתי",
+"קבעתי"), 11 of them with no tool call. Every one of the 11 was a turn Olma had
+STARTED — a delivery reporting an earlier turn's write, which is true — or not
+a claim at all; u-29's looked like one and the constraint was recorded in the
+very next turn. **So zero confirmed on a real person**, one in the evals.
+
+That is the moment a detector is cheap, so it was built REPORT-ONLY
+(`domain/phantom-save.js`). The reply gate notices the word — on the text that
+will actually be sent, so a claim inside cut working-out is not asked about —
+and tells brokerd the word alone, never awaited. brokerd is the only thing that
+knows whether a tool ran: it keeps when this person's turns opened and when a
+tool last ran for them (turn_start excepted — it runs on every message and
+saves nothing), and files `reply.claim` with one of four verdicts: `backed`,
+`unbacked`, `ours` (a turn Olma started, not judged), and `unknown` (brokerd
+restarted and holds nothing — never read as "no tool ran"). Two messages close
+together are judged leniently: a tool after the EARLIEST open in the window
+backs the claim.
+
+**What would make it block, and what it is waiting for:** the `unbacked` rate
+on real people, read by hand. Blocking a reply that claims a save is only right
+if every `unbacked` row is a real phantom; the transcript scan says the shape is
+rare and the false-positive classes are known, so the bar is a couple of weeks
+of rows before anyone argues for more. Needs a gateway restart to go live, like
+every change to the plugin.
 
 ### Twelve people off the bottom of the money page (fixed 2026-09-10)
 
