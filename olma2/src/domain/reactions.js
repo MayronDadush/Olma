@@ -392,6 +392,12 @@ function placeViaCli(req, opts, deps, { fallback } = {}) {
 // Only the two marks that PROMISE an answer wait. 🙏 on a thanks and the 👍 of
 // a "stop reminding me" are the answer, and go on at once.
 const DELAYABLE_OPENING = new Set(['working', 'listening']);
+// A bare "תודה" right after Olma asked them something is their ANSWER — to
+// "להוסיף לך את המשימה ליומן?" it most likely means yes (owner, 2026-09-26) —
+// so it gets no 🙏 and no silence, and the model decides what it meant. The
+// question has to be recent: after this long, a thanks closes the day.
+const THANKS_AFTER_QUESTION_MS = 3 * 60 * 60 * 1000;
+
 const EYES_DELAY_FLAG = 'eyes_delay_seconds';
 const MAX_EYES_DELAY_S = 120;
 
@@ -670,7 +676,7 @@ const VOCAB_FLAG = 'reaction_emoji';
 
 module.exports = {
   REACTION_STATES, REACTION_CAPABLE, TOOL_MARKS, LIVE_WINDOW_MS, VOCAB_FLAG,
-  EYES_DELAY_FLAG, TURN_END_HOOK, openingDelayMs, endSignalsLive, _resetStampCache,
+  THANKS_AFTER_QUESTION_MS, EYES_DELAY_FLAG, TURN_END_HOOK, openingDelayMs, endSignalsLive, _resetStampCache,
   noteMarkAttempted, doneMarkStands,
   isReactionCapable, buildReactRequest, buildReactArgs, outcomeState, placeMark, markFor, isLive,
   cleanMessageId, vocabulary, isUsableEmoji, _setLogs,

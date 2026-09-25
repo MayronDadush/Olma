@@ -12659,3 +12659,31 @@ touches. And the hold is only armed when the plugin's registration stamp lists
 `agent_end`: the plugin loads at gateway start, the deploy does not restart it,
 and a held 👀 with nothing to cancel it would put eyes under every fast reply —
 the exact thing this was for.
+
+### The thanks that was an answer (2026-09-26)
+
+The owner's case, not a report: Olma asks "להוסיף לך את המשימה ליומן?" and
+the answer is "תודה". The classifier read it as a closed exchange — 🙏 on it,
+`NO_REPLY` asked for — and the offer was silently dropped. A thanks after an
+offer can mean yes or "no, that's enough", and only the model can see which
+offer it was. Measured on the box since 08-20: 15 thanks-only messages from 7
+people, 1 of them after a question of Olma's (and in that one she wrote
+anyway, against the hint).
+
+The owner's call: the model decides, and it most likely means yes. So the
+plugin's reply signal (`turn_progress reply`, already sent for the held 👀)
+carries one more boolean — whether what is sent ENDS on a question, its last
+line with a bare link under it ignored — and brokerd keeps the newest per
+person, for three hours. A thanks inside that window gets the ordinary 👀,
+no request for silence, and `hints.thanksAfterQuestion`; it spends the
+question, and it is audited (`turn.thanks_after_question`) so the rate can be
+read. **What it cannot see, and says so:** a question sent on the raw pipe
+never passes the reply gate, so a reminder or a coordination line asking
+something is not one — deliberately for the coordination line too, which ends
+on its link sentence, since "thanks" is not agreeing to a time. And the memory
+is brokerd's, so a deploy between the question and the thanks forgets it: that
+thanks closes the exchange, which is the old behaviour and never a wrong one.
+
+The same change widened the classifier to every language somebody here might
+thank in — Arabic, Russian, French, Spanish, German, Italian, Portuguese,
+Amharic, with each language's "very much" on the filler list and nothing else.

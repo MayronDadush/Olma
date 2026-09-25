@@ -761,7 +761,7 @@ test('an ordinary reply is returned untouched, and brokerd hears only that it we
   await new Promise((r) => setTimeout(r, 20));
   assert.ok(!sent.some((m) => m.method === 'reply_gate'));
   assert.equal(sent.filter((m) => m.method === 'turn_progress').length, ORDINARY.length);
-  assert.deepEqual(sent.find((m) => m.method === 'turn_progress').params, { agentId: 'u-3', what: 'reply' });
+  assert.deepEqual(sent.find((m) => m.method === 'turn_progress').params, { agentId: 'u-3', what: 'reply', asked: false });
 });
 
 test('the hook arms the english tier off the agent id, and only for an agent brokerd answered for', async () => {

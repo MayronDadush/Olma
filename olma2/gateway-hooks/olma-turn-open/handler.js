@@ -93,8 +93,33 @@ function replyToIdOf(context) {
 // list; anything else — a question mark, a verb, a noun nobody listed — is not
 // this. Long-form gratitude ("תודה על כל העזרה אתמול") takes the ordinary path
 // on purpose.
-const THANKS_WORD_RE = /^(תודה|תודות|thanks|thankyou|thank|thx|tnx|ty|merci)$/u;
-const FILLER_WORD_RE = /^(רבה|ענק|ענקית|גדולה|לך|לכם|מראש|מעולה|סבבה|אחלה|מושלם|יאללה|אוקיי|אוקי|ok|okay|you|u|so|much|very|lots|lot|a|great|perfect|cool|nice)$/u;
+//
+// Every language somebody here might thank in (owner, 2026-09-26: "בכל
+// השפות"), each with the words that make its "thank you very much" — and
+// nothing else, for the same asymmetry. A new language is a word on each list.
+const THANKS_WORD_RE = new RegExp('^(' + [
+  'תודה', 'תודות', 'תנקס', 'טנקס',                              // Hebrew
+  'thanks', 'thankyou', 'thank', 'thx', 'thnx', 'tnx', 'tnks', 'ty', // English
+  'شكرا', 'مشكور', 'مشكورة',                                     // Arabic
+  'спасибо', 'спс', 'благодарю',                                  // Russian
+  'merci',                                                        // French
+  'gracias',                                                      // Spanish
+  'danke', 'dank',                                                // German
+  'grazie',                                                       // Italian
+  'obrigado', 'obrigada', 'valeu',                                // Portuguese
+  'አመሰግናለሁ',                                                    // Amharic
+].join('|') + ')$', 'u');
+const FILLER_WORD_RE = new RegExp('^(' + [
+  'רבה', 'ענק', 'ענקית', 'גדולה', 'לך', 'לכם', 'מראש', 'מעולה', 'סבבה', 'אחלה', 'מושלם', 'יאללה', 'אוקיי', 'אוקי',
+  'ok', 'okay', 'you', 'u', 'so', 'much', 'very', 'lots', 'lot', 'a', 'great', 'perfect', 'cool', 'nice',
+  'جزيلا', 'كتير', 'كثيرا',                                       // شكرا جزيلا
+  'большое', 'огромное',                                          // большое спасибо
+  'beaucoup', 'mille',                                            // merci beaucoup, mille grazie
+  'muchas', 'mil',                                                // muchas gracias
+  'vielen', 'schön', 'sehr',                                      // vielen Dank, danke schön
+  'tante',                                                        // grazie tante
+  'muito',                                                        // muito obrigado
+].join('|') + ')$', 'u');
 const REPLY_BLOCK_RE = /\[Replying to[^\]]*\][\s\S]*?\[\/Replying\]/g;
 const MAX_THANKS_WORDS = 5;
 
