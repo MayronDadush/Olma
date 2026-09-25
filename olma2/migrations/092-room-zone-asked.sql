@@ -7,7 +7,7 @@
 -- timezone_asked_at (045), holiday_quiet_asked_at (062) and
 -- more_groups_offered_at (086): a once-ever question lives on the person.
 --
--- 090: SELECT max(version) FROM schema_migrations on the box was 86 on
--- 2026-09-25 (never `ls migrations/`); 087-089 are claimed by open branches
--- (coord-exact-time, owner-messages-log).
+-- 092: SELECT max(version) FROM schema_migrations on the box was 91 at
+-- 11:30Z on 2026-09-25 (never `ls migrations/`). This was 090 until #506
+-- landed 091 above it, and a number below the box's max is never applied.
 ALTER TABLE users ADD COLUMN room_zone_asked_at TIMESTAMPTZ;

@@ -2875,7 +2875,7 @@ as the zone it converts from. User 11 is `America/Los_Angeles`, inferred on
 answered, and the owner thinks he is in New York. The rule "nobody is asked a
 question they have already not answered once" forbade asking again. The owner
 decided he should be asked, so it is a new occasion with its own once-ever
-stamp (`users.room_zone_asked_at`, migration 090): one line in the private
+stamp (`users.room_zone_asked_at`, migration 092): one line in the private
 invite to a room coordination on several clocks, for an unconfirmed zone only,
 stamped after the send confirms. His zone was not changed by hand.
 

@@ -521,7 +521,7 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
         // back. The quiet half is spent only when the GATE says the row got
         // through on it (verdict.spendsQuietRoomInvite) — a row the room
         // window or the page carried is not an allowance being used.
-        // The once-ever zone question (migration 090), stamped with the same
+        // The once-ever zone question (migration 092), stamped with the same
         // "only once the send confirmed" as the allowance below.
         const spendZoneAsk = async () => {
           if (!zoneAsk.askZone) return;

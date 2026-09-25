@@ -84,7 +84,7 @@ async function currentMeeting(client, groupId, { includeClosed = false } = {}) {
 // rides the private invite as `roomZones`, and the delivery worker spends it
 // on the one question it earns: somebody whose own zone was never confirmed is
 // asked, once ever, whether it is right (`users.room_zone_asked_at`, migration
-// 090) — because in such a room every time she says is converted from it.
+// 092) — because in such a room every time she says is converted from it.
 function roomZonesFlag(members, group) {
   const zones = members.map((m) => m.timezone).filter(Boolean);
   return meetingTime.spansZones(zones, group.timezone || null) ? { roomZones: true } : {};

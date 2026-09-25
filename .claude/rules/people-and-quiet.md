@@ -158,7 +158,7 @@ title means this file. Grep the title, not the filename.
   below `stuck_meeting`/`deadline_risk` and above Olma's own opinions, and it
   never reaches somebody at `misses >= 1`. It is spent on the enqueue in
   `checkin.run`, and the copy is quoted, not described, and asks nothing.
-  **`users.room_zone_asked_at` (migration 090) is the fourth**: the one time
+  **`users.room_zone_asked_at` (migration 092) is the fourth**: the one time
   somebody whose zone was never confirmed (`timezone_confirmed = false`) is
   asked whether it is right, because a room they are in spans several clocks
   and every time said there is converted from it (owner, 2026-09-25, פנתרה).
