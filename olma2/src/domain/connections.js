@@ -52,13 +52,12 @@ async function requestConnection(client, requesterId, targetPhone, { reason, mes
   // is the OTHER one (`intake/invites.afterConnectionRequest`) — and it would be
   // spoken by the greeter's agent, since they have no session of their own.
   //
-  // So the question is asked of the agent: `agent_id` is written by
-  // `provisionUser` and by nothing else, in the same statement as
-  // `status = 'active'`, so it is the one column that says a person has been
-  // taken on. `target_id` is still linked whenever a row exists — the FK is a
-  // true fact and `attachProvisionedTarget` updates `invited` rows in place, so
-  // the state machine still reaches `pending_target` on the day they sign up.
-  const reached = Boolean(target && target.agent_id);
+  // So the question is asked of `status`, the column `provisionUser` writes when
+  // it takes somebody on. `target_id` is still linked whenever a row exists — the
+  // FK is a true fact and `attachProvisionedTarget` updates `invited` rows in
+  // place, so the state machine still reaches `pending_target` on the day they
+  // sign up.
+  const reached = Boolean(target && target.status !== 'pending');
   const status = reached ? 'pending_target' : 'invited';
   let row;
   try {

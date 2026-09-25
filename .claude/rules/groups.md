@@ -428,6 +428,45 @@ have already had to be argued for.
   name is his to write (`incidents.md`, "The room asked three numbers that were
   nobody").
 
+- **A number on the roster becomes a `users` row, and a row is not a person who
+  has met her** (owner, 2026-09-25: "ליצור משתמש ממספר טלפון שראינו ברשימת חברים
+  של קבוצה"). `groups.ensureRosterUsers` runs on every pass of the group sweep,
+  behind `group_roster_users`, closed by default, and mints `status = 'pending'`
+  with `agent_id`/`workspace_path`/`onboarded_at` NULL and a timezone off the
+  dialling code — never NULL, the rule that outranks everything here. The row
+  exists so a room's coordination can know somebody is there; it is not an
+  introduction, and `isConnected` is untouched, so the gate, the quorum,
+  `decideState.missing` and `MIN_CONNECTED_TO_OPEN` all answer exactly as before.
+  **A LID never becomes one, and `'unknown'` is refused as firmly as
+  `'not_phone'`** (`phone-timezone.isRealPhone`, the rule above): `users.phone` is
+  `NOT NULL UNIQUE` and feeds `user_channels.channel_identifier`, 41 foreign keys
+  point at `users.id` across 36 tables, **there is no merge primitive anywhere in
+  this codebase** for the day a LID turns out to be a number we already hold, and
+  a queued message to a non-dialable target retries every ten minutes for ever
+  because `outbox/worker`'s backoff caps there. The cost of refusing is only
+  delay — the gateway writes the reverse-map file the second it first resolves a
+  LID, and `resolveLidMembers` runs on the pass before this one.
+  **`status = 'pending'` is now a question six readers ask**, because every one of
+  them used to read "there is a row" as "this is one of ours": `outbox/gate`
+  drops such a row as `pending_user` save `PENDING_USER_KINDS` — the stranger
+  intro and the waitlist notice, the two things addressed to exactly such a
+  person, both delivered through the intake session (an explicit `true` drops,
+  never `undefined`); `connections.requestConnection` reads `targetKnown` off it,
+  so a stranger still gets the introduction instead of "X wants to connect with
+  you" spoken by the greeter; `group-connections.connectRoom` joins `users`,
+  which restores line 1 of its own header and closes the same hole for the
+  invited-stranger row that predates this; `registerGroup` refuses a room whose
+  only "user" is a roster row, and never registers one in its name;
+  `syncRoster`'s timezone vote skips them, because the room's zone is the room's
+  quiet hours and three numbers nobody has spoken to must not outvote the person
+  in the room; and `config_guard.checkUnansweredStrangers` stops counting a row
+  as a record, or it would go quiet for exactly the person it exists to find.
+  The growth count on the admin home page asks too (measured: not one `pending`
+  row existed and the figures were 3/9/21 either way). `createUser` takes an
+  `audit` override for the same reason — `jobs/metrics.users_provisioned` and
+  `active_users` read that row, not the table — and the summary row's actor is
+  `null`, because nobody did this.
+
 - **Every line a room hears is said once, except the TABLE moving, which is
   news every time** (migration 084, `meetings.group_table_at`; owner,
   2026-09-22). מירון's padel room was told she had started and that there was

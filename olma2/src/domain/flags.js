@@ -125,10 +125,10 @@ const DEFAULTS = {
   // — and refuses the two members of Padel Gang the gateway only ever names by
   // LID (`phone-timezone.isRealPhone`). What the row is FOR is the coordination
   // that could not reach them; what it must not do is be mistaken for somebody
-  // who has met her, which is why `agent_id IS NULL` is now the question asked by
-  // the delivery gate, `connections.requestConnection`,
-  // `group-connections.connectRoom`, the unanswered-strangers check and the
-  // growth count.
+  // who has met her, which is why `status = 'pending'` is now the question asked
+  // by the delivery gate, `connections.requestConnection`,
+  // `group-connections.connectRoom`, `syncRoster`'s timezone vote, the
+  // unanswered-strangers check and the growth count.
   group_roster_users: false,
   // jobs/twin-shadow.js: Jev (Typesafe) answers "is this new task already on
   // their list?" beside the code, on real tasks, and nothing acts on it. OFF

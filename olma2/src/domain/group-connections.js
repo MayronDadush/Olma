@@ -140,15 +140,14 @@ async function connectRoom(client, groupId) {
   // predates roster rows — an invited stranger with a `pending` row who happened
   // to be in the room (`intake/invites.ensurePendingUser`).
   //
-  // Deliberately `agent_id`, not `groups.isConnected`: the question here is
-  // whether Olma has taken this person on, which is one column written by
-  // `provisionUser` alone. `isConnected` asks the stricter "has WRITTEN to her",
-  // and using it would also stop connecting people who were provisioned and have
-  // not spoken yet — a live behaviour change nobody asked for, in a function
+  // Deliberately `status`, not `groups.isConnected`: the question here is whether
+  // Olma has taken this person on. `isConnected` asks the stricter "has WRITTEN to
+  // her", and using it would also stop connecting people who were provisioned and
+  // have not spoken yet — a live behaviour change nobody asked for, in a function
   // whose own argument is that standing in the room is the consent moment.
   const { rows: members } = await client.query(
     `SELECT DISTINCT m.user_id FROM chat_group_members m
-       JOIN users u ON u.id = m.user_id AND u.status = 'active' AND u.agent_id IS NOT NULL
+       JOIN users u ON u.id = m.user_id AND u.status <> 'pending'
       WHERE m.group_id = $1 AND m.left_at IS NULL AND m.user_id IS NOT NULL
       ORDER BY m.user_id`,
     [groupId]);

@@ -3088,6 +3088,74 @@ caps there and the gate has no "cannot be reached"), told its owner a guessed
 city by name from `checkin.js`, and left the system as `{{inviter_phone}}` in a
 message a stranger reads.
 
+**And then the row was built anyway, on the other half of that measurement
+(2026-09-25).** The owner's ask was the plain one — "ליצור משתמש ממספר טלפון
+שראינו ברשימת חברים של קבוצה" — and everything in the paragraph above is the
+reason it was safe to do only once the shape filter existed. `isRealPhone` is
+the gate on the write, so a LID never reaches `users.phone` and the whole merge
+problem stays unbuilt; what a refused number costs is delay, because the gateway
+writes the reverse-map file the second it first resolves one and the row appears
+by itself on the next pass. Measured before it shipped: with the flag open it
+mints exactly ONE row across every registered group — a member of "פנתרה" with a
+real Israeli number and no user — and refuses the two Padel Gang members the
+gateway only ever named by LID.
+
+The work was not the write. It was that **"is there a `users` row" had been
+standing in for "is this one of ours" in six different places**, and every one of
+them would have been wrong the moment a roster row existed:
+
+* the delivery gate would have sent to them — and `channels/openclaw.js` routes
+  `row.agent_id || 'intake'`, so the message would have gone out as a turn on the
+  GREETER's agent: not their assistant writing, the front door writing to
+  somebody who never knocked;
+* `connections.requestConnection` would have read `targetKnown` as true and sent
+  "X wants to connect with you" with no introduction in front of it, because the
+  branch that explains who Olma is and who is asking is the other one;
+* `group-connections.connectRoom` would have auto-connected them to everybody in
+  the room with every grant on — the exact thing line 1 of its own header comment
+  forbids, written when `m.user_id IS NOT NULL` still meant what it said;
+* `registerGroup` refused a room of strangers by asking `known.size`, which one
+  roster row from an unrelated group would have satisfied — an agent, a
+  workspace, a line in the live gateway config and an intro said out loud to
+  eleven people who never asked;
+* `syncRoster`'s timezone vote would have let three numbers nobody has spoken to
+  outvote the one person in the room, and the room's zone IS the room's quiet
+  hours;
+* `config_guard.checkUnansweredStrangers` would have gone quiet for exactly the
+  person it exists to find — somebody whose message the gateway swallowed, who
+  happens to be in a room with one of our users. A row is not a record their
+  message could land in.
+
+The discriminator is `status = 'pending'` and not `agent_id`, although
+`provisionUser` writes both in one statement and they never disagree in
+production. `agent_id` would also catch an `active` row with no agent — a
+half-finished provisioning — and silencing that person is a change nobody asked
+for, in the direction of saying nothing, where
+`config_guard.checkUnreachableJoiners` already reports them by name. It is also
+what the test fixtures are: `makeUser` creates `active` rows with no agent, so
+`agent_id` as the gate would have dropped most of the suite's outbox rows and the
+first green run would have been lying about which predicate was under test.
+
+Two things went the other way and are worth keeping. The **upgrade path already
+existed**: `provisionUser` reuses an existing `pending` row, fills a NULL
+timezone and flips it to active with an agent in one statement — the path the
+waitlist and the invited stranger have used in production since Phase E — so
+nothing new had to be written for the day a roster row writes her first message.
+And **two numbers on the admin pages read the audit row rather than the `users`
+table** (`jobs/metrics.users_provisioned`, `active_users`), so `createUser` took
+an `audit` override and the summary row's actor is `null`: a roster row is not a
+person provisioned, not a person active, and not anything on the room
+registrar's own record.
+
+The suite check that mattered was the negative one. Reverting each of the six
+guards one at a time turned 7 of the 12 new tests red and left 5 green — and the
+5 are the right 5: the flag, the row's shape and the LID refusal are about the
+write itself, while the sender-gate and check-in assertions stayed green because
+`syncSenderGate` and `checkin.eligibleUsers` already filtered
+`status = 'active'`. Those two are regression locks on filters that were already
+correct, not proofs of new code, and they are in the file precisely because the
+next person to widen one of those queries needs to find out from a test.
+
 ### The room chased three people, two of whom had never been asked (fixed 2026-09-22)
 
 Coordination 38 was opened in the test room at 00:40 to measure something

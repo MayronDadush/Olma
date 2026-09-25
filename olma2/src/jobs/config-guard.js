@@ -712,13 +712,12 @@ async function checkUnansweredStrangers(client, deps = {}) {
   // a group's roster, for somebody who has never written. Counting that as
   // "the system has a record of them" would make this check go quiet for exactly
   // the person it exists to find — a stranger whose message the gateway
-  // swallowed, who happens to be in a room with one of our users. `agent_id` is
-  // written by `provisionUser` and nothing else, so it is the column that says
-  // their message had somewhere to land. No false positive comes back with it:
-  // somebody mid-provisioning has a SESSION, and the clause below already skips
-  // on that.
+  // swallowed, who happens to be in a room with one of our users. A `pending` row
+  // has nothing their message could land in. No false positive comes back with
+  // it: somebody mid-provisioning has a SESSION, and the clause below already
+  // skips on that.
   const { rows } = await client.query(
-    'SELECT phone FROM users WHERE phone IS NOT NULL AND agent_id IS NOT NULL');
+    "SELECT phone FROM users WHERE phone IS NOT NULL AND status <> 'pending'");
   const known = new Set(rows.map((r) => String(r.phone).replace(/^\+/, '')));
 
   const violations = [];

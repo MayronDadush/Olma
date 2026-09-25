@@ -175,15 +175,18 @@ async function registerGroup(client, { channel = 'whatsapp', externalId, subject
   if (!roster.length) return err('invalid', 'group needs at least one parsed member');
 
   const known = await knownUsers(client, roster.map((m) => m.phone));
-  // Somebody who has WRITTEN, not merely somebody with a row. Since
-  // `ensureRosterUsers` can mint a row for a member of another group who has
-  // never met Olma, counting rows would let a room of strangers register on the
-  // strength of one of them — and registering is an agent, a workspace, a line
-  // in the live gateway config and an intro said out loud to eleven people who
-  // never asked. `isConnected` is the same predicate the gate uses; the shape
-  // it needs is a member row, so map the user onto one.
-  const vouching = [...known.values()]
-    .filter((u) => isConnected({ user_id: u.id, last_inbound_at: u.last_inbound_at, opening_sent_at: u.opening_sent_at }));
+  // A real user, not merely a row. Since 2026-09-25 `ensureRosterUsers` can have
+  // minted a `pending` row for a member of ANOTHER group who has never met Olma,
+  // so counting rows would let a room of strangers register on the strength of
+  // one of them — and registering is an agent, a workspace, a line in the live
+  // gateway config and an intro said out loud to eleven people who never asked.
+  //
+  // `status <> 'pending'` and deliberately not `isConnected`: the gate's question
+  // ("has this person WRITTEN to her") is stricter, and a room with one
+  // hand-provisioned, silent member registers today and stays locked — which is
+  // the behaviour the test two files over is about. Only the rows that stand for
+  // nobody are excluded.
+  const vouching = [...known.values()].filter((u) => u.status !== 'pending');
   if (!vouching.length) return err('forbidden', 'no member of this group is an Olma user');
 
   const existing = await getByExternalId(client, channel, externalId);
@@ -191,14 +194,14 @@ async function registerGroup(client, { channel = 'whatsapp', externalId, subject
 
   // …and the room is registered BY one of those, never by a roster row: this id
   // becomes `chat_groups.registered_by_user_id`, the actor on every `group.*`
-  // audit row and on `group_outbox`, and a person who has never written to her
-  // must not be the name on any of them.
+  // audit row and on `group_outbox`, and a number nobody has ever spoken to must
+  // not be the name on any of them.
   const registeredBy = [...vouching].sort((a, b) => a.id - b.id)[0];
   const { rows } = await client.query(
     `INSERT INTO chat_groups (channel, external_id, subject, registered_by_user_id, timezone)
      VALUES ($1, $2, $3, $4, $5) RETURNING *`,
     [channel, externalId, subject || null, registeredBy.id,
-      majorityTimezone([...known.values()].map((u) => u.timezone))]
+      majorityTimezone(vouching.map((u) => u.timezone))]
   );
   const group = rows[0];
   await syncRoster(client, group.id, roster);
@@ -208,12 +211,13 @@ async function registerGroup(client, { channel = 'whatsapp', externalId, subject
   return ok({ group: await getById(client, group.id), created: true });
 }
 
-// `opening_sent_at` rides along because `registerGroup` above has to be able to
-// ask `isConnected`, not merely "is there a row". Since `ensureRosterUsers`
-// below can create a row for somebody who has never written, a plain
+// `status` rides along because `registerGroup` above has to be able to ask
+// whether a member is a real user and not merely a row. Since `ensureRosterUsers`
+// below can create a `pending` row for somebody who has never written, a plain
 // `known.size` would let a room of eleven strangers plus one roster row through
 // the refusal that exists to stop exactly that — the back door into an agent, a
-// workspace and a line in the live gateway config.
+// workspace and a line in the live gateway config. `syncRoster` reads it too, to
+// keep a guessed zone out of the room's quiet hours.
 async function knownUsers(client, phones) {
   if (!phones.length) return new Map();
   const { rows } = await client.query(
