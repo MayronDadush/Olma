@@ -794,9 +794,9 @@ button.row:active{background:var(--bg-tint)}
   transition:transform .38s var(--squash);
 }
 .homecard:active{transform:scale(.96)}
-.homecard .tile{width:38px;height:38px;border-radius:12px;margin-bottom:8px}
-.tile.hometasks{background:linear-gradient(160deg,#8C7BFF,#5B45E0)}
-.tile.homemeets{background:linear-gradient(160deg,#FF6E63,#E2382C)}
+/* the tab bar's own glyphs, drawn the way the bar draws them — the card and
+   the tab it opens are recognisably the same place */
+.homeicon{width:28px;height:28px;color:var(--text-2);margin-bottom:10px}
 .homenum{color:var(--text);font-family:'Rubik',sans-serif;font-weight:700;font-size:38px;line-height:1;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
 .homecard b{font-size:15px;font-weight:600;margin-top:2px}
 .homecard > i{font-style:normal;font-size:12.5px;color:var(--text-3);line-height:1.35;min-height:1.35em}
@@ -3058,7 +3058,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
          own and leave without finding the tab bar (the owner, 2026-09-26). -->
     <div class="homecards" data-stage="0">
       <button class="homecard" data-go="tasks">
-        <span class="tile hometasks"><svg><use href="#i-list"/></svg></span>
+        <svg class="homeicon"><use href="#i-list"/></svg>
         <span class="homenum" id="homeTasksN">0</span>
         <span class="homeplus" aria-hidden="true"><svg><use href="#i-plus"/></svg></span>
         <b id="homeTasksL"></b>
@@ -3066,7 +3066,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
         <svg class="chev homechev"><use href="#i-chev"/></svg>
       </button>
       <button class="homecard" data-go="cal">
-        <span class="tile homemeets"><svg><use href="#i-cal24"/></svg></span>
+        <svg class="homeicon"><use href="#i-cal24"/></svg>
         <span class="homenum" id="homeMeetsN">0</span>
         <span class="homeplus" aria-hidden="true"><svg><use href="#i-plus"/></svg></span>
         <b id="homeMeetsL"></b>
@@ -4576,8 +4576,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "home.p":"עולמה עוזרת לך בוואטסאפ. כאן רואים את כל מה שהיא מחזיקה בשבילך.",
       "home.tasks.n0":"משימות פתוחות","home.tasks.n1":"משימה פתוחה","home.tasks.nN":"משימות פתוחות",
       "home.meets.n0":"תיאומי פגישה","home.meets.n1":"תיאום פגישה","home.meets.nN":"תיאומי פגישה",
-      "home.tasksStart":"הוסיפו משימה","home.tasksStartSub":"או פשוט כתבו לעולמה בוואטסאפ",
-      "home.meetsStart":"תאמו פגישה","home.meetsStartSub":"עולמה תמצא זמן שמתאים לכולם",
+      "home.tasksStart":"הוסיפו משימה","home.tasksStartSub":"או פשוט כתבו לעולמה בוואטסאפ את המשימה",
+      "home.meetsStart":"תאמו פגישה","home.meetsStartSub":"עולמה תמצא זמן שמתאים לכולם דרך הוואטסאפ",
       "home.tasksToday":"{n} להיום","home.tasksGo":"לרשימה המלאה","home.meetsGo":"לכל התיאומים",
       "nav.hint":"כאן למטה עוברים בין העמודים",
       "tools.accounts":"חשבונות","tools.accountsHint":"התחברות אחת לכל ספק",
@@ -4915,8 +4915,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "home.p":"Allma helps you on WhatsApp. Here you see everything she is holding for you.",
       "home.tasks.n0":"open tasks","home.tasks.n1":"open task","home.tasks.nN":"open tasks",
       "home.meets.n0":"meeting coordinations","home.meets.n1":"meeting coordination","home.meets.nN":"meeting coordinations",
-      "home.tasksStart":"Add a task","home.tasksStartSub":"or just tell Allma on WhatsApp",
-      "home.meetsStart":"Set up a meeting","home.meetsStartSub":"Allma finds a time that suits everyone",
+      "home.tasksStart":"Add a task","home.tasksStartSub":"or just send Allma the task on WhatsApp",
+      "home.meetsStart":"Set up a meeting","home.meetsStartSub":"Allma finds a time that suits everyone, over WhatsApp",
       "home.tasksToday":"{n} for today","home.tasksGo":"See the full list","home.meetsGo":"See them all",
       "nav.hint":"Switch between pages down here",
       "tools.accounts":"Accounts","tools.accountsHint":"One sign-in per provider",
