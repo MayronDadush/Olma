@@ -316,12 +316,13 @@ Loads when you **Read** a file under `src/intake/agents-template.md`, `src/intak
 - **When brokerd has put a 👍 on their message, the result says so (`hints.markPlaced`) and the model answers `NO_REPLY` unless words add something**
 - **The owner's rule is that anything which CAN end in a like should**
 - **The hint follows the MARK, not the spawn.**
-- **A message that is only thanks is answered by a 🙏 and by nothing else.**
+- **A message that is only thanks is answered by a 🙏 and by nothing else** — in any language, and not right after Olma asked a question: then it is their answer, most likely a yes, and the model decides
 - **`markPlaced` is CONDITIONAL, so nothing else on the same result may be an unconditional instruction to write.**
 - **One in-flight reaction per message.**
 - **The shim's connection outlives the turn, so nothing per-turn may be latched to it.**
 - **A model with nothing to relay passes something, not nothing.**
 - **The acknowledgement mark is OURS ALONE, and the gateway's own ack stays off**
+- **The 👀 waits for a slow answer** — held `eyes_delay_seconds` (15), dropped by a reply, a closing mark or the turn's end; inert until the gateway restarts onto the plugin with `agent_end`
 - **`placeMark` claims nothing and therefore must SAY something.**
 - **Olma never offers a capability without asking the thing that owns it.**
 - **A carryover leak is repaired on a schedule, because nothing can name the writer.**

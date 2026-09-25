@@ -135,7 +135,17 @@ title means this file. Grep the title, not the filename.
   required, a question mark disqualifies, and every other word must be on a
   short filler list. **Needs a gateway restart to take effect** — the hook is
   read at startup, and until then the code is live and inert
-  (`incidents.md`, "בשמחה יהב, שיהיה ערב טוב").
+  (`incidents.md`, "בשמחה יהב, שיהיה ערב טוב"). **Every language is a word on
+  the list**, each with its own "very much" as filler (2026-09-26).
+  **…except right after a QUESTION of Olma's, when the thanks is the answer.**
+  "להוסיף לך את המשימה ליומן?" → "תודה" dropped the offer. Now the plugin's
+  `turn_progress reply` says whether a reply ended on a question
+  (`endsWithQuestion`, its last line, a bare link under it ignored), brokerd
+  keeps the newest per person for `reactions.THANKS_AFTER_QUESTION_MS` (3h),
+  and a thanks inside it gets 👀, no silence and `hints.thanksAfterQuestion`:
+  the model decides, most likely yes (the owner's call). Spent on use, in
+  memory (a restart is the old behaviour), blind to the raw pipe on purpose
+  (`incidents.md`, "The thanks that was an answer").
 
 - **`markPlaced` is CONDITIONAL, so nothing else on the same result may be an
   unconditional instruction to write.** It lost to one for two days: the tool
@@ -146,11 +156,12 @@ title means this file. Grep the title, not the filename.
   is there anything here the mark cannot carry.** For a reminder, the hour Olma
   CHOSE is; the hour they NAMED is not, and the save never is.
 
-- **One in-flight reaction per message.** A mark is a whole `openclaw` CLI
-  start-up (15s wall on the box, measured again at 14.5s on two cores), so a
-  short turn has the 👀 and the 👍 alive at once and the LAST to finish wins.
-  `placeMark` kills an older child still starting up when a newer mark arrives
-  for the same message; one that already exited is simply replaced on the phone.
+- **One in-flight reaction per message.** On the gateway socket a newer mark
+  for the same message waits for the older one to be answered, so 👀 and 👍 go
+  out in the order they were asked. On the CLI fallback a mark is a whole
+  `openclaw` start-up (15s wall idle, 54s under load), so the 👀 and the 👍 are
+  alive at once and the LAST to finish wins: `placeMark` kills an older child
+  still starting up; one that already exited is simply replaced on the phone.
 
 - **The shim's connection outlives the turn, so nothing per-turn may be latched
   to it.** `bin/olma-mcp.js` caches ONE socket for the life of its process and
@@ -191,10 +202,29 @@ title means this file. Grep the title, not the filename.
   **This inverts the old diagnostic**, which said a working 👀 was no evidence
   `placeMark` worked — the gateway's ack is what made the mark path look alive
   through the six hours it was dead (`incidents.md`, "The mark that never
-  moved"). With that gone a 👀 IS ours and does prove the path, and the cost of
-  the trade is that the ack now lands ~15s in rather than instantly. Closing
-  that means moving `placeMark` off the CLI onto `channels/gateway-rpc.js`,
-  whose `send()` already takes any method name.
+  moved"). With that gone a 👀 IS ours and does prove the path. The trade
+  cost ~15s of ack latency until 2026-09-25, and the owner then saw the 👀
+  arrive AFTER short replies; `placeMark` now sends `message.action`
+  (`react`) on `channels/gateway-rpc.js` — the call the CLI itself makes once
+  it has started — and uses the CLI only for a request that never reached the
+  gateway, never for one refused or timed out on the wire (`incidents.md`,
+  "The eyes arrived after the answer").
+
+- **The 👀 waits for a slow answer** (owner, 2026-09-25, off 123 real
+  messages: a quarter answered inside 10s, and the 👀 landed UNDER the reply
+  in 57 of 77). brokerd holds the opening 👀/👂 for `eyes_delay_seconds`
+  (flag, default 15, `0` = at once) and drops it when the answer beats it:
+  the plugin's `reply_payload_sending` sends `turn_progress reply`, its
+  `agent_end` sends `turn_progress end` (the only signal for a turn that ends
+  in silence), and a closing mark on the same message drops it too. The signal
+  is matched to the message whose prompt was built last (`turn_context`), so a
+  message queued behind another turn keeps its own 👀 and a turn Olma started
+  cancels nobody's. 🙏 and the stop-reminders 👍 are the answer and never
+  wait. **The hold needs the gateway restarted onto the plugin with
+  `agent_end`** — `reactions.endSignalsLive` reads the plugin's registration
+  stamp, and until it lists that hook the 👀 goes on at once, because with no
+  signal nothing would ever cancel a held one (`incidents.md`, "The eyes
+  arrived after the answer").
 
 - **`placeMark` claims nothing and therefore must SAY something.** It is
   fire-and-forget by design — no exit code may reach the caller, and nothing
