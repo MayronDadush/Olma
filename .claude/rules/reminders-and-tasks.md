@@ -126,6 +126,17 @@ title means this file. Grep the title, not the filename.
   (`add/answer/remove/swap`), which re-mirrors after every change.
   A yes must name one of the options on the table; the meeting confirms the
   moment one option is unanimous among the people still in it.
+  **A whole day or a part of one keeps its PRECISION all the way onto the
+  settled meeting** (owner, 2026-09-24; migration 087,
+  `meetings.confirmed_all_day/confirmed_daypart`, written by
+  `meeting-options.confirmOn` and nothing else). Its `starts_at` is a stand-in
+  hour — 09:00 for a whole day, `PART_HOURS` for a part — put there by
+  `meeting-option-moment.standInFor` whichever door the time came in by, so the
+  same day named twice is still one option. Everything that reads the settled
+  moment has to ask the precision first: the calendar makes a whole day a
+  `{date}` event (`calendar.createEvent`, `allDay`), and the room gets the
+  day-of line and never an hour-before one off a stand-in hour
+  (`group-voice.decideGroupLine`).
   **A sixth option is refused to EVERYBODY, the initiator included, and the
   refusal carries the five** — the answer to a full table is a question ("which
   of these goes?"), which `swap` answers in one transaction. What this replaced
