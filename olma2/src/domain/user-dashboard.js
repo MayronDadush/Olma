@@ -15,7 +15,7 @@
 //   * A person's timezone decides every wall clock here, converted in
 //     Postgres. Formatting an instant against the server's zone is the
 //     "משמרת 15:00 stored as Z" incident, and it is one AT TIME ZONE away.
-//   * Other people appear by first name and avatar seed only. This payload is
+//   * Other people appear by first name and chosen character only. This payload is
 //     shipped to a browser, so a phone number in it is a phone number
 //     published — the same projection calendar.listEvents makes about
 //     attendees and mail makes about recipient lists.
@@ -80,7 +80,8 @@ async function loadUser(client, userId) {
             reminder_nudge,
             gender, to_char(birth_date, 'YYYY-MM-DD') AS birth_date,
             to_char(created_at AT TIME ZONE COALESCE(timezone, 'UTC'), 'YYYY-MM-DD') AS joined_on,
-            nest_tip_seen_at IS NOT NULL AS nest_tip_seen
+            nest_tip_seen_at IS NOT NULL AS nest_tip_seen,
+            avatar
      FROM users WHERE id = $1 AND status != 'blocked' AND is_eval = false`,
     [userId]
   );
@@ -120,7 +121,7 @@ async function loadTasks(client, userId, zone, calendarSyncTasks) {
             -- who started it, by first name only: on a task somebody shared
             -- WITH this person the owner is on no share row, so without this
             -- the list could draw every face on it except the one who shared
-            ow.first_name AS owner_name,
+            ow.first_name AS owner_name, ow.avatar AS owner_avatar,
             -- they took the pin off this one (migration 066); pinned is the
             -- default, and it only means anything while the task is shared
             up.task_id IS NOT NULL AS unpinned
@@ -175,7 +176,7 @@ async function loadTasks(client, userId, zone, calendarSyncTasks) {
   // the whole set to know when removing the last person makes it private
   // again, and it needs the owner to know whether this viewer may manage it.
   const { rows: shares } = await client.query(
-    `SELECT s.id AS share_id, s.task_id, s.viewer_id, u.first_name
+    `SELECT s.id AS share_id, s.task_id, s.viewer_id, u.first_name, u.avatar
      FROM shares s JOIN users u ON u.id = s.viewer_id
      WHERE s.task_id = ANY($1::bigint[]) AND s.status = 'active'
      ORDER BY s.task_id, s.viewer_id`,
@@ -196,7 +197,7 @@ async function loadTasks(client, userId, zone, calendarSyncTasks) {
     // task — or taking yourself off one — revokes a specific share row, and a
     // page that only knows (task, viewer) would have to be given a second
     // lookup to do the one thing this list exists for.
-    shareByTask.get(s.task_id).push({ id: s.viewer_id, name: s.first_name, shareId: s.share_id });
+    shareByTask.get(s.task_id).push({ id: s.viewer_id, name: s.first_name, avatar: s.avatar, shareId: s.share_id });
   }
 
   const out = { open: [], archived: [] };
@@ -246,6 +247,7 @@ async function loadTasks(client, userId, zone, calendarSyncTasks) {
       mine: String(t.owner_id) === String(userId),
       owner: who.length || String(t.owner_id) !== String(userId) ? t.owner_id : null,
       ownerName: String(t.owner_id) !== String(userId) ? (t.owner_name || '') : null,
+      ownerAvatar: String(t.owner_id) !== String(userId) ? (t.owner_avatar || null) : null,
       who,
       // Sits at the top of their list: shared with somebody right now, and
       // they have not taken the pin off. A task that stops being shared drops
@@ -281,7 +283,7 @@ async function loadFriends(client, userId) {
   const { rows } = await client.query(
     `SELECT c.id AS connection_id,
             CASE WHEN c.requester_id = $1 THEN c.target_id ELSE c.requester_id END AS friend_id,
-            u.first_name, u.timezone, c.responded_at,
+            u.first_name, u.avatar, u.timezone, c.responded_at,
             COALESCE(
               (SELECT array_agg(g.feature ORDER BY g.feature)
                FROM connection_feature_grants g
@@ -298,6 +300,7 @@ async function loadFriends(client, userId) {
     id: r.friend_id,
     connectionId: r.connection_id,
     name: r.first_name,
+    avatar: r.avatar,
     timezone: r.timezone,
     // When this became a friendship. The page shows it under the name; it is
     // the only date in the payload that is about the RELATIONSHIP rather than
@@ -427,11 +430,29 @@ async function loadChannels(client, userId) {
   return rows.map((r) => ({ type: r.channel_type, primary: r.is_primary }));
 }
 
+// A meeting's time for somebody whose page is in ENGLISH. The stored words
+// are Hebrew whenever the page or Olma wrote them, and the page printed them
+// verbatim under an English screen. The option row the words came from says
+// whether it was a clock, a daypart or a whole day; with no row, the stored
+// instant is used only when the words themselves name a clock, so nothing
+// here ever turns "בערב" into an hour. Null for a Hebrew page — the words ARE
+// its language — and for anything that cannot be said honestly, in which case
+// the page keeps the words.
+async function slotReaderLabel(client, meetingId, slot, startsAt, zone, locale) {
+  if (!slot || !String(locale || '').trim().toLowerCase().startsWith('en')) return null;
+  const { slotMoment } = require('./meeting-fanout');
+  const mo = await slotMoment(client, meetingId, slot);
+  const at = mo.startsAtUtc || (startsAt ? new Date(startsAt).toISOString() : null);
+  if (!at) return null;
+  return meetingTime.readerLabel(
+    { startsAt: at, allDay: mo.allDay, daypart: mo.daypart, slot }, zone, mo.authorTz, locale);
+}
+
 // Meetings still being negotiated, with each participant's answer state. What
 // somebody MARKED is availability and nothing more — the page must be able to
 // tell "has not answered" from "answered, nothing suits", so an unanswered
 // participant is `answered: false` rather than an empty option list.
-async function loadMeetings(client, userId, zone) {
+async function loadMeetings(client, userId, zone, locale) {
   const { rows: meetings } = await client.query(
     `SELECT m.id, m.title, m.initiator_id, m.status, m.quorum_min,
             m.proposed_slot, m.proposed_start_at, m.confirmed_start_at,
@@ -474,7 +495,7 @@ async function loadMeetings(client, userId, zone) {
   // in nothing — the group has to be able to see why the tally dropped, and a
   // silently shorter list reads as somebody never having been asked.
   const { rows: parts } = await client.query(
-    `SELECT p.meeting_id, p.user_id, p.state, p.constraints, u.first_name
+    `SELECT p.meeting_id, p.user_id, p.state, p.constraints, u.first_name, u.avatar
      FROM meeting_participants p JOIN users u ON u.id = p.user_id
      WHERE p.meeting_id = ANY($1::bigint[])
      ORDER BY p.meeting_id, p.user_id`,
@@ -516,6 +537,7 @@ async function loadMeetings(client, userId, zone) {
     byMeeting.get(p.meeting_id).push({
       id: p.user_id,
       name: p.first_name,
+      avatar: p.avatar,
       // Three values, never two. "Has not answered" must stay distinguishable
       // from "answered, cannot make it", or the confirm gate reads silence as
       // a refusal — which is the one mistake this whole screen is built to
@@ -553,6 +575,8 @@ async function loadMeetings(client, userId, zone) {
     locals.set(m.id, {
       slot: await localOf(m.id, m.proposed_slot),
       confirmed: await localOf(m.id, m.confirmed_slot),
+      slotReader: await slotReaderLabel(client, m.id, m.proposed_slot, m.proposed_start_at, zone, locale),
+      confirmedReader: await slotReaderLabel(client, m.id, m.confirmed_slot, m.confirmed_start_at, zone, locale),
     });
   }
   return meetings.map((m) => ({
@@ -570,6 +594,10 @@ async function loadMeetings(client, userId, zone) {
     confirmedSlot: m.confirmed_slot,
     slotLocal: locals.get(m.id).slot,
     confirmedLocal: locals.get(m.id).confirmed,
+    // The same two moments in the words of an ENGLISH page (null for Hebrew,
+    // and null whenever the words name no clock) — see slotReaderLabel.
+    slotReader: locals.get(m.id).slotReader,
+    confirmedReader: locals.get(m.id).confirmedReader,
     confirmedStartAt: m.confirmed_start_at,
     confirmedTime: m.confirmed_time,
     confirmedDay: m.confirmed_day === null ? null : Number(m.confirmed_day),
@@ -605,7 +633,7 @@ async function loadMeetings(client, userId, zone) {
 // Bounded by what `meetings.rejoin` will actually accept, so the button is
 // never drawn over a refusal: still negotiating or confirmed, and not already
 // started. A coordination that closed when you left is gone from here too.
-async function loadLeftMeetings(client, userId) {
+async function loadLeftMeetings(client, userId, zone, locale) {
   const { rows } = await client.query(
     `SELECT m.id, m.title
        FROM meetings m
@@ -624,7 +652,7 @@ async function loadLeftMeetings(client, userId) {
   // coordination never simply vanishes. Title and the words of the slot, no
   // tally and no way back in — it is over.
   const { rows: done } = await client.query(
-    `SELECT m.id, m.title, m.confirmed_slot
+    `SELECT m.id, m.title, m.confirmed_slot, m.confirmed_start_at
        FROM meetings m
        JOIN meeting_participants p ON p.meeting_id = m.id
       WHERE p.user_id = $1 AND p.state <> 'opted_out'
@@ -635,7 +663,16 @@ async function loadLeftMeetings(client, userId) {
       LIMIT 20`,
     [userId]
   );
-  return left.concat(done.map((m) => ({ id: Number(m.id), title: m.title, youLeft: false, settled: true, slot: m.confirmed_slot || '' })));
+  const out = left;
+  for (const m of done) {
+    // Only when there is one — a Hebrew page's row is exactly what it was.
+    const slotReader = await slotReaderLabel(client, m.id, m.confirmed_slot, m.confirmed_start_at, zone, locale);
+    out.push({
+      id: Number(m.id), title: m.title, youLeft: false, settled: true, slot: m.confirmed_slot || '',
+      ...(slotReader ? { slotReader } : {}),
+    });
+  }
+  return out;
 }
 
 // When Olma may write, as the gate will actually read it — the same two domain
@@ -701,9 +738,9 @@ async function load(client, userId) {
   const channels = await loadChannels(client, userId);
   const contacts = await loadContacts(client, userId);
   const groups = await loadGroups(client, userId);
-  const meetings = await loadMeetings(client, userId, zone);
+  const meetings = await loadMeetings(client, userId, zone, user.locale);
   const liveSuggestions = await suggestions.liveFor(client, userId);
-  const meetingsLeft = await loadLeftMeetings(client, userId);
+  const meetingsLeft = await loadLeftMeetings(client, userId, zone, user.locale);
   const schedule = await loadSchedule(client, user);
   const knownFacts = await loadFacts(client, userId);
   const prompts = await factPrompts.pending(client, userId, user.locale);
@@ -739,6 +776,8 @@ async function load(client, userId) {
       digestTimes: user.digest_times ? user.digest_times.split(',') : [],
       // Told once what dropping a task onto another does (migration 069).
       nestTipSeen: Boolean(user.nest_tip_seen),
+      // The character they picked (migration 094); NULL draws the seed.
+      avatar: user.avatar || null,
     },
     schedule,
     facts: knownFacts,

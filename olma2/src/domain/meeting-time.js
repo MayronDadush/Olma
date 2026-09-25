@@ -141,6 +141,39 @@ function readerSlot(moment, readerTz, authorTz) {
   };
 }
 
+// The same moment for a reader whose PAGE is in English, or null for one in
+// Hebrew. `slot_text` is always Hebrew when the page built it ("יום שבת 26.9
+// בערב", `meeting-option-moment.momentFor`), and the dashboard printed it
+// verbatim under an English page. This says the moment the way the page's own
+// option labels do — "Saturday, 26 September · evening" — in the reader's
+// zone, so an English reader never needs the Hebrew words at all.
+//
+// The header's first rule holds: a daypart or a whole day never becomes an
+// hour, and words that name no clock (`slot` given, no HH:MM in it) are left
+// alone — null, so the caller keeps the words. A daypart or whole day is
+// dated in its AUTHOR's zone when known, because that is the day the words
+// named; a clock time is dated where the reader is.
+const DAYS_EN = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const MONTHS_EN = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
+  'August', 'September', 'October', 'November', 'December'];
+const PART_EN = { morning: 'morning', noon: 'midday', evening: 'evening', night: 'night' };
+
+function readerLabel(moment, readerTz, authorTz, lang) {
+  if (!String(lang || '').trim().toLowerCase().startsWith('en')) return null;
+  if (!moment || !moment.startsAt) return null;
+  const at = new Date(moment.startsAt);
+  if (Number.isNaN(at.getTime())) return null;
+  const hourless = moment.allDay || moment.daypart;
+  if (!hourless && moment.slot !== undefined && !statedHour(moment.slot)) return null;
+  const tz = hourless && validZone(authorTz) ? authorTz : readerTz;
+  if (!validZone(tz)) return null;
+  const p = partsInZone(tz, at);
+  const day = `${DAYS_EN[weekdayOfParts(p)]}, ${p.d} ${MONTHS_EN[p.m - 1]}`;
+  if (moment.allDay) return `${day} · all day`;
+  if (moment.daypart) return `${day} · ${PART_EN[moment.daypart] || moment.daypart}`;
+  return `${day} · ${pad(p.hh)}:${pad(p.mi)}`;
+}
+
 // Whether the people hearing a moment are on more than one clock right now —
 // what decides which template a room line is drawn from.
 function spansZones(tzs, roomTz, at = new Date()) {
@@ -256,6 +289,6 @@ function commonHours(zones, roomTz, { from = new Date(), days = 7 } = {}) {
 }
 
 module.exports = {
-  zoneLabel, localSlot, distinctZones, roomTimes, readerSlot, spansZones, citiesPhrase,
+  zoneLabel, localSlot, distinctZones, roomTimes, readerSlot, readerLabel, spansZones, citiesPhrase,
   convertible, commonHours, validZone, DAYS_HE, COMMON_WINDOW, COMMON_WIDE,
 };

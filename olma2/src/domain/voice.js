@@ -126,10 +126,17 @@ async function callAvailable(user, deps = {}) {
 // The chat tool (`call_me_on_the_phone`) calls this with no opts at all, so
 // its wire payload — and therefore its behavior against whatever the bridge's
 // own VOICE_ENABLED_PHONES allows today — is unchanged by this addition.
+//
+// opts.capped says the caller has already spent one of this person's
+// CALL_ATTEMPTS_LIMIT lifetime attempts on this dial. It is what lets the
+// bridge ring a number that is NOT on its list (voice-bridge/lib/dial-gate.js)
+// — without it, the page button opened to 'all' on 2026-09-15 rang only the
+// handful of listed numbers and refused everybody else it was shown to.
 async function requestCall(client, user, deps = {}, opts = {}) {
   let res, body;
   const payload = { phone: user.phone };
   if (opts.maxDurationSec) payload.maxDurationSec = opts.maxDurationSec;
+  if (opts.capped) payload.capped = true;
   try {
     ({ res, body } = await askBridge(payload, deps));
   } catch {

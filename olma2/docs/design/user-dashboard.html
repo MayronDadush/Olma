@@ -4091,7 +4091,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     setAvailability:"setAvailability", setQuietDays:"setQuietDays", setDigest:"setDigest",
     setCalendarSync:"setCalendarSync", setReminderNudge:"setReminderNudge",
     forgetFact:"forgetFact", answerFactPrompt:"answerFactPrompt",
-    decideSuggestion:"decideSuggestion"
+    decideSuggestion:"decideSuggestion", setAvatar:"setAvatar"
   };
   /* Ids the server has actually seen. It is what decides whether saving a task
      creates one or edits one — the page numbers its own new rows from a local
@@ -4491,7 +4491,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     setName:         function(f, l){      return API.profile("setName", {firstName:f, lastName:l}); },
     setPersonal:     function(p){         return API.profile("setPersonal", p); },
     setAssistant:    function(p){         return API.profile("setAssistant", p); },
-    setLocale:       function(v){         return API.profile("setLocale", {locale:v}); },
+    setLocale:       function(v, done){   return API.profile("setLocale", {locale:v}, done); },
+    setAvatar:       function(id){        API.call("setAvatar", {avatar:id}); return API.send("setAvatar", {avatar:id}); },
     setAvailability: function(a, b, done){ return API.profile("setAvailability", {start:a, end:b}, done); },
     setQuietDays:    function(p, done){   return API.profile("setQuietDays", p, done); },
     setDigest:       function(p, done){   return API.profile("setDigest", p, done); },
@@ -4555,6 +4556,9 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 
   var T = {
     he:{ dir:"rtl",
+      /* the browser tab; the <title> in the markup is only what shows before
+         the script runs */
+      "page.title":"עולמה שלי",
       /* Four greetings, not one. A page somebody opens from a WhatsApp
          message at 17:36 that says "good morning" is the first thing they
          read, and it is wrong — which is what happened on the first real
@@ -4901,6 +4905,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       and:" ו", monthsBare:["ינואר","פברואר","מרץ","אפריל","מאי","יוני","יולי","אוגוסט","ספטמבר","אוקטובר","נובמבר","דצמבר"]
     },
     en:{ dir:"ltr",
+      "page.title":"My Allma",
       "greet.morning":"Good morning,",
       "greet.noon":"Good afternoon,",
       "greet.evening":"Good evening,",
@@ -5543,6 +5548,14 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     var h = 0, s = String(seed);
     for(var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
     return h % ANIMALS.length;
+  }
+  /* A real person's character: the one they picked on their profile page if
+     the server says they picked one (migration 094), the one derived from
+     their id if not. An id this page has no drawing for — an animal retired
+     from ANIMALS — falls back to the seed rather than to nothing. */
+  function avatarFor(uid, chosen){
+    for(var i = 0; i < ANIMALS.length; i++) if(chosen && ANIMALS[i].id === chosen) return i;
+    return seedIndex("u" + uid);
   }
   /* night is read from the person's OWN zone, so a friend's character
      is asleep under a moon exactly when messaging them would wake them. */
@@ -7000,8 +7013,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      and often none. The hydration below overwrites this with `d.suggestions`,
      which is EMPTY for almost everybody almost every week. */
   var SUGGESTIONS = [
-    {id:1, kind:"stuck",   taskIds:[4], title:"לקבוע תור לרופא שיניים", days:23, keepTitle:null},
-    {id:2, kind:"overdue", taskIds:[5], title:"לאסוף חבילה מהשליח",     days:9,  keepTitle:null}
+    {id:1, kind:"stuck",   taskIds:[4], title:{he:"לקבוע תור לרופא שיניים",en:"Book a dentist appointment"}, days:23, keepTitle:null},
+    {id:2, kind:"overdue", taskIds:[5], title:{he:"לאסוף חבילה מהשליח",en:"Collect the parcel"}, days:9,  keepTitle:null}
   ];
   var SUGG_AT = 0;   /* which of them is on screen — the page's business alone */
   var SUGG_ICON = {stuck:"i-clock", overdue:"i-cal", duplicate:"i-list"};
@@ -7032,7 +7045,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
         '<span class="sicon"><svg aria-hidden="true"><use href="#' +
           (SUGG_ICON[s.kind] || "i-list") + '"/></svg></span>' +
         '<span class="stext">' +
-          '<span class="stitle">' + esc(s.title || t("sheet.untitled")) + "</span>" +
+          '<span class="stitle">' + esc(L(s.title) || t("sheet.untitled")) + "</span>" +
           '<span class="swhy">' + esc(why) + " " + esc(t("sugg.undo")) + "</span>" +
         "</span>" +
       "</div>" +
@@ -7079,7 +7092,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     if(decision === "accept") open = open.filter(function(o){ return s.taskIds.indexOf(o.id) < 0; });
     renderTasks(); renderStrip(selDay);   /* renderTasks repaints the strip */
     API.send("decideSuggestion", {suggestionId:s.id, decision:decision});
-    var name = s.title || (row ? L(row.t) : "") || t("sheet.untitled");
+    var name = L(s.title) || (row ? L(row.t) : "") || t("sheet.untitled");
     /* Accepting archives the task, so the undo is the same restore the
        delete toast offers. The suggestion itself stays answered either way:
        taking the task back is not a request to be asked about it again. */
@@ -10662,13 +10675,15 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      replacing it. `.day` has carried a background transition since the day it
      was written and nobody had ever seen it play: every tap threw the button
      away and drew a new one already selected. */
-  var stripWeek = null, stripSel = null;
+  var stripWeek = null, stripSel = null, stripLang = null;
   function renderStrip(sel, slide){
     selDay = sel;
     syncCalOpen();
     var wk0 = weekOff * 7;
     var cells = $$("#daystrip .day");
-    if(stripWeek !== weekOff || cells.length !== 7){
+    /* The language too: the day names are words, and a strip kept across a
+       switch to English still read "היום א ב ג". */
+    if(stripWeek !== weekOff || stripLang !== LOCALE || cells.length !== 7){
       $("#daystrip").innerHTML = [0,1,2,3,4,5,6].map(function(k){
         var i = wk0 + k, d = dayAt(i);
         /* The strip always starts on today, but "the first one" is a rule you
@@ -10680,7 +10695,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
           '<div class="dd">' + d.getDate() + "</div>" +
           '<div class="dots"></div></button>';
       }).join("");
-      stripWeek = weekOff;
+      stripWeek = weekOff; stripLang = LOCALE;
       cells = $$("#daystrip .day");
       if(slide){
         var strip = $("#daystrip"), dir = slide > 0 ? "wknext" : "wkprev";
@@ -11242,6 +11257,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     var next = myAvatar;
     while(next === myAvatar) next = Math.floor(Math.random() * ANIMALS.length);
     myAvatar = next;
+    API.setAvatar(ANIMALS[next].id);
     paintAvatars();
     var big = $("#bigAvatar");
     big.classList.remove("pop"); void big.offsetWidth; big.classList.add("pop");
@@ -11335,7 +11351,11 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      redraw (a language switch, a reload after some other tap) does not throw
      away half an answer. */
   var fqDraft = {};
-  var LANGS = [{v:"he", n:"עברית"}, {v:"en", n:"English"}, {v:"ar", n:"العربية"}, {v:"ru", n:"Русский"}];
+  /* Only the two languages the page has strings for. Arabic and Russian were
+     offered here until 2026-09-26 and picking either left the whole page in
+     Hebrew, so they are off until the page can actually speak them — the
+     chat side still answers in whatever language somebody writes. */
+  var LANGS = [{v:"he", n:"עברית"}, {v:"en", n:"English"}];
 
   /* The profile page's own saved mark, which takes the element to flash.
      Deliberately not called `flashSaved`: it used to be, and both declarations
@@ -11615,12 +11635,14 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     if(!b || b.dataset.lang === String(ME.locale || "").slice(0, 2)) return;
     ME.locale = b.dataset.lang;
     renderOlmaRows();
-    API.setLocale(ME.locale);
-    /* The page itself speaks the two languages it has strings for; any other
-       choice changes the conversation and leaves the page in Hebrew. */
     var pageLang = ME.locale === "en" ? "en" : "he";
     if(pageLang !== LOCALE) setLocale(pageLang);
     toast(t("toast.lang"));
+    /* Some of what the page shows was put into words by the SERVER, in the
+       language it had on file at load — the fact questions, a meeting's time.
+       Redrawing cannot translate those, so once the new language is saved the
+       data is fetched again and the server says them in the new one. */
+    API.setLocale(ME.locale, function(){ API.reload(); });
   });
 
   /* The three switches on this tab, handed over by the page's one switch
@@ -12025,6 +12047,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   function paintStatic(){
     document.documentElement.setAttribute("dir", D.dir);
     document.documentElement.setAttribute("lang", LOCALE);
+    document.title = t("page.title");
     $$("[data-i18n]").forEach(function(el){ el.textContent = t(el.dataset.i18n); });
     paintGreeting();
     $$("[data-i18n-ph]").forEach(function(el){ el.placeholder = t(el.dataset.i18nPh); });
@@ -12134,13 +12157,20 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      both. Real content is written by a person, in one language, and is not
      translated — L() already returns a plain string unchanged, so a title
      needs no wrapping at all. This is only for the few places the page still
-     builds a LABEL out of data (the archive's "when"). */
+     builds a LABEL out of data (the archive's "when").
+
+     Both spellings, the seed's own {he,en} shape, so L() picks one at DRAW
+     time. It used to be formatted once in whatever language the page was in
+     at load, and a switch to English left every archive date and every
+     "friends since" in Hebrew until the next reload. */
   function whenLabel(iso){
     if(!iso) return "";
-    try{
-      return new Intl.DateTimeFormat(LOCALE === "en" ? "en-GB" : "he-IL",
-        {day:"numeric", month:"long"}).format(new Date(iso));
-    }catch(err){ return ""; }
+    function fmt(tag){
+      try{
+        return new Intl.DateTimeFormat(tag, {day:"numeric", month:"long"}).format(new Date(iso));
+      }catch(err){ return ""; }
+    }
+    return {he:fmt("he-IL"), en:fmt("en-GB")};
   }
   /* The server states a repeat as the canonical rule (domain/reminders.js);
      the page only needs its shape. Anything it does not recognise is still a
@@ -12245,9 +12275,9 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     var have = f.features || [];
     return {
       id:f.id, cid:f.connectionId, n:f.name || "", tz:f.timezone || "UTC",
-      /* Derived from the id, never stored. The same person is the same animal
-         for ever, on every device, and nothing has to be migrated to say so. */
-      av:seedIndex("u" + f.id),
+      /* The character they picked, else the one derived from their id — the
+         same animal on every page that shows them. */
+      av:avatarFor(f.id, f.avatar),
       since:f.since ? whenLabel(f.since) : "",
       /* The system stores nobody's gender — only the ASSISTANT's persona has
          one. Masculine is the documented default for address, and it is what
@@ -12358,7 +12388,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
         who.push(pid);
         /* Named here, not looked up in FRIENDS: a co-participant is connected
            to whoever opened this, not necessarily to me. */
-        PEOPLE[pid] = {id:pid, n:p.name || "", av:seedIndex("u" + p.id), g:"m"};
+        PEOPLE[pid] = {id:pid, n:p.name || "", av:avatarFor(p.id, p.avatar), g:"m"};
       }
       if(p.left) left.push(pid);
     });
@@ -12405,9 +12435,15 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       /* The proposer's words, plus this reader's own hour when they are on
          another clock — the server decides when that is (`slotLocal`,
          `confirmedLocal` in domain/user-dashboard.js) and the page never
-         converts a time itself. */
-      slotText:mtWithLocal((settledOpt ? m.confirmedSlot : m.slot) || "",
-        settledOpt ? m.confirmedLocal : m.slotLocal),
+         converts a time itself.
+
+         An English page gets the moment in English instead (`slotReader`,
+         already in this reader's own clock): the stored words are Hebrew
+         whenever the page or Olma wrote them. Null when the words name no
+         clock, and then the words are all there is. */
+      slotText:(settledOpt ? m.confirmedReader : m.slotReader) ||
+        mtWithLocal((settledOpt ? m.confirmedSlot : m.slot) || "",
+          settledOpt ? m.confirmedLocal : m.slotLocal),
       /* Whether the settled slot sits on THIS person's own calendar is not
          something we record per participant, so it is not claimed. */
       inCal:false,
@@ -12474,7 +12510,9 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
        the first paint. */
     if(d.user){
       MY_ID = d.user.id;
-      myAvatar = seedIndex("u" + d.user.id);
+      /* What they picked, from the server — never re-derived over it, or the
+         next read of /me/data puts the old character back (migration 094). */
+      myAvatar = avatarFor(d.user.id, d.user.avatar);
       paused = !!d.user.paused;
       nestTipSeen = !!d.user.nestTipSeen;
       cityConfirmed = !!d.user.timezoneConfirmed;
@@ -12589,15 +12627,15 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
        every face on it except theirs. */
     (d.tasks || []).forEach(function(x){
       if(!x.mine && x.owner != null && !FRIENDS.some(function(f){ return f.id === x.owner; }))
-        PEOPLE[x.owner] = {id:x.owner, n:x.ownerName || "", av:seedIndex("u" + x.owner), g:"m"};
+        PEOPLE[x.owner] = {id:x.owner, n:x.ownerName || "", av:avatarFor(x.owner, x.ownerAvatar), g:"m"};
       (x.who || []).forEach(function(w){
         if(String(w.id) !== String(MY_ID) && !FRIENDS.some(function(f){ return f.id === w.id; }))
-          PEOPLE[w.id] = {id:w.id, n:w.name || "", av:seedIndex("u" + w.id), g:"m"};
+          PEOPLE[w.id] = {id:w.id, n:w.name || "", av:avatarFor(w.id, w.avatar), g:"m"};
       });
     });
     var openId = mtOpen ? mtOpen.id : null;
     MEETS = (d.meetings || []).map(liveMeet);
-    MTLEFT = (d.meetingsLeft || []).map(function(m){ return {id:m.id, t:m.title || "", settled:!!m.settled, slot:m.slot || ""}; });
+    MTLEFT = (d.meetingsLeft || []).map(function(m){ return {id:m.id, t:m.title || "", settled:!!m.settled, slot:m.slotReader || m.slot || ""}; });
     mtOpen = openId ? (mtById(openId) || null) : null;
     var first = !LIVE;
     LIVE = true;

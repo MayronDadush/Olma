@@ -21,8 +21,11 @@ test('a day is SELECTED, not redrawn — and a week is', () => {
   // `.day` has carried a background transition since it was written and it had
   // never once played: every tap threw the seven buttons away and drew seven
   // new ones, one of them already selected.
-  assert.match(page, /if\(stripWeek !== weekOff \|\| cells\.length !== 7\)\{/,
-    'the strip is rebuilt only when the WEEK changes');
+  // …or the LANGUAGE does (2026-09-26): the day names are words, and a strip
+  // kept across a switch to English still read "היום א ב ג". A tap changes
+  // neither, so a tap still only selects.
+  assert.match(page, /if\(stripWeek !== weekOff \|\| stripLang !== LOCALE \|\| cells\.length !== 7\)\{/,
+    'the strip is rebuilt only when the WEEK or the language changes');
   assert.match(page, /b\.setAttribute\("aria-selected", i === sel \? "true" : "false"\)/,
     'and the selection is an attribute on a button that stays');
   assert.match(page, /renderStrip\(weekOff === 0 \? 0 : weekOff \* 7, weekOff === was \? 0 : weekOff > was \? 1 : -1\)/,

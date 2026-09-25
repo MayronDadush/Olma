@@ -137,11 +137,39 @@ function sendJson(res, status, body, extra = {}) {
   return res.end(JSON.stringify(body));
 }
 
-function messagePage(res, status, title, body, extra = {}) {
+// The assistant's name in each page language — the tab title of every page
+// this file draws. עולמה / Allma, never a translation (rules/doctrine.md).
+const PAGE_NAME = { he: 'עולמה', en: 'Allma' };
+
+// What a dead link says, in both languages. A page that cannot tell who is
+// holding the link (see the GET below) says it in both, Hebrew first — it
+// names nobody and reads right to either person.
+const MESSAGE_COPY = {
+  linkDead: {
+    he: { title: 'הקישור כבר לא פעיל',
+      body: 'קישורי כניסה תקפים לזמן קצר ולשימוש אחד. אפשר לבקש מעולמה קישור חדש בוואטסאפ.' },
+    en: { title: 'This link has expired',
+      body: 'Sign-in links are short-lived and work once. You can ask Allma for a new one on WhatsApp.' },
+  },
+  linkUsed: {
+    he: { title: 'הקישור כבר לא פעיל',
+      body: 'ייתכן שכבר נכנסת איתו. אפשר לבקש מעולמה קישור חדש בוואטסאפ.' },
+    en: { title: 'This link has expired',
+      body: 'You may already have signed in with it. You can ask Allma for a new one on WhatsApp.' },
+  },
+};
+
+// `lang` is 'he', 'en', or null for "nobody is known — say both".
+function messagePage(res, status, key, lang, extra = {}) {
+  const copy = MESSAGE_COPY[key];
+  const langs = lang ? [pageLocale(lang)] : ['he', 'en'];
+  const first = langs[0];
+  const blocks = langs.map((l) => `<div lang="${l}" dir="${l === 'he' ? 'rtl' : 'ltr'}">`
+    + `<h1>${esc(copy[l].title)}</h1><p>${esc(copy[l].body)}</p></div>`).join('<hr>');
   res.writeHead(status, headers(HTML, extra));
-  return res.end(`<!doctype html><html dir="rtl" lang="he"><head><meta charset="utf-8">
+  return res.end(`<!doctype html><html dir="${first === 'he' ? 'rtl' : 'ltr'}" lang="${first}"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
-<title>עולמה</title><style>
+<title>${langs.map((l) => PAGE_NAME[l]).join(' · ')}</title><style>
 :root{color-scheme:light dark}
 body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
 margin:0;min-height:100dvh;display:grid;place-items:center;padding:24px;
@@ -154,7 +182,8 @@ p{font-size:15px;line-height:1.55;margin:0;opacity:.62}
 button{margin-top:22px;width:100%;border:0;border-radius:14px;padding:15px;
 font:inherit;font-weight:600;font-size:16px;background:#0a84ff;color:#fff}
 button:active{opacity:.75}
-</style></head><body><div class="card"><h1>${esc(title)}</h1><p>${esc(body)}</p></div></body></html>`);
+hr{border:0;height:1px;background:currentColor;opacity:.12;margin:20px 0}
+</style></head><body><div class="card">${blocks}</div></body></html>`);
 }
 
 // The sign-in page. One button, and the button is the whole point: pressing it
@@ -207,7 +236,7 @@ function signInPage(res, token, firstName, meeting, locale) {
   res.writeHead(200, headers(HTML));
   return res.end(`<!doctype html><html dir="${t.dir}" lang="${lang}"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
-<title>עולמה</title><style>
+<title>${PAGE_NAME[lang]}</title><style>
 :root{color-scheme:light dark}
 body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
 margin:0;min-height:100dvh;display:grid;place-items:center;padding:24px;
@@ -284,8 +313,10 @@ async function handle(req, res, pool, pathname) {
     if (req.method === 'GET') {
       const peek = await withTx(pool, (c) => auth.peekLink(c, token));
       if (!peek.ok) {
-        return messagePage(res, 410, 'הקישור כבר לא פעיל',
-          'קישורי כניסה תקפים לזמן קצר ולשימוש אחד. אפשר לבקש מעולמה קישור חדש בוואטסאפ.');
+        // A dead link names nobody, so its language is the phone's own
+        // session when there is one, and both languages when there is not.
+        const holder = await currentUser(pool, req);
+        return messagePage(res, 410, 'linkDead', holder ? holder.locale || 'he' : null);
       }
       // Somebody already signed in on this device, as the person the link is
       // for, does not need a key: they are taken where it points and the link
@@ -306,8 +337,8 @@ async function handle(req, res, pool, pathname) {
     if (req.method === 'POST') {
       const opened = await withTx(pool, (c) => auth.redeemLink(c, token));
       if (!opened.ok) {
-        return messagePage(res, 410, 'הקישור כבר לא פעיל',
-          'ייתכן שכבר נכנסת איתו. אפשר לבקש מעולמה קישור חדש בוואטסאפ.');
+        const holder = await currentUser(pool, req);
+        return messagePage(res, 410, 'linkUsed', holder ? holder.locale || 'he' : null);
       }
       res.writeHead(303, headers(HTML, {
         Location: '/me' + landingFragment(opened.data, req.url),

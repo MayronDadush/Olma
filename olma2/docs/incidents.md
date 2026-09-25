@@ -4550,6 +4550,20 @@ whole content of that message is two weekdays and a correction about a model
 getting a weekday wrong, which is the last sentence anybody should hand to a
 model to phrase.
 
+**2026-09-25: the other three doors.** `snooze_task`, `edit_task` and
+`set_task_reminder` took the same argument once the owner chose raising the
+schema ceiling (60,450 -> 60,750) over trimming guidance elsewhere; the margin
+this entry's paragraph above called too small had been 891 for a day, and
+seven room tools spent it before this could. Wiring the reminder door found
+what one door had hidden: a reminder is almost never ON the day the person
+names — "תזכיר לי ערב לפני יום ראשון" is the ordinary sentence — and "ערב
+שבת" is Friday, which the reader took for Saturday. Both were refusals of
+ordinary speech waiting on `add_task` too (a task with only a `remind_at` is
+checked against it). `taskWeekdayClash` now strips a day that the moment is
+measured FROM — לפני / אחרי / עד, before / after / until, and ערב שבת — the
+same way it strips ל־. "ערב שישי" is left compared: in ordinary speech that
+is Friday EVENING, not the eve of Friday.
+
 ### The reminder that was only a sentence (fixed 2026-09-22)
 
 עמית, 2026-09-15, 16:44 Israel:
@@ -12745,3 +12759,23 @@ thanks closes the exchange, which is the old behaviour and never a wrong one.
 The same change widened the classifier to every language somebody here might
 thank in — Arabic, Russian, French, Spanish, German, Italian, Portuguese,
 Amharic, with each language's "very much" on the filler list and nothing else.
+
+### The gateway refused every mark for fifteen minutes (2026-09-25)
+
+The first live minutes of the socket path. The hold itself worked — two replies
+at 12.7s and 14s and no 👀 on either — but the 👍 a tool placed at 13s came
+back `UNAVAILABLE: Delegated whatsapp:react requires the exact current
+conversation and account for this plugin`, and so would every mark. The
+gateway reads a `message.action` as DELEGATED from a plugin unless it says
+`conversationReadOrigin: "direct-operator"`, which `openclaw message react`
+sets on itself and our client did not (a caller with an agent runtime identity
+is delegated whatever it says; ours has none). No probe had been run against
+the live gateway before merge: the dry-run in the design session went through
+the CLI, which is exactly the path that sets it.
+
+Two fixes. `gateway-rpc.messageActionRequest` sends the marker. And a REFUSED
+mark that is itself the answer (👍, 🙏, ⏰) now falls back to the CLI: a
+refusal placed nothing, and "log only" had turned one missing field into no
+marks at all. A refused 👀 still does not — through the CLI it lands after the
+reply it was promising — and a timeout stays a log line, since it may have
+gone out.

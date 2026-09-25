@@ -180,3 +180,102 @@ test('the words are an argument the model can actually see', () => {
   assert.equal(described.inputSchema.required.includes('when_said'), false,
     'optional: a task nobody dated by weekday has nothing to copy');
 });
+
+// ---- the day a moment is measured FROM (2026-09-25) ------------------------
+//
+// set_task_reminder is where this shape lives: the reminder is almost by
+// definition NOT on the day they name, because they name the thing and ask to
+// hear about it before. Stripped before the check, the same way ל־ is.
+// And "ערב שבת" is FRIDAY — the eve of the day, which the reader alone takes
+// for Saturday; with the guard on four doors that is a refusal of ordinary
+// speech waiting to happen.
+test('a day the moment is anchored to is not a day it must fall on', () => {
+  const sat = nextWeekdayAt('Saturday', '21:00');
+  assert.equal(dt.taskWeekdayClash('remind_at', 'תזכיר לי יום לפני יום ראשון', sat, TZ), null);
+  assert.equal(dt.taskWeekdayClash('remind_at', 'תנדנדי לי עד חמישי', sat, TZ), null);
+  assert.equal(dt.taskWeekdayClash('remind_at', 'remind me the day before Sunday', sat, TZ), null);
+  assert.equal(dt.taskWeekdayClash('remind_at', 'תזכיר לי בערב שבת', nextWeekdayAt('Friday', '18:00'), TZ), null);
+});
+
+test('…while the evening OF a day, and a day said plainly, are still compared', () => {
+  const sat = nextWeekdayAt('Saturday', '21:00');
+  assert.ok(dt.taskWeekdayClash('remind_at', 'בערב שישי', sat, TZ), '"ערב שישי" is Friday evening');
+  assert.ok(dt.taskWeekdayClash('remind_at', 'תזכיר לי ביום ראשון', sat, TZ));
+  assert.equal(dt.taskWeekdayClash('remind_at', 'במוצאי שבת', sat, TZ), null, 'Saturday night is Saturday');
+});
+
+// ---- the other three doors that date a live task ---------------------------
+
+const snooze = BY_NAME.get('snooze_task');
+const edit = BY_NAME.get('edit_task');
+const remind = BY_NAME.get('set_task_reminder');
+
+async function aTask(phone) {
+  const u = await makeUser(db.pool, phone, { timezone: TZ, onboardedAt: new Date().toISOString() });
+  const due = nextWeekdayAt('Tuesday', '10:00');
+  const res = await withTx(db.pool, (c) => add.handler(c, u, { title: 'להתקשר למוסך', due_at: due }));
+  assert.equal(res.ok, true);
+  return { u, taskId: res.data.task.id, due };
+}
+const dueOf = async (taskId) => (await db.pool.query('SELECT due_at FROM tasks WHERE id = $1', [taskId])).rows[0].due_at;
+const remindersOf = async (taskId) => (await db.pool.query(
+  'SELECT remind_at FROM task_reminders WHERE task_id = $1 AND cancelled_at IS NULL ORDER BY remind_at', [taskId])).rows
+  .map((r) => r.remind_at.getTime());
+
+test('snooze_task refuses words naming another day, and does not move the task', async () => {
+  const { u, taskId, due } = await aTask('+972500000911');
+  const res = await withTx(db.pool, (c) => snooze.handler(c, u, {
+    task_id: taskId, when_said: 'תזיז את זה ליום ראשון', new_due_at: nextWeekdayAt('Wednesday', '10:00'),
+  }));
+  // ל־ in "ליום ראשון" is stripped, so THIS phrasing is the model's to resolve…
+  assert.equal(res.ok, true, 'ל־ dates the object; a move "to Sunday" is not compared');
+  const { u: u2, taskId: t2, due: due2 } = await aTask('+972500000912');
+  const refused = await withTx(db.pool, (c) => snooze.handler(c, u2, {
+    task_id: t2, when_said: 'תעביר את זה ליום אחר, ביום ראשון', new_due_at: nextWeekdayAt('Wednesday', '10:00'),
+  }));
+  // …and ב־ is not.
+  assert.equal(refused.ok, false);
+  assert.equal(refused.error.reason, 'weekday_mismatch');
+  assert.match(refused.error.message, /the task was not moved/);
+  assert.equal((await dueOf(t2)).getTime(), new Date(due2).getTime(), 'the row is where it was');
+  assert.ok(due, 'first task existed');
+});
+
+test('edit_task compares a new start, and only a new start', async () => {
+  const { u, taskId, due } = await aTask('+972500000913');
+  const refused = await withTx(db.pool, (c) => edit.handler(c, u, {
+    task_id: taskId, when_said: 'ביום ראשון בעשר', due_at: nextWeekdayAt('Wednesday', '10:00'),
+  }));
+  assert.equal(refused.ok, false);
+  assert.match(refused.error.message, /the task was not changed/);
+  assert.equal((await dueOf(taskId)).getTime(), new Date(due).getTime());
+  const renamed = await withTx(db.pool, (c) => edit.handler(c, u, {
+    task_id: taskId, title: 'להתקשר לחשמלאי', when_said: 'ביום ראשון',
+  }));
+  assert.equal(renamed.ok, true, 'a title edit has no moment to disagree with');
+});
+
+test('set_task_reminder refuses a reminder on a day they did not name, and cancels nothing', async () => {
+  const { u, taskId } = await aTask('+972500000914');
+  const before = await remindersOf(taskId);
+  assert.equal(before.length, 1, 'the automatic reminder an hour before');
+  const refused = await withTx(db.pool, (c) => remind.handler(c, u, {
+    task_id: taskId, when_said: 'תזכיר לי ביום ראשון בבוקר', remind_at: nextWeekdayAt('Monday', '09:00'),
+  }));
+  assert.equal(refused.ok, false);
+  assert.match(refused.error.message, /no reminder was set and none was cancelled/);
+  assert.deepEqual(await remindersOf(taskId), before, 'the automatic one is untouched');
+
+  const evening = await withTx(db.pool, (c) => remind.handler(c, u, {
+    task_id: taskId, when_said: 'תזכיר לי ערב לפני יום שלישי', remind_at: nextWeekdayAt('Monday', '20:00'),
+  }));
+  assert.equal(evening.ok, true, 'the evening before a named day is what a reminder is for');
+});
+
+test('all four doors show the model the same argument', () => {
+  const defs = toolDefinitions();
+  const texts = ['add_task', 'snooze_task', 'edit_task', 'set_task_reminder']
+    .map((n) => defs.find((d) => d.name === n).inputSchema.properties.when_said);
+  assert.ok(texts.every(Boolean), 'each takes the words');
+  assert.equal(new Set(texts.map((t) => t.description)).size, 1, 'one string, paid for once per tool');
+});

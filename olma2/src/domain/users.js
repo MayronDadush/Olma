@@ -421,6 +421,22 @@ async function setPersonal(client, userId, { gender, birthDate } = {}, now = new
   return ok({ gender: rows[0].gender, birthDate: rows[0].birth_date });
 }
 
+// The character they picked on their page (migration 094). The server does not
+// know the page's animals and does not need to: it keeps a short slug, and a
+// page that meets one it has no drawing for falls back to the seed. Not
+// personal data, so unlike `setPersonal` the audit keeps the value.
+const AVATAR_RE = /^[a-z][a-z0-9_-]{0,23}$/;
+
+async function setAvatar(client, userId, avatar) {
+  const a = avatar === null || avatar === undefined || avatar === '' ? null : String(avatar).trim();
+  if (a !== null && !AVATAR_RE.test(a)) return err('invalid', 'avatar must be a short lowercase id', { reason: 'avatar' });
+  const { rows } = await client.query(
+    `UPDATE users SET avatar = $2 WHERE id = $1 RETURNING avatar`, [userId, a]);
+  if (!rows[0]) return err('not_found', 'no such user');
+  await audit.record(client, userId, 'user.avatar_set', { avatar: a });
+  return ok({ avatar: rows[0].avatar });
+}
+
 // The profile column moved, so the private chat's own record of it follows
 // (owner, 2026-09-23: "אם יש מגדר בקבוצה חדש שיתעדכן גם בפרופיל … וכמובן אם הוא
 // משנה בשיחה הפרטית … גם זה יהיה בהתאמה בקבוצה"). The `gender_forms`
@@ -454,7 +470,7 @@ async function syncGenderForms(client, userId, g) {
 }
 
 module.exports = {
-  setPersonal,
+  setPersonal, setAvatar,
   newIdentityToken, resolveByToken, getByPhone, getById,
   createUser, primaryChannel, setPrimaryChannel, sessionKeyFor, setName, setTimezone, setLocale,
   setReminderNudge,

@@ -687,7 +687,8 @@ const ACTIONS = {
       return err('forbidden', 'you have used both your calls',
         { reason: 'attempts_exhausted', ...attempts });
     }
-    const res = await voice.requestCall(client, user, {}, { maxDurationSec: voice.CALL_MAX_DURATION_SEC });
+    const res = await voice.requestCall(client, user, {},
+      { maxDurationSec: voice.CALL_MAX_DURATION_SEC, capped: true });
     if (res.ok) await voice.recordCallAttempt(client, user.id);
     return res;
   },
@@ -720,6 +721,12 @@ const ACTIONS = {
     // Their own screen is the definition of confirmed, the same argument
     // setTimezone makes above.
     return users.setName(client, userId, p.firstName, p.lastName, { confirmed: true, source: 'dashboard' });
+  },
+
+  // No chat tool for this one and nothing on the card reads it, which is why
+  // it is not in CARD_ACTIONS: a new character leaves USER.md as it was.
+  async setAvatar(client, userId, p) {
+    return users.setAvatar(client, userId, p.avatar);
   },
 
   async setPersonal(client, userId, p) {
