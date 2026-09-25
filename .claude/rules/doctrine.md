@@ -135,7 +135,17 @@ title means this file. Grep the title, not the filename.
   required, a question mark disqualifies, and every other word must be on a
   short filler list. **Needs a gateway restart to take effect** — the hook is
   read at startup, and until then the code is live and inert
-  (`incidents.md`, "בשמחה יהב, שיהיה ערב טוב").
+  (`incidents.md`, "בשמחה יהב, שיהיה ערב טוב"). **Every language is a word on
+  the list**, each with its own "very much" as filler (2026-09-26).
+  **…except right after a QUESTION of Olma's, when the thanks is the answer.**
+  "להוסיף לך את המשימה ליומן?" → "תודה" dropped the offer. Now the plugin's
+  `turn_progress reply` says whether a reply ended on a question
+  (`endsWithQuestion`, its last line, a bare link under it ignored), brokerd
+  keeps the newest per person for `reactions.THANKS_AFTER_QUESTION_MS` (3h),
+  and a thanks inside it gets 👀, no silence and `hints.thanksAfterQuestion`:
+  the model decides, most likely yes (the owner's call). Spent on use, in
+  memory (a restart is the old behaviour), blind to the raw pipe on purpose
+  (`incidents.md`, "The thanks that was an answer").
 
 - **`markPlaced` is CONDITIONAL, so nothing else on the same result may be an
   unconditional instruction to write.** It lost to one for two days: the tool

@@ -209,6 +209,17 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
     for (const list of pendingEyes.values()) for (const e of list) if (e.messageId === messageId) stopEyes(e);
   }
 
+  // When Olma's latest reply to a person ENDED on a question (the plugin's
+  // `turn_progress reply` says so, a boolean and never the words). A bare
+  // thanks inside reactions.THANKS_AFTER_QUESTION_MS of it is their answer.
+  // In memory, so a brokerd restart forgets it and that thanks closes the
+  // exchange as before — the old behaviour, never a wrong one.
+  const askedAt = new Map();
+  function askedRecently(agentId) {
+    const at = askedAt.get(agentId);
+    return at != null && clock() - at <= reactions.THANKS_AFTER_QUESTION_MS;
+  }
+
   // Injectable for the same reason `send` is everywhere else here: the test
   // that matters for this feature is the one that watches a real turn place a
   // real mark, and it must do that without spawning anything.
@@ -259,7 +270,16 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
       // The hook classified the text and sent us the verdict, never the words
       // (gateway-hooks/olma-turn-open). A message that is only thanks gets 🙏
       // instead of 👀: 👀 promises a reply and this one is not getting one.
-      const thanksOnly = params.thanks === true;
+      // …unless the last thing Olma said to them was a question: then the
+      // thanks is their answer (most likely a yes), it gets the ordinary 👀,
+      // and the model is told to read it as one. Spent on use.
+      const saidThanks = params.thanks === true;
+      const thanksAfterQuestion = saidThanks && !rec.skipped && askedRecently(agentId);
+      const thanksOnly = saidThanks && !thanksAfterQuestion;
+      if (thanksAfterQuestion) {
+        askedAt.delete(agentId);
+        await audit.record(client, user.id, 'turn.thanks_after_question', { messageId });
+      }
       // "להפסיק להזכיר" is answered by a WRITE, here, before the model reads
       // the turn — every ladder that has actually spoken to them in the last
       // day stops (domain/reminders.stopRecentLadders), and the mark on the
@@ -287,7 +307,7 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
         // relays `reply_to_id` itself, as before.
         replyToId: reactions.cleanMessageId(params.replyToId) || null,
         counted: rec.counted, quota: rec.quota, firstTurn: Boolean(rec.firstTurn),
-        thanksOnly, stoppedReminders,
+        thanksOnly, thanksAfterQuestion, stoppedReminders,
         // "help me until next week": the hook's verdict, resolved here against
         // THEIR clock at the moment the message arrived, and armed by add_task
         // or set_task_reminder on this turn (domain/chase-deadline). Nothing is
@@ -577,6 +597,10 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
     if (!/^u-\d+$/.test(agentId)) return { ok: false, error: 'bad agentId' };
     const what = params.what === 'end' ? 'end' : params.what === 'reply' ? 'reply' : null;
     if (!what) return { ok: false, error: 'bad what' };
+    // Every reply says whether it ended on a question, so the newest one wins.
+    if (what === 'reply') {
+      if (params.asked === true) askedAt.set(agentId, clock()); else askedAt.delete(agentId);
+    }
     const list = eyesOf(agentId);
     const idx = list.findIndex((e) => e.running);
     if (idx < 0) return { ok: true, held: false };
@@ -635,6 +659,7 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
         firstTurn: Boolean(pre && pre.firstTurn && !pre.contextSent),
         ourTurn, replyTarget, languageNudge: null,
         thanksOnly: Boolean(pre && pre.thanksOnly),
+        thanksAfterQuestion: Boolean(pre && pre.thanksAfterQuestion),
         stoppedReminders: (pre && pre.stoppedReminders) || 0,
         chaseUntil: pre && pre.chase ? pre.chase.day : null,
         chaseNamedHour: Boolean(pre && pre.chase && pre.chase.namedHour),
@@ -772,6 +797,7 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
           turn.messageId = pre.messageId; turn.lastInboundAt = pre.lastInboundAt;
           turn.messageKind = pre.kind; turn.marked = pre.marked; turn.reactionVocab = pre.reactionVocab;
           turn.thanksOnly = pre.thanksOnly;
+          turn.thanksAfterQuestion = Boolean(pre.thanksAfterQuestion);
           turn.stoppedReminders = pre.stoppedReminders || 0;
           turn.chase = pre.chase || null; turn.chaseUsed = false;
           turn.openList = Boolean(pre.openList);

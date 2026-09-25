@@ -718,7 +718,7 @@ export function buildReplyGateHandler({ connect, sock, timeoutMs = 1500, log = t
       const person = /^u-\d+$/.test(agentId);
       const hasMedia = Boolean(payload && (payload.mediaUrl || (Array.isArray(payload.mediaUrls) && payload.mediaUrls.length) || payload.presentation || payload.location));
       if (!text.trim()) {
-        if (person && hasMedia) turnProgress(agentId, "reply", { connect, sock, timeoutMs });
+        if (person && hasMedia) turnProgress(agentId, "reply", { connect, sock, timeoutMs, asked: false });
         return undefined;
       }
       const verdict = gateReply(text, { readerWritesHebrew: readerOf(agentId) });
@@ -726,7 +726,12 @@ export function buildReplyGateHandler({ connect, sock, timeoutMs = 1500, log = t
       // turn's message is no longer needed (`turnProgress` below). Not for a
       // reply the gate is about to stop entirely: nothing reached anybody, and
       // the turn's end will say so.
-      if (person && (verdict.action !== "cancel" || hasMedia)) turnProgress(agentId, "reply", { connect, sock, timeoutMs });
+      // And whether it ENDS on a question, read off what will actually be sent:
+      // a bare "תודה" after "להוסיף לך את זה ליומן?" is their answer, not a
+      // closed exchange (brokerd, `thanks_after_question`).
+      if (person && (verdict.action !== "cancel" || hasMedia)) {
+        turnProgress(agentId, "reply", { connect, sock, timeoutMs, asked: verdict.action !== "cancel" && endsWithQuestion(verdict.text) });
+      }
       // Read off what will actually be SENT — a claim inside notes the gate
       // just cut never reaches anybody. Only a person's own agent: a room has
       // no turn brokerd can speak for.
@@ -772,8 +777,22 @@ export function buildReplyGateHandler({ connect, sock, timeoutMs = 1500, log = t
 // only one there is — and which arrives ~6s AFTER a reply that was sent, too
 // late to use alone. Fire-and-forget: the reply never waits on it, and a lost
 // signal costs one late 👀, which is what every message had before.
-export function turnProgress(agentId, what, { connect, sock, timeoutMs = 1500 } = {}) {
-  askBroker("turn_progress", { agentId, what }, { connect, sock, timeoutMs }).catch(() => {});
+export function turnProgress(agentId, what, { connect, sock, timeoutMs = 1500, asked } = {}) {
+  const params = what === "reply" ? { agentId, what, asked: asked === true } : { agentId, what };
+  askBroker("turn_progress", params, { connect, sock, timeoutMs }).catch(() => {});
+}
+
+// Does this reply leave them a question to answer? Only its LAST line counts —
+// a question in the middle that the reply then answers itself is not one — and
+// a bare link under it does not move the end (every coordination message puts
+// its page on a line of its own after the question), nor does a closing emoji.
+// Only the boolean leaves the gateway, like everything else here.
+const BARE_LINK_LINE_RE = /^\s*<?https?:\/\/\S+>?\s*$/;
+export function endsWithQuestion(text) {
+  const lines = String(text || "").split("\n").map((l) => l.trim()).filter(Boolean);
+  while (lines.length && BARE_LINK_LINE_RE.test(lines[lines.length - 1])) lines.pop();
+  if (!lines.length) return false;
+  return /[?？؟]$/u.test(lines[lines.length - 1].replace(/[^\p{L}\p{N}?？؟]+$/u, ""));
 }
 
 export function buildTurnEndHandler({ connect, sock, timeoutMs = 1500 } = {}) {

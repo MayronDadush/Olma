@@ -381,12 +381,17 @@ test('two quick messages keep two opens; each turn adopts its own, and nothing o
 // ── "תודה" is answered by the mark, and by nothing else ──────────────────────
 
 test('the hook reads a thanks and sends the verdict, never the words', () => {
-  const yes = ['תודה', 'תודה רבה', 'תודה רבה לך!', 'מעולה, תודה 🙏', 'thanks!', 'Thank you so much', 'ty'];
+  const yes = ['תודה', 'תודה רבה', 'תודה רבה לך!', 'מעולה, תודה 🙏', 'thanks!', 'Thank you so much', 'ty',
+    // every language, each with its "very much" (owner, 2026-09-26)
+    'شكرا', 'شكراً جزيلاً', 'Спасибо большое', 'merci beaucoup', 'Muchas gracias!',
+    'Vielen Dank', 'Danke schön', 'grazie mille', 'muito obrigado', 'አመሰግናለሁ', 'תנקס'];
   const no = [
     'תודה?',                       // a question is never a closed exchange
     'תודה, ותוסיף חלב לרשימה',      // thanks AND an ask is an ask
     'תודה על התזכורת',              // long-form gratitude takes the ordinary path
     'מעולה',                        // acknowledgement is not thanks
+    'спасибо, а завтра?',           // a question in any language is a question
+    'gracias por todo',             // long-form, in any language
     '👍',                           // an emoji alone is not a thanks we can read
     '',
   ];
