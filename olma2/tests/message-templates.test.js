@@ -130,8 +130,31 @@ test('families: a Hebrew template and its English twin are one message with two 
     assert.ok(f.label && f.help, `${f.id} has a label and a help line`);
   }
   // every template is in exactly one family
-  const members = templates.families().flatMap((f) => [f.he, f.en].filter(Boolean).map((t) => t.key));
+  const members = templates.families().flatMap((f) => [f.he, f.en, f.zones].filter(Boolean).map((t) => t.key));
   assert.deepEqual(members.sort(), templates.TEMPLATES.map((t) => t.key).sort());
+});
+
+// ---- a room on more than one clock (owner, 2026-09-25) ---------------------
+test('a several-clocks twin is a variant of its room line, never a language', () => {
+  const fam = Object.fromEntries(templates.families().map((f) => [f.id, f]));
+  assert.equal(fam.group_coord_done.he.key, 'group_coord_done', 'the one-clock line keeps its place');
+  assert.equal(fam.group_coord_done.zones.key, 'group_coord_done_zones');
+  assert.equal(fam.group_coord_done.en, null);
+  assert.equal(fam.group_coord_chase.zones, null, 'a line with no time in it has no twin');
+  for (const f of templates.families()) {
+    if (!f.zones) continue;
+    assert.equal(f.audience, 'group', `${f.id}: only a room hears a line on several clocks`);
+    assert.equal(f.zones.audience, 'group');
+    assert.ok(f.he, `${f.id}: a twin without the line it is a twin of`);
+  }
+  // Every room line that carries a time has one — a new timed line that forgets
+  // it would speak one city's hour to a room on several.
+  for (const f of templates.families()) {
+    if (f.audience !== 'group' || !f.he) continue;
+    const timed = ['slot', 'was', 'added'].some((v) => Object.hasOwn(f.he.vars, v))
+      || (f.id === 'group_coord_table') || (f.id === 'group_coord_started');
+    if (timed) assert.ok(f.zones, `${f.id} names a time and has no several-clocks twin`);
+  }
 });
 
 // ---- the page shows the message, not a legend ------------------------------

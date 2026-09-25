@@ -177,6 +177,7 @@ Loads when you **Read** a file under `src/outbox/**`, `src/domain/message-format
 - **On the model path a retry is not a retry — it is a NEW message, composed against a world the failed sends themselves created.**
 - **A `--deliver` that TIMES OUT has very likely gone out, and is never retried.**
 - **Anything else due in the same moment is ONE message too, and two rules say what may travel together**
+- **A meeting time reaches each reader in THEIR clock too, beside the proposer's words** — and the confirmed calendar step hands over the exact start, never "work it out from the words"
 
 ### Turns, and what reaches the person
 
@@ -351,7 +352,7 @@ Loads when you **Read** a file under `src/domain/group-connections.js`, `src/dom
 - **The person who asked the ROOM for a coordination is asked privately too** — a tag carries no times, and the test asserted the bug
 - **…and a time said in the room is that person's proposal, put on the table in their name from the room** (`add_group_coordination_option`) — never the room's voice, and never "sent to everyone" when nothing was written
 - **In the room a person is addressed by their TAG and never by their name; in a private chat, by their name** — and a tag coming IN is a member to look up in `room.people`, never a token to discard — and since 2026-09-23 a CONFIRMED name and the form of address they set may be said too (`group-turn.peopleOf`), with masculine when none was set, and a member stating their own is saved (`remember_sender_gender`, the sender only), and the profile column and the private chat's `gender_forms` follow each other (`src/domain/gender-forms.js`)
-- **The first thing a room hears about its own coordination is that she has STARTED, and it counts people rather than naming them**
+- **The first thing a room hears about its own coordination is that she has STARTED, and it counts people rather than naming them** — and since 2026-09-25 it TAGS who has not written, and `admitLateMembers` lets them in once they do
 - **Every line a room hears is said once, except the TABLE moving, which is news every time** — a watermark rather than a flag, anchored on the base line, and it says the shape and never an answer.
 - **…and it waits a quarter of an hour, so a burst of changes is ONE sentence** — the same fifteen minutes as the private side, measured from the FIRST change the room has not heard about, and it gates both lines about the table.
 - **The room is chased an HOUR after she starts, not half way to the thing** — half the distance put one room at 05:11 the next morning; who may be NAMED is unchanged.
@@ -367,6 +368,7 @@ Loads when you **Read** a file under `src/domain/group-connections.js`, `src/dom
 - **…and that line carries what the same person did to the TABLE, because the reason and the change are one piece of news** — three shapes, chosen by what is true
 - **A joke in the room is answered with a joke, built only from what the room said** — one short line; nothing invented, nothing private, nobody really mocked
 - **A paused member is counted into a room's coordination only until their one invite is spent; a day of silence takes them out**
+- **A room on more than one clock hears every time in each, by city, from the owner's own `_zones` templates; a time with no clock in it is never converted, and a one-clock room is untouched**
 - **A member's message in the room opens the gate's fifteen-minute window for that room's coordination — and, since 2026-09-09, the room's own announcement window; nothing else**
 
 ### Testing

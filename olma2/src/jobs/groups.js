@@ -31,6 +31,7 @@ const groupContext = require('../domain/group-context');
 const groupMeetings = require('../domain/group-meetings');
 const groupVoice = require('../domain/group-voice');
 const groupOutbox = require('../domain/group-outbox');
+const groupTurn = require('../domain/group-turn');
 const groupConnections = require('../domain/group-connections');
 const { isTaggableNumber } = require('../domain/proactive-text');
 const gate = require('../outbox/gate');
@@ -523,6 +524,32 @@ async function sweepGroupVoice(client, deps) {
       `SELECT id, title, status, confirmed_slot, confirmed_start_at, initiator_id,
               settle_due_at, calendar_event_id, location, confirmed_all_day, confirmed_daypart, time_set_at
          FROM meetings WHERE id = $1`, [row.meeting_id]);
+    // Somebody who has written to her since it started is let in now, and the
+    // room hears it once (`group-meetings.admitLateMembers`, owner 2026-09-25).
+    // Only while the room is awake: letting them in and saying so are one
+    // piece of news, and a line held for the morning with nothing stamped is
+    // simply the same admission found again then. It is this pass's one line
+    // for the room, so everything else waits for the next one.
+    if (full[0] && mayAnnounce(row, now)) {
+      const joined = await groupMeetings.admitLateMembers(client, row, full[0], now);
+      const phones = joined.map((m) => m.phone).filter(isTaggableNumber);
+      // Before the opening line, there is nothing to add: it counts them.
+      if (phones.length && row.group_started_at) {
+        const address = joined.length === 1 ? groupTurn.addressOf(joined[0]) : null;
+        const ids = joined.map((m) => Number(m.user_id)).sort((a, b) => a - b).join(',');
+        await groupOutbox.enqueue(client, {
+          groupId: row.id, kind: 'coordination',
+          payload: { line: { kind: 'joined', phones, address } },
+          idempotencyKey: `g${row.id}:m${row.meeting_id}:joined:${ids}`,
+        });
+        await audit.record(client, row.registered_by_user_id, 'group.coordination_said', {
+          groupId: row.id, meetingId: Number(row.meeting_id), kind: 'joined',
+        });
+        spoken.add(String(row.id));
+        out.said.push({ groupId: row.id, meetingId: Number(row.meeting_id), kind: 'joined' });
+        continue;
+      }
+    }
     const st = await groupMeetings.statusOf(client, row, full[0] || null);
     // Read HERE and not on `statusOf`, on purpose: `statusOf` is also the block
     // a group TURN speaks from, and a model that could see a sentence waiting

@@ -4664,6 +4664,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "mt.stateNone":"עוד אף אחד לא ענה",
       "mt.stateNoOpts":"עוד לא הוצע מועד",
       "mt.settledAs":"נקבע — {when}",
+      "mt.yourTime":"{when} · אצלך {local}",
       "mt.newTitle":"תיאום פגישה חדש","mt.name":"על מה הפגישה","mt.namePh":"פוקר, קפה, פגישת עבודה…",
       "mt.qWho":"עם מי נפגשים?","mt.qDays":"אילו ימים להציע?","mt.qWhen":"מתי ביום?",
       "mt.step":"שלב {n} מתוך 3","mt.next":"המשך","mt.back":"חזרה","mt.optional":"לא חובה",
@@ -4988,6 +4989,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "mt.stateNone":"Nobody has answered yet",
       "mt.stateNoOpts":"No time proposed yet",
       "mt.settledAs":"Settled \u2014 {when}",
+      "mt.yourTime":"{when} \u00b7 your time {local}",
       "mt.newTitle":"New coordination","mt.name":"What is it for","mt.namePh":"Poker, coffee, a work meeting\u2026",
       "mt.qWho":"Who is it with?","mt.qDays":"Which days to offer?","mt.qWhen":"When in the day?",
       "mt.step":"Step {n} of 3","mt.next":"Continue","mt.back":"Back","mt.optional":"Optional",
@@ -8869,6 +8871,9 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      watching the others answer a coordination you stepped out of is not
      something to offer. The server takes the same view and sends only these
      two fields (`meetingsLeft`, domain/user-dashboard.js). */
+  function mtWithLocal(words, local){
+    return words && local ? t("mt.yourTime", {when:words, local:local}) : words;
+  }
   function mtLeftHTML(m){
     /* Two kinds of row share this list: one you left (a way back in) and one
        that settled and happened (nothing to do — it is over). */
@@ -12210,7 +12215,12 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
         return acc;
       }, {}),
       settled:settled,
-      slotText:(settledOpt ? m.confirmedSlot : m.slot) || "",
+      /* The proposer's words, plus this reader's own hour when they are on
+         another clock — the server decides when that is (`slotLocal`,
+         `confirmedLocal` in domain/user-dashboard.js) and the page never
+         converts a time itself. */
+      slotText:mtWithLocal((settledOpt ? m.confirmedSlot : m.slot) || "",
+        settledOpt ? m.confirmedLocal : m.slotLocal),
       /* Whether the settled slot sits on THIS person's own calendar is not
          something we record per participant, so it is not claimed. */
       inCal:false,

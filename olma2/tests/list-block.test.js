@@ -336,3 +336,13 @@ test('emphasis in a proposer\'s own slot text is cleaned, and a channel with no 
   assert.equal(lb.renderMeetingOptionsBlock(opts, { channelType: 'sms' }),
     '1. יום שני בערב\n2. יום שלישי\n3. יום רביעי');
 });
+
+test('a reader on another clock gets their own hour beside the proposer\'s words, never instead of them', () => {
+  // פנתרה, 2026-09-25: "יום שבת 26.9 20:00" was 10:00 for the member in Los Angeles.
+  const block = lb.renderMeetingOptionsBlock([
+    { id: 1, slotText: 'יום שבת 26.9 20:00', status: 'active', yourTime: { short: '10:00' } },
+    { id: 2, slotText: 'יום ראשון 27.9 בערב', status: 'active' },
+    { id: 3, slotText: 'יום שני 28.9 18:00', status: 'active', yourTime: { short: 'יום שני 28.9 08:00' } },
+  ], { channelType: 'whatsapp' });
+  assert.equal(block, '1. יום שבת 26.9 20:00 · אצלך 10:00\n2. יום ראשון 27.9 בערב\n3. יום שני 28.9 18:00 · אצלך יום שני 28.9 08:00');
+});

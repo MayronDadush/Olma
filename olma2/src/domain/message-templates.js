@@ -250,6 +250,35 @@ const TEMPLATES = [
     },
     text: 'מתחילה לתאם *{{title}}* 🎯\nשאלתי בפרטי {{asked}} מכם שכתבו לי, ואחזור לכאן עם מה שמסתדר.\n{{outside_note}}',
   },
+  // Who has not written to her yet, TAGGED in the opening line (owner,
+  // 2026-09-25, פנתרה: the member in Australia heard only the count, and a
+  // count pings nobody). Two keys because Hebrew says "you" differently to one
+  // person and to several; the count line above is what is left when none of
+  // them can be tagged.
+  {
+    key: 'group_coord_outside', audience: 'group', label: 'תיאום — מי שעוד לא כתב לה (אחד)',
+    help: 'בתוך שורת הפתיחה של תיאום, כשאדם אחד בקבוצה עוד לא כתב לה בפרטי. מתייגת אותו, כדי שיכתוב לה ותצרף אותו.',
+    vars: { who: 'התיוג שלו' }, required: ['who'],
+    sample: { who: '@+972501234567' },
+    text: '{{who}} עוד לא כתבת לי בפרטי — ״היי״ שם ואצרף אותך לתיאום ☺️',
+  },
+  {
+    key: 'group_coord_outside_many', audience: 'group', label: 'תיאום — מי שעוד לא כתבו לה (כמה)',
+    help: 'אותה שורה, כשכמה אנשים בקבוצה עוד לא כתבו לה בפרטי.',
+    vars: { who: 'התיוגים שלהם' }, required: ['who'],
+    sample: { who: '@+972501234567 @+972521234567' },
+    text: '{{who}} עוד לא כתבתם לי בפרטי — ״היי״ שם ואצרף אתכם לתיאום ☺️',
+  },
+  // Somebody let into a coordination after it started, because they have now
+  // written to her (`group-meetings.admitLateMembers`). Once per person.
+  {
+    key: 'group_coord_joined', audience: 'group', label: 'תיאום — מישהו הצטרף באמצע',
+    help: 'כשמי שעוד לא היה בתיאום כתב לה בפרטי והיא צירפה אותו. נאמרת פעם אחת לכל אדם, בשעות היום של הקבוצה.',
+    vars: { who: 'התיוג של מי שהצטרף', verb: 'הצטרף / הצטרפה / הצטרפו — לפי מה שהם הגדירו, זכר כשלא הגדירו' },
+    required: ['who'],
+    sample: { who: '@+972501234567', verb: 'הצטרפה' },
+    text: '{{who}} {{verb}} — שאלתי בפרטי 👋',
+  },
   {
     key: 'group_coord_base', audience: 'group', label: 'תיאום — יש כיוון',
     help: 'פעם אחת בכל תיאום, ברגע שיש זמן שכמה אנשים אמרו לו כן (או שהגיע למינימום, בקבוצת משחק).',
@@ -355,6 +384,134 @@ const TEMPLATES = [
     sample: { slot: 'יום שלישי 20:00' },
     text: 'עוד שעה: *{{slot}}* 🙂',
   },
+  // ---- the same lines, in a room that lives on more than one clock ----------
+  // Owner, 2026-09-25, off פנתרה: two members in Israel, one in the US, one in
+  // Australia, and every time the room heard was the proposer's Israeli hour.
+  // Each twin is chosen when the people this coordination is asking span more
+  // than one zone at that moment (`meeting-time.spansZones`), and the city
+  // names are ICU's, never typed here. The owner approved every text below as a
+  // draft; they are his to reword like the rest.
+  //
+  // Two shapes of the time, both drawn: `{{zones}}` is one line per zone, for
+  // the two lines that matter most ("סגור" and "יש כיוון"), and `{{slot}}` /
+  // `{{added}}` / `{{was}}` are the same moment on one line, joined with " · ".
+  // A time that names no clock ("שבת בערב") is never converted — it arrives in
+  // its author's words with their city beside it, and `{{zones}}` is empty.
+  {
+    key: 'group_coord_started_zones', audience: 'group', label: 'תיאום — התחלתי לשאול',
+    help: '',
+    vars: {
+      title: 'מה מתארגן, במילים של הקבוצה',
+      asked: 'עם כמה אנשים היא התחילה לתאם',
+      cities: 'הערים של אזורי הזמן בקבוצה',
+      outside_note: 'הערה על מי שעוד לא כתב לה — רק כשיש כאלה בקבוצה',
+    },
+    required: ['title', 'asked'],
+    sample: {
+      title: 'שיחת וידאו', asked: '3', cities: 'ישראל, ניו יורק וסידני',
+      outside_note: 'מי שעוד לא כתב לי בפרטי לא נספר פה — ״היי״ בפרטי וזה מסתדר ☺️',
+    },
+    text: 'מתחילה לתאם *{{title}}* 🎯\nאתם פרוסים על {{cities}} — כל שעה שאכתוב פה תופיע לפי כל אחד 🌍\nשאלתי בפרטי {{asked}} מכם שכתבו לי, ואחזור לכאן עם מה שמסתדר.\n{{outside_note}}',
+  },
+  {
+    key: 'group_coord_base_zones', audience: 'group', label: 'תיאום — יש כיוון',
+    help: '',
+    vars: {
+      day: 'היום והתאריך, לפי השעון של הקבוצה',
+      zones: 'השעה בכל אזור זמן, שורה לכל אחד',
+      yes: 'כמה אמרו לו כן', missing: 'תיוגים של מי שעוד לא אמר כן לזמן הזה',
+    },
+    required: ['day'],
+    sample: {
+      day: 'יום שבת 26.9', zones: '20:00 ישראל\n13:00 ניו יורק\n03:00 סידני (יום ראשון 27.9)',
+      yes: '2', missing: '@+972501234567',
+    },
+    text: 'יש כיוון: *{{day}}* — {{yes}} כבר בפנים.\n{{zones}}\nמחכה ל{{missing}} 🤞',
+  },
+  {
+    key: 'group_coord_relay_added_zones', audience: 'group', label: 'תיאום — ביקש להגיד משהו, והוסיף מועד',
+    help: '',
+    vars: { from: 'התיוג של מי שביקש', what: 'המשפט שלו, כמו שנאמר', added: 'המועד שהוא הוסיף, בכל אזורי הזמן' },
+    required: ['from', 'what', 'added'],
+    sample: { from: '@+972501234567', what: 'בבוקר קשה לי', added: 'יום שבת 26.9 · 20:00 ישראל · 13:00 ניו יורק · 03:00 סידני (יום ראשון 27.9)' },
+    text: '{{from}}: {{what}} — הוספתי את האופציה *{{added}}* 📣',
+  },
+  {
+    key: 'group_coord_relay_swapped_zones', audience: 'group', label: 'תיאום — ביקש להגיד משהו, והחליף מועד',
+    help: '',
+    vars: {
+      from: 'התיוג של מי שביקש', what: 'המשפט שלו, כמו שנאמר',
+      was: 'המועד שהוא הוריד, בכל אזורי הזמן', added: 'המועד שהוא הוסיף, בכל אזורי הזמן',
+    },
+    required: ['from', 'what', 'was', 'added'],
+    sample: {
+      from: '@+972501234567', what: 'בבוקר קשה לי',
+      was: 'יום שבת 26.9 · 12:00 ישראל · 05:00 ניו יורק · 19:00 סידני',
+      added: 'יום שבת 26.9 · 20:00 ישראל · 13:00 ניו יורק · 03:00 סידני (יום ראשון 27.9)',
+    },
+    text: '{{from}}: {{what}} — החלפתי את *{{was}}* באופציה של *{{added}}* 📣',
+  },
+  {
+    key: 'group_coord_moved_zones', audience: 'group', label: 'תיאום — הזמן שנאמר כאן ירד מהשולחן',
+    help: '',
+    vars: {
+      was: 'הזמן שהחדר שמע עליו ושכבר לא קיים, בכל אזורי הזמן',
+      lead: 'שורת ״יש כיוון״ על הזמן שמוביל עכשיו — הניסוח שלה נלקח משם',
+    },
+    required: ['was'],
+    sample: {
+      was: 'יום שבת 26.9 · 12:00 ישראל · 05:00 ניו יורק · 19:00 סידני',
+      lead: 'יש כיוון: *יום שבת 26.9* — 2 כבר בפנים.\n20:00 ישראל\n13:00 ניו יורק\n03:00 סידני (יום ראשון 27.9)\nמחכה ל @+972501234567 🤞',
+    },
+    text: '*{{was}}* כבר לא על השולחן 🔄\n{{lead}}',
+  },
+  {
+    key: 'group_coord_table_zones', audience: 'group', label: 'תיאום — השולחן זז',
+    help: '',
+    vars: { count: 'כמה מועדים, כביטוי שלם ("מועד אחד" / "*3* מועדים")', lead: 'משפט שלם על המועד שהכי מתקדם, בכל אזורי הזמן, או ריק' },
+    required: ['count'],
+    sample: { count: '*3* מועדים', lead: 'הכי מתקדם: *יום שבת 26.9 · 20:00 ישראל · 13:00 ניו יורק · 03:00 סידני (יום ראשון 27.9)*.' },
+    text: 'השולחן זז — עכשיו {{count}} על הפרק. {{lead}}',
+  },
+  {
+    key: 'group_coord_done_zones', audience: 'group', label: 'תיאום — נסגר',
+    help: '',
+    vars: {
+      day: 'היום והתאריך, לפי השעון של הקבוצה',
+      zones: 'השעה בכל אזור זמן, שורה לכל אחד',
+      who: '"כולם בפנים", או "בפנים:" ותיוגים של מי שאמר כן',
+      place_ask: 'שאלה איך מתחברים — רק כשאף אחד לא אמר',
+    },
+    required: ['day'],
+    sample: {
+      day: 'יום שבת 26.9', zones: '20:00 ישראל\n13:00 ניו יורק\n03:00 סידני (יום ראשון 27.9)',
+      who: 'כולם בפנים', place_ask: 'איך מתחברים? זום, מיט, וידאו בוואטסאפ — תכתבו לי ואני אוסיף ליומן 🎥',
+    },
+    text: 'סגור: *{{day}}* 🎉 {{who}}\n{{zones}}\n{{place_ask}}',
+  },
+  {
+    key: 'group_coord_time_zones', audience: 'group', label: 'תיאום — נקבעה שעה',
+    help: '',
+    vars: { slot: 'השעה שנקבעה, בכל אזורי הזמן' }, required: ['slot'],
+    sample: { slot: 'יום שבת 26.9 · 12:00 ישראל · 05:00 ניו יורק · 19:00 סידני' },
+    text: 'השעה נקבעה: *{{slot}}* 🕐',
+  },
+  {
+    key: 'group_coord_dayof_zones', audience: 'group', label: 'תיאום — תזכורת ביום עצמו',
+    help: '',
+    vars: { slot: 'הזמן שנסגר, בכל אזורי הזמן' }, required: ['slot'],
+    sample: { slot: 'יום שבת 26.9 · 20:00 ישראל · 13:00 ניו יורק · 03:00 סידני (יום ראשון 27.9)' },
+    // No "היום": for somebody in Sydney the morning reminder may already be
+    // about tomorrow.
+    text: 'מזכירה — *{{slot}}* 👋',
+  },
+  {
+    key: 'group_coord_soon_zones', audience: 'group', label: 'תיאום — שעה לפני',
+    help: '',
+    vars: { slot: 'הזמן שנסגר, בכל אזורי הזמן' }, required: ['slot'],
+    sample: { slot: 'יום שבת 26.9 · 20:00 ישראל · 13:00 ניו יורק · 03:00 סידני (יום ראשון 27.9)' },
+    text: 'עוד שעה: *{{slot}}* 🙂',
+  },
 ];
 
 const BY_KEY = new Map(TEMPLATES.map((t) => [t.key, t]));
@@ -366,11 +523,20 @@ const BY_KEY = new Map(TEMPLATES.map((t) => [t.key, t]));
 // the page shows them as one row with two columns. The family is the key with
 // its language suffix removed; a key with no suffix is Hebrew. Label and help
 // are the Hebrew member's (the twins carry the same label and an empty help).
+//
+// A room message can have a second shape of the same kind: `<key>_zones`, the
+// one a room hears when its members live on more than one clock (owner,
+// 2026-09-25 — "אני רוצה ליצור טאמפלטים גם לקבוצה עם כמה אזורי זמן"). It is a
+// VARIANT and not a language, so it gets its own slot on the family and never
+// displaces the Hebrew member it sits beside; label and help stay the base's.
+function variantOf(key) {
+  return /_zones$/.test(key) ? 'zones' : null;
+}
 function langOf(key) {
   return /_en$/.test(key) ? 'en' : 'he';
 }
 function familyOf(key) {
-  return key.replace(/_(he|en)$/, '');
+  return key.replace(/_zones$/, '').replace(/_(he|en)$/, '');
 }
 function families() {
   const out = [];
@@ -379,9 +545,10 @@ function families() {
     const id = familyOf(t.key);
     let f = seen.get(id);
     if (!f) {
-      f = { id, audience: t.audience, label: t.label, help: t.help, he: null, en: null };
+      f = { id, audience: t.audience, label: t.label, help: t.help, he: null, en: null, zones: null };
       seen.set(id, f); out.push(f);
     }
+    if (variantOf(t.key)) { f.zones = t; continue; }
     f[langOf(t.key)] = t;
     if (langOf(t.key) === 'he') { f.label = t.label; f.help = t.help; }
   }
@@ -495,5 +662,5 @@ function parseForm(body) {
 
 module.exports = {
   FLAG, MAX_LENGTH, TEMPLATES, spec, validate, normalize, textFor, render, load, parseForm, placeholdersIn,
-  families, familyOf, langOf, example,
+  families, familyOf, langOf, variantOf, example,
 };

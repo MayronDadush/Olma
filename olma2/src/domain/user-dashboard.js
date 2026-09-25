@@ -25,6 +25,7 @@ const { ok, err } = require('./results');
 // TDZ ReferenceError inside the one function that needs this.
 const meetingsDomain = require('./meetings');
 const optionMoment = require('./meeting-option-moment');
+const meetingTime = require('./meeting-time');
 const mail = require('./mail');
 const voice = require('./voice');
 const preferences = require('./preferences');
@@ -534,6 +535,26 @@ async function loadMeetings(client, userId, zone) {
         || said.length > 0,
     });
   }
+  // The proposer's words stay the words (they are what everybody else read),
+  // and a reader on another clock gets their own hour BESIDE them — "יום שבת
+  // 26.9 20:00" was 10:00 for the man in Los Angeles, and nothing on this page
+  // said so (`incidents.md`, "פנתרה: one time, four clocks"). `null` whenever
+  // the clocks agree, the author's clock is unknown, or the words name no hour.
+  const { slotMoment } = require('./meeting-fanout');
+  const localOf = async (meetingId, slot) => {
+    if (!slot) return null;
+    const mo = await slotMoment(client, meetingId, slot);
+    const local = meetingTime.readerSlot(
+      { startsAt: mo.startsAtUtc, allDay: mo.allDay, daypart: mo.daypart, slot }, zone, mo.authorTz);
+    return local ? local.short : null;
+  };
+  const locals = new Map();
+  for (const m of meetings) {
+    locals.set(m.id, {
+      slot: await localOf(m.id, m.proposed_slot),
+      confirmed: await localOf(m.id, m.confirmed_slot),
+    });
+  }
   return meetings.map((m) => ({
     id: m.id,
     title: m.title,
@@ -547,6 +568,8 @@ async function loadMeetings(client, userId, zone) {
     proposedTime: m.proposed_time,
     proposedDay: m.proposed_day === null ? null : Number(m.proposed_day),
     confirmedSlot: m.confirmed_slot,
+    slotLocal: locals.get(m.id).slot,
+    confirmedLocal: locals.get(m.id).confirmed,
     confirmedStartAt: m.confirmed_start_at,
     confirmedTime: m.confirmed_time,
     confirmedDay: m.confirmed_day === null ? null : Number(m.confirmed_day),

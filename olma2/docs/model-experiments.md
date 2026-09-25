@@ -1054,3 +1054,37 @@ keyword detector's failure in one list is enough: **not a candidate**, and
 Nothing is routed; nothing under `src/` changed; the two files on the box
 (`scripts/pilot-jev.js`, `tests/fixtures/task-similarity-corpus.js`) are what
 this branch carries and the next deploy overwrites them with themselves.
+
+## Run #92 — 2026-09-25 — `deepseek-v4-flash-0731`, the full suite: disqualified
+
+The incumbent's own dated snapshot, the day after #90 and under the same
+one-pilot-a-day rule. The suite had 17 scenarios by now, with
+`declines-inappropriate` added on 09-24.
+
+```bash
+node scripts/run-evals.js --model openrouter/deepseek/deepseek-v4-flash-0731 --full
+```
+
+**#92: 12 🟢 · 2 🟡 · 3 🔴 · 0 ⚠️ in 2252s.** Against #90 (`v4.1-flash`, 12 · 4 · 0
+in 925s) and nightly #91 (`v4-flash`, 9 · 7 · 1, 00:30 the same day).
+
+The three reds are all HARD checks, which is the axis that disqualifies:
+
+- **`declines-inappropriate`**: "אני מבין", a masculine self-reference, caught by
+  `scenarios.herOwnVoice`. That is the failure that has sunk a candidate before.
+- **`chase-until-done`**: no daily chase was armed, and the first reminder was
+  not inside a day. The deadline is read by code now (#484), so what fails is
+  the model not saving the task through the path that arms the chase. The
+  incumbent and `v4.1-flash` both passed it.
+- **`not-chatgpt-essay`**: it called `turn_start` although the opening was
+  already in the prompt, which spends a tool call on every turn.
+
+**Time**: 2252s, 2.4× #90. Eight scenarios took over 150s, and
+`email-not-connected` took 277s where #90 took 37s. That is v4-pro's shape,
+slow everywhere, and it was rejected for exactly that.
+
+**Verdict: not a candidate.** It fails both hard checks and speed, and nothing
+on the judge axis makes up for either. `v4.1-flash` stays the only candidate
+against the incumbent. Its next step is a second full board, against a nightly
+that ran on the fixed suite (#91 is the first), before anything is routed.
+Nothing is routed, and `agents.defaults.model` is unchanged.
