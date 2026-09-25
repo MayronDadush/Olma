@@ -314,7 +314,7 @@ async function getByExternalId(client, channel, externalId) {
 
 async function listMembers(client, groupId, { includeLeft = false } = {}) {
   const { rows } = await client.query(
-    `SELECT m.*, u.last_inbound_at, u.opening_sent_at, u.timezone, u.paused_at,
+    `SELECT m.*, u.last_inbound_at, u.opening_sent_at, u.timezone, u.timezone_confirmed, u.paused_at,
             u.room_invite_sent_at, u.first_name, u.name_confirmed, u.gender,
             (SELECT p.value FROM user_preferences p
               WHERE p.user_id = u.id AND p.key = 'gender_forms') AS gender_forms

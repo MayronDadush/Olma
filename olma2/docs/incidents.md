@@ -3023,6 +3023,24 @@ stamp (`users.room_zone_asked_at`, migration 092): one line in the private
 invite to a room coordination on several clocks, for an unconfirmed zone only,
 stamped after the send confirms. His zone was not changed by hand.
 
+**"Hours that suit everyone", the same night.** At 22:47 מירון wrote in the
+room that they wanted to look at other dates, and asked her to suggest hours
+that suit Australia, New York and Israel. She answered "אני על זה — אשאל כל
+אחד בפרטי", which is the stock line for a room that asks for a coordination,
+and suggested nothing. The prompt was not the fault: nothing computed such an
+hour, and the round above had deferred it on purpose. The block she spoke from
+also could not have answered, because of the three clocks only Israel is
+CONFIRMED on anybody's record. The Australian member has no user yet, and
+user 11's Los Angeles is a guess. The answer went out by hand that night
+(15:00 ישראל · 08:00 ניו יורק · 22:00 סידני, and nothing inside 08:00–22:00
+once Sydney changes its clock on 4.10). The code now draws it:
+`meeting-time.commonHours`, in the turn block when two or more confirmed
+clocks are in the room, and from `group_coordination_status` with the
+`places` the room named. The owner decided three things: 08:00–22:00,
+widened to 07:00–23:00 only on a day with nothing and said as such; a guessed
+clock is shown beside the answer and never counted; and "I'll ask privately"
+is never the answer to this question.
+
 ### The room's joke got a lecture (2026-09-23)
 
 Meeting 42 had just been confirmed in פחם הסעות. At 12:13 UTC Bar tagged
