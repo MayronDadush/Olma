@@ -687,7 +687,8 @@ const ACTIONS = {
       return err('forbidden', 'you have used both your calls',
         { reason: 'attempts_exhausted', ...attempts });
     }
-    const res = await voice.requestCall(client, user, {}, { maxDurationSec: voice.CALL_MAX_DURATION_SEC });
+    const res = await voice.requestCall(client, user, {},
+      { maxDurationSec: voice.CALL_MAX_DURATION_SEC, capped: true });
     if (res.ok) await voice.recordCallAttempt(client, user.id);
     return res;
   },

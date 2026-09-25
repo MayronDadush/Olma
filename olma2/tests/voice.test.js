@@ -70,6 +70,9 @@ test('a bridge ok dials, audits, and reports calling', async () => {
     assert.equal(r.data.calling, true);
     // The bridge was asked for THIS user's phone, not a guess.
     assert.equal(JSON.parse(bridge.seen[0].body).phone, '+972526269826');
+    // The chat door is uncapped, so it must never claim to be: `capped` is
+    // what opens the bridge past its own list (voice-bridge/lib/dial-gate.js).
+    assert.equal(JSON.parse(bridge.seen[0].body).capped, undefined);
     const audited = await withClient((c) =>
       c.query(`SELECT detail FROM audit_log WHERE event = 'voice.call_requested' AND actor_id = $1`, [user.id]));
     assert.equal(audited.rows.length, 1);
