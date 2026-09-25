@@ -569,6 +569,32 @@ async function setTitle(client, userId, meetingId, title) {
   });
 }
 
+// Where it happens, in their words (`cleanLocation`, never parsed) — anybody
+// still in it, while it is alive, the same door as the rename above. The one
+// writer of `meetings.location` after it opened: the room's
+// `set_group_coordination_place` comes through here too, with `requireIn`
+// off, because there any MEMBER of the room may say where and the room's own
+// check has already been made (group-meetings.setPlace). The calendar copy is
+// the caller's, as for the title — `meeting-fanout.patchSharedEvent`.
+async function setPlace(client, userId, meetingId, where, { requireIn = true, groupId = null } = {}) {
+  const location = cleanLocation(where);
+  if (!location) return err('invalid', 'where is required');
+  const { rows } = await client.query(
+    `UPDATE meetings m SET location = $3, updated_at = now()
+     WHERE id = $1 AND status IN ('negotiating', 'confirmed')
+       AND ($4::boolean IS FALSE OR ${IN_IT})
+     RETURNING id, status, calendar_event_id, calendar_organiser_id`,
+    [meetingId, userId, location, requireIn]
+  );
+  if (!rows[0]) return err('not_found', 'open meeting you are in not found');
+  await audit.record(client, userId, 'meeting.place_set', { meetingId: Number(meetingId), groupId: groupId || undefined });
+  return ok({
+    meetingId: Number(meetingId), location, meetingStatus: rows[0].status,
+    calendarEventId: rows[0].calendar_event_id || null,
+    calendarOrganiserId: rows[0].calendar_organiser_id ? Number(rows[0].calendar_organiser_id) : null,
+  });
+}
+
 // How many yeses make this coordination worth settling. `null` clears it.
 //
 // Anybody IN the coordination may set it, on the same argument that lets
@@ -849,7 +875,7 @@ async function listNegotiating(client, userId = null) {
 module.exports = {
   cleanLocation,
   startMeeting, recordConstraint, proposeSlot, respondToSlot,
-  optOut, rejoin, applyExit, withdrawConfirmed, cancelMeeting, setTitle, setQuorum,
+  optOut, rejoin, applyExit, withdrawConfirmed, cancelMeeting, setTitle, setPlace, setQuorum,
   getStatus, listMine, pendingMeetingFor, tryConfirm, settleNow, timeIsOpen, setExactTime,
   expireStaleMeetings, dropPassedOptions, expireOne, listNegotiating,
   EXPIRE_AFTER_START_MS, LEGACY_STALE_DAYS, ALL_DAY_EXTRA_MS,

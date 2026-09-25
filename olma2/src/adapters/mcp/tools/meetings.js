@@ -1,7 +1,7 @@
 'use strict';
 // meetings — one slice of the tool registry (see ../registry.js).
 const {
-  dashboardAuth, meetings, calendar, meetingFanout, S, actorName, fanout, tool, connectedUserByPhone, users, groupMeetings, ok, err,
+  dashboardAuth, meetings, meetingFanout, S, actorName, fanout, tool, connectedUserByPhone, users, groupMeetings, ok, err,
 } = require('./_shared');
 const format = require('../../../domain/message-format');
 const listBlock = require('../../../domain/list-block');
@@ -317,11 +317,22 @@ module.exports = [
       if (!res.ok) return res;
       // The calendar copy follows the rename (best-effort, as the organiser,
       // server-side) so the event does not keep the stale name forever.
-      if (res.data.calendarEventId && res.data.calendarOrganiserId) {
-        const patched = await calendar.updateEvent(client, res.data.calendarOrganiserId,
-          { eventId: res.data.calendarEventId, title: res.data.title }).catch(() => null);
-        res.data.calendarUpdated = Boolean(patched && patched.ok);
-      }
-      return res;
+      return meetingFanout.patchSharedEvent(client, res, { title: res.data.title });
     }),
+  // The two the room had and the chat did not (owner, 2026-09-25: every
+  // action on a coordination, in both places). The place is the same writer
+  // the room's `set_group_coordination_place` uses; the minimum is
+  // `meetings.setQuorum`, which the personal page already calls.
+  tool('set_meeting_place', 'Where a meeting you are in happens, in the user\'s words — anyone in it may. A shared calendar event follows.',
+    { meeting_id: S('number', 'Meeting id'), where: S('string', 'The place, in their words') },
+    ['meeting_id', 'where'],
+    async (client, user, a) => {
+      const res = await meetings.setPlace(client, user.id, a.meeting_id, a.where);
+      if (!res.ok) return res;
+      return meetingFanout.patchSharedEvent(client, res, { location: res.data.location });
+    }),
+  tool('set_meeting_minimum', 'How many yeses a meeting you are in needs (a game) — anyone in it may; null clears it. Reaching it settles nothing.',
+    { meeting_id: S('number', 'Meeting id'), minimum: S('number', 'Whole number, 2 or more; null clears it') },
+    ['meeting_id'],
+    (client, user, a) => meetings.setQuorum(client, user.id, a.meeting_id, a.minimum === undefined ? null : a.minimum)),
 ];
