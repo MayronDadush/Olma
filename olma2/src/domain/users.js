@@ -403,7 +403,40 @@ async function setPersonal(client, userId, { gender, birthDate } = {}, now = new
   await audit.record(client, userId, 'user.personal_set', {
     gender: gender !== undefined, birthDate: birthDate !== undefined,
   });
+  if (gender !== undefined) await syncGenderForms(client, userId, rows[0].gender);
   return ok({ gender: rows[0].gender, birthDate: rows[0].birth_date });
+}
+
+// The profile column moved, so the private chat's own record of it follows
+// (owner, 2026-09-23: "אם יש מגדר בקבוצה חדש שיתעדכן גם בפרופיל … וכמובן אם הוא
+// משנה בשיחה הפרטית … גם זה יהיה בהתאמה בקבוצה"). The `gender_forms`
+// preference is what turn_start reads in the private chat; left alone, a
+// change made on the page or in a room would be contradicted there by an
+// older word. A preference that already reads the same way is left as they
+// said it; a cleared gender takes the preference with it, or the room would
+// fall back to it and keep using a form they just withdrew.
+// `preferences.remember` is the other direction, and calls back into
+// `setPersonal` only when the words disagree with the column, so the two
+// cannot bounce.
+async function syncGenderForms(client, userId, g) {
+  const { genderFromWords, WORDS } = require('./gender-forms');
+  const { rows: pref } = await client.query(
+    `SELECT value FROM user_preferences WHERE user_id = $1 AND key = 'gender_forms'`, [userId]);
+  const said = pref[0] ? genderFromWords(pref[0].value) : null;
+  if (g === null) {
+    if (!pref[0]) return;
+    await client.query(`DELETE FROM user_preferences WHERE user_id = $1 AND key = 'gender_forms'`, [userId]);
+    await audit.record(client, userId, 'preference.forgotten', { key: 'gender_forms', source: 'profile' });
+    return;
+  }
+  if (said === g) return;
+  await client.query(
+    `INSERT INTO user_preferences (user_id, key, value) VALUES ($1, 'gender_forms', $2)
+     ON CONFLICT (user_id, key) DO UPDATE SET value = EXCLUDED.value, learned_at = now()`,
+    [userId, WORDS[g]]);
+  await audit.record(client, userId, 'preference.remembered', {
+    key: 'gender_forms', overwrote: Boolean(pref[0]), source: 'profile',
+  });
 }
 
 module.exports = {

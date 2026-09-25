@@ -282,13 +282,53 @@ function decide(facts) {
   // say, and somebody who has not answered is the likeliest person never to
   // have been told who was writing to them in the first place. ג.ב would have
   // lost his to this rule on the morning it was queued for (2026-09-08).
+  // And a coordination they have ANSWERED is not Olma's idea either — it is
+  // the outcome of something they said yes or no to, and the branch above was
+  // dropping the answer to their own question. `jobs/checkin.pickRung` has
+  // made exactly this distinction since 2026-09-07, one layer up: at
+  // `misses >= 1` it stops the discovery pitch and Olma's opinions, and lets
+  // `stuck_meeting` and `deadline_risk` through, "because a meeting waiting on
+  // them or a deadline tomorrow is theirs, not ours." The gate could not make
+  // it, so the ladder's own check-in passed and the confirmation of the
+  // coordination did not: Sharon (2026-09-23) took 16:00 off the table, asked
+  // the room for 17:00, answered yes to 17:00 — and when it closed on 17:00 he
+  // was the one person of five never told, while the room's closing line tagged
+  // him as one of the four who were in (`incidents.md`, "The room named him and
+  // nobody told him").
+  //
+  // The owner chose the NARROW line, 2026-09-23: an ANSWER on record is what
+  // earns it, not membership. An invite to somebody who has engaged with
+  // nothing is still Olma's initiative and still drops — the Vered rule above
+  // is untouched — and the two one-invite allowances below (`pausedRoomInvite`,
+  // `quietRoomInvite`) remain the only ways a first invite gets through. Like `groupWroteAt` this can only be true for a row carrying
+  // a `payload.meetingId`, so it reaches meeting rows and nothing else.
+  //
+  // And one room invite, for the same reason the pause branch above lets one
+  // through (owner, 2026-09-22, asked as a choice and answered "אפשרות 1").
+  // The two were INVERTED: a ladder pause is three misses and had the
+  // allowance, and one or two misses — somebody silent for a fortnight who
+  // has not been paused at all — had nothing, so Guy's invite to Padel Gang's
+  // first coordination was dropped twice in three minutes while the room was
+  // told nothing about him (`incidents.md`, "The room asked five and reached
+  // four"). `quietRoomInvite` is the worker's fact and is narrow the same way
+  // `pausedRoomInvite` is: only a `meeting_invite`, only to a group meeting
+  // still negotiating, only once per run of silence
+  // (`pause.quietRoomInviteSpent`). The gate REPORTS the spend rather than
+  // leaving the worker to infer it, because unlike the paused case this
+  // allowance is one of five ways past the branch and a row carried by a
+  // grace must not burn it — a second copy of these predicates in the worker
+  // is the drift this repo keeps paying for.
+  //
+  // An answer on record passes the branch like a grace does, so it never
+  // spends the one quiet invite either.
+  let spendsQuietRoomInvite = false;
   if ((Number(facts.checkinMisses) || 0) >= 1
-    && row.kind !== 'checkin' && row.kind !== 'introduction') {
-    // A ladder pause is three misses, so its one room invite would die here
-    // without the same exemption the pause branch above gives it.
-    if (!askedForInWords(row) && !inRoomGrace && !onPageGrace && !facts.pausedRoomInvite) {
+    && row.kind !== 'checkin' && row.kind !== 'introduction'
+    && !askedForInWords(row) && !inRoomGrace && !onPageGrace && !facts.answeredCoordination) {
+    if (!facts.pausedRoomInvite && !facts.quietRoomInvite) {
       return { action: 'drop', holdReason: 'quiet' };
     }
+    spendsQuietRoomInvite = Boolean(facts.quietRoomInvite);
   }
 
   // ── A day they said they want nothing on ─────────────────────────────────
@@ -434,7 +474,10 @@ function decide(facts) {
     };
   }
 
-  return { action: 'deliver' };
+  // `spendsQuietRoomInvite` rides the DELIVER verdict alone, because a held row
+  // is decided again from scratch when its release comes and the allowance is
+  // spent by a send, never by a decision.
+  return spendsQuietRoomInvite ? { action: 'deliver', spendsQuietRoomInvite: true } : { action: 'deliver' };
 }
 
 module.exports = {

@@ -12,6 +12,8 @@ paths:
   - "olma2/scripts/set-cache-retention.js"
   - "olma2/scripts/enable-turn-context.js"
   - "olma2/scripts/register-openrouter-models.js"
+  - "olma2/scripts/sync-agent-tool-policies.js"
+  - "olma2/src/intake/agent-tool-policy.js"
 ---
 
 # Talking to the gateway
@@ -61,13 +63,18 @@ title means this file. Grep the title, not the filename.
   three in six hours on 2026-09-09 — and a prompt cache is per provider, so
   the first call of nearly every message paid the whole prompt: 0–9% cached
   for any gap over two minutes, ~90% for the second call of the same turn
-  (`incidents.md`, "The conversation that never ended"). DigitalOcean first
-  for the price ($0.068/M against $0.089–0.091), the two it was already using
-  behind it, `allow_fallbacks: true` so an outage costs the cache and never a
-  reply. `register-openrouter-models.js` writes `{}` per model and would wipe
-  this; `config_guard` goes red when the order is gone. `model-pricing.js`
-  prices flash at the pinned provider's rates — new rows only, the ledger is
-  append-only.
+  (`incidents.md`, "The conversation that never ended"). **Only a provider
+  MEASURED keeping a prefix cache may lead** — DigitalOcean led from 9/09 for
+  its price and cached 0 of 8 repeat calls (`incidents.md`, "DigitalOcean
+  never cached"). Novita first (US-headquartered, the owner's call over the
+  cheaper CN StreamLake behind it), `data_collection: "deny"`,
+  `allow_fallbacks: true` so an outage costs the cache and never a reply.
+  `register-openrouter-models.js` writes `{}` per model and would wipe
+  this; `config_guard` goes red when the order is gone. **A rate change in
+  `model-pricing.js` restates HISTORY, not new rows** — the admin cost page
+  re-prices every ledger row at the table's current rate — so it still holds
+  DigitalOcean's 0.068 and under-reads Novita by about half until rates carry
+  an effective date.
 
 - **The `Conversation info` block is prompt-only: the transcript keeps the
   bare text.** On 2026.8.1 the roster, the tag and the message id of a group
@@ -102,6 +109,22 @@ title means this file. Grep the title, not the filename.
   unanswered) still see yesterday on the morning after — a reader of the
   live session id alone is blind once a day. `config_guard` goes red if the
   mode comes back off; `scripts/set-session-reset.js --apply` sets it.
+
+- **A room's agent is shown six tools and a person's is shown the rest, by a
+  `tools.deny` on each agent's entry — computed, never typed.** The shim
+  cannot tell who asks and serves all of them; the gateway can, and filters
+  per agent before the prompt is built. Measured on g-7, 2026-09-23, one probe
+  either side: 27,337 input tokens a turn to 11,625, 90 of our tools to 6.
+  `intake/agent-tool-policy.agentToolPolicy` derives the list from the
+  registry's audiences, `addAgent` writes it on every new agent, the deploy
+  re-syncs every existing one (`scripts/sync-agent-tool-policies.js`, which
+  validates the candidate with `openclaw config validate` on a scratch
+  `OPENCLAW_HOME` before writing), and `config_guard` names any agent that
+  differs. **Deny, never allow**: an agent-level allow list narrows the
+  gateway's own tools too. **Never hand-edit one** — the next deploy puts it
+  back, and a hand list is how a new person tool would leak into every room.
+  `main`, `intake` and `ggreet` are not narrowed. Brokerd is still the lock;
+  this only decides what the model reads.
 
 ### systemd scope
 

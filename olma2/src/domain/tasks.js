@@ -823,8 +823,60 @@ async function archiveTask(client, ownerId, taskId) {
   return ok({ taskId });
 }
 
-// Out of the archive and back onto the list. The archive is the only place a
-// task ever goes when somebody "deletes" one, so this is the other half of a
+// Gone for good — the swipe on the personal page (owner, 2026-09-23: the tick
+// already puts a finished task in the archive, and "delete" meaning the same
+// thing left the archive holding things nobody ever did). The way back is the
+// page's undo, which waits before it sends this at all; once it lands there
+// is nothing to restore, so everything that could still SPEAK about the task
+// goes down in the same transaction:
+//  - every reminder on it or on its items, and every rung already queued —
+//    including the final one of a ladder that has already ended, which is a
+//    message with no live reminder row behind it (same as retireForMovedTask);
+//  - its items and its task_order / task_unpins / shares rows, by the
+//    schema's own ON DELETE CASCADE.
+// A calendar event is NOT handled here: removing it is a Google call, and the
+// caller does that first (task-calendar.removeEventsFor) and refuses the
+// delete when it cannot, because deleting the row loses the only record of
+// the event's id and the event would then stay on their calendar for ever.
+async function deleteTask(client, ownerId, taskId) {
+  const { rows } = await client.query(
+    `SELECT id, title, calendar_event_id FROM tasks
+      WHERE (id = $1 OR parent_id = $1) AND owner_id = $2 FOR UPDATE`,
+    [taskId, ownerId]
+  );
+  const task = rows.find((r) => String(r.id) === String(taskId));
+  if (!task) return err('not_found', 'task not found');
+  if (rows.some((r) => r.calendar_event_id)) {
+    return err('invalid', 'the task is still on the calendar — remove the event first', { reason: 'on_calendar' });
+  }
+  const ids = rows.map((r) => r.id);
+  const { rows: rems } = await client.query(
+    `SELECT id FROM task_reminders WHERE task_id = ANY($1::bigint[])`, [ids]);
+  let withdrawn = 0;
+  if (rems.length) {
+    // The rung keys reminders.cancelReminder withdraws: `reminder:<id>` and
+    // `reminder:<id>:<rung>`.
+    const keys = rems.map((r) => `reminder:${r.id}`);
+    const res = await client.query(
+      `UPDATE outbox SET sent_at = now(), hold_reason = 'cancelled'
+        WHERE kind = 'reminder' AND sent_at IS NULL
+          AND (idempotency_key = ANY($1::text[]) OR idempotency_key LIKE ANY($2::text[]))`,
+      [keys, keys.map((k) => `${k}:%`)]
+    );
+    withdrawn = res.rowCount;
+  }
+  await client.query(`DELETE FROM tasks WHERE id = $1 AND owner_id = $2`, [taskId, ownerId]);
+  // The title goes into the trail because nothing else will hold it now.
+  await audit.record(client, ownerId, 'task.deleted', {
+    taskId, title: task.title, items: ids.length - 1,
+    remindersDropped: rems.length, outboxWithdrawn: withdrawn,
+  });
+  return ok({ taskId: Number(taskId) });
+}
+
+// Out of the archive and back onto the list. The archive is where a task goes
+// when somebody ticks or tidies one away (deleteTask above is the one door
+// that skips it), so this is the other half of a
 // pair that already had one — without it the archive was a one-way door, and
 // a person who tidied away the wrong row had no way back through the screen
 // that showed them it was still there.
@@ -874,6 +926,6 @@ async function projectOverview(client, ownerId, projectId) {
 
 module.exports = {
   MAX_BULK, addTask, addTasksBulk, editTask, listTasks, completeTask,
-  snoozeTask, archiveTask, unarchiveTask, projectOverview,
+  snoozeTask, archiveTask, deleteTask, unarchiveTask, projectOverview,
   completeParentIfDrained, joinsTwoAsks, normaliseTitle, nestTask, unnestTask,
 };

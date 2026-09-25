@@ -52,6 +52,19 @@ const HE_LETTER = '[\\u0590-\\u05FF]';
 // Saturday, and a false refusal costs a real proposal, while a missed check
 // only leaves things exactly as they were before this rule existed.
 const HE_PREFIX = '[\\u05D1\\u05D4\\u05D5]';
+// …but ה is NOT one of them in front of the ABBREVIATION below, because ה+יום
+// is the word היום, "today". "היום ב-17:00" parsed as ה + יום + ב׳ and read as
+// MONDAY; so did "היום ג-17:00" (Tuesday), "היום ה-20 בחודש" (Thursday) and
+// "היום ו-מחר" (Friday). Measured on the box the day this was found: 1 of 302
+// task titles and 0 of 35 slot texts, which is why `weekdayClash` — live on
+// the meetings path, where a match REFUSES the write — had never yet refused a
+// real proposal. Stored text is model-written and tidy; a person's own typed
+// words are where "היום ב-17:00" is the ordinary way to say an hour.
+// Losing "היום ב׳" along with it is the trade this file already makes for ל
+// just above: a missed check leaves things exactly as they were, a false
+// refusal costs somebody a real request (`rules/detectors.md`, "A hint that
+// fires on ordinary input is worse than no hint").
+const HE_PREFIX_BEFORE_DAY_LETTER = '[\\u05D1\\u05D5]';   // ב, ו
 
 const WEEKDAYS = [
   { index: 0, en: 'Sunday',    he: ['ראשון'], letter: 'א', abbr: ['sunday', 'sun'] },
@@ -69,10 +82,11 @@ const HE_WORD_RES = WEEKDAYS.map((d) => ({
   index: d.index,
   re: new RegExp(`(?:^|[^\\u0590-\\u05FF])${HE_PREFIX}?(?:${d.he.join('|')})(?!${HE_LETTER})`, 'u'),
 }));
-// "יום א׳" / "יום ב'" — only ever after יום, so a lone letter is never a day.
+// "יום א׳" / "יום ב'" — only ever after יום, so a lone letter is never a day,
+// and never after היום, which is a word of its own (see the constant).
 const HE_LETTER_RES = WEEKDAYS.map((d) => ({
   index: d.index,
-  re: new RegExp(`(?:^|[^\\u0590-\\u05FF])${HE_PREFIX}?יום\\s+${d.letter}['\\u05F3\\u2019]?(?!${HE_LETTER})`, 'u'),
+  re: new RegExp(`(?:^|[^\\u0590-\\u05FF])${HE_PREFIX_BEFORE_DAY_LETTER}?יום\\s+${d.letter}['\\u05F3\\u2019]?(?!${HE_LETTER})`, 'u'),
 }));
 const EN_RES = WEEKDAYS.map((d) => ({
   index: d.index,

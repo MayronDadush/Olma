@@ -4,6 +4,7 @@ const {
   tasks, users, reminders, dashboardAuth, S, tool, ok, pastMoment,
 } = require('./_shared');
 const dt = require('../../../domain/datetime');
+const chaseDeadline = require('../../../domain/chase-deadline');
 const format = require('../../../domain/message-format');
 const listBlock = require('../../../domain/list-block');
 
@@ -268,7 +269,7 @@ module.exports = [
       nudge: S('boolean', 'They asked to be chased until it is done ("עד שאעשה"): one a day up to due_at'),
       when_said: S('string', 'Their own words naming WHEN, copied not retold. A weekday in them is checked against the date you resolved; a mismatch refuses the save.'),
       parent_task_id: S('number', 'Optional parent (project) id') }, ['title'],
-    async (client, user, a) => {
+    async (client, user, a, ctx) => {
       // Same guard set_task_reminder already has for remind_at — a model
       // computing "in 5 minutes" can get the arithmetic wrong (Miron, an
       // instant built off the UTC hour with the local offset tacked on
@@ -283,6 +284,18 @@ module.exports = [
       if (a.remind_at && reminders.momentIsPast(a.remind_at)) {
         return pastMoment('remind_at', a.remind_at, user.timezone, 'no task was saved');
       }
+      // A turn whose message asked for help until a deadline (the gateway read
+      // it, domain/chase-deadline resolved it) arms a chase here, whatever the
+      // model made of the sentence: the task is due THAT day, `nudge` is on,
+      // and an hour survives only if they named one. חיים's sentence dated the
+      // errand for tomorrow six times in six, and one reminder was all it
+      // bought (2026-09-23). The model's due_at stands only on the deadline's
+      // own day, where it may carry an hour the day alone does not.
+      const chase = chaseDeadline.pending(ctx && ctx.turn, ctx && ctx.now ? ctx.now() : Date.now());
+      let { due_at: dueAt, ends_at: endsAt, remind_at: remindAt } = a;
+      if (chase && !chaseDeadline.onDay(dueAt, chase.day, user.timezone)) { dueAt = chase.dueAt; endsAt = undefined; }
+      if (chase && !chase.namedHour) remindAt = undefined;
+
       // Miron, 2026-09-22: "תוסיף לי ביומן שביום הראשון הקרוב … אמור להגיע
       // טכנאי לבר מים" was saved for Wednesday and told back as Wednesday —
       // יום ראשון read as an ordinal, "the first day coming up", rather than
@@ -300,16 +313,24 @@ module.exports = [
       // evening before a named day disagrees with it on purpose, so `due_at`
       // answers when it is there and `remind_at` only stands in when the task
       // has no date of its own.
-      const dated = a.due_at || a.remind_at;
+      //
+      // And NOT under a chase, which is the case above: there the SERVER picks
+      // the day, off the very sentence `when_said` carries, so a disagreement
+      // would be this check refusing `chase-deadline`'s own reading rather than
+      // the model's. The model's date is not what gets written there at all.
+      const dated = chase ? null : (a.due_at || a.remind_at);
       if (a.when_said && dated) {
         const clash = dt.taskWeekdayClash(a.due_at ? 'due_at' : 'remind_at',
           a.when_said, dated, user.timezone, 'no task was saved');
         if (clash) return clash;
       }
-      return taskHints(await tasks.addTask(client, user.id, {
-        title: a.title, kind: a.kind, location: a.location, category: a.category, dueAt: a.due_at, endsAt: a.ends_at,
-        remindAt: a.remind_at, nudge: a.nudge === true, parentId: a.parent_task_id,
-      }), user);
+
+      const res = await tasks.addTask(client, user.id, {
+        title: a.title, kind: a.kind, location: a.location, category: a.category, dueAt, endsAt,
+        remindAt, nudge: Boolean(chase) || a.nudge === true, parentId: a.parent_task_id,
+      });
+      if (chase && res.ok) ctx.turn.chaseUsed = true;
+      return taskHints(res, user);
     }),
   tool('add_tasks_bulk', 'Save a whole dump in ONE call (max 60 items). Never loop add_task. Also the way to SPLIT a goal into its parts: pass parent_task_id and the parts become subtasks in the same call. Timed items get their reminders automatically; when the reply carries hints, follow them. Any due_at MUST carry a UTC offset (2026-08-20T09:00:00+03:00), converted from their own local time (USER.md); never bare digits with a Z.',
     { items: S('array', 'Array of {title, kind?, location?, category?, due_at?, ends_at?}; kind event|todo, location, category and times as in add_task.', { items: { type: 'object' } }),

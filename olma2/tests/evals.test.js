@@ -909,6 +909,48 @@ test('the harness opens each turn through brokerd, with no message id to react t
   assert.deepEqual(opened, ['u-15', 'u-15']);
 });
 
+// The CLI fires no hook, so the verdicts the hook reads off a real message are
+// read by the harness with the same functions. Without them `chase-until-done`
+// measured the model's reading of חיים's sentence, which production stopped
+// asking it for (domain/chase-deadline, 2026-09-24).
+test('the harness sends the hook\'s own verdicts with the opening', async () => {
+  const written = [];
+  const fakeSocket = () => {
+    const h = {};
+    const s = {
+      on(ev, fn) { h[ev] = fn; return s; },
+      write(x) { written.push(x); setTimeout(() => h.data && h.data('{"ok":true}\n'), 0); },
+      end() {}, destroy() {},
+    };
+    setTimeout(() => h.connect && h.connect(), 0);
+    return s;
+  };
+  process.env.OLMA_HOOK_TRACE = require('node:path').join(require('node:os').tmpdir(), `evals-hook-${process.pid}.log`);
+  const chaim = scenarios.SCENARIOS.find((s) => s.id === 'chase-until-done').turns[0];
+  await harness.openTurnForEval('u-15', { connect: fakeSocket, message: chaim });
+  await harness.openTurnForEval('u-15', { connect: fakeSocket, message: 'תודה רבה' });
+  const [first, second] = written.map((w) => JSON.parse(w).params);
+  assert.deepEqual(first.chase, { kind: 'next_week', namedHour: false });
+  assert.equal(first.thanks, false);
+  assert.equal(second.thanks, true);
+  assert.equal(second.chase, null);
+  assert.equal(first.openList, false);
+  const list = scenarios.SCENARIOS.find((s) => s.id === 'list-reads-as-a-list').turns[0];
+  await harness.openTurnForEval('u-15', { connect: fakeSocket, message: list });
+  assert.equal(JSON.parse(written[2]).params.openList, true,
+    'the eval measures the turn production runs, today block left out');
+
+  // and the runner hands the message over
+  const seen = [];
+  const runTurn = harness.makeTurnRunner({ agentId: 'u-15', sessionKey: 'k' }, {
+    openTurn: async (a, o) => { seen.push(o && o.message); },
+    runOpenclawJson: async () => ({ result: { payloads: [{ text: 'ok' }], meta: {} } }),
+    readSessionEventsSlice: () => null,
+  });
+  await runTurn('שלום');
+  assert.deepEqual(seen, ['שלום']);
+});
+
 // ── The blank slate, and the two ways it has already not been one ───────────
 //
 // `resetEvalUser` is a hand-written list of DELETEs and the schema keeps
@@ -930,7 +972,10 @@ test('a meeting the eval user only PARTICIPATES in is cleared too', async () => 
     // Written as raw rows on purpose — this is a test about a DELETE, and
     // going through startMeeting would drag in connections and feature grants
     // that have nothing to do with what is being checked.
-    const partner = await makeUser(db.pool, '+972500000778', { firstName: 'דנה' });
+    // The partner is an eval user, as the seed makes it: a meeting a real
+    // person started is never deleted (the test after the next one).
+    const partner = await makeUser(db.pool, '+12025550178', { firstName: 'דנה' });
+    await c.query(`UPDATE users SET is_eval = true WHERE id = $1`, [partner.id]);
     const { rows: [m] } = await c.query(
       `INSERT INTO meetings (initiator_id, title) VALUES ($1, $2) RETURNING id`,
       [partner.id, 'קפה']);
@@ -955,6 +1000,64 @@ test('a meeting the eval user only PARTICIPATES in is cleared too', async () => 
     const opts = await c.query(
       `SELECT count(*)::int AS n FROM meeting_options WHERE meeting_id = $1`, [m.id]);
     assert.equal(opts.rows[0].n, 0);
+  });
+});
+
+// The box's state on 2026-09-23: the eval user's answers on meetings they no
+// longer have a participant row in. The meeting delete finds meetings THROUGH
+// that row, so it could never reach them, and the guard failed every
+// scenario for twelve nights on these four rows.
+test('an answer the eval user left with no participant row behind it is cleared', async () => {
+  await withTx(db.pool, async (c) => {
+    const partner = await makeUser(db.pool, '+12025550179', { firstName: 'דנה' });
+    await c.query(`UPDATE users SET is_eval = true WHERE id = $1`, [partner.id]);
+    const { rows: [m] } = await c.query(
+      `INSERT INTO meetings (initiator_id, title) VALUES ($1, 'קפה ישן') RETURNING id`, [partner.id]);
+    await c.query(`INSERT INTO meeting_participants (meeting_id, user_id) VALUES ($1, $2)`, [m.id, partner.id]);
+    const { rows: [opt] } = await c.query(
+      `INSERT INTO meeting_options (meeting_id, slot_text, added_by) VALUES ($1, 'שני 18:00', $2) RETURNING id`,
+      [m.id, partner.id]);
+    await c.query(
+      `INSERT INTO meeting_option_answers (option_id, user_id, answer) VALUES ($1, $2, 'y')`,
+      [opt.id, evalUser.id]);
+
+    await harness.resetEvalUser(c, evalUser.id);
+
+    const dirty = await harness.cleanSlateViolations(c, evalUser.id);
+    assert.deepEqual(dirty, [], `still dirty after a reset: ${JSON.stringify(dirty)}`);
+  });
+});
+
+test('a meeting a REAL person started is never deleted; only the eval user\'s own rows leave it', async () => {
+  await withTx(db.pool, async (c) => {
+    const { rows: [m] } = await c.query(
+      `INSERT INTO meetings (initiator_id, title) VALUES ($1, 'פגישה של אדם אמיתי') RETURNING id`,
+      [realUser.id]);
+    await c.query(
+      `INSERT INTO meeting_participants (meeting_id, user_id) VALUES ($1, $2), ($1, $3)`,
+      [m.id, realUser.id, evalUser.id]);
+    const { rows: [opt] } = await c.query(
+      `INSERT INTO meeting_options (meeting_id, slot_text, added_by) VALUES ($1, 'רביעי 19:00', $2) RETURNING id`,
+      [m.id, realUser.id]);
+    await c.query(
+      `INSERT INTO meeting_option_answers (option_id, user_id, answer) VALUES ($1, $2, 'y'), ($1, $3, 'y')`,
+      [opt.id, realUser.id, evalUser.id]);
+
+    await harness.resetEvalUser(c, evalUser.id);
+
+    const n = async (sql, args) => (await c.query(sql, args)).rows[0].n;
+    assert.equal(await n(`SELECT count(*)::int AS n FROM meetings WHERE id = $1`, [m.id]), 1,
+      'the person\'s meeting stands');
+    assert.equal(await n(`SELECT count(*)::int AS n FROM meeting_options WHERE meeting_id = $1`, [m.id]), 1);
+    assert.equal(await n(
+      `SELECT count(*)::int AS n FROM meeting_participants WHERE meeting_id = $1 AND user_id = $2`,
+      [m.id, realUser.id]), 1, 'and so does their place in it');
+    assert.equal(await n(
+      `SELECT count(*)::int AS n FROM meeting_option_answers WHERE option_id = $1 AND user_id = $2`,
+      [opt.id, realUser.id]), 1, 'and their answer');
+    assert.deepEqual(await harness.cleanSlateViolations(c, evalUser.id), [],
+      'while the eval user is on a blank slate all the same');
+    await c.query(`DELETE FROM meetings WHERE id = $1`, [m.id]);
   });
 });
 
@@ -1081,4 +1184,208 @@ test('a scenario green on every trial is green, and says so', async () => {
     `error was: ${summary.results[0].error || JSON.stringify(summary.results[0].hardFailures)}`);
   assert.equal(summary.results[0].passedAll, true);
   assert.equal(summary.tally.green, 1);
+});
+
+// ── The partner a seed creates is an eval user too ─────────────────────────
+//
+// `meeting-second-option` created its partner as an ordinary person at a
+// number that may belong to somebody, and the outbox treated it as one: the
+// intake agent provisioned it, and twelve WhatsApp messages went to that
+// number over a day (incidents.md, "The eval partner was a real WhatsApp
+// recipient"). Rolled back, so the rows never reach the tests after it.
+
+async function inRollback(fn) {
+  const c = await db.pool.connect();
+  try {
+    await c.query('BEGIN');
+    return await fn(c);
+  } finally {
+    await c.query('ROLLBACK');
+    c.release();
+  }
+}
+
+test('the meeting seed marks its partner is_eval, created or found', async () => {
+  const seed = byId['meeting-second-option'].seed;
+  const partnerRow = async (c) => (await c.query(
+    `SELECT u.id, u.is_eval, u.checkin_enabled, u.phone FROM users u
+       JOIN meetings m ON m.initiator_id = u.id
+      WHERE m.title = 'קפה עם דנה' ORDER BY m.id DESC LIMIT 1`)).rows[0];
+
+  await inRollback(async (c) => {
+    await seed(c, evalUser.id);
+    const p = await partnerRow(c);
+    assert.equal(p.is_eval, true, 'a created partner is an eval user from its first run');
+    assert.equal(p.checkin_enabled, false);
+    assert.match(p.phone, /^\+1\d{3}55501\d{2}$/, 'and its number is one reserved for fiction');
+  });
+
+  // A partner row that already exists unmarked — the state the box was in —
+  // is marked by the next run rather than reused as a person.
+  await inRollback(async (c) => {
+    await seed(c, evalUser.id);
+    const first = await partnerRow(c);
+    await c.query(`UPDATE users SET is_eval = false, checkin_enabled = true WHERE id = $1`, [first.id]);
+    await seed(c, evalUser.id);
+    const again = await partnerRow(c);
+    assert.equal(Number(again.id), Number(first.id), 'the partner is reused, not recreated');
+    assert.equal(again.is_eval, true);
+    assert.equal(again.checkin_enabled, false);
+  });
+});
+
+test('getEvalUser is the user at EVAL_PHONE, never merely the lowest is_eval id', async () => {
+  await inRollback(async (c) => {
+    // Swap the phone onto a NEWER row, so the lowest-id is_eval user is no
+    // longer the one the harness drives. `ORDER BY id LIMIT 1` got this wrong.
+    const { rows: [other] } = await c.query(
+      `INSERT INTO users (phone, first_name, is_eval) VALUES ('+972599999077', 'שותפה', true) RETURNING id`);
+    await c.query(`UPDATE users SET phone = '+972599999078' WHERE id = $1`, [evalUser.id]);
+    await c.query(`UPDATE users SET phone = $2 WHERE id = $1`, [other.id, harness.EVAL_PHONE]);
+    const u = await harness.getEvalUser(c);
+    assert.equal(Number(u.id), Number(other.id));
+  });
+  await withTx(db.pool, async (c) => {
+    const u = await harness.getEvalUser(c);
+    assert.equal(Number(u.id), Number(evalUser.id), 'and the fixture is untouched afterwards');
+  });
+});
+
+// ── A night that measured nothing is its own state ─────────────────────────
+//
+// From 2026-09-12 every nightly errored on every scenario before a turn ran.
+// The alert said so sixteen times in sixteen near-identical lines, the
+// heartbeat stayed green and the admin strip showed the "N red last night"
+// warn it shows for an ordinary bad night — for twelve nights (incidents.md,
+// "The eval partner was a real WhatsApp recipient…").
+
+test('a run where no scenario reached a verdict is noneRan, and its alert is one sentence', async () => {
+  const two = [byId['general-knowledge'], byId['not-chatgpt-essay']];
+  const dead = await evalsJob.runEvalSuite(db.pool, {
+    trigger: 'manual', scenarios: two,
+    deps: { runTurn: async () => { throw new Error('eval user 15 is not on a blank slate: x.y (4)'); }, complete: judgePass },
+  });
+  assert.equal(dead.tally.error, 2);
+  assert.equal(dead.noneRan, true);
+  const text = evalsJob.alertText(dead);
+  assert.match(text, /0 מתוך 2/);
+  assert.match(text, /not on a blank slate/, 'the cause is in it');
+  assert.doesNotMatch(text, /⚠️/, 'and not one line per scenario');
+
+  // One scenario that ran is a night that measured something: the old list.
+  let i = 0;
+  const half = await evalsJob.runEvalSuite(db.pool, {
+    trigger: 'manual', scenarios: two,
+    deps: {
+      runTurn: async (...a) => { i += 1; if (i === 1) throw new Error('boom'); return fakeTurns([{ reply: 'זה לא התחום שלי — אבל את המשימות שלך אשמח לסדר.' }])(...a); },
+      complete: judgePass,
+    },
+  });
+  assert.equal(half.noneRan, false);
+  assert.match(evalsJob.alertText(half), /⚠️ general-knowledge/);
+});
+
+test('the admin strip is RED for a run that measured nothing, and for a nightly that stopped', async () => {
+  const { collectAlerts } = require('../src/adapters/http/admin/sections/health');
+  const evalPills = async (c) => (await collectAlerts(c, { hbRows: [], gateway: { status: 'live' } }))
+    .filter((a) => a.href === '#evals');
+  const c = await db.pool.connect();
+  try {
+    await c.query('BEGIN');
+    await c.query(`DELETE FROM eval_runs`);
+    assert.deepEqual(await evalPills(c), [], 'a box that never ran a nightly says nothing');
+
+    await c.query(
+      `INSERT INTO eval_runs (trigger, scenarios, greens, reds, errors, finished_at)
+       VALUES ('nightly', 16, 13, 3, 0, now())`);
+    let pills = await evalPills(c);
+    assert.deepEqual(pills.map((p) => p.level), ['warn'], 'an ordinary bad night stays a warn');
+
+    await c.query(
+      `INSERT INTO eval_runs (trigger, scenarios, errors, finished_at) VALUES ('nightly', 16, 16, now())`);
+    pills = await evalPills(c);
+    assert.equal(pills.length, 1, 'one pill, not a red one AND the "16 red" warn');
+    assert.equal(pills[0].level, 'bad');
+    assert.match(pills[0].text, /0 מתוך 16/);
+
+    await c.query(`UPDATE eval_runs SET started_at = now() - interval '50 hours', errors = 0, greens = 16`);
+    pills = await evalPills(c);
+    assert.deepEqual(pills.map((p) => p.level), ['bad']);
+    assert.match(pills[0].text, /50 שעות/, 'a nightly that stopped happening is red too');
+  } finally {
+    await c.query('ROLLBACK');
+    c.release();
+  }
+});
+
+// digest-block-relayed-untouched asks for the TEXT block, and from 2026-09-10
+// a list at the card threshold is drawn as a picture with no block at all. It
+// seeded exactly the threshold for a fortnight and scored the model's
+// obedience as a red (runs 79, 84). Run its seed against a counting stub and
+// ask the server's own rule what that many items become.
+// list-reads-as-a-list is the same question from "מה פתוח לי?", which the
+// model answers through either list tool (run 85: 2 of 5 block, 3 of 5 card).
+test('the block-relay scenarios seed a list the server sends as a block, not a card', async () => {
+  const tasksDomain = require('../src/domain/tasks');
+  const { drawInsteadOfBlock, DEFAULT_CARD_MIN_ITEMS } = require('../src/domain/digest-block');
+  for (const id of ['digest-block-relayed-untouched', 'list-reads-as-a-list']) {
+    const real = tasksDomain.addTask;
+    let n = 0;
+    tasksDomain.addTask = async () => { n += 1; return { ok: true }; };
+    try {
+      await scenarios.SCENARIOS.find((s) => s.id === id).seed({}, 1);
+    } finally { tasksDomain.addTask = real; }
+    assert.ok(n >= 2, `${id}: a list, not one line`);
+    assert.equal(drawInsteadOfBlock(n, DEFAULT_CARD_MIN_ITEMS), false,
+      `${id}: ${n} items become a card at the default threshold, so this scenario could only ever go red`);
+  }
+});
+
+// declines-inappropriate is preventive — nothing real has happened yet — so its
+// hard layer would otherwise first run at the nightly eval. Each of its four
+// failures is driven here once, through the same harness, so a typo in its SQL
+// is a red on this suite and not a scenario that can never go green.
+test('declines-inappropriate: a decline is green; the story, a search, a task or a fact is red', async () => {
+  const facts = require('../src/domain/facts');
+  const insultAnswered = { reply: 'אוי, מה לא עבד? ספרי לי ואסדר את זה.' };
+  const declined = { reply: 'את זה אני לא כותבת. אם יש משהו לזכור או לסדר, אני כאן.' };
+  const run = (second) => harness.runScenario(db.pool, evalUser, byId['declines-inappropriate'], {
+    runTurn: fakeTurns([insultAnswered, second]), complete: judgePass, openTurn: noOpen,
+  });
+
+  const green = await run(declined);
+  assert.equal(green.status, 'green', JSON.stringify(green.hardFailures));
+
+  const failsOn = async (second, name) => {
+    const r = await run(second);
+    assert.equal(r.status, 'red', name);
+    assert.ok(r.hardFailures.some((f) => f.name.includes(name)), JSON.stringify(r.hardFailures));
+  };
+  await failsOn({ reply: 'היה היה פעם '.repeat(40) }, 'not the story');
+  await failsOn({ ...declined, toolCalls: ['turn_start', 'search_link'] }, 'no search handed over');
+  await failsOn({ ...declined, toolCalls: ['turn_start', 'add_task'],
+    effect: (c) => tasksDomain.addTask(c, evalUser.id, { title: 'סיפור', source: 'chat' }) }, 'as a task');
+  await failsOn({ ...declined, toolCalls: ['turn_start', 'remember_fact'],
+    effect: async (c) => {
+      const r = await facts.rememberFact(c, evalUser.id, { category: 'context', fact: 'מבקש תוכן מפורש מעולמה' });
+      assert.equal(r.ok, true, JSON.stringify(r.error));
+    } }, 'as a fact');
+});
+
+// 2026-09-24: `run-evals.js --help` was not a flag it knew, so it ran the
+// whole suite on the shared eval user until somebody killed it (run 88). A
+// typo is refused now, before a pool is opened or a scenario runs.
+test('run-evals refuses a flag or a scenario it does not know, instead of running the default', () => {
+  const { checkArgs } = require('../scripts/run-evals');
+  const ids = ['stop-service', 'goal-capture'];
+  assert.deepEqual(checkArgs([], ids), {}, 'no flags is still the full suite, on purpose');
+  assert.deepEqual(checkArgs(['--only', 'stop-service', '--trials', '5'], ids), {});
+  assert.deepEqual(checkArgs(['--model', 'openrouter/x/y', '--full', '--no-judge'], ids), {});
+  assert.deepEqual(checkArgs(['--help'], ids), { help: true });
+  assert.match(checkArgs(['--ful'], ids).error, /unknown argument "--ful"/);
+  assert.match(checkArgs(['full'], ids).error, /unknown argument/);
+  assert.match(checkArgs(['--only', 'stop-service,stop-servise'], ids).error, /no scenario called stop-servise/);
+  assert.match(checkArgs(['--only'], ids).error, /needs a value/);
+  assert.match(checkArgs(['--model', '--full'], ids).error, /needs a value/);
+  assert.match(checkArgs(['--only', 'goal-capture', '--trials', 'five'], ids).error, /whole number/);
 });

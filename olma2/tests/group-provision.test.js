@@ -261,3 +261,48 @@ test('the group card carries names and state, never anyone\'s private facts', ()
   assert.match(card, /מירון/);
   assert.ok(!card.includes('+972602000060'), 'a name is enough; the number is not the card\'s business');
 });
+
+// A room's AGENTS.md is written once, at provisioning, and deploy.sh resyncs
+// only what resync-agent-templates.js walks. Until 2026-09-23 that was people
+// alone, so a room doctrine change reached only rooms registered after it —
+// the poker room kept "never collect times here" beside a tool that says the
+// opposite. The resync is pure fs, so it is asserted without a database.
+test('the room doctrine resync rewrites a stale AGENTS.md and touches nothing else', () => {
+  const mk = (name) => { const d = path.join(tmp, name); fs.mkdirSync(d, { recursive: true }); return d; };
+  const stale = mk('resync-stale'), current = mk('resync-current'), bare = mk('resync-missing');
+  fs.writeFileSync(path.join(stale, 'AGENTS.md'), 'old doctrine');
+  fs.writeFileSync(path.join(stale, 'GROUP.md'), 'the card');
+  fs.writeFileSync(path.join(current, 'AGENTS.md'), pg.renderAgentsMd('g-tok-2'));
+  const rows = [
+    { id: 1, subject: 'a', workspace_path: stale, identity_token: 'g-tok-1' },
+    { id: 2, subject: 'b', workspace_path: current, identity_token: 'g-tok-2' },
+    { id: 3, subject: 'c', workspace_path: bare, identity_token: 'g-tok-3' },
+    { id: 4, subject: 'd', workspace_path: null, identity_token: 'g-tok-4' },
+  ];
+
+  const dry = pg.resyncGroupDoctrine(rows);
+  assert.deepEqual(dry, { changed: 1, same: 1, missing: 1 });
+  assert.equal(fs.readFileSync(path.join(stale, 'AGENTS.md'), 'utf8'), 'old doctrine', 'a dry run writes nothing');
+
+  const lines = [];
+  const wet = pg.resyncGroupDoctrine(rows, { apply: true, log: (l) => lines.push(l) });
+  assert.deepEqual(wet, { changed: 1, same: 1, missing: 1 });
+  assert.equal(fs.readFileSync(path.join(stale, 'AGENTS.md'), 'utf8'), pg.renderAgentsMd('g-tok-1'));
+  assert.equal(fs.statSync(path.join(stale, 'AGENTS.md')).mode & 0o777, 0o600);
+  assert.equal(fs.readFileSync(path.join(stale, 'GROUP.md'), 'utf8'), 'the card', 'the card is not the doctrine');
+  assert.ok(!fs.existsSync(path.join(bare, 'AGENTS.md')), 'a missing file is reported, never created');
+  assert.ok(lines.every((l) => !l.includes('g-tok-')), 'the log never carries a token');
+  assert.deepEqual(pg.resyncGroupDoctrine(rows, { apply: true }), { changed: 0, same: 2, missing: 1 });
+});
+
+// The owner, 2026-09-23: Bar tagged her with a joke about Miron losing, and
+// the room got a refusal with reasons. Laughing back a little is allowed, and
+// the limits are the ones every other line in the room already keeps. Held
+// here because a doctrine paragraph is the easiest thing to trim when the file
+// grows, and there is no code behind this one to fail instead.
+test('the room doctrine lets her joke back, from the room\'s own words only', () => {
+  const doctrine = pg.renderAgentsMd('g-tok-joke');
+  assert.match(doctrine, /מותר\s+לצחוק איתו בחזרה/);
+  assert.match(doctrine, /הבדיחה נבנית רק ממה שנאמר כאן/);
+  assert.match(doctrine, /משיחה פרטית לא לוקחים כלום/);
+});

@@ -163,7 +163,7 @@ async function loadTasks(client, userId, zone, calendarSyncTasks) {
   // THIS person's reminders only: on a shared task each participant has their
   // own (migration 073), and the switch on the sheet is about theirs.
   const { rows: rems } = await client.query(
-    `SELECT r.id, r.task_id, r.remind_at, r.repeat_rule
+    `SELECT r.id, r.task_id, r.remind_at, r.repeat_rule, r.repeat_until
      FROM task_reminders r JOIN tasks t ON t.id = r.task_id
      WHERE r.task_id = ANY($1::bigint[]) AND COALESCE(r.user_id, t.owner_id) = $2
        AND r.cancelled_at IS NULL AND r.attempts = 0
@@ -229,7 +229,9 @@ async function loadTasks(client, userId, zone, calendarSyncTasks) {
       // The id travels with it because switching the reminder off cancels one
       // specific row, and (task, time) is not an identity — a task can carry
       // more than one pending reminder and the page must not guess which.
-      reminder: rem ? { id: rem.id, at: rem.remind_at, repeat: rem.repeat_rule } : null,
+      // `until` is what makes a daily rule a CHASE rather than a rhythm —
+      // the sheet draws "כל יום עד התאריך" off it, never off the rule alone.
+      reminder: rem ? { id: rem.id, at: rem.remind_at, repeat: rem.repeat_rule, until: rem.repeat_until || null } : null,
       // The EFFECTIVE answer, resolved here rather than in the browser: the
       // page draws one switch and the precedence rule belongs on the side that
       // enforces it. `inCalendar` is the separate question of whether the
@@ -556,8 +558,10 @@ async function loadMeetings(client, userId, zone) {
     settledBy: m.settled_by === null ? null : Number(m.settled_by),
     // Whether this person may end it by hand. The same question the domain
     // asks, asked here only so the page knows whether to draw the control —
-    // `settleNow` re-asks it whatever the page drew.
-    canSettle: String(m.initiator_id) === String(userId) && m.status === 'negotiating',
+    // `settleNow` re-asks it whatever the page drew. Anybody in it may since
+    // 2026-09-23 (nobody manages a coordination), and this list holds only
+    // the ones they are in.
+    canSettle: m.status === 'negotiating',
     // How many yeses this coordination calls enough, copied off the group when
     // it opened (migration 064) and its own ever since. `null` is no minimum,
     // which is every coordination in production today — the page draws no mark

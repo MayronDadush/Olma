@@ -1407,6 +1407,17 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 .mtswipe .mtfront{position:relative;background:var(--surface);
   transition:transform .22s cubic-bezier(.32,.72,0,1);touch-action:pan-y}
 .mtswipe.dragging .mtfront{transition:none}
+/* The red is only THERE while the row is off it. Painted at rest, the edge of
+   the row above it antialiases against red and a hairline of it shows round
+   every row (the owner saw it in the demo, 2026-09-23). It hides only once
+   the row has slid home — the delay is the slide — and shows at once. */
+.mtswipe .mtback{opacity:0;transition:opacity 0s linear .24s,clip-path .22s cubic-bezier(.32,.72,0,1);
+  clip-path:inset(0 0 0 100%)}
+.mtswipe.dragging .mtback,.mtswipe.open .mtback{opacity:1;transition:clip-path .22s cubic-bezier(.32,.72,0,1)}
+.mtswipe.dragging .mtback{transition:none}
+.mtswipe.open .mtback{clip-path:inset(0 0 0 calc(100% - 96px))}
+[dir="ltr"] .mtswipe .mtback{clip-path:inset(0 100% 0 0)}
+[dir="ltr"] .mtswipe.open .mtback{clip-path:inset(0 calc(100% - 96px) 0 0)}
 /* The row slides towards the END of the line, which is what uncovers the red
    sitting at the START where the trash label is — so the direction is logical
    and `--dirf` is what makes the same rule right in both languages. */
@@ -1433,14 +1444,74 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 .mtmain{flex:1;min-width:0}
 
 /* The desktop half of the same affordance: no swipe with a mouse, so the trash
-   appears on hover and takes its own second click to confirm. */
-.mtdel{border:0;background:transparent;color:var(--text-3);padding:0;width:30px;height:30px;flex:none;
-  display:grid;place-items:center;border-radius:8px;cursor:pointer;opacity:0;transition:.16s}
-.mtdel svg{width:16px;height:16px}
-.mtswipe:hover .mtdel,.mtdel:focus-visible{opacity:1}
-.mtdel:hover{background:var(--danger-soft);color:var(--danger)}
-.mtdel.arm{opacity:1;background:var(--danger);color:var(--on-accent)}
-@media (hover:none){.mtdel{display:none}}
+   is always there and takes its own second click to confirm. Always, not on
+   hover (owner, 2026-09-23): a mouse has no gesture to discover, and a control
+   that appears only under the pointer is one nobody knows to point at. */
+.mtdel,.swdel{border:0;background:transparent;color:var(--text-3);padding:0;width:30px;height:30px;flex:none;
+  display:grid;place-items:center;border-radius:8px;cursor:pointer;transition:.16s}
+.mtdel svg,.swdel svg{width:16px;height:16px}
+.mtdel:hover,.swdel:hover{background:var(--danger-soft);color:var(--danger)}
+.mtdel.arm,.swdel.arm{background:var(--danger);color:var(--on-accent)}
+@media (hover:none){.mtdel,.swdel{display:none}}
+
+/* ── the same swipe, on the task list and the coordinations list ──
+   One gesture for "take this off my list" wherever a list is (owner,
+   2026-09-23), modelled on the times inside a coordination above: slide the
+   row, the red underneath says what will happen, and pressing the red does
+   it. `.swr` wraps the row, `.swback` is the red, `.swfront` is the row. */
+.swr{position:relative;overflow:hidden}
+.swback{position:absolute;inset:0;background:var(--danger);display:flex;align-items:center;
+  justify-content:flex-start;padding-inline-start:20px;gap:9px;color:var(--on-accent);font-weight:700;font-size:13.5px;
+  border:0;width:100%;font-family:inherit;cursor:pointer;
+  opacity:0;transition:opacity 0s linear .26s,clip-path .26s var(--spring)}
+.swback svg{width:19px;height:19px;color:var(--on-accent)}
+/* The red is cut to exactly the strip the row has uncovered — never the whole
+   layer behind it. Painted whole, the row's own edges and rounded corners
+   antialias against it and a hairline of red rims the row the moment a finger
+   touches it (owner, twice, 2026-09-23). During a drag the strip follows the
+   finger (swClip); open and peek are the same cut at a fixed width. */
+.swback{clip-path:inset(0 0 0 100%)}
+[dir="ltr"] .swback{clip-path:inset(0 100% 0 0)}
+.swr.dragging > .swback,.swr.open > .swback,.swr.peek > .swback{opacity:1;transition:clip-path .26s var(--spring)}
+.swr.dragging > .swback{transition:none}
+.swr.peek > .swback{transition:clip-path .5s var(--ease)}
+.swr.open > .swback{clip-path:inset(0 0 0 calc(100% - 104px))}
+.swr.peek > .swback{clip-path:inset(0 0 0 calc(100% - 88px))}
+[dir="ltr"] .swr.open > .swback{clip-path:inset(0 calc(100% - 104px) 0 0)}
+[dir="ltr"] .swr.peek > .swback{clip-path:inset(0 calc(100% - 88px) 0 0)}
+.swfront{position:relative;background:var(--surface);
+  transition:transform .26s var(--spring);touch-action:pan-y}
+.group.mtset .swfront{background:var(--accent-soft)}
+.swr.dragging > .swfront{transition:none}
+.swr.open > .swfront{transform:translateX(calc(-104px * var(--dirf)))}
+/* The first-time peek: part of the way, slower, and back by itself. */
+.swr.peek > .swfront{transition:transform .5s var(--ease);transform:translateX(calc(-88px * var(--dirf)))}
+/* A row with nothing to delete says so by refusing the gesture, not by
+   ignoring it: a finger that gets no answer tries again. */
+.swr.nope > .swfront{animation:swNope .42s var(--ease)}
+@keyframes swNope{30%{transform:translateX(calc(-12px * var(--dirf)))}60%{transform:translateX(calc(5px * var(--dirf)))}}
+/* The line that says the gesture exists, said once. Two stages each way, so
+   nothing jumps: coming in, the room opens first and the pill settles into it;
+   going out, the pill lifts away first and only then does the room close —
+   the list below moves once, slowly, and never under a line still visible. */
+.swhint{display:grid;grid-template-rows:0fr;
+  transition:grid-template-rows .5s var(--ease) .2s}
+.swhint > div{min-height:0;overflow:hidden}
+.swhint.on{grid-template-rows:1fr;transition-delay:0s}
+.swhint p{display:flex;align-items:center;gap:8px;width:fit-content;max-width:100%;margin:2px auto 14px;
+  padding:7px 14px;border-radius:999px;background:var(--accent-soft);
+  font-size:13px;font-weight:600;color:var(--accent);
+  opacity:0;transform:translateY(-8px) scale(.96);filter:blur(3px);
+  transition:opacity .22s ease,transform .26s var(--ease),filter .22s ease}
+.swhint.on p{opacity:1;transform:none;filter:none;
+  transition:opacity .4s ease .22s,transform .55s var(--spring) .22s,filter .4s ease .22s}
+.swhint svg{width:16px;height:16px;flex:none;animation:swNudge 1.3s ease-in-out infinite}
+@keyframes swNudge{50%{transform:translateX(calc(-5px * var(--dirf)))}}
+[dir="ltr"] .swhint svg{scale:-1 1}
+@media (prefers-reduced-motion:reduce){
+  .swr.peek > .swfront{transform:none}
+  .swhint,.swhint p,.swhint.on p{transition-duration:.01s;transition-delay:0s;transform:none;filter:none}
+}
 
 /* The names, opened by a tap on the row itself. Nobody who has not answered is
    listed — they are the grey of the ring, and a name under "hasn't answered"
@@ -1568,24 +1639,28 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 .mtpill.settled{background:var(--accent-soft);color:var(--accent)}
 .mtpill.waiting{background:var(--warn-soft);color:var(--warn)}
 .mtpill.stuck{background:var(--danger-soft);color:var(--danger)}
+/* A coordination whose time is SET is the only card in this list with nothing
+   left to ask of anybody, and since 2026-09-23 it stays here until its moment
+   has actually passed — so it needs to read as settled before the sentence on
+   it is read at all. The chip alone did not do that: it is the same size and
+   the same language as "אפשר לסגור" and "ממתין", and in a quick scan it does
+   not separate. The whole card is tinted instead, and the chip goes solid
+   (the owner chose this over marking the chip alone). Only the ACTIVE list
+   tints — an archive row is over, and nothing in it is worth pointing at. */
+.group.mtset{background:var(--accent-soft)}
+.group.mtset .mtpill.settled{
+  display:inline-flex;align-items:center;gap:4px;
+  background:var(--accent);color:var(--on-accent);
+}
+.group.mtset .mtpill.settled::before{content:"\2713";font-size:10px;font-weight:800}
 .mtcard .chev{width:15px;height:15px;flex:none;color:var(--text-3)}
 .mtrow{display:flex;align-items:center}
 .mtrow .mtcard{padding-inline-end:10px}
 .mtrow .mtcard{flex:1;min-width:0}
 /* Leaving from the row, where the thought "this should stop appearing"
-   actually happens. Quiet, because it is not what the row is for. */
-.mtx{
-  width:32px;height:32px;flex:none;margin-inline-end:6px;border-radius:50%;
-  display:grid;place-items:center;color:var(--text-3);opacity:.6;
-  position:relative;
-  transition:background .24s var(--ease-io),color .24s var(--ease-io),opacity .24s var(--ease-io);
-}
-.mtx::before{
-  content:"";position:absolute;inset-inline-end:100%;top:9px;bottom:9px;
-  width:1px;background:var(--sep);
-}
-.mtx svg{width:11px;height:11px}
-.mtx:active{background:var(--danger-soft);color:var(--danger)}
+   actually happens — by the swipe on a phone and the trash with a mouse, the
+   same two doors every list on the page has (.swr above). */
+.mtrow .swdel{margin-inline-end:8px}
 .mtconfirm{padding:13px 14px}
 .mtconfirm p{margin:0 0 10px;font-size:13.5px;color:var(--text-2)}
 .mtconfirm .moact{margin-top:0}
@@ -2841,6 +2916,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   <symbol id="i-phone" viewBox="0 0 20 20"><path d="M5.3 3h1.42c.63 0 1.2.4 1.4 1l.78 2.05c.21.57.03 1.2-.44 1.58l-.7.55a8.7 8.7 0 0 0 3.06 3.06l.55-.7c.38-.47 1.01-.65 1.58-.44l2.05.78c.6.2 1 .77 1 1.4v1.42a2.1 2.1 0 0 1-2.28 2.1C8.5 15.3 4.7 11.5 3.2 5.28A2.1 2.1 0 0 1 5.3 3Z" fill="currentColor"/></symbol>
   <symbol id="i-note" viewBox="0 0 20 20"><path d="M4.4 2.6h11.2v10.2l-4 4.6H4.4Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M15.6 12.6h-4v4.8M7.2 6.4h5.6M7.2 9.4h4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-folder" viewBox="0 0 20 20"><path d="M2.6 5.6a2 2 0 0 1 2-2h2.9l2 2.4h6a2 2 0 0 1 2 2v6.4a2 2 0 0 1-2 2h-10.9a2 2 0 0 1-2-2Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></symbol>
+  <symbol id="i-swipe" viewBox="0 0 18 18"><path d="M15 9H3.4M7.4 5 3.4 9l4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-arrdown" viewBox="0 0 16 16"><path d="M2.9 5.3h10.2L8 12.4Z" fill="currentColor" stroke="currentColor" stroke-width="2.1" stroke-linejoin="round"/></symbol>
   <symbol id="i-sun" viewBox="0 0 16 16"><circle cx="8" cy="8" r="3.1" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8 1.2v1.6M8 13.2v1.6M1.2 8h1.6M13.2 8h1.6M3.3 3.3l1.13 1.13M11.57 11.57l1.13 1.13M3.3 12.7l1.13-1.13M11.57 4.43l1.13-1.13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></symbol>
   <symbol id="i-moon" viewBox="0 0 16 16"><path d="M13.2 9.4A5.6 5.6 0 1 1 6.6 2.8a4.4 4.4 0 0 0 6.6 6.6Z" fill="currentColor"/></symbol>
@@ -2914,6 +2990,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     </div>
     <div style="--i:2">
       <div id="suggWrap"></div>
+      <div class="swhint" id="taskHint" aria-live="polite"><div><p><svg><use href="#i-swipe"/></svg><span></span></p></div></div>
       <div class="stack" id="taskStack"></div>
     </div>
     <div class="archive" id="archive" style="--i:3">
@@ -2990,6 +3067,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     <div id="calMeet">
       <div style="--i:2">
         <div class="glabel"><span data-i18n="mt.open"></span><span class="hint" id="mtCount"></span></div>
+        <div class="swhint" id="mtHint" aria-live="polite"><div><p><svg><use href="#i-swipe"/></svg><span></span></p></div></div>
         <div class="stack" id="mtList"></div>
       </div>
       <!-- The same archive the task list has, for the same reason. Settled
@@ -3370,6 +3448,11 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
         <button class="chip mini" aria-pressed="false" data-rep="day" data-i18n="rep.day"></button>
         <button class="chip mini" aria-pressed="false" data-rep="week" data-i18n="rep.week"></button>
         <button class="chip mini" aria-pressed="false" data-rep="month" data-i18n="rep.month"></button>
+        <!-- A CHASE: one a day until the task's own date, stopping when it is
+             done (domain/reminders.startChase — the same one חיים gets in
+             chat). Offered only on a dated task; the date IS the deadline, so
+             there is no second date to pick. -->
+        <button class="chip mini" aria-pressed="false" data-rep="until" data-i18n="rep.until"></button>
       </div>
     </div></div></div>
     <div class="row no-icon" id="sRemindRow">
@@ -3390,6 +3473,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
            date has no before. The same fold then asks the only thing a
            standing nudge actually needs: which hour. Same clock wheel as
            everywhere else on the page. -->
+      <div class="row-sub" id="sChaseSub" hidden data-i18n="sheet.chaseSub"></div>
       <span class="vseg" id="sRemindAtSeg" hidden>
         <button class="vseg-b set" id="sRemindAtChip" data-i18n-label="sheet.remindAt">
           <svg class="vic"><use href="#i-clock"/></svg><span id="sRemindAtVal"></span></button>
@@ -3512,7 +3596,6 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 
   <!-- Two exits that must never read alike. One clears your own calendar and
        nobody else notices; the other tells four people you are not coming. -->
-  <p class="note" id="mtOwnNote" style="padding:0 14px 10px" hidden></p>
   <div class="sheetbtns wrap">
     <button class="btn ghost" id="mtCal" hidden></button>
     <button class="btn ghost danger" id="mtLeave"></button>
@@ -3828,7 +3911,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
        source's own import path — which is also the place that must refuse a
        field the source cannot hold, exactly as the greyed rows promise. */
     saveImportedTask:    "update_imported_task",        /* NO TOOL YET — per-source import */
-    deleteTask:          "delete_task",               /* NO TOOL YET — dashboard only */
+    deleteTask:          "delete_task",               /* NO TOOL YET — dashboard only; the chat archives */
     completeTask:        "complete_task",
     restoreTask:         "restore_task",              /* NO TOOL YET — list_my_archive only reads */
     snoozeTask:          "snooze_task",
@@ -3847,6 +3930,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     setAvailability:     null,                        /* the /pick/ page is retired; this page IS the picker now */
     confirmSlot:         "respond_to_meeting_slot",   /* propose_meeting_slot proposes it */
     leaveMeeting:        "leave_meeting",              /* NO TOOL YET — meeting_participants.left_at */
+    cancelMeeting:       "cancel_meeting",             /* the page offers it only between two people */
     rejoinMeeting:       "rejoin_meeting",             /* NO TOOL YET — dashboard only */
     pause:               "pause_olma",
     resume:              "resume_olma",
@@ -3868,7 +3952,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      that lands nowhere is worse than an obvious gap. */
   var ACT = {
     addTask:"addTask", editTask:"editTask", completeTask:"completeTask",
-    archiveTask:"archiveTask", restoreTask:"restoreTask",
+    archiveTask:"archiveTask", deleteTask:"deleteTask", restoreTask:"restoreTask",
     setReminder:"setReminder", cancelReminder:"cancelReminder",
     setTaskReminder:"setTaskReminder", setTaskCalendar:"setTaskCalendar",
     shareTask:"shareTask", revokeShare:"revokeShare", leaveTask:"leaveTask", setTaskPin:"setTaskPin",
@@ -3878,7 +3962,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     pause:"pause", resume:"resume", callMe:"callMe",
     requestMoreCalls:"requestMoreCalls",
     inviteContact:"inviteContact",
-    respondToMeeting:"respondToMeeting", leaveMeeting:"leaveMeeting",
+    respondToMeeting:"respondToMeeting", leaveMeeting:"leaveMeeting", cancelMeeting:"cancelMeeting",
     rejoinMeeting:"rejoinMeeting",
     startMeeting:"startMeeting", addOption:"addOption", answerOption:"answerOption",
     settleMeeting:"settleMeeting",
@@ -4047,10 +4131,10 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
        being briefly out of date. A refusal is surfaced, not swallowed: the
        page reloads its data, so the next paint is the truth rather than the
        optimistic guess. */
-    send: function(action, payload, onOk){
+    send: function(action, payload, onOk, keepalive){
       if(!LIVE || !ACT[action]){ if(onOk) onOk(null); return true; }
       fetch("/me/act", {
-        method:"POST", credentials:"same-origin",
+        method:"POST", credentials:"same-origin", keepalive:!!keepalive,
         headers:{"Content-Type":"application/json"},
         body:JSON.stringify({action:ACT[action], payload:payload || {}})
       }).then(function(r){ return r.json().catch(function(){ return null; }); })
@@ -4075,6 +4159,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       else if(error && error.reason === "first_person") say(t("toast.factFirstPerson"));
       else if(error && error.reason === "needs_expiry") say(t("toast.factDated"));
       else if(error && error.reason === "phone") say(t("toast.factPhone"));
+      else if(error && error.reason === "calendar") say(t("toast.delCalendar"));
       else if(error && error.reason === "no_writeback")
         say(t("toast.importedRefusal", {name:(SOURCES[error.source] || {}).name || error.source}));
       API.reload();
@@ -4153,6 +4238,10 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
         if(x.rem){
           payload.remindAt = remindIso(x);
           payload.repeatRule = REPEAT_RULE[x.rep || "none"] || null;
+          /* A chase carries no hour and no rule: the server's rule picks both
+             (user-dashboard-write.setTaskReminder), and an hour computed here
+             would be read as one they named. */
+          if(x.rep === "until"){ API.send("setTaskReminder", {taskId:id, on:true, chase:true}); return; }
           /* A backstop, not the dateless case — that one now builds its own
              moment above. `setTaskReminder` refuses `on` without a `remindAt`
              and would cancel nothing, so there is no call worth making. */
@@ -4164,16 +4253,16 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     setTaskCalendar: function(x){
       whenSaved(x, function(id){ API.send("setTaskCalendar", {taskId:id, on:!!x.cal}); });
     },
-    /* The page calls it deleting; the system archives. Nothing here has ever
-       deleted a task and this is not the place to start — the archive is the
-       feature, and it is reachable from the same screen. */
+    /* Deleting is deleting (owner, 2026-09-23) — the tick is what archives.
+       Called only once the undo has gone (deleteTaskRow); `leaving` is the
+       page closing under it, when only a keepalive request still arrives. */
     /* All three take the task itself where the caller has it, because a row
        ticked or deleted while its own add is still on the wire carries an id
        only this browser has seen. Sent straight away it was refused as
        not-found, the add then landed, and the task everybody had watched
        disappear came back on the next reload. */
-    deleteTask:      function(x){      var id = idOf(x); API.call("deleteTask", {task_id:id});
-      return onRealId(x, function(real){ API.send("archiveTask", {taskId:real}); }); },
+    deleteTask:      function(x, leaving){ var id = idOf(x); API.call("deleteTask", {task_id:id});
+      return onRealId(x, function(real){ API.send("deleteTask", {taskId:real}, null, leaving); }); },
     /* The only one of the three that hands the answer back: a task that
        REPEATS is not closed by ticking it once, and the caller has to be told
        so — see standingStaysOpen. */
@@ -4513,7 +4602,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "mt.minNone":"בלי מינימום","mt.minSet":"מספיק לי {n} מתוך {of}",
       "toast.mtRemoved":"ירד מהשולחן — {when}","toast.mtRemoveFailed":"לא הצלחתי להוריד את המועד",
       "mt.leave":"יציאה מהתיאום",
-      "mt.ownNote":"פתחת את התיאום הזה — לביטול שלו לכולם, תכתוב לעולמה בצ׳אט.",
+
       "mt.calAdd":"הוספה ליומן שלי","mt.calRemove":"הסרה מהיומן שלי",
       "mt.whenLbl":"מתי ביום","mt.exact":"שעה מדויקת",
       "mt.allDayRow":"אירוע של יום שלם","mt.allDaySub":"בלי שעות — היום כולו",
@@ -4525,6 +4614,13 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "mt.pill.waiting":"ממתין","mt.pill.ready":"אפשר לסגור",
       "mt.pill.settled":"נקבע","mt.pill.stuck":"תקוע","mt.pill.empty":"ריק",
       "mt.leaveAsk":"לצאת מ{name}? התשובות שלך יורדות מהספירה והתיאום יימחק מהרשימה שלך.",
+      "mt.del":"מחיקת התיאום","mt.delAsk":"למחוק את {name}? נשלח ל{who} הודעה שהתיאום בוטל.",
+      "toast.mtDeleted":"{name} נמחק","toast.mtDeleteFailed":"לא הצלחתי למחוק את {name}",
+      "sw.delete":"מחיקה","sw.leave":"יציאה","sw.again":"עוד לחיצה כדי למחוק","sw.againLeave":"עוד לחיצה כדי לצאת",
+      "sw.hintTasks":"מחליקים משימה הצידה כדי למחוק אותה","sw.hintMeets":"מחליקים תיאום הצידה כדי לצאת ממנו",
+      "sw.imported":"משימה מ־{name} מוחקים ב־{name}",
+
+      "toast.delCalendar":"לא הצלחתי להוריד את המשימה מהיומן, אז היא לא נמחקה. אפשר לנסות שוב.",
       "mt.stateReady":"מתאים לכולם — {when}",
       "mt.stateNone":"עוד אף אחד לא ענה",
       "mt.stateNoOpts":"עוד לא הוצע מועד",
@@ -4642,7 +4738,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "cal.showIn":"להצגה ביומן",
       "off.at":"בזמן","off.m10":"10 דק׳ לפני","off.h1":"שעה לפני","off.d1":"יום לפני",
       "sheet.remindAt":"שעת התזכורת","sheet.remindAtVal":"להזכיר ב־{time}",
-      "rep.once":"ללא","rep.day":"כל יום","rep.week":"כל שבוע","rep.month":"כל חודש",
+      "rep.once":"ללא","rep.day":"כל יום","rep.week":"כל שבוע","rep.month":"כל חודש","rep.until":"כל יום עד התאריך",
+      "rep.untilVal":"כל יום עד {date}","sheet.chaseSub":"פעם ביום, בשעה שבה עולמה כבר כותבת לך, עד שזה בוצע",
       "sheet.repeatNeedsRemind":"החזרה נשמרת על התזכורת — צריך להדליק תזכורת קודם",
 
       "toast.on":"השירות הופעל","toast.off":"השירות כובה",
@@ -4829,7 +4926,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "mt.minNone":"No minimum","mt.minSet":"{n} of {of} is enough",
       "toast.mtRemoved":"Off the table — {when}","toast.mtRemoveFailed":"Could not take that time off",
       "mt.leave":"Leave the coordination",
-      "mt.ownNote":"You started this one — to cancel it for everyone, message Olma in chat.",
+
       "mt.calAdd":"Add to my calendar","mt.calRemove":"Remove from my calendar",
       "mt.whenLbl":"Time of day","mt.exact":"Exact time",
       "mt.allDayRow":"A whole-day event","mt.allDaySub":"No hours \u2014 the day itself",
@@ -4841,6 +4938,13 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "mt.pill.waiting":"Waiting","mt.pill.ready":"Ready",
       "mt.pill.settled":"Settled","mt.pill.stuck":"Stuck","mt.pill.empty":"Empty",
       "mt.leaveAsk":"Leave {name}? Your answers stop counting and it goes off your list.",
+      "mt.del":"Delete the coordination","mt.delAsk":"Delete {name}? {who} will get a message that it is off.",
+      "toast.mtDeleted":"{name} deleted","toast.mtDeleteFailed":"Could not delete {name}",
+      "sw.delete":"Delete","sw.leave":"Leave","sw.again":"Press again to delete","sw.againLeave":"Press again to leave",
+      "sw.hintTasks":"Slide a task sideways to delete it","sw.hintMeets":"Slide a coordination sideways to leave it",
+      "sw.imported":"A task from {name} is deleted in {name}",
+
+      "toast.delCalendar":"Could not take the task off your calendar, so it was not deleted. Try again.",
       "mt.stateReady":"Fits everyone \u2014 {when}",
       "mt.stateNone":"Nobody has answered yet",
       "mt.stateNoOpts":"No time proposed yet",
@@ -4958,7 +5062,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "cal.showIn":"Show in calendar",
       "off.at":"On time","off.m10":"10 min before","off.h1":"1 hour before","off.d1":"1 day before",
       "sheet.remindAt":"Reminder time","sheet.remindAtVal":"Remind at {time}",
-      "rep.once":"Never","rep.day":"Every day","rep.week":"Every week","rep.month":"Every month",
+      "rep.once":"Never","rep.day":"Every day","rep.week":"Every week","rep.month":"Every month","rep.until":"Daily until the date",
+      "rep.untilVal":"Daily until {date}","sheet.chaseSub":"Once a day, at the hour Allma already writes to you, until it is done",
       "sheet.repeatNeedsRemind":"A repeat lives on the reminder — switch one on first",
 
       "toast.on":"Service turned on","toast.off":"Service turned off",
@@ -5841,6 +5946,186 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      honours it on its own; these are the two places JS decides to move
      something and CSS never sees the decision. */
   var REDUCED = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  /* ───────── swipe to delete, on every list ─────────
+     The tasks list and the coordinations list take a row off the same way the
+     times inside a coordination always have (mtOpts, below): slide it, the red
+     underneath names what will happen, press the red. With a mouse there is
+     no slide, so the trash sits on the row and takes two clicks. The latch and
+     the armed trash are STATE, not classes left on nodes, because every write
+     on this page ends in a redraw — each row's HTML asks swClass/swDel. */
+  var SW = {open:null, armed:null};
+  var SW_OPEN = 104, SW_LATCH = .34;
+  /* Which way a row slides to show its red: towards the END of the line, so
+     the red appears at the START, where its word is. -1 is leftwards (Hebrew).
+     The other way used to open it too, and showed a red strip on the far side
+     with no word on it — a rim of red that meant nothing (owner, 2026-09-23).
+     That way now gives a small give and no red at all (swPull). */
+  function swSign(){ return document.documentElement.getAttribute("dir") === "ltr" ? 1 : -1; }
+  function swPull(mx, lim){
+    var s = swSign(), along = mx * s;
+    return along >= 0 ? s * Math.min(lim, along) : s * Math.max(-10, along / 4);
+  }
+  /* The red, cut to the strip a row dragged `dx` px has uncovered — and none
+     when it went the other way. */
+  function swClip(back, dx){
+    if(!back) return;
+    if(dx !== null && dx * swSign() <= 0) dx = 0;
+    back.style.clipPath = dx === null ? "" : dx === 0 ? (swSign() < 0 ? "inset(0 0 0 100%)" : "inset(0 100% 0 0)") : dx < 0
+      ? "inset(0 0 0 calc(100% - " + (-dx) + "px))" : "inset(0 calc(100% - " + dx + "px) 0 0)";
+  }
+  function swClass(key){ return (SW.open === key ? " open" : "") + (SW.armed === key ? " armed" : ""); }
+  function swBack(verb){
+    return '<button type="button" class="swback" data-swgo tabindex="-1"><svg><use href="#' +
+      (verb === "leave" ? "i-out" : "i-trash") + '"/></svg>' + esc(t("sw." + verb)) + "</button>";
+  }
+  function swDel(key, verb){
+    var on = SW.armed === key, lbl = t(on ? (verb === "leave" ? "sw.againLeave" : "sw.again") : "sw." + verb);
+    return '<button type="button" class="swdel' + (on ? " arm" : "") + '" data-swdel aria-label="' + esc(lbl) +
+      '" title="' + esc(lbl) + '"><svg><use href="#' + (verb === "leave" ? "i-out" : "i-trash") + '"/></svg></button>';
+  }
+  /* Stands a latched row or an armed trash down without a redraw, so the row
+     slides home under its own transition instead of snapping. */
+  function swRest(){
+    if(SW.open == null && SW.armed == null) return false;
+    SW.open = SW.armed = null;
+    $$(".swr.open,.swr.armed").forEach(function(r){ r.classList.remove("open", "armed"); });
+    $$(".swdel.arm").forEach(function(b){ b.classList.remove("arm"); });
+    return true;
+  }
+  /* One list, wired once. `act(row)` is what pressing the red (or the armed
+     trash) does; `refuse(row)` is said when a locked row is slid. */
+  function swipeList(box, act, refuse){
+    var sw = null, x0 = 0, y0 = 0, dx = 0, axis = "", swallow = false;
+    box.addEventListener("pointerdown", function(e){
+      swallow = false;
+      if(e.pointerType === "mouse") return;
+      var el = e.target.closest(".swr");
+      if(!el || e.target.closest(".swback")) return;
+      sw = el; x0 = e.clientX; y0 = e.clientY; dx = 0; axis = "";
+    });
+    box.addEventListener("pointermove", function(e){
+      if(!sw) return;
+      /* A long press already lifted this task to move it: that gesture owns
+         the finger now, and a row sliding sideways under it would be two
+         things happening at once. */
+      if(document.documentElement.classList.contains("dragging-task")){ sw.classList.remove("dragging"); sw = null; return; }
+      var mx = e.clientX - x0, my = e.clientY - y0;
+      if(!axis){
+        if(Math.abs(mx) < 6 && Math.abs(my) < 6) return;
+        axis = Math.abs(mx) > Math.abs(my) ? "x" : "y";
+        if(axis === "x"){ sw.classList.add("dragging"); swHintDone(); }
+      }
+      if(axis !== "x") return;
+      var lim = sw.classList.contains("locked") ? 14 : SW_OPEN;
+      dx = swPull(mx, lim);
+      var front = sw.querySelector(".swfront");
+      if(front) front.style.transform = "translateX(" + dx + "px)";
+      swClip(sw.querySelector(".swback"), dx);
+    });
+    var end = function(){
+      if(!sw) return;
+      var el = sw, moved = dx * swSign(), dragged = axis === "x", front = el.querySelector(".swfront");
+      sw = null; axis = ""; dx = 0;
+      el.classList.remove("dragging");
+      if(front) front.style.transform = "";
+      swClip(el.querySelector(".swback"), null);
+      /* A press that never became a slide is a press, and is left alone. */
+      if(!dragged) return;
+      swallow = true;
+      if(el.classList.contains("locked")){
+        el.classList.remove("nope"); void el.offsetWidth; el.classList.add("nope");
+        if(refuse) refuse(el);
+        return;
+      }
+      var key = moved > SW_OPEN * SW_LATCH ? el.dataset.sw : null;
+      SW.open = key; SW.armed = null;
+      $$(".swr").forEach(function(r){ r.classList.toggle("open", r.dataset.sw === key); r.classList.remove("armed"); });
+      $$(".swdel.arm").forEach(function(b){ b.classList.remove("arm"); });
+    };
+    box.addEventListener("pointerup", end);
+    box.addEventListener("pointercancel", end);
+    /* Capture, so this runs before the list's own click handler: a slide is
+       not a tap, the red and the trash are this module's, and a tap anywhere
+       while a row sits open is the answer "no" — it closes the row and does
+       nothing else. */
+    box.addEventListener("click", function(e){
+      if(swallow){ swallow = false; e.stopPropagation(); e.preventDefault(); return; }
+      var row = e.target.closest(".swr");
+      if(e.target.closest("[data-swgo]") && row){ e.stopPropagation(); swRest(); act(row); return; }
+      var del = e.target.closest("[data-swdel]");
+      if(del && row){
+        e.stopPropagation();
+        if(SW.armed === row.dataset.sw){ swRest(); act(row); return; }
+        swRest();
+        SW.armed = row.dataset.sw;
+        row.classList.add("armed");
+        del.classList.add("arm");
+        del.setAttribute("aria-label", del.title = t(row.dataset.verb === "leave" ? "sw.againLeave" : "sw.again"));
+        return;
+      }
+      if(swRest()){ e.stopPropagation(); e.preventDefault(); }
+    }, true);
+  }
+  /* Anywhere else on the page stands them down too. */
+  document.addEventListener("click", function(e){ if(!e.target.closest(".swr")) swRest(); });
+
+  /* ── the first time, the page shows it ──
+     A gesture nobody can see is a feature nobody has, so the first time each
+     list is on screen with something in it, its first row slides part of the
+     way by itself, shows the red, and comes back — with one line saying what
+     that was. Once per list per device (owner, 2026-09-23), only on a touch
+     screen (a mouse has its trash on the row), and never over an empty list:
+     there is nothing to show. */
+  var SW_SEEN_KEY = "olma.swipeSeen", swSeenNow = {}, swHintT = null;
+  function swSeen(list){
+    if(swSeenNow[list]) return true;
+    try{ return (localStorage.getItem(SW_SEEN_KEY) || "").split(",").indexOf(list) > -1; }catch(err){ return false; }
+  }
+  function swMarkSeen(list){
+    swSeenNow[list] = true;
+    try{
+      var had = (localStorage.getItem(SW_SEEN_KEY) || "").split(",").filter(Boolean);
+      if(had.indexOf(list) < 0) had.push(list);
+      localStorage.setItem(SW_SEEN_KEY, had.join(","));
+    }catch(err){}
+  }
+  function swHintDone(){
+    clearTimeout(swHintT);
+    $$(".swhint.on").forEach(function(h){ h.classList.remove("on"); });
+  }
+  function swPeek(list, box, hint){
+    if(swSeen(list) || !box || !window.matchMedia || !window.matchMedia("(hover:none)").matches) return;
+    if(!box.getClientRects().length) return;                 /* not on screen */
+    /* The row that shows what the line under it says — delete on the tasks,
+       leave on the coordinations — and any row that can move, failing that. */
+    var row = box.querySelector('.swr[data-verb="' + (list === "tasks" ? "delete" : "leave") + '"]') ||
+      box.querySelector(".swr:not(.locked)");
+    if(!row) return;                                          /* nothing to show */
+    var r = row.getBoundingClientRect();
+    if(r.top < 0 || r.bottom > innerHeight) return;           /* would play unseen */
+    swMarkSeen(list);
+    $("p span", hint).textContent = t(list === "tasks" ? "sw.hintTasks" : "sw.hintMeets");
+    hint.classList.add("on");
+    clearTimeout(swHintT);
+    swHintT = setTimeout(swHintDone, 6000);
+    if(REDUCED) return;
+    setTimeout(function(){
+      if(!document.body.contains(row) || SW.open) return;
+      row.classList.add("peek");
+      setTimeout(function(){ row.classList.remove("peek"); }, 950);
+    }, 780);                     /* once the line has settled, not under it */
+  }
+  /* Asked after the view shows and after the data lands; it is a no-op every
+     time after the first, so asking often is free. */
+  function swMaybePeek(){
+    setTimeout(function(){
+      var v = document.documentElement.getAttribute("data-v");
+      if(v === "tasks") swPeek("tasks", $("#taskStack"), $("#taskHint"));
+      else if(v === "cal" && !$("#calMeet").hidden) swPeek("meets", $("#mtList"), $("#mtHint"));
+    }, 650);
+  }
+
   function defaultPicker(){
     /* A call is not a place a reminder can wait — this choice is about where
        WRITING arrives, so it offers the written channels and nothing else,
@@ -6419,7 +6704,14 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     if(x.d && x.cal) end += '<button class="tjump" data-jump="' + x.id + '" aria-label="' + esc(t("cal.showIn")) +
       '"><svg><use href="#i-cal"/></svg></button>';
     end += pinBtn(x);
-    return '<div class="taskwrap" data-id="' + x.id + '"><div class="taskin"><div class="task" role="button" tabindex="0">' +
+    /* What sliding this row does: gone for good on a task of mine, off MY list
+       on one others are on, and nothing at all on an imported one — that row
+       lives in its source, and a delete here would come back on the next sync. */
+    var verb = taskVerb(x), key = "t" + x.id;
+    if(verb) end += swDel(key, verb);
+    return '<div class="taskwrap" data-id="' + x.id + '"><div class="taskin swr' + (verb ? "" : " locked") + swClass(key) +
+      '" data-sw="' + key + '" data-verb="' + (verb || "") + '">' + (verb ? swBack(verb) : "") +
+      '<div class="swfront"><div class="task" role="button" tabindex="0">' +
       '<button class="tick" aria-label="' + esc(t("a11y.tick")) + '"><svg><use href="#i-check"/></svg></button>' +
       '<div class="tbody"><span class="ttitle">' +
       /* The logo replaces the category dot rather than joining it: both answer
@@ -6433,8 +6725,14 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       (facesOf(x).length ? faceStack(facesOf(x)) : "") +
       (x.kind === "event" && x.loc ? '<span class="tloc">' + esc(x.loc) + "</span>" : "") + "</div>" +
       (end ? '<span class="tend">' + end + "</span>" : "") +
-      "</div></div></div>";
+      "</div></div></div></div>";
   }
+  /* Every task of yours says "delete" (owner, 2026-09-23) — the word is what
+     happens to YOUR list. What it does underneath differs: one only you are
+     on is gone for good (with the undo), one others are on leaves your list
+     and stays on theirs (taskGoesAway). Imported ones are deleted at home. */
+  function taskVerb(x){ return x.src ? null : "delete"; }
+  function taskGoesAway(x){ if(facesOf(x).length) leaveTaskRow(x.id); else deleteTaskRow(x.id); }
   /* Inside a day, the calendar comes before the plate: a meeting at 11:45 and
      "לקנות חלב" are not one list, and reading them as one is how a meeting
      gets called a task. Both sub-labels appear only when both kinds are
@@ -6755,6 +7053,14 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     var pn = e.target.closest("[data-pin]");
     if(pn){ setPin(+pn.dataset.pin, pn.getAttribute("aria-pressed") !== "true"); return; }
     if(wrap) openSheet(+wrap.dataset.id);
+  });
+  swipeList($("#taskStack"), function(row){
+    var x = taskById(row.closest(".taskwrap").dataset.id);
+    if(!x) return;
+    taskGoesAway(x);
+  }, function(row){
+    var x = taskById(row.closest(".taskwrap").dataset.id);
+    if(x && x.src) toast(t("sw.imported", {name:(SOURCES[x.src] || {}).name || x.src}), null, true);
   });
   /* ── dragging tasks ──
      Two gestures on one lift. Let go BESIDE another row of the same group and
@@ -7408,11 +7714,26 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
        drop it, the row says why it is unavailable. That lock is applied in
        syncSheetSource below, together with the source's own limit on the same
        row, because two lockRow calls on one row leave only the last. */
+    /* "Daily until the date" has no date to run to on an undated task, so the
+       chip goes with the date — and if the date goes while it is chosen, the
+       choice falls back to none rather than sending a chase with no end. */
+    var untilChip = $('#sRepeat [data-rep="until"]');
+    untilChip.hidden = !dated;
+    if(!dated && untilChip.getAttribute("aria-pressed") === "true"){
+      $$("#sRepeat .chip").forEach(function(c){ c.setAttribute("aria-pressed", c.dataset.rep === "none" ? "true" : "false"); });
+      editing.rep = "none";
+    }
     var chosen = $$("#sRepeat .chip").filter(function(c){ return c.getAttribute("aria-pressed") === "true"; })[0];
-    $("#sRepeatVal").textContent = t("rep." + ({none:"once", day:"day", week:"week", month:"month"}[chosen ? chosen.dataset.rep : "none"] || "once"));
+    var chosenRep = chosen ? chosen.dataset.rep : "none";
+    $("#sRepeatVal").textContent = chosenRep === "until" ? t("rep.untilVal", {date:longDate(editing.d)})
+      : t("rep." + ({none:"once", day:"day", week:"week", month:"month"}[chosenRep] || "once"));
     /* The reminder fold asks one question or the other, never both: how long
-       before a moment there is, or what hour when there is none. */
-    $("#sOffset").hidden = !dated;
+       before a moment there is, or what hour when there is none. A chase asks
+       neither — its hour is the one they already hear from Olma, and the
+       fold says so instead of offering chips the server would ignore. */
+    var chasing = chosenRep === "until";
+    $("#sOffset").hidden = !dated || chasing;
+    $("#sChaseSub").hidden = !chasing;
     $("#sRemindAtSeg").hidden = dated;
     $("#sRemindAtVal").textContent = t("sheet.remindAtVal", {time:editing.remAt || remDefaultAt()});
     var ck = editing.cat || "none";
@@ -7719,9 +8040,14 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   /* leaving is not deleting: the row goes from MY list and the task itself
      carries on with everyone else, which is what the toast says out loud */
   $("#sLeave").addEventListener("click", function(){
-    var id = editing.id, name = L(editing.t) || t("sheet.untitled");
-    var wrap = $('.taskwrap[data-id="' + id + '"]');
+    var id = editing.id;
     closeSheets();
+    leaveTaskRow(id);
+  });
+  /* The sheet's button and the swipe on a shared row are one act. */
+  function leaveTaskRow(id){
+    var x = taskById(id), name = (x && L(x.t)) || t("sheet.untitled");
+    var wrap = $('.taskwrap[data-id="' + id + '"]');
     if(wrap) wrap.classList.add("gone");
     setTimeout(function(){
       var i = open.findIndex(function(o){ return o.id === id; });
@@ -7737,7 +8063,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       API.leaveTask(id);
       renderTasks(); renderStrip(selDay); toast(t("toast.left", {name:name}));
     }, 230);
-  });
+  }
 
   /* `preset` is how a new task can arrive with somebody already on it — the
      shared-task button in Contacts is the only caller, and it hands over the
@@ -7984,20 +8310,54 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     renderTasks(); renderStrip(selDay);
     toast(t("toast.restored", {name:L(row.t) || t("sheet.untitled")}));
   }
-  $("#sDelete").addEventListener("click", function(){
-    var id = editing.id, row = taskById(id), wrap = $('.taskwrap[data-id="' + id + '"]');
-    closeSheets();
+  /* ── deleting a task ──
+     Gone for good, not archived (owner, 2026-09-23): the tick is what files a
+     finished task away, and a delete that ALSO filed it left the archive full
+     of things nobody ever did. So the undo cannot be a restore — there would
+     be nothing to restore — and the page WAITS instead: the row leaves the
+     screen at once and the server hears about it only when the toast and its
+     undo have gone. Leaving the page before then sends it on the way out. A
+     reload in the meantime must not draw the row back, so hydrate skips
+     whatever is still waiting here. The swipe, the desktop trash and the
+     sheet's own button all come through this one function. */
+  var DELETING = {}, DELETE_AFTER_MS = 4600;   /* just past the toast's 4200 */
+  function deleteTaskRow(id){
+    var row = taskById(id), wrap = $('.taskwrap[data-id="' + id + '"]');
+    if(!row) return;
     if(wrap) wrap.classList.add("gone");
     setTimeout(function(){
-      open = open.filter(function(o){ return o.id !== id; });
-      API.deleteTask(row || id);
+      var at = open.indexOf(row);
+      if(at < 0) return;
+      open.splice(at, 1);
       renderTasks(); renderStrip(selDay);
-      /* Delete on this page is `archiveTask` on the server — the row is not
-         gone, it is put away — so the way back is a real call and not a
-         promise the page cannot keep. Offered only when we still hold the
-         task itself; a bare id could restore the row but not redraw it. */
-      toast(t("toast.deleted"), row ? function(){ undoDelete(row); } : null);
+      var k = String(row.id);
+      DELETING[k] = {row:row, at:at, timer:setTimeout(function(){ commitDelete(k); }, DELETE_AFTER_MS)};
+      toast(t("toast.deleted"), function(){ undoTaskDelete(k); });
     }, 230);
+  }
+  function commitDelete(k, leaving){
+    var d = DELETING[k];
+    if(!d) return;
+    clearTimeout(d.timer);
+    delete DELETING[k];
+    API.deleteTask(d.row, leaving);
+  }
+  function undoTaskDelete(k){
+    var d = DELETING[k];
+    if(!d) return;
+    clearTimeout(d.timer);
+    delete DELETING[k];
+    if(open.indexOf(d.row) < 0) open.splice(Math.min(d.at, open.length), 0, d.row);
+    renderTasks(); renderStrip(selDay);
+    toast(t("toast.restored", {name:L(d.row.t) || t("sheet.untitled")}));
+  }
+  function flushDeletes(){ Object.keys(DELETING).forEach(function(k){ commitDelete(k, true); }); }
+  window.addEventListener("pagehide", flushDeletes);
+  document.addEventListener("visibilitychange", function(){ if(document.hidden) flushDeletes(); });
+  $("#sDelete").addEventListener("click", function(){
+    var id = editing.id;
+    closeSheets();
+    deleteTaskRow(id);
   });
 
   /* ───────── date popover ─────────
@@ -8234,7 +8594,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      ans:{0:{41:"y", 42:"y"}, 2:{42:"y"}},
      left:[], settled:null, inCal:false},
 
-    /* settled, and therefore in the calendar rather than here */
+    /* settled, and on the calendar — and still in this list, because its
+       moment has not passed yet. This is the card the tint is for. */
     {id:5, t:{he:"פגישה עם רון",en:"Meeting with Ron"}, by:8, who:[8], allDay:false,
      opts:[{id:51, day:1, time:"11:00"}],
      ans:{0:{51:"y"}, 8:{51:"y"}},
@@ -8353,14 +8714,22 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
        have while looking AT the list, not one that survives two taps into the
        coordination. It asks first: the one thing worse than a list you cannot
        clear is a list that clears itself. */
+    var verb = mtVerb(m), key = "m" + m.id;
     if(mtLeaving === m.id){
+      /* Deleting one you opened with ONE other person is a cancellation, and
+         they are told — so the question says so, by name. */
+      var ask = verb === "delete"
+        ? t("mt.delAsk", {name:L(m.t), who:mtNames(mtActive(m).filter(function(p){ return p !== 0; }))})
+        : t("mt.leaveAsk", {name:L(m.t)});
       return '<div class="group" style="margin-bottom:10px"><div class="mtconfirm">' +
-        "<p>" + esc(t("mt.leaveAsk", {name:L(m.t)})) + "</p>" +
+        "<p>" + esc(ask) + "</p>" +
         '<div class="moact"><button class="mobtn warn" data-mtleavego="' + m.id + '">' +
-        esc(t("mt.leave")) + "</button>" +
+        esc(t(verb === "delete" ? "sw.delete" : "mt.leave")) + "</button>" +
         '<button class="mobtn" data-mtleaveno>' + esc(t("sheet.cancel")) + "</button></div></div></div>";
     }
-    return '<div class="group" style="margin-bottom:10px"><div class="mtrow">' +
+    return '<div class="group' + (m.settled ? " mtset" : "") + '" style="margin-bottom:10px">' +
+      '<div class="swr' + (verb ? "" : " locked") + swClass(key) + '" data-sw="' + key + '" data-verb="' + (verb || "") + '">' +
+      (verb ? swBack(verb) : "") + '<div class="swfront"><div class="mtrow">' +
       '<button class="mtcard" data-mt="' + m.id + '">' +
       faceStack(m.who) +
       '<span class="mtbody"><span class="mtname">' + esc(L(m.t)) +
@@ -8370,14 +8739,17 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       '<span class="mtstate"><em class="mtpill ' + st + '">' + esc(t("mt.pill." + st)) + "</em>" +
       esc(mtState(m)) + "</span></span>" +
       '<svg class="chev"><use href="#i-chev"/></svg></button>' +
-      /* Not on a coordination you started — the server refuses that leave
-         every time (cancel_meeting is the only door out, and it is chat
-         only), so this X would open the confirm, appear to work, and then
-         watch the row come straight back with no explanation. */
-      (m.by === 0 ? "" :
-        '<button class="mtx" data-mtleave="' + m.id + '" aria-label="' + esc(t("mt.leave")) + '">' +
-        '<svg><use href="#i-x"/></svg></button>') + "</div></div>";
+      (verb ? swDel(key, verb) : "") + "</div></div></div></div>";
   }
+  /* What taking this card off the list means (owner, 2026-09-23). Nobody
+     manages a coordination, so the answer never asks who opened it. Between
+     two people it is a DELETE: it cancels and tells the other person. With
+     more, it is LEAVING, and it carries on without them — never "cancel for
+     everyone" here; that is said to Olma in the chat. */
+  function mtVerb(m){
+    return mtActive(m).length <= 2 ? "delete" : "leave";
+  }
+  function mtNames(ids){ return nameList(ids.map(mtName)); }
   /* A coordination you left, reduced to what putting yourself back in needs:
      a title and an id. Deliberately NOT a card — a card shows the tally, and
      watching the others answer a coordination you stepped out of is not
@@ -8397,22 +8769,26 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       '"><svg><use href="#i-undo"/></svg></button>') + '</div></div>';
   }
   function renderMeets(){
-    /* Settled coordinations are not "active" any more — they are calendar
-       entries, and leaving them here would make the list a permanent archive
-       of every meeting ever arranged. */
-    var live = MEETS.filter(function(m){ return !m.settled; });
-    var done = MEETS.filter(function(m){ return m.settled; });
+    /* Everything the server sends here is still ahead of this person: the
+       active query keeps a settled coordination only until it has happened
+       (six hours past its start, or three days for the text-only rows that
+       predate start times), and hands the rest to the archive. This list used
+       to filter `settled` out on top of that, which put Saturday's game and
+       next month's meeting — both arranged, both still coming — under
+       "תיאומים שנסגרו ושיצאת מהם", three days before they happen (the owner,
+       2026-09-23). A coordination leaves this list when its moment passes,
+       and that decision is the server's alone. */
+    var live = MEETS;
     $("#mtList").innerHTML = live.length
       ? live.map(mtCardHTML).join("")
       : '<div class="group">' + emptyBig(t("mt.empty"), "mtNew", t("mt.new")) + "</div>";
     rollText($("#mtCount"), live.length ? pl("mt", live.length) : "");
-    /* Settled first, then the ones you left — the same ordering rule the task
-       archive uses (most recently out of the list, first). Capped at the same
-       eight, and it SAYS it is capped rather than quietly truncating, because
-       an archive that silently drops the ninth row is a safety net with a hole
-       nobody can see. */
-    var arc = done.map(function(m){ return {html:mtCardHTML(m)}; })
-      .concat(MTLEFT.map(function(m){ return {html:mtLeftHTML(m)}; }));
+    /* What HAS happened, and what you left — both arrive from the server
+       already reduced to a title and the words of the slot. Capped at the same
+       eight as the task archive, and it SAYS it is capped rather than quietly
+       truncating, because an archive that silently drops the ninth row is a
+       safety net with a hole nobody can see. */
+    var arc = MTLEFT.map(function(m){ return {html:mtLeftHTML(m)}; });
     $("#mtArchive").hidden = !arc.length;
     $("#mtArcCount").textContent = arc.length;
     $("#mtDone").innerHTML = arc.slice(0, ARCHIVE_MAX).map(function(x){ return x.html; }).join("");
@@ -8459,13 +8835,19 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     var go = e.target.closest("[data-mtleavego]");
     if(go){ var gm = mtById(+go.dataset.mtleavego); if(gm) mtLeave(gm); return; }
     if(e.target.closest("[data-mtleaveno]")){ mtLeaving = null; renderMeets(); return; }
-    var x = e.target.closest("[data-mtleave]");
-    if(x){ mtLeaving = +x.dataset.mtleave; renderMeets(); return; }
     var b = e.target.closest("[data-mt]");
     if(b){ mtLeaving = null; openMeet(+b.dataset.mt); }
   }
   $("#mtList").addEventListener("click", mtListClick);
   $("#mtDone").addEventListener("click", mtListClick);
+  /* Pressing the red asks first, in the card itself — it always has: leaving
+     takes your answers off everybody's tally, and deleting tells the other
+     person. The one thing worse than a list you cannot clear is a list that
+     clears itself. */
+  swipeList($("#mtList"), function(row){
+    mtLeaving = +row.dataset.sw.slice(1);
+    renderMeets();
+  });
 
   /* ── the answer row ──
      Two buttons that say what they do, instead of one target that means a
@@ -8610,9 +8992,9 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
         /* Settling by hand is the owner's own case (2026-09-06): everybody
            wants Tuesday, one person cannot make it, and it happens anyway.
            Agreement no longer needs it — a unanimous option settles itself a
-           minute later — so this is the exception, and it belongs to the
-           person who opened the coordination. `canSettle` is the server's
-           answer to that; the seed page has no server and shows it always.
+           minute later — so this is the exception, and since 2026-09-23 it
+           is anybody's who is in it: nobody manages a coordination.
+           `canSettle` is the server's answer; the seed page shows it always.
            Two presses, and the first one only arms it: what the second does is
            tell everybody, including whoever said they cannot make it. */
         (!LIVE || m.canSettle
@@ -8736,16 +9118,10 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
        actually find the event. */
     $("#mtCal").hidden = LIVE || !m.settled;
     $("#mtCal").textContent = t(m.inCal ? "mt.calRemove" : "mt.calAdd");
-    /* Leaving is opting yourself out — the server refuses it from whoever
-       started the coordination (cancel_meeting is their door, and it is chat
-       only, see the swipe-shell CSS above), so offering the same button here
-       would just watch the row vanish and come straight back with nothing
-       said about why. */
-    var own = m.by === 0;
-    $("#mtLeave").textContent = t("mt.leave");
-    $("#mtLeave").hidden = own;
-    $("#mtOwnNote").textContent = own ? t("mt.ownNote") : "";
-    $("#mtOwnNote").hidden = !own;
+    /* The same answer as the list row (mtVerb): delete between two, leave
+       with more — for whoever opened it too, since nobody manages one. */
+    var verb = mtVerb(m);
+    $("#mtLeave").textContent = t(verb === "delete" ? "mt.del" : "mt.leave");
     paintCue($("#mtSheet"), $("#mtCue"));
   }
   function mtById(id){ return MEETS.filter(function(m){ return m.id === id; })[0] || null; }
@@ -8913,19 +9289,19 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
         if(axis === "x") sw.classList.add("dragging");
       }
       if(axis !== "x") return;
-      /* Either direction opens it, which is what the page is for: this is an
-         RTL layout and the hand that reaches for "away from me" is not the
-         same hand in both languages. */
-      dx = Math.max(-SWIPE_OPEN, Math.min(SWIPE_OPEN, mx));
+      /* Only towards the end of the line opens it (swPull, as on the lists). */
+      dx = swPull(mx, SWIPE_OPEN);
       var front = sw.querySelector(".mtfront");
       if(front) front.style.transform = "translateX(" + dx + "px)";
+      swClip(sw.querySelector(".mtback"), dx);
     });
     var end = function(){
       if(!sw) return;
-      var el = sw, moved = Math.abs(dx), front = el.querySelector(".mtfront"), dragged = axis === "x";
+      var el = sw, moved = dx * swSign(), front = el.querySelector(".mtfront"), dragged = axis === "x";
       sw = null; axis = "";
       el.classList.remove("dragging");
       if(front) front.style.transform = "";
+      swClip(el.querySelector(".mtback"), null);
       dx = 0;
       /* A press that never became a drag is a press, and this function must
          not touch it. The red sits INSIDE the row it belongs to, so releasing
@@ -8991,11 +9367,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      group has to be able to see why the tally dropped, and it stays greyed for
      them until somebody invites them back. */
   function mtLeave(m){
-    /* Whoever started it has no door out through this button — the server
-       refuses every time (see renderMeet's #mtLeave gate) — so this is only
-       the belt to that braces's suspenders: nothing here should ever run for
-       an own row, but silently drawing it gone would be worse than a no-op. */
-    if(m.by === 0) return;
+    /* Between two it is a delete, for either of them (mtVerb). */
+    if(mtVerb(m) === "delete"){ mtDelete(m); return; }
     if(m.left.indexOf(0) < 0) m.left.push(0);
     delete m.ans[0];
     API.call("leaveMeeting", {meeting_id:m.id});
@@ -9015,6 +9388,21 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     mtLeaving = null;
     renderMeets(); renderStrip(selDay);
     toast(t("toast.mtLeft", {name:L(m.t)}));
+  }
+  /* A two-person coordination, deleted by either of them. The server cancels it and
+     tells the other person, so there is no undo and no archive row — a way
+     back would be un-telling somebody. It leaves the screen straight away,
+     like a leave does, and a refusal says so and redraws. */
+  function mtDelete(m){
+    API.call("cancelMeeting", {meeting_id:m.id});
+    if(LIVE) API.send("cancelMeeting", {meetingId:m.id}, function(data){
+      if(!data) toast(t("toast.mtDeleteFailed", {name:L(m.t)}), null, true);
+      API.reload();
+    });
+    MEETS = MEETS.filter(function(x){ return x !== m; });
+    mtLeaving = null;
+    renderMeets(); renderStrip(selDay);
+    toast(t("toast.mtDeleted", {name:L(m.t)}));
   }
   $("#mtLeave").addEventListener("click", function(){
     if(!mtOpen) return;
@@ -9656,7 +10044,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
        open. */
     $("#mtNew").hidden = mode === "cal";
     $("#calSub").textContent = t(mode === "cal" ? "cal.p" : "cal.pMeet");
-    if(mode === "meet") renderMeets();
+    if(mode === "meet"){ renderMeets(); swMaybePeek(); }
   }
   $("#calMode").addEventListener("click", function(e){
     var b = e.target.closest("[data-calmode]");
@@ -11279,6 +11667,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     tabs.forEach(function(x){ x.setAttribute("aria-selected", x.dataset.go === tab ? "true" : "false"); });
     placePill(selectedTab());
     window.scrollTo({top:0, behavior:REDUCED ? "auto" : "smooth"});
+    swRest(); swMaybePeek();
   }
   window.addEventListener("resize", repositionPill);
 
@@ -11353,6 +11742,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
        throw somebody out of the coordination they were reading */
     setCalMode($("#calMeet").hidden ? "cal" : "meet");
     if(mtOpen) renderMeet();
+    /* the data a first-time peek needs may only just have arrived */
+    swMaybePeek();
     renderCityRow();
     renderPause();
     renderMe();
@@ -11453,7 +11844,10 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       id:x.id,
       d:x.date || "", tm:x.time || "", all:!!x.allDay,
       t:x.title,
-      rem:!!x.reminder, rep:repShape(x.reminder && x.reminder.repeat),
+      rem:!!x.reminder,
+      /* A daily rule WITH an end is a chase, and only `until` says so — read
+         as "every day" it would be a promise to go on for ever. */
+      rep:(x.reminder && x.reminder.until) ? "until" : repShape(x.reminder && x.reminder.repeat),
       /* Minutes before the task's own moment, recovered from the two the
          server actually stores. Anything that is not one of the four offered
          offsets lands on the nearest one below it rather than inventing a
@@ -11768,7 +12162,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     });
     FQ = (d.factPrompts || []).slice();
     FQ.forEach(function(p, i){ FQ_ORDER[p.key] = p.order != null ? p.order : i; });
-    open = (d.tasks || []).map(liveTask);
+    /* A row whose delete is still waiting out its undo is not drawn back. */
+    open = (d.tasks || []).map(liveTask).filter(function(x){ return !DELETING[String(x.id)]; });
     /* Null is the normal answer and draws nothing — see renderSuggestion. */
     SUGGESTIONS = d.suggestions || (d.suggestion ? [d.suggestion] : []); SUGG_AT = 0;
     /* Rebuilt from scratch each time: an id that has left the server's answer

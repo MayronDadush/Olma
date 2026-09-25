@@ -231,27 +231,28 @@ test('the row draws the rules the design decided', () => {
 // row, and then watched it come back on the next reload with nothing said.
 // tests/user-dashboard-meetings.test.js pins the server side of this; these
 // pin that the served page actually stopped offering the doomed call.
-test('the page never offers a leave it knows the server will refuse', () => {
+test('the page asks one question of every card: two people, or more', () => {
   const page = fs.readFileSync(
     path.join(__dirname, '..', 'docs', 'design', 'user-dashboard.html'), 'utf8');
 
-  // The sheet's leave button is hidden for the coordination's own initiator,
-  // with an explanation drawn in its place rather than nothing at all.
-  assert.match(page, /var own = m\.by === 0;/, 'the sheet knows whose row this is');
-  assert.match(page, /\$\("#mtLeave"\)\.hidden = own;/, 'and hides the doomed button for them');
-  assert.match(page, /\$\("#mtOwnNote"\)\.hidden = !own;/, 'replacing it with a reason, not silence');
+  // What taking a card off the list means is decided in ONE place, mtVerb
+  // (owner, 2026-09-23): nobody manages a coordination, so it never asks who
+  // opened it. Between two it is a delete (the server's cancelMeeting refuses
+  // more, by the same count); with more it is leaving.
+  assert.match(page, /function mtVerb\(m\)\{\s*\n\s*return mtActive\(m\)\.length <= 2 \? "delete" : "leave";/,
+    'delete for any pair, leave for any group');
+  assert.doesNotMatch(page, /m\.by === 0 && mtVerb|mtOwnNote/, 'nothing about the card depends on who opened it');
+  // The sheet's button says the same word the row does.
+  assert.match(page, /\$\("#mtLeave"\)\.textContent = t\(verb === "delete" \? "mt\.del" : "mt\.leave"\);/);
 
-  // The row's quick-leave X is never drawn at all for a coordination this
-  // person started — there is nothing on the list screen that would open the
-  // confirm-and-fail loop.
-  assert.match(page, /m\.by === 0 \? "" :\s*\n\s*'<button class="mtx" data-mtleave=/,
-    'the row omits its own X rather than wiring one that always fails');
+  // On the list, a card with no verb is LOCKED: no red under it, no trash on
+  // it, so nothing on the list screen opens the confirm-and-fail loop.
+  assert.match(page, /'<div class="swr' \+ \(verb \? "" : " locked"\)/, 'the card is locked when there is nothing to do');
+  assert.match(page, /\(verb \? swDel\(key, verb\) : ""\)/, 'and draws no trash');
 
-  // Belt and suspenders: even if something still calls it, leaving your own
-  // coordination is a no-op rather than an optimistic remove that a reload
-  // then undoes.
-  assert.match(page, /function mtLeave\(m\)\{\s*\n(?:[^\n]*\n)*?\s*if\(m\.by === 0\) return;/,
-    'mtLeave refuses to touch a row you initiated');
+  // A pair is deleted by either of them — a cancellation the other is told of.
+  assert.match(page, /function mtLeave\(m\)\{\s*\n(?:[^\n]*\n)*?\s*if\(mtVerb\(m\) === "delete"\)\{ mtDelete\(m\); return; \}/,
+    'mtLeave deletes a pair');
 });
 
 // The row shipped looking wrong, and none of the assertions above could see

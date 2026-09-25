@@ -123,7 +123,7 @@ test('a running coordination: the title, how many were asked, how many answered,
   // nothing for the model to assemble — and nothing it could assemble wrong,
   // which is how "M&M" left the room as "מאיה ומירון".
   assert.deepEqual(data.coordination.waitingFor, [`@${yuval.phone}`]);
-  assert.match(groupTurn.TAG_RULE, /ONLY with their `tag`/);
+  assert.match(groupTurn.TAG_RULE, /To reach a person in this room, use their `tag`/);
   // Both halves of the incoming-tag rule, which has now been wrong in both
   // directions. 2026-09-20: she opened with her OWN LID — the token Yuval had
   // used to tag her — as if it were his. 2026-09-23: Miron tagged Yuval's lid
@@ -169,6 +169,39 @@ test('a cancelled coordination is not an open one, and the block can say which',
   data = parse((await ask({ agentId: group.agent_id, externalId: group.external_id })).context);
   assert.equal(data.coordination, null, 'the one sentence she got wrong 74 seconds after a cancel');
   assert.deepEqual(data.lastCoordination, { meetingId, title: 'פאדל', status: 'cancelled' });
+});
+
+// 2026-09-23, פחם הסעות. The poker was confirmed and the room had its "סגור"
+// line at 12:11; for the next half hour the room joked with her, and seven
+// replies running ended with "the poker is on Friday at noon, on Zoom" —
+// after a joke, after "I have no tool for that", after being told off for
+// her Hebrew. Nothing in the block said the room already knew. It does now,
+// off the one column that records it, and only once the line has gone out.
+test('a confirmed coordination the room has already heard about says so', async () => {
+  const { group, people } = await room(10, { subject: 'פחם הסעות' });
+  const started = await withTx(db.pool, (c) => groupMeetings.startCoordination(c, group, people[0], 'פוקר בזום'));
+  assert.equal(started.ok, true);
+  const meetingId = Number(started.data.meeting.id);
+  await db.pool.query(
+    `UPDATE meetings SET status = 'confirmed', confirmed_slot = 'שישי 12:00' WHERE id = $1`, [meetingId]);
+
+  let data = parse((await ask({ agentId: group.agent_id, externalId: group.external_id })).context);
+  assert.deepEqual(data.lastCoordination,
+    { meetingId, title: 'פוקר בזום', status: 'confirmed', slot: 'שישי 12:00' },
+    'confirmed but not yet announced: the room has NOT heard it, and saying it is still news');
+
+  await db.pool.query(`UPDATE meetings SET group_done_at = now() WHERE id = $1`, [meetingId]);
+  const r = await ask({ agentId: group.agent_id, externalId: group.external_id });
+  data = parse(r.context);
+  assert.equal(data.lastCoordination.roomHeard, true);
+  assert.match(r.context, /`lastCoordination\.roomHeard: true` means the room has already been told/);
+  assert.match(r.context, /never as the tail of a reply about something else/);
+
+  // A cancelled one never carries it: the flag is about a result the room
+  // heard, and a cancel has no "סגור" line to have heard.
+  await db.pool.query(`UPDATE meetings SET status = 'cancelled' WHERE id = $1`, [meetingId]);
+  data = parse((await ask({ agentId: group.agent_id, externalId: group.external_id })).context);
+  assert.equal(data.lastCoordination.roomHeard, undefined);
 });
 
 test('the block never carries the room\'s own row, and a nameless member is still counted', async () => {
@@ -355,4 +388,53 @@ test('an unreadable lid map costs the lids and nothing else', async () => {
   const data = parse(r.context);
   assert.deepEqual(data.room.people, people.map((u) => ({ tag: `@${u.phone}` })));
   assert.ok(!/"lid"/.test(r.context), 'no lid claimed for anybody');
+});
+
+// 2026-09-23, פחם הסעות: she called Bar "את" to his face and "היא" about him,
+// in front of the room. Nothing in the block said how to address anybody, and
+// the room's doctrine had no default, so she guessed from "בר". The owner:
+// what she knows of a person's NAME and how to ADDRESS them may cross into the
+// room, and only that. Three people, the three sources of the answer.
+test('the block carries a confirmed name and how to address them, and nothing else of theirs', async () => {
+  const { group, people } = await room(9, { subject: 'פחם הסעות' });
+  const [miron, maya, guy] = people;
+  // Miron set it on his own page; Maya told her private agent in words; Guy
+  // has said neither, and the name on his row came off WhatsApp unconfirmed.
+  await db.pool.query(`UPDATE users SET name_confirmed = true, first_name = 'מירון', gender = 'male' WHERE id = $1`, [miron.id]);
+  await db.pool.query(`UPDATE users SET name_confirmed = true, first_name = 'מאיה' WHERE id = $1`, [maya.id]);
+  await db.pool.query(
+    `INSERT INTO user_preferences (user_id, key, value) VALUES ($1, 'gender_forms', 'נשי')`, [maya.id]);
+  await db.pool.query(`UPDATE users SET first_name = 'Guy', timezone = 'Asia/Jerusalem' WHERE id = $1`, [guy.id]);
+
+  const { context } = await ask({ agentId: group.agent_id, externalId: group.external_id });
+  const data = parse(context);
+  assert.deepEqual(data.room.people, [
+    { tag: `@${miron.phone}`, name: 'מירון', address: 'masculine' },
+    { tag: `@${maya.phone}`, name: 'מאיה', address: 'feminine' },
+    { tag: `@${guy.phone}` },
+  ], 'a name nobody confirmed is a guess, and a guess is how "M&M" became "מאיה ומירון"');
+  // The two fields and not one more: nothing else from a private record is
+  // one join away from the room.
+  for (const leak of ['Asia/Jerusalem', 'user_id', 'userId', 'gender_forms', 'נשי', 'name_confirmed']) {
+    assert.ok(!context.includes(leak), `the block carries no ${leak}`);
+  }
+  // And what the model is told to do with them, including the case that
+  // happened: no `address` is masculine, never a guess from the name.
+  assert.match(groupTurn.TAG_RULE, /may also be called by that name/);
+  assert.match(groupTurn.TAG_RULE, /without it gets masculine forms, never a guess from the name/);
+  assert.match(groupTurn.TAG_RULE, /never the name WhatsApp shows/);
+});
+
+test('how a person is addressed is read only from what they said, and a muddle is nothing', () => {
+  assert.equal(groupTurn.addressOf({ gender: 'female', gender_forms: 'זכר' }), 'feminine', 'their own page wins');
+  assert.equal(groupTurn.addressOf({ gender: 'male' }), 'masculine');
+  for (const said of ['נשי', 'נקבה — לפנות אליה בלשון נקבה', 'feminine', 'female please']) {
+    assert.equal(groupTurn.addressOf({ gender_forms: said }), 'feminine', said);
+  }
+  for (const said of ['זכר', 'לשון זכר', 'masculine', 'male']) {
+    assert.equal(groupTurn.addressOf({ gender_forms: said }), 'masculine', said);
+  }
+  for (const said of [null, '', 'לא משנה לי', 'זכר או נקבה, לא משנה']) {
+    assert.equal(groupTurn.addressOf({ gender_forms: said }), null, String(said));
+  }
 });

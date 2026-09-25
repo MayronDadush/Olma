@@ -174,6 +174,28 @@ const ACTIONS = {
     return tasks.archiveTask(client, ownerId, p.taskId);
   },
 
+  // The swipe on a task of their own: gone, not archived (owner, 2026-09-23 —
+  // the tick is what files a task away as done). Refused on the two rows that
+  // are not one person's to erase: a task others are on is LEFT (the same
+  // rule archiveTask keeps), and an imported one lives in its source, whose
+  // next sync would bring it straight back. The calendar event goes first,
+  // because the row is the only thing that knows its id.
+  async deleteTask(client, userId, p) {
+    const ownerId = await asOwner(client, userId, p.taskId);
+    if (await shares.othersOn(client, p.taskId) > 0) {
+      return err('forbidden', 'other people are on this task — leave it instead', { reason: 'shared' });
+    }
+    const origin = await taskOrigin(client, ownerId, p.taskId);
+    if (!origin) return err('not_found', 'task not found');
+    if (Object.hasOwn(SOURCE_CAPS, origin.source)) {
+      return err('forbidden', `a ${origin.source} task is deleted in ${origin.source}, not here`,
+        { reason: 'imported', source: origin.source });
+    }
+    const off = await taskCalendar.removeEventsFor(client, ownerId, p.taskId);
+    if (!off.ok) return off;
+    return tasks.deleteTask(client, ownerId, p.taskId);
+  },
+
   // Taking myself off a task others are on. The task stays with them; when
   // the one who opened it leaves, it is handed to whoever accepted first.
   async leaveTask(client, userId, p) {
@@ -254,6 +276,28 @@ const ACTIONS = {
     if (!probe.rows[0]) return err('not_found', 'task not found');
     if (probe.rows[0].status !== 'open') {
       return err('invalid', 'cannot set a reminder on a completed task');
+    }
+    // "כל יום עד התאריך" — the same chase חיים gets in chat
+    // (reminders.startChase): one a day until the task's own date, at the hour
+    // they already hear from Olma, stopping the moment it is done. The page
+    // sends no hour for it on purpose, because the owner's rule picks the hour
+    // and an hour the page computed would be taken as one they named.
+    //
+    // A deadline too close to chase across (less than two days of it) is
+    // refused rather than quietly turned into a one-off: the chip said "every
+    // day", and a one-off under it is the promise run 79 broke. The cancel and
+    // the attempt share a savepoint, so a refusal leaves the old reminder
+    // exactly where it was — /me/act commits whatever came back.
+    if (p.chase === true) {
+      await client.query('SAVEPOINT dashboard_chase');
+      for (const r of pending) {
+        const res = await reminders.cancelReminder(client, userId, r.id);
+        if (!res.ok) { await client.query('ROLLBACK TO SAVEPOINT dashboard_chase'); return res; }
+      }
+      const chase = await reminders.startChase(client, userId, p.taskId);
+      if (chase && chase.ok) return chase;
+      await client.query('ROLLBACK TO SAVEPOINT dashboard_chase');
+      return chase || err('invalid', 'a daily chase needs the task dated at least two days ahead');
     }
     for (const r of pending) {
       const res = await reminders.cancelReminder(client, userId, r.id);
@@ -403,6 +447,25 @@ const ACTIONS = {
     if (!res.ok) return res;
     const me = await users.getById(client, userId);
     return meetingFanout.afterOptOut(client, me, p.meetingId, res);
+  },
+
+  // Deleting a coordination — only while it is between two people (owner,
+  // 2026-09-23), and by either of them: nobody manages one. Everywhere else
+  // the page offers leaving, never "cancel for everyone": that stays a
+  // sentence said to Olma in the chat. Two people is the exception because it
+  // is where leaving already ends up — one of two stepping out closes it. It
+  // is still a cancellation, and the other person is told exactly as
+  // cancel_meeting tells them (meetingFanout.cancelAndTell), calendar and all.
+  async cancelMeeting(client, userId, p) {
+    const { rows } = await client.query(
+      `SELECT count(*) FILTER (WHERE state <> 'opted_out') AS active
+         FROM meeting_participants WHERE meeting_id = $1`, [p.meetingId]);
+    if (Number(rows[0] && rows[0].active) > 2) {
+      return err('forbidden', 'more than two people are in this coordination — cancel it in the chat',
+        { reason: 'group' });
+    }
+    const me = await users.getById(client, userId);
+    return meetingFanout.cancelAndTell(client, me, p.meetingId);
   },
 
   // The way back out of the archive. Leaving was one tap and reversing it was

@@ -313,6 +313,36 @@ test('a thanks reaches the prompt as a request for silence, and the mark is 🙏
   assert.equal(await received(u.id), 1);
 });
 
+// "מה פתוח לי?" with two undated to-dos and nothing dated today: answered off
+// the today block, it came back "הכל נקי" (evals, runs 84/86/87, 2026-09-24).
+// The hook's verdict takes the block out of that one turn; the next turn has it.
+test('a question about their whole list gets no today block to misread, and is pointed at the list', async () => {
+  const tasks = require('../src/domain/tasks');
+  const u = await agentUser();
+  await enable(u.phone);
+  await withTx(db.pool, async (c) => {
+    await tasks.addTask(c, u.id, { title: 'לשלם ארנונה', source: 'chat' });
+    await tasks.addTask(c, u.id, { title: 'לקבוע תור לרופא שיניים', source: 'chat' });
+  });
+  await open({ agentId: u.agentId, messageId: '3EB0CTXOPEN1', kind: 'text', openList: true });
+  const asked = parse((await context({ agentId: u.agentId })).context);
+  assert.equal(asked.today, undefined, 'no empty day on the turn that asked about the list');
+  assert.equal(asked.hints.today, undefined);
+  assert.match(asked.hints.openList, /list_my_tasks/);
+  assert.equal(marks[0].state, 'working', 'an ordinary 👀 — this turn owes an answer');
+
+  // The adopted turn carries it too, so turn_start says the same thing.
+  const res = await call(u, 'turn_start', { message_id: '3EB0CTXOPEN1' }, newTurn());
+  assert.match(res.text, /openList/);
+  assert.doesNotMatch(res.text, /"today"/);
+
+  // Any other message is an ordinary turn, block and undated count included.
+  await open({ agentId: u.agentId, messageId: '3EB0CTXOPEN2', kind: 'text' });
+  const plain = parse((await context({ agentId: u.agentId })).context);
+  assert.equal(plain.today.undated, 2);
+  assert.equal(plain.hints.openList, undefined);
+});
+
 test('an agent with no active user, or a malformed id, is refused', async () => {
   assert.equal((await context({ agentId: 'u-999999' })).ok, false);
   assert.equal((await context({ agentId: 'main' })).ok, false);

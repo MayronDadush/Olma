@@ -15,6 +15,7 @@ paths:
   - "olma2/src/jobs/fact-extraction.js"
   - "olma2/src/jobs/sweeps.js"
   - "olma2/src/domain/quiet-facts.js"
+  - "olma2/src/domain/chase-deadline.js"
 ---
 
 # Reminders, tasks and dates
@@ -133,6 +134,34 @@ title means this file. Grep the title, not the filename.
   is deleted, and it had never run for a real person — 8 option rows in the
   whole history of the feature, every one `active`, and no `meeting.option_
   approved` or `option_rejected` row in the audit log (measured on the box).
+  **…and the mirror is a CONVENIENCE, never a clock.** `meeting-options.
+  mirrorCurrent` picks `ORDER BY id DESC` — the most recently ADDED option,
+  which is not the latest one in time and has never claimed to be. Asking
+  `meetings.proposed_start_at` whether a coordination is over therefore gave
+  the opposite answer depending on the order two times were put on the table:
+  a coordination offering Tuesday and, added after it, next month was closed
+  on Tuesday night with next month still live, and the other order left
+  Tuesday on the table long after Tuesday (`incidents.md`, "The coordination
+  that expired on the wrong Tuesday"). Since 2026-09-23 the question is asked
+  of the table itself — `meetings.dropPassedOptions` takes every option whose
+  moment has passed off it, and only a coordination this pass has just taken a
+  time away from is asked whether it is empty. **Running out of times is not
+  the same thing as having none**: a table somebody emptied by hand a minute
+  ago, and one nobody has put a time on yet, both sit at zero and neither is
+  over.
+  **A whole day is the one option whose moment is not six hours after its
+  instant.** `meeting-option-moment.momentFor` stamps an all-day option at
+  09:00 of the day it means, so the grace a clock time gets would take
+  "Sunday, all day" off the table at 15:00 on Sunday. It gets a full day on
+  top (`meetings.ALL_DAY_EXTRA_MS`), and every line here errs late on purpose
+  — a time removed an hour early is a time somebody could still have agreed
+  to.
+  **The status says which of the two ways a time left**: `deleted` is a person
+  taking it off, which is carried to everybody else the next time they hear
+  about the coordination (`meeting-options.removed`, `meeting-options.
+  unheardRemovals`); `expired` (migration 085) is nobody's doing and is said to
+  no one, because "Tuesday came off the table" about a Tuesday that has been
+  and gone is noise.
 
 - **A constraint that rules out a time ON the table is an ANSWER, and the tool
   that records it is the one that declines it** (2026-09-20). Maya wrote "לא
@@ -192,11 +221,30 @@ title means this file. Grep the title, not the filename.
   lost: the drawn table says how many people are on each time, and
   `meetings.getStatus` still carries every participant's shareable constraints
   by name — the REASON moved from a push to a pull, readable the moment he or
-  the next thing this coordination asks him goes out. **`meeting_no_match`
-  stays**, because a coordination that DIED is the one thing a table can never
-  tell him later. `afterSlotResponse` keeps an unread `accept` on purpose: a
-  yes and a no produce the same fan-out now, and the parameter says that
-  reading it again is a decision.
+  the next thing this coordination asks him goes out. `meeting_no_match` stayed
+  for one more day and went on 2026-09-23 with the rule below. `afterSlotResponse`
+  keeps an unread `accept` on purpose: a yes and a no produce the same fan-out
+  now, and the parameter says that reading it again is a decision.
+
+- **Nobody MANAGES a coordination** (owner, 2026-09-23: "אין יותר מנהל של
+  התיאום — כולם מנהלים של התיאום"). `meetings.initiator_id` is who OPENED it —
+  a fact the invite and the room still say, and the organiser Google prefers
+  (`calendar.meetingCalendarRoles`) — and grants nothing. Anybody still in it
+  (a participant not `opted_out`; `IN_IT` in `meetings.js`) may settle it by
+  hand (`options.settleNow`), rename it, cancel it for everybody, or LEAVE it,
+  the opener included; somebody who has left may do none of those. Three
+  things follow. **Cancelling for everybody is the chat's alone** — the page
+  offers leaving, and deleting only between two people (either of them), where
+  leaving would end it anyway. **The ending is never a message of its own**:
+  `meeting_expired` and `meeting_no_match` went to the opener alone and are
+  now enqueued by nothing; whoever was still in it reads the ending in their
+  next digest (`digest.assemble` → `crossUser.closedMeetings`, since their
+  last digest that really went out, three days at most), which is the owner's
+  choice between "everybody" and "nobody". **Revoking a connection is an exit**
+  whoever opened the pair's coordination, so it closes `no_match`, never
+  `cancelled`. The chat tools' descriptions and the doctrine's "תבטל את
+  הפגישה" line say "anyone in it"; a test still asserting "initiator only" is
+  asserting the old product.
 
 - **A time ADDED to it rides the same thing, as long as that thing has not gone
   out yet** (2026-09-20). `meeting-fanout.js`'s `fanout` folds a new
@@ -623,3 +671,45 @@ title means this file. Grep the title, not the filename.
   deadline that far ahead, so "לאסוף את הילדים מחר" never sees it. It is a
   QUESTION about their words and never an instruction to write, because the
   whole answer may be a second tool call and then silence.
+
+- **The second call echoes the moment already armed, and that is not an hour
+  anybody named** (2026-09-23, the eval's first real night). Asked by
+  `chaseAvailable` for `set_task_reminder(task_id, remind_at, nudge:true)`, the
+  model passes back the automatic reminder's own moment — on the deadline day —
+  and `startChase` took it as the first occurrence, found no room for a second,
+  and fell through to a one-off while the reply promised "every day"
+  (`incidents.md`, "A week of help, delivered as one reminder the night
+  before"). So `at` within a minute of this person's pending AUTOMATIC reminder
+  on the task means no hour was named; **a chase cancels every pending automatic
+  row inside its span**, not only one on the same local day, because it already
+  speaks on the due day; and **`set_task_reminder(nudge)` says on its result
+  which branch it took** (`hints.chase`) — a result silent about the shape leaves
+  the hint that described the OTHER branch as the model's only account of it.
+
+- **Whether a message ASKED for a chase is read by code, and the model is only
+  told what the server will do** (2026-09-24, the owner's call after six red
+  samples in a row). The model read חיים's sentence two ways — it dated "take
+  the camera in" for tomorrow and armed one reminder — and no hint could settle
+  which reading was right, because both were reasonable. So the gateway hook
+  (`olma-turn-open`, `chaseDeadline`) reads a request for help plus "עד" plus a
+  horizon, and sends a KIND (`next_week`, `weekday`, `date`, …) and whether a
+  clock hour was said, never the words; `domain/chase-deadline` resolves it
+  against THEIR clock at the moment the message arrived (an Israeli week starts
+  on Sunday, so "שבוע הבא" said on a Tuesday is the coming Sunday); and
+  `add_task` on that turn is due THAT day with `nudge` on, whatever date the
+  model gave it, while an hour survives only if they named one. A task already
+  on their list is chased the same way through `set_task_reminder` (`startChase`'s
+  `until`). **Measured before it was written**: of 861 real inbound messages,
+  112 ask for something, 10 say "עד", and ONE does both — his. The nine others
+  are hour ranges, trips and shifts, and they are the test's negatives. **Three
+  shapes are refused on purpose**: a bare number after "עד" (an hour range), a
+  dotted date with no year ("עד 8.10" is a time), and a message naming a
+  DIFFERENT day for the reminder ("תזכיר לי מחר להגיש עד סוף השבוע" is one
+  reminder with a deadline) unless it also says "כל יום". **The verdict is
+  spent once and dies after fifteen minutes** (`chaseDeadline.pending`): the
+  shim keeps one turn object for hours, and a chase nobody used must not wait
+  there for the next task somebody saves about something else. **The hook is
+  read at gateway STARTUP** — until a restart this is live code and inert, like
+  `thanksOnly`. The eval harness reads the same three verdicts with the same
+  functions and sends them, because the CLI fires no hook and the eval was
+  otherwise measuring a reading production no longer asks the model for.

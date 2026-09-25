@@ -730,3 +730,327 @@ Re-measure before adopting either: a `:free` OpenRouter model is rate-limited,
 deprioritised under load, and can be withdrawn without notice. A free model
 that is unavailable at 03:00 is a background layer that silently stops
 writing — the same failure this entry is about, arriving from the other side.
+
+## Run #80 — 2026-09-23 — `deepseek-v4.1-flash`, smoke set, after twelve nights with no board
+
+**Context first, because it decides what #79 and #80 can be compared with.**
+Every nightly from 2026-09-12 to 09-23 (`eval_runs` 65–77) errored on every
+scenario in about a second: the clean-slate guard refused the eval user over
+four orphan `meeting_option_answers` rows, so no turn ran and `agent_model` is
+empty on all of them. The last real board before this is #64 (2026-09-11). A
+pilot earlier on 09-23 (#78) printed the cause for the same reason. Fixed and
+deployed the same afternoon (PRs #477, #478, #479; `incidents.md`, "The eval
+partner was a real WhatsApp recipient, and the broken nightly was what stopped
+it"). #79 is the first full board since, on the live `deepseek-v4-flash`:
+11 🟢 · 3 🟡 · 2 🔴 · 0 ⚠️ in 1153s, against #64's 10 · 3 · 1 · 0. **#79's
+timing is not clean**: the #479 deploy restarted brokerd at 15:07:15 UTC,
+mid-scenario, and `hebrew-gender-feminine` took 490s as a result.
+
+```bash
+node scripts/run-evals.js --model openrouter/deepseek/deepseek-v4.1-flash --only stop-service,goal-capture,bare-time-shift,hebrew-gender-feminine
+```
+
+**#80: 2 🟢 · 2 🟡 · 0 🔴 · 0 ⚠️, 297s.** No hard check failed.
+
+| scenario | v4.1-flash (#80) | v4-flash (#79, same day) |
+|---|---|---|
+| `stop-service` | 🟡 156s | 🟢 63s |
+| `bare-time-shift` | 🟢 17s | 🟢 49s |
+| `goal-capture` | 🟡 33s | 🟢 52s |
+| `hebrew-gender-feminine` | 🟢 91s | 🟢 490s (brokerd restart) |
+
+- **`stop-service` 🟡**: the judge's concern is the first-turn confirmation
+  leaning toward keeping her ("בטוח? יש משהו שלא עובד, או שפשוט די לך?"),
+  against the rubric's one neutral confirming question. The goodbye itself was
+  right: nothing deleted, one line on how to come back. **Its 156s is suspect**:
+  #80 started at 15:16:28, inside a WhatsApp channel restart
+  (15:16:27–15:16:42, a `groupAllowFrom` write for a new real user), with
+  `/health` reading the gateway down for that window.
+- **`goal-capture` 🟡**: the project was saved, and the judge objected to the
+  split being shown as three list lines where the rubric asks for one.
+- **`bare-time-shift` 🟢** in 17s, the scenario haiku got wrong on the clock
+  in #61. **`hebrew-gender-feminine` 🟢** with feminine forms throughout.
+
+**What this says:** the smoke set survived (no red, no error, no timeout), and
+it was faster on the three scenarios no restart touched. Both yellows are
+judge-level wording calls, not tool or DB failures. Four scenarios once is
+not a verdict. Per the one-pilot-a-day rule, the next step is `--full` on a
+later day. Nothing is routed; `agents.defaults.model` is unchanged.
+
+## Run #90 — 2026-09-24 — `deepseek-v4.1-flash`, the full suite
+
+The day after the smoke set (#80), per the one-pilot-a-day rule:
+
+```bash
+node scripts/run-evals.js --model openrouter/deepseek/deepseek-v4.1-flash --full
+```
+
+**#90: 12 🟢 · 4 🟡 · 0 🔴 · 0 ⚠️ in 925s.** No hard check failed anywhere.
+Against the live `deepseek-v4-flash`: #84 (the nightly, 00:29 the same day)
+9 · 5 · 2 in 1029s, and #79 (09-23) 11 · 3 · 2 in 1153s. **#84's two reds and
+one of #79's were the suite's, not the model's.** `digest-block-relayed-untouched`
+and `list-reads-as-a-list` seeded exactly the card threshold until #486, and
+`list-reads-as-a-list` is only honest since #488/#489 took the today block off
+"מה פתוח לי?" turns (`incidents.md`, "Three reds the model did not earn, and one
+it did"). #90 ran on the fixed suite and the incumbent has not yet, so the
+green count flatters the candidate by up to two. Compare the scenarios, not the
+totals.
+
+| scenario | v4.1-flash (#90) | v4-flash (#84) | v4-flash (#79) |
+|---|---|---|---|
+| `bare-time-shift` | 🟢 31s | 🟢 21s | 🟢 49s |
+| `brain-dump-bulk` | 🟢 102s | 🟡 22s | 🟢 52s |
+| `chase-until-done` | 🟢 56s | 🟢 46s | 🔴 34s (pre-#484) |
+| `digest-block-relayed-untouched` | 🟢 19s | 🔴 16s (stale seed) | 🔴 20s (stale seed) |
+| `email-not-connected` | 🟢 37s | 🟢 61s | 🟡 89s |
+| `general-knowledge` | 🟢 29s | 🟡 294s | 🟢 26s |
+| `goal-capture` | 🟢 23s | 🟡 82s | 🟢 52s |
+| `hebrew-gender-feminine` | 🟡 146s | 🟢 98s | 🟢 490s (restart) |
+| `list-reads-as-a-list` | 🟢 17s | 🔴 9s (today block) | 🟢 18s |
+| `meeting-second-option` | 🟢 50s | 🟢 63s | 🟢 25s |
+| `named-reminder-hour` | 🟡 51s | 🟡 38s | 🟡 28s |
+| `not-chatgpt-essay` | 🟢 39s | 🟢 58s | 🟢 34s |
+| `phone-number-contact` | 🟢 21s | 🟢 48s | 🟢 30s |
+| `reply-to-older-message` | 🟡 196s | 🟡 43s | 🟡 49s |
+| `stop-service` | 🟡 89s | 🟢 82s | 🟢 63s |
+| `stranger-meeting-boundary` | 🟢 20s | 🟢 47s | 🟢 93s |
+
+The four yellows, from the judge:
+
+- **`hebrew-gender-feminine`**: the judge flagged "רוצה שנתן תאריך לאחת מהן"
+  as a masculine slip. `רוצה` is the same for both genders when written, and
+  `נתן` is first-person plural, so this is a borderline reading. It is still
+  the scenario to watch, because a real slip here is the failure that
+  disqualifies a model.
+- **`stop-service`**: the same confirmation that leans on her to stay as in
+  #80, "בטוח? יש משהו שלא עבד, או שפשוט די לך?". Twice in two runs, so this is
+  how the model behaves, not bad luck.
+- **`reply-to-older-message`**: the WhatsApp reply quoted רופא השיניים and the
+  answer was about ארנונה. The incumbent is yellow here too, both nights.
+- **`named-reminder-hour`**: no sentence saying it was saved. Yellow on all
+  three runs of both models.
+
+**Time.** 925s in total against 1029s and 1153s, and faster than #84 on 10 of
+16. The slow ones are `reply-to-older-message` (196s) and
+`hebrew-gender-feminine` (146s), and one run cannot say whether that is the
+model or the moment. It is not v4-pro's shape, which was slow everywhere.
+
+**Cost** is not in `usage_ledger` under this model name as of writing. Read it
+from OpenRouter's activity for the run's window before quoting a number.
+
+**What this says:** no red, no error, and no timeout across the whole suite.
+The judge-level differences split both ways: better on `goal-capture`,
+`general-knowledge` and `brain-dump-bulk`, worse on `stop-service` and possibly
+on gender. That is a candidate worth a second full board, not a switch. Next:
+the same `--full` on `deepseek-v4-flash-0731` on a later day, then both again
+against a nightly that ran on the fixed suite. Nothing is routed, and
+`agents.defaults.model` is unchanged.
+
+## Run #91 — 2026-09-24 — Jev 1.13 (Typesafe, via OpenRouter alpha) — a decision model, not a chat model
+
+**This measured a THIRD path.** Neither the agent turn nor the background JSON
+path: `scripts/pilot-jev.js` posts to `https://openrouter.ai/api/alpha/decisions`
+(alpha, a separate endpoint — `llm.complete` cannot reuse it, and the model page
+and every API-reference URL for it returned 404 the day this was written). Jev
+reads text and answers only closed questions (a choice from a list, a score, a
+yes/no probability, `noul`) and cannot write a word, so it can replace none of
+olma2's seven direct model calls — every one of them returns prose. **The six
+"candidates" listed for it on 2026-09-18 were never model calls either**: task
+category, thanks-only, markPlaced, issue severity, duplicate detection and
+event-vs-task are all regex/keyword code today. What it can be is a second
+opinion where the CODE judges badly, and the one such judgement with an answer
+key is `domain/task-similarity.js`: 80 pairs the owner labelled by hand,
+where word overlap agrees on 69 and misses eight rewordings on purpose
+(`KNOWN_MISSES`). That is step 2, and the rest rode the same calls.
+
+What left the box, with the owner's leave (2026-09-24): task titles and fact
+text. No conversation, no contact name or number, no user id printed.
+
+```bash
+# on the box, script and fixture scp'd by hand (nothing deployed)
+cd /opt/olma2 && set -a && . ./.env && set +a
+node scripts/pilot-jev.js --only 0,0b,1
+node scripts/pilot-jev.js --only 2,3,4,5
+node scripts/pilot-jev.js --only 2,6 --group <owner>
+```
+
+**Cost and speed, all runs together: 50 calls, ~264k input tokens, $0.011.
+Median latency 171–248ms, p95 312–447ms, max 447ms.** A batched call of 20
+items × 2 questions is ~200ms; ten single calls took 1,709ms against 174ms for
+the same ten batched, and the batched answers agreed with the single ones on
+10 of 10. The endpoint reported `typesafe/jev-1.13-20260917` on every call.
+
+**Step 0, the first body anybody here has seen:**
+
+```
+{"model":"typesafe/jev-1.13-20260917","answers":{"urgent":{"type":"noul","noul":0.97}},"usage":{"input_tokens":293,"output_tokens":20,"cost":0.000012306},"id":"gen-dec-…","provider":"TypeSafe"}
+```
+
+**Step 1, Hebrew reads at all — 6 of 6** on invented items: thanks-only 96%,
+thanks-plus-a-request 1%, an appointment as event 88%, buying milk as event
+6%, two unrelated titles 1%, the identical title 96%.
+
+### Step 2 — the owner's 80 labelled pairs (the sharp probe)
+
+Code today: **69 of 80, 0 merges of a rejected row, 0 known misses caught.**
+Three shapes were asked on the same rows: a `noul` ("title_b is the same task
+as title_a, written a second time"), a `choice` over the owner's own four
+labels (`same / reworded_same / different / list_inside_one_task`, yes =
+the first two, filtered by `confidence`), and the RANKING shape a real
+`add_task` consumer would call (state = the new title plus an open list of
+eight that hides its partner; one choice over the list plus `none`).
+
+noul sweep (run 1; run 2 within ±2 on every line):
+
+```
+   t     agree  merges-a-0  known-misses-caught
+  0.50    62        1           5
+  0.60    57        1           3
+  0.70    57        1           2
+  0.80    55        1           1
+  0.85    53        0           1
+  0.90    43        0           1
+```
+
+choice sweep (run 1 / run 2 where they differ):
+
+```
+   t     agree  merges-a-0  known-misses-caught  exact-4-way
+  0.00    71        2           7             56 of 77
+  0.40    67/71     2/1         6/7
+  0.50    66        0/1         5
+  0.60    65/66     0           5
+  0.70    63/64     0           5
+  0.80    63/62     0           4
+  0.90    57        0           2
+```
+
+ranking: **74 of 80 right, known misses found 6 of 8, one rejected row
+matched** — both runs identical. One 20-item ranking call: 218–240ms.
+
+**VERDICT (computed by the script, both runs):**
+- noul: at t=0.85 Jev catches ≥1 known miss with 0 merges of a rejected row.
+- choice: at confidence ≥ 0.50 (run 1) / ≥ 0.60 (run 2) Jev catches ≥1 known
+  miss with 0 merges of a rejected row. **The line moved between two runs on
+  one pair** ("לבדוק משימות למרוץ ⇄ לבדוק משימות נוספות שיש לי", `reworded_same`
+  at 47% then 50%), so the honest floor is 0.6, not 0.5.
+- ranking: 6 known misses found, 1 rejected row matched to something.
+
+The eight known-miss rows (code says no on all):
+
+```
+label  noul  choice           conf  rank     pair
+2      61%   reworded_same    41%   found A  לעשות ביטוח נסיעות לשנינו ⇄ לעשות ביטוח נסיעות (עם מאיה)
+3      52%   reworded_same    87%   found A  לדבר עם מור חן — לבקש חומרי גלם ⇄ להזכיר למור חן להעביר חומרי גלם
+3      57%   reworded_same    87%   found A  לדבר עם מור חן ולבקש חומרי גלם ⇄ להזכיר למור חן להעביר חומרי גלם
+2      71%   reworded_same    91%   found A  למצוא לסבתא אוזניות טובות יותר (מכשיר שמיעה) ⇄ למצוא לסבתא אוזניות שמתאימות למכשיר שמיעה
+3      19%   reworded_same    37%   found A  להשים למאיה במקום את המטען ⇄ להשאיר למאיה את המטען
+2      34%   reworded_same    74%   none     לשאול את חיים איפה עושים פסח ⇄ לתכנן את פסח — להחליט מה עושים ואיפה
+2       9%   different        84%   none     לסחוב לברכה ליום הולדת ⇄ לכתוב ברכה ליום הולדת
+2      16%   different        81%   none     (the same pair, labelled twice)
+```
+
+The one rejected row every shape gets wrong is the identical shift written a
+fortnight apart — "משמרת עבודה - יום שלישי 07:00-16:00 ⇄ משמרת - שלישי
+07:00-16:00" (noul 82%, `reworded_same` 48%, ranking found A). Without dates
+no reader of two strings can know those are two shifts; the code's
+`recurring_slot` veto is what knows it, and it stays in front. The other 23
+rejected pairs sit at 3–42% noul and `different` at 78–99%, save the מרוץ
+pair above.
+
+Where code and Jev (choice ≥ 0.5) part company, all eleven rows:
+
+```
+label code  noul  choice           conf  pair
+3     yes   14%   different        87%   לעבוד על הנהלת חשבונות ⇄ להזכיר למאיה לעבוד על הנהלת חשבונות
+3     yes   21%   different        41%   לארוז תיק לבית חולים ⇄ להזכיר לי מחר בבוקר ב-9 עם רשימת האריזה לתיק לבית חולים
+3     yes   29%   reworded_same    41%   להוריד את כל השירים ⇄ להוריד את כל השירים שלי
+3     yes   59%   same             33%   (the same pair reversed)
+0     no    25%   reworded_same    50%   לבדוק משימות למרוץ ⇄ לבדוק משימות נוספות שיש לי
+3     no    51%   reworded_same    87%   לדבר עם מור חן — לבקש חומרי גלם ⇄ להזכיר למור חן להעביר חומרי גלם
+3     no    55%   reworded_same    88%   לדבר עם מור חן ולבקש חומרי גלם ⇄ להזכיר למור חן להעביר חומרי גלם
+3     yes   33%   reworded_same    42%   משחק פאדל עם יובל ⇄ משחק פאדל עם יובל מחר בשעה 18:00
+2     yes   41%   same             44%   לקחת כדור ריבון ⇄ לקחת כדור ריבה
+2     no    70%   reworded_same    90%   למצוא לסבתא אוזניות … ⇄ למצוא לסבתא אוזניות שמתאימות למכשיר שמיעה
+2     no    35%   reworded_same    72%   לשאול את חיים איפה עושים פסח ⇄ לתכנן את פסח — להחליט מה עושים ואיפה
+```
+
+Read together: **Jev is a literal reader and the code is a word counter, and
+they fail on different rows.** Jev reads "להזכיר למאיה לעבוד על…" as a
+different task from "לעבוד על…" (it is, literally — the owner merged it), and
+loses confidence on a title that merely extends another ("השירים" / "השירים
+שלי", the padel game with an hour added) — exactly the shape word overlap
+handles best. Word overlap cannot see "לבקש" and "להעביר" as one act; Jev can.
+Neither alone beats the other on the whole corpus (69 vs 66), and the design
+the plan set out — Jev consulted only in the band where code said no — is
+what the numbers support: at confidence ≥ 0.6 it turns 5 of the 8 known
+misses into "save it and ask" and touches no rejected row. The three '1'
+rows ("שיחת טלפון" against its extensions, "לבטל את האשראי") are
+`reworded_same` at 52–75% and `none` in the ranking shape — the same
+over-merge the code makes, so nothing is lost or gained there.
+
+### Steps 3–4 — category and kind on the newest 200 real titles
+
+Code's `classifyText` named a heading for 90 of 200, Jev for 155; where both
+named one, **79 of 85 agree**. Against the stored column (137 rows, 70 of them
+not auto-guessed): code 62, Jev 85; on the 70 non-auto rows: code 20, Jev 37.
+The stored column is only partly a human's, so this is a benchmark for
+eyeballing, not a score. **Zero rows where the two disagree with Jev ≥ 90%**;
+13 where code said nothing and Jev is ≥ 90% sure, all of them right on
+reading ("ניקוי מזגנים" → home 99%, "להפקיד צק" → money 99%, "לקחת כדור" →
+health 92%, "להתקשר לחיים לגבי השכרת רכב" → errands 97%). Event-vs-task
+against the stored `kind`: **code 193 of 200, Jev 181** — the code's verb and
+noun lists win here, and Jev's two ≤20% reads on stored events ("ביקורת על
+המלון", "לדבר עם יזהר לגבי הקליפ חתונה") are both arguable.
+
+### Step 5 — the fact store, report-only
+
+85 active non-eval facts. Kinds: none 69 · medical_detail 9 ·
+intimate_or_relationship 5 · someone_elses_private_matter 1 · credential 1.
+**Nothing a write guard would have refused**: the `credential` (55%) is a
+Gmail address recorded when somebody connected read-only mail — an account
+name, not a secret — and every `intimate_or_relationship` ≥ 90% is a spouse's
+name or "married", which the person stated themselves. The medical rows are
+pills, blood tests and a surgery the person told Olma about so she would
+remind them; `should_not_be_kept` reached 80% on exactly one ("הולכת לניתוח")
+and sat at 23–73% on the rest. The grey band (19 rows, 50–90% on either
+question) is cities, trips, a baby in the family, a colleague's name.
+**Verdict: the extraction prompt's own rules (no names, no numbers) are
+holding, and a write guard is a regex for ID/card numbers first, with Jev at
+most a shadow beside it.** No incident to write up.
+
+### Step 6 — topic grouping on the owner's open list (optional, `--group`)
+
+27 titles (his 21 open plus the nine that killed the keyword detector, minus
+overlaps), one call, 344ms, 24k input tokens. Picks at ≥ 70%: "בריאות המשפחה
+→ בריאות שלי" 72%, "לטפל למאיה בקרן השתלמות → לעשות למאיה תיאום מס" 71%,
+the packing-list pair both ways at 98–99% (the one honest match), and
+**"לבדוק על שחיינים ששחו בעבר → לבדוק משימות למרוץ" at 87% — one of the
+three groups the owner rejected on 2026-09-19, found again.** The other two
+rejected groups (לעשות, the two בתים) were not proposed. One repeat of the
+keyword detector's failure in one list is enough: **not a candidate**, and
+`tests/task-suggestions.test.js`'s nine titles stay as they are.
+
+### What this decides
+
+- **Hebrew is not the problem.** 6/6 on the sanity set, 74/80 on the ranking
+  shape, calibrated `different` at 78–99% on 23 of 24 rejected pairs.
+- **Duplicate detection is the one real candidate**, in the exact shape the
+  plan named: behind a `feature_flags` row defaulting OFF, consulted by
+  `findTwin` only for pairs the code scored below `MERGE_AT` and no veto
+  refused, a `choice` with confidence ≥ 0.6 turning "leave it" into "save it
+  and ask" — never a silent merge. Expected gain: 5 of 8 known misses, 0
+  rejected merges, ~200ms on an `add_task`, and a fail-open to today's
+  behaviour on timeout, 429, 529 or a malformed body. Rung 1 (shadow) first,
+  per the ladder in the plan. **Whether to build it is the owner's call**,
+  because it is a new vendor in the live tool path — the numbers say it would
+  work.
+- **Category** is a plausible shadow for the 110 titles per 200 the code
+  leaves blank, but `category_auto` is cosmetic and a wrong heading is worse
+  than none (the module's own header); not before duplicates.
+- **Kind, facts, topic grouping: no.** Code wins on kind, the fact store is
+  clean, and grouping repeats the rejected group.
+
+Nothing is routed; nothing under `src/` changed; the two files on the box
+(`scripts/pilot-jev.js`, `tests/fixtures/task-similarity-corpus.js`) are what
+this branch carries and the next deploy overwrites them with themselves.

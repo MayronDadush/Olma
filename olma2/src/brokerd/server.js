@@ -18,6 +18,7 @@ const { refreshUserCard, CARD_TOOLS } = require('../intake/user-card');
 const turnDomain = require('../domain/turn');
 const reactions = require('../domain/reactions');
 const reminders = require('../domain/reminders');
+const chaseDeadline = require('../domain/chase-deadline');
 const selfInitiated = require('../domain/self-initiated');
 const { captureDisplayName } = require('../adapters/mcp/tools/_shared');
 const groupContext = require('../domain/group-context');
@@ -172,7 +173,7 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers }) {
     await withTx(pool, async (client) => {
       lap('tx');
       const { rows } = await client.query(
-        `SELECT id, phone FROM users WHERE agent_id = $1 AND status = 'active'`, [agentId]);
+        `SELECT id, phone, timezone FROM users WHERE agent_id = $1 AND status = 'active'`, [agentId]);
       lap('user');
       const user = rows[0];
       if (!user) { out = { ok: false, error: 'no active user for agent' }; return; }
@@ -209,6 +210,14 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers }) {
         replyToId: reactions.cleanMessageId(params.replyToId) || null,
         counted: rec.counted, quota: rec.quota, firstTurn: Boolean(rec.firstTurn),
         thanksOnly, stoppedReminders,
+        // "help me until next week": the hook's verdict, resolved here against
+        // THEIR clock at the moment the message arrived, and armed by add_task
+        // or set_task_reminder on this turn (domain/chase-deadline). Nothing is
+        // written now — there is no task yet to chase.
+        chase: rec.skipped ? null : chaseDeadline.forTurn(params.chase, { now: new Date(clock()), timezone: user.timezone }),
+        // "מה פתוח לי?": the turn is told about their list, not their day —
+        // domain/turn.advise leaves the today block out (see the hook).
+        openList: !rec.skipped && params.openList === true,
         marked: new Set(), contextSent: false,
       };
       if (!rec.skipped && messageId) {
@@ -431,6 +440,9 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers }) {
         ourTurn, replyTarget, languageNudge: null,
         thanksOnly: Boolean(pre && pre.thanksOnly),
         stoppedReminders: (pre && pre.stoppedReminders) || 0,
+        chaseUntil: pre && pre.chase ? pre.chase.day : null,
+        chaseNamedHour: Boolean(pre && pre.chase && pre.chase.namedHour),
+        openList: Boolean(pre && pre.openList),
       });
       if (pre) pre.contextSent = true;
       out = {
@@ -456,6 +468,11 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers }) {
       // Carried out of the transaction for the acknowledgement mark below: the
       // reaction target is read from OUR row, never from anything the model sent.
       let actorPhone = null;
+      // A group tool that writes to the SENDER's own record (their form of
+      // address, said in the room) leaves that person's USER.md stale, and the
+      // card refresh below keys on `actorId` — which a group call never sets,
+      // on purpose, because everything else hung off it is person-shaped.
+      let groupCardUserId = null;
       const result = await withTx(pool, async (client) => {
         // ── the group door ────────────────────────────────────────────────
         // Routed on the token's PREFIX, before the user door is even tried:
@@ -493,7 +510,9 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers }) {
           await require('../domain/audit').record(client, actingUser ? actingUser.id : null, 'group.tool', {
             tool: name, groupId: group.id, actingPhone: actingUser ? actingUser.phone : null,
           });
-          return tool.handler(client, { group, actingUser }, stripIdentity(args), { flood, now: clock });
+          const out = await tool.handler(client, { group, actingUser }, stripIdentity(args), { flood, now: clock });
+          if (out && out.ok && actingUser && CARD_TOOLS.has(name)) groupCardUserId = actingUser.id;
+          return out;
         }
 
         const auth = await usersDomain.resolveByToken(client, readIdentity(args));
@@ -558,6 +577,8 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers }) {
           turn.messageKind = pre.kind; turn.marked = pre.marked; turn.reactionVocab = pre.reactionVocab;
           turn.thanksOnly = pre.thanksOnly;
           turn.stoppedReminders = pre.stoppedReminders || 0;
+          turn.chase = pre.chase || null; turn.chaseUsed = false;
+          turn.openList = Boolean(pre.openList);
           turn.openedByGateway = true;
         } else if (!turn.opened) {
           // No gateway open on file and this connection has not served a turn
@@ -605,6 +626,7 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers }) {
       if (actorId && result && result.ok && (CARD_TOOLS.has(name) || result.cardStale)) {
         await refreshUserCard(pool, actorId);
       }
+      if (groupCardUserId && result && result.ok) await refreshUserCard(pool, groupCardUserId);
       // The acknowledgement mark on the person's own message — 👀 as the turn
       // opens, ⏰ or ✅ as the work lands. Here, and not inside the handlers,
       // because every tool already passes through this one line: the table of

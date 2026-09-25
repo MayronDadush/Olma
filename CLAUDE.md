@@ -128,7 +128,7 @@ the impression that the first green answer is the answer.
 ### Talking to the gateway (and systemd scope)
 
 **`.claude/rules/gateway.md`** — writing openclaw.json, the three model lists, heartbeats, the daily session reset, and which units are user-scope.
-Loads when you **Read** a file under `src/intake/openclaw-config.js`, `src/intake/provision.js`, `src/channels/**` and 9 more.
+Loads when you **Read** a file under `src/intake/openclaw-config.js`, `src/intake/provision.js`, `src/channels/**` and 11 more.
 
 - **Never shell out to `openclaw config set`**
 - **An invalid config is IGNORED, not rejected.**
@@ -141,6 +141,7 @@ Loads when you **Read** a file under `src/intake/openclaw-config.js`, `src/intak
 - **Never poll `openclaw sessions list` on a timer**
 - **The gateway heartbeat stays OFF: `agents.defaults.heartbeat.every: "0m"`.**
 - **Every session resets daily: `session.reset: { mode: "daily", atHour: 2 }`**
+- **A room's agent is shown six tools and a person's the rest, by a computed `tools.deny` per agent** — never hand-edited; the deploy re-syncs it.
 
 ### Delivering a message
 
@@ -160,7 +161,7 @@ Loads when you **Read** a file under `src/outbox/**`, `src/domain/message-format
 - **The invite and the table question offer the coordination's own page, on a bare line; nothing else in the negotiation does** — and the characters are handed over, never asked for: a prompt that named a meeting id got three invented domains in one minute
 - **A private message about a coordination is one sentence of context and one question** — two options are a sentence, a game room counts heads, and the length is measured
 - **The same thing does not go out twice inside a few minutes unless the person ASKED**
-- **The delivery gate is the chokepoint and a paused user has no exceptions** — save one room-coordination invite per pause
+- **The delivery gate is the chokepoint and a paused user has no exceptions** — save one room-coordination invite per pause, and one per run of silence
 - **An unstated quiet day is not "none" — it is Saturday or Sunday, and which one is a fact about the PERSON.**
 - **Quiet HOURS and a quiet DAY draw different lines, and the digest is where they differ.**
 - **For an Israeli zone, Saturday's quiet day is candle-lighting to havdalah, not midnight to midnight.**
@@ -185,6 +186,7 @@ Loads when you **Read** a file under `src/brokerd/**`, `src/domain/turn.js`, `sr
 - **The turn opens itself, from the gateway's own hook, before the model's first call.**
 - **A function shared by two openers is handed the WHOLE user row, never a projection** — `undefined` is falsy too, and a test through one door proves nothing about the other
 - **A repeat of the same message must never be read as a new one.**
+- **A block written to REPLACE a tool call has to say what it does not hold, or its silence is read as the answer** — `today` counts `undated` to-dos, and a question about the whole list (`asksOpenList`, read by the hook) gets no `today` block at all
 - **`messages.queue.mode` stays `followup`.**
 - **A turn Olma started is not a message from the person.**
 - **A WhatsApp reply names ONE message, and only the MODEL is ever told which.**
@@ -193,12 +195,13 @@ Loads when you **Read** a file under `src/brokerd/**`, `src/domain/turn.js`, `sr
 - **A repair job fires precisely when the system's belief about itself is already wrong, so it must be the most sceptical thing in the codebase.**
 - **A reply that got lost is RE-SENT, never re-answered.**
 - **The model's own working-out is stopped in the GATEWAY, not by the doctrine.** — and so is a link that goes nowhere: a host claiming to be us, or our own on a path nothing serves
+- **…and since 2026-09-23 the working-out is caught in Hebrew too** — a first-person next step off a closed verb list drops, the third-person shape is only reported, and a block name counts even inside quotes
 - **The last tier's missing input was not a pattern, it was the READER** — `writesHebrew` is a tri-state, `null` acts like `false`, and the value rides `turn_context` to a gate with no database
 
 ### Reminders, tasks and dates
 
 **`.claude/rules/reminders-and-tasks.md`** — the three different questions about a pending reminder, ladders, duplicate titles, dating a task, and due_at against remind_at.
-Loads when you **Read** a file under `src/domain/reminders.js`, `src/domain/tasks.js`, `src/domain/auto-reminder.js` and 12 more.
+Loads when you **Read** a file under `src/domain/reminders.js`, `src/domain/tasks.js`, `src/domain/auto-reminder.js` and 13 more.
 
 - **"What is still pending" must ask `attempts = 0`**
 - **…and "what is still going to REACH them" is a THIRD question, which `attempts = 0` answers wrongly.**
@@ -208,11 +211,13 @@ Loads when you **Read** a file under `src/domain/reminders.js`, `src/domain/task
 - **A task chases through ONE ladder — the one behind the LATEST reminder they asked for.**
 - **A meeting negotiates several options (`domain/meeting-options.js`, up to five, and everybody in the coordination may add one or take one off). The single-slot columns `meetings.proposed_slot/proposed_start_at` and `meeting_participants.state` are MIRRORS of the newest active option**
 - **A sixth option is refused to EVERYBODY, the initiator included, and the refusal carries the five.**
+- **…and the mirror is a CONVENIENCE, never a clock — a time whose moment has passed leaves the TABLE, and only a coordination that has just lost one is asked whether it is empty.**
 - **A constraint that rules out a time ON the table is an ANSWER, and the tool that records it is the one that declines it** — and it earns no 👍
 - **A time taken OFF that table is never a message of its own — it rides the next thing each person hears about that coordination.**
 - **A time ADDED to it rides the same thing, as long as that thing has not gone out yet** — four messages in sixty-two seconds is what queueing beside it looks like
 - **A negotiation message WAITS a quarter of an hour behind the last one that reached that person, and everything meanwhile folds into it** — the fold already existed and `urgent` never let it run; a RESULT never waits.
-- **Opening a coordination is not a subscription to every answer in it** — a decline and an exit stop being messages of their own; the reason moves from a push to a pull, and only "nobody matched" still goes on its own.
+- **Opening a coordination is not a subscription to every answer in it** — a decline and an exit stop being messages of their own; the reason moves from a push to a pull.
+- **Nobody manages a coordination** — `initiator_id` is who opened it and grants nothing: anybody still in it settles, renames, cancels (in the chat) or leaves; its ending rides the next digest (`crossUser.closedMeetings`), never a message of its own.
 - **An explicit reminder replaces the automatic one only on the SAME local day; on another day it stands beside it.**
 - **An event is SAID, never only guessed, and it is never told back as a task.**
 - **A task already OPEN on somebody's list is never saved a second time.**
@@ -231,6 +236,8 @@ Loads when you **Read** a file under `src/domain/reminders.js`, `src/domain/task
 - **A repeating reminder with an END is a CHASE, and every reader that took "repeating" to mean "a rhythm" had to be told the difference** — `repeat_until` is the discriminator, and it is EXPLICIT because a live monthly pill carries a vestigial `due_at`.
 - **The owner decided the four things about a chase that no reading of the code could settle** — the day they ask counts, the hour is one they already hear from Olma, a quiet day is skipped, and "עד ש…" plus a request for help is what arms one.
 - **A chase is the one arming whose SHAPE is news, whoever picked the hour** — a 👍 cannot carry a cadence, and a line that says only "every day" about something with an end is a promise to keep going for ever.
+- **The second call echoes the moment already armed, and that is not an hour anybody named** — a chase replaces every automatic row in its span, and its result says which branch it took
+- **Whether a message ASKED for a chase is read by code, and the model is only told what the server will do** — the gateway hook sends a deadline KIND, `add_task` on that turn is due that day with `nudge` on, and it needs a gateway restart to go live
 
 ### People, silence, and data you must not get wrong
 
@@ -241,11 +248,12 @@ Loads when you **Read** a file under `src/jobs/checkin.js`, `src/jobs/onboarding
 - **Every time crossing a tool boundary needs an explicit offset.**
 - **Nobody is asked a question they have already not answered once.**
 - **A day-one step that has not gone out is REPLACED by the NEXT CHECK-IN of any kind, never joined by it.**
-- **Somebody who has stopped answering hears nothing Olma decided to say, and nothing on their record is cancelled.**
+- **Somebody who has stopped answering hears nothing Olma decided to say, and nothing on their record is cancelled.** — but a coordination they ANSWERED is not her idea, and an answer is what earns that, never membership
 - **A stop is acted on the moment it is HEARD, not when it is confirmed** — `paused_reason = 'said_stop'` is a full pause, and their next message about anything else ends it.
 - **A write from their own page IS the person answering** — `last_dashboard_at`, never `last_inbound_at`
 - **A "once ever" question is stamped on the PERSON, never deduped on the route that asks it.**
 - **The chag offer is that shape's second column (`holiday_quiet_asked_at`, migration 062), with two routes from the start.**
+- **…and the offer to add her to more groups is its third (`more_groups_offered_at`, migration 086)** — earned by a yes on the time a ROOM locked, and it rides the next check-in
 - **Deleting a user is not deleting a person until the GATEWAY's intake session goes too.**
 - **The ledgers are append-only.**
 - **The assistant is עולמה / Allma; the system is still olma2.**
@@ -289,6 +297,7 @@ Loads when you **Read** a file under `src/adapters/http/**`, `docs/design/**`.
 - **Changing the domain never invalidates an existing Google connection.**
 - **Two sheets on the same `z-index` are ordered by the MARKUP, and the time picker has to beat all of them.**
 - **An element appended into a container something else re-renders is borrowed, not owned.**
+- **The SERVER decides when a coordination stops being active, and the page never cuts that list a second time.**
 
 ### Doctrine, tools and reactions
 
@@ -339,20 +348,22 @@ Loads when you **Read** a file under `src/domain/group-connections.js`, `src/dom
 - **A room opens on TWO connected members, not on everybody — and it still says who is not here**
 - **The room reaches each member's OWN page as a group already made**
 - **The person who asked the ROOM for a coordination is asked privately too** — a tag carries no times, and the test asserted the bug
-- **In the room a person is addressed by their TAG and never by their name; in a private chat, by their name** — and a tag coming IN is a member to look up in `room.people`, never a token to discard
+- **…and a time said in the room is that person's proposal, put on the table in their name from the room** (`add_group_coordination_option`) — never the room's voice, and never "sent to everyone" when nothing was written
+- **In the room a person is addressed by their TAG and never by their name; in a private chat, by their name** — and a tag coming IN is a member to look up in `room.people`, never a token to discard — and since 2026-09-23 a CONFIRMED name and the form of address they set may be said too (`group-turn.peopleOf`), with masculine when none was set, and a member stating their own is saved (`remember_sender_gender`, the sender only), and the profile column and the private chat's `gender_forms` follow each other (`src/domain/gender-forms.js`)
 - **The first thing a room hears about its own coordination is that she has STARTED, and it counts people rather than naming them**
 - **Every line a room hears is said once, except the TABLE moving, which is news every time** — a watermark rather than a flag, anchored on the base line, and it says the shape and never an answer.
 - **…and it waits a quarter of an hour, so a burst of changes is ONE sentence** — the same fifteen minutes as the private side, measured from the FIRST change the room has not heard about, and it gates both lines about the table.
 - **The room is chased an HOUR after she starts, not half way to the thing** — half the distance put one room at 05:11 the next morning; who may be NAMED is unchanged.
 - **The "סגור" line names who can make it, a calendar line is said only for a SHARED event, and a base line is never said to nobody**
 - **A time the room was TOLD about and that has since left the table is said again; a time merely overtaken is not**
-- **The place is the room's own words, asked for only when nobody said one, and it rides the confirmation onto the calendar event**
+- **The place is the room's own words, asked for only when nobody said one, and it rides the confirmation onto the calendar event** — and a name that says it happens on Zoom has said one (`online-place.onlinePlace`, a closed list, code only)
 - **A tag is a NUMBER, and the roster hands us LIDs in the same column** — the cut is 13 digits, measured; a line that can name nobody is not said
 - **The room says that people have not answered only about people she has actually written to** — `silent` is still the exact count; `asked` is what may be SAID
-- **A group turn is told the room's coordination state before the model's first word, and that block is the only thing it may speak from.**
+- **A group turn is told the room's coordination state before the model's first word, and that block is the only thing it may speak from.** — and a result the room has already heard is marked `roomHeard`, so it is not the tail of every reply
 - **A message in the room with no tag on it is ENDED, never answered — and the window it opens is the point.** Inert behind a flag, and measuring while it is.
 - **Every line a room hears unasked is Olma's own text, save exactly one: a sentence a MEMBER asked her to say there** — one per person per coordination, and only in a room the flag names
 - **…and that line carries what the same person did to the TABLE, because the reason and the change are one piece of news** — three shapes, chosen by what is true
+- **A joke in the room is answered with a joke, built only from what the room said** — one short line; nothing invented, nothing private, nobody really mocked
 - **A paused member is counted into a room's coordination only until their one invite is spent; a day of silence takes them out**
 - **A member's message in the room opens the gate's fifteen-minute window for that room's coordination — and, since 2026-09-09, the room's own announcement window; nothing else**
 

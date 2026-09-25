@@ -133,8 +133,10 @@ function tool(name, description, props, required, handler) {
         // Repeated on every one of the 90 schemas, on every turn: each word here
         // costs 90 times what it looks like — which is why "identity string"
         // became "identity" the day the group tools needed paying for. The
-        // model has never needed the noun; it needs the file name.
-        [IDENTITY_PARAM]: S('string', 'your identity from AGENTS.md'),
+        // model has never needed the noun; it needs the file name. Cut again on
+        // 2026-09-23 to the file name alone — the parameter's own name,
+        // `olma_identity`, already says what it is.
+        [IDENTITY_PARAM]: S('string', 'from AGENTS.md'),
         ...props,
       },
       required: [IDENTITY_PARAM, ...required],

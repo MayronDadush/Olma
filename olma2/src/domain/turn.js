@@ -26,6 +26,7 @@ const onboardingDomain = require('./onboarding');
 const templates = require('./message-templates');
 const holidays = require('./holidays');
 const preferences = require('./preferences');
+const { genderFromWords } = require('./gender-forms');
 
 // Rollout control. Absent/empty = off everywhere, so deploying this changes
 // nothing until someone turns it on: a fix for an invisible defect must not
@@ -215,7 +216,7 @@ async function openTurnImplicitly(client, user, { firstTool } = {}) {
 // turn by every user, for fields that appear on a handful of turns in a
 // person's life. The budget rule (CLAUDE.md, "Doctrine"): guidance about a
 // RESULT rides the result.
-function turnHints({ offerResume, languageNudge, recentReminders, recentMeetings, planHeadline, replyTarget, genderForms, thanksOnly, stoppedReminders, today }) {
+function turnHints({ offerResume, languageNudge, recentReminders, recentMeetings, planHeadline, replyTarget, genderForms, thanksOnly, stoppedReminders, chaseUntil, chaseNamedHour, openList, today }) {
   const hints = {};
   if (today) {
     // Rides beside the block on every turn it is on, because a block the
@@ -223,9 +224,20 @@ function turnHints({ offerResume, languageNudge, recentReminders, recentMeetings
     // again with a tool call — the thing the block exists to replace.
     hints.today = 'today = everything filed with Olma for TODAY (' + today.date + '), in their own '
       + 'local time; an item with no `at` is for the day, not an hour — never invent one. '
-      + '`overdue` counts to-dos due before today. Answer "מה יש לי היום" / "מה על הפרק" from it '
+      + '`overdue` counts to-dos due before today. Answer "מה יש לי היום" from it '
       + 'and do NOT call get_my_digest, list_my_tasks or my_calendar_events for today; empty '
-      + 'lists mean nothing is filed. Those tools are still for another day, the week, the '
+      + 'lists mean nothing is filed FOR TODAY, never that nothing is open. '
+      // Two people in the eval, on two nights, asked "מה פתוח לי?" with two
+      // undated to-dos on their list and were told "הכל נקי" off an empty
+      // block — no tool called (2026-09-24, runs 84 and 86). The block only
+      // ever held what is DATED to today, and "מה על הפרק" used to be one of
+      // the questions it was said to answer. 10 of 25 real people had undated
+      // open to-dos that day, 6 of them nothing else.
+      + (today.undated
+        ? '`undated` counts open to-dos with NO date, which this block does not list: "מה פתוח לי", '
+          + '"מה על הפרק" and "מה יש לי" are about those too — list_my_tasks. '
+        : '')
+      + 'Those tools are still for another day, the week, the '
       + 'overdue items themselves, reminders'
       + (today.googleCalendar
         ? ', and their connected Google calendar, whose events this block does NOT hold — '
@@ -302,6 +314,30 @@ function turnHints({ offerResume, languageNudge, recentReminders, recentMeetings
       + 'they meant the ones they have been hearing from, and those are the ones that stopped. '
       + 'Their tasks are untouched, so say something only if they asked for something else too, '
       + 'or if they named a NEW time to be reminded — that one is a reminder to set.';
+  }
+  if (chaseUntil) {
+    // The gateway read a deadline and a request for help in their message
+    // (gateway-hooks/olma-turn-open .chaseDeadline) and brokerd arms the chase
+    // itself, on the task this turn saves — so the model is told what the
+    // SERVER will do, and asked only not to do it a second, different way.
+    // חיים's sentence was read two ways by the model; this is the reading the
+    // owner chose (2026-09-24), and it is code's to make, not the prompt's.
+    hints.chase = `Their message asks for help until ${chaseUntil}, and that is a CHASE: save the thing with `
+      + `add_task (or, if it is already on their list, set_task_reminder on it) and the server makes it ONE `
+      + `reminder a day until ${chaseUntil}, due that day. Do not date it for an earlier day and do not pass `
+      + (chaseNamedHour
+        ? 'nudge or a repeat — pass the hour they named as remind_at. '
+        : 'nudge, a repeat or a remind_at: the hour is one they already hear from Olma. ')
+      + 'The result says the shape; say it back in ONE short line.';
+  }
+  if (openList) {
+    // The gateway read "מה פתוח לי?" — a question about their whole list —
+    // and advise() left the today block out of this turn (gateway-hooks/
+    // olma-turn-open .asksOpenList). Answered off that block, an empty day
+    // came back as "הכל נקי" to somebody with two undated to-dos on file, in
+    // 1 of 5 trials even with a hint beside it (runs 84, 86, 87, 2026-09-24).
+    hints.openList = 'They asked what is OPEN on their list, not what is on today, so this turn '
+      + 'carries no today block: the answer is list_my_tasks, and nothing here says their list is empty.';
   }
   if (offerResume) {
     hints.offerResume = 'First message since they paused: answer what they actually asked, then add '
@@ -389,7 +425,7 @@ function requireAdviseColumns(user) {
   }
 }
 
-async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, languageNudge, thanksOnly, stoppedReminders, now }) {
+async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, languageNudge, thanksOnly, stoppedReminders, chaseUntil, chaseNamedHour, openList, now }) {
   requireAdviseColumns(user);
   // A paused person who writes gets answered — pausing stops Olma
   // INITIATING, not answering (see domain/pause.js) — but before this, that
@@ -516,7 +552,9 @@ async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, 
   // gets no hint — the hint exists for the register that keeps slipping.
   const { rows: genderRow } = await client.query(
     `SELECT value FROM user_preferences WHERE user_id = $1 AND key = 'gender_forms'`, [user.id]);
-  const genderForms = genderRow[0] && /נקבה|feminine|female|woman/i.test(String(genderRow[0].value))
+  // One reading of the words for every reader (`gender-forms.js`): this
+  // regex alone missed "נשי", which is what Maya's row actually says.
+  const genderForms = genderRow[0] && genderFromWords(genderRow[0].value) === 'female'
     ? 'feminine' : null;
 
   // Stamped once, only here — the one place that actually hands the
@@ -616,7 +654,11 @@ async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, 
       })
     : null;
 
-  const today = counted.data.blocked ? null : await todayBlock(client, user.id, now || null);
+  // Not on a turn that asked for their whole list: the block holds only what
+  // is dated to today, and an empty one was read as an empty list (turnHints
+  // .openList). The holiday offer it may carry waits for the next turn, which
+  // is safe because it is stamped only below, when it was handed out.
+  const today = counted.data.blocked || openList ? null : await todayBlock(client, user.id, now || null);
 
   // Spent on the HAND-OUT, not on their answer, and guarded by `IS NULL` so
   // two routes can never each spend it. Same doctrine and same shape as
@@ -643,7 +685,7 @@ async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, 
       ...(replyTarget ? { replyTarget: true } : {}),
       ...(genderForms ? { genderForms } : {}),
       ...(today ? { today } : {}),
-      ...turnHints({ offerResume, languageNudge, recentReminders, recentMeetings, planHeadline, replyTarget, genderForms, thanksOnly, stoppedReminders, today }),
+      ...turnHints({ offerResume, languageNudge, recentReminders, recentMeetings, planHeadline, replyTarget, genderForms, thanksOnly, stoppedReminders, chaseUntil, chaseNamedHour, openList, today }),
     };
   }
   const shouldNotice = await quota.shouldSendBlockNotice(client, user.id);
@@ -721,6 +763,12 @@ async function todayBlock(client, userId, now = null) {
     ...(r.kind === 'event' && r.until && !r.day_shaped ? { until: r.until } : {}),
     ...(r.kind === 'event' && r.location ? { location: String(r.location).slice(0, 80) } : {}),
   });
+  // The open to-dos this block never lists — no date, so never "today" — as a
+  // COUNT, like `overdue`: without it an empty block reads as an empty list.
+  const { rows: [{ undated }] } = await client.query(
+    `SELECT count(*)::int AS undated FROM tasks
+      WHERE owner_id = $1 AND status = 'open' AND archived_at IS NULL
+        AND due_at IS NULL AND kind <> 'event'`, [userId]);
   const onToday = rows.filter((r) => !r.overdue);
   const overdue = rows.filter((r) => r.overdue && r.kind !== 'event').length;
   const events = onToday.filter((r) => r.kind === 'event');
@@ -732,6 +780,7 @@ async function todayBlock(client, userId, now = null) {
     events: shown.filter((r) => r.kind === 'event').map(item),
     tasks: shown.filter((r) => r.kind !== 'event').map(item),
     overdue,
+    ...(undated > 0 ? { undated } : {}),
     ...(more > 0 ? { more } : {}),
     ...(day.google ? { googleCalendar: true } : {}),
     ...(holiday ? {

@@ -39,6 +39,24 @@ async function withClient(fn) {
   try { return await fn(client); } finally { client.release(); }
 }
 
+// The clock the expiry sweep reads is the OPTION's, not `meetings.
+// proposed_start_at` — that column mirrors the most recently ADDED option and
+// is the reason the sweep was rewritten. Moving an option is the only way to
+// put a candidate time in the past without waiting for one, and the mirror is
+// refreshed afterwards exactly as the live code keeps it.
+async function ageOption(c, optionId, interval) {
+  await c.query(`UPDATE meeting_options SET starts_at = now() - $2::interval WHERE id = $1`,
+    [optionId, interval]);
+  const { rows } = await c.query(`SELECT meeting_id FROM meeting_options WHERE id = $1`, [optionId]);
+  await meetings.options.mirrorCurrent(c, Number(rows[0].meeting_id));
+}
+
+async function optionRows(c, meetingId) {
+  const { rows } = await c.query(
+    `SELECT id, slot_text, status FROM meeting_options WHERE meeting_id = $1 ORDER BY id`, [meetingId]);
+  return rows;
+}
+
 test('meetings gate on the meetings grant, per participant', async () => {
   const dave = await makeUser(db.pool, '+972531000004', { firstName: 'Dave' });
   await withClient(async (c) => {
@@ -149,16 +167,26 @@ test('accept binding: a legacy row with no machine time still accepts', async ()
   });
 });
 
-test('a meeting of one cannot confirm; initiator cannot opt out; opt-out can close no_match', async () => {
+test('a meeting of one cannot confirm; opt-out can close no_match', async () => {
   await withClient(async (c) => {
     const m = (await meetings.startMeeting(c, alice.id, 'duo', [bob.id])).data.meeting;
     await meetings.proposeSlot(c, alice.id, m.id, 'Sunday 10:00, office', slotStart('Sunday 10:00, office'));
-
-    const initiatorExit = await meetings.optOut(c, alice.id, m.id);
-    assert.equal(initiatorExit.ok, false); // must cancel instead
-
     const r = await meetings.optOut(c, bob.id, m.id);
     assert.equal(r.data.meetingStatus, 'no_match'); // alice alone cannot confirm
+  });
+});
+
+// Nobody manages a coordination (owner, 2026-09-23): whoever opened it leaves
+// like anybody else, and it carries on for the rest.
+test('whoever opened it may leave, and it carries on without them', async () => {
+  await withClient(async (c) => {
+    const m = (await meetings.startMeeting(c, alice.id, 'trio-exit', [bob.id, carol.id])).data.meeting;
+    const r = await meetings.optOut(c, alice.id, m.id);
+    assert.equal(r.ok, true, r.ok ? '' : JSON.stringify(r.error));
+    assert.equal(r.data.meetingStatus, 'negotiating');
+    // …and whoever is left can still do everything to it.
+    assert.equal((await meetings.setTitle(c, bob.id, m.id, 'בלי אליס')).ok, true);
+    assert.equal((await meetings.setTitle(c, alice.id, m.id, 'שלי')).ok, false, 'she left — not hers to rename');
   });
 });
 
@@ -175,13 +203,13 @@ test('opt-out of a third participant can complete the confirmation gate', async 
   });
 });
 
-test('cancel is initiator-only; closed meetings reject all moves', async () => {
+test('anybody in it may cancel, nobody outside it; closed meetings reject all moves', async () => {
   await withClient(async (c) => {
     const m = (await meetings.startMeeting(c, alice.id, 'to-cancel', [bob.id])).data.meeting;
-    const notInitiator = await meetings.cancelMeeting(c, bob.id, m.id);
-    assert.equal(notInitiator.ok, false);
-    const cancelled = await meetings.cancelMeeting(c, alice.id, m.id);
-    assert.equal(cancelled.ok, true);
+    const outsider = await meetings.cancelMeeting(c, carol.id, m.id);
+    assert.equal(outsider.ok, false, 'not in it');
+    const cancelled = await meetings.cancelMeeting(c, bob.id, m.id);
+    assert.equal(cancelled.ok, true, 'he did not open it, and may cancel it');
     const late = await meetings.proposeSlot(c, alice.id, m.id, 'whenever', slotStart('whenever'));
     assert.equal(late.ok, false);
   });
@@ -304,8 +332,8 @@ test('expireStaleMeetings closes what nothing else ever closed', async () => {
   await withClient(async (c) => {
     // passed its moment, still open
     const dead = (await meetings.startMeeting(c, a.id, 'פוקר', [b.id])).data.meeting;
-    await meetings.proposeSlot(c, a.id, dead.id, 'שישי 20:00', slotStart('שישי 20:00'));
-    await c.query(`UPDATE meetings SET proposed_start_at = now() - interval '13 hours' WHERE id = $1`, [dead.id]);
+    const gone = (await meetings.proposeSlot(c, a.id, dead.id, 'שישי 20:00', slotStart('שישי 20:00'))).data.optionId;
+    await ageOption(c, gone, '13 hours');
 
     // still ahead — must be left alone
     const live = (await meetings.startMeeting(c, c2.id, 'קפה', [d2.id])).data.meeting;
@@ -319,6 +347,12 @@ test('expireStaleMeetings closes what nothing else ever closed', async () => {
     const { rows } = await c.query(`SELECT status, closed_at FROM meetings WHERE id = $1`, [dead.id]);
     assert.equal(rows[0].status, 'expired', 'expired, not no_match — nobody disagreed');
     assert.ok(rows[0].closed_at);
+    // the time went first, and it says how it left: 'expired' is nobody's
+    // doing, 'deleted' is a person's and is repeated to the others.
+    const opt = (await optionRows(c, dead.id))[0];
+    assert.equal(opt.status, 'expired');
+    assert.equal(closed.find((m) => Number(m.id) === Number(dead.id)).proposed_slot, 'שישי 20:00',
+      'the message names the last time it had, not the emptied mirror');
 
     // and it is idempotent: a second sweep has nothing left to close
     assert.equal((await meetings.expireStaleMeetings(c)).map((m) => Number(m.id)).includes(Number(dead.id)), false);
@@ -329,12 +363,96 @@ test('a slot within the grace window is not closed out from under the people at 
   const { a, b } = await pair('+972571000011', '+972571000012');
   await withClient(async (c) => {
     const m = (await meetings.startMeeting(c, a.id, 'פוקר', [b.id])).data.meeting;
-    await meetings.proposeSlot(c, a.id, m.id, 'הערב 20:00', slotStart('הערב 20:00'));
+    const o = (await meetings.proposeSlot(c, a.id, m.id, 'הערב 20:00', slotStart('הערב 20:00'))).data.optionId;
     // started two hours ago — it may well still be happening
-    await c.query(`UPDATE meetings SET proposed_start_at = now() - interval '2 hours' WHERE id = $1`, [m.id]);
+    await ageOption(c, o, '2 hours');
     const closed = await meetings.expireStaleMeetings(c);
     assert.ok(!closed.map((x) => Number(x.id)).includes(Number(m.id)),
       'closing a meeting early is worse than closing it late');
+    assert.equal((await optionRows(c, m.id))[0].status, 'active',
+      'and the time it is about is still on the table');
+  });
+});
+
+// The sweep used to ask one question — is `meetings.proposed_start_at` more
+// than six hours old — and that column mirrors the most recently ADDED option,
+// never the latest one in time. So the order two times were PUT on the table
+// decided whether a coordination survived its own first option passing. Both
+// orders, one test, because the fault is only visible when they disagree.
+test('a time that has passed comes off the table; the times still ahead of it stay', async () => {
+  const { a, b } = await pair('+972572000011', '+972572000012');
+  await withClient(async (c) => {
+    // added past-then-future: the mirror pointed at the FUTURE one, so the
+    // passed time simply sat on the table, offered to people, for ever.
+    const m1 = (await meetings.startMeeting(c, a.id, 'פוקר', [b.id])).data.meeting;
+    const early1 = (await meetings.proposeSlot(c, a.id, m1.id, 'מוקדם 20:00', slotStart('מוקדם 20:00'))).data.optionId;
+    await meetings.proposeSlot(c, a.id, m1.id, 'מאוחר 21:00', slotStart('מאוחר 21:00', { hours: 72 }));
+    await ageOption(c, early1, '13 hours');
+
+    // added future-then-past: the mirror pointed at the PASSED one, and the
+    // whole coordination was closed with a live time still on the table.
+    const m2 = (await meetings.startMeeting(c, a.id, 'קפה', [b.id])).data.meeting;
+    await meetings.proposeSlot(c, a.id, m2.id, 'מאוחר 21:00', slotStart('מאוחר 21:00', { hours: 72 }));
+    const early2 = (await meetings.proposeSlot(c, a.id, m2.id, 'מוקדם 20:00', slotStart('מוקדם 20:00'))).data.optionId;
+    await ageOption(c, early2, '13 hours');
+
+    const closed = (await meetings.expireStaleMeetings(c)).map((x) => Number(x.id));
+    for (const m of [m1, m2]) {
+      assert.ok(!closed.includes(Number(m.id)), 'a live time on the table keeps the coordination open');
+      const live = (await optionRows(c, m.id)).filter((o) => o.status === 'active');
+      assert.equal(live.length, 1, 'exactly the one that has not happened yet');
+      assert.equal(live[0].slot_text, 'מאוחר 21:00');
+      assert.equal((await optionRows(c, m.id)).filter((o) => o.status === 'expired').length, 1);
+    }
+
+    // and it is said to nobody: a time somebody TOOK off rides the next
+    // message about the coordination ("Ben took Tuesday off"), and a time that
+    // merely happened is not news anyone needs.
+    assert.deepEqual(await meetings.options.removed(c, m1.id), []);
+    assert.deepEqual(await meetings.options.unheardRemovals(c, m1.id, b.id), []);
+  });
+});
+
+// A whole day's instant is 09:00 of the day it means (meeting-option-moment.
+// momentFor), so the six hours that are right for a clock time would take
+// "Sunday, all day" off the table at 15:00 on Sunday — while Sunday is still
+// going on and somebody could still say yes to it.
+test('a whole day is not taken off the table in the middle of itself', async () => {
+  const { a, b } = await pair('+972572000013', '+972572000014');
+  await withClient(async (c) => {
+    const m = (await meetings.startMeeting(c, a.id, 'טיול', [b.id])).data.meeting;
+    const day = (await meetings.options.add(c, a.id, m.id, 'כל היום', slotStart('כל היום'),
+      { allDay: true })).data.option.id;
+    const hour = (await meetings.proposeSlot(c, a.id, m.id, 'אחר כך 20:00', slotStart('אחר כך 20:00', { hours: 72 }))).data.optionId;
+    await ageOption(c, day, '8 hours');
+    await ageOption(c, hour, '8 hours');
+
+    await meetings.expireStaleMeetings(c);
+    const byId = new Map((await optionRows(c, m.id)).map((o) => [Number(o.id), o.status]));
+    assert.equal(byId.get(Number(hour)), 'expired', 'eight hours past an HOUR is past');
+    assert.equal(byId.get(Number(day)), 'active', 'eight hours into a DAY is that day');
+
+    // once the day itself is behind us, it goes — and it was the last time on
+    // the table, so the coordination goes with it.
+    await ageOption(c, day, '31 hours');
+    const closed = await meetings.expireStaleMeetings(c);
+    assert.ok(closed.map((x) => Number(x.id)).includes(Number(m.id)));
+    assert.equal(closed.find((x) => Number(x.id) === Number(m.id)).proposed_slot, 'כל היום');
+  });
+});
+
+// Running out of times is not the same thing as never having had any. A
+// coordination somebody opened five minutes ago has an empty table and is at
+// the START of its life; closing it because nothing is on the table would
+// close it before anybody could put something there.
+test('a coordination nobody has proposed a time for yet is not closed by the passing of time', async () => {
+  const { a, b } = await pair('+972572000015', '+972572000016');
+  await withClient(async (c) => {
+    const m = (await meetings.startMeeting(c, a.id, 'משהו', [b.id])).data.meeting;
+    const closed = await meetings.expireStaleMeetings(c);
+    assert.ok(!closed.map((x) => Number(x.id)).includes(Number(m.id)));
+    const { rows } = await c.query(`SELECT status FROM meetings WHERE id = $1`, [m.id]);
+    assert.equal(rows[0].status, 'negotiating');
   });
 });
 
@@ -590,15 +708,15 @@ async function confirmedMeeting(c, initiator, others, slotText = 'Tuesday 17:00,
   return Number(m.id);
 }
 
-test('the initiator can cancel a CONFIRMED meeting until it starts', async () => {
+test('anybody in it can cancel a CONFIRMED meeting until it starts', async () => {
   await withClient(async (c) => {
     const id = await confirmedMeeting(c, alice, [bob]);
 
-    // not the initiator → refused, same answer as "no such meeting"
-    const notMine = await meetings.cancelMeeting(c, bob.id, id);
-    assert.equal(notMine.ok, false);
+    // not in it → refused, same answer as "no such meeting"
+    const outsider = await meetings.cancelMeeting(c, carol.id, id);
+    assert.equal(outsider.ok, false);
 
-    const res = await meetings.cancelMeeting(c, alice.id, id);
+    const res = await meetings.cancelMeeting(c, bob.id, id);
     assert.equal(res.ok, true, JSON.stringify(res.error || {}));
     assert.equal(res.data.meetingStatus, 'cancelled');
     assert.equal(res.data.wasConfirmed, true, 'the caller must know a calendar may need cleaning');
@@ -625,19 +743,15 @@ test('a participant withdrawing from a confirmed trio leaves the meeting ON', as
   await withClient(async (c) => {
     const id = await confirmedMeeting(c, alice, [bob, carol]);
 
-    // the initiator is pointed at cancel_meeting instead
-    const initiatorTry = await meetings.optOut(c, alice.id, id);
-    assert.equal(initiatorTry.ok, false);
-    assert.match(initiatorTry.error.message, /cancel/);
-
-    const res = await meetings.optOut(c, bob.id, id);
+    // whoever opened it withdraws like anybody else (2026-09-23)
+    const res = await meetings.optOut(c, alice.id, id);
     assert.equal(res.ok, true, JSON.stringify(res.error || {}));
     assert.equal(res.data.withdrew, true);
     assert.equal(res.data.meetingStatus, 'confirmed', 'two people remain — still on');
 
-    const st = await meetings.getStatus(c, alice.id, id);
+    const st = await meetings.getStatus(c, bob.id, id);
     const states = Object.fromEntries(st.data.participants.map((p) => [p.user_id, p.state]));
-    assert.equal(states[bob.id], 'opted_out');
+    assert.equal(states[alice.id], 'opted_out');
     assert.equal(st.data.meeting.status, 'confirmed');
   });
 });
@@ -666,7 +780,7 @@ test('withdrawal after the meeting started is refused', async () => {
 
 // ---- titles -----------------------------------------------------------------
 
-test('an unnamed meeting is named after its people, and the initiator can rename it', async () => {
+test('an unnamed meeting is named after its people, and anybody in it can rename it', async () => {
   await withClient(async (c) => {
     const m = (await meetings.startMeeting(c, alice.id, '   ', [bob.id])).data.meeting;
     assert.match(m.title, /Alice/);
@@ -676,8 +790,9 @@ test('an unnamed meeting is named after its people, and the initiator can rename
     assert.equal(renamed.ok, true);
     assert.equal(renamed.data.title, 'שיחה על הפרויקט');
 
-    const notMine = await meetings.setTitle(c, bob.id, m.id, 'hijack');
-    assert.equal(notMine.ok, false);
+    const byBob = await meetings.setTitle(c, bob.id, m.id, 'שיחה על הפרויקט');
+    assert.equal(byBob.ok, true, 'nobody manages it — he may rename it too');
+    assert.equal((await meetings.setTitle(c, carol.id, m.id, 'hijack')).ok, false, 'not in it');
 
     const st = await meetings.getStatus(c, alice.id, m.id);
     assert.equal(st.data.meeting.title, 'שיחה על הפרויקט');

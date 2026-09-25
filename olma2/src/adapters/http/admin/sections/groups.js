@@ -19,6 +19,8 @@ const { esc } = require('../../html');
 const occ = require('../../../../intake/openclaw-config');
 const { GREETER_AGENT_ID } = require('../../../../intake/provision-group');
 const groupsDomain = require('../../../../domain/groups');
+const infraCost = require('../../../infra-cost');
+const { groupCosts, makeMoney } = require('./cost');
 
 const STATE_LABEL = {
   locked: 'נעולה', open: 'פתוחה', too_large: 'גדולה מדי', retired: 'עזבה',
@@ -87,6 +89,19 @@ async function renderGroups(client, csrf, _probe, ctx = {}) {
        FROM group_outbox WHERE kind = 'intro' AND group_id = ANY($1)`, [groups.map((g) => g.id)]);
   const introByGroup = new Map(intros.map((r) => [r.group_id, r]));
 
+  // What the room's own agent has cost, month and all-time, in the page's
+  // money (`cost.groupCosts` says what it does and does not include). An
+  // unreadable exchange rate costs the shekels, never the column.
+  const costs = await groupCosts(client, groups.map((g) => g.agent_id));
+  const fx = await infraCost.usdIlsRate().catch(() => ({ configured: false }));
+  const money = makeMoney(fx);
+  const costCell = (g) => {
+    const c = g.agent_id ? costs.get(g.agent_id) : null;
+    if (!c) return '<span class="dim">—</span>';
+    const approx = c.estimated ? ' <span class="dim">≈</span>' : '';
+    return `${money(c.month, 3)}${approx} <span class="dim">/ ${money(c.total, 3)}</span>`;
+  };
+
   const rows = groups.map((g) => {
     const list = byGroup.get(g.id) || [];
     // Names for the missing, never numbers — this page is read over a
@@ -105,6 +120,7 @@ async function renderGroups(client, csrf, _probe, ctx = {}) {
       <td class="dim">${esc(g.registered_by || '—')}</td>
       <td class="dim">${g.opened_announced_at ? '✓' : (g.opened_at ? 'ממתינה לשעות' : '—')}</td>
       <td class="dim">${introLine(g, introByGroup.get(g.id))}</td>
+      <td class="nowrap">${costCell(g)}</td>
       <td>${kindForm(g, csrf)}</td>
     </tr>`;
   }).join('');
@@ -117,9 +133,10 @@ async function renderGroups(client, csrf, _probe, ctx = {}) {
   // version would have been "when a session she can see last moved", and the
   // sweep cannot see `main`, which is the session the raw pipe sends as.
   return `${head}<table><tr><th>קבוצה</th><th>מצב</th><th>אנשים</th><th>עוד לא כתבו לה</th>
-    <th>נרשמה דרך</th><th>הוכרזה</th><th>היכרות</th><th>סוג וכמה צריך</th></tr>${rows}</table>
+    <th>נרשמה דרך</th><th>הוכרזה</th><th>היכרות</th><th>עלות (החודש / סה״כ)</th><th>סוג וכמה צריך</th></tr>${rows}</table>
     <p class="dim">סוג: <b>משחק</b> — יש מינימום, ואולי מקסימום שאפשר לסגור עליו.
-    <b>חברתית</b> — כולם מוזמנים, בלי מינימום. ריק = אף אחד עוד לא אמר לה, והיא לא מנחשת.</p>`;
+    <b>חברתית</b> — כולם מוזמנים, בלי מינימום. ריק = אף אחד עוד לא אמר לה, והיא לא מנחשת.</p>
+    <p class="dim">עלות: מה שהסוכן של הקבוצה עצמה עלה במודל, מחושב מהתמלילים לפי טבלת התעריפים של היום. לא כולל את השיחות הפרטיות שתיאום של הקבוצה יוצר אצל כל אחד — אלה נספרות אצל אותו אדם.</p>`;
 }
 
 // What the room's own intro row (group_outbox, kind='intro') says happened.

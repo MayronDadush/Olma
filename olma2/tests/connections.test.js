@@ -147,7 +147,9 @@ test('revoke cascade: shares revoked, grants deleted, pair meeting closed', asyn
     const share = await c.query(`SELECT status FROM shares WHERE id = $1`, [shareId]);
     assert.equal(share.rows[0].status, 'revoked');
     const meeting = await c.query(`SELECT status FROM meetings WHERE id = $1`, [meetingId]);
-    assert.equal(meeting.rows[0].status, 'cancelled'); // revoker initiated it → cancel path
+    // The revoker opened it, and it is still an exit — nobody manages a
+    // coordination (2026-09-23) — which for a pair closes it no_match.
+    assert.equal(meeting.rows[0].status, 'no_match');
     const g = await c.query(`SELECT count(*)::int AS n FROM connection_feature_grants WHERE connection_id = $1`, [conn.id]);
     assert.equal(g.rows[0].n, 0);
   });

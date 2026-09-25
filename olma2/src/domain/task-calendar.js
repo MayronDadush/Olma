@@ -146,6 +146,28 @@ async function setTaskSync(client, userId, taskId, on, deps = {}) {
   return ok({ taskId, on, removed });
 }
 
+// Before a task is deleted for good (tasks.deleteTask): its event, and any of
+// its items', taken off the calendar NOW. The sweep cannot do this afterwards —
+// the event id lives on the row being deleted — so a removal Google refuses
+// fails the delete rather than leaving an event nothing will ever find again.
+// Already gone counts as removed, exactly as in setTaskSync.
+async function removeEventsFor(client, ownerId, taskId, deps = {}) {
+  const remove = deps.deleteEvent || calendar.deleteEvent;
+  const { rows } = await client.query(
+    `SELECT id, calendar_event_id FROM tasks
+      WHERE (id = $1 OR parent_id = $1) AND owner_id = $2 AND calendar_event_id IS NOT NULL`,
+    [taskId, ownerId]
+  );
+  for (const t of rows) {
+    const res = await remove(client, ownerId, { eventId: t.calendar_event_id });
+    if (!res.ok && res.error.code !== 'not_found') {
+      return err('conflict', 'could not take the task off the calendar', { reason: 'calendar' });
+    }
+    await client.query(`UPDATE tasks SET calendar_event_id = NULL WHERE id = $1`, [t.id]);
+  }
+  return ok({ removed: rows.length });
+}
+
 // Everything that is not where it should be: to add, to remove, to redo.
 // One query, so a tick is one round trip before any Google call happens.
 // `sync_wanted` is the one question every branch below asks, and it is
@@ -237,6 +259,6 @@ async function sweepTaskCalendar(client, deps = {}) {
 }
 
 module.exports = {
-  setSync, setTaskSync, pending, syncOne, sweepTaskCalendar,
+  setSync, setTaskSync, removeEventsFor, pending, syncOne, sweepTaskCalendar,
   expectedIdFor, windowFor, MAX_PER_TICK, EVENT_MINUTES,
 };

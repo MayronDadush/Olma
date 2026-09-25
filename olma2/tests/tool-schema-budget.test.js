@@ -65,21 +65,39 @@ const { IDENTITY_PARAM } = require('../src/adapters/mcp/identity-param');
 // margin is 449, one ordinary tool, so the argument the paragraphs above make
 // is unchanged and the next one has to be made again.
 //
-// **That 449 was true for one day.** Measured 2026-09-23, with no tool added
-// since: 56,245, a margin of 255. Ordinary growth across a handful of
-// descriptions had spent 194 of it while nobody was counting — which is what
-// this test exists to make impossible to do silently, and reading the number
-// out of this comment instead of running the measurement is how a session
-// plans its change against room that is no longer there. **Ask the code, not
-// the paragraph.** `add_task`'s `when_said` (2026-09-23, 183 chars all in)
-// then took it to 56,428, a margin of 72. It buys the weekday guard for the
-// one tool that WRITES the row; `edit_task`, `snooze_task` and
-// `set_task_reminder` are deliberately left unguarded, because four copies of
-// it do not fit and one guarded door beats an argument about the ceiling.
-// English on purpose, and that is not a style choice: JSON escapes every
+// Raised the third time, on 2026-09-23: 56,500 -> 57,000, for
+// `add_group_coordination_option` — 607 chars all in, cleared by the owner as
+// a choice put to him with the cost on it. What it buys is the room's own
+// times: עמית asked the room for poker on Friday afternoon and מירון added
+// Thursday and Saturday evening, in front of everyone; the room's agent had no
+// tool that could write a time, was refused on the person's one, told the room
+// the times were going out privately, and the coordination's page showed an
+// empty table. It paid 26 chars of its own first — `start_group_coordination`
+// lost the "never collect times here" the new tool makes false, and the new
+// description carries no sentence its error message already says. 56,827 now,
+// a margin of 173: not one more ordinary tool.
+//
+// **Every number above went stale, and one of them inside a day.** The line
+// before this one said 449 on 2026-09-22 and measured 255 on 2026-09-23; this
+// one says 173 and does not reproduce either — 55,927 for the same 91 tools,
+// nearly 900 off. Whatever the cause (a description trimmed afterwards, a
+// measurement taken mid-branch), the lesson is the same one this file keeps
+// teaching about numbers nobody reconciles: **ask the code, not the
+// paragraph.** One line answers it, and it is the same call the test makes:
+//
+//   node -e "const{toolDefinitions}=require('./src/adapters/mcp/registry');\
+//            console.log(JSON.stringify(toolDefinitions()).length)"
+//
+// `add_task`'s `when_said` (2026-09-25, 182 chars) takes it to 56,109 — a
+// margin of 891, which is room enough that the thing it was NOT given is now
+// a choice rather than a constraint: `edit_task`, `snooze_task` and
+// `set_task_reminder` still have no weekday guard, and roughly 540 chars would
+// cover all three. It was left at one door because the margin looked like 72
+// at the time, and it is worth re-deciding rather than inheriting.
+// **English on purpose, and that is not a style choice**: JSON escapes every
 // Hebrew character as \uXXXX at six chars each, so the founding example
-// ("ביום הראשון הקרוב") would have cost more than the rule it illustrates.
-const JSON_CEILING = 56_500;
+// ("ביום הראשון הקרוב") would cost more than the rule it illustrates.
+const JSON_CEILING = 57_000;
 const DESCRIPTION_CEILING = 700;
 const IDENTITY_DESCRIPTION_CEILING = 40;
 

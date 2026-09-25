@@ -36,7 +36,7 @@ const groupMeetings = require('./group-meetings');
 // from. `coordination: null` is a fact and not a gap — the wrong answer
 // available without it was the one that got said.
 const CONTEXT_HEADER = 'Room coordination (from the system, not the room — Olma\'s own rows, read this second):';
-const CONTEXT_RULE = 'Every sentence you say about this room\'s coordination comes from the block above. `coordination: null` means this room has nothing running right now, whatever was said earlier in this conversation; a number that is not there is a number you do not have.';
+const CONTEXT_RULE = 'Every sentence you say about this room\'s coordination comes from the block above. `coordination: null` means this room has nothing running right now, whatever was said earlier in this conversation; a number that is not there is a number you do not have. `lastCoordination.roomHeard: true` means the room has already been told that result: say it again only when somebody asks about it, never as the tail of a reply about something else.';
 // The owner's rule (2026-09-20). In the room a person is TAGGED, never named:
 // the tag notifies them, and WhatsApp renders it as whatever each reader has
 // that number saved as — so it is also the only spelling that is right for
@@ -59,7 +59,18 @@ const CONTEXT_RULE = 'Every sentence you say about this room\'s coordination com
 // was missing; this is the sentence that uses it. The last clause is the
 // owner's: her own trouble identifying a token is not the room's business,
 // and saying it out loud is the same leak `CONTEXT_RULE` already forbids.
-const TAG_RULE = 'In this room you address a person ONLY with their `tag` exactly as written above (it notifies them; a name does not, and the names people see for each other are not ours to choose). Never write somebody\'s name here, and never invent a tag for somebody the block does not list. In a PRIVATE chat the opposite holds: there you use their name. An `@<digits>` token inside the message you were sent is somebody being tagged BY the sender, not a tag you may reuse: match its digits against `lid` and `tag` in `room.people` — a hit is that member, and you address them by their `tag` and never by those digits. A hit on an entry that has a `lid` and NO `tag` is still a member of this room, and one you cannot address: answer the request itself and say nothing about them. A token that matches nobody there is most often your own, and either way it is not a person you can name: ignore it silently. Never tell the room that you do not recognise a token, and never repeat the digits back.';
+//
+// And the owner loosened the first half on 2026-09-23, on the day she called
+// Bar "את" and "היא" in front of the room: "אם היא יודעת את השם שלהם ואיזה לשון
+// לדבר אליהם … היא כן יכולה לשלוף רק את המידע הזה". So an entry may now carry
+// `name` and `address`, and those two and nothing else cross from a person's
+// own record into the room. The tag is still how somebody is REACHED — it is
+// still the only thing that notifies — and the name is what a sentence may
+// call them. The default for an entry with no `address` is the private
+// doctrine's own (`agents-template.md`: masculine, never slashed), because a
+// room with no rule at all is exactly where she guessed from "בר" and got it
+// wrong.
+const TAG_RULE = 'To reach a person in this room, use their `tag` exactly as written above (it notifies them; a name does not), and never invent a tag for somebody the block does not list. An entry with a `name` may also be called by that name in a sentence, and by that spelling only: never the name WhatsApp shows for them, never one you worked out, and nobody by name whose entry has none. `address` is how to speak to or about them in Hebrew — `feminine` or `masculine`, set by them — and it holds for every verb and pronoun about that person; an entry without it gets masculine forms, never a guess from the name and never a slashed form. The person who sent this message is the entry whose `tag` or `lid` digits are the sender\'s. In a PRIVATE chat you use their name as always. An `@<digits>` token inside the message you were sent is somebody being tagged BY the sender, not a tag you may reuse: match its digits against `lid` and `tag` in `room.people` — a hit is that member, and you address them by their `tag` and never by those digits. A hit on an entry that has a `lid` and NO `tag` is still a member of this room, and one you cannot address: answer the request itself and say nothing about them. A token that matches nobody there is most often your own, and either way it is not a person you can name: ignore it silently. Never tell the room that you do not recognise a token, and never repeat the digits back.';
 
 // The room, and its coordination if one is negotiating. A settled or cancelled
 // one is reported as what it is, under a different key: the model asking "is
@@ -69,9 +80,10 @@ const TAG_RULE = 'In this room you address a person ONLY with their `tag` exactl
 // they are tagged BY when we know it. Two separate jobs, and the block needs
 // both: `tag` is what she may write, `lid` is what she may have to recognise.
 //
-// It is the room's own membership and nothing more — WhatsApp shows that list
-// to everybody standing in it — so no name, no user id, and no phone that is
-// not already the tag. `mentionToken` rather than a second spelling of it: the
+// It is the room's own membership — WhatsApp shows that list to everybody
+// standing in it — plus the two things the owner let through from a person's
+// own record (`selfOf`: a confirmed first name and how to address them), so no
+// user id, and no phone that is not already the tag. `mentionToken` rather than a second spelling of it: the
 // room's fixed lines have tagged people through that function since the start,
 // and a tag assembled twice is the drift this file already warns about.
 //
@@ -80,6 +92,28 @@ const TAG_RULE = 'In this room you address a person ONLY with their `tag` exactl
 // or empty changes NOTHING but the `lid` fields — the same direction
 // `groups.resolveLidMembers` takes, and for the same reason: an unreadable
 // credentials directory must never look like a room that lost its people.
+// How a person is addressed, in the only two places they ever said it: the
+// profile page's own answer (`users.gender`, migration 068), and, failing that,
+// the `gender_forms` preference the private agent stores when they tell it in
+// words — free text, "נשי" on the box today. Since 2026-09-23 the two are kept
+// in step on every write (`gender-forms.js`), so the fallback matters only for
+// a row written before that. The reading is that module's, not a copy.
+const { genderFromWords } = require('./gender-forms');
+function addressOf(m) {
+  const g = m.gender === 'female' || m.gender === 'male' ? m.gender : genderFromWords(m.gender_forms);
+  return g === 'female' ? 'feminine' : (g === 'male' ? 'masculine' : null);
+}
+
+// What a person's own record may give the room: a first name THEY confirmed,
+// and the form of address they set. A name nobody confirmed is one we took
+// from WhatsApp or guessed, which is how "M&M" became "מאיה ומירון" — the
+// reason names were kept out of the room in the first place.
+function selfOf(m) {
+  const name = m.name_confirmed && m.first_name ? String(m.first_name).trim() : '';
+  const address = addressOf(m);
+  return { ...(name ? { name } : {}), ...(address ? { address } : {}) };
+}
+
 function peopleOf(members, lidPhones) {
   const { mentionToken } = require('./proactive-text');
   // Keyed on DIGITS, like `groups.resolveLidMembers`: the roster stores
@@ -96,7 +130,7 @@ function peopleOf(members, lidPhones) {
     const digits = String(m.phone || '').replace(/\D/g, '');
     if (tag) {
       const lid = byPhone.get(digits) || null;
-      return lid ? { tag, lid } : { tag };
+      return { ...(lid ? { tag, lid } : { tag }), ...selfOf(m) };
     }
     // No tag means `proactive-text.isTaggableNumber` refused the digits, which
     // for this column means they are a LID the reverse map has never resolved
@@ -106,7 +140,7 @@ function peopleOf(members, lidPhones) {
     // what having no tag means everywhere else in this file. Dropping them
     // instead would put her back where the incident started — an incoming tag
     // matching nothing, about a person who is standing right there.
-    return /^\d+$/.test(digits) ? { lid: digits } : null;
+    return /^\d+$/.test(digits) ? { lid: digits, ...selfOf(m) } : null;
   }).filter(Boolean);
 }
 
@@ -138,6 +172,12 @@ async function draw(client, group, { lidPhones = null } = {}) {
       lastCoordination: {
         meetingId: c.meetingId, title: c.title, status: c.status,
         ...(c.confirmedSlot ? { slot: c.confirmedSlot } : {}),
+        // The room's own "סגור" line went out (`meetings.group_done_at`). A
+        // result the room has heard is not news, and with nothing marking it
+        // she closed seven replies running in פחם הסעות with "the poker is on
+        // Friday at noon, on Zoom" — to jokes that had nothing to do with it
+        // (2026-09-23). The column, not an inference: nothing else says it.
+        ...(c.status === 'confirmed' && c.doneToldAt ? { roomHeard: true } : {}),
       },
     };
   }
@@ -182,4 +222,4 @@ async function renderContext(client, group, opts = {}) {
   return `${CONTEXT_HEADER}\n${renderResult({ ok: true, data: await draw(client, group, opts) })}\n${CONTEXT_RULE} ${TAG_RULE}`;
 }
 
-module.exports = { draw, peopleOf, renderContext, CONTEXT_HEADER, CONTEXT_RULE, TAG_RULE };
+module.exports = { draw, peopleOf, addressOf, renderContext, CONTEXT_HEADER, CONTEXT_RULE, TAG_RULE };

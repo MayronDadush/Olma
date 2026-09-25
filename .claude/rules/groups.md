@@ -249,6 +249,23 @@ have already had to be argued for.
   `incidents.md`, "The coordination waited on the man who started it"). **The
   test asserted the bug** — `2, 'everybody but the person who asked'` — which is
   one layer out from a wrong comment: a test can be wrong about the world.
+  **…and a time said in the room is that person's proposal, put on the table in
+  their name from the room** (2026-09-23). The room had no tool that could
+  write a time and its doctrine said "never collect times here", so עמית's
+  "שישי צהריים" and מירון's "חמישי ערב ושבת ערב" were said in front of
+  everyone, the agent was refused on the person's own `propose_meeting_slot`,
+  told the room the times were going out privately, and the coordination's
+  page showed an empty table. `add_group_coordination_option` goes through
+  the same `meetings.proposeSlot` → `meetingFanout.afterOptionAdded` path as
+  the private tool, as `actingUser`: `added_by` is them, their yes is
+  recorded, the rest are asked privately (folded into an invite that has not
+  gone out), and the result carries nobody's answers. It is never the room's
+  voice — the time belongs to whoever said it. When the requester named the
+  time, `meetingFanout.noteNamedInRoom` stamps `namedInRoom` on their unsent
+  invite so it asks only about OTHER times instead of "when suits you". A
+  room's AGENTS.md now reaches existing rooms through
+  `scripts/resync-agent-templates.js` too; before this it was written once at
+  provisioning (`incidents.md`, "The times the room said went nowhere").
 
 - **In the room a person is addressed by their TAG and never by their name; in
   a private chat, by their name** (owner, 2026-09-20). A tag notifies them and
@@ -282,6 +299,44 @@ have already had to be argued for.
   matching nobody is ignored in SILENCE — her own trouble identifying one is
   not the room's business, and the owner's two acceptable answers were to stay
   out of it or to back the request, never to narrate the confusion.
+  **…and since 2026-09-23 a name she KNOWS may be said, with the form of
+  address they set** (owner: "אם היא יודעת את השם שלהם ואיזה לשון לדבר אליהם
+  … היא כן יכולה לשלוף רק את המידע הזה"). The same afternoon she called Bar
+  "את" to his face and "היא" about him, in front of the room: nothing in the
+  block said how to address anybody, and the room's doctrine had no default.
+  `group-turn.peopleOf` now adds two fields from the person's own record and
+  no others. `name` is a first name they CONFIRMED (`users.name_confirmed`),
+  because an unconfirmed one came from WhatsApp or a guess, and that is the
+  "M&M" mistake this rule was written for. `address` is `users.gender` from
+  their own page, failing that the `gender_forms` preference their private
+  agent stored when they said it in words (`group-turn.addressOf`: both
+  readings or neither is null). The tag is still how somebody is REACHED;
+  the name is what a sentence may call them. **No `address` means masculine
+  forms**, the private doctrine's own default, never a guess from the name,
+  which is what "בר" got. `groups.listMembers` carries the three columns.
+  `groups.roomStatus` and `group-meetings.statusOf` are unchanged: the turn
+  block is what she speaks from (`incidents.md`, "She called Bar את").
+  **…and what somebody says about THEMSELVES in the room is kept**
+  (owner, 2026-09-23). Amit told her "אני גבר ואת אמורה לדעת את זה עליי". She
+  apologised and nothing was written, so the next turn would have drawn him
+  with no `address` again. `remember_sender_gender` (a group tool) writes
+  `users.gender` through `users.setPersonal`, the same column and function
+  the profile page uses. It writes only for the SENDER: `actingUser` is chosen
+  by the server, so nobody can set another member's form from the room. It is
+  in `user-card.CARD_TOOLS`, so their private USER.md is re-rendered after
+  commit. A group call never sets brokerd's `actorId`, so it carries its own
+  `groupCardUserId` for exactly this one purpose. Anything but `male`/`female`
+  is refused, not interpreted.
+  **…and the two records of it agree, whichever side moved** (owner, same day).
+  `users.gender` (the page, the room) and the `gender_forms` preference (the
+  private chat's turn_start) had drifted: Maya's said "נשי" with no column,
+  and the private reader's regex did not even know that word. Both now read
+  through `domain/gender-forms.genderFromWords`, and each writer moves the
+  other: `users.setPersonal` rewrites a preference that contradicts the
+  column (words that already agree are left as they said them; a cleared
+  column deletes it), and `preferences.remember`/`forget` of `gender_forms`
+  call `setPersonal` when the words are unambiguous and disagree. The second
+  write finds them agreeing, so they cannot bounce.
 
 - **The first thing a room hears about its own coordination is that she has
   STARTED, and it counts people rather than naming them** (owner, 2026-09-22:
@@ -422,6 +477,16 @@ have already had to be argued for.
   as the organiser, since the event is on their calendar. Until untagged room
   messages reach her (PR #429), the answer to "איפה נפגשים?" still needs a
   tag (`incidents.md`, "The place nobody asked for").
+  **…and a name that says it happens ON Zoom has said where** (owner,
+  2026-09-23: "פוקר בזום" was confirmed and the room was asked where to meet).
+  `online-place.onlinePlace` reads a CLOSED list of platforms as whole words,
+  with the ב/ל/ה prefix a place takes, and returns the word as written.
+  `meetings.startMeeting` stores it as `location` when nobody passed one, so it
+  reaches the calendar event too. `group-voice.decideGroupLine` also reads the
+  title and the confirmed slot, for coordinations opened before that. It is
+  code on purpose: no model decides it. "וידאו" alone, a bare "meet" and
+  "teams" stay off the list, because a false hit tells a room nobody needs to
+  know where they are going (`incidents.md`, "Where do we meet, on Zoom").
 
 - **The room says that people have not answered only about people she has
   actually written to** (owner, 2026-09-22; `group-meetings.statusOf` puts
@@ -465,6 +530,18 @@ have already had to be argued for.
   `waitingFor` short of `asked - answered` would be a new false sentence in place
   of the old one. Inert until the gateway is restarted, like everything else in
   that plugin.
+  **…and a result the room has already HEARD is marked, so it is not said
+  again** (2026-09-23). After the poker was confirmed in פחם הסעות and the
+  room had its "סגור" line, she ended seven replies in a row with "the poker
+  is on Friday at noon, on Zoom". Those replies were to jokes, to "I have no
+  tool for that", and to being told off about her Hebrew. The block showed a
+  confirmed `lastCoordination` and nothing said it was old news, so it was the
+  one fact always there to fall back on. `lastCoordination.roomHeard` is `true`
+  only when `meetings.group_done_at` is stamped, which is the column the
+  room's own line writes. `CONTEXT_RULE` says to repeat it only when asked,
+  never as the tail of a reply about something else. Confirmed-but-unannounced
+  carries no flag, because that result is still news
+  (`incidents.md`, "The poker, seven times").
 
 - **A message in the room with no tag on it is ENDED, never answered — and the
   window it opens is the point.** The owner asked twice (2026-09-19) for writing
@@ -545,3 +622,16 @@ have already had to be argued for.
   because "החלפתי" would be false and a time leaving the table has a line of its
   own. The joiner is a dash, not a comma: their sentence keeps its own
   punctuation and a comma after a full stop is what that looks like.
+
+- **A joke in the room is answered with a joke, built only from what the room
+  said** (owner, 2026-09-23). Bar tagged her in פחם הסעות, asking if she could
+  tease Miron for losing yesterday. She answered with a refusal and an
+  explanation ("לא נאמר לי שהוא הפסיד, ולא אמציא לו"). The owner said
+  laughing with him a little is fine. `agents-group-template.md` now allows
+  one short, good-natured line back. The limits are the ones the room already
+  has: nothing invented, nothing from a private chat, nobody really mocked.
+  A premise a member wrote in the room is the room's own words, so a joke
+  about it passes on nothing. Doctrine only,
+  because there is no state to draw: it is a judgement about tone, and
+  `resync-agent-templates.js` carries it to every room on deploy
+  (`incidents.md`, "The room's joke got a lecture").

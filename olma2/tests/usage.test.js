@@ -85,6 +85,15 @@ test('an unpriced model falls back to the blended rate and says so', () => {
   assert.equal(p.estimated, true, 'the dashboard has to be able to mark a guess as a guess');
 });
 
+// Matching is by substring, so a snapshot whose id CONTAINS the incumbent's is
+// priced as the incumbent unless it has a row of its own. v4-flash-0731 bills
+// output at ~4x v4-flash; borrowing the wrong row understates a pilot's cost.
+test('a dated snapshot is priced as itself, not as the model its id contains', () => {
+  assert.equal(pricing.rateFor('openrouter/deepseek/deepseek-v4-flash-0731').key, 'deepseek/deepseek-v4-flash-0731');
+  assert.equal(pricing.rateFor('openrouter/deepseek/deepseek-v4-flash').key, 'deepseek/deepseek-v4-flash');
+  assert.equal(pricing.rateFor('deepseek/deepseek-v4.1-flash').key, 'deepseek/deepseek-v4.1-flash');
+});
+
 // ---- the three failures migration 010 exists for -----------------------------
 
 test('cost comes from the transcript, not from the context-size gauge', async () => {

@@ -125,6 +125,24 @@ title means this file. Grep the title, not the filename.
   miss is audited too (`turn.duplicate_open_skipped`) — a check that goes
   quiet is indistinguishable from one that never ran.
 
+- **A block written to REPLACE a tool call has to say what it does not hold,
+  or its silence is read as the answer.** The Turn context's `today` block
+  lists only what is dated on or before today, and its hint said to answer
+  "מה על הפרק" from it and that "empty lists mean nothing is filed" — so "מה
+  פתוח לי?" from somebody whose to-dos have no date was answered "הכל נקי",
+  with no tool called (eval runs 84 and 86, 2026-09-24; 6 of 25 real people
+  had only undated to-dos that night). `turn.todayBlock` now carries `undated`,
+  a COUNT like `overdue`, and the hint sends a question about what is OPEN to
+  `list_my_tasks` (`incidents.md`, "Three reds the model did not earn, and one
+  it did"). Anything else added to the opening to save a tool call owes the
+  same sentence about its edges. **The count and the hint were not enough**:
+  run 87 still answered "יום פנוי לגמרי" in 1 of 5 trials with `undated: 2`
+  in front of it. So the question is now read by CODE — the turn-open hook's
+  `asksOpenList` (a question about their list with no day in it; 8 hits in
+  879 real messages, every one right) sends `openList`, and `turn.advise`
+  leaves the `today` block OUT of that turn. An empty day that is not there
+  cannot be read as an empty list. Needs a gateway restart, like every hook.
+
 - **`messages.queue.mode` stays `followup`.** The gateway default, `steer`,
   pushes a message that arrives mid-turn INTO the running turn and cancels
   the tool calls the model just made ("Skipped due to queued user message").
@@ -326,6 +344,19 @@ title means this file. Grep the title, not the filename.
   same way `INTERNAL_NAMES` is — a verb or a noun goes on it because a real
   message carried it, and every count in the module header names what the
   pattern was measured against.
+  **…and since 2026-09-23 the working-out is caught in Hebrew too**
+  (`incidents.md`, "The working-out arrived in Hebrew"). Every drop tier was
+  English, so Miron got thirteen lines of "אני צריך להבין… אכתוב לו ש…" and
+  the gate said `pass`. `reply-leak.hebrewStepIn` drops the model's first-person
+  next step ("אני צריך/צריכה ל" plus a closed verb list). On 2,697 real messages
+  over 21 days it changed 3, all working-out, and 0 real replies. **The verbs
+  Olma says TO somebody stay off the list** — לדעת, לבדוק, לוודא — and the
+  test holds those sentences. The reader-in-the-third-person shape is REPORTED
+  as `hebrew-narration`, never dropped: its only hit was a message the step
+  already cancels, and its tells are also in real relays. **And a block name
+  is ours even inside quotation marks** — `BLOCK_RE` reads the raw line as
+  well, because `scannable` strips quotations and Miron's leak quoted
+  "Reply target of current user message".
 
 - **The last tier's missing input was not a pattern, it was the READER**
   (2026-09-22; `incidents.md`, "The gate had no idea who was reading"). The

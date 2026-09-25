@@ -96,6 +96,15 @@ const MODELS = [
   // fallback cannot bypass unavailable profiles" — and a pilot on it is
   // twelve errors in three minutes. Same weights, funded provider.
   'openrouter/anthropic/claude-haiku-4.5',
+  // DeepSeek's next generation, 2026-09-23, registered to be judged on
+  // QUALITY and SPEED against the incumbent — money is ~$3/month either way.
+  // `supported_parameters` read first, per the rule above: both carry `tools`.
+  // v4.1-flash (2026-09-10) is a new architecture and a reasoning model, so
+  // the axis to watch is wall clock: v4-pro was correct and 1.4-3x slower,
+  // and was set aside for exactly that. v4-flash-0731 is the incumbent's own
+  // newer snapshot, the smallest possible step.
+  'openrouter/deepseek/deepseek-v4.1-flash',
+  'openrouter/deepseek/deepseek-v4-flash-0731',
 ];
 
 const APPLY = process.argv.includes('--apply');

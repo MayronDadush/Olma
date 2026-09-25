@@ -40,20 +40,49 @@
 // outage costs the cache and never a reply — so it stays on.
 // (`docs/incidents.md`, "The pin held the order and the cache still died".)
 //
+// ── CORRECTED 2026-09-14: it was the provider, not the switching ─────────────
+// The 9/11 reading blamed rotation, and "same provider 54%" was mostly
+// StreamLake talking to StreamLake. By 9/14 DigitalOcean was serving 176 of
+// 177 calls — no rotation at all — and first-of-turn cache was still 25%.
+// A controlled probe (the same 24k-token prompt sent to one provider at a
+// time, cold, +3s, +90s, then six warm repeats) settled it:
+//   DigitalOcean  0 of 8 warm calls cached anything
+//   StreamLake    8 of 8     Novita  8 of 8     Baidu  7 of 8
+// DigitalOcean does not keep a prefix cache for this model, so no order with
+// it at the head can ever cache. It had also stopped being the cheap one:
+// $0.098/M input that day, against StreamLake's $0.084 (cache reads $0.0168).
+// So Novita goes first: it caches, and it is US-headquartered, while the
+// cheaper ones that also cache (StreamLake, Baidu) are CN — for personal
+// data from Israeli users, with a Google verification in flight, that was
+// the owner's call over roughly 40% on the model line. StreamLake is second.
+// `allow_fallbacks` stays true.
+//
+// `data_collection: "deny"` rides along: OpenRouter then skips any provider
+// that stores or trains on prompts, fallbacks included. Every provider tried
+// on 2026-09-15 (Novita, StreamLake, Baidu, DigitalOcean, DeepInfra) served
+// under it, so it costs nothing today — and that same result means nothing
+// here proves it FILTERS anyone; it is a stated policy, not a measured one.
+// (`docs/incidents.md`, "DigitalOcean never cached".)
+//
 // The knob is OpenClaw's own: `agents.defaults.models["openrouter/<model>"]
 // .params.provider` is forwarded as OpenRouter's request `provider` object
 // (docs: gateway/config-agents, "OpenRouter provider routing"). `order` is
 // tried in sequence; `allow_fallbacks: true` keeps every other provider
-// behind them, so a DigitalOcean outage costs the cache, never a reply.
+// behind them, so an outage at the head costs the cache, never a reply.
 // Slugs, not display names (OpenRouter /providers).
 //
 // `params` is not a hot-reload path — restart the gateway after writing.
 // Then prove it on a real generation, never on the file:
 //   curl -s -H "Authorization: Bearer $OPENROUTER_API_KEY" \
 //     https://openrouter.ai/api/v1/generation?id=<responseId from a transcript>
-// must say provider_name "DigitalOcean". model-pricing.js carries that
-// provider's rates for new ledger rows (the ledger is append-only; earlier
-// rows keep the blended rate they were written with).
+// must say provider_name "Novita".
+//
+// model-pricing.js is NOT moved with this, on purpose: the admin cost page
+// re-prices every ledger row at the table's CURRENT rate, so changing the
+// flash rate restates the whole history on the page (tests/cost-repricing
+// caught it). Until rates carry an effective date, new Novita calls read
+// about half their real price there — OpenRouter's own dashboard is the
+// number to trust meanwhile.
 //
 // Usage: node scripts/pin-openrouter-provider.js [--apply] [--reset]
 //   --reset deletes params.provider (back to OpenRouter's own routing)
@@ -63,10 +92,10 @@ const occ = require('../src/intake/openclaw-config');
 const APPLY = process.argv.includes('--apply');
 const RESET = process.argv.includes('--reset');
 const MODEL = 'openrouter/deepseek/deepseek-v4-flash';
-// Cheapest first; the next two are the ones OpenRouter was already using,
-// both with cache pricing published, so a fallback is the old world at the
-// old price rather than a stranger.
-const ORDER = ['digitalocean', 'streamlake', 'deepinfra'];
+// Only providers that were MEASURED keeping a prefix cache (see the 9/14
+// correction above), US-headquartered first. DigitalOcean is deliberately
+// absent: it is still reachable as a fallback, it just never leads.
+const ORDER = ['novita', 'streamlake'];
 
 const cfg = occ.loadConfig();
 cfg.agents = cfg.agents || {};
@@ -78,7 +107,7 @@ const before = entry.params && entry.params.provider ? JSON.stringify(entry.para
 if (RESET) {
   if (entry.params) { delete entry.params.provider; if (!Object.keys(entry.params).length) delete entry.params; }
 } else {
-  entry.params = { ...(entry.params || {}), provider: { order: ORDER, allow_fallbacks: true } };
+  entry.params = { ...(entry.params || {}), provider: { order: ORDER, allow_fallbacks: true, data_collection: 'deny' } };
 }
 cfg.agents.defaults.models[MODEL] = entry;
 console.log(`${MODEL} params.provider:`, before, '->', RESET ? '(unset)' : JSON.stringify(entry.params.provider));
