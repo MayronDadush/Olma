@@ -468,6 +468,15 @@ const ACTIONS = {
     return meetingFanout.cancelAndTell(client, me, p.meetingId);
   },
 
+  // A settled time back on the table (owner, 2026-09-25) — anybody still in
+  // it, from the page as from the chat and the room, and the same fan-out:
+  // the others are told, the calendar event comes off, and every other answer
+  // stands (meetings.reopenMeeting says what "from where it stopped" means).
+  async reopenMeeting(client, userId, p) {
+    const me = await users.getById(client, userId);
+    return meetingFanout.reopenAndTell(client, me, p.meetingId);
+  },
+
   // The way back out of the archive. Leaving was one tap and reversing it was
   // nothing at all, which is a bad trade for an action whose commonest cause
   // is a mis-tap. `meetings.rejoin` refuses everything it should — a
@@ -678,7 +687,8 @@ const ACTIONS = {
       return err('forbidden', 'you have used both your calls',
         { reason: 'attempts_exhausted', ...attempts });
     }
-    const res = await voice.requestCall(client, user, {}, { maxDurationSec: voice.CALL_MAX_DURATION_SEC });
+    const res = await voice.requestCall(client, user, {},
+      { maxDurationSec: voice.CALL_MAX_DURATION_SEC, capped: true });
     if (res.ok) await voice.recordCallAttempt(client, user.id);
     return res;
   },

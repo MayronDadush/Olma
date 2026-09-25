@@ -330,6 +330,12 @@ module.exports = [
     // The whole cancellation — who is told, the calendar, the queued rows —
     // lives in meeting-fanout, where the personal page reaches it too.
     (client, user, a) => meetingFanout.cancelAndTell(client, user, a.meeting_id)),
+  // A settled time back on the table, carried on from where it stopped (owner,
+  // 2026-09-25): every other answer stands. The room and the page reach the
+  // same fan-out.
+  tool('reopen_meeting', 'Reopen a CONFIRMED meeting you are in (before it starts) so its time can change — anyone in it may. Other times and answers stay; the set time is asked again. Everyone is told; the calendar event is removed.',
+    { meeting_id: S('number', 'Meeting id') }, ['meeting_id'],
+    (client, user, a) => meetingFanout.reopenAndTell(client, user, a.meeting_id)),
   tool('set_meeting_title', 'Rename a meeting you are in ("שיחה על הפרויקט") — anyone in it may. The name is what everyone\'s invites and calendars show, so keep it in the user\'s words. Works while negotiating or after confirmation.',
     { meeting_id: S('number', 'Meeting id'), title: S('string', 'The new name, in the user\'s language') },
     ['meeting_id', 'title'],

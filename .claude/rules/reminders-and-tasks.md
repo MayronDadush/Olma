@@ -272,6 +272,22 @@ title means this file. Grep the title, not the filename.
   הפגישה" line say "anyone in it"; a test still asserting "initiator only" is
   asserting the old product.
 
+- **A settled coordination can be REOPENED, and it carries on from where it
+  stopped** (owner, 2026-09-25). `meetings.reopenMeeting` is the one writer
+  that moves `confirmed` back to `negotiating`. Anybody still in it may call
+  it, before the start. It is reached through `meeting-fanout.reopenAndTell`
+  from `reopen_meeting`, `reopen_group_coordination` and the page's
+  `reopenMeeting`.
+  - **Every other option and every answer stays.** Only the option it
+    settled on has its answers cleared, or the next answer to anything would
+    settle straight back onto it.
+  - **Anything said once per SETTLING keys on the reopening too.**
+    `mconf`/`mexact`/`mtime` go through `meeting-fanout.roundOf`, and the
+    room's once-per-coordination lines go through `jobs/groups.idempotencyKeyFor`.
+    A key naming only the meeting swallows the second "סגור" in silence.
+    Any new once-per-settle message has to take the same suffix.
+  - `incidents.md`, "A settled time could not be changed, only cancelled".
+
 - **A time ADDED to it rides the same thing, as long as that thing has not gone
   out yet** (2026-09-20). `meeting-fanout.js`'s `fanout` folds a new
   `meeting_slot_proposed` into whichever `meeting_invite` /
@@ -455,11 +471,15 @@ title means this file. Grep the title, not the filename.
   because a reminder set for the evening before a named day disagrees with it
   on purpose. **Its limit is that it can only check words it was given**, and
   a model that omits the argument gets the behaviour that shipped the bug;
-  `add_task` alone is guarded. That is a CHOICE, not the budget: the same
-  argument on `edit_task`, `snooze_task` and `set_task_reminder` fits under
-  the ceiling since its third raise (`tests/tool-schema-budget.test.js` —
-  read the margin there, never from a number in prose), and is simply not
-  built yet.
+  since 2026-09-25 all four doors that date a live task carry it — `add_task`,
+  `snooze_task`, `edit_task` (a new `due_at` only) and `set_task_reminder`
+  (skipped under a heard chase, as on `add_task`) — with ONE shared string,
+  `WHEN_SAID` in `tools/_shared.js`, because each copy is paid for on every
+  turn. **A day the moment is measured FROM is stripped too**: "יום לפני יום
+  ראשון", "עד חמישי", "before Sunday", and "ערב שבת", which is FRIDAY — the
+  reader alone takes it for Saturday. A reminder is almost by definition not
+  on the day they name, so without that strip the fourth door refuses
+  ordinary speech (`incidents.md`, "The first day coming up").
 
 - **`due_at` is when the THING is; `remind_at` is the hour THEY named.** A task
   saved with a `due_at` arms its own reminder — an hour before a timed one,

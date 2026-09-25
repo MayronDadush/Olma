@@ -69,6 +69,7 @@ const EL_MODEL = process.env.EL_TTS_MODEL || 'eleven_v3'; // flash/turbo have NO
 // The pure half — voices, register switch, spoken name, greeting — is
 // lib/persona.js, where it can be tested without a phone. Only the database
 // read stays here.
+const dialGate = require('./lib/dial-gate');
 const { DEFAULT_PERSONA, personaVoice, gFor, spokenName, greetingText } = require('./lib/persona');
 async function loadPersona(userId) {
   const r = await pool.query(
@@ -821,21 +822,23 @@ const dialServer = http.createServer((req, res) => {
   let body = '';
   req.on('data', (c) => { body += c; if (body.length > 4096) req.destroy(); });
   req.on('end', async () => {
-    let phone = null, maxDurationSec = null;
+    let phone = null, maxDurationSec = null, capped = false;
     try {
       const parsed = JSON.parse(body);
       phone = parsed.phone;
+      capped = parsed.capped === true;
       // Never allowed to RAISE the cap above the bridge's own default — only
       // to lower it. A caller sending garbage or a number above the ceiling
       // is treated as not having asked at all, so onStart's own default holds.
       const n = Number(parsed.maxDurationSec);
       if (Number.isFinite(n) && n > 0 && n <= 600) maxDurationSec = Math.floor(n);
     } catch {}
-    // Two gates, deliberately separate: the allowlist says who the FEATURE is
-    // open to, the users table says the row is real, active and callable. The
-    // 403 wording is unchanged so domain/voice.js's message to the user, and
-    // its test, keep meaning what they said.
-    if (!phone || !VOICE_PHONES.includes(phone)) return reply(403, { ok: false, error: 'voice calls are not enabled for this user yet' });
+    // Two gates, deliberately separate: lib/dial-gate says who the FEATURE is
+    // open to (the list, or anybody on a capped dial), the users table says
+    // the row is real, active and callable. The 403 wording is unchanged so
+    // domain/voice.js's message to the user, and its test, keep meaning what
+    // they said.
+    if (!dialGate.admits({ phone, capped, maxDurationSec }, VOICE_PHONES)) return reply(403, { ok: false, error: 'voice calls are not enabled for this user yet' });
     if (!TW_SID || !TW_TOKEN) return reply(500, { ok: false, error: 'no twilio credentials on the bridge' });
     let user;
     try { user = await loadUserByPhone(phone); } catch (e) { log('dial lookup failed:', e.message); return reply(500, { ok: false, error: 'lookup failed' }); }

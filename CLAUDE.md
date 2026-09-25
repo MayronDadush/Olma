@@ -221,6 +221,7 @@ Loads when you **Read** a file under `src/domain/reminders.js`, `src/domain/task
 - **A time ADDED to it rides the same thing, as long as that thing has not gone out yet** — four messages in sixty-two seconds is what queueing beside it looks like
 - **A negotiation message WAITS a quarter of an hour behind the last one that reached that person, and everything meanwhile folds into it** — the fold already existed and `urgent` never let it run; a RESULT never waits.
 - **Opening a coordination is not a subscription to every answer in it** — a decline and an exit stop being messages of their own; the reason moves from a push to a pull.
+- **A settled coordination can be REOPENED and carries on from where it stopped** — `meetings.reopenMeeting`, anybody in it, before the start; only the settled option's answers are cleared; every once-per-settle key carries the reopening (`meeting-fanout.roundOf`, `jobs/groups.idempotencyKeyFor`) or the second "סגור" is swallowed.
 - **Nobody manages a coordination** — `initiator_id` is who opened it and grants nothing: anybody still in it settles, renames, cancels (in the chat or the room) or leaves; its ending rides the next digest (`crossUser.closedMeetings`) or, in passing, whatever she says first (`digest.unheardClosedMeetings`, said once between them), never a message of its own; and leaving a confirmed one takes it off THEIR calendar only (`calendar.removeMeetingAttendee`) — the event is never deleted from under the others.
 - **An explicit reminder replaces the automatic one only on the SAME local day; on another day it stands beside it.**
 - **An event is SAID, never only guessed, and it is never told back as a task.**
@@ -229,7 +230,7 @@ Loads when you **Read** a file under `src/domain/reminders.js`, `src/domain/task
 - **A model asked to date something must first be told what time it is.**
 - **A title need not restate the hour the row now carries, but only the SERVER may take it out.**
 - **A day named with ל־ in a title dates the THING, not the task.**
-- **…and a weekday they SAID travels with the time, so the two can be checked against each other** — `add_task`'s `when_said`, refused before the write; ל־ is stripped first, because that shape dates the object.
+- **…and a weekday they SAID travels with the time, so the two can be checked against each other** — `when_said` on all four doors that date a task, refused before the write; ל־ and a day the moment is measured FROM ("ערב לפני", "עד", "ערב שבת") are stripped first.
 - **`due_at` is when the THING is; `remind_at` is the hour THEY named.**
 - **A calendar event reminds NOBODY, and `create_calendar_event`'s result says so rather than leaving it to be guessed** — `add_task kind:'event'` is what arms one, and `eventIdFor` hashes the instant so the same moment saved both ways is one entry.
 - **Everyone on a shared task is equal, and a write on it is made AS its owner** — "delete" with others on it is leaving, and only the last one left can archive.

@@ -5,7 +5,7 @@
   "description": "Olma on a phone call: Twilio media streams in, Hebrew STT/TTS, the real domain functions",
   "scripts": {
     "test": "node --test 'tests/*.test.js'",
-    "check": "node --check server.js && node --check lib/persona.js && node --check lib/env.js"
+    "check": "node --check server.js && node --check lib/persona.js && node --check lib/env.js && node --check lib/dial-gate.js"
   },
   "engines": {
     "node": ">=24"

@@ -117,7 +117,23 @@ const { IDENTITY_PARAM } = require('../src/adapters/mcp/identity-param');
 // own block could not answer and the model needs a way to pass the places the
 // room NAMED. Folded into the existing status tool rather than a new one, which
 // would have cost ~500. PUT TO THE OWNER WITH ITS COST BEFORE MERGING.
-const JSON_CEILING = 59_650;
+//
+// Raised the sixth time, the same day: 59,650 -> 60,450, for reopening a
+// settled coordination in both places (owner: "צריך להוסיף כלי כזה לדאשבורד
+// לשיחה הפרטית ולשיחה בקבוצה"). `reopen_meeting` and
+// `reopen_group_coordination`, +784 between them, the room's guidance in
+// `hints`. Put to the owner with its cost and approved together with the
+// raise above ("מאשר את שתי התקרות").
+//
+// Raised the seventh time, 2026-09-26: 60,450 -> 60,750, at the owner's
+// choice over trimming guidance elsewhere, for `when_said` on the three doors
+// `add_task`'s paragraph above says were left open — `snooze_task`,
+// `edit_task`, `set_task_reminder`. The margin that paragraph counted (891)
+// was spent by the raises just above before this could use it. ~280 chars:
+// one shared, shortened string (`WHEN_SAID` in tools/_shared.js) and a
+// duplicated offset example taken off `add_task`'s `due_at`, which the
+// description already carries. Measured 60,656 after, margin 94.
+const JSON_CEILING = 60_750;
 const DESCRIPTION_CEILING = 700;
 const IDENTITY_DESCRIPTION_CEILING = 40;
 
