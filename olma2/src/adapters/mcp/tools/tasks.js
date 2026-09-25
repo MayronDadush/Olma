@@ -1,7 +1,7 @@
 'use strict';
 // tasks — one slice of the tool registry (see ../registry.js).
 const {
-  tasks, users, reminders, dashboardAuth, S, tool, ok, pastMoment,
+  tasks, users, reminders, dashboardAuth, S, tool, ok, pastMoment, WHEN_SAID,
 } = require('./_shared');
 const dt = require('../../../domain/datetime');
 const chaseDeadline = require('../../../domain/chase-deadline');
@@ -263,11 +263,11 @@ module.exports = [
       kind: S('string', 'event | todo ("פגישה מחר ב-10" = event, "לקבוע פגישה" = todo); omitted = guessed from the title'),
       location: S('string', 'Where an event is — never in the title'),
       category: S('string', 'home|work|family|health|money|errands; omit unless the person named one (worked out from the title).'),
-      due_at: S('string', 'Optional ISO-8601 datetime WITH UTC offset, e.g. 2026-08-20T09:00:00+03:00'),
+      due_at: S('string', 'Optional, ISO-8601 with offset as above'),
       ends_at: S('string', 'Optional end of a range, same format: a shift is title \'משמרת\', due_at 12:00, ends_at 19:00 — never hours in the title.'),
       remind_at: S('string', 'The hour THEY named to be reminded, same format. Replaces the automatic one.'),
       nudge: S('boolean', 'They asked to be chased until it is done ("עד שאעשה"): one a day up to due_at'),
-      when_said: S('string', 'Their own words naming WHEN, copied not retold. A weekday in them is checked against the date you resolved; a mismatch refuses the save.'),
+      when_said: WHEN_SAID,
       parent_task_id: S('number', 'Optional parent (project) id') }, ['title'],
     async (client, user, a, ctx) => {
       // Same guard set_task_reminder already has for remind_at — a model
@@ -342,11 +342,18 @@ module.exports = [
     { task_id: S('number', 'Task id') }, ['task_id'],
     (client, user, a) => tasks.completeTask(client, user.id, a.task_id)),
   tool('snooze_task', 'Move a task\'s due date; its reminders follow (a rung chasing the old date is closed, the automatic one re-arms an hour before the new one). new_due_at MUST carry a UTC offset (2026-08-20T09:00:00+03:00); a bare local time is rejected.',
-    { task_id: S('number', 'Task id'), new_due_at: S('string', 'New ISO-8601 datetime WITH UTC offset') }, ['task_id', 'new_due_at'],
+    { task_id: S('number', 'Task id'), new_due_at: S('string', 'New ISO-8601 datetime WITH UTC offset'),
+      when_said: WHEN_SAID }, ['task_id', 'new_due_at'],
     async (client, user, a) => {
       if (reminders.momentIsPast(a.new_due_at)) {
         return pastMoment('new_due_at', a.new_due_at, user.timezone, 'the task was not moved');
       }
+      // The same words-against-the-date check add_task makes, on the other
+      // three doors that date a live task: "תזיז את זה ליום ראשון" is the
+      // founding sentence's shape, only on a row that already exists.
+      const clash = dt.taskWeekdayClash('new_due_at', a.when_said, a.new_due_at, user.timezone,
+        'the task was not moved');
+      if (clash) return clash;
       const res = taskHints(await tasks.snoozeTask(client, user.id, a.task_id, a.new_due_at), user);
       // Deliberately NOT inside `taskHints`: add_task and edit_task go through
       // it too and both earn a 👍, and an unconditional "say this" beside a
@@ -362,7 +369,8 @@ module.exports = [
       location: S('string', 'Where an event is; null clears it'),
       category: S('string', 'One of home|work|family|health|money|errands — only when the person named it; marks it as their choice.'),
       due_at: S('string', 'Optional new start, ISO-8601 WITH UTC offset'),
-      ends_at: S('string', 'Optional new end, ISO-8601 WITH UTC offset, after due_at.') }, ['task_id'],
+      ends_at: S('string', 'Optional new end, ISO-8601 WITH UTC offset, after due_at.'),
+      when_said: WHEN_SAID }, ['task_id'],
     (client, user, a) => {
       // Miron, 2026-09-12: edit_task's due_at had no past-moment guard at
       // all, unlike set_task_reminder's remind_at — a wrong instant (UTC
@@ -372,6 +380,13 @@ module.exports = [
       // him "ב-16:41 אשלח לך תזכורת" over a row that could never fire.
       if (a.due_at && reminders.momentIsPast(a.due_at)) {
         return pastMoment('due_at', a.due_at, user.timezone, 'the task was not changed');
+      }
+      // Only a new START is compared: an edit of the title alone has no moment
+      // to disagree with, and `ends_at` is not a day anybody names.
+      if (a.due_at) {
+        const clash = dt.taskWeekdayClash('due_at', a.when_said, a.due_at, user.timezone,
+          'the task was not changed');
+        if (clash) return clash;
       }
       return tasks.editTask(client, user.id, a.task_id, {
         ...(a.title === undefined ? {} : { title: a.title }),

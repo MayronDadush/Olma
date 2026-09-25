@@ -4398,6 +4398,20 @@ whole content of that message is two weekdays and a correction about a model
 getting a weekday wrong, which is the last sentence anybody should hand to a
 model to phrase.
 
+**2026-09-25: the other three doors.** `snooze_task`, `edit_task` and
+`set_task_reminder` took the same argument once the owner chose raising the
+schema ceiling (59,500 -> 59,800) over trimming guidance elsewhere; the margin
+this entry's paragraph above called too small had been 891 for a day, and
+seven room tools spent it before this could. Wiring the reminder door found
+what one door had hidden: a reminder is almost never ON the day the person
+names — "תזכיר לי ערב לפני יום ראשון" is the ordinary sentence — and "ערב
+שבת" is Friday, which the reader took for Saturday. Both were refusals of
+ordinary speech waiting on `add_task` too (a task with only a `remind_at` is
+checked against it). `taskWeekdayClash` now strips a day that the moment is
+measured FROM — לפני / אחרי / עד, before / after / until, and ערב שבת — the
+same way it strips ל־. "ערב שישי" is left compared: in ordinary speech that
+is Friday EVENING, not the eve of Friday.
+
 ### The reminder that was only a sentence (fixed 2026-09-22)
 
 עמית, 2026-09-15, 16:44 Israel:

@@ -109,7 +109,16 @@ const { IDENTITY_PARAM } = require('../src/adapters/mcp/identity-param');
 // than the total says: a room's agent is shown only group tools and a
 // person's only theirs (`intake/agent-tool-policy.js`). Margin 93 — not one
 // more ordinary tool, again.
-const JSON_CEILING = 59_500;
+//
+// Raised the fifth time, the same day: 59,500 -> 59,800, at the owner's
+// choice over trimming guidance elsewhere, for `when_said` on the three doors
+// `add_task`'s paragraph above says were left open — `snooze_task`,
+// `edit_task`, `set_task_reminder`. The margin that paragraph counted (891)
+// was spent by the raise just above before this could use it. Measured 59,452
+// before and 59,730 after: one shared, shortened string (`WHEN_SAID` in
+// tools/_shared.js) and a duplicated offset example taken off `add_task`'s
+// `due_at`, which the description already carries. Margin 70.
+const JSON_CEILING = 59_800;
 const DESCRIPTION_CEILING = 700;
 const IDENTITY_DESCRIPTION_CEILING = 40;
 

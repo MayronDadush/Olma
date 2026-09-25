@@ -167,9 +167,22 @@ function weekdayClash(label, text, startsAt, tz) {
 // refuse.
 const HE_FOR_WEEKDAY_STRIP = /(?:^|\s)ל(?:יום\s+)?(?:ראשון|שני|שלישי|רביעי|חמישי|שישי|שבת)(?![\u0590-\u05FF])/gu;
 
+// The same reasoning for a day the moment is measured FROM rather than ON.
+// "יום לפני יום ראשון", "עד חמישי", "after Sunday" name an anchor, and the
+// moment is somewhere else by construction — which set_task_reminder meets on
+// every "תזכיר לי ערב לפני". And "ערב שבת" is FRIDAY: the eve of the day, not
+// the evening of it, so the reader's Saturday is simply wrong there. Only שבת
+// has that reading — "ערב שישי" is Friday evening in ordinary speech, and
+// stays compared.
+const HE_ANCHORED_WEEKDAY_STRIP = new RegExp('(?:^|\\s)(?:ב?ערב\\s+ה?שבת|(?:לפני|אחרי|עד)\\s+(?:ה?יום\\s+)?ה?'
+  + '(?:ראשון|שני|שלישי|רביעי|חמישי|שישי|שבת))(?![\\u0590-\\u05FF])', 'gu');
+const EN_ANCHORED_WEEKDAY_STRIP = /\b(?:before|after|until|till)\s+(?:the\s+)?(?:sun|mon|tue|wed|thu|fri|sat)[a-z]*/giu;
+
 function taskWeekdayClash(label, text, startsAt, tz, note) {
   if (typeof text !== 'string') return null;
-  const clash = weekdayClash(label, text.replace(HE_FOR_WEEKDAY_STRIP, ' '), startsAt, tz);
+  const words = text.replace(HE_ANCHORED_WEEKDAY_STRIP, ' ')
+    .replace(EN_ANCHORED_WEEKDAY_STRIP, ' ').replace(HE_FOR_WEEKDAY_STRIP, ' ');
+  const clash = weekdayClash(label, words, startsAt, tz);
   // `note` says what did NOT happen, in the words the sibling refusals on this
   // path use (`pastMoment`). A refusal that describes only the disagreement
   // leaves the model to guess whether the row went in, and guessing wrong
