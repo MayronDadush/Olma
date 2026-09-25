@@ -24,6 +24,8 @@ const users = require('../domain/users');
 const meetings = require('../domain/meetings');
 const hebrewQuality = require('../domain/hebrew-quality');
 const { DEFAULT_CARD_MIN_ITEMS } = require('../domain/digest-block');
+const quietFacts = require('../domain/quiet-facts');
+const dt = require('../domain/datetime');
 
 // digest-block-relayed-untouched: one line short of a picture (see there).
 const BLOCK_TITLES = ['לשלם ארנונה', 'להחזיר את הטופס לגן', 'לתקן את הדוד'].slice(0, DEFAULT_CARD_MIN_ITEMS - 1);
@@ -189,6 +191,30 @@ async function count(client, sql, params) {
   return Number(rows[0].n);
 }
 
+// The first rung of a chase, held to "inside a day" — unless tomorrow is a day
+// they keep, which a daily chase SKIPS (reminders.movesOffQuietDay, the
+// owner's 2026-09-22 ruling). Asked on a Friday evening, the right first
+// message is Sunday morning, and run 96 (2026-09-25, 22:00 local) went red on
+// exactly that: a weekday the scenario happened to run on, not the model
+// (rules/testing.md). The kept day comes from the function the chase itself
+// was moved by, never a second copy of the calendar here.
+async function firstChaseInTime(client, ctx, now = new Date()) {
+  const { rows } = await client.query(
+    `SELECT min(r.remind_at) AS first FROM task_reminders r JOIN tasks t ON t.id = r.task_id
+      WHERE COALESCE(r.user_id, t.owner_id) = $1
+        AND r.repeat_until IS NOT NULL AND r.cancelled_at IS NULL`, [ctx.userId]);
+  const first = rows[0] && rows[0].first ? new Date(rows[0].first) : null;
+  if (!first) return false;
+  if (first.getTime() < now.getTime() + 24 * 3600 * 1000) return true;
+  const { rows: u } = await client.query('SELECT id, timezone, locale FROM users WHERE id = $1', [ctx.userId]);
+  const tz = (u[0] && u[0].timezone) || 'UTC';
+  const p = dt.partsInZone(tz, now);
+  const tomorrowMorning = dt.instantInZone(tz, { y: p.y, m: p.m, d: p.d + 1, hh: 9, mi: 0, ss: 0 });
+  const kept = await quietFacts.keptMomentFor(client, u[0], tomorrowMorning);
+  if (!kept.movedFrom) return false;
+  return quietFacts.localDateInTz(tz, first) <= quietFacts.localDateInTz(tz, kept.at);
+}
+
 const SCENARIOS = [
   {
     id: 'stop-service',
@@ -339,14 +365,9 @@ const SCENARIOS = [
       // The day he asks counts. Asserted as "inside a day" rather than "today",
       // because at 23:00 local the first one is tomorrow morning and that is
       // correct — what must never happen again is the first one being six days
-      // out.
-      { name: 'the first one is inside a day, not next week',
-        pass: (await count(client,
-          `SELECT count(*)::int AS n FROM task_reminders r JOIN tasks t ON t.id = r.task_id
-            WHERE COALESCE(r.user_id, t.owner_id) = $1
-              AND r.repeat_until IS NOT NULL AND r.cancelled_at IS NULL
-              AND r.remind_at < now() + interval '24 hours'`,
-          [ctx.userId])) >= 1 },
+      // out. A quiet day in between is skipped, not counted (firstChaseInTime).
+      { name: 'the first one is inside a day (or the first kept day), not next week',
+        pass: await firstChaseInTime(client, ctx) },
       { name: 'the chase ends at the deadline and not after it',
         pass: (await count(client,
           `SELECT count(*)::int AS n FROM task_reminders r JOIN tasks t ON t.id = r.task_id
@@ -656,4 +677,4 @@ for (const s of SCENARIOS) {
   seen.add(s.id);
 }
 
-module.exports = { SCENARIOS, turnStartFirst, turnStartNotSpent, turnOpening, turnWasOpened, replyLanguage, herOwnVoice };
+module.exports = { SCENARIOS, firstChaseInTime, turnStartFirst, turnStartNotSpent, turnOpening, turnWasOpened, replyLanguage, herOwnVoice };
