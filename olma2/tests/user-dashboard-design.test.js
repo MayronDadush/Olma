@@ -264,3 +264,35 @@ test('every date control opens the one popover, and it has a years pane', () => 
   assert.match(page, /dgJump\("#mtOptDays", "#mtOptMon"\)/);
   assert.match(page, /dgJump\("#mtDays", "#mtDayMon"\)/);
 });
+
+// The first tab is the home page (the owner, 2026-09-26): a new person landed
+// on a grid of services, most of them "בקרוב", saw nothing of their own and
+// left without finding the tab bar.
+test('the home tab shows only what is live, and its two counts are doors', () => {
+  assert.match(page, /var SHOW_SOON = false;/,
+    'a greyed "soon" is still an offer — the live page draws none of them');
+  assert.match(page, /function hideSoon\(ready\)\{ return LIVE && !SHOW_SOON && !ready; \}/,
+    'design mode still draws everything; only a live page hides');
+  for (const site of [
+    /CHANNELS\.filter\(function\(c\)\{\s*return !hideSoon\(/,
+    /if\(hideSoon\(ok2\)\) return "";/,
+    /!hideSoon\(p\.connected \|\| provReady\(p\.id\)\)/,
+  ]) assert.match(page, site);
+  assert.match(page, /<button class="homecard" data-go="tasks">/);
+  assert.match(page, /<button class="homecard" data-go="cal">/);
+  const tasks = page.slice(page.indexOf('function renderTasks(){'));
+  assert.match(tasks.slice(0, tasks.indexOf('\n  }\n')), /renderHome\(\);/,
+    'the count moves with the list it counts');
+  const meets = page.slice(page.indexOf('function renderMeets(){'));
+  assert.match(meets.slice(0, meets.indexOf('\n  }\n')), /renderHome\(\);/);
+  assert.match(page, /var nT = \(open \|\| \[\]\)\.length, nM = \(MEETS \|\| \[\]\)\.length;/,
+    'the same arrays the tabs draw — the server already decided what is open and active');
+});
+
+test('the tab bar is pointed at once per device, and never on the stranger screen', () => {
+  assert.match(page, /localStorage\.getItem\("olma-navhint"\) === "1"/);
+  assert.match(page, /if\(NEWUSER\) startWelcome\(\); else \{ startIntro\(\); navHint\(\); \}/);
+  assert.match(page, /\.tabbar\.hinted\{animation:navPulse/);
+  assert.match(page, /\.navhint,\.navhint\.out,\.tabbar\.hinted\{animation:none\}/,
+    'less motion means no pulse');
+});

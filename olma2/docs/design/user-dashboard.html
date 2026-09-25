@@ -427,6 +427,7 @@ html.intro-go [data-stage="1"] .glabel{animation:introUp .5s var(--ease) .06s bo
 /* DOM order IS reading order in both directions, so one index serves rtl and
    ltr alike */
 html.intro-go .chanrow > .chan{animation:introUp .5s var(--ease) both;animation-delay:calc(.1s + var(--ci,0) * .055s)}
+html.intro-go [data-stage="0"]{animation:introUp .5s var(--ease) .04s both}
 html.intro-go [data-stage="1b"]{animation:introUp .5s var(--ease) .26s both}
 html.intro-go [data-stage="2"]{animation:introUp .5s var(--ease) .32s both}
 html.intro-go [data-stage="3"]{animation:introUp .5s var(--ease) .38s both}
@@ -780,6 +781,50 @@ button.row:active{background:var(--bg-tint)}
    These are doors — the place a conversation already lives — so they
    get the shape of app icons and sit at the very top of the page. */
 .chanrow{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+/* ── home: the two things she is holding for you ──
+   Two cards, each the door to its own tab. The number is the point, so it is
+   the largest thing on the card; the chevron says it goes somewhere, because
+   a new person does not yet know the tab bar is there. */
+.homecards{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:30px}
+.homeh{font-family:'Rubik',sans-serif;font-weight:700;font-size:20px;letter-spacing:-.01em;padding:0 2px 12px}
+.homecard{
+  position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:4px;
+  background:var(--surface);border-radius:20px;box-shadow:var(--shadow-m);
+  padding:16px 16px 15px;text-align:start;min-width:0;
+  transition:transform .38s var(--squash);
+}
+.homecard:active{transform:scale(.96)}
+.homecard .tile{width:38px;height:38px;border-radius:12px;margin-bottom:8px}
+.tile.hometasks{background:linear-gradient(160deg,#8C7BFF,#5B45E0)}
+.tile.homemeets{background:linear-gradient(160deg,#FF6E63,#E2382C)}
+.homenum{color:var(--text);font-family:'Rubik',sans-serif;font-weight:700;font-size:38px;line-height:1;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.homecard b{font-size:15px;font-weight:600;margin-top:2px}
+.homecard > i{font-style:normal;font-size:12.5px;color:var(--text-3);line-height:1.35;min-height:1.35em}
+.homecard > i.hot{color:var(--accent);font-weight:600}
+.homechev{position:absolute;top:22px;inset-inline-end:16px}
+@media (max-width:340px){.homenum{font-size:32px}.homecard{padding:14px 12px 13px}}
+/* The first visit points at the tab bar once. People who landed here from a
+   link did not know the bar was a menu, and left from the first screen. */
+.navhint{
+  position:fixed;inset-inline:0;margin-inline:auto;width:max-content;max-width:calc(100% - 32px);
+  bottom:calc(18px + 74px);z-index:61;
+  background:var(--text);color:var(--surface);border-radius:14px;padding:10px 16px;
+  font-size:14px;font-weight:600;box-shadow:var(--shadow-m);
+  animation:navHintIn .45s var(--ease) both;
+}
+.navhint::after{
+  content:"";position:absolute;bottom:-6px;inset-inline:0;margin-inline:auto;width:12px;height:12px;
+  background:inherit;transform:rotate(45deg);border-radius:2px;
+}
+.navhint.out{animation:navHintOut .25s var(--ease-io) both}
+@keyframes navHintIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@keyframes navHintOut{to{opacity:0;transform:translateY(6px)}}
+.tabbar.hinted{animation:navPulse 1.6s var(--ease-io) 2}
+@keyframes navPulse{
+  0%,100%{box-shadow:var(--shadow-m),var(--rim-soft)}
+  50%{box-shadow:var(--shadow-m),var(--rim-soft),0 0 0 6px var(--accent-soft)}
+}
+@media (prefers-reduced-motion:reduce){.navhint,.navhint.out,.tabbar.hinted{animation:none}}
 .chan{
   position:relative;
   background:var(--surface);border-radius:16px;box-shadow:var(--shadow-m);
@@ -2904,6 +2949,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
        tile here, rather than being tinted to ours. -->
   <symbol id="i-notion" viewBox="0 0 20 20"><path d="M4.1 3.6 13 3a1.4 1.4 0 0 1 1 .3l2.2 1.6c.3.2.4.5.4.8v9.5c0 .6-.4 1-1 1.1l-9.9.6a1.4 1.4 0 0 1-1.3-.7L3.6 15a1.4 1.4 0 0 1-.2-.8V4.7c0-.6.3-1 .7-1.1Z" fill="none" stroke="#141322" stroke-width="1.3" stroke-linejoin="round"/><path d="M7.1 7.1v5.6M7.1 7.1l4.4 5.4M11.5 7v5.5" fill="none" stroke="#141322" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-slack" viewBox="0 0 20 20"><rect x="8.6" y="2.2" width="3" height="8" rx="1.5" fill="#36C5F0"/><rect x="2.2" y="8.6" width="8" height="3" rx="1.5" fill="#2EB67D"/><rect x="8.4" y="9.8" width="3" height="8" rx="1.5" fill="#ECB22E"/><rect x="9.8" y="8.4" width="8" height="3" rx="1.5" fill="#E01E5A"/></symbol>
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="M4 10.6 12 4l8 6.6V19a1.8 1.8 0 0 1-1.8 1.8H15v-5.6H9v5.6H5.8A1.8 1.8 0 0 1 4 19z" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/></symbol>
   <symbol id="i-tools" viewBox="0 0 24 24"><path d="M4 7h9M17.5 7H20M4 17h3M11.5 17H20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/><circle cx="15.3" cy="7" r="2.5" fill="none" stroke="currentColor" stroke-width="1.9"/><circle cx="9.3" cy="17" r="2.5" fill="none" stroke="currentColor" stroke-width="1.9"/></symbol>
   <symbol id="i-list" viewBox="0 0 24 24"><path d="M4 6.6 5.7 8.4 9 5M4 16.6l1.7 1.8L9 15M12.5 7h7.5M12.5 17H20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-cal24" viewBox="0 0 24 24"><rect x="3.2" y="4.8" width="17.6" height="16" rx="4" fill="none" stroke="currentColor" stroke-width="1.9"/><path d="M3.2 9.6h17.6M8 3v3.2M16 3v3.2" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></symbol>
@@ -2996,8 +3042,28 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   <section class="view active" data-view="tools">
     <div class="title" style="--i:0">
       <h1 id="toolsH"></h1>
-      <p data-i18n="tools.p"></p>
+      <p data-i18n="home.p"></p>
     </div>
+    <!-- The home cards: what she is holding for you, one tap from its page.
+         A new person used to land on a grid of services, see nothing of their
+         own and leave without finding the tab bar (the owner, 2026-09-26). -->
+    <div class="homecards" data-stage="0">
+      <button class="homecard" data-go="tasks">
+        <span class="tile hometasks"><svg><use href="#i-list"/></svg></span>
+        <span class="homenum" id="homeTasksN">0</span>
+        <b id="homeTasksL"></b>
+        <i id="homeTasksSub"></i>
+        <svg class="chev homechev"><use href="#i-chev"/></svg>
+      </button>
+      <button class="homecard" data-go="cal">
+        <span class="tile homemeets"><svg><use href="#i-cal24"/></svg></span>
+        <span class="homenum" id="homeMeetsN">0</span>
+        <b id="homeMeetsL"></b>
+        <i id="homeMeetsSub"></i>
+        <svg class="chev homechev"><use href="#i-chev"/></svg>
+      </button>
+    </div>
+    <h2 class="homeh" data-stage="0" data-i18n="tools.h"></h2>
     <div class="stack" style="--i:1" id="toolsStack"></div>
   </section>
 
@@ -3337,7 +3403,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 
 <nav class="tabbar" role="tablist">
   <span class="tabpill" id="tabpill" aria-hidden="true"></span>
-  <button class="tab" role="tab" aria-selected="true" data-go="tools"><svg><use href="#i-tools"/></svg><span data-i18n="tab.tools"></span></button>
+  <button class="tab" role="tab" aria-selected="true" data-go="tools"><svg><use href="#i-home"/></svg><span data-i18n="tab.tools"></span></button>
   <button class="tab" role="tab" aria-selected="false" data-go="tasks"><svg><use href="#i-list"/></svg><span data-i18n="tab.tasks"></span></button>
   <button class="tab" role="tab" aria-selected="false" data-go="cal"><svg><use href="#i-cal24"/></svg><span data-i18n="tab.cal"></span></button>
   <button class="tab" role="tab" aria-selected="false" data-go="friends"><svg><use href="#i-people"/></svg><span data-i18n="tab.friends"></span></button>
@@ -4493,10 +4559,15 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
          until somebody says otherwise. */
       "brand.tagM":"ברוך הבא לעולם שלך","brand.tagF":"ברוכה הבאה לעולם שלך",
       "live":"{name} פעילה",
-      "tab.tools":"חיבורים","tab.tasks":"משימות","tab.cal":"יומן","tab.friends":"חברים","tab.me":"פרופיל",
+      "tab.tools":"בית","tab.tasks":"משימות","tab.cal":"יומן","tab.friends":"חברים","tab.me":"פרופיל",
 
       "tools.h":"החיבורים שלך",
-      "tools.p":"כאן מחברים את עולמה לשירותים שלך, ופותחים או סוגרים כל אחד בנפרד.",
+      "home.p":"עולמה עוזרת לך בוואטסאפ. כאן רואים את כל מה שהיא מחזיקה בשבילך.",
+      "home.tasks.n0":"משימות פתוחות","home.tasks.n1":"משימה פתוחה","home.tasks.nN":"משימות פתוחות",
+      "home.meets.n0":"תיאומי פגישה","home.meets.n1":"תיאום פגישה","home.meets.nN":"תיאומי פגישה",
+      "home.tasksNone":"אין כרגע","home.meetsNone":"אין כרגע",
+      "home.tasksToday":"{n} להיום","home.tasksGo":"לרשימה המלאה","home.meetsGo":"לכל התיאומים",
+      "nav.hint":"כאן למטה עוברים בין העמודים",
       "tools.accounts":"חשבונות","tools.accountsHint":"התחברות אחת לכל ספק",
       "tools.work":"עבודה",
       "ch.h":"איפה מדברים","ch.hint":"לחיצה פותחת את השיחה",
@@ -4527,6 +4598,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "n.pages":"דפים ותתי־דפים","n.dbs":"בסיסי נתונים ומשימות",
 
       "off.google":"יומן, אנשי קשר, Gmail, Drive ו־Keep",
+      "off.googleLive":"יומן ואנשי קשר","off.googleLiveMail":"יומן, אנשי קשר ו־Gmail",
       "off.apple":"iCloud — יומן, אנשי קשר, מייל ופתקים",
       "off.ms":"Outlook — יומן, אנשי קשר ומייל",
       "off.monday":"לוחות ומשימות מהעבודה",
@@ -4825,10 +4897,15 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
          rather than the caller having to know which languages inflect. */
       "brand.tagM":"Do it all. Do it Allma","brand.tagF":"Do it all. Do it Allma",
       "live":"{name} is on",
-      "tab.tools":"Connections","tab.tasks":"Tasks","tab.cal":"Calendar","tab.friends":"Friends","tab.me":"Profile",
+      "tab.tools":"Home","tab.tasks":"Tasks","tab.cal":"Calendar","tab.friends":"Friends","tab.me":"Profile",
 
       "tools.h":"Your connections",
-      "tools.p":"Connect Allma to your services here, and open or close each one on its own.",
+      "home.p":"Allma helps you on WhatsApp. Here you see everything she is holding for you.",
+      "home.tasks.n0":"open tasks","home.tasks.n1":"open task","home.tasks.nN":"open tasks",
+      "home.meets.n0":"meeting coordinations","home.meets.n1":"meeting coordination","home.meets.nN":"meeting coordinations",
+      "home.tasksNone":"Nothing right now","home.meetsNone":"Nothing right now",
+      "home.tasksToday":"{n} for today","home.tasksGo":"See the full list","home.meetsGo":"See them all",
+      "nav.hint":"Switch between pages down here",
       "tools.accounts":"Accounts","tools.accountsHint":"One sign-in per provider",
       "tools.work":"Work",
       "ch.h":"Where we talk","ch.hint":"Tap to open the chat",
@@ -4857,6 +4934,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "n.pages":"Pages and sub-pages","n.dbs":"Databases and their items",
 
       "off.google":"Calendar, Contacts, Gmail, Drive and Keep",
+      "off.googleLive":"Calendar and Contacts","off.googleLiveMail":"Calendar, Contacts and Gmail",
       "off.apple":"iCloud — Calendar, Contacts, Mail and Notes",
       "off.ms":"Outlook — Calendar, Contacts and Mail",
       "off.monday":"Boards and work items",
@@ -5854,6 +5932,14 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      does. On a live page it is only what the server can really do today, and
      the rest is greyed rather than left tappable. */
   var AVAIL = {prov:{}, mail:false, call:{allowed:false, attemptsUsed:0, attemptsLimit:2, requested:false}};
+  /* A greyed "בקרוב" is still an offer, and on the first screen a new person
+     sees it was most of what they saw: seven things they could not do beside
+     two they could (the owner, 2026-09-26). So on a live page anything that
+     would draw as "soon" is not drawn at all. Nothing below is deleted — the
+     greyed rendering is intact behind this flag, and true brings the page
+     back exactly as it was (git tag connections-home-before-2026-09-26). */
+  var SHOW_SOON = false;
+  function hideSoon(ready){ return LIVE && !SHOW_SOON && !ready; }
   function provReady(id){ return !LIVE || AVAIL.prov[id] === true; }
   /* The Google services this system has a domain module for. Drive and Keep
      are drawn because the account has them, not because we can read them —
@@ -5872,7 +5958,9 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 
   /* ── channels, side by side and first ── */
   function chanGroup(){
-    var cells = CHANNELS.map(function(c, i){
+    var cells = CHANNELS.filter(function(c){
+      return !hideSoon(c.call ? AVAIL.call.allowed === true : c.on);
+    }).map(function(c, i){
       /* A tile with nothing behind it is greyed and says so, rather than
          staying live and apologising after the tap. Linking a second identity
          to an account (a real user_channels row) has no path from here, and
@@ -5905,6 +5993,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     }).join("");
     /* no hint line here on purpose: each tile already says what it does, and
        one caption cannot describe both "open the chat" and "have Olma ring you". */
+    if(!cells) return "";
     return '<div data-stage="1"><div class="glabel"><span>' + esc(t("ch.h")) + "</span></div>" +
       '<div class="chanrow">' + cells + "</div>" + defaultPicker() + "</div>";
   }
@@ -6288,6 +6377,9 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   function foldBody(p){
     return '<div class="permgrid">' + p.svc.map(function(sv, i){
       var ok2 = svcReady(p, sv);
+      /* the index stays the service's own: data-svc and data-mode address
+         p.svc[i], so a skipped row must not renumber the ones after it */
+      if(hideSoon(ok2)) return "";
       return '<div class="permtxt' + (ok2 ? "" : " soon") + '"><b>' + esc(svcLabel(sv)) + "</b>" +
         (sv.sub ? "<span>" + esc(t(sv.sub)) + "</span>" : "") + "</div>" +
         '<div class="permctl" data-ctl="' + p.id + ":" + i + '">' +
@@ -6299,6 +6391,12 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       '<button class="linkbtn danger" data-disconnect="' + p.id + '" style="margin-top:14px;display:block">' +
       esc(t("disconnect")) + "</button>";
   }
+  /* The row names what connecting gives you, so with "soon" hidden it names
+     only what is live — Drive and Keep are not something to connect for. */
+  function offKey(p){
+    if(p.id !== "google" || !hideSoon(false)) return "off." + p.id;
+    return AVAIL.mail === true ? "off.googleLiveMail" : "off.googleLive";
+  }
   function provRow(p){
     if(!p.connected){
       var ready = provReady(p.id);
@@ -6306,7 +6404,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
         (ready ? "" : " soon") + '"' + (ready ? "" : " inert") + ">" +
         tileFor(p.tile, p.icon) +
         '<div class="row-txt"><div class="row-title">' + esc(p.name) + "</div>" +
-        '<div class="row-sub">' + esc(t("off." + p.id)) + "</div></div>" +
+        '<div class="row-sub">' + esc(t(offKey(p))) + "</div></div>" +
         (ready
           ? '<button class="connect" data-connect="' + p.id + '">' + esc(t("connect")) + "</button>"
           : '<span class="soonpill">' + esc(t("soon")) + "</span>") +
@@ -6339,7 +6437,13 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      expensive half. */
   var SHOW_WORK_TOOLS = false;
   function provGroup(grp, labelKey, hintKey, stage){
-    var rows = PROV.filter(function(p){ return p.grp === grp; }).map(provRow).join("");
+    var list = PROV.filter(function(p){
+      return p.grp === grp && !hideSoon(p.connected || provReady(p.id));
+    });
+    if(!list.length) return "";
+    var rows = list.map(provRow).join("");
+    /* "one sign-in per provider" says nothing when there is one provider */
+    if(list.length < 2) hintKey = null;
     return '<div' + (stage ? ' data-stage="' + stage + '"' : "") +
       '><div class="glabel"><span>' + esc(t(labelKey)) + "</span>" +
       (hintKey ? '<span class="hint">' + esc(t(hintKey)) + "</span>" : "") +
@@ -6362,6 +6466,26 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
         setTimeout(function(){ if(b.parentNode) b.remove(); }, 150);
       }
     });
+  }
+  /* ── home: the two counts, each a door to its own tab ──
+     Called from renderTasks and renderMeets, which already run on every
+     change and every pushed event, so the numbers can never lag the lists
+     they count. Both counts are the SAME arrays those tabs draw — the server
+     already decided what is open and what is active; nothing is re-cut here. */
+  function renderHome(){
+    /* renderTasks can run before the meetings seed further down the script
+       has been assigned, so an unassigned list counts as none */
+    if(!$("#homeTasksN")) return;
+    var nT = (open || []).length, nM = (MEETS || []).length;
+    var dueNow = (open || []).filter(function(x){ var b = bucketFor(x.d); return x.d && (b === "late" || b === "today"); }).length;
+    rollText($("#homeTasksN"), String(nT));
+    rollText($("#homeMeetsN"), String(nM));
+    $("#homeTasksL").textContent = pl("home.tasks", nT);
+    $("#homeMeetsL").textContent = pl("home.meets", nM);
+    var ts = $("#homeTasksSub"), ms = $("#homeMeetsSub");
+    ts.textContent = !nT ? t("home.tasksNone") : dueNow ? t("home.tasksToday", {n:dueNow}) : t("home.tasksGo");
+    ts.classList.toggle("hot", nT > 0 && dueNow > 0);
+    ms.textContent = nM ? t("home.meetsGo") : t("home.meetsNone");
   }
   function renderTools(){
     $("#toolsStack").innerHTML =
@@ -6988,6 +7112,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     $("#taskStack").innerHTML = html;
     var rems = open.filter(function(x){ return x.rem; }).length;
     rollText($("#taskCount"), pl("tasks", open.length) + " · " + pl("remc", rems));
+    renderHome();
     rollText($("#arcCount"), String(archived.length));
     /* The archive is a safety net, not a second list. Past eight rows it
        stops being scannable and starts being a wall, so it shows the eight
@@ -8908,6 +9033,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       ? live.map(mtCardHTML).join("")
       : '<div class="group">' + emptyBig(t("mt.empty"), "mtNew", t("mt.new")) + "</div>";
     rollText($("#mtCount"), live.length ? pl("mt", live.length) : "");
+    renderHome();
     /* What HAS happened, and what you left — both arrive from the server
        already reduced to a title and the words of the slot. Capped at the same
        eight as the task archive, and it SAYS it is capped rather than quietly
@@ -12575,6 +12701,42 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     root.classList.add("intro-settled");
     markIntroSeen();
   }
+  /* ── the tab bar, pointed at once ──
+     People arriving from a link read the first screen, never took the bar for
+     a menu, and left (the owner, 2026-09-26). So the first visit on a device
+     points at it: a bubble and two soft pulses, gone on the first tap
+     anywhere or after a few seconds, and never again on that device.
+     localStorage, not sessionStorage — once per person, not once per visit —
+     and a storage that throws means "seen", because a hint that repeats on
+     every load is worse than one that never came. */
+  var navHintEl = null, navHintT = null;
+  function navHintDone(){
+    if(!navHintEl) return;
+    var el = navHintEl; navHintEl = null;
+    clearTimeout(navHintT);
+    $(".tabbar").classList.remove("hinted");
+    el.classList.add("out");
+    setTimeout(function(){ if(el.parentNode) el.remove(); }, 260);
+    document.removeEventListener("pointerdown", navHintDone, true);
+  }
+  function navHint(){
+    try{
+      if(localStorage.getItem("olma-navhint") === "1") return;
+      localStorage.setItem("olma-navhint", "1");
+    }catch(e){ return; }
+    /* after the intro's cascade has landed, so the bar it points at is there */
+    setTimeout(function(){
+      if(NEWUSER || navHintEl) return;
+      navHintEl = document.createElement("div");
+      navHintEl.className = "navhint";
+      navHintEl.setAttribute("role", "status");
+      navHintEl.textContent = t("nav.hint");
+      document.body.appendChild(navHintEl);
+      $(".tabbar").classList.add("hinted");
+      document.addEventListener("pointerdown", navHintDone, true);
+      navHintT = setTimeout(navHintDone, 6000);
+    }, INTRO_MS + 250);
+  }
   function startIntro(){
     if(introSeen()) return;
     if(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches){
@@ -12615,7 +12777,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      a stranger is not being shown the app. */
   /* a deep link skips the intro entirely — see openFromHash */
   if(/^#(meeting=|tasks$)/.test(location.hash || "")) markIntroSeen();
-  if(NEWUSER) startWelcome(); else startIntro();
+  if(NEWUSER) startWelcome(); else { startIntro(); navHint(); }
   /* the seed page only: on a served page the seed MEETS are placeholders and
      the real ones arrive with hydrate(), which calls this itself */
   if(!document.documentElement.hasAttribute("data-served")) openFromHash();
@@ -12626,7 +12788,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     if(NEWUSER) renderWelcome();
   });
   $("#introTog").addEventListener("click", function(){
-    try{ sessionStorage.removeItem("olma-intro"); }catch(e){}
+    try{ sessionStorage.removeItem("olma-intro"); localStorage.removeItem("olma-navhint"); }catch(e){}
+    navHint();
     go("tools");
     startIntro();
   });
