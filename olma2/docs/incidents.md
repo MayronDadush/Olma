@@ -6351,6 +6351,52 @@ few dollars a month) and the case is the seconds on the first token. A
 answered by OpenRouter with `provider_name` "Novita" — then
 `scripts/cache-probe.js` again after a few days of traffic.
 
+### Novita cached the probe and not the turns (measured 2026-09-25)
+
+`deepseek-v4.1-flash` went live at 12:28Z on 2026-09-25 (#509), pinned to the
+same order as the incumbent, `novita, streamlake`, on the strength of the entry
+above. The first real turns read back 0 cached tokens on their second call,
+about $0.0098 a call against $0.0023 for v4-flash, and the default was put
+back at 12:30:23Z. About a minute and a half of exposure.
+
+**The first reading of it was wrong the other way.** One pair of calls was
+taken to mean Novita does not cache v4.1 at all, and a direct probe (the same
+~21k-token prompt three times, `allow_fallbacks: false`) disproved it at once:
+Novita, DeepInfra, Together, Fireworks, StreamLake and four others all hit on
+the second and third call. **So the probe could not tell the providers apart,
+and it could not see the failure.** What it does not reproduce is the real
+turn: a model call, a tool call, and a second model call carrying the first
+one's prefix plus the tool result.
+
+Measured instead on the eval user's own turns, same scenarios, `--no-judge`,
+one provider led at a time:
+
+| setup | calls | of input cached | $ per call |
+|---|---|---|---|
+| v4-flash on Novita (nightly #91 / #84) | 42 / 41 | 60% / 67% | 0.0025 / 0.0023 |
+| v4.1-flash unpinned (pilot #90) | 47 | 57% | 0.0039 |
+| v4.1-flash on Novita (runs 93-94) | 12 | 24% | 0.0082 |
+| **v4.1-flash on DeepInfra (run 95)** | **19** | **70%** | **0.0017** |
+
+Every generation sampled from run 95 was served by DeepInfra; some of its
+calls still read 0 from cache, and the average is better than the incumbent
+on both cache and price. DeepInfra lists v4.1-flash at $0.14/M input, $0.42/M
+output and $0.0042/M cache read — under half Novita's listing for the same
+model (0.285 / 1.14).
+
+**The change:** the pin is per model now (`ORDERS` in
+`scripts/pin-openrouter-provider.js`): v4.1-flash leads with DeepInfra, then
+Together (both US-headquartered, the owner's residency line from the entry
+above), then Novita; v4-flash keeps `novita, streamlake` as its first fallback.
+`model-pricing.js` carries DeepInfra's rate from 09-25, and the pilot days
+before it keep the DeepSeek listing through `PAST_RATES`.
+
+**The lesson is the entry above's, one level finer:** a cache is per provider
+AND per model, and a provider measured on one model says nothing about
+another. And a probe that repeats one prompt is a floor, not a verdict — it
+catches a provider with no cache at all (DigitalOcean) and misses one whose
+cache does not survive the shape of a real turn. Measure on turns.
+
 ### The pilot that read as an expensive day (fixed 2026-09-09)
 
 On the morning of 2026-09-09 the efficiency watch sent this:
