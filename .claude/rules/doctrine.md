@@ -294,6 +294,27 @@ title means this file. Grep the title, not the filename.
   the instruction assert it: stamped by provisioning under the SAME condition
   `seedWorkspace` writes the section under, read on `firstTurn` only, where
   "nobody has answered it yet" is true by construction.
+  **…and since 2026-09-25 their own agent answers it UNASKED, seconds after
+  the greeter** (owner; `welcome_followup`, queued by `jobs/intake.js` only
+  when `greetedByIntake`). The greeter has no tools, so "תזכירי לי מחר ב-9"
+  said to it was noted by nobody until they wrote again. The follow-up is a
+  self-initiated turn on their own agent: it acts on the USER.md section with
+  its tools, never repeats what the greeter said (the greeter's reply rides
+  the payload fenced; their words do not), and ends with their page, minted
+  at delivery. Three things keep it from being a second copy of anything:
+  the worker clears `intake_note_at` once it is out, so their first own turn
+  is not told the words are still waiting; the gate DROPS it
+  (`answered_in_turn`) if they wrote to their own agent first, because that
+  turn answers the same words; and `turn.advise` hands the page on a first
+  turn only when no follow-up reached them (`firstTurnPageLink`). Inside the
+  greeter's fifteen minutes it passes the night and the quiet day — it is the
+  rest of a reply somebody is waiting for.
+  **The copy itself is revision 3, shorter, and carries no link** (owner,
+  2026-09-25): nobody has a page while the greeter speaks. The previous copy
+  stays in `onboarding.PREVIOUS_OPENINGS` so `saidTheOpening` still
+  recognises a greeter that said it in the minute after a deploy, and every
+  language with an `opening_<lang>` template is read — the greeter's prompt
+  and the check both build from the templates, never from a fixed two.
 
 - **`gmail.readonly` is a RESTRICTED scope and everything else Olma asks for
   is merely SENSITIVE — the two words are different verification tracks, and
@@ -353,3 +374,19 @@ title means this file. Grep the title, not the filename.
   action asserted that nothing performed. `tests/consent-link-reaches-the-
   person.test.js` scans `src/domain` for a seventh one; `availability.js` is
   exempt by name because `/pick/` is retired.
+  **ONE exception, and it is a whole message, not a tool result: "שלח לי
+  קישור"** (owner, 2026-09-25; `domain/link-request.js`). A direct message
+  that is ONLY a request for their page — an exact match after normalising,
+  from one table keyed by language — is claimed by the plugin's second
+  `before_dispatch` handler, brokerd `dashboard_link_shortcut` mints the link
+  and words it from the `dashboard_link`/`_<lang>` template, and the gateway
+  sends it on the ordinary reply path with no model turn at all. It is safe
+  here and nowhere else because nothing is ASSERTED: there is no model to
+  claim a link it did not write, and the sentence and the characters are one
+  string made by code. Anything more than the request ("שלח לי קישור
+  לפגישה") goes to the model exactly as before, and every failure fails
+  open. **The phrase list lives only in `link-request.js`** — the plugin
+  carries a length bound and no keyword, so a new language is an entry plus
+  its template and never a gateway restart. The plugin itself needs one
+  restart to start claiming (`incidents.md`, "שלח לי קישור, and the new
+  person's page").

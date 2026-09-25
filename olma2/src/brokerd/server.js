@@ -28,6 +28,9 @@ const intakeRoom = require('../domain/intake-room');
 const audit = require('../domain/audit');
 const replyLeak = require('../domain/reply-leak');
 const phantomSave = require('../domain/phantom-save');
+const linkRequest = require('../domain/link-request');
+const dashboardAuth = require('../domain/dashboard-auth');
+const templates = require('../domain/message-templates');
 
 // One of these per turn. The gateway spawns a fresh MCP shim for every agent
 // turn and the shim holds ONE socket to brokerd for its whole life, so a
@@ -99,6 +102,19 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers }) {
     list.push(entry);
     while (list.length > PENDING_MAX_PER_USER) list.shift();
     pending.set(userId, list);
+  }
+  // Messages code already answered before any turn existed (the link shortcut
+  // below): messageId → when. The turn-open hook runs fire-and-forget and can
+  // land either side of that answer, so both orders are handled — an open
+  // already queued is dropped, and one arriving later marks 👍 and queues
+  // nothing, because no turn is coming to adopt it.
+  const answeredByCode = new Map();
+  function noteAnsweredByCode(userId, messageId) {
+    const at = clock();
+    for (const [id, t] of answeredByCode) if (at - t > PENDING_TTL_MS) answeredByCode.delete(id);
+    answeredByCode.set(messageId, at);
+    const list = livePending(userId).filter((p) => p.messageId !== messageId);
+    if (list.length) pending.set(userId, list); else pending.delete(userId);
   }
   // The shim connection's first tool call adopts an open. Which one: the
   // oldest whose opening was already put in the prompt (`contextSent`) —
@@ -211,7 +227,8 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers }) {
         : null;
       const stoppedReminders = stopped ? stopped.stopped.length : 0;
       if (stopped) lap('stop');
-      const state = stoppedReminders ? 'done'
+      const byCode = Boolean(messageId && answeredByCode.has(messageId));
+      const state = stoppedReminders || byCode ? 'done'
         : thanksOnly ? 'thanks' : (kind === 'voice' ? 'listening' : 'working');
       const entry = {
         messageId, kind, lastInboundAt: clock(), openedAt: clock(),
@@ -246,10 +263,51 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers }) {
         entry.marked.add(`${messageId}:${state}`);
         entry.reactionVocab = vocab;
       }
-      if (!rec.skipped) { pushPending(Number(user.id), entry); noteOpen(Number(user.id)); }
+      if (!rec.skipped && !byCode) { pushPending(Number(user.id), entry); noteOpen(Number(user.id)); }
       out = { ok: true, opened: !rec.skipped, skipped: rec.skipped || null, userId: Number(user.id), counted: rec.counted };
     });
     lap('commit');
+    if (mark) placeMark(mark);
+    return out;
+  }
+
+  // "שלח לי קישור" — answered by code, before any turn exists
+  // (domain/link-request.js has the why). The plugin's `before_dispatch` sends
+  // a SHORT direct message here; a whole-message match mints their link and
+  // hands back the sentence, which the gateway sends on the ordinary reply
+  // path once the plugin claims the message. Everything that is not a match,
+  // and every failure, answers `claim: false` and the model runs exactly as
+  // it did before — the worst case of this path is today's behaviour.
+  //
+  // The body is matched and dropped: it is never logged, stored or audited,
+  // and only the language that matched is.
+  async function handleDashboardLinkShortcut(params = {}) {
+    const agentId = String(params.agentId || '').trim();
+    if (!/^u-\d+$/.test(agentId)) return { ok: false, error: 'bad agentId' };
+    const hit = linkRequest.matchLinkRequest(params.body);
+    if (!hit) return { ok: true, claim: false };
+    const messageId = reactions.cleanMessageId(params.messageId);
+    let out = { ok: true, claim: false };
+    let mark = null;
+    let userId = null;
+    await withTx(pool, async (client) => {
+      const { rows } = await client.query(
+        `SELECT id, phone FROM users WHERE agent_id = $1 AND status = 'active' AND is_eval = false`, [agentId]);
+      const user = rows[0];
+      if (!user) return;
+      const made = await dashboardAuth.createLinkUrl(client, user.id);
+      if (!made.ok || !made.data || !made.data.url) return;
+      const text = templates.render(
+        templates.keyFor('dashboard_link', hit.lang), { url: made.data.url }, await templates.load(client));
+      await audit.record(client, user.id, 'dashboard.link_shortcut', { lang: hit.lang });
+      userId = Number(user.id);
+      out = { ok: true, claim: true, text, lang: hit.lang };
+      if (messageId) {
+        const vocab = reactions.vocabulary(await require('../domain/flags').getFlag(client, reactions.VOCAB_FLAG));
+        mark = { channel: 'whatsapp', target: user.phone, messageId, state: 'done', emoji: vocab.done };
+      }
+    });
+    if (out.claim && messageId) noteAnsweredByCode(userId, messageId);
     if (mark) placeMark(mark);
     return out;
   }
@@ -788,6 +846,8 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers }) {
         return handleIntakeContext(msg.params || {});
       case 'group_room_write':
         return handleGroupRoomWrite(msg.params || {});
+      case 'dashboard_link_shortcut':
+        return handleDashboardLinkShortcut(msg.params || {});
       case 'reply_gate':
         return handleReplyGate(msg.params || {});
       case 'reply_claim':

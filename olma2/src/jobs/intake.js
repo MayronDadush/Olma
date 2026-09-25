@@ -14,9 +14,11 @@
 //
 // No separate welcome message either (2026-08-17 redesign): whatever the
 // person already said to the intake agent is extracted and handed straight
-// into their personal workspace by provisionUser — there is nothing left for
-// this sweep to enqueue once provisioning succeeds. The conversation the
-// person is already in just continues, silently more capable.
+// into their personal workspace by provisionUser. The conversation the
+// person is already in just continues, more capable — and since 2026-09-25
+// (owner) their own agent says so in one message, `welcome_followup`: it
+// acts on what they wrote to the greeter and hands over their page. It is not
+// a second hello; the greeter's introduction stands and this never repeats it.
 //
 // Reopen: registration_open flipped back on → keep the promise, through the
 // outbox (respectfully timed), exactly once per waitlisted phone.
@@ -103,6 +105,10 @@ async function readIntakeFirstMessage(phone, otherPhones = []) {
 // the text decide (`incidents.md`, "Two people, no introduction").
 const GREETER_GRACE_MS = 5 * 60_000;
 
+// A welcome follow-up that has not gone out in an hour is not a follow-up to
+// anything any more; their first turn carries the page instead (turn.advise).
+const WELCOME_FOLLOWUP_TTL_MS = 60 * 60_000;
+
 async function defaultReadGreeterReply(phone) {
   try {
     const msgs = await sessions.readRecentMessages(INTAKE_AGENT_ID, 10, undefined, phone);
@@ -124,13 +130,16 @@ async function defaultReadGreeterReply(phone) {
 // user row that would settle which one they are.
 // Checked against the DEFAULTS and the owner's current rewording both: the
 // greeter's file is re-rendered by a job, so for a few minutes after an edit
-// the copy it actually said may be either one.
+// the copy it actually said may be either one — and, for the same minute
+// after a deploy, the copy the code shipped before (PREVIOUS_OPENINGS).
+// Every language with an opening template is checked, not a fixed two.
 function saidTheOpening(text, overrides) {
   if (!text) return false;
   const t = String(text);
   const copies = [
     ...Object.values(onboardingDomain.OPENING),
-    onboardingDomain.openingMessage('he', overrides), onboardingDomain.openingMessage('en', overrides),
+    ...onboardingDomain.PREVIOUS_OPENINGS,
+    ...Object.keys(onboardingDomain.OPENING).map((lang) => onboardingDomain.openingMessage(lang, overrides)),
   ];
   return copies.some((copy) => {
     const substance = copy.split('\n').filter(Boolean)[1];
@@ -228,6 +237,7 @@ async function sweepIntakeSessions(client, deps) {
       reason: invited.invite_reason || null,
     } : null;
 
+    const greetedByIntake = saidTheOpening(greeterReply, await templates.load(client));
     const prov = await provisionUser(client, {
       phone, invitedByConnectionId: invited ? invited.id : null, configPath: deps.configPath,
       firstMessage, invitedInfo, registerUndo: deps.registerUndo,
@@ -238,10 +248,31 @@ async function sweepIntakeSessions(client, deps) {
       // and two people were stamped as introduced without ever being
       // introduced: `turn_start` then told their own agents the introduction
       // was done, so nobody ever said who Olma was.
-      greetedByIntake: saidTheOpening(greeterReply, await templates.load(client)),
+      greetedByIntake,
     });
     if (!prov.ok) { out.skipped++; continue; }
     const user = prov.data.user;
+
+    // Their own agent speaks next, unasked, seconds after the greeter
+    // (owner, 2026-09-25): it answers what they wrote there — the greeter has
+    // no tools, so a request made to it has not been done — and hands over
+    // their page, which could not exist while the greeter was speaking.
+    // Only after a greeter that really introduced her: otherwise their own
+    // agent's first turn still owes the opening copy, and it carries the page
+    // too (turn.advise). The gate drops this row if they write to their own
+    // agent first, because that turn answers the same words.
+    if (greetedByIntake) {
+      await enqueue(client, {
+        userId: user.id, kind: 'welcome_followup',
+        payload: {
+          hasNote: Boolean(user.intake_note_at),
+          greeterReply: typeof greeterReply === 'string' ? greeterReply.slice(0, 600) : null,
+        },
+        idempotencyKey: `welcome_followup:${user.id}`,
+        expiresAt: new Date(Date.now() + WELCOME_FOLLOWUP_TTL_MS),
+      });
+      out.welcomed = (out.welcomed || 0) + 1;
+    }
 
     if (invited) {
       await connectionsDomain.attachProvisionedTarget(client, invited.id, user.id);

@@ -253,7 +253,10 @@ test('the opening copy is exactly what the owner wrote', () => {
   // Brand copy nobody can silently edit. If this fails, someone changed the
   // first thing every new person will ever read — which is a decision, not a
   // refactor, so it should cost a deliberate update to this test.
-  assert.equal(onboarding.OPENING.he.split('\n').length, 4, 'four lines');
+  // Revision 3 (owner, 2026-09-25): shortened to the greeting and one line of
+  // what she is for. The page link is deliberately NOT in it — nobody has a
+  // page when the greeter speaks; the welcome follow-up carries it.
+  assert.equal(onboarding.OPENING.he.split('\n').length, 3, 'three lines');
   assert.equal(onboarding.OPENING.he.split('\n')[1], '',
     'the greeting stands on its own line — revision 2, read on a real phone');
   assert.equal(onboarding.OPENING.en.split('\n')[1], '');
@@ -261,10 +264,11 @@ test('the opening copy is exactly what the owner wrote', () => {
   for (const copy of [onboarding.OPENING.he, onboarding.OPENING.en]) {
     assert.doesNotMatch(copy, /ברוכים הבאים|Welcome to your world/,
       'the welcome-to-your-world line was cut in revision 2');
+    assert.doesNotMatch(copy, /https?:\/\//, 'no link: there is no page to link to yet');
   }
-  assert.ok(onboarding.OPENING.he.endsWith('אני אעשה לכם סדר ☺️'));
-  assert.ok(onboarding.OPENING.en.startsWith("Hey! I'm Allma \u{1F44B}"));
-  assert.ok(onboarding.OPENING.en.endsWith('keep you organized ☺️'));
+  assert.ok(onboarding.OPENING.he.endsWith('לשלוח הכל בבלגן ☺️'));
+  assert.ok(onboarding.OPENING.en.startsWith("Hey, I'm Allma \u{1F44B}"));
+  assert.ok(onboarding.OPENING.en.endsWith('dump it all on me ☺️'));
   // It must not ask anything: the curiosity doctrine owns the name question,
   // and one reply carries one question at most.
   assert.doesNotMatch(onboarding.OPENING.he, /\?/, 'the opening asks nothing');
