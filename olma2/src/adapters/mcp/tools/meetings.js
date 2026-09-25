@@ -17,6 +17,12 @@ const listBlock = require('../../../domain/list-block');
 //
 // Nothing here changes what the tool DID; a hint is added to a result that is
 // already ok, and only then.
+async function settledWithOpenTime(client, meetingId) {
+  const { rows: [m] } = await client.query(
+    'SELECT status, confirmed_all_day, confirmed_daypart FROM meetings WHERE id = $1', [meetingId]);
+  return meetings.timeIsOpen(m);
+}
+
 async function offerDashboardOnce(client, user, meetingId, res) {
   if (!res || !res.ok || !res.data || res.data.meetingStatus === 'confirmed') return res;
   const mid = Number(meetingId);
@@ -158,12 +164,23 @@ module.exports = [
       };
       return res;
     }),
-  tool('propose_meeting_slot', 'Add ONE candidate time to the table (up to 5; at five it is refused with the five listed — ask which to drop, remove_meeting_option, propose again). Proposing means your user agrees to it, every part from what they said; a time without a day: say the full slot back and get their yes first. starts_at is the same moment as slot_description, ISO-8601 with offset; past times, or a weekday the text does not name, are refused. Calendar connected? Check my_calendar_events for that day first.',
+  tool('propose_meeting_slot', 'Add ONE candidate time to the table (up to 5; at five it is refused with the five listed — ask which to drop, remove_meeting_option, propose again). Proposing means your user agrees to it, every part from what they said; a time without a day: say the full slot back and get their yes first. starts_at is the same moment as slot_description, ISO-8601 with offset; past times, or a weekday the text does not name, are refused. Calendar connected? Check my_calendar_events for that day first. Settled on a whole day/part of one: this sets its hour.',
     { meeting_id: S('number', 'Meeting id'), slot_description: S('string', 'e.g. "Tuesday 17:00 at the office"'),
-      starts_at: S('string', 'The same moment — same DAY — as slot_description, ISO-8601 with offset, e.g. 2026-08-25T17:00:00+03:00') },
+      starts_at: S('string', 'The same moment — same DAY — as slot_description, ISO-8601 with offset, e.g. 2026-08-25T17:00:00+03:00'),
+      all_day: S('boolean', 'The whole day'), daypart: S('string', 'morning|noon|evening|night, when no hour') },
     ['meeting_id', 'slot_description', 'starts_at'],
     async (client, user, a) => {
-      const res = await meetings.proposeSlot(client, user.id, a.meeting_id, a.slot_description, a.starts_at);
+      // A meeting that settled on a whole day or a part of one gets its exact
+      // hour through the same door (owner, 2026-09-24): anybody in it, the
+      // same day only, and everyone else is told (meetings.setExactTime).
+      if (await settledWithOpenTime(client, a.meeting_id)) {
+        const set = await meetingFanout.afterTimeSet(client, user,
+          await meetings.setExactTime(client, user.id, a.meeting_id, a.slot_description, a.starts_at));
+        if (set.ok) set.data.hints = { said: 'The exact time is set and everyone else is told. Say it back in one line.' };
+        return set;
+      }
+      const res = await meetings.proposeSlot(client, user.id, a.meeting_id, a.slot_description, a.starts_at,
+        { allDay: a.all_day === true, daypart: a.daypart || null });
       // A proposal JOINS the table (2026-09-05); the asks about the other
       // options stand. afterOptionAdded knows the two outcomes — on the table,
       // or a moment somebody had already put there.
