@@ -301,6 +301,26 @@ function seenBefore(messageId) {
   return false;
 }
 
+// ── What they WROTE, which is not `ctx.body` ─────────────────────────────────
+// `body` is the gateway's ENVELOPE — `[WhatsApp +9725… +16m Fri 2026-09-25
+// 23:20:54 UTC] +9725…: תודה` (openclaw `formatInboundEnvelope`) — and every
+// classifier below asks whether the message is ONLY something. Read off the
+// envelope, a bare "תודה" was 77 characters with "WhatsApp", a weekday and
+// "UTC" in them: 0 thanks in 339 traced messages from 2026-09-06 to 09-25, and
+// the 🙏 never went on once (`incidents.md`, "The hook read the envelope").
+// `bodyForAgent` is the text alone; a transcript wins for a voice note, whose
+// words ARE the message. When only the envelope is there, its header and the
+// sender label it adds are cut, and nothing else is.
+const ENVELOPE_RE = /^\[[^\]\n]{1,200}\]\s+(?:[^:\n]{1,80}:\s)?/;
+function textOf(ctx) {
+  const c = ctx || {};
+  if (typeof c.transcript === 'string' && c.transcript.trim()) return { text: c.transcript, src: 'transcript' };
+  if (typeof c.bodyForAgent === 'string' && c.bodyForAgent.trim()) return { text: c.bodyForAgent, src: 'bodyForAgent' };
+  const body = typeof c.body === 'string' ? c.body : '';
+  const bare = body.replace(ENVELOPE_RE, '');
+  return { text: bare, src: bare === body ? 'body' : 'body-unwrapped' };
+}
+
 // Exported for tests: `connect` is the one seam (net.connect in production).
 function handle(event, { connect = net.connect, sock = SOCK } = {}) {
   if (!event || event.type !== 'message' || !OPENING_ACTIONS.has(event.action)) { trace({ skip: 'not-inbound', type: event && event.type, action: event && event.action }); return false; }
@@ -312,6 +332,7 @@ function handle(event, { connect = net.connect, sock = SOCK } = {}) {
   if (seenBefore(messageId)) { trace({ skip: 'duplicate', agentId, action: event.action }); return false; }
   // `received` puts the sender's name under metadata; `preprocessed` flattens it.
   const senderName = meta.senderName || ctx.senderName;
+  const said = textOf(ctx);
   const params = {
     agentId,
     messageId,
@@ -319,18 +340,18 @@ function handle(event, { connect = net.connect, sock = SOCK } = {}) {
     senderName: senderName ? String(senderName).slice(0, 80) : null,
     replyToId: replyToIdOf(ctx),
     // The transcript when there is one — a voice note that says only "תודה"
-    // is the same exchange — and the envelope body otherwise.
-    thanks: thanksOnly(ctx.transcript || ctx.body),
+    // is the same exchange — and what they typed otherwise (`textOf`).
+    thanks: thanksOnly(said.text),
     // "stop reminding me" — brokerd stops every ladder that has spoken to them
     // in the last day and puts a 👍 on this message (domain/reminders
     // .stopRecentLadders). The verdict travels; the words do not.
-    stopReminders: stopRemindersOnly(ctx.transcript || ctx.body),
+    stopReminders: stopRemindersOnly(said.text),
     // "help me until next week" — brokerd arms a daily chase to that day on
     // the task this turn saves (domain/chase-deadline). A kind, never words.
-    chase: chaseDeadline(ctx.transcript || ctx.body),
+    chase: chaseDeadline(said.text),
     // "מה פתוח לי?" — brokerd leaves the today block out of this turn, so
     // the answer comes from their list and not from an empty day.
-    openList: asksOpenList(ctx.transcript || ctx.body),
+    openList: asksOpenList(said.text),
     at: new Date(event.timestamp || Date.now()).toISOString(),
   };
   return new Promise((resolve) => {
@@ -357,7 +378,7 @@ function handle(event, { connect = net.connect, sock = SOCK } = {}) {
     });
     // Resolve BEFORE ending the socket: a synchronous 'close' would otherwise
     // settle the promise as a failure that already succeeded.
-    socket.on('data', (d) => { clearTimeout(t); trace({ agentId, outcome: 'sent', ...timing(), replyTo: Boolean(params.replyToId), thanks: params.thanks, reply: String(d).slice(0, 80) }); finish(true); try { socket.end(); } catch { /* gone */ } });
+    socket.on('data', (d) => { clearTimeout(t); trace({ agentId, outcome: 'sent', ...timing(), replyTo: Boolean(params.replyToId), thanks: params.thanks, src: said.src, chars: said.text.length, reply: String(d).slice(0, 80) }); finish(true); try { socket.end(); } catch { /* gone */ } });
     socket.on('close', () => { clearTimeout(t); finish(done ? undefined : false); });
   });
 }
@@ -368,6 +389,7 @@ module.exports.handle = handle;
 module.exports.agentIdOf = agentIdOf;
 module.exports.isVoice = isVoice;
 module.exports.replyToIdOf = replyToIdOf;
+module.exports.textOf = textOf;
 module.exports.thanksOnly = thanksOnly;
 module.exports.stopRemindersOnly = stopRemindersOnly;
 module.exports.chaseDeadline = chaseDeadline;

@@ -146,6 +146,13 @@ title means this file. Grep the title, not the filename.
   the model decides, most likely yes (the owner's call). Spent on use, in
   memory (a restart is the old behaviour), blind to the raw pipe on purpose
   (`incidents.md`, "The thanks that was an answer").
+  **And every classifier in that hook reads `textOf(ctx)`, never `ctx.body`.**
+  `body` is the gateway's envelope (`[WhatsApp +972… Fri … UTC] +972…: תודה`),
+  and an "only thanks" check against it can never pass: 0 of 339 traced
+  messages from 09-06 to 09-25, the 🙏 never placed once, while every test
+  handed the hook a bare `body` it never receives. `bodyForAgent` is the text;
+  the trace line says which source was read (`src`) so a silent zero is
+  visible (`incidents.md`, "The hook read the envelope").
 
 - **`markPlaced` is CONDITIONAL, so nothing else on the same result may be an
   unconditional instruction to write.** It lost to one for two days: the tool
