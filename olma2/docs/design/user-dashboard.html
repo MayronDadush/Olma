@@ -9,7 +9,11 @@
      env(safe-area-inset-*) values this stylesheet positions the tab bar and
      the preview buttons with all resolve to 0 without it, so the bar sat above
      the home indicator instead of clearing it. -->
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- No zoom at all, pinch included: the owner wants the page to feel like an
+     app (Instagram has none), 2026-09-25. Android obeys these two words; iOS
+     Safari ignores them on purpose, which is why the script also cancels the
+     pinch gesture itself (search "zoom" in the script). -->
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <!-- The page defines both palettes; this is what stops the browser painting
      its own white behind them for the instant before the CSS lands. -->
 <meta name="color-scheme" content="light dark">
@@ -233,13 +237,13 @@
 
 /* ─────────────────────────  base  ───────────────────────── */
 *{box-sizing:border-box}
-/* Two quick taps are two taps here, never a zoom. A phone browser zooms on a
-   double tap on any page that does not opt out, so tapping a calendar arrow
-   twice, or a checkbox and then its neighbour, blew the page up (the owner,
-   2026-09-25). `manipulation` turns off only the double tap: pinching still
-   zooms, and somebody who needs larger text keeps that. The viewport meta's
-   `user-scalable=no` would have taken the pinch away too. */
-html{touch-action:manipulation}
+/* The page never zooms, the way an app never does (the owner, 2026-09-25).
+   A phone browser zooms on a double tap and on a pinch unless the page opts
+   out, so tapping a calendar arrow twice blew the page up. `pan-x pan-y`
+   allows scrolling and nothing else: no double tap, no pinch. The viewport
+   meta says the same for Android, and the script cancels iOS's pinch, which
+   ignores both. Larger text is the phone's own setting, not a zoom here. */
+html{touch-action:pan-x pan-y}
 [hidden]{display:none !important}
 body{
   margin:0;
@@ -3811,6 +3815,15 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 <script>
 (function(){
   "use strict";
+  /* No zoom, iOS edition. Safari ignores user-scalable=no on purpose, so the
+     pinch is cancelled where it starts: Safari's own gesture events, and any
+     move with two fingers down. Nothing on this page is a two-finger control. */
+  ["gesturestart", "gesturechange", "gestureend"].forEach(function(ev){
+    document.addEventListener(ev, function(e){ e.preventDefault(); }, {passive:false});
+  });
+  document.addEventListener("touchmove", function(e){
+    if(e.touches.length > 1) e.preventDefault();
+  }, {passive:false});
   var $  = function(s,r){ return (r||document).querySelector(s); };
   var $$ = function(s,r){ return Array.prototype.slice.call((r||document).querySelectorAll(s)); };
   /* A value written into an input only when the person is not standing in

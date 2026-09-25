@@ -237,15 +237,17 @@ test('a settled coordination stays in the list, and the card says so', () => {
   assert.match(page, /\.group\.mtset \.mtpill\.settled\{/);
 });
 
-// A phone zooms on a double tap on any page that does not opt out, and on this
-// one a quick second tap on a calendar arrow or a checkbox blew the page up
-// (the owner, 2026-09-25). `manipulation` stops only that: pinching still
-// zooms, which is why the viewport meta must not take zoom away instead.
-test('a double tap is two taps, and pinch-zoom is left alone', () => {
-  assert.match(page, /html\{touch-action:manipulation\}/);
+// The page never zooms, double tap or pinch (the owner, 2026-09-25: it should
+// feel like an app). Three layers, because each browser honours a different one.
+test('the page cannot be zoomed, on Android or on iOS', () => {
+  assert.match(page, /html\{touch-action:pan-x pan-y\}/);
   const meta = page.match(/<meta name="viewport" content="([^"]+)">/);
   assert.ok(meta, 'the viewport meta is there');
-  assert.doesNotMatch(meta[1], /user-scalable|maximum-scale/);
+  assert.match(meta[1], /user-scalable=no/);
+  assert.match(meta[1], /maximum-scale=1/);
+  assert.match(meta[1], /viewport-fit=cover/, 'the safe-area insets still need this');
+  assert.match(page, /"gesturestart", "gesturechange", "gestureend"/);
+  assert.match(page, /e\.touches\.length > 1\) e\.preventDefault\(\)/);
 });
 
 // Every date on the page picks its year the same way: one popover, with a
