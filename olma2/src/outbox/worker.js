@@ -10,6 +10,7 @@ const pauseDomain = require('../domain/pause');
 const quota = require('../domain/quota');
 const flagsDomain = require('../domain/flags');
 const proactiveText = require('../domain/proactive-text');
+const digestDomain = require('../domain/digest');
 const { decide } = require('./gate');
 const audit = require('../domain/audit');
 const { mergeRoleFor, planMerge, MERGEABLE_KINDS } = require('../domain/message-merge');
@@ -99,6 +100,20 @@ function batchKeyFor(row) {
   if (p.instruction) return null;
   if (!String(p.title || '').trim()) return null;
   return proactiveText.reminderTemplateKey(p);
+}
+
+// Coordinations that ended with no time and that this person has not heard
+// about, for a row a MODEL is about to compose (owner, 2026-09-24: "כדרך
+// אגב"). Not on the raw pipe — a reminder is the person's own words and a
+// model never touches it — nor on a hand-written `instruction`, nor where a
+// digest is going out, because the digest already says it
+// (digest.unheardClosedMeetings is both readers' one query).
+async function closedNewsFor(client, row, mergedParts) {
+  const p = payloadOf(row);
+  if (row.kind === 'reminder' || row.kind === 'digest' || p.instruction || p.verbatimReply) return null;
+  if (mergedParts && mergedParts.some((part) => part.kind === 'digest')) return null;
+  const list = await digestDomain.unheardClosedMeetings(client, row.user_id);
+  return list.length ? list : null;
 }
 
 // deliver(user, row) → { ok, error? } — injected; production uses
@@ -466,16 +481,25 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
         // not, and why this is asked here rather than at the top of the tick
         // (a tick with nothing deliverable never reaches this line).
         const channels = await channelsCanCarry();
+        const sendRow = mergedParts ? { ...row, payload: { ...payloadOf(row), mergedParts } }
+          : ids.length > 1 ? { ...row, payload: { ...payloadOf(row), items: titles } }
+            // In memory only, like `items`: the reader tells the model
+            // this person is paused and this is the one message about it.
+            : pausedRoomInvite ? { ...row, payload: { ...payloadOf(row), pausedNotice: true } }
+              : row;
+        const closedNews = channels.status === 'down' ? null : await closedNewsFor(client, row, mergedParts);
         const result = channels.status === 'down'
           ? { ok: false, error: `channel unavailable, no turn spent: ${channels.detail}` }
-          : await deliver(
-            mergedParts ? { ...row, payload: { ...payloadOf(row), mergedParts } }
-              : ids.length > 1 ? { ...row, payload: { ...payloadOf(row), items: titles } }
-                // In memory only, like `items`: the reader tells the model
-                // this person is paused and this is the one message about it.
-                : pausedRoomInvite ? { ...row, payload: { ...payloadOf(row), pausedNotice: true } }
-                  : row
-          );
+          : await deliver(closedNews ? { ...sendRow, payload: { ...payloadOf(sendRow), closedNews } } : sendRow);
+        // Written onto the stored row only now, beside the stamp, so "they
+        // heard it" is never recorded for a send that failed — the digest and
+        // the next message both read it back through unheardClosedMeetings.
+        const recordClosedNews = async () => {
+          if (!closedNews) return;
+          await client.query(
+            `UPDATE outbox SET payload = payload || jsonb_build_object('closedNews', $2::jsonb) WHERE id = $1`,
+            [row.id, JSON.stringify(closedNews.map((m) => ({ id: m.id })))]);
+        };
         // Stamped only once the send confirmed or timed out (booked as sent
         // below): "we told them" is never written for a message that failed.
         // One column, two allowances, and the trail says which one paid: a
@@ -497,6 +521,7 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
             `UPDATE outbox SET sent_at = now(), hold_reason = NULL WHERE id = ANY($1::bigint[])`, [ids]
           );
           await spendRoomInvite();
+          await recordClosedNews();
           outcomes.delivered++;
           if (ids.length > 1) outcomes.batched = (outcomes.batched || 0) + ids.length - 1;
         } else if (result.timedOut) {
@@ -523,6 +548,7 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
             outboxIds: ids.map(Number), kind: row.kind, error: String(result.error || 'openclaw timeout').slice(0, 200),
           });
           await spendRoomInvite();
+          await recordClosedNews();
           outcomes.delivered++;
           outcomes.unconfirmed = (outcomes.unconfirmed || 0) + 1;
           if (ids.length > 1) outcomes.batched = (outcomes.batched || 0) + ids.length - 1;
