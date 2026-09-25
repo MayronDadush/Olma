@@ -139,6 +139,8 @@ function jobs({ pool }) {
   // running the previous release breaks nobody's tool calls.
   const promiseWatch = require('./promise-watch');
 const deployDrift = require('./deploy-drift');
+  // Jev beside the duplicate-task judgement, acting on nothing (rung 1).
+  const twinShadow = require('./twin-shadow');
 
   return [
     { name: 'outbox_worker', run: async () => {
@@ -348,6 +350,7 @@ const deployDrift = require('./deploy-drift');
     // gap is per PERSON (users.suggested_at), so this ticking often costs
     // nothing — it walks only the people whose week is up.
     { name: 'task_suggestions', run: () => withTx(pool, (c) => taskSuggestions.sweepSuggestions(c, {})) },
+    { name: 'twin_shadow', run: () => withTx(pool, (c) => twinShadow.sweepTwinShadow(c)) },
     { name: 'deploy_drift', run: () => withTx(pool, (c) => deployDrift.sweepDeployDrift(c)) },
   ];
 }
