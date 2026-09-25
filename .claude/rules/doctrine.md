@@ -45,6 +45,14 @@ title means this file. Grep the title, not the filename.
   USER.md line that exists only when one is connected. **Read the doctrine for
   text about a tool that is gone before arguing for room**; ~11% of it was
   dead or duplicated when counted.
+  **2026-09-25: the curiosity ladder's name and timezone items went from 1,994
+  chars to 740**, because each was a fourth copy of something already said at
+  the moment it applies: asking is done once by the first-contact message, the
+  60-second name sweep and the check-in ladder (`timezone_asked_at`); the
+  per-person invitation is the card's "(unconfirmed …)" note; and what to say
+  about moved times rides `set_my_timezone`'s own `hints`. What stayed is the
+  part no state can carry — save a name the moment it is known, never as a
+  fact, and a place they mention is a zone that turn.
 
 - **What Olma runs on is not the user's to be handed — asked outright or as
   an aside.** Sharon asked what she runs on three hours into his first day and
@@ -127,7 +135,17 @@ title means this file. Grep the title, not the filename.
   required, a question mark disqualifies, and every other word must be on a
   short filler list. **Needs a gateway restart to take effect** — the hook is
   read at startup, and until then the code is live and inert
-  (`incidents.md`, "בשמחה יהב, שיהיה ערב טוב").
+  (`incidents.md`, "בשמחה יהב, שיהיה ערב טוב"). **Every language is a word on
+  the list**, each with its own "very much" as filler (2026-09-26).
+  **…except right after a QUESTION of Olma's, when the thanks is the answer.**
+  "להוסיף לך את המשימה ליומן?" → "תודה" dropped the offer. Now the plugin's
+  `turn_progress reply` says whether a reply ended on a question
+  (`endsWithQuestion`, its last line, a bare link under it ignored), brokerd
+  keeps the newest per person for `reactions.THANKS_AFTER_QUESTION_MS` (3h),
+  and a thanks inside it gets 👀, no silence and `hints.thanksAfterQuestion`:
+  the model decides, most likely yes (the owner's call). Spent on use, in
+  memory (a restart is the old behaviour), blind to the raw pipe on purpose
+  (`incidents.md`, "The thanks that was an answer").
 
 - **`markPlaced` is CONDITIONAL, so nothing else on the same result may be an
   unconditional instruction to write.** It lost to one for two days: the tool
@@ -138,11 +156,12 @@ title means this file. Grep the title, not the filename.
   is there anything here the mark cannot carry.** For a reminder, the hour Olma
   CHOSE is; the hour they NAMED is not, and the save never is.
 
-- **One in-flight reaction per message.** A mark is a whole `openclaw` CLI
-  start-up (15s wall on the box, measured again at 14.5s on two cores), so a
-  short turn has the 👀 and the 👍 alive at once and the LAST to finish wins.
-  `placeMark` kills an older child still starting up when a newer mark arrives
-  for the same message; one that already exited is simply replaced on the phone.
+- **One in-flight reaction per message.** On the gateway socket a newer mark
+  for the same message waits for the older one to be answered, so 👀 and 👍 go
+  out in the order they were asked. On the CLI fallback a mark is a whole
+  `openclaw` start-up (15s wall idle, 54s under load), so the 👀 and the 👍 are
+  alive at once and the LAST to finish wins: `placeMark` kills an older child
+  still starting up; one that already exited is simply replaced on the phone.
 
 - **The shim's connection outlives the turn, so nothing per-turn may be latched
   to it.** `bin/olma-mcp.js` caches ONE socket for the life of its process and
@@ -183,10 +202,29 @@ title means this file. Grep the title, not the filename.
   **This inverts the old diagnostic**, which said a working 👀 was no evidence
   `placeMark` worked — the gateway's ack is what made the mark path look alive
   through the six hours it was dead (`incidents.md`, "The mark that never
-  moved"). With that gone a 👀 IS ours and does prove the path, and the cost of
-  the trade is that the ack now lands ~15s in rather than instantly. Closing
-  that means moving `placeMark` off the CLI onto `channels/gateway-rpc.js`,
-  whose `send()` already takes any method name.
+  moved"). With that gone a 👀 IS ours and does prove the path. The trade
+  cost ~15s of ack latency until 2026-09-25, and the owner then saw the 👀
+  arrive AFTER short replies; `placeMark` now sends `message.action`
+  (`react`) on `channels/gateway-rpc.js` — the call the CLI itself makes once
+  it has started — and uses the CLI only for a request that never reached the
+  gateway, never for one refused or timed out on the wire (`incidents.md`,
+  "The eyes arrived after the answer").
+
+- **The 👀 waits for a slow answer** (owner, 2026-09-25, off 123 real
+  messages: a quarter answered inside 10s, and the 👀 landed UNDER the reply
+  in 57 of 77). brokerd holds the opening 👀/👂 for `eyes_delay_seconds`
+  (flag, default 15, `0` = at once) and drops it when the answer beats it:
+  the plugin's `reply_payload_sending` sends `turn_progress reply`, its
+  `agent_end` sends `turn_progress end` (the only signal for a turn that ends
+  in silence), and a closing mark on the same message drops it too. The signal
+  is matched to the message whose prompt was built last (`turn_context`), so a
+  message queued behind another turn keeps its own 👀 and a turn Olma started
+  cancels nobody's. 🙏 and the stop-reminders 👍 are the answer and never
+  wait. **The hold needs the gateway restarted onto the plugin with
+  `agent_end`** — `reactions.endSignalsLive` reads the plugin's registration
+  stamp, and until it lists that hook the 👀 goes on at once, because with no
+  signal nothing would ever cancel a held one (`incidents.md`, "The eyes
+  arrived after the answer").
 
 - **`placeMark` claims nothing and therefore must SAY something.** It is
   fire-and-forget by design — no exit code may reach the caller, and nothing
@@ -286,6 +324,27 @@ title means this file. Grep the title, not the filename.
   the instruction assert it: stamped by provisioning under the SAME condition
   `seedWorkspace` writes the section under, read on `firstTurn` only, where
   "nobody has answered it yet" is true by construction.
+  **…and since 2026-09-25 their own agent answers it UNASKED, seconds after
+  the greeter** (owner; `welcome_followup`, queued by `jobs/intake.js` only
+  when `greetedByIntake`). The greeter has no tools, so "תזכירי לי מחר ב-9"
+  said to it was noted by nobody until they wrote again. The follow-up is a
+  self-initiated turn on their own agent: it acts on the USER.md section with
+  its tools, never repeats what the greeter said (the greeter's reply rides
+  the payload fenced; their words do not), and ends with their page, minted
+  at delivery. Three things keep it from being a second copy of anything:
+  the worker clears `intake_note_at` once it is out, so their first own turn
+  is not told the words are still waiting; the gate DROPS it
+  (`answered_in_turn`) if they wrote to their own agent first, because that
+  turn answers the same words; and `turn.advise` hands the page on a first
+  turn only when no follow-up reached them (`firstTurnPageLink`). Inside the
+  greeter's fifteen minutes it passes the night and the quiet day — it is the
+  rest of a reply somebody is waiting for.
+  **The copy itself is revision 3, shorter, and carries no link** (owner,
+  2026-09-25): nobody has a page while the greeter speaks. The previous copy
+  stays in `onboarding.PREVIOUS_OPENINGS` so `saidTheOpening` still
+  recognises a greeter that said it in the minute after a deploy, and every
+  language with an `opening_<lang>` template is read — the greeter's prompt
+  and the check both build from the templates, never from a fixed two.
 
 - **`gmail.readonly` is a RESTRICTED scope and everything else Olma asks for
   is merely SENSITIVE — the two words are different verification tracks, and
@@ -345,3 +404,19 @@ title means this file. Grep the title, not the filename.
   action asserted that nothing performed. `tests/consent-link-reaches-the-
   person.test.js` scans `src/domain` for a seventh one; `availability.js` is
   exempt by name because `/pick/` is retired.
+  **ONE exception, and it is a whole message, not a tool result: "שלח לי
+  קישור"** (owner, 2026-09-25; `domain/link-request.js`). A direct message
+  that is ONLY a request for their page — an exact match after normalising,
+  from one table keyed by language — is claimed by the plugin's second
+  `before_dispatch` handler, brokerd `dashboard_link_shortcut` mints the link
+  and words it from the `dashboard_link`/`_<lang>` template, and the gateway
+  sends it on the ordinary reply path with no model turn at all. It is safe
+  here and nowhere else because nothing is ASSERTED: there is no model to
+  claim a link it did not write, and the sentence and the characters are one
+  string made by code. Anything more than the request ("שלח לי קישור
+  לפגישה") goes to the model exactly as before, and every failure fails
+  open. **The phrase list lives only in `link-request.js`** — the plugin
+  carries a length bound and no keyword, so a new language is an entry plus
+  its template and never a gateway restart. The plugin itself needs one
+  restart to start claiming (`incidents.md`, "שלח לי קישור, and the new
+  person's page").

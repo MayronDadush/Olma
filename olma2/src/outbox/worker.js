@@ -541,7 +541,16 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
             outboxId: Number(row.id), meetingId, timezone: row.timezone,
           });
         };
+        // The welcome follow-up ANSWERS what they wrote to the greeter, so once
+        // it is out those words are no longer waiting: without this their first
+        // own turn would still be told "nobody has answered it yet"
+        // (turn.PENDING_INTAKE_NOTE) and act on the same request a second time.
+        const spendWelcome = async () => {
+          if (row.kind !== 'welcome_followup') return;
+          await client.query(`UPDATE users SET intake_note_at = NULL WHERE id = $1`, [row.user_id]);
+        };
         const spendRoomInvite = async () => {
+          await spendWelcome();
           await spendZoneAsk();
           const quiet = Boolean(verdict.spendsQuietRoomInvite);
           if (!pausedRoomInvite && !quiet) return;
@@ -550,10 +559,23 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
             outboxId: Number(row.id), meetingId,
           });
         };
+        // The check-in ladder's miss, counted where the question REACHED
+        // them rather than where it was queued (jobs/checkin.js, `run`, says
+        // why). Any ladder rung among the rows this send carried counts once
+        // — a merge puts at most one check-in in a message, and one message
+        // is one question — and a day-one step never counts.
+        const countLadderAsk = () => client.query(
+          `UPDATE users SET checkin_misses = checkin_misses + 1
+            WHERE id = $1
+              AND EXISTS (SELECT 1 FROM outbox o
+                           WHERE o.id = ANY($2::bigint[]) AND o.kind = 'checkin'
+                             AND COALESCE(o.payload->>'rung', '') NOT LIKE 'onboarding\\_%')`,
+          [row.user_id, ids]);
         if (result.ok) {
           await client.query(
             `UPDATE outbox SET sent_at = now(), hold_reason = NULL WHERE id = ANY($1::bigint[])`, [ids]
           );
+          await countLadderAsk();
           await spendRoomInvite();
           await recordClosedNews();
           outcomes.delivered++;
@@ -581,6 +603,7 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
           await audit.record(client, row.user_id, 'delivery.unconfirmed', {
             outboxIds: ids.map(Number), kind: row.kind, error: String(result.error || 'openclaw timeout').slice(0, 200),
           });
+          await countLadderAsk();
           await spendRoomInvite();
           await recordClosedNews();
           outcomes.delivered++;

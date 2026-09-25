@@ -477,8 +477,11 @@ function recorder() {
 // things this person heard in the last second. At now() the gate's repeat guard
 // reads them exactly as it should and drops the next row of the same kind as a
 // duplicate, which is the guard working and the fixture lying.
+// And she answered them: a check-in a test delivered is a question asked
+// (jobs/checkin.js, `run`), and every test here assumes she is not silent.
 async function flushOutbox() {
   await db.pool.query(`UPDATE outbox SET sent_at = now() - interval '2 hours' WHERE sent_at IS NULL`);
+  await db.pool.query(`UPDATE users SET checkin_misses = 0 WHERE id = $1`, [user.id]);
 }
 
 test('worker delivers pending rows and records sent_at', async () => {
@@ -492,6 +495,11 @@ test('worker delivers pending rows and records sent_at', async () => {
   assert.deepEqual(rec.sent, ['checkin']);
   const { rows } = await db.pool.query(`SELECT sent_at FROM outbox WHERE idempotency_key = 'w1'`);
   assert.ok(rows[0].sent_at);
+  // A check-in that REACHED her is a question asked (jobs/checkin.js, `run`).
+  // Every test below shares Dana and assumes she is not silent, so she answers.
+  const { rows: [u] } = await db.pool.query(`SELECT checkin_misses FROM users WHERE id = $1`, [user.id]);
+  assert.equal(u.checkin_misses, 1);
+  await db.pool.query(`UPDATE users SET checkin_misses = 0 WHERE id = $1`, [user.id]);
 });
 
 test('idempotency: same key enqueues once, jobs are re-runnable', async () => {

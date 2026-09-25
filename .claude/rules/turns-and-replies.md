@@ -35,7 +35,9 @@ title means this file. Grep the title, not the filename.
   eleven opens that had never reached brokerd while brokerd was blamed for a
   day (`incidents.md`, "The hook's timer fired late"). `ms` minus `connectMs`
   on the trace line is the gateway's stall; the rest is brokerd's.
-  brokerd counts the message, wakes the person, puts the 👀 on, and
+  brokerd counts the message, wakes the person, decides the 👀 (held for
+  `eyes_delay_seconds` and dropped if the answer beats it — rules/doctrine.md,
+  "The 👀 waits for a slow answer"), and
   holds the open for the shim connection to adopt on its first tool call —
   nothing counted twice, every mark on the real message id (`incidents.md`,
   "The reply's first six seconds were bookkeeping"). `turn_start` still works

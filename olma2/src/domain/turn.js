@@ -28,6 +28,7 @@ const holidays = require('./holidays');
 const preferences = require('./preferences');
 const { genderFromWords } = require('./gender-forms');
 const groups = require('./groups');
+const dashboardAuth = require('./dashboard-auth');
 
 // Rollout control. Absent/empty = off everywhere, so deploying this changes
 // nothing until someone turns it on: a fix for an invisible defect must not
@@ -217,7 +218,7 @@ async function openTurnImplicitly(client, user, { firstTool } = {}) {
 // turn by every user, for fields that appear on a handful of turns in a
 // person's life. The budget rule (CLAUDE.md, "Doctrine"): guidance about a
 // RESULT rides the result.
-function turnHints({ offerResume, languageNudge, recentReminders, recentMeetings, rooms, planHeadline, replyTarget, genderForms, thanksOnly, stoppedReminders, chaseUntil, chaseNamedHour, openList, today }) {
+function turnHints({ offerResume, languageNudge, recentReminders, recentMeetings, rooms, planHeadline, replyTarget, genderForms, thanksOnly, thanksAfterQuestion, stoppedReminders, chaseUntil, chaseNamedHour, openList, today }) {
   const hints = {};
   if (today) {
     // Rides beside the block on every turn it is on, because a block the
@@ -297,6 +298,19 @@ function turnHints({ offerResume, languageNudge, recentReminders, recentMeetings
       + 'sign-off, no wishing them a good evening: the exchange is closed and another message '
       + 'reopens it. Write only if the message actually asks something, or something here needs '
       + 'saying that the mark cannot carry.';
+  }
+  if (thanksAfterQuestion) {
+    // The mirror of thanksOnly, and why it exists: the last thing Olma said to
+    // them was a question, so a bare "תודה" is their ANSWER to it. Owner,
+    // 2026-09-26: the model decides, and it most likely means yes. No 🙏 was
+    // placed and silence is not the default here — silence is how "להוסיף לך
+    // את המשימה ליומן?" → "תודה" used to drop the offer on the floor.
+    hints.thanksAfterQuestion = 'Their message reads as thanks and nothing else, but the last '
+      + 'thing you said to them was a question — so this is their answer to it, and most likely a '
+      + 'yes. If you offered to do something, do it now and say so in one short line. If it '
+      + 'cannot be a yes (your question was not an offer, or they are plainly closing the '
+      + 'exchange), treat it as thanks: reply with exactly NO_REPLY. If you cannot see that '
+      + 'question in this conversation, it is thanks: NO_REPLY.';
   }
   if (stoppedReminders) {
     // Their message asked for the reminders to stop and brokerd already did it
@@ -433,7 +447,22 @@ function requireAdviseColumns(user) {
   }
 }
 
-async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, languageNudge, thanksOnly, stoppedReminders, chaseUntil, chaseNamedHour, openList, now }) {
+// The page link a first turn hands over, or null when the welcome follow-up
+// already delivered one (a row the gate dropped or let expire delivered
+// nothing, so it does not count) or none can be minted — an eval user, no
+// public base url. Null is a message without a link, never a guessed one.
+async function firstTurnPageLink(client, userId) {
+  const { rows } = await client.query(
+    `SELECT 1 FROM outbox WHERE user_id = $1 AND kind = 'welcome_followup'
+        AND sent_at IS NOT NULL AND hold_reason IS NULL LIMIT 1`, [userId]);
+  if (rows[0]) return null;
+  try {
+    const made = await dashboardAuth.createLinkUrl(client, userId);
+    return made.ok && made.data && made.data.url ? made.data.url : null;
+  } catch { return null; }
+}
+
+async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, languageNudge, thanksOnly, thanksAfterQuestion, stoppedReminders, chaseUntil, chaseNamedHour, openList, now }) {
   requireAdviseColumns(user);
   // A paused person who writes gets answered — pausing stops Olma
   // INITIATING, not answering (see domain/pause.js) — but before this, that
@@ -639,6 +668,20 @@ async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, 
     + 'are free, a task, a fact, whatever it holds — and never ask them to say '
     + 'it again.';
 
+  // Their page, on the first turn of somebody who has not been handed it yet.
+  // A new person the greeter introduced normally gets it seconds later in the
+  // welcome follow-up (jobs/intake.js); this is every other road in — they
+  // wrote to their own agent before that went out (the gate then drops it), a
+  // greeter that never said the copy, a hand-provisioned or testbed-reset
+  // person. The characters are handed over, never asked for: a prompt that
+  // names a page and leaves the url to the model is how three people got three
+  // invented domains in one minute (`rules/delivering.md`).
+  const pageLink = firstTurn ? await firstTurnPageLink(client, user.id) : null;
+  const PAGE_LINK = pageLink
+    ? ` End this reply with their personal page: one short line saying this is their page, then this url on `
+      + `a line of its own, bare — nothing else will deliver it: ${pageLink}`
+    : '';
+
   // Whether anyone has already said hello. An organic joiner met the intake
   // greeter, which opens with this exact copy and stamps `opening_sent_at` at
   // provisioning; sending it again here is the duplicate introduction עידן
@@ -650,6 +693,7 @@ async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, 
       ? {
         alreadyOpened: true,
         ...(pendingNote ? { pendingNote: true } : {}),
+        ...(pageLink ? { pageLink } : {}),
         instruction: 'Their first message to YOU, but not their first message '
           + 'to Olma: they have already been greeted, in these words, and the '
           + 'introduction is done. Do not introduce yourself, do not welcome '
@@ -660,11 +704,12 @@ async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, 
             ? PENDING_INTAKE_NOTE + ' Answer it together with whatever they '
               + 'wrote this turn, in one reply. '
             : 'Answer what they actually wrote, in one short reply. ')
-          + NAME_IN_FIRST_MESSAGE,
+          + NAME_IN_FIRST_MESSAGE + PAGE_LINK,
       }
       : {
         sendVerbatim: onboardingDomain.openingMessage(user.locale, await templates.load(client)),
         ...(pendingNote ? { pendingNote: true } : {}),
+        ...(pageLink ? { pageLink } : {}),
         instruction: 'Their first ever message, and nobody has greeted them '
           + 'yet. Open your reply with sendVerbatim, character for character — '
           + 'do not translate, reword, shorten, or add to it. '
@@ -676,7 +721,10 @@ async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, 
               + 'asked for something, answer it below those lines; otherwise stop '
               + 'there. No feature tour, no menu, and no follow-up question this '
               + 'turn. ' + NAME_IN_FIRST_MESSAGE
-              + ' Your reply is still the copy above and nothing else.'),
+              + (pageLink
+                ? ' Your reply is still the copy above and the page below it, and nothing else.'
+                : ' Your reply is still the copy above and nothing else.'))
+          + PAGE_LINK,
       })
     : null;
 
@@ -712,7 +760,7 @@ async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, 
       ...(replyTarget ? { replyTarget: true } : {}),
       ...(genderForms ? { genderForms } : {}),
       ...(today ? { today } : {}),
-      ...turnHints({ offerResume, languageNudge, recentReminders, recentMeetings, rooms, planHeadline, replyTarget, genderForms, thanksOnly, stoppedReminders, chaseUntil, chaseNamedHour, openList, today }),
+      ...turnHints({ offerResume, languageNudge, recentReminders, recentMeetings, rooms, planHeadline, replyTarget, genderForms, thanksOnly, thanksAfterQuestion, stoppedReminders, chaseUntil, chaseNamedHour, openList, today }),
     };
   }
   const shouldNotice = await quota.shouldSendBlockNotice(client, user.id);

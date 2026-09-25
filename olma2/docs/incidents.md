@@ -48,6 +48,7 @@ never trust a dated narrative for something you are about to act on.
 - [Rotating a token that leaked: the file first, then the DB, then the doctrine (2026-09-03)](#rotating-a-token-that-leaked-the-file-first-then-the-db-then-the-doctrine-2026-09-03)
 
 **Delivery, outbox and proactive messages**
+- [שלח לי קישור, and the new person's page (2026-09-25)](#שלח-לי-קישור-and-the-new-persons-page-2026-09-25)
 - [The stop that waited for a yes (fixed 2026-09-22)](#the-stop-that-waited-for-a-yes-fixed-2026-09-22)
 - [The table that did not say where she stood (2026-09-20)](#the-table-that-did-not-say-where-she-stood-2026-09-20)
 - [Five messages in twelve minutes, about one coordination (fixed 2026-09-22)](#five-messages-in-twelve-minutes-about-one-coordination-fixed-2026-09-22)
@@ -91,6 +92,7 @@ never trust a dated narrative for something you are about to act on.
 - [Eighteen messages, no answer (fixed 2026-09-07)](#eighteen-messages-no-answer-fixed-2026-09-07)
 - [The man who only ever answered from the page (fixed 2026-09-20)](#the-man-who-only-ever-answered-from-the-page-fixed-2026-09-20)
 - [The room named him and nobody told him (fixed 2026-09-23)](#the-room-named-him-and-nobody-told-him-fixed-2026-09-23)
+- [Paused for three questions nobody asked (fixed 2026-09-25)](#paused-for-three-questions-nobody-asked-fixed-2026-09-25)
 - [Nine reminders, nine messages (fixed 2026-09-07)](#nine-reminders-nine-messages-fixed-2026-09-07)
 - [Fifty-two seconds behind the introduction (fixed 2026-09-08)](#fifty-two-seconds-behind-the-introduction-fixed-2026-09-08)
 - [Her reminders arrived in Hebrew (fixed 2026-09-07)](#her-reminders-arrived-in-hebrew-fixed-2026-09-07)
@@ -180,6 +182,7 @@ never trust a dated narrative for something you are about to act on.
 - [The deploy that went red for one minute a day (2026-09-08)](#the-deploy-that-went-red-for-one-minute-a-day-2026-09-08)
 - [The door Google's screen is behind, closed until the screen is fixed (2026-09-08)](#the-door-googles-screen-is-behind-closed-until-the-screen-is-fixed-2026-09-08)
 - [The carryover detector checked the wrong half of the pair, so the flagged case was innocent and the real leaks were invisible (fixed 2026-09-03)](#the-carryover-detector-checked-the-wrong-half-of-the-pair-so-the-flagged-case-was-innocent-and-the-real-leaks-were-invisible-fixed-2026-09-03)
+- [A trip to Paphos, on the card for ever (fixed 2026-09-25)](#a-trip-to-paphos-on-the-card-for-ever-fixed-2026-09-25)
 - [One carryover leak filed itself seven times — `config_guard`'s dedup key wasn't deterministic (fixed 2026-09-03)](#one-carryover-leak-filed-itself-seven-times--config_guards-dedup-key-wasnt-deterministic-fixed-2026-09-03)
 
 **Time, timezones and scheduling**
@@ -1656,6 +1659,55 @@ compares on anyway. (`domain/identity-repair.js`, `rotateIdentityToken`.)
 
 ## Delivery, outbox and proactive messages
 
+### שלח לי קישור, and the new person's page (2026-09-25)
+
+Not an outage — a request from the owner, and it moved two rules, so the
+reasoning is kept here.
+
+**The link on request cost a whole turn.** "שלח לי קישור" ran the model,
+which called `open_my_dashboard`, read the url back and worded one line: a
+full prompt's tokens and several seconds for a sentence that is the same
+every time. The owner asked for it to be answered by code. `before_dispatch`
+had already been found to be a CLAIMING hook for the rooms
+(`incidents.md`, "A message in the room, with no tag on it"), and reading the
+gateway's own dispatcher on the box showed the rest: a handler that returns
+`{handled: true, text}` has the GATEWAY send `text` through its ordinary final
+reply path (`sendFinalPayload`, `deliveryId: "before-dispatch"`) and no model
+turn starts. Several handlers on the hook run in order and the first claim
+wins, so the room handler (`g-N` only) and this one (`u-N` only) sit side by
+side. The match is exact after normalising, from one table keyed by language,
+and the list lives only in `domain/link-request.js` — the plugin sends brokerd
+any direct message of 80 characters or less and carries no keyword, so a new
+language is a deploy and never a gateway restart. The turn-open hook runs
+fire-and-forget beside it and can land either side, so brokerd remembers the
+message ids it answered: an open already queued is dropped, a late one marks
+👍 and queues nothing.
+
+**A new person never got their page, and could not have.** The greeter speaks
+before they have a user row, so there is no id to mint a link for — the
+owner's first idea, a fixed template sent straight from the gateway with the
+link in it, cannot exist for that reason. What he chose instead: the greeter
+keeps its (now shorter) copy, and their own agent speaks next, unasked, and
+does what the greeter cannot. The greeter has no tools, so a first message
+like "תזכירי לי מחר ב-9" was carried into USER.md and done by nobody until
+they wrote again; `welcome_followup` acts on it and ends with the page. The
+three ways it could have been a duplicate are each closed in code, not in the
+prompt: the worker clears `intake_note_at` once it is out, the gate drops it
+if they wrote to their own agent first, and the first turn hands the page
+only when no follow-up reached them. It passes the night and the quiet day
+inside the greeter's fifteen minutes, because somebody who wrote at 02:00 is
+awake and a reminder for 09:00 answered at 09:00 is not an answer.
+
+**Every language, from the templates.** The owner's second instruction was
+that all of this must work in English and be easy to extend to any language.
+`templates.keyFor` is now the one place a family and a language become a key;
+the greeter's prompt and `saidTheOpening` build from every `opening_<lang>`
+template rather than a fixed Hebrew/English pair; the follow-up is an English
+instruction that answers in the language they wrote in, so it needs no
+template at all. The copy the code shipped before stays recognisable
+(`onboarding.PREVIOUS_OPENINGS`) for the minute after a deploy in which the
+greeter's file still quotes it.
+
 
 ### Five messages in twelve minutes, about one coordination (fixed 2026-09-22)
 
@@ -2972,6 +3024,24 @@ stamp (`users.room_zone_asked_at`, migration 092): one line in the private
 invite to a room coordination on several clocks, for an unconfirmed zone only,
 stamped after the send confirms. His zone was not changed by hand.
 
+**"Hours that suit everyone", the same night.** At 22:47 מירון wrote in the
+room that they wanted to look at other dates, and asked her to suggest hours
+that suit Australia, New York and Israel. She answered "אני על זה — אשאל כל
+אחד בפרטי", which is the stock line for a room that asks for a coordination,
+and suggested nothing. The prompt was not the fault: nothing computed such an
+hour, and the round above had deferred it on purpose. The block she spoke from
+also could not have answered, because of the three clocks only Israel is
+CONFIRMED on anybody's record. The Australian member has no user yet, and
+user 11's Los Angeles is a guess. The answer went out by hand that night
+(15:00 ישראל · 08:00 ניו יורק · 22:00 סידני, and nothing inside 08:00–22:00
+once Sydney changes its clock on 4.10). The code now draws it:
+`meeting-time.commonHours`, in the turn block when two or more confirmed
+clocks are in the room, and from `group_coordination_status` with the
+`places` the room named. The owner decided three things: 08:00–22:00,
+widened to 07:00–23:00 only on a day with nothing and said as such; a guessed
+clock is shown beside the answer and never counted; and "I'll ask privately"
+is never the answer to this question.
+
 ### The room's joke got a lecture (2026-09-23)
 
 Meeting 42 had just been confirmed in פחם הסעות. At 12:13 UTC Bar tagged
@@ -4081,6 +4151,48 @@ and it was the second miss that crossed the threshold. That violates
 owner parked it on 2026-09-23; moving the increment also moves the ladder's own
 `GIVE_UP_MISSES` pause, which is deliberately counted on the enqueue, so the two
 have to be decided together.
+*Fixed 2026-09-25 — the next entry.*
+
+### Paused for three questions nobody asked (fixed 2026-09-25)
+
+The note at the end of the entry above sat parked for two days. On 2026-09-25
+the box was asked who the ladder currently counts as silent, and for each
+person how many of the check-ins since their last word had actually reached
+them. Sixteen of eighteen matched exactly. One was a stop they had asked for,
+which is a different rule. The last was עידן (u-26): `checkin_misses = 3`,
+paused by the ladder (`paused_reason = 'quiet_ladder'`) at 03:09 on
+2026-09-23, and **not one of those three check-ins was ever delivered**. Two
+were withdrawn as `superseded` before they went out (22:19 and 00:02 on their
+first night). The third was the one that paused them, and the gate dropped it as
+`paused`, because by then they were. The only message that reached them after
+their last word was a day-one step, which never counts. They were put away for
+not answering questions nobody had asked them.
+
+This is not a new mistake. The comment above `onboardingStepDue` records the
+same thing for day-one steps: "Punishing people for messages they never
+received is how the product went quiet on exactly the users it most needed to
+win over." That fix moved day-one steps OFF the counter. It left the regular
+rungs on it, still counted at the enqueue.
+
+**Fix.** The miss moves to where the check-in REACHES them:
+`outbox/worker`'s `countLadderAsk`, on a confirmed send and on a timed-out one
+(which is booked as sent, and very likely went out). It counts once per
+message, and only for a ladder rung, never an `onboarding_*` step. A held row,
+a superseded one, a failed send, and a row the gate dropped count nothing,
+because each of them asked nothing. **The pause stays on the enqueue, as the
+note above required, but now it is earned.** With two misses on the record, two
+check-ins really landed and got nothing, and the third is the pause. It is
+counted and dropped exactly as before, because "this is the last one" would be
+one more message to somebody who stopped answering. The price is the one the
+owner accepted in choosing the fix: somebody who really is silent hears the
+ladder for a little longer, because a night-held row no longer brings the
+backoff forward.
+
+`tests/checkin-misses.test.js` holds each case. Four of its five tests fail
+against the old code. The fifth (dropped, failed and day-one rows never count)
+guards cases that were already right. עידן's pause was left in place by this
+change: it is a write to a real person's record, and the owner decides that
+separately.
 
 ### The hook's timer fired late, and brokerd took the blame (fixed 2026-09-07)
 
@@ -4400,7 +4512,7 @@ model to phrase.
 
 **2026-09-25: the other three doors.** `snooze_task`, `edit_task` and
 `set_task_reminder` took the same argument once the owner chose raising the
-schema ceiling (59,500 -> 59,800) over trimming guidance elsewhere; the margin
+schema ceiling (59,650 -> 59,950) over trimming guidance elsewhere; the margin
 this entry's paragraph above called too small had been 891 for a day, and
 seven room tools spent it before this could. Wiring the reminder door found
 what one door had hidden: a reminder is almost never ON the day the person
@@ -7858,6 +7970,51 @@ with `ORDER BY id` on the query plus sorting the pair before interpolating
 (`[a, b] = [prior, u.id].sort(...)`), so the same condition always produces
 the same title regardless of iteration order. Verified live post-deploy: one
 tick did the final flip, the next reported zero new/closed issues — stable.
+
+### A trip to Paphos, on the card for ever (fixed 2026-09-25)
+
+The owner asked whether Jev should clean irrelevant facts out of people's
+memory, and gave the row that prompted it: **"טס לפאפוס, קפריסין מ-9.9 עד
+14.9"**. It was active TWICE on one person's card, character for character
+(written 2026-09-06 and again on the 8th), with `expires_at` NULL on both —
+so it sat in `topFacts` on every turn, eleven days after the trip ended.
+
+The rule it broke already existed: a fact that names a moment carries an
+expiry, refused at `facts.rememberFact` by `datetime.namesAMoment`. Three
+holes let it through, and none of them was a model's judgement:
+
+- **The guard could not read a range.** A dotted date only counts when the
+  sentence also names a weekday or a month, because "3.5 שעות" is the same
+  shape. "מ-9.9 עד 14.9" has neither. Two dotted dates joined by עד or a
+  dash now count on their own (`dottedRange`), unless a unit follows
+  ("6.5-7.5 שעות") or a version word precedes ("גרסה 2.1-2.3"). The same
+  pass added "הבוקר" to the moving words — "עמית טס הבוקר ללרנקה" had gone
+  through the same way — with "כל", "במשך" and "על" before it read as a
+  time of day. "על הבוקר" was the one false catch across 127 facts and 320
+  task titles on the box, and is a test now.
+- **The extraction job turned a bad expiry into none.** A past or
+  unparseable `expires_at` was dropped and the fact KEPT (the model had
+  once given a trip the wrong year), so "the shelf life was a guess" became
+  "for ever". When the sentence carries a range, the end is now read off
+  the person's own words in their zone (`datetime.rangeEnd`: the day after
+  the last date, in whichever year puts it nearest) and wins over the
+  model's; a range already over is not written at all
+  (`refused.already_over`). Any other dated sentence with no usable expiry
+  meets the guard and is refused (`needs_expiry`).
+- **Nothing compared text.** `rememberFact` now answers an identical active
+  sentence with the row already there (`duplicate: true`, an OK, never an
+  error — the fact IS known, and a refusal would lose a 👍 or make the model
+  retry), and a second saying that knows the end date gives it to the old
+  row. Other words stay a judgement, and not this door's.
+
+**Why not Jev**: every case here is a date, and Jev documents that it cannot
+do dates. What it could still add — facts that pass with no date in them,
+and the same fact in other words — is a separate, report-only measurement.
+
+`scripts/retire-refused-facts.js` went back for the rows already stored: on
+the box it found exactly the two Paphos rows (the older retired as over, the
+younger as a duplicate), and it now gives a range still AHEAD its end date
+instead of retiring it.
 
 
 ## Time, timezones and scheduling
@@ -12468,3 +12625,97 @@ WhatsApp channel — it does not, because the key sits under `messages` and not
 under `channels.whatsapp`. `config_guard` goes red if a gateway upgrade
 restores it. The companion `ackReactionScope` is left in place: inert without
 the emoji, and `--set` needs it to put the original setting back exactly.
+
+### The eyes arrived after the answer (2026-09-25)
+
+The owner: "הרבה פעמים האייקון של העיניים מגיע אחרי שמגיעה כבר הודעה" — the 👀
+often landed on a message Olma had already answered, when it no longer meant
+anything.
+
+This was the cost the entry above wrote down and left open. With the gateway's
+instant ack gone, every 👀 was `placeMark` spawning `openclaw message react`,
+and the whole latency of the mark was that process starting: 15s idle
+(2026-09-05), and **54s** for one `--dry-run` measured on the box the day this
+was fixed. A short reply is faster than that. The supersede-kill in `placeMark`
+only rescued the case where a closing 👍 came next; a turn that answered in
+words and earned no mark left the 👀 to land late on its own.
+
+The CLI never did anything but start up and then call the gateway's
+`message.action` over its WebSocket — read off the installed dist, not
+guessed: the CLI builds `{ channel, action: 'react', params, idempotencyKey }`,
+and the WhatsApp plugin's handler reads `{ chatJid, messageId, emoji, remove }`
+with `chatJid` resolved against allowFrom exactly as `send` resolves `to`. An
+operator client with no agent-runtime identity passes the same checks the CLI
+does. So `gateway-rpc.messageAction` makes that call on the socket brokerd
+already holds for the raw pipe, and `placeMark` goes there first.
+
+The fallback copies the raw pipe's and is as narrow: never reached the gateway
+→ the CLI; refused, or timed out after it was written → logged and left,
+because a CLI retry of a 👀 is the late mark itself. On the socket, a 👍 asked
+for while the 👀 is still in flight waits for it, so the order on the phone is
+the order they were asked; a 👀 that falls back after a newer mark was queued
+behind it is dropped rather than sent slowly over the top.
+
+**Then the owner asked for the data before deciding anything else**, and it
+changed the fix. Read-only, off the box: every private message from a real
+user 2026-09-15 → 2026-09-25, the gateway journal's `Inbound message`, `Sent
+message -> sha256:<jid>` and `Sent reaction` lines joined to
+`turn.opened_by_gateway`, aggregates only.
+
+| | n | median | avg | p90 |
+|---|---|---|---|---|
+| reply after the message | 113 | 18.8s | 36.7s | ~68s |
+| 👀 after the message (CLI) | 81 | 27.4s | 32.8s | 63.6s |
+
+Replies: under 10s 25% · 10–15s 17% · 15–20s 10% · 20–30s 18% · 30–60s 17% ·
+over a minute 12%. Where a message got both, the 👀 landed AFTER the reply in
+57 of 77 (74%), and 36 replies got none at all — superseded by a 👍 before the
+CLI finished starting.
+
+A fast 👀 fixes the order but not the point: a mark that says "I'm on it"
+under a reply that already arrived eight seconds in is still noise. So the
+owner's decision was **👀 only if nothing has answered within 15 seconds**
+(`eyes_delay_seconds`, a flag, so the number can move without a deploy). At 15s,
+by the table, ~42% of messages get no eyes at all and the rest get them before
+the answer.
+
+brokerd can hold a timer; what it could not do was know the answer had gone
+out. The plugin now tells it twice — `reply_payload_sending` as a payload
+leaves, and `agent_end` when the run ends — because neither is enough alone:
+`agent_end` is the only signal for a turn that ends in silence, and it arrives
+~6s AFTER a reply that was sent (19:07:16 sent, 19:07:22 ended, the example the
+measurement started from). `trigger` could not tell a person's turn from one
+Olma started — 626 of 626 traced prompts say `user` — so the signal is matched
+to the message whose prompt brokerd built last, which a turn Olma started never
+touches. And the hold is only armed when the plugin's registration stamp lists
+`agent_end`: the plugin loads at gateway start, the deploy does not restart it,
+and a held 👀 with nothing to cancel it would put eyes under every fast reply —
+the exact thing this was for.
+
+### The thanks that was an answer (2026-09-26)
+
+The owner's case, not a report: Olma asks "להוסיף לך את המשימה ליומן?" and
+the answer is "תודה". The classifier read it as a closed exchange — 🙏 on it,
+`NO_REPLY` asked for — and the offer was silently dropped. A thanks after an
+offer can mean yes or "no, that's enough", and only the model can see which
+offer it was. Measured on the box since 08-20: 15 thanks-only messages from 7
+people, 1 of them after a question of Olma's (and in that one she wrote
+anyway, against the hint).
+
+The owner's call: the model decides, and it most likely means yes. So the
+plugin's reply signal (`turn_progress reply`, already sent for the held 👀)
+carries one more boolean — whether what is sent ENDS on a question, its last
+line with a bare link under it ignored — and brokerd keeps the newest per
+person, for three hours. A thanks inside that window gets the ordinary 👀,
+no request for silence, and `hints.thanksAfterQuestion`; it spends the
+question, and it is audited (`turn.thanks_after_question`) so the rate can be
+read. **What it cannot see, and says so:** a question sent on the raw pipe
+never passes the reply gate, so a reminder or a coordination line asking
+something is not one — deliberately for the coordination line too, which ends
+on its link sentence, since "thanks" is not agreeing to a time. And the memory
+is brokerd's, so a deploy between the question and the thanks forgets it: that
+thanks closes the exchange, which is the old behaviour and never a wrong one.
+
+The same change widened the classifier to every language somebody here might
+thank in — Arabic, Russian, French, Spanish, German, Italian, Portuguese,
+Amharic, with each language's "very much" on the filler list and nothing else.

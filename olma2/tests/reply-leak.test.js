@@ -744,15 +744,24 @@ test('the hook trims narration off the front and delivers the rest', async () =>
   const payload = { text: NOTES_ABOVE, replyToId: '3EB0X' };
   const out = await handler({ payload, sessionKey: KEY }, {});
   assert.deepEqual(out, { payload: { text: 'סגור, אזכיר לך היום ב-13:00 לבטל את האשראי 🙏', replyToId: '3EB0X' } });
-  assert.equal(sent[0].params.action, 'trim');
+  assert.equal(sent.find((m) => m.method === 'reply_gate').params.action, 'trim');
 });
 
-test('an ordinary reply never touches brokerd and is returned untouched', async () => {
+test('an ordinary reply is returned untouched, and brokerd hears only that it went out', async () => {
   const { handler, sent } = gateHandler();
   for (const text of ORDINARY) {
     assert.equal(await handler({ payload: { text }, sessionKey: KEY }, {}), undefined, text);
   }
-  assert.equal(sent.length, 0, 'the normal path costs no socket at all');
+  // The reply is never held for the socket: `reply_gate`, the one call the
+  // hook awaits, is never made. What does go is fire-and-forget — the
+  // `turn_progress` that drops a held 👀, and a `reply_claim` for a reply that
+  // says it saved something (tests/phantom-save.test.js). This used to assert
+  // "no socket at all" and passed only because it looked before the
+  // fire-and-forget writes landed.
+  await new Promise((r) => setTimeout(r, 20));
+  assert.ok(!sent.some((m) => m.method === 'reply_gate'));
+  assert.equal(sent.filter((m) => m.method === 'turn_progress').length, ORDINARY.length);
+  assert.deepEqual(sent.find((m) => m.method === 'turn_progress').params, { agentId: 'u-3', what: 'reply', asked: false });
 });
 
 test('the hook arms the english tier off the agent id, and only for an agent brokerd answered for', async () => {

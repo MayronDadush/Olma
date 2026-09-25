@@ -155,7 +155,107 @@ function citiesPhrase(tzs, roomTz, at = new Date()) {
   return `${labels.slice(0, -1).join(', ')} ו${labels[labels.length - 1]}`;
 }
 
+// ---- hours that suit every clock ---------------------------------------------
+//
+// Asked in פנתרה (2026-09-25): "את יכולה להציע שעות שמתאימות גם לאוסטרליה גם
+// לניו יורק וגם לישראל". She had nothing to answer from and said she would ask
+// everybody privately. This is the answer, computed rather than reasoned: every
+// whole hour in the coming days at which it is a waking hour on every clock.
+//
+// The owner's three decisions (2026-09-25):
+//   * a waking hour is 08:00-22:00 local, the hour a meeting STARTS; a day with
+//     none is tried again at 07:00-23:00 and says it was widened;
+//   * a clock that is only GUESSED (`timezone_confirmed` false) is shown beside
+//     the answer and never counted into it — a wrong guess would otherwise
+//     choose the hours for everybody;
+//   * the result is drawn text, so the model repeats it instead of converting.
+//
+// `zones` is [{ tz, confirmed }]. Returns null when fewer than two distinct
+// clocks are counted: one clock has no question to answer.
+const COMMON_WINDOW = [8, 22];
+const COMMON_WIDE = [7, 23];
+
+function inWindow(hour, [lo, hi]) { return hour >= lo && hour <= hi; }
+
+function sameDate(a, b) { return a.y === b.y && a.m === b.m && a.d === b.d; }
+
+// "15:00" or "14:00–16:00" in one zone, plus the day when it is not the home
+// day at the range's start.
+function spanIn(tz, label, first, last, homeParts) {
+  const a = partsInZone(tz, first);
+  const b = partsInZone(tz, last);
+  const hours = first.getTime() === last.getTime()
+    ? `${pad(a.hh)}:00` : `${pad(a.hh)}:00–${pad(b.hh)}:00`;
+  return `${hours} ${label}${sameDate(a, homeParts) ? '' : ` (${dayOf(a)})`}`;
+}
+
+function commonHours(zones, roomTz, { from = new Date(), days = 7 } = {}) {
+  const list = (zones || []).filter((z) => z && validZone(z.tz));
+  const counted = [...new Set(list.filter((z) => z.confirmed !== false).map((z) => z.tz))];
+  const guessed = [...new Set(list.filter((z) => z.confirmed === false).map((z) => z.tz))]
+    .filter((tz) => !counted.includes(tz));
+  const home = validZone(roomTz) ? roomTz : counted[0];
+  if (!home || distinctZones(counted, from, home).length < 2) return null;
+
+  // Whole UTC hours from the next one on, grouped by the home clock's date.
+  const start = new Date(Math.ceil(from.getTime() / 3600e3) * 3600e3);
+  const byDay = new Map();
+  for (let t = start.getTime(); t < start.getTime() + days * 86400e3; t += 3600e3) {
+    const at = new Date(t);
+    const key = dayOf(partsInZone(home, at));
+    if (!byDay.has(key)) byDay.set(key, []);
+    byDay.get(key).push(at);
+  }
+
+  const out = [];
+  for (const [day, hours] of byDay) {
+    const fits = (w) => hours.filter((at) => [home, ...counted]
+      .every((tz) => inWindow(partsInZone(tz, at).hh, w)));
+    let wide = false;
+    let ok = fits(COMMON_WINDOW);
+    if (!ok.length) { ok = fits(COMMON_WIDE); wide = ok.length > 0; }
+    // Consecutive hours become one range.
+    const ranges = [];
+    for (const at of ok) {
+      const r = ranges[ranges.length - 1];
+      if (r && at.getTime() - r.last.getTime() === 3600e3) r.last = at;
+      else ranges.push({ first: at, last: at });
+    }
+    const said = ranges.map(({ first, last }) => {
+      const homeParts = partsInZone(home, first);
+      const zs = distinctZones(counted, first, home);
+      const line = zs.map((z) => spanIn(z.tz, z.label, first, last, homeParts)).join(' · ');
+      const note = guessed.map((tz) => spanIn(tz, zoneLabel(tz), first, last, homeParts));
+      return note.length ? `${line} (לא מאושר: ${note.join(', ')})` : line;
+    });
+    // A day the walk only clipped — today asked late in the evening, or the
+    // last few hours of the range — and found nothing in is not news about
+    // that day, and would lead or trail the answer with "no hour suits".
+    if (said.length || hours.length >= 23) out.push({ day, wide, hours: said });
+  }
+
+  // Days that read the same collapse into one line, so a week of 15:00 is one
+  // sentence and the day the clocks change stands out on its own.
+  const lines = [];
+  for (let i = 0; i < out.length;) {
+    let j = i;
+    const same = (a, b) => a.wide === b.wide && a.hours.join('|') === b.hours.join('|');
+    while (j + 1 < out.length && same(out[j + 1], out[i])) j += 1;
+    const when = i === j ? out[i].day : `${out[i].day} עד ${out[j].day}`;
+    const what = out[i].hours.length
+      ? out[i].hours.join(' / ') + (out[i].wide ? ' (מחוץ ל־08:00–22:00, בטווח 07:00–23:00)' : '')
+      : 'אין שעה שמתאימה לכולם';
+    lines.push(`${when}: ${what}`);
+    i = j + 1;
+  }
+  return {
+    clocks: distinctZones(counted, from, home).map((z) => z.label),
+    ...(guessed.length ? { unconfirmed: guessed.map(zoneLabel) } : {}),
+    lines,
+  };
+}
+
 module.exports = {
   zoneLabel, localSlot, distinctZones, roomTimes, readerSlot, spansZones, citiesPhrase,
-  convertible, DAYS_HE,
+  convertible, commonHours, validZone, DAYS_HE, COMMON_WINDOW, COMMON_WIDE,
 };
