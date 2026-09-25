@@ -1,7 +1,7 @@
 'use strict';
 // meetings — one slice of the tool registry (see ../registry.js).
 const {
-  dashboardAuth, meetings, meetingFanout, S, actorName, fanout, tool, connectedUserByPhone, users, groupMeetings, ok, err,
+  dashboardAuth, meetings, meetingFanout, S, actorName, fanout, tool, connectedUserByPhone, users, groups, groupMeetings, ok, err,
 } = require('./_shared');
 const format = require('../../../domain/message-format');
 const listBlock = require('../../../domain/list-block');
@@ -316,8 +316,15 @@ module.exports = [
   // Nothing else about the picker was deleted. To bring it back: restore this
   // entry, put `availability` back in the require above, flip PICKER_RETIRED in
   // picker.js, and restore the doctrine paragraph in intake/agents-template.md.
-  tool('list_my_meetings', 'Your recent meetings.', {}, [],
-    (client, user) => meetings.listMine(client, user.id)),
+  // The rooms ride along because "which group am I in with you" is asked HERE,
+  // and a person in a room with no participant row got an empty list and was
+  // told there was no group (`groups.roomsOf`, 2026-09-25).
+  tool('list_my_meetings', 'Your recent meetings, and the WhatsApp groups you share with Olma.', {}, [],
+    async (client, user) => {
+      const res = await meetings.listMine(client, user.id);
+      if (!res.ok) return res;
+      return ok({ ...res.data, rooms: await groups.roomsOf(client, user.id) });
+    }),
   tool('cancel_meeting', 'Cancel a meeting you are in, for EVERYONE — anyone in it may; nobody manages one. Negotiating or confirmed (until it starts). Every participant is told and the shared calendar event is removed. When the user only means THEY cannot come, that is opt_out_of_meeting — ask which they mean if unclear. Confirm with the user first.',
     { meeting_id: S('number', 'Meeting id') }, ['meeting_id'],
     // The whole cancellation — who is told, the calendar, the queued rows —
