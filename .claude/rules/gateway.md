@@ -57,9 +57,11 @@ title means this file. Grep the title, not the filename.
   and invisible until an override is tried.
 
 - **The live OpenRouter model names its providers in order**
-  (`agents.defaults.models["openrouter/deepseek/deepseek-v4-flash"].params
-  .provider.order`, `scripts/pin-openrouter-provider.js --apply`, restart the
-  gateway). Unpinned, OpenRouter picked a different provider per request —
+  (`agents.defaults.models["<primary>"].params.provider.order`,
+  `scripts/pin-openrouter-provider.js --apply`, restart the gateway). Since
+  2026-09-25 the primary is `deepseek-v4.1-flash` with `deepseek-v4-flash` as
+  its first fallback, and the script pins BOTH: a fallback call on an
+  unpinned model goes wherever OpenRouter sends it. Unpinned, OpenRouter picked a different provider per request —
   three in six hours on 2026-09-09 — and a prompt cache is per provider, so
   the first call of nearly every message paid the whole prompt: 0–9% cached
   for any gap over two minutes, ~90% for the second call of the same turn

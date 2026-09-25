@@ -91,7 +91,11 @@ const occ = require('../src/intake/openclaw-config');
 
 const APPLY = process.argv.includes('--apply');
 const RESET = process.argv.includes('--reset');
-const MODEL = 'openrouter/deepseek/deepseek-v4-flash';
+// The live default AND its first fallback. A cache is per provider and per
+// model, and the fallback is what a Novita hiccup on the primary lands on —
+// unpinned, that one call would go wherever OpenRouter sends it.
+// v4.1-flash became the default on 2026-09-25 (scripts/set-default-model.js).
+const MODELS = ['openrouter/deepseek/deepseek-v4.1-flash', 'openrouter/deepseek/deepseek-v4-flash'];
 // Only providers that were MEASURED keeping a prefix cache (see the 9/14
 // correction above), US-headquartered first. DigitalOcean is deliberately
 // absent: it is still reachable as a fallback, it just never leads.
@@ -101,16 +105,17 @@ const cfg = occ.loadConfig();
 cfg.agents = cfg.agents || {};
 cfg.agents.defaults = cfg.agents.defaults || {};
 cfg.agents.defaults.models = cfg.agents.defaults.models || {};
-const entry = cfg.agents.defaults.models[MODEL] || {};
-const before = entry.params && entry.params.provider ? JSON.stringify(entry.params.provider) : '(unset — OpenRouter picks per request)';
-
-if (RESET) {
-  if (entry.params) { delete entry.params.provider; if (!Object.keys(entry.params).length) delete entry.params; }
-} else {
-  entry.params = { ...(entry.params || {}), provider: { order: ORDER, allow_fallbacks: true, data_collection: 'deny' } };
+for (const MODEL of MODELS) {
+  const entry = cfg.agents.defaults.models[MODEL] || {};
+  const before = entry.params && entry.params.provider ? JSON.stringify(entry.params.provider) : '(unset — OpenRouter picks per request)';
+  if (RESET) {
+    if (entry.params) { delete entry.params.provider; if (!Object.keys(entry.params).length) delete entry.params; }
+  } else {
+    entry.params = { ...(entry.params || {}), provider: { order: ORDER, allow_fallbacks: true, data_collection: 'deny' } };
+  }
+  cfg.agents.defaults.models[MODEL] = entry;
+  console.log(`${MODEL} params.provider:`, before, '->', RESET ? '(unset)' : JSON.stringify(entry.params.provider));
 }
-cfg.agents.defaults.models[MODEL] = entry;
-console.log(`${MODEL} params.provider:`, before, '->', RESET ? '(unset)' : JSON.stringify(entry.params.provider));
 
 if (!APPLY) { console.log('\ndry run — pass --apply to write'); process.exit(0); }
 occ.saveConfig(cfg);
