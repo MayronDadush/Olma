@@ -74,8 +74,9 @@ test('every string the tables define is a string the page can reach', () => {
     'a11y.edit', 'access', 'ch.hint', 'me.formHint', 'mt.stateReady',
     'perm.read', 'perm.write', 'sheet.date', 'sheet.edit', 'sheet.new',
     'sheet.save', 'sheet.time', 'tasks.doneAt', 'tasks.open',
-    'tools.h',
   ];
+  // `tools.h` left this list on 2026-09-26: the first tab became the home
+  // page, and "החיבורים שלך" is the heading over the connections under it.
   // `toast.needTitle` left this list on 2026-09-17: a list item typed into a
   // task that has no name is now told what is missing, instead of being shown
   // "saved ✓" and then thrown away when the task was never created.
