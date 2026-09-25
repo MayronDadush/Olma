@@ -257,6 +257,22 @@ have already had to be argued for.
   given in the room returns that one answer and never the table's — the room
   still hears nobody else's (`tests/group-room-actions.test.js`).
 
+- **Somebody a room sent to the greeter hears about that room in the FIRST
+  reply, and its coordination follows that same night if they are awake**
+  (2026-09-25). The greeter is handed the room by brokerd `intake_context`
+  (the intake session key ends in the sender's number) through the plugin, and
+  says one fixed line under the opening copy (`domain/intake-room.js`) — the
+  "תכף אשלח" shape only where `admitLateMembers` will actually let them in (an
+  open room, a coordination negotiating and not in its settle minute), the
+  shape that promises nothing everywhere else. **While the room sleeps, only
+  somebody who wrote in the last fifteen minutes is let in** — to their own
+  agent or to the greeter — marked `quiet` on the admission's audit row, and
+  the room's "joined" line about them waits for the room's morning
+  (`group-meetings.quietJoinersToAnnounce`). Letting in used to wait for the
+  room's hours because it and the line were one step; they are two now, and the
+  line is still never said at night (`incidents.md`, "Twice 'היי' before a word
+  about the room").
+
 - **The person who asked the ROOM for a coordination is asked privately too.**
   `startMeeting` inserts every participant at `awaiting`, the initiator
   included, and for a person-to-person coordination the fan-out rightly skips

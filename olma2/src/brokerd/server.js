@@ -24,6 +24,8 @@ const { captureDisplayName } = require('../adapters/mcp/tools/_shared');
 const groupContext = require('../domain/group-context');
 const groupsDomain = require('../domain/groups');
 const groupTurn = require('../domain/group-turn');
+const intakeRoom = require('../domain/intake-room');
+const audit = require('../domain/audit');
 const replyLeak = require('../domain/reply-leak');
 const phantomSave = require('../domain/phantom-save');
 
@@ -365,6 +367,27 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers }) {
       // a state nobody can act on.
       if (group.state !== 'open') { out = { ok: true, context: null, state: group.state }; return; }
       out = { ok: true, context: await groupTurn.renderContext(client, group, { lidPhones }) };
+    });
+    return out;
+  }
+
+  // The greeter's turn: the one line about the room a newcomer came from
+  // (`domain/intake-room.js`). Keyed on the intake session key, whose last part
+  // is the sender's number — the greeter has no identity and no user row yet.
+  // `context: null` is an answer (no room), never an error; the plugin fails
+  // open either way. Audited without the number: which room was named is the
+  // fact worth counting, and a phone in the ledger is not.
+  async function handleIntakeContext(params = {}) {
+    const phone = intakeRoom.peerOf(params.sessionKey);
+    if (!phone) return { ok: false, error: 'bad sessionKey' };
+    let out = { ok: true, context: null };
+    await withTx(pool, async (client) => {
+      const room = await intakeRoom.roomFor(client, phone);
+      if (!room) return;
+      out = { ok: true, context: intakeRoom.contextFor(room), groupId: room.groupId, meetingId: room.meetingId };
+      await audit.record(client, null, 'intake.room_context_served', {
+        groupId: room.groupId, meetingId: room.meetingId,
+      });
     });
     return out;
   }
@@ -761,6 +784,8 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers }) {
         return handleGroupContext(msg.params || {});
       case 'group_turn_context':
         return handleGroupTurnContext(msg.params || {});
+      case 'intake_context':
+        return handleIntakeContext(msg.params || {});
       case 'group_room_write':
         return handleGroupRoomWrite(msg.params || {});
       case 'reply_gate':
