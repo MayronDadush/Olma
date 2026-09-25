@@ -162,6 +162,57 @@ test('the audit trail records that a birthday changed, never the date', async ()
   assert.ok(!JSON.stringify(rows[0].detail).includes('1985'));
 });
 
+// ---- the character (migration 094) ----------------------------------------------
+// "החלפת דמות" moved a variable in the browser and nothing else, so the next
+// read of /me/data put the character derived from the id straight back.
+
+test('a picked character is saved, read back, cleared, and a non-id is refused', async () => {
+  assert.equal((await load()).data.user.avatar, null, 'nobody has picked one until they do');
+  const r = await act('setAvatar', { avatar: 'fox' });
+  assert.equal(r.ok, true, JSON.stringify(r.error));
+  assert.equal((await load()).data.user.avatar, 'fox');
+  for (const bad of ['Fox!', '<svg>', 'x'.repeat(40), 7]) {
+    assert.equal((await act('setAvatar', { avatar: bad })).ok, false, `accepted ${JSON.stringify(bad)}`);
+  }
+  assert.equal((await load()).data.user.avatar, 'fox', 'a refused write left the saved one alone');
+  assert.equal((await act('setAvatar', { avatar: null })).ok, true);
+  assert.equal((await load()).data.user.avatar, null);
+});
+
+test('a new character does not rewrite USER.md', () => {
+  assert.equal(write.CARD_ACTIONS.has('setAvatar'), false);
+});
+
+test('a friend sees the character that person picked, on the friends list and a shared task', async () => {
+  const friend = await makeUser(db.pool, '+972531940077', { firstName: 'Gali' });
+  const { rows: [conn] } = await db.pool.query(
+    `INSERT INTO connections (requester_id, target_id, target_phone, status, responded_at)
+     VALUES ($1, $2, '+972531940077', 'active', now()) RETURNING id`, [me.id, friend.id]);
+  const { rows: [task] } = await db.pool.query(
+    `INSERT INTO tasks (owner_id, title) VALUES ($1, 'shared') RETURNING id`, [friend.id]);
+  await db.pool.query(
+    `INSERT INTO shares (connection_id, task_id, owner_id, viewer_id, status, requested_by)
+     VALUES ($1, $2, $3, $4, 'active', $3)`, [conn.id, task.id, friend.id, me.id]);
+  assert.equal((await act('setAvatar', { avatar: 'owl' }, friend)).ok, true);
+
+  const page = (await load()).data;
+  assert.equal(page.friends.find((f) => f.id === friend.id).avatar, 'owl');
+  const t = page.tasks.find((x) => x.id === task.id);
+  assert.equal(t.ownerAvatar, 'owl', 'the person who shared it is drawn as they chose');
+});
+
+test('the page saves the shuffle and reads the saved character back', () => {
+  const html = require('node:fs').readFileSync(
+    require('node:path').join(__dirname, '..', 'docs', 'design', 'user-dashboard.html'), 'utf8');
+  const shuffle = html.slice(html.indexOf('$("#shuffleAvatar").addEventListener'));
+  assert.match(shuffle.slice(0, 400), /API\.setAvatar\(ANIMALS\[next\]\.id\)/, 'the shuffle saves nothing');
+  assert.match(html, /setAvatar:"setAvatar"/, 'an action missing from ACT is dropped silently by API.send');
+  assert.match(html, /myAvatar = avatarFor\(d\.user\.id, d\.user\.avatar\)/,
+    'hydrate re-derives the character over the saved one');
+  assert.doesNotMatch(html, /av:seedIndex\("u" \+/,
+    'a person drawn from the seed alone ignores the character they picked');
+});
+
 test('the card addresses them in the form they chose, and says nothing when they have not', () => {
   const base = { first_name: 'Dana', name_confirmed: true, locale: 'he', timezone: 'Asia/Jerusalem', timezone_confirmed: true };
   assert.match(renderCard({ ...base, gender: 'female' }, []), /FEMININE form/);

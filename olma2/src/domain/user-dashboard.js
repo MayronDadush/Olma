@@ -15,7 +15,7 @@
 //   * A person's timezone decides every wall clock here, converted in
 //     Postgres. Formatting an instant against the server's zone is the
 //     "משמרת 15:00 stored as Z" incident, and it is one AT TIME ZONE away.
-//   * Other people appear by first name and avatar seed only. This payload is
+//   * Other people appear by first name and chosen character only. This payload is
 //     shipped to a browser, so a phone number in it is a phone number
 //     published — the same projection calendar.listEvents makes about
 //     attendees and mail makes about recipient lists.
@@ -80,7 +80,8 @@ async function loadUser(client, userId) {
             reminder_nudge,
             gender, to_char(birth_date, 'YYYY-MM-DD') AS birth_date,
             to_char(created_at AT TIME ZONE COALESCE(timezone, 'UTC'), 'YYYY-MM-DD') AS joined_on,
-            nest_tip_seen_at IS NOT NULL AS nest_tip_seen
+            nest_tip_seen_at IS NOT NULL AS nest_tip_seen,
+            avatar
      FROM users WHERE id = $1 AND status != 'blocked' AND is_eval = false`,
     [userId]
   );
@@ -120,7 +121,7 @@ async function loadTasks(client, userId, zone, calendarSyncTasks) {
             -- who started it, by first name only: on a task somebody shared
             -- WITH this person the owner is on no share row, so without this
             -- the list could draw every face on it except the one who shared
-            ow.first_name AS owner_name,
+            ow.first_name AS owner_name, ow.avatar AS owner_avatar,
             -- they took the pin off this one (migration 066); pinned is the
             -- default, and it only means anything while the task is shared
             up.task_id IS NOT NULL AS unpinned
@@ -175,7 +176,7 @@ async function loadTasks(client, userId, zone, calendarSyncTasks) {
   // the whole set to know when removing the last person makes it private
   // again, and it needs the owner to know whether this viewer may manage it.
   const { rows: shares } = await client.query(
-    `SELECT s.id AS share_id, s.task_id, s.viewer_id, u.first_name
+    `SELECT s.id AS share_id, s.task_id, s.viewer_id, u.first_name, u.avatar
      FROM shares s JOIN users u ON u.id = s.viewer_id
      WHERE s.task_id = ANY($1::bigint[]) AND s.status = 'active'
      ORDER BY s.task_id, s.viewer_id`,
@@ -196,7 +197,7 @@ async function loadTasks(client, userId, zone, calendarSyncTasks) {
     // task — or taking yourself off one — revokes a specific share row, and a
     // page that only knows (task, viewer) would have to be given a second
     // lookup to do the one thing this list exists for.
-    shareByTask.get(s.task_id).push({ id: s.viewer_id, name: s.first_name, shareId: s.share_id });
+    shareByTask.get(s.task_id).push({ id: s.viewer_id, name: s.first_name, avatar: s.avatar, shareId: s.share_id });
   }
 
   const out = { open: [], archived: [] };
@@ -246,6 +247,7 @@ async function loadTasks(client, userId, zone, calendarSyncTasks) {
       mine: String(t.owner_id) === String(userId),
       owner: who.length || String(t.owner_id) !== String(userId) ? t.owner_id : null,
       ownerName: String(t.owner_id) !== String(userId) ? (t.owner_name || '') : null,
+      ownerAvatar: String(t.owner_id) !== String(userId) ? (t.owner_avatar || null) : null,
       who,
       // Sits at the top of their list: shared with somebody right now, and
       // they have not taken the pin off. A task that stops being shared drops
@@ -281,7 +283,7 @@ async function loadFriends(client, userId) {
   const { rows } = await client.query(
     `SELECT c.id AS connection_id,
             CASE WHEN c.requester_id = $1 THEN c.target_id ELSE c.requester_id END AS friend_id,
-            u.first_name, u.timezone, c.responded_at,
+            u.first_name, u.avatar, u.timezone, c.responded_at,
             COALESCE(
               (SELECT array_agg(g.feature ORDER BY g.feature)
                FROM connection_feature_grants g
@@ -298,6 +300,7 @@ async function loadFriends(client, userId) {
     id: r.friend_id,
     connectionId: r.connection_id,
     name: r.first_name,
+    avatar: r.avatar,
     timezone: r.timezone,
     // When this became a friendship. The page shows it under the name; it is
     // the only date in the payload that is about the RELATIONSHIP rather than
@@ -492,7 +495,7 @@ async function loadMeetings(client, userId, zone, locale) {
   // in nothing — the group has to be able to see why the tally dropped, and a
   // silently shorter list reads as somebody never having been asked.
   const { rows: parts } = await client.query(
-    `SELECT p.meeting_id, p.user_id, p.state, p.constraints, u.first_name
+    `SELECT p.meeting_id, p.user_id, p.state, p.constraints, u.first_name, u.avatar
      FROM meeting_participants p JOIN users u ON u.id = p.user_id
      WHERE p.meeting_id = ANY($1::bigint[])
      ORDER BY p.meeting_id, p.user_id`,
@@ -534,6 +537,7 @@ async function loadMeetings(client, userId, zone, locale) {
     byMeeting.get(p.meeting_id).push({
       id: p.user_id,
       name: p.first_name,
+      avatar: p.avatar,
       // Three values, never two. "Has not answered" must stay distinguishable
       // from "answered, cannot make it", or the confirm gate reads silence as
       // a refusal — which is the one mistake this whole screen is built to
@@ -772,6 +776,8 @@ async function load(client, userId) {
       digestTimes: user.digest_times ? user.digest_times.split(',') : [],
       // Told once what dropping a task onto another does (migration 069).
       nestTipSeen: Boolean(user.nest_tip_seen),
+      // The character they picked (migration 094); NULL draws the seed.
+      avatar: user.avatar || null,
     },
     schedule,
     facts: knownFacts,

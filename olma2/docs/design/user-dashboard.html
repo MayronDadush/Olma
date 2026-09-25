@@ -4014,7 +4014,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     setAvailability:"setAvailability", setQuietDays:"setQuietDays", setDigest:"setDigest",
     setCalendarSync:"setCalendarSync", setReminderNudge:"setReminderNudge",
     forgetFact:"forgetFact", answerFactPrompt:"answerFactPrompt",
-    decideSuggestion:"decideSuggestion"
+    decideSuggestion:"decideSuggestion", setAvatar:"setAvatar"
   };
   /* Ids the server has actually seen. It is what decides whether saving a task
      creates one or edits one — the page numbers its own new rows from a local
@@ -4415,6 +4415,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     setPersonal:     function(p){         return API.profile("setPersonal", p); },
     setAssistant:    function(p){         return API.profile("setAssistant", p); },
     setLocale:       function(v, done){   return API.profile("setLocale", {locale:v}, done); },
+    setAvatar:       function(id){        API.call("setAvatar", {avatar:id}); return API.send("setAvatar", {avatar:id}); },
     setAvailability: function(a, b, done){ return API.profile("setAvailability", {start:a, end:b}, done); },
     setQuietDays:    function(p, done){   return API.profile("setQuietDays", p, done); },
     setDigest:       function(p, done){   return API.profile("setDigest", p, done); },
@@ -5456,6 +5457,14 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     var h = 0, s = String(seed);
     for(var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
     return h % ANIMALS.length;
+  }
+  /* A real person's character: the one they picked on their profile page if
+     the server says they picked one (migration 094), the one derived from
+     their id if not. An id this page has no drawing for — an animal retired
+     from ANIMALS — falls back to the seed rather than to nothing. */
+  function avatarFor(uid, chosen){
+    for(var i = 0; i < ANIMALS.length; i++) if(chosen && ANIMALS[i].id === chosen) return i;
+    return seedIndex("u" + uid);
   }
   /* night is read from the person's OWN zone, so a friend's character
      is asleep under a moon exactly when messaging them would wake them. */
@@ -11092,6 +11101,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     var next = myAvatar;
     while(next === myAvatar) next = Math.floor(Math.random() * ANIMALS.length);
     myAvatar = next;
+    API.setAvatar(ANIMALS[next].id);
     paintAvatars();
     var big = $("#bigAvatar");
     big.classList.remove("pop"); void big.offsetWidth; big.classList.add("pop");
@@ -12109,9 +12119,9 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     var have = f.features || [];
     return {
       id:f.id, cid:f.connectionId, n:f.name || "", tz:f.timezone || "UTC",
-      /* Derived from the id, never stored. The same person is the same animal
-         for ever, on every device, and nothing has to be migrated to say so. */
-      av:seedIndex("u" + f.id),
+      /* The character they picked, else the one derived from their id — the
+         same animal on every page that shows them. */
+      av:avatarFor(f.id, f.avatar),
       since:f.since ? whenLabel(f.since) : "",
       /* The system stores nobody's gender — only the ASSISTANT's persona has
          one. Masculine is the documented default for address, and it is what
@@ -12222,7 +12232,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
         who.push(pid);
         /* Named here, not looked up in FRIENDS: a co-participant is connected
            to whoever opened this, not necessarily to me. */
-        PEOPLE[pid] = {id:pid, n:p.name || "", av:seedIndex("u" + p.id), g:"m"};
+        PEOPLE[pid] = {id:pid, n:p.name || "", av:avatarFor(p.id, p.avatar), g:"m"};
       }
       if(p.left) left.push(pid);
     });
@@ -12344,7 +12354,9 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
        the first paint. */
     if(d.user){
       MY_ID = d.user.id;
-      myAvatar = seedIndex("u" + d.user.id);
+      /* What they picked, from the server — never re-derived over it, or the
+         next read of /me/data puts the old character back (migration 094). */
+      myAvatar = avatarFor(d.user.id, d.user.avatar);
       paused = !!d.user.paused;
       nestTipSeen = !!d.user.nestTipSeen;
       cityConfirmed = !!d.user.timezoneConfirmed;
@@ -12459,10 +12471,10 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
        every face on it except theirs. */
     (d.tasks || []).forEach(function(x){
       if(!x.mine && x.owner != null && !FRIENDS.some(function(f){ return f.id === x.owner; }))
-        PEOPLE[x.owner] = {id:x.owner, n:x.ownerName || "", av:seedIndex("u" + x.owner), g:"m"};
+        PEOPLE[x.owner] = {id:x.owner, n:x.ownerName || "", av:avatarFor(x.owner, x.ownerAvatar), g:"m"};
       (x.who || []).forEach(function(w){
         if(String(w.id) !== String(MY_ID) && !FRIENDS.some(function(f){ return f.id === w.id; }))
-          PEOPLE[w.id] = {id:w.id, n:w.name || "", av:seedIndex("u" + w.id), g:"m"};
+          PEOPLE[w.id] = {id:w.id, n:w.name || "", av:avatarFor(w.id, w.avatar), g:"m"};
       });
     });
     var openId = mtOpen ? mtOpen.id : null;
