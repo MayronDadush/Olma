@@ -535,3 +535,28 @@ test('a reader on another clock sees their own hour beside the proposer\'s words
   const homeDigest = (await tx((c) => digest.assemble(c, me.id, 'full'))).data;
   assert.equal(homeDigest.crossUser.pendingMeetings.find((x) => Number(x.id) === id).your_time, undefined);
 });
+
+// An English page printed the stored words — Hebrew whenever the page or Olma
+// wrote them — for a meeting's time (owner, 2026-09-26). An English reader
+// now gets the moment in English, in their own clock; a Hebrew reader gets
+// exactly what they had.
+test('an English page gets a meeting\'s time in English; a Hebrew page keeps the words', async () => {
+  const en = await makeUser(db.pool, '+972531940089', { firstName: 'Sam', locale: 'en' });
+  await db.pool.query(`UPDATE users SET timezone = 'Asia/Jerusalem' WHERE id = $1`, [en.id]);
+  await connect(gali, en);
+  const id = await coordination(gali, [me, en], 'ארוחה');
+  const when = tomorrowAt('20');
+  assert.equal((await tx((c) => meetings.proposeSlot(c, gali.id, id, 'מחר ב־20:00', when))).ok, true);
+
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Jerusalem', weekday: 'long', day: 'numeric', month: 'long',
+  }).formatToParts(new Date(when)).map((p) => [p.type, p.value]));
+  const english = (await tx((c) => dash.load(c, en.id))).data.meetings.find((x) => Number(x.id) === id);
+  assert.equal(english.slotReader, `${parts.weekday}, ${parts.day} ${parts.month} · 20:00`);
+  assert.equal(english.confirmedReader, null);
+  assert.ok(!/[֐-׿]/.test(english.slotReader));
+
+  const hebrew = (await tx((c) => dash.load(c, me.id))).data.meetings.find((x) => Number(x.id) === id);
+  assert.equal(hebrew.slotReader, null, 'a Hebrew page reads the words themselves');
+  assert.equal(hebrew.slot, 'מחר ב־20:00');
+});

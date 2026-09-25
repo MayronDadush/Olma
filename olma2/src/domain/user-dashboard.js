@@ -427,11 +427,29 @@ async function loadChannels(client, userId) {
   return rows.map((r) => ({ type: r.channel_type, primary: r.is_primary }));
 }
 
+// A meeting's time for somebody whose page is in ENGLISH. The stored words
+// are Hebrew whenever the page or Olma wrote them, and the page printed them
+// verbatim under an English screen. The option row the words came from says
+// whether it was a clock, a daypart or a whole day; with no row, the stored
+// instant is used only when the words themselves name a clock, so nothing
+// here ever turns "בערב" into an hour. Null for a Hebrew page — the words ARE
+// its language — and for anything that cannot be said honestly, in which case
+// the page keeps the words.
+async function slotReaderLabel(client, meetingId, slot, startsAt, zone, locale) {
+  if (!slot || !String(locale || '').trim().toLowerCase().startsWith('en')) return null;
+  const { slotMoment } = require('./meeting-fanout');
+  const mo = await slotMoment(client, meetingId, slot);
+  const at = mo.startsAtUtc || (startsAt ? new Date(startsAt).toISOString() : null);
+  if (!at) return null;
+  return meetingTime.readerLabel(
+    { startsAt: at, allDay: mo.allDay, daypart: mo.daypart, slot }, zone, mo.authorTz, locale);
+}
+
 // Meetings still being negotiated, with each participant's answer state. What
 // somebody MARKED is availability and nothing more — the page must be able to
 // tell "has not answered" from "answered, nothing suits", so an unanswered
 // participant is `answered: false` rather than an empty option list.
-async function loadMeetings(client, userId, zone) {
+async function loadMeetings(client, userId, zone, locale) {
   const { rows: meetings } = await client.query(
     `SELECT m.id, m.title, m.initiator_id, m.status, m.quorum_min,
             m.proposed_slot, m.proposed_start_at, m.confirmed_start_at,
@@ -553,6 +571,8 @@ async function loadMeetings(client, userId, zone) {
     locals.set(m.id, {
       slot: await localOf(m.id, m.proposed_slot),
       confirmed: await localOf(m.id, m.confirmed_slot),
+      slotReader: await slotReaderLabel(client, m.id, m.proposed_slot, m.proposed_start_at, zone, locale),
+      confirmedReader: await slotReaderLabel(client, m.id, m.confirmed_slot, m.confirmed_start_at, zone, locale),
     });
   }
   return meetings.map((m) => ({
@@ -570,6 +590,10 @@ async function loadMeetings(client, userId, zone) {
     confirmedSlot: m.confirmed_slot,
     slotLocal: locals.get(m.id).slot,
     confirmedLocal: locals.get(m.id).confirmed,
+    // The same two moments in the words of an ENGLISH page (null for Hebrew,
+    // and null whenever the words name no clock) — see slotReaderLabel.
+    slotReader: locals.get(m.id).slotReader,
+    confirmedReader: locals.get(m.id).confirmedReader,
     confirmedStartAt: m.confirmed_start_at,
     confirmedTime: m.confirmed_time,
     confirmedDay: m.confirmed_day === null ? null : Number(m.confirmed_day),
@@ -605,7 +629,7 @@ async function loadMeetings(client, userId, zone) {
 // Bounded by what `meetings.rejoin` will actually accept, so the button is
 // never drawn over a refusal: still negotiating or confirmed, and not already
 // started. A coordination that closed when you left is gone from here too.
-async function loadLeftMeetings(client, userId) {
+async function loadLeftMeetings(client, userId, zone, locale) {
   const { rows } = await client.query(
     `SELECT m.id, m.title
        FROM meetings m
@@ -624,7 +648,7 @@ async function loadLeftMeetings(client, userId) {
   // coordination never simply vanishes. Title and the words of the slot, no
   // tally and no way back in — it is over.
   const { rows: done } = await client.query(
-    `SELECT m.id, m.title, m.confirmed_slot
+    `SELECT m.id, m.title, m.confirmed_slot, m.confirmed_start_at
        FROM meetings m
        JOIN meeting_participants p ON p.meeting_id = m.id
       WHERE p.user_id = $1 AND p.state <> 'opted_out'
@@ -635,7 +659,16 @@ async function loadLeftMeetings(client, userId) {
       LIMIT 20`,
     [userId]
   );
-  return left.concat(done.map((m) => ({ id: Number(m.id), title: m.title, youLeft: false, settled: true, slot: m.confirmed_slot || '' })));
+  const out = left;
+  for (const m of done) {
+    // Only when there is one — a Hebrew page's row is exactly what it was.
+    const slotReader = await slotReaderLabel(client, m.id, m.confirmed_slot, m.confirmed_start_at, zone, locale);
+    out.push({
+      id: Number(m.id), title: m.title, youLeft: false, settled: true, slot: m.confirmed_slot || '',
+      ...(slotReader ? { slotReader } : {}),
+    });
+  }
+  return out;
 }
 
 // When Olma may write, as the gate will actually read it — the same two domain
@@ -701,9 +734,9 @@ async function load(client, userId) {
   const channels = await loadChannels(client, userId);
   const contacts = await loadContacts(client, userId);
   const groups = await loadGroups(client, userId);
-  const meetings = await loadMeetings(client, userId, zone);
+  const meetings = await loadMeetings(client, userId, zone, user.locale);
   const liveSuggestions = await suggestions.liveFor(client, userId);
-  const meetingsLeft = await loadLeftMeetings(client, userId);
+  const meetingsLeft = await loadLeftMeetings(client, userId, zone, user.locale);
   const schedule = await loadSchedule(client, user);
   const knownFacts = await loadFacts(client, userId);
   const prompts = await factPrompts.pending(client, userId, user.locale);

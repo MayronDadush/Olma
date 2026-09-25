@@ -89,3 +89,28 @@ test('the cities for the opening line, joined the way Hebrew joins them', () => 
   assert.equal(mt.citiesPhrase([NY, SYD], IL, new Date('2026-09-26T17:00:00Z')), 'ישראל, ניו יורק וסידני');
   assert.equal(mt.citiesPhrase([NY], IL, new Date('2026-09-26T17:00:00Z')), 'ישראל וניו יורק');
 });
+
+// An English page printed the stored Hebrew words for a meeting's time (owner,
+// 2026-09-26). readerLabel says the moment in English, in the reader's zone —
+// and keeps the header's rule that a daypart or a whole day is never an hour.
+test('readerLabel says a moment in English, and says nothing for a Hebrew page', () => {
+  assert.equal(mt.readerLabel(SAT_EVENING, IL, IL, 'en'), 'Saturday, 26 September · 20:00');
+  // the reader's own clock, not the proposer's
+  assert.equal(mt.readerLabel(SAT_EVENING, LA, IL, 'en'), 'Saturday, 26 September · 10:00');
+  assert.equal(mt.readerLabel(SAT_EVENING, SYD, IL, 'en'), 'Sunday, 27 September · 03:00');
+  assert.equal(mt.readerLabel(SAT_EVENING, IL, IL, 'he'), null);
+  assert.equal(mt.readerLabel(SAT_EVENING, IL, IL, null), null);
+});
+
+test('readerLabel never turns a daypart or a whole day into an hour, and dates it where it was said', () => {
+  // "בערב" became 19:00 in Israel on its way into starts_at; 16:00Z.
+  const evening = { startsAt: '2026-09-29T16:00:00Z', daypart: 'evening', slot: 'יום שלישי 29.9 בערב' };
+  assert.equal(mt.readerLabel(evening, IL, IL, 'en'), 'Tuesday, 29 September · evening');
+  // Sydney is already Wednesday at that instant; the words named Tuesday.
+  assert.equal(mt.readerLabel(evening, SYD, IL, 'en'), 'Tuesday, 29 September · evening');
+  const allDay = { startsAt: '2026-09-29T06:00:00Z', allDay: true, slot: 'יום שלישי 29.9 כל היום' };
+  assert.equal(mt.readerLabel(allDay, IL, IL, 'en'), 'Tuesday, 29 September · all day');
+  // Words with no clock in them and no daypart column: the words stay.
+  assert.equal(mt.readerLabel({ startsAt: '2026-09-29T16:00:00Z', slot: 'שלישי אחרי העבודה' }, IL, IL, 'en'), null);
+  assert.equal(mt.readerLabel({ slot: 'יום שבת 26.9 20:00' }, IL, IL, 'en'), null);
+});
