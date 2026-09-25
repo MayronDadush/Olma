@@ -103,4 +103,4 @@ function exactTimeAsk(meetingId) {
     + ` meeting_id=${meetingId} — the same day only, and everyone else is told. A no, or no answer, ends it: never ask again.`;
 }
 
-module.exports = { momentFor, pickFor, standInFor, exactTimeAsk, PART_HOURS, MAX_DAYS_AHEAD };
+module.exports = { momentFor, pickFor, isoWithOffset, standInFor, exactTimeAsk, PART_HOURS, MAX_DAYS_AHEAD };

@@ -552,3 +552,17 @@ title means this file. Grep the title, not the filename.
   message twice and made merging cost more than sending the same things apart;
   it is also what made the first measurement of this problem read one message
   as five (`incidents.md`, "Fifty-two seconds behind the introduction").
+
+- **A meeting time reaches each reader in THEIR clock too, beside the
+  proposer's words and never in place of them.** `meeting-time.readerSlot`
+  draws it, and every private surface calls it: the proposal and confirmation
+  bodies (`channels/openclaw.js`), `get_meeting_status`'s block
+  (`list-block.renderMeetingOptionsBlock`), the digest's `your_time`, the
+  stuck-meeting rung and the dashboard's `slotLocal`/`confirmedLocal`. It is
+  drawn only when the reader's offset differs from the option AUTHOR's at that
+  instant, so the payload has to carry `authorTz` (`meeting-fanout.slotMoment`).
+  A missing author zone says nothing, never a guess, and a time the words never
+  pinned ("שבת בערב") is never converted. **The confirmed calendar step hands
+  over the exact start in the reader's offset** (`startPhrase`): telling an
+  agent to re-read "20:00" in its own offset put the event at the wrong hour
+  for anybody abroad (`incidents.md`, "פנתרה: one time, four clocks").

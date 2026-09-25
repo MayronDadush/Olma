@@ -122,12 +122,23 @@ function roomTimes(moment, tzs, roomTz) {
 
 // For ONE reader: the slot in their own clock, or null when their clock and
 // the author's agree at that instant (or the slot names no clock). This is
-// what a private message adds beside the proposer's words.
+// what a private message adds beside the proposer's words. An unknown author
+// clock is null too: a row queued before payloads carried one says nothing
+// rather than a guess about whose hour the words were in.
 function readerSlot(moment, readerTz, authorTz) {
-  if (!convertible(moment) || !validZone(readerTz)) return null;
+  if (!convertible(moment) || !validZone(readerTz) || !validZone(authorTz)) return null;
   const at = new Date(moment.startsAt);
-  if (validZone(authorTz) && zoneOffsetMs(readerTz, at) === zoneOffsetMs(authorTz, at)) return null;
-  return `${localSlot(at, readerTz)} (${zoneLabel(readerTz)})`;
+  if (zoneOffsetMs(readerTz, at) === zoneOffsetMs(authorTz, at)) return null;
+  const mine = partsInZone(readerTz, at);
+  const theirs = partsInZone(authorTz, at);
+  const sameDay = mine.y === theirs.y && mine.m === theirs.m && mine.d === theirs.d;
+  return {
+    slot: localSlot(at, readerTz),
+    // Just the clock when the day is the same on both sides — "אצלך 10:00"
+    // beside "יום שבת 26.9 20:00" says everything, and the day twice is noise.
+    short: sameDay ? `${pad(mine.hh)}:${pad(mine.mi)}` : localSlot(at, readerTz),
+    city: zoneLabel(readerTz),
+  };
 }
 
 // Whether the people hearing a moment are on more than one clock right now —

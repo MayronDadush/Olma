@@ -66,10 +66,13 @@ test('the merge is decided per moment, across Sydney\'s own DST change', () => {
 });
 
 test('one reader: their own clock beside the proposer\'s words, or nothing when the clocks agree', () => {
-  assert.equal(mt.readerSlot(SAT_EVENING, LA, IL), 'יום שבת 26.9 10:00 (לוס אנג׳לס)');
+  assert.deepEqual(mt.readerSlot(SAT_EVENING, LA, IL), { slot: 'יום שבת 26.9 10:00', short: '10:00', city: 'לוס אנג׳לס' });
+  assert.deepEqual(mt.readerSlot(SAT_EVENING, SYD, IL),
+    { slot: 'יום ראשון 27.9 03:00', short: 'יום ראשון 27.9 03:00', city: 'סידני' }, 'another day says the day');
   assert.equal(mt.readerSlot(SAT_EVENING, IL, IL), null);
   assert.equal(mt.readerSlot(SAT_EVENING, 'Europe/Athens', IL), null, 'same wall clock that night');
   assert.equal(mt.readerSlot({ ...SAT_EVENING, slot: 'שבת בערב' }, LA, IL), null);
+  assert.equal(mt.readerSlot(SAT_EVENING, LA, null), null, 'an unknown author clock is never guessed');
 });
 
 test('a city name is never a raw offset, and a bad zone is empty rather than a throw', () => {

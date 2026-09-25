@@ -202,7 +202,7 @@ test('a meeting this person is not in cannot be answered or left', async () => {
   const id = await coordination(gali, [ron], 'לא שלי');
   const when = tomorrowAt('09');
   await tx((c) => meetings.proposeSlot(c, gali.id, id, 'מחר ב־9:00', when));
-  const stranger = await makeUser(db.pool, '+972531940009');
+  const stranger = await makeUser(db.pool, '+972531940077');
   assert.equal((await actAs(stranger, 'respondToMeeting', { meetingId: id, accept: true, acceptedStartAt: when })).ok, false);
   assert.equal((await actAs(stranger, 'leaveMeeting', { meetingId: id })).ok, false);
 });
@@ -502,4 +502,36 @@ test('the archive never offers a way back into something already closed', async 
   assert.equal(page.data.meetingsLeft.some((x) => x.id === id), false);
   const res = await actAs(me, 'rejoinMeeting', { meetingId: id });
   assert.equal(res.ok, false);
+});
+
+test('a reader on another clock sees their own hour beside the proposer\'s words; a reader on the same one sees nothing new', async () => {
+  // פנתרה, 2026-09-25: "20:00" was ten in the morning for the member in
+  // Los Angeles, and the page said only "20:00".
+  const la = await makeUser(db.pool, '+972531940088', { firstName: 'Dan' });
+  await db.pool.query(`UPDATE users SET timezone = 'America/Los_Angeles' WHERE id = $1`, [la.id]);
+  await connect(gali, la);
+  const id = await coordination(gali, [me, la], 'שיחה');
+  const when = tomorrowAt('20');
+  assert.equal((await tx((c) => meetings.proposeSlot(c, gali.id, id, 'מחר ב־20:00', when))).ok, true);
+
+  const far = (await tx((c) => dash.load(c, la.id))).data.meetings.find((x) => Number(x.id) === id);
+  assert.equal(far.slot, 'מחר ב־20:00', 'the proposer\'s words stay the words');
+  // Computed from the instant, never pinned: which hour it is in Los Angeles
+  // depends on whose DST has moved by the day this suite runs.
+  const expected = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'America/Los_Angeles', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).format(new Date(when));
+  assert.equal(far.slotLocal, expected);
+  assert.equal(far.confirmedLocal, null);
+
+  const home = (await tx((c) => dash.load(c, me.id))).data.meetings.find((x) => Number(x.id) === id);
+  assert.equal(home.slotLocal, null, 'the same clock as the proposer is nothing to add');
+
+  // The morning digest draws the same hour, so the model never converts one.
+  const digest = require('../src/domain/digest');
+  const farDigest = (await tx((c) => digest.assemble(c, la.id, 'full'))).data;
+  const row = farDigest.crossUser.pendingMeetings.find((x) => Number(x.id) === id);
+  assert.match(row.your_time, new RegExp(`${expected} \\(לוס אנג׳לס\\)$`));
+  const homeDigest = (await tx((c) => digest.assemble(c, me.id, 'full'))).data;
+  assert.equal(homeDigest.crossUser.pendingMeetings.find((x) => Number(x.id) === id).your_time, undefined);
 });
