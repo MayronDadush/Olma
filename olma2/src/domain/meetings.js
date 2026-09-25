@@ -16,8 +16,9 @@
 const { ok, err } = require('./results');
 const audit = require('./audit');
 const grants = require('./grants');
-const { hasOffset, badTime, weekdayClash } = require('./datetime');
+const { hasOffset, badTime, weekdayClash, partsInZone } = require('./datetime');
 const options = require('./meeting-options');
+const optionMoment = require('./meeting-option-moment');
 const { onlinePlace } = require('./online-place');
 
 // How long a slot stays "live" after its start before the negotiation is
@@ -227,12 +228,21 @@ async function badSlot(client, userId, label, slotText, startsAt) {
 // lets anything in the system ask whether the moment has passed. Without it
 // a dead slot looks exactly like a live one — which is how a Saturday
 // check-in asked someone about Friday's poker game.
-async function proposeSlot(client, userId, meetingId, slotText, startsAt) {
+async function proposeSlot(client, userId, meetingId, slotText, startsAt, { allDay = false, daypart = null } = {}) {
   // Since 2026-09-05 a proposal ADDS a candidate rather than replacing the
   // one on the table (domain/meeting-options.js: up to four, a fifth from a
   // non-initiator waits for the initiator). The single-slot columns mirror
   // the newest active option, so everything that reads them is unchanged.
-  const res = await options.add(client, userId, meetingId, slotText, startsAt);
+  // A whole day or a part of one keeps its precision on the option (039/040)
+  // and sits on the same stand-in hour the dashboard uses.
+  if ((allDay || daypart) && hasOffset(startsAt)) {
+    const { rows: [u] } = await client.query('SELECT timezone FROM users WHERE id = $1', [userId]);
+    const stand = optionMoment.standInFor(u && u.timezone, startsAt, { allDay, daypart });
+    if (!stand.ok) return stand;
+    ({ startsAt } = stand.data);
+    ({ allDay, daypart } = stand.data);
+  }
+  const res = await options.add(client, userId, meetingId, slotText, startsAt, { allDay, daypart });
   if (!res.ok) return res;
   return ok({
     meetingId, proposedSlot: res.data.option.slotText,
@@ -250,6 +260,69 @@ async function proposeSlot(client, userId, meetingId, slotText, startsAt) {
 // applyExit only.
 async function tryConfirm(client, meetingId) {
   return options.tryConfirm(client, meetingId);
+}
+
+// A settled meeting whose moment is a whole day or a part of one (087) —
+// "the time is still open". One reader of the two columns, so the room's
+// question, the private question and the tool that answers them cannot
+// disagree about which meetings they are for.
+function timeIsOpen(m) {
+  return Boolean(m && m.status === 'confirmed' && (m.confirmed_all_day || m.confirmed_daypart));
+}
+
+// Anybody still in it gives a settled meeting its exact hour (owner,
+// 2026-09-24: asked once, "ואם הם רשמו שהוא יוכל לשנות את זה", and any
+// participant may). Deliberately narrow: only while the time is still open,
+// and only on the day it settled on. A different day is a different meeting
+// and goes back through the table; an hour on an exact time is a reschedule,
+// which nothing here offers.
+async function setExactTime(client, userId, meetingId, slotText, startsAt, now = Date.now()) {
+  if (!slotText || !String(slotText).trim()) return err('invalid', 'slot description required');
+  if (!hasOffset(startsAt)) return badTime('starts_at', startsAt);
+  const { rows: [m] } = await client.query(
+    `SELECT m.id, m.status, m.confirmed_slot, m.confirmed_start_at, m.confirmed_all_day,
+            m.confirmed_daypart, m.group_id
+       FROM meetings m WHERE m.id = $1 AND ${IN_IT}`, [meetingId, userId]);
+  if (!m) return err('not_found', 'no meeting you are in with that id');
+  if (m.status !== 'confirmed') {
+    return err('invalid', 'the meeting is not settled yet — put the time on the table instead',
+      { reason: 'not_confirmed' });
+  }
+  if (!timeIsOpen(m)) {
+    return err('invalid', `the meeting already has an exact time (${m.confirmed_slot}) — this only fills in an open one`,
+      { reason: 'time_already_exact', slot: m.confirmed_slot });
+  }
+  if (new Date(startsAt).getTime() < now) {
+    return err('invalid', 'that time has already passed', { reason: 'slot_in_past' });
+  }
+  const { rows: [u] } = await client.query('SELECT timezone FROM users WHERE id = $1', [userId]);
+  const tz = (u && u.timezone) || 'UTC';
+  const dayOf = (t) => { const p = partsInZone(tz, new Date(t)); return `${p.y}-${p.m}-${p.d}`; };
+  if (dayOf(startsAt) !== dayOf(m.confirmed_start_at)) {
+    return err('invalid', `that is a different day from the one it settled on (${m.confirmed_slot}) — a new day goes back on the table`,
+      { reason: 'other_day', slot: m.confirmed_slot });
+  }
+  const clash = weekdayClash('slot_description', slotText, startsAt, tz);
+  if (clash) return clash;
+  const text = String(slotText).trim();
+  // The hour-before stamp is cleared: it was skipped about a stand-in hour and
+  // is owed now. The day-of line stands — "today" was true either way.
+  const upd = await client.query(
+    `UPDATE meetings SET confirmed_slot = $2, confirmed_start_at = $3, proposed_slot = $2, proposed_start_at = $3,
+            confirmed_all_day = false, confirmed_daypart = NULL, time_set_at = now(),
+            group_hour_at = NULL, updated_at = now()
+      WHERE id = $1 AND status = 'confirmed' AND (confirmed_all_day OR confirmed_daypart IS NOT NULL)`,
+    [meetingId, text, startsAt]);
+  if (upd.rowCount === 0) {
+    return err('invalid', 'somebody set the time a moment ago', { reason: 'time_already_exact' });
+  }
+  await audit.record(client, userId, 'meeting.time_set', {
+    meetingId: Number(meetingId), was: m.confirmed_slot, slot: text,
+  });
+  return ok({
+    meetingId: Number(meetingId), slot: text, startsAt, was: m.confirmed_slot,
+    groupId: m.group_id === null ? null : Number(m.group_id),
+  });
 }
 
 // Initiator only: settle on an option now, agreed or not.
@@ -777,7 +850,7 @@ module.exports = {
   cleanLocation,
   startMeeting, recordConstraint, proposeSlot, respondToSlot,
   optOut, rejoin, applyExit, withdrawConfirmed, cancelMeeting, setTitle, setQuorum,
-  getStatus, listMine, pendingMeetingFor, tryConfirm, settleNow,
+  getStatus, listMine, pendingMeetingFor, tryConfirm, settleNow, timeIsOpen, setExactTime,
   expireStaleMeetings, dropPassedOptions, expireOne, listNegotiating,
   EXPIRE_AFTER_START_MS, LEGACY_STALE_DAYS, ALL_DAY_EXTRA_MS,
   shareableConstraints, constraintTexts, shareableTexts,

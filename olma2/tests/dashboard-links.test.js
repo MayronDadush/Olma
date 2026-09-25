@@ -136,36 +136,62 @@ test('opening a coordination from chat hands back its page, and the two-options 
 // had handed over, with not one link minted. So the url is minted at delivery
 // and passed in; no url, no clause, and never a number to build one out of.
 const URL = 'https://allma.world/d/AbCdEfGhIjKlMnOpQrStUv';
-test('the invite carries the page itself, in a private invite and a room\'s', () => {
-  const plain = instructionFor({ kind: 'meeting_invite', payload: { meetingId: 41, title: 'x', byName: 'Ann' } }, URL);
-  assert.ok(plain.includes(URL));
-  const room = instructionFor({ kind: 'meeting_invite', payload: { meetingId: 42, title: 'x', byName: 'Ann', groupSubject: 'פאדל' } }, URL);
-  assert.ok(room.includes(URL));
-  const none = instructionFor({ kind: 'meeting_invite', payload: { title: 'x', byName: 'Ann' } }, URL);
-  assert.ok(!none.includes(URL), 'a payload with no meeting still offered a page');
-  // …and the folded table question, which is the invite asked late. Not a
-  // plain proposal or a decline (owner, 2026-09-20: shorter; the link is
-  // above whatever they are reading by then), and the link line carries no
-  // sentence about it.
-  const table = instructionFor({ kind: 'meeting_slot_proposed', payload: { meetingId: 43, title: 'x', byName: 'Ann', tableChanged: true } }, URL);
-  assert.ok(table.includes(URL));
-  const one = instructionFor({ kind: 'meeting_slot_proposed', payload: { meetingId: 43, title: 'x', byName: 'Ann', slot: 'a' } }, URL);
-  assert.ok(!one.includes(URL));
-  const no = instructionFor({ kind: 'meeting_slot_declined', payload: { meetingId: 43, title: 'x', byName: 'Ann' } }, URL);
-  assert.ok(!no.includes(URL));
-  for (const body of [plain, room, table]) {
-    assert.doesNotMatch(body, /answering here/);
-    assert.match(body, /on a line of its own, with no sentence about it/);
-    // The half that broke: nothing anywhere asks the model to go and get a url.
+// Since 2026-09-24 EVERY private message about a coordination carries the page
+// and one fixed sentence saying it can be answered here or there (owner:
+// "תמיד"). It reverses 2026-09-20's afternoon, which kept it on the invite and
+// the table question only.
+const EVERY_MEETING_ROW = [
+  { kind: 'meeting_invite', payload: { meetingId: 41, title: 'x', byName: 'Ann' } },
+  { kind: 'meeting_invite', payload: { meetingId: 42, title: 'x', byName: 'Ann', groupSubject: 'פאדל' } },
+  { kind: 'meeting_invite', payload: { meetingId: 42, title: 'x', byName: 'Ann', groupSubject: 'פאדל', askedItYourself: true } },
+  { kind: 'meeting_slot_proposed', payload: { meetingId: 43, title: 'x', byName: 'Ann', tableChanged: true } },
+  { kind: 'meeting_slot_proposed', payload: { meetingId: 43, title: 'x', byName: 'Ann', slot: 'a' } },
+  { kind: 'meeting_slot_declined', payload: { meetingId: 43, title: 'x', byName: 'Ann' } },
+  { kind: 'meeting_confirmed', payload: { meetingId: 43, title: 'x', slot: 'a' } },
+  { kind: 'meeting_confirmed', payload: { meetingId: 43, title: 'x', slot: 'a', forced: true, byName: 'Ann' } },
+  { kind: 'meeting_confirmed', payload: { meetingId: 43, title: 'x', slot: 'a', settledWithoutYou: true, byName: 'Ann' } },
+  { kind: 'meeting_opt_out', payload: { meetingId: 43, title: 'x', byName: 'Ann' } },
+  { kind: 'meeting_no_match', payload: { meetingId: 43, title: 'x' } },
+  { kind: 'meeting_cancelled', payload: { meetingId: 43, title: 'x', byName: 'Ann' } },
+  { kind: 'meeting_rejoined', payload: { meetingId: 43, title: 'x', byName: 'Ann' } },
+  { kind: 'meeting_withdrawn', payload: { meetingId: 43, title: 'x', byName: 'Ann', slot: 'a' } },
+  { kind: 'meeting_expired', payload: { meetingId: 43, title: 'x', slot: 'a' } },
+  { kind: 'checkin', payload: { rung: 'stuck_meeting', meetingId: 43, checkinInstruction: 'ask about it' } },
+];
+test('every private message about a coordination carries the page and the sentence about answering', () => {
+  for (const row of EVERY_MEETING_ROW) {
+    const body = instructionFor(row, URL);
+    const what = `${row.kind} ${JSON.stringify(row.payload)}`;
+    assert.ok(body.includes(URL), `${what}: no link`);
+    assert.ok(body.includes("אפשר לענות לי כאן בצ'אט או דרך הקישור:"), `${what}: no sentence`);
+    assert.match(body, /on a line of its own/);
+    // The half that broke on 2026-09-22: nothing asks the model to go and get a url.
     assert.doesNotMatch(body, /open_my_dashboard/);
   }
+  const none = instructionFor({ kind: 'meeting_invite', payload: { title: 'x', byName: 'Ann' } }, URL);
+  assert.ok(!none.includes(URL), 'a payload with no meeting still offered a page');
+  const plainCheckin = instructionFor({ kind: 'checkin', payload: { rung: 'gentle', checkinInstruction: 'hi' } }, URL);
+  assert.ok(!plainCheckin.includes(URL), 'a check-in about nothing offered a page');
   // And with no url in hand there is no clause at all — the message still asks
   // its question, which is the half that matters, and says nothing about a page.
-  for (const kind of ['meeting_invite', 'meeting_slot_proposed']) {
-    const dry = instructionFor({ kind, payload: { meetingId: 44, title: 'x', byName: 'Ann', tableChanged: true } });
-    assert.doesNotMatch(dry, /line of its own/);
+  for (const row of EVERY_MEETING_ROW) {
+    const dry = instructionFor(row);
+    assert.doesNotMatch(dry, /line of its own|דרך הקישור/);
     assert.doesNotMatch(dry, /open_my_dashboard|allma\.world|\burl\b/i);
   }
+});
+
+// A merged message hands the link only to the part about the lead row's own
+// coordination — it was minted for that one.
+test('a merged message prints the link only inside the part it was minted for', () => {
+  const row = { kind: 'checkin', payload: { rung: 'stuck_meeting', meetingId: 43, checkinInstruction: 'ask',
+    mergedParts: [
+      { kind: 'checkin', payload: { rung: 'stuck_meeting', meetingId: 43, checkinInstruction: 'ask' } },
+      { kind: 'digest', payload: {} },
+    ] } };
+  const body = instructionFor(row, URL);
+  assert.equal(body.split(URL).length - 1, 1);
+  assert.ok(offersDashboardLink(row));
 });
 
 // The deliverer mints a link only for a row that will actually carry one, and
@@ -178,9 +204,12 @@ test('what gets a link minted for it is exactly what would print one', () => {
     [{ kind: 'meeting_invite', payload: { meetingId: 42, title: 'x', byName: 'Ann', askedItYourself: true } }, true],
     [{ kind: 'meeting_invite', payload: { title: 'x', byName: 'Ann' } }, false],
     [{ kind: 'meeting_slot_proposed', payload: { meetingId: 43, title: 'x', byName: 'Ann', tableChanged: true } }, true],
-    [{ kind: 'meeting_slot_proposed', payload: { meetingId: 43, title: 'x', byName: 'Ann', slot: 'a' } }, false],
-    [{ kind: 'meeting_slot_declined', payload: { meetingId: 43, title: 'x', byName: 'Ann' } }, false],
-    [{ kind: 'meeting_confirmed', payload: { meetingId: 43, title: 'x', slot: 'a' } }, false],
+    [{ kind: 'meeting_slot_proposed', payload: { meetingId: 43, title: 'x', byName: 'Ann', slot: 'a' } }, true],
+    [{ kind: 'meeting_slot_declined', payload: { meetingId: 43, title: 'x', byName: 'Ann' } }, true],
+    [{ kind: 'meeting_confirmed', payload: { meetingId: 43, title: 'x', slot: 'a' } }, true],
+    [{ kind: 'meeting_cancelled', payload: { meetingId: 43, title: 'x', byName: 'Ann' } }, true],
+    [{ kind: 'checkin', payload: { rung: 'stuck_meeting', meetingId: 43, checkinInstruction: 'ask' } }, true],
+    [{ kind: 'checkin', payload: { rung: 'gentle', checkinInstruction: 'hi' } }, false],
     [{ kind: 'digest', payload: {} }, false],
     [{ kind: 'reminder', payload: { title: 'x', rung: 1 } }, false],
   ];

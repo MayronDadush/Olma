@@ -204,7 +204,7 @@ async function unanimousOption(client, meetingId) {
   const { rows } = await client.query(
     `WITH active AS (
        SELECT user_id FROM meeting_participants WHERE meeting_id = $1 AND state <> 'opted_out')
-     SELECT o.id, o.slot_text, o.starts_at
+     SELECT o.id, o.slot_text, o.starts_at, o.all_day, o.daypart
        FROM meeting_options o
       WHERE o.meeting_id = $1 AND o.status = 'active'
         AND (SELECT count(*) FROM active) >= 2
@@ -225,13 +225,17 @@ async function confirmOn(client, meetingId, option, byUserId = null) {
   const upd = await client.query(
     `UPDATE meetings SET status = 'confirmed', confirmed_slot = $2, confirmed_start_at = $3,
             proposed_slot = $2, proposed_start_at = $3, settled_by = $4,
+            confirmed_all_day = $5, confirmed_daypart = $6,
             settle_due_at = NULL, settling_option_id = NULL,
             updated_at = now(), closed_at = now()
       WHERE id = $1 AND status = 'negotiating'`,
-    [meetingId, option.slot_text, option.starts_at, byUserId]);
+    // The option's precision rides onto the meeting (087): a whole day or a
+    // part of one is not the stand-in hour starts_at carries for it.
+    [meetingId, option.slot_text, option.starts_at, byUserId, Boolean(option.all_day), option.daypart || null]);
   if (upd.rowCount === 0) return { confirmed: false };
   return {
     confirmed: true, slot: option.slot_text, startsAt: option.starts_at,
+    allDay: Boolean(option.all_day), daypart: option.daypart || null,
     optionId: Number(option.id), settledBy: byUserId === null ? null : Number(byUserId),
   };
 }
@@ -322,7 +326,7 @@ async function settleNow(client, userId, meetingId, optionId) {
     return err('invalid', 'meeting is not negotiating', { reason: 'not_negotiating' });
   }
   const { rows } = await client.query(
-    `SELECT id, slot_text, starts_at FROM meeting_options
+    `SELECT id, slot_text, starts_at, all_day, daypart FROM meeting_options
       WHERE id = $1 AND meeting_id = $2 AND status = 'active'`, [optionId, meetingId]);
   if (!rows[0]) return err('not_found', 'no such option on the table', { reason: 'option_not_active' });
   const c = await confirmOn(client, meetingId, rows[0], userId);

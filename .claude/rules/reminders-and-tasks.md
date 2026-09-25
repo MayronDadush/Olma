@@ -126,6 +126,17 @@ title means this file. Grep the title, not the filename.
   (`add/answer/remove/swap`), which re-mirrors after every change.
   A yes must name one of the options on the table; the meeting confirms the
   moment one option is unanimous among the people still in it.
+  **A whole day or a part of one keeps its PRECISION all the way onto the
+  settled meeting** (owner, 2026-09-24; migration 087,
+  `meetings.confirmed_all_day/confirmed_daypart`, written by
+  `meeting-options.confirmOn` and nothing else). Its `starts_at` is a stand-in
+  hour — 09:00 for a whole day, `PART_HOURS` for a part — put there by
+  `meeting-option-moment.standInFor` whichever door the time came in by, so the
+  same day named twice is still one option. Everything that reads the settled
+  moment has to ask the precision first: the calendar makes a whole day a
+  `{date}` event (`calendar.createEvent`, `allDay`), and the room gets the
+  day-of line and never an hour-before one off a stand-in hour
+  (`group-voice.decideGroupLine`).
   **A sixth option is refused to EVERYBODY, the initiator included, and the
   refusal carries the five** — the answer to a full table is a question ("which
   of these goes?"), which `swap` answers in one transaction. What this replaced
@@ -415,6 +426,34 @@ title means this file. Grep the title, not the filename.
   אימון לרביעי" is arranged BEFORE Wednesday; filed ON Wednesday it is useless.
   `datetime.datesTheObject` reports that shape on the result and lets the model
   resolve it — it has the conversation, the function has a string.
+
+- **A weekday is a thing the person SAID, so the words travel with the time
+  and the two are checked against each other.** מירון asked for a technician
+  "ביום הראשון הקרוב"; the model read יום ראשון as an ordinal — "the first day
+  that comes up" — and saved Wednesday, then told him Wednesday, and the row,
+  the Google event and the reminder were all consistent with each other and
+  all four days early (2026-09-22; `incidents.md`, "The first day coming up").
+  Nothing could see it: the guard for this exact disagreement had existed
+  since the meetings work (`datetime.weekdayClash`, which refuses a slot whose
+  text names a day its `starts_at` does not fall on), and the task path had
+  never been given the one thing it needs — the WORDS. The title the model
+  wrote was "טכנאי בר מים", which names no day at all, and the only copy of
+  "יום ראשון" was in his own message, which no argument carried. `add_task`
+  takes `when_said` now, and `datetime.taskWeekdayClash` refuses before the
+  write, beside the past-moment guards that were added to the same door for
+  the same reason. **Three things it is not.** It is not `weekdayClash`
+  itself: ל־ is stripped first, because the rule above this one says that
+  shape dates the OBJECT, so "לקנות מתנה ליום שישי" against a Wednesday is the
+  ordinary case and refusing it would be a hint firing on ordinary input
+  (`rules/detectors.md`). A slot has no such reading — its description is
+  always about the slot — which is why the blunt version may stay blunt. It is
+  not in `tasks.addTask`: `addTasksBulk` and `jobs/fact-extraction.js` reach
+  the domain with nobody's words to check. And it checks ONE moment — `due_at`
+  when there is one, `remind_at` only for a task with no date of its own —
+  because a reminder set for the evening before a named day disagrees with it
+  on purpose. **Its limit is that it can only check words it was given**, and
+  a model that omits the argument gets the behaviour that shipped the bug;
+  `add_task` alone is guarded, because the schema budget does not fit four.
 
 - **`due_at` is when the THING is; `remind_at` is the hour THEY named.** A task
   saved with a `due_at` arms its own reminder — an hour before a timed one,
