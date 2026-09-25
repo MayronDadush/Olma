@@ -45,6 +45,14 @@ title means this file. Grep the title, not the filename.
   USER.md line that exists only when one is connected. **Read the doctrine for
   text about a tool that is gone before arguing for room**; ~11% of it was
   dead or duplicated when counted.
+  **2026-09-25: the curiosity ladder's name and timezone items went from 1,994
+  chars to 740**, because each was a fourth copy of something already said at
+  the moment it applies: asking is done once by the first-contact message, the
+  60-second name sweep and the check-in ladder (`timezone_asked_at`); the
+  per-person invitation is the card's "(unconfirmed …)" note; and what to say
+  about moved times rides `set_my_timezone`'s own `hints`. What stayed is the
+  part no state can carry — save a name the moment it is known, never as a
+  fact, and a place they mention is a zone that turn.
 
 - **What Olma runs on is not the user's to be handed — asked outright or as
   an aside.** Sharon asked what she runs on three hours into his first day and

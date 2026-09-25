@@ -14,6 +14,15 @@
 // being retrieved, which is what makes this safe to run and reversible by
 // hand if a judgement here turns out to be wrong.
 //
+// Since 2026-09-25 it does two more things, for the rows a range of dates and
+// a missing text check let in ("טס לפאפוס, קפריסין מ-9.9 עד 14.9", twice, with
+// no expiry, eleven days after the trip):
+//   - a dated fact whose range still lies AHEAD is not retired — it is given
+//     the end its own words say (`datetime.rangeEnd`, in their zone), so it
+//     stays on the card until then and leaves by itself;
+//   - the same sentence twice for one person keeps the OLDEST row and retires
+//     the rest, which is what `rememberFact` now does at the door.
+//
 // Usage:
 //   node scripts/retire-refused-facts.js                  # report what the guards would now refuse
 //   node scripts/retire-refused-facts.js --apply
@@ -26,7 +35,7 @@
 const { createPool, withTx } = require('../src/db/pool');
 const facts = require('../src/domain/facts');
 const audit = require('../src/domain/audit');
-const { namesAMoment } = require('../src/domain/datetime');
+const { namesAMoment, rangeEnd } = require('../src/domain/datetime');
 const { refreshUserCard } = require('../src/intake/user-card');
 
 const APPLY = process.argv.includes('--apply');
@@ -47,16 +56,37 @@ function refusalReason(row) {
 (async () => {
   const pool = createPool();
   const { rows } = await pool.query(
-    `SELECT f.id, f.user_id, f.fact, f.category, f.expires_at, u.first_name
+    `SELECT f.id, f.user_id, f.fact, f.category, f.expires_at, u.first_name, u.timezone
        FROM user_facts f JOIN users u ON u.id = f.user_id
       WHERE f.active = true AND (f.expires_at IS NULL OR f.expires_at > now())
       ORDER BY f.id`
   );
 
+  // The same sentence twice: the oldest row per person stays.
+  const firstOf = new Map();
+  const twinOf = (r) => {
+    const key = `${r.user_id}\u0000${r.fact}`;
+    if (!firstOf.has(key)) { firstOf.set(key, r); return null; }
+    return firstOf.get(key);
+  };
+  const now = Date.now();
+  // What happens to a row: `retire` (soft delete), or `expire` — a dated fact
+  // whose own range still lies ahead keeps its place until the day after it.
+  const plan = (r) => {
+    const twin = twinOf(r);
+    if (twin) return { action: 'retire', reason: `same sentence as #${twin.id}` };
+    const reason = refusalReason(r);
+    if (!reason) return null;
+    if (reason === 'names a moment, no expiry') {
+      const end = rangeEnd(r.fact, r.timezone, now);
+      if (end && end.getTime() > now) return { action: 'expire', until: end, reason: 'a range still ahead' };
+    }
+    return { action: 'retire', reason };
+  };
   const targets = idArg.length
     ? rows.filter((r) => idArg.includes(Number(r.id)))
-          .map((r) => ({ row: r, reason: refusalReason(r) || 'named explicitly by the operator' }))
-    : rows.map((r) => ({ row: r, reason: refusalReason(r) })).filter((t) => t.reason);
+          .map((r) => ({ row: r, ...(plan(r) || { action: 'retire', reason: 'named explicitly by the operator' }) }))
+    : rows.map((r) => ({ row: r, ...(plan(r) || {}) })).filter((t) => t.action);
 
   const missing = idArg.filter((id) => !targets.some((t) => Number(t.row.id) === id));
   if (missing.length) console.error(`not found or already inactive: ${missing.join(', ')}`);
@@ -66,8 +96,11 @@ function refusalReason(row) {
     await pool.end();
     return;
   }
-  for (const { row, reason } of targets) {
-    console.log(`${APPLY ? 'retiring' : 'would retire'} #${row.id} (${row.first_name || row.user_id}) `
+  for (const { row, reason, action, until } of targets) {
+    const verb = action === 'expire'
+      ? `${APPLY ? 'ending' : 'would end'} on ${until.toISOString().slice(0, 10)}`
+      : (APPLY ? 'retiring' : 'would retire');
+    console.log(`${verb} #${row.id} (${row.first_name || row.user_id}) `
       + `[${row.category}] ${row.fact}\n    → ${reason}`);
   }
   if (!APPLY) {
@@ -78,7 +111,17 @@ function refusalReason(row) {
 
   const touched = new Set();
   await withTx(pool, async (client) => {
-    for (const { row, reason } of targets) {
+    for (const { row, reason, action, until } of targets) {
+      if (action === 'expire') {
+        await client.query(
+          `UPDATE user_facts SET expires_at = $3, updated_at = now()
+            WHERE id = $1 AND user_id = $2 AND active AND expires_at IS NULL`,
+          [row.id, row.user_id, until]);
+        await audit.record(client, row.user_id, 'admin.fact.expiry_set',
+          { factId: Number(row.id), until: until.toISOString(), reason });
+        touched.add(Number(row.user_id));
+        continue;
+      }
       const res = await facts.forgetFact(client, row.user_id, row.id);
       if (!res.ok) { console.error(`  #${row.id}: ${res.error.message}`); continue; }
       // On top of the domain's own fact.forgotten row, so the trail says an
@@ -90,6 +133,6 @@ function refusalReason(row) {
   });
   // After the commit, never inside it — USER.md is what the agent reads.
   for (const userId of touched) await refreshUserCard(pool, userId);
-  console.log(`\nretired ${targets.length}, refreshed ${touched.size} card(s).`);
+  console.log(`\nchanged ${targets.length}, refreshed ${touched.size} card(s).`);
   await pool.end();
 })().catch((e) => { console.error(e); process.exit(1); });
