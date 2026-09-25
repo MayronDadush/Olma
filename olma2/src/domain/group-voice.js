@@ -149,7 +149,7 @@ function withClocks(line, co, { timezone, nowMs } = {}) {
 
 function decideLine(co, {
   saidStarted, saidBase, saidBaseSlot, saidChase, saidDone, saidCalendar, saidDayOf, saidHour, saidTime,
-  pendingRelay, startedAtMs, nowMs, timezone, tableSaidAtMs,
+  pendingRelay, startedAtMs, nowMs, timezone, tableSaidAtMs, reopenedAt, reopenedFrom, saidReopened,
 } = {}) {
   if (!co) return { kind: 'none', reason: 'nothing being coordinated' };
   if (co.status === 'confirmed') {
@@ -201,6 +201,17 @@ function decideLine(co, {
     return { kind: 'none', reason: 'already reminded, or not yet due' };
   }
   if (co.status !== 'negotiating') return { kind: 'none', reason: `coordination is ${co.status}` };
+
+  // A time that was SET went back on the table (meetings.reopenMeeting, owner
+  // 2026-09-25). Said once per reopening, and before anything else in this
+  // branch, the opening line included: until the room hears it, the last thing
+  // it heard was "סגור", and every other line would be about a coordination it
+  // believes is over. (A coordination that settled before the room heard it
+  // start has its opening stamped by the reopening — "מתחילה לתאם" after
+  // "סגור" is the wrong story.)
+  if (reopenedAt && !saidReopened) {
+    return { kind: 'reopened', title: co.title, was: reopenedFrom || '' };
+  }
 
   // First, once: she has started asking (owner, 2026-09-22). It comes before
   // everything else in this branch because it is the only line that is true the

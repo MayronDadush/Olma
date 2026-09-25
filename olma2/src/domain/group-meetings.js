@@ -253,7 +253,9 @@ async function admitLateMembers(client, group, meeting, now = new Date(), { awak
       ...(meeting.location ? { location: meeting.location } : {}),
       groupSubject: group.subject || null, joinedLate: true,
       ...roomZonesFlag([...members.filter((m) => inIt.has(Number(m.user_id))), ...late], group),
-    }, { key: `mconf:${meeting.id}` });
+      // The same round suffix as meeting-fanout.roundOf: a coordination
+      // reopened and settled again is a new confirmation for them too.
+    }, { key: `mconf:${meeting.id}${meeting.reopened_at ? `:r${new Date(meeting.reopened_at).getTime()}` : ''}` });
     return late;
   }
   // The same key shape as the first fan-out, so an invite can never be

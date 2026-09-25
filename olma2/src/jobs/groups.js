@@ -501,13 +501,19 @@ async function sweepGroups(client, deps) {
 //   `relay`  — one per MEMBER who asked the room to hear something, so the key
 //              is that person. Their own row is what bounds it.
 //
-// Everything else is said once per coordination and keys on its kind.
+// Everything else is said once per coordination and keys on its kind — once
+// per SETTLING, that is. A coordination somebody reopened (meetings.
+// reopenMeeting) will say "סגור" again, and a key that named only the kind
+// would take the second one for the first and drop it; so after a reopening
+// every such key carries its moment, `reopened` included. A coordination never
+// reopened keys exactly as it always did.
 function idempotencyKeyFor(row, line, co) {
   const base = `g${row.id}:m${row.meeting_id}`;
   if (line.kind === 'moved') return `${base}:moved:${line.was}`;
   if (line.kind === 'table') return `${base}:table:${new Date(co.tableChangedAt).getTime()}`;
   if (line.kind === 'relay') return `${base}:relay:${line.userId}`;
-  return `${base}:${line.kind}`;
+  const round = row.reopened_at ? `:r${new Date(row.reopened_at).getTime()}` : '';
+  return `${base}:${line.kind}${round}`;
 }
 
 async function sweepGroupVoice(client, deps) {
@@ -524,7 +530,8 @@ async function sweepGroupVoice(client, deps) {
     `SELECT m.id AS meeting_id, m.status, m.created_at AS meeting_created_at,
             m.group_started_at, m.group_base_at, m.group_base_slot, m.group_chase_at,
             m.group_done_at, m.group_table_at,
-            m.group_dayof_at, m.group_hour_at, m.group_calendar_at, m.group_time_at, g.*,
+            m.group_dayof_at, m.group_hour_at, m.group_calendar_at, m.group_time_at,
+            m.reopened_at, m.reopened_from, m.group_reopened_at, g.*,
             (SELECT max(last_wrote_at) FROM chat_group_members
               WHERE group_id = g.id) AS last_member_write_at
        FROM meetings m JOIN chat_groups g ON g.id = m.group_id
@@ -551,7 +558,8 @@ async function sweepGroupVoice(client, deps) {
     if (spoken.has(String(row.id))) continue;
     const { rows: full } = await client.query(
       `SELECT id, title, status, confirmed_slot, confirmed_start_at, initiator_id,
-              settle_due_at, calendar_event_id, location, confirmed_all_day, confirmed_daypart, time_set_at
+              settle_due_at, calendar_event_id, location, confirmed_all_day, confirmed_daypart, time_set_at,
+              reopened_at
          FROM meetings WHERE id = $1`, [row.meeting_id]);
     // Somebody who has written to her since it started is let in now, and the
     // room hears it once (`group-meetings.admitLateMembers`, owner 2026-09-25).
@@ -607,6 +615,9 @@ async function sweepGroupVoice(client, deps) {
       saidDayOf: Boolean(row.group_dayof_at),
       saidHour: Boolean(row.group_hour_at),
       saidTime: Boolean(row.group_time_at),
+      reopenedAt: row.reopened_at,
+      reopenedFrom: row.reopened_from,
+      saidReopened: Boolean(row.group_reopened_at),
       // The table line is the one that REPEATS, so what it reads is a moment
       // and not a flag: the newer of "she told the room what is on the table"
       // and the base line. Zero — no base line yet — means the room has never
@@ -644,6 +655,7 @@ async function sweepGroupVoice(client, deps) {
         base: 'group_base_at', moved: 'group_base_at', chase: 'group_chase_at',
         done: 'group_done_at', table: 'group_table_at',
         calendar: 'group_calendar_at', dayof: 'group_dayof_at', soon: 'group_hour_at', time: 'group_time_at',
+        reopened: 'group_reopened_at',
       }[line.kind];
       // `base` and `moved` share the stamp and also record WHICH time the room
       // was told, because that is what makes the next one decidable: a slot the

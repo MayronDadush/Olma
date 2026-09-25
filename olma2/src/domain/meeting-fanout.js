@@ -395,7 +395,7 @@ async function afterSettled(client, meetingId, res, { actor = null, byName = nul
     ...(brief.confirmed_all_day ? { allDay: true } : {}),
     ...(settledBy ? { byName: settledBy, forced: true } : {}),
     ...(groupSubject ? { groupSubject } : {}),
-  }, `mconf:${meetingId}`, (uid) => ({
+  }, `mconf:${meetingId}${roundOf(brief)}`, (uid) => ({
     ...(withoutYes.has(Number(uid)) ? { settledWithoutYou: true } : {}),
     ...(Number(uid) === asked ? { askExactTime: true } : {}),
   }));
@@ -412,7 +412,7 @@ async function afterSettled(client, meetingId, res, { actor = null, byName = nul
         await enqueue(client, {
           userId: asked, kind: 'meeting_exact_time_ask', urgency: 'urgent',
           payload: { meetingId: Number(meetingId), title: brief.title || 'meeting', slot: res.data.slot || brief.confirmed_slot },
-          idempotencyKey: `mexact:${meetingId}:${asked}`,
+          idempotencyKey: `mexact:${meetingId}${roundOf(brief)}:${asked}`,
         });
       } else {
         res.data.hint += ` ${optionMoment.exactTimeAsk(Number(meetingId))}`;
@@ -495,7 +495,7 @@ async function afterTimeSet(client, actor, res, { fromRoom = false, opts = {} } 
         calendarRole: calendarRoleFor(roles, uid), calendarUpdated,
         ...(brief.group_subject ? { groupSubject: brief.group_subject } : {}),
       }, uid),
-      idempotencyKey: `mtime:${meetingId}:${uid}`,
+      idempotencyKey: `mtime:${meetingId}${roundOf(brief)}:${uid}`,
     });
   }
   res.data.calendarUpdated = calendarUpdated;
@@ -513,13 +513,21 @@ function isoLike(startIso, end) {
   return `${local.toISOString().slice(0, 19)}${off[1]}`;
 }
 
+// A key for something said once per SETTLING. A coordination that was reopened
+// (meetings.reopenMeeting) settles a second time, and a key that named only
+// the meeting would take the second confirmation for the first and write
+// nothing. Empty for one never reopened, so every existing key is unchanged.
+function roundOf(brief) {
+  return brief && brief.reopened_at ? `:r${new Date(brief.reopened_at).getTime()}` : '';
+}
+
 async function meetingBrief(client, meetingId) {
   // The room's name rides along for a coordination a room started, so a
   // proposal about it can be counted like a game invite is
   // (`channels/openclaw.js`, ROOM_COUNT).
   const { rows } = await client.query(
     `SELECT m.title, m.initiator_id, m.proposed_slot, m.confirmed_slot, m.location, g.subject AS group_subject,
-            m.group_id, m.confirmed_all_day, m.confirmed_daypart
+            m.group_id, m.confirmed_all_day, m.confirmed_daypart, m.reopened_at
        FROM meetings m LEFT JOIN chat_groups g ON g.id = m.group_id WHERE m.id = $1`, [meetingId]
   );
   return rows[0] || {};
@@ -754,8 +762,55 @@ async function cancelAndTell(client, actor, meetingId) {
   return res;
 }
 
+// A settled time put back on the table (meetings.reopenMeeting), and
+// everything that follows from it. One copy for the chat, the room and the
+// page, like cancelAndTell. The shared event comes off first — it says a time
+// that is no longer true — and the row forgets it, so the next settle makes a
+// new one and the room's calendar line is not said about the old. Everybody
+// else still in it hears it once, with the table; the person who reopened it
+// is mid-turn (or on the page) and the result is their notification.
+async function reopenAndTell(client, actor, meetingId, { fromRoom = false } = {}) {
+  const brief = await meetingBrief(client, meetingId);
+  const others = await activeParticipantsExcept(client, meetingId, actor.id);
+  const res = await meetings.reopenMeeting(client, actor.id, meetingId);
+  if (!res.ok) return res;
+  // Everything still on its way about the settled time is now wrong.
+  await supersedeQueuedMeetingRows(client, meetingId,
+    ['meeting_confirmed', 'meeting_time_set', 'meeting_exact_time_ask']);
+  let roles = null, removed = false;
+  if (res.data.hadCalendarEvent) {
+    roles = await calendar.meetingCalendarRoles(client, meetingId);
+    removed = (await calendar.removeMeetingEvent(client, meetingId)).data.removed;
+    await client.query(
+      'UPDATE meetings SET calendar_event_id = NULL, calendar_organiser_id = NULL WHERE id = $1', [meetingId]);
+  }
+  // Reopened IN the room: the member's own turn there says it, so the room's
+  // line is stamped as heard (the same shape as afterTimeSet's fromRoom).
+  if (fromRoom) {
+    await client.query('UPDATE meetings SET group_reopened_at = now() WHERE id = $1', [meetingId]);
+  }
+  for (const uid of others) {
+    await enqueue(client, {
+      userId: uid, kind: 'meeting_reopened', urgency: 'urgent',
+      payload: await withRemovals(client, {
+        meetingId: Number(meetingId), title: brief.title || 'meeting',
+        byName: actorName(actor), was: res.data.was || brief.confirmed_slot || undefined,
+        options: res.data.table.map((o) => o.slotText),
+        calendarCleanup: roles ? cancelCalendarCleanup(roles, removed, uid) : 'none',
+        ...(brief.group_subject ? { groupSubject: brief.group_subject } : {}),
+        ...(fromRoom ? { fromRoom: true } : {}),
+      }, uid),
+      idempotencyKey: `mreopen:${meetingId}:${Date.parse(res.data.reopenedAt)}:${uid}`,
+    });
+  }
+  const hint = roles ? CANCEL_CLEANUP_HINTS[cancelCalendarCleanup(roles, removed, actor.id)] : '';
+  if (hint) res.data.hint = hint;
+  res.data.calendarRemoved = removed;
+  return res;
+}
+
 module.exports = {
-  afterTimeSet,
+  afterTimeSet, reopenAndTell,
   afterSettled, cancelAndTell, patchSharedEvent,
   afterStart, afterOptionAdded, afterOptionRemoved, noteNamedInRoom,
   afterSlotResponse, afterOptOut, afterRejoin,

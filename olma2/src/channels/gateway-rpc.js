@@ -315,17 +315,27 @@ async function channelsStatus() {
 // budget for one.
 const ACTION_TIMEOUT_MS = 10_000;
 
-async function messageAction({ channel, action, params }) {
-  if (!available()) throw failed('gateway rpc is switched off', { dispatched: false });
-  const state = await connect();
-  armIdleClose();
-  const payload = await send(state, 'message.action', {
+function messageActionRequest({ channel, action, params, systemAgentId }) {
+  return {
     channel,
     action,
     params: params || {},
     idempotencyKey: randomUUID(),
-    ...(state.systemAgentId ? { agentId: state.systemAgentId } : {}),
-  }, ACTION_TIMEOUT_MS);
+    ...(systemAgentId ? { agentId: systemAgentId } : {}),
+    // What `openclaw message react` itself sends. Without it the gateway reads
+    // the call as DELEGATED from a plugin and refuses a react outside "the
+    // exact current conversation" — every mark for the first 15 minutes live,
+    // 2026-09-25 (`incidents.md`, "The eyes arrived after the answer").
+    conversationReadOrigin: 'direct-operator',
+  };
+}
+
+async function messageAction({ channel, action, params }) {
+  if (!available()) throw failed('gateway rpc is switched off', { dispatched: false });
+  const state = await connect();
+  armIdleClose();
+  const payload = await send(state, 'message.action',
+    messageActionRequest({ channel, action, params, systemAgentId: state.systemAgentId }), ACTION_TIMEOUT_MS);
   armIdleClose();
   return payload;
 }
@@ -334,4 +344,4 @@ function shutdown() {
   dropConnection(failed('gateway rpc shutting down', { dispatched: true }));
 }
 
-module.exports = { sendMessage, messageAction, channelsStatus, available, shutdown, CLIENT_ID, CLIENT_MODE };
+module.exports = { sendMessage, messageAction, messageActionRequest, channelsStatus, available, shutdown, CLIENT_ID, CLIENT_MODE };

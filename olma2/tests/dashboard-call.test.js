@@ -75,8 +75,8 @@ test('a number on the list gets the tile, and the tap reaches the bridge as that
   const res = await act('callMe');
   assert.equal(res.ok, true, res.ok ? '' : JSON.stringify(res.error));
   assert.equal(res.data.calling, true);
-  assert.deepEqual(dialled, [{ phone: PHONE, maxDurationSec: 120 }],
-    'the bridge is asked to dial the account it belongs to, capped at the lifetime allowance\'s duration');
+  assert.deepEqual(dialled, [{ phone: PHONE, maxDurationSec: 120, capped: true }],
+    'the bridge is asked to dial the account it belongs to, capped at the lifetime allowance\'s duration — and told it is capped, which is what lets it ring a number off its own list');
 
   const { rows } = await db.pool.query(
     `SELECT event FROM audit_log WHERE actor_id = $1 ORDER BY id`, [me.id]);

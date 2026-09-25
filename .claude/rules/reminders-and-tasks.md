@@ -272,6 +272,22 @@ title means this file. Grep the title, not the filename.
   הפגישה" line say "anyone in it"; a test still asserting "initiator only" is
   asserting the old product.
 
+- **A settled coordination can be REOPENED, and it carries on from where it
+  stopped** (owner, 2026-09-25). `meetings.reopenMeeting` is the one writer
+  that moves `confirmed` back to `negotiating`. Anybody still in it may call
+  it, before the start. It is reached through `meeting-fanout.reopenAndTell`
+  from `reopen_meeting`, `reopen_group_coordination` and the page's
+  `reopenMeeting`.
+  - **Every other option and every answer stays.** Only the option it
+    settled on has its answers cleared, or the next answer to anything would
+    settle straight back onto it.
+  - **Anything said once per SETTLING keys on the reopening too.**
+    `mconf`/`mexact`/`mtime` go through `meeting-fanout.roundOf`, and the
+    room's once-per-coordination lines go through `jobs/groups.idempotencyKeyFor`.
+    A key naming only the meeting swallows the second "סגור" in silence.
+    Any new once-per-settle message has to take the same suffix.
+  - `incidents.md`, "A settled time could not be changed, only cancelled".
+
 - **A time ADDED to it rides the same thing, as long as that thing has not gone
   out yet** (2026-09-20). `meeting-fanout.js`'s `fanout` folds a new
   `meeting_slot_proposed` into whichever `meeting_invite` /
