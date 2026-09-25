@@ -269,6 +269,9 @@ async function statusOf(client, group, meeting) {
       // nothing may remind the room "in an hour" off it.
       confirmedAllDay: Boolean(meeting.confirmed_all_day),
       confirmedDaypart: meeting.confirmed_daypart || null,
+      // When somebody gave it its exact hour afterwards (088), which the room
+      // hears once unless it was said in the room.
+      timeSetAt: meeting.time_set_at || null,
       confirmedOption,
       // The minute between the last yes and the announcement, and whether a
       // shared calendar event exists for it — both undefined when the caller
@@ -412,6 +415,23 @@ async function sweepSilentPausedMembers(client, nowMs = Date.now()) {
     out.push({ meetingId, userId: Number(r.user_id), meetingStatus: res.data.meetingStatus });
   }
   return out;
+}
+
+// The room's newest coordination, for a member acting on it from the room —
+// the same checks setPlace makes, for the tools that write onto a meeting
+// that may already be settled.
+async function roomMeetingFor(client, group, actingUser) {
+  if (!group || group.state !== 'open') return err('forbidden', 'this group is not open');
+  if (!actingUser) {
+    return err('invalid', 'I cannot tell who said this — ask them to say it again in the group');
+  }
+  const members = await coordinatingMembers(client, group.id);
+  if (!members.some((m) => Number(m.user_id) === Number(actingUser.id))) {
+    return err('forbidden', 'that person is not a member of this group');
+  }
+  const meeting = await currentMeeting(client, group.id, { includeClosed: true });
+  if (!meeting) return err('not_found', 'nothing has been coordinated in this group');
+  return ok(meeting);
 }
 
 // The room says where ("אצל יוסי"), before or after the time is set. Written
@@ -564,6 +584,7 @@ async function markRelaySaid(client, meetingId, userId) {
 }
 
 module.exports = {
+  roomMeetingFor,
   startCoordination, coordinationStatus, statusOf, settle, setPlace, sweepSilentPausedMembers,
   currentMeeting, coordinatingMembers, memberLabel,
   relayToRoom, pendingRelay, markRelaySaid, cleanRelay, relayRoomEnabled, RELAY_MAX_CHARS, RELAY_FLAG,

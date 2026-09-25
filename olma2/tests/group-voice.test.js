@@ -1014,3 +1014,36 @@ test('the table moving is news every time it moves, and never says who said what
   assert.equal(groupVoice.decideGroupLine(noLead, { ...base, saidBase: false, tableSaidAtMs: 0 }).kind, 'none',
     'no direction yet and no table ever said: there is nothing to report');
 });
+
+// Settled on a whole day or a part of one: the "סגור" line asks ONCE whether
+// they want an exact hour, joined with the place question when both are open
+// (owner, 2026-09-24). A time set afterwards in private is told to the room
+// once; set in the room, it is stamped as heard and never repeated.
+test('the done line asks about an exact hour only when there is none, and the room hears a time set elsewhere once', () => {
+  const said = { saidBase: true, saidChase: true, startedAtMs: 0, nowMs: Date.now() };
+  const base = { status: 'confirmed', confirmedSlot: 'שלישי כל היום', options: [], silent: [], location: 'אצל יוסי' };
+  const open = groupVoice.decideGroupLine({ ...base, confirmedAllDay: true }, said);
+  assert.equal(open.kind, 'done');
+  assert.equal(open.timeAsk, true);
+  assert.match(proactiveText.renderGroupCoordination(open), /שעה מדויקת/);
+  assert.doesNotMatch(proactiveText.renderGroupCoordination(open), /איפה נפגשים\?/);
+  const both = groupVoice.decideGroupLine({ ...base, location: null, confirmedDaypart: 'evening' }, said);
+  const text = proactiveText.renderGroupCoordination(both);
+  assert.equal((text.match(/\?/g) || []).length, 1, 'one question, never two in a row');
+  assert.match(text, /שעה מדויקת, ואיפה נפגשים/);
+  const exact = groupVoice.decideGroupLine({ ...base, confirmedSlot: 'שלישי 20:00' }, said);
+  assert.equal(exact.timeAsk, false);
+  assert.doesNotMatch(proactiveText.renderGroupCoordination(exact), /שעה מדויקת/);
+
+  // An owner's rewording saved before the placeholder existed still asks.
+  const old = proactiveText.renderGroupCoordination(open, { group_coord_done: 'סגור: *{{slot}}* {{who}}' });
+  assert.match(old, /שעה מדויקת/);
+
+  const setAt = new Date().toISOString();
+  const line = groupVoice.decideGroupLine({ ...base, confirmedSlot: 'שלישי 18:00', timeSetAt: setAt },
+    { ...said, saidDone: true, saidCalendar: true });
+  assert.equal(line.kind, 'time');
+  assert.match(proactiveText.renderGroupCoordination(line), /השעה נקבעה: \*שלישי 18:00\*/);
+  assert.notEqual(groupVoice.decideGroupLine({ ...base, confirmedSlot: 'שלישי 18:00', timeSetAt: setAt },
+    { ...said, saidDone: true, saidCalendar: true, saidTime: true }).kind, 'time');
+});

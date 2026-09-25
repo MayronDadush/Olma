@@ -494,7 +494,7 @@ async function sweepGroupVoice(client, deps) {
     `SELECT m.id AS meeting_id, m.status, m.created_at AS meeting_created_at,
             m.group_started_at, m.group_base_at, m.group_base_slot, m.group_chase_at,
             m.group_done_at, m.group_table_at,
-            m.group_dayof_at, m.group_hour_at, m.group_calendar_at, g.*,
+            m.group_dayof_at, m.group_hour_at, m.group_calendar_at, m.group_time_at, g.*,
             (SELECT max(last_wrote_at) FROM chat_group_members
               WHERE group_id = g.id) AS last_member_write_at
        FROM meetings m JOIN chat_groups g ON g.id = m.group_id
@@ -504,6 +504,8 @@ async function sweepGroupVoice(client, deps) {
                  AND (m.group_done_at IS NULL
                       -- a shared calendar event the room has not heard about
                       OR (m.calendar_event_id IS NOT NULL AND m.group_calendar_at IS NULL)
+                      -- an exact hour set afterwards, the room not yet told (088)
+                      OR (m.time_set_at IS NOT NULL AND m.group_time_at IS NULL)
                       -- still ahead of us, and one of the two reminders unsaid
                       -- (a whole day stays ahead of us until its day is over, 087)
                       OR (m.confirmed_start_at IS NOT NULL
@@ -519,7 +521,7 @@ async function sweepGroupVoice(client, deps) {
     if (spoken.has(String(row.id))) continue;
     const { rows: full } = await client.query(
       `SELECT id, title, status, confirmed_slot, confirmed_start_at, initiator_id,
-              settle_due_at, calendar_event_id, location, confirmed_all_day, confirmed_daypart
+              settle_due_at, calendar_event_id, location, confirmed_all_day, confirmed_daypart, time_set_at
          FROM meetings WHERE id = $1`, [row.meeting_id]);
     const st = await groupMeetings.statusOf(client, row, full[0] || null);
     // Read HERE and not on `statusOf`, on purpose: `statusOf` is also the block
@@ -539,6 +541,7 @@ async function sweepGroupVoice(client, deps) {
       saidCalendar: Boolean(row.group_calendar_at),
       saidDayOf: Boolean(row.group_dayof_at),
       saidHour: Boolean(row.group_hour_at),
+      saidTime: Boolean(row.group_time_at),
       // The table line is the one that REPEATS, so what it reads is a moment
       // and not a flag: the newer of "she told the room what is on the table"
       // and the base line. Zero — no base line yet — means the room has never
@@ -575,7 +578,7 @@ async function sweepGroupVoice(client, deps) {
         started: 'group_started_at',
         base: 'group_base_at', moved: 'group_base_at', chase: 'group_chase_at',
         done: 'group_done_at', table: 'group_table_at',
-        calendar: 'group_calendar_at', dayof: 'group_dayof_at', soon: 'group_hour_at',
+        calendar: 'group_calendar_at', dayof: 'group_dayof_at', soon: 'group_hour_at', time: 'group_time_at',
       }[line.kind];
       // `base` and `moved` share the stamp and also record WHICH time the room
       // was told, because that is what makes the next one decidable: a slot the
@@ -595,6 +598,11 @@ async function sweepGroupVoice(client, deps) {
           [row.meeting_id, line.slot, now]);
       } else {
         await client.query(`UPDATE meetings SET ${column} = $2 WHERE id = $1`, [row.meeting_id, now]);
+      }
+      // A done line said AFTER an exact hour was set already carries that hour,
+      // so the room has heard it and the `time` line would only repeat it.
+      if (line.kind === 'done' && st.coordination.timeSetAt) {
+        await client.query('UPDATE meetings SET group_time_at = $2 WHERE id = $1', [row.meeting_id, now]);
       }
     }
     await audit.record(client, row.registered_by_user_id, 'group.coordination_said', {

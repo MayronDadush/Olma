@@ -92,4 +92,15 @@ function standInFor(tz, startsAt, { allDay = false, daypart = null } = {}) {
   return ok({ startsAt: isoWithOffset(instant, tz || 'UTC'), allDay: Boolean(allDay), daypart: allDay ? null : daypart });
 }
 
-module.exports = { momentFor, pickFor, standInFor, PART_HOURS, MAX_DAYS_AHEAD };
+// The question, for the ONE person asked when a private coordination settles
+// on a whole day or a part of one (owner, 2026-09-24). Here rather than in
+// the fanout because both the settler's own hint and the queued confirmation
+// read it, and the delivery layer may not require the fanout. Said once: a
+// no, or a silence, is an answer.
+function exactTimeAsk(meetingId) {
+  return 'It settled without an exact hour (a whole day, or a part of one). Ask the user ONCE, in this same'
+    + ' message, whether they want to fix an exact time; if they name one, record it with propose_meeting_slot'
+    + ` meeting_id=${meetingId} — the same day only, and everyone else is told. A no, or no answer, ends it: never ask again.`;
+}
+
+module.exports = { momentFor, pickFor, standInFor, exactTimeAsk, PART_HOURS, MAX_DAYS_AHEAD };
