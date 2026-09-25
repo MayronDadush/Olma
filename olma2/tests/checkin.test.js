@@ -328,7 +328,9 @@ test('a stuck-meeting nudge carries the user\'s own recorded constraints', async
 
 // ---- the fixes for "Olma went quiet on new users" ---------------------------
 
-test('day-one steps never count as misses; regular checkins still do', async () => {
+// The regular half is counted where the check-in REACHES them, so here only
+// the queue is visible; tests/checkin-misses.test.js drains it.
+test('day-one steps never count as misses; a regular checkin is queued, not yet counted', async () => {
   const checkin = require('../src/jobs/checkin');
   const fresh = await makeUser(db.pool, '+972641000031', { firstName: 'Noa' });
   const c = await db.pool.connect();
@@ -339,7 +341,7 @@ test('day-one steps never count as misses; regular checkins still do', async () 
     let { rows } = await c.query(`SELECT checkin_misses FROM users WHERE id = $1`, [fresh.id]);
     assert.equal(rows[0].checkin_misses, 0, 'an onboarding step is not evidence of being ignored');
 
-    // past day one, idle → a regular checkin fires and DOES count
+    // past day one, idle → a regular checkin fires, and counts once it lands
     await c.query(
       `UPDATE users SET onboarded_at = now() - interval '3 days',
               created_at = now() - interval '3 days', last_checkin_at = NULL WHERE id = $1`,
@@ -348,7 +350,10 @@ test('day-one steps never count as misses; regular checkins still do', async () 
       `UPDATE audit_log SET created_at = now() - interval '3 days' WHERE actor_id = $1`, [fresh.id]);
     await checkin.run(c);
     ({ rows } = await c.query(`SELECT checkin_misses FROM users WHERE id = $1`, [fresh.id]));
-    assert.equal(rows[0].checkin_misses, 1, 'a real unanswered checkin still counts');
+    assert.equal(rows[0].checkin_misses, 0, 'queued is not asked');
+    ({ rows } = await c.query(
+      `SELECT payload->>'rung' AS rung FROM outbox WHERE user_id = $1 AND kind = 'checkin' ORDER BY id DESC LIMIT 1`, [fresh.id]));
+    assert.ok(!rows[0].rung.startsWith('onboarding_'), 'a regular rung is what went into the queue');
   } finally { c.release(); }
 });
 

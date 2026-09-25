@@ -92,6 +92,7 @@ never trust a dated narrative for something you are about to act on.
 - [Eighteen messages, no answer (fixed 2026-09-07)](#eighteen-messages-no-answer-fixed-2026-09-07)
 - [The man who only ever answered from the page (fixed 2026-09-20)](#the-man-who-only-ever-answered-from-the-page-fixed-2026-09-20)
 - [The room named him and nobody told him (fixed 2026-09-23)](#the-room-named-him-and-nobody-told-him-fixed-2026-09-23)
+- [Paused for three questions nobody asked (fixed 2026-09-25)](#paused-for-three-questions-nobody-asked-fixed-2026-09-25)
 - [Nine reminders, nine messages (fixed 2026-09-07)](#nine-reminders-nine-messages-fixed-2026-09-07)
 - [Fifty-two seconds behind the introduction (fixed 2026-09-08)](#fifty-two-seconds-behind-the-introduction-fixed-2026-09-08)
 - [Her reminders arrived in Hebrew (fixed 2026-09-07)](#her-reminders-arrived-in-hebrew-fixed-2026-09-07)
@@ -4150,6 +4151,48 @@ and it was the second miss that crossed the threshold. That violates
 owner parked it on 2026-09-23; moving the increment also moves the ladder's own
 `GIVE_UP_MISSES` pause, which is deliberately counted on the enqueue, so the two
 have to be decided together.
+*Fixed 2026-09-25 — the next entry.*
+
+### Paused for three questions nobody asked (fixed 2026-09-25)
+
+The note at the end of the entry above sat parked for two days. On 2026-09-25
+the box was asked who the ladder currently counts as silent, and for each
+person how many of the check-ins since their last word had actually reached
+them. Sixteen of eighteen matched exactly. One was a stop they had asked for,
+which is a different rule. The last was עידן (u-26): `checkin_misses = 3`,
+paused by the ladder (`paused_reason = 'quiet_ladder'`) at 03:09 on
+2026-09-23, and **not one of those three check-ins was ever delivered**. Two
+were withdrawn as `superseded` before they went out (22:19 and 00:02 on their
+first night). The third was the one that paused them, and the gate dropped it as
+`paused`, because by then they were. The only message that reached them after
+their last word was a day-one step, which never counts. They were put away for
+not answering questions nobody had asked them.
+
+This is not a new mistake. The comment above `onboardingStepDue` records the
+same thing for day-one steps: "Punishing people for messages they never
+received is how the product went quiet on exactly the users it most needed to
+win over." That fix moved day-one steps OFF the counter. It left the regular
+rungs on it, still counted at the enqueue.
+
+**Fix.** The miss moves to where the check-in REACHES them:
+`outbox/worker`'s `countLadderAsk`, on a confirmed send and on a timed-out one
+(which is booked as sent, and very likely went out). It counts once per
+message, and only for a ladder rung, never an `onboarding_*` step. A held row,
+a superseded one, a failed send, and a row the gate dropped count nothing,
+because each of them asked nothing. **The pause stays on the enqueue, as the
+note above required, but now it is earned.** With two misses on the record, two
+check-ins really landed and got nothing, and the third is the pause. It is
+counted and dropped exactly as before, because "this is the last one" would be
+one more message to somebody who stopped answering. The price is the one the
+owner accepted in choosing the fix: somebody who really is silent hears the
+ladder for a little longer, because a night-held row no longer brings the
+backoff forward.
+
+`tests/checkin-misses.test.js` holds each case. Four of its five tests fail
+against the old code. The fifth (dropped, failed and day-one rows never count)
+guards cases that were already right. עידן's pause was left in place by this
+change: it is a write to a real person's record, and the owner decides that
+separately.
 
 ### The hook's timer fired late, and brokerd took the blame (fixed 2026-09-07)
 
