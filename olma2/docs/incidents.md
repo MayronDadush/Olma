@@ -12745,3 +12745,23 @@ thanks closes the exchange, which is the old behaviour and never a wrong one.
 The same change widened the classifier to every language somebody here might
 thank in — Arabic, Russian, French, Spanish, German, Italian, Portuguese,
 Amharic, with each language's "very much" on the filler list and nothing else.
+
+### The gateway refused every mark for fifteen minutes (2026-09-25)
+
+The first live minutes of the socket path. The hold itself worked — two replies
+at 12.7s and 14s and no 👀 on either — but the 👍 a tool placed at 13s came
+back `UNAVAILABLE: Delegated whatsapp:react requires the exact current
+conversation and account for this plugin`, and so would every mark. The
+gateway reads a `message.action` as DELEGATED from a plugin unless it says
+`conversationReadOrigin: "direct-operator"`, which `openclaw message react`
+sets on itself and our client did not (a caller with an agent runtime identity
+is delegated whatever it says; ours has none). No probe had been run against
+the live gateway before merge: the dry-run in the design session went through
+the CLI, which is exactly the path that sets it.
+
+Two fixes. `gateway-rpc.messageActionRequest` sends the marker. And a REFUSED
+mark that is itself the answer (👍, 🙏, ⏰) now falls back to the CLI: a
+refusal placed nothing, and "log only" had turned one missing field into no
+marks at all. A refused 👀 still does not — through the CLI it lands after the
+reply it was promising — and a timeout stays a log line, since it may have
+gone out.

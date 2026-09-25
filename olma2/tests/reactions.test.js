@@ -301,7 +301,22 @@ test('reactions: a request that never reached the gateway falls back to the CLI'
   assert.deepEqual(spawned[0], r.buildReactArgs({ ...gwBase, messageId: '3EB0GW000003', state: 'working' }));
 });
 
-test('reactions: a refused or timed-out mark is never retried on the slow pipe', async () => {
+test('reactions: a refused 👍 is the answer and goes the slow way; a refused 👀 does not', async () => {
+  const spawned = [];
+  const spawn = (cmd, args) => { spawned.push(args); return { on() {}, unref() {} }; };
+  const refused = async () => { throw Object.assign(new Error('UNAVAILABLE'), { dispatched: true, refused: true }); };
+  r._setLogs(() => {}, () => {});
+  r.placeMark({ ...gwBase, messageId: '3EB0GW000014', state: 'done' }, { rpc: refused, spawn });
+  r.placeMark({ ...gwBase, messageId: '3EB0GW000015', state: 'thanks' }, { rpc: refused, spawn });
+  r.placeMark({ ...gwBase, messageId: '3EB0GW000016', state: 'listening' }, { rpc: refused, spawn });
+  await tick(); await tick();
+  assert.deepEqual(spawned, [
+    r.buildReactArgs({ ...gwBase, messageId: '3EB0GW000014', state: 'done' }),
+    r.buildReactArgs({ ...gwBase, messageId: '3EB0GW000015', state: 'thanks' }),
+  ]);
+});
+
+test('reactions: a refused 👀 or a timed-out mark is never retried on the slow pipe', async () => {
   const spawned = [];
   const spawn = (cmd, args) => { spawned.push(args); return { on() {}, unref() {} }; };
   const refused = async () => { throw Object.assign(new Error('INVALID_REQUEST'), { dispatched: true, refused: true }); };

@@ -320,8 +320,14 @@ function placeViaGateway(req, opts, rpc, deps) {
     (err) => {
       // Never reached the gateway: the CLI is a clean retry — unless a newer
       // mark for this message has been asked for since, which says more than
-      // this one and is already on its way.
-      if (err && err.dispatched === false) {
+      // this one and is already on its way. A REFUSAL placed nothing either,
+      // and for a mark that IS the answer (👍, 🙏, ⏰) the slow pipe is still
+      // worth it: a gateway that refused every react took every mark with it
+      // for fifteen minutes on 2026-09-25. Not for the 👀 — through the CLI it
+      // lands after the reply it was promising. A timeout may have gone out,
+      // and stays a log line.
+      const refusedAnswer = err && err.refused === true && !DELAYABLE_OPENING.has(opts.state);
+      if (err && (err.dispatched === false || refusedAnswer)) {
         if (inFlight.get(key) !== entry) return;
         inFlight.delete(key);
         placeViaCli(req, opts, deps, { fallback: err.message });

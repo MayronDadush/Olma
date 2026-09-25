@@ -116,3 +116,11 @@ test('the kill switch is readable at call time, not captured at load', async () 
     else process.env.OLMA_GATEWAY_RPC_SEND = before;
   }
 });
+
+test('a message action says it comes from the operator, as the CLI does, or the gateway refuses the react', () => {
+  const rpc = require('../src/channels/gateway-rpc');
+  const req = rpc.messageActionRequest({ channel: 'whatsapp', action: 'react', params: { emoji: '👍' }, systemAgentId: 'main' });
+  assert.equal(req.conversationReadOrigin, 'direct-operator');
+  assert.equal(req.agentId, 'main');
+  assert.ok(req.idempotencyKey);
+});
