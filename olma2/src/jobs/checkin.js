@@ -725,29 +725,35 @@ async function run(client, now = Date.now()) {
       idempotencyKey: key,
     });
     if (res.data.enqueued) {
-      // Day-one steps do NOT count as misses: they are deliberately built to
-      // not require an answer ("show them something"), and several never even
-      // reach the person (quiet-hours expiry). Only the regular cadence — a
-      // message that asked and got nothing — is evidence of being ignored.
-      const { rows: [after] } = await client.query(
-        step
-          ? `UPDATE users SET last_checkin_at = now() WHERE id = $1 RETURNING checkin_misses`
-          : `UPDATE users SET last_checkin_at = now(), checkin_misses = checkin_misses + 1 WHERE id = $1 RETURNING checkin_misses`,
+      // A miss is counted where the check-in REACHES them — outbox/worker,
+      // `countLadderAsk`, on a confirmed or timed-out send — never here. A
+      // row queued at 03:04 and held for the night, or replaced before it
+      // went out, is not a question anybody failed to answer: counted on the
+      // enqueue, Sharon was "silent" twice to messages still waiting for her
+      // morning and the confirmation of the coordination she led was dropped
+      // as `quiet`, and עידן was paused by the ladder with none of its three
+      // check-ins ever delivered (2026-09-23; `incidents.md`, "Paused for
+      // three questions nobody asked"). Day-one steps never count at all:
+      // they are built not to require an answer.
+      //
+      // The one count that stays HERE is the end of the ladder. With two
+      // misses on the record, two check-ins really reached them and got
+      // nothing, and this third is the pause — whether it lands or not,
+      // nothing else is going to. `quietPause` cancels nothing — the
+      // reminders and the tasks stay on their record — and openRecord ends
+      // it on the first message they send. (The check-in just enqueued still
+      // goes to the worker, whose gate reads paused_at at DELIVERY and drops
+      // it as `paused` — the owner's rule is that a person who has stopped
+      // answering hears nothing more, and "this is the last one" would be
+      // one more.)
+      const givesUp = !step && (Number(u.checkin_misses) || 0) >= GIVE_UP_MISSES - 1;
+      await client.query(
+        givesUp
+          ? `UPDATE users SET last_checkin_at = now(), checkin_misses = checkin_misses + 1 WHERE id = $1`
+          : `UPDATE users SET last_checkin_at = now() WHERE id = $1`,
         [u.id]
       );
-      // The end of the ladder is a pause, not a silence. Counted on the
-      // ENQUEUE like the miss itself: this check-in is the third thing asked
-      // with no answer to the two before it, and whether it lands or the gate
-      // drops it, nothing else is going to. `quietPause` cancels nothing —
-      // the reminders and the tasks stay on their record — and openRecord
-      // ends it on the first message they send. (The check-in just enqueued
-      // still goes: the worker's gate reads paused_at at DELIVERY, so it is
-      // dropped as `paused` — the owner's rule is that a person who has
-      // stopped answering hears nothing more, and "this is the last one"
-      // would be one more.)
-      if (!step && Number(after.checkin_misses) >= GIVE_UP_MISSES) {
-        await pause.quietPause(client, u.id);
-      }
+      if (givesUp) await pause.quietPause(client, u.id);
       // A day-one step that has not gone out yet is REPLACED by the next one,
       // not joined by it. The expiry above was meant to do this ("every step
       // expires when the next one comes due") and does not: the 5h step lives

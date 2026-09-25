@@ -22,7 +22,7 @@ const users = require('../domain/users');
 const meetings = require('../domain/meetings');
 const llm = require('../adapters/llm');
 const flagsDomain = require('../domain/flags');
-const { partsInZone, hasOffset } = require('../domain/datetime');
+const { partsInZone, hasOffset, rangeEnd } = require('../domain/datetime');
 // Off the main thread (channels/sessions-async.js): this job reads whole
 // transcripts, on the same event loop that answers live users.
 const { readRecentMessages } = require('../channels/sessions-async');
@@ -371,7 +371,7 @@ async function applyExtraction(client, user, parsed, knownFactIds = new Set()) {
   // silently, and a background job that quietly drops facts looks exactly like a
   // quiet week. If a guard ever starts over-firing — refusing real facts every
   // night — this counter is the only place that would say so.
-  const out = { recorded: 0, tasksCaptured: 0, refused: {}, replaced: 0, datesDropped: 0, titlesTrimmed: 0 };
+  const out = { recorded: 0, duplicates: 0, tasksCaptured: 0, refused: {}, replaced: 0, datesDropped: 0, titlesTrimmed: 0 };
   const factList = Array.isArray(parsed.facts) ? parsed.facts.slice(0, 20) : [];
   for (const f of factList) {
     if (!f || typeof f.fact !== 'string') continue;
@@ -384,6 +384,23 @@ async function applyExtraction(client, user, parsed, knownFactIds = new Set()) {
     if (f.expires_at) {
       const t = Date.parse(f.expires_at);
       if (!Number.isNaN(t) && t > Date.now()) expiresAt = f.expires_at;
+    }
+    // …but "dropped" must never mean "for ever". "טס לפאפוס, קפריסין מ-9.9 עד
+    // 14.9" was written twice with no expiry and sat on the card eleven days
+    // past the trip (2026-09-25). When the sentence carries a RANGE of dates,
+    // its end is read off the person's own words (`datetime.rangeEnd`, in their
+    // zone) and wins over whatever the model guessed — the same "only the
+    // server derives the date" shape as a task title's hour. A range already
+    // over is not a fact about them any more, so it is not written at all.
+    // Any other dated sentence that reaches rememberFact with no usable expiry
+    // is refused there (`needs_expiry`) rather than stored for ever.
+    const derived = rangeEnd(f.fact, user.timezone, Date.now());
+    if (derived) {
+      if (derived.getTime() <= Date.now()) {
+        out.refused.already_over = (out.refused.already_over || 0) + 1;
+        continue;
+      }
+      expiresAt = derived.toISOString();
     }
     // Same double-check as the meeting-constraints anchor: the model can only
     // point at an id it was actually shown THIS call, never a batch-local one
@@ -398,7 +415,11 @@ async function applyExtraction(client, user, parsed, knownFactIds = new Set()) {
       replaces,
     });
     if (res.ok) {
-      out.recorded++;
+      // A sentence already on file comes back ok with nothing written. It is
+      // not a refusal — the fact is known — so it stays out of `refused`, whose
+      // every key is a guard that fired, and is counted per person only.
+      if (res.data.duplicate) out.duplicates++;
+      else out.recorded++;
       if (res.data.replacedId) out.replaced++;
     } else {
       const why = (res.error && (res.error.reason || res.error.code)) || 'unknown';

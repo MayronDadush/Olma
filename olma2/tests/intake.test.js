@@ -15,7 +15,8 @@ const sessionIndex = require('../src/channels/sessions');
 const invites = require('../src/intake/invites');
 const guard = require('../src/jobs/config-guard');
 const flags = require('../src/domain/flags');
-const { OPENING } = require('../src/domain/onboarding');
+const onboarding = require('../src/domain/onboarding');
+const { OPENING } = onboarding;
 const connections = require('../src/domain/connections');
 
 let db, tmp, configPath;
@@ -223,7 +224,7 @@ test('a user provisioned outside the greeter has heard nobody, and is not stampe
   assert.equal(rows[0].opening_sent_at, null);
 });
 
-test('intake sweep: open registration provisions immediately — no separate welcome message', async () => {
+test('intake sweep: open registration provisions immediately — and queues ONE follow-up, not a second hello', async () => {
   const out = await withTx(db.pool, (c) => intake.sweepIntakeSessions(c, {
     configPath,
     listSessions: async () => [{ phone: '+972601000002', key: 'agent:intake:whatsapp:direct:+972601000002' }],
@@ -232,12 +233,18 @@ test('intake sweep: open registration provisions immediately — no separate wel
   }));
   assert.deepEqual(out.provisioned, ['+972601000002']);
 
-  // No outbox row at all — the 2026-08-17 redesign retired the dedicated
-  // 'welcome' kind. The conversation the person already had with the
-  // (now-talkative) greeter just continues in their own agent.
+  // The 2026-08-17 redesign retired the dedicated 'welcome' kind, and it stays
+  // retired: nothing here introduces her again. What IS queued (owner,
+  // 2026-09-25) is their own agent's first word — it acts on what they wrote
+  // to the greeter, which has no tools, and hands over their page. Their words
+  // are not in the row; USER.md holds them.
   const { rows: outboxRows } = await db.pool.query(
     `SELECT o.* FROM outbox o JOIN users u ON u.id = o.user_id WHERE u.phone = '+972601000002'`);
-  assert.equal(outboxRows.length, 0, 'nothing enqueued at provisioning time');
+  assert.deepEqual(outboxRows.map((r) => r.kind), ['welcome_followup'], 'exactly one row, and not a welcome');
+  assert.equal(outboxRows[0].payload.hasNote, true);
+  assert.equal(outboxRows[0].payload.greeterReply, OPENING.he);
+  assert.ok(!JSON.stringify(outboxRows[0].payload).includes('הדבר הזה'), 'their words stay in USER.md');
+  assert.ok(outboxRows[0].expires_at, 'a follow-up an hour late is not a follow-up');
 
   const { rows: userRows } = await db.pool.query(
     `SELECT workspace_path, onboarded_at, opening_sent_at, intake_note_at FROM users WHERE phone = '+972601000002'`);
@@ -313,6 +320,9 @@ test('the greeter answered the question instead of opening — so their OWN agen
     `SELECT opening_sent_at, workspace_path FROM users WHERE phone = '+972601000241'`);
   assert.equal(rows[0].opening_sent_at, null,
     'the greeter never said the opening, so the record must not claim it did');
+  const { rows: queued } = await db.pool.query(
+    `SELECT o.kind FROM outbox o JOIN users u ON u.id = o.user_id WHERE u.phone = '+972601000241'`);
+  assert.deepEqual(queued, [], 'no follow-up: their own first turn still owes the opening, and carries the page');
   // And his words survive, which is the whole reason for waiting.
   const userMd = fs.readFileSync(path.join(rows[0].workspace_path, 'USER.md'), 'utf8');
   assert.match(userMd, /אני יכול מחר/, 'the first message a group participant sends is the payload');
@@ -352,6 +362,21 @@ test('a reworded opening reaches the greeter\'s file, and the sweep recognises i
   assert.equal(intake.saidTheOpening('היי, אני עולמה 👋\n\nבואו נעשה סדר במשימות שלכם.\nכתבו לי הכל.', reworded), true);
   assert.equal(intake.saidTheOpening(OPENING.he, reworded), true, 'the default still counts — the file may not have been re-rendered yet');
   assert.equal(intake.saidTheOpening('בואו נעשה סדר במשימות שלכם.'), false, 'without the override it is not the copy');
+});
+
+test('the copy the code shipped before still counts as said, for the minute after a deploy', () => {
+  for (const previous of onboarding.PREVIOUS_OPENINGS) {
+    assert.equal(intake.saidTheOpening(previous), true);
+  }
+});
+
+test('the greeter is handed an opening for every language that has one, English last', () => {
+  const { intakeAgentsMd } = require('../src/intake/intake-workspace');
+  const md = intakeAgentsMd(true, {});
+  assert.ok(md.includes('If they wrote in Hebrew:'));
+  assert.ok(md.includes(OPENING.he) && md.includes(OPENING.en));
+  assert.ok(md.indexOf(OPENING.he) < md.indexOf('In any other language:'));
+  assert.ok(md.indexOf('In any other language:') < md.indexOf(OPENING.en));
 });
 
 test('saidTheOpening reads the copy, not the intention', () => {

@@ -179,6 +179,15 @@ test('the answers that ARE the mark are never held, and an old plugin gets the i
   assert.equal(eyes().at(-1).messageId, '3EB0EYES0010', 'the flag at 0 is the old behaviour');
 });
 
+test('"שלח לי קישור" answered by code drops the held 👀 — the link is the answer', async () => {
+  const u = await person();
+  await open(u, '3EB0EYES0011');
+  const out = await dispatch('dashboard_link_shortcut', { agentId: u.agentId, body: 'שלח לי קישור', messageId: '3EB0EYES0011' });
+  assert.equal(out.claim, true, JSON.stringify(out));
+  timers.fireAll();
+  assert.deepEqual(eyes(), []);
+});
+
 test('turn_progress refuses what is not a person\'s agent or a known signal', async () => {
   assert.equal((await dispatch('turn_progress', { agentId: 'g-7', what: 'reply' })).ok, false);
   assert.equal((await dispatch('turn_progress', { agentId: 'u-1', what: 'maybe' })).ok, false);

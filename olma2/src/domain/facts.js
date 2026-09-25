@@ -169,14 +169,43 @@ async function rememberFact(client, userId, { category, fact, importance, expire
     return err('invalid', 'this names a specific date or day ("היום", "29.8") — set expires_at to when it stops being true, or, if it is something they need to DO, save it with add_task instead', { reason: 'needs_expiry' });
   }
 
-  const { rows } = await client.query(
-    // prompt_key: which profile-page question this answers (domain/fact-prompts.js);
-    // NULL for every fact that came from a conversation.
-    `INSERT INTO user_facts (user_id, category, fact, importance, source, expires_at, prompt_key)
-     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-    [userId, category, text, imp, src, expiry.value, promptKey || null]
-  );
-  await audit.record(client, userId, 'fact.remembered', { factId: Number(rows[0].id), category, importance: imp });
+  // The same sentence twice is one row. Nothing here compared text, so
+  // "טס לפאפוס, קפריסין מ-9.9 עד 14.9" was written on 2026-09-06 and again,
+  // character for character, on the 8th — two slots of a ten-fact card holding
+  // one fact. The live tool and the extraction job both read a conversation, and
+  // the prompt's "do not repeat what is known" is a request, not a rule. This is
+  // an OK, never an error: the fact IS known, and a refusal would make the model
+  // retry, or a 👍 go missing for something that is in fact saved. Only an
+  // identical text matches (after the flattening every fact gets); the same
+  // thing in other words is a judgement and does not belong at this door.
+  // A new expiry on a row that had none is kept — the second saying of a
+  // dated fact is often the one that knows when it ends.
+  let rows;
+  let duplicate = false;
+  const { rows: same } = await client.query(
+    `SELECT * FROM user_facts
+      WHERE user_id = $1 AND active AND fact = $2
+        AND (expires_at IS NULL OR expires_at > now())
+      ORDER BY id LIMIT 1`, [userId, text]);
+  if (same[0]) {
+    duplicate = true;
+    rows = same;
+    if (expiry.value && !same[0].expires_at) {
+      ({ rows } = await client.query(
+        `UPDATE user_facts SET expires_at = $2, updated_at = now() WHERE id = $1 RETURNING *`,
+        [same[0].id, expiry.value]));
+      await audit.record(client, userId, 'fact.expiry_set', { factId: Number(rows[0].id), via: 'repeat' });
+    }
+  } else {
+    ({ rows } = await client.query(
+      // prompt_key: which profile-page question this answers (domain/fact-prompts.js);
+      // NULL for every fact that came from a conversation.
+      `INSERT INTO user_facts (user_id, category, fact, importance, source, expires_at, prompt_key)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      [userId, category, text, imp, src, expiry.value, promptKey || null]
+    ));
+    await audit.record(client, userId, 'fact.remembered', { factId: Number(rows[0].id), category, importance: imp });
+  }
 
   // Optional: this fact supersedes an earlier one, in the same breath rather
   // than as a separate forget_fact call an agent (or the extraction job) might
@@ -200,7 +229,7 @@ async function rememberFact(client, userId, { category, fact, importance, expire
         { oldFactId: replacedId, newFactId: Number(rows[0].id) });
     }
   }
-  return ok({ fact: rows[0], replacedId });
+  return ok({ fact: rows[0], replacedId, duplicate });
 }
 
 // Soft delete: the row stays, it just stops being retrieved. Someone correcting

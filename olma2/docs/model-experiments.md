@@ -1088,3 +1088,42 @@ on the judge axis makes up for either. `v4.1-flash` stays the only candidate
 against the incumbent. Its next step is a second full board, against a nightly
 that ran on the fixed suite (#91 is the first), before anything is routed.
 Nothing is routed, and `agents.defaults.model` is unchanged.
+
+## Run #96 — 2026-09-25 — `deepseek-v4.1-flash` LIVE, on DeepInfra: the first full board after the switch
+
+**#96: 11 🟢 · 5 🟡 · 1 🔴 · 0 ⚠️ in 1548s**, run at 22:00 Israel time on the live
+default (no `--model`): v4.1-flash pinned `deepinfra, together, novita` since
+13:02Z the same day (#514; `incidents.md`, "Novita cached the probe and not the
+turns").
+
+**The one red was the check, not the model.** `chase-until-done` armed a daily
+chase whose first message is Sunday 09:00: asked on a Friday evening, with the
+eval user's default quiet Saturday in between, which a daily chase SKIPS by the
+owner's 2026-09-22 ruling (`reminders.movesOffQuietDay`, confirmed on the box
+with `quietFacts.keptMomentFor`). The check read "inside 24 hours" and so meant
+something different on a Friday night — the weekday failure `rules/testing.md`
+forbids. It now allows the first KEPT day, from the same function the chase is
+moved by (`scenarios.firstChaseInTime`, `tests/chase-eval-check.test.js`), and
+still goes red on Monday. Read that way, #96 is 12 · 5 · 0 — the pilot's #90
+board (12 · 4 · 0) on the live path.
+
+Yellows are judge-only: a sentence under a named hour's 👍
+(`named-reminder-hour`), one extra offer each in `phone-number-contact`,
+`stranger-meeting-boundary` and `email-not-connected`, and a holiday greeting
+beside the digest block. None is new to this model.
+
+**Time — the one number that looks bad, and why it is not read as a verdict.**
+1548s against 1098s for nightly #91 (v4-flash) and 925s for #90. Per scenario
+the runs swing both ways by more than that (`reply-to-older-message` 219s in #91,
+42s here; `declines-inappropriate` 80s → 205s), and every duration includes the
+judge and the harness. What real people wait on was read off the gateway's own
+`model-fetch` lines instead — time to the first byte of a response:
+
+| | calls | p50 | p90 |
+|---|---|---|---|
+| v4.1-flash on DeepInfra, 09-25 13:03Z on | 72 | 0.45s | 1.17s |
+| v4-flash on Novita, 09-24 06:00Z → 09-25 12:28Z | 324 | 2.28s | 3.17s |
+
+That is not the whole reply (it says nothing about the stream after the first
+byte), so tonight's nightly is the like-for-like board, and a second slow one
+is the signal to look again.

@@ -495,7 +495,11 @@ title means this file. Grep the title, not the filename.
   column (`rules/groups.md`, two columns). Without it an invite queued at 02:25
   for somebody who had just written "היי" waited until they wrote a second time;
   the day-one check-ins still wait for the morning (`incidents.md`, "Twice
-  'היי' before a word about the room").
+  'היי' before a word about the room"). **One kind besides, since 2026-09-25:
+  `welcome_followup`** (`welcomeGrace` in `outbox/gate.js`) — the rest of the greeter's own
+  reply, their own agent acting on what they wrote there — and it passes the
+  quiet DAY as well as the night, inside the same window and not after it
+  (`rules/doctrine.md`, "A first message is not a hello").
 
 - **Reminders that come due in the same tick go out as ONE message, and the
   coalescing happens at DELIVERY, never at enqueue.** A batch enqueued under

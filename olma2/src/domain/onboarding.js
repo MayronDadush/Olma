@@ -27,10 +27,24 @@
 // `openingMessage` takes the loaded overrides, like every other sender.
 const templates = require('./message-templates');
 
-const OPENING = {
-  he: templates.spec('opening_he').text,
-  en: templates.spec('opening_en').text,
-};
+// Every language that has an `opening_<lang>` template, so a language added
+// there is served — and recognised by intake.saidTheOpening — with no change
+// here.
+const OPENING = Object.fromEntries(templates.TEMPLATES
+  .filter((t) => templates.familyOf(t.key) === 'opening' && !templates.variantOf(t.key))
+  .map((t) => [templates.langOf(t.key), t.text]));
+
+// The copy as it read until 2026-09-25, when the owner shortened it. Only
+// intake.saidTheOpening reads this: the greeter's file is re-rendered by a
+// job a minute after a deploy, and somebody greeted in that minute with the
+// old words must not be read as never introduced.
+const PREVIOUS_OPENINGS = [
+  'היי, אני עולמה 👋\n\nאני כאן כדי לעזור לכם עם משימות, תזכורות ותיאומים מול האנשים שחשובים לכם.\n'
+    + 'אפשר לכתוב, להקליט או פשוט לשלוח הכל בבלגן — אני אעשה לכם סדר ☺️',
+  "Hey! I'm Allma \u{1F44B}\n\nI’m here to help you manage tasks, set reminders, and schedule with the "
+    + 'people who matter most.\nText me, send a voice message, or just throw everything at me — '
+    + 'I’ll keep you organized ☺️',
+];
 
 // Hebrew and English are the two languages the product ships (owner,
 // 2026-09-09), and this decides which one a person's first sentence is in.
@@ -51,13 +65,16 @@ const OPENING = {
 // wrote in Hebrew … in any other language" (intake/intake-workspace.js). So
 // anything Hebrew is Hebrew, nothing on file is Hebrew, and every other
 // language meets the same English opening the greeter would have sent.
+//
+// Since 2026-09-25 the pick goes through `templates.keyFor`, so a language
+// that gains an `opening_<lang>` template is served it with no change here.
 function openingKey(locale) {
-  const code = String(locale == null ? '' : locale).trim().toLowerCase();
-  return !code || code.startsWith('he') ? 'opening_he' : 'opening_en';
+  const code = String(locale == null ? '' : locale).trim();
+  return templates.keyFor('opening', code || 'he', { fallback: 'en' });
 }
 
 function openingMessage(locale, overrides) {
   return templates.textFor(openingKey(locale), overrides);
 }
 
-module.exports = { openingMessage, openingKey, OPENING };
+module.exports = { openingMessage, openingKey, OPENING, PREVIOUS_OPENINGS };

@@ -12,7 +12,10 @@
 //
 // What leaves the gateway: the agent id, the session key, the trigger and
 // provider names, and one boolean (did the prompt carry a reply_to_id).
-// Never the prompt, never the transcript.
+// Never the prompt, never the transcript. The one exception is the link
+// shortcut below: a person's direct message of 80 characters or less goes to
+// brokerd on the same box, which matches it against one phrase table and keeps
+// nothing of it.
 //
 // Fails open, always: brokerd down, slow, or answering anything but a
 // context means the prompt goes out untouched, and the doctrine variant
@@ -417,6 +420,60 @@ export function buildRoomWriteHandler({ connect, sock, timeoutMs = 1500, log = t
   };
 }
 
+// ---- "שלח לי קישור", answered with no model -------------------------------
+// The fifth thing, since 2026-09-25 (owner: save the time and the tokens a
+// turn spends on one link). A person's direct message that is ONLY a request
+// for their page is claimed here and the gateway sends brokerd's sentence as
+// the reply — `{handled: true, text}` goes out through the gateway's own final
+// reply path, so the words reach the same chat a model reply would.
+//
+// The phrase list is NOT here, deliberately: it lives in
+// `src/domain/link-request.js`, keyed by language, so adding a language is a
+// deploy and never a gateway restart. What stays here is the one cheap bound
+// both sides share — a message longer than any phrase never leaves the
+// gateway at all — and the agent shape: a person's own agent only.
+//
+// Fails open in every direction: brokerd down, slow, refusing, or answering
+// anything but an explicit claim WITH text means the message goes to the
+// model exactly as it did before this existed.
+const LINK_SHORTCUT_MAX_CHARS = 80;
+
+// Every short direct message waits on this before its turn starts, so the
+// wait is kept short: a brokerd that does not answer in 800ms costs that
+// message 800ms, and then it goes to the model as it always did.
+export function buildLinkShortcutHandler({ connect, sock, timeoutMs = 800, log = trace } = {}) {
+  return async (event, ctx) => {
+    try {
+      const key = String((event && event.sessionKey) || (ctx && ctx.sessionKey) || "");
+      const agentId = agentIdOf(key);
+      if (!agentId || (event && event.isGroup === true)) return undefined;
+      const body = typeof (event && event.body) === "string" ? event.body
+        : (typeof (event && event.content) === "string" ? event.content : "");
+      if (!body.trim() || body.length > LINK_SHORTCUT_MAX_CHARS) return undefined;
+      const t0 = Date.now();
+      const reply = await askBroker("dashboard_link_shortcut", {
+        agentId, body,
+        messageId: String((event && event.messageId) || (ctx && ctx.messageId) || "").slice(0, 200),
+      }, { connect, sock, timeoutMs });
+      const claim = Boolean(reply && reply.ok === true && reply.claim === true
+        && typeof reply.text === "string" && reply.text.trim());
+      // Only a claim is worth a line: every short DM passes through here, and
+      // a trace line per "תודה" would bury the ones that matter. Never the body.
+      if (claim || !reply || reply.ok !== true) {
+        log({
+          linkShortcut: agentId,
+          ...(claim ? { claim: true, lang: reply.lang || null } : { outcome: reply ? "refused" : "unreachable" }),
+          ms: Date.now() - t0,
+        });
+      }
+      return claim ? { handled: true, text: reply.text } : undefined;
+    } catch (e) {
+      log({ linkShortcut: "error", error: String((e && e.message) || e).slice(0, 200) });
+      return undefined;
+    }
+  };
+}
+
 // ---- the reply gate --------------------------------------------------------
 // The third thing this plugin does, since 2026-09-10: the last thing between
 // the model's text and somebody's phone.
@@ -740,7 +797,7 @@ export default {
     // `agent_end` is also what brokerd reads off the stamp to know the 👀 may
     // wait (domain/reactions.endSignalsLive): a gateway on a build without it
     // would never cancel a held mark.
-    const hooks = ["before_prompt_build", "llm_input", "before_dispatch", "reply_payload_sending", "agent_end"];
+    const hooks = ["before_prompt_build", "llm_input", "before_dispatch", "before_dispatch:link", "reply_payload_sending", "agent_end"];
     trace({ registered: true, agents, hooks });
     stampRegistration({ agents, hooks });
     api.on("before_prompt_build", buildHandler({ agents: cfg.agents }));
@@ -748,6 +805,11 @@ export default {
     // Same argument as the reply gate for not narrowing by `cfg.agents`: this
     // is about what a ROOM may do to her, not about rolling a person out.
     api.on("before_dispatch", buildRoomWriteHandler());
+    // A second claiming handler on the same hook: the gateway runs them in
+    // order and the first `{handled: true}` wins. The room handler answers
+    // only for `g-N` sessions and this one only for `u-N`, so they never both
+    // claim one message.
+    api.on("before_dispatch", buildLinkShortcutHandler());
     // Deliberately NOT narrowed by `cfg.agents`: that list is which people get
     // their turn context in the prompt, and a reply reaching the wrong person
     // is not a thing to roll out per person.

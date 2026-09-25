@@ -270,11 +270,11 @@ test('the plugin fails open: a refusal, claim:false, a dead socket, and anything
   assert.equal(sent.length, 0, 'and none of them asked brokerd anything');
 });
 
-test('the plugin registers before_dispatch beside its other four hooks', async () => {
+test('the plugin registers before_dispatch beside its other hooks', async () => {
   const hooks = [];
   plugin.default.register({
     pluginConfig: {},
     on: (name) => hooks.push(name),
   });
-  assert.deepEqual(hooks, ['before_prompt_build', 'llm_input', 'before_dispatch', 'reply_payload_sending', 'agent_end']);
+  assert.deepEqual(hooks, ['before_prompt_build', 'llm_input', 'before_dispatch', 'before_dispatch', 'reply_payload_sending', 'agent_end']);
 });

@@ -8,7 +8,7 @@
 // way reminders.normalizeRepeatRule is for repeat rules.
 const test = require('node:test');
 const assert = require('node:assert');
-const { weekdaysInText, weekdayInZone, weekdayClash, namesAMoment } = require('../src/domain/datetime');
+const { weekdaysInText, weekdayInZone, weekdayClash, namesAMoment, rangeEnd } = require('../src/domain/datetime');
 
 const IL = 'Asia/Jerusalem';
 
@@ -131,7 +131,11 @@ test('a moving reference point or a real date names a moment', () => {
     'יש לו יום הולדת של עילאי סלומון ביום שבת 29.8',
     'הוא נוסע מחר לתל אביב', 'טס לרומא ב-15/9',
     'החוזה מסתיים ב-2026-09-15', 'flying to Rome tomorrow',
-    'הפגישה ב-29.8 באוגוסט']) {
+    'הפגישה ב-29.8 באוגוסט',
+    // Two real rows off the box that went onto a card with no expiry
+    // (2026-09-25): a dotted RANGE, and "this morning".
+    'טס לפאפוס, קפריסין מ-9.9 עד 14.9', 'עמית טס הבוקר ללרנקה וחזר באותו יום',
+    'בחופש 9.9-14.9', 'מ-1.10 עד ה-5.10 בחו"ל', 'נוסע 28.12–3.1']) {
     assert.equal(namesAMoment(t), true, t);
   }
 });
@@ -143,7 +147,31 @@ test('a recurring day, a duration and a bare number do not', () => {
     'היום הראשון שלו בעבודה היה קשה', // the noun, not today
     'הריצה שלו לוקחת 3.5 שעות',      // same shape as a dotted date, not one
     'market research is his field',  // "mar" must not read as March
-    'מתחיל קורס בספטמבר', 'נולד ב-1985', 'גר בהוד השרון', '']) {
+    'מתחיל קורס בספטמבר', 'נולד ב-1985', 'גר בהוד השרון', '',
+    // "הבוקר" as a duration and as the noun, and "in the morning"
+    'עובד כל הבוקר', 'הבוקר הוא הזמן הכי טוב שלו', 'מתאמן בבוקר',
+    'מתאמן על הבוקר',
+    // the range shape when it is a quantity or a version, not two dates
+    'ישן 6.5-7.5 שעות', 'מחיר 3.5 עד 4.5 ש"ח', 'גרסה 2.1-2.3',
+    'עובד מ-7:30 עד 16:00']) {
     assert.equal(namesAMoment(t), false, t);
   }
+});
+
+// The end a range gives a fact: the start of the day after its last date, in
+// their zone, in whichever year puts that day nearest to now. The clock is
+// injected, so this reads the same whatever day the suite runs.
+test('a range ends the day after its last date, in the nearest year', () => {
+  const now = Date.parse('2026-09-25T10:00:00Z');
+  const at = (t) => { const d = rangeEnd(t, IL, now); return d && d.toISOString(); };
+  // already over: returned as it is, the caller refuses or hides it
+  assert.equal(at('טס לפאפוס, קפריסין מ-9.9 עד 14.9'), '2026-09-14T21:00:00.000Z');
+  assert.equal(at('הייתי בחופש 20.7-25.7'), '2026-07-25T21:00:00.000Z');
+  // ahead, across the new year
+  assert.equal(at('נוסע 28.12–3.1'), '2027-01-03T22:00:00.000Z');
+  // a year they said wins
+  assert.equal(at('מ-1.10 עד 5.10.27'), '2027-10-05T21:00:00.000Z');
+  // nothing to read, or a day that does not exist
+  assert.equal(at('גר בהוד השרון'), null);
+  assert.equal(at('בחו"ל 25.2 עד 30.2'), null);
 });

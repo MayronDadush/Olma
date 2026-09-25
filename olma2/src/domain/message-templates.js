@@ -48,21 +48,40 @@ const TEMPLATES = [
     help: 'המשפט הראשון שאדם חדש קורא — מהגרייטר או מהסוכן שלו, פעם אחת בחיים. בלי שאלה בסוף: את השם שואלים אחר כך.',
     vars: {}, required: [],
     sample: {},
+    // Shortened by the owner, 2026-09-25 — one line of what she is for. The
+    // page link is NOT here: nobody has a page yet when the greeter speaks, so
+    // their own agent's first message carries it (jobs/intake.js,
+    // `welcome_followup`). The previous copy is kept in
+    // onboarding.PREVIOUS_OPENINGS so a greeter still saying it is recognised.
     text: 'היי, אני עולמה 👋\n'
       + '\n'
-      + 'אני כאן כדי לעזור לכם עם משימות, תזכורות ותיאומים מול האנשים שחשובים לכם.\n'
-      + 'אפשר לכתוב, להקליט או פשוט לשלוח הכל בבלגן — אני אעשה לכם סדר ☺️',
+      + 'אני עוזרת עם משימות, תזכורות ותיאומים — אפשר לכתוב, להקליט או לשלוח הכל בבלגן ☺️',
   },
   {
     key: 'opening_en', audience: 'private', label: 'הודעת הפתיחה', help: '',
     vars: {}, required: [],
     sample: {},
-    text: "Hey! I'm Allma \u{1F44B}\n"
+    text: "Hey, I'm Allma \u{1F44B}\n"
       + '\n'
-      + 'I’m here to help you manage tasks, set reminders, and schedule with the '
-      + 'people who matter most.\n'
-      + 'Text me, send a voice message, or just throw everything at me — '
-      + 'I’ll keep you organized ☺️',
+      + 'I help with tasks, reminders and scheduling — text me, send a voice note, '
+      + 'or just dump it all on me ☺️',
+  },
+  // The whole answer to "שלח לי קישור" (domain/link-request.js): said by code,
+  // with no model turn, the moment a message asks for their page and nothing
+  // else. The link is minted for this message and opens once; it goes on a
+  // line of its own, like every link Olma sends.
+  {
+    key: 'dashboard_link', audience: 'private', label: 'קישור לדף האישי',
+    help: 'התשובה כשמישהו כותב רק "שלח לי קישור" וכדומה. יוצאת בלי מודל, מיד.',
+    vars: { url: 'הקישור האישי, נפתח פעם אחת' }, required: ['url'],
+    sample: { url: 'https://allma.world/d/AbCdEfGhIjKlMnOpQrStUv' },
+    text: 'הקישור לדף שלך 👇\n{{url}}',
+  },
+  {
+    key: 'dashboard_link_en', audience: 'private', label: 'קישור לדף האישי', help: '',
+    vars: { url: 'their personal link, opens once' }, required: ['url'],
+    sample: { url: 'https://allma.world/d/AbCdEfGhIjKlMnOpQrStUv' },
+    text: 'Here’s your page 👇\n{{url}}',
   },
   {
     key: 'reminder', audience: 'private', label: 'תזכורת',
@@ -555,6 +574,26 @@ function families() {
   return out;
 }
 
+// The key a sentence goes out under for a language — the one place that
+// decides, so a language added later is templates and nothing else.
+//
+// A family is spelt one of two ways (`reminder` + `reminder_en`, or
+// `opening_he` + `opening_en`), so both are tried. `lang` is anything a locale
+// column holds (`he`, `he-IL`, `EN`); only the language part counts. A
+// language with no template of its own gets `fallback`'s, and a language
+// missing entirely (an empty locale) is `fallback` too — callers disagree on
+// what that is (onboarding.openingKey falls back to Hebrew, a reminder rung to
+// English) and each says so rather than this guessing for them.
+function keyFor(base, lang, { fallback = 'en' } = {}) {
+  const code = String(lang == null ? '' : lang).trim().toLowerCase().split(/[-_]/)[0];
+  const spelt = (c) => (c === 'he' ? [`${base}_he`, base] : [`${base}_${c}`]);
+  for (const c of [code || fallback, fallback, 'en', 'he']) {
+    const hit = spelt(c).find((k) => BY_KEY.has(k));
+    if (hit) return hit;
+  }
+  throw new Error(`unknown message template family: ${base}`);
+}
+
 function spec(key) {
   const t = BY_KEY.get(key);
   if (!t) throw new Error(`unknown message template: ${key}`);
@@ -662,5 +701,5 @@ function parseForm(body) {
 
 module.exports = {
   FLAG, MAX_LENGTH, TEMPLATES, spec, validate, normalize, textFor, render, load, parseForm, placeholdersIn,
-  families, familyOf, langOf, variantOf, example,
+  families, familyOf, langOf, variantOf, example, keyFor,
 };

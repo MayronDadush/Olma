@@ -24,7 +24,13 @@
 // words (docs/incidents.md, "Two introductions, ninety seconds apart").
 const fs = require('node:fs');
 const path = require('node:path');
-const { openingMessage } = require('../domain/onboarding');
+const { openingMessage, OPENING } = require('../domain/onboarding');
+
+// "Hebrew" for `he` — the greeter's prompt is in English and names the
+// language it is choosing on. A code the runtime cannot name is said as-is.
+function languageName(code) {
+  try { return new Intl.DisplayNames(['en'], { type: 'language' }).of(code) || code; } catch { return code; }
+}
 
 // `overrides` is the owner's rewording (domain/message-templates.load); the
 // greeter's file quotes the opening EXACTLY, so it has to be rendered with them.
@@ -80,9 +86,14 @@ function intakeAgentsMd(registrationOpen, overrides) {
     'written, every character, on its own lines — do not translate it, reword',
     'it, shorten it or add to it:',
     '',
-    'If they wrote in Hebrew:',
-    openingMessage('he', overrides),
-    '',
+    // One block per language that has an opening template, English last as
+    // the fallback for everything else — so a language added in
+    // message-templates reaches the greeter with no change here.
+    ...Object.keys(OPENING).filter((lang) => lang !== 'en').flatMap((lang) => [
+      `If they wrote in ${languageName(lang)}:`,
+      openingMessage(lang, overrides),
+      '',
+    ]),
     'In any other language:',
     openingMessage('en', overrides),
     '',
