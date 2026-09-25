@@ -68,6 +68,7 @@ never trust a dated narrative for something you are about to act on.
 - [The room was told about a meeting at 01:12 (fixed 2026-09-09)](#the-room-was-told-about-a-meeting-at-0112-fixed-2026-09-09)
 - [The room window opened on a row nobody would look at (fixed 2026-09-19)](#the-room-window-opened-on-a-row-nobody-would-look-at-fixed-2026-09-19)
 - [The times the room said went nowhere (fixed 2026-09-23)](#the-times-the-room-said-went-nowhere-fixed-2026-09-23)
+- [The room could not cancel its own coordination (fixed 2026-09-25)](#the-room-could-not-cancel-its-own-coordination-fixed-2026-09-25)
 - [The coordination waited on the man who started it (fixed 2026-09-19)](#the-coordination-waited-on-the-man-who-started-it-fixed-2026-09-19)
 - [The room heard its own state from memory (fixed 2026-09-19)](#the-room-heard-its-own-state-from-memory-fixed-2026-09-19)
 - [The room held a time that no longer existed (fixed 2026-09-22)](#the-room-held-a-time-that-no-longer-existed-fixed-2026-09-22)
@@ -2430,6 +2431,32 @@ NULL is the **once-per-life first-turn signal** (`openRecord` computes
 is the **silence test** behind the name-confirm rung. Stamping it early would
 have spent the first-turn signal and broken the silence test to fix a gate.
 The narrow column was the right lever.
+
+### The room could not cancel its own coordination (fixed 2026-09-25)
+
+The owner tagged her in a room and asked her to cancel the coordination it was
+running. She answered that this could only be done privately — which was
+true. The room's agent had seven tools (open, add a time, settle, place, kind,
+status, gender), and cancelling, renaming, taking a time off, leaving and
+answering yes/no existed only as a person's tools, which brokerd refuses to a
+group token. The doctrine had also written the gap in as a rule: "Cancelling
+for everybody is the chat's alone" (`.claude/rules/reminders-and-tasks.md`),
+where "chat" meant "not the page" and nobody had asked about the room.
+
+Same shape as "The times the room said went nowhere": the agent understood,
+and the outcome had nowhere to go. He asked for every action on his list in
+BOTH places, so the fix is five room tools (`cancel_group_coordination`,
+`rename_group_coordination`, `remove_group_coordination_option`,
+`leave_group_coordination`, `answer_group_coordination_option`) and two
+private ones the room already had (`set_meeting_place`,
+`set_meeting_minimum`). Each room tool is a second door into the private
+twin's domain call and fan-out, as the member who tagged her, through
+`groupMeetings.participantFor` — which refuses anybody not still IN the
+coordination, unlike `settle`, which acts through a participant. The results
+are picked field by field: the private ones carry hints about a person's own
+calendar and dashboard, and an answer from the room returns that one answer,
+never the table's. It cost the fourth raise of the tool-schema ceiling
+(57,000 → 59,500, measured 56,558 → 59,407).
 
 ### The times the room said went nowhere (fixed 2026-09-23)
 
