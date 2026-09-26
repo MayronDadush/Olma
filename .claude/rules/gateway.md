@@ -59,8 +59,11 @@ title means this file. Grep the title, not the filename.
 - **The live OpenRouter model names its providers in order**
   (`agents.defaults.models["<primary>"].params.provider.order`,
   `scripts/pin-openrouter-provider.js --apply`, restart the gateway). Since
-  2026-09-25 the primary is `deepseek-v4.1-flash` with `deepseek-v4-flash` as
-  its first fallback, and the script pins BOTH, **each with its own order**: a
+  2026-09-26 the primary is `deepseek-v4-flash` again, with `deepseek-v4.1-flash`
+  as its first fallback — v4.1 was primary for one day and reasoned uncapped,
+  up to 100s and 8,192 hidden tokens on one call (`model-experiments.md`,
+  "v4.1-flash thought too long"); **judge a model on the whole call, not the
+  first byte** — and the script pins BOTH, **each with its own order**: a
   fallback call on an unpinned model goes wherever OpenRouter sends it, and a
   cache is per provider AND per model — Novita kept 60-67% of v4-flash's input
   and 24% of v4.1-flash's, DeepInfra 70% of v4.1-flash's at half the price

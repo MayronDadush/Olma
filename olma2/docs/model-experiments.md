@@ -1127,3 +1127,34 @@ judge and the harness. What real people wait on was read off the gateway's own
 That is not the whole reply (it says nothing about the stream after the first
 byte), so tonight's nightly is the like-for-like board, and a second slow one
 is the signal to look again.
+
+## 2026-09-26 — `deepseek-v4.1-flash` thought too long; back to `v4-flash`
+
+The owner noticed replies taking two minutes and more on the morning after the
+switch. Read off his own session's transcript events (per-call `usage` and
+timestamps), not the time to first byte the switch was judged on:
+
+- "what do I have" — after `list_my_tasks` returned, one call ran **99.9s and
+  produced 8,192 output tokens with no content at all** (the cap, all hidden
+  reasoning); the gateway logged "settled post-tool turn lacked a final
+  answer", re-asked, and the answer took 10s more. 118s to the reply.
+- "delete this one task" — three calls at 5,139 / 3,911 / 2,951 output tokens,
+  61s / 45s / 35s, and in the middle of them it archived FOUR tasks, restored
+  two and re-dated them. 154s to the reply.
+
+Output as a share of input, real users, from `usage_ledger`:
+
+| | output / input |
+|---|---|
+| v4-flash, 09-20 → 09-25 | 0.6% – 1.5% |
+| v4.1-flash, 09-25 | 5.9% |
+| v4.1-flash, 09-26 | 11.3% |
+
+Nothing caps its reasoning: `agents.defaults.models` carries only the provider
+pin, and there is no reasoning/thinking setting anywhere in `openclaw.json`.
+The owner's call: primary back to `v4-flash` (applied on the box 16:47Z, hot
+reload confirmed in the journal; `scripts/set-default-model.js` now says so),
+`v4.1-flash` kept as the first fallback. A second try at it would be with
+OpenRouter's reasoning control set and measured on real turns — the same
+lesson as the provider probe: the number that was measured was fast, and the
+number people wait on was not it.
