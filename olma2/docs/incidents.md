@@ -12779,3 +12779,35 @@ refusal placed nothing, and "log only" had turned one missing field into no
 marks at all. A refused 👀 still does not — through the CLI it lands after the
 reply it was promising — and a timeout stays a log line, since it may have
 gone out.
+
+### The hook read the envelope (2026-09-26)
+
+Found while the owner tested "תודה after a question": he sent a bare "תודה" to
+a reply that asked nothing, and got "בכיף 🙂" with no 🙏. The turn-open hook's
+trace said `thanks: false` for a 77-character message. It had said `false` for
+all 339 messages it traced from 2026-09-06 to 09-25: **the 🙏 had never been
+placed once since it shipped.**
+
+The hook classified `ctx.transcript || ctx.body`, and on `message:preprocessed`
+the gateway's `body` is the ENVELOPE its agent reads —
+`[WhatsApp +9725… +16m Fri 2026-09-25 23:20:54 UTC] +9725…: תודה`
+(openclaw `formatInboundEnvelope`; the synthetic one is exactly 77 characters).
+Every classifier in the hook asks whether a message is ONLY something, and
+"WhatsApp", a weekday and "UTC" are on nobody's filler list. `bodyForAgent`
+carries the bare text. The code comment even said "the envelope body
+otherwise" — the author knew the word and not what it held.
+
+Why nothing saw it: the hook test named "the shape the gateway ACTUALLY
+sends" wrote `body: 'סודי'` by hand, and the eval harness calls
+`hook.thanksOnly(message)` on the bare message, so both halves of the check
+exercised a shape production never produces. The trace logged `thanks: false`
+339 times and nobody reads a column that is always false as an alarm. The
+same shape as "A fixture that writes the state by hand cannot notice the state
+is only ever reached the other way". `stopReminders`, `chase` and `openList`
+read the same string and are presumably just as dead; their trace fields were
+never logged, so that is not measured.
+
+Fix: `textOf(ctx)` — transcript, else `bodyForAgent`, else the body with the
+envelope header and its sender label cut. The trace line now carries `src`
+and `chars`, so the next zero says which string it was read from. Needs a
+gateway restart; hooks load at startup.

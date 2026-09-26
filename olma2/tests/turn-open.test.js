@@ -380,6 +380,39 @@ test('two quick messages keep two opens; each turn adopts its own, and nothing o
 
 // ── "תודה" is answered by the mark, and by nothing else ──────────────────────
 
+// The fixture above hands the hook a bare `body`, and that is how this went
+// unseen for three weeks: the gateway's `body` is the ENVELOPE, and a bare
+// "תודה" arrived as 77 characters — 0 thanks in 339 traced messages, the 🙏
+// never placed once (incidents.md, "The hook read the envelope"). This is the
+// shape openclaw's formatInboundEnvelope actually builds.
+const ENVELOPED = (text) => `[WhatsApp +972501234567 +16m Fri 2026-09-25 23:20:54 UTC] +972501234567: ${text}`;
+
+test('the classifiers read what they WROTE, never the envelope around it', async () => {
+  assert.equal(ENVELOPED('תודה').length, 77, 'the length the live trace saw');
+  assert.equal(hook.thanksOnly(ENVELOPED('תודה')), false, 'the envelope alone defeats every "only" check');
+  assert.deepEqual(hook.textOf({ body: ENVELOPED('תודה'), bodyForAgent: 'תודה' }), { text: 'תודה', src: 'bodyForAgent' });
+  assert.deepEqual(hook.textOf({ body: ENVELOPED('תודה רבה') }), { text: 'תודה רבה', src: 'body-unwrapped' });
+  assert.deepEqual(hook.textOf({ body: ENVELOPED('x'), bodyForAgent: 'x', transcript: 'תודה' }), { text: 'תודה', src: 'transcript' });
+  assert.deepEqual(hook.textOf({ body: 'הערה: תודה' }), { text: 'הערה: תודה', src: 'body' }, 'no envelope, nothing cut');
+
+  const written = [];
+  const fakeSocket = () => {
+    const handlers = {};
+    const s = { on(ev, fn) { handlers[ev] = fn; return s; }, write(x) { written.push(x); setTimeout(() => handlers.data && handlers.data('{"ok":true}\n'), 0); }, end() { handlers.close && handlers.close(); }, destroy() {} };
+    setTimeout(() => handlers.connect && handlers.connect(), 0);
+    return s;
+  };
+  const ev = (id, text, extra = {}) => ({
+    type: 'message', action: 'preprocessed', sessionKey: 'agent:u-3:whatsapp:direct:+972500000000',
+    context: { messageId: id, body: ENVELOPED(text), provider: 'whatsapp', ...extra },
+  });
+  await hook(ev('3EB0ENV0001', 'תודה', { bodyForAgent: 'תודה' }), { connect: fakeSocket });
+  await hook(ev('3EB0ENV0002', 'תודה רבה!'), { connect: fakeSocket });
+  await hook(ev('3EB0ENV0003', 'תודה, ותוסיפי חלב', { bodyForAgent: 'תודה, ותוסיפי חלב' }), { connect: fakeSocket });
+  assert.deepEqual(written.map((w) => JSON.parse(w).params.thanks), [true, true, false]);
+  assert.ok(written.every((w) => !w.includes('תודה')), 'still only the verdict travels');
+});
+
 test('the hook reads a thanks and sends the verdict, never the words', () => {
   const yes = ['תודה', 'תודה רבה', 'תודה רבה לך!', 'מעולה, תודה 🙏', 'thanks!', 'Thank you so much', 'ty',
     // every language, each with its "very much" (owner, 2026-09-26)
