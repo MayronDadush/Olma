@@ -333,11 +333,6 @@ html[data-v="me"] .brand{opacity:0;transform:translateY(-8px) scale(.94);pointer
   .avaBody,.avaLids,.avaStars,.avaHat,.avaConf{animation:none}
   .avaLids{transform:scaleY(var(--lid))}
 }
-.brandmark{
-  width:38px;height:38px;flex:none;display:block;
-  filter:drop-shadow(0 5px 12px rgba(91,47,214,.28));
-}
-.brandmark svg{width:100%;height:100%;display:block}
 .brand-txt{min-width:0}
 /* The name leads and the line under it is the welcome. It is one line and it
    stays one line: a header that reflows to two pushes the clock and the
@@ -974,10 +969,8 @@ html.is-new .introtog{display:none}
   background:radial-gradient(125% 68% at 50% -8%, var(--accent-soft) 0%, transparent 62%), var(--bg);
 }
 .wcard{width:100%;max-width:376px;display:flex;flex-direction:column;align-items:center;text-align:center}
-.wmark{width:82px;height:82px;filter:drop-shadow(0 14px 28px rgba(91,47,214,.28))}
-.wmark svg{width:100%;height:100%;display:block}
 .wword{
-  margin-top:21px;font-family:'Rubik',sans-serif;font-weight:700;
+  font-family:'Rubik',sans-serif;font-weight:700;
   font-size:42px;line-height:1;letter-spacing:-.02em;color:var(--text);
 }
 .wlede{margin-top:11px;font-size:16px;line-height:1.5;color:var(--text-2);max-width:20em}
@@ -997,7 +990,7 @@ html.is-new .introtog{display:none}
 /* Everything arrives in reading order, once. The global reduced-motion rule
    near the bottom of this sheet flattens all of it to nothing. */
 @keyframes wrise{from{opacity:0;transform:translateY(15px)}to{opacity:1;transform:none}}
-.welcome .wmark,.welcome .wword,
+.welcome .wword,
 .welcome .wlede,.welcome .whint,.welcome .wrow,.welcome .wfoot{
   animation:wrise .3s var(--ease-easy) both;
 }
@@ -3026,10 +3019,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 
   <header class="topbar">
     <button class="brand" id="brandBtn" data-go="me">
-      <!-- The mark, not the person: their own face is the hero of the
-           profile page, and repeating it here said nothing the rest of the
-           screen was not already about them. -->
-      <span class="brandmark" aria-hidden="true"><svg><use href="#i-logo"/></svg></span>
+      <!-- No mark here, and none anywhere on the page (the owner,
+           2026-09-26). #i-logo stays in the sprite for the day it returns. -->
       <div class="brand-txt">
         <div class="brand-hi" id="brandHi"></div>
         <div class="brand-name" id="brandName"></div>
@@ -3430,7 +3421,6 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      what tells her which language to speak. -->
 <div class="welcome" id="welcome" hidden>
   <div class="wcard">
-    <div class="wmark" aria-hidden="true"><svg><use href="#i-logo"/></svg></div>
     <h1 class="wword" id="wWord"></h1>
     <p class="wlede" id="wTag"></p>
     <div class="whint">
@@ -6653,7 +6643,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
         f.p[sw.dataset.p] = on;
         API.setFriendPermission(f.id, sw.dataset.p, on);
         var live = PKEYS.filter(function(k){ return f.p[k]; }).length;
-        $('[data-fs="' + f.id + '"]').textContent = permsLine(live, L(f.since));
+        $('[data-fs="' + f.id + '"]').textContent = permsLine(live, f);
         var pact = PERMACT[sw.dataset.p];
         if(pact) refreshPermAction(pact.attr, f.id, on);
       }
@@ -6852,7 +6842,22 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   });
 
   /* ───────── tasks ───────── */
-  function permsLine(n, since){ return pl("fr.p", n) + " · " + since; }
+  /* What sits beside the permissions is their birthday, and only for somebody
+     who set one — it replaced the date the friendship started, which told the
+     reader nothing they would act on (the owner, 2026-09-26). */
+  function permsLine(n, f){
+    var bd = bdayLabel(f.bd);
+    return pl("fr.p", n) + (bd ? " · 🎂 " + bd : "");
+  }
+  /* "9-3" -> "3 בספטמבר". A leap year, so 29 February is a real day. */
+  function bdayLabel(md){
+    var m = /^(\d{1,2})-(\d{1,2})$/.exec(md || "");
+    if(!m) return "";
+    try{
+      return new Intl.DateTimeFormat(loc(), {day:"numeric", month:"long"})
+        .format(new Date(2000, Number(m[1]) - 1, Number(m[2])));
+    }catch(err){ return ""; }
+  }
   var BUCKETS = ["late","today","tomorrow","later"];
 
   /* ── shared tasks ──
@@ -11058,7 +11063,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
         '<div class="row-txt"><div class="row-title">' + esc(L(f.n)) +
         (bday ? ' <span class="bdaydot" title="' + esc(t("fr.bday")) + '">🎂</span>' : "") +
         '</div><div class="row-sub" data-fs="' + f.id + '">' +
-        esc(permsLine(live, L(f.since))) + "</div></div>" +
+        esc(permsLine(live, f)) + "</div></div>" +
         '<span class="row-end tiny' + (night ? " asleep" : "") + '" data-ftz="' + f.tz + '">' + clockIn(f.tz) + "</span>" +
         '<svg class="chev"><use href="#i-chev"/></svg></button>' +
         '<div class="fold' + (fopen ? " open" : "") + '" data-ffold="' + f.id + '"><div><div class="foldpad">' + perms +
@@ -12291,6 +12296,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
          same animal on every page that shows them. */
       av:avatarFor(f.id, f.avatar),
       since:f.since ? whenLabel(f.since) : "",
+      bd:f.birthday || "",
       /* The system stores nobody's gender — only the ASSISTANT's persona has
          one. Masculine is the documented default for address, and it is what
          the agent doctrine falls back to for the same reason. */
