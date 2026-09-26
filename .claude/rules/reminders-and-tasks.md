@@ -125,7 +125,10 @@ title means this file. Grep the title, not the filename.
   read them if you like, but write only through the options module
   (`add/answer/remove/swap`), which re-mirrors after every change.
   A yes must name one of the options on the table; the meeting confirms the
-  moment one option is unanimous among the people still in it.
+  moment one option is unanimous among the people still in it — and, for a
+  ROOM's coordination since 2026-09-26, only when that is everybody still in
+  the room (`rules/groups.md`, "A room's coordination counts everybody in the
+  room").
   **A whole day or a part of one keeps its PRECISION all the way onto the
   settled meeting** (owner, 2026-09-24; migration 087,
   `meetings.confirmed_all_day/confirmed_daypart`, written by

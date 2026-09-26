@@ -64,6 +64,7 @@ never trust a dated narrative for something you are about to act on.
 - [Six good mornings for one timeout (fixed 2026-09-09)](#six-good-mornings-for-one-timeout-fixed-2026-09-09)
 - [The room was told twice (fixed 2026-09-08)](#the-room-was-told-twice-fixed-2026-09-08)
 - [The room was greeted twice, by its own registration (fixed 2026-09-11)](#the-room-was-greeted-twice-by-its-own-registration-fixed-2026-09-11)
+- [The coordination that waited for somebody it could not name (fixed 2026-09-26)](#the-coordination-that-waited-for-somebody-it-could-not-name-fixed-2026-09-26)
 - [The invite that would have counted people it could not reach (2026-09-26)](#the-invite-that-would-have-counted-people-it-could-not-reach-2026-09-26)
 - [The tags that vanished before any hook ran (fixed 2026-09-26)](#the-tags-that-vanished-before-any-hook-ran-fixed-2026-09-26)
 - [She said there was no group (fixed 2026-09-25)](#she-said-there-was-no-group-fixed-2026-09-25)
@@ -2380,6 +2381,42 @@ the text lives in the transcript with a `MEDIA:` line attached to a card path �
 the same wall `undeliveredReply` hit when it chose "verbatim or nothing". The
 channel outage was the case that actually happened, five times, in one morning.
 
+
+### The coordination that waited for somebody it could not name (fixed 2026-09-26)
+
+Asked whether coordinations were getting stuck silently, a read-only pass over
+the box through production's own `statusOf` found two that had: coordination
+18 and coordination 38. In 18, everybody Olma had reached said yes, and one
+participant, u-13, never heard about it — every invite to him was dropped by
+the gate as `quiet`. Three rules then agreed with each other and produced
+silence. Auto-close needed a yes from every participant, so it waited for him.
+The base line may tag only people she has written to (2026-09-22), so it had
+nobody to name, and a base with an empty list is not said (coordination 37). The
+chase has the same filter. The room heard "she has started" and then nothing
+until the meeting expired. 38 was the same shape, and was cancelled by hand.
+
+Before any fix was offered the owner named the real problem, and it was not
+the stall. People did not understand why Olma counted some members and not
+others ("רוב האנשים לא יודעים למה עולמה סופרת חלק וחלק לא"). His rule: a
+coordination always counts everybody in the room; some will not answer, and
+the room decides whether to close without them. He picked two details:
+- It closes on its own only when the whole room said yes.
+- The direction line offers to close without whoever has not answered.
+
+The change:
+- `unanimousOption` also refuses while a member still in the room has no
+  participant row.
+- `statusOf` carries `roomTotal` and `notInIt`.
+- The opening line says "לכל N חברי הקבוצה".
+- The base line says "X מתוך N", tags who has not answered this time (asked or
+  not), counts the untaggable, and ends on "רוצים לסגור בלי מי שלא ענה? תכתבו
+  לי ״סגור״".
+- The count note stopped saying "לא נספר פה", because now everybody is counted.
+
+The line's trigger moved from "somebody TAGGABLE is missing" to "anybody in the
+room is short of a yes". That move is what closes the stall, for a room whose
+missing are all LIDs too. The chase kept its filter: "tell me privately" is
+only fair to somebody she has written to.
 
 ### The invite that would have counted people it could not reach (2026-09-26)
 

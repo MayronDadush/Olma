@@ -339,8 +339,9 @@ async function commonHoursFor(client, group, places = []) {
 function roomView(co, now = new Date()) {
   if (!co) return co;
   // `outsidePhones` stays behind too: it is for the opening line alone, and the
-  // model already has every member it may tag in `room.people`.
-  const { moments = {}, zones = [], roomTz = null, outsidePhones: _outside, ...rest } = co;
+  // model already has every member it may tag in `room.people`. `notInIt` is
+  // the room lines' list for the same reason; the model gets `roomTotal`.
+  const { moments = {}, zones = [], roomTz = null, outsidePhones: _outside, notInIt: _notIn, ...rest } = co;
   if (!meetingTime.spansZones(zones, roomTz, now)) return rest;
   const said = (slot) => {
     const t = meetingTime.roomTimes({ ...(moments[slot] || {}), slot }, zones, roomTz);
@@ -396,6 +397,8 @@ async function statusOf(client, group, meeting) {
     `SELECT user_id, state FROM meeting_participants WHERE meeting_id = $1`, [meeting.id]);
   const active = parts.filter((p) => p.state !== 'opted_out').map((p) => Number(p.user_id));
   const optedOut = parts.filter((p) => p.state === 'opted_out').map((p) => who(p.user_id));
+  const optedOutIds = new Set(parts.filter((p) => p.state === 'opted_out').map((p) => Number(p.user_id)));
+  const partIds = new Set(parts.map((p) => Number(p.user_id)));
 
   // EVERY moment the table moved, for the room's own "השולחן זז" line: a time
   // added carries `created_at`, a time taken off carries `decided_at`, and
@@ -482,6 +485,16 @@ async function statusOf(client, group, meeting) {
       tableChangedAt: changedAts.length ? changedAts[changedAts.length - 1] : null,
       tableChangedAts: changedAts,
       participants: active.length,
+      // …and who the ROOM's own lines count: everybody in it, whether or not
+      // she could ask them (owner, 2026-09-26: "רוב האנשים לא יודעים למה עולמה
+      // סופרת חלק וחלק לא"). Only somebody who LEFT this coordination is not
+      // counted — they answered. `notInIt` is every member with no participant
+      // row at all, LIDs included with no tag; they have said yes to nothing,
+      // which is also why the coordination cannot close on its own without
+      // them (`meeting-options.unanimousOption`).
+      roomTotal: members.filter((m) => !(m.user_id && optedOutIds.has(Number(m.user_id)))).length,
+      notInIt: members.filter((m) => !(m.user_id && partIds.has(Number(m.user_id))))
+        .map((m) => ({ phone: isTaggableNumber(m.phone) ? m.phone : null, asked: false })),
       // Members of the ROOM this coordination could not sweep in at all: they
       // have never written to her, so there is nobody to ask. A COUNT and never
       // people — who is missing is the gate notice's own sentence, and the room
