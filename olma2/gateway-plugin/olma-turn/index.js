@@ -398,10 +398,16 @@ export function buildRoomWriteHandler({ connect, sock, timeoutMs = 1500, log = t
       // for the same message carries the gateway's own `mentioned`, so the two
       // verdicts sit next to each other in the trace on real traffic. Never the
       // body, and never the number — only whether it ended in one.
+      const pendingSender = Boolean(reply && reply.ok === true && reply.claim === true
+        && reply.reason === "pending_sender");
       log({
         room: m[1], addressed, senderShape: /@lid\b/i.test(String((event && event.senderId) || "")) ? "lid" : "phone",
         ...(reply && reply.ok === true
-          ? { stamped: reply.stamped === true, sender: reply.sender === true, claim: reply.claim === true }
+          ? {
+            stamped: reply.stamped === true, sender: reply.sender === true, claim: reply.claim === true,
+            ...(reply.reason ? { reason: String(reply.reason).slice(0, 40) } : {}),
+            ...(reply.resumed === true ? { resumed: true } : {}),
+          }
           : { outcome: reply ? "refused" : "unreachable", ...(reply && reply.error ? { error: String(reply.error) } : {}) }),
         ms: Date.now() - t0,
       });
@@ -410,7 +416,14 @@ export function buildRoomWriteHandler({ connect, sock, timeoutMs = 1500, log = t
       // message THIS side read as addressed is never claimed whatever brokerd
       // answers — two independent refusals, because the failure they guard
       // against is her going silent on somebody who asked her something.
-      if (addressed) return undefined;
+      //
+      // ONE exception, and it is named rather than inferred: a sender brokerd
+      // says has never written to her (`pending_sender`). They are on the
+      // gateway's sender list only so their tag can be answered by the owner's
+      // fixed line, which brokerd has already queued for the room; a model turn
+      // would be her answering somebody she cannot act for. A bare
+      // `claim: true` is still refused for anything addressed.
+      if (addressed) return pendingSender ? { handled: true } : undefined;
       if (reply && reply.ok === true && reply.claim === true) return { handled: true };
       return undefined;
     } catch (e) {

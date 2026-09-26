@@ -64,6 +64,7 @@ never trust a dated narrative for something you are about to act on.
 - [Six good mornings for one timeout (fixed 2026-09-09)](#six-good-mornings-for-one-timeout-fixed-2026-09-09)
 - [The room was told twice (fixed 2026-09-08)](#the-room-was-told-twice-fixed-2026-09-08)
 - [The room was greeted twice, by its own registration (fixed 2026-09-11)](#the-room-was-greeted-twice-by-its-own-registration-fixed-2026-09-11)
+- [The tags that vanished before any hook ran (fixed 2026-09-26)](#the-tags-that-vanished-before-any-hook-ran-fixed-2026-09-26)
 - [She said there was no group (fixed 2026-09-25)](#she-said-there-was-no-group-fixed-2026-09-25)
 - [The room coordinated without the person who opened it (fixed 2026-09-19)](#the-room-coordinated-without-the-person-who-opened-it-fixed-2026-09-19)
 - [Twice 'היי' before a word about the room (fixed 2026-09-25)](#twice-היי-before-a-word-about-the-room-fixed-2026-09-25)
@@ -2377,6 +2378,43 @@ recomposes. Closing that needs the composed text to survive the failure, and
 the text lives in the transcript with a `MEDIA:` line attached to a card path —
 the same wall `undeliveredReply` hit when it chose "verbatim or nothing". The
 channel outage was the case that actually happened, five times, in one morning.
+
+
+### The tags that vanished before any hook ran (fixed 2026-09-26)
+
+Found while walking the owner through what each kind of member sees when Olma
+joins a room — not from a complaint, which is the point: nobody CAN complain
+about this one. Two kinds of people could tag her in a room and get nothing
+back, ever, with no trace anywhere that they had tried. Somebody on the roster
+who had never written to her (`status = 'pending'` — two such rows on the box
+that day, `group_roster_users` being on), and somebody paused. Both were off
+`groupAllowFrom` by design: the stranger because she cannot act for them, the
+paused person because her answer lands in the whole room including them.
+
+**Where the drop happens decided everything.** Read on the box, in the live
+WhatsApp plugin (`@openclaw/whatsapp/dist/monitor-CySzv38g.js`): the message
+normaliser calls `checkInboundAccessControl` and returns `null` on a blocked
+group sender — before mention gating, before `before_dispatch`, before any
+event a plugin can see. So "answer their tag with fixed text" and "treat their
+tag as them coming back" had one precondition in common: the gateway has to let
+them through. A hook cannot claim a message it never receives.
+
+**So the sender list now names everybody whose tag we can DO something with.**
+A pause their next message would end (`pause.endsOnWrite`) is admitted and
+ended by the tag (`pause.resumeOnWrite`, extracted from `turn.openRecord` so
+the two doors cannot drift); a real-number roster row is admitted and claimed
+with `reason: 'pending_sender'`, answered once per room by the owner's
+`group_sender_hint` line. A pause they CONFIRMED stays off — the owner's own
+chat does not end it on a message either, and in a room nobody has a
+`resume_olma` tool. That was the owner's call to make, and he made it asking
+only whether there was a problem.
+
+**What it deliberately leaves.** A stranger with no row, and anybody WhatsApp
+names only by LID, still vanish: the only list that names them is `"*"`, and
+`"*"` names her own number too. And the claim is only as good as brokerd: the
+plugin fails open, so with brokerd down a pending sender's tag reaches the
+model — the behaviour every sender had before 2026-09-06, for one class of
+sender, for as long as brokerd is down.
 
 
 ### She said there was no group (fixed 2026-09-25)

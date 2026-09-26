@@ -228,6 +228,15 @@ function renderGroupOpened(overrides) {
   return templates.render('group_opened', {}, overrides);
 }
 
+// A tag from somebody who has never written to her, answered in the room once
+// (brokerd `group_room_write`, 2026-09-26). The one room line addressed to a
+// single person who spoke to her; `null` when they cannot be tagged, because a
+// line that names nobody is not said.
+function renderGroupSenderHint(phone, overrides) {
+  const who = mentionToken(phone);
+  return who ? templates.render('group_sender_hint', { who }, overrides) : null;
+}
+
 // The cap is a flag (`group_max_members`), so the number is passed in rather
 // than written into the sentence — a raised cap must not leave her quoting 25.
 function renderGroupTooLarge(maxMembers, overrides) {
@@ -450,7 +459,7 @@ function rawPipeTextFor(row, overrides, channelType) {
 
 module.exports = {
   renderReminderText, rawPipeTextFor, reminderTemplateKey, localizedKey,
-  renderGroupIntro, renderGroupGateNotice, renderGroupTooLarge, renderGroupOpened,
+  renderGroupIntro, renderGroupGateNotice, renderGroupTooLarge, renderGroupOpened, renderGroupSenderHint,
   renderGroupCoordination, mentionTokens, mentionToken, isTaggableNumber,
   MAX_TAGS, SELF_NUMBER, PLACE_ASK_ONLINE,
 };

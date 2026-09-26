@@ -108,13 +108,12 @@ async function openRecord(client, user, { wake = false } = {}) {
   // Ahead of it: a paused person answering their one coordination message
   // (pause.resumeAfterRoomInvite) comes out of ANY pause, theirs included —
   // the owner's rule is that writing back then means they are interested.
-  if (wake) await pause.resumeAfterRoomInvite(client, user.id);
-  if (wake) await pause.quietResume(client, user.id);
   // …and an UNCONFIRMED stop ends the same way: they said "don't message me",
   // never answered "בטוח?", and have now written again. The owner's rule is
   // that the message itself is them coming back (2026-09-22). A CONFIRMED
   // stop carries reason NULL and `stopResume` does not match it.
-  if (wake) await pause.stopResume(client, user.id);
+  // All three are pause.resumeOnWrite, which a tag in a room runs too.
+  if (wake) await pause.resumeOnWrite(client, user.id);
 
   const counted = await quota.countMessage(client, user.id);
   await audit.record(client, user.id, 'message.received', null);

@@ -597,9 +597,33 @@ is not done at provisioning time because `channels.whatsapp.accounts.*`
 restarts the WhatsApp channel, and paying that mid-onboarding is the cost
 `addAllowFrom` already refuses to pay.
 
-*A paused user is deliberately not in the list.* Her answer in a group reaches
-the whole room including them, so admitting a paused member's tag walks
+*A paused user whose pause only they can end is not in the list.* Her answer
+in a group reaches the whole room including them, so admitting that tag walks
 straight around the pause the delivery gate exists to enforce.
+
+**Since 2026-09-26 the list is everybody whose tag we can DO something with**
+(`syncSenderGate`), because a tag the gateway drops is dropped with no trace:
+`checkInboundAccessControl` runs while the WhatsApp plugin normalises the
+message, before mention gating and before any hook of ours
+(`@openclaw/whatsapp/dist/monitor-CySzv38g.js`, read on the box). So nothing
+could answer a blocked sender except by admitting them. Two groups joined:
+
+- **A pause their own next message would end** — `said_stop`, `quiet_ladder`,
+  or their one coordination invite out and unanswered (`pause.endsOnWrite`).
+  brokerd `group_room_write` runs `pause.resumeOnWrite` on their tag before the
+  turn, the same three steps `turn.openRecord` runs for their own chat, so she
+  answers somebody who is back. A pause they confirmed stays off the list.
+- **A roster row with a real number** (`status = 'pending'`,
+  `phone-timezone.isRealPhone`). brokerd claims their tag (`reason:
+  'pending_sender'`, the ONE reason the plugin claims an addressed message on)
+  and queues the owner's `group_sender_hint` line once per person per room —
+  the `group_outbox` key is the budget. No model turn: she would be answering
+  somebody she cannot act for.
+
+A stranger with no row, and a sender the gateway names only by LID, are still
+dropped: naming them would take `"*"`, which is every sender and her own
+number with them. And a claim is only as good as brokerd being up — the plugin
+fails open, so with brokerd down a pending sender's tag reaches the model.
 
 **Her own number must never be in it**, and `syncGroupAllowFrom` drops it
 however it is spelled. Her outbound messages tag her — the introduction carries
@@ -662,10 +686,10 @@ cannot show you.
 5. ~~An open group's agent has no working tools yet.~~ **Closed 2026-09-07.**
    A group token now resolves through its own door (`groups.resolveByToken`),
    never through `users.resolveByToken` — see "The group's own door" below.
-6. A paused member is out of `groupAllowFrom` but still counts as *connected*
-   by `isConnected` (a `user_id` and a `last_inbound_at`), so they can still be
-   the reason a group opens while being unable to speak in it. Probably right,
-   not decided.
+6. ~~A paused member is out of `groupAllowFrom` but still counts as
+   connected.~~ **Narrowed 2026-09-26**: a pause their next word would end is
+   on the list and a tag ends it (the sender gate above). Only a pause they
+   confirmed is still connected-but-unheard, which is the pause doing its job.
 
 ## The group's own door (2026-09-07)
 

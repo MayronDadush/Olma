@@ -320,8 +320,34 @@ async function resumeAfterRoomInvite(client, userId, { now = new Date() } = {}) 
   return res.ok ? ok({ resumed: true, rearmed: res.data.rearmed }) : res;
 }
 
+// Everything their own writing ends, in the order openRecord has always run
+// it. One function because there are now two doors a person writes through —
+// their own chat (turn.openRecord) and a tag in a room (brokerd
+// group_room_write) — and a pause that one door ends and the other does not
+// is the drift this repo keeps paying for.
+async function resumeOnWrite(client, userId) {
+  await resumeAfterRoomInvite(client, userId);
+  await quietResume(client, userId);
+  await stopResume(client, userId);
+}
+
+// Would a message from them end their pause? The predicate behind the group
+// sender gate: somebody whose next word would bring them back may be heard in
+// a room, because hearing them IS them coming back; somebody whose pause only
+// they or the admin can end stays unheard there, as in their own chat. Reads
+// `paused_at`, `paused_reason` and the two room-invite stamps.
+function endsOnWrite(row) {
+  if (!row) return false;
+  if (!row.paused_at) return true;
+  if (row.paused_reason === QUIET_LADDER || row.paused_reason === SAID_STOP) return true;
+  if (!roomInviteSpent(row)) return false;
+  return !(row.room_invite_answered_at
+    && new Date(row.room_invite_answered_at).getTime() >= new Date(row.room_invite_sent_at).getTime());
+}
+
 module.exports = {
   pauseUser, resumeUser, quietPause, quietResume, stopResume, resumeAfterRoomInvite,
+  resumeOnWrite, endsOnWrite,
   roomInviteSpent, quietRoomInviteSpent,
   isPaused, nextOccurrenceAfter, QUIET_LADDER, SAID_STOP, ROOM_INVITE_ANSWER_MS,
 };
