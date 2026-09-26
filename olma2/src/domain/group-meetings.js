@@ -823,7 +823,58 @@ async function markRelaySaid(client, meetingId, userId) {
     [meetingId, userId]);
 }
 
+// A room member who has never written to her hears, privately and once, that a
+// coordination has opened there (owner, 2026-09-26: "רק כשיש תיאום — ואז היא
+// שולחת לו את הטמפלט"). Three decisions were his: once per person per ROOM, not
+// per coordination, because a first message from an unknown number can be
+// reported and a second one is how that happens; held to their own daytime
+// (the gate does that for any row, off a zone guessed from the dialling code);
+// and behind `group_cold_invite`.
+//
+// They are NOT made participants. A person counted in and never reached is the
+// stall `statusOf`'s `asked` already has to explain away; instead their reply
+// reaches the greeter, which already tells them "תכף אשלח לך כאן את התיאום"
+// (domain/intake-room.js), and admitLateMembers lets them in once they are
+// connected. So silence costs the coordination nothing.
+//
+// Only a roster row (`status = 'pending'`) with a real number: a LID has no
+// number to write to. Never while registration is closed — their reply would
+// be waitlisted, and the message promises to add them.
+const COLD_INVITE_FLAG = 'group_cold_invite';
+async function coldInvite(client, group, meeting) {
+  if (!group || !meeting || meeting.status !== 'negotiating') return [];
+  const flags = require('./flags');
+  if ((await flags.getFlag(client, COLD_INVITE_FLAG)) !== true) return [];
+  if ((await flags.getFlag(client, 'registration_open')) === false) return [];
+  const { rows } = await client.query(
+    `SELECT u.id, u.phone FROM chat_group_members m JOIN users u ON u.id = m.user_id
+      WHERE m.group_id = $1 AND m.left_at IS NULL AND u.status = 'pending' AND NOT u.is_eval
+      ORDER BY u.id`, [group.id]);
+  const { isRealPhone } = require('./phone-timezone');
+  const { enqueue } = require('../outbox/enqueue');
+  const sent = [];
+  for (const u of rows) {
+    if (!isRealPhone(u.phone)) continue;
+    const res = await enqueue(client, {
+      userId: u.id, kind: 'room_cold_invite',
+      payload: { groupId: Number(group.id), meetingId: Number(meeting.id), group: group.subject || '', title: meeting.title || '' },
+      // A day: past that the coordination has moved on and "I'll add you" is
+      // about a plan that may be settled or gone.
+      expiresAt: new Date(Date.now() + 24 * 3600_000),
+      idempotencyKey: `coldinvite:g${group.id}:u${u.id}`,
+    });
+    if (res.ok && res.data.enqueued) {
+      sent.push(Number(u.id));
+      await audit.record(client, u.id, 'group.cold_invite_queued', {
+        groupId: Number(group.id), meetingId: Number(meeting.id),
+      });
+    }
+  }
+  return sent;
+}
+
 module.exports = {
+  coldInvite, COLD_INVITE_FLAG,
   roomMeetingFor,
   startCoordination, admitLateMembers, quietJoinersToAnnounce, coordinationStatus, commonHoursFor, statusOf, roomView, settle, setPlace,
   sweepSilentPausedMembers, currentMeeting, coordinatingMembers, memberLabel, participantFor,

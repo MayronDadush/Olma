@@ -132,7 +132,7 @@ test('a LID never becomes a row, and neither does an unknown dialling code', asy
 // The gate, as pure policy. The two kinds that ARE addressed to such a person
 // are the ones that predate this: an invite's stranger intro and the waitlist's
 // "we are open now", both delivered through the intake session.
-test('gate: a pending row hears nothing, except the two kinds meant for one', () => {
+test('gate: a pending row hears nothing, except the kinds meant for one', () => {
   const base = {
     plan: 'free', blocked: false, window: { start: '09:00', end: '20:00' },
     tz: 'Asia/Jerusalem', sentToday: 0, budget: 4,
@@ -145,6 +145,7 @@ test('gate: a pending row hears nothing, except the two kinds meant for one', ()
   assert.equal(at('introduction').holdReason, 'pending_user');
   assert.equal(at('connection_intro').action, 'deliver');
   assert.equal(at('registration_reopened').action, 'deliver');
+  assert.equal(at('room_cold_invite').action, 'deliver', 'the room cold invite is the third, 2026-09-26');
 
   // A caller that computes no such fact is not silenced by a gate it told
   // nothing — `undefined` is falsy and would otherwise drop everything.
@@ -178,21 +179,33 @@ test('the worker drops a queued message to a roster row and delivers nothing', a
   assert.ok(row.sent_at, 'a dropped row must be terminal, or the sweep re-makes it for ever');
 });
 
-// The one write in the group sweep that leaves the database. Asserted through
-// the production function, not a copy of its WHERE clause.
-test('the gateway allow-from list never learns a roster number', async () => {
+// The one write in the group sweep that leaves the database, asserted through
+// the production function. Until 2026-09-26 this test said the opposite and
+// asserted it on a hand-copied WHERE clause, so it stayed green when the rule
+// changed: since then a roster row with a real number IS on the sender list,
+// because brokerd claims its tag and answers it with fixed text
+// (`.claude/rules/groups.md`, "A tag from somebody the gateway would have
+// dropped is answered"). A LID-shaped row still never is.
+test('the gateway sender list admits a real-number roster row, and never a LID', async () => {
   await openFlag(true);
   const me = await connectedUser('+972501900040');
   const gid = await room(5, [{ phone: me.phone }]);
   await withTx(db.pool, (c) => groups.ensureRosterUsers(c, gid,
     [{ phone: me.phone }, { phone: '+972501900041' }]));
+  const lid = await makeUser(db.pool, '+184736251029399');
+  await db.pool.query(`UPDATE users SET status = 'pending' WHERE id = $1`, [lid.id]);
 
-  const { rows } = await db.pool.query(
-    `SELECT phone FROM users WHERE status = 'active' AND paused_at IS NULL AND NOT is_eval`);
-  const phones = rows.map((r) => r.phone);
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const occ = require('../src/intake/openclaw-config');
+  const configPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'roster-gate-')), 'openclaw.json');
+  fs.writeFileSync(configPath, JSON.stringify({ channels: { whatsapp: { accounts: { default: {} } } } }));
+  await withTx(db.pool, (c) => require('../src/jobs/groups').syncSenderGate(c, configPath));
+  const phones = occ.groupAllowFrom(occ.loadConfig(configPath));
   assert.ok(phones.includes(me.phone));
-  assert.equal(phones.includes('+972501900041'), false,
-    'the sender gate would admit somebody who never signed up');
+  assert.ok(phones.includes('+972501900041'), 'their tag must reach brokerd to be answered');
+  assert.equal(phones.includes(lid.phone), false, 'a LID names nobody the gateway can match');
 });
 
 test('the check-in ladder cannot see a roster row', async () => {
@@ -314,4 +327,91 @@ test('the unanswered-strangers check still finds somebody who only has a roster 
   assert.equal(res.violations.length, 1,
     'a roster row made the check go quiet for exactly the person it exists to find');
   assert.match(res.violations[0], /\+972501900101/);
+});
+
+// ---------------------------------------------- the room cold invite (2026-09-26)
+//
+// A coordination opening in a room reaches a member who never wrote, ONCE per
+// person per room, in the owner's fixed words, and makes nobody a participant.
+async function roomWithCoordination(n, strangerPhone) {
+  await openFlag(true);
+  const a = await connectedUser(`+97250191${n}001`);
+  const b = await connectedUser(`+97250191${n}002`);
+  const gid = await room(n, [{ phone: a.phone }, { phone: b.phone }]);
+  await withTx(db.pool, (c) => groups.ensureRosterUsers(c, gid,
+    [{ phone: a.phone }, { phone: b.phone }, { phone: strangerPhone }]));
+  await withTx(db.pool, (c) => groups.syncRoster(c, gid,
+    [{ phone: a.phone }, { phone: b.phone }, { phone: strangerPhone }]));
+  const { rows: [group] } = await db.pool.query(
+    `UPDATE chat_groups SET state = 'open', agent_id = 'g-' || id WHERE id = $1 RETURNING *`, [gid]);
+  const started = await withTx(db.pool, (c) => require('../src/domain/group-meetings')
+    .startCoordination(c, group, a, 'פאדל השבוע'));
+  assert.ok(started.ok);
+  const { rows: [stranger] } = await db.pool.query(`SELECT * FROM users WHERE phone = $1`, [strangerPhone]);
+  return { group, meeting: started.data.meeting, stranger, a };
+}
+
+test('cold invite: closed flag sends nothing; open, one row per person per ROOM, and nobody is counted in', async () => {
+  const gm = require('../src/domain/group-meetings');
+  const { group, meeting, stranger, a } = await roomWithCoordination(6, '+972501916099');
+  assert.equal(stranger.status, 'pending');
+
+  assert.deepEqual(await withTx(db.pool, (c) => gm.coldInvite(c, group, meeting)), [], 'the flag is closed by default');
+
+  await withTx(db.pool, (c) => flags.setFlag(c, gm.COLD_INVITE_FLAG, true));
+  try {
+    assert.deepEqual(await withTx(db.pool, (c) => gm.coldInvite(c, group, meeting)), [Number(stranger.id)]);
+    assert.deepEqual(await withTx(db.pool, (c) => gm.coldInvite(c, group, meeting)), [], 'a second pass is a no-op');
+    // A NEW coordination in the same room does not write to them again.
+    await db.pool.query(`UPDATE meetings SET status = 'cancelled' WHERE id = $1`, [meeting.id]);
+    const again = await withTx(db.pool, (c) => gm.startCoordination(c, group, a, 'עוד משחק'));
+    assert.ok(again.ok, again.ok ? '' : JSON.stringify(again.error));
+    assert.deepEqual(await withTx(db.pool, (c) => gm.coldInvite(c, group, again.data.meeting)), [],
+      'once per person per ROOM — a first message from an unknown number is the one that gets reported');
+
+    const { rows } = await db.pool.query(
+      `SELECT kind, payload, expires_at FROM outbox WHERE user_id = $1`, [stranger.id]);
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].kind, 'room_cold_invite');
+    assert.ok(rows[0].expires_at, 'a day, then the plan has moved on');
+    const { rows: parts } = await db.pool.query(
+      `SELECT 1 FROM meeting_participants WHERE user_id = $1`, [stranger.id]);
+    assert.equal(parts.length, 0, 'silence must cost the coordination nothing, so they are not a participant');
+
+    // The words are the owner's, rendered at delivery, with no model in the path.
+    const text = require('../src/domain/proactive-text').rawPipeTextFor(rows[0], {}, 'whatsapp');
+    assert.ok(text.includes('«בדיקה»'), text);
+    assert.ok(text.includes('פאדל השבוע'), text);
+    assert.ok(text.startsWith('היי! אני עולמה'), text);
+  } finally {
+    await withTx(db.pool, (c) => flags.setFlag(c, gm.COLD_INVITE_FLAG, false));
+  }
+});
+
+test('cold invite: nothing while registration is closed, and the worker delivers it to the pending row', async () => {
+  const gm = require('../src/domain/group-meetings');
+  const { group, meeting, stranger } = await roomWithCoordination(7, '+972501917099');
+  await withTx(db.pool, (c) => flags.setFlag(c, gm.COLD_INVITE_FLAG, true));
+  try {
+    await withTx(db.pool, (c) => flags.setFlag(c, 'registration_open', false));
+    assert.deepEqual(await withTx(db.pool, (c) => gm.coldInvite(c, group, meeting)), [],
+      'their reply would be waitlisted, and the message promises to add them');
+    await withTx(db.pool, (c) => flags.setFlag(c, 'registration_open', true));
+    assert.deepEqual(await withTx(db.pool, (c) => gm.coldInvite(c, group, meeting)), [Number(stranger.id)]);
+
+    // A Wednesday noon UTC (15:00 in the zone their dialling code gives them):
+    // inside their window and never their quiet day, whatever day this runs.
+    const at = new Date();
+    at.setUTCDate(at.getUTCDate() - ((at.getUTCDay() - 3 + 7) % 7));
+    at.setUTCHours(12, 0, 0, 0);
+    // The worker takes the 50 oldest due rows, and this file's earlier tests
+    // leave rows of their own; this test is about ours.
+    await db.pool.query(`UPDATE outbox SET sent_at = now() WHERE sent_at IS NULL AND user_id <> $1`, [stranger.id]);
+    const sent = [];
+    await drainOnce(db.pool, async (r) => { sent.push({ user: Number(r.user_id), kind: r.kind }); return { ok: true }; }, at);
+    assert.deepEqual(sent.filter((x) => x.user === Number(stranger.id)).map((x) => x.kind), ['room_cold_invite'],
+      'the gate lets exactly this kind through to a pending row');
+  } finally {
+    await withTx(db.pool, (c) => flags.setFlag(c, gm.COLD_INVITE_FLAG, false));
+  }
 });

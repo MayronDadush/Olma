@@ -136,6 +136,11 @@ const DEFAULTS = {
   // `group-connections.connectRoom`, `syncRoster`'s timezone vote, the
   // unanswered-strangers check and the growth count.
   group_roster_users: false,
+  // A room member who has never written to her hears about a coordination
+  // opening there ONCE, privately, in the owner's fixed words
+  // (`group-meetings.coldInvite`, 2026-09-26). Reaches only the rows
+  // `group_roster_users` mints, so it does nothing while that is off.
+  group_cold_invite: false,
   // jobs/twin-shadow.js: Jev (Typesafe) answers "is this new task already on
   // their list?" beside the code, on real tasks, and nothing acts on it. OFF
   // by default and read every tick: turning it on sends new task titles and

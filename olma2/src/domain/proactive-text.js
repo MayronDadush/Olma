@@ -452,6 +452,13 @@ function rawPipeTextFor(row, overrides, channelType) {
   // that kind is what already earns a repair its way past the quiet drop, and
   // re-deciding the gate was not part of fixing the delivery.
   if (payload.verbatimReply) return String(payload.verbatimReply);
+  // The cold invite to a room member who never wrote: the owner's fixed words,
+  // rendered at delivery like every template. No model — the title is another
+  // member's text, and nothing but the template may speak it.
+  if (row.kind === 'room_cold_invite') {
+    return templates.render(localizedKey('group_cold_invite', row.locale),
+      { group: payload.group || '', title: payload.title || '' }, overrides);
+  }
   if (row.kind !== 'reminder') return null;
   if (payload.instruction) return null;
   return renderReminderText(payload, overrides, row.locale, channelType);

@@ -841,3 +841,27 @@ have already had to be argued for.
   claim fails open: with brokerd down a pending sender's tag reaches the
   model, which is the pre-2026-09-06 behaviour for exactly one class of
   sender (`incidents.md`, "The tags that vanished before any hook ran").
+
+- **A room member who has never written to her hears about a coordination
+  ONCE per room, privately, in the owner's fixed words — and is never made a
+  participant** (owner, 2026-09-26; `group-meetings.coldInvite`, flag
+  `group_cold_invite`, template `group_cold_invite`). Called from the
+  `group_voice` pass for every negotiating coordination; the outbox key
+  `coldinvite:g<gid>:u<uid>` is the once-per-ROOM budget the owner chose,
+  because a first message from an unknown number can be reported and a second
+  is how that happens. It goes on the raw pipe (`proactive-text.rawPipeTextFor`,
+  rendered at delivery) because the title is another member's text and no model
+  may speak it, and the gate lets it through as the third `PENDING_USER_KINDS`
+  entry — everything else the gate does (their night, off a zone guessed from
+  the dialling code) still applies. **Not a participant, on purpose**: a person
+  counted in and never reached is the stall `statusOf`'s `asked` already has to
+  explain away. Their reply reaches the greeter, which already says the room's
+  line (`domain/intake-room.js`), and `admitLateMembers` lets them in once they
+  are connected — so silence costs the coordination nothing. Only a pending row
+  with a real number (a LID has nothing to write to), and never while
+  `registration_open` is false, because the message promises to add them and
+  their reply would be waitlisted. PR #448 (`group_invite_unconnected`) is the
+  approach this replaces: it widened `coordinatingMembers` to every roster row,
+  which with pending rows live counts people who can never be reached
+  (`incidents.md`, "The invite that would have counted people it could not
+  reach").
