@@ -213,6 +213,25 @@ const TEMPLATES = [
     sample: {},
     text: 'Hi! Olma here — you reached out while new sign-ups were paused. There\'s room now! If you\'re still interested, just reply here and we\'ll get started 🙂',
   },
+  // A room member who has never written to her, when a coordination opens in
+  // that room (`group-meetings.coldInvite`, flag `group_cold_invite`). Sent on
+  // the raw pipe — no model — once per person per room. Their reply reaches
+  // the greeter, which already says the room's line, and admitLateMembers
+  // lets them in. The owner's wording, 2026-09-26.
+  {
+    key: 'group_cold_invite', audience: 'private', label: 'הזמנה פרטית לתיאום בקבוצה (למי שעוד לא כתב)',
+    help: 'נשלחת בפרטי לחבר קבוצה שעוד לא כתב לעולמה, כשנפתח תיאום בקבוצה. פעם אחת לאדם בכל קבוצה, בשעות היום שלו. אם הוא עונה — היא מצרפת אותו לתיאום.',
+    vars: { group: 'שם הקבוצה', title: 'מה מתאמים' }, required: ['group', 'title'],
+    sample: { group: 'פאדל שלישי', title: 'משחק השבוע' },
+    text: 'היי! אני עולמה 👋 אני עוזרת לקבוצה: ״«{{group}}»״ שאתה נמצא בה לתאם {{title}}.\nאם תענה לי כאן, אצרף אותך ואשאל מתי נוח לך ☺️',
+  },
+  {
+    key: 'group_cold_invite_en', audience: 'private', label: 'הזמנה פרטית לתיאום בקבוצה (למי שעוד לא כתב)',
+    help: '',
+    vars: { group: 'group name', title: 'what is being coordinated' }, required: ['group', 'title'],
+    sample: { group: 'Tuesday padel', title: 'this week\'s game' },
+    text: 'Hi! I\'m Olma 👋 I\'m helping the group “{{group}}” you\'re in coordinate {{title}}.\nIf you reply here, I\'ll add you and ask when works for you ☺️',
+  },
   // ---- in a group -----------------------------------------------------------
   {
     key: 'group_intro', audience: 'group', label: 'היכרות בקבוצה',

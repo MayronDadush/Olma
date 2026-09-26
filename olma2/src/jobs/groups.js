@@ -587,6 +587,11 @@ async function sweepGroupVoice(client, deps) {
     // room's line about them waits for its morning, where the pass below names
     // them beside anybody let in then (`quietJoinersToAnnounce`). It is this
     // pass's one line for the room, so everything else waits for the next one.
+    // A room member who never wrote hears about it privately, once per room
+    // (group-meetings.coldInvite, behind its flag). Every pass, whatever the
+    // room's hour: the gate holds the row for THEIR night, and the key makes a
+    // repeat a no-op.
+    if (full[0]) await groupMeetings.coldInvite(client, row, full[0]);
     const awake = full[0] ? mayAnnounce(row, now) : false;
     if (full[0] && !awake) {
       await groupMeetings.admitLateMembers(client, row, full[0], now, {

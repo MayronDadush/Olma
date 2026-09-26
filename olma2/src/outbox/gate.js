@@ -169,7 +169,10 @@ const SAYS_IT_ONCE = new Set([
 // The two kinds a `pending` row is MEANT to receive, both delivered through the
 // intake session because that is the only voice such a person has ever heard.
 // Adding a third means asking who sends it and in whose session.
-const PENDING_USER_KINDS = new Set(['connection_intro', 'registration_reopened']);
+// The third, since 2026-09-26: `room_cold_invite`, the owner's fixed words to a
+// room member who never wrote, sent on the raw pipe (no session is needed for
+// a sentence no model writes), once per person per room.
+const PENDING_USER_KINDS = new Set(['connection_intro', 'registration_reopened', 'room_cold_invite']);
 
 // facts: { row, plan, blocked, paused, pendingUser, window, quietDays, tz, sentToday, budget, now, lastInboundAt, dashboardWroteAt }
 // returns { action: 'deliver' | 'hold' | 'expire' | 'drop', holdReason?, releaseAfter? }

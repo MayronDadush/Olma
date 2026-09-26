@@ -64,6 +64,7 @@ never trust a dated narrative for something you are about to act on.
 - [Six good mornings for one timeout (fixed 2026-09-09)](#six-good-mornings-for-one-timeout-fixed-2026-09-09)
 - [The room was told twice (fixed 2026-09-08)](#the-room-was-told-twice-fixed-2026-09-08)
 - [The room was greeted twice, by its own registration (fixed 2026-09-11)](#the-room-was-greeted-twice-by-its-own-registration-fixed-2026-09-11)
+- [The invite that would have counted people it could not reach (2026-09-26)](#the-invite-that-would-have-counted-people-it-could-not-reach-2026-09-26)
 - [The tags that vanished before any hook ran (fixed 2026-09-26)](#the-tags-that-vanished-before-any-hook-ran-fixed-2026-09-26)
 - [She said there was no group (fixed 2026-09-25)](#she-said-there-was-no-group-fixed-2026-09-25)
 - [The room coordinated without the person who opened it (fixed 2026-09-19)](#the-room-coordinated-without-the-person-who-opened-it-fixed-2026-09-19)
@@ -2378,6 +2379,35 @@ recomposes. Closing that needs the composed text to survive the failure, and
 the text lives in the transcript with a `MEDIA:` line attached to a card path —
 the same wall `undeliveredReply` hit when it chose "verbatim or nothing". The
 channel outage was the case that actually happened, five times, in one morning.
+
+
+### The invite that would have counted people it could not reach (2026-09-26)
+
+The owner asked, again, for Olma to be able to write privately to a room
+member who has never written to her, only when a coordination opens, with a
+fixed template. He did not remember whether it had been built. It had, half:
+PR #448 (22 September) put a closed flag, `group_invite_unconnected`, inside
+`coordinatingMembers`, widening who a coordination counts to every roster row
+with a user behind it. At the time that reached nobody — no roster number had a
+row. Three days later `group_roster_users` went live and every real number on
+a roster became a `pending` row, so opening #448's flag would now count those
+people IN as participants while the gate drops every row addressed to them.
+A coordination waiting on answers from people nobody asked is exactly the
+stall the room's `asked` flag already exists to hide.
+
+So it was built the other way round. The invite is not membership: one fixed
+message on the raw pipe (the title is another member's words, and no model
+speaks them), once per person per ROOM, the owner's own choice because a first
+message from an unknown number is what gets reported. Their reply reaches the
+greeter, which already says "תכף אשלח לך כאן את התיאום", and
+`admitLateMembers` already lets a connected member in — two pieces built for
+other reasons that close the loop without a line of new routing. Silence costs
+the coordination nothing, because they were never in it.
+
+Also found on the way: `tests/roster-users.test.js` asserted "the sender list
+never learns a roster number" on a hand-copied WHERE clause, so it stayed green
+through the change that made the opposite true that same morning. It calls
+`syncSenderGate` now.
 
 
 ### The tags that vanished before any hook ran (fixed 2026-09-26)
