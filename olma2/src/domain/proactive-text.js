@@ -308,7 +308,8 @@ function renderGroupCoordination(line, overrides) {
     // here (`outsideNote`), once, in the line that starts the coordination —
     // and the promise it makes is kept by `group-meetings.admitLateMembers`.
     return templates.render(keyFor('group_coord_started', line), {
-      title: slotText(line.title), asked: String(line.asked),
+      // A row queued before the room was counted whole carries only `asked`.
+      title: slotText(line.title), total: String(line.total ?? line.asked),
       cities: line.multiZone ? meetingTime.citiesPhrase(line.zones, line.roomTz) : '',
       outside_note: outsideNote(line, overrides),
     }, overrides).trim();
@@ -323,7 +324,9 @@ function renderGroupCoordination(line, overrides) {
     return templates.render('group_coord_joined', { who: mentionTokens(phones), verb }, overrides);
   }
   if (line.kind === 'base' || line.kind === 'moved') {
-    const vars = { yes: String(line.yes), missing: mentionTokens(line.missing || []) };
+    const vars = {
+      yes: String(line.yes), total: String(line.total ?? (Number(line.yes) + (line.missing || []).length)), close_note: closeNote(line, overrides),
+    };
     const lead = line.multiZone
       ? tidy(templates.render('group_coord_base_zones', { ...vars, ...roomBlock(line, 'slot') }, overrides))
       : templates.render('group_coord_base', { ...vars, slot: slotText(line.slot) }, overrides);
@@ -423,7 +426,22 @@ function outsideNote(line, overrides) {
   return line.outside ? OUTSIDE_NOTE : '';
 }
 
-const OUTSIDE_NOTE = 'מי שעוד לא כתב לי בפרטי לא נספר פה — ״היי״ בפרטי וזה מסתדר ☺️';
+// "לא נספר פה" was true until 2026-09-26; the room is counted whole now.
+const OUTSIDE_NOTE = 'מי שעוד לא כתב לי בפרטי — ״היי״ שם ואצרף אותו לתיאום ☺️';
+
+// The end of the base line: who has not answered this time and the offer to
+// close without them, or — with nobody silent, only people who said no — the
+// offer to close on it. `more` counts the people no tag can reach (LIDs, and
+// anybody past MAX_TAGS), so the sentence never implies it named everybody.
+function closeNote(line, overrides) {
+  const phones = (line.missing || []).filter(isTaggableNumber);
+  const more = Number(line.more) || 0;
+  const tags = mentionTokens(phones);
+  const who = more > 0 ? (tags ? `${tags} ועוד ${more}` : `${more} מכם`) : tags;
+  return who
+    ? templates.render('group_coord_unanswered', { who }, overrides)
+    : templates.render('group_coord_close_hint', {}, overrides);
+}
 const WHO_ALL = 'כולם בפנים';
 const WHO_IN = 'בפנים:';
 

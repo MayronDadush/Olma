@@ -384,6 +384,9 @@ have already had to be argued for.
   Before it, the room's first word was `base` — which waits for two people to
   agree on a time, hours later — so a room that had just asked her for something
   heard nothing at all. `co.participants` is who she is actually asking.
+  **Since 2026-09-26 the number it SAYS is the whole room** (`co.roomTotal`,
+  "לכל N חברי הקבוצה") — see "A room's coordination counts everybody in the
+  room" below.
   **Since 2026-09-25 it TAGS the members she could not sweep in**
   (`co.outsidePhones`, `group_coord_outside` / `_many`; owner: "לתייג אותם
   בשורת הפתיחה"). Until then it carried only a count ("somebody here is not
@@ -622,8 +625,9 @@ have already had to be argued for.
   queued question, and a time set in the room stamps `group_time_at` so the
   room's `time` line is said only for a time set somewhere else.
 
-- **The room says that people have not answered only about people she has
-  actually written to** (owner, 2026-09-22; `group-meetings.statusOf` puts
+- **The room CHASES only people she has actually written to** (owner,
+  2026-09-22; the base line left this rule on 2026-09-26 — see the next
+  bullet but one; `group-meetings.statusOf` puts
   `asked` on every person it names, `group-voice.said` is the filter).
   `silent` still means exactly "has answered nothing" — the model's `answered`
   count is `participants - silent.length` and must stay exact — and `asked` is
@@ -639,6 +643,27 @@ have already had to be argued for.
   a fixture or an older payload still says its line — being over-careful here
   costs a line that is true (`incidents.md`, "The room chased three people, two
   of whom had never been asked").
+
+- **A room's coordination counts everybody in the room, and closes on its own
+  only when all of them said yes** (owner, 2026-09-26: "שתיאום תמיד יספור את
+  כלל האנשים שיש בקבוצה (כי רוב האנשים לא יודעים למה עולמה סופרת חלק וחלק לא)").
+  `meeting-options.unanimousOption` also refuses while any member still in the
+  room has no participant row — never wrote, a LID, a paused member left out;
+  somebody who LEFT the coordination (`opted_out`) is not waited for. Short of
+  that the room closes it with "סגור" (`settleNow` never checked agreement).
+  `statusOf` carries `roomTotal` (the room less anybody who left) and `notInIt`
+  (every member with no row, a LID with `phone: null`); the model gets
+  `inRoom` and never the list. The base line says "X מתוך N", tags everybody
+  who has not ANSWERED that time — asked or not, because the sentence is true
+  of both and the room decides — counts the untaggable as "ועוד N", and ends
+  on the offer to close without them (`group_coord_unanswered`, or
+  `group_coord_close_hint` when the rest said no). It is said while anybody in
+  the room is short of a yes, not while anybody TAGGABLE is: coordination 18
+  sat silent until it expired on one participant whose invite the gate had
+  dropped, because the old line had nobody it was allowed to tag and so was
+  never said (`incidents.md`, "The coordination that waited for somebody it
+  could not name"). The chase keeps the rule above: it asks people to answer
+  her privately, which is only a fair thing to say to somebody she wrote to.
 
 - **A group turn is told the room's coordination state before the model's first
   word, and that block is the only thing it may speak from.** The DM half of

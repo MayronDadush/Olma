@@ -229,6 +229,10 @@ async function draw(client, group, { lidPhones = null } = {}) {
       // asked, and somebody paused out has left it.
       asked: c.participants,
       answered: c.participants - c.silent.length,
+      // Everybody the room's own lines count (owner, 2026-09-26), so the model
+      // says the same "X מתוך N" the room hears. It closes on its own only on a
+      // yes from all of them; short of that somebody writes "סגור".
+      ...(Number.isFinite(c.roomTotal) ? { inRoom: c.roomTotal } : {}),
       // Answers only, and as TAGS — the same thing the room's own chase line
       // says out loud (`proactive-text.mentionTokens`), which is what the model
       // is now told to address people with. The label is the fallback for

@@ -370,7 +370,8 @@ Loads when you **Read** a file under `src/domain/group-connections.js`, `src/dom
 - **A tag is a NUMBER, and the roster hands us LIDs in the same column** — the cut is 13 digits, measured; a line that can name nobody is not said
 - **A number on the roster becomes a `users` row, and a row is not a person who has met her** — `status = 'pending'` is the question six readers now ask, and a LID never becomes one
 - **…and since 2026-09-24 the SHAPE is asked too, which halves what the length alone could reach** (`phone-timezone.phoneShape`) — three answers, never two, and `unknown` keeps the old behaviour so no real member is silenced
-- **The room says that people have not answered only about people she has actually written to** — `silent` is still the exact count; `asked` is what may be SAID
+- **The room CHASES only people she has actually written to** — `silent` is still the exact count; `asked` is what may be SAID in the chase
+- **A room's coordination counts everybody in the room, and closes on its own only when all of them said yes** — short of that the room writes "סגור"; the base line says "X מתוך N", tags who has not answered, and offers to close without them (`unanimousOption`, `statusOf.roomTotal`)
 - **A group turn is told the room's coordination state before the model's first word, and that block is the only thing it may speak from.** — and a result the room has already heard is marked `roomHeard`, so it is not the tail of every reply
 - **A message in the room with no tag on it is ENDED, never answered — and the window it opens is the point.** Inert behind a flag, and measuring while it is.
 - **Every line a room hears unasked is Olma's own text, save exactly one: a sentence a MEMBER asked her to say there** — one per person per coordination, and only in a room the flag names

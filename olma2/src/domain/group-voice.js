@@ -20,7 +20,7 @@
 // One line per pass, never two. A room that gets "there is a direction" and
 // "who has not answered" in the same breath has been given a paragraph to
 // read about a thing it asked for in four words.
-const { MAX_TAGS } = require('./proactive-text');
+const { MAX_TAGS, isTaggableNumber } = require('./proactive-text');
 const { onlinePlace } = require('./online-place');
 const meetingTime = require('./meeting-time');
 
@@ -220,7 +220,9 @@ function decideLine(co, {
   // that asked her for something heard nothing at all.
   if (!saidStarted) {
     return {
-      kind: 'started', title: co.title, asked: co.participants, outside: co.outside || 0,
+      // `total` is the whole room (owner, 2026-09-26): the line used to count
+      // only who she could ask, and nobody knew why some were counted.
+      kind: 'started', title: co.title, asked: co.participants, total: roomTotal(co), outside: co.outside || 0,
       // Who of them the line can TAG (owner, 2026-09-25). The count stays: it
       // is what a room whose missing members are all LIDs still hears.
       outsidePhones: co.outsidePhones || [],
@@ -273,14 +275,30 @@ function decideLine(co, {
     const enough = lead.quorum && lead.quorum.known && lead.quorum.min !== null
       ? lead.quorum.met
       : lead.yes.length >= 2;
-    const missing = [...lead.missing, ...lead.no].filter(said).map((p) => p.phone).filter(Boolean);
+    // Counted against the whole ROOM (owner, 2026-09-26), and it names
+    // everybody who has not answered this time — asked or not, because the
+    // sentence is "has not answered", which is true of both, and the room
+    // decides whether to close without them. Coordination 18 stalled on one
+    // participant her invite never reached: the old line tagged only people
+    // she had written to, so it tagged nobody and was never said, and nothing
+    // could close it on its own. `unanswered` is a COUNT too, so a room whose
+    // missing are all LIDs still hears the line, with "ועוד N".
+    const unansweredPeople = [...lead.missing, ...(co.notInIt || [])];
+    // Never fewer than the people this option already accounts for, so a
+    // caller with no counts on it (a fixture, an older payload) still works.
+    const total = Math.max(roomTotal(co), lead.yes.length + lead.no.length + unansweredPeople.length);
+    const unanswered = unansweredPeople.map((p) => p.phone).filter(isTaggableNumber);
     // "מחכה ל 🤞" went out to nobody: Yuval's yes made it unanimous, the
     // settle minute was running, and twelve seconds later the base line
     // named an empty list (coordination 37, 2026-09-20). A base is a thing
-    // to say while somebody is still owed; with nobody missing, or the
-    // grace already armed, the next thing this room hears is "סגור".
-    if (enough && missing.length && !co.settleDueAt) {
-      const line = { slot: lead.slot, yes: lead.yes.length, missing: missing.slice(0, MAX_TAGS) };
+    // to say while somebody is still short of a yes; with the whole room in,
+    // or the grace already armed, the next thing this room hears is "סגור".
+    if (enough && lead.yes.length < total && !co.settleDueAt) {
+      const line = {
+        slot: lead.slot, yes: lead.yes.length, total,
+        missing: unanswered.slice(0, MAX_TAGS),
+        more: Math.max(0, unansweredPeople.length - Math.min(unanswered.length, MAX_TAGS)),
+      };
       return namedGone ? { kind: 'moved', was: saidBaseSlot, ...line } : { kind: 'base', ...line };
     }
   }
@@ -331,8 +349,17 @@ function whoIsIn(co) {
   const o = co.confirmedOption;
   if (!o || !Array.isArray(o.yes)) return null;
   const phones = o.yes.map((p) => p.phone).filter(Boolean);
-  const all = Number(co.participants) > 0 && o.yes.length >= Number(co.participants);
+  const total = roomTotal(co);
+  const all = total > 0 && o.yes.length >= total;
   return { all, phones: all ? [] : phones };
+}
+
+// Everybody the room's lines count: the whole room, less anybody who left this
+// coordination (`group-meetings.statusOf`). A caller that carries no room total
+// (a fixture, an older payload) is counted as before, by participants.
+function roomTotal(co) {
+  const n = Number(co && co.roomTotal);
+  return Number.isFinite(n) && n > 0 ? Math.max(n, Number(co.participants) || 0) : (Number(co && co.participants) || 0);
 }
 
 function earliestStart(co) {
@@ -342,7 +369,7 @@ function earliestStart(co) {
 }
 
 module.exports = {
-  decideGroupLine, leadingOption, chaseDueAt, localDay, whoIsIn,
+  decideGroupLine, leadingOption, chaseDueAt, localDay, whoIsIn, roomTotal,
   tableSettledAt,
   CHASE_FALLBACK_MS, CHASE_AFTER_MS, HOUR_BEFORE_MS, DAY_OF_MIN_LEAD_MS, TABLE_SETTLE_MS,
 };

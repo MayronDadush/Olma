@@ -48,11 +48,12 @@ test('"סגור" on several clocks: the day, a line per clock, and how they conn
 });
 
 test('"יש כיוון" on several clocks, and the moved line built from it', () => {
-  const base = clocks({ kind: 'base', slot: 'יום שבת 26.9 20:00', yes: 2, missing: ['+972501234567'], at: { slot: SAT } });
+  const base = clocks({ kind: 'base', slot: 'יום שבת 26.9 20:00', yes: 2, total: 4, missing: ['+972501234567'], more: 1, at: { slot: SAT } });
   assert.equal(renderGroupCoordination(base), [
-    'יש כיוון: *יום שבת 26.9* — 2 כבר בפנים.',
+    'יש כיוון: *יום שבת 26.9* — 2 מתוך 4 בפנים.',
     '20:00 ישראל', '13:00 ניו יורק', '03:00 סידני (יום ראשון 27.9)',
-    'מחכה ל@+972501234567 🤞',
+    'עוד לא ענו: @+972501234567 ועוד 1',
+    'רוצים לסגור בלי מי שלא ענה? תכתבו לי ״סגור״ 👍',
   ].join('\n'));
   const noon = { ...SAT, startsAt: '2026-09-26T09:00:00Z' };
   const moved = renderGroupCoordination({ ...base, kind: 'moved', was: 'יום שבת 26.9 12:00', at: { slot: SAT, was: noon } });
@@ -73,9 +74,9 @@ test('the one-line lines join every clock with " · "', () => {
 });
 
 test('the opening says which clocks the room is on', () => {
-  const body = renderGroupCoordination(clocks({ kind: 'started', title: 'שיחת וידאו', asked: 3, outside: 0, at: {} }));
+  const body = renderGroupCoordination(clocks({ kind: 'started', title: 'שיחת וידאו', asked: 3, total: 4, outside: 0, at: {} }));
   assert.match(body, /אתם פרוסים על ישראל, ניו יורק וסידני/);
-  assert.match(body, /^מתחילה לתאם \*שיחת וידאו\* 🎯/);
+  assert.match(body, /^מתחילה לתאם \*שיחת וידאו\* לכל 4 חברי הקבוצה 🎯/);
 });
 
 test('a time with no clock in it keeps its author\'s words and city, and leaves no empty line', () => {
