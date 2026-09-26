@@ -200,6 +200,13 @@ const SETTLE_GRACE_MS = 60 * 1000;
 // every active participant. Two people at least — a meeting of one cannot
 // settle. It no longer WRITES anything; the two callers below decide what a
 // yes here means.
+//
+// A ROOM's coordination closes on its own only when the whole ROOM said yes
+// (owner, 2026-09-26: "שתיאום תמיד יספור את כלל האנשים שיש בקבוצה"). Anybody
+// still in the room with no participant row — never wrote to her, a LID, a
+// paused member left out — has not said yes, so the meeting waits for somebody
+// to write "סגור" (`settleNow`, which never checked agreement). A member who
+// LEFT this coordination has an `opted_out` row and is not waited for.
 async function unanimousOption(client, meetingId) {
   const { rows } = await client.query(
     `WITH active AS (
@@ -212,6 +219,13 @@ async function unanimousOption(client, meetingId) {
           SELECT 1 FROM active a
            WHERE NOT EXISTS (SELECT 1 FROM meeting_option_answers oa
                               WHERE oa.option_id = o.id AND oa.user_id = a.user_id AND oa.answer = 'y'))
+        AND NOT EXISTS (
+          SELECT 1 FROM meetings mt
+            JOIN chat_group_members gm ON gm.group_id = mt.group_id AND gm.left_at IS NULL
+           WHERE mt.id = $1
+             AND (gm.user_id IS NULL OR NOT EXISTS (
+                   SELECT 1 FROM meeting_participants mp
+                    WHERE mp.meeting_id = $1 AND mp.user_id = gm.user_id)))
       ORDER BY o.id LIMIT 1`, [meetingId]);
   return rows[0] || null;
 }

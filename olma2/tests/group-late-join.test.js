@@ -85,7 +85,8 @@ test('the opening tags who has not written, and a room of LIDs keeps the count l
   assert.ok(many.endsWith('@+61412345678 @+972501234567 עוד לא כתבתם לי בפרטי — ״היי״ שם ואצרף אתכם לתיאום ☺️'), many);
   // A LID pings nobody, so it is counted and never tagged.
   const lid = text.renderGroupCoordination({ kind: 'started', title: 'שיחה', asked: 3, outside: 1, outsidePhones: [] });
-  assert.ok(lid.endsWith('מי שעוד לא כתב לי בפרטי לא נספר פה — ״היי״ בפרטי וזה מסתדר ☺️'), lid);
+  // Not "לא נספר פה" any more: the room is counted whole (owner, 2026-09-26).
+  assert.ok(lid.endsWith('מי שעוד לא כתב לי בפרטי — ״היי״ שם ואצרף אותו לתיאום ☺️'), lid);
   const none = text.renderGroupCoordination({ kind: 'started', title: 'שיחה', asked: 3, outside: 0 });
   assert.ok(!none.includes('בפרטי —'), none);
 });
@@ -152,7 +153,7 @@ test('before the opening line has gone out, somebody let in is simply counted by
   // coordination the room has not heard of.
   assert.equal(first.length, 1);
   assert.match(first[0], /^מתחילה לתאם/);
-  assert.match(first[0], /שאלתי בפרטי 4 מכם/);
+  assert.match(first[0], /לכל 4 חברי הקבוצה/);
   assert.ok(!first[0].includes('עוד לא כתב'), first[0]);
   assert.equal((await invitesTo(dana.id, meetingId)).length, 1);
 });

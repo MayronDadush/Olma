@@ -470,7 +470,8 @@ test('the moved line reads as one sentence about the change and one about the ne
   const body = proactiveText.renderGroupCoordination({
     kind: 'moved', was: 'שבת 16:00', slot: 'שבת 17:00', yes: 2, missing: ['+972500000003'],
   }, null);
-  assert.equal(body, '*שבת 16:00* כבר לא על השולחן 🔄\nיש כיוון: *שבת 17:00* — 2 כבר בפנים.\nמחכה ל@+972500000003 🤞');
+  assert.equal(body, '*שבת 16:00* כבר לא על השולחן 🔄\nיש כיוון: *שבת 17:00* — 2 מתוך 3 בפנים.\n'
+    + 'עוד לא ענו: @+972500000003\nרוצים לסגור בלי מי שלא ענה? תכתבו לי ״סגור״ 👍');
   assert.doesNotMatch(body, /שרון|Sharon/, 'tags, never names — the room addresses people only by tag');
 });
 
@@ -728,8 +729,12 @@ test('the place can be said later, and a closed room has nothing to put it on', 
 });
 
 // The owner, 2026-09-22, after the room chased two people nobody had written
-// to: she may say that people are not answering only once she has tried.
-test('neither room line names somebody the coordination never reached', () => {
+// to: she may say that people are not answering only once she has tried. That
+// still holds for the CHASE ("עוד לא שמעתי מ…"). The base line changed on
+// 2026-09-26: it counts the whole room and says who has not ANSWERED, which is
+// true of somebody never asked too, because the room decides whether to close
+// without them — coordination 18 stalled on exactly that person.
+test('the chase names only who was reached; the base names everybody who has not answered', () => {
   const soon = new Date(Date.now() + 86400_000).toISOString();
   const asked = { phone: '+972500000021', asked: true };
   const never = { phone: '+972500000022', asked: false };
@@ -745,17 +750,27 @@ test('neither room line names somebody the coordination never reached', () => {
 
   const base = groupVoice.decideGroupLine(co, { saidStarted: true, saidBase: false, saidChase: true, saidDone: false, ...at });
   assert.equal(base.kind, 'base');
-  assert.deepEqual(base.missing, [asked.phone], 'the base waits out loud only for somebody who was asked');
+  assert.deepEqual(base.missing, [asked.phone, never.phone], 'has not answered, asked or not');
+  assert.equal(base.total, 4);
 
   const chase = groupVoice.decideGroupLine(co, { saidStarted: true, saidBase: true, saidChase: false, saidDone: false, ...at });
   assert.equal(chase.kind, 'chase');
   assert.deepEqual(chase.missing, [asked.phone]);
 
-  // Nobody reached yet: there is no true sentence about people not answering,
-  // so the room hears nothing at all rather than a line with no tags in it.
-  const noneReached = { ...co, options: [{ ...co.options[0], missing: [never], yes: [{ phone: '+972500000023', asked: true }] }], silent: [never] };
-  const quiet = groupVoice.decideGroupLine(noneReached, { saidStarted: true, saidBase: false, saidChase: false, saidDone: false, ...at });
+  // Nobody reached yet: the chase has no true sentence to say, so it says none.
+  const noneReached = { ...co, silent: [never] };
+  const quiet = groupVoice.decideGroupLine(noneReached, { saidStarted: true, saidBase: true, saidChase: false, saidDone: false, ...at });
   assert.equal(quiet.kind, 'none');
+
+  // Coordination 18: everybody asked said yes, one person her invite never
+  // reached is still out. The base line used to tag nobody and so was never
+  // said, and nothing could close it; now the room hears who is out and that
+  // it may close without them.
+  const stalled = { ...co, options: [{ ...co.options[0], missing: [never] }], silent: [never] };
+  const said = groupVoice.decideGroupLine(stalled, { saidStarted: true, saidBase: false, saidChase: true, saidDone: false, ...at });
+  assert.equal(said.kind, 'base');
+  assert.deepEqual(said.missing, [never.phone]);
+  assert.match(proactiveText.renderGroupCoordination(said), /2 מתוך 3 בפנים[\s\S]*עוד לא ענו: @\+972500000022[\s\S]*״סגור״/);
 });
 
 
@@ -774,7 +789,7 @@ test('the first line a room hears is that she has started asking, and it counts 
   await pass(sent, null, group.external_id);
   assert.equal(sent.length, 1);
   assert.match(sent[0].body, /מתחילה לתאם \*פאדל השבוע\*/);
-  assert.match(sent[0].body, /שאלתי בפרטי 3 מכם/, 'the three who have written');
+  assert.match(sent[0].body, /לכל 3 חברי הקבוצה/, 'the whole room');
   // Nobody is named and nobody is tagged: who is missing is the gate notice's
   // sentence, and this room has nobody missing anyway.
   assert.equal(/@\+?\d/.test(sent[0].body), false, 'no tags in this line, ever');
@@ -929,7 +944,7 @@ test('a room with members who never wrote hears them tagged, never named', async
   const sent = [];
   await pass(sent, null, group.external_id);
   assert.equal(sent.length, 1);
-  assert.match(sent[0].body, /שאלתי בפרטי 3 מכם/, 'the three she can reach, not the four in the room');
+  assert.match(sent[0].body, /לכל 4 חברי הקבוצה/, 'the whole room, not only the three she can reach (owner, 2026-09-26)');
   assert.ok(sent[0].body.includes('@+972609990041 עוד לא כתבת לי בפרטי'), 'tagged, so it pings them');
   assert.equal(sent[0].body.includes('חדש'), false, 'never by name');
 });
@@ -1048,4 +1063,33 @@ test('the done line asks about an exact hour only when there is none, and the ro
   assert.match(proactiveText.renderGroupCoordination(line), /השעה נקבעה: \*שלישי 18:00\*/);
   assert.notEqual(groupVoice.decideGroupLine({ ...base, confirmedSlot: 'שלישי 18:00', timeSetAt: setAt },
     { ...said, saidDone: true, saidCalendar: true, saidTime: true }).kind, 'time');
+});
+
+// The end of the base line, every shape (owner, 2026-09-26): who has not
+// answered and the offer to close without them; people no tag can reach as a
+// number; and with nobody silent, only the offer.
+test('the base line counts the whole room and offers to close without whoever has not answered', () => {
+  const render = (extra) => proactiveText.renderGroupCoordination({ kind: 'base', slot: 'שלישי 20:00', yes: 3, total: 6, ...extra });
+  assert.equal(render({ missing: ['+972500000031', '+972500000032'], more: 1 }),
+    'יש כיוון: *שלישי 20:00* — 3 מתוך 6 בפנים.\nעוד לא ענו: @+972500000031 @+972500000032 ועוד 1\n'
+    + 'רוצים לסגור בלי מי שלא ענה? תכתבו לי ״סגור״ 👍');
+  assert.match(render({ missing: [], more: 2 }), /עוד לא ענו: 2 מכם\n/, 'only LIDs: a number, never a blank');
+  assert.equal(render({ missing: [], more: 0 }),
+    'יש כיוון: *שלישי 20:00* — 3 מתוך 6 בפנים.\nרוצים לסגור על זה? תכתבו לי ״סגור״ 👍');
+
+  // A LID-only room member still makes it a line worth saying: before, a base
+  // with no tag to name was never said, and the coordination sat in silence.
+  const soon = new Date(Date.now() + 86400_000).toISOString();
+  const co = {
+    status: 'negotiating', participants: 2, roomTotal: 3, notInIt: [{ phone: null, asked: false }],
+    options: [{ slot: 'שלישי', startsAt: soon, yes: [{ phone: '+972500000033' }, { phone: '+972500000034' }],
+      no: [], missing: [], quorum: { known: false } }],
+    silent: [], settleDueAt: null,
+  };
+  const line = groupVoice.decideGroupLine(co, { saidStarted: true, nowMs: Date.now(), startedAtMs: Date.now() });
+  assert.equal(line.kind, 'base');
+  assert.deepEqual([line.yes, line.total, line.missing, line.more], [2, 3, [], 1]);
+  // …and the "סגור" line says "כולם" only when the whole room is in.
+  assert.equal(groupVoice.whoIsIn({ ...co, confirmedOption: co.options[0] }).all, false);
+  assert.equal(groupVoice.whoIsIn({ ...co, roomTotal: 2, confirmedOption: co.options[0] }).all, true);
 });

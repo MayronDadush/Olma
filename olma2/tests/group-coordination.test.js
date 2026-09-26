@@ -582,3 +582,56 @@ test('a time is refused with nothing running, with nobody behind it, and at a fu
   assert.equal(sixth.error.options.length, 5);
   assert.deepEqual(Object.keys(sixth.error.options[0]).sort(), ['optionId', 'slot']);
 });
+
+// Owner, 2026-09-26: "שתיאום תמיד יספור את כלל האנשים שיש בקבוצה ... יהיו כאלה
+// שלא יתנו תשובה והם יצטרכו להחליט לסגור בלעדיהם". A room's coordination closes
+// on its own only on a yes from everybody in the ROOM; anybody else is the
+// room's to close without, with "סגור".
+test('a room coordination closes on its own only when the whole room said yes', async () => {
+  const { group, people } = await room(43);
+  const outsider = '+972605543999';
+  await withTx(db.pool, (c) => groups.syncRoster(c, group.id, [
+    ...people.map((u) => ({ phone: u.phone })), { phone: outsider },
+  ]));
+  const res = await withTx(db.pool, (c) => groupMeetings.startCoordination(c, group, people[0], 'פאדל'));
+  const meetingId = Number(res.data.meeting.id);
+  assert.equal(res.data.participants, 3, 'she can ask the three who wrote to her');
+  const optionId = await withTx(db.pool, async (c) =>
+    (await options.add(c, people[0].id, meetingId, 'שלישי 20:00', slotStart('שלישי', { hours: 72 }))).data.option.id);
+  for (const p of people.slice(1)) await withTx(db.pool, (c) => options.answer(c, p.id, meetingId, optionId, 'y'));
+
+  assert.equal(await withTx(db.pool, (c) => options.unanimousOption(c, meetingId)), null,
+    'three of four is not the room');
+  const { rows: m } = await db.pool.query(`SELECT * FROM meetings WHERE id = $1`, [meetingId]);
+  assert.equal(m[0].settle_due_at, null, 'nothing armed');
+
+  const st = (await withTx(db.pool, (c) => groupMeetings.statusOf(c, group, m[0]))).coordination;
+  assert.equal(st.participants, 3);
+  assert.equal(st.roomTotal, 4, 'the room lines count everybody in it');
+  assert.deepEqual(st.notInIt, [{ phone: outsider, asked: false }]);
+  const view = (await withTx(db.pool, (c) => groupMeetings.coordinationStatus(c, group))).coordination;
+  assert.equal(view.notInIt, undefined, 'the model is handed the count, never the list');
+
+  // The room may still close it without them — settling never checked agreement.
+  // Here, instead, the outsider leaves the room, and then it is unanimous.
+  await withTx(db.pool, (c) => groups.syncRoster(c, group.id, people.map((u) => ({ phone: u.phone }))));
+  const win = await withTx(db.pool, (c) => options.unanimousOption(c, meetingId));
+  assert.equal(Number(win && win.id), Number(optionId));
+});
+
+test('somebody who LEFT the coordination is not waited for, and not counted', async () => {
+  const { group, people } = await room(44);
+  const res = await withTx(db.pool, (c) => groupMeetings.startCoordination(c, group, people[0], 'פאדל'));
+  const meetingId = Number(res.data.meeting.id);
+  const optionId = await withTx(db.pool, async (c) =>
+    (await options.add(c, people[0].id, meetingId, 'שלישי 20:00', slotStart('שלישי', { hours: 72 }))).data.option.id);
+  await withTx(db.pool, (c) => options.answer(c, people[1].id, meetingId, optionId, 'y'));
+  await db.pool.query(`UPDATE meeting_participants SET state = 'opted_out' WHERE meeting_id = $1 AND user_id = $2`,
+    [meetingId, people[2].id]);
+  const win = await withTx(db.pool, (c) => options.unanimousOption(c, meetingId));
+  assert.equal(Number(win && win.id), Number(optionId));
+  const { rows: m } = await db.pool.query(`SELECT * FROM meetings WHERE id = $1`, [meetingId]);
+  const st = (await withTx(db.pool, (c) => groupMeetings.statusOf(c, group, m[0]))).coordination;
+  assert.equal(st.roomTotal, 2);
+  assert.deepEqual(st.notInIt, []);
+});
