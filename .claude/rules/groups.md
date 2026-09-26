@@ -830,8 +830,9 @@ have already had to be argued for.
   as a message in their own chat would not end it either. **A roster row with a
   real number** (`status = 'pending'`, `phone-timezone.isRealPhone`): claimed
   with `reason: 'pending_sender'` and answered by the owner's
-  `group_sender_hint` line, ONCE per person per room because the
-  `group_outbox` key `g<gid>:hint:<userId>` is the budget; no model turn. That
+  `group_sender_hint` line on EVERY tag of theirs (owner, same day: "כל פעם
+  שהוא יכתוב"), quoting it; the `group_outbox` key carries the message id, so
+  one tag redelivered is still one line. No model turn. That
   reason is the ONLY one on which the plugin claims an ADDRESSED message — a
   bare `claim: true` is still refused for anything addressed. **Two costs are
   accepted rather than closed.** A stranger with no row and a LID-only sender

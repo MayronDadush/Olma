@@ -228,8 +228,8 @@ function renderGroupOpened(overrides) {
   return templates.render('group_opened', {}, overrides);
 }
 
-// A tag from somebody who has never written to her, answered in the room once
-// (brokerd `group_room_write`, 2026-09-26). The one room line addressed to a
+// A tag from somebody who has never written to her, answered in the room every
+// time (brokerd `group_room_write`, 2026-09-26). The one room line addressed to a
 // single person who spoke to her; `null` when they cannot be tagged, because a
 // line that names nobody is not said.
 function renderGroupSenderHint(phone, overrides) {

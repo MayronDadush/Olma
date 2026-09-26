@@ -616,9 +616,9 @@ could answer a blocked sender except by admitting them. Two groups joined:
 - **A roster row with a real number** (`status = 'pending'`,
   `phone-timezone.isRealPhone`). brokerd claims their tag (`reason:
   'pending_sender'`, the ONE reason the plugin claims an addressed message on)
-  and queues the owner's `group_sender_hint` line once per person per room —
-  the `group_outbox` key is the budget. No model turn: she would be answering
-  somebody she cannot act for.
+  and queues the owner's `group_sender_hint` line on every tag, quoting it —
+  the `group_outbox` key carries the message id, so a redelivered tag is one
+  line. No model turn: she would be answering somebody she cannot act for.
 
 A stranger with no row, and a sender the gateway names only by LID, are still
 dropped: naming them would take `"*"`, which is every sender and her own

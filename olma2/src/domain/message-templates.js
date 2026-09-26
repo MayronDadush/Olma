@@ -290,10 +290,10 @@ const TEMPLATES = [
   },
   // A tag from somebody in the room who has never written to her. The gateway
   // now lets it through so it can be answered instead of vanishing; brokerd
-  // answers it with this, once per person per room, and no model turn.
+  // answers it with this, on every tag, quoting it, and no model turn.
   {
     key: 'group_sender_hint', audience: 'group', label: 'קבוצה — תיוג ממי שעוד לא כתב לה',
-    help: 'כשמישהו בקבוצה שעוד לא כתב לה בפרטי מתייג אותה. נאמרת פעם אחת לכל אדם בכל קבוצה, בלי מודל — אחרי זה תיוג שלו נשאר בלי תשובה עד שיכתוב לה.',
+    help: 'כשמישהו בקבוצה שעוד לא כתב לה בפרטי מתייג אותה. נאמרת בכל פעם שהוא מתייג, כתגובה להודעה שלו, בלי מודל — עד שיכתוב לה בפרטי.',
     vars: { who: 'התיוג שלו' }, required: ['who'],
     sample: { who: '@+972501234567' },
     text: '{{who}} כדי שאוכל לעזור לך כאן, שלח לי ״היי״ בפרטי ☺️',

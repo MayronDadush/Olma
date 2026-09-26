@@ -392,6 +392,10 @@ export function buildRoomWriteHandler({ connect, sock, timeoutMs = 1500, log = t
       const reply = await askBroker("group_room_write", {
         agentId: m[1], externalId: m[2],
         senderId: String((event && event.senderId) || "").slice(0, 120),
+        // The id only, never the body: brokerd quotes it when it answers a
+        // tag with fixed text, and keys that answer on it.
+        ...(event && typeof event.messageId === "string" && event.messageId
+          ? { messageId: event.messageId.slice(0, 120) } : {}),
         addressed, at: Date.now(),
       }, { connect, sock, timeoutMs });
       // `senderShape` and `addressed` are the measurement: the llm_input line
@@ -420,7 +424,7 @@ export function buildRoomWriteHandler({ connect, sock, timeoutMs = 1500, log = t
       // ONE exception, and it is named rather than inferred: a sender brokerd
       // says has never written to her (`pending_sender`). They are on the
       // gateway's sender list only so their tag can be answered by the owner's
-      // fixed line, which brokerd has already queued for the room; a model turn
+      // fixed line, which brokerd has already queued for the room, on every tag; a model turn
       // would be her answering somebody she cannot act for. A bare
       // `claim: true` is still refused for anything addressed.
       if (addressed) return pendingSender ? { handled: true } : undefined;

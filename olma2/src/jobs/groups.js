@@ -128,8 +128,8 @@ function mayAnnounce(group, now = new Date()) {
 // walk around the pause the delivery gate exists to enforce.
 //
 // A roster row (`status = 'pending'`) with a real number is here too, so their
-// tag reaches brokerd, which answers it ONCE in the room with the owner's fixed
-// line and claims it — no model turn — instead of it vanishing in the gateway,
+// tag reaches brokerd, which answers it in the room with the owner's fixed
+// line, every time, and claims it — no model turn — instead of it vanishing in the gateway,
 // where the person could never learn why she ignored them. A LID or an
 // unrecognised shape never is (`phone-timezone.isRealPhone`), and a stranger
 // with no row cannot be: naming them would need `"*"`, which is every sender

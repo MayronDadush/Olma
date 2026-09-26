@@ -2403,8 +2403,10 @@ them through. A hook cannot claim a message it never receives.
 A pause their next message would end (`pause.endsOnWrite`) is admitted and
 ended by the tag (`pause.resumeOnWrite`, extracted from `turn.openRecord` so
 the two doors cannot drift); a real-number roster row is admitted and claimed
-with `reason: 'pending_sender'`, answered once per room by the owner's
-`group_sender_hint` line. A pause they CONFIRMED stays off — the owner's own
+with `reason: 'pending_sender'`, answered by the owner's `group_sender_hint`
+line. The first cut said it once per person per room; the owner asked for it
+on every tag ("כל פעם שהוא יכתוב"), so the key became the message id — a
+redelivery is still one line, and each line quotes the tag it answers. A pause they CONFIRMED stays off — the owner's own
 chat does not end it on a message either, and in a room nobody has a
 `resume_olma` tool. That was the owner's call to make, and he made it asking
 only whether there was a problem.

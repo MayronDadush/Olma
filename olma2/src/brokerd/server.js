@@ -459,14 +459,18 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
         : null;
       // Somebody who has never written to her. No turn — the model would be
       // answering a person it cannot act for — but not silence either: the
-      // owner's fixed line, once per person per room (the key is the budget),
-      // telling them the one thing that would make her useful to them. The
-      // plugin claims an ADDRESSED message only on this reason.
+      // owner's fixed line, on EVERY tag of theirs (owner, 2026-09-26: "כל פעם
+      // שהוא יכתוב"), quoting the tag it answers. The key is the MESSAGE, so a
+      // redelivery of one tag is still one line; a message with no id falls
+      // back to its moment. The plugin claims an ADDRESSED message only on
+      // this reason.
       if (sender && sender.status === 'pending') {
         const wrote = await groupContext.noteMemberWrote(client, { chatId: externalId, senderE164: phone, at });
+        const messageId = typeof params.messageId === 'string' && params.messageId.trim()
+          ? params.messageId.trim().slice(0, 120) : null;
         const hint = await require('../domain/group-outbox').enqueue(client, {
-          groupId: group.id, kind: 'sender_hint', payload: { phone },
-          idempotencyKey: `g${group.id}:hint:${sender.id}`,
+          groupId: group.id, kind: 'sender_hint', payload: { phone }, replyTo: messageId,
+          idempotencyKey: `g${group.id}:hint:${sender.id}:${messageId || at.getTime()}`,
         });
         out = {
           ok: true, addressed, stamped: Boolean(wrote), sender: true, claim: true,
