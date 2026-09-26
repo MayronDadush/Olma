@@ -40,16 +40,18 @@
 const occ = require('../src/intake/openclaw-config');
 
 const DEFAULT_TARGET = {
-  // v4.1-flash since 2026-09-25, the owner's call on two full boards: run #90
-  // 12/4/0 in 925s against the incumbent's 9/5/2 (#84) and 11/3/2 (#79), no
-  // hard check failed, faster on 10 of 16 (docs/model-experiments.md). It is
-  // ~2x the incumbent's price on Novita, which on this bill is ~$1 a week.
-  primary: 'openrouter/deepseek/deepseek-v4.1-flash',
-  // The model it replaced is the first fallback: measured for a month on these
-  // users, and on the same pinned provider. pro is the same pipe with a
-  // stronger model; Anthropic stays last so a future top-up quietly becomes a
-  // safety net again.
-  fallbacks: ['openrouter/deepseek/deepseek-v4-flash', 'openrouter/deepseek/deepseek-v4-pro', 'anthropic/claude-haiku-4-5'],
+  // v4-flash again since 2026-09-26, the owner's call. v4.1-flash was primary
+  // for one day and reasoned without a cap: 8,192 hidden tokens and 100s with
+  // no answer on one real turn, 35-61s per step on another, and a wrong
+  // archive of four tasks in the middle of it — output/input 11.3% against
+  // v4-flash's 0.6-1.5% (docs/model-experiments.md, "v4.1-flash thought too
+  // long"). Its time to FIRST byte was what had been measured, and it was fast.
+  primary: 'openrouter/deepseek/deepseek-v4-flash',
+  // v4.1-flash stays registered and pinned as the first fallback, so an outage
+  // still lands on a DeepSeek model; pro is the same pipe with a stronger
+  // model; Anthropic stays last so a future top-up quietly becomes a safety
+  // net again.
+  fallbacks: ['openrouter/deepseek/deepseek-v4.1-flash', 'openrouter/deepseek/deepseek-v4-pro', 'anthropic/claude-haiku-4-5'],
 };
 const ANTHROPIC_DEFAULT = {
   primary: 'anthropic/claude-haiku-4-5',
