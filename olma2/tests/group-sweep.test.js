@@ -677,6 +677,49 @@ test('the sweep makes the sender list the current users, every pass', async () =
   assert.ok(!admitted().includes(a.phone));
 });
 
+// Since 2026-09-26 the list is everybody whose tag we can DO something with:
+// a pause their own next word would end, and a roster row with a real number
+// (brokerd answers that tag once, with fixed text). The pause they confirmed,
+// a LID-shaped row and the eval user stay out.
+test('the sender list admits a pause a message would end, and a real-number roster row', async () => {
+  const stop = await connectedUser('+972604000031');
+  const ladder = await connectedUser('+972604000032');
+  const theirs = await connectedUser('+972604000033');
+  const invited = await connectedUser('+972604000034');
+  const answered = await connectedUser('+972604000035');
+  const pending = await makeUser(db.pool, '+972604000036');
+  const pendingLid = await makeUser(db.pool, '+184736251029384');
+  const evalUser = await connectedUser('+972604000037');
+  await db.pool.query(`UPDATE users SET paused_at = now(), paused_reason = 'said_stop' WHERE id = $1`, [stop.id]);
+  await db.pool.query(`UPDATE users SET paused_at = now(), paused_reason = 'quiet_ladder' WHERE id = $1`, [ladder.id]);
+  await db.pool.query(`UPDATE users SET paused_at = now(), paused_reason = NULL WHERE id = $1`, [theirs.id]);
+  // Their one coordination message has gone out and they have not answered:
+  // their next word ends even a pause they asked for (resumeAfterRoomInvite).
+  await db.pool.query(
+    `UPDATE users SET paused_at = now() - interval '2 hours', paused_reason = NULL,
+            room_invite_sent_at = now() - interval '1 hour' WHERE id = $1`, [invited.id]);
+  // …and once they HAVE answered it with "stay paused", it is theirs again.
+  await db.pool.query(
+    `UPDATE users SET paused_at = now() - interval '2 hours', paused_reason = NULL,
+            room_invite_sent_at = now() - interval '1 hour', room_invite_answered_at = now() WHERE id = $1`,
+    [answered.id]);
+  await db.pool.query(`UPDATE users SET status = 'pending' WHERE id = ANY($1)`, [[pending.id, pendingLid.id]]);
+  await db.pool.query(`UPDATE users SET is_eval = true WHERE id = $1`, [evalUser.id]);
+
+  const g = gatewayWith({ jid: JID(42), roster: '+972604000031, +972604000036' });
+  await pass(g.deps);
+  const admitted = occ.groupAllowFrom(occ.loadConfig(configPath));
+  assert.ok(admitted.includes(stop.phone), 'an unconfirmed stop ends on their next word');
+  assert.ok(admitted.includes(ladder.phone), 'so does a pause the ladder made');
+  assert.ok(admitted.includes(invited.phone), 'and a pause whose one invite is out and unanswered');
+  assert.ok(admitted.includes(pending.phone), 'a roster row with a real number can be answered once');
+  assert.ok(!admitted.includes(theirs.phone), 'a pause they confirmed is theirs to end, never a tag\'s');
+  assert.ok(!admitted.includes(answered.phone), 'nor one they kept after answering');
+  assert.ok(!admitted.includes(pendingLid.phone), 'a LID-shaped row names nobody the gateway can match');
+  assert.ok(!admitted.includes(evalUser.phone));
+  await db.pool.query(`UPDATE users SET is_eval = false WHERE id = $1`, [evalUser.id]);
+});
+
 // The one direction that must never happen quietly: emptying the list reads as
 // "no list", which is the wide-open door again. Everyone in this file's
 // database is blocked for the length of this test to reach that state.

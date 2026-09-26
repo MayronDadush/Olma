@@ -448,15 +448,53 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
       const group = await groupsDomain.getByExternalId(client, 'whatsapp', externalId);
       if (!group || group.agent_id !== agentId) return;
       const phone = groupContext.senderPhone(params.senderId);
-      // An addressed message keeps the path it has always had: the turn runs,
-      // and `group_context` off the Conversation info block takes the stamp
-      // with the sender the GATEWAY named. Nothing to do here.
+      // Two senders the gateway used to drop before this hook ran, and which
+      // the sender list now lets through (jobs/groups.syncSenderGate) because
+      // there is something to do with them. Both only when the message is to
+      // HER: an untagged line from either is the room talking, not them
+      // coming back or asking.
+      const sender = addressed && phone
+        ? (await client.query(
+          `SELECT id, status, paused_at FROM users WHERE phone = $1 AND NOT is_eval`, [phone])).rows[0]
+        : null;
+      // Somebody who has never written to her. No turn — the model would be
+      // answering a person it cannot act for — but not silence either: the
+      // owner's fixed line, on EVERY tag of theirs (owner, 2026-09-26: "כל פעם
+      // שהוא יכתוב"), quoting the tag it answers. The key is the MESSAGE, so a
+      // redelivery of one tag is still one line; a message with no id falls
+      // back to its moment. The plugin claims an ADDRESSED message only on
+      // this reason.
+      if (sender && sender.status === 'pending') {
+        const wrote = await groupContext.noteMemberWrote(client, { chatId: externalId, senderE164: phone, at });
+        const messageId = typeof params.messageId === 'string' && params.messageId.trim()
+          ? params.messageId.trim().slice(0, 120) : null;
+        const hint = await require('../domain/group-outbox').enqueue(client, {
+          groupId: group.id, kind: 'sender_hint', payload: { phone }, replyTo: messageId,
+          idempotencyKey: `g${group.id}:hint:${sender.id}:${messageId || at.getTime()}`,
+        });
+        out = {
+          ok: true, addressed, stamped: Boolean(wrote), sender: true, claim: true,
+          reason: 'pending_sender', hinted: hint.ok && hint.data.queued,
+        };
+        return;
+      }
+      // Somebody paused whose next message ends their pause — the only paused
+      // people the sender list admits. Their tag is that message: the pause
+      // ends HERE, before the turn, the same three steps their own chat runs
+      // (pause.resumeOnWrite), so the answer she gives the room is to somebody
+      // who is back. A pause they confirmed is never on the list and never
+      // reaches this line; resumeOnWrite would leave it standing anyway.
+      const resumed = Boolean(sender && sender.status === 'active' && sender.paused_at);
+      if (resumed) await require('../domain/pause').resumeOnWrite(client, sender.id);
+      // An addressed message otherwise keeps the path it has always had: the
+      // turn runs, and `group_context` off the Conversation info block takes
+      // the stamp with the sender the GATEWAY named. Nothing to do here.
       const stamped = !addressed && phone
         ? await groupContext.noteMemberWrote(client, { chatId: externalId, senderE164: phone, at })
         : false;
       const flag = await require('../domain/flags').getFlag(client, groupContext.UNTAGGED_FLAG);
       out = {
-        ok: true, addressed, stamped, sender: Boolean(phone),
+        ok: true, addressed, stamped, sender: Boolean(phone), ...(resumed ? { resumed: true } : {}),
         claim: Boolean(!addressed && group.state === 'open'
           && groupContext.roomClaimEnabled(flag, externalId)),
       };

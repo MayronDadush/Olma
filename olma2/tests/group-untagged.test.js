@@ -201,6 +201,82 @@ test('a locked room, another room\'s agent, a stranger, a LID — none of them c
   await withTx(db.pool, (c) => flagsDomain.setFlag(c, groupContext.UNTAGGED_FLAG, ''));
 });
 
+// ---- a tag from somebody the gateway used to drop (2026-09-26) ---------------
+//
+// The sender list now admits a roster row and a pause a message would end
+// (jobs/groups.syncSenderGate), so their tags reach this handler for the first
+// time. The first is answered once with fixed text and claimed; the second is
+// them coming back.
+test('a tag from somebody who never wrote is claimed and answered EVERY time, with no turn', async () => {
+  const { group } = await roomWithAHeldInvite(5);
+  const stranger = await makeUser(db.pool, '+972607050099');
+  await db.pool.query(`UPDATE users SET status = 'pending' WHERE id = $1`, [stranger.id]);
+  await db.pool.query(
+    `INSERT INTO chat_group_members (group_id, phone, user_id) VALUES ($1, $2, $3)`,
+    [group.id, stranger.phone, stranger.id]);
+  const tag = (messageId) => write({
+    agentId: group.agent_id, externalId: group.external_id, messageId,
+    senderId: `${stranger.phone.replace('+', '')}@s.whatsapp.net`, addressed: true, at: Date.now(),
+  });
+
+  const first = await tag('MSG-A');
+  assert.deepEqual(first, {
+    ok: true, addressed: true, stamped: true, sender: true, claim: true, reason: 'pending_sender', hinted: true,
+  });
+  const second = await tag('MSG-B');
+  assert.equal(second.claim, true, 'still no turn for somebody she cannot act for');
+  assert.equal(second.hinted, true, 'every tag of theirs is answered (owner: "כל פעם שהוא יכתוב")');
+  const again = await tag('MSG-B');
+  assert.equal(again.hinted, false, 'but ONE message redelivered is still one line — the key is the message');
+
+  const { rows } = await db.pool.query(
+    `SELECT kind, payload, reply_to FROM group_outbox WHERE group_id = $1 AND kind = 'sender_hint' ORDER BY id`,
+    [group.id]);
+  assert.equal(rows.length, 2);
+  assert.deepEqual(rows.map((r) => r.reply_to), ['MSG-A', 'MSG-B'], 'each line quotes the tag it answers');
+  const body = require('../src/domain/group-outbox').renderRow(rows[0], {});
+  assert.ok(body.includes(`@${stranger.phone}`), 'it tags them, so it reaches the one person it is for');
+  assert.ok(body.includes('בפרטי'));
+
+  // Untagged, the same person is only the room talking: stamped, never hinted.
+  const untagged = await write({
+    agentId: group.agent_id, externalId: group.external_id,
+    senderId: `${stranger.phone.replace('+', '')}@s.whatsapp.net`, addressed: false, at: Date.now(),
+  });
+  assert.equal(untagged.reason, undefined);
+});
+
+test('a tag from a paused person ends a pause their own message would end, and nothing else', async () => {
+  const { group, people } = await roomWithAHeldInvite(6);
+  const [stop, , theirs] = people;
+  await db.pool.query(`UPDATE users SET paused_at = now(), paused_reason = 'said_stop' WHERE id = $1`, [stop.id]);
+  await db.pool.query(`UPDATE users SET paused_at = now(), paused_reason = NULL WHERE id = $1`, [theirs.id]);
+  const tag = (u) => write({
+    agentId: group.agent_id, externalId: group.external_id,
+    senderId: `${u.phone.replace('+', '')}@s.whatsapp.net`, addressed: true, at: Date.now(),
+  });
+  const pausedAt = async (u) => (await db.pool.query(`SELECT paused_at FROM users WHERE id = $1`, [u.id])).rows[0].paused_at;
+
+  const back = await tag(stop);
+  assert.equal(back.resumed, true);
+  assert.equal(back.claim, false, 'the turn runs: she answers somebody who is back');
+  assert.equal(await pausedAt(stop), null, 'ended before the turn, as their own chat would');
+
+  // A confirmed pause is never on the sender list; if one reaches here anyway
+  // it is left standing, because resumeOnWrite does not end it.
+  await tag(theirs);
+  assert.notEqual(await pausedAt(theirs), null);
+
+  // An untagged line is the room talking, not them coming back.
+  await db.pool.query(`UPDATE users SET paused_at = now(), paused_reason = 'said_stop' WHERE id = $1`, [stop.id]);
+  const untagged = await write({
+    agentId: group.agent_id, externalId: group.external_id,
+    senderId: `${stop.phone.replace('+', '')}@s.whatsapp.net`, addressed: false, at: Date.now(),
+  });
+  assert.equal(untagged.resumed, undefined);
+  assert.notEqual(await pausedAt(stop), null);
+});
+
 // ---- the plugin side, with no gateway and no socket ------------------------
 function fakeConnect(reply) {
   const sent = [];
@@ -228,6 +304,11 @@ test('the plugin claims only on an explicit claim, and the room\'s words never l
   assert.equal(sent.length, 1);
   assert.equal(sent[0].method, 'group_room_write');
   assert.deepEqual(Object.keys(sent[0].params).sort(), ['addressed', 'agentId', 'at', 'externalId', 'senderId']);
+  const withId = plugin.buildRoomWriteHandler({ connect, log: () => {} });
+  await withId({ sessionKey: KEY, body: 'אני יכול מחר', senderId: '972526269826@s.whatsapp.net', messageId: 'WAMID-1' }, {});
+  assert.equal(sent.at(-1).params.messageId, 'WAMID-1', 'the id travels, so a fixed answer can quote it');
+  assert.ok(!JSON.stringify(sent.at(-1)).includes('אני יכול מחר'));
+  sent.pop();
   assert.equal(sent[0].params.addressed, false);
   assert.equal(sent[0].params.externalId, '120363431246653169@g.us');
   assert.ok(!JSON.stringify(sent).includes('אני יכול מחר'), 'the body is read here and sent nowhere');
@@ -242,6 +323,27 @@ test('the plugin claims only on an explicit claim, and the room\'s words never l
   const tagged = await handler({ sessionKey: KEY, body: `@${SELF} מה קורה`, senderId: '972526269826@s.whatsapp.net' }, {});
   assert.equal(tagged, undefined, 'two independent refusals, so a brokerd bug cannot silence a real question');
   assert.equal(sent[1].params.addressed, true);
+});
+
+test('an ADDRESSED message is claimed only on the named reason, never on a bare claim', async () => {
+  const log = [];
+  const ev = { sessionKey: KEY, body: `@${SELF} מה קורה`, senderId: '972526269826@s.whatsapp.net' };
+  const named = plugin.buildRoomWriteHandler({
+    connect: fakeConnect({ id: 1, ok: true, addressed: true, claim: true, reason: 'pending_sender' }).connect,
+    log: (o) => log.push(o),
+  });
+  assert.deepEqual(await named(ev, {}), { handled: true }, 'brokerd has already queued the fixed line');
+  assert.equal(log.at(-1).reason, 'pending_sender');
+
+  const other = plugin.buildRoomWriteHandler({
+    connect: fakeConnect({ id: 1, ok: true, addressed: true, claim: true, reason: 'anything_else' }).connect,
+    log: () => {},
+  });
+  assert.equal(await other(ev, {}), undefined, 'a reason it does not know is a question she must hear');
+  const refused = plugin.buildRoomWriteHandler({
+    connect: fakeConnect({ id: 1, ok: false, claim: true, reason: 'pending_sender' }).connect, log: () => {},
+  });
+  assert.equal(await refused(ev, {}), undefined, 'and only an ok answer counts');
 });
 
 test('the plugin fails open: a refusal, claim:false, a dead socket, and anything that is not a room', async () => {

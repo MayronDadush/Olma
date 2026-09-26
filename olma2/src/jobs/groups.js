@@ -35,6 +35,8 @@ const groupTurn = require('../domain/group-turn');
 const groupConnections = require('../domain/group-connections');
 const { isTaggableNumber } = require('../domain/proactive-text');
 const gate = require('../outbox/gate');
+const pause = require('../domain/pause');
+const phoneTimezone = require('../domain/phone-timezone');
 // Through the worker facade, never channels/sessions.js: every read there is
 // synchronous, and this runs inside brokerd on the loop that answers live
 // users. Ten seconds is exactly the cadence that would deafen the daemon.
@@ -115,16 +117,34 @@ function mayAnnounce(group, now = new Date()) {
 // the WhatsApp channel, and paying that in the middle of somebody's onboarding
 // is exactly the cost `addAllowFrom` already refuses to pay.
 //
-// A user who is paused is deliberately NOT here. Her answer in a group reaches
-// the whole room including them, so admitting a paused member's tag would walk
-// straight around the pause the delivery gate exists to enforce.
+// Who is on it, since 2026-09-26: everybody whose tag we can DO something
+// with, which is two groups the list used to leave out.
+//
+// A paused user whose next message would end their pause is here
+// (`pause.endsOnWrite`): hearing their tag IS them coming back, and brokerd's
+// `group_room_write` ends the pause before the turn starts, exactly as their own
+// chat would. A pause only they or the admin can end still keeps them out — her
+// answer reaches the whole room including them, so admitting that tag would
+// walk around the pause the delivery gate exists to enforce.
+//
+// A roster row (`status = 'pending'`) with a real number is here too, so their
+// tag reaches brokerd, which answers it in the room with the owner's fixed
+// line, every time, and claims it — no model turn — instead of it vanishing in the gateway,
+// where the person could never learn why she ignored them. A LID or an
+// unrecognised shape never is (`phone-timezone.isRealPhone`), and a stranger
+// with no row cannot be: naming them would need `"*"`, which is every sender
+// and her own number with them.
 async function syncSenderGate(client, configPath) {
   const { rows } = await client.query(
-    `SELECT phone FROM users
-      WHERE status = 'active' AND paused_at IS NULL AND NOT is_eval
+    `SELECT phone, status, paused_at, paused_reason, room_invite_sent_at, room_invite_answered_at
+       FROM users
+      WHERE status IN ('active', 'pending') AND NOT is_eval
       ORDER BY phone`);
+  const heard = rows.filter((r) => (r.status === 'pending'
+    ? phoneTimezone.isRealPhone(r.phone)
+    : pause.endsOnWrite(r)));
   const cfg = occ.loadConfig(configPath);
-  const synced = occ.syncGroupAllowFrom(cfg, rows.map((r) => r.phone));
+  const synced = occ.syncGroupAllowFrom(cfg, heard.map((r) => r.phone));
   // Written inside the sweep's transaction and not undone on rollback, which
   // is safe in the one direction that matters: the list is derived from rows
   // this pass only READ, and the next pass re-derives it either way.
@@ -137,11 +157,10 @@ async function syncSenderGate(client, configPath) {
 // only the count, and the reason it is a function at all is that it is called
 // from both arms of the first-sight branch below.
 //
-// Note what `syncSenderGate` directly above does NOT do with these rows: it
-// filters `status = 'active'`, so a roster row never reaches
-// `channels.whatsapp.groups.allowFrom` and cannot make the gateway answerable
-// by somebody who never signed up. That is the one write in this file that
-// leaves the database, and it was already closed against this.
+// `syncSenderGate` above DOES put these rows on the sender list, and that is
+// safe only because brokerd claims their tag before any turn: the gateway lets
+// them be HEARD, and the one thing they are ever answered with is the fixed
+// sender-hint line (brokerd `group_room_write`).
 async function mintRosterUsers(client, group, members) {
   const res = await groups.ensureRosterUsers(client, group.id, members);
   return res.ok ? res.data.created.length : 0;

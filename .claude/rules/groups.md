@@ -814,3 +814,30 @@ have already had to be argued for.
   each room carries its live coordination and whether THIS person is in it,
   and nothing about anybody else. A room that is `retired`, or that they left,
   is not one they share (`incidents.md`, "She said there was no group").
+
+- **A tag from somebody the gateway would have dropped is answered, and the
+  sender list is what decides who that is** (owner, 2026-09-26). The drop is in
+  the WhatsApp plugin's normalisation — `checkInboundAccessControl`, before
+  mention gating and before any hook of ours — so a blocked tag leaves nothing
+  behind and admitting the sender is the only way to answer it.
+  `jobs/groups.syncSenderGate` therefore admits two more groups, and brokerd
+  `group_room_write` is what makes each safe. **A pause their own next message
+  would end** (`pause.endsOnWrite`: `said_stop`, `quiet_ladder`, or their one
+  coordination invite out and unanswered): the tag runs `pause.resumeOnWrite`
+  — the same function `turn.openRecord` runs, one function because two doors
+  that end different pauses is the drift this repo keeps paying for — and the
+  turn answers somebody who is back. A pause they confirmed stays OFF the list,
+  as a message in their own chat would not end it either. **A roster row with a
+  real number** (`status = 'pending'`, `phone-timezone.isRealPhone`): claimed
+  with `reason: 'pending_sender'` and answered by the owner's
+  `group_sender_hint` line on EVERY tag of theirs (owner, same day: "כל פעם
+  שהוא יכתוב"), quoting it; the `group_outbox` key carries the message id, so
+  one tag redelivered is still one line. No model turn. That
+  reason is the ONLY one on which the plugin claims an ADDRESSED message — a
+  bare `claim: true` is still refused for anything addressed. **Two costs are
+  accepted rather than closed.** A stranger with no row and a LID-only sender
+  are still dropped, because naming them takes `"*"`, and that list includes
+  her own number (the loop `syncGroupAllowFrom` exists to refuse). And the
+  claim fails open: with brokerd down a pending sender's tag reaches the
+  model, which is the pre-2026-09-06 behaviour for exactly one class of
+  sender (`incidents.md`, "The tags that vanished before any hook ran").

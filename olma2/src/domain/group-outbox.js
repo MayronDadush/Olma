@@ -60,6 +60,7 @@ function renderRow(row, wording) {
     case 'gate_notice': return text.renderGroupGateNotice(
       { kind: p.kind, missing: Array.isArray(p.missing) ? p.missing : [] }, wording);
     case 'coordination': return text.renderGroupCoordination(p.line || {}, wording);
+    case 'sender_hint': return text.renderGroupSenderHint(p.phone, wording);
     default: return null;
   }
 }

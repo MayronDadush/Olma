@@ -380,6 +380,7 @@ Loads when you **Read** a file under `src/domain/group-connections.js`, `src/dom
 - **A room on more than one clock hears every time in each, by city, from the owner's own `_zones` templates; a time with no clock in it is never converted, and a one-clock room is untouched** — and asked for hours that suit everyone, she answers from `meeting-time.commonHours`, where only a confirmed clock is counted
 - **A member's message in the room opens the gate's fifteen-minute window for that room's coordination — and, since 2026-09-09, the room's own announcement window; nothing else**
 - **The private side knows every room a person shares with Olma, off the ROSTER, and says the list is complete** (`groups.roomsOf` → the turn context's `rooms` and `list_my_meetings`)
+- **A tag from somebody the gateway would have dropped is answered: a pause their next word would end is ENDED by it, and a roster row gets the fixed line on every tag** (`syncSenderGate` → `pause.endsOnWrite`/`resumeOnWrite`; `reason: 'pending_sender'` is the only addressed claim)
 
 ### Testing
 
