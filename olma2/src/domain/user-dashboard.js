@@ -283,7 +283,18 @@ async function loadFriends(client, userId) {
   const { rows } = await client.query(
     `SELECT c.id AS connection_id,
             CASE WHEN c.requester_id = $1 THEN c.target_id ELSE c.requester_id END AS friend_id,
-            u.first_name, u.avatar, u.timezone, c.responded_at,
+            -- A friend who never told Olma their name has no first_name, and
+            -- two of the owner's friends drew as a face and a blank line
+            -- (2026-09-26). The name the VIEWER saved them under in their own
+            -- address book is the next best thing, and it is theirs to see.
+            COALESCE(u.first_name,
+              (SELECT uc.display_name FROM user_contacts uc
+               WHERE uc.user_id = $1 AND uc.phone = u.phone
+               ORDER BY uc.updated_at DESC LIMIT 1)) AS name,
+            -- Month and day only: the year is an age, and the page shows the
+            -- day. NULL for whoever never set one, and the page draws nothing.
+            to_char(u.birth_date, 'FMMM-FMDD') AS birthday,
+            u.avatar, u.timezone, c.responded_at,
             COALESCE(
               (SELECT array_agg(g.feature ORDER BY g.feature)
                FROM connection_feature_grants g
@@ -293,13 +304,14 @@ async function loadFriends(client, userId) {
      FROM connections c
      JOIN users u ON u.id = CASE WHEN c.requester_id = $1 THEN c.target_id ELSE c.requester_id END
      WHERE c.status = 'active' AND (c.requester_id = $1 OR c.target_id = $1)
-     ORDER BY u.first_name NULLS LAST, u.id`,
+     ORDER BY name NULLS LAST, u.id`,
     [userId]
   );
   return rows.map((r) => ({
     id: r.friend_id,
     connectionId: r.connection_id,
-    name: r.first_name,
+    name: r.name,
+    birthday: r.birthday,
     avatar: r.avatar,
     timezone: r.timezone,
     // When this became a friendship. The page shows it under the name; it is

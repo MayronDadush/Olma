@@ -161,6 +161,29 @@ test("a feature revoked by ME disappears from MY view of that friend", async () 
   assert.equal(theirs.includes(feature), true, 'revoking one side changed the other');
 });
 
+// Two of the owner's friends drew with no name at all (2026-09-26): they never
+// told Olma one, and the page had nothing else to say.
+test('a friend with no first name is shown by the name I saved them under', async () => {
+  await db.pool.query(`UPDATE users SET first_name = NULL, birth_date = '1990-03-09' WHERE id = $1`, [friend.id]);
+  try {
+    let f = (await load(me.id)).data.friends[0];
+    assert.equal(f.name, null, 'no first name and no contact is null, never a guess');
+    assert.equal(f.birthday, '3-9', 'month and day only — the year is an age');
+    await db.pool.query(
+      `INSERT INTO user_contacts (user_id, display_name, phone) VALUES ($1, 'גלי מהעבודה', $2)`,
+      [me.id, friend.phone]);
+    f = (await load(me.id)).data.friends[0];
+    assert.equal(f.name, 'גלי מהעבודה');
+    // It is MY address book: their page never shows my label for anybody.
+    const mine = (await load(friend.id)).data.friends[0];
+    assert.equal(mine.name, 'Miron');
+    assert.equal(mine.birthday, null, 'nobody set one, so nothing is drawn');
+  } finally {
+    await db.pool.query(`UPDATE users SET first_name = 'Gali', birth_date = NULL WHERE id = $1`, [friend.id]);
+    await db.pool.query(`DELETE FROM user_contacts WHERE user_id = $1`, [me.id]);
+  }
+});
+
 test('no credential column can reach the payload', async () => {
   await db.pool.query(
     `INSERT INTO integrations (user_id, provider, status, access_level, account_label,

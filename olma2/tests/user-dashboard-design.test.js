@@ -274,10 +274,19 @@ test('the home tab shows only what is live, and its two counts are doors', () =>
   assert.match(page, /function hideSoon\(ready\)\{ return LIVE && !SHOW_SOON && !ready; \}/,
     'design mode still draws everything; only a live page hides');
   for (const site of [
-    /CHANNELS\.filter\(function\(c\)\{\s*return !hideSoon\(/,
-    /if\(hideSoon\(ok2\)\) return "";/,
+    /CHANNELS\.filter\(function\(c\)\{\s*return SOON_KEPT\[c\.id\] \|\| !hideSoon\(/,
     /!hideSoon\(p\.connected \|\| provReady\(p\.id\)\)/,
   ]) assert.match(page, site);
+  assert.match(page, /var SOON_KEPT = \{imsg:true\};/,
+    'the owner wants exactly one "soon" back: the iMessage tile');
+  assert.match(page, /return SOON_KEPT\[c\.id\] \|\| !hideSoon\(/);
+  assert.match(page, /var SHOW_GMAIL = false;/, 'Gmail is off the Google row for now');
+  assert.match(page, /if\(hideSoon\(ok2\) \|\| !svcShown\(p, sv\)\) return "";/);
+  assert.match(page, /return s\.on && svcShown\(p, s\);/,
+    'the count under the row counts only what the row shows');
+  assert.doesNotMatch(page, /<use href="#i-logo"\/>/, 'the owner took the mark off every screen, 2026-09-26');
+  assert.match(page, /return pl\("fr\.p", n\) \+ \(bd \? " · 🎂 " \+ bd : ""\);/,
+    'beside the permissions: a birthday for whoever set one, and no friendship date');
   assert.match(page, /<button class="homecard" data-go="tasks">/);
   assert.match(page, /<button class="homecard" data-go="cal">/);
   const tasks = page.slice(page.indexOf('function renderTasks(){'));
