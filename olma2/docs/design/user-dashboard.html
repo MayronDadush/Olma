@@ -925,6 +925,18 @@ button.row:active{background:var(--bg-tint)}
    the largest thing on the card; the chevron says it goes somewhere, because
    a new person does not yet know the tab bar is there. */
 .homecards{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:30px}
+/* Today, above the cards: the list's own rows, then what waits on you. */
+.hometoday{display:flex;flex-direction:column;gap:12px;margin-bottom:18px}
+.homemore{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;
+  padding:12px 14px;font-size:14px;font-weight:600;color:var(--accent);border-top:1px solid var(--sep)}
+.homemeet{display:flex;align-items:center;gap:12px;width:100%;padding:12px 14px;text-align:start}
+.homemeet + .homemeet{border-top:1px solid var(--sep)}
+.hmbody{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.hmbody b{font-size:15.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hmbody i{font-style:normal;font-size:12.5px;color:var(--text-3)}
+.hmgo{flex:none;padding:6px 13px;border-radius:999px;background:var(--accent);color:var(--on-accent);
+  font-size:13px;font-weight:700}
+.homemeet:active,.homemore:active{background:var(--bg-tint)}
 .homeh{font-family:var(--font-head);font-weight:700;font-size:20px;letter-spacing:-.01em;padding:0 2px 12px}
 .homecard{
   position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:4px;
@@ -3257,8 +3269,13 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   <section class="view active" data-view="tools">
     <div class="title" style="--i:0">
       <h1 id="toolsH"></h1>
-      <p data-i18n="home.p"></p>
+      <p id="homeP"></p>
     </div>
+    <!-- Today, drawn by renderHome: what is due or overdue (three rows at
+         most, ticked off right here) and every coordination waiting on YOUR
+         answer. A person opening the app asks "what now", and this used to
+         answer with a welcome that never changed (the owner, 2026-09-27). -->
+    <div class="hometoday" id="homeToday" hidden></div>
     <!-- The home cards: what she is holding for you, one tap from its page.
          A new person used to land on a grid of services, see nothing of their
          own and leave without finding the tab bar (the owner, 2026-09-26). -->
@@ -4840,6 +4857,10 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "home.tasksStart":"הוסיפו משימה","home.tasksStartSub":"או פשוט כתבו לעולמה בוואטסאפ את המשימה",
       "home.meetsStart":"תאמו פגישה","home.meetsStartSub":"עולמה תמצא זמן שמתאים לכולם דרך הוואטסאפ",
       "home.tasksToday":"{n} להיום","home.tasksGo":"לרשימה המלאה","home.meetsGo":"לכל התיאומים",
+      "home.todayH":"היום שלך","home.clear":"אין משהו שמחכה להיום.",
+      "home.due.n0":"","home.due.n1":"משימה אחת להיום","home.due.nN":"{n} משימות להיום",
+      "home.waiting.n0":"","home.waiting.n1":"תיאום אחד מחכה לתשובה שלך","home.waiting.nN":"{n} תיאומים מחכים לתשובה שלך",
+      "home.more":"ועוד {n} ברשימה","home.moreMeets":"ועוד {n} בפגישות","home.yourAnswer":"מחכים לתשובה שלך","home.answer":"לענות",
       "nav.hint":"כאן למטה עוברים בין העמודים",
       "tools.accounts":"חשבונות","tools.accountsHint":"התחברות אחת לכל ספק",
       "tools.work":"עבודה",
@@ -5202,6 +5223,10 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "home.tasksStart":"Add a task","home.tasksStartSub":"or just send Allma the task on WhatsApp",
       "home.meetsStart":"Set up a meeting","home.meetsStartSub":"Allma finds a time that suits everyone, over WhatsApp",
       "home.tasksToday":"{n} for today","home.tasksGo":"See the full list","home.meetsGo":"See them all",
+      "home.todayH":"Your day","home.clear":"Nothing is waiting on today.",
+      "home.due.n0":"","home.due.n1":"1 task for today","home.due.nN":"{n} tasks for today",
+      "home.waiting.n0":"","home.waiting.n1":"1 plan waiting on your answer","home.waiting.nN":"{n} plans waiting on your answer",
+      "home.more":"{n} more on the list","home.moreMeets":"{n} more in Meetings","home.yourAnswer":"Waiting on your answer","home.answer":"Answer",
       "nav.hint":"Switch between pages down here",
       "tools.accounts":"Accounts","tools.accountsHint":"One sign-in per provider",
       "tools.work":"Work",
@@ -6814,7 +6839,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
        has been assigned, so an unassigned list counts as none */
     if(!$("#homeTasksN")) return;
     var nT = (open || []).length, nM = (MEETS || []).length;
-    var dueNow = (open || []).filter(function(x){ var b = bucketFor(x.d); return x.d && (b === "late" || b === "today"); }).length;
+    var due = (open || []).filter(function(x){ var b = bucketFor(x.d); return x.d && (b === "late" || b === "today"); });
+    var dueNow = due.length;
     rollText($("#homeTasksN"), String(nT));
     rollText($("#homeMeetsN"), String(nM));
     homeZero($("#homeTasksN"), !nT, "addTask");
@@ -6825,7 +6851,74 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     ts.textContent = !nT ? t("home.tasksStartSub") : dueNow ? t("home.tasksToday", {n:dueNow}) : t("home.tasksGo");
     ts.classList.toggle("hot", nT > 0 && dueNow > 0);
     ms.textContent = nM ? t("home.meetsGo") : t("home.meetsStartSub");
+    renderToday(due, nT + nM);
   }
+  /* The top of the home page. Somebody with nothing yet — a first visit —
+     still gets the welcome, because "nothing today" means nothing to them;
+     anybody with a list gets their day. Overdue first, in the list's own
+     order: the server's, never re-sorted here. */
+  var HOME_ROWS = 3, HOME_MEETS = 2;
+  function renderToday(due, anything){
+    var waiting = (MEETS || []).filter(function(m){
+      return !m.settled && m.opts.some(function(o){ return !mtAns(m, 0, o.id); });
+    });
+    due = due.filter(function(x){ return bucketFor(x.d) === "late"; })
+      .concat(due.filter(function(x){ return bucketFor(x.d) !== "late"; }));
+    var box = $("#homeToday");
+    if(!anything){
+      $("#toolsH").textContent = brandTag(myGender());
+      $("#homeP").textContent = t("home.p");
+      box.hidden = true; box.innerHTML = "";
+      return;
+    }
+    $("#toolsH").textContent = t("home.todayH");
+    var parts = [];
+    if(due.length) parts.push(pl("home.due", due.length));
+    if(waiting.length) parts.push(pl("home.waiting", waiting.length));
+    $("#homeP").textContent = parts.length ? parts.join(" · ") : t("home.clear");
+    if(!due.length && !waiting.length){ box.hidden = true; box.innerHTML = ""; return; }
+    var html = "";
+    if(due.length){
+      html += '<div class="group">' + due.slice(0, HOME_ROWS).map(homeTaskHTML).join("") +
+        (due.length > HOME_ROWS
+          ? '<button class="homemore" data-go="tasks">' + esc(t("home.more", {n:due.length - HOME_ROWS})) +
+            '<svg class="chev"><use href="#i-chev"/></svg></button>'
+          : "") + "</div>";
+    }
+    if(waiting.length){
+      html += '<div class="group">' + waiting.slice(0, HOME_MEETS).map(function(m){
+        return '<button class="homemeet" data-mt="' + m.id + '">' + faceStack(m.who) +
+          '<span class="hmbody"><b>' + esc(L(m.t)) + "</b><i>" + esc(t("home.yourAnswer")) + "</i></span>" +
+          '<span class="hmgo">' + esc(t("home.answer")) + "</span></button>";
+      }).join("") +
+        (waiting.length > HOME_MEETS
+          ? '<button class="homemore" data-go="cal">' + esc(t("home.moreMeets", {n:waiting.length - HOME_MEETS})) +
+            '<svg class="chev"><use href="#i-chev"/></svg></button>'
+          : "") + "</div>";
+    }
+    box.innerHTML = html;
+    box.hidden = false;
+  }
+  /* The list's own row, without what only the list can do: no drag, no
+     swipe, no pin. The tick and the tap are the same. */
+  function homeTaskHTML(x){
+    var b = bucketFor(x.d), lbl = labelFor(x);
+    return '<div class="taskwrap" data-id="' + x.id + '"><div class="task" role="button" tabindex="0">' +
+      '<button class="tick" aria-label="' + esc(t("a11y.tick")) + '"><svg><use href="#i-check"/></svg></button>' +
+      '<div class="tbody"><span class="ttitle">' + esc(L(x.t) || t("sheet.untitled")) + "</span></div>" +
+      '<span class="tend">' +
+      (x.kind === "event" ? '<svg class="tglyph kindmark" role="img" aria-label="' + esc(t("cal.eventTag")) +
+        '"><use href="#i-event"/></svg>' : "") +
+      (lbl ? '<span class="ttime' + (b === "late" ? " late" : "") + '">' + esc(lbl) + "</span>" : "") +
+      "</span></div></div>";
+  }
+  $("#homeToday").addEventListener("click", function(e){
+    var wrap = e.target.closest(".taskwrap");
+    if(e.target.closest(".tick") && wrap){ tickTask(wrap); return; }
+    var mt = e.target.closest("[data-mt]");
+    if(mt){ openMeet(+mt.dataset.mt); return; }
+    if(wrap) openSheet(+wrap.dataset.id);
+  });
   /* An empty card names the control that starts one — the same button the
      tab's own empty state presses, so there is no second way to add a task. */
   function homeZero(numEl, zero, start){
@@ -7551,9 +7644,9 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     renderTasks(); renderStrip(selDay);
     toast(t("toast.stillRepeating"));
   }
-  $("#taskStack").addEventListener("click", function(e){
-    var wrap = e.target.closest(".taskwrap");
-    if(e.target.closest(".tick") && wrap){
+  /* Ticking a row off, wherever the row is drawn — the task list, or today
+     on the home page. One function, so there is one way to finish a task. */
+  function tickTask(wrap){
       var row = $(".task", wrap);
       if(row.classList.contains("done")) return;
       row.classList.add("done");
@@ -7580,8 +7673,10 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
            seconds anybody would want it. */
         toast(t("toast.done"), i > -1 ? function(){ restoreTask(id); } : null);
       }, 540);
-      return;
-    }
+  }
+  $("#taskStack").addEventListener("click", function(e){
+    var wrap = e.target.closest(".taskwrap");
+    if(e.target.closest(".tick") && wrap){ tickTask(wrap); return; }
     var jp = e.target.closest("[data-jump]");
     if(jp){ jumpToCalendar(+jp.dataset.jump); return; }
     var pn = e.target.closest("[data-pin]");
@@ -11667,7 +11762,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     ME.gender = b.dataset.g === "f" ? "female" : "male";
     paintAvatars();
     /* the greeting on the connections page is gendered, so it moves with this */
-    $("#toolsH").textContent = brandTag(myGender());
+    renderHome();
     $("#bigAvatar").classList.remove("pop"); void $("#bigAvatar").offsetWidth; $("#bigAvatar").classList.add("pop");
     API.setPersonal({gender:ME.gender});
     toast(t(b.dataset.g === "f" ? "toast.fem" : "toast.masc"));
@@ -12440,7 +12535,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     $("#sSaved").textContent = t("sheet.autosave");
     /* the first page a person lands on greets them in their own language and
        gender, rather than repeating the tab they just pressed */
-    $("#toolsH").textContent = brandTag(myGender());
+    renderHome();
     syncName();
   }
   /* ══════════════════════════════════════════════════════════════

@@ -29,6 +29,18 @@
       ],
       "port": 8790,
       "url": "http://localhost:8790"
+    },
+    {
+      "name": "design-8923",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "olma2/scripts/serve-design.js"
+      ],
+      "env": {
+        "PORT": "8923"
+      },
+      "port": 8923,
+      "url": "http://127.0.0.1:8923"
     }
   ]
 }
