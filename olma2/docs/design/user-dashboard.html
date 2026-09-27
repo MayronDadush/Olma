@@ -491,17 +491,10 @@ html[data-v="me"] .brand{opacity:0;transform:translateY(-8px) scale(.94);pointer
 .brand-hi{font-size:13px;color:var(--text-2);line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .brand-name{font-family:var(--font-head);font-weight:600;font-size:17px;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hdrend{display:flex;align-items:center;gap:9px;flex:none}
-/* Three icons, one pressed at a time — the same picture language as the seg
-   controls elsewhere, just small enough to live beside the clock on every
-   tab, not only on the profile page. */
-.themeicons{display:flex;gap:2px;padding:3px;border-radius:999px;background:var(--bg-tint);flex:none}
-.themeicons button{
-  width:27px;height:27px;border-radius:50%;display:grid;place-items:center;color:var(--text-3);
-  transition:background var(--sw-t) var(--ease-io),color var(--sw-t) var(--ease-io),transform .38s var(--squash);
-}
-.themeicons button svg{width:15px;height:15px}
-.themeicons button[aria-pressed="true"]{background:var(--surface);color:var(--accent);box-shadow:var(--shadow-s)}
-.themeicons button:active{transform:scale(.88)}
+/* The light/dark choice, on the profile page with its words beside each
+   picture. It used to live here, beside the clock on every tab. */
+.themeseg button{display:inline-flex;align-items:center;justify-content:center;gap:6px}
+.themeseg button svg{width:15px;height:15px;flex:none}
 /* The pill under the clock, and the name says what it LOOKS like rather than
    what it means. It was `.live`, and something else on this page then used
    `live` to mean "this section has real rooms behind it" — one word, two
@@ -1403,6 +1396,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 .tend{display:flex;align-items:center;gap:8px;flex:none;margin-inline-start:auto;padding-top:1px}
 .tglyph{width:14px;height:14px;color:var(--text-3)}
 .tglyph.bell{color:var(--warn)}
+.tglyph.kindmark{width:20px;height:14px;--evmark:var(--accent)}
+:root[data-brand="allma"] .tglyph.kindmark{--evmark:#FF8A6B}
 .ttime{
   font-size:13.5px;font-weight:600;color:var(--text-2);
   font-variant-numeric:tabular-nums;white-space:nowrap;
@@ -3129,12 +3124,9 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 
 @media (max-width:430px){
   .title h1{font-size:29px}
-  /* The status pill's words are what a phone header cannot fit beside the
-     clock. The dot carries the state on its own — green and pulsing when she
-     is on, amber and still when paused — and the words stay as its label.
-     Keeping them for a pause was measured at 375px: the name vanished. */
-  .livepill #olmaLive{display:none}
-  .livepill{padding:10px}
+  /* The status pill keeps its words on a phone now. They were hidden when
+     the theme icons shared this row, and a green dot with no words was the
+     one thing in the header nobody could read (the owner, 2026-09-27). */
   .topbar{gap:8px}
   .tab{min-width:0;padding:9px 11px 8px}
   .field label{width:86px;font-size:15px}
@@ -3160,6 +3152,11 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   <symbol id="i-repeat" viewBox="0 0 16 16"><path d="M3 7a5 5 0 0 1 8.6-3.4M13 9a5 5 0 0 1-8.6 3.4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M11.4 1.2v2.6H8.9M4.6 14.8v-2.6h2.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-pencil" viewBox="0 0 18 18"><path d="M12.2 2.6 15.4 5.8 6.2 15H3v-3.2Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></symbol>
   <symbol id="i-out" viewBox="0 0 18 18"><path d="M7 3H3.6v11.4H15V11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M10.4 2.6H15v4.6M15 2.6 8.6 9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <!-- An event, in the brand's own picture of a meeting: two rings, and
+       only where they overlap is filled (brand kit, 2026-09-26 — two FILLED
+       discs read as a card logo). The lens takes --evmark: the accent, or
+       the coral when the brand layer is on. -->
+  <symbol id="i-event" viewBox="1 3 14 10"><circle cx="6" cy="8" r="4.3" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="10" cy="8" r="4.3" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M8 4.19A4.3 4.3 0 0 1 8 11.81A4.3 4.3 0 0 1 8 4.19Z" style="fill:var(--evmark,currentColor)"/></symbol>
   <symbol id="i-cal" viewBox="0 0 20 20"><rect x="2.6" y="4" width="14.8" height="13.4" rx="3.2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M2.6 8.2h14.8M6.6 2.4v3M13.4 2.4v3" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
   <symbol id="i-person" viewBox="0 0 20 20"><circle cx="10" cy="6.6" r="3.4" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M3.6 17c.7-3.4 3.3-5.2 6.4-5.2s5.7 1.8 6.4 5.2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
   <symbol id="i-mail" viewBox="0 0 20 20"><rect x="2.4" y="4.4" width="15.2" height="11.2" rx="3" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="m3.4 6.4 5.4 4.2a2 2 0 0 0 2.4 0l5.4-4.2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
@@ -3251,11 +3248,6 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     </button>
     <button class="topclock" id="topClock" data-i18n-label="city.title"></button>
     <div class="hdrend">
-      <div class="themeicons" id="themeIcons" role="group" data-i18n-label="me.appearance">
-        <button data-theme-opt="light" aria-pressed="false" data-i18n-label="me.themeLight"><svg><use href="#i-sun"/></svg></button>
-        <button data-theme-opt="dark" aria-pressed="false" data-i18n-label="me.themeDark"><svg><use href="#i-moon"/></svg></button>
-        <button data-theme-opt="auto" aria-pressed="true" data-i18n-label="me.themeAuto"><svg><use href="#i-auto"/></svg></button>
-      </div>
       <div class="livepill"><span class="dot"></span><span id="olmaLive"></span></div>
     </div>
   </header>
@@ -3581,6 +3573,17 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
           <div class="row no-icon stackrow">
             <div class="rowline"><div class="row-title" data-i18n="me.language"></div></div>
             <div class="chips" id="langChips" role="group" data-i18n-label="me.language"></div>
+          </div>
+          <!-- Light, dark or the phone's own setting. It sat beside the clock on
+               every tab, three unlabelled icons for a choice made once (the
+               owner, 2026-09-27); here it has words. -->
+          <div class="row no-icon stackrow">
+            <div class="rowline"><div class="row-title" id="themeLabel" data-i18n="me.appearance"></div></div>
+            <div class="seg themeseg" id="themeIcons" role="group" aria-labelledby="themeLabel">
+              <button data-theme-opt="light" aria-pressed="false"><svg><use href="#i-sun"/></svg><span data-i18n="me.themeLight"></span></button>
+              <button data-theme-opt="dark" aria-pressed="false"><svg><use href="#i-moon"/></svg><span data-i18n="me.themeDark"></span></button>
+              <button data-theme-opt="auto" aria-pressed="true"><svg><use href="#i-auto"/></svg><span data-i18n="me.themeAuto"></span></button>
+            </div>
           </div>
           <div class="row no-icon">
             <div class="row-txt">
@@ -4828,7 +4831,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
          until somebody says otherwise. */
       "brand.tagM":"ברוך הבא לעולם שלך","brand.tagF":"ברוכה הבאה לעולם שלך",
       "live":"{name} פעילה",
-      "tab.tools":"בית","tab.tasks":"משימות","tab.cal":"יומן","tab.friends":"חברים","tab.me":"פרופיל",
+      "tab.tools":"בית","tab.tasks":"משימות","tab.cal":"פגישות","tab.friends":"חברים","tab.me":"פרופיל",
 
       "tools.h":"החיבורים שלך",
       "home.p":"עולמה עוזרת לך בוואטסאפ. כאן רואים את כל מה שהיא מחזיקה בשבילך.",
@@ -4900,7 +4903,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "tasks.h":"המשימות שלך","tasks.open":"פתוחות","tasks.archive":"ארכיון",
       "tasks.n0":"אין משימות פתוחות","tasks.n1":"משימה פתוחה אחת","tasks.nN":"{n} משימות פתוחות",
       "remc.n0":"אין תזכורות","remc.n1":"תזכורת אחת מוגדרת","remc.nN":"{n} תזכורות מוגדרות",
-      "bucket.late":"באיחור","bucket.today":"היום","bucket.tomorrow":"מחר","bucket.later":"בהמשך","kind.event":"ביומן","kind.todo":"לעשות","cal.eventTag":"אירוע","tasks.new":"משימה חדשה","tasks.empty":"אין משימות פתוחות. יום נקי.",
+      "bucket.late":"באיחור","bucket.today":"היום","bucket.tomorrow":"מחר","bucket.later":"בהמשך","cal.eventTag":"אירוע","tasks.new":"משימה חדשה","tasks.empty":"אין משימות פתוחות. יום נקי.",
       "tasks.allDone":"סיימת הכול","tasks.allDoneSub.n1":"משימה אחת נסגרה היום","tasks.allDoneSub.nN":"{n} משימות נסגרו היום",
       "tasks.doneAt":"הושלמה {when}","tasks.justNow":"הרגע",
       "tasks.arcShown":"מוצגות {n} האחרונות מתוך {all}","tasks.arcShowAll":"הצגת כל {all}","tasks.arcShowLess":"מוצגות כל {all} · הצגת {n} האחרונות","tasks.restore":"החזרה לרשימה",
@@ -4943,7 +4946,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "sheet.leave":"יציאה מהמשימה המשותפת","sheet.leaveSub":"המשימה תיעלם מהרשימה שלך ותישאר אצל השאר. שום דבר לא נמחק.",
       "toast.left":"יצאת מ„{name}” — היא נשארה אצל השאר",
 
-      "cal.h":"הצצה ליומן",
+      "cal.h":"פגישות",
       "cal.p":"תצוגה בלבד. לעריכה — פתח את היומן של הטלפון בלחיצה אחת.",
       "cal.open":"פתיחה ביומן Google","cal.empty":"אין אירועים ביום הזה.","cal.connectGo":"חיבור יומן",
       "cal.todayPre":"היום · ","cal.dayPrefix":"יום ",
@@ -5190,7 +5193,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
          rather than the caller having to know which languages inflect. */
       "brand.tagM":"Do it all. Do it Allma","brand.tagF":"Do it all. Do it Allma",
       "live":"{name} is on",
-      "tab.tools":"Home","tab.tasks":"Tasks","tab.cal":"Calendar","tab.friends":"Friends","tab.me":"Profile",
+      "tab.tools":"Home","tab.tasks":"Tasks","tab.cal":"Meetings","tab.friends":"Friends","tab.me":"Profile",
 
       "tools.h":"Your connections",
       "home.p":"Allma helps you on WhatsApp. Here you see everything she is holding for you.",
@@ -5258,7 +5261,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "tasks.h":"Your tasks","tasks.open":"Open","tasks.archive":"Archive",
       "tasks.n0":"No open tasks","tasks.n1":"1 open task","tasks.nN":"{n} open tasks",
       "remc.n0":"no reminders set","remc.n1":"1 reminder set","remc.nN":"{n} reminders set",
-      "bucket.late":"Overdue","bucket.today":"Today","bucket.tomorrow":"Tomorrow","bucket.later":"Later","kind.event":"On the calendar","kind.todo":"To do","cal.eventTag":"Event","tasks.new":"New task","tasks.empty":"Nothing open. Clear day.",
+      "bucket.late":"Overdue","bucket.today":"Today","bucket.tomorrow":"Tomorrow","bucket.later":"Later","cal.eventTag":"Event","tasks.new":"New task","tasks.empty":"Nothing open. Clear day.",
       "tasks.allDone":"All done","tasks.allDoneSub.n1":"one task closed today","tasks.allDoneSub.nN":"{n} tasks closed today",
       "tasks.doneAt":"Done {when}","tasks.justNow":"just now",
       "tasks.arcShown":"Showing the last {n} of {all}","tasks.arcShowAll":"Show all {all}","tasks.arcShowLess":"Showing all {all} · show the last {n}","tasks.restore":"Put back on the list",
@@ -5301,7 +5304,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "sheet.leave":"Leave this shared task","sheet.leaveSub":"It leaves your list and stays on theirs. Nothing is deleted.",
       "toast.left":"You left \u201c{name}\u201d \u2014 it stays with the others",
 
-      "cal.h":"A look at your calendar",
+      "cal.h":"Meetings",
       "cal.p":"Read-only here. To change anything, open your phone's calendar in one tap.",
       "cal.open":"Open in Google Calendar","cal.empty":"Nothing on this day.","cal.connectGo":"Connect a calendar",
       "cal.todayPre":"Today · ","cal.dayPrefix":"",
@@ -7228,6 +7231,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     }
     if(x.rep && x.rep !== "none") end += '<svg class="tglyph"><use href="#i-repeat"/></svg>';
     if(x.rem) end += '<svg class="tglyph bell"><use href="#i-bell"/></svg>';
+    if(x.kind === "event") end += '<svg class="tglyph kindmark" role="img" aria-label="' + esc(t("cal.eventTag")) +
+      '"><use href="#i-event"/></svg>';
     if(lbl) end += '<span class="ttime' + (b === "late" ? " late" : "") + '">' + esc(lbl) + "</span>";
     /* the jump only exists where there is somewhere to jump TO */
     if(x.d && x.cal) end += '<button class="tjump" data-jump="' + x.id + '" aria-label="' + esc(t("cal.showIn")) +
@@ -7264,16 +7269,15 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   function taskGoesAway(x){ if(facesOf(x).length) leaveTaskRow(x.id); else deleteTaskRow(x.id); }
   /* Inside a day, the calendar comes before the plate: a meeting at 11:45 and
      "לקנות חלב" are not one list, and reading them as one is how a meeting
-     gets called a task. Both sub-labels appear only when both kinds are
-     there — a day of nothing but errands is not labelled "to do". */
+     gets called a task. The order still says it — events first — and each
+     event row carries its own mark (#i-event) beside its time. There used to
+     be two sub-labels, "ביומן" and "לעשות", under every day: a second level
+     of heading for two rows, which nobody who did not already know the
+     difference could read (the owner, 2026-09-27). */
   function kindGroups(items){
     var evs = items.filter(function(x){ return x.kind === "event"; }),
         todos = items.filter(function(x){ return x.kind !== "event"; });
-    if(!evs.length || !todos.length) return '<div class="group">' + evs.concat(todos).map(taskHTML).join("") + "</div>";
-    return '<div class="glabel"><span class="sub">' + esc(t("kind.event")) + "</span></div>" +
-      '<div class="group">' + evs.map(taskHTML).join("") + "</div>" +
-      '<div class="glabel"><span class="sub">' + esc(t("kind.todo")) + "</span></div>" +
-      '<div class="group">' + todos.map(taskHTML).join("") + "</div>";
+    return '<div class="group">' + evs.concat(todos).map(taskHTML).join("") + "</div>";
   }
   var viewBy = "time";
   /* One place for all of them, whichever way the list is sorted — so it is
