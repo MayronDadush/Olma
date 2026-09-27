@@ -271,9 +271,15 @@ function buildInstruction(transcript, existingFacts, openTasks = [], profile = {
       ? ['',
          'SUMMARY — this conversation happened over a PHONE CALL, not WhatsApp, so',
          'nobody else saw it happen. Write "summary" as one short warm WhatsApp message',
-         'recapping it for them in their own language — a couple of sentences, naming',
-         'anything concrete that came out of it (a decision, a date, something you now',
-         'need to do). If it was trivial small talk with nothing worth recapping, set',
+         'recapping it for them in their own language — one or two sentences about what',
+         'the call was about. Do NOT name any task, date or time in it: the exact list of',
+         'what was saved is read from the database and attached underneath by the system,',
+         'and a date written here can disagree with it (on 2026-09-27 a recap said 5.10',
+         'for a task saved on 8.10). Do not list what they already have either.',
+         opts.gender === 'female' ? 'Address them in the FEMININE form.'
+           : opts.gender === 'male' ? 'Address them in the MASCULINE form.'
+             : 'Their form of address is unknown: phrase it so no gendered verb or imperative addresses them (no "שים לב" / "שימי לב").',
+         'If it was trivial small talk with nothing worth recapping, set',
          '"summary" to null — do not manufacture one.']
       : []),
   ].join('\n');
@@ -371,7 +377,10 @@ async function applyExtraction(client, user, parsed, knownFactIds = new Set()) {
   // silently, and a background job that quietly drops facts looks exactly like a
   // quiet week. If a guard ever starts over-firing — refusing real facts every
   // night — this counter is the only place that would say so.
-  const out = { recorded: 0, duplicates: 0, tasksCaptured: 0, refused: {}, replaced: 0, datesDropped: 0, titlesTrimmed: 0 };
+  // taskIds: the parents this run actually wrote, so a caller that tells the
+  // person what was saved (jobs/voice-calls.js) reads it back from the rows
+  // rather than from a model's retelling of them.
+  const out = { recorded: 0, duplicates: 0, tasksCaptured: 0, taskIds: [], refused: {}, replaced: 0, datesDropped: 0, titlesTrimmed: 0 };
   const factList = Array.isArray(parsed.facts) ? parsed.facts.slice(0, 20) : [];
   for (const f of factList) {
     if (!f || typeof f.fact !== 'string') continue;
@@ -478,6 +487,7 @@ async function applyExtraction(client, user, parsed, knownFactIds = new Set()) {
       continue;
     }
     out.tasksCaptured++;
+    out.taskIds.push(created.data.task.id);
     const subs = Array.isArray(t.subtasks) ? t.subtasks.filter((s) => typeof s === 'string' && s.trim()) : [];
     if (subs.length) {
       const bulk = await tasks.addTasksBulk(client, user.id,

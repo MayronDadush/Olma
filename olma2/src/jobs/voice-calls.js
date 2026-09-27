@@ -59,7 +59,7 @@ async function processFile(client, dir, file, deps) {
   const raw = JSON.parse(fs.readFileSync(path.join(dir, file), 'utf8'));
   const userId = Number(raw.user);
   const { rows } = await client.query(
-    `SELECT id, first_name, timezone FROM users WHERE id = $1 AND status = 'active' AND NOT is_eval`,
+    `SELECT id, first_name, timezone, gender FROM users WHERE id = $1 AND status = 'active' AND NOT is_eval`,
     [userId]
   );
   const user = rows[0];
@@ -79,7 +79,7 @@ async function processFile(client, dir, file, deps) {
   const { known, openTasks, meetingConstraints } = await extraction.gatherContext(client, user.id);
   const message = extraction.buildInstruction(transcript, known, openTasks,
     { firstName: user.first_name }, meetingConstraints,
-    { includeSummary: true, tz, now: deps.now || Date.now() });
+    { includeSummary: true, tz, now: deps.now || Date.now(), gender: user.gender });
 
   const complete = deps.complete || llm.complete;
   const res = await complete({
@@ -98,25 +98,89 @@ async function processFile(client, dir, file, deps) {
 
   const applied = await extraction.applyExtraction(client, user, parsed, new Set(known.map((f) => Number(f.id))));
   const summary = typeof parsed.summary === 'string' ? parsed.summary.trim().slice(0, 1000) : '';
+  const saved = await savedLines(client, user.id,
+    [...savedByCall(raw.messages), ...applied.taskIds], tz);
 
-  if (summary) {
+  if (summary || saved.length) {
     // payload.instruction is delivered verbatim by channels/openclaw.js — no
     // new `case` needed there, same as any other free-text proactive kind.
     await enqueue(client, {
       userId: user.id, kind: 'voice_call_summary', urgency: 'normal',
-      payload: {
-        instruction: `A phone call with the user just ended. Tell them, in their own language, in one short warm message: <<<${summary}>>>. This IS the recap — do not add filler, do not re-derive it, and do not mention it came from a background process.`,
-      },
+      payload: { instruction: recapInstruction(summary, saved) },
       idempotencyKey: `voicecall:${file}`,
     });
   }
 
   await audit.record(client, user.id, 'voice_call.processed', {
     file, factsRecorded: applied.recorded, tasksCaptured: applied.tasksCaptured,
-    summarized: Boolean(summary),
+    summarized: Boolean(summary), tasksListed: saved.length,
   });
 
   return { processed: true, userId: user.id };
+}
+
+// What the recap says was SAVED is drawn from the rows, never from the model.
+// On 2026-09-27 the recap told Maya (u-10) "גבות ביום חמישי 5.10 ב-9" while
+// the task the call wrote was on Thursday 8.10 — 5.10 is a Monday — and the
+// reminder was going to fire on the 8th. The model's sentence is now only
+// about what the call was about, and the list is read back from `tasks`.
+//
+// Two writers: the call's own tools (add_task / reschedule_task results in
+// the transcript, which carry the row id) and this job's extraction.
+const RECAP_TOOLS = new Set(['add_task', 'reschedule_task']);
+
+function savedByCall(callMessages) {
+  const msgs = Array.isArray(callMessages) ? callMessages : [];
+  const nameOf = new Map();
+  for (const m of msgs) {
+    for (const tc of (m && Array.isArray(m.tool_calls)) ? m.tool_calls : []) {
+      if (tc && tc.id && tc.function) nameOf.set(tc.id, tc.function.name);
+    }
+  }
+  const ids = [];
+  for (const m of msgs) {
+    if (!m || m.role !== 'tool' || !RECAP_TOOLS.has(nameOf.get(m.tool_call_id))) continue;
+    let out; try { out = JSON.parse(m.content); } catch { continue; }
+    const id = Number(out && out.ok === true ? out.id : NaN);
+    if (Number.isInteger(id) && id > 0) ids.push(id);
+  }
+  return ids;
+}
+
+function sayWhen(dueAt, tz) {
+  if (!dueAt) return null;
+  const d = new Date(dueAt);
+  const opts = { timeZone: tz, weekday: 'long', day: 'numeric', month: 'numeric' };
+  const hm = d.toLocaleTimeString('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false });
+  // Midnight is how a dateless-hour task is stored; it has no hour to say.
+  return hm === '00:00'
+    ? d.toLocaleDateString('he-IL', opts)
+    : d.toLocaleString('he-IL', { ...opts, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+}
+
+async function savedLines(client, userId, ids, tz) {
+  const unique = [...new Set(ids.map(Number))].filter((n) => Number.isInteger(n) && n > 0);
+  if (!unique.length) return [];
+  const { rows } = await client.query(
+    `SELECT id, title, due_at FROM tasks
+      WHERE owner_id = $1 AND id = ANY($2::bigint[]) AND status = 'open'
+      ORDER BY due_at NULLS LAST, id`, [userId, unique]);
+  return rows.map((t) => {
+    const when = sayWhen(t.due_at, tz);
+    return `• ${t.title}${when ? ` — ${when}` : ''}`;
+  });
+}
+
+function recapInstruction(summary, saved) {
+  const parts = ['A phone call with the user just ended. Send them ONE short WhatsApp message.'];
+  if (summary) parts.push(`Open with this, in their own language: <<<${summary}>>>.`);
+  if (saved.length) {
+    parts.push('Then include these lines EXACTLY as written, character for character — they are '
+      + `what was actually saved, read from the database: <<<מה שנשמר מהשיחה:\n${saved.join('\n')}>>>.`
+      + ' Do not add, drop or restate any task, date or time beyond those lines.');
+  }
+  parts.push('This IS the recap — do not add filler, do not re-derive it, and do not mention it came from a background process.');
+  return parts.join(' ');
 }
 
 // deps.complete, deps.refreshCard, deps.transcriptsDir — the same injection
@@ -142,6 +206,6 @@ async function sweepVoiceCalls(client, deps = {}) {
 }
 
 module.exports = {
-  sweepVoiceCalls, processFile, toChatMessages, listPendingFiles,
+  sweepVoiceCalls, processFile, toChatMessages, listPendingFiles, savedByCall, recapInstruction,
   TRANSCRIPTS_DIR, MAX_PER_TICK,
 };
