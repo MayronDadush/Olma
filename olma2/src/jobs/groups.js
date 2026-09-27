@@ -705,6 +705,11 @@ async function sweepGroupVoice(client, deps) {
       if (line.kind === 'done' && st.coordination.timeSetAt) {
         await client.query('UPDATE meetings SET group_time_at = $2 WHERE id = $1', [row.meeting_id, now]);
       }
+      // …and one that carried the calendar sentence has said that too, so the
+      // room does not hear "📅 ביומן" as a third message about the same close.
+      if (line.kind === 'done' && line.calendar) {
+        await client.query('UPDATE meetings SET group_calendar_at = $2 WHERE id = $1', [row.meeting_id, now]);
+      }
     }
     await audit.record(client, row.registered_by_user_id, 'group.coordination_said', {
       groupId: row.id, meetingId: Number(row.meeting_id), kind: line.kind,

@@ -545,7 +545,12 @@ have already had to be argued for.
   solo event on one person's calendar is not a thing the room may be told
   about; the line says who got an invitation (whoever connected a calendar),
   never "everybody", because in 35 that was one person. Stamp
-  `group_calendar_at` (migration 076). **And no base line when nobody is
+  `group_calendar_at` (migration 076). **Since 2026-09-26 a close is ONE
+  message when it can be** (owner, fix 7: it was heard three times — her
+  reply, the done line, the calendar line): an event that already exists as
+  the done line is decided rides it (`line.calendar`, both stamps), and
+  `group-meetings.settle` hands the model `hints.room` saying the fixed line
+  is the announcement and to answer NO_REPLY. **And no base line when nobody is
   missing or `settle_due_at` is armed** — "מחכה ל 🤞" went out with an
   empty list twelve seconds after Yuval's yes made it unanimous; the next
   thing that room should hear is "סגור". `TAG_RULE` also says now that the

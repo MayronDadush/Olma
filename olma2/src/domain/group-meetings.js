@@ -599,7 +599,10 @@ async function settle(client, group, actingUser, optionId) {
     byName: memberLabel(members.find((m) => Number(m.user_id) === Number(actingUser.id)) || {}),
     groupSubject: group.subject || null,
   });
-  return res;
+  // The room's fixed "סגור" line announces it within a minute, with the time,
+  // who is in and the calendar (owner, 2026-09-26, fix 7: a close was heard
+  // three times — her reply, that line, and the calendar line).
+  return ok({ ...res.data, hints: { room: 'The room hears it closed in a fixed line within a minute: the time, who is in, the calendar. Answer NO_REPLY — never repeat the time or say it is closed.' } });
 }
 
 // ---- a paused member who did not answer -------------------------------------
