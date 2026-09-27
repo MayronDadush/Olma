@@ -210,3 +210,67 @@ test('MAX_PER_TICK caps how many calls one tick processes', async () => {
     assert.equal(res.considered, voiceCalls.MAX_PER_TICK);
   });
 });
+
+// 2026-09-27, Maya (u-10): the call saved "גבות" on Thursday 8.10 at 09:00,
+// and the recap the model wrote told her "ביום חמישי 5.10 ב-9". What was
+// saved is now read back from the row the call's own tool wrote.
+test('the recap lists what the call SAVED from the rows, not the model\'s retelling of it', async () => {
+  const tasks = require('../src/domain/tasks');
+  const u = await makeUser(db.pool, '+972590002010', { firstName: 'מאיה' });
+  await db.pool.query(`UPDATE users SET gender = 'female', timezone = 'Asia/Jerusalem' WHERE id = $1`, [u.id]);
+  const saved = await withClient((c) => tasks.addTask(c, u.id,
+    { title: 'גבות', dueAt: '2099-10-08T09:00:00+03:00', source: 'voice_call' }));
+  assert.equal(saved.ok, true);
+  const id = saved.data.task.id;
+  writeCall('maya.json', {
+    user: u.id,
+    messages: [
+      { role: 'assistant', content: 'היי מאיה, מה קורה?' },
+      { role: 'user', content: 'בחמישי יש לי גבות בתשע' },
+      { role: 'assistant', content: null, tool_calls: [{ id: 't1', type: 'function', function: { name: 'add_task', arguments: '{}' } }] },
+      { role: 'tool', tool_call_id: 't1', content: JSON.stringify({ ok: true, id: String(id), title: 'גבות' }) },
+      // A failed write, and a tool that is not a write, never reach the list.
+      { role: 'assistant', content: null, tool_calls: [{ id: 't2', type: 'function', function: { name: 'add_task', arguments: '{}' } }] },
+      { role: 'tool', tool_call_id: 't2', content: JSON.stringify({ error: 'refused' }) },
+      { role: 'assistant', content: 'הוספתי.' },
+    ],
+  });
+  const rec = recorder({ facts: [], tasks: [], name: null, summary: 'רשמתי לך גבות ביום חמישי 5.10 ב-9.' });
+  await withClient(async (c) => {
+    await voiceCalls.sweepVoiceCalls(c, { transcriptsDir: dir, ...rec.deps });
+    const { rows } = await c.query(
+      `SELECT payload FROM outbox WHERE user_id = $1 AND kind = 'voice_call_summary'`, [u.id]);
+    assert.equal(rows.length, 1);
+    const instr = rows[0].payload.instruction;
+    assert.match(instr, /מה שנשמר מהשיחה:\n• גבות — יום חמישי, 8\.10, 09:00/, 'the line comes from the row');
+    assert.match(instr, /Do not add, drop or restate any task, date or time/);
+  });
+  // The model is told not to name dates, and how to address her.
+  assert.match(rec.calls[0].user, /Do NOT name any task, date or time/);
+  assert.match(rec.calls[0].user, /FEMININE/);
+});
+
+test('with no form of address on file the recap is told to stay ungendered', async () => {
+  const u = await makeUser(db.pool, '+972590002011', { firstName: 'נועם' });
+  await db.pool.query(`UPDATE users SET gender = NULL WHERE id = $1`, [u.id]);
+  writeCall('noam.json', { user: u.id, messages: [
+    { role: 'assistant', content: 'היי' }, { role: 'user', content: 'סתם רציתי להגיד שלום' }] });
+  const rec = recorder({ facts: [], tasks: [], name: null, summary: null });
+  await withClient((c) => voiceCalls.sweepVoiceCalls(c, { transcriptsDir: dir, ...rec.deps }));
+  assert.match(rec.calls[0].user, /form of address is unknown/);
+  assert.doesNotMatch(rec.calls[0].user, /FEMININE|MASCULINE/);
+});
+
+test('savedByCall reads only successful add_task / reschedule_task results', () => {
+  const msgs = [
+    { role: 'assistant', content: null, tool_calls: [
+      { id: 'a', function: { name: 'add_task' } }, { id: 'b', function: { name: 'reschedule_task' } },
+      { id: 'c', function: { name: 'complete_task' } }, { id: 'd', function: { name: 'add_task' } }] },
+    { role: 'tool', tool_call_id: 'a', content: '{"ok":true,"id":"11"}' },
+    { role: 'tool', tool_call_id: 'b', content: '{"ok":true,"id":12}' },
+    { role: 'tool', tool_call_id: 'c', content: '{"ok":true,"id":13}' },
+    { role: 'tool', tool_call_id: 'd', content: '{"error":"no"}' },
+  ];
+  assert.deepEqual(voiceCalls.savedByCall(msgs), [11, 12]);
+  assert.deepEqual(voiceCalls.savedByCall(undefined), []);
+});
