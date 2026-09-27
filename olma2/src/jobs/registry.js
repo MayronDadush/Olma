@@ -207,6 +207,8 @@ const deployDrift = require('./deploy-drift');
       // no answer (domain/group-meetings.js). An hour-scale rule on a minute
       // tick because the query is one join that is empty almost always.
       silentPausedMembers: await sweeps.sweepSilentPausedMembers(c),
+      // …and somebody who left the WhatsApp group that is coordinating.
+      roomLeavers: await sweeps.sweepRoomLeavers(c),
       mediaJobs: await sweeps.sweepMediaJobs(c),
       // 60s cadence is what makes a 60-second nudge possible at all — the
       // checkin ladder's own tick (below) is 5 minutes, chosen for its

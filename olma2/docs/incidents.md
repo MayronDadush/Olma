@@ -59,6 +59,7 @@ never trust a dated narrative for something you are about to act on.
 - [The link came back on every coordination message (2026-09-24)](#the-link-came-back-on-every-coordination-message-2026-09-24)
 - [The slot that was already closed (fixed 2026-09-20)](#the-slot-that-was-already-closed-fixed-2026-09-20)
 - [The room asked five and reached four (fixed 2026-09-22)](#the-room-asked-five-and-reached-four-fixed-2026-09-22)
+- [The pause the room's invite walked through (fixed 2026-09-27)](#the-pause-the-rooms-invite-walked-through-fixed-2026-09-27)
 - [A room counted in somebody who had paused (fixed 2026-09-13)](#a-room-counted-in-somebody-who-had-paused-fixed-2026-09-13)
 - [The fifth draft was the rude one (fixed 2026-09-11)](#the-fifth-draft-was-the-rude-one-fixed-2026-09-11)
 - [Six good mornings for one timeout (fixed 2026-09-09)](#six-good-mornings-for-one-timeout-fixed-2026-09-09)
@@ -2259,6 +2260,54 @@ file.
 which rule paid: `quiet.room_invite_sent` beside `pause.room_invite_sent`.
 Meeting 40's own rows were already spent when this shipped, so Guy heard
 nothing about that coordination — the fix is for the next one.
+
+### The pause the room's invite walked through (fixed 2026-09-27)
+
+גל (u-37) wrote "dont send me messages bye" on 2026-09-22, and what he was
+asking to stop was Padel Gang's coordination messages. On the 23rd the owner
+cancelled a queued confirmation by hand ("he hears this one from the room")
+and recorded the pause (`said_stop`). On 2026-09-26 at 18:00 the room opened
+its next coordination, "פאדל לשבוע הקרוב". `startCoordination` counted him in,
+and at 06:02 the next morning his private invite went out (outbox 12861,
+`pause.room_invite_sent`). The owner reported it: "עולמה מושהת אצלו ובכל זאת
+הוא קיבל הודעה".
+
+Nothing was broken. The one-invite-per-pause allowance above was working as
+written, and it never asked WHO had paused. Kapish's pause, the case it was
+built for, had been the ladder's. Matan (u-44, "תבטלי ואל תפני אלי שוב",
+2026-09-25) would have been next, the next time Shabi OG opened one.
+
+The owner's line (2026-09-27): somebody who is LESS ACTIVE is different from
+somebody who PAUSED her, and a pause means nothing at all from her. So
+`pause.keptOutOfRooms` leaves out anybody whose pause they asked for
+(`paused_reason` NULL or `said_stop`), and the allowance is only for a pause
+the ladder took (`quiet_ladder`). There are five readers, because each was a
+separate door:
+- the worker's `pausedRoomInvite`, which also catches an invite
+  `meeting-fanout.unheardInvite` re-mints later;
+- `startCoordination` and `admitLateMembers`, which decide who is swept in;
+- `sweepSilentPausedMembers`, which takes such a person out of a negotiating
+  coordination at once rather than a day later, cause `paused_by_request`;
+- `statusOf` and `meeting-options.unanimousOption`, so the room neither counts,
+  tags nor waits on them, even in the minute before the sweep;
+- `calendar.meetingCalendarRoles`, because a Google invitation is an email
+  from the same coordination.
+
+The same audit closed two holes that had nothing to do with a pause:
+- Leaving a coordination did not withdraw what was still queued for the
+  leaver: a paced proposal went out after "I'm out". `meetings.applyExit` and
+  `withdrawConfirmed` now supersede their unsent rows about it.
+- Leaving the WhatsApp GROUP only stamped `left_at`, so the leaver stayed a
+  participant: every proposal, the Google invitation, and a room that could
+  not close without their yes. `group-meetings.sweepRoomLeavers` takes them
+  out of that room's negotiating coordination. It does not touch a member
+  whose roster row was merely re-spelled and who still has a current row.
+
+What is still open: an event already on Google with them as a guest emails
+them its cancellation if the meeting is cancelled later
+(`removeMeetingEvent`, `notify`). Taking them off the guest list at pause
+time would also take the meeting off their own calendar, which is not what
+pausing Olma asks for.
 
 ### A room counted in somebody who had paused (fixed 2026-09-13)
 

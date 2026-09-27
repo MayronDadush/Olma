@@ -430,6 +430,21 @@ async function rejoin(client, userId, meetingId, now = Date.now()) {
   return ok({ meetingId, meetingStatus: p.meeting_status, yourState: 'awaiting' });
 }
 
+// Somebody who has just left a coordination is not told anything more about
+// it from the queue (2026-09-27). A negotiation row is paced a quarter of an
+// hour, or held for their night, and nothing at delivery asks whether they are
+// still in — so "I'm out" was followed by the proposal that had been waiting.
+// Only THEIR rows, only about THIS meeting; an UPDATE, never a DELETE, so the
+// idempotency key keeps the fan-out from minting it again.
+async function withdrawQueuedFor(client, meetingId, userId) {
+  await client.query(
+    `UPDATE outbox SET sent_at = now(), hold_reason = 'superseded'
+      WHERE user_id = $2 AND sent_at IS NULL
+        AND (kind LIKE 'meeting\\_%' ESCAPE '\\' OR (kind = 'checkin' AND payload->>'rung' = 'stuck_meeting'))
+        AND payload->>'meetingId' = $1::text`,
+    [meetingId, userId]);
+}
+
 // Shared exit logic for opt_out AND connection-revoke. Whoever opened it
 // leaves like anybody else. If exiting leaves fewer than 2 active
 // participants, the meeting closes no_match.
@@ -444,6 +459,7 @@ async function applyExit(client, userId, meetingId, cause) {
     [meetingId, userId]
   );
   await audit.record(client, userId, 'meeting.opted_out', { meetingId, cause: cause || 'user_choice' });
+  await withdrawQueuedFor(client, meetingId, userId);
 
   const { rows } = await client.query(
     `SELECT count(*) FILTER (WHERE state <> 'opted_out') AS active_count
@@ -490,6 +506,7 @@ async function withdrawConfirmed(client, userId, meetingId, now = Date.now()) {
     [meetingId, userId]
   );
   await audit.record(client, userId, 'meeting.withdrew', { meetingId });
+  await withdrawQueuedFor(client, meetingId, userId);
 
   const { rows } = await client.query(
     `SELECT count(*) FILTER (WHERE state <> 'opted_out') AS active_count

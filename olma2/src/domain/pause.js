@@ -23,7 +23,11 @@
 //
 // ONE exception, and it is the owner's (2026-09-13): a paused person standing
 // in a WhatsApp room where a coordination starts hears about it once per
-// pause (`users.room_invite_sent_at`, migration 067). Being in the room is
+// pause (`users.room_invite_sent_at`, migration 067) — and since 2026-09-27
+// only a pause OLMA took because they went quiet (`quiet_ladder`). Somebody who
+// paused her THEMSELVES hears nothing at all: Gal wrote "dont send me messages"
+// because of one room's coordination and the room's next one reached him
+// anyway (`incidents.md`, "The pause the room's invite walked through"). Being in the room is
 // not something the pause can see, and silently counting them in — as the
 // room did to Kapish — is worse than one message. Their first message after
 // it, whenever it comes, ends the pause (resumeAfterRoomInvite); a day of
@@ -91,6 +95,23 @@ function quietRoomInviteSpent(row) {
     row.last_dashboard_at ? new Date(row.last_dashboard_at).getTime() : 0,
   );
   return spent >= spoke;
+}
+
+// A pause THEY asked for — confirmed (reason NULL) or said a moment ago
+// (`said_stop`) — against the one the ladder took for them. The owner's line
+// (2026-09-27): somebody who is merely less active still hears one invite from
+// a room; somebody who paused her hears nothing from her, and a room does not
+// count them, wait on them or tag them.
+function pausedByRequest(row) {
+  return Boolean(row && row.paused_at) && row.paused_reason !== QUIET_LADDER;
+}
+
+// Is this member left out of a room's coordination — never invited, never
+// swept in, never counted? Anybody who paused her themselves, and a quiet
+// pause whose one invite is spent. Needs `paused_at`, `paused_reason` and
+// `room_invite_sent_at` on the row (users, or groups.listMembers).
+function keptOutOfRooms(row) {
+  return pausedByRequest(row) || roomInviteSpent(row);
 }
 
 const MAX_CATCHUP_STEPS = 800; // ~2 years of daily; a guard, never a limit in practice
@@ -348,6 +369,6 @@ function endsOnWrite(row) {
 module.exports = {
   pauseUser, resumeUser, quietPause, quietResume, stopResume, resumeAfterRoomInvite,
   resumeOnWrite, endsOnWrite,
-  roomInviteSpent, quietRoomInviteSpent,
+  roomInviteSpent, quietRoomInviteSpent, pausedByRequest, keptOutOfRooms,
   isPaused, nextOccurrenceAfter, QUIET_LADDER, SAID_STOP, ROOM_INVITE_ANSWER_MS,
 };

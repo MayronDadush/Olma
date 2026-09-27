@@ -209,8 +209,14 @@ const SETTLE_GRACE_MS = 60 * 1000;
 // LEFT this coordination has an `opted_out` row and is not waited for.
 async function unanimousOption(client, meetingId) {
   const { rows } = await client.query(
-    `WITH active AS (
-       SELECT user_id FROM meeting_participants WHERE meeting_id = $1 AND state <> 'opted_out')
+    `WITH paused_out AS (
+       -- Somebody who paused her THEMSELVES is waited on by nobody (owner,
+       -- 2026-09-27; pause.pausedByRequest): nothing about this reaches them.
+       SELECT id AS user_id FROM users
+        WHERE paused_at IS NOT NULL AND paused_reason IS DISTINCT FROM 'quiet_ladder'),
+     active AS (
+       SELECT user_id FROM meeting_participants WHERE meeting_id = $1 AND state <> 'opted_out'
+          AND user_id NOT IN (SELECT user_id FROM paused_out))
      SELECT o.id, o.slot_text, o.starts_at, o.all_day, o.daypart
        FROM meeting_options o
       WHERE o.meeting_id = $1 AND o.status = 'active'
@@ -223,9 +229,10 @@ async function unanimousOption(client, meetingId) {
           SELECT 1 FROM meetings mt
             JOIN chat_group_members gm ON gm.group_id = mt.group_id AND gm.left_at IS NULL
            WHERE mt.id = $1
-             AND (gm.user_id IS NULL OR NOT EXISTS (
+             AND (gm.user_id IS NULL OR (gm.user_id NOT IN (SELECT user_id FROM paused_out)
+                  AND NOT EXISTS (
                    SELECT 1 FROM meeting_participants mp
-                    WHERE mp.meeting_id = $1 AND mp.user_id = gm.user_id)))
+                    WHERE mp.meeting_id = $1 AND mp.user_id = gm.user_id))))
       ORDER BY o.id LIMIT 1`, [meetingId]);
   return rows[0] || null;
 }

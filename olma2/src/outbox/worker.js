@@ -247,11 +247,16 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
         // later pause's allowance. A paused row keeps `pausedRoomInvite`
         // alone: the pause branch is decided before the quiet one, so widening
         // that fact would change what a pause means.
+        //
+        // Since 2026-09-27 only a pause the LADDER took qualifies: somebody who
+        // paused her themselves gets nothing at all (owner: "השהייה אומר שהם
+        // לא מקבלים הודעות בכלל ממנה"; pause.keptOutOfRooms). Gal said "dont
+        // send me messages" and the room's next coordination reached him.
         let pausedRoomInvite = false;
         let quietRoomInvite = false;
         const roomInviteCandidate = row.kind === 'meeting_invite' && meetingId
           && (row.paused_at
-            ? !pauseDomain.roomInviteSpent(row)
+            ? !pauseDomain.keptOutOfRooms(row)
             : (Number(row.checkin_misses) || 0) >= 1 && !pauseDomain.quietRoomInviteSpent(row));
         if (roomInviteCandidate) {
           const { rows: g } = await client.query(
