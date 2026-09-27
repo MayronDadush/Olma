@@ -120,6 +120,9 @@ test('no Hebrew reaches the page outside the string tables, unless it has an Eng
     // what shows in the tab for the instant before the script sets it from
     // the table ("page.title", paintStatic)
     '<title>עולמה שלי</title>',
+    // the same, for the name under the home-screen icon on an iPhone
+    // ("app.name", paintStatic)
+    '<meta name="apple-mobile-web-app-title" content="עולמה">',
     // these READ what the person types, in either language
     'if(/(^|\\s)(היום|today)(\\s|$)/.test(s)) push(0);',
     'if(/(^|\\s)(מחר|tomorrow)(\\s|$)/.test(s)) push(1);',

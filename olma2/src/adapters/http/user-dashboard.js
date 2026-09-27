@@ -22,6 +22,9 @@
 //   GET  /me/events   their calendar, fetched from Google. Session required.
 //   POST /me/act      one write. Session required.
 //   POST /me/out      sign out.
+//   POST /me/code     spend an eight-digit code from Olma and open a session —
+//                     the way into the home-screen app on an iPhone, whose
+//                     cookies are its own and which no link can reach.
 //
 // GET never changes anything, and that is not tidiness — WhatsApp fetches every
 // link it delivers to build a preview, so a key redeemed on GET would be burned
@@ -108,7 +111,10 @@ const CSP = [
   "script-src 'unsafe-inline'",
   "style-src 'unsafe-inline' https://fonts.googleapis.com",
   "font-src https://fonts.gstatic.com data:",
-  "img-src data:",
+  // 'self' for the home-screen icon the <head> names; the manifest is the
+  // installable app's (pwa.js). Nothing else of ours is fetched as either.
+  "img-src 'self' data:",
+  "manifest-src 'self'",
   "connect-src 'self'",
   "form-action 'self'",
   "frame-ancestors 'none'",
@@ -300,10 +306,42 @@ async function currentUser(pool, req) {
 // The mount asks this before handing anything over, so the operator dashboard
 // never has to know the route list — and so a path that is nearly one of ours
 // (`/mesh`, `/me/x`) falls through to Basic Auth instead of being answered here.
-const OWN = new Set(['/me', '/me/data', '/me/events', '/me/act', '/me/out']);
+const OWN = new Set(['/me', '/me/data', '/me/events', '/me/act', '/me/out', '/me/code']);
 function matches(pathname) {
   return OWN.has(pathname) || LINK_RE.test(pathname);
 }
+
+// ---- guessing a code -------------------------------------------------------
+// A code is eight digits, not a link's 128 bits, so the guesses are counted
+// where they arrive. Per address, five wrong in a quarter of an hour closes
+// that address for the rest of it; in total, sixty wrong closes the door for
+// everybody until the window rolls. With a handful of codes alive at once, a
+// full window of guesses finds one about once in a million windows, and each
+// code dies in ten minutes anyway. In memory, on purpose: the dashboard is one
+// process, and a restart forgiving a quarter of an hour costs nothing.
+const CODE_WINDOW_MS = 15 * 60 * 1000;
+const CODE_MAX_PER_ADDRESS = 5;
+const CODE_MAX_TOTAL = 60;
+const codeMisses = new Map();   // address -> [ms, ...]
+let codeMissesAll = [];
+function recent(list, now) { return list.filter((t) => now - t < CODE_WINDOW_MS); }
+// Caddy is the only thing in front of this and sets X-Forwarded-For; the socket
+// is the fallback for a request that reached the port directly.
+function clientAddress(req) {
+  const fwd = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  return fwd || (req.socket && req.socket.remoteAddress) || 'unknown';
+}
+function codeBlocked(addr, now = Date.now()) {
+  codeMissesAll = recent(codeMissesAll, now);
+  const mine = recent(codeMisses.get(addr) || [], now);
+  if (mine.length) codeMisses.set(addr, mine); else codeMisses.delete(addr);
+  return mine.length >= CODE_MAX_PER_ADDRESS || codeMissesAll.length >= CODE_MAX_TOTAL;
+}
+function codeMissed(addr, now = Date.now()) {
+  codeMisses.set(addr, [...(codeMisses.get(addr) || []), now]);
+  codeMissesAll.push(now);
+}
+function resetCodeLimits() { codeMisses.clear(); codeMissesAll = []; }
 
 async function handle(req, res, pool, pathname) {
   // ---- sign-in ------------------------------------------------------------
@@ -358,6 +396,22 @@ async function handle(req, res, pool, pathname) {
     if (sid) await withTx(pool, (c) => auth.endSession(c, sid));
     res.writeHead(303, headers(HTML, { Location: '/me', 'Set-Cookie': auth.clearCookieHeader() }));
     return res.end();
+  }
+
+  // ---- a code from Olma ---------------------------------------------------
+  // JSON in and out: the app's own sign-in form posts it and reloads on ok.
+  if (pathname === '/me/code') {
+    if (req.method !== 'POST') return sendJson(res, 405, { ok: false, error: { code: 'invalid' } }, { Allow: 'POST' });
+    if (!sameOrigin(req)) return sendJson(res, 403, { ok: false, error: { code: 'forbidden', message: 'cross-origin' } });
+    const addr = clientAddress(req);
+    if (codeBlocked(addr)) return sendJson(res, 429, { ok: false, error: { code: 'rate_limited' } });
+    const body = await readJsonBody(req, 1024);
+    const opened = await withTx(pool, (c) => auth.redeemCode(c, body && body.code));
+    if (!opened.ok) {
+      if (opened.error.code === 'not_found') codeMissed(addr);
+      return sendJson(res, opened.error.code === 'forbidden' ? 403 : 400, { ok: false, error: { code: opened.error.code } });
+    }
+    return sendJson(res, 200, { ok: true }, { 'Set-Cookie': auth.cookieHeader(opened.data.sessionId) });
   }
 
   if (pathname !== '/me' && pathname !== '/me/data'
@@ -431,4 +485,7 @@ async function handle(req, res, pool, pathname) {
   return sendJson(res, status, done);
 }
 
-module.exports = { handle, matches, LINK_RE, PAGE_PATH };
+module.exports = {
+  handle, matches, currentUser, pageLocale, resetCodeLimits, LINK_RE, PAGE_PATH,
+  CODE_MAX_PER_ADDRESS, CODE_MAX_TOTAL,
+};

@@ -112,7 +112,7 @@ async function createLink(client, userId, { target = 'home', meetingId = null } 
   await client.query(
     `DELETE FROM magic_links WHERE token_hash IN (
        SELECT token_hash FROM magic_links
-        WHERE user_id = $1 AND used_at IS NULL
+        WHERE user_id = $1 AND used_at IS NULL AND target <> 'code'
         ORDER BY created_at DESC, token_hash
         OFFSET $2)`,
     [userId, MAX_LIVE_LINKS - 1]);
@@ -133,6 +133,7 @@ async function peekLink(client, token) {
     `SELECT u.id AS user_id, u.first_name, u.locale, m.target, m.meeting_id
        FROM magic_links m JOIN users u ON u.id = m.user_id
       WHERE m.token_hash = $1 AND m.used_at IS NULL AND m.expires_at > now()
+        AND m.target <> 'code'
         AND u.status = 'active' AND u.is_eval = false`,
     [hash(token)]
   );
@@ -163,7 +164,7 @@ async function redeemLink(client, token) {
   // the second caller updates zero rows and gets nothing back.
   const { rows } = await client.query(
     `UPDATE magic_links SET used_at = now()
-      WHERE token_hash = $1 AND used_at IS NULL AND expires_at > now()
+      WHERE token_hash = $1 AND used_at IS NULL AND expires_at > now() AND target <> 'code'
       RETURNING user_id, target, meeting_id`,
     [hash(token)]
   );
@@ -181,6 +182,81 @@ async function redeemLink(client, token) {
   await client.query(
     `INSERT INTO dashboard_sessions (id, user_id) VALUES ($1, $2)`, [hash(sid), userId]);
   return ok({ sessionId: sid, userId, ...(await landing(client, rows[0])) });
+}
+
+// ---- codes -----------------------------------------------------------------
+//
+// The way into the app on an iPhone. A home-screen web app on iOS keeps its own
+// cookies, apart from Safari's, and a link tapped in WhatsApp always opens
+// Safari — so a link can sign the BROWSER in and never the app. A code crosses
+// that gap by hand: the person asks Olma for one in WhatsApp (answered by code,
+// no model; domain/link-request.js), and types it into the app.
+//
+// Eight digits, ten minutes, one use, one live code per person. It is a
+// magic_links row with `target = 'code'` (migration 095), so it inherits every
+// rule a link has: stored as sha256 only, spent by an atomic UPDATE. What a
+// code does NOT have is a link's 128 bits, so guessing is bounded where the
+// guesses arrive — POST /me/code counts failures per address and in total
+// (user-dashboard.js), and a code dies in ten minutes whatever happens.
+const CODE_TTL_MINUTES = 10;
+const CODE_DIGITS = 8;
+const CODE_RE = /^[0-9]{8}$/;
+
+function mintCode() {
+  // randomInt is uniform over the range; the padding keeps leading zeros.
+  return String(crypto.randomInt(0, 10 ** CODE_DIGITS)).padStart(CODE_DIGITS, '0');
+}
+
+// What a person types may carry the space the message shows it with, or a
+// dash; nothing else is forgiven.
+function normalizeCode(input) {
+  const s = String(input == null ? '' : input).replace(/[\s -]/g, '');
+  return CODE_RE.test(s) ? s : null;
+}
+
+// Returns the RAW code exactly once.
+async function createCode(client, userId) {
+  const { rows } = await client.query(
+    `SELECT id FROM users WHERE id = $1 AND status = 'active' AND is_eval = false`, [userId]);
+  if (!rows[0]) return err('not_found', 'no such active user');
+  // One live code per person: asking again replaces the last one, so the
+  // newest message in the chat is always the code that works.
+  await client.query(
+    `DELETE FROM magic_links WHERE user_id = $1 AND target = 'code' AND used_at IS NULL`, [userId]);
+  // Two live codes can collide (eight digits is a small space), and the hash
+  // is the key: a clash inserts nothing, and a fresh draw is taken.
+  for (let i = 0; i < 5; i += 1) {
+    const code = mintCode();
+    const r = await client.query(
+      `INSERT INTO magic_links (token_hash, user_id, expires_at, target)
+       VALUES ($1, $2, now() + ($3 || ' minutes')::interval, 'code')
+       ON CONFLICT DO NOTHING`,
+      [hash(code), userId, String(CODE_TTL_MINUTES)]);
+    if (r.rowCount === 1) return ok({ code, expiresInMinutes: CODE_TTL_MINUTES });
+  }
+  return err('conflict', 'could not draw a free code');
+}
+
+// Spend a code and open a session — redeemLink's twin, landing on the front
+// page. A wrong, spent or expired code are one answer, so trying one teaches
+// nothing about another.
+async function redeemCode(client, input) {
+  const code = normalizeCode(input);
+  if (!code) return err('not_found', 'malformed code');
+  const { rows } = await client.query(
+    `UPDATE magic_links SET used_at = now()
+      WHERE token_hash = $1 AND target = 'code' AND used_at IS NULL AND expires_at > now()
+      RETURNING user_id`,
+    [hash(code)]);
+  if (!rows[0]) return err('not_found', 'code is wrong, spent, or expired');
+  const userId = rows[0].user_id;
+  const live = await client.query(
+    `SELECT id FROM users WHERE id = $1 AND status = 'active' AND is_eval = false`, [userId]);
+  if (!live.rows[0]) return err('forbidden', 'this account cannot open the dashboard');
+  const sid = mint();
+  await client.query(
+    `INSERT INTO dashboard_sessions (id, user_id) VALUES ($1, $2)`, [hash(sid), userId]);
+  return ok({ sessionId: sid, userId: Number(userId), target: 'home' });
 }
 
 // ---- sessions --------------------------------------------------------------
@@ -321,6 +397,7 @@ function destinationFragment({ target, meetingId } = {}) {
 
 module.exports = {
   createLink, createLinkUrl, peekLink, redeemLink, linkMintedWithin, destinationFragment, tasksLinkUnlessRecent,
+  createCode, redeemCode, normalizeCode, CODE_TTL_MINUTES,
   resolveSession, endSession, endAllSessions, purgeExpired,
   cookieHeader, clearCookieHeader, readCookie,
   LINK_PATH, COOKIE, LINK_TTL_MINUTES, SESSION_IDLE_DAYS, SESSION_MAX_DAYS, MAX_LIVE_LINKS,

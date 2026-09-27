@@ -31,8 +31,12 @@ function ratio(a, b) {
 // 0 for the bare :root (light), 1 for the prefers-color-scheme block and 2 for
 // [data-theme="dark"] — all three have to carry a new token or one of the
 // three ways a person can land on this page gets the other theme's colour.
+// The brand layer (off by default) redefines tokens after these three blocks;
+// it is checked on its own below, so it is cut off here.
+const BRAND_AT = page.indexOf(':root[data-brand="allma"]{');
+const defaults = BRAND_AT > 0 ? page.slice(0, BRAND_AT) : page;
 function token(name, which) {
-  const hits = page.match(new RegExp('--' + name + ':(#[0-9A-Fa-f]{6})', 'g')) || [];
+  const hits = defaults.match(new RegExp('--' + name + ':(#[0-9A-Fa-f]{6})', 'g')) || [];
   assert.equal(hits.length, 3, '--' + name + ' is defined in all three palette blocks');
   return hits[which].split(':')[1];
 }
@@ -69,6 +73,28 @@ test('the quiet grey is dark enough to be text', () => {
     assert.ok(ratio(token(n, 0), token('bg', 0)) >= 4.5, '--' + n + ' as light-theme text');
     assert.ok(ratio(token(n, 1), token('bg', 1)) >= 4.5, '--' + n + ' as dark-theme text');
   });
+});
+
+test('the brand layer reads as well as the page it would replace', () => {
+  // Same bar as above, for the day and the night the brand would put on the
+  // page (?brand=1). A token it does not redefine falls back to the default
+  // block, so only what it sets is read here.
+  assert.ok(BRAND_AT > 0, 'the brand layer has moved — this test is reading nothing');
+  const layer = page.slice(BRAND_AT, page.indexOf('[dir="ltr"]{--dirf', BRAND_AT));
+  const blocks = layer.split(/\n(?=@media|:root\[data-brand="allma"\]\[data-theme)/);
+  assert.equal(blocks.length, 3, 'day, night by the phone, night by the switch');
+  const val = (b, n) => { const m = b.match(new RegExp('--' + n + ':(#[0-9A-Fa-f]{6})')); return m && m[1]; };
+  blocks.forEach(function (b, i) {
+    const ground = ['bg', 'bg-tint', 'surface'].map((g) => val(b, g));
+    ['text', 'text-2', 'text-3', 'accent', 'danger', 'ok'].forEach(function (n) {
+      const v = val(b, n);
+      assert.ok(v, `--${n} in brand block ${i}`);
+      ground.forEach((g) => assert.ok(ratio(v, g) >= 4.5, `--${n} ${v} on ${g} in brand block ${i}: ${ratio(v, g).toFixed(2)}`));
+    });
+    assert.ok(ratio(val(b, 'on-accent'), val(b, 'accent')) >= 4.5, `ink on the action colour, brand block ${i}`);
+  });
+  // "No green anywhere — green is WhatsApp's" (brand kit): ok is not green.
+  blocks.forEach((b) => { const ok = val(b, 'ok'); const [r, g, bl] = [1, 3, 5].map((k) => parseInt(ok.substr(k, 2), 16)); assert.ok(!(g > r && g > bl), `--ok ${ok} is green`); });
 });
 
 test('a finger gets more than the icon does', () => {

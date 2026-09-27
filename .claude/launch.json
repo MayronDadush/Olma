@@ -11,6 +11,17 @@
       "autoPort": true
     },
     {
+      "name": "dashboard-demo-8795",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "OLMA_DEMO_PORT=8795",
+        "node",
+        "olma2/scripts/demo-dashboard.js"
+      ],
+      "port": 8795,
+      "url": "http://127.0.0.1:8795"
+    },
+    {
       "name": "dashboard-demo",
       "runtimeExecutable": "node",
       "runtimeArgs": [

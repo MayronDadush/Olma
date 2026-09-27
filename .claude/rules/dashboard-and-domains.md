@@ -16,7 +16,9 @@ title means this file. Grep the title, not the filename.
 
 - **`allma.world` serves an ALLOWLIST, not the admin dashboard.** Caddy passes
   a named set of routes to `:8788` — `/pick/<48 hex>`, `/d/<22 base62 | 64 hex>`, `/me`,
-  `/me/data`, `/me/events`, `/me/act`, `/me/out`, `/oauth/google/callback`,
+  `/me/data`, `/me/events`, `/me/act`, `/me/out`, `/me/code`, the installable
+  app's `/manifest.webmanifest` and its four `/icons/…png` (named one by one
+  in `src/adapters/http/pwa.js`), `/oauth/google/callback`,
   `/health`, `/ready`, and the three stranger-readable pages `/`, `/privacy`
   and `/terms` — plus `/voice-bridge*` to `:8791`. Everything else 404s
   in Caddy and never reaches the app. **Read the Caddyfile for the current
@@ -49,6 +51,21 @@ title means this file. Grep the title, not the filename.
   out unasked (an invite, a long list) and a new one killing the last would
   kill the invite's; a GET from a phone already signed in as that person
   goes straight in without spending the key.
+
+- **A home-screen app on an iPhone has its own cookie jar, so a LINK can never
+  sign it in.** Every `/d/<token>` tapped in WhatsApp opens Safari, and the
+  session it opens stays in Safari. The installed app is signed into from
+  inside it, with eight digits Olma sends when asked "קוד כניסה"
+  (`dashboard-auth.createCode`/`redeemCode`, a `magic_links` row with
+  `target = 'code'`, migration 095; POST `/me/code`, guesses capped per
+  address and in total). **A code is not a link and a link is not a code**:
+  a code never counts against `MAX_LIVE_LINKS`, `peekLink`/`redeemLink` never
+  find one, and the code message goes out in the language ON FILE, because a
+  button typed the request and the reply gate drops English to a Hebrew
+  writer (`incidents.md`, "The dashboard became an app, and an iPhone needed
+  a door of its own"). The manifest, the icons and `/me/code` are public
+  routes: **Caddy must name them before any phone can install the app**, and
+  after the deploy, never before.
 
 - **Three places hold the domain and none of them are in the repo**:
   `/etc/caddy/Caddyfile`, `/opt/olma/google-oauth.json` (`public_base_url`,

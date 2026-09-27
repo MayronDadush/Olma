@@ -18,6 +18,36 @@
      its own white behind them for the instant before the CSS lands. -->
 <meta name="color-scheme" content="light dark">
 <title>עולמה שלי</title>
+<!-- The page as an app on the home screen (src/adapters/http/pwa.js): the
+     manifest that makes it installable, the icon iOS puts on the home screen,
+     and the colour the phone paints its own bars in. Served from
+     scripts/serve-design.js these 404 harmlessly. theme-color is the page's
+     own ground in each scheme, so the status bar and the page are one piece. -->
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icons/icon-192.png" sizes="192x192" type="image/png">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<meta name="theme-color" content="#F4F3F8" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0C0B11" media="(prefers-color-scheme: dark)">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="עולמה">
+<!-- The brand layer (see "the brand layer" in the stylesheet) is off until the
+     owner says otherwise; ?brand=1 turns it on for this browser, ?brand=0
+     off. Here, before the stylesheet, so the page never paints once in the
+     old colours and then jumps. -->
+<script>
+try{
+  var bq = new URLSearchParams(location.search).get("brand");
+  if(bq === "1" || bq === "0") localStorage.setItem("olma.brand", bq);
+  if(localStorage.getItem("olma.brand") === "1"){
+    document.documentElement.setAttribute("data-brand", "allma");
+    document.querySelectorAll('meta[name="theme-color"]').forEach(function(m){
+      m.setAttribute("content", /dark/.test(m.getAttribute("media") || "") ? "#16122E" : "#F7F1E6");
+    });
+  }
+}catch(e){}
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;500;600;700&family=Rubik:wght@500;600;700&display=swap">
@@ -134,6 +164,10 @@
      the access control it reveals all read from it, so they cannot drift out
      of step the way three hand-copied durations did. */
   --sw-t:.26s;
+  /* The two faces, as tokens, so the brand's font pair — still being chosen
+     on 2026-09-27 — is one line here and not eighteen across the sheet. */
+  --font-head:'Rubik',sans-serif;
+  --font-body:'Assistant','Heebo',system-ui,-apple-system,'Segoe UI',sans-serif;
 }
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
@@ -233,6 +267,123 @@
   --shadow-l:0 24px 64px -20px rgba(0,0,0,.8), 0 2px 8px rgba(0,0,0,.5);
 }
 
+/* ─────────────────  the brand layer (off by default)  ─────────────────
+   Allma Brand Kit, 2026-09-27: calm as the base, the hour as the colour
+   system. Day is "coral on ink" (ink #221C3A on paper #F7F1E6, coral
+   #FF8A6B); night is "electric night" (#16122E / #EDEAFB, violet #7C6CF2).
+   No green anywhere — green is WhatsApp's.
+
+   Only COLOURS move here; every rule on the page already reads them from the
+   tokens above, which is what makes the brand one block rather than a
+   rewrite. Two choices are made on the page's behalf and are easy to undo:
+     - the ACTION colour is ink by day and pale violet by night, and coral is
+       kept for the moment of "together" (the soft fills, the progress arcs).
+       Coral as text on paper measures 2.1:1, and a coral action sits beside
+       the overdue red and reads as a warning;
+     - "ok" is violet, not green.
+   It is switched on per viewer by ?brand=1 (and off by ?brand=0), remembered
+   in this browser only, until the owner decides it is the page. Contrast was
+   measured on every text token against bg, bg-tint and surface: 4.5 or
+   better throughout. */
+:root[data-brand="allma"]{
+  --bg:#F7F1E6;
+  --bg-tint:#EFE7D8;
+  --surface:#FFFCF6;
+  --surface-2:#FBF6EC;
+  --sep:#EAE1CF;
+  --sep-2:#DCD1BC;
+  --text:#221C3A;
+  --text-2:#554E6B;
+  --text-3:#625B76;
+  --accent:#221C3A;
+  --accent-2:#3A3160;
+  --accent-soft:#FFE3D8;
+  --prog:rgba(255,138,107,.42);
+  --accent-line:rgba(255,138,107,.75);
+  --danger:#BF2519;
+  --danger-soft:#FBE6E1;
+  --warn:#875604;
+  --warn-soft:#F6EBD3;
+  --ok:#4B3FC4;
+  --ok-soft:#EAE7FB;
+  --drop-line:#7C6CF2;
+  --mk-line:#221C3A;
+  --mk-paper:#FFFCF6;
+  --mk-paper-s:#E6DCC8;
+  --seg-on:#FFFCF6;
+  --on-accent:#F7F1E6;
+  --glass:rgba(255,252,246,.74);
+  --glass-line:rgba(34,28,58,.08);
+  --glass-panel:rgba(255,252,246,.86);
+  --bar:rgba(255,252,246,.5);
+  --toast-bg:rgba(255,252,246,.6);
+  --shadow-s:0 1px 2px rgba(34,28,58,.06);
+  --shadow-m:0 1px 2px rgba(34,28,58,.05), 0 10px 28px -16px rgba(34,28,58,.3);
+  --shadow-l:0 24px 64px -20px rgba(34,28,58,.36), 0 2px 8px rgba(34,28,58,.08);
+}
+@media (prefers-color-scheme: dark){
+  :root[data-brand="allma"]:not([data-theme="light"]){
+    --bg:#16122E;
+    --bg-tint:#262050;
+    --surface:#1F1A3D;
+    --surface-2:#262048;
+    --sep:#312A5C;
+    --sep-2:#3E366F;
+    --text:#EDEAFB;
+    --text-2:#B4ADD6;
+    --text-3:#A29BC8;
+    --accent:#A99CFF;
+    --accent-2:#C2B8FF;
+    --accent-soft:#3A2A4E;
+    --prog:rgba(255,138,107,.4);
+    --accent-line:rgba(255,138,107,.6);
+    --danger:#FF6B6B;
+    --danger-soft:#3A1830;
+    --ok:#8FD3FF;
+    --ok-soft:#1C2E52;
+    --drop-line:#A99CFF;
+    --mk-line:#EDEAFB;
+    --mk-paper:#3A3470;
+    --mk-paper-s:#2A2458;
+    --seg-on:#3A3470;
+    --on-accent:#16122E;
+    --glass:rgba(31,26,61,.72);
+    --glass-panel:rgba(35,30,68,.84);
+    --bar:rgba(31,26,61,.42);
+    --toast-bg:rgba(35,30,68,.6);
+  }
+}
+:root[data-brand="allma"][data-theme="dark"]{
+  --bg:#16122E;
+  --bg-tint:#262050;
+  --surface:#1F1A3D;
+  --surface-2:#262048;
+  --sep:#312A5C;
+  --sep-2:#3E366F;
+  --text:#EDEAFB;
+  --text-2:#B4ADD6;
+  --text-3:#A29BC8;
+  --accent:#A99CFF;
+  --accent-2:#C2B8FF;
+  --accent-soft:#3A2A4E;
+  --prog:rgba(255,138,107,.4);
+  --accent-line:rgba(255,138,107,.6);
+  --danger:#FF6B6B;
+  --danger-soft:#3A1830;
+  --ok:#8FD3FF;
+  --ok-soft:#1C2E52;
+  --drop-line:#A99CFF;
+  --mk-line:#EDEAFB;
+  --mk-paper:#3A3470;
+  --mk-paper-s:#2A2458;
+  --seg-on:#3A3470;
+  --on-accent:#16122E;
+  --glass:rgba(31,26,61,.72);
+  --glass-panel:rgba(35,30,68,.84);
+  --bar:rgba(31,26,61,.42);
+  --toast-bg:rgba(35,30,68,.6);
+}
+
 [dir="ltr"]{--dirf:-1;--strike-origin:left}
 
 /* ─────────────────────────  base  ───────────────────────── */
@@ -249,7 +400,7 @@ body{
   margin:0;
   background:var(--bg);
   color:var(--text);
-  font-family:'Assistant','Heebo',system-ui,-apple-system,'Segoe UI',sans-serif;
+  font-family:var(--font-body);
   font-size:16px;
   line-height:1.45;
   -webkit-font-smoothing:antialiased;
@@ -338,7 +489,7 @@ html[data-v="me"] .brand{opacity:0;transform:translateY(-8px) scale(.94);pointer
    stays one line: a header that reflows to two pushes the clock and the
    status pill around, and those two are the reason anybody looks up here. */
 .brand-hi{font-size:13px;color:var(--text-2);line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.brand-name{font-family:'Rubik',sans-serif;font-weight:600;font-size:17px;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.brand-name{font-family:var(--font-head);font-weight:600;font-size:17px;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hdrend{display:flex;align-items:center;gap:9px;flex:none}
 /* Three icons, one pressed at a time — the same picture language as the seg
    controls elsewhere, just small enough to live beside the clock on every
@@ -433,7 +584,7 @@ html.intro-go .tabbar{animation:introBar .55s var(--ease) .3s both}
 }
 
 .title{padding:8px 2px 18px}
-.title h1{font-family:'Rubik',sans-serif;font-weight:700;font-size:33px;line-height:1.12;letter-spacing:-.015em;text-wrap:balance}
+.title h1{font-family:var(--font-head);font-weight:700;font-size:33px;line-height:1.12;letter-spacing:-.015em;text-wrap:balance}
 .title p{margin-top:6px;color:var(--text-2);font-size:15px;max-width:52ch}
 
 .glabel{
@@ -781,7 +932,7 @@ button.row:active{background:var(--bg-tint)}
    the largest thing on the card; the chevron says it goes somewhere, because
    a new person does not yet know the tab bar is there. */
 .homecards{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:30px}
-.homeh{font-family:'Rubik',sans-serif;font-weight:700;font-size:20px;letter-spacing:-.01em;padding:0 2px 12px}
+.homeh{font-family:var(--font-head);font-weight:700;font-size:20px;letter-spacing:-.01em;padding:0 2px 12px}
 .homecard{
   position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:4px;
   background:var(--surface);border-radius:20px;box-shadow:var(--shadow-m);
@@ -792,7 +943,7 @@ button.row:active{background:var(--bg-tint)}
 /* the tab bar's own glyphs, drawn the way the bar draws them — the card and
    the tab it opens are recognisably the same place */
 .homeicon{width:28px;height:28px;color:var(--text-2);margin-bottom:10px}
-.homenum{color:var(--text);font-family:'Rubik',sans-serif;font-weight:700;font-size:38px;line-height:1;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.homenum{color:var(--text);font-family:var(--font-head);font-weight:700;font-size:38px;line-height:1;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
 .homecard b{font-size:15px;font-weight:600;margin-top:2px}
 .homecard > i{font-style:normal;font-size:12.5px;color:var(--text-3);line-height:1.35;min-height:1.35em}
 /* Nothing to count is not a zero to show — it is the first thing to do. The
@@ -970,7 +1121,7 @@ html.is-new .introtog{display:none}
 }
 .wcard{width:100%;max-width:376px;display:flex;flex-direction:column;align-items:center;text-align:center}
 .wword{
-  font-family:'Rubik',sans-serif;font-weight:700;
+  font-family:var(--font-head);font-weight:700;
   font-size:42px;line-height:1;letter-spacing:-.02em;color:var(--text);
 }
 .wlede{margin-top:11px;font-size:16px;line-height:1.5;color:var(--text-2);max-width:20em}
@@ -999,6 +1150,69 @@ html.is-new .introtog{display:none}
 .welcome .whint{animation-delay:.135s}
 .welcome .wrow{animation-delay:.165s}
 .welcome .wfoot{animation-delay:.21s}
+
+/* ─────────────────  signing into the app with a code  ───────────────── */
+/* A home-screen app on an iPhone keeps its own cookies, so the link that
+   signed Safari in never reaches it; eight digits from Olma do. Inside the
+   installed app (html.is-app) the first screen IS this form — the two chat
+   tiles are for a stranger, and somebody who installed the app is not one.
+   In a browser it waits behind "I have a code". */
+.wcode{margin-top:22px;width:100%;display:flex;flex-direction:column;align-items:stretch;gap:10px;text-align:center}
+.wcode[hidden]{display:none}
+.wcode-p{font-size:14.5px;line-height:1.5;color:var(--text-2)}
+.wcode-get{
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  padding:14px 16px;border-radius:14px;background:var(--surface);box-shadow:var(--shadow-m);
+  color:var(--text);font-weight:600;font-size:15.5px;text-decoration:none;
+}
+.wcode-get .tile{width:26px;height:26px;border-radius:8px}
+.wcode-in{
+  width:100%;padding:14px 12px;border-radius:14px;border:1.5px solid var(--sep-2);
+  background:var(--surface);color:var(--text);outline:none;text-align:center;direction:ltr;
+  font:600 24px/1.1 var(--font-head);letter-spacing:.18em;font-variant-numeric:tabular-nums;
+}
+.wcode-in:focus{border-color:var(--accent)}
+.wcode-in::placeholder{letter-spacing:normal;font-size:16px;font-weight:500;color:var(--text-3)}
+.wcode-go{
+  padding:14px 16px;border-radius:14px;background:var(--accent);color:var(--on-accent);
+  font-weight:700;font-size:16px;transition:opacity .2s var(--ease),transform .2s var(--spring);
+}
+.wcode-go:disabled{opacity:.45}
+.wcode-go:active{transform:scale(.98)}
+.wcode-err{min-height:1.4em;font-size:13.5px;color:var(--danger)}
+.wcode-have{margin-top:14px;font-size:14px;font-weight:600;color:var(--accent);padding:6px 10px}
+html.is-app .welcome .whint,
+html.is-app .welcome .wrow,
+html.is-app .welcome .wfoot,
+html.is-app .welcome .wcode-have{display:none}
+
+/* ─────────────────  the invitation to install  ───────────────── */
+/* One card at the top of the home tab, only where installing can actually
+   work: Chrome/Edge said so (beforeinstallprompt), or this is Safari on an
+   iPhone, where the steps are three taps the browser will not offer itself.
+   Never inside the installed app, never after "not now". */
+.inst{
+  position:relative;margin:0 0 14px;padding:15px 16px 14px;border-radius:20px;
+  background:var(--surface);box-shadow:var(--shadow-m);
+  display:grid;grid-template-columns:44px 1fr;column-gap:12px;row-gap:2px;align-items:center;
+}
+.inst[hidden]{display:none}
+.inst-mark{grid-row:1 / span 2;width:44px;height:44px;border-radius:11px;overflow:hidden;box-shadow:var(--shadow-s)}
+.inst-mark svg{display:block;width:100%;height:100%}
+.inst b{font-family:var(--font-head);font-weight:700;font-size:16px;color:var(--text)}
+.inst p{font-size:13.5px;line-height:1.45;color:var(--text-2)}
+.inst-steps{grid-column:1 / -1;margin:12px 0 2px;padding:0;list-style:none;display:flex;flex-direction:column;gap:9px;counter-reset:inst}
+.inst-steps li{display:flex;align-items:center;gap:10px;font-size:14px;line-height:1.4;color:var(--text);counter-increment:inst}
+.inst-steps li::before{
+  content:counter(inst);flex:none;width:22px;height:22px;border-radius:50%;
+  display:grid;place-items:center;background:var(--accent-soft);color:var(--accent);
+  font:700 12px var(--font-head);
+}
+.inst-steps svg{width:17px;height:17px;flex:none;color:var(--accent);vertical-align:-3px}
+.inst-acts{grid-column:1 / -1;display:flex;gap:8px;margin-top:12px}
+.inst-acts button{flex:1;padding:11px 12px;border-radius:12px;font-weight:600;font-size:14.5px}
+.inst-yes{background:var(--accent);color:var(--on-accent)}
+.inst-no{background:var(--bg-tint);color:var(--text-2)}
 .themetog{
   position:fixed;bottom:calc(env(safe-area-inset-bottom,0px) + 96px);inset-inline-start:128px;z-index:80;
   width:26px;height:26px;border-radius:999px;background:var(--surface);
@@ -1027,7 +1241,7 @@ html.is-new .themetog{z-index:80}
 [dir="ltr"] .backbtn svg{transform:none}
 .pushhead .tile{width:44px;height:44px;border-radius:14px}
 .pushtxt{min-width:0}
-.pushtxt b{display:block;font-family:'Rubik',sans-serif;font-weight:700;font-size:22px;letter-spacing:-.01em}
+.pushtxt b{display:block;font-family:var(--font-head);font-weight:700;font-size:22px;letter-spacing:-.01em}
 .pushtxt span{display:block;font-size:13.5px;color:var(--text-2);margin-top:1px}
 
 /* A value belongs beside its label, not in a box of its own that runs the
@@ -2060,7 +2274,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
    `span:last-child` until the paging arrows joined the row — at which point
    neither span was a first or last child any more and the heading silently
    lost its type. */
-#stripMonth{font-family:'Rubik',sans-serif;font-size:15.5px;font-weight:600;color:var(--text)}
+#stripMonth{font-family:var(--font-head);font-size:15.5px;font-weight:600;color:var(--text)}
 #stripYear{font-size:13px;font-weight:500;color:var(--text-3);font-variant-numeric:tabular-nums}
 /* The arrows sit at the two ends and the label floats between them, so the
    row reads as one control rather than three things that happen to be
@@ -2084,7 +2298,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   transition:background .24s var(--ease),color .24s var(--ease),transform .24s var(--spring);
 }
 .day .dn{font-size:11.5px;font-weight:600;color:var(--text-3)}
-.day .dd{font-family:'Rubik',sans-serif;font-size:17px;font-weight:600;margin-top:2px;font-variant-numeric:tabular-nums}
+.day .dd{font-family:var(--font-head);font-size:17px;font-weight:600;margin-top:2px;font-variant-numeric:tabular-nums}
 .day.today .dd{color:var(--accent)}
 /* "Today" instead of the weekday letter. A dot here sat one line above the
    dots that count what is IN the day — same shape, two meanings, and the
@@ -2425,7 +2639,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 .hero-profile{display:flex;flex-direction:column;align-items:center;gap:12px;padding:6px 0 28px}
 .hero-profile .avatar{width:96px;height:96px}
 .hero-profile .who{text-align:center}
-.hero-profile .who b{display:block;font-family:'Rubik',sans-serif;font-size:22px;font-weight:600}
+.hero-profile .who b{display:block;font-family:var(--font-head);font-size:22px;font-weight:600}
 .hero-profile .who span{font-size:14px;color:var(--text-2)}
 
 /* ─────────────────────────  profile settings  ───────────────────────── */
@@ -2700,7 +2914,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   position:absolute;top:0;height:100%;border-radius:999px;background:var(--accent);
   width:var(--w,40%);inset-inline-start:var(--o,0%);
 }
-.sheet h2{font-family:'Rubik',sans-serif;font-size:20px;font-weight:600;margin-bottom:16px;text-align:center}
+.sheet h2{font-family:var(--font-head);font-size:20px;font-weight:600;margin-bottom:16px;text-align:center}
 .sheet .group{box-shadow:none;background:var(--surface-2)}
 .sheetbtns{display:flex;flex-direction:column;gap:10px;margin-top:20px}
 /* the new-coordination steps */
@@ -2709,7 +2923,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 .mtprog i.on{background:var(--accent)}
 .mtstepn{text-align:center;font-size:12.5px;color:var(--text-3);margin:0 0 12px}
 .mtq{display:flex;align-items:baseline;justify-content:space-between;gap:10px;
-  font-family:'Rubik',sans-serif;font-size:21px;font-weight:600;margin:4px 4px 14px}
+  font-family:var(--font-head);font-size:21px;font-weight:600;margin:4px 4px 14px}
 .mtq .hint{font-family:inherit;font-size:13px;font-weight:500;color:var(--text-3)}
 .mtstep{animation:mtStepIn .28s var(--ease) both}
 @keyframes mtStepIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
@@ -2727,7 +2941,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
    reach for. */
 .stitlewrap{display:flex;align-items:center;gap:8px;padding:2px 4px 10px}
 .stitle{
-  flex:1;min-width:0;border:0;background:none;font:inherit;font-family:'Rubik',sans-serif;
+  flex:1;min-width:0;border:0;background:none;font:inherit;font-family:var(--font-head);
   font-size:20px;font-weight:600;color:var(--text);text-align:center;outline:none;
   padding:0;
 }
@@ -2783,7 +2997,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   stroke-linecap:round;stroke-linejoin:round}
 [dir="rtl"] .calnav svg{transform:scaleX(-1)}
 .calttl{
-  flex:1;text-align:center;font-family:'Rubik',sans-serif;font-size:14.5px;font-weight:600;
+  flex:1;text-align:center;font-family:var(--font-head);font-size:14.5px;font-weight:600;
   color:var(--text);padding:6px 4px;border-radius:9px
 }
 .calttl:active{background:var(--bg-tint)}
@@ -2841,7 +3055,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 .tpcol::-webkit-scrollbar{display:none}
 .tpcol button{
   display:block;width:100%;height:40px;scroll-snap-align:center;
-  font-family:'Rubik',sans-serif;font-size:19px;font-weight:500;color:var(--text-3);
+  font-family:var(--font-head);font-size:19px;font-weight:500;color:var(--text-3);
   font-variant-numeric:tabular-nums;direction:ltr;
   /* `transform`, not `font-size`: a font-size transition re-lays the text out
      on every frame, which is the one property in this picker that is animated
@@ -2849,7 +3063,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   transition:color .18s var(--ease-io),transform .18s var(--ease-io)
 }
 .tpcol button.on{color:var(--text);font-weight:600;transform:scale(1.158)}
-.tpcolon{position:relative;font-family:'Rubik',sans-serif;font-size:20px;font-weight:600;color:var(--text-2);padding-bottom:3px}
+.tpcolon{position:relative;font-family:var(--font-head);font-size:20px;font-weight:600;color:var(--text-2);padding-bottom:3px}
 .tpfoot{margin-top:8px;display:flex;gap:6px}
 .tpfoot button{
   width:100%;padding:10px;border-radius:12px;background:var(--accent);color:var(--on-accent);
@@ -2937,6 +3151,9 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs>
   <symbol id="i-chev" viewBox="0 0 8 15"><path d="M6.6 1 1 7.5 6.6 14" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-check" viewBox="0 0 16 16"><path d="M2.6 8.4 6.2 12 13.4 4.4" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <!-- iOS's own share glyph, drawn so the install steps can point at the
+       exact button Safari shows. -->
+  <symbol id="i-share" viewBox="0 0 20 20"><path d="M10 2.6v9.2M6.6 5.8 10 2.4l3.4 3.4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M7 8.4H5.4a1.6 1.6 0 0 0-1.6 1.6v6a1.6 1.6 0 0 0 1.6 1.6h9.2a1.6 1.6 0 0 0 1.6-1.6v-6a1.6 1.6 0 0 0-1.6-1.6H13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
   <symbol id="i-plus" viewBox="0 0 16 16"><path d="M8 2v12M2 8h12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></symbol>
   <symbol id="i-bell" viewBox="0 0 16 16"><path d="M8 1.6a4 4 0 0 0-4 4v2.6L2.7 11h10.6L12 8.2V5.6a4 4 0 0 0-4-4Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M6.3 12.6a1.8 1.8 0 0 0 3.4 0" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></symbol>
   <symbol id="i-clock" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 4.6V8l2.4 1.6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></symbol>
@@ -3053,6 +3270,18 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     <!-- The home cards: what she is holding for you, one tap from its page.
          A new person used to land on a grid of services, see nothing of their
          own and leave without finding the tab bar (the owner, 2026-09-26). -->
+    <!-- The invitation to install (see .inst): drawn by installMaybe(), only
+         where installing can work, and never inside the installed app. -->
+    <div class="inst" id="inst" role="region" hidden>
+      <span class="inst-mark" id="instMark" aria-hidden="true"></span>
+      <b data-i18n="inst.h"></b>
+      <p id="instP"></p>
+      <ol class="inst-steps" id="instSteps" hidden></ol>
+      <div class="inst-acts">
+        <button class="inst-yes" id="instYes" type="button"></button>
+        <button class="inst-no" id="instNo" type="button"></button>
+      </div>
+    </div>
     <div class="homecards" data-stage="0">
       <button class="homecard" data-go="tasks">
         <svg class="homeicon"><use href="#i-list"/></svg>
@@ -3438,6 +3667,15 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     </div>
     <div class="wrow" id="wRow"></div>
     <p class="wfoot" data-i18n="w.foot"></p>
+    <button class="wcode-have" id="wCodeHave" type="button" data-i18n="code.have"></button>
+    <form class="wcode" id="wCode" hidden novalidate>
+      <p class="wcode-p" data-i18n="code.p"></p>
+      <a class="wcode-get" id="wCodeGet" target="_blank" rel="noopener"></a>
+      <input class="wcode-in" id="wCodeIn" type="text" inputmode="numeric" autocomplete="one-time-code"
+             maxlength="40" data-i18n-ph="code.ph" data-i18n-label="code.ph">
+      <p class="wcode-err" id="wCodeErr" role="alert"></p>
+      <button class="wcode-go" id="wCodeGo" type="submit" data-i18n="code.go" disabled></button>
+    </form>
   </div>
 </div>
 
@@ -4561,7 +4799,11 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
        preference was tried here first and dropped on purpose: it would hand a
        Hebrew phone a Hebrew first screen, which is nicer for that one person
        and unpredictable for everybody else.) */
-    var v = q || h || document.documentElement.getAttribute("data-locale") ||
+    /* ?hl= is the installed app's start address (pwa.js): the language of
+       whoever installed it. Read only on the signed-out screen, where nothing
+       else says who this is; once signed in, what is on file wins. */
+    var hl = NEWUSER ? (new URLSearchParams(location.search).get("hl") || "") : "";
+    var v = q || h || document.documentElement.getAttribute("data-locale") || hl ||
       (NEWUSER ? "en" : "he");
     return v.slice(0,2).toLowerCase() === "en" ? "en" : "he";
   })();
@@ -4603,6 +4845,23 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
          before she has even been written to once */
       "w.hint":"כתוב לעולמה בשפה שלך","w.open":"פתיחת שיחה",
       "w.foot":"אין מה להתקין. השיחה נפתחת ריקה — המשפט הראשון שלך הוא זה שמלמד אותה באיזו שפה לדבר.",
+      /* signing into the installed app with a code (see .wcode) */
+      "app.name":"עולמה",
+      "code.have":"יש לי קוד מעולמה","code.h":"כניסה לאפליקציה",
+      "code.p":"עולמה תשלח לך קוד כניסה בוואטסאפ. מעתיקים את ההודעה, מדביקים כאן, וזהו.",
+      "code.get":"קבלת קוד בוואטסאפ","code.waText":"קוד כניסה לאפליקציה",
+      "code.ph":"קוד בן 8 ספרות","code.go":"כניסה",
+      "code.bad":"הקוד לא מתאים, או שעברו כבר 10 דקות. אפשר לבקש חדש.",
+      "code.slow":"יותר מדי ניסיונות. אפשר לנסות שוב בעוד רבע שעה.",
+      "code.net":"אין חיבור כרגע. נסו שוב בעוד רגע.",
+      /* the invitation to install (see .inst) */
+      "inst.h":"עולמה במסך הבית",
+      "inst.p":"אייקון משלה, בלי לחפש את הקישור בוואטסאפ.",
+      "inst.pIos":"שלוש לחיצות בספארי, ועולמה נפתחת כמו אפליקציה.",
+      "inst.btn":"הוספה למסך הבית","inst.later":"לא עכשיו","inst.ok":"הבנתי",
+      "inst.ios1":"לוחצים על {share} בסרגל של ספארי",
+      "inst.ios2":"בוחרים ״הוספה למסך הבית״",
+      "inst.ios3":"פותחים את עולמה מהמסך, ומבקשים ממנה קוד כניסה",
       "ch.open":"פתיחת השיחה","ch.add":"להוספה",
       "ch.call":"שיחה","ch.callSub":"עולמה תתקשר","ch.calling":"מתקשרת אליך…",
       "ch.callArm":"מתכוננת לשיחה…","ch.callReady":"מוכנה — לחיצה נוספת",
@@ -4946,6 +5205,21 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "ch.h":"Where we talk","ch.hint":"Tap to open the chat",
       "w.hint":"Write to Allma in your own language","w.open":"Opens a chat",
       "w.foot":"Nothing to install. The chat opens empty — your first sentence is what tells her which language to speak.",
+      "app.name":"Allma",
+      "code.have":"I have a code from Allma","code.h":"Sign in to the app",
+      "code.p":"Allma will send you a sign-in code on WhatsApp. Copy the message, paste it here, and you're in.",
+      "code.get":"Get a code on WhatsApp","code.waText":"App sign-in code",
+      "code.ph":"8-digit code","code.go":"Sign in",
+      "code.bad":"That code doesn't match, or its 10 minutes are up. You can ask for a new one.",
+      "code.slow":"Too many tries. You can try again in a quarter of an hour.",
+      "code.net":"No connection right now. Try again in a moment.",
+      "inst.h":"Allma on your home screen",
+      "inst.p":"Her own icon — no digging for the link in WhatsApp.",
+      "inst.pIos":"Three taps in Safari, and Allma opens like an app.",
+      "inst.btn":"Add to home screen","inst.later":"Not now","inst.ok":"Got it",
+      "inst.ios1":"Tap {share} in Safari's toolbar",
+      "inst.ios2":"Choose \u201cAdd to Home Screen\u201d",
+      "inst.ios3":"Open Allma from your home screen and ask her for a sign-in code",
       "ch.open":"Open chat","ch.add":"Add",
       "ch.call":"Call","ch.callSub":"Allma rings you","ch.calling":"Calling you…",
       "ch.callArm":"Getting ready…","ch.callReady":"Ready — tap again",
@@ -10584,6 +10858,20 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   }
   /* A phone whose screen has been off for a night arrives here first. */
   document.addEventListener("visibilitychange", function(){ if(!document.hidden) rollDay(); });
+  /* And the installed app is never reloaded by anybody: iOS and Android keep
+     it in memory for days, so the list it shows is whatever it read when it
+     was last opened — yesterday's, with the things she added since missing.
+     Coming back to it after a real absence reads the page again, once. Not
+     on a timer, and not while it is on screen: nobody's finger is on a page
+     that was hidden a moment ago, which is the whole objection to a page that
+     reloads itself. */
+  var hiddenAt = 0;
+  var STALE_AFTER_MS = 5 * 60 * 1000;
+  document.addEventListener("visibilitychange", function(){
+    if(document.hidden){ hiddenAt = Date.now(); return; }
+    if(hiddenAt && LIVE && Date.now() - hiddenAt >= STALE_AFTER_MS) API.reload();
+    hiddenAt = 0;
+  });
   setInterval(tickClocks, 30000);
 
   /* ── the settle grace, ticking ──
@@ -12124,6 +12412,10 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     document.documentElement.setAttribute("dir", D.dir);
     document.documentElement.setAttribute("lang", LOCALE);
     document.title = t("page.title");
+    /* the name under the icon when an iPhone adds this page to its home
+       screen, read at that moment — so it follows the page's language */
+    var appTitle = document.querySelector('meta[name="apple-mobile-web-app-title"]');
+    if(appTitle) appTitle.setAttribute("content", t("app.name"));
     $$("[data-i18n]").forEach(function(el){ el.textContent = t(el.dataset.i18n); });
     paintGreeting();
     $$("[data-i18n-ph]").forEach(function(el){ el.placeholder = t(el.dataset.i18nPh); });
@@ -12170,6 +12462,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
           tileFor(c.tile, c.icon) + "<b>" + esc(c.name) + "</b><i>" +
           esc(t("w.open")) + "</i></a>";
       }).join("");
+    paintCodeDoor();
   }
   function startWelcome(){
     document.documentElement.classList.add("is-new");
@@ -12187,6 +12480,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     renderFriends();
     renderGroups();
     renderWelcome();
+    renderInstall();
     /* the mode is re-applied rather than reset: a language switch must not
        throw somebody out of the coordination they were reading */
     setCalMode($("#calMeet").hidden ? "cal" : "meet");
@@ -12744,6 +13038,18 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       go("tasks");
       return;
     }
+    /* The installed app's long-press shortcuts (pwa.js): straight into a new
+       task or a new coordination, the two things a person opens it to do. */
+    if(location.hash === "#new-task" || location.hash === "#new-meeting"){
+      var want = location.hash;
+      hashOpened = true;
+      try{ history.replaceState(null, "", location.pathname + location.search); }catch(e){}
+      markIntroSeen(); introFinish();
+      go(want === "#new-task" ? "tasks" : "cal");
+      /* after the tab has slid in, so the sheet rises over the right page */
+      setTimeout(function(){ $(want === "#new-task" ? "#addTask" : "#mtNew").click(); }, 320);
+      return;
+    }
     var m = /^#meeting=([1-9][0-9]{0,11})$/.exec(location.hash || "");
     if(!m) return;
     hashOpened = true;
@@ -12760,6 +13066,15 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      it has to be drivable from outside — to try a shape without a server, and
      to see what a given payload actually renders as. */
   API.hydrate = hydrate;
+  /* The installed app is told to reuse its window (launch_handler
+     navigate-existing), so a shortcut pressed while it is open changes only
+     the hash — no load, no hydrate, and openFromHash never runs. Every door
+     it knows is honoured here too, once per change. */
+  window.addEventListener("hashchange", function(){
+    if(!/^#(new-task|new-meeting|tasks|meeting=[1-9][0-9]{0,11})$/.test(location.hash || "")) return;
+    hashOpened = false;
+    openFromHash();
+  });
 
   /* One request, at boot. Nothing retries it on its own — a dashboard that
      silently reloads itself is a dashboard that can change under somebody's
@@ -12788,7 +13103,15 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     $("#bootRetry").hidden = true;
     $("#bootMsg").textContent = t("boot.loading");
     fetch("/me/data", {credentials:"same-origin", headers:{Accept:"application/json"}})
-      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(r){
+        /* The session is gone (thirty idle days, or "sign out everywhere").
+           The page itself is what knows how to sign back in — a link in a
+           browser, a code in the installed app — so ask for it again, and the
+           server answers with that screen. Once: the server's answer for /me
+           without a session is the first screen, which fetches nothing. */
+        if(r.status === 401){ location.reload(); return null; }
+        return r.ok ? r.json() : null;
+      })
       .then(function(body){
         if(body && body.ok && body.data){ hydrate(body.data); bootDone(); return; }
         bootFail();
@@ -12918,10 +13241,157 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     if(document.fonts && document.fonts.ready) document.fonts.ready.then(begin);
     setTimeout(begin, 500);
   }
+  /* ══════════════════════════════════════════════════════════════
+     THE HOME-SCREEN APP
+     The same page, installed (src/adapters/http/pwa.js). Two things differ
+     inside it, and one outside it:
+       - signing in is a CODE, because an iPhone's installed app keeps its
+         own cookies and no link from WhatsApp ever opens inside it;
+       - the invitation to install is not shown to somebody who already has;
+       - outside it, the invitation appears only where installing can work:
+         Chrome/Edge said so (beforeinstallprompt), or this is Safari on an
+         iPhone, which never says so and needs its three taps spelled out.
+     ══════════════════════════════════════════════════════════════ */
+  var STANDALONE = (function(){
+    try{
+      return (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) ||
+        window.navigator.standalone === true;
+    }catch(e){ return false; }
+  })();
+  if(STANDALONE) document.documentElement.classList.add("is-app");
+  /* Safari itself, on an iPhone or iPad. Not Chrome/Firefox/Edge for iOS,
+     whose share button sits elsewhere, and not an app's built-in browser,
+     which has no "Add to Home Screen" at all. The one place this page reads
+     the user agent: iOS offers no event to ask instead. */
+  var IOS_SAFARI = (function(){
+    var ua = navigator.userAgent || "";
+    /* an iPad asks for the desktop site and says "Macintosh" — with a touch
+       screen no Mac has. Chrome with touch emulation on a Mac says both too,
+       which is why "Version/" below matters: only Safari itself carries it
+       (Chrome, Firefox and Edge for iOS, and the in-app browsers, do not). */
+    var ios = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+    return ios && /Version\/[\d.]+.*Safari\//.test(ua) && !/Chrome|Android|CriOS|FxiOS|EdgiOS|OPiOS|GSA\/|FBAN|FBAV|Instagram|Line\/|WhatsApp/.test(ua);
+  })();
+  var installEvt = null;
+  window.addEventListener("beforeinstallprompt", function(e){
+    e.preventDefault();
+    installEvt = e;
+    renderInstall();
+  });
+  window.addEventListener("appinstalled", function(){ installEvt = null; instDismiss(); });
+  function instDismissed(){
+    try{ return localStorage.getItem("olma.installDismissed") === "1"; }catch(e){ return false; }
+  }
+  function instDismiss(){
+    try{ localStorage.setItem("olma.installDismissed", "1"); }catch(e){}
+    $("#inst").hidden = true;
+  }
+  /* "prompt", "ios" or null. On the design page, ?install=prompt|ios draws
+     either one, since neither can happen there for real. */
+  function installMode(){
+    if(NEWUSER || STANDALONE) return null;
+    var served = document.documentElement.hasAttribute("data-served");
+    if(!served){
+      var q = new URLSearchParams(location.search).get("install");
+      return q === "prompt" || q === "ios" ? q : null;
+    }
+    if(instDismissed()) return null;
+    if(installEvt) return "prompt";
+    return IOS_SAFARI ? "ios" : null;
+  }
+  function renderInstall(){
+    var box = $("#inst"), mode = installMode();
+    if(!box) return;
+    box.hidden = !mode;
+    if(!mode) return;
+    $("#instMark").innerHTML = '<img src="/icons/apple-touch-icon.png" alt="" width="44" height="44">';
+    $("#instP").textContent = t(mode === "ios" ? "inst.pIos" : "inst.p");
+    var steps = $("#instSteps");
+    steps.hidden = mode !== "ios";
+    steps.innerHTML = mode !== "ios" ? "" : ["inst.ios1", "inst.ios2", "inst.ios3"].map(function(k){
+      return "<li><span>" + esc(t(k)).split("{share}").join('<svg aria-hidden="true"><use href="#i-share"/></svg>') + "</span></li>";
+    }).join("");
+    /* On an iPhone the page cannot do the installing, so the one button is
+       the acknowledgement; where the browser can, it is the whole point. */
+    $("#instYes").textContent = t(mode === "ios" ? "inst.ok" : "inst.btn");
+    $("#instNo").textContent = t("inst.later");
+    $("#instNo").hidden = mode === "ios";
+  }
+  $("#instYes").addEventListener("click", function(){
+    if(!installEvt){ instDismiss(); return; }
+    var e = installEvt;
+    installEvt = null;
+    e.prompt();
+    if(e.userChoice) e.userChoice.then(function(c){
+      if(c && c.outcome === "accepted") instDismiss(); else renderInstall();
+    });
+  });
+  $("#instNo").addEventListener("click", instDismiss);
+
+  /* ---- signing into the installed app with a code ---- */
+  /* The digits out of whatever was pasted: the whole WhatsApp message is
+     fine, and so is "1234 5678", "1234-5678" or a bare 12345678. Bold marks
+     and direction marks that ride a copied message are dropped first. */
+  function codeOf(v){
+    var m = String(v || "").replace(/[\u200e\u200f\u2066-\u2069*]/g, "")
+      .match(/(?:^|\D)(\d{4})[\s\u00a0-]?(\d{4})(?!\d)/);
+    return m ? m[1] + m[2] : null;
+  }
+  function paintCodeDoor(){
+    var wa = CHANNELS.filter(function(c){ return c.id === "wa"; })[0];
+    var link = (wa && wa.link) || "https://wa.me/972559347282";
+    $("#wCodeGet").href = link + (link.indexOf("?") < 0 ? "?" : "&") + "text=" + encodeURIComponent(t("code.waText"));
+    $("#wCodeGet").innerHTML = tileFor("wa", "i-wa") + "<span>" + esc(t("code.get")) + "</span>";
+    /* Inside the installed app the code IS the way in, so it is the screen;
+       in a browser it waits behind "I have a code". */
+    if(STANDALONE){
+      $("#wCode").hidden = false;
+      $("#wTag").textContent = t("code.h");
+    }
+  }
+  var codeBusy = false;
+  function codeInput(){
+    var c = codeOf($("#wCodeIn").value);
+    $("#wCodeGo").disabled = !c || codeBusy;
+    return c;
+  }
+  function codeSubmit(){
+    var c = codeInput();
+    if(!c || codeBusy) return;
+    codeBusy = true;
+    $("#wCodeGo").disabled = true;
+    $("#wCodeIn").value = c.slice(0, 4) + " " + c.slice(4);
+    fetch("/me/code", {
+      method:"POST", credentials:"same-origin",
+      headers:{"Content-Type":"application/json", Accept:"application/json"},
+      body:JSON.stringify({code:c})
+    }).then(function(r){
+      if(r.ok){ location.replace("/me"); return; }
+      codeBusy = false;
+      $("#wCodeErr").textContent = t(r.status === 429 ? "code.slow" : "code.bad");
+      codeInput();
+    }).catch(function(){
+      codeBusy = false;
+      $("#wCodeErr").textContent = t("code.net");
+      codeInput();
+    });
+  }
+  /* typing again is starting again, so the last refusal goes with it */
+  $("#wCodeIn").addEventListener("input", function(){ $("#wCodeErr").textContent = ""; codeInput(); });
+  /* A paste that carries a whole code is the person saying "this one" —
+     going on without a second tap is the point of pasting. */
+  $("#wCodeIn").addEventListener("paste", function(){ setTimeout(function(){ if(codeInput()) codeSubmit(); }, 0); });
+  $("#wCode").addEventListener("submit", function(e){ e.preventDefault(); codeSubmit(); });
+  $("#wCodeHave").addEventListener("click", function(){
+    this.hidden = true;
+    $("#wCode").hidden = false;
+    $("#wCodeIn").focus();
+  });
+
   /* One or the other, never both: the intro stages the APP, and
      a stranger is not being shown the app. */
   /* a deep link skips the intro entirely — see openFromHash */
-  if(/^#(meeting=|tasks$)/.test(location.hash || "")) markIntroSeen();
+  if(/^#(meeting=|tasks$|new-task$|new-meeting$)/.test(location.hash || "")) markIntroSeen();
   if(NEWUSER) startWelcome(); else { startIntro(); navHint(); }
   /* the seed page only: on a served page the seed MEETS are placeholders and
      the real ones arrive with hydrate(), which calls this itself */

@@ -264,6 +264,7 @@ never trust a dated narrative for something you are about to act on.
 - [The link she said she sent (fixed 2026-09-07)](#the-link-she-said-she-sent-fixed-2026-09-07)
 - [A Google consent with no calendar scope was stored as "connected" (fixed 2026-08-20)](#a-google-consent-with-no-calendar-scope-was-stored-as-connected-fixed-2026-08-20)
 - [The move to allma.world, and the truncated link that asked for the admin password (2026-09-04)](#the-move-to-allmaworld-and-the-truncated-link-that-asked-for-the-admin-password-2026-09-04)
+- [The dashboard became an app, and an iPhone needed a door of its own (2026-09-27)](#the-dashboard-became-an-app-and-an-iphone-needed-a-door-of-its-own-2026-09-27)
 
 **CI, migrations and deploying**
 
@@ -11915,6 +11916,53 @@ Also that evening, from the same conversation, not part of this: the
 60-second name rung told the model to ask whether "ג.ב" was right, and the
 model answered `NO_REPLY`; and the admin page shows the delivery prompts of
 Olma's own sweeps under the person's name, as if they had typed them.
+
+### The dashboard became an app, and an iPhone needed a door of its own (2026-09-27)
+
+The owner asked (2026-09-14) for the personal dashboard to be something a
+person "downloads" to their phone. The vehicle is a Progressive Web App — a
+manifest, icons, head tags — with no store, no wrapper and no service worker
+(`adapters/http/pwa.js`; everything on the page is `no-store, private`, so an
+offline shell could only ever show a stale life or a blank one).
+
+**The finding that shaped it: on an iPhone the installed app has its own
+cookie jar.** A home-screen web app on iOS does not share Safari's storage, so
+the session a `/d/<token>` link opened in Safari is not there when the icon
+is tapped — and every link tapped in WhatsApp opens Safari, never the app. On
+Android an app installed from Chrome shares Chrome's cookies and a `/d/` link
+opens inside it (the manifest's `scope` is `/` for exactly that). The plan of
+2026-09-14 therefore shipped Android only and invited nobody on an iPhone.
+On 2026-09-27 the owner chose to do both, so the door was built:
+
+- **"קוד כניסה" gets eight digits, by code, no model** — the same shortcut as
+  "שלח לי קישור" (`domain/link-request.js`, `kind: 'code'`; brokerd
+  `dashboard_link_shortcut`). The app's signed-out screen has a button that
+  opens WhatsApp with the phrase already typed, and a field that takes the
+  whole reply pasted and finds the digits.
+- **A code is a magic link with `target = 'code'`** (migration 095): hashed,
+  one use, spent by an atomic UPDATE, ten minutes, one live per person. It is
+  kept out of the five-live-links count, and no link query finds one.
+- **Guessing is bounded where the guesses arrive** (POST `/me/code`): five
+  wrong per address and sixty in total per quarter hour, in memory.
+- **The answer is in the language ON FILE, not the one that matched.** The
+  first test of it caught this: the signed-out app screen is the stranger's
+  screen, which defaults to English, so its button typed "App sign-in code"
+  for a Hebrew speaker — and the reply gate drops an English line of four
+  words or more to somebody who writes Hebrew. She would have answered, and
+  the gateway would have cancelled it. So the code message follows
+  `users.locale`, the English wording is short enough to pass the gate
+  anyway, and the manifest's `start_url` carries `?hl=` so the installed
+  app's signed-out screen opens in the installer's language.
+
+The invitation to install is drawn only where installing can work: Chrome or
+Edge fired `beforeinstallprompt`, or this is Safari itself on an iPhone (the
+page's one user-agent read, because iOS offers no event to ask). It is never
+shown inside the installed app, and "לא עכשיו" is remembered per browser.
+
+The icon is the "חצי־חצי" mark the owner liked, in "coral on ink"
+(`adapters/http/brand-mark.js`), rendered by resvg on first request — the
+final mark was still undecided, so changing it is that one file. The old
+speech-bubble globe is not used.
 
 ## CI, migrations and deploying
 

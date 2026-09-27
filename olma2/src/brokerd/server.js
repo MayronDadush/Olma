@@ -362,16 +362,34 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
     let userId = null;
     await withTx(pool, async (client) => {
       const { rows } = await client.query(
-        `SELECT id, phone FROM users WHERE agent_id = $1 AND status = 'active' AND is_eval = false`, [agentId]);
+        `SELECT id, phone, locale FROM users WHERE agent_id = $1 AND status = 'active' AND is_eval = false`, [agentId]);
       const user = rows[0];
       if (!user) return;
-      const made = await dashboardAuth.createLinkUrl(client, user.id);
-      if (!made.ok || !made.data || !made.data.url) return;
-      const text = templates.render(
-        templates.keyFor('dashboard_link', hit.lang), { url: made.data.url }, await templates.load(client));
-      await audit.record(client, user.id, 'dashboard.link_shortcut', { lang: hit.lang });
+      let text;
+      if (hit.kind === 'code') {
+        // "קוד כניסה" — eight digits for the home-screen app, which no link
+        // can sign in on an iPhone (dashboard-auth.createCode has the why).
+        // Shown as two groups of four, the way a person reads it back.
+        //
+        // In the language on FILE, not the one that matched: this message is
+        // almost always a button's prefilled text, and the app's signed-out
+        // screen may have typed it in English for somebody who writes to her
+        // in Hebrew — whose reply gate would then drop an English answer.
+        const made = await dashboardAuth.createCode(client, user.id);
+        if (!made.ok || !made.data || !made.data.code) return;
+        const shown = `${made.data.code.slice(0, 4)} ${made.data.code.slice(4)}`;
+        text = templates.render(
+          templates.keyFor('dashboard_code', user.locale || hit.lang), { code: shown }, await templates.load(client));
+        await audit.record(client, user.id, 'dashboard.code_shortcut', { lang: hit.lang });
+      } else {
+        const made = await dashboardAuth.createLinkUrl(client, user.id);
+        if (!made.ok || !made.data || !made.data.url) return;
+        text = templates.render(
+          templates.keyFor('dashboard_link', hit.lang), { url: made.data.url }, await templates.load(client));
+        await audit.record(client, user.id, 'dashboard.link_shortcut', { lang: hit.lang });
+      }
       userId = Number(user.id);
-      out = { ok: true, claim: true, text, lang: hit.lang };
+      out = { ok: true, claim: true, text, lang: hit.lang, kind: hit.kind };
       if (messageId) {
         const vocab = reactions.vocabulary(await require('../domain/flags').getFlag(client, reactions.VOCAB_FLAG));
         mark = { channel: 'whatsapp', target: user.phone, messageId, state: 'done', emoji: vocab.done };
