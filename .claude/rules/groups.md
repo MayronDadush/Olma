@@ -162,7 +162,11 @@ have already had to be argued for.
   `!missing.length`, because `group_opened` says "יש! כולם כאן" and that names a
   fact. A room the flag opens opens in SILENCE; the sentence that would be true
   there is the owner's copy to write, and inventing it is how a room gets a line
-  nobody chose. **Two is a floor, not a taste call**: `startCoordination`
+  nobody chose. **The one line such a room does hear** (owner, 2026-09-26): a
+  greeting that goes out while the room is already `open` ends on
+  `group_intro_ready` ("אפשר כבר להתחיל…"), read off `chat_groups.state` at
+  DELIVERY by `group-outbox.renderRow` — a room open from its first pass heard
+  nothing else that said it could begin. **Two is a floor, not a taste call**: `startCoordination`
   refuses a room where the only member it can reach is the one asking, so a room
   opened on one connected member buys an agent that can do nothing. Two things
   the flag does NOT change — `group-meetings.coordinatingMembers` still filters
