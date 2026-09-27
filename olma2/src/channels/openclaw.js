@@ -21,6 +21,7 @@ const format = require('../domain/message-format');
 const gatewayRpc = require('./gateway-rpc');
 const meetingTime = require('../domain/meeting-time');
 const { isoWithOffset } = require('../domain/meeting-option-moment');
+const introVideo = require('../domain/intro-video');
 
 const SEND_TIMEOUT_MS = 120_000;
 
@@ -875,6 +876,27 @@ function makeDeliverer(pool) {
     // The channel decides the STYLES the text may use, exactly as the joined
     // `locale` decides its language — both read here, at delivery, off the
     // person rather than off the row (domain/message-format.js).
+    // The intro video (domain/intro-video.js): a clip and no words, on the
+    // raw pipe. The CLI rather than the gateway RPC because the CLI's media
+    // and `--gif-playback` flags are what was proven on a real phone
+    // (2026-09-26); a cold CLI costs seconds, which a one-off can afford.
+    // `--gif-playback` is what makes WhatsApp loop an MP4 like a GIF — a real
+    // .gif file arrives there as a still image.
+    if (row.kind === introVideo.KIND) {
+      const p = typeof row.payload === 'string' ? JSON.parse(row.payload) : (row.payload || {});
+      const file = introVideo.fileFor(p.video, row.locale);
+      if (!file) return { ok: false, error: `unknown intro video: ${p.video}` };
+      let media;
+      try { media = introVideo.stageMedia(file); } catch (e) { return { ok: false, error: `stage media: ${e.message}` }; }
+      return runOpenclaw([
+        'message', 'send',
+        '--channel', channel.channel_type,
+        '--target', channel.channel_identifier,
+        '--media', media,
+        '--gif-playback',
+      ]);
+    }
+
     const rawText = proactiveText.rawPipeTextFor(row, wording, channel.channel_type);
     if (rawText) {
       return sendRawMessage({

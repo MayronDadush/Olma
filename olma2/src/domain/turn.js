@@ -530,6 +530,19 @@ async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, 
     })
     .filter(Boolean);
 
+  // The intro video (domain/intro-video.js) went out on the raw pipe, which
+  // never enters their session — so a "מה זה?" or a brain dump right after it
+  // would reach a model that never saw it. Same channel as recentReminders.
+  const { rows: introRows } = await client.query(
+    `SELECT max(sent_at) AS sent_at FROM outbox
+      WHERE user_id = $1 AND kind = 'intro_video' AND hold_reason IS NULL
+        AND sent_at > now() - interval '24 hours'`, [user.id]);
+  const introVideo = introRows[0] && introRows[0].sent_at
+    ? { sentAt: introRows[0].sent_at,
+      what: 'Olma sent them a short looping video (no text) introducing herself: send her everything, '
+        + 'messy is fine, she sorts it into a list and reminds on time. A reply now may be about it.' }
+    : null;
+
   // Coordinations this person heard about in the last day, with where each
   // stands NOW. The session remembers the question it asked; nothing told it
   // the answer had arrived. Kapish was asked about a Saturday slot by the
@@ -753,6 +766,7 @@ async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, 
       ...(offerResume ? { offerResume: true } : {}),
       ...(languageNudge ? { languageNudge } : {}),
       ...(recentReminders.length ? { recentReminders } : {}),
+      ...(introVideo ? { introVideo } : {}),
       ...(recentMeetings.length ? { recentMeetings } : {}),
       ...(rooms.length ? { rooms } : {}),
       ...(planHeadline ? { planHeadline } : {}),
