@@ -1,0 +1,346 @@
+<title>המעבדה של עולמה</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;700;900&family=Heebo:wght@400;900&family=Assistant:wght@400;600;700&family=Fredoka:wght@400;700&family=Archivo+Black&family=Karantina:wght@700&family=Anton&family=Frank+Ruhl+Libre:wght@400;900&family=Fraunces:opsz,wght@9..144,900&family=Suez+One&family=DM+Serif+Display&family=Secular+One&family=Inter+Tight:wght@900&family=IBM+Plex+Sans+Hebrew:wght@400;700&family=IBM+Plex+Sans:wght@700&display=swap">
+<style>
+:root{
+  --bg:#F5F2EC; --surface:#FFFFFF; --fg:#1E1B2A; --mute:#6A6578; --line:#E2DDD3; --sel:#1E1B2A;
+  --like:#E6331F; --rec:#5B4BE0; --today:#8A8496;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){ --bg:#141220; --surface:#1D1A2B; --fg:#F1EEF6; --mute:#A39DB3; --line:#302B45; --sel:#F1EEF6; --rec:#9C90FF; --like:#FF6A52; color-scheme:dark; }
+}
+:root[data-theme="dark"]{ --bg:#141220; --surface:#1D1A2B; --fg:#F1EEF6; --mute:#A39DB3; --line:#302B45; --sel:#F1EEF6; --rec:#9C90FF; --like:#FF6A52; color-scheme:dark; }
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font:400 16px/1.55 Assistant,Arial,sans-serif;padding-inline:16px;padding-block:24px 72px}
+main{max-width:1120px;margin:0 auto;display:flex;flex-direction:column;gap:52px}
+h1,h2,h3{margin:0;text-wrap:balance;font-family:Rubik,Arial,sans-serif}
+h1{font-weight:900;font-size:clamp(32px,6vw,56px);line-height:1.02}
+h2{font-weight:700;font-size:24px}
+h3{font-weight:700;font-size:17px}
+p{margin:0;max-width:64ch}
+.lead{color:var(--mute);font-size:17px;margin-top:10px}
+.kicker{font:700 12px Rubik,sans-serif;letter-spacing:.12em;color:var(--mute);margin-bottom:8px}
+.sec-head{display:flex;flex-direction:column;gap:4px;margin-bottom:16px}
+.legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:14px;font-size:14px;color:var(--mute)}
+.tag{display:inline-block;font:700 11.5px Rubik,sans-serif;letter-spacing:.04em;padding:2px 8px;border-radius:99px;color:#fff;vertical-align:middle}
+.tag.like{background:var(--like)} .tag.rec{background:var(--rec)} .tag.today{background:var(--today)} .tag.more{background:transparent;color:var(--mute);border:1px solid var(--line)}
+
+/* live preview */
+.live{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:18px;display:flex;flex-direction:column;gap:16px}
+.live-top{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}
+.chosen{font-size:14px;color:var(--mute)}
+.stage{display:grid;grid-template-columns:1.1fr .62fr 1.6fr;gap:14px;align-items:start}
+.stage svg{display:block;width:100%;height:auto;border-radius:6px}
+.col{display:flex;flex-direction:column;gap:14px;min-width:0}
+.tri{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.chat{border-radius:12px;padding:12px;display:flex;gap:12px;align-items:center;border:1px solid var(--line)}
+.chat .av{width:52px;height:52px;border-radius:50%;overflow:hidden;flex:none}
+.chat .av svg{border-radius:0}
+.chat b{display:block;font-size:16px}
+.chat span{font-size:14px;opacity:.75}
+.headline{border-radius:12px;padding:18px 18px 16px;overflow:hidden}
+.headline .he{font-size:clamp(30px,4.2vw,50px);line-height:1.05}
+.headline .en{font-size:clamp(22px,3vw,34px);line-height:1.1;margin-top:6px;direction:ltr;text-align:left}
+.headline .body{font-size:15px;margin-top:10px;opacity:.85}
+@media (max-width:760px){ .stage{grid-template-columns:1fr 1fr} .stage .col.wide{grid-column:1/-1} }
+
+/* pickers */
+.grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr))}
+.card{all:unset;box-sizing:border-box;cursor:pointer;background:var(--surface);border:1.5px solid var(--line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:10px;text-align:right;color:var(--fg);min-width:0}
+.card:hover{border-color:var(--mute)}
+.card:focus-visible{outline:3px solid var(--rec);outline-offset:2px}
+.card[aria-pressed="true"]{border-color:var(--sel);box-shadow:0 0 0 2px var(--sel)}
+.card .row{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.card .say{font-size:14.5px;color:var(--mute)}
+.card .warn{font-size:13.5px;color:var(--like)}
+.fsample{border-radius:10px;background:var(--bg);padding:12px 14px;overflow:hidden}
+.fsample .he{font-size:34px;line-height:1.08}
+.fsample .en{font-size:25px;line-height:1.1;direction:ltr;text-align:left;margin-top:4px}
+.fsample .body{font-size:15px;margin-top:8px;color:var(--mute)}
+.sw{display:flex;border-radius:10px;overflow:hidden;height:44px}
+.sw i{flex:1}
+.pal-demo{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.pal-demo svg{width:100%;height:auto;display:block;border-radius:8px}
+.cr{font-size:13px;color:var(--mute);font-variant-numeric:tabular-nums}
+.mk{display:flex;align-items:center;gap:14px}
+.mk .big{width:128px;height:128px;border-radius:10px;overflow:hidden;flex:none}
+.mk .small{display:flex;flex-direction:column;align-items:center;gap:10px}
+.mk .small div{border-radius:50%;overflow:hidden}
+.mk svg{display:block;width:100%;height:100%}
+.lang svg{width:100%;height:auto;display:block;border-radius:8px}
+.lang .pics{display:grid;gap:6px;grid-template-columns:repeat(3,1fr)}
+.lang .pics.one{grid-template-columns:1fr 1fr}
+
+.summary{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:10px}
+.summary output{display:block;font:600 16px Assistant;background:var(--bg);border-radius:10px;padding:12px;user-select:all}
+.summary button{all:unset;cursor:pointer;align-self:flex-start;background:var(--fg);color:var(--bg);font:700 14px Rubik;padding:9px 16px;border-radius:99px}
+.summary button:focus-visible{outline:3px solid var(--rec);outline-offset:2px}
+.fontwarn{color:var(--like);font-size:14px}
+.help{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:18px;display:flex;flex-direction:column;gap:14px}
+.help .prog{display:flex;justify-content:space-between;align-items:center;gap:10px;font:700 14px Rubik;color:var(--mute)}
+.bar{height:6px;border-radius:99px;background:var(--line);overflow:hidden;flex:1;max-width:260px}
+.bar i{display:block;height:100%;background:var(--like);transition:width .4s cubic-bezier(.22,1,.36,1)}
+.dgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.dcard{all:unset;box-sizing:border-box;cursor:pointer;background:var(--bg);border:1.5px solid var(--line);border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:10px;min-width:0;text-align:right;color:var(--fg)}
+.dcard:hover{border-color:var(--fg)} .dcard:focus-visible{outline:3px solid var(--rec);outline-offset:2px}
+.dcard .he{font-size:clamp(20px,3.4vw,34px);line-height:1.1} .dcard .en{font-size:clamp(16px,2.4vw,24px);direction:ltr;text-align:left}
+.dcard .body{font-size:14px;color:var(--mute)}
+.dcard .pair{display:grid;grid-template-columns:1fr .56fr;gap:8px;align-items:start}
+.dcard svg{display:block;width:100%;height:auto;border-radius:6px}
+.dcard .pics2{display:grid;grid-template-columns:1fr .75fr;gap:8px;align-items:start}
+.dcard .nm{font:700 13px Rubik;color:var(--mute)}
+.btns{display:flex;gap:10px;flex-wrap:wrap}
+.btn{all:unset;cursor:pointer;font:700 14px Rubik;padding:9px 16px;border-radius:99px;background:var(--fg);color:var(--bg)}
+.btn.ghost{background:transparent;color:var(--fg);border:1.5px solid var(--line)}
+.btn:focus-visible{outline:3px solid var(--rec);outline-offset:2px}
+.why{display:flex;flex-direction:column;gap:8px;max-width:70ch}
+.why p{font-size:15.5px}
+.system{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px}
+.system figure{margin:0} .system svg{display:block;width:100%;height:auto;border-radius:6px}
+.system figcaption{font:700 14px Rubik;margin-top:6px}
+</style>
+
+<main dir="rtl">
+<header>
+  <div class="kicker">מותג · מעבדה</div>
+  <h1>שום דבר עוד לא סגור.<br>בוא נבחר ביחד.</h1>
+  <p class="lead">הצבעים כבר נסגרו: אלמוג על דיו, לילה חשמלי ושבת. נשארו הפונט, הסימן והשפה. אם קשה לבחור, תתחיל מהחלק הבא: שתי אופציות בכל פעם, לוחצים על זו שמרגישה יותר עולמה, והזוכים נכנסים לתצוגה.</p>
+  <div class="legend"><span><span class="tag like">אהבת</span> בחרת בסבבים הקודמים</span><span><span class="tag rec">ממליץ</span> הבחירה שלי</span><span><span class="tag today">היום</span> מה שבשימוש עכשיו</span><span><span class="tag more">עוד כיוון</span> שווה להסתכל</span></div>
+</header>
+
+<section class="help" id="help" aria-label="עזרה בבחירה">
+  <div class="sec-head" style="margin:0"><div class="kicker">עזרה בבחירה</div><h2>לא לבחור מתוך שמונה. רק בין שניים.</h2>
+  <p class="lead" style="margin-top:0">שבעה זוגות לפונט וחמישה לסימן. הזוכה בכל זוג ממשיך לזוג הבא. אל תחשוב יותר מדי, הבחירה הראשונה היא בדרך כלל הנכונה.</p></div>
+  <div id="duel"></div>
+</section>
+
+<section class="live" aria-label="תצוגה חיה">
+  <div class="live-top"><h2>ככה זה נראה ביחד</h2><div class="chosen" id="chosen"></div></div>
+  <div class="stage">
+    <div class="col" id="lv-poster"></div>
+    <div class="col" id="lv-video"></div>
+    <div class="col wide">
+      <div class="tri" id="lv-tri"></div>
+      <div class="chat" id="lv-chat"></div>
+      <div class="headline" id="lv-head"></div>
+    </div>
+  </div>
+  <div class="fontwarn" id="fontwarn" hidden></div>
+</section>
+
+<section><div class="sec-head"><div class="kicker">שאלה 1</div><h2>פונט: עברית ואנגלית</h2><p class="lead" style="margin-top:0">כל זוג מוצג על אותם משפטים. הכותרת בעברית, הכותרת באנגלית, ושורת גוף.</p></div><div class="grid" id="pick-font"></div></section>
+<section><div class="sec-head"><div class="kicker">שאלה 2 · נסגרה</div><h2>צבעים: לא צריך לבחור אחד</h2><p class="lead" style="margin-top:0">שלושת הצבעים שאהבת הם בעצם מערכת אחת, לפי השעה. יום באלמוג על דיו, לילה בסגול, ושבת בנר. זה בדיוק מה שעולמה עושה: היא יודעת מה השעה אצלך ומתנהגת בהתאם. ככה המותג משתנה איתך, ולא נשאר צבע קבוע. לחיצה על פלטה רק מחליפה את התצוגה.</p></div><div class="system" id="system"></div><div class="grid" id="pick-pal"></div></section>
+<section><div class="sec-head"><div class="kicker">שאלה 3</div><h2>הסימן</h2><p class="lead" style="margin-top:0">חצי־חצי, שאהבת, ועוד חמש דרכים לספר אותו. כל אחד מוצג גדול, ב־48 וב־24 פיקסלים, בצבעים שבחרת.</p></div><div class="grid" id="pick-mark"></div></section>
+<section><div class="sec-head"><div class="kicker">שאלה 4</div><h2>השפה הגרפית</h2><p class="lead" style="margin-top:0">כאן אפשר לבחור יותר מאחד. אלה הכללים שלפיהם נראה כל פוסט וכל סרטון.</p></div><div class="grid" id="pick-lang"></div></section>
+
+<section class="summary">
+  <h2>מה בחרת</h2>
+  <p class="lead" style="margin-top:0">מעתיקים ושולחים לי, ואני בונה מזה את ספר המותג הסופי.</p>
+  <output id="sum"></output>
+  <button type="button" id="copy">העתקה</button>
+</section>
+</main>
+
+<script>
+let uid=0; const U=()=>'x'+(++uid);
+
+const FONTS=[
+ {id:'rubik',name:'Rubik + Rubik',tag:'today',he:["'Rubik'",900],en:["'Rubik'",900],body:["'Assistant'",400],say:'מה שיש לנו היום. עגול, ברור ומוכר, אבל גם הפונט של חצי מהסטארטאפים בארץ.'},
+ {id:'heebo',name:'Heebo + Archivo Black',tag:'rec',he:["'Heebo'",900],en:["'Archivo Black'",400],body:["'Heebo'",400],say:'הכי קרוב לפוסטרים ששלחת. גאומטרי, כבד ובלי קישוטים. חפיפה של אותיות כבדות נראית כאן הכי טוב.'},
+ {id:'fredoka',name:'Fredoka',tag:'rec',he:["'Fredoka'",700],en:["'Fredoka'",700],body:["'Assistant'",400],say:'משפחה אחת לשתי השפות. עגול, חם ומחייך. מתאים לעוזרת שמדברת איתך בוואטסאפ.',warn:'יכול להרגיש ילדותי אם הצבעים רכים מדי.'},
+ {id:'karantina',name:'Karantina + Anton',tag:'more',he:["'Karantina'",700],en:["'Anton'",400],body:["'Assistant'",400],say:'צר וגבוה, כמו כרזת רחוב. אופי חזק ונראה מצוין בסרטונים לאורך.',warn:'רק לכותרות. בגודל קטן הוא נהיה צפוף.'},
+ {id:'frank',name:'Frank Ruhl Libre + Fraunces',tag:'more',he:["'Frank Ruhl Libre'",900],en:["'Fraunces'",900],body:["'Assistant'",400],say:'סריף של עיתון ומגזין. מבוגר ואמין, "העוזרת האישית שלך" במובן האלגנטי.',warn:'רחוק מהאופי הקליל של המוצר.'},
+ {id:'suez',name:'Suez One + DM Serif',tag:'more',he:["'Suez One'",400],en:["'DM Serif Display'",400],body:["'Assistant'",400],say:'סריף רך ושמח. שילוב נדיר של חם ומכובד, ומעט מותגים בארץ משתמשים בו.'},
+ {id:'secular',name:'Secular One + Inter Tight',tag:'more',he:["'Secular One'",400],en:["'Inter Tight'",900],body:["'Assistant'",400],say:'ישראלי, ישיר ובלי עיגולים. מרגיש כמו שלט.'},
+ {id:'plex',name:'IBM Plex Hebrew + Plex',tag:'more',he:["'IBM Plex Sans Hebrew'",700],en:["'IBM Plex Sans'",700],body:["'IBM Plex Sans Hebrew'",400],say:'מדויק וטכנולוגי. מרגיש כמו מוצר תוכנה.',warn:'קר יותר ממה שעולמה אמורה להרגיש.'},
+];
+const PALS=[
+ {id:'coral',name:'אלמוג על דיו',role:'יום',tag:'like',dark:'#221C3A',light:'#F7F1E6',accent:'#FF8A6B',field:'#F2553A',l1:'#F7F1E6',l2:'#221C3A',ft:'#221C3A',say:'הבית. רוב השבוע, רוב הפוסטים, וברירת המחדל בכל מקום.'},
+ {id:'electric',name:'לילה חשמלי',role:'לילה',tag:'like',dark:'#16122E',light:'#EDEAFB',accent:'#FF8A6B',field:'#7C6CF2',l1:'#EDEAFB',l2:'#16122E',ft:'#EDEAFB',say:'אחרי תשע בערב, כשעולמה שומרת על השקט. אותו אלמוג, על סגול.'},
+ {id:'shabbat',name:'שבת',role:'שבת',tag:'like',dark:'#1D1530',light:'#F3E9D8',accent:'#F2C46D',field:'#1D1530',l1:'#F2C46D',l2:'#F3E9D8',ft:'#F3E9D8',say:'מהדלקת נרות ועד ההבדלה. האלמוג מתחלף בנר, וזה הרגע הכי מיוחד של המותג.'},
+];
+
+// ---- marks, 0 0 120 120, paint with palette P and heading font F ----
+function lens(a,b,fill){const id=U();return `<clipPath id="${id}"><circle cx="${a[0]}" cy="${a[1]}" r="${a[2]}"/></clipPath><circle cx="${b[0]}" cy="${b[1]}" r="${b[2]}" fill="${fill}" clip-path="url(#${id})"/>`;}
+const MARKS=[
+ {id:'split',name:'חצי־חצי',tag:'like',say:'לילה ויום, שני עולמות, והמפגש יושב על הקו.',
+  draw:P=>`<rect width="60" height="120" fill="${P.dark}"/><rect x="60" width="60" height="120" fill="${P.light}"/><circle cx="42" cy="60" r="28" fill="${P.light}"/><circle cx="78" cy="60" r="28" fill="${P.dark}"/>`+lens([42,60,28],[78,60,28],P.accent)},
+ {id:'horizon',name:'אופק',tag:'rec',say:'אותו רעיון, בגובה. יום למעלה, לילה למטה, והמפגש הוא הזריחה. גם עובד כעיגול שמשתקף במים.',
+  draw:P=>`<rect width="120" height="60" fill="${P.light}"/><rect y="60" width="120" height="60" fill="${P.dark}"/><circle cx="60" cy="42" r="28" fill="${P.dark}"/><circle cx="60" cy="78" r="28" fill="${P.light}"/>`+lens([60,42,28],[60,78,28],P.accent)},
+ {id:'diag',name:'אלכסון',tag:'more',say:'החלוקה באלכסון מכניסה תנועה, כאילו שני הצדדים נעים זה לקראת זה.',
+  draw:P=>`<rect width="120" height="120" fill="${P.light}"/><path d="M0 0H120L0 120Z" fill="${P.dark}"/><circle cx="44" cy="44" r="30" fill="${P.light}"/><circle cx="76" cy="76" r="30" fill="${P.dark}"/>`+lens([44,44,30],[76,76,30],P.accent)},
+ {id:'round',name:'חצי־חצי בעיגול',tag:'rec',say:'אותו סימן, כבר בנוי כעיגול. בוואטסאפ הוא לא מאבד את הפינות כשהמסגרת חותכת.',
+  draw:P=>{const c=U();return `<clipPath id="${c}"><circle cx="60" cy="60" r="60"/></clipPath><g clip-path="url(#${c})"><rect width="60" height="120" fill="${P.dark}"/><rect x="60" width="60" height="120" fill="${P.light}"/><circle cx="44" cy="60" r="24" fill="${P.light}"/><circle cx="76" cy="60" r="24" fill="${P.dark}"/>${lens([44,60,24],[76,60,24],P.accent)}</g>`}},
+ {id:'letter',name:'ע על הקו',tag:'more',say:'במקום עיגולים, האות עצמה חוצה את הקו ומתהפכת, כמו Clarendon. פס המפגש בצבע. הסימן משתנה עם הפונט שבחרת.',
+  draw:(P,F)=>{const a=U(),b=U();const t=(c,cl)=>`<text x="60" y="96" text-anchor="middle" font-family="${F.he[0].replace(/'/g,'')}" font-weight="${F.he[1]}" font-size="104" fill="${c}" clip-path="url(#${cl})">ע</text>`;
+   return `<clipPath id="${a}"><rect width="60" height="120"/></clipPath><clipPath id="${b}"><rect x="60" width="60" height="120"/></clipPath><rect width="60" height="120" fill="${P.dark}"/><rect x="60" width="60" height="120" fill="${P.light}"/>${t(P.light,a)}${t(P.dark,b)}<rect x="58" width="4" height="120" fill="${P.accent}"/>`}},
+ {id:'anim',name:'חצי־חצי בתנועה',tag:'rec',say:'לפתיח ולסגיר של סרטון. העיגולים מחליקים זה אל זה והמפגש נדלק. זו האנימציה של "סגור."',
+  draw:P=>{const id=U(),an=(from,to)=>`<animate attributeName="cx" values="${from};${to};${to};${from}" keyTimes="0;.35;.85;1" dur="3.2s" repeatCount="indefinite" calcMode="spline" keySplines=".22 1 .36 1;0 0 1 1;.6 0 .8 .4"/>`;
+   return `<rect width="60" height="120" fill="${P.dark}"/><rect x="60" width="60" height="120" fill="${P.light}"/><circle cx="42" cy="60" r="28" fill="${P.light}">${an(30,42)}</circle><circle cx="78" cy="60" r="28" fill="${P.dark}">${an(90,78)}</circle><clipPath id="${id}"><circle cx="42" cy="60" r="28">${an(30,42)}</circle></clipPath><circle cx="78" cy="60" r="28" fill="${P.accent}" clip-path="url(#${id})">${an(90,78)}</circle>`}},
+];
+const LANGS=[
+ {id:'overlap',name:'חפיפה',tag:'like',say:'אותיות ענקיות שחופפות, ובמקום שהן נפגשות רואים את הרקע. המפגש הוא החלל המשותף.'},
+ {id:'series',name:'חצי־חצי כסדרה',tag:'like',say:'ע · ול · מה. כל פוסטר חצוי בנקודה אחרת, וביחד הם בונים את השם. מצוין לקרוסלה או לשלושה פוסטים ברצף.'},
+ {id:'crop',name:'חיתוך בקצה',tag:'rec',say:'מילה אחת ענקית שיוצאת מהמסגרת מכל הצדדים. היא משלבת את שני הכללים שאהבת, ועובדת גם במקום צר כמו סטורי.'},
+];
+
+// ---- state ----
+const S={font:'heebo',pal:'coral',mark:'split',lang:['overlap','series']};
+try{Object.assign(S,JSON.parse(localStorage.getItem('olma-lab')||'{}'))}catch(e){}
+if(!PALS.some(p=>p.id===S.pal))S.pal='coral';
+const save=()=>{try{localStorage.setItem('olma-lab',JSON.stringify(S))}catch(e){}};
+const byId=(arr,id)=>arr.find(x=>x.id===id)||arr[0];
+const TAGS={like:'אהבת',rec:'ממליץ',today:'היום',more:'עוד כיוון'};
+const tag=t=>`<span class="tag ${t}">${TAGS[t]}</span>`;
+const fam=f=>`${f[1]} {s}px ${f[0]}`;
+
+// contrast
+function lum(h){const c=[1,3,5].map(i=>parseInt(h.slice(i,i+2),16)/255).map(v=>v<=.03928?v/12.92:((v+.055)/1.055)**2.4);return .2126*c[0]+.7152*c[1]+.0722*c[2];}
+const cr=(a,b)=>{const x=lum(a),y=lum(b);return ((Math.max(x,y)+.05)/(Math.min(x,y)+.05)).toFixed(1);};
+
+const cv=document.createElement('canvas').getContext('2d');
+const measure=(t,f,size)=>{cv.font=`${f[1]} ${size}px ${f[0]}`;return cv.measureText(t).width;};
+const TX=(x,y,size,f,col,txt,extra='')=>`<text x="${x}" y="${y}" font-family="${f[0].replace(/'/g,'')}" font-weight="${f[1]}" font-size="${size}" fill="${col}" ${extra}>${txt}</text>`;
+
+function markSVG(m,P,F){return `<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="${m.name}">${m.draw(P,F)}</svg>`;}
+
+function posterOverlap(P,F){
+  const size=290, f=F.en, letters=['a','l','l'];
+  const w=letters.map(t=>measure(t,f,size)); const ov=size*.17;
+  let x=-size*.16; const L=letters.map((t,i)=>{const o={t,x,c:i%2?P.l2:P.l1};x+=w[i]-ov;return o;});
+  const shapes=L.map(l=>TX(l.x,366,size,f,'#000',l.t,'direction="ltr"'));
+  const defs=L.map((l,i)=>{l.m=U();return `<mask id="${l.m}"><rect width="300" height="400" fill="#fff"/>${shapes.filter((_,j)=>j!==i).join('')}</mask>`}).join('');
+  const B=F.body, tx=(y,s,t,wt)=>`<text x="282" y="${y}" font-family="${B[0].replace(/'/g,'')}" font-weight="${wt||600}" font-size="${s}" fill="${P.ft}" direction="rtl" text-anchor="start">${t}</text>`;
+  return `<svg viewBox="0 0 300 400" xmlns="http://www.w3.org/2000/svg"><rect width="300" height="400" fill="${P.field}"/>${defs}${L.map(l=>TX(l.x,366,size,f,l.c,l.t,`direction="ltr" mask="url(#${l.m})"`)).join('')}
+   ${TX(282,44,26,F.he,P.ft,'עולמה','direction="rtl" text-anchor="start"')}${tx(66,11,'שבת, 16:00. כל מי שצריך, באותו מקום.')}${tx(82,11,'בלי קבוצה חדשה. בלי 40 הודעות.')}${tx(390,11,'הכל סגור.',700)}</svg>`;
+}
+function posterSplit(txt,split,size,y,P,F,body,dark='left'){
+  const a=U(),b=U();
+  const dR=dark==='left'?`<rect width="${split}" height="400"/>`:`<rect x="${split}" width="${300-split}" height="400"/>`;
+  const lR=dark==='left'?`<rect x="${split}" width="${300-split}" height="400"/>`:`<rect width="${split}" height="400"/>`;
+  const t=(c,cl)=>TX(150,y,size,F.he,c,txt,`text-anchor="middle" direction="rtl" clip-path="url(#${cl})"`);
+  return `<svg viewBox="0 0 300 400" xmlns="http://www.w3.org/2000/svg"><clipPath id="${a}">${dR}</clipPath><clipPath id="${b}">${lR}</clipPath><rect width="300" height="400" fill="${P.light}"/><g fill="${P.dark}">${dR}</g>${t(P.light,a)}${t(P.dark,b)}<rect x="${split-2}" width="4" height="400" fill="${P.accent}"/>${body||''}</svg>`;
+}
+function tri(P,F){
+  const B=F.body, tx=(x,y,c,lines,wt)=>lines.map((l,i)=>`<text x="${x}" y="${y+i*14}" font-family="${B[0].replace(/'/g,'')}" font-weight="${wt||600}" font-size="11" fill="${c}" direction="rtl" text-anchor="start">${l}</text>`).join('');
+  return [posterSplit('ע',96,300,318,P,F,tx(282,34,P.dark,['עולמה','העוזרת בוואטסאפ','שזוכרת ומתאמת','בשבילך.'])),
+          posterSplit('ול',196,270,300,P,F,tx(282,34,P.light,['כל אחד עונה לה','בפרטי. החדר שומע','רק את מה שנסגר.']),'right'),
+          posterSplit('מה',150,230,300,P,F,tx(282,382,P.dark,['הכל סגור.'],700))];
+}
+function posterCrop(P,F){
+  return `<svg viewBox="0 0 300 400" xmlns="http://www.w3.org/2000/svg"><rect width="300" height="400" fill="${P.dark}"/>
+   ${TX(330,250,250,F.he,P.light,'סגור.','direction="rtl" text-anchor="start"')}
+   <circle cx="238" cy="92" r="26" fill="${P.accent}"/>
+   ${TX(20,378,22,F.he,P.accent,'עולמה','direction="rtl" text-anchor="end"')}</svg>`;
+}
+function video(P,F,M){
+  return `<svg viewBox="0 0 180 320" xmlns="http://www.w3.org/2000/svg"><rect width="180" height="320" fill="${P.dark}"/>
+   <g transform="translate(40 70) scale(.8333)">${M.draw(P,F)}<rect x="1" y="1" width="118" height="118" fill="none" stroke="${P.light}" stroke-width="2"/></g>
+   ${TX(90,232,34,F.he,P.light,'עולמה','text-anchor="middle" direction="rtl"')}
+   ${TX(90,262,17,F.he,P.accent,'הכל סגור.','text-anchor="middle" direction="rtl"')}
+   ${TX(90,300,11,F.en,P.light,'allma','text-anchor="middle" direction="ltr" opacity=".6"')}</svg>`;
+}
+
+// ---- render ----
+const $=id=>document.getElementById(id);
+function renderLive(){
+  const F=byId(FONTS,S.font),P=byId(PALS,S.pal),M=byId(MARKS,S.mark);
+  $('lv-poster').innerHTML=S.lang.includes('crop')&&!S.lang.includes('overlap')?posterCrop(P,F):posterOverlap(P,F)+(S.lang.includes('crop')?posterCrop(P,F):'');
+  $('lv-video').innerHTML=video(P,F,M);
+  $('lv-tri').innerHTML=S.lang.includes('series')?tri(P,F).join(''):'';
+  $('lv-tri').hidden=!S.lang.includes('series');
+  $('lv-chat').innerHTML=`<div class="av">${markSVG(M,P,F)}</div><div style="font-family:${F.body[0]}"><b style="font-family:${F.he[0]};font-weight:${Math.min(F.he[1],700)}">עולמה</b><span>סגור 👍 שבת 16:00 אצל דנה. הכנסתי לכולם ליומן.</span></div>`;
+  $('lv-chat').style.cssText=`background:${P.light};color:${P.dark}`;
+  $('lv-head').style.cssText=`background:${P.light};color:${P.dark}`;
+  $('lv-head').innerHTML=`<div class="he" style="font-family:${F.he[0]};font-weight:${F.he[1]}">עולמה. הכל <span style="color:${P.accent === P.light ? P.dark : P.accent}">סגור.</span></div><div class="en" style="font-family:${F.en[0]};font-weight:${F.en[1]}">Allma. All set.</div><div class="body" style="font-family:${F.body[0]};font-weight:${F.body[1]}">אני מתאמת בשבילך את מה שכולם מתכתבים עליו שבוע, זוכרת מה אמרת, ושותקת בשבת.</div>`;
+  $('chosen').textContent=`${F.name} · ${P.name} · ${M.name}`;
+  $('sum').textContent=`בחרתי: פונט ${F.name} · צבעים ${P.name} · סימן ${M.name} · שפה: ${S.lang.map(l=>byId(LANGS,l).name).join(' + ')||'אין'}`;
+}
+function renderPickers(){
+  const F=byId(FONTS,S.font),P=byId(PALS,S.pal);
+  $('pick-font').innerHTML=FONTS.map(f=>`<button class="card" data-k="font" data-v="${f.id}" aria-pressed="${S.font===f.id}">
+    <div class="row"><h3>${f.name}</h3>${tag(f.tag)}</div>
+    <div class="fsample"><div class="he" style="font-family:${f.he[0]};font-weight:${f.he[1]}">עולמה. הכל סגור.</div><div class="en" style="font-family:${f.en[0]};font-weight:${f.en[1]}">Allma. All set.</div><div class="body" style="font-family:${f.body[0]};font-weight:${f.body[1]}">אני מתאמת בשבילך את מה שכולם מתכתבים עליו שבוע.</div></div>
+    <p class="say">${f.say}</p>${f.warn?`<p class="warn">${f.warn}</p>`:''}</button>`).join('');
+  const split=byId(MARKS,'split');
+  $('pick-pal').innerHTML=PALS.map(p=>`<button class="card" data-k="pal" data-v="${p.id}" aria-pressed="${S.pal===p.id}">
+    <div class="row"><h3>${p.name} · ${p.role}</h3>${tag(p.tag)}</div>
+    <div class="sw"><i style="background:${p.dark}"></i><i style="background:${p.light}"></i><i style="background:${p.accent}"></i><i style="background:${p.field}"></i></div>
+    <div class="pal-demo">${markSVG(split,p,F)}${posterOverlap(p,F)}</div>
+    <p class="say">${p.say}</p>
+    <div class="cr">דיו/נייר ${cr(p.dark,p.light)} · טקסט על הרקע ${cr(p.ft,p.field)}</div></button>`).join('');
+  $('pick-mark').innerHTML=MARKS.map(m=>`<button class="card" data-k="mark" data-v="${m.id}" aria-pressed="${S.mark===m.id}">
+    <div class="row"><h3>${m.name}</h3>${tag(m.tag)}</div>
+    <div class="mk"><div class="big">${markSVG(m,P,F)}</div><div class="small"><div style="width:48px;height:48px">${markSVG(m,P,F)}</div><div style="width:24px;height:24px">${markSVG(m,P,F)}</div></div></div>
+    <p class="say">${m.say}</p></button>`).join('');
+  $('pick-lang').innerHTML=LANGS.map(l=>{
+    const pics=l.id==='overlap'?`<div class="pics one">${posterOverlap(P,F)}</div>`:l.id==='series'?`<div class="pics">${tri(P,F).join('')}</div>`:`<div class="pics one">${posterCrop(P,F)}</div>`;
+    return `<button class="card lang" data-k="lang" data-v="${l.id}" aria-pressed="${S.lang.includes(l.id)}"><div class="row"><h3>${l.name}</h3>${tag(l.tag)}</div>${pics}<p class="say">${l.say}</p></button>`}).join('');
+}
+var render=function(){renderPickers();renderLive();};
+document.addEventListener('click',e=>{
+  const d=e.target.closest('[data-duel],[data-act]');if(d){duelClick(d);return;}
+  const c=e.target.closest('.card');if(!c)return;
+  const k=c.dataset.k,v=c.dataset.v;
+  if(k==='lang'){S.lang=S.lang.includes(v)?S.lang.filter(x=>x!==v):[...S.lang,v];}else S[k]=v;
+  save();render();
+});
+$('copy').addEventListener('click',()=>{
+  const t=$('sum').textContent,b=$('copy');
+  const done=()=>{b.textContent='הועתק';setTimeout(()=>b.textContent='העתקה',1600)};
+  try{navigator.clipboard.writeText(t).then(done,()=>{getSelection().selectAllChildren($('sum'))})}catch(e){getSelection().selectAllChildren($('sum'))}
+});
+// ---- duel: a knockout, two at a time ----
+const D={};
+function duelStart(){Object.assign(D,{stage:'font',q:FONTS.map(f=>f.id),round:1,total:FONTS.length-1,win:{}});renderDuel();}
+function duelClick(el){
+  const act=el.dataset.act;
+  if(act==='restart'){duelStart();return;}
+  if(act==='reco'){Object.assign(S,{font:'heebo',pal:'coral',mark:'split',lang:['overlap','series']});save();render();renderDuel(true);document.querySelector('.live').scrollIntoView({behavior:'smooth'});return;}
+  if(act==='show'){document.querySelector('.live').scrollIntoView({behavior:'smooth'});return;}
+  const id=el.dataset.duel;
+  D.q=D.q.slice(2).concat(id);
+  if(D.q.length===1){
+    D.win[D.stage]=D.q[0];S[D.stage]=D.q[0];save();render();
+    if(D.stage==='font')Object.assign(D,{stage:'mark',q:MARKS.map(m=>m.id),round:1,total:MARKS.length-1});else D.stage='done';
+  }else D.round++;
+  renderDuel();
+  document.getElementById('help').scrollIntoView({block:'start'});
+}
+function renderDuel(recoShown){
+  const P=byId(PALS,S.pal),el=$('duel');
+  if(D.stage==='done'){
+    const F=byId(FONTS,D.win.font),M=byId(MARKS,D.win.mark);
+    el.innerHTML=`<div class="why"><h3>בחרת: ${F.name} · ${M.name}</h3><p>הם כבר בתצוגה למטה, בכל שלושת הצבעים. אם זה מרגיש נכון, שלח לי את שורת הסיכום בסוף העמוד. אם לא, אפשר לעשות סיבוב נוסף, וזה בסדר לגמרי שתבחר אחרת בפעם השנייה.</p></div>
+      <div class="btns"><button class="btn" data-act="show">לתצוגה</button><button class="btn ghost" data-act="restart">עוד סיבוב</button></div>`+reco();
+    return;
+  }
+  const [a,b]=D.q, isF=D.stage==='font', done=D.round-1;
+  const opt=id=>{
+    if(isF){const F=byId(FONTS,id),M=byId(MARKS,S.mark);
+      return `<button class="dcard" data-duel="${id}"><div><div class="he" style="font-family:${F.he[0]};font-weight:${F.he[1]}">עולמה. הכל סגור.</div><div class="en" style="font-family:${F.en[0]};font-weight:${F.en[1]}">Allma. All set.</div><div class="body" style="font-family:${F.body[0]}">אני מתאמת בשבילך את מה שכולם מתכתבים עליו שבוע.</div></div><div class="pics2">${posterOverlap(P,F)}${video(P,F,M)}</div><span class="nm">${F.name}</span></button>`;}
+    const M=byId(MARKS,id),F=byId(FONTS,S.font);
+    return `<button class="dcard" data-duel="${id}"><div class="pair">${markSVG(M,P,F)}${video(P,F,M)}</div><div class="chat" style="background:${P.light};color:${P.dark}"><div class="av">${markSVG(M,P,F)}</div><div><b style="font-family:${F.he[0]}">עולמה</b><span>סגור 👍 שבת 16:00</span></div></div><span class="nm">${M.name}</span></button>`;
+  };
+  el.innerHTML=`<div class="prog"><span>${isF?'פונט':'סימן'} · זוג ${D.round} מתוך ${D.total}</span><span class="bar"><i style="width:${Math.round(done/D.total*100)}%"></i></span></div>
+    <div class="dgrid">${opt(a)}${opt(b)}</div>
+    <div class="btns"><button class="btn ghost" data-act="restart">להתחיל מחדש</button></div>`+reco();
+}
+function reco(){return `<details class="why" style="margin-top:6px"><summary style="cursor:pointer;font:700 15px Rubik">ואם אתה רוצה את הדעה שלי</summary>
+  <p><b>פונט: Heebo + Archivo Black.</b> הפוסטרים ששלחת מבוססים כולם על אותיות כבדות וגאומטריות, וחפיפה עובדת רק כשיש לאותיות משקל. Fredoka חם יותר, אבל בחפיפה הוא נראה כמו צעצוע.</p>
+  <p><b>סימן: חצי־חצי,</b> עם שתי גרסאות עזר. <b>בעיגול</b> לפרופיל בוואטסאפ, כי שם המסגרת עגולה. <b>בתנועה</b> לפתיח של סרטון. זה סימן אחד שמתלבש שלוש פעמים, לא שלוש החלטות.</p>
+  <p><b>שפה: חפיפה וחצי־חצי כסדרה,</b> ששתיהן אהבת. אחת לפוסט בודד, השנייה לקרוסלה. החיתוך בקצה יכול לחכות.</p>
+  <div class="btns"><button class="btn" data-act="reco">תראה לי את ההמלצה</button></div></details>`;}
+function renderSystem(){const F=byId(FONTS,S.font);$('system').innerHTML=PALS.map(p=>`<figure>${posterOverlap(p,F)}<figcaption>${p.role} · ${p.name}</figcaption></figure>`).join('');}
+
+const _render=render;render=function(){_render();renderSystem();};
+render();duelStart();
+// re-measure once every face is really here, and say so if one never arrived
+const need=[...new Set(FONTS.flatMap(f=>[f.he,f.en,f.body]).map(f=>`${f[1]} 40px ${f[0]}`))];
+Promise.all(need.map(n=>document.fonts.load(n,'עולמה Allma').catch(()=>[]))).then(()=>{
+  const miss=need.filter(n=>!document.fonts.check(n,'עולמה Allma'));
+  if(miss.length){$('fontwarn').hidden=false;$('fontwarn').textContent='לא נטענו: '+miss.map(m=>m.split(' 40px ')[1]).join(', ');}
+  render();
+});
+</script>

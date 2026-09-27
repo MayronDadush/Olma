@@ -1,0 +1,449 @@
+<title>ספר המותג של עולמה</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700&family=Rubik:wght@500;600;700&display=swap">
+<style>
+:root{
+  --bg:#EFE9DE; --page:#F7F1E6; --surface:#FFFCF7; --surface-2:#FBF6EE; --text:#221C3A; --text-2:#5F5873; --text-3:#8F88A3;
+  --sep:#E2D9CC; --accent:#5B4BD6; --accent-soft:#ECE8F8; --bad:#C8352D; --bad-soft:#FBE3DF; --r:14px;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#15132B; --page:#1C1A38; --surface:#24214A; --surface-2:#2A2752; --text:#EDEAFB; --text-2:#B3ADCC; --text-3:#827CA0;
+    --sep:#353163; --accent:#B9AEFF; --accent-soft:#302B5E; --bad:#FF7B70; --bad-soft:#3A2230;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#15132B; --page:#1C1A38; --surface:#24214A; --surface-2:#2A2752; --text:#EDEAFB; --text-2:#B3ADCC; --text-3:#827CA0;
+  --sep:#353163; --accent:#B9AEFF; --accent-soft:#302B5E; --bad:#FF7B70; --bad-soft:#3A2230;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:'Assistant','Heebo',system-ui,sans-serif;font-size:16.5px;line-height:1.6;padding-inline:16px;padding-block:28px 96px}
+.book{max-width:1060px;margin-inline:auto;display:flex;flex-direction:column;gap:22px}
+h1,h2,h3{font-family:'Rubik','Assistant',sans-serif;text-wrap:balance;margin:0;line-height:1.15}
+h2{font-size:clamp(24px,3.4vw,32px);font-weight:700;letter-spacing:-.01em}
+h3{font-size:17px;font-weight:600}
+p{margin:0;max-width:62ch}
+.sub{color:var(--text-2)}
+.muted{color:var(--text-3);font-size:13.5px}
+.wm{font-family:'Rubik',sans-serif;font-weight:700;letter-spacing:-.01em;line-height:1}
+
+/* pages */
+.pg{background:var(--page);border-radius:18px;padding:clamp(22px,4vw,48px);display:flex;flex-direction:column;gap:22px;box-shadow:0 1px 0 var(--sep),0 18px 40px -30px rgba(34,28,58,.35)}
+.ph{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+.pn{font-family:'Rubik',sans-serif;font-weight:600;font-size:14px;color:var(--text-3);font-variant-numeric:tabular-nums}
+
+/* sticky variant picker */
+.picker{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);padding-block:10px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.picker span{font-size:13.5px;color:var(--text-2);margin-inline-end:4px}
+.vbtn{display:inline-flex;align-items:center;gap:8px;font:600 14px Assistant,sans-serif;border:1px solid var(--sep);background:var(--surface);color:var(--text);border-radius:999px;padding:4px 12px 4px 6px;cursor:pointer}
+.vbtn svg{height:22px;width:auto}
+.vbtn[aria-pressed="true"]{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);background:var(--accent-soft)}
+.vbtn:focus-visible,.replay:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* cover */
+.cover{min-height:clamp(380px,62vw,560px);justify-content:space-between;background:linear-gradient(180deg,#F8EAF0,#EFD3E0);color:#221C3A;position:relative;overflow:hidden;isolation:isolate}
+.cover .grain,.frame .grain{position:absolute;inset:0;pointer-events:none;mix-blend-mode:multiply;opacity:.16;z-index:5;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='.33 .33 .33 0 0 .33 .33 .33 0 0 .33 .33 .33 0 0 0 0 0 1 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");background-size:200px}
+.frame.dark .grain{mix-blend-mode:screen;opacity:.09}
+.cover .top{display:flex;justify-content:space-between;gap:12px;font-size:14px;font-weight:600;position:relative;z-index:2}
+.cover .mid{display:flex;justify-content:center;position:relative;z-index:2}
+.cover .mid svg{width:min(62%,420px);height:auto}
+.cover .bot{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;position:relative;z-index:2}
+.cover h1{font-size:clamp(40px,8vw,84px);font-weight:700;letter-spacing:-.025em}
+
+/* variants */
+.vars{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+@media (max-width:760px){.vars{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:440px){.vars{grid-template-columns:1fr}}
+.var{background:var(--surface);border:1px solid var(--sep);border-radius:var(--r);padding:16px;display:flex;flex-direction:column;gap:10px;cursor:pointer;text-align:start;font:inherit;color:inherit}
+.var[aria-pressed="true"]{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.var .v{display:flex;align-items:center;justify-content:center;gap:18px;height:130px;background:var(--page);border-radius:10px}
+.var .v .lg{height:84px;width:auto}
+.var .v .sm{height:24px;width:auto}
+.var p{font-size:14.5px;color:var(--text-2)}
+.tagline{display:flex;gap:6px;flex-wrap:wrap}
+.chip{font-size:12px;font-weight:700;padding:2px 9px;border-radius:99px;background:var(--accent-soft);color:var(--accent)}
+.chip.sys{background:var(--surface-2);color:var(--text-2);border:1px solid var(--sep)}
+
+/* construction */
+.cons{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:22px;align-items:center}
+@media (max-width:760px){.cons{grid-template-columns:1fr}}
+.cons .draw{background:var(--surface);border:1px solid var(--sep);border-radius:var(--r);padding:16px;overflow-x:auto}
+.cons .draw svg{width:100%;height:auto;min-width:320px;display:block}
+.specs{display:flex;flex-direction:column}
+.spec{display:flex;justify-content:space-between;gap:12px;padding-block:10px;border-bottom:1px solid var(--sep);font-size:15px}
+.spec b{font-family:'Rubik',sans-serif;font-weight:600;font-variant-numeric:tabular-nums}
+
+/* hours */
+.hours{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}
+@media (max-width:700px){.hours{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.hour{border-radius:12px;padding:14px;display:flex;flex-direction:column;align-items:center;gap:8px;position:relative;overflow:hidden}
+.hour svg{height:70px;width:auto;position:relative;z-index:1}
+.hour span{font-size:13.5px;font-weight:600;position:relative;z-index:1}
+.hour small{font-size:11.5px;opacity:.75;direction:ltr;position:relative;z-index:1}
+
+/* lockups */
+.locks{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+@media (max-width:640px){.locks{grid-template-columns:1fr}}
+.lock{background:var(--surface);border:1px solid var(--sep);border-radius:var(--r);padding:26px 18px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;min-height:170px}
+.lock .row{display:flex;align-items:center;gap:14px}
+.lock .col{display:flex;flex-direction:column;align-items:center;gap:10px}
+.lock .muted{align-self:stretch;text-align:center}
+
+/* situations */
+.sits{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:14px;align-items:start}
+.sit{display:flex;flex-direction:column;gap:8px;min-width:0}
+.sit .cap{display:flex;justify-content:space-between;gap:10px;align-items:baseline}
+.sit .cap b{font-family:'Rubik',sans-serif;font-weight:600;font-size:15px}
+.sit .cap span{font-size:13px;color:var(--text-3)}
+.s4{grid-column:span 4}.s5{grid-column:span 5}.s6{grid-column:span 6}.s7{grid-column:span 7}.s8{grid-column:span 8}.s12{grid-column:span 12}
+@media (max-width:860px){.s4,.s5,.s6,.s7,.s8{grid-column:span 6}}
+@media (max-width:560px){.s4,.s5,.s6,.s7,.s8{grid-column:span 12}}
+.frame{position:relative;overflow:hidden;border-radius:12px;container-type:inline-size;isolation:isolate;max-width:100%}
+.replay{align-self:flex-start;font:600 13px Assistant,sans-serif;border:1px solid var(--sep);background:var(--surface);color:var(--text);border-radius:999px;padding:3px 12px;cursor:pointer}
+
+/* phone */
+.phone{background:#111;border-radius:30px;padding:8px;max-width:300px;width:100%;margin-inline:auto;box-shadow:0 20px 40px -24px rgba(0,0,0,.5)}
+.scr{border-radius:23px;overflow:hidden;background:#fff;aspect-ratio:9/17.5;display:flex;flex-direction:column;container-type:inline-size;color:#111B21;font-family:-apple-system,'Segoe UI','Assistant',sans-serif}
+.wa-h{padding:8cqw 5cqw 3cqw;font-weight:700;font-size:7.4cqw;display:flex;justify-content:space-between;align-items:center}
+.wa-h small{font-weight:400;font-size:4cqw;color:#667781}
+.wa-row{display:flex;gap:3.6cqw;align-items:center;padding:3cqw 5cqw}
+.wa-av{width:15cqw;height:15cqw;border-radius:50%;flex:none;display:grid;place-items:center;overflow:hidden;font-weight:600;font-size:6cqw;color:#fff;background:#C7CED2}
+.wa-av.olma{background:#F7F1E6}
+.wa-av.olma svg{width:74%;height:auto}
+.wa-t{flex:1;min-width:0;display:flex;flex-direction:column;gap:.6cqw;border-bottom:1px solid #EEF0F1;padding-bottom:3cqw}
+.wa-t div{display:flex;justify-content:space-between;gap:2cqw}
+.wa-t b{font-size:4.8cqw;font-weight:600}
+.wa-t time{font-size:3.4cqw;color:#667781}
+.wa-t span{font-size:4.1cqw;color:#667781;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wa-top{display:flex;align-items:center;gap:3cqw;padding:8cqw 4cqw 3cqw;background:#F0F2F5;border-bottom:1px solid #E3E6E8}
+.wa-top .wa-av{width:11cqw;height:11cqw}
+.wa-top b{display:block;font-size:4.8cqw}
+.wa-top small{display:block;font-size:3.4cqw;color:#667781}
+.wa-body{flex:1;background:#EFEAE2;padding:4cqw;display:flex;flex-direction:column;gap:2.4cqw;justify-content:flex-end}
+.bb{max-width:80%;padding:2.2cqw 3cqw;border-radius:2.6cqw;font-size:4.1cqw;line-height:1.38;box-shadow:0 .3cqw .4cqw rgba(0,0,0,.08)}
+.bb.out{align-self:flex-start;background:#D9FDD3}
+.bb.in{align-self:flex-end;background:#fff}
+.bb time{display:block;text-align:end;font-size:2.8cqw;color:#667781;margin-top:.6cqw}
+
+/* reel + posts */
+.v916{aspect-ratio:9/16}.v11{aspect-ratio:1/1}.v45{aspect-ratio:4/5}
+.fin{position:relative;z-index:2;height:100%;display:flex;flex-direction:column;padding:8cqw}
+.anim .mv{animation:mv 1.2s .2s cubic-bezier(.22,1,.36,1) both}
+.anim .lf{animation:lf .6s 1.2s ease both}
+.anim .t1{animation:rise .6s 1.6s cubic-bezier(.22,1,.36,1) both}
+.anim .t2{animation:rise .6s 1.9s cubic-bezier(.22,1,.36,1) both}
+@keyframes mv{from{transform:translate(var(--fx,0px),var(--fy,0px))}to{transform:none}}
+@keyframes lf{from{opacity:0}to{opacity:1}}
+@keyframes rise{from{opacity:0;transform:translateY(3cqw)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.anim .mv,.anim .lf,.anim .t1,.anim .t2{animation:none}}
+
+/* browser */
+.browser{border-radius:12px;overflow:hidden;border:1px solid var(--sep);background:#fff}
+.bbar{display:flex;align-items:center;gap:8px;padding:9px 12px;background:#ECE7DF;color:#5F5873;font-size:12.5px}
+.bbar i{width:10px;height:10px;border-radius:50%;background:#D8D0C4;display:inline-block}
+.bbar .url{margin-inline:auto;background:#FFFCF7;border-radius:6px;padding:2px 14px;direction:ltr;display:flex;align-items:center;gap:6px}
+.bbar .url svg{height:12px;width:auto}
+.site{container-type:inline-size;background:linear-gradient(180deg,#F5F8FC,#E4ECF7);color:#221C3A;position:relative;overflow:hidden}
+.site nav{display:flex;justify-content:space-between;align-items:center;padding:3cqw 4cqw;font-size:max(12px,1.6cqw)}
+.site nav .links{display:flex;gap:3cqw;color:#5F5873}
+.site .hero{display:grid;grid-template-columns:1.2fr 1fr;align-items:center;gap:3cqw;padding:3cqw 4cqw 7cqw}
+@container (max-width:520px){.site .hero{grid-template-columns:1fr}}
+.site h4{margin:0;font-family:Rubik,sans-serif;font-weight:700;font-size:max(26px,5.4cqw);line-height:1.05;letter-spacing:-.02em;text-wrap:balance}
+.site p{color:#5F5873;font-size:max(14px,1.9cqw);margin-top:1.6cqw}
+.site .cta{display:inline-flex;margin-top:2.6cqw;background:#221C3A;color:#fff;border-radius:999px;padding:1.2cqw 3cqw;font-weight:700;font-size:max(13px,1.7cqw)}
+.site .art{display:flex;justify-content:center}
+.site .art svg{width:100%;max-width:320px;height:auto}
+
+/* schedule card */
+.sched .fin{gap:4cqw}
+.srow{display:flex;align-items:center;gap:3cqw;font-size:4.6cqw;padding-block:1.6cqw;border-bottom:1px solid #221C3A1a}
+.srow time{font-family:Rubik,sans-serif;font-weight:600;font-variant-numeric:tabular-nums;min-width:13cqw}
+.srow svg{width:6cqw;height:6cqw;flex:none}
+.shd{font-family:Rubik,sans-serif;font-weight:600;font-size:3.6cqw;color:#6A5E78;margin-top:1cqw}
+.srow.done span{color:#8F88A3;text-decoration:line-through;text-decoration-color:#8F88A366}
+
+/* merch */
+.merch{display:flex;align-items:center;justify-content:center;gap:6%;background:var(--surface);border:1px solid var(--sep);border-radius:12px;padding:22px;aspect-ratio:16/10;container-type:inline-size}
+.stk{width:30cqw;aspect-ratio:1;border-radius:50%;background:#FF8A6B;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1.4cqw;color:#221C3A;box-shadow:0 1.4cqw 3cqw -1.4cqw rgba(0,0,0,.35);transform:rotate(-8deg);flex:none}
+.stk svg{width:52%;height:auto}
+.stk b{font-family:Rubik,sans-serif;font-size:4.2cqw}
+.tote{width:36cqw;aspect-ratio:.86;background:#E9DFCC;border-radius:1cqw 1cqw 2cqw 2cqw;position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2.2cqw;color:#221C3A;box-shadow:0 1.4cqw 3cqw -1.8cqw rgba(0,0,0,.35);flex:none;margin-top:6cqw}
+.tote::before{content:"";position:absolute;top:-9cqw;width:16cqw;height:14cqw;border:1.6cqw solid #D7C9AF;border-bottom:0;border-radius:8cqw 8cqw 0 0}
+.tote svg{width:44%;height:auto}
+.tote b{font-family:Rubik,sans-serif;font-size:3.6cqw;direction:ltr}
+
+/* icons */
+.icons{display:flex;align-items:flex-end;justify-content:center;gap:22px;flex-wrap:wrap;background:var(--surface);border:1px solid var(--sep);border-radius:12px;padding:22px}
+.ic{display:flex;flex-direction:column;align-items:center;gap:8px}
+.ic .sq{background:#F7F1E6;display:grid;place-items:center;box-shadow:0 0 0 1px #0000000f}
+.ic .sq svg{width:72%;height:auto}
+.ic span{font-size:12px;color:var(--text-3);font-variant-numeric:tabular-nums}
+
+/* don'ts */
+.donts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+@media (max-width:700px){.donts{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.dont{background:var(--surface);border:1px solid var(--sep);border-radius:var(--r);padding:14px;display:flex;flex-direction:column;gap:8px}
+.dont .v{height:110px;display:grid;place-items:center;background:var(--page);border-radius:10px;position:relative}
+.dont .v svg{height:76px;width:auto}
+.dont .v::after{content:"";position:absolute;top:8px;inset-inline-end:8px;width:22px;height:22px;border-radius:50%;background:var(--bad-soft);box-shadow:inset 0 0 0 2px var(--bad)}
+.dont .v::before{content:"✕";position:absolute;top:8px;inset-inline-end:8px;width:22px;height:22px;display:grid;place-items:center;color:var(--bad);font-size:12px;font-weight:700;z-index:1}
+.dont p{font-size:14px;color:var(--text-2)}
+
+.ask{background:var(--accent-soft);border-radius:var(--r);padding:22px;display:flex;flex-direction:column;gap:10px}
+.ask ol{margin:0;padding-inline-start:22px;display:flex;flex-direction:column;gap:6px}
+</style>
+
+<div class="book" dir="rtl" lang="he">
+
+  <div class="picker" role="group" aria-label="איזו גרסה של הסימן להציג בכל הספר">
+    <span>הספר מוצג עם:</span>
+    <div id="picker" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+  </div>
+
+  <section class="pg cover">
+    <div class="grain"></div>
+    <div class="top"><span>ספר מותג · גרסה 0.1</span><span>ספטמבר 2026</span></div>
+    <div class="mid" id="coverMark"></div>
+    <div class="bot">
+      <div style="display:flex;flex-direction:column;gap:10px"><h1>עולמה</h1><span style="font-size:18px">סוגרת מעגלים.</span></div>
+      <span style="font-size:14px;max-width:34ch">שני עולמות, וצבוע רק מה שמשותף להם. הכל כאן משתנה לפי הגרסה שנבחרה למעלה.</span>
+    </div>
+  </section>
+
+  <section class="pg">
+    <div class="ph"><span class="pn">01</span><h2>הסימן, ולמה הוא כזה</h2></div>
+    <p class="sub">כל טבעת היא עולם של אדם: הזמן שלו, התוכניות שלו, מה שהוא לא רוצה לספר. עולמה עובדת במקום שבו העולמות נוגעים. הטבעות נשארות שקופות, וצבוע רק החלק המשותף. זה בדיוק מה שהמוצר עושה: כל אחד עונה לה בפרטי, והקבוצה רואה רק מה שהוסכם.</p>
+    <p class="sub">בזה הסימן גם שונה מ־Mastercard. שם שני עיגולים מלאים, כאן שתי טבעות ועדשה.</p>
+  </section>
+
+  <section class="pg">
+    <div class="ph"><span class="pn">02</span><h2>שש גרסאות לכיוון ב׳</h2></div>
+    <p class="sub">לחיצה על גרסה מחליפה אותה בכל הספר. כל גרסה מוצגת גם בגודל של תמונת פרופיל בוואטסאפ, כי שם רוב האנשים יפגשו אותה.</p>
+    <div class="vars" id="vars"></div>
+  </section>
+
+  <section class="pg">
+    <div class="ph"><span class="pn">03</span><h2>בנייה</h2></div>
+    <div class="cons">
+      <div class="draw" id="consDraw"></div>
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div class="specs" id="specs"></div>
+        <p class="muted">הכל נמדד ביחס לרדיוס r, כך שהסימן נראה אותו דבר בכל גודל. המרחב המקווקו מסביב הוא אזור שאסור לשים בו כלום, ורוחבו כרוחב העדשה.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="pg">
+    <div class="ph"><span class="pn">04</span><h2>העדשה מחליפה צבע לפי השעה</h2></div>
+    <p class="sub">הטבעות תמיד בצבע הדיו, או באור ירח על רקע כהה. רק העדשה, החלק המשותף, לוקחת את הצבע של שעת היום. ברירת המחדל, כשאין שעה, היא אלמוג.</p>
+    <div class="hours" id="hours"></div>
+  </section>
+
+  <section class="pg">
+    <div class="ph"><span class="pn">05</span><h2>צירופים</h2></div>
+    <div class="locks" id="locks"></div>
+  </section>
+
+  <section class="pg">
+    <div class="ph"><span class="pn">06</span><h2>בסיטואציות</h2></div>
+    <p class="sub">המקומות שבהם אנשים באמת יפגשו את עולמה, לפי הסדר שבו הם יפגשו אותה.</p>
+    <div class="sits" id="sits"></div>
+  </section>
+
+  <section class="pg">
+    <div class="ph"><span class="pn">07</span><h2>מה לא עושים עם הסימן</h2></div>
+    <div class="donts" id="donts"></div>
+  </section>
+
+  <div class="ask">
+    <h3>מה אני צריך ממך</h3>
+    <ol>
+      <li>איזו גרסה מרגישה הכי עולמה, אחרי שראית אותה בכל הסיטואציות? כדאי לבדוק במיוחד את רשימת הצ'אטים ואת הסמלים הקטנים.</li>
+      <li>צבע העדשה: שישתנה לפי השעה כמו בעמוד 04, או אלמוג קבוע תמיד?</li>
+      <li>אחרי הבחירה: לחדד את הגרסה (עובי, מרווח, תנועה) ולעדכן את ערכת המותג, או להכין מזה בריף למעצב?</li>
+    </ol>
+  </div>
+</div>
+
+<script>
+const INK='#221C3A', MOON='#EDEAFB', PAPER='#F7F1E6';
+const HOURS=[
+  {k:'morning',n:'בוקר',g1:'#FFE6CF',g2:'#FFF4E8',lens:'#FF8A6B',ring:INK},
+  {k:'day',n:'יום',g1:'#E4ECF7',g2:'#F5F8FC',lens:'#5F8FD9',ring:INK},
+  {k:'evening',n:'ערב',g1:'#EFD3E0',g2:'#F8EAF0',lens:'#7C3A66',ring:INK},
+  {k:'night',n:'לילה',g1:'#1C1A38',g2:'#2A2752',lens:'#B9AEFF',ring:MOON,dark:1},
+  {k:'shabbat',n:'שבת',g1:'#2B1F3F',g2:'#3A2A4E',lens:'#F2C46D',ring:MOON,dark:1},
+];
+const H=Object.fromEntries(HOURS.map(h=>[h.k,h]));
+const two=(d,r=40)=>[{x:-d/2,y:0,r},{x:d/2,y:0,r}];
+const V={
+  b1:{name:'ב1 · איזון',rings:two(48),sw:7,note:'מה שבחרת: שתי טבעות שוות וחפיפה של שליש. הבסיס שכל השאר נמדדות מולו.'},
+  b2:{name:'ב2 · נוכח',rings:two(48),sw:12,note:'אותה בנייה עם קו כבד יותר. שורדת הכי טוב בגודל של תמונת פרופיל, ומרגישה בטוחה יותר.'},
+  b3:{name:'ב3 · העדשה במרכז',rings:two(44),sw:2.4,note:'הטבעות כמעט נעלמות והעדשה היא הסימן. עדינה ויפה בגדול, אבל בקטן נשאר רק עלה צבעוני.'},
+  b4:{name:'ב4 · את והעולם',rings:[{x:-24,y:0,r:27},{x:18,y:0,r:42}],sw:7,note:'טבעת קטנה ליד גדולה: אדם אחד והעולם שלו, או את ועולמה. פחות סימטרית ולכן יותר זכירה, אבל פחות מספרת על "ביחד".'},
+  b5:{name:'ב5 · נסגרים יחד',rings:two(48),sw:10,gap:64,note:'הרעיון הכי חכם על הנייר: כל טבעת פתוחה, והצורה הסגורה היחידה היא המשותפת. בפועל, כשהפתחים פונים החוצה זה הלוגו של שאנל, ובאלכסון זה עדיין נקרא כמו אותיות משולבות. מוצג כדי שיהיה אפשר לראות, לא כהמלצה.'},
+  b6:{name:'ב6 · קבוצה',group:true,sw:6,note:'לא גרסה נפרדת אלא הרחבה: שלוש טבעות, וצבוע רק מה שמשותף לכולן. לתיאומי קבוצה, בכל גרסה שתיבחר. הטבעות כאן תמיד סגורות, כי שלוש טבעות פתוחות נראות כמו סמל הסכנה הביולוגית.'},
+};
+let uid=0;
+function geom(v){
+  if(v.group){const rr=34,p=22;return{rings:[-90,150,30].map(a=>({x:p*Math.cos(a*Math.PI/180),y:p*Math.sin(a*Math.PI/180),r:rr})),sw:Math.min(v.sw,9)}}
+  return{rings:v.rings,sw:v.sw,gap:v.gap};
+}
+// the mark: rings (outlines only) and the shared region filled
+function mark(vk,o={}){
+  const v=V[vk], g=geom(o.group?{...v,group:true,sw:v.sw}:v);
+  const ring=o.ring||INK, lens=o.lens||'#FF8A6B', id='m'+(++uid), pad=g.sw/2+1;
+  let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;
+  g.rings.forEach(c=>{x0=Math.min(x0,c.x-c.r);x1=Math.max(x1,c.x+c.r);y0=Math.min(y0,c.y-c.r);y1=Math.max(y1,c.y+c.r)});
+  const vb=`${(x0-pad).toFixed(2)} ${(y0-pad).toFixed(2)} ${(x1-x0+2*pad).toFixed(2)} ${(y1-y0+2*pad).toFixed(2)}`;
+  const clips=g.rings.slice(0,-1).map((c,i)=>`<clipPath id="${id}c${i}"><circle cx="${c.x}" cy="${c.y}" r="${c.r}"/></clipPath>`).join('');
+  const last=g.rings[g.rings.length-1];
+  let fill=`<circle cx="${last.x}" cy="${last.y}" r="${last.r}" fill="${lens}"/>`;
+  for(let i=g.rings.length-2;i>=0;i--) fill=`<g clip-path="url(#${id}c${i})">${fill}</g>`;
+  const cx=(x0+x1)/2, cy=(y0+y1)/2;
+  const rings=g.rings.map(c=>{
+    let dash='',rot='';
+    if(g.gap){const C=2*Math.PI*c.r, gl=C*g.gap/360;dash=` stroke-dasharray="${(C-gl).toFixed(2)} ${gl.toFixed(2)}"`;
+      // openings on opposite diagonals (up-left, down-right): outward-facing openings read as Chanel's back-to-back Cs
+      const outward=Math.atan2(c.y-cy,c.x-cx)*180/Math.PI+(g.rings.length===2?45:0); rot=` transform="rotate(${(outward+g.gap/2).toFixed(2)} ${c.x} ${c.y})"`;}
+    const circ=`<circle cx="${c.x}" cy="${c.y}" r="${c.r}" fill="none" stroke="${ring}" stroke-width="${g.sw}" stroke-linecap="round"${dash}${rot}/>`;
+    if(!o.anim) return circ;
+    const k=o.group?1.3:1, fx=((c.x-cx)*k*1.4).toFixed(1), fy=((c.y-cy)*k*1.4).toFixed(1);
+    return `<g class="mv" style="--fx:${fx}px;--fy:${fy}px">${circ}</g>`;
+  }).join('');
+  return `<svg class="${o.cls||''}" viewBox="${vb}" role="img" aria-label="${o.label||'הסימן של עולמה'}"><defs>${clips}</defs><g${o.anim?' class="lf"':''}>${fill}</g>${rings}</svg>`;
+}
+const sky=(h,pos='85% 0%')=>`background:radial-gradient(90% 80% at ${pos},${h.dark?h.g2:'#ffffff'}${h.dark?'':'99'},transparent 70%),linear-gradient(180deg,${h.g2},${h.g1});color:${h.dark?MOON:INK}`;
+
+let cur='b1';
+try{cur=localStorage.getItem('olma-mark')||'b1'}catch(e){}
+if(!V[cur]||cur==='b6')cur='b1';
+
+function renderPicker(){
+  document.getElementById('picker').innerHTML=Object.keys(V).filter(k=>k!=='b6').map(k=>`<button class="vbtn" type="button" data-v="${k}" aria-pressed="${k===cur}">${mark(k,{label:V[k].name})}${V[k].name}</button>`).join('');
+  document.getElementById('vars').innerHTML=Object.keys(V).map(k=>`<button class="var" type="button" data-v="${k==='b6'?cur:k}" aria-pressed="${k===cur}">
+    <div class="v">${k==='b6'?mark(cur,{group:true,cls:'lg'})+mark(cur,{group:true,cls:'sm'}):mark(k,{cls:'lg'})+mark(k,{cls:'sm'})}</div>
+    <div class="tagline"><h3>${V[k].name}</h3>${k==='b6'?'<span class="chip sys">הרחבה</span>':''}${k==='b1'?'<span class="chip">הבחירה שלך</span>':''}${k==='b2'?'<span class="chip">ההמלצה שלי</span>':''}${k==='b5'?'<span class="chip sys">דומה לשאנל</span>':''}</div>
+    <p>${V[k].note}</p></button>`).join('');
+}
+
+function renderAll(){
+  renderPicker();
+  document.getElementById('coverMark').innerHTML=mark(cur,{lens:'#7C3A66'});
+
+  // construction
+  const g=geom(V[cur]), [a,b]=g.rings, d=b.x-a.x, lw=a.r+b.r-d, pad=lw;
+  const x0=a.x-a.r-pad-g.sw, x1=b.x+b.r+pad+g.sw, y0=-Math.max(a.r,b.r)-pad-g.sw, y1=-y0+22;
+  const dash='stroke="var(--text-3)" stroke-width=".5" stroke-dasharray="2 2" fill="none"';
+  document.getElementById('consDraw').innerHTML=`<svg viewBox="${x0} ${y0} ${x1-x0} ${y1-y0}" aria-label="בניית הסימן">
+    <rect x="${a.x-a.r-pad-g.sw/2}" y="${-Math.max(a.r,b.r)-pad-g.sw/2}" width="${(b.x+b.r)-(a.x-a.r)+2*pad+g.sw}" height="${2*Math.max(a.r,b.r)+2*pad+g.sw}" ${dash}/>
+    <g transform="translate(0 0)">${mark(cur).replace(/<svg[^>]*>/,'').replace('</svg>','')}</g>
+    <circle cx="${a.x}" cy="${a.y}" r="1.4" fill="var(--accent)"/><circle cx="${b.x}" cy="${b.y}" r="1.4" fill="var(--accent)"/>
+    <line x1="${a.x}" y1="0" x2="${a.x}" y2="${-a.r}" stroke="var(--accent)" stroke-width=".7"/>
+    <text x="${a.x+2}" y="${-a.r/2}" font-size="6" fill="var(--accent)" font-family="Rubik">r</text>
+    <line x1="${a.x}" y1="${Math.max(a.r,b.r)+10}" x2="${b.x}" y2="${Math.max(a.r,b.r)+10}" stroke="var(--accent)" stroke-width=".7"/>
+    <text x="${(a.x+b.x)/2}" y="${Math.max(a.r,b.r)+18}" font-size="6" fill="var(--accent)" text-anchor="middle" font-family="Rubik">d</text>
+  </svg>`;
+  const f=n=>(n/a.r).toFixed(2).replace(/\.?0+$/,'');
+  document.getElementById('specs').innerHTML=[
+    ['רדיוס',`r${b.r!==a.r?` · הטבעת הגדולה ${f(b.r)}r`:''}`],['מרחק בין המרכזים (d)',`${f(d)}r`],['רוחב העדשה',`${f(lw)}r`],['עובי הקו',`${f(g.sw)}r`],
+    ['פתח בטבעת',g.gap?`${g.gap}°, בצד החיצוני`:'אין'],['גודל מינימלי','20px במסך · 8 מ״מ בדפוס']
+  ].map(([k,v])=>`<div class="spec"><span>${k}</span><b dir="ltr">${v}</b></div>`).join('');
+
+  document.getElementById('hours').innerHTML=HOURS.map(h=>`<div class="hour" style="${sky(h)}">${mark(cur,{ring:h.ring,lens:h.lens})}<span>${h.n}</span><small>${h.lens}</small></div>`).join('');
+
+  document.getElementById('locks').innerHTML=`
+    <div class="lock"><div class="row">${mark(cur,{cls:'x'}).replace('class="x"','style="height:52px;width:auto"')}<span class="wm" style="font-size:46px">עולמה</span></div><span class="muted">ראשי בעברית · הסימן בצד שבו מתחילים לקרוא</span></div>
+    <div class="lock"><div class="row" dir="ltr">${mark(cur).replace('<svg','<svg style="height:48px;width:auto"')}<span class="wm" style="font-size:42px;font-weight:600">Allma</span></div><span class="muted">ראשי באנגלית</span></div>
+    <div class="lock"><div class="col">${mark(cur).replace('<svg','<svg style="height:70px;width:auto"')}<span class="wm" style="font-size:30px">עולמה</span><span style="font-size:14px;color:var(--text-2)">הכל סגור.</span></div><span class="muted">מוערם, עם הסלוגן · לסוף סרטון ולמדבקות</span></div>
+    <div class="lock" style="background:${H.night.g1};color:${MOON}"><div class="row">${mark(cur,{ring:MOON,lens:'#B9AEFF'}).replace('<svg','<svg style="height:52px;width:auto"')}<span class="wm" style="font-size:46px">עולמה</span></div><span class="muted" style="color:#B3ADCC">על רקע כהה · הטבעות באור ירח</span></div>`;
+
+  renderSits();
+
+  document.getElementById('donts').innerHTML=[
+    ['טבעות מלאות. זה Mastercard.',`<svg viewBox="-70 -45 140 90"><circle cx="-24" cy="0" r="40" fill="#7C6CF2"/><circle cx="24" cy="0" r="40" fill="#FF8A6B" style="mix-blend-mode:multiply"/></svg>`],
+    ['שתי טבעות בשני צבעים. הצבע שמור לחלק המשותף בלבד.',mark(cur).replace(/stroke="#221C3A"/,'stroke="#7C6CF2"').replace(/stroke="#221C3A"/,'stroke="#FF8A6B"')],
+    ['גרדיאנט בעדשה, צל או אפקט.',mark(cur,{lens:'url(#gr)'}).replace('<defs>','<defs><linearGradient id="gr" x1="0" x2="1"><stop offset="0" stop-color="#FF8A6B"/><stop offset="1" stop-color="#7C6CF2"/></linearGradient>').replace('<svg','<svg style="filter:drop-shadow(0 6px 6px rgba(0,0,0,.35))"')],
+    ['לסובב את הסימן.',mark(cur).replace('<svg','<svg style="transform:rotate(-28deg)"')],
+    ['לשנות את החפיפה. בלי מרווח קבוע אין סימן.',(()=>{const s=V[cur];const save=s.rings;if(s.rings)s.rings=[{...s.rings[0],x:s.rings[0].x-14},{...s.rings[1],x:s.rings[1].x+14}];const m=mark(cur);if(save)s.rings=save;return m})()],
+    ['טבעות על צילום עמוס. הסימן צריך רקע שקט.',`<div style="position:absolute;inset:0;border-radius:10px;background:repeating-linear-gradient(35deg,#E3B9D8 0 8px,#CFDDF2 8px 16px,#FFD0A8 16px 24px)"></div>`+mark(cur).replace('<svg','<svg style="position:relative"')],
+  ].map(([t,s])=>`<div class="dont"><div class="v">${s}</div><p>${t}</p></div>`).join('');
+}
+
+function sit(cls,title,note,inner,replay){return `<div class="sit ${cls}">${inner}<div class="cap"><b>${title}</b><span>${note}</span></div>${replay?`<button class="replay" type="button" data-replay="${replay}">↻ להריץ שוב</button>`:''}</div>`}
+function renderSits(){
+  const ev=H.evening, mo=H.morning, dy=H.day, sh=H.shabbat;
+  const av=`<div class="wa-av olma">${mark(cur,{lens:'#FF8A6B'})}</div>`;
+  const row=(avatar,n,m,t)=>`<div class="wa-row">${avatar}<div class="wa-t"><div><b>${n}</b><time>${t}</time></div><span>${m}</span></div></div>`;
+  const gav=(c,bg='#C7CED2')=>`<div class="wa-av" style="background:${bg}">${c}</div>`;
+  const list=`<div class="phone"><div class="scr"><div class="wa-h">צ'אטים <small>עריכה</small></div>
+    ${row(av,'עולמה','סגור ☕ חמישי 10:00 עם דנה','12:20')}
+    ${row(gav('🍝','#E9E2F7'),'ארוחה 🍝','נועה: חמישי מעולה','12:14')}
+    ${row(gav('א'),'אמא','❤️','11:02')}
+    ${row(gav('ד','#B7C6D6'),'דנה','חמישי מעולה','10:47')}
+    ${row(gav('ע','#C9D3C4'),'עבודה','יואב: מחר ב־9','09:30')}
+    ${row(gav('ר'),'רוני','תמונה','אתמול')}</div></div>`;
+  const chat=`<div class="phone"><div class="scr"><div class="wa-top">${av.replace('wa-av olma','wa-av olma')}<div><b>עולמה</b><small>מחוברת</small></div></div>
+    <div class="wa-body">
+      <div class="bb out">תתאמי לי קפה עם דנה השבוע ☕<time>12:05</time></div>
+      <div class="bb in">שאלתי את דנה, ואעדכן כשהיא עונה 🙂<time>12:05</time></div>
+      <div class="bb in"><b>סגור</b> ☕ חמישי 10:00 עם דנה<br>📅 הוספתי ליומן<time>12:20</time></div>
+    </div></div></div>`;
+  const reel=`<div class="frame v916 anim" id="reel" style="${sky(ev,'10% 100%')}"><div class="grain"></div><div class="fin" style="justify-content:center;align-items:center;gap:8cqw;text-align:center">
+    ${mark(cur,{anim:true,ring:INK,lens:ev.lens}).replace('<svg','<svg style="width:64%;height:auto;overflow:visible"')}
+    <div style="display:flex;flex-direction:column;gap:3cqw"><span class="wm t1" style="font-size:16cqw">סגור.</span><span class="t2" style="font-size:5.4cqw;color:#6A5E78">חמישי 20:00. כולם בפנים.</span></div>
+    <div class="t2" style="position:absolute;bottom:22%;display:flex;align-items:center;gap:2.4cqw">${mark(cur,{lens:ev.lens}).replace('<svg','<svg style="height:6cqw;width:auto"')}<span class="wm" style="font-size:5.4cqw">עולמה</span></div>
+  </div></div>`;
+  const post=`<div class="frame v11" style="${sky(mo,'92% 0%')}"><div class="grain"></div><div class="fin" style="justify-content:space-between">
+    <div style="display:flex;align-items:center;gap:2.4cqw">${mark(cur,{lens:mo.lens}).replace('<svg','<svg style="height:7cqw;width:auto"')}<span class="wm" style="font-size:5.4cqw">עולמה</span></div>
+    <div><div class="wm" style="font-size:15cqw;line-height:1.02">הכל סגור.</div><div style="font-size:4.8cqw;color:#6A5E78;margin-top:3cqw">התזכורות, הקפה עם דנה, והארוחה של חמישי.</div></div></div></div>`;
+  const group=`<div class="frame v11" style="${sky(ev,'10% 100%')}"><div class="grain"></div><div class="fin" style="justify-content:space-between">
+    <div style="display:flex;justify-content:center;padding-top:2cqw">${mark(cur,{group:true,lens:ev.lens}).replace('<svg','<svg style="width:48%;height:auto"')}</div>
+    <div><div class="wm" style="font-size:10cqw;line-height:1.08">חמישה אנשים.<br>ערב אחד.</div><div style="font-size:4.6cqw;color:#6A5E78;margin-top:2.4cqw">כל אחד ענה לה בפרטי. הקבוצה שמעה רק "סגור".</div></div></div></div>`;
+  const site=`<div class="browser"><div class="bbar"><i></i><i></i><i></i><span class="url">${mark(cur)}allma.world</span></div>
+    <div class="site"><nav><div style="display:flex;align-items:center;gap:1.4cqw">${mark(cur,{lens:dy.lens}).replace('<svg','<svg style="height:max(18px,3cqw);width:auto"')}<span class="wm" style="font-size:max(16px,2.6cqw)">עולמה</span></div><div class="links"><span>איך זה עובד</span><span>פרטיות</span></div></nav>
+    <div class="hero"><div><h4>כל העולם שלך.<br>בצ'אט אחד.</h4><p>עולמה זוכרת, מתאמת עם אחרים וסוגרת. בתוך וואטסאפ, בלי אפליקציה.</p><span class="cta">להתחיל בוואטסאפ</span></div>
+    <div class="art">${mark(cur,{lens:dy.lens})}</div></div></div></div>`;
+  const ring=(done)=>done?`<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" fill="none" stroke="#221C3A" stroke-width="2.4"/><circle cx="12" cy="12" r="3.6" fill="#FF8A6B"/></svg>`
+                         :`<svg viewBox="0 0 24 24"><path d="M12 4a8 8 0 1 1-6.9 4" fill="none" stroke="#221C3A" stroke-width="2.4" stroke-linecap="round"/></svg>`;
+  const sched=`<div class="frame v45 sched" style="${sky(mo,'92% 0%')}"><div class="grain"></div><div class="fin">
+    <div style="display:flex;justify-content:space-between;align-items:center"><div><div class="wm" style="font-size:7.4cqw">חמישי</div><div style="font-size:4cqw;color:#6A5E78">26 בספטמבר</div></div>${mark(cur,{lens:mo.lens}).replace('<svg','<svg style="height:9cqw;width:auto"')}</div>
+    <div><div class="shd">ביומן</div>
+      <div class="srow"><time>10:00</time><span>קפה עם דנה</span></div>
+      <div class="srow"><time>18:30</time><span>החוג של נועה</span></div>
+      <div class="srow"><time>20:00</time><span>ארוחה, כולם בפנים</span></div></div>
+    <div><div class="shd">על הרשימה</div>
+      <div class="srow done">${ring(true)}<span>הטסט לרכב</span></div>
+      <div class="srow">${ring(false)}<span>להתקשר לאינסטלטור</span></div>
+      <div class="srow">${ring(false)}<span>מתנה לנועה</span></div></div>
+  </div></div>`;
+  const shab=`<div class="frame v916 dark" style="${sky(sh,'85% 8%')}"><div class="grain"></div><div class="fin" style="justify-content:flex-end;gap:5cqw;padding-bottom:26%">
+    ${mark(cur,{ring:MOON,lens:sh.lens}).replace('<svg','<svg style="width:40%;height:auto;margin-bottom:auto;margin-top:18%"')}
+    <div class="wm" style="font-size:11cqw;line-height:1.1">שבת שלום.<br>אני כאן במוצאי שבת.</div>
+    <span style="font-size:4.6cqw;color:#B9AEFF">עולמה שקטה מהדלקת נרות עד הבדלה.</span></div></div>`;
+  const merch=`<div class="merch"><div class="stk">${mark(cur,{lens:INK})}<b>הכל סגור.</b></div><div class="tote">${mark(cur)}<b>Allma. All set.</b></div></div>`;
+  const icons=`<div class="icons">${[[120,'28%','120 · אייקון'],[64,'28%','64'],[44,'50%','44 · פרופיל'],[28,'50%','28'],[16,'3px','16 · לשונית']].map(([s,rad,l])=>`<div class="ic"><div class="sq" style="width:${s}px;height:${s}px;border-radius:${rad}">${mark(cur)}</div><span>${l}</span></div>`).join('')}</div>`;
+  document.getElementById('sits').innerHTML=
+    sit('s4','רשימת הצ\'אטים','44px, בין אמא לעבודה',list)+
+    sit('s4','בתוך הצ\'אט','הצ\'אט נשאר וואטסאפ',chat)+
+    sit('s4','סוף של ריל','ערב · המעגלים נפגשים',reel,'reel')+
+    sit('s6','פוסט','בוקר · הסלוגן',post)+
+    sit('s6','פוסט על קבוצה','ערב · שלוש טבעות',group)+
+    sit('s12','allma.world','יום · העמוד הראשי',site)+
+    sit('s6','כרטיס הלו"ז בוואטסאפ','הגרפיקה שנשלחת הכי הרבה · משימה פתוחה היא טבעת פתוחה',sched)+
+    sit('s6','סטורי שבת','שבת · העדשה בצבע נר',shab)+
+    sit('s7','מדבקה ותיק בד','צבע אחד בדפוס',merch)+
+    sit('s5','אייקונים','מגודל אפליקציה עד לשונית בדפדפן',icons);
+}
+
+function replay(id){const el=document.getElementById(id);if(!el)return;el.classList.remove('anim');void el.getBoundingClientRect();el.classList.add('anim')}
+document.addEventListener('click',e=>{
+  const b=e.target.closest('[data-v]');
+  if(b){cur=b.dataset.v;try{localStorage.setItem('olma-mark',cur)}catch(_){}renderAll();return}
+  const r=e.target.closest('[data-replay]');if(r)replay(r.dataset.replay);
+});
+renderAll();
+</script>

@@ -1,0 +1,24 @@
+:root{
+  --allma-ink: #221C3A; /* דיו */
+  --allma-paper: #F7F1E6; /* נייר */
+  --allma-moonlight: #EDEAFB; /* אור ירח */
+  --allma-lilac: #B9AEFF; /* לילך */
+  --allma-morning-ground: #FFE6CF; /* בוקר · רקע */
+  --allma-morning-sky: #FFF4E8; /* בוקר · שמיים */
+  --allma-morning-light: #FFD0A8; /* בוקר · אור */
+  --allma-day-ground: #E4ECF7; /* יום · רקע */
+  --allma-day-sky: #F5F8FC; /* יום · שמיים */
+  --allma-day-light: #CFDDF2; /* יום · אור */
+  --allma-evening-ground: #EFD3E0; /* ערב · רקע */
+  --allma-evening-sky: #F8EAF0; /* ערב · שמיים */
+  --allma-evening-light: #E3B9D8; /* ערב · אור */
+  --allma-night-ground: #1C1A38; /* לילה · רקע */
+  --allma-night-sky: #2A2752; /* לילה · שמיים */
+  --allma-night-light: #3A3470; /* לילה · אור */
+  --allma-shabbat-ground: #2B1F3F; /* שבת · רקע */
+  --allma-shabbat-sky: #3A2A4E; /* שבת · שמיים */
+  --allma-shabbat-light: #F2C46D; /* שבת · אור */
+  --allma-coral: #FF8A6B; /* אלמוג */
+  --allma-violet: #7C6CF2; /* סגול */
+  --allma-meeting: #7C3A66; /* מפגש */
+}

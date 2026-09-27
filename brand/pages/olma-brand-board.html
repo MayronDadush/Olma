@@ -1,0 +1,268 @@
+<title>Allma Brand Board</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700&family=Rubik:wght@500;600;700;800&display=swap">
+<style>
+:root{
+  --bg:#F6F4F1; --surface:#FFFFFF; --surface-2:#FBFAF8; --text:#221C3A; --text-2:#5F5873; --text-3:#8F88A3;
+  --sep:#E7E2DD; --accent:#5B4BD6; --accent-soft:#ECE9FB; --coral:#E0573A; --coral-soft:#FCE6DF;
+  --r:14px;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#141225; --surface:#1C1A33; --surface-2:#221F3C; --text:#EDEAFB; --text-2:#ABA5C4; --text-3:#7B7598;
+    --sep:#2D2A48; --accent:#B9AEFF; --accent-soft:#2A2550; --coral:#FF8A6B; --coral-soft:#3A2227;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#141225; --surface:#1C1A33; --surface-2:#221F3C; --text:#EDEAFB; --text-2:#ABA5C4; --text-3:#7B7598;
+  --sep:#2D2A48; --accent:#B9AEFF; --accent-soft:#2A2550; --coral:#FF8A6B; --coral-soft:#3A2227;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:'Assistant','Heebo',system-ui,sans-serif;font-size:16px;line-height:1.6;padding-inline:20px;padding-block:40px 80px}
+.wrap{max-width:1100px;margin-inline:auto;display:flex;flex-direction:column;gap:60px}
+h1,h2,h3{font-family:'Rubik','Assistant',sans-serif;text-wrap:balance;margin:0;line-height:1.15}
+h1{font-size:clamp(30px,5.2vw,50px);font-weight:700;letter-spacing:-.015em}
+h2{font-size:clamp(22px,3vw,28px);font-weight:700}
+h3{font-size:18px;font-weight:600}
+p{margin:0;max-width:66ch}
+.lede{color:var(--text-2);font-size:18px}
+.eyebrow{font-size:13px;font-weight:700;letter-spacing:.06em;color:var(--accent)}
+.mono{font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:12.5px;direction:ltr;unicode-bidi:isolate}
+section{display:flex;flex-direction:column;gap:18px}
+.sub{color:var(--text-2)}
+
+/* truths */
+.truths{display:flex;flex-direction:column;border-top:1px solid var(--sep)}
+.truth{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:8px 32px;padding-block:20px;border-bottom:1px solid var(--sep)}
+@media (max-width:720px){.truth{grid-template-columns:1fr}}
+.truth .what{display:flex;flex-direction:column;gap:6px}
+.truth .what p{color:var(--text-2);font-size:15.5px}
+.truth .so{display:flex;flex-direction:column;gap:4px;padding-inline-start:16px;border-inline-start:2px solid var(--accent-soft)}
+.truth .so b{font-size:12.5px;letter-spacing:.05em;color:var(--accent)}
+.truth .so span{font-size:15.5px}
+
+/* layers */
+.layers{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+@media (max-width:760px){.layers{grid-template-columns:1fr}}
+.layer{background:var(--surface);border:1px solid var(--sep);border-radius:var(--r);padding:18px;display:flex;flex-direction:column;gap:8px}
+.layer .role{font-size:12.5px;font-weight:700;letter-spacing:.05em;color:var(--text-3)}
+.layer p{font-size:15px;color:var(--text-2)}
+
+/* day strip */
+.day{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));border-radius:var(--r);overflow:hidden;border:1px solid var(--sep)}
+@media (max-width:760px){.day{grid-template-columns:1fr}}
+.slot{position:relative;padding:16px;min-height:190px;display:flex;flex-direction:column;gap:6px;isolation:isolate;overflow:hidden}
+@media (max-width:760px){.slot{min-height:auto}}
+.slot .t{font-family:'Rubik',sans-serif;font-weight:600;font-size:20px}
+.slot .when{font-size:13px;opacity:.75}
+.slot .doing{font-size:14.5px;line-height:1.45;margin-top:auto}
+.slot .hexes{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.hx{display:inline-flex;align-items:center;gap:5px;border:0;padding:2px 8px 2px 3px;border-radius:99px;font:inherit;font-size:11.5px;cursor:pointer;background:#ffffff66;color:inherit}
+.hx i{width:12px;height:12px;border-radius:50%;border:1px solid #0002}
+.hx:focus-visible{outline:2px solid currentColor;outline-offset:2px}
+.slot.dark .hx{background:#ffffff1a}
+
+.inks{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:18px;align-items:center}
+@media (max-width:760px){.inks{grid-template-columns:1fr}}
+.inklist{display:flex;flex-direction:column;gap:10px}
+.ink{display:flex;align-items:center;gap:12px;background:none;border:0;padding:0;font:inherit;color:inherit;text-align:start;cursor:pointer}
+.ink i{width:40px;height:40px;border-radius:10px;flex:none;border:1px solid #0001}
+.ink span{display:flex;flex-direction:column;line-height:1.3}
+.ink small{color:var(--text-3);font-size:13px}
+.ink:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:10px}
+
+/* overprint demo */
+.over{position:relative;aspect-ratio:16/10;max-width:100%;border-radius:var(--r);overflow:hidden;background:#F7F1E6;isolation:isolate;container-type:inline-size}
+.dot{position:absolute;border-radius:50%;mix-blend-mode:multiply}
+.over .lbl{position:absolute;font-family:'Rubik',sans-serif;font-weight:600;font-size:3.2cqw;color:#221C3A}
+
+/* frames */
+.frames{display:grid;grid-template-columns:1.9fr .78fr 1.1fr;gap:14px;align-items:start}
+@media (max-width:860px){.frames{grid-template-columns:1fr 1fr}.frames .f169{grid-column:1/-1}}
+@media (max-width:480px){.frames{grid-template-columns:1fr}}
+.fwrap{display:flex;flex-direction:column;gap:6px}
+.fcap{font-size:12.5px;color:var(--text-3)}
+.frame{position:relative;overflow:hidden;border-radius:10px;container-type:inline-size;isolation:isolate;max-width:100%}
+.f169 .frame{aspect-ratio:16/9}
+.f916 .frame{aspect-ratio:9/16}
+.f11 .frame{aspect-ratio:1/1}
+.grain{position:absolute;inset:0;z-index:5;pointer-events:none;mix-blend-mode:multiply;opacity:.16;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='.33 .33 .33 0 0 .33 .33 .33 0 0 .33 .33 .33 0 0 0 0 0 1 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");background-size:200px}
+.dark>.grain,.over.dark>.grain{mix-blend-mode:screen;opacity:.09}
+.frame .in{position:relative;z-index:3;height:100%;display:flex;flex-direction:column;padding:7cqw}
+.word{font-family:'Rubik',sans-serif;font-weight:700;letter-spacing:-.01em}
+.bub{border-radius:4.5cqw;padding:3cqw 4.2cqw;font-size:5.3cqw;line-height:1.35;max-width:86%}
+.bub.me{align-self:flex-start;border-end-start-radius:1cqw}
+.bub.her{align-self:flex-end;border-end-end-radius:1cqw}
+
+.notes{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}
+.note{background:var(--surface);border:1px solid var(--sep);border-radius:var(--r);padding:16px 18px;display:flex;flex-direction:column;gap:6px}
+.note p{color:var(--text-2);font-size:15px}
+.ask{background:var(--accent-soft);border-radius:var(--r);padding:22px;display:flex;flex-direction:column;gap:10px}
+.ask ol{margin:0;padding-inline-start:20px;display:flex;flex-direction:column;gap:4px}
+.toast{position:fixed;inset-inline:0;bottom:calc(20px + env(safe-area-inset-bottom,0px));margin-inline:auto;width:max-content;max-width:90vw;background:var(--text);color:var(--bg);padding:8px 16px;border-radius:99px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:10}
+.toast.on{opacity:1}
+@media (prefers-reduced-motion:reduce){.toast{transition:none}}
+</style>
+
+<div class="wrap" dir="rtl" lang="he">
+  <header style="display:flex;flex-direction:column;gap:14px">
+    <div class="eyebrow">עולמה · Allma · כיוון מותג, סבב 2</div>
+    <h1>שקט כבסיס, השעון כצבע, ה"ביחד" כרגע</h1>
+    <p class="lede">הלוגו יורד מהשולחן, ומתחילים ממה שהמוצר עושה בפועל. הכל כאן נגזר מהתנהגות שכבר קיימת בקוד, לא מסלוגן. בסוף הדף יש שלוש שאלות לסגירה.</p>
+  </header>
+
+  <section>
+    <h2>מה עולמה באמת עושה, ומה זה אומר על המראה</h2>
+    <div class="truths">
+      <div class="truth"><div class="what"><h3>היא יודעת מתי לשתוק</h3><p>שעות שקט, יום מנוחה מהדלקת נרות עד הבדלה למי שביקש, אותו דבר לא נשלח פעמיים, 👍 במקום הודעה כשאין מה להוסיף, ורבע שעה של המתנה כדי לאסוף כמה עדכונים להודעה אחת.</p></div>
+        <div class="so"><b>אז</b><span>צבעים רכים, רוויה נמוכה והרבה אוויר. אין ניאון, אין זוהר ואין תנועה קופצנית. המותג לא צועק.</span></div></div>
+      <div class="truth"><div class="what"><h3>היא מחברת בין אנשים</h3><p>תיאום פגישות, קבוצות, "סגור" בחדר. אף אחד לא מנהל את התיאום, כולם שווים בו, והיא סופרת ראשים ולא מצביעה על מי שלא ענה.</p></div>
+        <div class="so"><b>אז</b><span>שכבות צבע שקופות שחופפות זו לזו. כל עיגול הוא אדם, והמקום שבו הם נפגשים מקבל צבע שלישי. זה הרגע של המותג.</span></div></div>
+      <div class="truth"><div class="what"><h3>היא חיה לפי השעון שלך</h3><p>סיכום בוקר, תזכורת בדיוק בשעה שאמרת, שקט בלילה, שבת. כמעט כל החלטה במערכת היא שאלה של "מתי".</p></div>
+        <div class="so"><b>אז</b><span>אין צבע ראשי אחד. הפלטה היא שעות היום, וכל סרטון מקבל את השעה שבה הסיפור שלו קורה.</span></div></div>
+      <div class="truth"><div class="what"><h3>היא בתוך וואטסאפ, בלי אפליקציה</h3><p>אין מסך משלה. היא עוד איש קשר ברשימה, ליד המשפחה והחברים.</p></div>
+        <div class="so"><b>אז</b><span>להרגיש כמו משהו מהחיים (נייר, אור, דיו) ולא כמו מסך. לא להתחרות בירוק של וואטסאפ, ולכן אין ירוק בכלל.</span></div></div>
+      <div class="truth"><div class="what"><h3>השם</h3><p>עולמה נשמע גם כמו "עולם" וגם כמו "העולם שלה", והדומיין הוא allma.world.</p></div>
+        <div class="so"><b>אז</b><span>אופק ושמיים הם דימוי טבעי: העולם שלך ביום אחד. זה מתחבר ישר לפלטת השעות.</span></div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>איך שלושת המסרים עובדים יחד</h2>
+    <div class="layers">
+      <div class="layer"><span class="role">בסיס · תמיד</span><h3>שקט</h3><p>רקע בהיר ורך, דיו אחד כהה לכל הטקסט, גרעין של נייר. זה מה שנשאר קבוע בכל פריים.</p></div>
+      <div class="layer"><span class="role">מערכת הצבעים · לפי הסיפור</span><h3>שעון היום</h3><p>הרקע משנה את גוון השמיים לפי השעה שבה הסיפור קורה. חמש שעות, חמישה גוונים, ודיו אחד.</p></div>
+      <div class="layer"><span class="role">הרגע · במשורה</span><h3>ביחד</h3><p>עיגולים שקופים בשני צבעי דיו שחופפים. מופיעים רק כשיש בסיפור יותר מאדם אחד.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>פלטה: שעון היום</h2>
+    <p class="sub">הדיו <span class="mono">#221C3A</span> עובר את 11.5:1 על כל ארבעת הרקעים הבהירים, כך שהטקסט אף פעם לא משנה צבע. רק הלילה והשבת הפוכים. לחיצה על צבע מעתיקה אותו.</p>
+    <div class="day" id="day"></div>
+
+    <div class="inks">
+      <div class="inklist" id="inks"></div>
+      <div class="over" id="over" aria-label="שני צבעי דיו חופפים, והחפיפה יוצרת צבע שלישי"></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>טקסטורה</h2>
+    <div class="notes">
+      <div class="note"><h3>גרעין נייר, תמיד</h3><p>שכבת רעש של כ־3–5% מעל כל פריים. זה נותן תחושה של חומר ולא של מסך, וגם מונע שהגרדיאנטים יישברו לפסים בדחיסה של אינסטגרם ווואטסאפ.</p></div>
+      <div class="note"><h3>הדפסת־על, רק לרגע של ה"ביחד"</h3><p>עיגולים בצבעי הדיו עם מצב ערבוב Multiply (או Screen בלילה), בהזזה קלה אחד מהשני, כמו בהדפסת ריזוגרף. בלי קווי מתאר ובלי צל.</p></div>
+      <div class="note"><h3>שמיים, לא גרדיאנט</h3><p>המעבר ברקע הוא אור רך שנכנס מצד אחד, כמו חלון בשעה מסוימת, ולא פס צבעים מקצה לקצה. פחות "טק", יותר "בוקר בבית".</p></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>איך זה נראה בפריים</h2>
+    <p class="sub">בלי לוגו. במקומו מופיע השם בפונט הכותרות. הפונטים הם אלה של האתר, Rubik ו־Assistant: שניהם רכים, קריאים בעברית ובאנגלית, ולא סותרים את ה"שקט". אפשר לפתוח את נושא הפונט בנפרד.</p>
+    <div class="frames" id="frames"></div>
+  </section>
+
+  <section>
+    <h2>מה עוד חשוב</h2>
+    <div class="notes">
+      <div class="note"><h3>הלוגו יכול לצמוח מכאן</h3><p>שני עיגולים חופפים, או שמש על אופק, כבר נושאים את המסר. לא הייתי ממהר: קודם לחיות עם הצבעים כמה סרטונים, ואז לעצב סימן שנולד מהם.</p></div>
+      <div class="note"><h3>עברית בעורך הווידאו</h3><p>ב־CapCut וב־Premiere, פיסוק, שעות ("19:30") ומילים באנגלית קופצים למקום הלא נכון. ב־Premiere וב־After Effects צריך להפעיל את מנוע הטקסט של Middle Eastern. כדאי לבדוק כל כותרת לפני הייצוא.</p></div>
+      <div class="note"><h3>אזורים בטוחים ב־9:16</h3><p>הכפתורים של אינסטגרם וטיקטוק יושבים בצד ימין, איפה שטקסט בעברית מתחיל. צריך שוליים ימניים של 12%, ועוד כ־20% למטה.</p></div>
+      <div class="note"><h3>כרטיס הלו"ז בוואטסאפ</h3><p>זו הגרפיקה שמשתמשים רואים הכי הרבה, והיא היום בשפה אחרת לגמרי, כולל ירוק. אחרי הבחירה כדאי להעביר גם אותה לפלטה הזאת.</p></div>
+    </div>
+  </section>
+
+  <div class="ask">
+    <h3>שלוש שאלות לסגירה</h3>
+    <ol>
+      <li>הכיוון הזה מרגיש כמו עולמה, או שחסר בו משהו (למשל יותר חום, יותר אנרגיה)?</li>
+      <li>לילה כהה נכנס לפלטה, או שהמותג תמיד בהיר?</li>
+      <li>שני צבעי הדיו, אלמוג וסגול: מתאים, או שעדיף זוג אחר?</li>
+    </ol>
+  </div>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+const INK='#221C3A';
+const SLOTS=[
+  {t:'בוקר',when:'07:00–11:00',doing:'סיכום הבוקר: מה מחכה היום',g1:'#FFE6CF',g2:'#FFF4E8',light:'#FFD0A8',fg:INK,hexes:['#FFE6CF','#FFF4E8']},
+  {t:'יום',when:'11:00–17:00',doing:'תזכורת בשעה שביקשת',g1:'#E4ECF7',g2:'#F5F8FC',light:'#CFDDF2',fg:INK,hexes:['#E4ECF7','#F5F8FC']},
+  {t:'ערב',when:'17:00–21:00',doing:'"סגור": כולם מגיעים',g1:'#EFD3E0',g2:'#F8EAF0',light:'#E3B9D8',fg:INK,hexes:['#EFD3E0','#F8EAF0']},
+  {t:'לילה',when:'21:00–07:00',doing:'שקט. שום דבר לא נשלח',g1:'#1C1A38',g2:'#2A2752',light:'#3A3470',fg:'#EDEAFB',dark:true,hexes:['#1C1A38','#EDEAFB']},
+  {t:'שבת',when:'נרות עד הבדלה',doing:'יום מנוחה, למי שביקש',g1:'#2B1F3F',g2:'#3A2A4E',light:'#F2C46D',fg:'#EDEAFB',dark:true,hexes:['#2B1F3F','#F2C46D']},
+];
+const INKS=[
+  ['דיו','#221C3A','כל הטקסט על רקע בהיר'],
+  ['אלמוג','#FF8A6B','דיו הדפסה א׳, רק צורות גדולות'],
+  ['סגול','#7C6CF2','דיו הדפסה ב׳, רק צורות גדולות'],
+  ['נייר','#F7F1E6','רקע ניטרלי, מחוץ לשעון'],
+  ['לילך','#B9AEFF','טקסט משני בלילה · 8.4:1'],
+];
+const esc=s=>s;
+function sky(s,pos='85% 0%'){
+  return `background:radial-gradient(90% 80% at ${pos},${s.light}${s.dark?'55':'cc'},transparent 70%),linear-gradient(180deg,${s.g2},${s.g1})`;
+}
+const hx=h=>`<button class="hx" type="button" data-hex="${h}" aria-label="העתק ${h}"><i style="background:${h}"></i><span class="mono">${h}</span></button>`;
+
+document.getElementById('day').innerHTML=SLOTS.map(s=>`
+  <div class="slot${s.dark?' dark':''}" style="${sky(s)};color:${s.fg}">
+    <div class="grain"></div>
+    <span class="t">${s.t}</span><span class="when">${s.when}</span>
+    <span class="doing">${s.doing}</span>
+    <div class="hexes">${s.hexes.map(hx).join('')}</div>
+  </div>`).join('');
+
+document.getElementById('inks').innerHTML=INKS.map(([n,h,r])=>`<button class="ink" type="button" data-hex="${h}" aria-label="העתק ${h}"><i style="background:${h}"></i><span><b>${n} <span class="mono">${h}</span></b><small>${r}</small></span></button>`).join('');
+
+document.getElementById('over').innerHTML=`
+  <div class="dot" style="background:#FF8A6B;width:46cqw;height:46cqw;top:14cqw;right:14cqw;opacity:.9"></div>
+  <div class="dot" style="background:#7C6CF2;width:46cqw;height:46cqw;top:10cqw;right:40cqw;opacity:.8"></div>
+  <span class="lbl" style="top:5cqw;right:22cqw">את</span>
+  <span class="lbl" style="top:5cqw;right:62cqw">הוא</span>
+  <span class="lbl" style="top:31cqw;right:48cqw;color:#fff">נפגשים</span>
+  <div class="grain"></div>`;
+
+function frames(){
+  const m=SLOTS[0],e=SLOTS[2],n=SLOTS[4];
+  const wide=`<div class="frame" style="${sky(m,'92% 0%')};color:${INK}"><div class="grain"></div><div class="in">
+    <div style="display:flex;align-items:baseline;gap:2cqw"><span class="word" style="font-size:3.6cqw">עולמה</span><span style="font-size:2.2cqw;opacity:.6">07:45</span></div>
+    <div style="margin-top:auto;display:flex;flex-direction:column;gap:1.8cqw;max-width:74%">
+      <div class="word" style="font-size:7cqw;line-height:1.04">בוקר טוב.<br>היום יש שלושה דברים.</div>
+      <div style="font-size:2.5cqw;opacity:.75;line-height:1.4">הרשימה כבר מוכנה. נשאר רק לקום.</div>
+    </div></div></div>`;
+  const tall=`<div class="frame" style="${sky(e,'10% 100%')};color:${INK}"><div class="grain"></div>
+    <div class="dot" style="background:#FF8A6B;width:48cqw;height:48cqw;bottom:30%;right:14cqw;opacity:.85;z-index:1"></div>
+    <div class="dot" style="background:#7C6CF2;width:48cqw;height:48cqw;bottom:34%;right:40cqw;opacity:.75;z-index:1"></div>
+    <div class="in" style="padding-inline-start:12cqw;padding-top:14%">
+      <div class="word" style="font-size:10.5cqw;line-height:1.05">חמישה אנשים.<br>ערב אחד.</div>
+      <div style="display:flex;flex-direction:column;gap:3cqw;margin-top:auto;margin-bottom:26%">
+        <div class="bub her" style="background:#FFFFFFE6;color:${INK}">חמישי 19:30 מתאים לכולם. סגור?</div>
+        <div class="bub me" style="background:${INK};color:#fff">סגור 👍</div>
+      </div>
+    </div></div>`;
+  const sq=`<div class="frame dark" style="${sky(n,'85% 8%')};color:#EDEAFB"><div class="grain"></div>
+    <div style="position:absolute;width:16cqw;height:16cqw;border-radius:50%;background:#F2C46D;top:10cqw;left:12cqw;box-shadow:0 0 18cqw 6cqw #F2C46D55;z-index:1"></div>
+    <div class="in">
+      <div style="margin-top:auto;display:flex;flex-direction:column;gap:3cqw">
+        <div class="word" style="font-size:9cqw;line-height:1.1">שבת שלום.<br>אני כאן במוצאי שבת.</div>
+        <div style="font-size:4.2cqw;color:#B9AEFF">עולמה</div>
+      </div></div></div>`;
+  return `<div class="fwrap f169">${wide}<span class="fcap">16:9 · בוקר · סיכום היום</span></div>
+    <div class="fwrap f916">${tall}<span class="fcap">9:16 · ערב · תיאום (ה"ביחד")</span></div>
+    <div class="fwrap f11">${sq}<span class="fcap">1:1 · שבת · שקט</span></div>`;
+}
+document.getElementById('frames').innerHTML=frames();
+
+const toast=document.getElementById('toast');let tt;
+function say(t){toast.textContent=t;toast.classList.add('on');clearTimeout(tt);tt=setTimeout(()=>toast.classList.remove('on'),1600)}
+function selectIn(b){const el=b.querySelector('.mono');if(!el)return;const r=document.createRange();r.selectNodeContents(el);const s=getSelection();s.removeAllRanges();s.addRange(r)}
+document.addEventListener('click',e=>{
+  const b=e.target.closest('[data-hex]');if(!b)return;
+  const hex=b.dataset.hex;
+  try{navigator.clipboard.writeText(hex).then(()=>say('הועתק '+hex),()=>{selectIn(b);say('סמן והעתק: '+hex)})}catch(_){selectIn(b);say('סמן והעתק: '+hex)}
+});
+</script>
