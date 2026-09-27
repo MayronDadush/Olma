@@ -1,0 +1,192 @@
+<title>צבעים נועזים לעולמה</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Hebrew:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;700&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+:root{
+  --bg:#F4F3F0; --card:#FFFFFF; --ink:#17161C; --ink-2:#5C5A66; --line:#E2E0DB; --chip:#ECEAE5;
+  --f:"IBM Plex Sans Hebrew","IBM Plex Sans",system-ui,sans-serif; --mono:"IBM Plex Mono",ui-monospace,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#121116;--card:#1C1B22;--ink:#F1EFEA;--ink-2:#A7A4B0;--line:#2E2C36;--chip:#26242D;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#121116;--card:#1C1B22;--ink:#F1EFEA;--ink-2:#A7A4B0;--line:#2E2C36;--chip:#26242D;color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f);font-size:16px;line-height:1.6;margin:0}
+.wrap{max-width:1120px;margin:0 auto;padding-inline:16px;padding-block:32px 72px;display:grid;gap:40px}
+h1,h2,h3{margin:0;line-height:1.15;text-wrap:balance;letter-spacing:-.01em}
+h1{font-size:clamp(34px,6vw,56px);font-weight:700}
+h2{font-size:26px;font-weight:700}
+h3{font-size:17px;font-weight:600}
+p{margin:0;max-width:66ch}
+.muted{color:var(--ink-2)}
+.hex{font-family:var(--mono);font-size:12px;direction:ltr;unicode-bidi:isolate}
+.lead{display:grid;gap:14px}
+.rule{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.rule div{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px}
+.rule b{font-size:28px;font-weight:700;display:block;line-height:1}
+.tag{display:inline-block;font-size:12px;font-weight:600;padding:2px 9px;border-radius:99px;background:var(--chip);color:var(--ink-2)}
+.tag.rec{background:#FF7A1A;color:#fff}.tag.like{background:#221C3A;color:#F7F1E6}
+.picker{display:flex;flex-wrap:wrap;gap:8px;position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);padding-block:10px;border-bottom:1px solid var(--line)}
+.picker button{font:inherit;font-size:14px;font-weight:600;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:99px;padding:6px 12px 6px 8px;display:flex;align-items:center;gap:8px;cursor:pointer}
+.picker button[aria-pressed="true"]{border-color:var(--ink);box-shadow:0 0 0 1px var(--ink)}
+.dots{display:flex}.dots i{width:14px;height:14px;border-radius:50%;border:1px solid rgba(0,0,0,.12);margin-inline-start:-4px}.dots i:first-child{margin:0}
+.pal{display:grid;gap:22px}
+.pal-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:10px 14px}
+.bar{display:flex;height:64px;border-radius:14px;overflow:hidden;border:1px solid var(--line)}
+.bar div{display:flex;flex-direction:column;justify-content:flex-end;padding:8px 10px;font-size:12px;font-weight:600;min-width:0}
+.bar div span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.shots{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.shots figure{margin:0;display:grid;gap:6px}
+.shots img{width:100%;aspect-ratio:390/844;object-fit:cover;object-position:top;border-radius:22px;border:1px solid var(--line);display:block;background:var(--chip)}
+.shots figcaption{font-size:13px;color:var(--ink-2);text-align:center}
+.row{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px}
+.box{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px;display:grid;gap:12px;align-content:start}
+.marks{display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+.tabbar{display:flex;justify-content:space-around;border-radius:18px;padding:10px 6px 8px}
+.tabbar div{display:grid;justify-items:center;gap:2px;font-size:11px;font-weight:600;padding:4px 6px;border-radius:12px}
+.tabbar svg{width:24px;height:24px}
+.poster{border-radius:14px;aspect-ratio:4/5;position:relative;overflow:hidden;padding:18px;display:flex;flex-direction:column;justify-content:space-between;max-width:100%}
+.poster .big{font-size:clamp(56px,9vw,84px);font-weight:700;line-height:.9;letter-spacing:-.03em}
+.poster .small{font-size:13px;font-weight:500}
+.hours{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.hours div{border-radius:12px;padding:12px 10px;min-height:92px;display:flex;flex-direction:column;justify-content:space-between;font-size:12px;font-weight:600}
+.hours b{font-size:18px}
+.notes{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
+.notes .box p{font-size:15px}
+.strip{display:grid;grid-template-columns:repeat(7,minmax(118px,1fr));gap:10px;overflow-x:auto;padding-bottom:6px}
+.strip figure{margin:0;display:grid;gap:4px;cursor:pointer}
+.strip img{width:100%;aspect-ratio:390/600;object-fit:cover;object-position:top;border-radius:14px;border:1px solid var(--line);display:block}
+.strip figcaption{font-size:12px;text-align:center;color:var(--ink-2)}
+.rec{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:22px;display:grid;gap:14px}
+ol{margin:0;padding-inline-start:22px;display:grid;gap:8px}
+.copy{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.copy code{font-family:var(--f);background:var(--chip);border-radius:10px;padding:8px 12px;flex:1;min-width:0}
+.copy button{font:inherit;font-weight:600;border:0;background:var(--ink);color:var(--bg);border-radius:10px;padding:8px 14px;cursor:pointer}
+@media (max-width:640px){
+  .shots{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+  .shots img{border-radius:12px}
+  .hours b{font-size:15px}
+}
+</style>
+
+<div class="wrap" dir="rtl">
+  <header class="lead">
+    <span class="tag">עולמה · מחקר צבעים · 27.9</span>
+    <h1>צבעים נועזים, על הדאשבורד האמיתי</h1>
+    <p class="muted">כל הצילומים כאן הם עמוד <b>/me</b> האמיתי, מריצת דמו מקומית עם נתוני דוגמה. החלפתי בו רק את הצבעים, את הפונט ל־IBM Plex, ואת האיקונים לסט החדש. הלייאאוט והקוד לא השתנו. בכל פלטה אותו כלל, 60/30/10, כמו בדוגמה של רולקס ששלחת:</p>
+    <div class="rule">
+      <div><b>60%</b> רקע. השקט שעליו הכל יושב. בדאשבורד: הדף עצמו.</div>
+      <div><b>30%</b> הצבע של המותג. הפס העליון, הכפתורים והסימן.</div>
+      <div><b>10%</b> הניצוץ. העדשה בסימן, האיקון הפעיל והרגע שמשהו נסגר.</div>
+    </div>
+  </header>
+
+  <nav class="picker" id="picker" aria-label="פלטות"></nav>
+  <section class="pal" id="pal" aria-live="polite"></section>
+
+  <section style="display:grid;gap:14px">
+    <h2>כל מסכי הבית, זה ליד זה</h2>
+    <p class="muted">הכי קל להרגיש ככה. לחיצה על מסך פותחת את הפלטה שלו למעלה.</p>
+    <div class="strip" id="strip"></div>
+  </section>
+
+  <section class="rec">
+    <h2>מה אני ממליץ</h2>
+    <p><span class="tag rec">ממליץ</span> <b>כחול חשמלי + מנדרינה</b> כקפיצה הנועזת. שלחת אותו פעמיים, וזה לא מקרי. הכחול #0145F2 מלא אנרגיה ועדיין אמין, וזה בדיוק מה שעוזרת שסוגרת לך דברים צריכה לשדר. המנדרינה נשארת כ־10% ונותנת את הרגע של "סגור". בעברית הוא בולט, ואין עוזרת אחרת בשוק בצבע הזה.</p>
+    <p><span class="tag like">המשכיות</span> <b>אלמוג לוהט</b>, אם הקפיצה גדולה מדי. זה אלמוג על דיו שאהבת, רק עם הווליום למעלה. אבל שים לב: טקסט על האלמוג חייב להיות כהה, לבן לא עובר בדיקת ניגודיות.</p>
+    <p class="muted">שני אלה גם מסתדרים עם שלוש הפלטות לפי שעה שבחרת קודם (יום / לילה / שבת). מה שמשתנה הוא הצבע של היום, ולילה ושבת נגזרים ממנו.</p>
+    <h3>שאלות, כדי שנתקדם</h3>
+    <ol>
+      <li>איזו פלטה הרגישה הכי "עולמה" בצילומים? מותר גם להגיד "כמו X אבל עם העדשה של Y".</li>
+      <li>הפס הצבעוני בראש הדאשבורד: אוהב אותו מלא ככה, או שתעדיף אותו רק בכותרת ובכפתורים?</li>
+      <li>האיקונים החדשים עם העדשה (שני עיגולים שנפגשים): מדבר אליך, או שהם עמוסים מדי בגודל 24?</li>
+    </ol>
+    <div class="copy"><code id="sum">בחרתי: —</code><button id="cp" type="button">העתקה</button></div>
+  </section>
+</div>
+
+<script>
+const PALS=[
+ {id:'today',name:'היום (סגול)',tag:'להשוואה',P:'#5B2FD6',B:'#F6F5F8',A:'#C9A24A',I:'#1C1A22',onP:'#1C1A22',mk:['#1C1A22','#F6F5F8','#C9A24A'],
+  says:'מה שיש היום. נקי ובטוח, אבל בלי אמירה. הסגול הזה נפוץ מאוד בעולם ה־AI.',watch:'בלי פס צבעוני ובלי סימן. זו נקודת הייחוס, לא מועמד.'},
+ {id:'coral',name:'אלמוג על דיו',tag:'אהבת',P:'#221C3A',B:'#F7F1E6',A:'#FF8A6B',I:'#221C3A',onP:'#F7F1E6',mk:['#221C3A','#F7F1E6','#FF8A6B'],
+  says:'רגוע, בוגר ומגזיני. הדיו נותן סמכות, והאלמוג הוא חום אנושי קטן.',watch:'זה לא ממש "נועז". בדאשבורד הוא נראה כמעט כהה־רשמי, והאלמוג נבלע.'},
+ {id:'blue',name:'כחול חשמלי + מנדרינה',tag:'ממליץ',P:'#0145F2',B:'#EDF1F5',A:'#FF7A1A',I:'#0B1533',onP:'#FFFFFF',mk:['#0145F2','#EDF1F5','#FF7A1A'],
+  says:'אנרגיה, ביטחון ותנועה קדימה. "יש מי שמטפל בזה". כחול ומנדרינה הם צבעים משלימים, אז העדשה ממש קופצת.',watch:'כחול חשמלי קרוב לכחול של מותגי טכנולוגיה (פייסבוק, סמסונג). המנדרינה והסימן הם מה שמבדיל, אז אסור לוותר עליהם.'},
+ {id:'navy',name:'נייבי + ענבר',tag:'',P:'#0A2472',B:'#FFF8EC',A:'#FFBA08',I:'#0A1433',onP:'#FFFFFF',mk:['#0A2472','#FFF8EC','#FFBA08'],
+  says:'אמין וחמים, כמו בנק שמחייך. הענבר על הנייבי יפה מאוד בסימן.',watch:'כחול כהה ועוד צהוב, וכולם חושבים על איקאה. הענבר גם לא עובד כצבע טקסט על רקע בהיר.'},
+ {id:'hot',name:'אלמוג לוהט',tag:'המשכיות',P:'#FF4F2E',B:'#FFF4EE',A:'#1B1633',I:'#1B1633',onP:'#1B1633',mk:['#1B1633','#FF4F2E','#FFF4EE'],
+  says:'הכי חם ואנושי ומלא חיים. ממשיך את אלמוג על דיו, רק עם הווליום למעלה.',watch:'על האלמוג חייבים לכתוב בכהה, כי לבן לא עומד בניגודיות. הוא קרוב גם לצבע של "התראה" או "שגיאה", אז בדאשבורד הוא לא יכול לסמן גם אזהרות.'},
+ {id:'violet',name:'סגול + לימון',tag:'',P:'#5B2EFF',B:'#F6F4FF',A:'#FFE14D',I:'#150D3A',onP:'#FFFFFF',mk:['#5B2EFF','#F6F4FF','#FFE14D'],
+  says:'משחקי, צעיר וחשמלי. הכי קרוב למה שיש היום, רק באומץ.',watch:'לימון על לבן לא קריא בשום גודל, ולכן הוא יכול להופיע רק על הסגול. כמו היום, גם הוא סגול של AI.'},
+ {id:'teal',name:'טיל עמוק + חול',tag:'',P:'#004643',B:'#F0EDE5',A:'#FF7A59',I:'#0E1F1E',onP:'#F0EDE5',mk:['#004643','#F0EDE5','#FF7A59'],
+  says:'שקט, יוקרתי ובוגר. זה הכי "רולקס" מכל האפשרויות.',watch:'הירוק הכהה, כשהוא ליד וואטסאפ, נראה כמו חלק מוואטסאפ. בצ׳אט עצמו זה יכול להתבלבל.'},
+];
+const $=s=>document.querySelector(s);
+const lens=(a,b,cy,r)=>{const h=Math.sqrt(r*r-((b-a)/2)**2),x=(a+b)/2;return `M${x} ${(cy-h).toFixed(2)}A${r} ${r} 0 0 1 ${x} ${(cy+h).toFixed(2)}A${r} ${r} 0 0 1 ${x} ${(cy-h).toFixed(2)}Z`};
+const S='fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"';
+const L='fill="var(--lf)" stroke="none"';
+const ICONS=[
+ ['בית',`<path d="M4 10.6 12 4l8 6.6V19a1.8 1.8 0 0 1-1.8 1.8H5.8A1.8 1.8 0 0 1 4 19z" ${S}/><path d="${lens(10.4,13.6,15,2.6)}" ${L}/><circle cx="10.4" cy="15" r="2.6" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="13.6" cy="15" r="2.6" fill="none" stroke="currentColor" stroke-width="1.5"/>`],
+ ['משימות',`<circle cx="18.2" cy="6.5" r="2.3" ${L}/><circle cx="18.2" cy="6.5" r="2.3" ${S}/><circle cx="18.2" cy="12" r="2.3" ${S}/><circle cx="18.2" cy="17.5" r="2.3" ${S}/><path d="M4 6.5h9.6M4 12h9.6M4 17.5h9.6" ${S}/>`],
+ ['יומן',`<rect x="3.5" y="5" width="17" height="15.5" rx="2.6" ${S}/><path d="M8 3v4M16 3v4M3.5 9.6h17" ${S}/><circle cx="15.4" cy="14.9" r="2.4" ${L}/><circle cx="15.4" cy="14.9" r="2.4" fill="none" stroke="currentColor" stroke-width="1.6"/>`],
+ ['חברים',`<path d="${lens(9.5,14.5,8.6,3.4)}" ${L}/><circle cx="9.5" cy="8.6" r="3.4" ${S}/><circle cx="14.5" cy="8.6" r="3.4" ${S}/><path d="M2.8 19.6c.7-3.3 3.4-5.2 6.7-5.2M21.2 19.6c-.7-3.3-3.4-5.2-6.7-5.2M9.5 14.4h5" ${S}/>`],
+ ['פרופיל',`<path d="M12 4.8a3.8 3.8 0 0 1 0 7.6z" ${L}/><circle cx="12" cy="8.6" r="3.8" ${S}/><path d="M4.8 20c.8-3.6 3.6-5.6 7.2-5.6s6.4 2 7.2 5.6" ${S}/>`],
+];
+let uid=0;
+function split(m,size){const k='s'+(++uid);return `<svg viewBox="0 0 120 120" width="${size}" height="${size}" aria-hidden="true"><clipPath id="${k}"><circle cx="42" cy="60" r="28"/></clipPath><rect width="60" height="120" fill="${m[0]}"/><rect x="60" width="60" height="120" fill="${m[1]}"/><circle cx="42" cy="60" r="28" fill="${m[1]}"/><circle cx="78" cy="60" r="28" fill="${m[0]}"/><circle cx="78" cy="60" r="28" fill="${m[2]}" clip-path="url(#${k})"/></svg>`}
+function round(m,size){const a='r'+(++uid),b='r'+(++uid);return `<svg viewBox="0 0 120 120" width="${size}" height="${size}" aria-hidden="true"><clipPath id="${a}"><circle cx="60" cy="60" r="60"/></clipPath><clipPath id="${b}"><circle cx="44" cy="60" r="24"/></clipPath><g clip-path="url(#${a})"><rect width="60" height="120" fill="${m[0]}"/><rect x="60" width="60" height="120" fill="${m[1]}"/><circle cx="44" cy="60" r="24" fill="${m[1]}"/><circle cx="76" cy="60" r="24" fill="${m[0]}"/><circle cx="76" cy="60" r="24" fill="${m[2]}" clip-path="url(#${b})"/></g></svg>`}
+const mix=(a,b,p)=>`color-mix(in srgb, ${a} ${p}%, ${b})`;
+function tabbar(p,bg,fg,act,sel){
+  return `<div class="tabbar" style="background:${bg}">${ICONS.map(([n,d],i)=>{const on=i===sel;return `<div style="color:${on?act:fg};${on?`background:${mix(p.P,'#fff',12)}`:''}"><svg viewBox="0 0 24 24" style="--lf:${on?p.A:'none'}">${d}</svg>${n}</div>`}).join('')}</div>`;
+}
+function render(id){
+  const p=PALS.find(x=>x.id===id);
+  document.querySelectorAll('.picker button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.id===id));
+  try{localStorage.setItem('allma-bold',id)}catch(e){}
+  $('#sum').textContent='בחרתי: '+p.name;
+  const t=p.tag?`<span class="tag ${p.tag==='ממליץ'?'rec':p.tag==='אהבת'||p.tag==='המשכיות'?'like':''}">${p.tag}</span>`:'';
+  const night={bg:mix(p.I,'#000',78),fg:'#F4F2EE',a:p.A};
+  $('#pal').innerHTML=`
+   <div class="pal-head"><h2>${p.name}</h2>${t}</div>
+   <div class="bar">
+     <div style="flex:60;background:${p.B};color:${p.I}"><span>60 · רקע</span><span class="hex">${p.B}</span></div>
+     <div style="flex:30;background:${p.P};color:${p.onP}"><span>30 · מותג</span><span class="hex">${p.P}</span></div>
+     <div style="flex:10;background:${p.A};color:${p.id==='hot'?'#fff':p.I}"><span>10</span><span class="hex">${p.A}</span></div>
+   </div>
+   <div class="shots">
+     ${[['tools','בית'],['tasks','משימות'],['friends','חברים']].map(([k,n])=>`<figure><img src="img/${p.id}-${k}.jpg" alt="הדאשבורד בפלטה ${p.name}, לשונית ${n}" loading="lazy"><figcaption>${n}</figcaption></figure>`).join('')}
+   </div>
+   <div class="row">
+     <div class="box"><h3>הסימן</h3>
+       <div class="marks">${split(p.mk,96)}${round(p.mk,64)}${round(p.mk,32)}${round(p.mk,20)}</div>
+       <p class="muted" style="font-size:13px">חצי־חצי בגודל מלא, כתמונת פרופיל עגולה, ובגודל של פאביקון.</p></div>
+     <div class="box"><h3>האיקונים: לא פעיל מול פעיל</h3>
+       ${tabbar(p,'#fff',mix(p.I,'#fff',62),p.I,0)}
+       ${tabbar(p,'#fff',mix(p.I,'#fff',62),p.I,3)}
+       ${tabbar(p,night.bg,mix('#fff',night.bg,55),'#fff',1)}
+       <p class="muted" style="font-size:13px">העדשה נדלקת בצבע ה־10% רק בלשונית הפעילה. השורה האחרונה: מצב לילה.</p></div>
+     <div class="box"><h3>פוסטר</h3>
+       <div class="poster" style="background:${p.P};color:${p.onP}">
+         <div style="display:flex;justify-content:space-between;align-items:center"><span class="small">עולמה · allma</span>${round(p.mk,34)}</div>
+         <div><div class="big">הכל<br><span style="color:${p.id==='hot'?'#fff':p.A}">סגור.</span></div><div class="small" style="margin-top:10px">פגישה עם דנה, חמישי 18:30. כבר ביומן של שתיכן.</div></div>
+       </div></div>
+   </div>
+   <div class="row">
+     <div class="box"><h3>אותה פלטה לפי שעה</h3>
+       <div class="hours">
+        <div style="background:${p.P};color:${p.onP}"><span>יום</span><b>בוקר טוב</b></div>
+        <div style="background:${night.bg};color:${night.fg}"><span>לילה</span><b style="color:${p.A}">לילה טוב</b></div>
+        <div style="background:#1A1712;color:#F3E9D2"><span>שבת</span><b style="color:#E8B84A">שבת שלום</b></div>
+       </div>
+       <p class="muted" style="font-size:13px">שבת נשארת דיו ונר בכל הפלטות. זה מה שבחרת, ככה היא מזוהה גם בלי לוגו.</p></div>
+     <div class="box"><h3>מה זה משדר</h3><p>${p.says}</p></div>
+     <div class="box"><h3>ממה להיזהר</h3><p>${p.watch}</p></div>
+   </div>`;
+}
+$('#picker').innerHTML=PALS.map(p=>`<button type="button" data-id="${p.id}" aria-pressed="false"><span class="dots"><i style="background:${p.B}"></i><i style="background:${p.P}"></i><i style="background:${p.A}"></i></span>${p.name}</button>`).join('');
+$('#picker').addEventListener('click',e=>{const b=e.target.closest('button');if(b)render(b.dataset.id)});
+$('#strip').innerHTML=PALS.map(p=>`<figure data-id="${p.id}"><img src="img/${p.id}-tools.jpg" alt="מסך הבית בפלטה ${p.name}" loading="lazy"><figcaption>${p.name}</figcaption></figure>`).join('');
+$('#strip').addEventListener('click',e=>{const f=e.target.closest('figure');if(f){render(f.dataset.id);$('#picker').scrollIntoView({behavior:'smooth'})}});
+$('#cp').addEventListener('click',()=>{const t=$('#sum').textContent;navigator.clipboard?.writeText(t).then(()=>{$('#cp').textContent='הועתק'},()=>{getSelection().selectAllChildren($('#sum'))})});
+let start='blue';try{start=localStorage.getItem('allma-bold')||'blue'}catch(e){}
+render(PALS.some(p=>p.id===start)?start:'blue');
+</script>
