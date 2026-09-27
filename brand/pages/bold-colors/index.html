@@ -68,56 +68,88 @@ ol{margin:0;padding-inline-start:22px;display:grid;gap:8px}
   .hours b{font-size:15px}
 }
 </style>
+<style>
+.seg{display:inline-flex;background:var(--chip);border-radius:99px;padding:3px;gap:2px}
+.seg button{font:inherit;font-size:13px;font-weight:600;border:0;background:none;color:var(--ink-2);border-radius:99px;padding:5px 12px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--card);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.12)}
+.btns{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
+.btncard{border-radius:16px;padding:14px;display:grid;gap:10px;border:1px solid var(--line)}
+.btncard .lbl{font-size:12px;font-weight:600;opacity:.75}
+.pill{font:inherit;font-weight:600;font-size:14px;border:0;border-radius:99px;padding:8px 16px;display:inline-flex;align-items:center;gap:6px;justify-self:start}
+.ratio{font-size:12px;font-weight:600}
+.ok{color:#1E7A46}.meh{color:#B25A00}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .ok{color:#6FD39B}:root:not([data-theme="light"]) .meh{color:#FFB25C}}
+:root[data-theme="dark"] .ok{color:#6FD39B}:root[data-theme="dark"] .meh{color:#FFB25C}
+.btncard .ok{color:#1E7A46!important}.btncard .meh{color:#A34E00!important}
+.how{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+.how .box b{font-size:15px}
+.mean{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}
+.mean .box{gap:8px}
+.persona{font-size:22px;font-weight:700;line-height:1.2}
+.chipc{display:flex;gap:8px;align-items:center;font-size:14px}
+.chipc i{width:18px;height:18px;border-radius:6px;flex:none;border:1px solid rgba(0,0,0,.12)}
+.quiz{display:grid;gap:14px}
+.q{display:grid;gap:8px}
+.q .seg{flex-wrap:wrap}
+.result{display:grid;gap:8px}
+.rank{display:grid;grid-template-columns:28px 1fr auto;align-items:center;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:8px 12px}
+.rank .meter{height:8px;border-radius:99px;background:var(--chip);overflow:hidden}
+.rank .meter i{display:block;height:100%;border-radius:99px}
+</style>
 
 <div class="wrap" dir="rtl">
   <header class="lead">
-    <span class="tag">עולמה · מחקר צבעים · 27.9</span>
-    <h1>צבעים נועזים, על הדאשבורד האמיתי</h1>
-    <p class="muted">כל הצילומים כאן הם עמוד <b>/me</b> האמיתי, מריצת דמו מקומית עם נתוני דוגמה. החלפתי בו רק את הצבעים, את הפונט ל־IBM Plex, ואת האיקונים לסט החדש. הלייאאוט והקוד לא השתנו. בכל פלטה אותו כלל, 60/30/10, כמו בדוגמה של רולקס ששלחת:</p>
-    <div class="rule">
-      <div><b>60%</b> רקע. השקט שעליו הכל יושב. בדאשבורד: הדף עצמו.</div>
-      <div><b>30%</b> הצבע של המותג. הפס העליון, הכפתורים והסימן.</div>
-      <div><b>10%</b> הניצוץ. העדשה בסימן, האיקון הפעיל והרגע שמשהו נסגר.</div>
-    </div>
+    <span class="tag">עולמה · מחקר צבעים · סבב 3</span>
+    <h1>חמישה מועמדים, וכפתורים בצבע ה־10</h1>
+    <p class="muted">בכל המסכים כאן הכפתורים צבועים בצבע ה־10%. את צבע הטקסט עליהם בחרתי לפי בדיקת ניגודיות, בין ה־60 לבין ה־30. בכל חמשת המקרים ה־30 ניצח, ובפער גדול. בהמשך: מה כל שילוב גורם למשתמש להרגיש, ושאלון קצר שעוזר לבחור.</p>
   </header>
 
-
   <section style="display:grid;gap:14px">
-    <h2>המתלבטים: שלושה שבחרת ושניים חדשים</h2>
-    <p class="muted">לשלושה שבחרת יש מכנה משותף: צבע ראשי עמוק וכהה, רקע נייר חם ועדשה חמה. זה הטעם שלך. את שני החדשים בניתי בדיוק על אותו מבנה, רק בצבעים שאף אחד בתחום לא לקח.</p>
-    <div class="strip fin" id="fin"></div>
-    <div style="overflow-x:auto"><table class="cmp">
-      <thead><tr><th></th><th>מה משדר</th><th>הכי חזק ב…</th><th>הסיכון</th></tr></thead>
-      <tbody>
-        <tr><th>אלמוג על דיו</th><td>בוגר, מגזיני</td><td>פוסטרים וטיפוגרפיה</td><td>בדאשבורד כמעט רשמי, פחות נועז</td></tr>
-        <tr><th>נייבי + ענבר</th><td>אמין וחמים</td><td>הסימן, הענבר על הנייבי</td><td>מזכיר איקאה</td></tr>
-        <tr><th>טיל עמוק + חול</th><td>שקט, יוקרתי</td><td>הכי "רולקס"</td><td>ירוק בתוך וואטסאפ, איפה שעולמה חיה</td></tr>
-        <tr><th>שזיף + משמש <span class="tag rec">חדש</span></th><td>חם, עמוק, עם קריצה</td><td>ייחודי בתחום, והמעבר מהסגול של היום עדין</td><td>מתכהה לחום אם לא שומרים על הגוון</td></tr>
-        <tr><th>בורדו + תכלת <span class="tag rec">חדש</span></th><td>בטוח בעצמו, לא צפוי</td><td>העדשה הקרה על אדום חם</td><td>יכול להרגיש רציני מדי</td></tr>
-      </tbody></table></div>
+    <h2>הכפתור עצמו, מקרוב</h2>
+    <p class="muted">בכל כרטיס: למעלה הכפתור של היום, ב־30. מתחתיו החדש, ב־10 עם טקסט ב־30. המספר הוא יחס הניגודיות. 4.5 ומעלה נחשב קריא לטקסט רגיל, ו־7 ומעלה מצוין.</p>
+    <div class="btns" id="btns"></div>
   </section>
 
   <nav class="picker" id="picker" aria-label="פלטות"></nav>
   <section class="pal" id="pal" aria-live="polite"></section>
 
   <section style="display:grid;gap:14px">
-    <h2>כל מסכי הבית, זה ליד זה</h2>
-    <p class="muted">הכי קל להרגיש ככה. לחיצה על מסך פותחת את הפלטה שלו למעלה.</p>
-    <div class="strip" id="strip"></div>
+    <h2>איך צבע עובד על מי שמשתמש</h2>
+    <div class="how">
+      <div class="box"><b>המשמעות נלמדת, היא לא אוניברסלית</b><p>אין צבע ש"אומר" משהו מעצמו. אנשים מביאים איתם את מה שראו. בישראל, למשל, כחול כהה זה בנקים, ביטוח ומוסדות, ירוק זה וואטסאפ ובריאות, ואדום זה מבצעים והתראות. לכן השאלה היא לא מה הצבע אומר, אלא מה הוא מזכיר.</p></div>
+      <div class="box"><b>השילוב אומר יותר מכל צבע לבד</b><p>כהה עם בהיר משדר יציבות וסדר. חם עם קר יוצר מתח, ולכן נזכרים בו. חם עם חם מרגיש נעים ורך. ה־10 הוא הרגש של המותג, ומה שחשוב זה מה הוא עושה ליד ה־30.</p></div>
+      <div class="box"><b>עקביות מנצחת בחירה מושלמת</b><p>משתמשים מזהים מותג לפי הצבע אחרי שראו אותו מספיק פעמים באותו תפקיד. אם העדשה, הכפתור והרגע של "סגור" הם תמיד באותו צבע, אנשים לומדים ש"הצבע הזה הוא עולמה עושה משהו בשבילי". זה יעבוד כמעט בכל אחת מחמש הפלטות.</p></div>
+    </div>
+  </section>
+
+  <section style="display:grid;gap:14px">
+    <h2>מה כל שילוב משדר</h2>
+    <p class="muted">לכל פלטה נתתי דמות: אם עולמה הייתה אדם בצבעים האלה, מי היא הייתה.</p>
+    <div class="mean" id="mean"></div>
+  </section>
+
+  <section class="recbox quiz">
+    <h2>ארבע שאלות שיעזרו לבחור</h2>
+    <p class="muted">אין פה תשובה נכונה. כל תשובה נותנת נקודות לפלטות שמתאימות לה, והדירוג מתעדכן תוך כדי.</p>
+    <div id="quiz"></div>
+    <div class="result" id="result"></div>
   </section>
 
   <section class="recbox">
-    <h2>מה אני ממליץ, מתוך החמישה</h2>
-    <p><span class="tag rec">ממליץ</span> <b>שזיף + משמש.</b> הוא שומר על כל מה שאהבת בשלושה (עומק, נייר חם, עדשה חמה) וגם נותן את הנועזות שחסרה באלמוג על דיו. שזיף הוא צבע שאף אחד בתחום לא מחזיק. יש גם יתרון מעשי: מי שמשתמש היום רואה סגול, אז המעבר לשזיף ירגיש כמו התבגרות של אותו מותג ולא כמו מותג אחר.</p>
-    <p><b>אם תרצה משהו חד יותר:</b> בורדו + תכלת. זה הכי זכיר מכולם, אבל גם הכי רחוק מ"עוזרת נעימה".</p>
-    <p class="muted"><b>מה הייתי מוריד:</b> טיל עמוק + חול, למרות שהוא יפה. עולמה חיה בתוך וואטסאפ, וירוק כהה שם פשוט נבלע ברקע של האפליקציה.</p>
-    <h3>שאלות, כדי שנתקדם</h3>
+    <h2>מה אני חושב אחרי מבחן הכפתורים</h2>
+    <p><b>הכפתור ב־10 עובד בחמש הפלטות, והוא משפר את כולן.</b> הפעולה החשובה במסך קופצת, והעין יודעת מיד איפה ללחוץ. שני דברים להחליט:</p>
     <ol>
-      <li>מבין החמישה, איזה הכי "עולמה"? מותר גם שילוב, למשל "הרקע של X עם העדשה של Y".</li>
-      <li>הפס הצבעוני בראש הדאשבורד: אוהב אותו מלא ככה, או שתעדיף אותו רק בכותרת ובכפתורים?</li>
-      <li>האיקונים החדשים עם העדשה (שני עיגולים שנפגשים): מדבר אליך, או שהם עמוסים מדי בגודל 24?</li>
+      <li>רק <b>הפעולה הראשית</b> בכל מסך צריכה להיות ב־10 ("תאמו פגישה", "משימה חדשה", "חיבור"). אם כל כפתור יקבל אותו, ה־10 יהפוך ל־30 ויאבד את הכוח שלו. במסכים כאן גם אריח "שיחה" קיבל אותו, ולדעתי שם זה מיותר.</li>
+      <li>בטיל עמוק + חול הניגודיות היא 4.2, מתחת לסף של 4.5. זה עובד רק בטקסט מודגש וגדול.</li>
     </ol>
-    <div class="copy"><code id="sum">בחרתי: שזיף + משמש</code><button id="cp" type="button">העתקה</button></div>
+    <p><span class="tag rec">ממליץ</span> <b>שזיף + משמש</b> נשאר ההמלצה שלי. הכפתור המשמשי חם ומזמין, והוא לא נראה כמו שום אפליקציה אחרת. <b>נייבי + ענבר</b> קיבל את הדחיפה הכי גדולה מהמבחן: הכפתור הצהוב הוא הכי "לחיץ" מכולם. אם אמון חשוב לך מעל הכל, הוא בחירה טובה, רק צריך לחיות עם הקרבה לאיקאה.</p>
+    <div class="copy"><code id="sum">בחרתי: —</code><button id="cp" type="button">העתקה</button></div>
+  </section>
+
+  <section style="display:grid;gap:14px">
+    <h2>ארכיון: כל מה שנבדק עד עכשיו</h2>
+    <p class="muted">כל מסכי הבית מהסבבים הקודמים, עם הכפתורים ב־30.</p>
+    <div class="strip" id="strip"></div>
   </section>
 </div>
 
@@ -142,7 +174,6 @@ const PALS=[
  {id:'oxblood',name:'בורדו + תכלת',tag:'חדש',P:'#5E1224',B:'#F7EEE8',A:'#8FD3FF',I:'#2B0A12',onP:'#F7EEE8',mk:['#5E1224','#F7EEE8','#8FD3FF'],
   says:'הכי לא צפוי: אדום עמוק וחם עם ניצוץ קר. יש לו ביטחון של מותג אופנה, ובסימן העדשה התכולה נראית כמו חלון שנפתח.',watch:'בורדו יכול להרגיש רציני מדי, קצת יין וקצת משרד עורכי דין. התכלת נעלם על רקע בהיר, ולכן הוא רק עדשה ואף פעם לא טקסט.'},
 ];
-const $=s=>document.querySelector(s);
 const lens=(a,b,cy,r)=>{const h=Math.sqrt(r*r-((b-a)/2)**2),x=(a+b)/2;return `M${x} ${(cy-h).toFixed(2)}A${r} ${r} 0 0 1 ${x} ${(cy+h).toFixed(2)}A${r} ${r} 0 0 1 ${x} ${(cy-h).toFixed(2)}Z`};
 const S='fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"';
 const L='fill="var(--lf)" stroke="none"';
@@ -160,57 +191,85 @@ const mix=(a,b,p)=>`color-mix(in srgb, ${a} ${p}%, ${b})`;
 function tabbar(p,bg,fg,act,sel){
   return `<div class="tabbar" style="background:${bg}">${ICONS.map(([n,d],i)=>{const on=i===sel;return `<div style="color:${on?act:fg};${on?`background:${mix(p.P,'#fff',12)}`:''}"><svg viewBox="0 0 24 24" style="--lf:${on?p.A:'none'}">${d}</svg>${n}</div>`}).join('')}</div>`;
 }
+const FIN=['coral','navy','teal','plum','oxblood'];
+const MEAN={
+ coral:{persona:'העורכת',first:'רצינית, שקטה ואינטליגנטית.',p:'דיו: עומק, כתיבה, לילה. משדר שיש פה מישהו שחושב.',a:'אלמוג: החום של עור, של אדם. ידידותי בלי הצעקה של אדום.',tog:'סמכות רכה. "אני לוקחת אותך ברצינות, ואני נחמדה."',btn:'כפתור אלמוג על דיו מזמין, אבל עדין. הוא לא דוחף ללחוץ.',fit:'מי שמתעייף מאפליקציות צבעוניות.',less:'מי שצריך ש"יקפוץ" לו מהטלפון.'},
+ navy:{persona:'המנהלת המהימנה',first:'יציבה, מסודרת, אפשר לסמוך עליה.',p:'נייבי: אמון ויציבות. הצבע של בנקים, טיסות ומדים, ולכן הוא אומר "זה בידיים טובות".',a:'ענבר: שמש, אופטימיות ותשומת לב. ככה נראים שלטים שכדאי לקרוא.',tog:'"אני מסודרת ואני אופטימית." זה הזוג המשלים הכי חזק כאן, ולכן הכי קל לקרוא אותו.',btn:'הכפתור הכי "לחיץ" בכל החמישה. צהוב על כחול עוצר את העין.',fit:'אנשים עמוסים שרוצים הרגשה שמישהו מחזיק את הכל.',less:'מי שמחפש משהו אישי. יש בו קצת מוסד, וקצת איקאה.'},
+ teal:{persona:'הקונסיירז׳ במלון בוטיק',first:'רגועה, מאוזנת, יוקרתית בשקט.',p:'טיל עמוק: רוגע, בריאות ואיזון. גם צבע של כסף שגדל לאט.',a:'חול עם אלמוג: טבע, איטיות, ונקודת חיים קטנה.',tog:'"הכל בשליטה, תירגע." הכי מרגיע מכל החמישה.',btn:'כפתור אלמוג על טיל נעים, אבל הניגודיות גבולית (4.2).',fit:'מי שמשתמש בעולמה כדי להוריד מתח.',less:'בתוך וואטסאפ עצמו: ירוק כהה שם נבלע ברקע.'},
+ plum:{persona:'החברה החכמה',first:'חמה, עמוקה, עם קריצה.',p:'שזיף: חוכמה, יצירתיות וקצת יוקרה. פעם זה היה צבע של מלכות. מבוגר מסגול, ולכן פחות "טכנולוגי".',a:'משמש: אור של בוקר. אנרגיה בלי אגרסיביות, חם כמו אוכל.',tog:'"אני חכמה, ואני בצד שלך." חם על חם עם עומק, וזה מרגיש קרוב ואישי.',btn:'כפתור משמש על שזיף חם ומזמין. מרגיש כמו "יאללה" ולא כמו "חובה".',fit:'מי שרוצה עוזרת שמרגישה כמו חברה, לא כמו כלי.',less:'מי שמחפש מראה עסקי קר.'},
+ oxblood:{persona:'המעצבת הבטוחה בעצמה',first:'נחושה, בוגרת ושונה.',p:'בורדו: תשוקה, בגרות ונחישות. אדום שנרגע.',a:'תכלת: אוויר, פתיחות והקלה.',tog:'חם מול קר, וזה יוצר מתח שנזכרים בו. "סוף סוף אפשר לנשום."',btn:'כפתור תכלת על בורדו רך וקריר, ובולט דווקא בגלל ההפתעה.',fit:'קהל צעיר, יוצרים, מי שאוהב מותגים עם אמירה.',less:'מי שמחפש רוגע. בורדו יכול להרגיש רציני מדי.'},
+};
+const QUIZ=[
+ {q:'בשנייה הראשונה שפותחים את הדף, מה תרצה שירגישו?',o:[['רוגע',{coral:2,navy:2,teal:3,plum:2,oxblood:0}],['אנרגיה',{coral:1,navy:2,teal:0,plum:2,oxblood:3}]]},
+ {q:'עולמה היא יותר…',o:[['חברה קרובה',{coral:1,navy:0,teal:1,plum:3,oxblood:1}],['עוזרת מקצועית',{coral:2,navy:3,teal:3,plum:1,oxblood:2}]]},
+ {q:'על המסך של הטלפון, בין כל האפליקציות…',o:[['שתבלוט',{coral:1,navy:2,teal:0,plum:3,oxblood:3}],['שתשתלב בשקט',{coral:3,navy:1,teal:2,plum:1,oxblood:0}]]},
+ {q:'מי הקהל הראשון?',o:[['כולם, גם ההורים',{coral:2,navy:3,teal:2,plum:2,oxblood:0}],['צעירים ויוצרים',{coral:2,navy:0,teal:1,plum:2,oxblood:3}]]},
+];
+const $=s=>document.querySelector(s);
+const lumi=h=>{const c=h.slice(1).match(/../g).map(x=>{x=parseInt(x,16)/255;return x<=.03928?x/12.92:((x+.055)/1.055)**2.4});return .2126*c[0]+.7152*c[1]+.0722*c[2]};
+const ratio=(a,b)=>{const[x,y]=[lumi(a),lumi(b)].sort((m,n)=>n-m);return(x+.05)/(y+.05)};
+const onTen=p=>ratio(p.A,p.P)>=ratio(p.A,p.B)?p.P:p.B;
+const R=(a,b)=>{const r=ratio(a,b);return `<span class="ratio ${r>=4.5?'ok':'meh'}">${r.toFixed(1)}${r>=7?' · מצוין':r>=4.5?' · קריא':' · גבולי'}</span>`};
+const byId=id=>PALS.find(x=>x.id===id);
+let mode='b10';
+$('#btns').innerHTML=FIN.map(id=>{const p=byId(id),on=onTen(p),off=on===p.P?p.B:p.P;return `<div class="btncard" style="background:${p.B};color:${p.I}">
+  <b style="font-size:14px">${p.name}</b>
+  <span class="lbl">היום · 30</span><button class="pill" type="button" style="background:${p.P};color:${p.onP}">+ משימה חדשה</button>${R(p.P,p.onP)}
+  <span class="lbl">חדש · 10 עם טקסט ב־30</span><button class="pill" type="button" style="background:${p.A};color:${on}">+ משימה חדשה</button>${R(p.A,on)}
+  <span class="lbl" style="opacity:.6">לשם השוואה: 10 עם טקסט ב־60 · ${ratio(p.A,off).toFixed(1)}</span></div>`}).join('');
 function render(id){
-  const p=PALS.find(x=>x.id===id);
-  document.querySelectorAll('.picker button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.id===id));
-  try{localStorage.setItem('allma-bold',id)}catch(e){}
-  $('#sum').textContent='בחרתי: '+p.name;
-  const t=p.tag?`<span class="tag ${p.tag==='ממליץ'?'rec':p.tag==='מתלבט'?'like':p.tag==='חדש'?'rec':''}">${p.tag}</span>`:'';
-  const night={bg:mix(p.I,'#000',78),fg:'#F4F2EE',a:p.A};
+  const p=byId(id),m=MEAN[id];
+  document.querySelectorAll('#picker button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.id===id));
+  $('#sum').textContent='בחרתי: '+p.name+(mode==='b10'?' · כפתורים ב־10':' · כפתורים ב־30');
+  const suf=mode==='b10'?'-b10':'';
+  const on=onTen(p);
+  const night={bg:mix(p.I,'#000',78)};
   $('#pal').innerHTML=`
-   <div class="pal-head"><h2>${p.name}</h2>${t}</div>
+   <div class="pal-head"><h2>${p.name}</h2><span class="tag">${m.persona}</span>
+     <span class="seg" role="group" aria-label="צבע הכפתורים"><button type="button" data-m="b10" aria-pressed="${mode==='b10'}">כפתורים ב־10</button><button type="button" data-m="" aria-pressed="${mode!=='b10'}">כפתורים ב־30</button></span></div>
    <div class="bar">
      <div style="flex:60;background:${p.B};color:${p.I}"><span>60 · רקע</span><span class="hex">${p.B}</span></div>
-     <div style="flex:30;background:${p.P};color:${p.onP}"><span>30 · מותג</span><span class="hex">${p.P}</span></div>
-     <div style="flex:10;background:${p.A};color:${p.id==='hot'?'#fff':p.I}"><span>10</span><span class="hex">${p.A}</span></div>
+     <div style="flex:30;background:${p.P};color:${p.onP}"><span>30 · מותג וטקסט הכפתור</span><span class="hex">${p.P}</span></div>
+     <div style="flex:10;background:${p.A};color:${on}"><span>10 · כפתור</span><span class="hex">${p.A}</span></div>
    </div>
    <div class="shots">
-     ${[['tools','בית'],['tasks','משימות'],['friends','חברים']].map(([k,n])=>`<figure><img src="img/${p.id}-${k}.jpg" alt="הדאשבורד בפלטה ${p.name}, לשונית ${n}" loading="lazy"><figcaption>${n}</figcaption></figure>`).join('')}
+     ${[['tools','בית'],['tasks','משימות'],['friends','חברים']].map(([k,n])=>`<figure><img src="img/${p.id}-${k}${suf}.jpg" alt="הדאשבורד בפלטה ${p.name}, לשונית ${n}"><figcaption>${n}</figcaption></figure>`).join('')}
    </div>
    <div class="row">
-     <div class="box"><h3>הסימן</h3>
-       <div class="marks">${split(p.mk,96)}${round(p.mk,64)}${round(p.mk,32)}${round(p.mk,20)}</div>
-       <p class="muted" style="font-size:13px">חצי־חצי בגודל מלא, כתמונת פרופיל עגולה, ובגודל של פאביקון.</p></div>
-     <div class="box"><h3>האיקונים: לא פעיל מול פעיל</h3>
-       ${tabbar(p,'#fff',mix(p.I,'#fff',62),p.I,0)}
-       ${tabbar(p,'#fff',mix(p.I,'#fff',62),p.I,3)}
-       ${tabbar(p,night.bg,mix('#fff',night.bg,55),'#fff',1)}
-       <p class="muted" style="font-size:13px">העדשה נדלקת בצבע ה־10% רק בלשונית הפעילה. השורה האחרונה: מצב לילה.</p></div>
+     <div class="box"><h3>הסימן</h3><div class="marks">${split(p.mk,96)}${round(p.mk,64)}${round(p.mk,32)}${round(p.mk,20)}</div></div>
+     <div class="box"><h3>האיקונים</h3>${tabbar(p,'#fff',mix(p.I,'#fff',62),p.I,0)}${tabbar(p,night.bg,mix('#fff',night.bg,55),'#fff',1)}</div>
      <div class="box"><h3>פוסטר</h3>
-       <div class="poster" style="background:${p.P};color:${p.onP}">
+       <div class="poster" style="background:${p.P};color:${p.onP};aspect-ratio:auto;min-height:250px">
          <div style="display:flex;justify-content:space-between;align-items:center"><span class="small">עולמה · allma</span>${round(p.mk,34)}</div>
-         <div><div class="big">הכל<br><span style="color:${p.id==='hot'?'#fff':p.A}">סגור.</span></div><div class="small" style="margin-top:10px">פגישה עם דנה, חמישי 18:30. כבר ביומן של שתיכן.</div></div>
+         <div><div class="big" style="font-size:64px">הכל<br><span style="color:${p.A}">סגור.</span></div>
+         <button class="pill" type="button" style="margin-top:14px;background:${p.A};color:${on}">להוסיף ליומן</button></div>
        </div></div>
-   </div>
-   <div class="row">
-     <div class="box"><h3>אותה פלטה לפי שעה</h3>
-       <div class="hours">
-        <div style="background:${p.P};color:${p.onP}"><span>יום</span><b>בוקר טוב</b></div>
-        <div style="background:${night.bg};color:${night.fg}"><span>לילה</span><b style="color:${p.A}">לילה טוב</b></div>
-        <div style="background:#1A1712;color:#F3E9D2"><span>שבת</span><b style="color:#E8B84A">שבת שלום</b></div>
-       </div>
-       <p class="muted" style="font-size:13px">שבת נשארת דיו ונר בכל הפלטות. זה מה שבחרת, ככה היא מזוהה גם בלי לוגו.</p></div>
-     <div class="box"><h3>מה זה משדר</h3><p>${p.says}</p></div>
-     <div class="box"><h3>ממה להיזהר</h3><p>${p.watch}</p></div>
    </div>`;
 }
-$('#picker').innerHTML=PALS.map(p=>`<button type="button" data-id="${p.id}" aria-pressed="false"><span class="dots"><i style="background:${p.B}"></i><i style="background:${p.P}"></i><i style="background:${p.A}"></i></span>${p.name}</button>`).join('');
-$('#picker').addEventListener('click',e=>{const b=e.target.closest('button');if(b)render(b.dataset.id)});
-$('#strip').innerHTML=PALS.map(p=>`<figure data-id="${p.id}"><img src="img/${p.id}-tools.jpg" alt="מסך הבית בפלטה ${p.name}" loading="lazy"><figcaption>${p.name}</figcaption></figure>`).join('');
-$('#strip').addEventListener('click',e=>{const f=e.target.closest('figure');if(f){render(f.dataset.id);$('#picker').scrollIntoView({behavior:'smooth'})}});
-const FIN=['coral','navy','teal','plum','oxblood'];
-$('#fin').innerHTML=FIN.map(id=>{const p=PALS.find(x=>x.id===id);return `<figure data-id="${id}"><img src="img/${id}-tools.jpg" alt="מסך הבית בפלטה ${p.name}"><figcaption>${p.name}${p.tag==='חדש'?' · חדש':''}</figcaption></figure>`}).join('');
-$('#fin').addEventListener('click',e=>{const f=e.target.closest('figure');if(f){render(f.dataset.id);$('#picker').scrollIntoView({behavior:'smooth'})}});
+$('#picker').innerHTML=FIN.map(id=>{const p=byId(id);return `<button type="button" data-id="${id}" aria-pressed="false"><span class="dots"><i style="background:${p.B}"></i><i style="background:${p.P}"></i><i style="background:${p.A}"></i></span>${p.name}</button>`}).join('');
+let cur='plum';
+$('#picker').addEventListener('click',e=>{const b=e.target.closest('button');if(b){cur=b.dataset.id;render(cur)}});
+$('#pal').addEventListener('click',e=>{const b=e.target.closest('.seg button');if(b){mode=b.dataset.m;render(cur)}});
+$('#mean').innerHTML=FIN.map(id=>{const p=byId(id),m=MEAN[id];return `<div class="box">
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><span class="persona">${m.persona}</span>${round(p.mk,40)}</div>
+  <b style="font-size:14px">${p.name}</b>
+  <p><b>בשלוש השניות הראשונות:</b> ${m.first}</p>
+  <div class="chipc"><i style="background:${p.P}"></i><span>${m.p}</span></div>
+  <div class="chipc"><i style="background:${p.A}"></i><span>${m.a}</span></div>
+  <p><b>ביחד:</b> ${m.tog}</p>
+  <p><b>הכפתור:</b> ${m.btn}</p>
+  <p class="muted" style="font-size:14px"><b>מתאים ל:</b> ${m.fit}<br><b>פחות מתאים ל:</b> ${m.less}</p></div>`}).join('');
+const ans=QUIZ.map(()=>null);
+$('#quiz').innerHTML=QUIZ.map((q,i)=>`<div class="q"><b>${i+1}. ${q.q}</b><span class="seg" data-q="${i}">${q.o.map((o,j)=>`<button type="button" data-o="${j}" aria-pressed="false">${o[0]}</button>`).join('')}</span></div>`).join('');
+function score(){
+  const t=Object.fromEntries(FIN.map(id=>[id,0]));let n=0;
+  ans.forEach((a,i)=>{if(a!==null){n++;for(const[k,v]of Object.entries(QUIZ[i].o[a][1]))t[k]+=v}});
+  const max=Math.max(1,...Object.values(t)),rows=FIN.slice().sort((a,b)=>t[b]-t[a]);
+  $('#result').innerHTML=n===0?'<p class="muted">עוד לא ענית. לחץ על תשובה והדירוג יופיע כאן.</p>':rows.map((id,i)=>{const p=byId(id);return `<div class="rank"><b>${i+1}</b><div style="display:grid;gap:4px"><span style="font-weight:600;font-size:14px">${p.name} · ${MEAN[id].persona}</span><span class="meter"><i style="width:${t[id]/max*100}%;background:${p.P}"></i></span></div>${round(p.mk,26)}</div>`}).join('');
+}
+$('#quiz').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;const s=b.parentElement,i=+s.dataset.q;ans[i]=+b.dataset.o;s.querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',x===b));score()});
+score();
+$('#strip').innerHTML=PALS.map(p=>`<figure><img src="img/${p.id}-tools.jpg" alt="מסך הבית בפלטה ${p.name}" loading="lazy"><figcaption>${p.name}</figcaption></figure>`).join('');
 $('#cp').addEventListener('click',()=>{const t=$('#sum').textContent;navigator.clipboard?.writeText(t).then(()=>{$('#cp').textContent='הועתק'},()=>{getSelection().selectAllChildren($('#sum'))})});
 render('plum');
 </script>

@@ -1,7 +1,7 @@
 // Local-only: drives headless Chrome over CDP to screenshot the re-skinned /me page.
 // node shoot.js <signin-url> <outdir>
 const { spawn } = require('child_process'), fs = require('fs'), path = require('path');
-const [signin, out, only] = process.argv.slice(2);
+const [signin, out, only, mode] = process.argv.slice(2);
 const CH = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const PORT = 9333, sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 fs.mkdirSync(out, { recursive: true });
@@ -28,7 +28,8 @@ const chrome = spawn(CH, ['--headless=new', `--remote-debugging-port=${PORT}`, `
     for (const tab of ['tools', 'tasks', 'friends']) {
       await js(`(document.querySelector('.tab[data-go=${tab}]')||{click(){}}).click()`); await sleep(900);
       await js(`window.scrollTo(0,0); __bt('${p}')`); await sleep(1300);
-      await shot(`${p}-${tab}`);
+      if (mode === 'btn10') { console.log(p, tab, JSON.stringify(await js(`__bt('${p}',{btn10:true})`))); await sleep(300); }
+      await shot(`${p}-${tab}${mode ? '-' + mode : ''}`);
     }
   }
   console.log('done', pals.join(','));

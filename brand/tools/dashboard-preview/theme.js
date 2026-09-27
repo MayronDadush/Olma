@@ -30,7 +30,23 @@
   const MARK = (P) => `<svg viewBox="0 0 120 120" width="34" height="34" style="border-radius:50%;flex:none;display:block;box-shadow:0 0 0 2px rgba(255,255,255,.85)"><clipPath id="btc"><circle cx="60" cy="60" r="60"/></clipPath><clipPath id="btl"><circle cx="44" cy="60" r="24"/></clipPath><g clip-path="url(#btc)"><rect width="60" height="120" fill="${P.dark}"/><rect x="60" width="60" height="120" fill="${P.light}"/><circle cx="44" cy="60" r="24" fill="${P.light}"/><circle cx="76" cy="60" r="24" fill="${P.dark}"/><circle cx="76" cy="60" r="24" fill="${P.lens}" clip-path="url(#btl)"/></g></svg>`;
 
   let original = null;
-  function apply(name) {
+  // Contrast (WCAG) so the button text picks whichever of the 60/30 colours reads better on the 10.
+  const lum = (h) => { const c = h.replace('#', '').match(/../g).map((x) => { x = parseInt(x, 16) / 255; return x <= .03928 ? x / 12.92 : ((x + .055) / 1.055) ** 2.4; }); return .2126 * c[0] + .7152 * c[1] + .0722 * c[2]; };
+  const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((m, n) => n - m); return (x + .05) / (y + .05); };
+  window.__ratio = ratio;
+  // Every element painted in the button colour becomes the 10, with the better of 60/30 on it.
+  function tenButtons(p) {
+    const probe = document.createElement('i'); probe.style.background = 'var(--accent)'; document.body.appendChild(probe);
+    const acc = getComputedStyle(probe).backgroundColor; probe.remove();
+    const on = ratio(p.A, p.P) >= ratio(p.A, p.B) ? p.P : p.B;
+    document.querySelectorAll('.app *').forEach((el) => {
+      if (el.closest('.tabbar') || el.id === 'bt-band') return;
+      const cs = getComputedStyle(el);
+      if (cs.backgroundColor === acc) { el.style.setProperty('background', p.A, 'important'); el.style.setProperty('color', on, 'important'); el.style.setProperty('border-color', p.A, 'important'); el.dataset.b10 = 1; }
+    });
+    return { on, r: ratio(p.A, on).toFixed(1) };
+  }
+  function apply(name, opt = {}) {
     const p = PAL[name]; if (!p) return;
     if (!original) original = Object.fromEntries(Object.keys(ICONS).map((id) => [id, document.getElementById(id)?.innerHTML]));
     document.documentElement.setAttribute('data-theme', 'light');
@@ -77,6 +93,8 @@
     const markColors = { dark: p.mk[0], light: p.mk[1], lens: p.mk[2] };
     const html = MARK(markColors);
     if (brand) { let m = document.getElementById('bt-mark'); if (!m) { m = document.createElement('span'); m.id = 'bt-mark'; brand.prepend(m); } m.innerHTML = html; }
+    document.querySelectorAll('[data-b10]').forEach((el) => { ['background', 'color', 'border-color'].forEach((k) => el.style.removeProperty(k)); delete el.dataset.b10; });
+    if (opt.btn10) return tenButtons(p);
   }
   window.__bt = apply;
   const fromHash = () => { const m = /t=(\w+)/.exec(location.hash); if (m) apply(m[1]); };
