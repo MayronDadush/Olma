@@ -9,6 +9,8 @@
     hot:      { name: 'אלמוג לוהט', P: '#FF4F2E', B: '#FFF4EE', A: '#1B1633', I: '#1B1633', onP: '#1B1633', btn: '#1B1633', onBtn: '#FFF4EE' , mk:['#1B1633','#FF4F2E','#FFF4EE'] },
     violet:   { name: 'סגול + לימון', P: '#5B2EFF', B: '#F6F4FF', A: '#FFE14D', I: '#150D3A', onP: '#FFFFFF', btn: '#5B2EFF', onBtn: '#FFFFFF' , mk:['#5B2EFF','#F6F4FF','#FFE14D'] },
     teal:     { name: 'טיל עמוק + חול', P: '#004643', B: '#F0EDE5', A: '#FF7A59', I: '#0E1F1E', onP: '#F0EDE5', btn: '#004643', onBtn: '#F0EDE5' , mk:['#004643','#F0EDE5','#FF7A59'] },
+    plum:     { name: 'שזיף + משמש', P: '#4A1942', B: '#FBF1E7', A: '#FF9E3D', I: '#2A0F26', onP: '#FBF1E7', btn: '#4A1942', onBtn: '#FBF1E7' , mk:['#4A1942','#FBF1E7','#FF9E3D'] },
+    oxblood:  { name: 'בורדו + תכלת', P: '#5E1224', B: '#F7EEE8', A: '#8FD3FF', I: '#2B0A12', onP: '#F7EEE8', btn: '#5E1224', onBtn: '#F7EEE8' , mk:['#5E1224','#F7EEE8','#8FD3FF'] },
   };
   window.__PAL = PAL;
 

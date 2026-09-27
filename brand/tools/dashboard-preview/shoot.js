@@ -1,7 +1,7 @@
 // Local-only: drives headless Chrome over CDP to screenshot the re-skinned /me page.
 // node shoot.js <signin-url> <outdir>
 const { spawn } = require('child_process'), fs = require('fs'), path = require('path');
-const [signin, out] = process.argv.slice(2);
+const [signin, out, only] = process.argv.slice(2);
 const CH = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const PORT = 9333, sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 fs.mkdirSync(out, { recursive: true });
@@ -23,7 +23,7 @@ const chrome = spawn(CH, ['--headless=new', `--remote-debugging-port=${PORT}`, `
   if (!/\/me$/.test(await js('location.href'))) { await send('Page.navigate', { url: new URL('/me', signin).href }); await sleep(3000); }
   console.log('at', await js('location.href'));
   const shot = async (name) => { const r = await send('Page.captureScreenshot', { format: 'png' }); fs.writeFileSync(path.join(out, name + '.png'), Buffer.from(r.result.data, 'base64')); };
-  const pals = await js('Object.keys(window.__PAL||{})');
+  const pals = only ? only.split(',') : await js('Object.keys(window.__PAL||{})');
   for (const p of pals) {
     for (const tab of ['tools', 'tasks', 'friends']) {
       await js(`(document.querySelector('.tab[data-go=${tab}]')||{click(){}}).click()`); await sleep(900);
