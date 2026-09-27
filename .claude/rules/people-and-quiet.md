@@ -85,6 +85,12 @@ title means this file. Grep the title, not the filename.
   is a message; a person who only likes looks silent. Vered got eighteen
   messages on her second day and answered none (`incidents.md`, "Eighteen
   messages, no answer").
+  **One more kind passes the quiet drop: `intro_video`** (owner, 2026-09-27,
+  "לכולם חוץ ממי שמושהה"; `src/domain/intro-video.js`). A one-off broadcast of the
+  intro clip, queued by `olma2/scripts/intro-video.js`, idempotent per person per
+  clip. The pause still drops it, and the night, a quiet day, a pending
+  introduction and the pending-user drop all still apply. It is NOT a
+  precedent: a second broadcast kind is a second owner decision.
   **A write from their own page IS the person answering** (2026-09-20).
   `user-dashboard-write.perform` stamps `users.last_dashboard_at` (migration
   075) and resets `checkin_misses` on every successful write — the same line

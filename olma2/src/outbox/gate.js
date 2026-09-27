@@ -386,9 +386,14 @@ function decide(facts) {
   //
   // An answer on record passes the branch like a grace does, so it never
   // spends the one quiet invite either.
+  //
+  // And the intro video (domain/intro-video.js), by the owner's own words on
+  // 2026-09-27: "לכולם חוץ ממי שמושהה" — everybody but the paused. A ladder
+  // pause is a pause and is refused above; one or two misses is not, and the
+  // owner chose to reach them. Everything below still applies to it.
   let spendsQuietRoomInvite = false;
   if ((Number(facts.checkinMisses) || 0) >= 1
-    && row.kind !== 'checkin' && row.kind !== 'introduction'
+    && row.kind !== 'checkin' && row.kind !== 'introduction' && row.kind !== 'intro_video'
     && !askedForInWords(row) && !inRoomGrace && !onPageGrace && !facts.answeredCoordination) {
     if (!facts.pausedRoomInvite && !facts.quietRoomInvite) {
       return { action: 'drop', holdReason: 'quiet' };
