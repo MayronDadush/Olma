@@ -150,6 +150,7 @@ function withClocks(line, co, { timezone, nowMs } = {}) {
 function decideLine(co, {
   saidStarted, saidBase, saidBaseSlot, saidChase, saidDone, saidCalendar, saidDayOf, saidHour, saidTime,
   pendingRelay, startedAtMs, nowMs, timezone, tableSaidAtMs, reopenedAt, reopenedFrom, saidReopened,
+  roomAsleep,
 } = {}) {
   if (!co) return { kind: 'none', reason: 'nothing being coordinated' };
   if (co.status === 'confirmed') {
@@ -222,7 +223,10 @@ function decideLine(co, {
     return {
       // `total` is the whole room (owner, 2026-09-26): the line used to count
       // only who she could ask, and nobody knew why some were counted.
+      // `later`: said at night, when every invite but the asker's waits for
+      // the morning — "שואלת" would be a claim about messages not yet sent.
       kind: 'started', title: co.title, asked: co.participants, total: roomTotal(co), outside: co.outside || 0,
+      later: Boolean(roomAsleep),
       // Who of them the line can TAG (owner, 2026-09-25). The count stays: it
       // is what a room whose missing members are all LIDs still hears.
       outsidePhones: co.outsidePhones || [],

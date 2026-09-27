@@ -43,14 +43,17 @@ module.exports = [
           // about messages that never went. The owner's wording, and the only
           // one this tool can honestly support: she will ask each of them when
           // they are available (`incidents.md`, "The room was told twice").
-          ? 'Say ONE short line in the room: you are on it, and you will ask each of them privately WHEN THEY ARE AVAILABLE. Never say they have already been asked — nothing has reached anybody yet, and some of them are asleep or have stopped answering. Do not list the members and do not ask anything here. If the request itself named a time, call add_group_coordination_option for it now.'
+          // Since 2026-09-26 (fix 4) the room's own fixed opening line says
+          // this a moment later — "מתחילה לתאם… לכל N חברי הקבוצה" — so her
+          // "on it" was the same sentence twice.
+          ? 'The room hears that you have started in a fixed line a moment from now, so answer NO_REPLY — do not say you are on it. If the request itself named a time, call add_group_coordination_option for it first.'
           : 'This room already has that coordination running. Say where it stands (group_coordination_status), do not start another.',
       };
       // The one question this room is ever asked about itself, folded into
       // that same line so it is one message and not two. Asked once ever —
       // the column is already stamped, answered or not.
       if (res.data.askKind) {
-        hints.ask = 'Nobody has told you what kind of group this is, so add ONE short question to that same line — does this need a minimum number of people (a game: padel, poker), or is everyone simply invited and whoever can, comes? On their answer call set_group_kind. Ask it once; if they ignore it, drop it and coordinate as if everyone is invited.';
+        hints.ask = 'Nobody has told you what kind of group this is, so instead of NO_REPLY say ONE short question — does this need a minimum number of people (a game: padel, poker), or is everyone simply invited and whoever can, comes? On their answer call set_group_kind. Ask it once; if they ignore it, drop it and coordinate as if everyone is invited.';
       }
       return ok({
         meetingId: Number(res.data.meeting.id), title: res.data.meeting.title,

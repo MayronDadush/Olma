@@ -651,6 +651,9 @@ async function sweepGroupVoice(client, deps) {
       startedAtMs: new Date(row.meeting_created_at).getTime(),
       nowMs: now.getTime(),
       timezone: row.timezone,
+      // Outside the room's own hours the private invites wait for morning, so
+      // the opening line says she WILL ask (owner, 2026-09-26, fix 4).
+      roomAsleep: !gate.withinWindow(GROUP_WINDOW, row.timezone || groups.DEFAULT_TIMEZONE, now),
     });
     if (line.kind === 'none') continue;
     // Due, but not now: the room is asleep. Nothing is stamped, so it goes out
