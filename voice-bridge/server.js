@@ -70,6 +70,7 @@ const EL_MODEL = process.env.EL_TTS_MODEL || 'eleven_v3'; // flash/turbo have NO
 // lib/persona.js, where it can be tested without a phone. Only the database
 // read stays here.
 const dialGate = require('./lib/dial-gate');
+const { claimsWrite, WRITE_TOOLS } = require('./lib/claim');
 const { DEFAULT_PERSONA, personaVoice, gFor, spokenName, greetingText } = require('./lib/persona');
 async function loadPersona(userId) {
   const r = await pool.query(
@@ -557,9 +558,20 @@ class Call {
 
     try {
       let fillerSaid = false;
+      // lib/claim: a sentence saying a write was done (or is about to be) is
+      // HELD until the model's round ends, unless a write tool already
+      // succeeded this turn. A tool call in the same round makes the held
+      // sentence redundant (the post-tool answer says it); none at all means it
+      // was a claim with nothing behind it, and it is never spoken — the model
+      // is sent back once to do the write or say honestly that it did not.
+      let wroteThisTurn = false, claimRetried = false;
       for (let hop = 0; hop < 4; hop++) {
-        let content = '', sentence = '';
+        let content = '', sentence = '', spoken = '', held = '';
         const toolCalls = [];
+        const say = (text, last) => {
+          if (!wroteThisTurn && (held || claimsWrite(text))) { held += text; return; }
+          spoken += text; this.speak(text, last);
+        };
         for await (const ev of llmStream(this.messages, this.abort.signal)) {
           if (this.turn !== myTurn) return; // barged in — drop everything
           const delta = ev.choices?.[0]?.delta || {};
@@ -568,7 +580,7 @@ class Call {
             // flush a sentence at a time so speech starts before the model finishes
             const cut = sentence.search(/[.!?…\n]["']?\s/);
             if (cut >= 0 && sentence.slice(0, cut + 1).trim().length > 2) {
-              this.speak(sentence.slice(0, cut + 1), false);
+              say(sentence.slice(0, cut + 1), false);
               sentence = sentence.slice(cut + 1);
             }
           }
@@ -590,8 +602,24 @@ class Call {
           }
         }
         if (this.turn !== myTurn) return;
-        if (sentence.trim()) this.speak(sentence, true);
-        else if (content && TTS === 'cartesia') this.speak('', true); // close the TTS context
+        if (sentence.trim()) say(sentence, true);
+        // close the TTS context — also when the last words were held back
+        if ((held || (content && !sentence.trim())) && TTS === 'cartesia') this.speak('', true);
+
+        if (held && !toolCalls.length) {
+          log(`claim.unbacked (u${this.user.id}):`, held.slice(0, 140));
+          if (!claimRetried) {
+            claimRetried = true;
+            if (spoken.trim()) this.messages.push({ role: 'assistant', content: spoken });
+            this.messages.push({ role: 'system', content: 'המשפט האחרון שלך ("' + held.trim().slice(0, 200) + '") לא הושמע למשתמש: הוא אומר שביצעת פעולה, ובתור הזה לא רץ שום כלי. אם הוא ביקש — ' + this.g('קראי', 'קרא') + ' לכלי המתאים עכשיו, ורק אחרי ok ' + this.g('אשרי', 'אשר') + '. אם אין כלי שעושה את זה — ' + this.g('אמרי', 'אמור') + ' בכנות שזה לא נשמר.' });
+            continue;
+          }
+          // Second time in one turn: say it rather than go mute on the line.
+          // The log line above is what a person reads to find out it happened.
+          spoken += held; this.speak(held, true); held = '';
+        }
+        // A tool call arrived with the claim: the post-tool answer will say it.
+        if (held && toolCalls.length) content = spoken;
 
         if (toolCalls.length) {
           this.messages.push({ role: 'assistant', content: content || null, tool_calls: toolCalls });
@@ -624,6 +652,7 @@ class Call {
               } else out = r;
             }
             else out = await runTool(this.user, tc.function.name, args);
+            if (WRITE_TOOLS.has(tc.function.name) && out && !out.error && out.ok !== false) wroteThisTurn = true;
             this.messages.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(out) });
           }
           this.cartCtx++; // new speech context for the post-tool answer
