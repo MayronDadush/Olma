@@ -216,7 +216,10 @@ have already had to be argued for.
   drop on the same argument the DM window already makes — somebody who just
   spoke is awake — and the SCOPE is the worker's query, not the gate: only a
   row naming a meeting whose group they wrote in after that coordination
-  started. `jobs/groups.mayAnnounce` is the second reader, for the reason in
+  started — or, for the INITIATOR alone, the tag that asked for it, up to
+  fifteen minutes before `meetings.created_at` (owner, 2026-09-26: the asking
+  tag is stamped seconds before the tool creates the meeting, so the one person
+  certainly awake had their own invite held for the night). `jobs/groups.mayAnnounce` is the second reader, for the reason in
   the daytime rule above: it is the only signal of presence in a room that
   Olma's own sends cannot move. A pause is still read first and absolutely. **The column is blind
   to anything that did not name her** (a registered room is

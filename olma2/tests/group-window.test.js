@@ -353,3 +353,35 @@ test('a word in one room does not re-hear a coordination another room is running
   await drainOnce(db.pool, send, SHABBAT);
   assert.deepEqual(sent, [], 'and so nothing reaches her about it');
 });
+
+// Fix 5 (owner, 2026-09-26): the person who ASKED the room is certainly awake,
+// and their tag is stamped seconds before the tool creates the meeting — so the
+// rule above held their own invite until morning. The asking word counts; any
+// other word before it still does not.
+test('the tag that asked for the coordination opens the window for the one who asked', async () => {
+  const asker = await makeUser(db.pool, '+972606000030');
+  const other = await makeUser(db.pool, '+972606000031');
+  for (const u of [asker, other]) await db.pool.query(`UPDATE users SET checkin_misses = 1, room_invite_sent_at = now() WHERE id = $1`, [u.id]);
+  const g = await withTx(db.pool, (c) => room(c, {
+    jid: '120363000000004@g.us', members: [{ phone: asker.phone }, { phone: other.phone }],
+  }));
+  for (const u of [asker, other]) {
+    await withTx(db.pool, (c) => groupContext.noteMemberWrote(c, {
+      chatId: g.external_id, senderE164: u.phone, at: new Date(Date.now() - 20_000),
+    }));
+  }
+  const started = await withTx(db.pool, (c) => meetings.startMeeting(
+    c, asker.id, 'קפה', [other.id], { groupId: g.id }));
+  const meetingId = Number(started.data.meeting.id);
+  for (const u of [asker, other]) {
+    await withTx(db.pool, (c) => enqueue(c, {
+      userId: u.id, kind: 'meeting_invite', payload: { meetingId, title: 'קפה' },
+      idempotencyKey: `minvite:${meetingId}:${u.id}`,
+    }));
+  }
+  const sent = [];
+  await drainOnce(db.pool, async (row) => { sent.push(row); return { ok: true }; });
+  const ours = new Set([Number(asker.id), Number(other.id)]);
+  assert.deepEqual(sent.map((r) => Number(r.user_id)).filter((id) => ours.has(id)), [Number(asker.id)],
+    'the asker hears now; a word from anybody else before the start still opens nothing');
+});
