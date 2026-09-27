@@ -612,8 +612,13 @@ async function meetingCalendarRoles(client, meetingId) {
             (i.status = 'connected') AS connected
        FROM meeting_participants mp
        JOIN meetings m ON m.id = mp.meeting_id
+       JOIN users u ON u.id = mp.user_id
        LEFT JOIN integrations i ON i.user_id = mp.user_id AND i.provider = $2
-      WHERE mp.meeting_id = $1 AND mp.state <> 'opted_out'`,
+      WHERE mp.meeting_id = $1 AND mp.state <> 'opted_out'
+        -- A Google invitation is a message by email, and somebody who paused
+        -- her THEMSELVES gets none (owner, 2026-09-27) — it would reach them
+        -- with every WhatsApp row about the same meeting dropped at the gate.
+        AND NOT (u.paused_at IS NOT NULL AND u.paused_reason IS DISTINCT FROM 'quiet_ladder')`,
     [meetingId, PROVIDER]
   );
   const connected = rows.filter((r) => r.connected);

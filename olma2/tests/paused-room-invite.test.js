@@ -5,6 +5,11 @@
 // somebody who had never heard of it. Now: one message per pause; an answer
 // within a day ends the pause; silence takes them out of this coordination
 // and every later one.
+//
+// Since 2026-09-27 that one message is for a pause the LADDER took — somebody
+// less active. Somebody who paused her THEMSELVES hears nothing at all (owner:
+// "השהייה אומר שהם לא מקבלים הודעות בכלל ממנה"), which is the second half of
+// this file.
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const { freshDb, makeUser } = require('./helpers');
@@ -184,7 +189,7 @@ test('a silent member who was never paused hears about the coordination once', a
 test('a paused member hears about the coordination once, and the second one leaves them out', async () => {
   const { group, people } = await room(1);
   const [asker, other, paused] = people;
-  await withTx(db.pool, (c) => pause.pauseUser(c, paused.id, { note: 'test' }));
+  await withTx(db.pool, (c) => pause.quietPause(c, paused.id));
 
   const first = await start(group, asker, 'פאדל');
   assert.equal(first.participants, 3, 'an unspent pause is still counted in');
@@ -211,7 +216,7 @@ test('a paused member hears about the coordination once, and the second one leav
 test('a failed send spends nothing', async () => {
   const { group, people } = await room(2);
   const [asker, , paused] = people;
-  await withTx(db.pool, (c) => pause.pauseUser(c, paused.id));
+  await withTx(db.pool, (c) => pause.quietPause(c, paused.id));
   await start(group, asker, 'קפה');
   await drainOnce(db.pool, async (r) => (Number(r.user_id) === Number(paused.id)
     ? { ok: false, error: 'boom' } : { ok: true }), GATE_NOW, live);
@@ -219,10 +224,10 @@ test('a failed send spends nothing', async () => {
   assert.equal(u.room_invite_sent_at, null);
 });
 
-test('answering inside a day ends the pause, even one they asked for; "stay paused" keeps the allowance spent', async () => {
+test('answering inside a day ends the pause; "stay paused" keeps the allowance spent', async () => {
   const { group, people } = await room(3);
   const [asker, , paused] = people;
-  await withTx(db.pool, (c) => pause.pauseUser(c, paused.id));
+  await withTx(db.pool, (c) => pause.quietPause(c, paused.id));
   await start(group, asker, 'ארוחה');
   await drainOnce(db.pool, recorder().deliver, GATE_NOW, live);
 
@@ -267,7 +272,7 @@ test('a new pause is a new allowance', async () => {
 test('a day of silence takes them out of the coordination, and nobody is told they left', async () => {
   const { group, people } = await room(4);
   const [asker, , paused] = people;
-  await withTx(db.pool, (c) => pause.pauseUser(c, paused.id));
+  await withTx(db.pool, (c) => pause.quietPause(c, paused.id));
   const started = await start(group, asker, 'טיול');
   const meetingId = Number(started.meeting.id);
 
@@ -308,7 +313,7 @@ test('a silent exit that leaves one person closes it, and whoever is left reads 
       [reg.data.group.id, 'olma_grp_' + '99'.repeat(16)]);
     return rows[0];
   });
-  await withTx(db.pool, (c) => pause.pauseUser(c, b.id));
+  await withTx(db.pool, (c) => pause.quietPause(c, b.id));
   const started = await start(group, a, 'קפה');
   await drainOnce(db.pool, recorder().deliver, GATE_NOW, live);
   await withTx(db.pool, (c) => groupMeetings.sweepSilentPausedMembers(c, Date.now() + DAY_MS + 3600_000));
@@ -320,4 +325,153 @@ test('a silent exit that leaves one person closes it, and whoever is left reads 
   assert.deepEqual(told, [], 'not a message of its own');
   const d = await withTx(db.pool, (c) => require('../src/domain/digest').assemble(c, a.id, 'summary'));
   assert.deepEqual(d.data.crossUser.closedMeetings.map((x) => Number(x.id)), [Number(started.meeting.id)]);
+});
+
+// ── A pause they ASKED for (owner, 2026-09-27) ───────────────────────────────
+// Gal (u-37) wrote "dont send me messages" because of Padel Gang's
+// coordination, was paused under `said_stop`, and four days later the room's
+// next coordination reached him privately: the allowance above made no
+// difference between somebody less active and somebody who asked her to stop.
+const meetingOptions = require('../src/domain/meeting-options');
+const meetings = require('../src/domain/meetings');
+const calendar = require('../src/domain/calendar');
+
+const ASKED = [
+  ['a confirmed stop', (c, id) => pause.pauseUser(c, id)],
+  ['a stop said a moment ago', (c, id) => pause.pauseUser(c, id, { confirmed: false })],
+];
+
+for (const [label, stop] of ASKED) {
+  test(`${label}: a new room coordination neither counts them nor writes to them`, async () => {
+    const { group, people } = await room(label === ASKED[0][0] ? 11 : 12);
+    const [asker, other, stopped] = people;
+    await withTx(db.pool, (c) => stop(c, stopped.id));
+
+    const first = await start(group, asker, 'פאדל');
+    assert.equal(first.participants, 2, 'not swept in');
+    assert.equal(await stateOf(first.meeting.id, stopped.id), null);
+    const rec = recorder();
+    await drainOnce(db.pool, rec.deliver, GATE_NOW, live);
+    assert.equal(rec.sent.filter((r) => Number(r.user_id) === Number(stopped.id)).length, 0, 'nothing reached them');
+    assert.ok(rec.sent.some((r) => Number(r.user_id) === Number(other.id)));
+    const { rows: [u] } = await db.pool.query(`SELECT room_invite_sent_at FROM users WHERE id = $1`, [stopped.id]);
+    assert.equal(u.room_invite_sent_at, null, 'no allowance spent, because there is none');
+
+    // The room neither counts them nor tags them, and does not wait on them.
+    const co = (await withTx(db.pool, (c) => groupMeetings.statusOf(c, group, first.meeting))).coordination;
+    assert.equal(co.roomTotal, 2);
+    assert.ok(!co.notInIt.some((p) => p.phone === stopped.phone), 'never tagged as not having answered');
+  });
+}
+
+test('an invite that reaches the queue anyway is still dropped for somebody who asked to stop', async () => {
+  // A dropped invite comes back as a fresh one when the table next moves
+  // (meeting-fanout.unheardInvite), so the worker is where this has to hold.
+  const { group, people } = await room(13);
+  const [asker, , stopped] = people;
+  const started = await start(group, asker, 'ערב');
+  await withTx(db.pool, (c) => pause.pauseUser(c, stopped.id, { confirmed: false }));
+  await db.pool.query(
+    `INSERT INTO outbox (user_id, kind, payload, urgency, idempotency_key)
+     VALUES ($1, 'meeting_invite', $2::jsonb, 'urgent', 'test-reinvite')`,
+    [stopped.id, JSON.stringify({ meetingId: Number(started.meeting.id), title: 'ערב', groupSubject: 'חדר בדיקה' })]);
+  const rec = recorder();
+  await drainOnce(db.pool, rec.deliver, GATE_NOW, live);
+  assert.equal(rec.sent.filter((r) => Number(r.user_id) === Number(stopped.id)).length, 0);
+  const { rows } = await db.pool.query(
+    `SELECT hold_reason FROM outbox WHERE idempotency_key = 'test-reinvite'`);
+  assert.equal(rows[0].hold_reason, 'paused');
+});
+
+test('somebody already in it who asks to stop is taken out at once, and the room closes without them', async () => {
+  const { group, people } = await room(14);
+  const [asker, other, stopped] = people;
+  const started = await start(group, asker, 'שבת');
+  const meetingId = Number(started.meeting.id);
+  const { rows: [opt] } = await db.pool.query(
+    `INSERT INTO meeting_options (meeting_id, slot_text, starts_at) VALUES ($1, 'שבת 17:00', now() + interval '3 days')
+     RETURNING id`, [meetingId]);
+  for (const u of [asker, other]) {
+    await db.pool.query(`INSERT INTO meeting_option_answers (option_id, user_id, answer) VALUES ($1, $2, 'y')`,
+      [opt.id, u.id]);
+  }
+  assert.equal(await withTx(db.pool, (c) => meetingOptions.unanimousOption(c, meetingId)), null,
+    'while they are in it, the room waits on them');
+
+  await withTx(db.pool, (c) => pause.pauseUser(c, stopped.id, { confirmed: false }));
+  // Before the sweep runs: the room already does not tag them or wait on them.
+  const co = (await withTx(db.pool, (c) => groupMeetings.statusOf(c, group, started.meeting))).coordination;
+  assert.equal(co.participants, 2);
+  assert.ok(!co.silent.some((p) => p.phone === stopped.phone));
+  assert.ok(!co.options[0].missing.some((p) => p.phone === stopped.phone));
+  assert.ok(!co.optedOut.some((p) => p.phone === stopped.phone), 'and not said to have left');
+  const win = await withTx(db.pool, (c) => meetingOptions.unanimousOption(c, meetingId));
+  assert.equal(win && Number(win.id), Number(opt.id));
+
+  // No waiting a day: the pause is theirs.
+  const res = await withTx(db.pool, (c) => groupMeetings.sweepSilentPausedMembers(c, Date.now()));
+  assert.deepEqual(res.filter((r) => r.meetingId === meetingId).map((r) => r.userId), [Number(stopped.id)]);
+  assert.equal(await stateOf(meetingId, stopped.id), 'opted_out');
+  const { rows: trail } = await db.pool.query(
+    `SELECT detail->>'cause' AS cause FROM audit_log WHERE actor_id = $1 AND event = 'meeting.opted_out'`,
+    [stopped.id]);
+  assert.deepEqual(trail.map((r) => r.cause), ['paused_by_request']);
+});
+
+test('a Google invitation is a message too: somebody who asked to stop is not on the event', async () => {
+  const { group, people } = await room(15);
+  const [asker, , stopped] = people;
+  const started = await start(group, asker, 'ארוחה');
+  for (const u of people) {
+    await db.pool.query(
+      `INSERT INTO integrations (user_id, provider, status, access_level) VALUES ($1, 'google_calendar', 'connected', 'read_write')`,
+      [u.id]);
+  }
+  const before = await withTx(db.pool, (c) => calendar.meetingCalendarRoles(c, started.meeting.id));
+  assert.ok(before.connectedIds.includes(Number(stopped.id)));
+  await withTx(db.pool, (c) => pause.pauseUser(c, stopped.id));
+  const after = await withTx(db.pool, (c) => calendar.meetingCalendarRoles(c, started.meeting.id));
+  assert.ok(!after.connectedIds.includes(Number(stopped.id)));
+  assert.ok(!after.participantIds.includes(Number(stopped.id)));
+});
+
+test('leaving a coordination withdraws what was still queued for them about it', async () => {
+  const { group, people } = await room(16);
+  const [asker, , leaver] = people;
+  const started = await start(group, asker, 'קולנוע');
+  const meetingId = Number(started.meeting.id);
+  await db.pool.query(
+    `INSERT INTO outbox (user_id, kind, payload, urgency, release_after, idempotency_key)
+     VALUES ($1, 'meeting_slot_proposed', $2::jsonb, 'normal', now() + interval '10 minutes', 'test-paced')`,
+    [leaver.id, JSON.stringify({ meetingId, slot: 'שני 20:00', title: 'קולנוע' })]);
+  const res = await withTx(db.pool, (c) => meetings.applyExit(c, leaver.id, meetingId, 'user_choice'));
+  assert.equal(res.ok, true);
+  const { rows } = await db.pool.query(
+    `SELECT kind, sent_at, hold_reason FROM outbox
+      WHERE user_id = $1 AND (payload->>'meetingId')::bigint = $2`, [leaver.id, meetingId]);
+  assert.ok(rows.length >= 2, 'the invite and the paced proposal');
+  assert.ok(rows.every((r) => r.sent_at && r.hold_reason === 'superseded'), JSON.stringify(rows));
+});
+
+test('somebody who left the WhatsApp group is taken out of its coordination; a re-spelled roster row is not a leaver', async () => {
+  const { group, people } = await room(17);
+  const [asker, stays, leaver] = people;
+  const started = await start(group, asker, 'ים');
+  const meetingId = Number(started.meeting.id);
+  const mine = (res) => res.filter((r) => r.meetingId === meetingId);
+
+  // The roster re-spelled `stays`: one row left, another current — same person.
+  await db.pool.query(
+    `UPDATE chat_group_members SET left_at = now() WHERE group_id = $1 AND user_id = $2`, [group.id, stays.id]);
+  await db.pool.query(
+    `INSERT INTO chat_group_members (group_id, phone, user_id) VALUES ($1, '123456789012345', $2)`,
+    [group.id, stays.id]);
+  assert.equal(mine(await withTx(db.pool, (c) => groupMeetings.sweepRoomLeavers(c))).length, 0);
+
+  await db.pool.query(
+    `UPDATE chat_group_members SET left_at = now() WHERE group_id = $1 AND user_id = $2`, [group.id, leaver.id]);
+  const out = mine(await withTx(db.pool, (c) => groupMeetings.sweepRoomLeavers(c)));
+  assert.deepEqual(out.map((r) => r.userId), [Number(leaver.id)]);
+  assert.equal(await stateOf(meetingId, leaver.id), 'opted_out');
+  assert.equal(await stateOf(meetingId, stays.id), 'awaiting');
 });

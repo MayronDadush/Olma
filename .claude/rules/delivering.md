@@ -291,6 +291,14 @@ title means this file. Grep the title, not the filename.
   conditions makes the exception general, and a general exception means the
   pause stops meaning anything (`incidents.md`, "A room counted in somebody
   who had paused").
+  **And only for a pause the LADDER took** (owner, 2026-09-27: "השהייה אומר
+  שהם לא מקבלים הודעות בכלל ממנה"). Somebody who paused her THEMSELVES —
+  `paused_reason` NULL or `said_stop` — gets nothing, not this invite, not a
+  Google invitation, not a tag in the room (`pause.keptOutOfRooms`,
+  `pause.pausedByRequest`). Less active and paused are two different people;
+  גל asked her to stop because of one room's coordination and the room's next
+  one reached him (`incidents.md`, "The pause the room's invite walked
+  through").
   **And one per run of SILENCE, because the two were inverted** (owner,
   2026-09-22, asked as a choice and answered "אפשרות 1"): a ladder pause is
   three misses and had the allowance, while one or two misses — somebody who

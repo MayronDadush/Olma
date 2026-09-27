@@ -375,6 +375,11 @@ async function sweepSilentPausedMembers(client, nowMs) {
   return groupMeetings.sweepSilentPausedMembers(client, nowMs || Date.now());
 }
 
+// ---- members who left the room ---------------------------------------------
+async function sweepRoomLeavers(client) {
+  return groupMeetings.sweepRoomLeavers(client);
+}
+
 async function sweepSettlingMeetings(client) {
   const settled = await meetings.options.settleDue(client);
   const out = [];
@@ -574,5 +579,6 @@ async function sweepFinishedTasks(client, nowIso) {
 module.exports = {
   sweepReminders, sweepDigests, sweepUnblocks, sweepStaleMeetings, sweepSettlingMeetings,
   sweepSilentPausedMembers,
+  sweepRoomLeavers,
   sweepMediaJobs, sweepNameConfirm, sweepFinishedTasks,
 };

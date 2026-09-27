@@ -111,9 +111,10 @@ async function startCoordination(client, group, actingUser, title, { where = nul
   // they never hear of must not sit in everybody's digest as waiting on them —
   // which is what the room did to Kapish. Scoped to who is SWEPT IN: whether
   // somebody is a member at all (settle, the check above) is not a question
-  // their pause gets a say in.
+  // their pause gets a say in. Somebody who paused her THEMSELVES is never
+  // swept in at all (owner, 2026-09-27; pause.keptOutOfRooms).
   const members = everyone.filter((m) =>
-    Number(m.user_id) === Number(actingUser.id) || !pause.roomInviteSpent(m));
+    Number(m.user_id) === Number(actingUser.id) || !pause.keptOutOfRooms(m));
   const others = members.map((m) => Number(m.user_id)).filter((id) => id !== Number(actingUser.id));
   if (!others.length) {
     return err('invalid', 'there is nobody else in this group to coordinate with');
@@ -228,7 +229,7 @@ async function admitLateMembers(client, group, meeting, now = new Date(), { awak
   const inIt = new Set(rows.map((r) => Number(r.user_id)));
   const wroteSince = (m) => [m.last_inbound_at, m.opening_sent_at]
     .some((t) => t && new Date(t).getTime() >= awakeSince.getTime());
-  const late = members.filter((m) => !inIt.has(Number(m.user_id)) && !pause.roomInviteSpent(m)
+  const late = members.filter((m) => !inIt.has(Number(m.user_id)) && !pause.keptOutOfRooms(m)
     && (!awakeSince || wroteSince(m)));
   if (!late.length) return [];
   // Whoever opened it, as the room calls them — including somebody who has
@@ -395,9 +396,20 @@ async function statusOf(client, group, meeting) {
 
   const { rows: parts } = await client.query(
     `SELECT user_id, state FROM meeting_participants WHERE meeting_id = $1`, [meeting.id]);
-  const active = parts.filter((p) => p.state !== 'opted_out').map((p) => Number(p.user_id));
-  const optedOut = parts.filter((p) => p.state === 'opted_out').map((p) => who(p.user_id));
-  const optedOutIds = new Set(parts.filter((p) => p.state === 'opted_out').map((p) => Number(p.user_id)));
+  // Somebody who paused her THEMSELVES is not in this coordination as far as
+  // the room can tell (owner, 2026-09-27: a pause means nothing at all from
+  // her). Not counted, not waited on, never tagged — and not listed as having
+  // left either, because they said nothing about it. The same answer as the
+  // sweep that takes them out (sweepSilentPausedMembers) gives a pass later,
+  // so a line decided between the two cannot tag them.
+  const pausedOut = new Set(members.filter((m) => m.user_id && pause.pausedByRequest(m))
+    .map((m) => Number(m.user_id)));
+  const active = parts.filter((p) => p.state !== 'opted_out' && !pausedOut.has(Number(p.user_id)))
+    .map((p) => Number(p.user_id));
+  const optedOut = parts.filter((p) => p.state === 'opted_out' && !pausedOut.has(Number(p.user_id)))
+    .map((p) => who(p.user_id));
+  const optedOutIds = new Set(parts.filter((p) => p.state === 'opted_out' || pausedOut.has(Number(p.user_id)))
+    .map((p) => Number(p.user_id)));
   const partIds = new Set(parts.map((p) => Number(p.user_id)));
 
   // EVERY moment the table moved, for the room's own "השולחן זז" line: a time
@@ -492,8 +504,11 @@ async function statusOf(client, group, meeting) {
       // row at all, LIDs included with no tag; they have said yes to nothing,
       // which is also why the coordination cannot close on its own without
       // them (`meeting-options.unanimousOption`).
-      roomTotal: members.filter((m) => !(m.user_id && optedOutIds.has(Number(m.user_id)))).length,
-      notInIt: members.filter((m) => !(m.user_id && partIds.has(Number(m.user_id))))
+      // Nor is somebody who paused her themselves, in the room or out of it.
+      roomTotal: members.filter((m) => !(m.user_id
+        && (optedOutIds.has(Number(m.user_id)) || pausedOut.has(Number(m.user_id))))).length,
+      notInIt: members.filter((m) => !(m.user_id
+        && (partIds.has(Number(m.user_id)) || pausedOut.has(Number(m.user_id)))))
         .map((m) => ({ phone: isTaggableNumber(m.phone) ? m.phone : null, asked: false })),
       // Members of the ROOM this coordination could not sweep in at all: they
       // have never written to her, so there is nobody to ask. A COUNT and never
@@ -603,31 +618,76 @@ async function settle(client, group, actingUser, optionId) {
 // that in their next digest, as with any coordination that ends unmatched.
 async function sweepSilentPausedMembers(client, nowMs = Date.now()) {
   const { rows } = await client.query(
-    `SELECT p.meeting_id, p.user_id
+    `SELECT p.meeting_id, p.user_id, u.paused_reason
        FROM meeting_participants p
        JOIN meetings mt ON mt.id = p.meeting_id
        JOIN users u ON u.id = p.user_id
       WHERE mt.group_id IS NOT NULL AND mt.status = 'negotiating'
-        AND p.state <> 'opted_out' AND p.user_id <> mt.initiator_id
+        AND p.state <> 'opted_out'
         AND u.paused_at IS NOT NULL
-        AND mt.created_at <= $1::timestamptz - ($2::bigint * interval '1 millisecond')
-        AND (u.room_invite_sent_at IS NULL
-             OR u.room_invite_sent_at < u.paused_at
-             OR u.room_invite_sent_at <= $1::timestamptz - ($2::bigint * interval '1 millisecond'))
-        AND NOT EXISTS (
-          SELECT 1 FROM outbox o
-           WHERE o.user_id = p.user_id AND o.sent_at IS NULL
-             AND (o.payload->>'meetingId')::bigint = p.meeting_id)
+        AND (
+          -- They paused her THEMSELVES (owner, 2026-09-27): out at once, the
+          -- person who opened it included — nothing about it reaches them, so
+          -- a room must not wait on them, count them or tag them.
+          u.paused_reason IS DISTINCT FROM $3
+          OR (p.user_id <> mt.initiator_id
+              AND mt.created_at <= $1::timestamptz - ($2::bigint * interval '1 millisecond')
+              AND (u.room_invite_sent_at IS NULL
+                   OR u.room_invite_sent_at < u.paused_at
+                   OR u.room_invite_sent_at <= $1::timestamptz - ($2::bigint * interval '1 millisecond'))
+              AND NOT EXISTS (
+                SELECT 1 FROM outbox o
+                 WHERE o.user_id = p.user_id AND o.sent_at IS NULL
+                   AND (o.payload->>'meetingId')::bigint = p.meeting_id)))
       ORDER BY p.meeting_id, p.user_id
       LIMIT 50`,
-    [new Date(nowMs), pause.ROOM_INVITE_ANSWER_MS]);
+    [new Date(nowMs), pause.ROOM_INVITE_ANSWER_MS, pause.QUIET_LADDER]);
   const out = [];
   for (const r of rows) {
     const meetingId = Number(r.meeting_id);
-    const res = await meetings.applyExit(client, Number(r.user_id), meetingId, 'paused_no_answer');
+    const res = await meetings.applyExit(client, Number(r.user_id), meetingId,
+      r.paused_reason === pause.QUIET_LADDER ? 'paused_no_answer' : 'paused_by_request');
     if (!res.ok) continue;
     // Closed with nobody left to match: said in the next digest of whoever is
     // still in it (digest.closedMeetings), never on its own (owner, 2026-09-23).
+    if (res.data.meetingStatus === 'no_match') {
+      await fanout.supersedeQueuedMeetingRows(client, meetingId, ['meeting_slot_proposed', 'meeting_invite']);
+    }
+    out.push({ meetingId, userId: Number(r.user_id), meetingStatus: res.data.meetingStatus });
+  }
+  return out;
+}
+
+// ---- somebody who left the ROOM ---------------------------------------------
+// Leaving the WhatsApp group only ever stamped `chat_group_members.left_at`,
+// so the person stayed an active participant of the coordination that room was
+// negotiating: every proposal, the digest line, the Google invitation, and a
+// room that could not close on its own without their yes (2026-09-27 audit).
+// Out of THAT room's negotiating coordinations, the same exit a pause takes.
+//
+// "Left" means no CURRENT roster row for them in that room at all — a member
+// whose row the roster re-spelled (a LID resolved to their number) is still
+// there under the other row, and is not a leaver. Nobody is told: they said
+// nothing to her, they left a WhatsApp group. A settled one is left alone —
+// they agreed to it, and withdrawing is theirs to say.
+async function sweepRoomLeavers(client) {
+  const { rows } = await client.query(
+    `SELECT p.meeting_id, p.user_id
+       FROM meeting_participants p
+       JOIN meetings mt ON mt.id = p.meeting_id
+      WHERE mt.group_id IS NOT NULL AND mt.status = 'negotiating'
+        AND p.state <> 'opted_out'
+        AND EXISTS (SELECT 1 FROM chat_group_members gm
+                     WHERE gm.group_id = mt.group_id AND gm.user_id = p.user_id AND gm.left_at IS NOT NULL)
+        AND NOT EXISTS (SELECT 1 FROM chat_group_members gm
+                         WHERE gm.group_id = mt.group_id AND gm.user_id = p.user_id AND gm.left_at IS NULL)
+      ORDER BY p.meeting_id, p.user_id
+      LIMIT 50`);
+  const out = [];
+  for (const r of rows) {
+    const meetingId = Number(r.meeting_id);
+    const res = await meetings.applyExit(client, Number(r.user_id), meetingId, 'left_room');
+    if (!res.ok) continue;
     if (res.data.meetingStatus === 'no_match') {
       await fanout.supersedeQueuedMeetingRows(client, meetingId, ['meeting_slot_proposed', 'meeting_invite']);
     }
@@ -890,6 +950,6 @@ module.exports = {
   coldInvite, COLD_INVITE_FLAG,
   roomMeetingFor,
   startCoordination, admitLateMembers, quietJoinersToAnnounce, coordinationStatus, commonHoursFor, statusOf, roomView, settle, setPlace,
-  sweepSilentPausedMembers, currentMeeting, coordinatingMembers, memberLabel, participantFor,
+  sweepSilentPausedMembers, sweepRoomLeavers, currentMeeting, coordinatingMembers, memberLabel, participantFor,
   relayToRoom, pendingRelay, markRelaySaid, cleanRelay, relayRoomEnabled, RELAY_MAX_CHARS, RELAY_FLAG,
 };

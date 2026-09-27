@@ -745,6 +745,18 @@ have already had to be argued for.
   goes to the initiator only when the exit closes the meeting (`incidents.md`,
   "A room counted in somebody who had paused").
 
+  **Only a pause the ladder took gets that invite** (owner, 2026-09-27).
+  Somebody who paused her THEMSELVES is never swept in, and one already in is
+  taken out on the next minute sweep, cause `paused_by_request`, with no day's
+  wait. Until then `statusOf` leaves them out of `participants`, `silent`,
+  `missing`, `optedOut`, `roomTotal` and `notInIt`, and `unanimousOption`
+  does not wait on them: not counted, not tagged, not waited for, and never
+  said to have left. `calendar.meetingCalendarRoles` drops them too, because
+  a Google invitation is a message. **Somebody who left the WhatsApp GROUP**
+  is taken out of its negotiating coordination by
+  `group-meetings.sweepRoomLeavers`, but only when they have no current
+  roster row there, since a re-spelled row is the same person
+  (`incidents.md`, "The pause the room's invite walked through").
 - **Every line a room hears unasked is Olma's own text, save exactly one: a
   sentence a MEMBER asked her to say there** (owner, 2026-09-22). Sharon told
   her in private that the group should know the time had moved from 16:00 to
