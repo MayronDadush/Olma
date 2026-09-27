@@ -33,6 +33,7 @@
   - `build_kit.py`: קבצי צבע (ASE, JSON, CSS), רקעים וגרעין. מריצים עם `uv run --with numpy --with pillow python build_kit.py`.
   - `marks2.js`, `sheet2.js`, `gen_page.js`: הסבב השני.
 - `pages/bold-colors/` — מחקר הצבעים הנועזים (27.9): שבע פלטות על הדאשבורד האמיתי, עם צילומים ב־`img/`. עדיין פתוח.
+- `pages/moodboards/` — לוח השראה לכל אחת מחמש הפלטות, עם צהוב כצבע ה־10 (28.9).
 - `tools/dashboard-preview/` — צובע את `/me` האמיתי בפלטה חדשה ומצלם אותו. מריצים את `olma2/scripts/demo-dashboard.js` על פורט 8791, ואז `node proxy.js` על 8792, ואז `node shoot.js http://localhost:8792/d/<קישור> <תיקייה>`. זה מקומי בלבד ולא נוגע בקוד של olma2.
 - `tokens/` — הצבעים של ערכה 1.0 (לפני ההחלטה על שלוש השעות).
 
@@ -46,3 +47,4 @@
 - בשימוש: https://claude.ai/artifact/3REiPXE9qhYVX9z6HKQNfE
 - סרטונים במותג החדש: https://claude.ai/artifact/SAaigPfT7QnxLFutyA93aC
 - צבעים נועזים: https://claude.ai/artifact/8L5VVHmpcqgKgKrx2wnZ8w
+- לוחות השראה: https://claude.ai/artifact/TiZ3xLLUCn4rKAP4Jbkh7c

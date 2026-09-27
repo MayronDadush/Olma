@@ -11,6 +11,10 @@
     teal:     { name: 'טיל עמוק + חול', P: '#004643', B: '#F0EDE5', A: '#FF7A59', I: '#0E1F1E', onP: '#F0EDE5', btn: '#004643', onBtn: '#F0EDE5' , mk:['#004643','#F0EDE5','#FF7A59'] },
     plum:     { name: 'שזיף + משמש', P: '#4A1942', B: '#FBF1E7', A: '#FF9E3D', I: '#2A0F26', onP: '#FBF1E7', btn: '#4A1942', onBtn: '#FBF1E7' , mk:['#4A1942','#FBF1E7','#FF9E3D'] },
     oxblood:  { name: 'בורדו + תכלת', P: '#5E1224', B: '#F7EEE8', A: '#8FD3FF', I: '#2B0A12', onP: '#F7EEE8', btn: '#5E1224', onBtn: '#F7EEE8' , mk:['#5E1224','#F7EEE8','#8FD3FF'] },
+    coralY:   { name: 'דיו + צהוב', P: '#221C3A', B: '#F7F1E6', A: '#FFC83D', I: '#221C3A', onP: '#F7F1E6', btn: '#221C3A', onBtn: '#F7F1E6' , mk:['#221C3A','#F7F1E6','#FFC83D'] },
+    tealY:    { name: 'טיל + צהוב', P: '#004643', B: '#F0EDE5', A: '#F9C23C', I: '#0E1F1E', onP: '#F0EDE5', btn: '#004643', onBtn: '#F0EDE5' , mk:['#004643','#F0EDE5','#F9C23C'] },
+    plumY:    { name: 'שזיף + זעפרן', P: '#4A1942', B: '#FBF1E7', A: '#FFC23D', I: '#2A0F26', onP: '#FBF1E7', btn: '#4A1942', onBtn: '#FBF1E7' , mk:['#4A1942','#FBF1E7','#FFC23D'] },
+    oxbloodY: { name: 'בורדו + צהוב', P: '#5E1224', B: '#F7EEE8', A: '#FFCF4A', I: '#2B0A12', onP: '#F7EEE8', btn: '#5E1224', onBtn: '#F7EEE8' , mk:['#5E1224','#F7EEE8','#FFCF4A'] },
   };
   window.__PAL = PAL;
 

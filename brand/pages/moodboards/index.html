@@ -1,0 +1,208 @@
+<title>לוחות השראה לעולמה</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Hebrew:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+:root{
+  --bg:#F3F2EF; --card:#FFFFFF; --ink:#18171C; --ink-2:#5E5B66; --line:#E1DFDA; --chip:#EAE8E3;
+  --f:"IBM Plex Sans Hebrew","IBM Plex Sans",system-ui,sans-serif; --mono:"IBM Plex Mono",ui-monospace,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#111015;--card:#1B1A21;--ink:#F1EFEA;--ink-2:#A6A3AE;--line:#2D2B35;--chip:#25232C;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#111015;--card:#1B1A21;--ink:#F1EFEA;--ink-2:#A6A3AE;--line:#2D2B35;--chip:#25232C;color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f);font-size:16px;line-height:1.6;margin:0}
+.wrap{max-width:1140px;margin:0 auto;padding-inline:16px;padding-block:32px 80px;display:grid;gap:56px}
+h1,h2,h3{margin:0;line-height:1.15;text-wrap:balance;letter-spacing:-.01em}
+h1{font-size:clamp(34px,6vw,58px);font-weight:700}
+h2{font-size:clamp(26px,4vw,36px);font-weight:700}
+p{margin:0;max-width:66ch}
+.muted{color:var(--ink-2)}
+.hex{font-family:var(--mono);font-size:11px;direction:ltr;unicode-bidi:isolate;opacity:.8}
+.lead{display:grid;gap:14px}
+.tag{display:inline-block;font-size:12px;font-weight:600;padding:2px 9px;border-radius:99px;background:var(--chip);color:var(--ink-2)}
+.seg{display:inline-flex;background:var(--chip);border-radius:99px;padding:3px;gap:2px;flex-wrap:wrap}
+.seg button{font:inherit;font-size:13px;font-weight:600;border:0;background:none;color:var(--ink-2);border-radius:99px;padding:6px 14px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--card);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.14)}
+.bar{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);padding-block:10px;border-bottom:1px solid var(--line);display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center}
+.bar nav{display:flex;flex-wrap:wrap;gap:6px}
+.bar nav a{font-size:13px;font-weight:600;color:var(--ink);text-decoration:none;border:1px solid var(--line);background:var(--card);border-radius:99px;padding:5px 12px 5px 8px;display:flex;gap:6px;align-items:center}
+.dots{display:flex}.dots i{width:12px;height:12px;border-radius:50%;border:1px solid rgba(0,0,0,.14);margin-inline-start:-3px}.dots i:first-child{margin:0}
+.yrow{display:grid;grid-template-columns:repeat(5,minmax(130px,1fr));gap:12px;overflow-x:auto;padding-bottom:6px}
+.yrow figure{margin:0;display:grid;gap:4px}
+.yrow img{width:100%;aspect-ratio:390/700;object-fit:cover;object-position:top;border-radius:16px;border:1px solid var(--line);display:block}
+.yrow figcaption{font-size:12px;text-align:center;color:var(--ink-2)}
+
+.board{display:grid;gap:16px;scroll-margin-top:70px}
+.bhead{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 14px}
+.bento{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));grid-auto-rows:minmax(118px,auto);grid-auto-flow:dense;gap:10px}
+.t{border-radius:18px;overflow:hidden;position:relative;padding:16px;display:flex;flex-direction:column;min-width:0}
+.c1{grid-column:span 1}.c2{grid-column:span 2}.c3{grid-column:span 3}
+.r2{grid-row:span 2}.r3{grid-row:span 3}
+.hero .w{font-size:clamp(34px,4.4vw,58px);font-weight:700;line-height:.98;letter-spacing:-.025em;margin-top:auto}
+.hero .place{font-size:14px;font-weight:500;opacity:.85}
+.sw{padding:0;display:flex}
+.sw div{flex:1;padding:12px;display:flex;flex-direction:column;justify-content:flex-end;gap:2px;font-size:13px;font-weight:600}
+.shot{padding:0}
+.shot img{width:100%;height:100%;object-fit:cover;object-position:top;display:block}
+.wa{background:#EFE7DE;padding:0;font-size:13.5px;line-height:1.45}
+.wa .top{background:#F7F5F2;display:flex;align-items:center;gap:8px;padding:8px 12px;font-weight:600;font-size:14px;border-bottom:1px solid #E4DED6;color:#111}
+.wa .top small{display:block;font-weight:400;font-size:11px;color:#667}
+.wa .msgs{padding:10px 10px 12px;display:flex;flex-direction:column;gap:6px;flex:1;justify-content:flex-end}
+.b{max-width:84%;padding:6px 9px 4px;border-radius:9px;box-shadow:0 1px .5px rgba(0,0,0,.13);color:#111}
+.b.me{background:#D9FDD3;align-self:flex-start}
+.b.her{background:#fff;align-self:flex-end}
+.b time{display:block;text-align:left;font-size:10px;color:#667;direction:ltr}
+.b .react{font-size:12px;margin-top:-2px}
+.card .h{font-size:13px;font-weight:600;opacity:.8}
+.card .d{font-size:24px;font-weight:700;line-height:1.1;margin:2px 0 10px}
+.card ul{list-style:none;margin:0;padding:0;display:grid;gap:8px;font-size:14px}
+.card li{display:flex;gap:9px;align-items:center}
+.card li span.tm{margin-inline-start:auto;font-size:12px;font-variant-numeric:tabular-nums;opacity:.8}
+.lock{justify-content:space-between;text-align:center}
+.lock .clock{font-size:44px;font-weight:600;line-height:1;letter-spacing:-.02em;margin-top:6px}
+.lock .dt{font-size:12px;opacity:.85}
+.note{background:rgba(255,255,255,.82);color:#111;border-radius:14px;padding:8px 10px;text-align:start;display:flex;gap:8px;align-items:flex-start;font-size:12.5px;line-height:1.35;backdrop-filter:blur(6px)}
+.note b{display:block;font-size:12px}
+.spec .big{font-size:52px;font-weight:700;line-height:1;letter-spacing:-.02em}
+.spec .row{display:flex;justify-content:space-between;align-items:flex-end;gap:8px;margin-top:auto}
+.coord .h{font-size:12px;font-weight:600;opacity:.75}
+.coord .ttl{font-size:18px;font-weight:700;margin:2px 0 10px}
+.opt{display:flex;justify-content:space-between;align-items:center;border-radius:10px;padding:7px 10px;font-size:13.5px;font-weight:500;margin-bottom:6px}
+.opt b{font-size:12px}
+.words{gap:6px;justify-content:center}
+.words span{font-size:clamp(18px,1.9vw,24px);font-weight:600;line-height:1.2}
+.stk{align-items:center;justify-content:center}
+.stk .s{width:92px;height:92px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:22px;transform:rotate(-12deg);box-shadow:0 2px 0 rgba(0,0,0,.18)}
+.feel{font-size:15px;line-height:1.5}
+.feel b{display:block;font-size:12px;font-weight:600;opacity:.7;margin-bottom:4px}
+.close{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:22px;display:grid;gap:12px}
+ol{margin:0;padding-inline-start:22px;display:grid;gap:6px}
+@media (max-width:760px){
+  .bento{grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-rows:minmax(104px,auto)}
+  .c3{grid-column:span 2}.c2{grid-column:span 2}.c1{grid-column:span 1}
+  .shot.r3{grid-row:span 3}
+  .hero.r2{grid-row:span 2}
+}
+</style>
+
+<div class="wrap" dir="rtl">
+  <header class="lead">
+    <span class="tag">עולמה · לוחות השראה · 28.9</span>
+    <h1>חמישה עולמות, וצהוב שעובר ביניהם</h1>
+    <p class="muted">אהבת שה־10 צהוב, אז נתתי צהוב לכל החמישה. בכל פלטה בחרתי גוון צהוב אחר, כזה שמתאים לצבע שלידו: חמנייה ליד הדיו, ענבר ליד הנייבי, חרדל ליד הטיל, זעפרן ליד השזיף ולימון ליד הבורדו. בכל מקרה הטקסט על הכפתור הצהוב הוא ה־30, בניגודיות בין 7 ל־11.</p>
+  </header>
+
+  <section style="display:grid;gap:12px">
+    <h2 style="font-size:24px">הצהוב על הדאשבורד האמיתי</h2>
+    <div class="yrow" id="yrow"></div>
+  </section>
+
+  <div class="bar">
+    <span class="seg" role="group" aria-label="צבע ה־10"><button type="button" data-a="y" aria-pressed="true">10 צהוב</button><button type="button" data-a="o" aria-pressed="false">10 המקורי</button></span>
+    <nav id="jump" aria-label="קפיצה ללוח"></nav>
+  </div>
+
+  <div id="boards" style="display:grid;gap:64px"></div>
+
+  <section class="close">
+    <h2 style="font-size:24px">איך לקרוא את הלוחות</h2>
+    <p>לוח השראה לא נועד לבחור בו מסך. הוא עוזר לבחור <b>עולם</b>. תעבור על החמישה ותשאל את עצמך שתי שאלות:</p>
+    <ol>
+      <li>באיזה מקום היית רוצה שעולמה תגור? ספרייה, לובי של מלון, מרפסת, מטבח של חברה או סטודיו.</li>
+      <li>איזו הודעה בוואטסאפ, בצבעים האלה, היית הכי שמח לקבל?</li>
+    </ol>
+    <p class="muted">כל מה שכתוב בהודעות ובכרטיסים הוא דוגמה, לא נתונים של אנשים אמיתיים. בוואטסאפ עצמו הבועות תמיד בצבעים של וואטסאפ, והמותג מופיע רק בתמונת הפרופיל ובכרטיסים שעולמה שולחת. לכן הלוחות מראים את זה כמו שזה באמת.</p>
+  </section>
+</div>
+
+<script>
+const B=[
+ {id:'coral',name:'דיו + חמנייה',persona:'העורכת',P:['#221C3A','דיו'],Bg:['#F7F1E6','נייר'],Y:['#FFC83D','חמנייה'],O:['#FF8A6B','אלמוג'],I:'#221C3A',onP:'#F7F1E6',
+  hero:'שקט שמסדר את הראש.',place:'ספרייה שקטה בשישי בבוקר',words:['נייר עבה','עט נובע','מנורת קריאה','עיתון של סופ״ש'],
+  feel:'מרגישים שמישהו רציני ורגוע מחזיק את הפרטים. אין לחץ, אין צעקה.'},
+ {id:'navy',name:'נייבי + ענבר',persona:'המנהלת המהימנה',P:['#0A2472','נייבי'],Bg:['#FFF8EC','שמנת'],Y:['#FFBA08','ענבר'],O:['#FFBA08','ענבר'],I:'#0A1433',onP:'#FFFFFF',
+  hero:'בידיים טובות.',place:'לובי של מלון טוב, שמונה בבוקר',words:['מדים מגוהצים','כרטיס עלייה למטוס','שמש של בוקר','לוח המראות'],
+  feel:'מרגישים ביטחון. הכל מתוזמן, ומישהו אופטימי אומר "יהיה בסדר".'},
+ {id:'teal',name:'ברוש + חרדל',persona:'הקונסיירז׳',P:['#004643','ברוש'],Bg:['#F0EDE5','חול'],Y:['#F9C23C','חרדל'],O:['#FF7A59','אלמוג'],I:'#0E1F1E',onP:'#F0EDE5',
+  hero:'אפשר לנשום.',place:'מרפסת עם צמחים, שעת ערב',words:['פשתן','עציץ זית','תה צמחים','אבן ירושלמית'],
+  feel:'מרגישים שהמתח יורד. הכל זורם לאט, והכל מטופל.'},
+ {id:'plum',name:'שזיף + זעפרן',persona:'החברה החכמה',P:['#4A1942','שזיף'],Bg:['#FBF1E7','קרם'],Y:['#FFC23D','זעפרן'],O:['#FF9E3D','משמש'],I:'#2A0F26',onP:'#FBF1E7',
+  hero:'חמה, חכמה ובצד שלך.',place:'מטבח של חברה בשבת בצהריים',words:['קפה ועוגה','מפה משובצת','ספר מתכונים','צחוק מהחדר השני'],
+  feel:'מרגישים קרבה. כאילו חברה טובה שזוכרת הכל אמרה "אל תדאג, אני על זה".'},
+ {id:'oxblood',name:'בורדו + לימון',persona:'המעצבת הבטוחה בעצמה',P:['#5E1224','בורדו'],Bg:['#F7EEE8','פודרה'],Y:['#FFCF4A','לימון'],O:['#8FD3FF','תכלת'],I:'#2B0A12',onP:'#F7EEE8',
+  hero:'יודעת מה היא רוצה.',place:'סטודיו בתל אביב, אחרי הצהריים',words:['קטלוג אמנות','כיסא מעוצב','תקליט','פוסטר שוויצרי'],
+  feel:'מרגישים אנרגיה ואמירה. זה לא עוד כלי, זה סגנון.'},
+];
+let AC='y',uid=0;
+const $=s=>document.querySelector(s);
+const mix=(a,b,p)=>`color-mix(in srgb, ${a} ${p}%, ${b})`;
+function round(m,size){const a='r'+(++uid),b='r'+(++uid);return `<svg viewBox="0 0 120 120" width="${size}" height="${size}" aria-hidden="true" style="flex:none;display:block"><clipPath id="${a}"><circle cx="60" cy="60" r="60"/></clipPath><clipPath id="${b}"><circle cx="44" cy="60" r="24"/></clipPath><g clip-path="url(#${a})"><rect width="60" height="120" fill="${m[0]}"/><rect x="60" width="60" height="120" fill="${m[1]}"/><circle cx="44" cy="60" r="24" fill="${m[1]}"/><circle cx="76" cy="60" r="24" fill="${m[0]}"/><circle cx="76" cy="60" r="24" fill="${m[2]}" clip-path="url(#${b})"/></g></svg>`}
+function lensDot(P,A,s=16){const k='l'+(++uid);return `<svg viewBox="0 0 24 16" width="${s*1.5}" height="${s}" aria-hidden="true" style="flex:none"><clipPath id="${k}"><circle cx="9" cy="8" r="6.5"/></clipPath><circle cx="9" cy="8" r="6.5" fill="none" stroke="${P}" stroke-width="1.6"/><circle cx="15" cy="8" r="6.5" fill="none" stroke="${P}" stroke-width="1.6"/><circle cx="15" cy="8" r="6.5" fill="${A}" clip-path="url(#${k})"/></svg>`}
+function pattern(P,Bg,A){const k='p'+(++uid),c='c'+(++uid);return `<svg width="100%" height="100%" aria-hidden="true" style="position:absolute;inset:0"><defs><clipPath id="${c}"><circle cx="16" cy="20" r="11"/></clipPath><pattern id="${k}" width="48" height="40" patternUnits="userSpaceOnUse"><rect width="48" height="40" fill="${P}"/><circle cx="16" cy="20" r="11" fill="${Bg}"/><circle cx="32" cy="20" r="11" fill="${P}" stroke="${Bg}" stroke-width="1.5"/><circle cx="32" cy="20" r="11" fill="${A}" clip-path="url(#${c})"/></pattern></defs><rect width="100%" height="100%" fill="url(#${k})"/></svg>`}
+function board(p){
+  const P=p.P[0],Bg=p.Bg[0],A=(AC==='y'?p.Y:p.O),Ac=A[0],I=p.I,onP=p.onP,mk=[P,Bg,Ac];
+  const img=AC==='y'?`img/${p.id}Y-tools.jpg`:`img/${p.id}-tools.jpg`;
+  const night=mix(I,'#000',70);
+  const onA=P;
+  return `<section class="board" id="b-${p.id}">
+   <div class="bhead"><h2>${p.P[1]} + ${A[1]}</h2><span class="tag">${p.persona}</span><span class="muted" style="font-size:14px">${p.place}</span></div>
+   <div class="bento">
+    <div class="t hero c3 r2" style="background:${P};color:${onP}">
+      <div style="display:flex;justify-content:space-between;align-items:center"><span class="place">עולמה · allma</span>${round(mk,40)}</div>
+      <div class="w">${p.hero.replace(/(\S+)\.$/,`<span style="color:${Ac}">$1.</span>`)}</div>
+    </div>
+    <div class="t shot c1 r3" style="background:${Bg}"><img src="${img}" alt="מסך הבית בפלטה ${p.name}"></div>
+    <div class="t wa c2 r3">
+      <div class="top">${round(mk,30)}<div>עולמה<small>מקליד/ה…</small></div></div>
+      <div class="msgs">
+        <div class="b me">תזכירי לי לקנות מתנה לאמא לפני שישי<time>09:12</time></div>
+        <div class="b her">רשמתי. אזכיר לך בחמישי ב־10:00, וגם שלחתי לך כמה רעיונות מהרשימה שלך 🎁<time>09:12</time></div>
+        <div class="b me">מושלם 🙏<time>09:13</time></div>
+        <div class="b her">וסגרתי את הפגישה עם רוני, רביעי 18:30. כבר ביומן של שניכם.<time>09:40</time></div>
+      </div>
+    </div>
+    <div class="t sw c3" style="grid-row:span 1">
+      <div style="background:${Bg};color:${I};flex:6"><span>${p.Bg[1]} · 60</span><span class="hex">${Bg}</span></div>
+      <div style="background:${P};color:${onP};flex:3"><span>${p.P[1]} · 30</span><span class="hex">${P}</span></div>
+      <div style="background:${Ac};color:${onA};flex:1.4"><span>${A[1]}</span><span class="hex">${Ac}</span></div>
+    </div>
+    <div class="t card c2 r2" style="background:${Bg};color:${I};border:1px solid ${mix(I,Bg,10)}">
+      <span class="h">בוקר טוב, מירון</span><span class="d">שלישי, 3 דברים</span>
+      <ul>
+        <li>${lensDot(P,Ac)}<span>פגישה עם רואה החשבון</span><span class="tm">10:30</span></li>
+        <li>${lensDot(P,'none')}<span>להתקשר לרופא שיניים</span><span class="tm">16:00</span></li>
+        <li>${lensDot(P,'none')}<span>לשלם ארנונה</span><span class="tm">היום</span></li>
+      </ul>
+      <button type="button" style="margin-top:auto;align-self:flex-start;font:inherit;font-size:13px;font-weight:600;border:0;border-radius:99px;padding:6px 14px;background:${Ac};color:${onA}">לכל היום</button>
+    </div>
+    <div class="t lock c1 r2" style="background:linear-gradient(170deg,${P},${mix(P,'#000',55)});color:#fff">
+      <div><div class="dt">שלישי, 29 בספטמבר</div><div class="clock">07:42</div></div>
+      <div class="note">${round(mk,22)}<div><b>עולמה</b>בעוד שעה: פגישה עם רוני. לצאת ב־8:10.</div></div>
+    </div>
+    <div class="t c1" style="background:${P};padding:0">${pattern(P,Bg,Ac)}</div>
+    <div class="t coord c2 r2" style="background:#fff;color:${I};border:1px solid ${mix(I,'#fff',10)}">
+      <span class="h">תיאום · 4 אנשים</span><span class="ttl">ארוחת שישי אצל סבתא</span>
+      <div class="opt" style="background:${mix(P,'#fff',7)}"><span>שישי 13:00</span><b>2 כן</b></div>
+      <div class="opt" style="background:${Ac};color:${onA}"><span>שישי 19:30</span><b>סגור ✓</b></div>
+      <div class="opt" style="background:${mix(P,'#fff',7)}"><span>שבת 12:00</span><b>1 כן</b></div>
+    </div>
+    <div class="t spec c2" style="background:${Bg};color:${P};border:1px solid ${mix(I,Bg,10)}">
+      <div class="row"><span class="big">אבג Aa</span><span style="font-size:12px;text-align:end;opacity:.8">IBM Plex<br>Sans Hebrew</span></div>
+    </div>
+    <div class="t c2" style="background:${night};color:#F4F1EA;justify-content:space-between">
+      <span style="font-size:12px;opacity:.75">22:30</span>
+      <div style="display:flex;gap:10px;align-items:center"><span style="font-size:20px;font-weight:700;line-height:1.2">לילה טוב.<br><span style="color:${Ac}">מחר: 3 דברים.</span></span></div>
+    </div>
+    <div class="t stk c1" style="background:${Bg}"><div class="s" style="background:${Ac};color:${P}">סגור.</div></div>
+    <div class="t words c2" style="background:${mix(P,Bg,10)};color:${I}">${p.words.map((w,i)=>`<span style="${i%2?`color:${P}`:''}">${w}</span>`).join('')}</div>
+    <div class="t feel" style="grid-column:1/-1;background:${mix(Ac,Bg,22)};color:${I}"><b>מה המשתמש מרגיש</b>${p.feel}</div>
+   </div>
+  </section>`;
+}
+function renderAll(){
+  $('#boards').innerHTML=B.map(board).join('');
+  $('#jump').innerHTML=B.map(p=>`<a href="#b-${p.id}"><span class="dots"><i style="background:${p.Bg[0]}"></i><i style="background:${p.P[0]}"></i><i style="background:${AC==='y'?p.Y[0]:p.O[0]}"></i></span>${p.name.split(' + ')[0]}</a>`).join('');
+}
+$('#yrow').innerHTML=B.map(p=>`<figure><img src="img/${p.id}Y-tools.jpg" alt="מסך הבית, ${p.name}, כפתורים בצהוב"><figcaption>${p.name}</figcaption></figure>`).join('');
+document.querySelector('.bar .seg').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;AC=b.dataset.a;b.parentElement.querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',x===b));renderAll()});
+renderAll();
+</script>
