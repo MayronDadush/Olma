@@ -3133,6 +3133,32 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
    reads differently at a glance and not only by its words. */
 .toast.err{color:var(--danger);background:var(--danger-soft)}
 .toastundo{margin-inline-start:12px;color:var(--accent);font-weight:700;font-size:13px}
+/* Pull to refresh: a disc that comes down with the finger, turns while it
+   is pulled, fills when letting go would refresh, and spins while it does. */
+.ptr{
+  position:fixed;top:calc(env(safe-area-inset-top, 0px) + 6px);inset-inline:0;margin-inline:auto;z-index:70;
+  width:38px;height:38px;border-radius:50%;display:grid;place-items:center;
+  background:var(--surface);color:var(--text-3);box-shadow:var(--shadow-m);
+  opacity:0;transform:translateY(calc(var(--pull, 0px) - 44px)) rotate(calc(var(--pull, 0px) * 4));
+  pointer-events:none;transition:opacity .15s ease;
+}
+.ptr svg{width:17px;height:17px}
+.ptr.on{opacity:1}
+.ptr.armed{background:var(--accent);color:var(--on-accent)}
+.ptr.spin{opacity:1;transform:translateY(40px);background:var(--accent);color:var(--on-accent);
+  animation:ptrSpin .8s linear infinite}
+@keyframes ptrSpin{from{transform:translateY(40px) rotate(0)}to{transform:translateY(40px) rotate(360deg)}}
+/* "There is something new": said at the top, and the list waits for the tap. */
+.newspill{
+  position:fixed;top:calc(env(safe-area-inset-top, 0px) + 68px);inset-inline:0;margin-inline:auto;z-index:65;
+  width:max-content;display:flex;align-items:center;gap:7px;padding:8px 15px;border-radius:999px;
+  background:var(--accent);color:var(--on-accent);font-size:13.5px;font-weight:700;box-shadow:var(--shadow-m);
+  opacity:0;transform:translateY(-14px);pointer-events:none;
+  transition:opacity .25s var(--ease),transform .35s var(--ease);
+}
+.newspill svg{width:14px;height:14px}
+.newspill.show{opacity:1;transform:none;pointer-events:auto}
+@media (prefers-reduced-motion:reduce){.ptr.spin{animation:none}.newspill{transition:none}}
 
 @media (max-width:430px){
   .title h1{font-size:29px}
@@ -4146,6 +4172,9 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 </div>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
+<!-- Pulling the page down (see "keeping the picture current"). -->
+<div class="ptr" id="ptr" aria-hidden="true"><svg><use href="#i-repeat"/></svg></div>
+<button class="newspill" id="newsPill" type="button"><svg><use href="#i-repeat"/></svg><span data-i18n="news.pill"></span></button>
 
 <!-- Until the server's answer lands, the served page is showing the SEED: a
      made-up list, made-up friends, and a fact about somebody's dog. It is the
@@ -4521,6 +4550,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
        optimistic guess. */
     send: function(action, payload, onOk, keepalive){
       if(!LIVE || !ACT[action]){ if(onOk) onOk(null); return true; }
+      lastWriteAt = Date.now();
       fetch("/me/act", {
         method:"POST", credentials:"same-origin", keepalive:!!keepalive,
         headers:{"Content-Type":"application/json"},
@@ -4857,6 +4887,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "home.tasksStart":"הוסיפו משימה","home.tasksStartSub":"או פשוט כתבו לעולמה בוואטסאפ את המשימה",
       "home.meetsStart":"תאמו פגישה","home.meetsStartSub":"עולמה תמצא זמן שמתאים לכולם דרך הוואטסאפ",
       "home.tasksToday":"{n} להיום","home.tasksGo":"לרשימה המלאה","home.meetsGo":"לכל התיאומים",
+      "news.pill":"יש עדכונים · לרענן","news.done":"עודכן",
       "home.todayH":"היום שלך","home.clear":"אין משהו שמחכה להיום.",
       "home.due.n0":"","home.due.n1":"משימה אחת להיום","home.due.nN":"{n} משימות להיום",
       "home.waiting.n0":"","home.waiting.n1":"תיאום אחד מחכה לתשובה שלך","home.waiting.nN":"{n} תיאומים מחכים לתשובה שלך",
@@ -5223,6 +5254,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "home.tasksStart":"Add a task","home.tasksStartSub":"or just send Allma the task on WhatsApp",
       "home.meetsStart":"Set up a meeting","home.meetsStartSub":"Allma finds a time that suits everyone, over WhatsApp",
       "home.tasksToday":"{n} for today","home.tasksGo":"See the full list","home.meetsGo":"See them all",
+      "news.pill":"New updates · Refresh","news.done":"Updated",
       "home.todayH":"Your day","home.clear":"Nothing is waiting on today.",
       "home.due.n0":"","home.due.n1":"1 task for today","home.due.nN":"{n} tasks for today",
       "home.waiting.n0":"","home.waiting.n1":"1 plan waiting on your answer","home.waiting.nN":"{n} plans waiting on your answer",
@@ -10957,20 +10989,104 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   }
   /* A phone whose screen has been off for a night arrives here first. */
   document.addEventListener("visibilitychange", function(){ if(!document.hidden) rollDay(); });
-  /* And the installed app is never reloaded by anybody: iOS and Android keep
-     it in memory for days, so the list it shows is whatever it read when it
-     was last opened — yesterday's, with the things she added since missing.
-     Coming back to it after a real absence reads the page again, once. Not
-     on a timer, and not while it is on screen: nobody's finger is on a page
-     that was hidden a moment ago, which is the whole objection to a page that
-     reloads itself. */
-  var hiddenAt = 0;
-  var STALE_AFTER_MS = 5 * 60 * 1000;
+  /* ── keeping the picture current ──
+     The installed app is never reloaded by anybody: iOS and Android keep it
+     in memory for days. Three ways it catches up, and none of them moves a
+     list under somebody's finger (the owner, 2026-09-28):
+       - coming back after a real absence reads the page again, once;
+       - pulling the page down from the top reads it now (#ptr), because an
+         installed app has no browser reload and no browser pull;
+       - while it is on screen it asks once a minute whether anything
+         changed, and if so says so (#newsPill) — the list itself only
+         changes when that is pressed. */
+  var hiddenAt = 0, lastWriteAt = 0, DATA_SIG = "", sigAt = 0;
+  var STALE_AFTER_MS = 5 * 60 * 1000, NEWS_EVERY_MS = 60 * 1000, NEWS_QUIET_MS = 20 * 1000;
   document.addEventListener("visibilitychange", function(){
     if(document.hidden){ hiddenAt = Date.now(); return; }
     if(hiddenAt && LIVE && Date.now() - hiddenAt >= STALE_AFTER_MS) API.reload();
     hiddenAt = 0;
   });
+  /* What the page would draw, minus what changes by itself with the clock:
+     `settleIn` is a countdown, and a countdown is not news. */
+  function dataSig(d){
+    try{ return JSON.stringify(d, function(k, v){ return k === "settleIn" ? undefined : v; }); }
+    catch(e){ return ""; }
+  }
+  function hideNews(){ var p = $("#newsPill"); if(p) p.classList.remove("show"); }
+  function checkForNews(){
+    if(!LIVE || document.hidden || !DATA_SIG) return;
+    /* A write of our own is still on its way back through the server, and
+       the difference it makes is not news to the person who made it. */
+    if(Date.now() - lastWriteAt < NEWS_QUIET_MS) return;
+    var seqAt = dataSeq;
+    fetch("/me/data", {credentials:"same-origin", headers:{Accept:"application/json"}})
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(body){
+        if(!body || !body.ok || !body.data) return;
+        if(seqAt !== dataSeq || Date.now() - lastWriteAt < NEWS_QUIET_MS) return;
+        var sig = dataSig(body.data);
+        /* Most writes here do not re-read the page — the row was already
+           drawn — so after one the server's picture differs from the last
+           one READ by exactly what the person just did. That is taken as
+           the new baseline, silently, and never offered back to them as
+           news. (A change from elsewhere in the same minute waits for the
+           next read; it is not lost, only not announced.) */
+        if(lastWriteAt > sigAt){ DATA_SIG = sig; sigAt = Date.now(); return; }
+        if(sig !== DATA_SIG) $("#newsPill").classList.add("show");
+      })
+      .catch(function(){});
+  }
+  setInterval(checkForNews, NEWS_EVERY_MS);
+  $("#newsPill").addEventListener("click", function(){
+    hideNews();
+    API.reload(function(){ toast(t("news.done")); });
+  });
+
+  /* Pull to refresh. Only from the very top of the page, only downward, and
+     never from inside a sheet, a sideways swipe or a task being dragged. The
+     listeners are passive: the page scrolls and bounces exactly as before,
+     and this only watches. */
+  (function(){
+    var PULL = 64, MAX = 96, y0 = null, x0 = 0, pulled = 0, busy = false;
+    var ptr = $("#ptr");
+    function reset(){ y0 = null; pulled = 0; ptr.style.removeProperty("--pull"); ptr.classList.remove("armed", "on"); }
+    document.addEventListener("touchstart", function(e){
+      /* Only in the installed app: a browser tab has its own pull, which
+         reloads the page, and two of them on one gesture is one too many. */
+      if(!document.documentElement.classList.contains("is-app")) return;
+      if(busy || e.touches.length !== 1 || window.scrollY > 0) return;
+      if(!e.target.closest("main") || e.target.closest(".sheet,.swr.dragging,input,textarea")) return;
+      if(document.querySelector(".sheet.show,.dragsrc")) return;
+      y0 = e.touches[0].clientY; x0 = e.touches[0].clientX;
+    }, {passive:true});
+    document.addEventListener("touchmove", function(e){
+      if(y0 === null) return;
+      var dy = e.touches[0].clientY - y0, dx = e.touches[0].clientX - x0;
+      if(window.scrollY > 0 || dy <= 0 || Math.abs(dx) > dy || document.querySelector(".dragsrc")){
+        if(pulled) reset(); else y0 = null;
+        return;
+      }
+      pulled = Math.min(MAX, dy * .5);
+      ptr.classList.add("on");
+      ptr.style.setProperty("--pull", pulled + "px");
+      ptr.classList.toggle("armed", pulled >= PULL);
+    }, {passive:true});
+    document.addEventListener("touchend", function(){
+      if(y0 === null) return;
+      if(pulled < PULL){ reset(); return; }
+      busy = true;
+      ptr.classList.remove("armed");
+      ptr.classList.add("spin");
+      var started = Date.now();
+      API.reload(function(){
+        /* a read that came back in 80ms would flash; the spin is shown long
+           enough to be seen to have happened */
+        setTimeout(function(){ ptr.classList.remove("spin"); reset(); busy = false; },
+          Math.max(0, 500 - (Date.now() - started)));
+      });
+    });
+    document.addEventListener("touchcancel", function(){ if(!busy) reset(); });
+  })();
   setInterval(tickClocks, 30000);
 
   /* ── the settle grace, ticking ──
@@ -12974,6 +13090,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      claiming to be information. */
   var CAL_EVENT_COLOR = "#5B2FD6", calConnected = false;
   function hydrate(d){
+    DATA_SIG = dataSig(d); sigAt = Date.now();
+    hideNews();
     /* Who this is, FIRST. Everything below asks "is this me?" — a shared task,
        a meeting participant — and answers it against MY_ID, so setting it
        after the mapping would have made every one of those answers "no" on
