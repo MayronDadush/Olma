@@ -26,6 +26,38 @@ test('a clock time is read the way people write it, with or without minutes', ()
   assert.deepEqual([...both].sort(), ['07:00', '08:00']);
 });
 
+test('minutes said in words after a bare hour are part of the hour (Dov, issue 161)', () => {
+  const at = Date.parse('2026-09-27T11:18:56Z');
+  const asked = (t) => [...momentsAsked(t, at, TZ)];
+  // the real message — a correct 08:30 was filed as "asked 08:00"
+  assert.deepEqual(asked('תזכיר לי כל יום בבוקר בשעה 8 וחצי לשתות חצי ליטר מים וכדור סגול'), ['08:30']);
+  assert.deepEqual(asked('תזכיר לי בשעה 8 ורבע'), ['08:15']);
+  assert.deepEqual(asked('תזכיר לי ב-7 ועשרים'), ['07:20']);
+  assert.deepEqual(asked('תזכיר לי ב-7 ועשרה'), ['07:10']);
+  assert.deepEqual(asked('תזכיר לי ב-6 ו-40'), ['06:40']);
+  assert.deepEqual(asked('תזכיר לי בשעה 9 פחות רבע'), ['08:45']);
+  assert.deepEqual(asked('תזכיר לי ב-0 פחות עשרה'), ['23:50']);
+  // a word that only STARTS like one is not minutes
+  assert.deepEqual(asked('תזכיר לי ב-8 ועשרות דברים'), ['08:00']);
+  assert.deepEqual(asked('תזכיר לי בשעה 8'), ['08:00']);
+});
+
+test('the check still goes red when half past was asked and the hour was armed', () => {
+  const found = checkPromises({
+    user,
+    inbound: [{ at: '2026-09-27T11:18:56Z', text: 'תזכיר לי מחר בשעה 8 וחצי לשתות מים' }],
+    reminders: [{ id: 507, createdAt: '2026-09-27T11:19:01Z', remindAt: '2026-09-28T05:00:00Z' }], // 08:00
+  });
+  assert.equal(found.length, 1);
+  assert.deepEqual(found[0].asked, ['08:30']);
+  // …and quiet when 08:30 is what was armed
+  assert.equal(checkPromises({
+    user,
+    inbound: [{ at: '2026-09-27T11:18:56Z', text: 'תזכיר לי מחר בשעה 8 וחצי לשתות מים' }],
+    reminders: [{ id: 507, createdAt: '2026-09-27T11:19:01Z', remindAt: '2026-09-28T05:30:00Z' }],
+  }).length, 0);
+});
+
 test('a relative ask is read against the moment they wrote it', () => {
   // 11:29 Jerusalem
   const at = Date.parse('2026-09-06T08:29:21Z');
