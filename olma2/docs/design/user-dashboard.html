@@ -26,8 +26,8 @@
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/icons/icon-192.png" sizes="192x192" type="image/png">
 <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
-<meta name="theme-color" content="#F0EDE5" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#0A1817" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#004643" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0F3B37" media="(prefers-color-scheme: dark)">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -159,6 +159,14 @@
   --logo-l:#F0EDE5;
   --logo-lens:#F9C23C;
   --logo-ring:#004643;
+  /* The band: the header and the page title sit on Cypress, the way the brand
+     book draws the app (the owner, 2026-09-28). At night it is a deeper
+     Cypress than the day's, lit enough to stand off --bg and still under the
+     cards that overlap it. --on-band-2 is the quiet line (greeting, clock). */
+  --band:#004643;
+  --on-band:#F0EDE5;
+  --on-band-2:#BFD3CF;
+  --band-tint:rgba(255,255,255,.14);
   --font-body:'IBM Plex Sans Hebrew','IBM Plex Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
   --font-display:'IBM Plex Sans Hebrew','IBM Plex Sans',system-ui,sans-serif;
 }
@@ -216,6 +224,10 @@
     --logo-l:#EDE9DF;
     --logo-lens:#F9C23C;
     --logo-ring:#EDE9DF;
+    --band:#0F3B37;
+    --on-band:#EDE9DF;
+    --on-band-2:#AFC6C1;
+    --band-tint:rgba(255,255,255,.1);
     --shadow-l:0 24px 64px -20px rgba(0,0,0,.8), 0 2px 8px rgba(0,0,0,.5);
   }
 }
@@ -271,6 +283,10 @@
   --logo-l:#EDE9DF;
   --logo-lens:#F9C23C;
   --logo-ring:#EDE9DF;
+  --band:#0F3B37;
+  --on-band:#EDE9DF;
+  --on-band-2:#AFC6C1;
+  --band-tint:rgba(255,255,255,.1);
   --shadow-l:0 24px 64px -20px rgba(0,0,0,.8), 0 2px 8px rgba(0,0,0,.5);
 }
 
@@ -309,8 +325,14 @@ h1,h2,h3,p{margin:0}
 /* ─────────────────────────  top bar  ───────────────────────── */
 .topbar{
   display:flex;align-items:center;justify-content:space-between;
-  gap:14px;padding:26px 2px 10px;position:relative;
+  gap:14px;padding:26px 20px 10px;position:relative;
+  /* the band runs to the screen's edges: .app pads 18px, and this takes it back */
+  margin-inline:-18px;background:var(--band);color:var(--on-band);
+  /* the mark on Cypress is the night mark in both themes: its dark half is
+     --logo-d, and by day that is the band's own colour */
+  --logo-d:#0A1817;--logo-l:#EDE9DF;--logo-ring:#EDE9DF;
 }
+.topbar :focus-visible{outline-color:var(--on-band)}
 /* their own local time, dead centre and deliberately quiet — the one
    number that answers "is now a reasonable time" at a glance. */
 /* The clock IS the timezone: it is the only place in the app that shows one,
@@ -323,13 +345,13 @@ h1,h2,h3,p{margin:0}
 .topclock{
   flex:none;text-align:center;
   padding:5px 11px;border-radius:999px;
-  font-size:14.5px;font-weight:600;letter-spacing:.04em;color:var(--text-3);
+  font-size:14.5px;font-weight:600;letter-spacing:.04em;color:var(--on-band-2);
   font-variant-numeric:tabular-nums;
   transition:background var(--sw-t) var(--ease-io),color var(--sw-t) var(--ease-io),
              transform .3s var(--squash);
 }
-.topclock:active{background:var(--bg-tint);color:var(--text-2);transform:scale(.94)}
-.topclock:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.topclock:active{background:var(--band-tint);color:var(--on-band);transform:scale(.94)}
+.topclock:focus-visible{outline:2px solid var(--on-band);outline-offset:2px}
 .brand{
   display:flex;align-items:center;gap:11px;min-width:0;
   transition:opacity .34s var(--ease),transform .34s var(--ease);
@@ -377,7 +399,7 @@ html[data-v="me"] .brand{opacity:0;transform:translateY(-8px) scale(.94);pointer
 /* The name leads and the line under it is the welcome. It is one line and it
    stays one line: a header that reflows to two pushes the clock and the
    status pill around, and those two are the reason anybody looks up here. */
-.brand-hi{font-size:13px;color:var(--text-2);line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.brand-hi{font-size:13px;color:var(--on-band-2);line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .brand-name{font-family:var(--font-display);font-weight:600;font-size:17px;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hdrend{display:flex;align-items:center;gap:9px;flex:none}
 /* "עולמה פעילה" said nothing to somebody who did not know she could be
@@ -447,14 +469,14 @@ html:not([data-paused]) .livepill{visibility:hidden}
    top — the page revealing itself a second time, immediately. So the animation
    stays off for the view the intro just finished revealing, and go() clears the
    marker so every later view change animates normally. */
-html.intro .view.active > *,
-html.intro-settled .view.active > *{animation:none}
+html.intro .view.active > *,html.intro .view.active > .title > *,
+html.intro-settled .view.active > *,html.intro-settled .view.active > .title > *{animation:none}
 @keyframes introUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
 @keyframes introBar{from{opacity:0;transform:translateY(22px) scale(.97)}to{opacity:1;transform:none}}
-html.intro:not(.intro-go) .title,
+html.intro:not(.intro-go) .title > *,
 html.intro:not(.intro-go) [data-stage],
 html.intro:not(.intro-go) .tabbar{opacity:0}
-html.intro-go .title{animation:introUp .5s var(--ease) both}
+html.intro-go .title > *{animation:introUp .5s var(--ease) both}
 html.intro-go [data-stage="1"] .glabel{animation:introUp .5s var(--ease) .06s both}
 /* DOM order IS reading order in both directions, so one index serves rtl and
    ltr alike */
@@ -465,13 +487,27 @@ html.intro-go [data-stage="2"]{animation:introUp .5s var(--ease) .32s both}
 html.intro-go [data-stage="3"]{animation:introUp .5s var(--ease) .38s both}
 html.intro-go .tabbar{animation:introBar .55s var(--ease) .3s both}
 @media (prefers-reduced-motion:reduce){
-  html.intro .title,html.intro [data-stage],html.intro .tabbar,
+  html.intro .title > *,html.intro [data-stage],html.intro .tabbar,
   html.intro .chanrow > .chan,html.intro .glabel{animation:none;opacity:1}
 }
 
-.title{padding:8px 2px 18px}
+/* The title closes the band the top bar opened: same Cypress, same bleed,
+   and the rounded end is here. The two are separate boxes that touch, so
+   nothing may move one without the other — the rise below plays on the
+   title's WORDS, never on its box, or a seam opens for a quarter second. */
+.title{
+  padding:8px 20px 26px;margin:0 -18px 18px;
+  background:var(--band);color:var(--on-band);border-radius:0 0 28px 28px;
+}
 .title h1{font-family:var(--font-display);font-weight:700;font-size:33px;line-height:1.12;letter-spacing:-.015em;text-wrap:balance}
-.title p{margin-top:6px;color:var(--text-2);font-size:15px;max-width:52ch}
+.title p{margin-top:6px;color:var(--on-band-2);font-size:15px;max-width:52ch}
+/* On home the first card sits over the band's end, as in the brand book. A
+   negative margin rather than a named neighbour: whichever block is shown
+   first (today, the install card, the home cards) is the one that rises. */
+.view[data-view="tools"] > .title{padding-bottom:52px;margin-bottom:-30px}
+.view[data-view="tools"] > .title ~ *{position:relative}
+.view.active > .title{animation:none}
+.view.active > .title > *{animation:rise .25s var(--ease) both}
 
 .glabel{
   font-size:12.5px;font-weight:600;color:var(--text-3);
@@ -2543,11 +2579,18 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 .chan.isdefault{box-shadow:var(--shadow-m),inset 0 0 0 1.5px var(--accent-soft)}
 .chan{transition:transform .28s var(--squash),box-shadow .42s var(--ease-io)}
 
-.hero-profile{display:flex;flex-direction:column;align-items:center;gap:12px;padding:6px 0 28px}
+/* The profile has no title; its hero is what closes the band there. */
+.hero-profile{
+  display:flex;flex-direction:column;align-items:center;gap:12px;padding:6px 20px 26px;
+  margin:0 -18px 18px;background:var(--band);color:var(--on-band);border-radius:0 0 28px 28px;
+}
+.view.active > .hero-profile{animation:none}
+.view.active > .hero-profile > *{animation:rise .25s var(--ease) both}
+.hero-profile .linkbtn{color:var(--on-band);text-decoration:underline;text-underline-offset:3px}
 .hero-profile .avatar{width:96px;height:96px}
 .hero-profile .who{text-align:center}
 .hero-profile .who b{display:block;font-family:var(--font-display);font-size:22px;font-weight:600}
-.hero-profile .who span{font-size:14px;color:var(--text-2)}
+.hero-profile .who span{font-size:14px;color:var(--on-band-2)}
 
 /* ─────────────────────────  profile settings  ───────────────────────── */
 /* A row whose control is too wide to share a line with its title: the title

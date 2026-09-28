@@ -288,15 +288,15 @@ test('no class the new blocks own is defined twice', () => {
   }
 });
 
-test('the phone paints its bars in the same ground as the page, in both schemes', () => {
+test('the phone paints its bar in the band under it, and its splash in the page ground', () => {
   // The brand moved the ground on 2026-09-28 and the two metas stayed on the
-  // old one: a status bar a different colour from the page under it.
+  // old one: a status bar a different colour from the page under it. Since
+  // the same day the top of the page is the Cypress band, so the bar is too.
   const light = PAGE.match(/<meta name="theme-color" content="(#[0-9A-Fa-f]{6})" media="\(prefers-color-scheme: light\)">/);
   const dark = PAGE.match(/<meta name="theme-color" content="(#[0-9A-Fa-f]{6})" media="\(prefers-color-scheme: dark\)">/);
   assert.ok(light && dark, 'one theme-color per scheme');
-  const rootBg = PAGE.match(/:root\{[^}]*?--bg:(#[0-9A-Fa-f]{6})/);
-  const darkBg = PAGE.match(/:root\[data-theme="dark"\]\{[^}]*?--bg:(#[0-9A-Fa-f]{6})/);
-  assert.equal(light[1].toUpperCase(), rootBg[1].toUpperCase());
-  assert.equal(dark[1].toUpperCase(), darkBg[1].toUpperCase());
-  assert.equal(pwa.BACKGROUND.toUpperCase(), rootBg[1].toUpperCase(), 'the splash is the same ground');
+  const tok = (block, name) => PAGE.match(new RegExp(block + '\\{[^}]*?--' + name + ':(#[0-9A-Fa-f]{6})'))[1].toUpperCase();
+  assert.equal(light[1].toUpperCase(), tok(':root', 'band'));
+  assert.equal(dark[1].toUpperCase(), tok(':root\\[data-theme="dark"\\]', 'band'));
+  assert.equal(pwa.BACKGROUND.toUpperCase(), tok(':root', 'bg'), 'the splash is the page ground');
 });

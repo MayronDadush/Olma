@@ -107,6 +107,22 @@ test('a shared row is tinted visibly, and everything written on it still reads',
   assert.match(page, /\.swr\.shared > \.swfront,\.hometoday \.task\.shared\{background:var\(--shared-bg\)\}/);
 });
 
+test('the band stands off the page at night, and everything on it reads', () => {
+  // The header and the title sit on Cypress (the owner, 2026-09-28). By day
+  // that is the accent itself; at night it has to stay a band, not a smudge
+  // on --bg, and the cards that overlap it have to stay cards.
+  [0, 1].forEach(function (w) {
+    const band = token('band', w);
+    assert.ok(ratio(band, token('bg', w)) >= 1.3, `the band stands off the page (${w}): ${ratio(band, token('bg', w)).toFixed(2)}`);
+    ['on-band', 'on-band-2'].forEach(function (n) {
+      assert.ok(ratio(token(n, w), band) >= 4.5, `--${n} on the band (${w}): ${ratio(token(n, w), band).toFixed(2)}`);
+    });
+  });
+  // the title's box never animates, or it parts from the top bar mid-rise
+  assert.match(page, /\.view\.active > \.title\{animation:none\}/);
+  assert.match(page, /html\.intro-go \.title > \*\{animation:introUp/);
+});
+
 test('a finger gets more than the icon does', () => {
   // Eleven controls drawn between 19 and 31px. The drawing is right — a 44px
   // bin beside a 15px line of text is not a design — so the hit area grew and
