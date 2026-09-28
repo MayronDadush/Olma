@@ -99,7 +99,169 @@ ol.q{margin:0;padding-inline-start:22px;display:grid;gap:8px}
 code{font-family:var(--mono);font-size:13px;background:var(--brand-soft);border-radius:6px;padding:1px 6px;direction:ltr;unicode-bidi:isolate}
 .files{columns:2 260px;column-gap:24px;font-size:14px;margin:0;padding-inline-start:18px}
 .files li{break-inside:avoid;margin-bottom:6px}
+.tabs div.on{background:var(--brand-soft)}
+.tag{display:inline-block;font-size:12px;font-weight:600;padding:1px 9px;border-radius:99px;background:var(--action);color:var(--on-action);vertical-align:3px;margin-inline-start:8px}
+.tag.ok{background:var(--brand);color:var(--on-brand)}
+.tag.soft{background:var(--brand-soft);color:var(--text-2)}
+.cmwrap{display:grid;gap:10px}
+.cm{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:10px 4px;border-radius:14px;padding:12px 8px}
+@media (max-width:640px){.cm{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.cm figure{margin:0;display:grid;justify-items:center;gap:4px;font-size:11.5px;font-weight:600;text-align:center;color:var(--mk-line)}
+.cm svg{width:34px;height:34px}
+.cm.day{background:#F0EDE5;--mk-line:#0E1F1E;--mk-hi:#FFFFFF;--mk-paper:#FFFFFF;--mk-paper-s:#E4E1D7;--mk-gold:#F9C23C;--mk-gold-s:#CF9A1F;--mk-violet:#1F6B64;--mk-violet-s:#004643;--mk-lime:#C6D62B;--mk-lime-s:#90A91E;--mk-orange:#EC8A3B;--mk-orange-s:#BF6621;--mk-blue:#2F7F9E;--mk-blue-s:#1F6377;--mk-red:#C4513F;--mk-red-s:#9A3A2C;--mk-green:#3F9A6E;--mk-green-s:#2B7453;--mk-navy:#123C3A;--mk-brown:#8A5A2B}
+.cm.night{background:#0A1817;--mk-line:#EDE9DF;--mk-hi:#FFFFFF;--mk-paper:#1C3633;--mk-paper-s:#122725;--mk-gold:#F9C23C;--mk-gold-s:#CF9A1F;--mk-violet:#1F6B64;--mk-violet-s:#004643;--mk-lime:#C6D62B;--mk-lime-s:#90A91E;--mk-orange:#EC8A3B;--mk-orange-s:#BF6621;--mk-blue:#2F7F9E;--mk-blue-s:#1F6377;--mk-red:#C4513F;--mk-red-s:#9A3A2C;--mk-green:#3F9A6E;--mk-green-s:#2B7453;--mk-navy:#BFD3CF;--mk-brown:#B0763A}
+.cm .live{outline:2px solid var(--mk-gold);outline-offset:2px;border-radius:10px}
+.tex{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.tex figure{margin:0;display:grid;gap:6px}
+.tex figcaption{font-size:13px;color:var(--text-2)}
+.poster{position:relative;aspect-ratio:4/5;max-width:100%;border-radius:16px;overflow:hidden;display:grid;align-content:space-between;padding:18px;border:1px solid var(--line);font-family:var(--f)}
+.poster .big{font-size:clamp(34px,5vw,46px);font-weight:700;line-height:1;letter-spacing:-.02em}
+.poster .sm{font-size:13px;font-weight:500;opacity:.8}
+.poster .gr{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.poster.zoom{padding:0}
+.poster.zoom .in{position:absolute;inset:0;transform:scale(3);transform-origin:70% 40%;padding:18px;display:grid;align-content:space-between}
+.worn{filter:url(#worn)}
+.never{display:flex;flex-wrap:wrap;gap:8px;margin:0;padding:0;list-style:none}
+.never li{font-size:13.5px;padding:5px 12px;border-radius:99px;background:var(--surface);border:1px solid var(--line)}
+.q2{display:grid;gap:10px}
+.q2 blockquote{margin:0;padding:12px 14px;border-inline-start:3px solid var(--brand);background:var(--surface);border-radius:0 12px 12px 0}
+.props{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}
+.props .card h3{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.ba{display:grid;gap:6px;font-size:14.5px}
+.ba div{display:grid;grid-template-columns:52px 1fr;gap:8px;align-items:baseline}
+.ba small{font-size:11.5px;font-weight:600;color:var(--text-3)}
+.ba .no{color:var(--text-3);text-decoration:line-through;text-decoration-color:var(--danger)}
+.flow{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;counter-reset:f}
+.flow .card::before{counter-increment:f;content:counter(f);width:30px;height:30px;border-radius:50%;background:var(--brand);color:var(--on-brand);display:grid;place-items:center;font-weight:700;font-size:14px}
+.vid{display:grid;grid-template-columns:minmax(0,320px) 1fr;gap:18px;align-items:center}
+@media (max-width:640px){.vid{grid-template-columns:1fr}}
+.vid video{width:100%;max-width:100%;aspect-ratio:1;border-radius:16px;border:1px solid var(--line);background:#F0EDE5;display:block}
+.motion{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px}
+.motion .stage{background:#F0EDE5;border-radius:14px;aspect-ratio:1/1;max-width:100%;display:grid;place-items:center;border:1px solid var(--line)}
+.motion .stage div{width:46%;aspect-ratio:1}
+.motion .meta{font-size:12.5px;color:var(--text-3);font-weight:600}
+.motion button{font:inherit;font-size:13px;font-weight:600;border:0;border-radius:99px;padding:6px 14px;background:var(--brand-soft);color:var(--text);justify-self:start;cursor:pointer}
+.motion .rec{outline:2px solid var(--action);outline-offset:-2px}
 </style>
+
+<svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute" aria-hidden="true">
+<filter id="grain" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency=".8" numOctaves="3" stitchTiles="stitch" seed="7"/><feColorMatrix values="0 0 0 0 .05  0 0 0 0 .12  0 0 0 0 .12  .5 0 0 0 -.2"/></filter>
+<filter id="worn"><feTurbulence type="fractalNoise" baseFrequency="1.1" numOctaves="2" seed="3" result="n"/><feColorMatrix in="n" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  -4 0 0 0 3.1" result="m"/><feComposite in="SourceGraphic" in2="m" operator="in"/></filter>
+<symbol id="m-crown" viewBox="0 0 24 24">
+    <path d="M3.6 17.4V7.2l4.9 4.5L12 5.6l3.5 6.1 4.9-4.5v10.2Z" fill="var(--mk-gold)"/>
+    <path d="M12 5.6l3.5 6.1 4.9-4.5v10.2H12Z" fill="var(--mk-gold-s)"/>
+    <path d="M3.6 17.4V7.2l4.9 4.5L12 5.6l3.5 6.1 4.9-4.5v10.2Z" fill="none" stroke="var(--mk-line)" stroke-width="1.5" stroke-linejoin="round"/>
+    <path d="M3.4 17.2h17.2v2.4a1.4 1.4 0 0 1-1.4 1.4H4.8a1.4 1.4 0 0 1-1.4-1.4Z" fill="var(--mk-gold)"/>
+    <path d="M12 17.2h8.6v2.4a1.4 1.4 0 0 1-1.4 1.4H12Z" fill="var(--mk-gold-s)"/>
+    <path d="M3.4 17.2h17.2v2.4a1.4 1.4 0 0 1-1.4 1.4H4.8a1.4 1.4 0 0 1-1.4-1.4Z" fill="none" stroke="var(--mk-line)" stroke-width="1.5" stroke-linejoin="round"/>
+    <circle cx="3.6" cy="6" r="1.7" fill="var(--mk-gold)" stroke="var(--mk-line)" stroke-width="1.5"/>
+    <circle cx="12" cy="4.4" r="1.8" fill="var(--mk-gold)" stroke="var(--mk-line)" stroke-width="1.5"/>
+    <circle cx="20.4" cy="6" r="1.7" fill="var(--mk-gold-s)" stroke="var(--mk-line)" stroke-width="1.5"/>
+  </symbol>
+<symbol id="m-cards" viewBox="0 0 24 24">
+    <g transform="rotate(14 14 12)">
+      <rect x="10" y="4.2" width="9.6" height="13.6" rx="2.2" fill="var(--mk-paper-s)" stroke="var(--mk-line)" stroke-width="1.5"/>
+    </g>
+    <rect x="4.4" y="6.2" width="10.4" height="14.6" rx="2.4" fill="var(--mk-paper)" stroke="var(--mk-line)" stroke-width="1.5"/>
+    <path d="M9.6 9.4c1.7 1.9 3.1 2.8 3.1 4.2 0 1.3-1.1 1.9-1.9 1.5-.3-.16-.5-.4-.62-.7l.5 2.1H8.5l.5-2.1c-.11.3-.32.54-.62.7-.8.4-1.9-.2-1.9-1.5 0-1.4 1.4-2.3 3.12-4.2Z" fill="var(--mk-line)"/>
+  </symbol>
+<symbol id="m-sealed" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="8.6" fill="var(--mk-violet)"/>
+    <path d="M12 3.4a8.6 8.6 0 0 1 0 17.2Z" fill="var(--mk-violet-s)"/>
+    <circle cx="12" cy="12" r="8.6" fill="none" stroke="var(--mk-line)" stroke-width="1.5"/>
+    <path d="m7.8 12.3 2.9 2.9 5.6-6.2" fill="none" stroke="var(--mk-hi)" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+<symbol id="m-expiring" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="8.6" fill="var(--mk-gold)"/>
+    <path d="M12 3.4a8.6 8.6 0 0 1 0 17.2Z" fill="var(--mk-gold-s)"/>
+    <circle cx="12" cy="12" r="8.6" fill="none" stroke="var(--mk-line)" stroke-width="1.5"/>
+    <path d="M12 7.4V12l3 2" fill="none" stroke="var(--mk-line)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+<symbol id="m-tennis" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="8.4" fill="var(--mk-lime)"/>
+    <path d="M12 3.6a8.4 8.4 0 0 1 0 16.8Z" fill="var(--mk-lime-s)"/>
+    <circle cx="12" cy="12" r="8.4" fill="none" stroke="var(--mk-line)" stroke-width="1.5"/>
+    <path d="M4.1 9.2C8.6 10.4 11 13.6 11.2 20.2M19.9 14.8C15.4 13.6 13 10.4 12.8 3.8" fill="none" stroke="var(--mk-hi)" stroke-width="1.8" stroke-linecap="round"/>
+  </symbol>
+<symbol id="m-football" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="8.4" fill="var(--mk-paper)"/>
+    <path d="M12 3.6a8.4 8.4 0 0 1 0 16.8Z" fill="var(--mk-paper-s)"/>
+    <circle cx="12" cy="12" r="7.6" fill="none" stroke="var(--mk-navy)" stroke-width="2.6" stroke-dasharray="4.78 4.78"/>
+    <path d="M12 8.7 15.14 10.98 13.94 14.67H10.06L8.86 10.98Z" fill="var(--mk-navy)"/>
+    <circle cx="12" cy="12" r="8.4" fill="none" stroke="var(--mk-line)" stroke-width="1.5"/>
+  </symbol>
+<symbol id="m-basket" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="8.4" fill="var(--mk-orange)"/>
+    <path d="M12 3.6a8.4 8.4 0 0 1 0 16.8Z" fill="var(--mk-orange-s)"/>
+    <circle cx="12" cy="12" r="8.4" fill="none" stroke="var(--mk-line)" stroke-width="1.5"/>
+    <path d="M12 3.6v16.8M3.6 12h16.8M6.6 6.2c2.6 2.4 2.6 9.2 0 11.6M17.4 6.2c-2.6 2.4-2.6 9.2 0 11.6" fill="none" stroke="var(--mk-line)" stroke-width="1.4" stroke-linecap="round"/>
+  </symbol>
+<symbol id="m-coffee" viewBox="0 0 24 24">
+    <path d="M16.2 10.4h1.9a2.9 2.9 0 0 1 0 5.8h-1.9" fill="none" stroke="var(--mk-line)" stroke-width="1.5" stroke-linecap="round"/>
+    <path d="M4.4 8.6h11.8v6.6a4.4 4.4 0 0 1-4.4 4.4H8.8a4.4 4.4 0 0 1-4.4-4.4Z" fill="var(--mk-paper)"/>
+    <path d="M10.3 8.6h5.9v6.6a4.4 4.4 0 0 1-4.4 4.4h-1.5Z" fill="var(--mk-paper-s)"/>
+    <path d="M4.4 8.6h11.8v6.6a4.4 4.4 0 0 1-4.4 4.4H8.8a4.4 4.4 0 0 1-4.4-4.4Z" fill="none" stroke="var(--mk-line)" stroke-width="1.5" stroke-linejoin="round"/>
+    <path d="M5.6 9.8h9.4v1.9H5.6Z" fill="var(--mk-brown)"/>
+    <path d="M8.4 6.2c0-1 1.2-1.2 1.2-2.2M12.4 6.2c0-1 1.2-1.2 1.2-2.2" fill="none" stroke="var(--mk-line)" stroke-width="1.5" stroke-linecap="round"/>
+  </symbol>
+<symbol id="m-meal" viewBox="0 0 24 24">
+    <path d="M5.6 3.4v4.4M8.4 3.4v4.4M11.2 3.4v4.4" fill="none" stroke="var(--mk-line)" stroke-width="1.6" stroke-linecap="round"/>
+    <path d="M5 7.6h6.8a3.4 3.4 0 0 1-6.8 0Z" fill="var(--mk-paper)" stroke="var(--mk-line)" stroke-width="1.5" stroke-linejoin="round"/>
+    <path d="M8.4 11v9.4" fill="none" stroke="var(--mk-line)" stroke-width="1.9" stroke-linecap="round"/>
+    <path d="M15.6 3.6c2.8 1.6 3.4 7.2 1.6 9.4h-1.6Z" fill="var(--mk-violet)"/><path d="M16.4 4.2c2.2 1.8 2.6 6.6 1.2 8.6l-1.2.2Z" fill="var(--mk-violet-s)"/><path d="M15.6 3.6c2.8 1.6 3.4 7.2 1.6 9.4h-1.6Z" fill="none" stroke="var(--mk-line)" stroke-width="1.5" stroke-linejoin="round"/>
+    <path d="M16.4 13v7.4" fill="none" stroke="var(--mk-line)" stroke-width="1.9" stroke-linecap="round"/>
+  </symbol>
+<symbol id="m-beer" viewBox="0 0 24 24">
+    <path d="M15.6 10.2h1.9a2.8 2.8 0 0 1 0 5.6h-1.9" fill="none" stroke="var(--mk-line)" stroke-width="1.5" stroke-linecap="round"/>
+    <path d="M5 8.2h10.6v10.6a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2Z" fill="var(--mk-gold)"/>
+    <path d="M10.3 8.2h5.3v10.6a2 2 0 0 1-2 2h-3.3Z" fill="var(--mk-gold-s)"/>
+    <path d="M5 8.2h10.6v3.2H5Z" fill="var(--mk-paper)"/>
+    <path d="M5 8.2h10.6v10.6a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2ZM5 11.4h10.6" fill="none" stroke="var(--mk-line)" stroke-width="1.5" stroke-linejoin="round"/>
+    <path d="M5.4 8.2a2.2 2.2 0 0 1 4-1.3 2.4 2.4 0 0 1 4 .4 2 2 0 0 1 1.8.9" fill="var(--mk-paper)" stroke="var(--mk-line)" stroke-width="1.5" stroke-linejoin="round"/>
+  </symbol>
+<symbol id="m-dice" viewBox="0 0 24 24">
+    <rect x="4" y="4" width="16" height="16" rx="3.6" fill="var(--mk-violet)"/>
+    <path d="M12 4h4.4A3.6 3.6 0 0 1 20 7.6V20h-8Z" fill="var(--mk-violet-s)"/>
+    <rect x="4" y="4" width="16" height="16" rx="3.6" fill="none" stroke="var(--mk-line)" stroke-width="1.5"/>
+    <circle cx="8.4" cy="8.4" r="1.5" fill="var(--mk-hi)"/>
+    <circle cx="15.6" cy="8.4" r="1.5" fill="var(--mk-hi)"/>
+    <circle cx="12" cy="12" r="1.5" fill="var(--mk-hi)"/>
+    <circle cx="8.4" cy="15.6" r="1.5" fill="var(--mk-hi)"/>
+    <circle cx="15.6" cy="15.6" r="1.5" fill="var(--mk-hi)"/>
+  </symbol>
+<symbol id="m-gym" viewBox="0 0 24 24">
+    <rect x="2.6" y="7.6" width="3.6" height="8.8" rx="1.4" fill="var(--mk-violet)" stroke="var(--mk-line)" stroke-width="1.5"/>
+    <rect x="17.8" y="7.6" width="3.6" height="8.8" rx="1.4" fill="var(--mk-violet-s)" stroke="var(--mk-line)" stroke-width="1.5"/>
+    <rect x="6.2" y="9.4" width="2.6" height="5.2" rx="1.1" fill="var(--mk-violet)" stroke="var(--mk-line)" stroke-width="1.5"/>
+    <rect x="15.2" y="9.4" width="2.6" height="5.2" rx="1.1" fill="var(--mk-violet-s)" stroke="var(--mk-line)" stroke-width="1.5"/>
+    <path d="M8.8 12h6.4" fill="none" stroke="var(--mk-line)" stroke-width="2.6" stroke-linecap="round"/>
+  </symbol>
+<symbol id="m-bike" viewBox="0 0 24 24">
+    <circle cx="6" cy="15.6" r="4.6" fill="none" stroke="var(--mk-line)" stroke-width="1.6"/>
+    <circle cx="18" cy="15.6" r="4.6" fill="none" stroke="var(--mk-line)" stroke-width="1.6"/>
+    <path d="M6 15.6 10 8.4h5.2M10.6 15.6 14.6 8.4M15.2 8.4 18 15.6" fill="none" stroke="var(--mk-violet)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M8.8 7.8h2.6M14 8.4l1.6-2.2h1.8" fill="none" stroke="var(--mk-line)" stroke-width="1.6" stroke-linecap="round"/>
+  </symbol>
+<symbol id="m-outdoors" viewBox="0 0 24 24">
+    <path d="M2.6 19.6 9.2 7.4l4 7.2 2.2-3.6 6 8.6Z" fill="var(--mk-green)"/>
+    <path d="M12 14.2h.1l1.1-2 2.2-3.6 6 8.6H12Z" fill="var(--mk-green-s)"/>
+    <path d="M9.2 7.4 6.4 12.6h5.6Z" fill="var(--mk-paper)"/>
+    <path d="M2.6 19.6 9.2 7.4l4 7.2 2.2-3.6 6 8.6Z" fill="none" stroke="var(--mk-line)" stroke-width="1.5" stroke-linejoin="round"/>
+  </symbol>
+<symbol id="m-screen" viewBox="0 0 24 24">
+    <rect x="2.6" y="4.4" width="18.8" height="13" rx="2.8" fill="var(--mk-blue)"/>
+    <path d="M12 4.4h6.6a2.8 2.8 0 0 1 2.8 2.8v10.2H12Z" fill="var(--mk-blue-s)"/>
+    <rect x="2.6" y="4.4" width="18.8" height="13" rx="2.8" fill="none" stroke="var(--mk-line)" stroke-width="1.5"/>
+    <path d="m10.2 8 5 3-5 3Z" fill="var(--mk-hi)"/>
+    <path d="M8 20.6h8" fill="none" stroke="var(--mk-line)" stroke-width="1.7" stroke-linecap="round"/>
+  </symbol>
+<symbol id="m-music" viewBox="0 0 24 24">
+    <path d="M9.6 17V4.8l9-1.6v12" fill="none" stroke="var(--mk-line)" stroke-width="1.6" stroke-linejoin="round"/>
+    <ellipse cx="6.8" cy="17.4" rx="3.2" ry="2.6" fill="var(--mk-red)" stroke="var(--mk-line)" stroke-width="1.5"/>
+    <ellipse cx="15.8" cy="15.4" rx="3.2" ry="2.6" fill="var(--mk-red-s)" stroke="var(--mk-line)" stroke-width="1.5"/>
+    <path d="M9.6 8.2l9-1.6" fill="none" stroke="var(--mk-line)" stroke-width="1.6"/>
+  </symbol>
+</svg>
 
 <div class="wrap" dir="rtl">
   <header class="hero">
@@ -111,6 +273,7 @@ code{font-family:var(--mono);font-size:13px;background:var(--brand-soft);border-
       <div><b>פונט</b><span>IBM Plex Sans Hebrew</span></div>
       <div><b>סימן</b><span>חצי־חצי, עם עדשה</span></div>
       <div><b>לפי שעה</b><span>יום · לילה</span></div>
+      <div><b>המילה</b><span>סגור.</span></div>
     </div>
   </header>
 
@@ -188,9 +351,14 @@ code{font-family:var(--mono);font-size:13px;background:var(--brand-soft);border-
 
   <section class="sec">
     <span class="eyebrow">06 · איקונים ורכיבים</span>
-    <h2>העדשה נדלקת רק כשזה שלך</h2>
-    <p class="muted">הקו של האיקון בעובי 1.9, עם קצוות מעוגלים. בכל איקון יש עדשה קטנה, והיא מתמלאת בחרדל רק בלשונית הפעילה.</p>
-    <div class="icons card" id="icons"></div>
+    <h2>הקו נקי, והצבע שמור לתיאומים <span class="tag ok">הוחלט 28.9</span></h2>
+    <p class="muted">יש שתי משפחות של איקונים. איקוני התפריט הם קו בלבד, בעובי 1.9, בלי שום רמז למותג. הלשונית הפעילה מסומנת ברקע שלה ולא בציור. הצבע נמצא בסימנים של התיאומים: חרדל במקום הזהב, ברוש במקום הסגול, והצל נוטה לברוש.</p>
+    <div class="card"><h3>התפריט · חמשת המקוריים, בלי שינוי</h3>
+      <div class="icons" id="icons"></div>
+      <p class="muted" style="font-size:14px">בכל זוג: מימין רגיל, משמאל פעיל. ניסינו גרסה עם עדשה בתוך כל איקון, והיא נפסלה: בגודל 24 היא עמוסה, והתפריט צריך להיות שקט.</p></div>
+    <div class="card"><h3>16 הסימנים של התיאומים</h3>
+      <div class="cmwrap"><div class="cm day" id="cmDay"></div><div class="cm night" id="cmNight"></div></div>
+      <p class="muted" style="font-size:14px">ארבעה מספרים מה המצב: <b>כתר</b> כשכולם יכולים, <b>קלפים</b> כשהגענו למינימום של אנשים, <b>חותם</b> כשזה נסגר, ו<b>שעון חול</b> כשהזמן אוזל. שנים־עשר אומרים מה עושים. בלילה מתחלפים רק הקו והנייר. המסומנים במסגרת, הכתר והקלפים, חיים היום בדאשבורד. השאר מוכנים, ב־<code>brand/kit/coordination/</code>.</p></div>
     <div class="card"><h3>כפתורים</h3>
       <div class="comp">
         <button class="btn" type="button" style="background:var(--action);color:var(--on-action)">+ משימה חדשה</button>
@@ -217,31 +385,109 @@ code{font-family:var(--mono);font-size:13px;background:var(--brand-soft);border-
 
   <section class="sec">
     <span class="eyebrow">08 · טקסטורה</span>
-    <h2>גרעין נייר, רק על פוסטרים</h2>
-    <p>ההמלצה שלי, ועדיין פתוחה: <b>גרעין נייר עדין</b> על פוסטרים, סטוריז ופתיחים של סרטונים, כדי שהחול ירגיש כמו חומר ולא כמו מסך. <b>"דיו שחוק"</b> רק בכותרות ענקיות. <b>בלי טקסטורה</b> בממשק, באיקונים ובכרטיסים שנשלחים בוואטסאפ. שם החדות היא מה שמשדר אמון.</p>
+    <h2>גרעין נייר, רק על פוסטרים <span class="tag ok">אושר 28.9</span></h2>
+    <p class="muted">צבע שטוח על מסך נראה כמו תבנית. גרעין עדין נותן לחול תחושה של חומר מודפס, מחמם את Plex, שהוא פונט מדויק וקצת קר, ומונע פסים כשוואטסאפ ואינסטגרם דוחסים את התמונה. הכמות: כזו שמרגישים ולא רואים. אם שמים לב אליה במבט ראשון, יש יותר מדי.</p>
+    <div class="tex">
+      <figure><div class="poster" style="background:#F0EDE5;color:#004643"><span class="sm">עולמה</span><span class="big">הכל<br>סגור.</span><span class="sm">allma.world</span></div><figcaption>בלי גרעין. נקי, אבל מרגיש כמו מסך.</figcaption></figure>
+      <figure><div class="poster" style="background:#F0EDE5;color:#004643"><span class="sm">עולמה</span><span class="big">הכל<br>סגור.</span><span class="sm">allma.world</span><svg class="gr" aria-hidden="true"><rect width="100%" height="100%" filter="url(#grain)"/></svg></div><figcaption>עם גרעין, בכמות הנכונה. זה מה שנכנס לכל פוסטר וסרטון.</figcaption></figure>
+      <figure><div class="poster zoom" style="background:#F0EDE5;color:#004643"><div class="in"><span class="sm">עולמה</span><span class="big">הכל<br>סגור.</span><span class="sm">allma.world</span><svg class="gr" aria-hidden="true"><rect width="100%" height="100%" filter="url(#grain)"/></svg></div></div><figcaption>אותו פוסטר מוגדל פי 3, כדי לראות את הגרעין עצמו.</figcaption></figure>
+      <figure><div class="poster" style="background:#004643;color:#F0EDE5"><span class="sm">עולמה</span><span class="big worn">סגור.</span><span class="sm" style="color:#F9C23C">חמישי 20:00 · כולם בפנים</span><svg class="gr" aria-hidden="true"><rect width="100%" height="100%" filter="url(#grain)"/></svg></div><figcaption>"דיו שחוק": רק בכותרות ענקיות, כמו כאן. בטקסט רגיל הוא מלכלך.</figcaption></figure>
+    </div>
+    <div class="card"><h3>בלי טקסטורה אף פעם</h3>
+      <ul class="never"><li>הממשק והדאשבורד</li><li>הסימן בגודל קטן</li><li>תמונת הפרופיל</li><li>הפאביקון</li><li>כרטיס הבוקר</li><li>טקסט של האתר</li><li>בתוך וואטסאפ</li></ul>
+      <p class="muted" style="font-size:14px">בסרטון הגרעין קבוע ולא זז. גרעין שמרצד נראה כמו רעש, ומנפח את הקובץ.</p></div>
   </section>
 
   <section class="sec">
-    <span class="eyebrow">09 · מה עכשיו</span>
+    <span class="eyebrow">09 · קול</span>
+    <h2>חמה, עניינית, ואומרת את זה פעם אחת</h2>
+    <p class="muted">מה שכתבנו על הקול בפלטפורמת המותג (26.9) עדיין נכון, והוא לא השתנה עם הצבעים. קודם מה שכבר קיים, אחר כך ההצעות שלי לשיפור. כל הצעה מסומנת, כדי שתוכל לבחור.</p>
+    <div class="grid2">
+      <div class="card q2"><h3>מה כבר כתבנו</h3>
+        <blockquote><b>אופי.</b> הבת־דודה שכל המשפחה סומכת עליה. זוכרת ימי הולדת, קובעת את הארוחה, לא עושה מזה עניין. חמה אבל עניינית, עם הומור יבש ומעט מילים.</blockquote>
+        <blockquote><b>מה היא לא.</b> לא רובוט חכם, לא "AI" עם ניצוצות, לא מאמנת פרודוקטיביות, ולא מישהי שמזכירה לך שוב ושוב שלא עשית.</blockquote>
+        <blockquote><b>המילה.</b> "סגור." עם נקודה, בסוף כל סרטון ובכל רגע של הצלחה. באנגלית: "All set."</blockquote>
+        <blockquote><b>הרעיון.</b> עולמה סוגרת מעגלים. זה משפט עבודה ולא סלוגן: כל דבר שלא מראה מעגל שנסגר הוא לא עולמה.</blockquote></div>
+      <div class="card"><h3>חמשת הכללים, מהמוצר עצמו</h3>
+        <div style="overflow-x:auto"><table style="min-width:420px"><thead><tr><th>כלל</th><th>עולמה</th><th>לא עולמה</th></tr></thead><tbody>
+          <tr><td>אומרים פעם אחת</td><td>"סגור ☕ חמישי 10:00 עם דנה."</td><td class="muted">"מעולה!! 🎉🎉 הפגישה שלך נקבעה בהצלחה!"</td></tr>
+          <tr><td>שאלה אחת בכל פעם</td><td>"חמישי 20:00 או שישי 13:00?"</td><td class="muted">"מתי נוח לך? ואיפה? וכמה אנשים?"</td></tr>
+          <tr><td>מסיימים, לא מתגאים</td><td>"שמרתי ביומן."</td><td class="muted">"בעזרת הבינה המלאכותית שלי סידרתי לך את היומן"</td></tr>
+          <tr><td>שקט הוא תשובה</td><td>👍</td><td class="muted">"קיבלתי! אם תצטרך עוד משהו אני כאן 😊"</td></tr>
+          <tr><td>הומור מהחדר</td><td>בדיחה קצרה, רק ממה שנאמר בקבוצה</td><td class="muted">בדיחות מוכנות, משחקי מילים על "AI"</td></tr>
+        </tbody></table></div>
+        <p class="muted" style="font-size:14px">סלוגנים: <b>"עולמה. הכל סגור."</b> ו־<b>"Allma. All set."</b> שורת הסבר, לביו ולחנות: "כל העולם שלך. בצ'אט אחד."</p></div>
+    </div>
+    <h3>מה אני מציע לשפר</h3>
+    <div class="props">
+      <div class="card"><h3>1 · שלושה מצבים, שלוש מילים <span class="tag">הצעה</span></h3>
+        <p class="muted" style="font-size:14.5px">היום רק "סגור" מוגדר. אבל רוב ההודעות שלה נשלחות לפני שמשהו נסגר, וכל אחת נשמעת אחרת. אני מציע לתת לכל מצב נוסח קבוע, בדיוק כמו הצורה: קשת פתוחה, עדשה שמתמלאת, סימן מלא.</p>
+        <div class="ba"><div><small>פתוח</small><span>"רשמתי. אזכיר לך מחר ב־9:00."</span></div><div><small>בדרך</small><span>"מחכה לדנה. אעדכן כשהיא עונה."</span></div><div><small>סגור</small><span>"סגור. חמישי 20:00, כולם בפנים."</span></div></div></div>
+      <div class="card"><h3>2 · אימוג'י אחד, והוא הסוג <span class="tag">הצעה</span></h3>
+        <p class="muted" style="font-size:14.5px">לכל היותר אימוג'י אחד, בתחילת ההודעה, והוא אומר מה זה: ☕ 🎾 🍽️. אותו תפקיד שיש לסימנים של התיאומים בדאשבורד. אימוג'י של רגש לא נכנס לטקסט: 🙏 ו־👍 הם תגובות, לא מילים.</p>
+        <div class="ba"><div><small>לפני</small><span class="no">"יש!! 🎉🎉 נקבע לכם קפה 😊☕"</span></div><div><small>אחרי</small><span>"☕ סגור. חמישי 10:00 עם דנה."</span></div></div></div>
+      <div class="card"><h3>3 · שעה תמיד באותה צורה <span class="tag">הצעה</span></h3>
+        <p class="muted" style="font-size:14.5px">בכל טקסט קבוע, בפוסט ובסרטון: יום בשם ושעה בספרות. זה נקרא הכי מהר, ומתיישר בכרטיס הבוקר.</p>
+        <div class="ba"><div><small>לפני</small><span class="no">"ביום חמישי הקרוב בשמונה בערב"</span></div><div><small>אחרי</small><span>"חמישי 20:00"</span></div></div></div>
+      <div class="card"><h3>4 · בשיווק היא מדברת בגוף ראשון <span class="tag">הצעה</span></h3>
+        <p class="muted" style="font-size:14.5px">המוצר הוא מישהי בצ'אט. אם הפוסטים מדברים עליה בגוף שלישי, נוצרות שתי דמויות: היא, והמותג שמספר עליה. עדיף שהיא תדבר גם בפוסטים.</p>
+        <div class="ba"><div><small>לפני</small><span class="no">"עולמה תזכור בשבילכם את כל מה שחשוב"</span></div><div><small>אחרי</small><span>"אני זוכרת. אתם חיים."</span></div></div></div>
+      <div class="card"><h3>5 · נקודה, לא סימן קריאה <span class="tag">הצעה</span></h3>
+        <p class="muted" style="font-size:14.5px">הרוגע של הברוש הוא גם פיסוק. הנקודה היא הסימן של המותג, "סגור." ולכן היא מסיימת משפטים. סימן קריאה נשאר רק בציטוט של מה שאנשים כתבו.</p>
+        <div class="ba"><div><small>לפני</small><span class="no">"הכל מוכן!"</span></div><div><small>אחרי</small><span>"הכל מוכן."</span></div></div></div>
+      <div class="card"><h3>6 · בשיווק, בלי לבחור מין <span class="tag">הצעה</span></h3>
+        <p class="muted" style="font-size:14.5px">בצ'אט היא פונה לכל אחד בצורה שהוא בחר. בפוסט אין לה את זה, ולכן היא פונה ברבים או בלי פנייה בכלל. "תזכור" בפוסט מדבר רק לחצי מהקוראים.</p>
+        <div class="ba"><div><small>לפני</small><span class="no">"אל תדאג, תשאיר לי את זה"</span></div><div><small>אחרי</small><span>"לא צריך לזכור. הכל סגור."</span></div></div></div>
+    </div>
+  </section>
+
+  <section class="sec">
+    <span class="eyebrow">10 · פוסטים וסרטונים</span>
+    <h2>עורכים דרכי: סטודיו קטן בתוך הריפו <span class="tag">הצעה</span></h2>
+    <p class="muted">ככה עשינו את סרטוני ההיכרות: כל סרטון הוא עמוד שמתנגן. ההצעה היא להפוך את זה לשיטה קבועה, כך שכל פוסט או סרטון יוצא תוך כמה דקות, תמיד לפי הספר הזה. וזה כבר לא רק תצוגה: אני מייצא קבצי וידאו אמיתיים, מוכנים להעלאה.</p>
+    <div class="flow">
+      <div class="card"><h3>אתה כותב לי</h3><p class="muted" style="font-size:14.5px">רעיון, טקסט גולמי, צילום מסך של שיחה אמיתית, או "עוד אחד כמו הקודם, על שבת".</p></div>
+      <div class="card"><h3>אני בונה מתבנית</h3><p class="muted" style="font-size:14.5px">פוסט 1080×1080, סטורי 1080×1920, קרוסלה, וסרטון לאורך או לרוחב. הצבעים, הפונט, הגרעין והסיום "סגור." בנויים בתוך התבנית, אז הם לא יכולים לזוז.</p></div>
+      <div class="card"><h3>אתה רואה טיוטה חיה</h3><p class="muted" style="font-size:14.5px">עמוד פרטי שמתנגן בדפדפן. אתה כותב מה לשנות, ואני משנה תוך דקות. אין ייצוא עד שאתה מרוצה.</p></div>
+      <div class="card"><h3>אני מייצא ושולח</h3><p class="muted" style="font-size:14.5px">PNG לפוסטים, MP4 לסרטונים (30 פריימים בשנייה). הייצוא הוא פריים אחרי פריים, אז אין קפיצות. הקובץ מגיע אליך ישר לצ'אט.</p></div>
+    </div>
+    <div class="card vid">
+      <video src="closing.mp4" poster="closing-poster.png" controls muted playsinline loop preload="metadata" aria-label="סיום של סרטון: הטבעת נסגרת, העדשה נוחתת, סגור."></video>
+      <div style="display:grid;gap:10px"><h3>ההוכחה: נוצר כאן, עכשיו</h3>
+        <p class="muted" style="font-size:14.5px">זה הסיום שאני מציע לכל סרטון: חצי שנייה של שקט, הטבעת נסגרת, נקודה בחרדל נוחתת ונהיית עדשה, ואז "סגור.". הקובץ יצא מהמחשב הזה: 1080×1080, 3.4 שניות, 103 פריימים, עם גרעין. זה אפשרות B מהפרק על תנועה.</p>
+        <p class="muted" style="font-size:14.5px"><b>מה צריך לבנות:</b> את התבניות עצמן, ב־<code>brand/studio/</code>. המנוע כבר קיים: <code>render.js</code> שמייצא ו־<code>motion.js</code> שמזיז.</p>
+        <p class="muted" style="font-size:14.5px"><b>מה זה לא עושה טוב:</b> עריכה של צילומי וידאו אמיתיים וקריינות. לשם כך אייצא את החלקים שלנו (פתיח, סיום, כתוביות) כקליפים נפרדים, שנכנסים לכל עורך. מוזיקה: אם תשלח קובץ, היא תיכנס. בלי קובץ יש שקט, וזה גם מה שהספר אומר, בלי ג'ינגל.</p></div>
+    </div>
+  </section>
+
+  <section class="sec">
+    <span class="eyebrow">11 · תנועה</span>
+    <h2>ארבע אפשרויות לסימן שזז <span class="tag">לבחירה</span></h2>
+    <p class="muted">כולן על אותה עקומה: יציאה רכה ונחיתה ארוכה, בלי קפיצה, בלי סיבוב ובלי רעידה. מי שהגדיר במכשיר "פחות תנועה" יראה את הסימן כבר במקום. אני מציע לבחור שתיים: אחת לסרטונים, ואחת למוצר, כי שם היא חוזרת הרבה פעמים ביום ולכן צריכה להיות קצרה ושקטה.</p>
+    <div class="motion" id="motion"></div>
+    <p class="muted" style="font-size:14.5px"><b>ההמלצה שלי:</b> <b>הסגירה</b> לסרטונים, כי היא הרעיון של המותג עצמו, מעגל שנסגר. <b>נדלק</b> למוצר, ברגע שתיאום נסגר בדאשבורד. <b>המפגש</b> הוא בחירה שנייה טובה לפתיחה של סרטון.</p>
+  </section>
+
+  <section class="sec">
+    <span class="eyebrow">12 · מה עכשיו</span>
     <h2>הכנסה למוצר, צעד צעד</h2>
     <p class="muted">כל צעד הוא PR נפרד. מיזוג ל־main הוא דיפלוי, ולכן לפני כל מיזוג אראה לך צילומים של לפני ואחרי.</p>
     <div class="steps">
       <div class="step"><div><h3>ערכת המותג <span class="st done">מוכן</span></h3><p class="muted">טוקנים (CSS, JSON, ASE לכלי עיצוב), סימנים ב־SVG, תמונת פרופיל 640, פאביקונים, לוגו מלא בעברית ובאנגלית, והאיקונים. הכל ב־<code>brand/kit/</code>, ונוצר מסקריפט אחד.</p></div></div>
       <div class="step"><div><h3>תמונת הפרופיל בוואטסאפ <span class="st next">אצלך</span></h3><p class="muted">הקובץ הוא <code>whatsapp-avatar-640.png</code>. מחליפים אותו מהטלפון של המספר של עולמה, בהגדרות של וואטסאפ. זה הצעד הכי מהיר, וכל משתמש יראה אותו.</p></div></div>
-      <div class="step"><div><h3>הדאשבורד <code>/me</code> <span class="st next">הבא בתור</span></h3><p class="muted">הדף בנוי כולו על טוקנים, אז רוב העבודה היא החלפה של הצבעים, הפונט ואיקוני הלשוניות. מצב כהה יקבל את טוקני הלילה. PR אחד, עם צילומים ב־375 פיקסלים.</p></div></div>
+      <div class="step"><div><h3>הדאשבורד <code>/me</code> <span class="st wait">חונה</span></h3><p class="muted">הצבעים, הפונט והסימן בכותרת כבר מוכנים, וכל הבדיקות עוברות. זה מחכה, כי סשן אחר עובד עכשיו על הדאשבורד. איקוני התפריט לא משתנים.</p></div></div>
       <div class="step"><div><h3>כרטיס הבוקר <span class="st wait">אחרי זה</span></h3><p class="muted">הכרטיס הוא תמונה שנשלחת בוואטסאפ (<code>schedule-card.js</code>). היום הוא בכתום־ענבר עם הפונט Heebo. כדי לצייר אותו ב־Plex צריך להוסיף את קובצי הפונט לריפו. הרישיון הוא OFL, והוא מתיר את זה.</p></div></div>
       <div class="step"><div><h3>allma.world <span class="st wait">אחרי זה</span></h3><p class="muted">דף הבית הציבורי ודף הפרטיות: הלוגו המלא, הצבעים, ופאביקון במקום הריק שיש היום.</p></div></div>
-      <div class="step"><div><h3>סרטונים ופוסטים <span class="st wait">מחכה לתשובה</span></h3><p class="muted">התבניות תלויות בכלי שאתה עורך בו.</p></div></div>
+      <div class="step"><div><h3>סרטונים ופוסטים <span class="st next">הצעה בפרק 10</span></h3><p class="muted">עורכים דרכי. אחרי שתאשר, אבנה ארבע תבניות, ואז נעשה מחדש את סרטוני ההיכרות במותג החדש.</p></div></div>
     </div>
   </section>
 
   <section class="sec card">
-    <h2 style="font-size:24px">ארבע שאלות לפני שמתחילים לשנות קוד</h2>
+    <h2 style="font-size:24px">שלוש שאלות אליך</h2>
     <ol class="q">
-      <li>ב־26.9 ביקשת שבדאשבורד לא יהיה סימן בכלל. להחזיר אותו לראש הדף, קטן, ליד השם? בצילומים הוא מופיע, רק כדי שתוכל לראות.</li>
-      <li>להתחיל מהדאשבורד? זה השינוי שהמשתמשים ירגישו הכי הרבה.</li>
-      <li>טקסטורה: מאשר את ההמלצה (גרעין רק על פוסטרים, בלי טקסטורה בממשק)?</li>
-      <li>באיזה כלי אתה עורך סרטונים ופוסטים? Canva, Figma, CapCut או משהו אחר?</li>
+      <li><b>קול:</b> אילו מששת השיפורים לקבל? כולם, או רק חלק?</li>
+      <li><b>סטודיו:</b> מאשר לבנות את התבניות? ומה נעשה ראשון: סרטוני ההיכרות מחדש, או שלושה פוסטים להשקה?</li>
+      <li><b>תנועה:</b> איזו אפשרות לסרטונים, ואיזו למוצר?</li>
     </ol>
   </section>
 
@@ -251,8 +497,10 @@ code{font-family:var(--mono);font-size:13px;background:var(--brand-soft);border-
       <li><code>brand/kit/tokens/allma.css</code> · הטוקנים ליום וללילה</li>
       <li><code>brand/kit/tokens/allma.json</code> · אותו דבר, ועוד בדיקת הניגודיות</li>
       <li><code>brand/kit/tokens/allma.ase</code> · פלטה לכלי עיצוב</li>
-      <li><code>brand/kit/mark/*.svg</code> · שבע גרסאות של הסימן</li>
-      <li><code>brand/kit/icons/*.svg</code> · חמשת איקוני הלשוניות</li>
+      <li><code>brand/kit/mark/*.svg</code> · שש גרסאות של הסימן</li>
+      <li><code>brand/kit/icons/*.svg</code> · חמשת איקוני התפריט, המקוריים</li>
+      <li><code>brand/kit/coordination/</code> · 16 סימני התיאום, ליום וללילה</li>
+      <li><code>brand/studio/</code> · התנועה והייצוא לווידאו</li>
       <li><code>brand/kit/png/whatsapp-avatar-640.png</code></li>
       <li><code>brand/kit/png/lockup-{he,en}-for-{light,dark}.png</code></li>
       <li><code>brand/kit/png/favicon-32 · apple-touch-180 · icon-512</code></li>
@@ -261,6 +509,7 @@ code{font-family:var(--mono);font-size:13px;background:var(--brand-soft);border-
   </section>
 </div>
 
+<script src="motion.js"></script>
 <script>
 const C='#004643',S='#F0EDE5',M='#F9C23C',I='#0E1F1E';
 let uid=0;
@@ -275,18 +524,19 @@ const MODES=[
  ['לילה','Night',{bg:'#0A1817',surface:'#122725',text:'#EDE9DF',t2:'#B2B3AB',brand:'#1F6B64',onb:'#EDE9DF',action:'#F9C23C',ona:'#0E1F1E',soft:'#19322F',lens:'#F9C23C'},'לילה טוב'],
 ];
 const lensP=(a,b,cy,r)=>{const h=Math.sqrt(r*r-((b-a)/2)**2),x=(a+b)/2;return `M${x} ${(cy-h).toFixed(2)}A${r} ${r} 0 0 1 ${x} ${(cy+h).toFixed(2)}A${r} ${r} 0 0 1 ${x} ${(cy-h).toFixed(2)}Z`};
-const SS='fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"',LL='fill="var(--lens,none)" stroke="none"';
-const IC=[['בית',`<path d="M4 10.6 12 4l8 6.6V19a1.8 1.8 0 0 1-1.8 1.8H5.8A1.8 1.8 0 0 1 4 19z" ${SS}/><path d="${lensP(10.4,13.6,15,2.6)}" ${LL}/><circle cx="10.4" cy="15" r="2.6" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="13.6" cy="15" r="2.6" fill="none" stroke="currentColor" stroke-width="1.5"/>`],
- ['משימות',`<circle cx="18.2" cy="6.5" r="2.3" ${LL}/><circle cx="18.2" cy="6.5" r="2.3" ${SS}/><circle cx="18.2" cy="12" r="2.3" ${SS}/><circle cx="18.2" cy="17.5" r="2.3" ${SS}/><path d="M4 6.5h9.6M4 12h9.6M4 17.5h9.6" ${SS}/>`],
- ['יומן',`<rect x="3.5" y="5" width="17" height="15.5" rx="2.6" ${SS}/><path d="M8 3v4M16 3v4M3.5 9.6h17" ${SS}/><circle cx="15.4" cy="14.9" r="2.4" ${LL}/><circle cx="15.4" cy="14.9" r="2.4" fill="none" stroke="currentColor" stroke-width="1.6"/>`],
- ['חברים',`<path d="${lensP(9.5,14.5,8.6,3.4)}" ${LL}/><circle cx="9.5" cy="8.6" r="3.4" ${SS}/><circle cx="14.5" cy="8.6" r="3.4" ${SS}/><path d="M2.8 19.6c.7-3.3 3.4-5.2 6.7-5.2M21.2 19.6c-.7-3.3-3.4-5.2-6.7-5.2M9.5 14.4h5" ${SS}/>`],
- ['פרופיל',`<path d="M12 4.8a3.8 3.8 0 0 1 0 7.6z" ${LL}/><circle cx="12" cy="8.6" r="3.8" ${SS}/><path d="M4.8 20c.8-3.6 3.6-5.6 7.2-5.6s6.4 2 7.2 5.6" ${SS}/>`]];
+const OW='fill="none" stroke="currentColor" stroke-width="1.9"';
+// The ORIGINAL tab icons from the dashboard sprite; the owner kept them on 28.9.
+const IC=[['בית',`<path d="M4 10.6 12 4l8 6.6V19a1.8 1.8 0 0 1-1.8 1.8H15v-5.6H9v5.6H5.8A1.8 1.8 0 0 1 4 19z" ${OW} stroke-linejoin="round"/>`],
+ ['משימות',`<path d="M4 6.6 5.7 8.4 9 5M4 16.6l1.7 1.8L9 15M12.5 7h7.5M12.5 17H20" ${OW} stroke-linecap="round" stroke-linejoin="round"/>`],
+ ['יומן',`<rect x="3.2" y="4.8" width="17.6" height="16" rx="4" ${OW}/><path d="M3.2 9.6h17.6M8 3v3.2M16 3v3.2" ${OW} stroke-linecap="round"/>`],
+ ['חברים',`<circle cx="9.2" cy="8.4" r="3.4" ${OW}/><path d="M2.8 19.4c.6-3.3 3.2-5.2 6.4-5.2s5.8 1.9 6.4 5.2" ${OW} stroke-linecap="round"/><path d="M16 5.4a3.2 3.2 0 0 1 0 6.1M17.6 14.6c2.1.5 3.4 2.2 3.8 4.4" ${OW} stroke-linecap="round"/>`],
+ ['פרופיל',`<circle cx="12" cy="8.2" r="4" ${OW}/><path d="M4.4 20.2c.8-3.9 3.9-6 7.6-6s6.8 2.1 7.6 6" ${OW} stroke-linecap="round"/>`]];
 $('#modes').innerHTML=MODES.map(([he,en,t,hi])=>`<div class="mode" style="background:${t.bg};color:${t.text};border:1px solid ${t.soft}">
   <div class="top"><span>${he} · ${en}</span>${round(t.brand===MODES[0][2].brand?'#004643':t.bg,t.text,t.lens,28,t.text)}</div>
   <div style="font-size:22px;font-weight:700">${hi}, מירון</div>
   <div class="mini" style="background:${t.surface}"><span style="font-size:12px;color:${t.t2};font-weight:600">משימות פתוחות</span><span class="n">11</span><span style="font-size:13px;color:${t.t2}">2 להיום</span></div>
   <button class="btn" type="button" style="background:${t.action};color:${t.ona}">+ משימה חדשה</button>
-  <div class="tabs" style="background:${t.surface}">${IC.map(([n,d],i)=>`<div style="color:${i?t.t2:t.text};${i?'':`background:${t.soft}`}"><svg viewBox="0 0 24 24" style="--lens:${i?'none':t.lens}">${d}</svg>${n}</div>`).join('')}</div>
+  <div class="tabs" style="background:${t.surface}">${IC.map(([n,d],i)=>`<div style="color:${i?t.t2:t.text};${i?'':`background:${t.soft}`}"><svg viewBox="0 0 24 24">${d}</svg>${n}</div>`).join('')}</div>
  </div>`).join('');
 const lum=h=>{const c=h.slice(1).match(/../g).map(x=>{x=parseInt(x,16)/255;return x<=.03928?x/12.92:((x+.055)/1.055)**2.4});return .2126*c[0]+.7152*c[1]+.0722*c[2]};
 const ratio=(a,b)=>{const[x,y]=[lum(a),lum(b)].sort((m,n)=>n-m);return(x+.05)/(y+.05)};
@@ -311,6 +561,23 @@ $('#dont').innerHTML=[
  [`<div style="background:#F0EDE5;padding:6px;border-radius:8px">${round(C,S,M,52)}</div>`,'לא בלי טבעת על חול'],
  [`<div style="filter:drop-shadow(0 6px 6px rgba(0,0,0,.5))">${round(C,S,M,64,C)}</div>`,'בלי צל ובלי אפקטים'],
 ].map(([s,n])=>`<figure><div>${s}</div><figcaption>${n}</figcaption></figure>`).join('');
-$('#icons').innerHTML=IC.map(([n,d])=>`<figure><span class="pair"><svg viewBox="0 0 24 24" style="--lens:none">${d}</svg><svg class="on" viewBox="0 0 24 24" style="--lens:#F9C23C">${d}</svg></span>${n}</figure>`).join('');
+$('#icons').innerHTML=IC.map(([n,d])=>`<figure><span class="pair"><svg viewBox="0 0 24 24">${d}</svg><svg class="on" viewBox="0 0 24 24">${d}</svg></span>${n}</figure>`).join('');
+const CM=[['m-crown','כולם יכולים',1],['m-cards','מינימום',1],['m-sealed','נסגר'],['m-expiring','הזמן אוזל'],['m-tennis','טניס'],['m-football','כדורגל'],['m-basket','כדורסל'],['m-dice','משחק'],['m-coffee','קפה'],['m-meal','ארוחה'],['m-beer','משקה'],['m-gym','חדר כושר'],['m-bike','אופניים'],['m-outdoors','טבע'],['m-screen','סרט'],['m-music','מוזיקה']];
+const cmHTML=CM.map(([id,n,live])=>`<figure><svg viewBox="0 0 24 24" class="${live?'live':''}" aria-hidden="true"><use href="#${id}"/></svg>${n}</figure>`).join('');
+$('#cmDay').innerHTML=cmHTML; $('#cmNight').innerHTML=cmHTML;
+// Motion: the same frame() the video renderer uses, so what plays here is what exports.
+const MO=[['close','B · הסגירה','1.5 שניות · לסוף של כל סרטון','הטבעת נסגרת סביב הסימן, ונקודה בחרדל נוחתת במקום המפגש והופכת לעדשה. זה הרעיון מהפלטפורמה: עולמה סוגרת מעגלים.',1],
+ ['meet','A · המפגש','1.1 שניות · לפתיחה','שני החצאים נכנסים מהצדדים, והעדשה נוצרת מעצמה ברגע שהעיגולים נוגעים. שני עולמות שנפגשים.'],
+ ['light','C · נדלק','0.45 שניות · בתוך המוצר','שום דבר לא זז. רק העדשה עוברת מברוש לחרדל. שקט מספיק כדי לחזור עשרות פעמים ביום, ברגע שתיאום נסגר.',1],
+ ['rise','D · זריחה','0.9 שניות · לבוקר','העדשה מתמלאת מלמטה למעלה, כמו שמש שעולה בין שני העולמות. מתאים לפתיחה של סטורי בוקר או של כרטיס הבוקר.']];
+const MC={d:'#004643',l:'#F0EDE5',a:'#F9C23C',ring:'#004643'};
+const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+$('#motion').innerHTML=MO.map(([k,n,meta,txt,rec])=>`<div class="card"><div class="stage ${rec?'rec':''}"><div id="mv-${k}"></div></div><h3>${n}${rec?' <span class="tag">ממליץ</span>':''}</h3><span class="meta">${meta}</span><p class="muted" style="font-size:14px">${txt}</p><button type="button" data-k="${k}">להריץ שוב</button></div>`).join('');
+const MV={}; const HOLD=1600;
+MO.forEach(([k])=>{MV[k]={t0:performance.now()+(reduce?-1e9:0),once:reduce}});
+$('#motion').addEventListener('click',e=>{const b=e.target.closest('button[data-k]');if(!b)return;MV[b.dataset.k]={t0:performance.now(),once:reduce}});
+function tick(now){MO.forEach(([k])=>{const d=AllmaMotion.OPTIONS[k].ms,v=MV[k];let t=now-v.t0;if(t>d+HOLD&&!v.once){v.t0=now;t=0}
+  document.getElementById('mv-'+k).innerHTML=AllmaMotion.frame(k,Math.min(t,d),MC,'mv'+k)});requestAnimationFrame(tick)}
+requestAnimationFrame(tick);
 $('#wa').innerHTML=`${round(C,S,M,120)}${round(C,S,M,56)}<div class="row">${round(C,S,M,48)}<div style="min-width:0"><b>עולמה</b><small>סגרתי את הפגישה עם רוני, רביעי 18:30 ✓</small></div><small style="margin-inline-start:auto;font-size:12px;color:#667781">09:40</small></div>`;
 </script>

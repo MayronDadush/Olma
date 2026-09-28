@@ -102,18 +102,16 @@ def round_svg(d=CYPRESS, l=SAND, a=MUSTARD, size=None, ring=None):
     rg = f'<circle cx="60" cy="60" r="58.25" fill="none" stroke="{ring}" stroke-width="3.5"/>' if ring else ''
     return f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120"{s}><title>Allma</title><defs><clipPath id="c"><circle cx="60" cy="60" r="60"/></clipPath><clipPath id="a"><circle cx="44" cy="60" r="24"/></clipPath></defs><g clip-path="url(#c)"><rect width="60" height="120" fill="{d}"/><rect x="60" width="60" height="120" fill="{l}"/><circle cx="44" cy="60" r="24" fill="{l}"/><circle cx="76" cy="60" r="24" fill="{d}"/><circle cx="76" cy="60" r="24" fill="{a}" clip-path="url(#a)"/></g>{rg}</svg>'''
 
-def lens(cx1, cx2, cy, r):
-    h = math.sqrt(r * r - ((cx2 - cx1) / 2) ** 2); x = (cx1 + cx2) / 2
-    return f'M{x} {cy - h:.2f}A{r} {r} 0 0 1 {x} {cy + h:.2f}A{r} {r} 0 0 1 {x} {cy - h:.2f}Z'
-
-S = 'fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"'
-L = 'fill="var(--lens, none)" stroke="none"'
-ICONS = {  # the tab-bar set: the lens fills only on the active tab (set --lens on it)
-    'home': f'<path d="M4 10.6 12 4l8 6.6V19a1.8 1.8 0 0 1-1.8 1.8H5.8A1.8 1.8 0 0 1 4 19z" {S}/><path d="{lens(10.4, 13.6, 15, 2.6)}" {L}/><circle cx="10.4" cy="15" r="2.6" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="13.6" cy="15" r="2.6" fill="none" stroke="currentColor" stroke-width="1.5"/>',
-    'tasks': f'<circle cx="18.2" cy="6.5" r="2.3" {L}/><circle cx="18.2" cy="6.5" r="2.3" {S}/><circle cx="18.2" cy="12" r="2.3" {S}/><circle cx="18.2" cy="17.5" r="2.3" {S}/><path d="M4 6.5h9.6M4 12h9.6M4 17.5h9.6" {S}/>',
-    'calendar': f'<rect x="3.5" y="5" width="17" height="15.5" rx="2.6" {S}/><path d="M8 3v4M16 3v4M3.5 9.6h17" {S}/><circle cx="15.4" cy="14.9" r="2.4" {L}/><circle cx="15.4" cy="14.9" r="2.4" fill="none" stroke="currentColor" stroke-width="1.6"/>',
-    'friends': f'<path d="{lens(9.5, 14.5, 8.6, 3.4)}" {L}/><circle cx="9.5" cy="8.6" r="3.4" {S}/><circle cx="14.5" cy="8.6" r="3.4" {S}/><path d="M2.8 19.6c.7-3.3 3.4-5.2 6.7-5.2M21.2 19.6c-.7-3.3-3.4-5.2-6.7-5.2M9.5 14.4h5" {S}/>',
-    'profile': f'<path d="M12 4.8a3.8 3.8 0 0 1 0 7.6z" {L}/><circle cx="12" cy="8.6" r="3.8" {S}/><path d="M4.8 20c.8-3.6 3.6-5.6 7.2-5.6s6.4 2 7.2 5.6" {S}/>',
+# The tab-bar set is the ORIGINAL five from the dashboard sprite, unchanged: the owner
+# kept them over the lens versions on 2026-09-28. The active tab is marked by the
+# tab's own background, never by the drawing.
+W = 'fill="none" stroke="currentColor" stroke-width="1.9"'
+ICONS = {
+    'home': f'<path d="M4 10.6 12 4l8 6.6V19a1.8 1.8 0 0 1-1.8 1.8H15v-5.6H9v5.6H5.8A1.8 1.8 0 0 1 4 19z" {W} stroke-linejoin="round"/>',
+    'tasks': f'<path d="M4 6.6 5.7 8.4 9 5M4 16.6l1.7 1.8L9 15M12.5 7h7.5M12.5 17H20" {W} stroke-linecap="round" stroke-linejoin="round"/>',
+    'calendar': f'<rect x="3.2" y="4.8" width="17.6" height="16" rx="4" {W}/><path d="M3.2 9.6h17.6M8 3v3.2M16 3v3.2" {W} stroke-linecap="round"/>',
+    'friends': f'<circle cx="9.2" cy="8.4" r="3.4" {W}/><path d="M2.8 19.4c.6-3.3 3.2-5.2 6.4-5.2s5.8 1.9 6.4 5.2" {W} stroke-linecap="round"/><path d="M16 5.4a3.2 3.2 0 0 1 0 6.1M17.6 14.6c2.1.5 3.4 2.2 3.8 4.4" {W} stroke-linecap="round"/>',
+    'profile': f'<circle cx="12" cy="8.2" r="4" {W}/><path d="M4.4 20.2c.8-3.9 3.9-6 7.6-6s6.8 2.1 7.6 6" {W} stroke-linecap="round"/>',
 }
 
 FONT = '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Hebrew:wght@600;700&family=IBM+Plex+Sans:wght@600;700&display=swap">'
