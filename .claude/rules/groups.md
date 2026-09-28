@@ -568,6 +568,15 @@ have already had to be argued for.
   on this room — גל had been written to four times and not answered, so he is
   nameable; גיא had every message dropped at the gate as `quiet`, was never
   actually asked, and must not be.
+  **…and the hour is counted from the LAST invite that reached anybody, not
+  from the start** (2026-09-28, `statusOf.lastAskedAt` → `group-voice.decideGroupLine`).
+  Coordination 57 opened at 21:00, every invite but the asker's waited for the
+  morning, and the chase went out at 09:00:08 — two minutes before them — and
+  tagged the one person it could name: the man who had asked for the game and
+  answered it in the room. `lastAskedAt` is the newest FIRST arrival of a
+  `meeting_*` row among the people still in it (sent, and not held); a row the
+  gate dropped reached nobody and does not count. Nobody reached at all falls
+  back to the start (`incidents.md`, "The chase that beat its own invites").
 - **The "סגור" line names who can make it, a calendar line is said only for
   a SHARED event, and a base line is never said to nobody** (owner,
   2026-09-20, off coordinations 35–37). `group-meetings.statusOf` exposes
