@@ -195,18 +195,24 @@ const ROW_H = 54;
 const RAIL_W = 6;      // the coloured spine on each section card
 
 // Cypress + Mustard (brand/kit/tokens/allma.css, 2026-09-28): sand ground, white
-// cards, cypress for everything that is ours, ink for what is theirs. One accent
-// for every section instead of five: the cards already separate the sections,
-// and a calm card is the brand. Mustard appears once, in the mark's lens — on a
-// card nobody can press, there is no action for it to mark.
+// cards, ink for what is theirs. The owner asked for more colour than cypress
+// alone, so each section takes a hue in turn from the brand's own set — the
+// same four the coordination marks are drawn in — and the first section, which
+// is nearly always today, gets mustard. Every hue carries a darker text shade:
+// mustard itself is unreadable as text on white, so it only ever FILLS.
 const SAND = '#F0EDE5';
 const CYPRESS = '#004643';
 const MUSTARD = '#F9C23C';
 const INK = '#0E1F1E';
 const INK_SOFT = '#44504E';
 const MUTED = '#56615E';
-const TINT = '#E1EBE8';       // cypress mixed into sand: tags and chips
-const LINE = '#C9D6D3';       // the stat pills' outline
+const HUES = [
+  { rail: MUSTARD, text: '#6E5200', tint: '#FCEFC7' },
+  { rail: CYPRESS, text: CYPRESS, tint: '#DDEBE7' },
+  { rail: '#2F7F9E', text: '#22627A', tint: '#DCEDF3' },
+  { rail: '#C4513F', text: '#9E3B2C', tint: '#F7E1DC' },
+];
+const hue = (i) => HUES[i % HUES.length];
 
 function text(x, y, o, s) {
   const anchor = o.anchor || 'end';
@@ -295,19 +301,18 @@ function buildSvg(card) {
     const h = 62;
     const row = chipRow(card.stats, W - M, y, h,
       { font: 27, icon: 32, padRight: 22, gap: 12, padLeft: 26 },
-      () => ({ fill: '#FFFFFF', stroke: LINE, text: CYPRESS }), M);
+      (i) => ({ fill: hue(i).tint, text: hue(i).text }), M);
     parts.push(row.svg);
     y += row.height + 34;
   }
 
   // ---- section cards
   const cardW = W - 2 * M;
-  card.sections.forEach((sec) => {
-    const accent = CYPRESS;
-    const tint = TINT;
+  card.sections.forEach((sec, si) => {
+    const { rail, text: accent, tint } = hue(si);
     const h = 30 + 44 + sec.items.length * ROW_H + 12;
     parts.push(roundedCard(M, y, cardW, h));
-    parts.push(`<rect x="${W - M - 10}" y="${y + 18}" width="${RAIL_W}" height="${h - 36}" rx="3" fill="${accent}"/>`);
+    parts.push(`<rect x="${W - M - 10}" y="${y + 18}" width="${RAIL_W}" height="${h - 36}" rx="3" fill="${rail}"/>`);
     parts.push(text(W - M - PAD, y + 52, { size: 30, weight: 700, fill: accent }, sec.title));
 
     // One date column for the whole section, sized to its longest date, so a
@@ -345,11 +350,11 @@ function buildSvg(card) {
   if (card.bigTasks) {
     const row = chipRow(card.bigTasks.chips, W - M - PAD, y + 78, 48,
       { font: 24, icon: 26, padRight: 18, gap: 10, padLeft: 22 },
-      () => ({ fill: TINT, text: INK }), M + PAD);
+      (i) => ({ fill: hue(i).tint, text: INK }), M + PAD);
     const h = 30 + 44 + row.height + 12;
     parts.push(roundedCard(M, y, cardW, h));
-    parts.push(`<rect x="${W - M - 10}" y="${y + 18}" width="${RAIL_W}" height="${h - 36}" rx="3" fill="${CYPRESS}"/>`);
-    parts.push(text(W - M - PAD, y + 52, { size: 30, weight: 700, fill: CYPRESS }, card.bigTasks.title));
+    parts.push(`<rect x="${W - M - 10}" y="${y + 18}" width="${RAIL_W}" height="${h - 36}" rx="3" fill="${hue(card.sections.length).rail}"/>`);
+    parts.push(text(W - M - PAD, y + 52, { size: 30, weight: 700, fill: hue(card.sections.length).text }, card.bigTasks.title));
     parts.push(row.svg);
     y += h + 30;
   }
