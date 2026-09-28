@@ -383,6 +383,8 @@ test('cold invite: closed flag sends nothing; open, one row per person per ROOM,
     assert.ok(text.includes('«בדיקה»'), text);
     assert.ok(text.includes('פאדל השבוע'), text);
     assert.ok(text.startsWith('היי! אני עולמה'), text);
+    assert.ok(text.includes('עוזרת AI'), 'she says what she is');
+    assert.ok(text.trimEnd().endsWith('ולא אכתוב לך שוב.'), 'and offers a way out');
   } finally {
     await withTx(db.pool, (c) => flags.setFlag(c, gm.COLD_INVITE_FLAG, false));
   }
@@ -411,6 +413,31 @@ test('cold invite: nothing while registration is closed, and the worker delivers
     await drainOnce(db.pool, async (r) => { sent.push({ user: Number(r.user_id), kind: r.kind }); return { ok: true }; }, at);
     assert.deepEqual(sent.filter((x) => x.user === Number(stranger.id)).map((x) => x.kind), ['room_cold_invite'],
       'the gate lets exactly this kind through to a pending row');
+  } finally {
+    await withTx(db.pool, (c) => flags.setFlag(c, gm.COLD_INVITE_FLAG, false));
+  }
+});
+
+test('cold invite: once per PERSON across rooms — unless the first one never reached them', async () => {
+  const gm = require('../src/domain/group-meetings');
+  const first = await roomWithCoordination(8, '+972501918099');
+  await withTx(db.pool, (c) => flags.setFlag(c, gm.COLD_INVITE_FLAG, true));
+  try {
+    assert.deepEqual(await withTx(db.pool, (c) => gm.coldInvite(c, first.group, first.meeting)),
+      [Number(first.stranger.id)]);
+    // The same stranger sits in a second room that opens a coordination.
+    const second = await roomWithCoordination(9, '+972501918099');
+    assert.equal(Number(second.stranger.id), Number(first.stranger.id));
+    assert.deepEqual(await withTx(db.pool, (c) => gm.coldInvite(c, second.group, second.meeting)), [],
+      'the copy promises "ולא אכתוב לך שוב", so a second room may not write either');
+
+    // The first invite expired in the gate and never went out: it asked
+    // nothing, so the second room may try.
+    await db.pool.query(
+      `UPDATE outbox SET sent_at = now(), hold_reason = 'expired'
+        WHERE user_id = $1 AND kind = 'room_cold_invite'`, [first.stranger.id]);
+    assert.deepEqual(await withTx(db.pool, (c) => gm.coldInvite(c, second.group, second.meeting)),
+      [Number(first.stranger.id)]);
   } finally {
     await withTx(db.pool, (c) => flags.setFlag(c, gm.COLD_INVITE_FLAG, false));
   }
