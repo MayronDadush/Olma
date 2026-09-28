@@ -39,18 +39,6 @@
       "role": "night ground"
     },
     {
-      "name": "Candle",
-      "he": "נר",
-      "hex": "#E8B84A",
-      "role": "Shabbat action and lens"
-    },
-    {
-      "name": "Shabbat ink",
-      "he": "דיו שבת",
-      "hex": "#17150F",
-      "role": "Shabbat ground"
-    },
-    {
       "name": "Brick",
       "he": "לבנה",
       "hex": "#B03A2E",
@@ -101,28 +89,6 @@
       "success": "#7CC4BA",
       "danger": "#F08A7E",
       "on-danger": "#0E1F1E"
-    },
-    "shabbat": {
-      "bg": "#17150F",
-      "bg-tint": "#1C1A13",
-      "surface": "#221F17",
-      "surface-2": "#2A261C",
-      "line": "#343128",
-      "line-strong": "#47443A",
-      "text": "#F3E9D2",
-      "text-2": "#BAB29F",
-      "text-3": "#979080",
-      "brand": "#2B4A45",
-      "on-brand": "#F3E9D2",
-      "brand-soft": "#342C17",
-      "action": "#E8B84A",
-      "on-action": "#17150F",
-      "action-soft": "#41361B",
-      "lens": "#E8B84A",
-      "link": "#E8B84A",
-      "success": "#9CCFB8",
-      "danger": "#F08A7E",
-      "on-danger": "#17150F"
     }
   },
   "contrast": [
@@ -249,69 +215,6 @@
       "fg": "#F08A7E",
       "bg": "#122725",
       "ratio": 6.44,
-      "needs": 4.5,
-      "pass": true
-    },
-    {
-      "mode": "shabbat",
-      "what": "text on ground",
-      "fg": "#F3E9D2",
-      "bg": "#17150F",
-      "ratio": 15.12,
-      "needs": 4.5,
-      "pass": true
-    },
-    {
-      "mode": "shabbat",
-      "what": "secondary text",
-      "fg": "#BAB29F",
-      "bg": "#17150F",
-      "ratio": 8.65,
-      "needs": 4.5,
-      "pass": true
-    },
-    {
-      "mode": "shabbat",
-      "what": "tertiary text on card",
-      "fg": "#979080",
-      "bg": "#221F17",
-      "ratio": 5.18,
-      "needs": 3.0,
-      "pass": true
-    },
-    {
-      "mode": "shabbat",
-      "what": "label on the action button",
-      "fg": "#17150F",
-      "bg": "#E8B84A",
-      "ratio": 9.9,
-      "needs": 4.5,
-      "pass": true
-    },
-    {
-      "mode": "shabbat",
-      "what": "text on the brand band",
-      "fg": "#F3E9D2",
-      "bg": "#2B4A45",
-      "ratio": 8.02,
-      "needs": 4.5,
-      "pass": true
-    },
-    {
-      "mode": "shabbat",
-      "what": "link on card",
-      "fg": "#E8B84A",
-      "bg": "#221F17",
-      "ratio": 8.92,
-      "needs": 4.5,
-      "pass": true
-    },
-    {
-      "mode": "shabbat",
-      "what": "error on card",
-      "fg": "#F08A7E",
-      "bg": "#221F17",
-      "ratio": 6.77,
       "needs": 4.5,
       "pass": true
     }

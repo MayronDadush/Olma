@@ -37,7 +37,7 @@ p{margin:0;max-width:66ch}
 .ratio div{display:flex;flex-direction:column;justify-content:flex-end;padding:12px 14px;gap:2px;min-width:0}
 .ratio b{font-size:22px;line-height:1}
 .ratio span{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.sw{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.sw{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
 @media (max-width:640px){.sw{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .sw div{border-radius:14px;overflow:hidden;border:1px solid var(--line);background:var(--surface)}
 .sw i{display:block;height:64px}
@@ -110,7 +110,7 @@ code{font-family:var(--mono);font-size:13px;background:var(--brand-soft);border-
       <div><b>צבעים</b><span>חול · ברוש · חרדל</span></div>
       <div><b>פונט</b><span>IBM Plex Sans Hebrew</span></div>
       <div><b>סימן</b><span>חצי־חצי, עם עדשה</span></div>
-      <div><b>לפי שעה</b><span>יום · לילה · שבת</span></div>
+      <div><b>לפי שעה</b><span>יום · לילה</span></div>
     </div>
   </header>
 
@@ -144,8 +144,8 @@ code{font-family:var(--mono);font-size:13px;background:var(--brand-soft);border-
 
   <section class="sec">
     <span class="eyebrow">02 · לפי שעה</span>
-    <h2>יום, לילה, שבת</h2>
-    <p class="muted">אותה מערכת בשלוש תאורות. היום בהיר. בלילה הרקע כהה והחרדל נשאר, כדי שהפעולה תמשיך להיות מוכרת. בשבת החרדל מתרכך לנר, והברוש כמעט נעלם. העמוד הזה עצמו עובר ללילה כשהמכשיר שלך במצב כהה.</p>
+    <h2>יום ולילה</h2>
+    <p class="muted">אותה מערכת בשתי תאורות. היום בהיר. בלילה הרקע כהה והחרדל נשאר, כדי שהפעולה תמשיך להיות מוכרת. לשבת אין כרגע צבעים משלה: היא נראית כמו כל יום אחר. העמוד הזה עצמו עובר ללילה כשהמכשיר שלך במצב כהה.</p>
     <div class="modes" id="modes"></div>
   </section>
 
@@ -248,7 +248,7 @@ code{font-family:var(--mono);font-size:13px;background:var(--brand-soft);border-
   <section class="sec">
     <span class="eyebrow">קבצים</span>
     <ul class="files">
-      <li><code>brand/kit/tokens/allma.css</code> · הטוקנים ליום, לילה ושבת</li>
+      <li><code>brand/kit/tokens/allma.css</code> · הטוקנים ליום וללילה</li>
       <li><code>brand/kit/tokens/allma.json</code> · אותו דבר, ועוד בדיקת הניגודיות</li>
       <li><code>brand/kit/tokens/allma.ase</code> · פלטה לכלי עיצוב</li>
       <li><code>brand/kit/mark/*.svg</code> · שבע גרסאות של הסימן</li>
@@ -268,12 +268,11 @@ function round(d,l,a,size,ring){const c='c'+(++uid),k='k'+(++uid);return `<svg v
 function split(d,l,a,size){const k='s'+(++uid);return `<svg viewBox="0 0 120 120" width="${size}" height="${size}" aria-hidden="true" style="display:block"><clipPath id="${k}"><circle cx="42" cy="60" r="28"/></clipPath><rect width="60" height="120" fill="${d}"/><rect x="60" width="60" height="120" fill="${l}"/><circle cx="42" cy="60" r="28" fill="${l}"/><circle cx="78" cy="60" r="28" fill="${d}"/><circle cx="78" cy="60" r="28" fill="${a}" clip-path="url(#${k})"/></svg>`}
 const $=s=>document.querySelector(s);
 $('#heroMark').innerHTML=round(I,S,M,100,S);
-$('#sw').innerHTML=[['חול','Sand','#F0EDE5','60 · רקע'],['ברוש','Cypress','#004643','30 · מותג'],['חרדל','Mustard','#F9C23C','10 · פעולה ועדשה'],['דיו','Ink','#0E1F1E','טקסט'],['לילה','Night','#0A1817','רקע לילה'],['נר','Candle','#E8B84A','חרדל של שבת'],['דיו שבת','Shabbat ink','#17150F','רקע שבת'],['לבנה','Brick','#B03A2E','שגיאה בלבד']]
+$('#sw').innerHTML=[['חול','Sand','#F0EDE5','60 · רקע'],['ברוש','Cypress','#004643','30 · מותג'],['חרדל','Mustard','#F9C23C','10 · פעולה ועדשה'],['דיו','Ink','#0E1F1E','טקסט'],['לילה','Night','#0A1817','רקע לילה'],['לבנה','Brick','#B03A2E','שגיאה בלבד']]
  .map(([he,en,h,r])=>`<div><i style="background:${h}"></i><p><b>${he} · ${en}</b><span class="hex">${h}</span><br>${r}</p></div>`).join('');
 const MODES=[
  ['יום','Day',{bg:'#F0EDE5',surface:'#FFFFFF',text:'#0E1F1E',t2:'#44504E',brand:'#004643',onb:'#F0EDE5',action:'#F9C23C',ona:'#004643',soft:'#E6ECEC',lens:'#F9C23C'},'בוקר טוב'],
  ['לילה','Night',{bg:'#0A1817',surface:'#122725',text:'#EDE9DF',t2:'#B2B3AB',brand:'#1F6B64',onb:'#EDE9DF',action:'#F9C23C',ona:'#0E1F1E',soft:'#19322F',lens:'#F9C23C'},'לילה טוב'],
- ['שבת','Shabbat',{bg:'#17150F',surface:'#221F17',text:'#F3E9D2',t2:'#BAB29F',brand:'#2B4A45',onb:'#F3E9D2',action:'#E8B84A',ona:'#17150F',soft:'#342C17',lens:'#E8B84A'},'שבת שלום'],
 ];
 const lensP=(a,b,cy,r)=>{const h=Math.sqrt(r*r-((b-a)/2)**2),x=(a+b)/2;return `M${x} ${(cy-h).toFixed(2)}A${r} ${r} 0 0 1 ${x} ${(cy+h).toFixed(2)}A${r} ${r} 0 0 1 ${x} ${(cy-h).toFixed(2)}Z`};
 const SS='fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"',LL='fill="var(--lens,none)" stroke="none"';
@@ -293,7 +292,6 @@ const lum=h=>{const c=h.slice(1).match(/../g).map(x=>{x=parseInt(x,16)/255;retur
 const ratio=(a,b)=>{const[x,y]=[lum(a),lum(b)].sort((m,n)=>n-m);return(x+.05)/(y+.05)};
 const PAIRS=[['יום','טקסט על רקע','#0E1F1E','#F0EDE5',4.5],['יום','טקסט משני','#44504E','#F0EDE5',4.5],['יום','כפתור חרדל: ברוש על חרדל','#004643','#F9C23C',4.5],['יום','טקסט על הפס העליון','#F0EDE5','#004643',4.5],['יום','קישור על כרטיס','#004643','#FFFFFF',4.5],['יום','שגיאה על כרטיס','#B03A2E','#FFFFFF',4.5],
  ['לילה','טקסט על רקע','#EDE9DF','#0A1817',4.5],['לילה','כפתור חרדל: דיו על חרדל','#0E1F1E','#F9C23C',4.5],['לילה','טקסט על פס המותג','#EDE9DF','#1F6B64',4.5],['לילה','קישור על כרטיס','#7CC4BA','#122725',4.5],
- ['שבת','טקסט על רקע','#F3E9D2','#17150F',4.5],['שבת','כפתור נר','#17150F','#E8B84A',4.5],['שבת','קישור על כרטיס','#E8B84A','#221F17',4.5],
  ['—','לשם השוואה: חרדל כטקסט על חול','#F9C23C','#F0EDE5',4.5]];
 $('#contrast tbody').innerHTML=PAIRS.map(([m,w,f,b,n])=>{const r=ratio(f,b);return `<tr><td>${m}</td><td>${w}</td><td><span class="chipc"><i style="background:${f}"></i><i style="background:${b}"></i></span></td><td><b>${r.toFixed(1)}</b></td><td>${r>=n?`<span class="pass">עובר</span>`:`<span style="color:var(--danger);font-weight:600">לא עובר</span>`}</td></tr>`}).join('');
 $('#marks').innerHTML=[
@@ -301,7 +299,7 @@ $('#marks').innerHTML=[
  [round(C,S,M,96,C),'#F0EDE5','#0E1F1E','עגול עם טבעת · על חול'],
  [round(I,S,M,96,S),'#004643','#F0EDE5','על ברוש'],
  [round('#0A1817','#EDE9DF',M,96,'#EDE9DF'),'#0A1817','#EDE9DF','לילה'],
- [round('#17150F','#F3E9D2','#E8B84A',96,'#F3E9D2'),'#17150F','#F3E9D2','שבת'],
+ [round('#FFFFFF',I,'#FFFFFF',96,'#FFFFFF'),'#0E1F1E','#FFFFFF','צבע אחד · על כהה'],
  [round(I,'#FFFFFF',I,96,I),'#FFFFFF','#0E1F1E','צבע אחד · הדפסה'],
 ].map(([s,bg,fg,n])=>`<figure style="background:${bg};color:${fg}">${s}<figcaption>${n}</figcaption></figure>`).join('');
 $('#sizes').innerHTML=[64,40,28,20].map(z=>`<div>${round(C,S,M,z,C)}<span>${z}px</span></div>`).join('');

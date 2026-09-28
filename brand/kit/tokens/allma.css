@@ -45,26 +45,3 @@
   --allma-on-danger: #0E1F1E;
   color-scheme: dark;
 }
-:root[data-hour="shabbat"] {
-  --allma-bg: #17150F;
-  --allma-bg-tint: #1C1A13;
-  --allma-surface: #221F17;
-  --allma-surface-2: #2A261C;
-  --allma-line: #343128;
-  --allma-line-strong: #47443A;
-  --allma-text: #F3E9D2;
-  --allma-text-2: #BAB29F;
-  --allma-text-3: #979080;
-  --allma-brand: #2B4A45;
-  --allma-on-brand: #F3E9D2;
-  --allma-brand-soft: #342C17;
-  --allma-action: #E8B84A;
-  --allma-on-action: #17150F;
-  --allma-action-soft: #41361B;
-  --allma-lens: #E8B84A;
-  --allma-link: #E8B84A;
-  --allma-success: #9CCFB8;
-  --allma-danger: #F08A7E;
-  --allma-on-danger: #17150F;
-  color-scheme: dark;
-}

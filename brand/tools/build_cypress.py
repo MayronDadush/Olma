@@ -42,16 +42,8 @@ NIGHT = {
     'lens': MUSTARD, 'link': '#7CC4BA',
     'success': '#7CC4BA', 'danger': '#F08A7E', 'on-danger': INK,
 }
-SHABBAT = {  # ink and candle, the same in every palette the owner looked at
-    'bg': '#17150F', 'bg-tint': '#1C1A13', 'surface': '#221F17', 'surface-2': '#2A261C',
-    'line': mix('#F3E9D2', '#17150F', 13), 'line-strong': mix('#F3E9D2', '#17150F', 22),
-    'text': '#F3E9D2', 'text-2': mix('#F3E9D2', '#17150F', 74), 'text-3': mix('#F3E9D2', '#17150F', 58),
-    'brand': '#2B4A45', 'on-brand': '#F3E9D2', 'brand-soft': mix('#E8B84A', '#17150F', 14),
-    'action': '#E8B84A', 'on-action': '#17150F', 'action-soft': mix('#E8B84A', '#17150F', 20),
-    'lens': '#E8B84A', 'link': '#E8B84A',
-    'success': '#9CCFB8', 'danger': '#F08A7E', 'on-danger': '#17150F',
-}
-MODES = {'day': DAY, 'night': NIGHT, 'shabbat': SHABBAT}
+# No Shabbat mode: the owner wants no special colours for it for now (2026-09-28).
+MODES = {'day': DAY, 'night': NIGHT}
 
 NAMES = [  # swatch name, Hebrew, hex, role
     ('Cypress', 'ברוש', CYPRESS, '30 · brand: the band, the mark, headings on sand'),
@@ -59,8 +51,6 @@ NAMES = [  # swatch name, Hebrew, hex, role
     ('Mustard', 'חרדל', MUSTARD, '10 · the primary action and the lens. Never as text on light'),
     ('Ink', 'דיו', INK, 'body text'),
     ('Night', 'לילה', NIGHT['bg'], 'night ground'),
-    ('Candle', 'נר', SHABBAT['action'], 'Shabbat action and lens'),
-    ('Shabbat ink', 'דיו שבת', SHABBAT['bg'], 'Shabbat ground'),
     ('Brick', 'לבנה', DAY['danger'], 'errors and deletes only'),
 ]
 
@@ -86,10 +76,6 @@ def css():
 }}
 :root[data-hour="night"] {{
 {block(NIGHT)}
-  color-scheme: dark;
-}}
-:root[data-hour="shabbat"] {{
-{block(SHABBAT)}
   color-scheme: dark;
 }}
 """
@@ -162,7 +148,6 @@ def main():
     marks = {
         'allma-split.svg': split_svg(), 'allma-round.svg': round_svg(), 'allma-round-ringed.svg': round_svg(ring=CYPRESS),
         'allma-round-night.svg': round_svg(NIGHT['bg'], '#EDE9DF', MUSTARD),
-        'allma-round-shabbat.svg': round_svg(SHABBAT['bg'], SHABBAT['text'], SHABBAT['lens']),
         'allma-round-mono-dark.svg': round_svg(INK, '#FFFFFF', INK), 'allma-round-mono-light.svg': round_svg('#FFFFFF', INK, '#FFFFFF'),
     }
     for n, s in marks.items(): open(os.path.join(OUT, 'mark', n), 'w').write(s)
