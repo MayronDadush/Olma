@@ -172,6 +172,13 @@ async function answer(client, userId, meetingId, optionId, value) {
     [optionId, userId, value]);
   await audit.record(client, userId, value === 'y' ? 'meeting.slot_accepted' : 'meeting.slot_declined',
     { meetingId: Number(meetingId), optionId: Number(optionId), slot: rows[0].slot_text });
+  // A reminder still queued to ask them what they have just answered
+  // (coordination-policy's nudge) is withdrawn here, at the answer, rather than
+  // on the next sweep a minute later.
+  await client.query(
+    `UPDATE outbox SET sent_at = now(), hold_reason = 'superseded'
+      WHERE sent_at IS NULL AND kind = 'meeting_nudge' AND user_id = $1
+        AND (payload->>'meetingId')::bigint = $2`, [userId, meetingId]);
   await mirrorCurrent(client, meetingId);
   const c = await tryConfirm(client, meetingId);
   // The last yes no longer ends the meeting — it starts the minute. Nobody is
