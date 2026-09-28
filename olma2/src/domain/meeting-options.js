@@ -216,7 +216,18 @@ async function unanimousOption(client, meetingId) {
         WHERE paused_at IS NOT NULL AND paused_reason IS DISTINCT FROM 'quiet_ladder'),
      active AS (
        SELECT user_id FROM meeting_participants WHERE meeting_id = $1 AND state <> 'opted_out'
-          AND user_id NOT IN (SELECT user_id FROM paused_out))
+          AND user_id NOT IN (SELECT user_id FROM paused_out)),
+     -- Left THIS coordination by choice: opted out, and not by a pause
+     -- (the cause on their latest exit, as group-meetings.statusOf reads it).
+     chose_out AS (
+       SELECT mp.user_id FROM meeting_participants mp
+        WHERE mp.meeting_id = $1 AND mp.state = 'opted_out'
+          AND mp.user_id NOT IN (
+            SELECT actor_id FROM (
+              SELECT DISTINCT ON (actor_id) actor_id, detail->>'cause' AS cause FROM audit_log
+               WHERE event = 'meeting.opted_out' AND (detail->>'meetingId')::bigint = $1 AND actor_id IS NOT NULL
+               ORDER BY actor_id, created_at DESC, id DESC) last
+             WHERE cause IN ('paused_by_request', 'paused_no_answer')))
      SELECT o.id, o.slot_text, o.starts_at, o.all_day, o.daypart
        FROM meeting_options o
       WHERE o.meeting_id = $1 AND o.status = 'active'
@@ -225,14 +236,17 @@ async function unanimousOption(client, meetingId) {
           SELECT 1 FROM active a
            WHERE NOT EXISTS (SELECT 1 FROM meeting_option_answers oa
                               WHERE oa.option_id = o.id AND oa.user_id = a.user_id AND oa.answer = 'y'))
+        -- In a room, everybody still IN THE ROOM is waited on, paused or not
+        -- (owner, 2026-09-28: the room's count includes them, so "everybody
+        -- said yes" is not true without them). Only somebody who chose to
+        -- leave this coordination is not; short of that the room writes "סגור".
         AND NOT EXISTS (
           SELECT 1 FROM meetings mt
             JOIN chat_group_members gm ON gm.group_id = mt.group_id AND gm.left_at IS NULL
            WHERE mt.id = $1
-             AND (gm.user_id IS NULL OR (gm.user_id NOT IN (SELECT user_id FROM paused_out)
-                  AND NOT EXISTS (
-                   SELECT 1 FROM meeting_participants mp
-                    WHERE mp.meeting_id = $1 AND mp.user_id = gm.user_id))))
+             AND (gm.user_id IS NULL OR (gm.user_id NOT IN (SELECT user_id FROM chose_out)
+                  AND NOT EXISTS (SELECT 1 FROM meeting_option_answers oa
+                                   WHERE oa.option_id = o.id AND oa.user_id = gm.user_id AND oa.answer = 'y'))))
       ORDER BY o.id LIMIT 1`, [meetingId]);
   return rows[0] || null;
 }
