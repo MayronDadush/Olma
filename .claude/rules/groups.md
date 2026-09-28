@@ -393,6 +393,13 @@ have already had to be argued for.
   Before it, the room's first word was `base` — which waits for two people to
   agree on a time, hours later — so a room that had just asked her for something
   heard nothing at all. `co.participants` is who she is actually asking.
+  **Since 2026-09-26 it is the ONLY opening the room hears, and it is true at
+  the hour it is said** (owner, fix 4): the start tool's `hints.room` and the
+  group doctrine tell the model NO_REPLY (her "על זה" was the same sentence
+  twice), and outside the room's `GROUP_WINDOW` the line carries `later` and
+  says "שואלת בפרטי את מי שער עכשיו, ואת השאר בבוקר" — at night only whoever
+  wrote in the last fifteen minutes (room or DM) is asked now (owner,
+  2026-09-27).
   **Since 2026-09-26 the number it SAYS is the whole room** (`co.roomTotal`,
   "לכל N חברי הקבוצה") — see "A room's coordination counts everybody in the
   room" below.

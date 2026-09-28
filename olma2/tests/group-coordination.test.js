@@ -436,8 +436,23 @@ test('the room is told she will ask, never that she has', async () => {
   // person than it had just written rows for.
   assert.equal(res.data.willAsk, people.length, 'how many are OWED a message');
   assert.equal('asked' in res.data, false, 'the word that made the claim is gone');
-  assert.match(res.data.hints.room, /WHEN THEY ARE AVAILABLE/);
-  assert.match(res.data.hints.room, /Never say they have already been asked/);
+  // Since 2026-09-26 (fix 4) she says nothing at all: the room's fixed opening
+  // line says she has started, in words that are true at that hour.
+  assert.match(res.data.hints.room, /NO_REPLY/);
+  assert.doesNotMatch(res.data.hints.room, /asked/i);
+});
+
+// Fix 4: at night the invites wait for the morning, so "שואלת" is a claim.
+test('the opening line said at night says she will ask in the morning', () => {
+  const text = require('../src/domain/proactive-text');
+  const line = { kind: 'started', title: 'פאדל', total: 4, outside: 0 };
+  assert.match(text.renderGroupCoordination(line), /\nשואלת כל אחד בפרטי\. אחזור לכאן/);
+  assert.match(text.renderGroupCoordination({ ...line, later: true }),
+    /\nשואלת בפרטי את מי שער עכשיו, ואת השאר בבוקר\. אחזור לכאן עם מה שמסתדר\.$/);
+  const groupVoice = require('../src/domain/group-voice');
+  const co = { status: 'negotiating', title: 'פאדל', participants: 3, roomTotal: 4, options: [], silent: [] };
+  assert.equal(groupVoice.decideGroupLine(co, { nowMs: Date.now(), roomAsleep: true }).later, true);
+  assert.equal(groupVoice.decideGroupLine(co, { nowMs: Date.now() }).later, false);
 });
 
 // The hint above only reaches the model AFTER it calls the tool. On

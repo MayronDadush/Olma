@@ -314,6 +314,7 @@ function renderGroupCoordination(line, overrides) {
     return templates.render(keyFor('group_coord_started', line), {
       // A row queued before the room was counted whole carries only `asked`.
       title: slotText(line.title), total: String(line.total ?? line.asked),
+      ask: line.later ? ASK_LATER : ASK_NOW,
       cities: line.multiZone ? meetingTime.citiesPhrase(line.zones, line.roomTz) : '',
       outside_note: outsideNote(line, overrides),
     }, overrides).trim();
@@ -414,6 +415,11 @@ function renderGroupCoordination(line, overrides) {
 function withCalendar(body, line, overrides) {
   return line.calendar ? `${body}\n${templates.render('group_coord_calendar', {}, overrides)}` : body;
 }
+// The opening line's verb (fix 4, owner 2026-09-27): at night only whoever
+// wrote in the last few minutes is asked now, the rest in the morning — short,
+// because that is what he asked of this sentence.
+const ASK_NOW = 'שואלת כל אחד בפרטי';
+const ASK_LATER = 'שואלת בפרטי את מי שער עכשיו, ואת השאר בבוקר';
 const TABLE_LEAD = 'הכי מתקדם:';
 const ONE_OPTION = 'מועד אחד';
 const MANY_OPTIONS = 'מועדים';
