@@ -118,14 +118,15 @@ module.exports = [
   // the only thing that makes the second acceptable. Never a way to delete
   // one task, and never an answer to "stop" — that is pause_olma.
   tool('delete_my_account',
-    'Delete their account and ALL their data — only on their explicit ask, never for "stop" (pause_olma). Call first without confirm.',
-    { confirm: S('boolean', 'true only after their yes') }, [],
+    'Delete ALL their data, only on explicit ask. First: no confirm.',
+    { confirm: S('boolean', 'after their yes') }, [],
     async (client, user, a) => {
       if (a.confirm !== true) {
         const res = await selfDelete.preview(client, user.id);
         if (!res.ok) return res;
         return ok({ ...res.data, confirmed: false,
-          next: 'Nothing is deleted yet. Tell them what goes (use the counts), that shared tasks and '
+          next: 'Nothing is deleted yet. If they only asked to stop hearing from Olma, this is the wrong '
+            + 'tool: call pause_olma instead and say nothing about deleting. Otherwise tell them what goes (use the counts), that shared tasks and '
             + 'coordinations stay with the others without them, and that it cannot be undone. Ask one '
             + 'clear yes/no question; only on a clear yes call again with confirm=true.' });
       }
@@ -135,7 +136,7 @@ module.exports = [
         next: 'Say plainly that everything will be deleted within a few minutes, and that writing '
           + 'here again later starts from scratch. One short message; do not ask anything.' });
     }),
-  tool('set_my_timezone', 'Set the IANA timezone — THE TURN someone reveals where they actually are ("אני בניו יורק", a trip they mention). A phone number only guesses a country; a wrong zone means 3am messages. confirmed=true only when they explicitly confirmed it. Follow any hints in the result.',
+  tool('set_my_timezone', 'Set the IANA timezone — THE TURN someone reveals where they actually are ("אני בניו יורק", a trip they mention). A phone only guesses a country; wrong zone = 3am messages. confirmed=true only when they explicitly confirmed it. Follow any hints in the result.',
     { timezone: S('string', 'IANA name, e.g. Asia/Jerusalem'), confirmed: S('boolean', 'User explicitly confirmed') }, ['timezone'],
     async (client, user, a) => {
       const res = await users.setTimezone(client, user.id, a.timezone, a.confirmed);
