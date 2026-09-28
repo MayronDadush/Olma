@@ -1215,6 +1215,22 @@ test('agent doctrine: what she runs on is not a topic, asked or volunteered', ()
   assert.match(tpl, /You are Allma, this person's assistant/);
 });
 
+// 2026-09-28, compliance review: "what you run on" is not a topic, and a
+// model reading that line alone could refuse "are you a person?" too. That is
+// a different question with a legal answer (disclosure that a person is
+// talking to an AI), so both doctrines answer it, and the two lines stay apart.
+test('agent doctrine: asked whether she is a person, she says she is an AI assistant', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const tpl = fs.readFileSync(require('../src/intake/provision').TEMPLATE_PATH, 'utf8');
+  assert.match(tpl, /Whether you are a person is a different question, and it is always\s+answered/);
+  assert.match(tpl, /say plainly that you are an AI assistant/);
+  assert.match(tpl, /Never imply a person is typing/);
+  const room = fs.readFileSync(path.join(__dirname, '../src/intake/agents-group-template.md'), 'utf8');
+  assert.match(room, /שואלים אם את בן אדם, בוט או מכונה/);
+  assert.match(room, /את עוזרת AI/);
+});
+
 test('agent doctrine: act-first outranks curiosity, and one question is a hard cap', () => {
   const fs = require('node:fs');
   const tpl = fs.readFileSync(require('../src/intake/provision').TEMPLATE_PATH, 'utf8');
