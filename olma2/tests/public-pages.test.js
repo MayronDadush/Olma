@@ -192,3 +192,43 @@ test('the terms page reads English first, links the privacy policy, and carries 
   assert.ok(html.includes('href="/privacy"'), 'terms must link the privacy policy');
   assert.ok(html.includes('תנאי שימוש (עברית)'), 'Hebrew users still get the full terms');
 });
+
+// ---- no third party learns who is reading ----------------------------------
+
+// Since 2026-09-28 (finding 13 of that day's compliance review): these pages
+// linked Google Fonts, so every visitor's browser sent Google its IP before a
+// word was drawn — the transfer LG München I, 3 O 17493/20, fined. The fonts
+// are inlined now (adapters/http/fonts.js). Asserted on what the SERVER sends,
+// for every page allma.world reaches, so a link re-added anywhere on the way —
+// the shell, the design file, the serve-time wrapper — fails here.
+const GOOGLE_FONT_HOSTS = /fonts\.googleapis\.com|fonts\.gstatic\.com/;
+
+test('no page on the public host loads a font from Google, and each carries its own', async () => {
+  // `/me` with no session is the stranger's screen: the same file a signed-in
+  // person gets, through the same servedPageHtml.
+  for (const path of ['/', '/privacy', '/terms', '/me']) {
+    const res = await get(path, PUBLIC);
+    const html = await res.text();
+    assert.ok(html.length > 1000, `${path} answered with nothing, so the check below would prove nothing`);
+    assert.doesNotMatch(html, GOOGLE_FONT_HOSTS, `${path} still asks Google for a font`);
+    for (const family of ['Assistant', 'Rubik']) {
+      assert.match(html, new RegExp(`@font-face\\{font-family:'${family}'[^}]*src:url\\(data:font/woff2;base64,`),
+        `${path} does not carry ${family} inline`);
+    }
+    const csp = res.headers.get('content-security-policy') || '';
+    assert.doesNotMatch(csp, GOOGLE_FONT_HOSTS, `${path}'s CSP still allows Google`);
+  }
+});
+
+test('the vendored fonts are real woff2 and their OFL licences travel with them', () => {
+  const fs = require('node:fs');
+  const pathMod = require('node:path');
+  const { FONT_DIR } = require('../src/adapters/http/fonts');
+  for (const f of ['Assistant-hebrew', 'Assistant-latin', 'Rubik-hebrew', 'Rubik-latin']) {
+    const buf = fs.readFileSync(pathMod.join(FONT_DIR, `${f}.woff2`));
+    assert.equal(buf.subarray(0, 4).toString('latin1'), 'wOF2', `${f} is not a woff2 file`);
+  }
+  for (const f of ['OFL-Assistant.txt', 'OFL-Rubik.txt']) {
+    assert.match(fs.readFileSync(pathMod.join(FONT_DIR, f), 'utf8'), /SIL OPEN FONT LICENSE/i);
+  }
+});

@@ -18,9 +18,12 @@
      its own white behind them for the instant before the CSS lands. -->
 <meta name="color-scheme" content="light dark">
 <title>עולמה שלי</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;500;600;700&family=Rubik:wght@500;600;700&display=swap">
+<!-- No font link here, on purpose, since 2026-09-28: this file linked Google
+     Fonts, which handed every visitor's IP to Google. The server puts Assistant
+     and Rubik in front of this file as inline @font-face (src/adapters/http/
+     fonts.js); opened from disk the page falls back to Heebo / system-ui, and
+     the CSP refuses a Google link if one is ever added back. -->
+
 
 <style>
 /* ─────────────────────────  tokens  ───────────────────────── */

@@ -28,6 +28,7 @@
 // by the crawler before the person ever touched it.
 const fs = require('node:fs');
 const path = require('node:path');
+const { FONT_STYLE } = require('./fonts');
 const { withTx } = require('../../db/pool');
 const auth = require('../../domain/dashboard-auth');
 const dash = require('../../domain/user-dashboard');
@@ -65,8 +66,16 @@ function pageHtml() {
 // letting hydrate() do it means they are gone before a single rule is applied,
 // instead of flashing on and then vanishing — and opening the same file from
 // disk leaves the stamp off, which is precisely when those buttons are wanted.
+//
+// The fonts are put in here too, since 2026-09-28, and only here: the file
+// used to link Google Fonts, which gave Google every visitor's IP (fonts.js).
+// Opened from disk it has no font of its own and draws in the fallback stack
+// its CSS already names — a design preview can live with that, and it keeps
+// ~100KB of base64 out of a file people read and diff. The <style> lands
+// ahead of the <meta charset>, which is harmless: the charset is in the
+// Content-Type header, and the parser files the element into <head> anyway.
 function servedPageHtml(extra = '') {
-  return '<html data-served="1"' + extra + '>\n' + pageHtml();
+  return '<html data-served="1"' + extra + '>\n' + FONT_STYLE + '\n' + pageHtml();
 }
 
 // The language the page draws in. The page reads `data-locale` off the root
@@ -101,13 +110,15 @@ const { esc } = require('./html');
 // actually for is the other direction: `connect-src 'self'` and `form-action
 // 'self'` mean a script that somehow got onto this page still has nowhere to
 // send what it can see, and `frame-ancestors 'none'` keeps it out of somebody
-// else's iframe. Google Fonts is named because the page asks for it; nothing
-// else may be fetched at all.
+// else's iframe. Nothing may be fetched from anywhere at all: until 2026-09-28
+// Google Fonts was named here because the page asked for it, and the fonts now
+// arrive inline as data: URIs (fonts.js) — so a page that grows a Google link
+// again is refused by the browser, not merely frowned on by a test.
 const CSP = [
   "default-src 'none'",
   "script-src 'unsafe-inline'",
-  "style-src 'unsafe-inline' https://fonts.googleapis.com",
-  "font-src https://fonts.gstatic.com data:",
+  "style-src 'unsafe-inline'",
+  "font-src data:",
   "img-src data:",
   "connect-src 'self'",
   "form-action 'self'",

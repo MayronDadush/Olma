@@ -11,6 +11,17 @@ output on any box, and the droplet has no Hebrew font installed (only DejaVu).
 resvg is given exactly these files with `loadSystemFonts: false`, so a font
 installed or removed on the server can never change what a card looks like.
 
+## fonts/web/
+
+[Assistant](https://fonts.google.com/specimen/Assistant) (wght 400–700) and
+[Rubik](https://fonts.google.com/specimen/Rubik) (wght 500–700), variable
+woff2, Hebrew and Latin subsets only, exactly as fonts.gstatic.com serves them
+(2026-09-28). SIL Open Font License 1.1 — `OFL-Assistant.txt`, `OFL-Rubik.txt`.
+
+These are the allma.world pages' fonts, inlined into every page as data: URIs
+by `src/adapters/http/fonts.js` so a visitor's browser never asks Google for
+them (GDPR: that request hands Google the visitor's IP). Not used by resvg.
+
 ## icons/
 
 [Twemoji](https://github.com/jdecked/twemoji) 15.1.0, 72×72 PNG. Graphics are
