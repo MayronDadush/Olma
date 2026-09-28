@@ -385,6 +385,15 @@ function renderGroupCoordination(line, overrides) {
       lead: line.lead ? `${TABLE_LEAD} *${roomInline(line, 'lead')}*.` : '',
     }, overrides).trim();
   }
+  // Which times are on the table, the first time it is laid. One time is said
+  // inline; several are a list, in order, each in every clock the room is on.
+  if (line.kind === 'laid') {
+    const each = (line.slots || []).map((text, i) => `*${roomInline(
+      { ...line, one: text, at: { one: line.at && line.at.slots ? line.at.slots[i] : null } }, 'one')}*`);
+    if (!each.length) return null;
+    const slots = each.length === 1 ? each[0] : `\n${each.map((x) => `- ${x}`).join('\n')}`;
+    return templates.render(keyFor('group_coord_laid', line), { slots }, overrides).trim();
+  }
   if (line.kind === 'dayof') {
     return templates.render(keyFor('group_coord_dayof', line), { slot: roomInline(line, 'slot') }, overrides);
   }

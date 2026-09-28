@@ -59,6 +59,7 @@ never trust a dated narrative for something you are about to act on.
 - [The link came back on every coordination message (2026-09-24)](#the-link-came-back-on-every-coordination-message-2026-09-24)
 - [The slot that was already closed (fixed 2026-09-20)](#the-slot-that-was-already-closed-fixed-2026-09-20)
 - [The chase that beat its own invites (fixed 2026-09-28)](#the-chase-that-beat-its-own-invites-fixed-2026-09-28)
+- [The room never heard the times (fixed 2026-09-28)](#the-room-never-heard-the-times-fixed-2026-09-28)
 - [The room asked five and reached four (fixed 2026-09-22)](#the-room-asked-five-and-reached-four-fixed-2026-09-22)
 - [The pause the room's invite walked through (fixed 2026-09-27)](#the-pause-the-rooms-invite-walked-through-fixed-2026-09-27)
 - [A room counted in somebody who had paused (fixed 2026-09-13)](#a-room-counted-in-somebody-who-had-paused-fixed-2026-09-13)
@@ -2246,6 +2247,31 @@ the START, which says nothing about whether anybody has had a chance to answer.
 row among the people still in it, and the hour runs from there: 10:03 for
 meeting 57, by which time מירון had put three times on the table with his yes,
 and the chase would have named the three who had just been asked.
+
+### The room never heard the times (fixed 2026-09-28)
+
+Padel Gang, meeting 57. By 09:39 on Sunday the table held four times — Yuval's
+Tuesday 19:00 with his yes, and מירון's Sunday, Monday and Thursday 19:00 with
+his — and the room had been told nothing about any of them. Its whole picture
+of the coordination was מירון's own "אני יכול כל יום השבוע מ18" and her reply
+"נסגור ערב מדויק עם כולם ואחזור לכאן", and a day and a half later that was
+still all it had.
+
+Two lines could have spoken and each was waiting for the other. The base line
+("יש כיוון") needs a time with a direction — two yeses, or a game's minimum —
+and none had more than one. The table line ("השולחן זז") is a watermark
+anchored on the base line, because the first time somebody puts a time up the
+table has not moved, it has been laid. Both rules were right about what they
+were written for; neither was written for several times, each agreed to only by
+whoever proposed it, in a room that had to choose between them.
+
+The fix is a third sentence rather than a loosening of either: `laid`, said
+once, a quarter of an hour after the first time went on, only when there are
+two or more. A single time with its proposer's yes stays silent — the owner's
+"one person agreeing with themselves is not news" is pinned by three tests and
+still holds. The stamp is `group_table_at`, so from then on the table line has
+a watermark to measure against and every later change is news the way it
+already was.
 
 ### The room asked five and reached four (fixed 2026-09-22)
 

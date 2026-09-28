@@ -156,6 +156,37 @@ test('a room hears "there is a direction" once, when two people can make the sam
   assert.deepEqual(sent, [], 'the second pass has nothing new to say');
 });
 
+// Coordination 57 through the real sweep: two times up, a yes on each from
+// whoever put it there, no direction — the room hears which times are on the
+// table once, and the stamp is the watermark the table line reads next.
+test('a table of several times with no direction is laid once, and stamped as the table the room heard', async () => {
+  const { group, people } = await room(43);
+  const [a, b] = people;
+  const started = await withTx(db.pool, (c) => groupMeetings.startCoordination(c, group, a, 'פאדל'));
+  const meetingId = Number(started.data.meeting.id);
+  await deliverInvites(meetingId);
+  await startedAt(meetingId, 0);
+  await pass([], null, group.external_id);
+
+  const mon = await withTx(db.pool, async (c) =>
+    (await options.add(c, a.id, meetingId, 'שני 19:00', slotStart('שני', { hours: 48 }))).data.option.id);
+  const tue = await withTx(db.pool, async (c) =>
+    (await options.add(c, b.id, meetingId, 'שלישי 19:00', slotStart('שלישי', { hours: 72 }))).data.option.id);
+  await optionMovedAt(mon, -20, 'on');
+  await optionMovedAt(tue, -18, 'on');
+
+  let sent = [];
+  await pass(sent, null, group.external_id);
+  assert.equal(sent.length, 1);
+  assert.match(sent[0].body, /^על הפרק כרגע: \n- \*שני 19:00\*\n- \*שלישי 19:00\*\nמי יכול\?/);
+  const { rows } = await db.pool.query('SELECT group_table_at FROM meetings WHERE id = $1', [meetingId]);
+  assert.equal(new Date(rows[0].group_table_at).getTime(), DAY.getTime(), 'stamped on the clock that decided it');
+
+  sent = [];
+  await pass(sent, null, group.external_id);
+  assert.deepEqual(sent, [], 'said once');
+});
+
 test('the base of a game is its own minimum, not two people', async () => {
   const { group, people } = await room(2);
   const [a, b, c3] = people;
@@ -1037,6 +1068,40 @@ test('the chase waits an hour after the LAST invite reached anybody, not after t
   // Nobody reached at all is measured from the start, exactly as before.
   const unknown = padel({ silent: others, lastAskedAt: null });
   assert.equal(groupVoice.decideGroupLine(unknown, said).kind, 'chase');
+});
+
+// Coordination 57, 2026-09-27: מירון put Monday, Tuesday and Thursday up with
+// his own yes on each, Yuval had put Tuesday up with his. No time had a
+// direction, so no base line, and the table line waits for a base line — the
+// room heard none of the three for a day and a half.
+test('a table nobody has a direction on yet is said ONCE, a quarter of an hour after it was laid', () => {
+  const now = Date.now();
+  const at = (h) => new Date(now + h * 3600_000).toISOString();
+  const opt = (id, slot, h, yes) => ({ optionId: id, slot, startsAt: at(h), yes: yes.map((phone) => ({ phone })),
+    no: [], missing: [], quorum: { known: true, min: 4, met: false } });
+  const co = {
+    status: 'negotiating', silent: [],
+    options: [opt(92, 'יום שני 19:00', 10, ['+972500000041']), opt(90, 'Tuesday 19:00', 34, ['+972500000042']),
+      opt(93, 'יום חמישי 19:00', 82, ['+972500000041'])],
+    tableChangedAts: [new Date(now - 20 * 60_000).toISOString(), new Date(now - 5 * 60_000).toISOString()],
+  };
+  const said = { saidStarted: true, saidBase: false, saidChase: true, saidDone: false,
+    startedAtMs: now - 12 * 3600_000, nowMs: now, tableSaidAtMs: 0 };
+  const line = groupVoice.decideGroupLine(co, said);
+  assert.equal(line.kind, 'laid');
+  assert.deepEqual(line.slots, ['יום שני 19:00', 'Tuesday 19:00', 'יום חמישי 19:00'], 'in the order they happen');
+
+  assert.equal(groupVoice.decideGroupLine(co, { ...said, nowMs: now - 6 * 60_000 }).kind, 'none',
+    'inside the quarter of an hour after the first time went on: one sentence for the whole burst');
+  assert.equal(groupVoice.decideGroupLine(co, { ...said, tableSaidAtMs: now - 60_000 }).kind, 'none',
+    'said once — every later change is the table line');
+  assert.equal(groupVoice.decideGroupLine(co, { ...said, saidBase: true, tableSaidAtMs: 0 }).kind !== 'laid', true,
+    'a room that has heard a direction has heard the table');
+  assert.equal(groupVoice.decideGroupLine({ ...co, options: [] }, said).kind, 'none', 'an empty table is not laid');
+  assert.notEqual(groupVoice.decideGroupLine(co, { ...said, reopenedAt: new Date(now).toISOString(), saidReopened: true }).kind,
+    'laid', 'a reopened room heard its table settle, and carries on');
+  assert.equal(groupVoice.decideGroupLine({ ...co, options: co.options.slice(0, 1) }, said).kind, 'none',
+    'one time with its proposer\'s yes is one person agreeing with themselves: not news');
 });
 
 test('the table moving is news every time it moves, and never says who said what', () => {
