@@ -428,6 +428,17 @@ const TEMPLATES = [
     sample: { count: '*3* מועדים', lead: 'הכי מתקדם: *שבת 17:00*.' },
     text: 'השולחן זז — עכשיו {{count}} על הפרק. {{lead}}',
   },
+  // Which times are on the table, said once, when nobody has a direction yet
+  // (2026-09-28, coordination 57: three times went on and the room heard none
+  // of them). A quarter of an hour after the first time, so a burst of
+  // additions is one sentence.
+  {
+    key: 'group_coord_laid', audience: 'group', label: 'תיאום — מה על הפרק',
+    help: 'פעם אחת בכל תיאום, רבע שעה אחרי שהמועד הראשון עלה, כשעוד אין מועד שכמה אנשים אמרו לו כן. אומרת אילו מועדים על הפרק, בלי מי אמר מה.',
+    vars: { slots: 'המועדים — אחד בשורה, או רשימה כשיש כמה' }, required: ['slots'],
+    sample: { slots: '\n- *יום שני 19:00*\n- *יום שלישי 19:00*\n- *יום חמישי 19:00*' },
+    text: 'על הפרק כרגע: {{slots}}\nמי יכול? תגידו לי בפרטי 🙏',
+  },
   {
     key: 'group_coord_done', audience: 'group', label: 'תיאום — נסגר',
     help: 'פעם אחת, כשהתיאום נסגר על זמן. כל אחד מקבל את זה גם בפרטי; זאת השורה בקבוצה.',
@@ -563,6 +574,13 @@ const TEMPLATES = [
     required: ['count'],
     sample: { count: '*3* מועדים', lead: 'הכי מתקדם: *יום שבת 26.9 · 20:00 ישראל · 13:00 ניו יורק · 03:00 סידני (יום ראשון 27.9)*.' },
     text: 'השולחן זז — עכשיו {{count}} על הפרק. {{lead}}',
+  },
+  {
+    key: 'group_coord_laid_zones', audience: 'group', label: 'תיאום — מה על הפרק',
+    help: '',
+    vars: { slots: 'המועדים, כל אחד בכל אזורי הזמן' }, required: ['slots'],
+    sample: { slots: '*יום שבת 26.9 · 20:00 ישראל · 13:00 ניו יורק*' },
+    text: 'על הפרק כרגע: {{slots}}\nמי יכול? תגידו לי בפרטי 🙏',
   },
   {
     key: 'group_coord_done_zones', audience: 'group', label: 'תיאום — נסגר',

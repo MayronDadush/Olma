@@ -545,6 +545,19 @@ have already had to be argued for.
   **The stamp is the clock the DECISION was made on and never SQL's `now()`**:
   two of those columns are read back as moments rather than flags, so a stamp
   from a different clock is a quarter of an hour that measures nothing.
+- **A table of TWO or more times that nobody has a direction on is LAID once —
+  the room hears which times are on it** (2026-09-28, `group-voice.decideGroupLine`
+  kind `laid`, template `group_coord_laid`). The base line speaks only when a
+  time has a direction and the table line only after a base, so coordination
+  57's Monday, Tuesday and Thursday — one yes each, from whoever put it up —
+  reached the room as nothing for a day and a half. Same quarter-hour settle as
+  the table line, counted from the first time that went on; stamped on
+  `group_table_at`, which makes it the watermark every later `table` line reads.
+  Never after a reopening, which carries on from where it stopped. **One time
+  is still not laid**: one person agreeing with themselves is not
+  news (the owner's rule the base tests pin), and a choice nobody has made is.
+  Only the shape — which times — never who said yes (`incidents.md`, "The room
+  never heard the times").
 
 - **The room is chased an HOUR after she starts, not half way to the thing**
   (`group-voice.CHASE_AFTER_MS`). Half the distance, clamped to [1h, 24h],

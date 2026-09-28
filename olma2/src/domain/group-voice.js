@@ -144,6 +144,8 @@ function withClocks(line, co, { timezone, nowMs } = {}) {
   for (const f of SLOT_FIELDS) {
     if (line[f] && co.moments && co.moments[line[f]]) at[f] = co.moments[line[f]];
   }
+  // A line that names several times (`laid`) carries each one's moment, in order.
+  if (Array.isArray(line.slots)) at.slots = line.slots.map((t) => (co.moments && co.moments[t]) || null);
   return { ...line, multiZone: true, zones, roomTz, at };
 }
 
@@ -309,6 +311,31 @@ function decideLine(co, {
         more: Math.max(0, unansweredPeople.length - Math.min(unanswered.length, MAX_TAGS)),
       };
       return namedGone ? { kind: 'moved', was: saidBaseSlot, ...line } : { kind: 'base', ...line };
+    }
+  }
+
+  // The table was LAID and the room never heard what is on it (2026-09-28,
+  // coordination 57). The base line speaks only once a time has a direction,
+  // and the table line only once a base line has been said, so three times
+  // with one yes each — מירון's Monday, Tuesday and Thursday — reached the
+  // room as nothing at all for a day and a half, while the room's only picture
+  // was "we'll close an exact evening". Said ONCE, a quarter of an hour after
+  // the first time went on (the same settle as the table line, so a burst of
+  // additions is one sentence), and it is the watermark from then on: every
+  // later change is the table line's. Only the shape — which times — never who
+  // said what. TWO times at least: one time with its proposer's yes on it is
+  // still "one person agreeing with themselves", which the owner ruled is not
+  // news (the base tests below); a choice nobody has made is.
+  // Never after a REOPENING: that room heard a table settle and then that it
+  // reopened, and it carries on from where it stopped (meetings.reopenMeeting).
+  if (!saidBase && !tableSaidAtMs && !reopenedAt && (co.options || []).length >= 2) {
+    const firstAt = Math.min(...(co.tableChangedAts || []).map((t) => new Date(t).getTime())
+      .filter((t) => Number.isFinite(t)));
+    if (Number.isFinite(firstAt) && nowMs >= firstAt + TABLE_SETTLE_MS) {
+      const slots = co.options.slice()
+        .sort((a, b) => new Date(a.startsAt || 0) - new Date(b.startsAt || 0))
+        .map((o) => o.slot);
+      return { kind: 'laid', slots };
     }
   }
 
