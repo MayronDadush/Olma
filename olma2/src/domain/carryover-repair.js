@@ -37,7 +37,7 @@ const path = require('node:path');
 const audit = require('./audit');
 const sessions = require('../channels/sessions');
 
-const CARRYOVER_HEADING = '## מה שכבר שיתפו';
+const CARRYOVER_HEADING = require('./carryover-heading').MATCH;
 const QUOTED_RE = /<<<([\s\S]*?)>>>/;
 const INTAKE_AGENT_ID = 'intake';
 const norm = (s) => String(s).replace(/\s+/g, ' ').trim();

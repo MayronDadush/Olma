@@ -613,7 +613,10 @@ have already had to be argued for.
   the table, with two people's yes on the time she removed. `meetings.
   group_base_slot` (migration 082) is the slot text the room actually heard,
   and `group-voice.decideGroupLine`'s `namedGone` is the whole trigger: that
-  slot is no longer among the active options AND another one leads. **Three
+  slot is no longer among the active options AND another one leads. **"The
+  same slot" is the same MOMENT** (`meetings.group_base_start_at`, migration
+  097): a time deleted and put back in other words is still on the table, and
+  the words decide only where there is no instant to compare. **Three
   things it deliberately is not.** A new leading time with the old one still on
   the table says NOTHING — the room's picture is still true, and a line per
   change of lead is how this family of lines becomes the thing the owner asked
@@ -944,13 +947,17 @@ have already had to be argued for.
   sender (`incidents.md`, "The tags that vanished before any hook ran").
 
 - **A room member who has never written to her hears about a coordination
-  ONCE per room, privately, in the owner's fixed words — and is never made a
+  ONCE (per room until 2026-09-28, per person since), privately, in the owner's fixed words — and is never made a
   participant** (owner, 2026-09-26; `group-meetings.coldInvite`, flag
   `group_cold_invite`, template `group_cold_invite`). Called from the
   `group_voice` pass for every negotiating coordination; the outbox key
   `coldinvite:g<gid>:u<uid>` is the once-per-ROOM budget the owner chose,
   because a first message from an unknown number can be reported and a second
-  is how that happens. It goes on the raw pipe (`proactive-text.rawPipeTextFor`,
+  is how that happens. **Proposed 2026-09-28 (compliance review, finding 4;
+  owner to approve): once per PERSON across every room** — the copy now ends
+  "ולא אכתוב לך שוב", and a second room writing would make that false. The
+  query skips anybody with a `room_cold_invite` that reached them or is still
+  queued; one the gate held until it expired asked nothing and does not count. It goes on the raw pipe (`proactive-text.rawPipeTextFor`,
   rendered at delivery) because the title is another member's text and no model
   may speak it, and the gate lets it through as the third `PENDING_USER_KINDS`
   entry — everything else the gate does (their night, off a zone guessed from
@@ -966,3 +973,42 @@ have already had to be argued for.
   which with pending rows live counts people who can never be reached
   (`incidents.md`, "The invite that would have counted people it could not
   reach").
+
+- **A room coordination that has gone quiet is offered a way out ONCE, and
+  closes quietly if nobody takes it. Somebody who answered nothing is nudged
+  privately ONCE, and only in rooms the flag names.**
+  (`domain/coordination-policy.nextMoves`, `jobs/coordination-moves.run`,
+  flag `coordination_policy` `{mode: off|shadow|live, rooms}`, owner
+  2026-09-28.) The simulator chose it: PR #571, 22% confirmed today against
+  35% with the offer and 44% with a nudge too.
+  - **The offer** (`group_coord_drop_offer`) comes only after the chase, and
+    only once `dropAfterQuietH` passes with no answer, no table change and no
+    member writing, measured from both the chase and the last activity. It
+    needs a leading time that is not `groupVoice.enoughOn`. It is said at most
+    once (`meetings.group_drop_offer_at`, migration 098, stamped on the
+    decision clock). It goes out only in a pass where the room owes no other
+    line about that coordination, and only in the room's hours.
+  - **The offer NAMES the moment it closes, and the close keeps it** (owner,
+    2026-09-28: "לנקוב בשעה"). `coordination-policy.closeMomentFor` fixes it
+    when the offer is said: `dropGraceH` on, up to the half hour, and moved
+    to the room's window open when that lands in its night. It is stored
+    (`meetings.group_drop_close_at`) and never recomputed. The line carries it
+    as `closeAt` and is drawn at delivery in the room's clock ("מחר ב-09:00"),
+    or in every clock through `group_coord_drop_offer_zones`. A row with no
+    `closeAt` draws nothing rather than a promise nobody can check.
+  - **Anything after the offer lapses it for good.** With nothing after it,
+    at the named moment the coordination closes as `no_match` with no line of
+    its own (`meeting.dropped_quiet`). Its end reaches people the way every
+    close does.
+  - **The nudge** (`meeting_nudge`) goes to somebody an invite or proposal
+    REACHED `nudgeAfterH` ago who has answered nothing. It is sent once, never
+    to somebody paused, never about a thing already started, and never in the
+    same pass as the offer.
+  - **An answer withdraws a queued nudge** at the answer
+    (`meeting-options.answer`), and the sweep repeats that as a backstop.
+  - **`shadow` writes only `coordination.policy_shadow` audit rows**, each
+    carrying the decision clock in `at`, and treats its own offer as said so
+    that it reaches the close.
+  - **Do not flip a room to `live` until the owner has approved both texts
+    word for word.**
+  (`incidents.md`, "The coordinations that died in silence".)

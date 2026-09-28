@@ -53,18 +53,32 @@ const TEMPLATES = [
     // their own agent's first message carries it (jobs/intake.js,
     // `welcome_followup`). The previous copy is kept in
     // onboarding.PREVIOUS_OPENINGS so a greeter still saying it is recognised.
-    text: 'היי, אני עולמה 👋\n'
+    //
+    // Revision 4 (compliance review, 2026-09-28) adds two things and moves
+    // nothing: "AI" on the greeting line, because a woman's name answering on
+    // WhatsApp reads as a person (EU AI Act art. 50(1), the Privacy Protection
+    // Authority's draft AI guidance), and the policy link as the last line,
+    // because this is the one message every person reads and the notice the
+    // Privacy Protection Law s.11 asks for was reaching nobody. The policy is
+    // a fixed public page, not their page, so the reason above still holds.
+    // The SECOND line is unchanged on purpose: intake.saidTheOpening
+    // recognises the copy by it.
+    text: 'היי, אני עולמה 👋 עוזרת AI אישית בוואטסאפ\n'
       + '\n'
-      + 'אני עוזרת עם משימות, תזכורות ותיאומים — אפשר לכתוב, להקליט או לשלוח הכל בבלגן ☺️',
+      + 'אני עוזרת עם משימות, תזכורות ותיאומים — אפשר לכתוב, להקליט או לשלוח הכל בבלגן ☺️\n'
+      + '\n'
+      + 'מה אני שומרת ואיך מוחקים: https://allma.world/privacy',
   },
   {
     key: 'opening_en', audience: 'private', label: 'הודעת הפתיחה', help: '',
     vars: {}, required: [],
     sample: {},
-    text: "Hey, I'm Allma \u{1F44B}\n"
+    text: "Hey, I'm Allma \u{1F44B} a personal AI assistant on WhatsApp\n"
       + '\n'
       + 'I help with tasks, reminders and scheduling — text me, send a voice note, '
-      + 'or just dump it all on me ☺️',
+      + 'or just dump it all on me ☺️\n'
+      + '\n'
+      + 'What I keep and how to delete it: https://allma.world/privacy',
   },
   // The whole answer to "שלח לי קישור" (domain/link-request.js): said by code,
   // with no model turn, the moment a message asks for their page and nothing
@@ -243,14 +257,18 @@ const TEMPLATES = [
     help: 'נשלחת בפרטי לחבר קבוצה שעוד לא כתב לעולמה, כשנפתח תיאום בקבוצה. פעם אחת לאדם בכל קבוצה, בשעות היום שלו. אם הוא עונה — היא מצרפת אותו לתיאום.',
     vars: { group: 'שם הקבוצה', title: 'מה מתאמים' }, required: ['group', 'title'],
     sample: { group: 'פאדל שלישי', title: 'משחק השבוע' },
-    text: 'היי! אני עולמה 👋 אני עוזרת לקבוצה: ״«{{group}}»״ שאתה נמצא בה לתאם {{title}}.\nאם תענה לי כאן, אצרף אותך ואשאל מתי נוח לך ☺️',
+    // Compliance revision, 2026-09-28: "AI" (EU AI Act art. 50(1)) and a way
+    // out, because this is the one message sent to somebody who never chose
+    // her. The last line is a promise group-meetings.coldInvite keeps: once
+    // per person, across every room.
+    text: 'היי! אני עולמה, עוזרת AI 👋 אני עוזרת לקבוצה: ״«{{group}}»״ שאתה נמצא בה לתאם {{title}}.\nאם תענה לי כאן, אצרף אותך ואשאל מתי נוח לך ☺️\nלא מתאים? אפשר פשוט להתעלם, ולא אכתוב לך שוב.',
   },
   {
     key: 'group_cold_invite_en', audience: 'private', label: 'הזמנה פרטית לתיאום בקבוצה (למי שעוד לא כתב)',
     help: '',
     vars: { group: 'group name', title: 'what is being coordinated' }, required: ['group', 'title'],
     sample: { group: 'Tuesday padel', title: 'this week\'s game' },
-    text: 'Hi! I\'m Olma 👋 I\'m helping the group “{{group}}” you\'re in coordinate {{title}}.\nIf you reply here, I\'ll add you and ask when works for you ☺️',
+    text: 'Hi! I\'m Allma, an AI assistant 👋 I\'m helping the group “{{group}}” you\'re in coordinate {{title}}.\nIf you reply here, I\'ll add you and ask when works for you ☺️\nNot for you? Just ignore this and I won\'t write to you again.',
   },
   // ---- in a group -----------------------------------------------------------
   {
@@ -439,6 +457,22 @@ const TEMPLATES = [
     vars: { missing: 'תיוגים של מי שעוד לא ענה כלום' }, required: ['missing'],
     sample: { missing: '@+972501234567' },
     text: 'עוד לא שמעתי מ{{missing}} — תגידו לי בפרטי מתי אתם יכולים ואני סוגרת את זה.',
+  },
+  // The offer to drop a coordination the room has gone quiet on (owner,
+  // 2026-09-28), said once, only after the chase, and only behind the
+  // `coordination_policy` flag. No clock time in it — a number of hours —
+  // so it needs no `_zones` twin. Nobody answering closes it quietly.
+  {
+    key: 'group_coord_drop_offer', audience: 'group', label: 'תיאום — הצעה לוותר',
+    help: 'פעם אחת בכל תיאום, אחרי שכבר זירזתי ועברו 12 שעות בלי שאף אחד ענה או כתב. אם אף אחד לא עונה עד השעה שכתובה בהודעה, התיאום נסגר בשקט. השעה היא 6 שעות אחרי ההודעה, מעוגלת לחצי שעה, ואם היא נופלת בלילה של הקבוצה — 09:00 בבוקר.',
+    vars: {
+      title: 'שם התיאום',
+      missing_note: 'משפט שלם עם התיוגים של מי שלא ענה, או ריק',
+      when: 'מתי ייסגר: ״היום ב-19:30״ / ״מחר ב-09:00״',
+    },
+    required: ['title', 'when'],
+    sample: { title: 'פאדל', missing_note: 'עוד לא שמעתי מ@+972501234567.', when: 'מחר ב-09:00' },
+    text: 'נראה שהתיאום של *{{title}}* נתקע. {{missing_note}}\nרוצים להמשיך? ענו לי בפרטי על המועדים. רוצים לוותר? תייגו אותי וכתבו "לבטל".\nאם לא אשמע מאף אחד, אסגור אותו {{when}}.',
   },
   {
     key: 'group_coord_table', audience: 'group', label: 'תיאום — השולחן זז',
@@ -631,6 +665,18 @@ const TEMPLATES = [
     vars: { title: 'שם התיאום', was: 'הזמן שהיה סגור, בכל אזורי הזמן' }, required: ['title', 'was'],
     sample: { title: 'שיחת וידאו', was: 'יום שבת 26.9 · 12:00 ישראל · 05:00 ניו יורק · 19:00 סידני' },
     text: '🔄 התיאום *{{title}}* נפתח מחדש — *{{was}}* כבר לא סגור. הזמנים האחרים נשארים על השולחן, ואפשר להוסיף חדשים. אני שואלת כל מי שבתיאום בפרטי.',
+  },
+  {
+    key: 'group_coord_drop_offer_zones', audience: 'group', label: 'תיאום — הצעה לוותר',
+    help: '',
+    vars: {
+      title: 'שם התיאום',
+      missing_note: 'משפט שלם עם התיוגים של מי שלא ענה, או ריק',
+      when: 'מתי ייסגר, בכל אזורי הזמן',
+    },
+    required: ['title', 'when'],
+    sample: { title: 'שיחת וידאו', missing_note: '', when: 'יום ראשון 27.9 · 09:00 ישראל · 02:00 ניו יורק' },
+    text: 'נראה שהתיאום של *{{title}}* נתקע. {{missing_note}}\nרוצים להמשיך? ענו לי בפרטי על המועדים. רוצים לוותר? תייגו אותי וכתבו "לבטל".\nאם לא אשמע מאף אחד, אסגור אותו ב: *{{when}}*.',
   },
   {
     key: 'group_coord_dayof_zones', audience: 'group', label: 'תיאום — תזכורת ביום עצמו',

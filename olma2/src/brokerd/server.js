@@ -158,6 +158,9 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
   // and a restart that loses it answers `unknown`, never `unbacked`.
   const claimOpens = new Map();
   const lastToolAt = new Map();
+  // …and when one last FAILED, so a claim on a turn whose own write was refused
+  // reads `failed` rather than borrowing an earlier turn's success.
+  const lastFailAt = new Map();
   function noteOpen(userId) {
     const at = clock();
     const list = (claimOpens.get(userId) || []).filter((t) => at - t <= phantomSave.OPEN_WINDOW_MS);
@@ -634,6 +637,7 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
         ourTurn: selfInitiated.isActive(userId),
         opens: claimOpens.get(userId) || [],
         lastToolAt: lastToolAt.has(userId) ? lastToolAt.get(userId) : null,
+        lastFailAt: lastFailAt.has(userId) ? lastFailAt.get(userId) : null,
         now: clock(),
       });
       await require('../domain/audit').record(client, userId, 'reply.claim', { agentId, word, ...judged });
@@ -908,6 +912,7 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
       // Any tool that ran for them backs a reply saying it saved something —
       // turn_start excepted, which runs on every message and saves nothing.
       if (actorId && result && result.ok && name !== 'turn_start') lastToolAt.set(Number(actorId), clock());
+      if (actorId && result && !result.ok && name !== 'turn_start') lastFailAt.set(Number(actorId), clock());
       // The acknowledgement mark on the person's own message — 👀 as the turn
       // opens, ⏰ or ✅ as the work lands. Here, and not inside the handlers,
       // because every tool already passes through this one line: the table of

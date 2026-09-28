@@ -30,6 +30,7 @@ const audit = require('../domain/audit');
 const groupContext = require('../domain/group-context');
 const groupMeetings = require('../domain/group-meetings');
 const groupVoice = require('../domain/group-voice');
+const coordinationMoves = require('./coordination-moves');
 const groupOutbox = require('../domain/group-outbox');
 const groupTurn = require('../domain/group-turn');
 const groupConnections = require('../domain/group-connections');
@@ -548,10 +549,11 @@ async function sweepGroupVoice(client, deps) {
     // duplicate column name in one row silently keeps the LAST one — which
     // would date every coordination from the day the ROOM was registered.
     `SELECT m.id AS meeting_id, m.status, m.created_at AS meeting_created_at,
-            m.group_started_at, m.group_base_at, m.group_base_slot, m.group_chase_at,
+            m.group_started_at, m.group_base_at, m.group_base_slot, m.group_base_start_at,
+            m.group_chase_at,
             m.group_done_at, m.group_table_at,
             m.group_dayof_at, m.group_hour_at, m.group_calendar_at, m.group_time_at,
-            m.reopened_at, m.reopened_from, m.group_reopened_at, g.*,
+            m.reopened_at, m.reopened_from, m.group_reopened_at, m.group_drop_offer_at, m.group_drop_close_at, g.*,
             (SELECT max(last_wrote_at) FROM chat_group_members
               WHERE group_id = g.id) AS last_member_write_at
        FROM meetings m JOIN chat_groups g ON g.id = m.group_id
@@ -634,6 +636,7 @@ async function sweepGroupVoice(client, deps) {
       saidStarted: Boolean(row.group_started_at),
       saidBase: Boolean(row.group_base_at),
       saidBaseSlot: row.group_base_slot,
+      saidBaseStartAt: row.group_base_start_at,
       saidChase: Boolean(row.group_chase_at),
       saidDone: Boolean(row.group_done_at),
       saidCalendar: Boolean(row.group_calendar_at),
@@ -656,6 +659,20 @@ async function sweepGroupVoice(client, deps) {
       // the opening line says she WILL ask (owner, 2026-09-26, fix 4).
       roomAsleep: !gate.withinWindow(GROUP_WINDOW, row.timezone || groups.DEFAULT_TIMEZONE, now),
     });
+    // The moves the room's own lines never made (domain/coordination-policy,
+    // behind `coordination_policy`). A private nudge goes whatever the room is
+    // told; the offer to drop it, and the quiet close after it, only in a pass
+    // with nothing else to say about this coordination and in the room's hours.
+    if (row.status === 'negotiating') {
+      const moves = await coordinationMoves.run(client, row, st.coordination, {
+        now, roomFree: line.kind === 'none' && mayAnnounce(row, now), full: full[0] || null, window: GROUP_WINDOW,
+      });
+      if (moves.moves.some((m) => m.spoke)) {
+        spoken.add(String(row.id));
+        out.said.push({ groupId: row.id, meetingId: Number(row.meeting_id), kind: 'drop_offer' });
+      }
+      if (moves.moves.length) (out.policy = out.policy || []).push({ meetingId: Number(row.meeting_id), ...moves });
+    }
     if (line.kind === 'none') continue;
     // Due, but not now: the room is asleep. Nothing is stamped, so it goes out
     // in the morning — which is the whole reason these three are separate
@@ -699,8 +716,9 @@ async function sweepGroupVoice(client, deps) {
       // they are hours apart, which is precisely how this went unnoticed.
       if (line.kind === 'base' || line.kind === 'moved') {
         await client.query(
-          `UPDATE meetings SET group_base_at = $3, group_base_slot = $2 WHERE id = $1`,
-          [row.meeting_id, line.slot, now]);
+          `UPDATE meetings SET group_base_at = $3, group_base_slot = $2, group_base_start_at = $4
+            WHERE id = $1`,
+          [row.meeting_id, line.slot, now, line.startsAt || null]);
       } else {
         await client.query(`UPDATE meetings SET ${column} = $2 WHERE id = $1`, [row.meeting_id, now]);
       }
