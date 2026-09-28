@@ -232,6 +232,23 @@ const TEMPLATES = [
     sample: { group: 'Tuesday padel', title: 'this week\'s game' },
     text: 'Hi! I\'m Olma 👋 I\'m helping the group “{{group}}” you\'re in coordinate {{title}}.\nIf you reply here, I\'ll add you and ask when works for you ☺️',
   },
+  // The privacy policy and terms changed (domain/policy-notice.js, compliance
+  // review 2026-09-28). Raw pipe, no model, once per person per version, queued
+  // by scripts/policy-notice.js. A proposal until the owner approves the words.
+  {
+    key: 'policy_update', audience: 'private', label: 'עדכון מדיניות פרטיות ותנאי שימוש',
+    help: 'נשלחת פעם אחת לכל מי שעולמה משרתת כשמדיניות הפרטיות או תנאי השימוש משתנים. בשעות היום שלהם, לא למי שמושהה.',
+    vars: { url: 'הקישור למדיניות' }, required: ['url'],
+    sample: { url: 'https://allma.world/privacy' },
+    text: 'עדכון קצר ממני, עולמה 👋\nעדכנו את מדיניות הפרטיות ואת תנאי השימוש: מה אני שומרת, לכמה זמן, ואיך מוחקים הכל.\n\nהכל כאן: {{url}}\n\nאין צורך לעשות כלום, ממשיכים כרגיל ☺️',
+  },
+  {
+    key: 'policy_update_en', audience: 'private', label: 'עדכון מדיניות פרטיות ותנאי שימוש',
+    help: '',
+    vars: { url: 'link to the policy' }, required: ['url'],
+    sample: { url: 'https://allma.world/privacy' },
+    text: 'A quick update from me, Allma 👋\nWe updated the privacy policy and the terms: what I keep, for how long, and how to delete all of it.\n\nIt is all here: {{url}}\n\nNothing to do, we carry on as usual ☺️',
+  },
   // ---- in a group -----------------------------------------------------------
   {
     key: 'group_intro', audience: 'group', label: 'היכרות בקבוצה',

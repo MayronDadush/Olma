@@ -502,6 +502,12 @@ function rawPipeTextFor(row, overrides, channelType) {
     return templates.render(localizedKey('group_cold_invite', row.locale),
       { group: payload.group || '', title: payload.title || '' }, overrides);
   }
+  // A changed privacy policy (domain/policy-notice.js): the owner's approved
+  // words, never a model's paraphrase of a legal notice.
+  if (row.kind === 'policy_update') {
+    return templates.render(localizedKey('policy_update', row.locale),
+      { url: payload.url || 'https://allma.world/privacy' }, overrides);
+  }
   if (row.kind !== 'reminder') return null;
   if (payload.instruction) return null;
   return renderReminderText(payload, overrides, row.locale, channelType);
