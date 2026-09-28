@@ -193,6 +193,23 @@ test('the terms page reads English first, links the privacy policy, and carries 
   assert.ok(html.includes('תנאי שימוש (עברית)'), 'Hebrew users still get the full terms');
 });
 
+// Cypress + Mustard (the owner, 2026-09-28): the front door wears the same
+// brand as the product, and the retired violet globe is nowhere on it.
+test('the public pages wear the brand: cypress band, mustard action, always light, the round mark', () => {
+  const home = publicPages.homePage();
+  assert.ok(home.includes('<header class="band">'), 'the home page lost its cypress band');
+  assert.ok(/--band:#004643/.test(home) && /--action:#F9C23C/.test(home));
+  assert.ok(!/prefers-color-scheme/.test(home) && /color-scheme:light/.test(home),
+    'the front door is always light, whatever the phone is set to');
+  assert.ok(home.includes('<meta name="theme-color" content="#004643">'));
+  assert.ok(home.includes('IBM+Plex+Sans+Hebrew'));
+  for (const html of [home, publicPages.privacyPage(), publicPages.termsPage()]) {
+    assert.ok(!/#5B2FD6|#7C4DFF|Rubik/i.test(html), 'the old violet brand is still on a public page');
+    const ids = [...html.matchAll(/<clipPath id="([^"]+)"/g)].map((m) => m[1]);
+    assert.equal(new Set(ids).size, ids.length, 'two marks on one page share a clip-path id');
+  }
+});
+
 // ---- the 2026-09-28 rewrite: what s.11 asks for, and what the box does -----
 
 test('the policy gives the service address, says giving data is voluntary, and lists the rights, in both languages', () => {

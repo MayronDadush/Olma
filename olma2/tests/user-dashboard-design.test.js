@@ -416,3 +416,19 @@ test('tasks on the calendar sit in their own fold, closed by default, in both vi
   assert.match(page, /'<div class="fold' \+ \(calFoldOpen \? " open" : ""\) \+ '"><div' \+ \(calFoldOpen \? "" : " inert"\)/,
     'folded rows are inert, not just clipped');
 });
+
+// One tap between day and night, on the band of the home tab only (the owner,
+// 2026-09-29). It writes the same stored choice the profile's three buttons
+// do, so the two can never disagree about what the page is showing.
+test('the home band carries one day/night button, on the home tab only, sharing the profile choice', () => {
+  const bar = page.slice(page.indexOf('<header class="topbar">'), page.indexOf('</header>', page.indexOf('<header class="topbar">')));
+  assert.ok(/class="hdrend"[\s\S]*id="dayNight"/.test(bar), 'the button is not at the end of the band');
+  assert.ok(/\.daynight\{[^}]*display:none/.test(page), 'the button shows on every tab');
+  assert.ok(page.includes('html[data-v="tools"] .daynight'), 'the button is not shown on the home tab');
+  assert.ok(/\$\("#dayNight"\)\.addEventListener\("click", function\(\)\{ setTheme\(/.test(page),
+    'the button does not write through the same setTheme as the profile');
+  assert.ok(/\$\("#themeIcons"\)[\s\S]{0,200}setTheme\(b\.dataset\.themeOpt\)/.test(page));
+  for (const k of ['home.toNight', 'home.toDay']) {
+    assert.equal(page.split(`"${k}":`).length - 1, 2, `${k} is not in both languages`);
+  }
+});
