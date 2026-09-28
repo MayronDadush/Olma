@@ -330,6 +330,20 @@ async function commonHoursFor(client, group, places = []) {
   };
 }
 
+// Who was taken out of this coordination by a PAUSE rather than by choosing
+// to leave it: the cause `meetings.applyExit` audited on their latest exit
+// (`paused_by_request`, `paused_no_answer`). The participant row says only
+// `opted_out`, which cannot tell the two apart.
+async function pausedExitsOf(client, meetingId) {
+  const { rows } = await client.query(
+    `SELECT actor_id FROM (
+       SELECT DISTINCT ON (actor_id) actor_id, detail->>'cause' AS cause FROM audit_log
+        WHERE event = 'meeting.opted_out' AND (detail->>'meetingId')::bigint = $1 AND actor_id IS NOT NULL
+        ORDER BY actor_id, created_at DESC, id DESC) last
+      WHERE cause IN ('paused_by_request', 'paused_no_answer')`, [meetingId]);
+  return new Set(rows.map((r) => Number(r.actor_id)));
+}
+
 // What the room's MODEL is handed — a tool result and the turn block both come
 // through `coordinationStatus`. The raw clocks stay behind (`moments` and
 // `zones` are about individual people; the sweep reads them off `statusOf`),
@@ -414,9 +428,19 @@ async function statusOf(client, group, meeting) {
     .map((p) => Number(p.user_id));
   const optedOut = parts.filter((p) => p.state === 'opted_out' && !pausedOut.has(Number(p.user_id)))
     .map((p) => who(p.user_id));
-  const optedOutIds = new Set(parts.filter((p) => p.state === 'opted_out' || pausedOut.has(Number(p.user_id)))
-    .map((p) => Number(p.user_id)));
   const partIds = new Set(parts.map((p) => Number(p.user_id)));
+  // …but the room's NUMBER still counts them (owner, 2026-09-28: "משתמשים
+  // מושהים גם נכללים בספירה" — the room sees how many people are in it, and
+  // nobody knows whether they will come back). Only somebody who chose to leave
+  // THIS coordination is out of the count; a pause took the others out, whether
+  // they asked for it or the ladder did (`pausedExitIds`, `meetings.applyExit`'s
+  // cause), and they are still somebody in the room who has not said yes.
+  const pausedExitIds = await pausedExitsOf(client, meeting.id);
+  const choseOut = new Set(parts.filter((p) => p.state === 'opted_out'
+    && !pausedExitIds.has(Number(p.user_id)))
+    .map((p) => Number(p.user_id)));
+  const pausedInRoom = members.filter((m) => m.user_id && !choseOut.has(Number(m.user_id))
+    && (pausedOut.has(Number(m.user_id)) || pausedExitIds.has(Number(m.user_id))));
 
   // EVERY moment the table moved, for the room's own "השולחן זז" line: a time
   // added carries `created_at`, a time taken off carries `decided_at`, and
@@ -510,12 +534,17 @@ async function statusOf(client, group, meeting) {
       // row at all, LIDs included with no tag; they have said yes to nothing,
       // which is also why the coordination cannot close on its own without
       // them (`meeting-options.unanimousOption`).
-      // Nor is somebody who paused her themselves, in the room or out of it.
-      roomTotal: members.filter((m) => !(m.user_id
-        && (optedOutIds.has(Number(m.user_id)) || pausedOut.has(Number(m.user_id))))).length,
-      notInIt: members.filter((m) => !(m.user_id
-        && (partIds.has(Number(m.user_id)) || pausedOut.has(Number(m.user_id)))))
-        .map((m) => ({ phone: isTaggableNumber(m.phone) ? m.phone : null, asked: false })),
+      // Somebody PAUSED is counted (owner, 2026-09-28) — see `choseOut` above.
+      roomTotal: members.filter((m) => !(m.user_id && choseOut.has(Number(m.user_id)))).length,
+      // …and so is in the base line's "has not answered", as a number and
+      // never a tag: a pause still means nothing reaches them from her
+      // (2026-09-27), and a tag is a notification.
+      notInIt: [
+        ...members.filter((m) => !(m.user_id
+          && (partIds.has(Number(m.user_id)) || pausedOut.has(Number(m.user_id)))))
+          .map((m) => ({ phone: isTaggableNumber(m.phone) ? m.phone : null, asked: false })),
+        ...pausedInRoom.map(() => ({ phone: null, asked: false, paused: true })),
+      ],
       // Members of the ROOM this coordination could not sweep in at all: they
       // have never written to her, so there is nobody to ask. A COUNT and never
       // people — who is missing is the gate notice's own sentence, and the room

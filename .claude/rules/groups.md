@@ -700,8 +700,9 @@ have already had to be argued for.
   only when all of them said yes** (owner, 2026-09-26: "שתיאום תמיד יספור את
   כלל האנשים שיש בקבוצה (כי רוב האנשים לא יודעים למה עולמה סופרת חלק וחלק לא)").
   `meeting-options.unanimousOption` also refuses while any member still in the
-  room has no participant row — never wrote, a LID, a paused member left out;
-  somebody who LEFT the coordination (`opted_out`) is not waited for. Short of
+  room has no participant row — never wrote, a LID, a paused member left out —
+  or is paused out of it (2026-09-28); only somebody who CHOSE to leave the
+  coordination is not waited for. Short of
   that the room closes it with "סגור" (`settleNow` never checked agreement).
   `statusOf` carries `roomTotal` (the room less anybody who left) and `notInIt`
   (every member with no row, a LID with `phone: null`); the model gets
@@ -800,11 +801,22 @@ have already had to be argued for.
   **Only a pause the ladder took gets that invite** (owner, 2026-09-27).
   Somebody who paused her THEMSELVES is never swept in, and one already in is
   taken out on the next minute sweep, cause `paused_by_request`, with no day's
-  wait. Until then `statusOf` leaves them out of `participants`, `silent`,
-  `missing`, `optedOut`, `roomTotal` and `notInIt`, and `unanimousOption`
-  does not wait on them: not counted, not tagged, not waited for, and never
-  said to have left. `calendar.meetingCalendarRoles` drops them too, because
-  a Google invitation is a message. **Somebody who left the WhatsApp GROUP**
+  wait. `statusOf` leaves them out of `participants`, `silent`, `missing` and
+  `optedOut`: never asked, never tagged, never said to have left.
+  **But the room's NUMBER still counts them** (owner, 2026-09-28, reversing
+  that half of 2026-09-27: "משתמשים מושהים גם נכללים בספירה" — the room can
+  see how many people are in it, and nobody knows whether they will come
+  back). Ten in the room, two paused, five yes is "5 מתוך 10": `roomTotal`
+  drops only somebody who CHOSE to leave this coordination, told apart from a
+  pause by the cause on their latest `meeting.opted_out`
+  (`paused_by_request`/`paused_no_answer`, `group-meetings.pausedExitsOf`),
+  because the participant row says only `opted_out`. They ride `notInIt` as
+  `{ phone: null, paused: true }`, so the base line counts them in "ועוד N"
+  and tags nobody. **And `unanimousOption` waits on them in a room** —
+  "everybody said yes" is not true without them, so the room closes it with
+  "סגור" and `whoIsIn` never says "כולם בפנים" over them. A private
+  coordination is unchanged. A Google invitation is still a message, so
+  `calendar.meetingCalendarRoles` still drops them. **Somebody who left the WhatsApp GROUP**
   is taken out of its negotiating coordination by
   `group-meetings.sweepRoomLeavers`, but only when they have no current
   roster row there, since a re-spelled row is the same person

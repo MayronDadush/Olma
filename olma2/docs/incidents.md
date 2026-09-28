@@ -63,6 +63,7 @@ never trust a dated narrative for something you are about to act on.
 - [Answered before the question existed (fixed 2026-09-28)](#answered-before-the-question-existed-fixed-2026-09-28)
 - [The room asked five and reached four (fixed 2026-09-22)](#the-room-asked-five-and-reached-four-fixed-2026-09-22)
 - [The pause the room's invite walked through (fixed 2026-09-27)](#the-pause-the-rooms-invite-walked-through-fixed-2026-09-27)
+- [The room could count, and she could not (changed 2026-09-28)](#the-room-could-count-and-she-could-not-changed-2026-09-28)
 - [A room counted in somebody who had paused (fixed 2026-09-13)](#a-room-counted-in-somebody-who-had-paused-fixed-2026-09-13)
 - [The fifth draft was the rude one (fixed 2026-09-11)](#the-fifth-draft-was-the-rude-one-fixed-2026-09-11)
 - [Six good mornings for one timeout (fixed 2026-09-09)](#six-good-mornings-for-one-timeout-fixed-2026-09-09)
@@ -2382,6 +2383,29 @@ them its cancellation if the meeting is cancelled later
 (`removeMeetingEvent`, `notify`). Taking them off the guest list at pause
 time would also take the meeting off their own calendar, which is not what
 pausing Olma asks for.
+
+### The room could count, and she could not (changed 2026-09-28)
+
+The day after the rule above, the owner reversed its COUNTING half: "באופן
+כללי משתמשים מושהים גם נכללים בספירה". His example: ten people in a room, two
+of them paused, five said yes. The room should hear "5 מתוך 10" and not
+"5 מתוך 8", because everybody in it can see there are ten, and nobody knows
+whether the two will change their minds and come back. A count that silently
+drops people is exactly what the 2026-09-26 rule ("רוב האנשים לא יודעים למה
+עולמה סופרת חלק וחלק לא") was written to stop, and the pause rule had
+brought it back through a side door.
+
+What did not change: a paused member is still never asked, tagged or written
+to, and a Google invitation is still a message. What did:
+- `roomTotal` drops only somebody who CHOSE to leave the coordination. The
+  participant row cannot say which exits those are, because a pause writes
+  the same `opted_out`. The cause on the latest `meeting.opted_out` audit row
+  can (`group-meetings.pausedExitsOf`).
+- The paused ride `notInIt` as a count, with no phone, so the base line says
+  "ועוד N".
+- `unanimousOption` waits on them in a room, so the room closes it with
+  "סגור". The cost is accepted: a room with a paused member never closes on
+  its own, because "everybody said yes" would be false there.
 
 ### A room counted in somebody who had paused (fixed 2026-09-13)
 
