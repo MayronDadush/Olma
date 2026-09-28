@@ -396,3 +396,23 @@ test('the tab bar is pointed at once per device, and never on the stranger scree
   assert.match(page, /\.navhint,\.navhint\.out,\.tabbar\.hinted\{animation:none\}/,
     'less motion means no pulse');
 });
+
+// What is already on the calendar has one place of its own in BOTH views of
+// the task list, and it starts folded (owner, 2026-09-28). A branch that
+// forgets to skip these rows draws them twice — once in the list and once in
+// the fold — and a fold that starts open is the list they asked to be rid of.
+test('tasks on the calendar sit in their own fold, closed by default, in both views', () => {
+  assert.match(page, /var calFoldOpen = false;/, 'the fold starts closed');
+  const render = page.slice(page.indexOf('function renderTasks(){'));
+  const body = render.slice(0, render.indexOf('$("#taskStack").innerHTML = html;'));
+  const branches = body.match(/open\.filter\(function\(x\)\{[^}]*\}\)/g) || [];
+  assert.equal(branches.length, 2, 'the time view and the category view each filter the list once');
+  for (const b of branches) assert.match(b, /!onCalendar\(x\)/, 'each view skips what the fold draws');
+  assert.match(body, /html \+= calendarSection\(\);/, 'the fold is drawn under whichever view is on');
+  // An event, or a to-do the sync has actually written out — never the switch
+  // alone, which is on for tasks no calendar has seen yet.
+  assert.match(page, /function onCalendar\(x\)\{ return !x\.src && !isPinned\(x\) && \(x\.kind === "event" \|\| !!x\.inCal\); \}/);
+  assert.match(page, /inCal:!!x\.inCalendar,/, 'the page reads the server\'s own answer');
+  assert.match(page, /'<div class="fold' \+ \(calFoldOpen \? " open" : ""\) \+ '"><div' \+ \(calFoldOpen \? "" : " inert"\)/,
+    'folded rows are inert, not just clipped');
+});
