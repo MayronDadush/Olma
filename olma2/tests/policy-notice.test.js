@@ -32,8 +32,8 @@ test('the words are the template\'s, in their language, with the link, and no mo
   const row = (locale) => ({ kind: notice.KIND, locale, payload: { version: '2026-09-28', url: 'https://allma.world/privacy' } });
   const he = proactiveText.rawPipeTextFor(row('he'), {}, 'whatsapp');
   const en = proactiveText.rawPipeTextFor(row('en'), {}, 'whatsapp');
-  assert.match(he, /עדכנו את מדיניות הפרטיות ואת תנאי השימוש/);
-  assert.match(en, /We updated the privacy policy and the terms/);
+  assert.match(he, /עדכנו את מדיניות הפרטיות: מה אני שומרת/);
+  assert.match(en, /We updated the privacy policy: what I keep/);
   for (const t of [he, en]) assert.ok(t.includes('https://allma.world/privacy'));
   assert.ok(!/{{/.test(he + en), 'every variable filled');
 });

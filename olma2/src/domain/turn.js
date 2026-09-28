@@ -562,8 +562,8 @@ async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, 
         AND sent_at > now() - interval '24 hours'`, [user.id]);
   const policyNotice = policyRows[0] && policyRows[0].sent_at
     ? { sentAt: policyRows[0].sent_at,
-      what: 'Olma sent them a fixed notice that the privacy policy and terms were updated, with a link to '
-        + 'allma.world/privacy. A reply now may be about it; to delete their data they email the address on that page.' }
+      what: 'Olma sent them a fixed notice that the privacy policy was updated, with a link to '
+        + 'allma.world/privacy. A reply now may be about it; if they ask to delete their data, that is delete_my_account.' }
     : null;
 
   // Coordinations this person heard about in the last day, with where each
