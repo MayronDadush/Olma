@@ -2199,6 +2199,12 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   color:var(--text-3);font-size:14px;font-weight:600;
 }
 .archive.open .arcbtn .chev{transform:rotate(-90deg)}
+/* what is already on the calendar: the archive's quiet fold, inside the list */
+.calfold{margin-top:26px}
+.calfold .arcbtn{padding-inline:14px 4px}
+.calfoldmark{width:15px;height:15px;flex:none}
+.calfoldn{margin-inline-start:auto;font-weight:500}
+.calfold .fold .group{margin-top:4px}
 #arcGroup .task{opacity:.7}
 #arcGroup .ttitle{color:var(--text-3)}
 #arcGroup .pill{background:transparent;padding-inline:0;color:var(--text-3);font-weight:500}
@@ -4918,7 +4924,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "tasks.doneAt":"הושלמה {when}","tasks.justNow":"הרגע",
       "tasks.arcShown":"מוצגות {n} האחרונות מתוך {all}","tasks.arcShowAll":"הצגת כל {all}","tasks.arcShowLess":"מוצגות כל {all} · הצגת {n} האחרונות","tasks.restore":"החזרה לרשימה",
       "toast.restored":"„{name}” חזרה לרשימה",
-      "tasks.pinned":"משותפות","tasks.unpin":"ביטול נעיצה","tasks.pin":"נעיצה למעלה",
+      "tasks.pinned":"משותפות","tasks.onCal":"ביומן","tasks.unpin":"ביטול נעיצה","tasks.pin":"נעיצה למעלה",
       "toast.unpinned":"„{name}” חזרה למקום שלה","toast.pinned":"„{name}” נעוצה למעלה",
       "sugg.stuck":"פתוחה כבר {days} ימים, בלי תאריך ובלי תזכורת. להוריד מהרשימה?",
       "sugg.overdue":"התאריך שלה עבר לפני {days} ימים והיא עדיין פתוחה. להוריד מהרשימה?",
@@ -5281,7 +5287,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "tasks.doneAt":"Done {when}","tasks.justNow":"just now",
       "tasks.arcShown":"Showing the last {n} of {all}","tasks.arcShowAll":"Show all {all}","tasks.arcShowLess":"Showing all {all} · show the last {n}","tasks.restore":"Put back on the list",
       "toast.restored":"\u201c{name}\u201d is back on your list",
-      "tasks.pinned":"Shared","tasks.unpin":"Unpin","tasks.pin":"Pin to top",
+      "tasks.pinned":"Shared","tasks.onCal":"On the calendar","tasks.unpin":"Unpin","tasks.pin":"Pin to top",
       "toast.unpinned":"\u201c{name}\u201d is back in its place","toast.pinned":"\u201c{name}\u201d is pinned to the top",
       "sugg.stuck":"Open for {days} days, with no date and no reminder. Take it off the list?",
       "sugg.overdue":"Its date passed {days} days ago and it is still open. Take it off the list?",
@@ -6052,7 +6058,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
        it: a title reading `משמרת - ראשון 12:00-19:00`, with the hours typed
        where nothing could read them. */
     {id:14, d:isoAt(2), tm:"12:00", tmEnd:"19:00", all:false, t:{he:"משמרת",en:"Shift"},
-     rem:true, rep:"week", cal:true, cat:"work", catAuto:true},
+     rem:true, rep:"week", cal:true, inCal:true, kind:"event", cat:"work", catAuto:true},
     {id:4, d:"",        tm:"", all:false, t:{he:"לקבוע תור לרופא שיניים",en:"Book a dentist appointment"}, rem:false, rep:"none", cal:false, cat:"health", catAuto:true},
     /* The dateless kind that still nudges: no date, no deadline, and a weekly
        reminder at an hour of its own. Four of the owner's own tasks were this
@@ -7316,6 +7322,41 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     return '<div class="group">' + evs.concat(todos).map(taskHTML).join("") + "</div>";
   }
   var viewBy = "time";
+  /* What is already on the calendar has a place of its own, whichever way the
+     list is sorted, and it starts folded (owner, 2026-09-28): the calendar
+     already reminds them of it, and the list is for what they still have to
+     DO. Two ways onto the calendar: an event, and a to-do the sync has
+     actually written out (`inCal`, the server's calendar_event_id). `cal` —
+     the switch — is not enough: a switch that is on and a sweep that has not
+     caught up would hide a task that is on no calendar anywhere. Shared and
+     imported rows keep their own sections, the same as they do from the
+     other two. The fold is not remembered across loads on purpose: folded is
+     the answer they asked for, not a preference that drifts. */
+  var calFoldOpen = false;
+  function onCalendar(x){ return !x.src && !isPinned(x) && (x.kind === "event" || !!x.inCal); }
+  function calendarSection(){
+    var items = open.filter(onCalendar);
+    if(!items.length) return "";
+    /* By when, not by rank: this is a schedule. Undated sorts last, and an
+       all-day row (no time) first on its day, the way a calendar draws it. */
+    items.sort(function(a, b){
+      var ka = (a.d || "~") + " " + (a.all ? "" : (a.tm || "")),
+          kb = (b.d || "~") + " " + (b.all ? "" : (b.tm || ""));
+      return ka < kb ? -1 : ka > kb ? 1 : 0;
+    });
+    return '<div class="tsec calfold archive' + (calFoldOpen ? " open" : "") + '">' +
+      '<button class="arcbtn" data-calfold aria-expanded="' + calFoldOpen + '">' +
+        '<svg class="chev"><use href="#i-chev"/></svg>' +
+        '<svg class="calfoldmark" aria-hidden="true"><use href="#i-cal"/></svg>' +
+        "<span>" + esc(t("tasks.onCal")) + "</span>" +
+        '<span class="calfoldn">' + items.length + "</span>" +
+      "</button>" +
+      /* inert while folded: the rows are still in the DOM, and a keyboard or a
+         screen reader would otherwise walk into a list nobody can see. */
+      '<div class="fold' + (calFoldOpen ? " open" : "") + '"><div' + (calFoldOpen ? "" : " inert") + ">" +
+        '<div class="group">' + items.map(taskHTML).join("") + "</div>" +
+      "</div></div></div>";
+  }
   /* One place for all of them, whichever way the list is sorted — so it is
      built here rather than inside either branch, and the branches skip these
      tasks instead of each having to know about sources. */
@@ -7484,18 +7525,19 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
          always MOVE a task into one, but a heading with nothing under it is
          a list of things you do not have. */
       TASKCATS.forEach(function(c){
-        var items = open.filter(function(x){ return !x.src && !isPinned(x) && (x.cat || "none") === c.k; });
+        var items = open.filter(function(x){ return !x.src && !isPinned(x) && !onCalendar(x) && (x.cat || "none") === c.k; });
         if(!items.length) return;
         html += '<div class="tsec"><div class="glabel"><span><i class="cdot" style="background:' + c.c +
           '"></i>' + esc(t("tcat." + c.k)) + "</span></div>" +
           '<div class="group">' + items.map(taskHTML).join("") + "</div></div>";
       });
     } else BUCKETS.forEach(function(b){
-      var items = open.filter(function(x){ return !x.src && !isPinned(x) && bucketFor(x.d) === b; });
+      var items = open.filter(function(x){ return !x.src && !isPinned(x) && !onCalendar(x) && bucketFor(x.d) === b; });
       if(!items.length) return;
       html += '<div class="tsec"><div class="glabel"><span class="' + (b === "late" ? "late" : "") + '">' +
         esc(t("bucket." + b)) + "</span></div>" + kindGroups(items) + "</div>";
     });
+    html += calendarSection();
     html += importedSection();
     renderSuggestion();
     if(!open.length){
@@ -7619,6 +7661,18 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       }, 540);
   }
   $("#taskStack").addEventListener("click", function(e){
+    /* Toggled in place rather than re-rendered, so the fold's own transition
+       plays; the next render reads calFoldOpen and draws it the same way. */
+    var cf = e.target.closest("[data-calfold]");
+    if(cf){
+      var sec = cf.parentNode, on = !sec.classList.contains("open");
+      calFoldOpen = on;
+      sec.classList.toggle("open", on);
+      $(".fold", sec).classList.toggle("open", on);
+      $(".fold > div", sec).inert = !on;
+      cf.setAttribute("aria-expanded", on ? "true" : "false");
+      return;
+    }
     var wrap = e.target.closest(".taskwrap");
     if(e.target.closest(".tick") && wrap){ tickTask(wrap); return; }
     var jp = e.target.closest("[data-jump]");
@@ -12767,6 +12821,9 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       /* The task's own answer to "put this on my calendar", resolved server-
          side against the standing switch (domain/user-dashboard.js). */
       cal:!!x.calendar,
+      /* …and whether it is really there yet: the sync has written it out. The
+         list folds these away under "ביומן" (calendarSection). */
+      inCal:!!x.inCalendar,
       tmEnd:x.endTime || "",
       /* A moment they will be at, or a job until it is done — the server's
          reading of tasks.kind, with the place an event carries. The list
