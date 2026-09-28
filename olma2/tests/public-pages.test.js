@@ -192,3 +192,46 @@ test('the terms page reads English first, links the privacy policy, and carries 
   assert.ok(html.includes('href="/privacy"'), 'terms must link the privacy policy');
   assert.ok(html.includes('תנאי שימוש (עברית)'), 'Hebrew users still get the full terms');
 });
+
+// ---- the terms a lawyer is reviewing (draft, 2026-09-28) -------------------
+// Each of these is a clause the Standard Contracts Law review turned on, so a
+// later edit that quietly drops one has to come through a failing test.
+
+test('the terms name the operator, in both languages', () => {
+  const html = publicPages.termsPage();
+  const [en, he] = html.split('<div class="he">');
+  assert.ok(en.includes(publicPages.OPERATOR), 'the English terms do not say who runs the service');
+  assert.ok(he.includes(publicPages.OPERATOR), 'the Hebrew terms do not say who runs the service');
+});
+
+test('the terms state governing law and courts, and keep non-waivable local rights', () => {
+  const html = publicPages.termsPage();
+  assert.ok(/law of the State of Israel/.test(html));
+  assert.ok(/Tel Aviv-Jaffa/.test(html));
+  assert.ok(/cannot be waived/.test(html), 'a consumer abroad keeps the mandatory protections of their own law');
+  assert.ok(html.includes('הדין של מדינת ישראל') && html.includes('תל אביב-יפו'));
+});
+
+test('the terms limit liability only to the extent permitted by law, never for gross negligence or intent', () => {
+  const html = publicPages.termsPage();
+  assert.ok(/To the extent permitted by law/.test(html));
+  assert.ok(/does not limit liability for gross negligence or intent/.test(html));
+  assert.ok(html.includes('במידה המותרת על פי דין') && html.includes('רשלנות חמורה'));
+  assert.ok(!/as-is/i.test(html), 'the old "as-is" exemption is what the review flagged');
+});
+
+test('the terms promise notice before a material change and before shutting down', () => {
+  const html = publicPages.termsPage();
+  assert.ok(/at least 14 days before the change takes effect/.test(html));
+  assert.ok(/at least 30 days ahead/.test(html));
+  assert.ok(html.includes('לפחות 14 יום') && html.includes('לפחות 30 יום'));
+  assert.ok(!/without prior notice/i.test(html), 'a unilateral change without notice is presumed unfair');
+});
+
+test('the terms keep the no-reliance warning and say it is an AI on WhatsApp', () => {
+  const html = publicPages.termsPage();
+  assert.ok(/Do not rely on the service for medical, legal, financial or safety decisions/.test(html));
+  assert.ok(/AI assistant/.test(html) && /WhatsApp limits or blocks/.test(html));
+  assert.ok(/at least 16/.test(html) && /is free/.test(html));
+  assert.ok(html.includes(publicPages.TERMS_UPDATED));
+});
