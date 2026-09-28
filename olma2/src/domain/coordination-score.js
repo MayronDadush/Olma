@@ -153,7 +153,15 @@ function touchEffects(tl) {
       .filter((a) => t.channel === 'room' || (t.userIds || []).map(Number).includes(Number(a.userId)))
       .map((a) => Number(a.userId)));
     const firstMs = inWindow.length ? Math.min(...inWindow.map((a) => ms(a.at))) : null;
-    return { at: t.at, channel: t.channel, kind: t.kind, reached: (t.userIds || []).length || null, answeredBy: who.size, firstAnswerMinutes: firstMs == null ? null : (firstMs - at) / 60_000 };
+    // Of the people a room line TAGGED, how many answered: whether naming
+    // somebody in front of the room is what moves them, or anybody at all.
+    const taggedIds = (t.taggedIds || []).map(Number);
+    const taggedAnswered = taggedIds.filter((u) => who.has(u)).length;
+    return {
+      at: t.at, channel: t.channel, kind: t.kind, reached: (t.userIds || []).length || null,
+      answeredBy: who.size, firstAnswerMinutes: firstMs == null ? null : (firstMs - at) / 60_000,
+      tagged: taggedIds.length, taggedAnswered,
+    };
   });
 }
 
