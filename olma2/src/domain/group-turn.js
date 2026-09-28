@@ -138,9 +138,10 @@ function peopleOf(members, lidPhones, { clocks = false } = {}) {
       const lid = byPhone.get(digits) || null;
       return { ...(lid ? { tag, lid } : { tag }), ...selfOf(m), ...clockOf(m) };
     }
-    // No tag means `proactive-text.isTaggableNumber` refused the digits, which
-    // for this column means they are a LID the reverse map has never resolved
-    // — David and Evelyn in Padel Gang. They are still somebody in the room,
+    // No tag means `proactive-text.isTaggableNumber` refused the digits. Since
+    // 2026-09-27 a LID of up to 15 digits IS a tag (the owner saw them arrive
+    // as names), so this is now only digits outside that window — rarer, and
+    // still the same honest third state. It was David and Evelyn in Padel Gang. They are still somebody in the room,
     // and an entry of `{ lid }` alone is the honest third state: she knows the
     // token belongs to a member, and she still cannot address them, which is
     // what having no tag means everywhere else in this file. Dropping them

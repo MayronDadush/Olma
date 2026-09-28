@@ -3525,6 +3525,19 @@ write itself, while the sender-gate and check-in assertions stayed green because
 correct, not proofs of new code, and they are in the file precisely because the
 next person to widen one of those queries needs to find out from a test.
 
+**Postscript, 2026-09-27 — the premise was wrong.** Nobody had asked the
+people in the room. The owner scrolled back through Padel Gang and every tag
+this entry calls "a number that was nobody" — the 12:49 explain, the 12:57
+nudge with all three LIDs, and the 26/09 21:00 opening — had rendered as a
+blue name on the phone. The gateway resolves `@+<digits>` against the group's
+participants by phone first and by LID second
+(`resolveWhatsAppOutboundMentions`), and has all along. What looked like
+"nobody was notified" was read off the log, never off a phone. The 13-digit
+cut and the shape refusal were removed; a room waiting only on LIDs is told
+who, by tag. **Lesson: whether a tag reached a person is answered by the
+person's screen, and a probe the owner can do in a minute is cheaper than a
+five-day filter built on a guess.**
+
 ### The room chased three people, two of whom had never been asked (fixed 2026-09-22)
 
 Coordination 38 was opened in the test room at 00:40 to measure something

@@ -78,60 +78,28 @@ test('no line guesses the gender of a single person', () => {
   assert.ok(!/\bאתה\b|\bאת\b|\bשלך\b/.test(all), all);
 });
 
-// A LID is not a phone number, and the roster hands us both in one column with
-// nothing to tell them apart. Padel Gang was asked "עוד מחכה ל:" three of them
-// in front of four people. The cut is LENGTH, and it is the box's own numbers:
-// no real number there is over 13 digits, 2,578 of 2,673 LIDs are 14 or more.
-test('a LID is never tagged, and the real number beside it still is', () => {
+// A LID IS a tag (owner, 2026-09-27). The 22/09 "עוד מחכה ל:" line in Padel
+// Gang tagged a 13-, a 14- and a 15-digit LID, and the owner saw all three
+// arrive as blue names — the gateway resolves `@+<digits>` by phone and then
+// by LID. The earlier reading, that they reached nobody, cut them for five
+// days (`incidents.md`, "The room asked three numbers that were nobody").
+test('a hidden number (LID) is tagged like a phone', () => {
   const rendered = text.mentionTokens([
     '+259201444126724',   // 15 digits — a LID
     '+69320805752936',    // 14 digits — a LID
     '+972501111111',      // a number
   ]);
-  assert.equal(rendered, '@+972501111111');
-  assert.equal(text.mentionToken('+259201444126724'), null);
-  assert.equal(text.mentionToken('+972501111111'), '@+972501111111');
+  assert.equal(rendered, '@+259201444126724 @+69320805752936 @+972501111111');
+  assert.equal(text.mentionToken('+259201444126724'), '@+259201444126724');
+  assert.equal(text.mentionToken('+6266525098172'), '@+6266525098172');
 });
 
-// The cap's "ועוד N" is a count of PEOPLE. Counting the LIDs into it would tell
-// a room nine people owe her a message when three of them are not people.
-test('the overflow count counts people, not LIDs', () => {
-  const list = [
-    ...Array.from({ length: 9 }, (_, i) => `+97250111111${i}`),
-    '+259201444126724', '+69320805752936',
-  ];
-  assert.match(text.mentionTokens(list), /ועוד 1$/);
-});
-
-test('the taggable cut is 13 digits, measured and not guessed', () => {
-  // 13 has to stay inside the window, so the example is a country that really
-  // issues one: a 13-digit ISRAELI number is refused by the shape check below,
-  // which is a different rule and has its own test.
-  assert.equal(text.isTaggableNumber('+4915112345678'), true);   // 13, Germany
-  assert.equal(text.isTaggableNumber('+49151123456789'), false); // 14
-  assert.equal(text.isTaggableNumber('123456'), false);          // under the floor
-  assert.equal(text.isTaggableNumber('+972-50-111'), false);     // not digits
+test('the taggable window is 7 to 15 digits, and digits only', () => {
+  assert.equal(text.isTaggableNumber('+259201444126724'), true);  // 15, a LID
+  assert.equal(text.isTaggableNumber('+9725011111111'), true);    // 13, a LID that looks Israeli
+  assert.equal(text.isTaggableNumber('+1234567890123456'), false); // 16
+  assert.equal(text.isTaggableNumber('123456'), false);            // under the floor
+  assert.equal(text.isTaggableNumber('+972-50-111'), false);       // not digits
   assert.equal(text.isTaggableNumber(''), false);
   assert.equal(text.isTaggableNumber(null), false);
-});
-
-// The second half, added 2026-09-24: the length cut is blind inside its own
-// window, so the dialling code is asked as well (`phone-timezone.phoneShape`).
-// 44 of the 95 twelve-and-thirteen-digit LIDs on the box are refused by it.
-test('a known country at a length it does not issue is not taggable', () => {
-  assert.equal(text.isTaggableNumber('+9725011111111'), false); // 13, Israel issues 12
-  assert.equal(text.isTaggableNumber('+100000000000'), false);  // 12, US issues 11
-  assert.equal(text.isTaggableNumber('+972501111111'), true);   // 12 — the real thing
-  assert.equal(text.mentionToken('+9725011111111'), null);
-});
-
-// The gap that is LEFT, kept in the test rather than only in a comment: 51 of
-// the box's 2,673 LIDs still pass — 45 whose dialling code the table has never
-// heard of, and 6 that look like a real country at a real length. One of Padel
-// Gang's own is exactly the first kind, and it still gets through, because
-// refusing an unknown code here would silence a member from an unlisted
-// country. Beating this means going upstream — a roster carrying JIDs, or the
-// gateway's LID map — not tightening either rule.
-test('a LID with an unknown dialling code still gets through, and this knows it', () => {
-  assert.equal(text.isTaggableNumber('+6266525098172'), true);
 });

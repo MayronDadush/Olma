@@ -348,23 +348,23 @@ test('an incoming tag is a member the block can name, even once the coordination
 
 // Read off the live roster of the room this incident happened in: three of
 // Padel Gang's eight rows are lids stored where a phone goes, and their
-// lengths are 13, 14 and 15. `proactive-text.isTaggableNumber` caps a tag at
-// 13, so the first of them gets one and the other two get `mentionToken` ->
-// null. The first draft of `peopleOf` filtered those out, which put her back
-// exactly where the incident started: a token that matches nobody, about
-// somebody standing in the room.
+// lengths are 13, 14 and 15. Since 2026-09-27 all three are tags — the owner
+// saw them arrive as names — and only digits outside the 7-15 window fall back
+// to a bare `{ lid }`: still a member, and one she cannot address.
 test('a member we cannot tag is still a member, and a tag is never assembled from nothing', () => {
   assert.deepEqual(groupTurn.peopleOf([
     { phone: '+972544686188' },   // 12 — a phone, tagged
-    { phone: '+6266525098172' },  // 13 — a lid short enough to tag, and tagging it works
-    { phone: '+69320805752936' }, // 14 — no tag, and still somebody
+    { phone: '+6266525098172' },  // 13 — a lid, tagged
+    { phone: '+69320805752936' }, // 14 — a lid, tagged
     { phone: '+259201444126724' },// 15 — the same
+    { phone: '+1234567890123456' },// 16 — no tag, and still somebody
     { phone: '' },                // nothing at all: not a person, not an entry
   ], { 68758282444950: '+972544686188' }), [
     { tag: '@+972544686188', lid: '68758282444950' },
     { tag: '@+6266525098172' },
-    { lid: '69320805752936' },
-    { lid: '259201444126724' },
+    { tag: '@+69320805752936' },
+    { tag: '@+259201444126724' },
+    { lid: '1234567890123456' },
   ]);
   // And the sentence that makes the third and fourth entries safe to hand over.
   assert.match(groupTurn.TAG_RULE, /a `lid` and NO `tag`[\s\S]*say nothing about them/);
