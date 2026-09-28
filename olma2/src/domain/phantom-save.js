@@ -48,15 +48,31 @@ const OPEN_WINDOW_MS = 15 * 60 * 1000;
 // a reply to the first can be sent after the second has opened — so a tool
 // call since the EARLIEST open in the window backs it. That errs towards
 // silence, which is the right side for a report nobody has calibrated yet.
-function judge({ ourTurn = false, opens = [], lastToolAt = null, now }) {
+//
+// …but "a tool since the earliest open" is also what called Dov's reply
+// "backed" (2026-09-27): during a burst of eight messages the pill reminder's
+// set_task_reminder had succeeded twelve seconds earlier, on the PREVIOUS
+// message's turn, and his own turn's set_task_reminder had FAILED ("remind_at
+// is already past") — and Olma told him "רשמתי — כל צהריים ב-12:00". So the
+// burst case keeps its leniency under its own name, and two answers are
+// sharper than it: `backed` needs a success since the NEWEST open, and
+// `failed` is a write that failed since the newest open with no success
+// after it — the phantom save in its plainest form.
+function judge({ ourTurn = false, opens = [], lastToolAt = null, lastFailAt = null, now }) {
   if (ourTurn) return { verdict: 'ours' };
   const live = opens.filter((t) => now - t <= OPEN_WINDOW_MS);
   if (!live.length) return { verdict: 'unknown' };
   const earliest = Math.min(...live);
-  const openedAgoMs = now - Math.max(...live);
+  const newest = Math.max(...live);
+  const openedAgoMs = now - newest;
   const toolAgoMs = lastToolAt == null ? null : now - lastToolAt;
-  const backed = lastToolAt != null && lastToolAt >= earliest;
-  return { verdict: backed ? 'backed' : 'unbacked', openedAgoMs, toolAgoMs, opens: live.length };
+  const okNow = lastToolAt != null && lastToolAt >= newest;
+  const failedNow = lastFailAt != null && lastFailAt >= newest && (lastToolAt == null || lastFailAt > lastToolAt);
+  let verdict = 'unbacked';
+  if (okNow) verdict = 'backed';
+  else if (failedNow) verdict = 'failed';
+  else if (lastToolAt != null && lastToolAt >= earliest) verdict = 'backed_earlier';
+  return { verdict, openedAgoMs, toolAgoMs, opens: live.length };
 }
 
 module.exports = { claimedWrite, judge, OPEN_WINDOW_MS, HE_CLAIM_RE, EN_CLAIM_RE };
