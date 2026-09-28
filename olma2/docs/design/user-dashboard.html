@@ -64,6 +64,7 @@
   --accent:#004643;
   --accent-2:#00302E;
   --accent-soft:#E1EBE8;
+  --shared-bg:#E1EBE8;
   --prog:rgba(0,70,67,.24);
   /* The accent as a LINE rather than a fill: a 1.5px ring around the option
      with the most answers, which has to read on a card without becoming a
@@ -175,6 +176,7 @@
     --accent:#7CC4BA;
     --accent-2:#9DD6CD;
     --accent-soft:#16332F;
+    --shared-bg:#1B3E39;
     --prog:rgba(124,196,186,.32);
     --accent-line:rgba(124,196,186,.52);
     --danger:#F08A7E;
@@ -230,6 +232,7 @@
   --accent:#7CC4BA;
   --accent-2:#9DD6CD;
   --accent-soft:#16332F;
+  --shared-bg:#1B3E39;
   --prog:rgba(124,196,186,.32);
   --accent-line:rgba(124,196,186,.52);
   --danger:#F08A7E;
@@ -1661,7 +1664,9 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
    not on its section, so it keeps it wherever it lands — pinned at the top
    or unpinned back among the rest (owner, 2026-09-28). Violet because no
    category uses it: the dot beside the title is the category's colour. */
-.swr.shared > .swfront,.hometoday .task.shared{background:var(--accent-soft)}
+/* Its own token, because the night's accent-soft sits 1.1:1 from the row
+   it would tint and the tint vanished (measured on the demo, 2026-09-28). */
+.swr.shared > .swfront,.hometoday .task.shared{background:var(--shared-bg)}
 .swr.dragging > .swfront{transition:none}
 .swr.open > .swfront{transform:translateX(calc(-104px * var(--dirf)))}
 /* The first-time peek: part of the way, slower, and back by itself. */

@@ -94,6 +94,19 @@ test('the quiet grey is dark enough to be text', () => {
   });
 });
 
+test('a shared row is tinted visibly, and everything written on it still reads', () => {
+  // The night's accent-soft sat 1.15:1 from the row it tinted (1.2 here
+  // fails it), so the tint simply was not there after the brand moved.
+  [0, 1].forEach(function (w) {
+    const tint = token('shared-bg', w);
+    assert.ok(ratio(tint, token('surface', w)) >= 1.2, `the tint is visible against a plain row (${w})`);
+    ['text', 'text-3', 'danger'].forEach(function (n) {
+      assert.ok(ratio(token(n, w), tint) >= 4.5, `--${n} on the shared tint (${w}): ${ratio(token(n, w), tint).toFixed(2)}`);
+    });
+  });
+  assert.match(page, /\.swr\.shared > \.swfront,\.hometoday \.task\.shared\{background:var\(--shared-bg\)\}/);
+});
+
 test('a finger gets more than the icon does', () => {
   // Eleven controls drawn between 19 and 31px. The drawing is right — a 44px
   // bin beside a 15px line of text is not a design — so the hit area grew and
