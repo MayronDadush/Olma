@@ -20,6 +20,8 @@
 const templates = require('./message-templates');
 const format = require('./message-format');
 const meetingTime = require('./meeting-time');
+const digestBlock = require('./digest-block');
+const dt = require('./datetime');
 
 // Titles are the user's own words; bound them to one message-safe line — and
 // take the emphasis out of them. A title carrying an asterisk arrives with
@@ -312,6 +314,25 @@ function roomBlock(line, field) {
 }
 const tidy = (s) => s.replace(/\n[ \t]*(?=\n)/g, '').replace(/\n{2,}/g, '\n');
 
+// The moment a drop offer promised to close at, in the room's own words: "היום
+// ב-19:30", "מחר ב-09:00", "יום ראשון ב-09:00" — counted from when the offer
+// was SAID, not when it is drawn. A room on several clocks hears it in each.
+// A row with no moment (queued before the owner asked for one) draws nothing
+// rather than a close nobody can check.
+function dropCloseWhen(line) {
+  if (!line.closeAt) return null;
+  const at = new Date(line.closeAt);
+  if (Number.isNaN(at.getTime())) return null;
+  if (line.multiZone) {
+    const t = meetingTime.roomTimes({ startsAt: line.closeAt }, line.zones, line.roomTz);
+    if (t) return t.inline;
+  }
+  const ctx = digestBlock.contextFor({ locale: 'he', timezone: line.roomTz, now: line.saidAt });
+  const parts = dt.partsInZone(ctx.tz, at);
+  const time = `${String(parts.hh).padStart(2, '0')}:${String(parts.mi).padStart(2, '0')}`;
+  return `${digestBlock.dayLabel(parts, ctx)} ב-${time}`;
+}
+
 function renderGroupCoordination(line, overrides) {
   if (line.kind === 'started') {
     // Until 2026-09-25 a COUNT, never people: who had not written was the gate
@@ -373,8 +394,10 @@ function renderGroupCoordination(line, overrides) {
   }
   if (line.kind === 'drop_offer') {
     const phones = (line.missing || []).filter(isTaggableNumber);
-    return tidy(templates.render('group_coord_drop_offer', {
-      title: slotText(line.title), hours: String(line.hours),
+    const when = dropCloseWhen(line);
+    if (!when) return null;
+    return tidy(templates.render(keyFor('group_coord_drop_offer', line), {
+      title: slotText(line.title), when,
       missing_note: phones.length ? `${DROP_MISSING}${mentionTokens(phones)}.` : '',
     }, overrides)).replace(/ +\n/g, '\n').trim();
   }

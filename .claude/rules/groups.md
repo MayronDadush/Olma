@@ -978,11 +978,19 @@ have already had to be argued for.
     only once `dropAfterQuietH` passes with no answer, no table change and no
     member writing, measured from both the chase and the last activity. It
     needs a leading time that is not `groupVoice.enoughOn`. It is said at most
-    once (`meetings.group_drop_offer_at`, migration 096, stamped on the
+    once (`meetings.group_drop_offer_at`, migration 098, stamped on the
     decision clock). It goes out only in a pass where the room owes no other
     line about that coordination, and only in the room's hours.
+  - **The offer NAMES the moment it closes, and the close keeps it** (owner,
+    2026-09-28: "לנקוב בשעה"). `coordination-policy.closeMomentFor` fixes it
+    when the offer is said: `dropGraceH` on, up to the half hour, and moved
+    to the room's window open when that lands in its night. It is stored
+    (`meetings.group_drop_close_at`) and never recomputed. The line carries it
+    as `closeAt` and is drawn at delivery in the room's clock ("מחר ב-09:00"),
+    or in every clock through `group_coord_drop_offer_zones`. A row with no
+    `closeAt` draws nothing rather than a promise nobody can check.
   - **Anything after the offer lapses it for good.** With nothing after it,
-    `dropGraceH` later the coordination closes as `no_match` with no line of
+    at the named moment the coordination closes as `no_match` with no line of
     its own (`meeting.dropped_quiet`). Its end reaches people the way every
     close does.
   - **The nudge** (`meeting_nudge`) goes to somebody an invite or proposal

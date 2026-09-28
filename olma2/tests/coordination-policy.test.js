@@ -38,7 +38,11 @@ test('the offer waits for the chase, for twelve quiet hours after both, and for 
   assert.deepEqual(kinds(policy.nextMoves(base({ enough: true }), T0 + 40 * H)), [], 'a room with a direction is not stuck');
 });
 
-test('the offer closes quietly after its grace unless somebody moved, and is never said twice', () => {
+test('the offer closes quietly at the moment it named unless somebody moved, and is never said twice', () => {
+  const named = base({ dropOfferAt: at(13), dropCloseAt: at(22) });
+  assert.deepEqual(kinds(policy.nextMoves(named, T0 + 21.9 * H)), [], 'not before the moment the room read');
+  assert.deepEqual(kinds(policy.nextMoves(named, T0 + 22 * H)), ['drop_close']);
+  // An offer with no named moment falls back to its grace.
   const offered = base({ dropOfferAt: at(13) });
   assert.deepEqual(kinds(policy.nextMoves(offered, T0 + 18 * H)), [], 'grace not up');
   assert.deepEqual(kinds(policy.nextMoves(offered, T0 + 19 * H)), ['drop_close']);
@@ -71,16 +75,34 @@ test('the flag names rooms by id or jid, and is off for everybody else', () => {
   assert.deepEqual(policy.paramsOf({ dropGraceH: 3, nudgeAfterH: -1 }), { ...policy.DEFAULTS, dropGraceH: 3 });
 });
 
-test('the offer is said in the room with the tags of who never answered, and no clock time', () => {
-  const s = text.renderGroupCoordination({ kind: 'drop_offer', title: 'פאדל', missing: ['+972501234567'], hours: 6 });
+test('the offer names the moment it closes, in the room\'s own words, and moves a night close to the morning', () => {
+  const W = { start: '09:00', end: '21:00' };
+  const tz = 'Asia/Jerusalem';
+  const gate = require('../src/outbox/gate');
+  const close = (said) => new Date(policy.closeMomentFor(Date.parse(said), policy.DEFAULTS,
+    (d) => gate.msUntilWindowOpen(W, tz, d))).toISOString();
+  // 12:07 in Jerusalem: six hours on, up to the half hour.
+  assert.equal(close('2026-01-05T10:07:00Z'), '2026-01-05T16:30:00.000Z');
+  // 19:10: six hours on is 01:10, the room's night, so 09:00 the next morning.
+  assert.equal(close('2026-01-05T17:10:00Z'), '2026-01-06T07:00:00.000Z');
+
+  const draw = (over) => text.renderGroupCoordination({
+    kind: 'drop_offer', title: 'פאדל', missing: ['+972501234567'], roomTz: tz,
+    saidAt: '2026-01-05T17:10:00Z', closeAt: '2026-01-06T07:00:00.000Z', ...over,
+  });
+  const s = draw();
   assert.match(s, /נתקע/);
   assert.match(s, /עוד לא שמעתי מ@\+972501234567\./);
-  assert.match(s, /בעוד 6 שעות/);
-  assert.ok(!/\d{1,2}:\d{2}/.test(s), 'a clock time would need a _zones twin');
+  assert.match(s, /אסגור אותו מחר ב-09:00\.$/);
+  assert.match(draw({ saidAt: '2026-01-05T10:07:00Z', closeAt: '2026-01-05T16:30:00.000Z' }), /אסגור אותו היום ב-18:30\.$/);
   // Nobody taggable: the sentence about them goes, not the offer.
-  const none = text.renderGroupCoordination({ kind: 'drop_offer', title: 'פאדל', missing: [], hours: 6 });
+  const none = draw({ missing: [] });
   assert.ok(!none.includes('עוד לא שמעתי'), none);
-  assert.match(none, /רוצים לוותר/);
+  // A room on several clocks hears the moment in each, from the owner's twin.
+  const zoned = draw({ multiZone: true, zones: ['Asia/Jerusalem', 'America/New_York'] });
+  assert.match(zoned, /09:00 ישראל · 02:00 ניו יורק/);
+  // No moment, no promise: nothing is drawn rather than a close nobody can check.
+  assert.equal(draw({ closeAt: null }), null);
 });
 
 test('the nudge instruction asks one thing, reads the table now, and forbids naming who said what', () => {
@@ -151,7 +173,7 @@ const nudges = async (id) => (await db.pool.query(
 const shadows = async (id) => (await db.pool.query(
   `SELECT detail->>'move' AS move, detail->>'userId' AS user_id FROM audit_log
     WHERE event = 'coordination.policy_shadow' AND (detail->>'meetingId')::bigint = $1 ORDER BY id`, [id])).rows;
-const statusOf = async (id) => (await db.pool.query('SELECT status, group_drop_offer_at FROM meetings WHERE id = $1', [id])).rows[0];
+const statusOf = async (id) => (await db.pool.query('SELECT status, group_drop_offer_at, group_drop_close_at FROM meetings WHERE id = $1', [id])).rows[0];
 
 test('flag off: an old, quiet coordination gets nothing new', async () => {
   const { group, people } = await room(1);
@@ -203,7 +225,12 @@ test('live: a nudge once each, then the offer in the room, then a quiet close', 
   const said = await pass(group, plus(5));
   assert.equal(said.length, 1);
   assert.match(said[0], /נתקע/);
-  assert.ok((await statusOf(id)).group_drop_offer_at);
+  // Said at 19:00 in Jerusalem: six hours on is the room's night, so the
+  // offer names the morning, and that is the moment stored for the close.
+  assert.match(said[0], /אסגור אותו מחר ב-09:00\.$/);
+  const offered = await statusOf(id);
+  assert.ok(offered.group_drop_offer_at);
+  assert.ok(new Date(offered.group_drop_close_at) > plus(5 + 6));
   assert.deepEqual(await pass(group, plus(6)), [], 'said once');
 
   // The next morning, nobody having moved: closed, and the room hears nothing.

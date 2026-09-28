@@ -13,6 +13,8 @@ const groupOutbox = require('../domain/group-outbox');
 const { enqueue } = require('../outbox/enqueue');
 const fanout = require('../domain/meeting-fanout');
 const { MAX_TAGS, isTaggableNumber } = require('../domain/proactive-text');
+const meetingTime = require('../domain/meeting-time');
+const gate = require('../outbox/gate');
 
 // Everything the policy reads, off the rows. `co` is statusOf's coordination.
 async function stateFor(client, row, co) {
@@ -52,6 +54,7 @@ async function stateFor(client, row, co) {
   return {
     chaseAt: row.group_chase_at || null,
     dropOfferAt: row.group_drop_offer_at || null,
+    dropCloseAt: row.group_drop_close_at || null,
     lastActivityAt: act ? act.at : null,
     enough: groupVoice.enoughOn(groupVoice.leadingOption(co.options)),
     silent: silent.filter((r) => !r.paused_at).map((r) => ({ userId: Number(r.user_id), askedAt: r.asked_at })),
@@ -76,7 +79,7 @@ async function withdrawAnswered(client, meetingId) {
 }
 
 // Once per coordination for the room moves, once per person for a nudge.
-async function shadowOnce(client, row, move, now, userId = null) {
+async function shadowOnce(client, row, move, now, userId = null, extra = {}) {
   const { rows } = await client.query(
     `SELECT 1 FROM audit_log WHERE event = 'coordination.policy_shadow'
         AND (detail->>'meetingId')::bigint = $1 AND detail->>'move' = $2
@@ -86,7 +89,7 @@ async function shadowOnce(client, row, move, now, userId = null) {
   await audit.record(client, row.registered_by_user_id, 'coordination.policy_shadow', {
     // `at` is the clock the decision was made on, which `created_at` is not.
     groupId: row.id, meetingId: Number(row.meeting_id), move, at: now.toISOString(),
-    ...(userId != null ? { userId } : {}),
+    ...(userId != null ? { userId } : {}), ...extra,
   });
   return true;
 }
@@ -95,7 +98,7 @@ async function shadowOnce(client, row, move, now, userId = null) {
 // in this pass. An offer and a close are both things the room would notice at
 // 03:00, so neither happens then; a nudge goes through the person's own gate,
 // which holds it for THEIR night.
-async function run(client, row, co, { now = new Date(), roomFree = true, full = null } = {}) {
+async function run(client, row, co, { now = new Date(), roomFree = true, full = null, window = null } = {}) {
   if (!co || co.status !== 'negotiating') return { mode: 'off', moves: [] };
   // Withdrawn whatever the mode, so turning the flag off never strands one.
   await withdrawAnswered(client, Number(row.meeting_id));
@@ -108,11 +111,14 @@ async function run(client, row, co, { now = new Date(), roomFree = true, full = 
   // never reach the close, which is half of what it is there to measure.
   if (mode === 'shadow') {
     const { rows: sh } = await client.query(
-      `SELECT detail->>'move' AS move, (detail->>'userId')::bigint AS user_id, min((detail->>'at')::timestamptz) AS at
+      `SELECT detail->>'move' AS move, (detail->>'userId')::bigint AS user_id, min((detail->>'at')::timestamptz) AS at, min((detail->>'closeAt')::timestamptz) AS close_at
          FROM audit_log WHERE event = 'coordination.policy_shadow' AND (detail->>'meetingId')::bigint = $1
         GROUP BY 1, 2`, [Number(row.meeting_id)]);
     const offer = sh.find((r) => r.move === 'drop_offer');
-    if (offer && !s.dropOfferAt) s.dropOfferAt = offer.at;
+    if (offer && !s.dropOfferAt) {
+      s.dropOfferAt = offer.at;
+      s.dropCloseAt = offer.close_at;
+    }
     for (const r of sh) if (r.move === 'nudge' && r.user_id != null) s.nudged.push(Number(r.user_id));
   }
   const params = policy.paramsOf(flag);
@@ -136,15 +142,31 @@ async function run(client, row, co, { now = new Date(), roomFree = true, full = 
       continue;
     }
     if (!roomFree) continue;
-    if (mode === 'shadow') { if (await shadowOnce(client, row, m.kind, now)) done.push({ kind: m.kind }); continue; }
+    // The moment the offer will name, fixed now and stored: the room reads it,
+    // so the close has to keep it.
+    const tz = row.timezone || 'Asia/Jerusalem';
+    const closeAt = m.kind === 'drop_offer'
+      ? new Date(policy.closeMomentFor(now.getTime(), params,
+        window ? (d) => gate.msUntilWindowOpen(window, tz, d) : null))
+      : null;
+    if (mode === 'shadow') {
+      if (await shadowOnce(client, row, m.kind, now, null, closeAt ? { closeAt: closeAt.toISOString() } : {})) done.push({ kind: m.kind });
+      continue;
+    }
     if (m.kind === 'drop_offer') {
       const round = row.reopened_at ? `:r${new Date(row.reopened_at).getTime()}` : '';
       await groupOutbox.enqueue(client, {
         groupId: row.id, kind: 'coordination',
-        payload: { line: { kind: 'drop_offer', title: co.title, missing: s.silentPhones, hours: params.dropGraceH } },
+        payload: { line: {
+          kind: 'drop_offer', title: co.title, missing: s.silentPhones,
+          closeAt: closeAt.toISOString(), saidAt: now.toISOString(), roomTz: tz,
+          // A room on several clocks hears the moment in each (group-voice.withClocks).
+          ...(meetingTime.spansZones(co.zones || [], tz, closeAt) ? { multiZone: true, zones: co.zones } : {}),
+        } },
         idempotencyKey: `g${row.id}:m${row.meeting_id}:drop_offer${round}`,
       });
-      await client.query('UPDATE meetings SET group_drop_offer_at = $2 WHERE id = $1', [row.meeting_id, now]);
+      await client.query('UPDATE meetings SET group_drop_offer_at = $2, group_drop_close_at = $3 WHERE id = $1',
+        [row.meeting_id, now, closeAt]);
       await audit.record(client, row.registered_by_user_id, 'group.coordination_said', {
         groupId: row.id, meetingId: Number(row.meeting_id), kind: 'drop_offer',
       });

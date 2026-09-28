@@ -552,7 +552,7 @@ async function sweepGroupVoice(client, deps) {
             m.group_started_at, m.group_base_at, m.group_base_slot, m.group_chase_at,
             m.group_done_at, m.group_table_at,
             m.group_dayof_at, m.group_hour_at, m.group_calendar_at, m.group_time_at,
-            m.reopened_at, m.reopened_from, m.group_reopened_at, m.group_drop_offer_at, g.*,
+            m.reopened_at, m.reopened_from, m.group_reopened_at, m.group_drop_offer_at, m.group_drop_close_at, g.*,
             (SELECT max(last_wrote_at) FROM chat_group_members
               WHERE group_id = g.id) AS last_member_write_at
        FROM meetings m JOIN chat_groups g ON g.id = m.group_id
@@ -663,7 +663,7 @@ async function sweepGroupVoice(client, deps) {
     // with nothing else to say about this coordination and in the room's hours.
     if (row.status === 'negotiating') {
       const moves = await coordinationMoves.run(client, row, st.coordination, {
-        now, roomFree: line.kind === 'none' && mayAnnounce(row, now), full: full[0] || null,
+        now, roomFree: line.kind === 'none' && mayAnnounce(row, now), full: full[0] || null, window: GROUP_WINDOW,
       });
       if (moves.moves.some((m) => m.spoke)) {
         spoken.add(String(row.id));

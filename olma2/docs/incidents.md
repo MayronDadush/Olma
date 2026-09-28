@@ -2438,11 +2438,19 @@ The ranking held under six alternative assumptions. The owner chose:
 - Both texts approved word for word before any real room hears them.
 
 What was built (`domain/coordination-policy`, `jobs/coordination-moves`,
-flag `coordination_policy`, migration 096). Two measured choices:
+flag `coordination_policy`, migration 098). Two measured choices:
 - **No nudge beside the offer.** Asking "shall I drop it?" and "when can you?"
   in the same breath contradict each other.
 - **Shadow counts its own decisions as done.** Otherwise it would decide the
   same offer on every pass and never reach the close it exists to measure.
+
+The owner approved both texts with one change: rather than "in 6 hours", the
+offer names the hour it will close. That turned a duration into a promise.
+The moment is fixed when the offer is said and stored
+(`group_drop_close_at`). It is rounded to the half hour, and moved to the
+room's morning when it would fall in its night. Two reasons: the sweep only
+closes in the room's hours, so "in 6 hours" said at 20:00 was never true; and
+recomputing the moment at close time could drift from what the room read.
 
 Open: `meetings.reopenMeeting` accepts only a confirmed coordination, so a
 room cannot reopen one that closed quietly. The offer's text says nothing

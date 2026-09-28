@@ -17,8 +17,9 @@ const DEFAULTS = {
   // Twelve hours with nothing from anybody, after the chase: the simulator's
   // pick, and the same on every assumption it was stress-tested on.
   dropAfterQuietH: 12,
-  // How long the offer stands before the coordination closes by itself. In
-  // the room's own hours — the sweep only acts while it may speak.
+  // How long the offer stands before the coordination closes by itself —
+  // at least; the moment is rounded up to the half hour and moved into the
+  // room's own hours, then NAMED in the offer (`closeMomentFor`).
   dropGraceH: 6,
   // A nudge, once, to somebody whose invite REACHED them this long ago and who
   // has answered nothing.
@@ -44,10 +45,25 @@ function paramsOf(flag) {
 }
 
 const ms = (t) => (t == null ? null : new Date(t).getTime());
+const HALF_HOUR = 30 * 60_000;
+
+// The moment the offer promises to close at (owner, 2026-09-28: "לנקוב בשעה").
+// `dropGraceH` after the offer, up to the next half hour so the room reads
+// "19:30" and not "19:07", and — if that lands in the room's night — the
+// morning's window open instead: a close is something the room would notice.
+// `msUntilOpen(date)` is the gate's `msUntilWindowOpen` for the room, handed in
+// so this stays pure.
+function closeMomentFor(offerMs, params, msUntilOpen) {
+  let at = Math.ceil((offerMs + params.dropGraceH * HOUR) / HALF_HOUR) * HALF_HOUR;
+  const wait = msUntilOpen ? msUntilOpen(new Date(at)) : 0;
+  if (wait > 0) at = Math.ceil((at + wait) / HALF_HOUR) * HALF_HOUR;
+  return at;
+}
 
 // The next move, or null. `s`:
 //   chaseAt          when the room was chased (null: not yet — no offer before it)
 //   dropOfferAt      when the offer was said, or null
+//   dropCloseAt      the moment the offer NAMED for the close
 //   lastActivityAt   the newest answer, table change or member message in the room
 //   enough           whether the leading time already has what it needs
 //   silent           [{ userId, askedAt }] — asked, delivered, answered nothing
@@ -58,9 +74,11 @@ function nextMoves(s, nowMs, params = DEFAULTS) {
   const quietSince = ms(s.lastActivityAt);
   const offerAt = ms(s.dropOfferAt);
 
-  // The offer stood its grace and nobody answered it: close quietly.
-  if (offerAt != null && (quietSince == null || quietSince <= offerAt)
-      && nowMs - offerAt >= params.dropGraceH * HOUR) {
+  // The moment the offer named has come and nobody answered it: close
+  // quietly. An offer with no named moment (none is written without one)
+  // falls back to its grace.
+  const closeAt = ms(s.dropCloseAt) ?? (offerAt == null ? null : offerAt + params.dropGraceH * HOUR);
+  if (offerAt != null && (quietSince == null || quietSince <= offerAt) && nowMs >= closeAt) {
     return [{ kind: 'drop_close' }];
   }
   // The offer, once: after the chase, with no direction on the table and
@@ -82,4 +100,4 @@ function nextMoves(s, nowMs, params = DEFAULTS) {
   return moves;
 }
 
-module.exports = { nextMoves, modeFor, paramsOf, DEFAULTS };
+module.exports = { nextMoves, modeFor, paramsOf, closeMomentFor, DEFAULTS };
