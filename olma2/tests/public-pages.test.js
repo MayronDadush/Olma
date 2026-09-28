@@ -195,10 +195,12 @@ test('the terms page reads English first, links the privacy policy, and carries 
 
 // ---- the 2026-09-28 rewrite: what s.11 asks for, and what the box does -----
 
-test('the policy names the controller, says giving data is voluntary, and lists the rights, in both languages', () => {
+test('the policy gives the service address, says giving data is voluntary, and lists the rights, in both languages', () => {
   const html = publicPages.privacyPage();
-  assert.ok(html.includes(publicPages.OPERATOR.en) && html.includes(publicPages.OPERATOR.he),
-    'Privacy Protection Law s.11: the controller by name');
+  // No name, by the owner's choice (2026-09-28): the contact is the service's.
+  assert.equal(publicPages.CONTACT_EMAIL, 'info@allma.world');
+  assert.ok(html.includes('mailto:info@allma.world'));
+  assert.ok(!html.includes('gmail.com'), 'no personal address on the page');
   assert.ok(/no legal obligation/i.test(html) && html.includes('אין חובה חוקית'));
   assert.ok(/cannot work/i.test(html) && html.includes('לא יכולה לעבוד'), 'what refusing costs');
   assert.ok(/See your data/.test(html) && /Correct it/.test(html), 'access and correction');
@@ -207,22 +209,26 @@ test('the policy names the controller, says giving data is voluntary, and lists 
 
 test('the policy names every processor the box actually uses, and where the backup really is', () => {
   const html = publicPages.privacyPage();
-  for (const who of ['OpenRouter', 'Novita', 'DeepInfra', 'Together', 'Anthropic', 'ElevenLabs',
-    'Deepgram', 'Twilio', 'DigitalOcean', 'Frankfurt']) {
+  // StreamLake stays in the live route (owner, 2026-09-28), so it is named,
+  // with its unverified location said rather than guessed.
+  for (const who of ['OpenRouter', 'Novita', 'StreamLake', 'DeepInfra', 'Together', 'Anthropic',
+    'ElevenLabs', 'Deepgram', 'Twilio', 'DigitalOcean', 'Frankfurt']) {
     assert.ok(html.includes(who), `the policy does not name ${who}`);
   }
-  // The route order on the box named StreamLake until 2026-09-28, and its
-  // location could not be verified; the policy must not promise it either way.
-  assert.ok(!/StreamLake/i.test(html));
+  assert.ok(/location has not been verified/.test(html) && html.includes('לא אומת'));
   assert.ok(!/retained for 14 days and then deleted/.test(html),
     'the old sentence was false about the off-box copy (30 days, Frankfurt)');
 });
 
-test('the retention numbers on the page are the RETENTION constants, in both languages', () => {
+test('nothing is promised on a timer: kept until they ask, and only the backups age out', () => {
   const html = publicPages.privacyPage();
   const R = publicPages.RETENTION;
-  assert.ok(html.includes(`${R.conversationDays} days`) && html.includes(`${R.conversationDays} יום`));
-  assert.ok(html.includes(`${R.callTranscriptDays} days`) && html.includes(`${R.callTranscriptDays} יום`));
-  assert.ok(html.includes(`within ${R.rosterDays} days`) && html.includes(`תוך ${R.rosterDays} יום`));
+  // The owner's decision (2026-09-28). No sweep deletes conversations or
+  // group rosters, so the page must not name a number of days for them.
+  assert.deepEqual(Object.keys(R).sort(), ['deletionDays', 'localBackupDays', 'offboxBackupDays']);
+  assert.ok(/Nothing is deleted on a timer/.test(html) && html.includes('שום דבר לא נמחק אוטומטית'));
+  assert.ok(html.includes(`within ${R.deletionDays} days`) && html.includes(`תוך ${R.deletionDays} יום`));
+  assert.ok(/even if you never used the assistant/.test(html) && html.includes('גם אם מעולם לא השתמש'),
+    'a group member who never wrote can still ask');
   assert.ok(/WhatsApp groups/.test(html) && html.includes('קבוצות וואטסאפ'), 'groups are named');
 });

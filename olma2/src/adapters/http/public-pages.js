@@ -39,7 +39,7 @@
 const BRAND = 'Allma - Personal Assistant';
 const ASSISTANT = 'עולמה';
 const WA_NUMBER = '972559347282';
-const CONTACT_EMAIL = 'mayrondadush@gmail.com';
+const CONTACT_EMAIL = 'info@allma.world';
 
 // Lifted from the signed-out welcome screen in docs/design/user-dashboard.html
 // so the front door looks like the product, not like a legal notice someone
@@ -237,13 +237,18 @@ function homePage() {
 // it lacked: who the controller is, whether giving the data is obligatory,
 // what refusing costs, and the rights of access and correction.
 //
-// RETENTION is the promise the retention sweeps keep. A number changed here
-// without the sweep (or the other way round) is this page lying again.
+// RETENTION: the owner's decision (2026-09-28) is that nothing is deleted on a
+// timer — what a person gave is kept until THEY ask to delete it, group
+// members who never wrote to her included. Only the backups age out, and a
+// deletion request is carried out within deletionDays. A number here with no
+// code behind it is this page lying again.
+//
+// No name on the page (owner, 2026-09-28): the contact is the service's own
+// address. s.11 asks for the controller's identity; that choice is the
+// owner's, flagged for the lawyer.
 const UPDATED = '2026-09-06';
 const PRIVACY_UPDATED = '2026-09-28';
-const OPERATOR = { en: 'Mayron Dadush', he: 'מיירון דדוש' };
 const RETENTION = {
-  conversationDays: 90, callTranscriptDays: 30, rosterDays: 60, rosterLeftDays: 7,
   deletionDays: 30, localBackupDays: 14, offboxBackupDays: 30,
 };
 
@@ -255,7 +260,7 @@ function privacyPage() {
     <p class="updated">Last updated: ${PRIVACY_UPDATED}</p>
 
     <h2>Who is responsible for your data</h2>
-    <p>${BRAND} (allma.world) is a personal AI assistant that works over WhatsApp. The controller of your data is ${OPERATOR.en}, an individual in Israel. For anything about your privacy, email <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a> or just tell the assistant.</p>
+    <p>${BRAND} (allma.world) is a personal AI assistant that works over WhatsApp. It is operated from Israel. For anything about your privacy, email <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a> or just tell the assistant.</p>
 
     <h2>Do you have to give us anything</h2>
     <p>No. There is no legal obligation to give us any information; it is entirely your choice. Without your phone number and what you write, the assistant cannot work. Without anything else it still works, just less tailored to you.</p>
@@ -271,7 +276,7 @@ function privacyPage() {
     </ul>
 
     <h2>WhatsApp groups</h2>
-    <p>When the assistant is added to a group, it sees the member list (numbers and display names) and the messages that tag it. It keeps the member list to coordinate between everyone. A group member who has not written to the assistant may get one private message from it about a plan in that group; if they do not reply, it does not write again. If they do not write to it within ${R.rosterDays} days, their number is kept only as part of the group's own member list, which everyone in the group already sees, and it will not write to them. Someone who leaves the group is removed from the list within ${R.rosterLeftDays} days.</p>
+    <p>When the assistant is added to a group, it sees the member list (numbers and display names) and the messages that tag it. It keeps the member list to coordinate between everyone. A group member who has not written to the assistant may get one private message from it about a plan in that group; if they do not reply, it does not write again. The member list is kept, as part of the group's own list that everyone in it already sees, until someone asks for their details to be deleted — email <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>, even if you never used the assistant.</p>
 
     <h2>Google user data</h2>
     <p>Connecting Google is optional. Each permission is requested separately on Google's own consent screen, and you may grant some and decline others.</p>
@@ -287,7 +292,7 @@ function privacyPage() {
     <h2>Who we share with</h2>
     <p>We do not sell data and do not use it for advertising. To operate the service, data is processed by these providers and no others:</p>
     <ul>
-      <li><b>Language model</b> — conversation text, including calendar and contact details when they are relevant to the answer, is sent through OpenRouter (US) to the providers that run the model (Novita, DeepInfra, Together; US), and, if those fail, to Anthropic (US). They are configured not to store or train on it.</li>
+      <li><b>Language model</b> — conversation text, including calendar and contact details when they are relevant to the answer, is sent through OpenRouter (US) to the providers that run the model — currently Novita, StreamLake, DeepInfra and Together, or another host OpenRouter picks when those are unavailable; StreamLake's location has not been verified — and, if those fail, to Anthropic (US). They are configured not to store or train on it.</li>
       <li><b>ElevenLabs</b> — transcribing voice notes, and the voice on phone calls.</li>
       <li><b>Deepgram</b> — transcription during phone calls.</li>
       <li><b>Twilio</b> — phone calls.</li>
@@ -302,9 +307,7 @@ function privacyPage() {
 
     <h2>How long it is kept</h2>
     <ul>
-      <li>Your account, tasks and what the assistant remembers: as long as you use the service.</li>
-      <li>Conversation content and voice notes: ${R.conversationDays} days.</li>
-      <li>Phone call transcripts: ${R.callTranscriptDays} days.</li>
+      <li>Everything — your account, tasks, what the assistant remembers, conversation content, voice notes and phone call transcripts: until you ask to delete it. Nothing is deleted on a timer.</li>
       <li>Backups: ${R.localBackupDays} days on the server and ${R.offboxBackupDays} days in the off-site copy, then deleted.</li>
       <li>A record of consents and connections (for example, when you connected Google) is kept after deletion, so we can show we acted on what you approved.</li>
     </ul>
@@ -313,7 +316,7 @@ function privacyPage() {
     <ul>
       <li><b>See your data</b> — much of it is on your personal page, and you can ask for the rest.</li>
       <li><b>Correct it</b> — ask the assistant, change it on your page, or email us.</li>
-      <li><b>Delete everything</b> — email <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a> or tell the assistant. We delete the account and all associated data within ${R.deletionDays} days, except the backups, which expire on their own within ${R.offboxBackupDays} days, and the consent record above.</li>
+      <li><b>Delete everything</b> — tell the assistant, use the button on your personal page, or email <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>. We delete the account and all associated data within ${R.deletionDays} days, except the backups, which expire on their own within ${R.offboxBackupDays} days, and the consent record above.</li>
       <li><b>Pause</b> — ask the assistant to stop reaching out. This is a reversible pause, not a deletion.</li>
       <li><b>Disconnect Google</b> — ask the assistant to disconnect any service at any time; we delete our stored token and revoke it with Google. You can also revoke access directly from your <a href="https://myaccount.google.com/permissions">Google account permissions</a>.</li>
     </ul>
@@ -329,7 +332,7 @@ function privacyPage() {
       <p class="updated">עודכן: ${PRIVACY_UPDATED}</p>
 
       <h3>מי אחראי על המידע</h3>
-      <p>${ASSISTANT} (allma.world) היא עוזרת AI אישית שפועלת דרך וואטסאפ. בעל השליטה במידע הוא ${OPERATOR.he}, אדם פרטי בישראל. לכל פנייה בנושא פרטיות: <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>, או פשוט לכתוב ל${ASSISTANT}.</p>
+      <p>${ASSISTANT} (allma.world) היא עוזרת AI אישית שפועלת דרך וואטסאפ. השירות מופעל מישראל. לכל פנייה בנושא פרטיות: <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>, או פשוט לכתוב ל${ASSISTANT}.</p>
 
       <h3>האם חובה למסור מידע</h3>
       <p>לא. אין חובה חוקית למסור לנו מידע, והכל לפי רצונכם. בלי מספר טלפון ותוכן השיחה ${ASSISTANT} לא יכולה לעבוד. בלי כל שאר המידע היא עובדת, רק פחות מותאם אליכם.</p>
@@ -345,7 +348,7 @@ function privacyPage() {
       </ul>
 
       <h3>קבוצות וואטסאפ</h3>
-      <p>כשמוסיפים את ${ASSISTANT} לקבוצה, היא רואה את רשימת החברים (מספרים ושמות תצוגה) ואת ההודעות שמתייגות אותה. היא שומרת את רשימת החברים כדי לתאם בין כולם. חבר קבוצה שעוד לא כתב לה יכול לקבל ממנה הודעה פרטית אחת על תיאום בקבוצה. אם לא עונים, היא לא כותבת שוב. מי שלא כתב לה תוך ${R.rosterDays} יום נשאר רק ברשימת החברים של הקבוצה, שכל חברי הקבוצה רואים ממילא, והיא לא תכתוב לו. מי שיוצא מהקבוצה נמחק מהרשימה תוך ${R.rosterLeftDays} ימים.</p>
+      <p>כשמוסיפים את ${ASSISTANT} לקבוצה, היא רואה את רשימת החברים (מספרים ושמות תצוגה) ואת ההודעות שמתייגות אותה. היא שומרת את רשימת החברים כדי לתאם בין כולם. חבר קבוצה שעוד לא כתב לה יכול לקבל ממנה הודעה פרטית אחת על תיאום בקבוצה. אם לא עונים, היא לא כותבת שוב. רשימת החברים נשמרת, כחלק מרשימת הקבוצה שכל חבריה רואים ממילא, עד שמישהו מבקש למחוק את הפרטים שלו — במייל ל־<a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>, גם אם מעולם לא השתמש בעוזרת.</p>
 
       <h3>מידע מחשבון גוגל</h3>
       <p>החיבור לגוגל הוא בחירה, לא תנאי. כל הרשאה מתבקשת בנפרד ובמסך ההסכמה של גוגל עצמה, ואפשר לאשר חלק ולסרב לשאר.</p>
@@ -361,7 +364,7 @@ function privacyPage() {
       <h3>עם מי המידע עובר</h3>
       <p>אנחנו לא מוכרים מידע ולא משתמשים בו לפרסום. כדי שהשירות יעבוד, מידע עובר לספקים האלה בלבד:</p>
       <ul>
-        <li><b>מודל השפה</b> — טקסט השיחה, כולל מידע מהיומן ומאנשי הקשר כשהוא רלוונטי לתשובה, נשלח דרך OpenRouter (ארה״ב) לספקים שמריצים את המודל (Novita, DeepInfra, Together; ארה״ב), ובמקרה תקלה ל־Anthropic (ארה״ב). הגדרנו שהספקים לא ישמרו את המידע ולא יאמנו עליו.</li>
+        <li><b>מודל השפה</b> — טקסט השיחה, כולל מידע מהיומן ומאנשי הקשר כשהוא רלוונטי לתשובה, נשלח דרך OpenRouter (ארה״ב) לספקים שמריצים את המודל — כרגע Novita, ‏StreamLake, ‏DeepInfra ו־Together, או ספק אחר ש־OpenRouter בוחר כשהם לא זמינים; המיקום של StreamLake לא אומת — ובמקרה תקלה ל־Anthropic (ארה״ב). הגדרנו שהספקים לא ישמרו את המידע ולא יאמנו עליו.</li>
         <li><b>ElevenLabs</b> — תמלול הודעות קוליות, וקול בשיחות טלפון.</li>
         <li><b>Deepgram</b> — תמלול בשיחות טלפון.</li>
         <li><b>Twilio</b> — שיחות טלפון.</li>
@@ -376,9 +379,7 @@ function privacyPage() {
 
       <h3>כמה זמן זה נשמר</h3>
       <ul>
-        <li>החשבון, המשימות והזיכרון: כל עוד אתם משתמשים בשירות.</li>
-        <li>תוכן השיחה והודעות קוליות: ${R.conversationDays} יום.</li>
-        <li>תמלילי שיחות טלפון: ${R.callTranscriptDays} יום.</li>
+        <li>הכל — החשבון, המשימות, מה ש${ASSISTANT} זוכרת, תוכן השיחה, הודעות קוליות ותמלילי שיחות טלפון: עד שתבקשו למחוק. שום דבר לא נמחק אוטומטית לפי זמן.</li>
         <li>גיבויים: ${R.localBackupDays} יום בשרת ו־${R.offboxBackupDays} יום בגיבוי החיצוני, ואז הם נמחקים.</li>
         <li>תיעוד של הסכמות וחיבורים (למשל מתי חיברתם את גוגל) נשמר גם אחרי מחיקה, כדי שנוכל להראות שפעלנו לפי מה שאישרתם.</li>
       </ul>
@@ -387,7 +388,7 @@ function privacyPage() {
       <ul>
         <li><b>לעיין במידע שלכם</b> — הרבה ממנו מופיע בדף האישי, ואת השאר אפשר לבקש.</li>
         <li><b>לתקן מידע לא נכון</b> — לבקש מ${ASSISTANT}, לשנות בדף האישי או לכתוב לנו.</li>
-        <li><b>למחוק הכל</b> — לכתוב ל־<a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a> או ל${ASSISTANT}. אנחנו מוחקים את החשבון ואת כל המידע הקשור אליו תוך ${R.deletionDays} יום, חוץ מהגיבויים, שנמחקים לבד בתוך ${R.offboxBackupDays} יום, ומתיעוד ההסכמות שלמעלה.</li>
+        <li><b>למחוק הכל</b> — לבקש מ${ASSISTANT}, ללחוץ על הכפתור בדף האישי, או לכתוב ל־<a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>. אנחנו מוחקים את החשבון ואת כל המידע הקשור אליו תוך ${R.deletionDays} יום, חוץ מהגיבויים, שנמחקים לבד בתוך ${R.offboxBackupDays} יום, ומתיעוד ההסכמות שלמעלה.</li>
         <li><b>להשהות</b> — לבקש מ${ASSISTANT} להפסיק לפנות אליכם. זו השהיה הפיכה, לא מחיקה.</li>
         <li><b>לנתק את גוגל</b> — לבקש מ${ASSISTANT} לנתק כל שירות בכל רגע; אנחנו מוחקים את האסימון אצלנו ומבטלים אותו מול גוגל. אפשר גם לבטל ישירות דרך <a href="https://myaccount.google.com/permissions">ההרשאות בחשבון הגוגל שלכם</a>.</li>
       </ul>
@@ -485,5 +486,5 @@ function termsPage() {
 
 module.exports = {
   homePage, privacyPage, termsPage, BRAND, ASSISTANT, CONTACT_EMAIL, UPDATED,
-  PRIVACY_UPDATED, OPERATOR, RETENTION,
+  PRIVACY_UPDATED, RETENTION,
 };
