@@ -243,7 +243,7 @@ const UPDATED = '2026-09-06';
 const PRIVACY_UPDATED = '2026-09-28';
 const OPERATOR = { en: 'Mayron Dadush', he: 'מיירון דדוש' };
 const RETENTION = {
-  conversationDays: 90, callTranscriptDays: 30, rosterDays: 60,
+  conversationDays: 90, callTranscriptDays: 30, rosterDays: 60, rosterLeftDays: 7,
   deletionDays: 30, localBackupDays: 14, offboxBackupDays: 30,
 };
 
@@ -271,7 +271,7 @@ function privacyPage() {
     </ul>
 
     <h2>WhatsApp groups</h2>
-    <p>When the assistant is added to a group, it sees the member list (numbers and display names) and the messages that tag it. It keeps the member list to coordinate between everyone. A group member who has not written to the assistant may get one private message from it about a plan in that group; if they do not reply, it does not write again. Someone who leaves the group, or does not write to the assistant within ${R.rosterDays} days, is removed from the list.</p>
+    <p>When the assistant is added to a group, it sees the member list (numbers and display names) and the messages that tag it. It keeps the member list to coordinate between everyone. A group member who has not written to the assistant may get one private message from it about a plan in that group; if they do not reply, it does not write again. If they do not write to it within ${R.rosterDays} days, their number is kept only as part of the group's own member list, which everyone in the group already sees, and it will not write to them. Someone who leaves the group is removed from the list within ${R.rosterLeftDays} days.</p>
 
     <h2>Google user data</h2>
     <p>Connecting Google is optional. Each permission is requested separately on Google's own consent screen, and you may grant some and decline others.</p>
@@ -345,7 +345,7 @@ function privacyPage() {
       </ul>
 
       <h3>קבוצות וואטסאפ</h3>
-      <p>כשמוסיפים את ${ASSISTANT} לקבוצה, היא רואה את רשימת החברים (מספרים ושמות תצוגה) ואת ההודעות שמתייגות אותה. היא שומרת את רשימת החברים כדי לתאם בין כולם. חבר קבוצה שעוד לא כתב לה יכול לקבל ממנה הודעה פרטית אחת על תיאום בקבוצה. אם לא עונים, היא לא כותבת שוב. מי שיוצא מהקבוצה, או לא כותב לה תוך ${R.rosterDays} יום, נמחק מהרשימה.</p>
+      <p>כשמוסיפים את ${ASSISTANT} לקבוצה, היא רואה את רשימת החברים (מספרים ושמות תצוגה) ואת ההודעות שמתייגות אותה. היא שומרת את רשימת החברים כדי לתאם בין כולם. חבר קבוצה שעוד לא כתב לה יכול לקבל ממנה הודעה פרטית אחת על תיאום בקבוצה. אם לא עונים, היא לא כותבת שוב. מי שלא כתב לה תוך ${R.rosterDays} יום נשאר רק ברשימת החברים של הקבוצה, שכל חברי הקבוצה רואים ממילא, והיא לא תכתוב לו. מי שיוצא מהקבוצה נמחק מהרשימה תוך ${R.rosterLeftDays} ימים.</p>
 
       <h3>מידע מחשבון גוגל</h3>
       <p>החיבור לגוגל הוא בחירה, לא תנאי. כל הרשאה מתבקשת בנפרד ובמסך ההסכמה של גוגל עצמה, ואפשר לאשר חלק ולסרב לשאר.</p>
