@@ -93,6 +93,15 @@ test('leaving within twelve hours of a touch that reached them is irritation, an
   assert.equal(scoreCoordination(room({ exits: [{ userId: 3, at: at(30) }] })).irritation.length, 0);
 });
 
+test('pausing OLMA is a person lost, not irritation at this coordination — it is kept, and it does not cancel the success', () => {
+  const s = scoreCoordination(room({ exits: [{ userId: 3, at: at(8), cause: 'paused_by_request' }] }));
+  assert.equal(s.irritation.length, 0);
+  assert.deepEqual(s.lost.map((x) => x.userId), [3]);
+  assert.equal(s.success, true);
+  // Leaving the coordination itself, the same hours later, is still irritation.
+  assert.equal(scoreCoordination(room({ exits: [{ userId: 3, at: at(8), cause: 'user_choice' }] })).irritation.length, 1);
+});
+
 test('a settle undone within a day was not a settle', () => {
   const s = scoreCoordination(room({ undoneAt: [at(10)] }));
   assert.equal(s.unstable, true);

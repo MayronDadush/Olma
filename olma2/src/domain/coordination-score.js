@@ -102,9 +102,25 @@ function answerRateOf(tl) {
 }
 
 // Leaving within twelve hours of something of ours reaching them.
+//
+// Leaving the COORDINATION and leaving OLMA are two signals, and only the
+// first is read against this coordination (2026-09-28). In 57 the one who
+// paused her had a private exchange that went badly and stopped her entirely;
+// nothing says the room line before it was the cause, and a success cancelled
+// on a guess is the overstated alarm this project keeps paying for. The pause
+// is not dropped: it comes back as `lost`, where a run of them shows.
+// Both causes `group-meetings` writes when a pause takes somebody out: they
+// asked her to stop, or the silence ladder paused them. Neither is a choice
+// about this coordination.
+const LEFT_OLMA = new Set(['paused_by_request', 'paused_no_answer']);
+
+function lostOf(tl) {
+  return (tl.exits || []).filter((e) => LEFT_OLMA.has(e.cause)).map((e) => ({ userId: Number(e.userId), at: e.at }));
+}
+
 function irritationOf(tl) {
   const hits = [];
-  for (const e of tl.exits || []) {
+  for (const e of (tl.exits || []).filter((x) => !LEFT_OLMA.has(x.cause))) {
     const at = ms(e.at);
     // The LAST thing that reached them before they left is the one it is read against.
     const cause = (tl.touches || []).filter((t) => {
@@ -168,11 +184,11 @@ function scoreCoordination(tl) {
     meetingId: tl.meetingId, room: tl.groupId != null, outcome: out.outcome, dropOffered: out.dropOffered,
     total, success,
     speed, breadth, answerRate: rate, cost: Math.round(cost * 100) / 100, touches,
-    irritation, unstable: stability.unstable,
+    irritation, lost: lostOf(tl), unstable: stability.unstable,
   };
 }
 
 module.exports = {
   scoreCoordination, touchEffects,
-  EFFECT_WINDOW_MS, IRRITATION_WINDOW_MS, STABILITY_WINDOW_MS, SUCCESS_FLOOR, DROP_OFFER_KINDS,
+  EFFECT_WINDOW_MS, IRRITATION_WINDOW_MS, STABILITY_WINDOW_MS, SUCCESS_FLOOR, DROP_OFFER_KINDS, LEFT_OLMA,
 };
