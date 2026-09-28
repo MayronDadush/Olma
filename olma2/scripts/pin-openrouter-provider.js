@@ -107,7 +107,14 @@ const ORDERS = {
   // Only providers MEASURED keeping a prefix cache on this model (see the 9/14
   // correction above), US-headquartered first. DigitalOcean is deliberately
   // absent: it is still reachable as a fallback, it just never leads.
-  'openrouter/deepseek/deepseek-v4-flash': ['novita', 'streamlake'],
+  // StreamLake left on 2026-09-28 (compliance review, finding 7): it is CN,
+  // and every request now carries domain/model-hosts' exclusion list, which
+  // holds under allow_fallbacks where an order does not. The cache it kept is
+  // the price of that; DeepInfra and Together are tried before any fallback.
+  'openrouter/deepseek/deepseek-v4-flash': ['novita', 'deepinfra', 'together'],
+  // The second fallback had no provider object at all, so it ran wherever
+  // OpenRouter liked. Same US hosts; no cache measurement behind the order.
+  'openrouter/deepseek/deepseek-v4-pro': ['deepinfra', 'together', 'novita'],
 };
 
 const cfg = occ.loadConfig();
@@ -120,7 +127,7 @@ for (const [MODEL, ORDER] of Object.entries(ORDERS)) {
   if (RESET) {
     if (entry.params) { delete entry.params.provider; if (!Object.keys(entry.params).length) delete entry.params; }
   } else {
-    entry.params = { ...(entry.params || {}), provider: { order: ORDER, allow_fallbacks: true, data_collection: 'deny' } };
+    entry.params = { ...(entry.params || {}), provider: require('../src/domain/model-hosts').routing(ORDER) };
   }
   cfg.agents.defaults.models[MODEL] = entry;
   console.log(`${MODEL} params.provider:`, before, '->', RESET ? '(unset)' : JSON.stringify(entry.params.provider));

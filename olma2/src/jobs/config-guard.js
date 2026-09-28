@@ -121,6 +121,11 @@ function checkOpenclawConfig(cfg) {
     const order = (((((cfg.agents || {}).defaults || {}).models || {})[primary] || {}).params || {}).provider;
     if (!order || !Array.isArray(order.order) || !order.order.length) {
       violations.push(`agents.defaults.models["${primary}"].params.provider.order is unset — OpenRouter picks a different provider per request and the prompt cache dies with every switch (fix: scripts/pin-openrouter-provider.js --apply, then restart the gateway)`);
+    } else if (require('../domain/model-hosts').admitsExcluded(order)) {
+      // The hosts nobody could say where they process data (model-hosts.js,
+      // compliance review 2026-09-28). Asked only once an order exists, so an
+      // unpinned model reads as the one fault with the one fix.
+      violations.push(`agents.defaults.models["${primary}"].params.provider lets an excluded host serve people's words — ordered, or not in "ignore" (fix: scripts/pin-openrouter-provider.js --apply, then restart the gateway)`);
     }
   }
   // A session that never resets carries the whole conversation into every
