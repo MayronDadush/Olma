@@ -332,6 +332,10 @@ const deployDrift = require('./deploy-drift');
     { name: 'voice_usage_sweep', run: () => withTx(pool, (c) => voiceUsage.sweepVoiceUsage(c)) },
     { name: 'metrics_sweep', run: () => withTx(pool, (c) => metrics.sweepMetrics(c, new Date(), { sessions: sessionsAsync })) },
     { name: 'retention_sweep', run: () => withTx(pool, (c) => retention.sweepRetention(c)) },
+    // A person's own confirmed request to delete everything (domain/self-delete.js),
+    // carried out a minute after it, outside the turn that asked. One
+    // transaction per person, so one failure never holds another's deletion.
+    { name: 'self_delete', run: () => require('../domain/self-delete').sweep(pool, { configPath: OPENCLAW_CONFIG() }) },
     // Is everything working, and will the owner hear if not: gateway probe +
     // delivery queue, two bad ticks before a word, a dead gateway restarted
     // before anything is said, WhatsApp for the news (jobs/liveness-watch.js).

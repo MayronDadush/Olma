@@ -53,18 +53,32 @@ const TEMPLATES = [
     // their own agent's first message carries it (jobs/intake.js,
     // `welcome_followup`). The previous copy is kept in
     // onboarding.PREVIOUS_OPENINGS so a greeter still saying it is recognised.
-    text: 'היי, אני עולמה 👋\n'
+    //
+    // Revision 4 (compliance review, 2026-09-28) adds two things and moves
+    // nothing: "AI" on the greeting line, because a woman's name answering on
+    // WhatsApp reads as a person (EU AI Act art. 50(1), the Privacy Protection
+    // Authority's draft AI guidance), and the policy link as the last line,
+    // because this is the one message every person reads and the notice the
+    // Privacy Protection Law s.11 asks for was reaching nobody. The policy is
+    // a fixed public page, not their page, so the reason above still holds.
+    // The SECOND line is unchanged on purpose: intake.saidTheOpening
+    // recognises the copy by it.
+    text: 'היי, אני עולמה 👋 עוזרת AI אישית בוואטסאפ\n'
       + '\n'
-      + 'אני עוזרת עם משימות, תזכורות ותיאומים — אפשר לכתוב, להקליט או לשלוח הכל בבלגן ☺️',
+      + 'אני עוזרת עם משימות, תזכורות ותיאומים — אפשר לכתוב, להקליט או לשלוח הכל בבלגן ☺️\n'
+      + '\n'
+      + 'מה אני שומרת ואיך מוחקים: https://allma.world/privacy',
   },
   {
     key: 'opening_en', audience: 'private', label: 'הודעת הפתיחה', help: '',
     vars: {}, required: [],
     sample: {},
-    text: "Hey, I'm Allma \u{1F44B}\n"
+    text: "Hey, I'm Allma \u{1F44B} a personal AI assistant on WhatsApp\n"
       + '\n'
       + 'I help with tasks, reminders and scheduling — text me, send a voice note, '
-      + 'or just dump it all on me ☺️',
+      + 'or just dump it all on me ☺️\n'
+      + '\n'
+      + 'What I keep and how to delete it: https://allma.world/privacy',
   },
   // The whole answer to "שלח לי קישור" (domain/link-request.js): said by code,
   // with no model turn, the moment a message asks for their page and nothing
@@ -223,14 +237,18 @@ const TEMPLATES = [
     help: 'נשלחת בפרטי לחבר קבוצה שעוד לא כתב לעולמה, כשנפתח תיאום בקבוצה. פעם אחת לאדם בכל קבוצה, בשעות היום שלו. אם הוא עונה — היא מצרפת אותו לתיאום.',
     vars: { group: 'שם הקבוצה', title: 'מה מתאמים' }, required: ['group', 'title'],
     sample: { group: 'פאדל שלישי', title: 'משחק השבוע' },
-    text: 'היי! אני עולמה 👋 אני עוזרת לקבוצה: ״«{{group}}»״ שאתה נמצא בה לתאם {{title}}.\nאם תענה לי כאן, אצרף אותך ואשאל מתי נוח לך ☺️',
+    // Compliance revision, 2026-09-28: "AI" (EU AI Act art. 50(1)) and a way
+    // out, because this is the one message sent to somebody who never chose
+    // her. The last line is a promise group-meetings.coldInvite keeps: once
+    // per person, across every room.
+    text: 'היי! אני עולמה, עוזרת AI 👋 אני עוזרת לקבוצה: ״«{{group}}»״ שאתה נמצא בה לתאם {{title}}.\nאם תענה לי כאן, אצרף אותך ואשאל מתי נוח לך ☺️\nלא מתאים? אפשר פשוט להתעלם, ולא אכתוב לך שוב.',
   },
   {
     key: 'group_cold_invite_en', audience: 'private', label: 'הזמנה פרטית לתיאום בקבוצה (למי שעוד לא כתב)',
     help: '',
     vars: { group: 'group name', title: 'what is being coordinated' }, required: ['group', 'title'],
     sample: { group: 'Tuesday padel', title: 'this week\'s game' },
-    text: 'Hi! I\'m Olma 👋 I\'m helping the group “{{group}}” you\'re in coordinate {{title}}.\nIf you reply here, I\'ll add you and ask when works for you ☺️',
+    text: 'Hi! I\'m Allma, an AI assistant 👋 I\'m helping the group “{{group}}” you\'re in coordinate {{title}}.\nIf you reply here, I\'ll add you and ask when works for you ☺️\nNot for you? Just ignore this and I won\'t write to you again.',
   },
   // ---- in a group -----------------------------------------------------------
   {
@@ -428,6 +446,17 @@ const TEMPLATES = [
     sample: { count: '*3* מועדים', lead: 'הכי מתקדם: *שבת 17:00*.' },
     text: 'השולחן זז — עכשיו {{count}} על הפרק. {{lead}}',
   },
+  // Which times are on the table, said once, when nobody has a direction yet
+  // (2026-09-28, coordination 57: three times went on and the room heard none
+  // of them). A quarter of an hour after the first time, so a burst of
+  // additions is one sentence.
+  {
+    key: 'group_coord_laid', audience: 'group', label: 'תיאום — מה על הפרק',
+    help: 'פעם אחת בכל תיאום, רבע שעה אחרי שהמועד הראשון עלה, כשעוד אין מועד שכמה אנשים אמרו לו כן. אומרת אילו מועדים על הפרק, בלי מי אמר מה.',
+    vars: { slots: 'המועדים — אחד בשורה, או רשימה כשיש כמה' }, required: ['slots'],
+    sample: { slots: '\n- *יום שני 19:00*\n- *יום שלישי 19:00*\n- *יום חמישי 19:00*' },
+    text: 'על הפרק כרגע: {{slots}}\nמי יכול? תגידו לי בפרטי 🙏',
+  },
   {
     key: 'group_coord_done', audience: 'group', label: 'תיאום — נסגר',
     help: 'פעם אחת, כשהתיאום נסגר על זמן. כל אחד מקבל את זה גם בפרטי; זאת השורה בקבוצה.',
@@ -563,6 +592,13 @@ const TEMPLATES = [
     required: ['count'],
     sample: { count: '*3* מועדים', lead: 'הכי מתקדם: *יום שבת 26.9 · 20:00 ישראל · 13:00 ניו יורק · 03:00 סידני (יום ראשון 27.9)*.' },
     text: 'השולחן זז — עכשיו {{count}} על הפרק. {{lead}}',
+  },
+  {
+    key: 'group_coord_laid_zones', audience: 'group', label: 'תיאום — מה על הפרק',
+    help: '',
+    vars: { slots: 'המועדים, כל אחד בכל אזורי הזמן' }, required: ['slots'],
+    sample: { slots: '*יום שבת 26.9 · 20:00 ישראל · 13:00 ניו יורק*' },
+    text: 'על הפרק כרגע: {{slots}}\nמי יכול? תגידו לי בפרטי 🙏',
   },
   {
     key: 'group_coord_done_zones', audience: 'group', label: 'תיאום — נסגר',

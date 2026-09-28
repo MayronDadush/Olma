@@ -406,6 +406,23 @@ async function setReminder(client, userId, taskId, remindAt, repeatRule, { nudge
       RETURNING r.id`,
     [taskId, tz, endsAt ? endsAt.toISOString() : newDay, userId]
   );
+  // A REPEAT whose first occurrence is the very moment a one-off of theirs on
+  // this task already holds makes that one-off the same message twice. It is
+  // what "כל יום ב-8 וחצי" becomes when add_task arms 08:30 first (it has no
+  // repeat of its own) and set_task_reminder adds the daily a second later:
+  // Dov, 2026-09-27, two rows for his pill at 08:30 and four for two tasks at
+  // 20:00. Only an unfired, uncancelled one-off, only THEIRS, only within the
+  // same minute — an hour they asked for at any other moment still stands.
+  const sameMoment = rule ? await client.query(
+    `UPDATE task_reminders r SET cancelled_at = now()
+       FROM tasks t
+      WHERE r.task_id = $1 AND t.id = r.task_id AND ${RECIPIENT} = $2
+        AND NOT r.auto AND r.repeat_rule IS NULL AND r.attempts = 0
+        AND r.sent_at IS NULL AND r.cancelled_at IS NULL
+        AND abs(extract(epoch FROM r.remind_at - $3::timestamptz)) < 60
+      RETURNING r.id`,
+    [taskId, userId, at]
+  ) : { rowCount: 0, rows: [] };
   // `nudge` is the one thing on this row nobody can infer later: "תזכירי לי עד
   // שאעשה את זה" and "תזכירי לי ב-9" produce the same row otherwise, and the
   // ladder default (RUNGS) says one message for both. It is stamped only when
@@ -428,6 +445,7 @@ async function setReminder(client, userId, taskId, remindAt, repeatRule, { nudge
     ...(endsAt ? { chaseUntil: endsAt.toISOString() } : {}),
     ...(movedOff ? { movedOffQuietDay: movedOff, askedFor: remindAt } : {}),
     ...(superseded.rowCount ? { supersededAuto: superseded.rows.map((r) => Number(r.id)) } : {}),
+    ...(sameMoment.rowCount ? { supersededOneOff: sameMoment.rows.map((r) => Number(r.id)) } : {}),
   });
   return ok({ reminder: ins.rows[0], supersededAuto: superseded.rowCount });
 }

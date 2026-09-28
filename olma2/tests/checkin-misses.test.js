@@ -75,6 +75,12 @@ test('a check-in the gate DROPPED, a failed send, and a day-one step never count
   await clearOthers(u.id);
   await drainOnce(db.pool, ok, daytime());
   assert.equal(await missesOf(u.id), 0, 'a day-one step is built not to need an answer');
+  // That send is stamped on the REAL clock and the next drain runs at noon
+  // UTC: in the minutes before noon the two are inside the gate's duplicate
+  // window, and the next check-in drops as `duplicate` instead of failing.
+  // CI hit it at 11:57 (2026-09-28). Move the send a day back, out of reach.
+  await db.pool.query(
+    `UPDATE outbox SET sent_at = sent_at - interval '1 day' WHERE user_id = $1 AND sent_at IS NOT NULL`, [u.id]);
 
   await withTx(db.pool, (c) => enqueue(c, {
     userId: u.id, kind: 'checkin', payload: { checkinInstruction: 'hi', rung: 'silence' }, idempotencyKey: 'fail-miss',
