@@ -25,8 +25,13 @@ const path = require('node:path');
 const { ok, err } = require('./results');
 
 const ASSETS = path.join(__dirname, '..', '..', 'assets');
-const FONT_FILES = ['Regular', 'Medium', 'Bold', 'Black']
-  .map((w) => path.join(ASSETS, 'fonts', `Heebo-${w}.ttf`));
+// IBM Plex Sans Hebrew, the brand face since 2026-09-28 (brand/README.md). It
+// carries Latin too, so one family draws both languages. Its heaviest weight is
+// 700: anything heavier asked of it below would fall back to the nearest, so the
+// card never asks. calibrate-card-metrics.js reads these two, not a copy.
+const FONT_FAMILY = 'IBM Plex Sans Hebrew';
+const FONT_FILES = ['Regular', 'Medium', 'SemiBold', 'Bold']
+  .map((w) => path.join(ASSETS, 'fonts', `IBMPlexSansHebrew-${w}.ttf`));
 
 const RLM = '‏';
 
@@ -80,17 +85,19 @@ function esc(s) {
 
 // Width estimate in px, as a multiple of font size. These are MEASURED against
 // real rendered ink by scripts/calibrate-card-metrics.js, not guessed — rerun
-// it after touching the font, the weights, or any value here.
+// it after touching the font, the weights, or any value here. Last run against
+// IBM Plex Sans Hebrew, 2026-09-28: Hebrew .535, digit .598, Latin .503, narrow
+// .302, dash .586, space .236.
 //
 // They sit a little above the measured regular-weight numbers on purpose: the
-// card draws dates and headings at weight 800, whose glyphs are wider, and an
+// card draws dates and headings at weight 700, whose glyphs are wider, and an
 // overestimate only ever costs a few px of slack while an underestimate is
 // what puts two strings on top of each other.
 const WIDTH_HEBREW = 0.545;
-const WIDTH_DIGIT = 0.565;
+const WIDTH_DIGIT = 0.605;
 const WIDTH_LATIN = 0.510;
 const WIDTH_SPACE = 0.250;
-const WIDTH_NARROW = 0.290;
+const WIDTH_NARROW = 0.305;
 const WIDTH_DASH = 0.600;
 const WIDTH_OTHER = 0.500;
 
@@ -187,14 +194,29 @@ const PAD = 32;        // card inner padding
 const ROW_H = 54;
 const RAIL_W = 6;      // the coloured spine on each section card
 
-const INK = '#431407';
-const INK_SOFT = '#57534E';
-const ACCENTS = ['#F59E0B', '#EC4899', '#6366F1', '#0EA5E9', '#10B981'];
-const TINTS = ['#FEF3C7', '#FCE7F3', '#E0E7FF', '#E0F2FE', '#D1FAE5'];
+// Cypress + Mustard (brand/kit/tokens/allma.css, 2026-09-28): sand ground, white
+// cards, ink for what is theirs. The owner asked for more colour than cypress
+// alone, so each section takes a hue in turn from the brand's own set — the
+// same four the coordination marks are drawn in — and the first section, which
+// is nearly always today, gets mustard. Every hue carries a darker text shade:
+// mustard itself is unreadable as text on white, so it only ever FILLS.
+const SAND = '#F0EDE5';
+const CYPRESS = '#004643';
+const MUSTARD = '#F9C23C';
+const INK = '#0E1F1E';
+const INK_SOFT = '#44504E';
+const MUTED = '#56615E';
+const HUES = [
+  { rail: MUSTARD, text: '#6E5200', tint: '#FCEFC7' },
+  { rail: CYPRESS, text: CYPRESS, tint: '#DDEBE7' },
+  { rail: '#2F7F9E', text: '#22627A', tint: '#DCEDF3' },
+  { rail: '#C4513F', text: '#9E3B2C', tint: '#F7E1DC' },
+];
+const hue = (i) => HUES[i % HUES.length];
 
 function text(x, y, o, s) {
   const anchor = o.anchor || 'end';
-  return `<text x="${x}" y="${y}" font-family="Heebo" font-size="${o.size}" font-weight="${o.weight || 400}"`
+  return `<text x="${x}" y="${y}" font-family="${FONT_FAMILY}" font-size="${o.size}" font-weight="${o.weight || 400}"`
     + ` fill="${o.fill}" text-anchor="${anchor}" direction="rtl">${RLM}${esc(s)}</text>`;
 }
 
@@ -205,8 +227,25 @@ function icon(name, x, y, size) {
 function roundedCard(x, y, w, h) {
   // Drop shadow first, then the face — resvg has filters but a solid offset
   // rect is a fraction of the cost and reads the same at this scale.
-  return `<rect x="${x + 3}" y="${y + 5}" width="${w}" height="${h}" rx="24" fill="#00000014"/>`
+  return `<rect x="${x + 3}" y="${y + 5}" width="${w}" height="${h}" rx="24" fill="#0E1F1E12"/>`
     + `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="24" fill="#FFFFFF"/>`;
+}
+
+// The brand mark, drawn as shapes so resvg needs no file for it: half cypress,
+// half sand, a sand circle on the dark side and a cypress one on the light, the
+// mustard lens where they overlap, and a thin ring: cypress on sand, sand on
+// the header's cypress band.
+// Same geometry as brand/kit/mark/allma-round-ringed.svg (viewBox 120).
+function mark(x, y, size, ring = CYPRESS) {
+  const k = size / 120;
+  return `<g transform="translate(${x} ${y}) scale(${k})">`
+    + '<defs><clipPath id="mk-c"><circle cx="60" cy="60" r="60"/></clipPath>'
+    + '<clipPath id="mk-a"><circle cx="44" cy="60" r="24"/></clipPath></defs>'
+    + `<g clip-path="url(#mk-c)"><rect width="60" height="120" fill="${CYPRESS}"/>`
+    + `<rect x="60" width="60" height="120" fill="${SAND}"/>`
+    + `<circle cx="44" cy="60" r="24" fill="${SAND}"/><circle cx="76" cy="60" r="24" fill="${CYPRESS}"/>`
+    + `<circle cx="76" cy="60" r="24" fill="${MUSTARD}" clip-path="url(#mk-a)"/></g>`
+    + `<circle cx="60" cy="60" r="58.25" fill="none" stroke="${ring}" stroke-width="3.5"/></g>`;
 }
 
 function pill(x, y, w, h, fill, stroke) {
@@ -250,20 +289,27 @@ function buildSvg(card) {
   let y = 78;
 
   // ---- header
-  parts.push(icon('chart', W - M - 58, y - 47, 58));
-  parts.push(text(W - M - 74, y, { size: 52, weight: 900, fill: INK }, card.title));
+  // The header sits on a full-bleed cypress band with a mustard line under it
+  // (the owner's pick of two, 2026-09-29). The band is drawn BEHIND what is
+  // already placed, because its height is only known once the subtitle is.
+  const bandAt = parts.length;
+  parts.push(mark(W - M - 58, y - 47, 58, SAND));
+  parts.push(text(W - M - 74, y, { size: 52, weight: 700, fill: SAND }, card.title));
   if (card.subtitle) {
     y += 42;
-    parts.push(text(W - M, y, { size: 28, weight: 500, fill: '#B45309' }, card.subtitle));
+    parts.push(text(W - M, y, { size: 28, weight: 500, fill: '#BFD3CF' }, card.subtitle));
   }
-  y += 38;
+  y += 34;
+  parts.splice(bandAt, 0, `<rect width="${W}" height="${y}" fill="${CYPRESS}"/>`
+    + `<rect y="${y - 6}" width="${W}" height="6" fill="${MUSTARD}"/>`);
+  y += 34;
 
   // ---- stat pills
   if (card.stats.length) {
     const h = 62;
     const row = chipRow(card.stats, W - M, y, h,
       { font: 27, icon: 32, padRight: 22, gap: 12, padLeft: 26 },
-      () => ({ fill: '#FFFFFF', stroke: '#F59E0B', text: '#78350F' }), M);
+      (i) => ({ fill: hue(i).tint, text: hue(i).text }), M);
     parts.push(row.svg);
     y += row.height + 34;
   }
@@ -271,12 +317,11 @@ function buildSvg(card) {
   // ---- section cards
   const cardW = W - 2 * M;
   card.sections.forEach((sec, si) => {
-    const accent = ACCENTS[si % ACCENTS.length];
-    const tint = TINTS[si % TINTS.length];
+    const { rail, text: accent, tint } = hue(si);
     const h = 30 + 44 + sec.items.length * ROW_H + 12;
     parts.push(roundedCard(M, y, cardW, h));
-    parts.push(`<rect x="${W - M - 10}" y="${y + 18}" width="${RAIL_W}" height="${h - 36}" rx="3" fill="${accent}"/>`);
-    parts.push(text(W - M - PAD, y + 52, { size: 30, weight: 800, fill: accent }, sec.title));
+    parts.push(`<rect x="${W - M - 10}" y="${y + 18}" width="${RAIL_W}" height="${h - 36}" rx="3" fill="${rail}"/>`);
+    parts.push(text(W - M - PAD, y + 52, { size: 30, weight: 700, fill: accent }, sec.title));
 
     // One date column for the whole section, sized to its longest date, so a
     // width misestimate shifts the column instead of overlapping the text.
@@ -293,7 +338,7 @@ function buildSvg(card) {
       const tagW = it.tag ? tw(it.tag, 20) + 30 : 0;
       const textLeftLimit = M + PAD - 8 + (it.tag ? tagW + 20 : 0);
       parts.push(icon(it.icon, iconX, mid - 22, 34));
-      parts.push(text(dateRight, mid + 5, { size: 26, weight: 800, fill: INK }, it.date));
+      parts.push(text(dateRight, mid + 5, { size: 26, weight: 700, fill: INK }, it.date));
       parts.push(text(textRight, mid + 5, { size: 26, fill: INK_SOFT },
         ellipsize(it.text, 26, textRight - textLeftLimit)));
       if (it.tag) {
@@ -313,27 +358,24 @@ function buildSvg(card) {
   if (card.bigTasks) {
     const row = chipRow(card.bigTasks.chips, W - M - PAD, y + 78, 48,
       { font: 24, icon: 26, padRight: 18, gap: 10, padLeft: 22 },
-      (i) => ({ fill: TINTS[i % TINTS.length], text: '#44403C' }), M + PAD);
+      (i) => ({ fill: hue(i).tint, text: INK }), M + PAD);
     const h = 30 + 44 + row.height + 12;
     parts.push(roundedCard(M, y, cardW, h));
-    parts.push(`<rect x="${W - M - 10}" y="${y + 18}" width="${RAIL_W}" height="${h - 36}" rx="3" fill="#10B981"/>`);
-    parts.push(text(W - M - PAD, y + 52, { size: 30, weight: 800, fill: '#10B981' }, card.bigTasks.title));
+    parts.push(`<rect x="${W - M - 10}" y="${y + 18}" width="${RAIL_W}" height="${h - 36}" rx="3" fill="${hue(card.sections.length).rail}"/>`);
+    parts.push(text(W - M - PAD, y + 52, { size: 30, weight: 700, fill: hue(card.sections.length).text }, card.bigTasks.title));
     parts.push(row.svg);
     y += h + 30;
   }
 
   if (card.footer) {
-    parts.push(text(W / 2, y + 14, { size: 21, weight: 500, fill: '#B45309', anchor: 'middle' }, card.footer));
+    parts.push(text(W / 2, y + 14, { size: 21, weight: 500, fill: MUTED, anchor: 'middle' }, card.footer));
     y += 20;
   }
   const H = Math.round(y + 34);
 
   return {
     svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
-<defs><linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
-<stop offset="0" stop-color="#FFF8EF"/><stop offset="1" stop-color="#FFE8CC"/>
-</linearGradient></defs>
-<rect width="${W}" height="${H}" fill="url(#bg)"/>
+<rect width="${W}" height="${H}" fill="${SAND}"/>
 ${parts.join('\n')}
 </svg>`,
     width: W,
@@ -364,12 +406,12 @@ function renderPng(input) {
   }
   const Resvg = loadResvg();
   const png = new Resvg(svg, {
-    font: { fontFiles: FONT_FILES, loadSystemFonts: false, defaultFontFamily: 'Heebo' },
+    font: { fontFiles: FONT_FILES, loadSystemFonts: false, defaultFontFamily: FONT_FAMILY },
   }).render().asPng();
   return ok({ png, width, height });
 }
 
 module.exports = {
   normalizeCard, buildSvg, renderPng, tw, ellipsize,
-  LIMITS, ICON_NAMES, W,
+  LIMITS, ICON_NAMES, W, FONT_FAMILY, FONT_FILES,
 };

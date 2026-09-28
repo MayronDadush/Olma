@@ -1,0 +1,14 @@
+-- The MOMENT the room's "יש כיוון" line named, beside its words
+-- (`group_base_slot`, migration 082). group-voice asks whether the time the
+-- room was told about has left the table, and asked it by comparing the
+-- words: a time removed and put back as "שבת ב-16:00" instead of "שבת 16:00"
+-- read as gone, and the room would be told the time it can still see is no
+-- longer on the table. The moment is the identity; the words stay for saying.
+--
+-- NULL on every row written before this, and on a time with no instant
+-- (`starts_at` NULL) — group-voice then falls back to the words, exactly as
+-- before.
+--
+-- 097: SELECT max(version) FROM schema_migrations on the box was 95 on
+-- 2026-09-28, and 096 is taken by open PR #573 (never `ls migrations/`).
+ALTER TABLE meetings ADD COLUMN group_base_start_at TIMESTAMPTZ;

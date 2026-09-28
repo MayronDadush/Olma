@@ -12,7 +12,14 @@
 // Two readings the owner settled, and why they are here rather than guessed:
 //  - A graceful exit is a success too ("הצלחה יכולה להיות גם כשידעת שהקבוצה
 //    כבר לא מעוניינת והצעת את זה לפני שהם התייאשו"): a close that FOLLOWED
-//    our offer to drop it scores as one, a silent expiry does not.
+//    our offer to drop it scores as one, a silent expiry does not. But only
+//    "אם זה באמת מה שהם רצו ולא התחרטו עליו" (owner, the same day): a room
+//    that opens a new coordination within `REGRET_WINDOW_MS` of the drop still
+//    wanted to meet, so the drop was a mistake and scores nothing; and until
+//    that window has passed the exit is `pending`, neither a success nor a
+//    failure. A room that SAID to drop it (`cancelled`) and one that only went
+//    quiet (`no_match`, `expired`) both count, and `exit.kind` keeps them apart,
+//    because silence is weaker evidence than a word.
 //  - A room that agreed among themselves without tagging her leaves ONE yes in
 //    the data, the one who told her (coordination 57: שבת 18:00, settled by
 //    hand, three people's agreement nowhere in `meeting_option_answers`). The
@@ -28,6 +35,10 @@ const IRRITATION_WINDOW_MS = 12 * HOUR;
 // A settle undone this soon was not settled.
 const STABILITY_WINDOW_MS = 24 * HOUR;
 const SUCCESS_FLOOR = 0.7;
+// A new coordination in the same room this soon after a drop is regret. A
+// PROXY, and a coarse one: a weekly game opening next week's game reads the
+// same. Chosen short for that reason, and the report shows each case.
+const REGRET_WINDOW_MS = 72 * HOUR;
 
 // The kinds of room line that offer to drop it. `manual_drop_offer` is the
 // hand-sent one of 2026-09-28; `drop_offer` is the one the policy will say.
@@ -44,10 +55,22 @@ function outcomeOf(tl) {
   if (tl.status === 'confirmed') return { outcome: 'confirmed', value: 1, dropOffered: offered };
   if (tl.status === 'negotiating') return { outcome: 'open', value: null, dropOffered: offered };
   if (offered && ['cancelled', 'no_match', 'expired'].includes(tl.status)) {
-    return { outcome: 'graceful_exit', value: 0.6, dropOffered: true };
+    const exit = exitOf(tl);
+    return { outcome: 'graceful_exit', value: exit.regret ? 0 : 0.6, dropOffered: true, exit };
   }
   if (tl.status === 'cancelled') return { outcome: 'cancelled', value: 0.2, dropOffered: false };
   return { outcome: 'expired', value: 0, dropOffered: false };
+}
+
+// Whether a drop held. `readAt` is when the timeline was read — the report's
+// now; a timeline without one (the simulator's) is never pending.
+function exitOf(tl) {
+  const closed = ms(tl.closedAt);
+  const later = ms(tl.laterInRoomAt);
+  const regret = closed != null && later != null && later > closed && later - closed <= REGRET_WINDOW_MS;
+  const readAt = ms(tl.readAt);
+  const pending = !regret && closed != null && readAt != null && readAt - closed < REGRET_WINDOW_MS;
+  return { kind: tl.status === 'cancelled' ? 'said' : 'quiet', regret, pending };
 }
 
 // Who is counted in. The initiator is a participant row like anybody.
@@ -186,10 +209,11 @@ function scoreCoordination(tl) {
   const beforeThing = tl.confirmedStartAt == null || tl.closedAt == null || ms(tl.closedAt) <= ms(tl.confirmedStartAt);
   const success = total != null && !irritation.length && !stability.unstable && (
     (out.outcome === 'confirmed' && total >= SUCCESS_FLOOR && beforeThing)
-    || out.outcome === 'graceful_exit');
+    || (out.outcome === 'graceful_exit' && !out.exit.regret && !out.exit.pending));
 
   return {
     meetingId: tl.meetingId, room: tl.groupId != null, outcome: out.outcome, dropOffered: out.dropOffered,
+    exit: out.exit || null,
     total, success,
     speed, breadth, answerRate: rate, cost: Math.round(cost * 100) / 100, touches,
     irritation, lost: lostOf(tl), unstable: stability.unstable,

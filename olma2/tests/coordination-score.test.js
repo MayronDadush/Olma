@@ -82,6 +82,32 @@ test('an end that FOLLOWED our offer to drop it is a graceful exit and a success
   assert.equal(tooLate.outcome, 'expired');
 });
 
+test('a drop counts only if they did not regret it: a new one in the room within 72h undoes it, and before 72h it is pending', () => {
+  const touches = [...room().touches, { at: at(20), channel: 'room', kind: 'drop_offer', userIds: [] }];
+  const dropped = (over) => scoreCoordination(room({
+    status: 'no_match', closedAt: at(26), confirmedOptionId: null, confirmedStartAt: null, touches, ...over,
+  }));
+
+  const held = dropped({ readAt: at(26 + 73) });
+  assert.deepEqual([held.success, held.total, held.exit], [true, 0.6, { kind: 'quiet', regret: false, pending: false }]);
+
+  // The room opened another coordination two days later: they still wanted it.
+  const regretted = dropped({ readAt: at(26 + 73), laterInRoomAt: at(26 + 48) });
+  assert.deepEqual([regretted.outcome, regretted.success, regretted.total], ['graceful_exit', false, 0]);
+  assert.equal(regretted.exit.regret, true);
+  // …but one a week later is the room's next thing, not this one.
+  assert.equal(dropped({ readAt: at(26 + 200), laterInRoomAt: at(26 + 170) }).success, true);
+
+  // Too recent to know: neither a success nor a regret yet.
+  const recent = dropped({ readAt: at(26 + 10) });
+  assert.deepEqual([recent.success, recent.exit.pending, recent.total], [false, true, 0.6]);
+
+  // A room that SAID drop it is told apart from one that went quiet.
+  assert.equal(dropped({ status: 'cancelled', readAt: at(26 + 73) }).exit.kind, 'said');
+  // The simulator reads no clock: never pending there.
+  assert.equal(dropped({}).exit.pending, false);
+});
+
 test('leaving within twelve hours of a touch that reached them is irritation, and costs the success', () => {
   const s = scoreCoordination(room({ exits: [{ userId: 3, at: at(8) }] }));
   assert.equal(s.irritation.length, 1);
@@ -179,6 +205,26 @@ test('the timeline reads the rows the real calls leave, and only a SENT message 
     assert.ok((await coordinationIds(c)).includes(m));
     assert.ok(!(await coordinationIds(c, { roomsOnly: true })).includes(m), 'a private coordination is not a room');
     assert.equal(await timelineFor(c, 999999), null);
+  } finally { c.release(); }
+});
+
+test('the timeline names the next coordination the same room opened after this one closed', async () => {
+  const c = await db.pool.connect();
+  try {
+    const reg = await require('../src/domain/groups').registerGroup(c, {
+      externalId: '120363777777771@g.us', subject: 'x', members: [{ phone: a.phone }, { phone: b.phone }],
+    });
+    const gid = reg.data.group.id;
+    const first = Number((await meetings.startMeeting(c, a.id, 'one', [b.id])).data.meeting.id);
+    const second = Number((await meetings.startMeeting(c, a.id, 'two', [b.id])).data.meeting.id);
+    const closed = new Date(Date.UTC(2030, 0, 1, 12));
+    const later = new Date(closed.getTime() + 48 * H);
+    await c.query(`UPDATE meetings SET group_id = $2, status = 'no_match', closed_at = $3 WHERE id = $1`, [first, gid, closed]);
+    await c.query(`UPDATE meetings SET group_id = $2, created_at = $3 WHERE id = $1`, [second, gid, later]);
+    assert.equal(new Date((await timelineFor(c, first)).laterInRoomAt).getTime(), later.getTime());
+    // Opened BEFORE it closed is not "after".
+    await c.query('UPDATE meetings SET created_at = $2 WHERE id = $1', [second, new Date(closed.getTime() - H)]);
+    assert.equal((await timelineFor(c, first)).laterInRoomAt, null);
   } finally { c.release(); }
 });
 

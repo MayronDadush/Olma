@@ -48,9 +48,9 @@ const pad = (s, n) => String(s).padEnd(n);
     console.log(`${pad('id', 5)}${pad('room', 6)}${pad('outcome', 15)}${pad('score', 7)}${pad('ok', 4)}${pad('close h', 9)}${pad('lead h', 8)}${pad('yes/of', 12)}${pad('ans/of', 8)}${pad('touch', 7)}${pad('cost', 6)}${pad('irritated', 11)}lost`);
     for (const { tl, s } of rows) {
       const yes = `${s.breadth.yes}/${s.breadth.of}${s.breadth.breadthFrom === 'room_talk' ? '*' : ''}`;
-      console.log(`${pad(s.meetingId, 5)}${pad(s.room ? tl.groupId : '-', 6)}${pad(s.outcome + (s.dropOffered ? '+' : ''), 15)}${pad(s.total ?? '—', 7)}${pad(s.success ? '✓' : '', 4)}${pad(f1(s.speed.closeHours), 9)}${pad(f1(s.speed.leadHours), 8)}${pad(yes, 12)}${pad(`${s.answerRate.answered}/${s.answerRate.of}`, 8)}${pad(s.touches, 7)}${pad(s.cost, 6)}${pad(s.irritation.length || '', 11)}${s.lost.length || ''}`);
+      console.log(`${pad(s.meetingId, 5)}${pad(s.room ? tl.groupId : '-', 6)}${pad(s.outcome + (s.dropOffered ? '+' : '') + (s.exit ? (s.exit.regret ? '!' : s.exit.pending ? '?' : '') : ''), 15)}${pad(s.total ?? '—', 7)}${pad(s.success ? '✓' : '', 4)}${pad(f1(s.speed.closeHours), 9)}${pad(f1(s.speed.leadHours), 8)}${pad(yes, 12)}${pad(`${s.answerRate.answered}/${s.answerRate.of}`, 8)}${pad(s.touches, 7)}${pad(s.cost, 6)}${pad(s.irritation.length || '', 11)}${s.lost.length || ''}`);
     }
-    console.log('\n  * yes counted from the room talking it through (hand-settle in a room)   + a drop offer came first\n  irritated = left the coordination within 12h of a touch (cancels a success)   lost = paused Olma entirely (reported, does not)');
+    console.log('\n  * yes counted from the room talking it through (hand-settle in a room)   + a drop offer came first   ! regretted: the room opened a new one within 72h   ? too recent to judge\n  irritated = left the coordination within 12h of a touch (cancels a success)   lost = paused Olma entirely (reported, does not)');
 
     const closed = rows.filter((r) => r.s.outcome !== 'open');
     const summary = (label, set) => {

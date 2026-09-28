@@ -549,7 +549,8 @@ async function sweepGroupVoice(client, deps) {
     // duplicate column name in one row silently keeps the LAST one — which
     // would date every coordination from the day the ROOM was registered.
     `SELECT m.id AS meeting_id, m.status, m.created_at AS meeting_created_at,
-            m.group_started_at, m.group_base_at, m.group_base_slot, m.group_chase_at,
+            m.group_started_at, m.group_base_at, m.group_base_slot, m.group_base_start_at,
+            m.group_chase_at,
             m.group_done_at, m.group_table_at,
             m.group_dayof_at, m.group_hour_at, m.group_calendar_at, m.group_time_at,
             m.reopened_at, m.reopened_from, m.group_reopened_at, m.group_drop_offer_at, m.group_drop_close_at, g.*,
@@ -635,6 +636,7 @@ async function sweepGroupVoice(client, deps) {
       saidStarted: Boolean(row.group_started_at),
       saidBase: Boolean(row.group_base_at),
       saidBaseSlot: row.group_base_slot,
+      saidBaseStartAt: row.group_base_start_at,
       saidChase: Boolean(row.group_chase_at),
       saidDone: Boolean(row.group_done_at),
       saidCalendar: Boolean(row.group_calendar_at),
@@ -714,8 +716,9 @@ async function sweepGroupVoice(client, deps) {
       // they are hours apart, which is precisely how this went unnoticed.
       if (line.kind === 'base' || line.kind === 'moved') {
         await client.query(
-          `UPDATE meetings SET group_base_at = $3, group_base_slot = $2 WHERE id = $1`,
-          [row.meeting_id, line.slot, now]);
+          `UPDATE meetings SET group_base_at = $3, group_base_slot = $2, group_base_start_at = $4
+            WHERE id = $1`,
+          [row.meeting_id, line.slot, now, line.startsAt || null]);
       } else {
         await client.query(`UPDATE meetings SET ${column} = $2 WHERE id = $1`, [row.meeting_id, now]);
       }
