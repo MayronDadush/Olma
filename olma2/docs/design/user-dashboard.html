@@ -698,6 +698,11 @@ html.intro-go .tabbar{animation:introBar .55s var(--ease) .3s both}
 .sugg .sicon{flex:none;width:19px;height:19px;color:var(--sugg-a);margin-top:1px}
 .sugg .sicon svg{width:19px;height:19px;display:block}
 .sugg .stext{display:grid;gap:3px;min-width:0}
+/* Who is speaking, said on every card and not only when there is a second
+   one (owner, 2026-09-28). "Olma noticed", never "AI": nothing here is a
+   model's — `domain/task-suggestions.js` is three fixed rules and a word
+   count — and a label is a promise about where a thing came from. */
+.sugg .slbl{font-size:11.5px;font-weight:700;letter-spacing:.04em;color:var(--sugg-a);margin-bottom:-2px}
 /* Their own words, and they may be long — this wraps rather than truncating,
    because a proposal to remove a task the person cannot fully read is one
    they cannot judge. */
@@ -1767,6 +1772,11 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 .swfront{position:relative;background:var(--surface);
   transition:transform .26s var(--spring);touch-action:pan-y}
 .group.mtset .swfront{background:var(--accent-soft)}
+/* A task somebody else is on carries the accent's soft ground on the ROW,
+   not on its section, so it keeps it wherever it lands — pinned at the top
+   or unpinned back among the rest (owner, 2026-09-28). Violet because no
+   category uses it: the dot beside the title is the category's colour. */
+.swr.shared > .swfront,.hometoday .task.shared{background:var(--accent-soft)}
 .swr.dragging > .swfront{transition:none}
 .swr.open > .swfront{transform:translateX(calc(-104px * var(--dirf)))}
 /* The first-time peek: part of the way, slower, and back by itself. */
@@ -2890,6 +2900,20 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   display:block;width:38px;height:5px;border-radius:3px;background:var(--sep-2);margin:0 auto;
   transition:background var(--sw-t) var(--ease-io),width var(--sw-t) var(--ease-io);
 }
+/* ── the way out ──
+   A zero-height sticky hold, like the scroll cue at the bottom: the X stays
+   in the corner however far the sheet has scrolled, and takes no layout. It
+   sits at the END side — the left in Hebrew — which is where iOS puts it in
+   a right-to-left language. */
+.sxhold{position:sticky;top:0;height:0;z-index:7}
+.sx{
+  position:absolute;top:-4px;inset-inline-end:-6px;width:32px;height:32px;border-radius:50%;
+  display:grid;place-items:center;background:var(--bg-tint);color:var(--text-2);
+  transition:transform .3s var(--spring),background .2s var(--ease-io);
+}
+.sx::after{content:"";position:absolute;inset:-6px}
+.sx svg{width:12px;height:12px}
+.sx:active{transform:scale(.9);background:var(--sep)}
 .sheet.dragging{transition:none}
 .sheet.dragging .sgrab{cursor:grabbing}
 .sheet.dragging .grabber{background:var(--text-3);width:48px}
@@ -2921,7 +2945,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   position:absolute;top:0;height:100%;border-radius:999px;background:var(--accent);
   width:var(--w,40%);inset-inline-start:var(--o,0%);
 }
-.sheet h2{font-family:var(--font-head);font-size:20px;font-weight:600;margin-bottom:16px;text-align:center}
+.sheet h2{font-family:var(--font-head);font-size:20px;font-weight:600;margin-bottom:16px;text-align:center;
+  padding-inline:36px}   /* clear of the X on either side, so it stays centred */
 .sheet .group{box-shadow:none;background:var(--surface-2)}
 .sheetbtns{display:flex;flex-direction:column;gap:10px;margin-top:20px}
 /* the new-coordination steps */
@@ -2946,7 +2971,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
    buttons that used to sit here were most of its height, and they are the
    reason it had to scroll. What is left fits one screen with nothing to
    reach for. */
-.stitlewrap{display:flex;align-items:center;gap:8px;padding:2px 4px 10px}
+.stitlewrap{display:flex;align-items:center;gap:8px;padding:2px 40px 10px}
 .stitle{
   flex:1;min-width:0;border:0;background:none;font:inherit;font-family:var(--font-head);
   font-size:20px;font-weight:600;color:var(--text);text-align:center;outline:none;
@@ -3747,6 +3772,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 
 <div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sTitle">
   <div class="sgrab"><i class="grabber"></i></div>
+  <div class="sxhold"><button class="sx" type="button" data-sx data-i18n-label="sheet.close"><svg><use href="#i-x"/></svg></button></div>
   <!-- The heading of a sheet is not usually typeable, so it needs to say that
        it is: a pencil while editing, and on a brand-new task a check, because
        the title is the one field that has to exist before anything else here
@@ -3923,14 +3949,12 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 
 <div class="sheet" id="citySheet" role="dialog" aria-modal="true" aria-labelledby="cityTitle">
   <div class="sgrab"><i class="grabber"></i></div>
+  <div class="sxhold"><button class="sx" type="button" data-sx data-i18n-label="sheet.close"><svg><use href="#i-x"/></svg></button></div>
   <h2 id="cityTitle" data-i18n="city.title"></h2>
   <div class="group">
     <div class="field"><input id="citySearch" type="search" data-i18n-ph="city.search" autocomplete="off"></div>
   </div>
   <div class="group citylist" id="cityList" style="margin-top:12px"></div>
-  <div class="sheetbtns">
-    <button class="btn ghost" id="cityCancel" data-i18n="sheet.cancel"></button>
-  </div>
 </div>
 
 <!-- Deleting the account. Its own sheet with its own "yes" button, because the
@@ -3953,6 +3977,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      field and a scrollable list, not a wheel or a platform popup. -->
 <div class="sheet" id="timeSheet" role="dialog" aria-modal="true" aria-labelledby="timeTitle">
   <div class="sgrab"><i class="grabber"></i></div>
+  <div class="sxhold"><button class="sx" type="button" data-sx data-i18n-label="sheet.close"><svg><use href="#i-x"/></svg></button></div>
   <h2 id="timeTitle" data-i18n="sheet.pickTime"></h2>
   <div class="group">
     <div class="field"><input id="timeSearch" type="search" inputmode="numeric" data-i18n-ph="time.search" autocomplete="off"></div>
@@ -3960,7 +3985,6 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   <div class="group citylist" id="timeList" style="margin-top:12px"></div>
   <div class="sheetbtns">
     <button class="btn ghost" id="timeClear" data-i18n="time.clear"></button>
-    <button class="btn ghost" id="timeCancel" data-i18n="sheet.cancel"></button>
   </div>
 </div>
 
@@ -3976,6 +4000,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      same sentence, said shorter. -->
 <div class="sheet" id="mtSheet" role="dialog" aria-modal="true" aria-labelledby="mtTitle">
   <div class="sgrab"><i class="grabber"></i></div>
+  <div class="sxhold"><button class="sx" type="button" data-sx data-i18n-label="sheet.close"><svg><use href="#i-x"/></svg></button></div>
   <h2 id="mtTitle"></h2>
   <p class="note" id="mtWho" style="padding:0 14px 4px"></p>
   <div class="mtfaces" id="mtFaces"></div>
@@ -4003,7 +4028,6 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     <button class="btn ghost" id="mtCal" hidden></button>
     <button class="btn ghost" id="mtReopen" hidden></button>
     <button class="btn ghost danger" id="mtLeave"></button>
-    <button class="btn ghost" id="mtClose" data-i18n="sheet.close"></button>
   </div>
   <div class="scuehold deep"><div class="scue" id="mtCue"><i></i></div></div>
 </div>
@@ -4013,6 +4037,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      they ever see it until they decide. -->
 <div class="sheet" id="mtOptSheet" role="dialog" aria-modal="true" aria-labelledby="mtOptTitle">
   <div class="sgrab"><i class="grabber"></i></div>
+  <div class="sxhold"><button class="sx" type="button" data-sx data-i18n-label="sheet.close"><svg><use href="#i-x"/></svg></button></div>
   <h2 id="mtOptTitle"></h2>
   <div id="mtOptPick">
   <div class="group"><div class="foldpad tight">
@@ -4041,7 +4066,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   </div>
   <div class="sheetbtns">
     <button class="btn primary" id="mtOptGo"></button>
-    <button class="btn ghost" id="mtOptCancel" data-i18n="sheet.cancel"></button>
+    <button class="btn ghost" id="mtOptCancel" data-i18n="mt.back" hidden></button>
   </div>
   <div class="scuehold deep"><div class="scue" id="mtOptCue"><i></i></div></div>
 </div>
@@ -4054,6 +4079,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      once changed. -->
 <div class="sheet" id="mtNewSheet" role="dialog" aria-modal="true" aria-labelledby="mtNewTitle">
   <div class="sgrab"><i class="grabber"></i></div>
+  <div class="sxhold"><button class="sx" type="button" data-sx data-i18n-label="sheet.close"><svg><use href="#i-x"/></svg></button></div>
   <h2 id="mtNewTitle" data-i18n="mt.newTitle"></h2>
   <div class="mtprog" aria-hidden="true"><i></i><i></i><i></i></div>
   <p class="mtstepn" id="mtStepN"></p>
@@ -4126,7 +4152,6 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
          what is missing, and pressing it anyway points at the place to fix. -->
     <button class="btn primary" id="mtNewGo"></button>
     <button class="btn ghost" id="mtNewBack" hidden data-i18n="mt.back"></button>
-    <button class="btn ghost" id="mtNewCancel" data-i18n="sheet.cancel"></button>
   </div>
   <div class="scuehold deep"><div class="scue" id="mtNewCue"><i></i></div></div>
 </div>
@@ -4137,6 +4162,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      list and leaving them to work it out. -->
 <div class="sheet" id="cnSheet" role="dialog" aria-modal="true" aria-labelledby="cnTitle">
   <div class="sgrab"><i class="grabber"></i></div>
+  <div class="sxhold"><button class="sx" type="button" data-sx data-i18n-label="sheet.close"><svg><use href="#i-x"/></svg></button></div>
   <h2 id="cnTitle" data-i18n="cn.title"></h2>
   <p class="note" id="cnFrom" style="padding:0 14px 10px"></p>
   <div class="group" id="cnSearchWrap" hidden>
@@ -4150,9 +4176,6 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       <p data-i18n="cn.noneP"></p>
       <button class="btn primary" id="cnConnect" data-i18n="cn.connect"></button>
     </div>
-  </div>
-  <div class="sheetbtns">
-    <button class="btn ghost" id="cnCancel" data-i18n="sheet.cancel"></button>
   </div>
   <div class="scuehold deep"><div class="scue" id="cnCue"><i></i></div></div>
 </div>
@@ -4966,7 +4989,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "sugg.overdue":"התאריך שלה עבר לפני {days} ימים והיא עדיין פתוחה. להוריד מהרשימה?",
       "sugg.duplicate":"אומרת כמעט אותו דבר כמו „{keep}”. להוריד את זו ולהשאיר את הראשונה?",
       "sugg.undo":"אפשר להחזיר מהארכיון בכל רגע.",
-      "sugg.yes":"אשר","sugg.no":"דלג","sugg.more":"הצעת Ai",
+      "sugg.yes":"אשר","sugg.no":"דלג","sugg.more":"להצעה הבאה","sugg.label":"{name} שמה לב",
       "sugg.yes.stuck":"להוריד","sugg.yes.overdue":"להוריד","sugg.yes.duplicate":"להוריד את זו",
       "toast.suggArchived":"„{name}” עברה לארכיון","toast.suggSkipped":"לא נשאל על „{name}” שוב",
       "nest.title":"המשימה נכנסה לרשימה","nest.ok":"הבנתי","nest.undo":"ביטול",
@@ -5329,7 +5352,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "sugg.overdue":"Its date passed {days} days ago and it is still open. Take it off the list?",
       "sugg.duplicate":"Says almost the same as \u201c{keep}\u201d. Take this one off and keep the first?",
       "sugg.undo":"You can restore it from the archive at any time.",
-      "sugg.yes":"Confirm","sugg.no":"Skip","sugg.more":"AI suggestion",
+      "sugg.yes":"Confirm","sugg.no":"Skip","sugg.more":"Next suggestion","sugg.label":"{name} noticed",
       "sugg.yes.stuck":"Take it off","sugg.yes.overdue":"Take it off","sugg.yes.duplicate":"Take this one off",
       "toast.suggArchived":"\u201c{name}\u201d moved to the archive","toast.suggSkipped":"You will not be asked about \u201c{name}\u201d again",
       "nest.title":"Added to a list","nest.ok":"Got it","nest.undo":"Undo",
@@ -6935,7 +6958,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      swipe, no pin. The tick and the tap are the same. */
   function homeTaskHTML(x){
     var b = bucketFor(x.d), lbl = labelFor(x);
-    return '<div class="taskwrap" data-id="' + x.id + '"><div class="task" role="button" tabindex="0">' +
+    return '<div class="taskwrap" data-id="' + x.id + '"><div class="task' + (facesOf(x).length ? " shared" : "") +
+      '" role="button" tabindex="0">' +
       '<button class="tick" aria-label="' + esc(t("a11y.tick")) + '"><svg><use href="#i-check"/></svg></button>' +
       '<div class="tbody"><span class="ttitle">' + esc(L(x.t) || t("sheet.untitled")) + "</span></div>" +
       '<span class="tend">' +
@@ -7368,7 +7392,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
        lives in its source, and a delete here would come back on the next sync. */
     var verb = taskVerb(x), key = "t" + x.id;
     if(verb) end += swDel(key, verb);
-    return '<div class="taskwrap" data-id="' + x.id + '"><div class="taskin swr' + (verb ? "" : " locked") + swClass(key) +
+    return '<div class="taskwrap" data-id="' + x.id + '"><div class="taskin swr' + (verb ? "" : " locked") +
+      (facesOf(x).length ? " shared" : "") + swClass(key) +
       '" data-sw="' + key + '" data-verb="' + (verb || "") + '">' + (verb ? swBack(verb) : "") +
       '<div class="swfront"><div class="task" role="button" tabindex="0">' +
       '<button class="tick" aria-label="' + esc(t("a11y.tick")) + '"><svg><use href="#i-check"/></svg></button>' +
@@ -7450,7 +7475,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      second question arriving the instant the first is answered is an
      interrogation, not an offer.
 
-     The one way to see another is asking for it: "הצעת Ai" (owner,
+     The one way to see another is asking for it: "להצעה הבאה" (was "הצעת Ai"; owner,
      2026-09-22) steps to the next one and appears only when there IS one.
      It decides nothing — the suggestion you step past stays unanswered — and
      it sends nothing, because the whole set is already here.
@@ -7497,6 +7522,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
         '<span class="sicon"><svg aria-hidden="true"><use href="#' +
           (SUGG_ICON[s.kind] || "i-list") + '"/></svg></span>' +
         '<span class="stext">' +
+          '<span class="slbl">' + esc(t("sugg.label", {name:olmaName()})) + "</span>" +
           '<span class="stitle">' + esc(L(s.title) || t("sheet.untitled")) + "</span>" +
           '<span class="swhy">' + esc(why) + " " + esc(t("sugg.undo")) + "</span>" +
         "</span>" +
@@ -8072,7 +8098,19 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     if($("#mtOptSheet").classList.contains("show")){ closeOptSheet(); return; }
     closeSheets();
   });
-  $("#cityCancel").addEventListener("click", closeSheets);
+  /* The X every sheet carries (owner, 2026-09-28: people who tried it did not
+     know how to leave one). It closes exactly what the scrim and the drag
+     close — the top layer, and only that — so the three ways out never
+     disagree. Everything in a sheet has already saved by the time it is
+     pressed; the "נשמר" line under the task editor says so. */
+  $$("[data-sx]").forEach(function(b){
+    b.addEventListener("click", function(){
+      var id = b.closest(".sheet").id;
+      if(id === "timeSheet"){ closeTimeSheet(); return; }
+      if(id === "mtOptSheet"){ closeOptSheet(); return; }
+      closeSheets();
+    });
+  });
 
   /* ── a sheet is a thing you can put down ──
      Grab the top edge and it follows the finger, and the scrim thins as it
@@ -8938,7 +8976,6 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     if(b) pickTime(b.dataset.time);
   });
   $("#timeClear").addEventListener("click", function(){ pickTime(""); });
-  $("#timeCancel").addEventListener("click", closeTimeSheet);
   /* The field behind the chip this sheet feeds: it holds what was chosen, or
      the 20:00 the meeting flow's "exact" chip has always started from. The
      chip itself is drawn by whoever draws the row (exactChipHTML). */
@@ -9885,7 +9922,6 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     renderMeet();
     showSheet($("#mtSheet"));
   }
-  $("#mtClose").addEventListener("click", closeSheets);
   $("#mtSheet").addEventListener("scroll", function(){ paintCue($("#mtSheet"), $("#mtCue")); });
 
   $("#mtOpts").addEventListener("click", function(e){
@@ -10329,7 +10365,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     $("#mtOptPick").hidden = !!swapNew;
     $("#mtOptSwap").hidden = !swapNew;
     $("#mtOptTitle").textContent = t(swapNew ? "mt.swapTitle" : "mt.addOpt");
-    $("#mtOptCancel").textContent = t(swapNew ? "mt.back" : "sheet.cancel");
+    $("#mtOptCancel").textContent = t("mt.back");
+    $("#mtOptCancel").hidden = !swapNew;   /* leaving is the X; this only steps back */
     var go = $("#mtOptGo");
     go.hidden = !!swapNew;
     var miss = optDay < 0 ? t("mt.missDay")
@@ -10653,7 +10690,6 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       : mtStep === 1 ? t("mt.next") + " · " + pl("mtwho", mtPickWho.length)
       : t("mt.next") + " · " + pl("mtday", mtPickDays.length));
     $("#mtNewBack").hidden = mtStep === 1;
-    $("#mtNewCancel").hidden = mtStep !== 1;
   }
   function mtGoStep(n){
     mtStep = n;
@@ -10766,7 +10802,6 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     var span = $('[data-pd="' + off + ':exact"] span', $("#mtPerDayList"));
     if(span) span.textContent = inp.value;
   });
-  $("#mtNewCancel").addEventListener("click", closeSheets);
   $("#mtNewSheet").addEventListener("scroll", function(){ paintCue($("#mtNewSheet"), $("#mtNewCue")); });
   $("#mtNewGo").addEventListener("click", function(){
     var miss = mtMissing(mtStep);
@@ -10915,7 +10950,6 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     showSheet($("#cnSheet"));
   }
   $("#addFriend").addEventListener("click", openContacts);
-  $("#cnCancel").addEventListener("click", closeSheets);
   $("#cnSearch").addEventListener("input", function(){ cnQ = this.value; renderContacts(); });
   $("#cnSheet").addEventListener("scroll", function(){ paintCue($("#cnSheet"), $("#cnCue")); });
   /* No address book is not a dead end — it is one missing connection, and the
