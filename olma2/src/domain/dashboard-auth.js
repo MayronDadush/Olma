@@ -193,7 +193,7 @@ async function redeemLink(client, token) {
 // no model; domain/link-request.js), and types it into the app.
 //
 // Eight digits, ten minutes, one use, one live code per person. It is a
-// magic_links row with `target = 'code'` (migration 096), so it inherits every
+// magic_links row with `target = 'code'` (migration 099), so it inherits every
 // rule a link has: stored as sha256 only, spent by an atomic UPDATE. What a
 // code does NOT have is a link's 128 bits, so guessing is bounded where the
 // guesses arrive — POST /me/code counts failures per address and in total

@@ -11988,7 +11988,7 @@ On 2026-09-27 the owner chose to do both, so the door was built:
   `dashboard_link_shortcut`). The app's signed-out screen has a button that
   opens WhatsApp with the phrase already typed, and a field that takes the
   whole reply pasted and finds the digits.
-- **A code is a magic link with `target = 'code'`** (migration 096): hashed,
+- **A code is a magic link with `target = 'code'`** (migration 099): hashed,
   one use, spent by an atomic UPDATE, ten minutes, one live per person. It is
   kept out of the five-live-links count, and no link query finds one.
 - **Guessing is bounded where the guesses arrive** (POST `/me/code`): five
