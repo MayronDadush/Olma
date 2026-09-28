@@ -39,104 +39,96 @@
 const BRAND = 'Allma - Personal Assistant';
 const ASSISTANT = 'עולמה';
 const WA_NUMBER = '972559347282';
-const CONTACT_EMAIL = 'mayrondadush@gmail.com';
+const CONTACT_EMAIL = 'info@allma.world';
+const { markSvg, PALETTE } = require('./brand-mark');
 
-// Lifted from the signed-out welcome screen in docs/design/user-dashboard.html
-// so the front door looks like the product, not like a legal notice someone
-// bolted on. Only the tokens these two pages actually use were carried over.
+// The brand the owner chose on 2026-09-28, Cypress + Mustard: sand ground,
+// a cypress band across the top, mustard for the one action on the page. The
+// same day tokens the /me dashboard carries
+// (docs/design/user-dashboard.html), so the front door and the product are
+// one thing. Only the tokens these pages actually use were carried over.
+// ALWAYS light, whatever the phone is set to (the owner, 2026-09-29): this is
+// the first impression, and there is no toggle here to change it. The
+// dashboard keeps its own day/night.
 const SHELL_CSS = `
 :root{
-  --bg:#F4F3F8;--surface:#FFFFFF;--surface-2:#FAF9FE;--sep:#E7E5F0;
-  --text:#141322;--text-2:#6C6982;--text-3:#A29FB5;
-  --accent:#5B2FD6;--accent-2:#4A22B4;--accent-soft:#EEE8FC;
-  --shadow-m:0 1px 2px rgba(20,19,34,.05), 0 10px 28px -16px rgba(20,19,34,.28);
-  --ease:cubic-bezier(.22,1,.36,1);
-}
-@media (prefers-color-scheme:dark){
-  :root{
-    --bg:#0C0B11;--surface:#181720;--surface-2:#1F1D29;--sep:#2A2836;
-    --text:#F4F3FA;--text-2:#9D9AB2;--text-3:#6F6C82;
-    --accent:#9D7BFF;--accent-2:#B49BFF;--accent-soft:#241C3D;
-    --shadow-m:0 1px 2px rgba(0,0,0,.4), 0 10px 28px -16px rgba(0,0,0,.7);
-  }
+  color-scheme:light;
+  --bg:#F0EDE5;--surface:#FFFFFF;--sep:#D7D6CF;
+  --text:#0E1F1E;--text-2:#44504E;--text-3:#646D6A;
+  --band:#004643;--on-band:#F0EDE5;--on-band-2:#C9D6D1;
+  --link:#004643;--code:#E6ECEC;
+  --action:#F9C23C;--on-action:#004643;
 }
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
 body{
-  background:radial-gradient(125% 60% at 50% -8%, var(--accent-soft) 0%, transparent 62%), var(--bg);
-  color:var(--text);
-  font-family:'Assistant',system-ui,-apple-system,'Segoe UI',Arial,sans-serif;
+  background:var(--bg);color:var(--text);
+  font-family:'IBM Plex Sans Hebrew','IBM Plex Sans',system-ui,-apple-system,'Segoe UI',Arial,sans-serif;
   font-size:16px;line-height:1.6;
   min-height:100vh;
 }
+.band{background:var(--band);color:var(--on-band);border-radius:0 0 28px 28px}
+.band .in{max-width:720px;margin:0 auto;padding:40px 22px 36px}
+.band .lede{color:var(--on-band-2)}
 .wrap{max-width:720px;margin:0 auto;padding:44px 22px 64px}
-.mark{width:76px;height:76px;filter:drop-shadow(0 14px 28px rgba(91,47,214,.28))}
+.band + .wrap{padding-top:12px}
+.mark{width:72px;height:72px}
 .mark svg{width:100%;height:100%;display:block}
-h1{
-  font-family:'Rubik',system-ui,sans-serif;font-weight:700;
-  font-size:40px;line-height:1.05;letter-spacing:-.02em;margin:20px 0 0;
-}
-h2{font-family:'Rubik',system-ui,sans-serif;font-weight:600;font-size:21px;margin:36px 0 10px;letter-spacing:-.01em}
-h3{font-size:16.5px;font-weight:700;margin:22px 0 6px}
+h1{font-weight:700;font-size:38px;line-height:1.08;letter-spacing:-.02em;margin:20px 0 0;text-wrap:balance}
+h2{font-weight:700;font-size:21px;margin:36px 0 10px;letter-spacing:-.01em;text-wrap:balance}
+h3{font-size:16.5px;font-weight:600;margin:22px 0 6px}
 .lede{margin-top:11px;font-size:17px;color:var(--text-2);max-width:32em}
 p{margin:0 0 12px}
 ul{margin:0 0 14px;padding-inline-start:1.25em}
 li{margin-bottom:7px}
-a{color:var(--accent);text-decoration:none;border-bottom:1px solid transparent}
-a:hover{border-bottom-color:currentColor}
-.card{
-  background:var(--surface);border-radius:16px;box-shadow:var(--shadow-m);
-  padding:18px 20px;margin:14px 0;
-}
+a{color:var(--link);text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:3px}
+code{font-family:'IBM Plex Mono',ui-monospace,Menlo,monospace;font-size:.86em;background:var(--code);border-radius:6px;padding:1px 6px}
+.card{background:var(--surface);border:1px solid var(--sep);border-radius:18px;padding:18px 20px;margin:14px 0}
 .card h3{margin-top:0}
 .card p:last-child{margin-bottom:0}
 .perm{font-size:13.5px;color:var(--text-3);margin-top:6px}
 .cta{
-  display:inline-flex;align-items:center;gap:9px;margin-top:8px;
-  background:var(--accent);color:#fff;border-radius:14px;
-  padding:13px 22px;font-weight:600;font-size:16px;
-  box-shadow:var(--shadow-m);border-bottom:0;
+  display:inline-flex;align-items:center;gap:9px;margin-top:10px;
+  background:var(--action);color:var(--on-action);border-radius:99px;
+  padding:13px 24px;font-weight:600;font-size:16px;text-decoration:none;
 }
-.cta:hover{background:var(--accent-2);border-bottom:0}
+.cta:hover{filter:brightness(.96)}
 .foot{margin-top:44px;padding-top:18px;border-top:1px solid var(--sep);font-size:13px;color:var(--text-3)}
 .foot a{color:var(--text-2)}
 .he{margin-top:52px;padding-top:26px;border-top:1px solid var(--sep);direction:rtl;text-align:right}
 .updated{font-size:13.5px;color:var(--text-3);margin-top:4px}
-@media (prefers-reduced-motion:no-preference){
-  .wrap>*{animation:rise .55s var(--ease) both}
-  @keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
-}
 `;
 
-const LOGO = `<svg viewBox="0 0 96 96" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="${BRAND}">
-  <defs>
-    <linearGradient id="lg" x1="18" y1="10" x2="80" y2="86" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#7C4DFF"/><stop offset="1" stop-color="#4A22B4"/>
-    </linearGradient>
-    <clipPath id="lc"><circle cx="46" cy="44" r="32"/></clipPath>
-  </defs>
-  <path d="M46 12a32 32 0 0 1 32 32 32 32 0 0 1-32 32c-3.6 0-7-.6-10.2-1.7l-13.4 6a2.4 2.4 0 0 1-3.3-2.7l2.3-11.2A32 32 0 0 1 46 12Z" fill="url(#lg)"/>
-  <g clip-path="url(#lc)" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round">
-    <path d="M14 44h64" opacity=".5"/><ellipse cx="46" cy="44" rx="14.5" ry="32" opacity=".55"/>
-  </g>
-  <circle cx="70" cy="22" r="5.2" fill="#fff" opacity=".9"/>
-</svg>`;
+// The round mark with its ring: on the cypress band the dark half is ink and
+// the ring is sand (the brand book's "על ברוש"); on sand, below the band, the
+// dark half is cypress and the ring follows the text colour.
+// `id` keeps the clip paths apart, since a page carries more than one.
+const ON_BAND = { ink: '#0E1F1E', paper: '#F0EDE5', coral: PALETTE.coral };
+const LOGO = markSvg({ variant: 'round', palette: ON_BAND, ring: '#F0EDE5', id: 'lg' })
+  .replace('<svg ', `<svg role="img" aria-label="${BRAND}" `);
+const LOGO_PAGE = markSvg({ variant: 'round', id: 'lp', ring: 'currentColor' })
+  .replace('<svg ', `<svg role="img" aria-label="${BRAND}" `);
 
 // English first, ltr by default: this is now the primary reading direction.
 // The Hebrew section on each page opts back into rtl via the `.he` wrapper.
-function shell(title, bodyHtml, { lang = 'en', dir = 'ltr' } = {}) {
+// `band`, when given, is drawn full width above the page in the brand's
+// cypress; the home page has one, the policy pages do not.
+function shell(title, bodyHtml, { lang = 'en', dir = 'ltr', band = '' } = {}) {
   return `<!doctype html>
 <html lang="${lang}" dir="${dir}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#004643">
+<link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
 <title>${title}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700&family=Rubik:wght@600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Hebrew:wght@400;600;700&family=IBM+Plex+Sans:wght@400;600;700&family=IBM+Plex+Mono:wght@500&display=swap">
 <style>${SHELL_CSS}</style>
 </head>
-<body><div class="wrap">${bodyHtml}</div></body>
+<body>${band ? `<header class="band"><div class="in">${band}</div></header>` : ''}<div class="wrap">${bodyHtml}</div></body>
 </html>`;
 }
 
@@ -148,12 +140,6 @@ function shell(title, bodyHtml, { lang = 'en', dir = 'ltr' } = {}) {
 // Hebrew for the people actually using it today — same claims, both times.
 function homePage() {
   return shell(`${BRAND} — a WhatsApp AI assistant`, `
-    <div class="mark">${LOGO}</div>
-    <h1>${BRAND}</h1>
-    <p class="lede">A personal assistant that lives inside WhatsApp. Write to it in your own language — it remembers, reminds, and coordinates. Nothing to install.</p>
-
-    <p><a class="cta" href="https://wa.me/${WA_NUMBER}">Start a WhatsApp chat</a></p>
-
     <h2>What it does</h2>
     <ul>
       <li><b>Tasks & reminders</b> — tell it once, and it reminds you at the right time.</li>
@@ -181,7 +167,7 @@ function homePage() {
     <p>We do not sell information and do not use it for advertising. Data from Google is used solely to answer you — not to train models, and not for any other purpose. <a href="/privacy">Full privacy policy</a>.</p>
 
     <div class="he">
-      <div class="mark">${LOGO}</div>
+      <div class="mark">${LOGO_PAGE}</div>
       <h2>${ASSISTANT}</h2>
       <p class="lede">עוזרת אישית שחיה בתוך וואטסאפ. כותבים לה בשפה שלכם — היא זוכרת, מזכירה, ומתאמת. אין מה להתקין.</p>
 
@@ -217,7 +203,12 @@ function homePage() {
     <div class="foot">
       <p>allma.world · <a href="/privacy">Privacy Policy</a> · <a href="/terms">Terms of Service</a> · <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
     </div>
-  `);
+  `, { band: `
+    <div class="mark">${LOGO}</div>
+    <h1>${BRAND}</h1>
+    <p class="lede">A personal assistant that lives inside WhatsApp. Write to it in your own language — it remembers, reminds, and coordinates. Nothing to install.</p>
+    <p><a class="cta" href="https://wa.me/${WA_NUMBER}">Start a WhatsApp chat</a></p>
+  ` });
 }
 
 // ---- privacy ----------------------------------------------------------------
@@ -226,24 +217,57 @@ function homePage() {
 // below because that is what the people using this today read. Neither is a
 // summary of the other — a policy that says different things in two
 // languages is worse than one language.
+//
+// Rewritten 2026-09-28 (compliance review, findings 1-4 and 7). Every claim
+// here was checked against the code and the live box that day, and the
+// previous version had drifted in four places: the off-box backup is in
+// Frankfurt for 30 days, not the US for 14; voice notes, calls and the model's
+// hosts reach processors it did not name; groups were not mentioned at all;
+// and "all associated data are deleted" was not what deletion did. The
+// Privacy Protection Law s.11 (after Amendment 13) also asks for four things
+// it lacked: who the controller is, whether giving the data is obligatory,
+// what refusing costs, and the rights of access and correction.
+//
+// RETENTION: the owner's decision (2026-09-28) is that nothing is deleted on a
+// timer — what a person gave is kept until THEY ask to delete it, group
+// members who never wrote to her included. Only the backups age out, and a
+// deletion request is carried out within deletionDays. A number here with no
+// code behind it is this page lying again.
+//
+// No name on the page (owner, 2026-09-28): the contact is the service's own
+// address. s.11 asks for the controller's identity; that choice is the
+// owner's, flagged for the lawyer.
 const UPDATED = '2026-09-06';
+const PRIVACY_UPDATED = '2026-09-28';
+const RETENTION = {
+  deletionDays: 30, localBackupDays: 14, offboxBackupDays: 30,
+};
 
 function privacyPage() {
+  const R = RETENTION;
   return shell(`Privacy Policy — ${BRAND}`, `
-    <div class="mark">${LOGO}</div>
+    <div class="mark">${LOGO_PAGE}</div>
     <h1>Privacy Policy</h1>
-    <p class="updated">Last updated: ${UPDATED}</p>
+    <p class="updated">Last updated: ${PRIVACY_UPDATED}</p>
 
-    <h2>Who we are</h2>
-    <p>${BRAND} (allma.world) is a personal assistant that works over WhatsApp, operated by an individual developer. Contact: <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>.</p>
+    <h2>Who is responsible for your data</h2>
+    <p>${BRAND} (allma.world) is a personal AI assistant that works over WhatsApp. It is operated from Israel. For anything about your privacy, email <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a> or just tell the assistant.</p>
 
-    <h2>What we store</h2>
+    <h2>Do you have to give us anything</h2>
+    <p>No. There is no legal obligation to give us any information; it is entirely your choice. Without your phone number and what you write, the assistant cannot work. Without anything else it still works, just less tailored to you.</p>
+
+    <h2>What we store and why</h2>
     <ul>
-      <li><b>Account details</b> — the phone number you write from, a first name if you gave one, timezone and language preference.</li>
-      <li><b>Conversation content</b> — your messages and the assistant's replies, so the conversation stays coherent.</li>
-      <li><b>What you asked it to remember</b> — tasks, reminders, meetings, preferences and facts.</li>
-      <li><b>Google data</b> — only if you connected it, and only under the scopes you approved.</li>
+      <li><b>Account details</b> — your phone number, name, timezone and language, so we know who you are and when we may write to you.</li>
+      <li><b>Conversation content</b> — your messages, including voice notes, and the assistant's replies, so the conversation stays coherent.</li>
+      <li><b>What you asked it to remember</b> — tasks, reminders, meetings, preferences and facts you shared. Facts can include sensitive personal information, for example about health, if you chose to share it.</li>
+      <li><b>Details you filled in on your page</b>, such as a date of birth and how you prefer to be addressed.</li>
+      <li><b>Phone calls</b>, if you used them — a transcript of the call, to keep what was agreed. The call audio itself is not recorded.</li>
+      <li><b>Google data</b> — only if you connected it, and only under the scopes you approved (below).</li>
     </ul>
+
+    <h2>WhatsApp groups</h2>
+    <p>When the assistant is added to a group, it sees the member list (numbers and display names) and the messages that tag it. It keeps the member list to coordinate between everyone. A group member who has not written to the assistant may get one private message from it about a plan in that group; if they do not reply, it does not write again. The member list is kept, as part of the group's own list that everyone in it already sees, until someone asks for their details to be deleted — email <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>, even if you never used the assistant.</p>
 
     <h2>Google user data</h2>
     <p>Connecting Google is optional. Each permission is requested separately on Google's own consent screen, and you may grant some and decline others.</p>
@@ -254,49 +278,68 @@ function privacyPage() {
     </ul>
 
     <h2>Limited Use</h2>
-    <p>Our use and transfer of information received from Google APIs adheres to the <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including the Limited Use requirements. Specifically: Google user data is used solely to provide the user-facing features described above; it is not sold; it is not used for advertising; and it is not used to train generalized models.</p>
+    <p>Our use and transfer of information received from Google APIs adheres to the <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including the Limited Use requirements. Specifically: Google user data is used solely to provide the user-facing features described above; it is not sold; it is not used for advertising; and it is not used to train generalized models. When it is needed to answer you, it is part of the conversation sent to the language model provider listed below, under the same terms.</p>
 
     <h2>Who we share with</h2>
-    <p>We do not sell data and do not share it with advertisers. To operate the service, data is processed by:</p>
+    <p>We do not sell data and do not use it for advertising. To operate the service, data is processed by these providers and no others:</p>
     <ul>
-      <li><b>Model provider</b> — conversation text is sent to a language model via OpenRouter (currently DeepSeek, with Anthropic as fallback) to compose a reply.</li>
+      <li><b>Language model</b> — conversation text, including calendar and contact details when they are relevant to the answer, is sent through OpenRouter (US) to the providers that run the model — currently Novita, StreamLake, DeepInfra and Together, or another host OpenRouter picks when those are unavailable; StreamLake's location has not been verified — and, if those fail, to Anthropic (US). They are configured not to store or train on it.</li>
+      <li><b>ElevenLabs</b> — transcribing voice notes, and the voice on phone calls.</li>
+      <li><b>Deepgram</b> — transcription during phone calls.</li>
+      <li><b>Twilio</b> — phone calls.</li>
       <li><b>WhatsApp / Meta</b> — the channel messages arrive and are sent over.</li>
-      <li><b>Twilio</b> — only if you used a voice call.</li>
+      <li><b>DigitalOcean</b> — the server (US) and the backup (Germany).</li>
       <li><b>Google</b> — only for the services you connected yourself.</li>
     </ul>
     <p>Otherwise, data is disclosed only where required by law.</p>
 
     <h2>Where it is stored</h2>
-    <p>Data is held in a database on a dedicated server in the United States (DigitalOcean). Google access and refresh tokens are encrypted at rest (AES-256-GCM) with the key held outside the database. A daily backup is retained for 14 days and then deleted.</p>
+    <p>Data is held in a database on a dedicated server in the United States (DigitalOcean). A daily backup is kept on that server and a copy in a private DigitalOcean storage bucket in Frankfurt, Germany. Google access and refresh tokens are encrypted at rest (AES-256-GCM) with the key held outside the database.</p>
 
-    <h2>Deletion and control</h2>
+    <h2>How long it is kept</h2>
     <ul>
-      <li><b>Disconnect Google</b> — ask the assistant to disconnect any service at any time. We delete our stored token and revoke it with Google.</li>
-      <li>You can also revoke access directly from your <a href="https://myaccount.google.com/permissions">Google account permissions</a>.</li>
+      <li>Everything — your account, tasks, what the assistant remembers, conversation content, voice notes and phone call transcripts: until you ask to delete it. Nothing is deleted on a timer.</li>
+      <li>Backups: ${R.localBackupDays} days on the server and ${R.offboxBackupDays} days in the off-site copy, then deleted.</li>
+      <li>A record of consents and connections (for example, when you connected Google) is kept after deletion, so we can show we acted on what you approved.</li>
+    </ul>
+
+    <h2>Your rights</h2>
+    <ul>
+      <li><b>See your data</b> — much of it is on your personal page, and you can ask for the rest.</li>
+      <li><b>Correct it</b> — ask the assistant, change it on your page, or email us.</li>
+      <li><b>Delete everything</b> — tell the assistant, use the button on your personal page, or email <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>. We delete the account and all associated data within ${R.deletionDays} days, except the backups, which expire on their own within ${R.offboxBackupDays} days, and the consent record above.</li>
       <li><b>Pause</b> — ask the assistant to stop reaching out. This is a reversible pause, not a deletion.</li>
-      <li><b>Delete everything</b> — email <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a> and the account and all associated data are deleted.</li>
+      <li><b>Disconnect Google</b> — ask the assistant to disconnect any service at any time; we delete our stored token and revoke it with Google. You can also revoke access directly from your <a href="https://myaccount.google.com/permissions">Google account permissions</a>.</li>
     </ul>
 
     <h2>Children</h2>
     <p>The service is not intended for anyone under 16.</p>
 
     <h2>Changes</h2>
-    <p>If this policy changes materially, the date at the top is updated and we tell you in the conversation.</p>
+    <p>If this policy changes materially, the date at the top is updated and the assistant tells you in the conversation.</p>
 
     <div class="he">
       <h2>מדיניות פרטיות (עברית)</h2>
-      <p class="updated">עודכן: ${UPDATED}</p>
+      <p class="updated">עודכן: ${PRIVACY_UPDATED}</p>
 
-      <h3>מי אנחנו</h3>
-      <p>${ASSISTANT} (allma.world) היא עוזרת אישית שפועלת דרך וואטסאפ. השירות מופעל על ידי מפעיל יחיד; לפניות: <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>.</p>
+      <h3>מי אחראי על המידע</h3>
+      <p>${ASSISTANT} (allma.world) היא עוזרת AI אישית שפועלת דרך וואטסאפ. השירות מופעל מישראל. לכל פנייה בנושא פרטיות: <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>, או פשוט לכתוב ל${ASSISTANT}.</p>
 
-      <h3>איזה מידע נשמר</h3>
+      <h3>האם חובה למסור מידע</h3>
+      <p>לא. אין חובה חוקית למסור לנו מידע, והכל לפי רצונכם. בלי מספר טלפון ותוכן השיחה ${ASSISTANT} לא יכולה לעבוד. בלי כל שאר המידע היא עובדת, רק פחות מותאם אליכם.</p>
+
+      <h3>איזה מידע נשמר ולמה</h3>
       <ul>
-        <li><b>פרטי החשבון</b> — מספר הטלפון שדרכו אתם כותבים, שם פרטי אם מסרתם, אזור זמן והעדפות שפה.</li>
-        <li><b>תוכן השיחה</b> — ההודעות שאתם כותבים ל${ASSISTANT} והתשובות שלה, כדי שהשיחה תמשיך להיות רציפה.</li>
-        <li><b>מה שביקשתם שתזכור</b> — משימות, תזכורות, פגישות, העדפות ועובדות.</li>
+        <li><b>פרטי חשבון</b> — מספר הטלפון, שם, אזור זמן ושפה. כדי לדעת מי אתם ומתי מותר לכתוב לכם.</li>
+        <li><b>תוכן השיחה</b> — ההודעות שלכם, כולל הודעות קוליות, והתשובות של ${ASSISTANT}. כדי שהשיחה תהיה רציפה.</li>
+        <li><b>מה שביקשתם לזכור</b> — משימות, תזכורות, פגישות, העדפות ועובדות שסיפרתם. עובדות יכולות לכלול מידע אישי רגיש, למשל על בריאות, אם בחרתם לספר.</li>
+        <li><b>פרטים שמילאתם בדף האישי</b>, כמו תאריך לידה ולשון פנייה.</li>
+        <li><b>שיחות טלפון</b>, אם השתמשתם בהן — תמליל השיחה, כדי לשמור מה שסוכם. השיחה עצמה לא מוקלטת.</li>
         <li><b>מידע מגוגל</b> — רק אם חיברתם, ורק לפי ההרשאות שאישרתם (פירוט למטה).</li>
       </ul>
+
+      <h3>קבוצות וואטסאפ</h3>
+      <p>כשמוסיפים את ${ASSISTANT} לקבוצה, היא רואה את רשימת החברים (מספרים ושמות תצוגה) ואת ההודעות שמתייגות אותה. היא שומרת את רשימת החברים כדי לתאם בין כולם. חבר קבוצה שעוד לא כתב לה יכול לקבל ממנה הודעה פרטית אחת על תיאום בקבוצה. אם לא עונים, היא לא כותבת שוב. רשימת החברים נשמרת, כחלק מרשימת הקבוצה שכל חבריה רואים ממילא, עד שמישהו מבקש למחוק את הפרטים שלו — במייל ל־<a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>, גם אם מעולם לא השתמש בעוזרת.</p>
 
       <h3>מידע מחשבון גוגל</h3>
       <p>החיבור לגוגל הוא בחירה, לא תנאי. כל הרשאה מתבקשת בנפרד ובמסך ההסכמה של גוגל עצמה, ואפשר לאשר חלק ולסרב לשאר.</p>
@@ -307,34 +350,45 @@ function privacyPage() {
       </ul>
 
       <h3>שימוש מוגבל (Limited Use)</h3>
-      <p>השימוש שלנו במידע שמתקבל מממשקי Google, והעברתו, עומדים ב<a href="https://developers.google.com/terms/api-services-user-data-policy">מדיניות נתוני המשתמש של שירותי Google API</a>, לרבות דרישות ה-Limited Use. באופן קונקרטי: המידע מגוגל משמש אך ורק כדי לספק לכם את התכונות שתיארנו למעלה; הוא אינו נמכר; אינו משמש לפרסום; ואינו משמש לאימון מודלים כלליים.</p>
+      <p>השימוש שלנו במידע שמתקבל מממשקי Google, והעברתו, עומדים ב<a href="https://developers.google.com/terms/api-services-user-data-policy">מדיניות נתוני המשתמש של שירותי Google API</a>, לרבות דרישות ה-Limited Use. באופן קונקרטי: המידע מגוגל משמש אך ורק כדי לספק לכם את התכונות שתיארנו למעלה; הוא אינו נמכר; אינו משמש לפרסום; ואינו משמש לאימון מודלים כלליים. כשהוא נחוץ כדי לענות לכם, הוא חלק מהשיחה שנשלחת לספק המודל שמופיע למטה, באותם תנאים.</p>
 
-      <h3>עם מי המידע נחלק</h3>
-      <p>איננו מוכרים מידע ואיננו מעבירים אותו למפרסמים. כדי שהשירות יעבוד, מידע עובר לספקים הבאים ולהם בלבד:</p>
+      <h3>עם מי המידע עובר</h3>
+      <p>אנחנו לא מוכרים מידע ולא משתמשים בו לפרסום. כדי שהשירות יעבוד, מידע עובר לספקים האלה בלבד:</p>
       <ul>
-        <li><b>ספק המודל</b> — טקסט השיחה נשלח למודל שפה דרך OpenRouter (כיום DeepSeek, עם Anthropic כגיבוי) כדי לחבר תשובה.</li>
-        <li><b>וואטסאפ / Meta</b> — הערוץ שדרכו ההודעות מגיעות ונשלחות.</li>
-        <li><b>Twilio</b> — רק אם השתמשתם בשיחה קולית.</li>
-        <li><b>Google</b> — רק עבור השירותים שחיברתם בעצמכם.</li>
+        <li><b>מודל השפה</b> — טקסט השיחה, כולל מידע מהיומן ומאנשי הקשר כשהוא רלוונטי לתשובה, נשלח דרך OpenRouter (ארה״ב) לספקים שמריצים את המודל — כרגע Novita, ‏StreamLake, ‏DeepInfra ו־Together, או ספק אחר ש־OpenRouter בוחר כשהם לא זמינים; המיקום של StreamLake לא אומת — ובמקרה תקלה ל־Anthropic (ארה״ב). הגדרנו שהספקים לא ישמרו את המידע ולא יאמנו עליו.</li>
+        <li><b>ElevenLabs</b> — תמלול הודעות קוליות, וקול בשיחות טלפון.</li>
+        <li><b>Deepgram</b> — תמלול בשיחות טלפון.</li>
+        <li><b>Twilio</b> — שיחות טלפון.</li>
+        <li><b>וואטסאפ / Meta</b> — הערוץ שדרכו ההודעות עוברות.</li>
+        <li><b>DigitalOcean</b> — השרת (ארה״ב) והגיבוי (גרמניה).</li>
+        <li><b>Google</b> — רק השירותים שחיברתם בעצמכם.</li>
       </ul>
-      <p>מעבר לכך, מידע נמסר רק אם חובה על פי דין.</p>
+      <p>מעבר לזה, מידע נמסר רק אם החוק מחייב.</p>
 
       <h3>איפה זה נשמר</h3>
-      <p>המידע יושב במסד נתונים על שרת ייעודי בארצות הברית (DigitalOcean). אסימוני הגישה לגוגל מוצפנים במנוחה (AES-256-GCM) והמפתח נשמר מחוץ למסד הנתונים. מתבצע גיבוי יומי שנשמר 14 יום ואז נמחק.</p>
+      <p>המידע נשמר במסד נתונים על שרת ייעודי בארצות הברית (DigitalOcean). גיבוי יומי נשמר על השרת, ועותק שלו בדלי אחסון פרטי של DigitalOcean בפרנקפורט, גרמניה. אסימוני הגישה לגוגל מוצפנים במנוחה (AES-256-GCM) והמפתח נשמר מחוץ למסד הנתונים.</p>
 
-      <h3>מחיקה ושליטה</h3>
+      <h3>כמה זמן זה נשמר</h3>
       <ul>
-        <li><b>ניתוק גוגל</b> — אפשר לבקש מ${ASSISTANT} לנתק כל שירות בכל רגע. אנחנו מוחקים את האסימון אצלנו ומבטלים אותו מול גוגל.</li>
-        <li>אפשר גם לבטל את הגישה ישירות דרך <a href="https://myaccount.google.com/permissions">ההרשאות בחשבון הגוגל שלכם</a>.</li>
-        <li><b>השהיה</b> — אפשר לבקש מ${ASSISTANT} להפסיק ליזום פנייה. זו השהיה הפיכה, לא מחיקה.</li>
-        <li><b>מחיקת הכל</b> — פנייה ל<a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a> תמחק את החשבון ואת כל המידע הקשור אליו.</li>
+        <li>הכל — החשבון, המשימות, מה ש${ASSISTANT} זוכרת, תוכן השיחה, הודעות קוליות ותמלילי שיחות טלפון: עד שתבקשו למחוק. שום דבר לא נמחק אוטומטית לפי זמן.</li>
+        <li>גיבויים: ${R.localBackupDays} יום בשרת ו־${R.offboxBackupDays} יום בגיבוי החיצוני, ואז הם נמחקים.</li>
+        <li>תיעוד של הסכמות וחיבורים (למשל מתי חיברתם את גוגל) נשמר גם אחרי מחיקה, כדי שנוכל להראות שפעלנו לפי מה שאישרתם.</li>
+      </ul>
+
+      <h3>הזכויות שלכם</h3>
+      <ul>
+        <li><b>לעיין במידע שלכם</b> — הרבה ממנו מופיע בדף האישי, ואת השאר אפשר לבקש.</li>
+        <li><b>לתקן מידע לא נכון</b> — לבקש מ${ASSISTANT}, לשנות בדף האישי או לכתוב לנו.</li>
+        <li><b>למחוק הכל</b> — לבקש מ${ASSISTANT}, ללחוץ על הכפתור בדף האישי, או לכתוב ל־<a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>. אנחנו מוחקים את החשבון ואת כל המידע הקשור אליו תוך ${R.deletionDays} יום, חוץ מהגיבויים, שנמחקים לבד בתוך ${R.offboxBackupDays} יום, ומתיעוד ההסכמות שלמעלה.</li>
+        <li><b>להשהות</b> — לבקש מ${ASSISTANT} להפסיק לפנות אליכם. זו השהיה הפיכה, לא מחיקה.</li>
+        <li><b>לנתק את גוגל</b> — לבקש מ${ASSISTANT} לנתק כל שירות בכל רגע; אנחנו מוחקים את האסימון אצלנו ומבטלים אותו מול גוגל. אפשר גם לבטל ישירות דרך <a href="https://myaccount.google.com/permissions">ההרשאות בחשבון הגוגל שלכם</a>.</li>
       </ul>
 
       <h3>ילדים</h3>
-      <p>השירות אינו מיועד לגילאים מתחת ל-16.</p>
+      <p>השירות לא מיועד למי שמתחת לגיל 16.</p>
 
       <h3>שינויים</h3>
-      <p>אם המדיניות תשתנה באופן מהותי, התאריך בראש העמוד יתעדכן ונודיע בשיחה.</p>
+      <p>אם המדיניות תשתנה באופן מהותי, התאריך למעלה יתעדכן ו${ASSISTANT} תודיע לכם בשיחה.</p>
     </div>
 
     <div class="foot">
@@ -352,7 +406,7 @@ function privacyPage() {
 // summary of the other.
 function termsPage() {
   return shell(`Terms of Service — ${BRAND}`, `
-    <div class="mark">${LOGO}</div>
+    <div class="mark">${LOGO_PAGE}</div>
     <h1>Terms of Service</h1>
     <p class="updated">Last updated: ${UPDATED}</p>
 
@@ -421,4 +475,7 @@ function termsPage() {
   `);
 }
 
-module.exports = { homePage, privacyPage, termsPage, BRAND, ASSISTANT, CONTACT_EMAIL, UPDATED };
+module.exports = {
+  homePage, privacyPage, termsPage, BRAND, ASSISTANT, CONTACT_EMAIL, UPDATED,
+  PRIVACY_UPDATED, RETENTION,
+};

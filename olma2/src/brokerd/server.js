@@ -158,6 +158,9 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
   // and a restart that loses it answers `unknown`, never `unbacked`.
   const claimOpens = new Map();
   const lastToolAt = new Map();
+  // …and when one last FAILED, so a claim on a turn whose own write was refused
+  // reads `failed` rather than borrowing an earlier turn's success.
+  const lastFailAt = new Map();
   function noteOpen(userId) {
     const at = clock();
     const list = (claimOpens.get(userId) || []).filter((t) => at - t <= phantomSave.OPEN_WINDOW_MS);
@@ -316,6 +319,11 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
         // "מה פתוח לי?": the turn is told about their list, not their day —
         // domain/turn.advise leaves the today block out (see the hook).
         openList: !rec.skipped && params.openList === true,
+        // "תזכיר לי X" with no when at all: the moment it was HEARD, so the
+        // add_task this turn makes arms a weekly nudge on it
+        // (reminders.startWeeklyNudge) — and only inside the same window a
+        // chase gets, never on a turn that runs on long after the message.
+        remindAsk: !rec.skipped && params.remindAsk === true ? clock() : null,
         marked: new Set(), contextSent: false,
       };
       if (!rec.skipped && messageId) {
@@ -362,16 +370,34 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
     let userId = null;
     await withTx(pool, async (client) => {
       const { rows } = await client.query(
-        `SELECT id, phone FROM users WHERE agent_id = $1 AND status = 'active' AND is_eval = false`, [agentId]);
+        `SELECT id, phone, locale FROM users WHERE agent_id = $1 AND status = 'active' AND is_eval = false`, [agentId]);
       const user = rows[0];
       if (!user) return;
-      const made = await dashboardAuth.createLinkUrl(client, user.id);
-      if (!made.ok || !made.data || !made.data.url) return;
-      const text = templates.render(
-        templates.keyFor('dashboard_link', hit.lang), { url: made.data.url }, await templates.load(client));
-      await audit.record(client, user.id, 'dashboard.link_shortcut', { lang: hit.lang });
+      let text;
+      if (hit.kind === 'code') {
+        // "קוד כניסה" — eight digits for the home-screen app, which no link
+        // can sign in on an iPhone (dashboard-auth.createCode has the why).
+        // Shown as two groups of four, the way a person reads it back.
+        //
+        // In the language on FILE, not the one that matched: this message is
+        // almost always a button's prefilled text, and the app's signed-out
+        // screen may have typed it in English for somebody who writes to her
+        // in Hebrew — whose reply gate would then drop an English answer.
+        const made = await dashboardAuth.createCode(client, user.id);
+        if (!made.ok || !made.data || !made.data.code) return;
+        const shown = `${made.data.code.slice(0, 4)} ${made.data.code.slice(4)}`;
+        text = templates.render(
+          templates.keyFor('dashboard_code', user.locale || hit.lang), { code: shown }, await templates.load(client));
+        await audit.record(client, user.id, 'dashboard.code_shortcut', { lang: hit.lang });
+      } else {
+        const made = await dashboardAuth.createLinkUrl(client, user.id);
+        if (!made.ok || !made.data || !made.data.url) return;
+        text = templates.render(
+          templates.keyFor('dashboard_link', hit.lang), { url: made.data.url }, await templates.load(client));
+        await audit.record(client, user.id, 'dashboard.link_shortcut', { lang: hit.lang });
+      }
       userId = Number(user.id);
-      out = { ok: true, claim: true, text, lang: hit.lang };
+      out = { ok: true, claim: true, text, lang: hit.lang, kind: hit.kind };
       if (messageId) {
         const vocab = reactions.vocabulary(await require('../domain/flags').getFlag(client, reactions.VOCAB_FLAG));
         mark = { channel: 'whatsapp', target: user.phone, messageId, state: 'done', emoji: vocab.done };
@@ -616,6 +642,7 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
         ourTurn: selfInitiated.isActive(userId),
         opens: claimOpens.get(userId) || [],
         lastToolAt: lastToolAt.has(userId) ? lastToolAt.get(userId) : null,
+        lastFailAt: lastFailAt.has(userId) ? lastFailAt.get(userId) : null,
         now: clock(),
       });
       await require('../domain/audit').record(client, userId, 'reply.claim', { agentId, word, ...judged });
@@ -702,6 +729,7 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
         chaseUntil: pre && pre.chase ? pre.chase.day : null,
         chaseNamedHour: Boolean(pre && pre.chase && pre.chase.namedHour),
         openList: Boolean(pre && pre.openList),
+        remindAsk: Boolean(pre && pre.remindAsk),
       });
       if (pre) { pre.contextSent = true; eyesRunning(agentId, pre.messageId); }
       out = {
@@ -839,6 +867,7 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
           turn.stoppedReminders = pre.stoppedReminders || 0;
           turn.chase = pre.chase || null; turn.chaseUsed = false;
           turn.openList = Boolean(pre.openList);
+          turn.remindAsk = pre.remindAsk || null; turn.remindAskUsed = false;
           turn.openedByGateway = true;
         } else if (!turn.opened) {
           // No gateway open on file and this connection has not served a turn
@@ -890,6 +919,7 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
       // Any tool that ran for them backs a reply saying it saved something —
       // turn_start excepted, which runs on every message and saves nothing.
       if (actorId && result && result.ok && name !== 'turn_start') lastToolAt.set(Number(actorId), clock());
+      if (actorId && result && !result.ok && name !== 'turn_start') lastFailAt.set(Number(actorId), clock());
       // The acknowledgement mark on the person's own message — 👀 as the turn
       // opens, ⏰ or ✅ as the work lands. Here, and not inside the handlers,
       // because every tool already passes through this one line: the table of

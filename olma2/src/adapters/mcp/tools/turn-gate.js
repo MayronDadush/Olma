@@ -214,6 +214,8 @@ module.exports = [
         chaseNamedHour: Boolean(ctx && ctx.turn && ctx.turn.chase && ctx.turn.chase.namedHour),
         // "מה פתוח לי?" — no today block on this turn (domain/turn.advise).
         openList: Boolean(ctx && ctx.turn && ctx.turn.openList),
+        // "תזכיר לי X" with no when — add_task on this turn arms a weekly nudge.
+        remindAsk: Boolean(ctx && ctx.turn && ctx.turn.remindAsk && !ctx.turn.remindAskUsed),
       });
       return stale(ok(data), namedNow);
     }),

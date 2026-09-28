@@ -58,8 +58,13 @@ never trust a dated narrative for something you are about to act on.
 - [Two paragraphs where two sentences would do (fixed 2026-09-20)](#two-paragraphs-where-two-sentences-would-do-fixed-2026-09-20)
 - [The link came back on every coordination message (2026-09-24)](#the-link-came-back-on-every-coordination-message-2026-09-24)
 - [The slot that was already closed (fixed 2026-09-20)](#the-slot-that-was-already-closed-fixed-2026-09-20)
+- [The chase that beat its own invites (fixed 2026-09-28)](#the-chase-that-beat-its-own-invites-fixed-2026-09-28)
+- [The room never heard the times (fixed 2026-09-28)](#the-room-never-heard-the-times-fixed-2026-09-28)
+- [Answered before the question existed (fixed 2026-09-28)](#answered-before-the-question-existed-fixed-2026-09-28)
 - [The room asked five and reached four (fixed 2026-09-22)](#the-room-asked-five-and-reached-four-fixed-2026-09-22)
 - [The pause the room's invite walked through (fixed 2026-09-27)](#the-pause-the-rooms-invite-walked-through-fixed-2026-09-27)
+- [The room could count, and she could not (changed 2026-09-28)](#the-room-could-count-and-she-could-not-changed-2026-09-28)
+- [The coordinations that died in silence (built 2026-09-28)](#the-coordinations-that-died-in-silence-built-2026-09-28)
 - [A room counted in somebody who had paused (fixed 2026-09-13)](#a-room-counted-in-somebody-who-had-paused-fixed-2026-09-13)
 - [The fifth draft was the rude one (fixed 2026-09-11)](#the-fifth-draft-was-the-rude-one-fixed-2026-09-11)
 - [Six good mornings for one timeout (fixed 2026-09-09)](#six-good-mornings-for-one-timeout-fixed-2026-09-09)
@@ -260,6 +265,7 @@ never trust a dated narrative for something you are about to act on.
 - [The link she said she sent (fixed 2026-09-07)](#the-link-she-said-she-sent-fixed-2026-09-07)
 - [A Google consent with no calendar scope was stored as "connected" (fixed 2026-08-20)](#a-google-consent-with-no-calendar-scope-was-stored-as-connected-fixed-2026-08-20)
 - [The move to allma.world, and the truncated link that asked for the admin password (2026-09-04)](#the-move-to-allmaworld-and-the-truncated-link-that-asked-for-the-admin-password-2026-09-04)
+- [The dashboard became an app, and an iPhone needed a door of its own (2026-09-27)](#the-dashboard-became-an-app-and-an-iphone-needed-a-door-of-its-own-2026-09-27)
 
 **CI, migrations and deploying**
 
@@ -2220,6 +2226,77 @@ shows the average length per window.
 **Not done, and named.** The poker example wants a place ("אצל מירון") —
 that is item F of the same plan, a `meetings.location` column, and lands
 separately.
+### The chase that beat its own invites (fixed 2026-09-28)
+
+Padel Gang's second coordination (meeting 57) was opened by מירון at 21:00 on a
+Saturday. The room heard she had started; his own invite went out at once, and
+every other invite was held for the night, as the rule says. He then answered in
+the room — "אני יכול כל יום השבוע מ18 בערב צפונה" — before any time existed to
+answer on.
+
+The chase was due six hours after the start (no dated option yet), which was
+03:00, and the room's night held it to the morning. It went out at 09:00:08.
+The invites it was chasing were released at 09:00:10 and reached people at
+09:02 and 09:03. So when the chase decided whom it could name, the only person
+who had been reached was מירון, and the room read "עוד לא שמעתי מ@M&M — תגידו
+לי בפרטי מתי אתם יכולים ואני סוגרת את זה" about the man who had asked for the
+game. It was the coordination's one chase, stamped and spent; nothing else was
+said to the room about it for the next day and a half.
+
+Every piece was correct on its own terms: the invites waited for the morning,
+the chase waited for the room's morning, and `asked` kept the three unreached
+people out of the tag. What was wrong was the clock the chase measured from —
+the START, which says nothing about whether anybody has had a chance to answer.
+`statusOf` now returns `lastAskedAt`, the newest first arrival of a `meeting_*`
+row among the people still in it, and the hour runs from there: 10:03 for
+meeting 57, by which time מירון had put three times on the table with his yes,
+and the chase would have named the three who had just been asked.
+
+### The room never heard the times (fixed 2026-09-28)
+
+Padel Gang, meeting 57. By 09:39 on Sunday the table held four times — Yuval's
+Tuesday 19:00 with his yes, and מירון's Sunday, Monday and Thursday 19:00 with
+his — and the room had been told nothing about any of them. Its whole picture
+of the coordination was מירון's own "אני יכול כל יום השבוע מ18" and her reply
+"נסגור ערב מדויק עם כולם ואחזור לכאן", and a day and a half later that was
+still all it had.
+
+Two lines could have spoken and each was waiting for the other. The base line
+("יש כיוון") needs a time with a direction — two yeses, or a game's minimum —
+and none had more than one. The table line ("השולחן זז") is a watermark
+anchored on the base line, because the first time somebody puts a time up the
+table has not moved, it has been laid. Both rules were right about what they
+were written for; neither was written for several times, each agreed to only by
+whoever proposed it, in a room that had to choose between them.
+
+The fix is a third sentence rather than a loosening of either: `laid`, said
+once, a quarter of an hour after the first time went on, only when there are
+two or more. A single time with its proposer's yes stays silent — the owner's
+"one person agreeing with themselves is not news" is pinned by three tests and
+still holds. The stamp is `group_table_at`, so from then on the table line has
+a watermark to measure against and every later change is news the way it
+already was.
+
+### Answered before the question existed (fixed 2026-09-28)
+
+Padel Gang, meeting 57. גיא wrote "לא יכול השבוע — טס לחול" at 09:15 and it
+was recorded as a constraint; the first time went on the table eight minutes
+later. `record_meeting_constraint` declines the times ON the table that a
+constraint rules out, and there were none, so it declined nothing — and every
+time that followed was asked of him as if he had said nothing, while the room
+counted him as not having answered. מירון had said "אני יכול כל יום השבוע מ18
+בערב" in the room the night before, and not one of the evening times put up
+after it carried his yes.
+
+Neither was a model fault. The words were kept exactly; there was simply no
+shape in which "not this week" or "any evening" could answer a time that did
+not exist yet. The fix gives the words that shape: a window (answer, from, to,
+optional hours and days) beside the text, applied whenever a time goes on the
+table. The owner chose both directions — a yes as well as a no — and asked that
+whoever is answered this way be told privately, which is what keeps an
+automatic yes honest: it arrives with the sentence it came from and one word
+undoes it.
+
 ### The room asked five and reached four (fixed 2026-09-22)
 
 Padel Gang's first coordination (meeting 40) was opened with five connected
@@ -2308,6 +2385,77 @@ them its cancellation if the meeting is cancelled later
 (`removeMeetingEvent`, `notify`). Taking them off the guest list at pause
 time would also take the meeting off their own calendar, which is not what
 pausing Olma asks for.
+
+### The room could count, and she could not (changed 2026-09-28)
+
+The day after the rule above, the owner reversed its COUNTING half: "באופן
+כללי משתמשים מושהים גם נכללים בספירה". His example: ten people in a room, two
+of them paused, five said yes. The room should hear "5 מתוך 10" and not
+"5 מתוך 8", because everybody in it can see there are ten, and nobody knows
+whether the two will change their minds and come back. A count that silently
+drops people is exactly what the 2026-09-26 rule ("רוב האנשים לא יודעים למה
+עולמה סופרת חלק וחלק לא") was written to stop, and the pause rule had
+brought it back through a side door.
+
+What did not change: a paused member is still never asked, tagged or written
+to, and a Google invitation is still a message. What did:
+- `roomTotal` drops only somebody who CHOSE to leave the coordination. The
+  participant row cannot say which exits those are, because a pause writes
+  the same `opted_out`. The cause on the latest `meeting.opted_out` audit row
+  can (`group-meetings.pausedExitsOf`).
+- The paused ride `notInIt` as a count, with no phone, so the base line says
+  "ועוד N".
+- `unanimousOption` waits on them in a room, so the room closes it with
+  "סגור". The cost is accepted: a room with a paused member never closes on
+  its own, because "everybody said yes" would be false there.
+
+### The coordinations that died in silence (built 2026-09-28)
+
+The owner asked how Olma should run a coordination in a room: when to nudge
+the room, when to write to somebody privately, and when to say "there is not
+much response, shall I drop it?". Nothing in the system did the last two. A
+room heard at most one chase, nobody was ever reminded privately, and a
+coordination nobody answered stayed open until its last time passed, then
+ended as `expired` with no word to anyone.
+
+The report built for it (`scripts/coordination-report.js`, PR #567, reading
+what the room actually received since PR #570) put numbers on that. The chase
+tagged 16 people across the history and 1 of them answered within two hours.
+A new time asked privately was answered by about 46%, mostly within minutes.
+
+The simulator (`src/sim/coordination-sim.js`, PR #571), calibrated on those
+numbers, compared policies on the same rooms:
+- Today's policy: 22% confirmed and 78% expired.
+- An offer to drop after twelve quiet hours: 35% confirmed, most of the rest
+  ending cleanly, and 1% of rooms talked out of a coordination they would
+  have closed.
+- Adding one private nudge at six hours: 44% confirmed. The cost to people is
+  an assumption, because Olma has never sent one.
+
+The ranking held under six alternative assumptions. The owner chose:
+- Drop offer said in the room.
+- No answer closes it quietly as `no_match`.
+- Shadow before live.
+- Both texts approved word for word before any real room hears them.
+
+What was built (`domain/coordination-policy`, `jobs/coordination-moves`,
+flag `coordination_policy`, migration 098). Two measured choices:
+- **No nudge beside the offer.** Asking "shall I drop it?" and "when can you?"
+  in the same breath contradict each other.
+- **Shadow counts its own decisions as done.** Otherwise it would decide the
+  same offer on every pass and never reach the close it exists to measure.
+
+The owner approved both texts with one change: rather than "in 6 hours", the
+offer names the hour it will close. That turned a duration into a promise.
+The moment is fixed when the offer is said and stored
+(`group_drop_close_at`). It is rounded to the half hour, and moved to the
+room's morning when it would fall in its night. Two reasons: the sweep only
+closes in the room's hours, so "in 6 hours" said at 20:00 was never true; and
+recomputing the moment at close time could drift from what the room read.
+
+Open: `meetings.reopenMeeting` accepts only a confirmed coordination, so a
+room cannot reopen one that closed quietly. The offer's text says nothing
+about reopening for that reason.
 
 ### A room counted in somebody who had paused (fixed 2026-09-13)
 
@@ -11817,6 +11965,53 @@ Also that evening, from the same conversation, not part of this: the
 60-second name rung told the model to ask whether "ג.ב" was right, and the
 model answered `NO_REPLY`; and the admin page shows the delivery prompts of
 Olma's own sweeps under the person's name, as if they had typed them.
+
+### The dashboard became an app, and an iPhone needed a door of its own (2026-09-27)
+
+The owner asked (2026-09-14) for the personal dashboard to be something a
+person "downloads" to their phone. The vehicle is a Progressive Web App — a
+manifest, icons, head tags — with no store, no wrapper and no service worker
+(`adapters/http/pwa.js`; everything on the page is `no-store, private`, so an
+offline shell could only ever show a stale life or a blank one).
+
+**The finding that shaped it: on an iPhone the installed app has its own
+cookie jar.** A home-screen web app on iOS does not share Safari's storage, so
+the session a `/d/<token>` link opened in Safari is not there when the icon
+is tapped — and every link tapped in WhatsApp opens Safari, never the app. On
+Android an app installed from Chrome shares Chrome's cookies and a `/d/` link
+opens inside it (the manifest's `scope` is `/` for exactly that). The plan of
+2026-09-14 therefore shipped Android only and invited nobody on an iPhone.
+On 2026-09-27 the owner chose to do both, so the door was built:
+
+- **"קוד כניסה" gets eight digits, by code, no model** — the same shortcut as
+  "שלח לי קישור" (`domain/link-request.js`, `kind: 'code'`; brokerd
+  `dashboard_link_shortcut`). The app's signed-out screen has a button that
+  opens WhatsApp with the phrase already typed, and a field that takes the
+  whole reply pasted and finds the digits.
+- **A code is a magic link with `target = 'code'`** (migration 099): hashed,
+  one use, spent by an atomic UPDATE, ten minutes, one live per person. It is
+  kept out of the five-live-links count, and no link query finds one.
+- **Guessing is bounded where the guesses arrive** (POST `/me/code`): five
+  wrong per address and sixty in total per quarter hour, in memory.
+- **The answer is in the language ON FILE, not the one that matched.** The
+  first test of it caught this: the signed-out app screen is the stranger's
+  screen, which defaults to English, so its button typed "App sign-in code"
+  for a Hebrew speaker — and the reply gate drops an English line of four
+  words or more to somebody who writes Hebrew. She would have answered, and
+  the gateway would have cancelled it. So the code message follows
+  `users.locale`, the English wording is short enough to pass the gate
+  anyway, and the manifest's `start_url` carries `?hl=` so the installed
+  app's signed-out screen opens in the installer's language.
+
+The invitation to install is drawn only where installing can work: Chrome or
+Edge fired `beforeinstallprompt`, or this is Safari itself on an iPhone (the
+page's one user-agent read, because iOS offers no event to ask). It is never
+shown inside the installed app, and "לא עכשיו" is remembered per browser.
+
+The icon is the "חצי־חצי" mark the owner liked, in "coral on ink"
+(`adapters/http/brand-mark.js`), rendered by resvg on first request — the
+final mark was still undecided, so changing it is that one file. The old
+speech-bubble globe is not used.
 
 ## CI, migrations and deploying
 
