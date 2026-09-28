@@ -299,6 +299,7 @@ Loads when you **Read** a file under `src/adapters/http/**`, `docs/design/**`.
 - **`allma.world` serves an ALLOWLIST, not the admin dashboard.**
 - **The admin dashboard lives ONLY on `olmachat.duckdns.org`.**
 - **Match `/pick/` on the exact token shape, never `/pick/*`.**
+- **A home-screen app on an iPhone has its own cookie jar, so a LINK can never sign it in** — eight digits from "קוד כניסה" do (`dashboard-auth.createCode`, POST `/me/code`), and Caddy must name the PWA routes
 - **Three places hold the domain and none of them are in the repo**
 - **`google-oauth.json` is cached at module level**
 - **A redirect URI must be registered at Google BEFORE the file points at it**
