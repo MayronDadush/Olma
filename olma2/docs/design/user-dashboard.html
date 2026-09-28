@@ -333,8 +333,10 @@ h1,h2,h3,p{margin:0}
   --logo-d:#0A1817;--logo-l:#EDE9DF;--logo-ring:#EDE9DF;
 }
 .topbar :focus-visible{outline-color:var(--on-band)}
-/* their own local time, dead centre and deliberately quiet — the one
-   number that answers "is now a reasonable time" at a glance. */
+/* their own local time, deliberately quiet — the one number that answers "is
+   now a reasonable time" at a glance. It sat dead centre until 2026-09-29; the
+   owner moved it to the far end of the band, beside the day/night button, so
+   nothing in the middle jumps when that button comes and goes by tab. */
 /* The clock IS the timezone: it is the only place in the app that shows one,
    so it is where you would go to correct it — and going there should not mean
    a trip through the profile page for a control you can already see. */
@@ -404,8 +406,9 @@ html[data-v="me"] .brand{opacity:0;transform:translateY(-8px) scale(.94);pointer
 .hdrend{display:flex;align-items:center;gap:9px;flex:none}
 /* "עולמה פעילה" said nothing to somebody who did not know she could be
    anything else (owner, 2026-09-28). The pill is only there when it is news:
-   paused. The slot keeps its width so the clock does not move. */
-html:not([data-paused]) .livepill{visibility:hidden}
+   paused. It takes no room otherwise: the clock sits at the band's end now,
+   so nothing is centred on the space the pill leaves. */
+html:not([data-paused]) .livepill{display:none}
 /* The light/dark choice, on the profile page with its words beside each
    picture. It used to live here, beside the clock on every tab. */
 /* …and one tap between day and night came back to the band, on the home tab
@@ -3255,9 +3258,9 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
         <div class="brand-name" id="brandName"></div>
       </div>
     </button>
-    <button class="topclock" id="topClock" data-i18n-label="city.title"></button>
     <div class="hdrend">
       <div class="livepill"><span class="dot"></span><span id="olmaLive"></span></div>
+      <button class="topclock" id="topClock" data-i18n-label="city.title"></button>
       <button class="daynight" id="dayNight" type="button"><svg aria-hidden="true"><use href="#i-moon"/></svg></button>
     </div>
   </header>
