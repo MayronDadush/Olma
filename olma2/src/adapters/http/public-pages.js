@@ -36,6 +36,11 @@
 //
 // No JS, no forms, no state: these are the only two pages in this codebase a
 // completely unauthenticated stranger can read, so they get no moving parts.
+// Their fonts come from this file's own response since 2026-09-29, never from
+// Google: a privacy policy whose page hands the reader's IP to Google before
+// it has said a word about privacy is the one page that must not (fonts.js).
+const { FONT_CSS } = require('./fonts');
+
 const BRAND = 'Allma - Personal Assistant';
 const ASSISTANT = 'עולמה';
 const WA_NUMBER = '972559347282';
@@ -123,10 +128,8 @@ function shell(title, bodyHtml, { lang = 'en', dir = 'ltr', band = '' } = {}) {
 <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
 <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
 <title>${title}</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Hebrew:wght@400;600;700&family=IBM+Plex+Sans:wght@400;600;700&family=IBM+Plex+Mono:wght@500&display=swap">
-<style>${SHELL_CSS}</style>
+<style>${FONT_CSS}
+${SHELL_CSS}</style>
 </head>
 <body>${band ? `<header class="band"><div class="in">${band}</div></header>` : ''}<div class="wrap">${bodyHtml}</div></body>
 </html>`;
