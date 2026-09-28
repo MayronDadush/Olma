@@ -380,6 +380,10 @@ html[data-v="me"] .brand{opacity:0;transform:translateY(-8px) scale(.94);pointer
 .brand-hi{font-size:13px;color:var(--text-2);line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .brand-name{font-family:var(--font-display);font-weight:600;font-size:17px;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hdrend{display:flex;align-items:center;gap:9px;flex:none}
+/* "עולמה פעילה" said nothing to somebody who did not know she could be
+   anything else (owner, 2026-09-28). The pill is only there when it is news:
+   paused. The slot keeps its width so the clock does not move. */
+html:not([data-paused]) .livepill{visibility:hidden}
 /* The light/dark choice, on the profile page with its words beside each
    picture. It used to live here, beside the clock on every tab. */
 .themeseg button{display:inline-flex;align-items:center;justify-content:center;gap:6px}
@@ -1805,11 +1809,6 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 }
 .mtcard .mtbody{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
 .mtcard .mtname{font-size:16px;font-weight:600;letter-spacing:-.012em}
-/* the one thing on this page waiting on YOU says so on the card */
-.mtcard .mtdot{
-  display:inline-block;width:6px;height:6px;border-radius:50%;
-  background:var(--accent);margin-inline-start:7px;vertical-align:2px;
-}
 .mtcard .mtstate{
   display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--text-3);
   min-width:0;
@@ -1821,6 +1820,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   padding:2px 7px;border-radius:999px;background:var(--bg-tint);color:var(--text-3);
 }
 .mtpill.ready{background:var(--ok-soft);color:var(--ok)}
+.mtpill.you{background:var(--accent);color:var(--on-accent)}
 .mtpill.settled{background:var(--accent-soft);color:var(--accent)}
 .mtpill.waiting{background:var(--warn-soft);color:var(--warn)}
 .mtpill.stuck{background:var(--danger-soft);color:var(--danger)}
@@ -3795,6 +3795,12 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
         <div class="row-sub" id="sCalSub"></div></div>
       <button class="switch" role="switch" aria-checked="false" id="sCal" data-i18n-label="sheet.inCal"></button>
     </div>
+    <!-- Only where there is somewhere to jump TO: a dated task that is on the
+         calendar. It was an icon on the row until 2026-09-28. -->
+    <button class="row no-icon" id="sJumpRow" hidden>
+      <div class="row-txt"><div class="row-title" data-i18n="cal.showIn"></div></div>
+      <svg class="chev"><use href="#i-chev"/></svg>
+    </button>
   </div>
 
   <!-- who else has this task. Hidden entirely when nobody else does. -->
@@ -4937,14 +4943,14 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "toast.grNew":"קבוצה חדשה · תן לה שם","toast.grGone":"הקבוצה נמחקה",
       "toast.newMeetGroup":"תיאום פגישה חדש עם קבוצת {name}",
       "toast.newMeetGroupNone":"אף אחד בקבוצה הזאת עדיין לא אישר תיאום פגישות איתך",
-      "cal.modeRead":"היומן","cal.modeMeet":"תיאום פגישה",
+      "cal.modeRead":"ביומן","cal.modeMeet":"תיאומי פגישות",
       "cal.fromMeet":"נקבע בתיאום","cal.meetTag":"פגישה",
       "cal.pMeet":"מסמנים מתי מתאים, עולמה מוצאת את החלון הטוב ביותר לכולם.",
-      "sheet.close":"סגירה","mt.open":"תיאומים פעילים","mt.new":"תיאום פגישה חדש",
+      "sheet.close":"סגירה","mt.open":"פגישות שבתיאום","mt.new":"פגישה חדשה",
       "mt.note":"תשובה אומרת אם אתה יכול — לא שקבעתם. כשכולם מסמנים את אותה אופציה היא נקבעת מעצמה, אחרי דקה שבה עוד אפשר לשנות. מי שפתח את התיאום יכול גם לקבוע לבד, גם אם לא כולם יכלו.",
       "mt.empty":"אין תיאום פעיל כרגע. אפשר לפתוח אחד למעלה, או פשוט לבקש מעולמה.",
       "toast.mtNoUnanswer":"אפשר להחליף בין ״אני יכול״ ל״לא מתאים לי״, אבל לא לחזור ללא־תשובה",
-      "mt.n0":"אין","mt.n1":"תיאום אחד","mt.nN":"{n} תיאומים",
+      "mt.n0":"אין","mt.n1":"פגישה אחת","mt.nN":"{n} פגישות",
       "mt.ask":"מתי מתאים לך?","mt.askOne":"אתה יכול להגיע?","mt.settledLbl":"המועד שנקבע",
       "mt.done":"תיאומים שנסגרו ושיצאת מהם","mt.youLeft":"יצאת מהתיאום הזה","mt.rejoin":"חזרה לתיאום",
       "toast.mtBack":"חזרת ל„{name}” — השאר עודכנו",
@@ -4979,7 +4985,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "mt.understood":"הבנתי: {list}","mt.useIt":"לסמן בלוח",
       "mt.notUnderstood":"לא הצלחתי להבין את זה — סמן בלוח למטה.",
       "mt.busy":"יש לך משהו ביום הזה","mt.clash":"מתנגש עם {what}","mt.prevWeeks":"שבועיים אחורה","mt.nextWeeks":"שבועיים קדימה",
-      "mt.pill.waiting":"ממתין","mt.pill.ready":"אפשר לסגור",
+      "mt.pill.waiting":"מחכים לאחרים","mt.pill.ready":"אפשר לקבוע","mt.pill.you":"מחכה לתשובה שלך",
       "mt.pill.settled":"נקבע","mt.pill.stuck":"תקוע","mt.pill.empty":"ריק",
       "mt.leaveAsk":"לצאת מ{name}? התשובות שלך יורדות מהספירה והתיאום יימחק מהרשימה שלך.",
       "mt.del":"מחיקת התיאום","mt.delAsk":"למחוק את {name}? נשלח ל{who} הודעה שהתיאום בוטל.",
@@ -5042,7 +5048,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "me.formNote":"״שמרתי לך״ מול ״שמרתי לך״ — עולמה תתאים את כל הניסוחים שלה.",
       "me.setup":"עולמה אצלך","me.calledBy":"השם של עולמה",
       "me.appearance":"מראה","me.themeLight":"בהיר","me.themeDark":"כהה","me.themeAuto":"אוטומטי",
-      "me.setupNote":"המיקום קובע כל תזכורת, כל שעת שקט וכל סיכום — קידומת טלפון היא מדינה, לא עיר. את השם אפשר להחליף; הוא יופיע בכל הודעה שהיא שולחת.",
+      "me.setupNote":"לפי המיקום עולמה יודעת מה השעה אצלך. את השם שלה אפשר להחליף.",
       "me.pause":"להשהות את עולמה","me.resume":"עולמה מושהית · להפעלה",
       "me.deleteAll":"מחיקת החשבון וכל המידע",
       "del.title":"למחוק את כל המידע?",
@@ -5067,7 +5073,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "me.digest":"סיכום יומי","me.digestOn":"לקבל סיכום יומי","me.digestOff":"כבוי","me.digestAt":"ב־{times}",
       "me.digestTimes":"באיזו שעה","me.digestScope":"כמה פירוט",
       "me.scope.summary":"תקציר","me.scope.today":"רק היום","me.scope.full":"הכול",
-      "me.language":"השפה שלכם בשיחה",
+      "me.language":"השפה שלך בשיחה",
       "me.taskCal":"משימות ליומן","me.taskCalSub":"משימות חדשות דרך עולמה שיש להן תאריך ושעה מתווספות ליומן אוטומטית",
       "me.nudge":"לנדנד לי","me.nudgeSub":"תזכורת שלא סימנת שבוצעה תחזור שוב באותו יום ולמחרת. כבוי — פעם אחת, בשעה שביקשת",
       "me.knows":"מה עולמה יודעת","me.knowsRow":"דברים שעולמה זוכרת",
@@ -5339,7 +5345,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "mt.understood":"Read as: {list}","mt.useIt":"Use these",
       "mt.notUnderstood":"Couldn't read that \u2014 mark it on the grid below.",
       "mt.busy":"You have something that day","mt.clash":"Clashes with {what}","mt.prevWeeks":"Two weeks back","mt.nextWeeks":"Two weeks forward",
-      "mt.pill.waiting":"Waiting","mt.pill.ready":"Ready",
+      "mt.pill.waiting":"Waiting on others","mt.pill.ready":"Ready to set","mt.pill.you":"Waiting on you",
       "mt.pill.settled":"Settled","mt.pill.stuck":"Stuck","mt.pill.empty":"Empty",
       "mt.leaveAsk":"Leave {name}? Your answers stop counting and it goes off your list.",
       "mt.del":"Delete the coordination","mt.delAsk":"Delete {name}? {who} will get a message that it is off.",
@@ -7273,9 +7279,9 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     if(x.kind === "event") end += '<svg class="tglyph kindmark" role="img" aria-label="' + esc(t("cal.eventTag")) +
       '"><use href="#i-event"/></svg>';
     if(lbl) end += '<span class="ttime' + (b === "late" ? " late" : "") + '">' + esc(lbl) + "</span>";
-    /* the jump only exists where there is somewhere to jump TO */
-    if(x.d && x.cal) end += '<button class="tjump" data-jump="' + x.id + '" aria-label="' + esc(t("cal.showIn")) +
-      '"><svg><use href="#i-cal"/></svg></button>';
+    /* The jump to the calendar lives in the sheet now (#sJumpRow): on the
+       row it was the one control drawn exactly like the marks beside it, so
+       nobody could tell it was pressable (owner, 2026-09-28). */
     end += pinBtn(x);
     /* What sliding this row does: gone for good on a task of mine, off MY list
        on one others are on, and nothing at all on an imported one — that row
@@ -7291,10 +7297,10 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       /* The logo replaces the category dot rather than joining it: both answer
          "where does this belong", and on an imported task the app is the more
          useful answer — its category was decided by us, not by them. */
-      (x.src ? srcBadge(x)
-        : (viewBy === "time" && x.cat && x.cat !== "none"
-          ? '<i class="cdot" style="background:' + catOf(x.cat).c + '" title="' + esc(t("tcat." + x.cat)) + '"></i>'
-          : "")) +
+      /* No category dot in the time view (owner, 2026-09-28): nothing on the
+         page said what the colours meant, and the category view already
+         says it in words. */
+      (x.src ? srcBadge(x) : "") +
       esc(L(x.t) || t("sheet.untitled")) + "</span>" +
       (facesOf(x).length ? faceStack(facesOf(x)) : "") +
       (x.kind === "event" && x.loc ? '<span class="tloc">' + esc(x.loc) + "</span>" : "") + "</div>" +
@@ -8300,6 +8306,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     $("#sEndVal").textContent = editing.tmEnd || t("sheet.pickEnd");
     $("#sEndChip").classList.toggle("set", !!editing.tmEnd);
     $("#sCalRow").hidden = !dated;
+    $("#sJumpRow").hidden = isNew || !(editing.d && editing.cal);
     $("#sCalSub").textContent = calTargetName();
     /* No calendar to write to means the switch cannot keep its word, so it is
        not offered — the row still shows, saying which calendar is missing,
@@ -9407,8 +9414,15 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       '<span class="mtbody"><span class="mtname">' + esc(L(m.t)) +
       /* An unanswered coordination is the one thing on this page that is
          waiting on YOU, so it says so on the card and not two taps in. */
-      (!m.settled && mine ? '<i class="mtdot"></i>' : "") + "</span>" +
-      '<span class="mtstate"><em class="mtpill ' + st + '">' + esc(t("mt.pill." + st)) + "</em>" +
+      "</span>" +
+      /* ONE signal per card, and it answers "what does this want from me"
+         (owner, 2026-09-28). There used to be a dot for "waiting on you"
+         beside a pill that could say "אפשר לסגור" at the same time, and a
+         new person could not tell which of the two to act on. Waiting on
+         you wins, and is the one solid pill; otherwise the pill is the
+         state. */
+      '<span class="mtstate"><em class="mtpill ' + (!m.settled && mine ? "you" : st) + '">' +
+      esc(t("mt.pill." + (!m.settled && mine ? "you" : st))) + "</em>" +
       esc(mtState(m)) + "</span></span>" +
       '<svg class="chev"><use href="#i-chev"/></svg></button>' +
       (verb ? swDel(key, verb) : "") + "</div></div></div></div>";
@@ -11291,7 +11305,15 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      the row it landed on rings once, presses itself, and only then does
      the editor open. Teleporting straight into the sheet would leave the
      person on a page they never saw themselves move to. */
-  function jumpToCalendar(id){
+  $("#sJumpRow").addEventListener("click", function(){
+    if(!editing) return;
+    var id = editing.id;
+    closeSheets();
+    jumpToCalendar(id, true);
+  });
+  /* `fromSheet`: the person left the editor to look at the day, so the
+     editor does not open again on top of what they came to see. */
+  function jumpToCalendar(id, fromSheet){
     var x = open.filter(function(o){ return o.id === id; })[0];
     if(!x || !x.d) return;
     var target = new Date(x.d + "T12:00:00");
@@ -11305,9 +11327,14 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
        Past the strip's own reach (WEEK_MIN..WEEK_MAX) there is no day to show,
        so the sheet opens where the person already is rather than the calendar
        landing on the wrong one. */
-    if(i < WEEK_MIN * 7 || i > WEEK_MAX * 7 + 6){ openSheet(id); return; }
+    if(i < WEEK_MIN * 7 || i > WEEK_MAX * 7 + 6){ if(!fromSheet) openSheet(id); return; }
     weekOff = Math.floor(i / 7);
     go("cal");
+    /* The tab opens on coordinations (owner, 2026-09-15), where the day's
+       rows do not exist: without this the jump landed on the wrong half and
+       found nothing to point at (found 2026-09-28, the row icon had the
+       same fault). */
+    setCalMode("cal");
     renderStrip(i);
     setTimeout(function(){
       var row = $('.ev[data-task="' + id + '"]');
@@ -11317,7 +11344,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       setTimeout(function(){ row.classList.add("pressed"); }, 310);
       setTimeout(function(){
         row.classList.remove("landing", "pressed");
-        openSheet(id);
+        if(!fromSheet) openSheet(id);
       }, 450);
     }, 240);
   }
