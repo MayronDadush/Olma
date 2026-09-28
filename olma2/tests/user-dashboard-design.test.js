@@ -46,10 +46,11 @@ test('nothing on a filled control is white-on-lavender any more', () => {
   // colour that sits ON a fill is now its own token, so the light theme can
   // say white and the dark one can say ink.
   // Cypress + Mustard (2026-09-28): white on Cypress in the light theme, the
-  // night ground on the pale Cypress in the dark one.
+  // night ground on the pale Cypress in the dark one (warm charcoal since the
+  // same day).
   assert.equal(token('on-accent', 0), '#FFFFFF');
-  assert.equal(token('on-accent', 1), '#0A1817');
-  assert.equal(token('on-accent', 2), '#0A1817');
+  assert.equal(token('on-accent', 1), token('bg', 1));
+  assert.equal(token('on-accent', 2), token('bg', 2));
   assert.ok(ratio(token('on-accent', 0), token('accent', 0)) >= 4.5,
     'white on the light theme accent clears 4.5:1');
   assert.ok(ratio(token('on-accent', 1), token('accent', 1)) >= 4.5,

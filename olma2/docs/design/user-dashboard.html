@@ -27,7 +27,7 @@
 <link rel="icon" href="/icons/icon-192.png" sizes="192x192" type="image/png">
 <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
 <meta name="theme-color" content="#004643" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#0F3B37" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#004643" media="(prefers-color-scheme: dark)">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -160,9 +160,9 @@
   --logo-lens:#F9C23C;
   --logo-ring:#004643;
   /* The band: the header and the page title sit on Cypress, the way the brand
-     book draws the app (the owner, 2026-09-28). At night it is a deeper
-     Cypress than the day's, lit enough to stand off --bg and still under the
-     cards that overlap it. --on-band-2 is the quiet line (greeting, clock). */
+     book draws the app (the owner, 2026-09-28). At night the page
+     is warm charcoal rather than near-black cypress (the owner picked it over
+     three others, 2026-09-28), so Cypress lives in the band and nowhere else. --on-band-2 is the quiet line (greeting, clock). */
   --band:#004643;
   --on-band:#F0EDE5;
   --on-band-2:#BFD3CF;
@@ -172,19 +172,19 @@
 }
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
-    --bg:#0A1817;
-    --bg-tint:#1A2B29;
-    --surface:#122725;
-    --surface-2:#17302D;
-    --sep:#243532;
-    --sep-2:#31433F;
+    --bg:#1B1A18;
+    --bg-tint:#25241F;
+    --surface:#26251F;
+    --surface-2:#2D2B26;
+    --sep:#35332D;
+    --sep-2:#44413A;
     --text:#EDE9DF;
-    --text-2:#AEB6B1;
-    --text-3:#9AA39E;
+    --text-2:#B9B5AC;
+    --text-3:#A39F96;
     --accent:#7CC4BA;
     --accent-2:#9DD6CD;
-    --accent-soft:#16332F;
-    --shared-bg:#1B3E39;
+    --accent-soft:#1F3532;
+    --shared-bg:#213C38;
     --prog:rgba(124,196,186,.32);
     --accent-line:rgba(124,196,186,.52);
     --danger:#F08A7E;
@@ -199,19 +199,19 @@
     --gold-arc:#F9C23C;
     --gold-soft:#2E2612;
     --mk-line:#EDE9DF;
-    --mk-paper:#1C3633;
-    --mk-paper-s:#122725;
+    --mk-paper:#302E28;
+    --mk-paper-s:#26251F;
     --knob:#FFFFFF;
-    --seg-on:#23403C;
+    --seg-on:#3A3832;
     /* 6.7:1 on the accent, 7-10:1 on ok/warn/danger — see the light block. */
-    --on-accent:#0A1817;
+    --on-accent:#1B1A18;
     --on-accent-soft:rgba(0,0,0,.2);
-    --glass:rgba(18,39,37,.72);
+    --glass:rgba(38,37,31,.72);
     --glass-line:rgba(255,255,255,.09);
-    --glass-panel:rgba(20,42,40,.84);
+    --glass-panel:rgba(42,41,35,.84);
     --rim-soft:inset 0 .6px 0 rgba(255,255,255,.16);
-    --bar:rgba(18,39,37,.40);
-    --toast-bg:rgba(18,39,37,.58);
+    --bar:rgba(38,37,31,.40);
+    --toast-bg:rgba(38,37,31,.58);
     --lens-bar:blur(15px) saturate(300%) brightness(1.22);
     --rim:inset 0 .6px 0 rgba(255,255,255,.26), inset 0 -.6px 0 rgba(255,255,255,.07), inset .6px 0 0 rgba(255,255,255,.11), inset -.6px 0 0 rgba(255,255,255,.11);
     --sheen:linear-gradient(178deg, rgba(255,255,255,.13), rgba(255,255,255,.02) 42%, rgba(255,255,255,0) 62%);
@@ -220,11 +220,11 @@
     --shadow-m:0 1px 2px rgba(0,0,0,.4), 0 10px 28px -16px rgba(0,0,0,.8);
     --action:#F9C23C;
     --on-action:#0E1F1E;
-    --logo-d:#0A1817;
+    --logo-d:#1B1A18;
     --logo-l:#EDE9DF;
     --logo-lens:#F9C23C;
     --logo-ring:#EDE9DF;
-    --band:#0F3B37;
+    --band:#004643;
     --on-band:#EDE9DF;
     --on-band-2:#AFC6C1;
     --band-tint:rgba(255,255,255,.1);
@@ -232,19 +232,19 @@
   }
 }
 :root[data-theme="dark"]{
-  --bg:#0A1817;
-  --bg-tint:#1A2B29;
-  --surface:#122725;
-  --surface-2:#17302D;
-  --sep:#243532;
-  --sep-2:#31433F;
+  --bg:#1B1A18;
+  --bg-tint:#25241F;
+  --surface:#26251F;
+  --surface-2:#2D2B26;
+  --sep:#35332D;
+  --sep-2:#44413A;
   --text:#EDE9DF;
-  --text-2:#AEB6B1;
-  --text-3:#9AA39E;
+  --text-2:#B9B5AC;
+  --text-3:#A39F96;
   --accent:#7CC4BA;
   --accent-2:#9DD6CD;
-  --accent-soft:#16332F;
-  --shared-bg:#1B3E39;
+  --accent-soft:#1F3532;
+  --shared-bg:#213C38;
   --prog:rgba(124,196,186,.32);
   --accent-line:rgba(124,196,186,.52);
   --danger:#F08A7E;
@@ -259,18 +259,18 @@
   --gold-arc:#F9C23C;
   --gold-soft:#2E2612;
   --mk-line:#EDE9DF;
-  --mk-paper:#1C3633;
-  --mk-paper-s:#122725;
+  --mk-paper:#302E28;
+  --mk-paper-s:#26251F;
   --knob:#FFFFFF;
-  --seg-on:#23403C;
-  --on-accent:#0A1817;
+  --seg-on:#3A3832;
+  --on-accent:#1B1A18;
   --on-accent-soft:rgba(0,0,0,.2);
-  --glass:rgba(18,39,37,.72);
+  --glass:rgba(38,37,31,.72);
   --glass-line:rgba(255,255,255,.09);
-  --glass-panel:rgba(20,42,40,.84);
+  --glass-panel:rgba(42,41,35,.84);
   --rim-soft:inset 0 .6px 0 rgba(255,255,255,.16);
-  --bar:rgba(18,39,37,.40);
-  --toast-bg:rgba(18,39,37,.58);
+  --bar:rgba(38,37,31,.40);
+  --toast-bg:rgba(38,37,31,.58);
   --lens-bar:blur(15px) saturate(300%) brightness(1.22);
   --rim:inset 0 .6px 0 rgba(255,255,255,.26), inset 0 -.6px 0 rgba(255,255,255,.07), inset .6px 0 0 rgba(255,255,255,.11), inset -.6px 0 0 rgba(255,255,255,.11);
   --sheen:linear-gradient(178deg, rgba(255,255,255,.13), rgba(255,255,255,.02) 42%, rgba(255,255,255,0) 62%);
@@ -279,11 +279,11 @@
   --shadow-m:0 1px 2px rgba(0,0,0,.4), 0 10px 28px -16px rgba(0,0,0,.8);
   --action:#F9C23C;
   --on-action:#0E1F1E;
-  --logo-d:#0A1817;
+  --logo-d:#1B1A18;
   --logo-l:#EDE9DF;
   --logo-lens:#F9C23C;
   --logo-ring:#EDE9DF;
-  --band:#0F3B37;
+  --band:#004643;
   --on-band:#EDE9DF;
   --on-band-2:#AFC6C1;
   --band-tint:rgba(255,255,255,.1);

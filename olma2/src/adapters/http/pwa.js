@@ -168,7 +168,7 @@ function offlineHtml(lang) {
     // The page's own tokens (Cypress + Mustard, 2026-09-28): the one button
     // is the ACTION colour, as it is on the page.
     ':root{--bg:#F0EDE5;--text:#0E1F1E;--text-2:#44504E;--action:#F9C23C;--on-action:#004643;color-scheme:light dark}' +
-    '@media (prefers-color-scheme:dark){:root{--bg:#0A1817;--text:#EDE9DF;--text-2:#AEB6B1;--on-action:#0E1F1E}}' +
+    '@media (prefers-color-scheme:dark){:root{--bg:#1B1A18;--text:#EDE9DF;--text-2:#B9B5AC;--on-action:#0E1F1E}}' +
     'html,body{height:100%;margin:0}' +
     'body{background:var(--bg);color:var(--text);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Arial,sans-serif;' +
     'display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;' +
