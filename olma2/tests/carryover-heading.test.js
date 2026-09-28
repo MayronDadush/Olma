@@ -10,7 +10,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const heading = require('../src/domain/carryover-heading');
-const { seedWorkspace } = require('../src/intake/provision');
+const { seedWorkspace, removeWorkspaceTree } = require('../src/intake/provision');
 const repair = require('../src/domain/carryover-repair');
 
 test('the heading provisioning writes is one the readers can find', () => {
@@ -26,7 +26,10 @@ test('the heading provisioning writes is one the readers can find', () => {
     assert.notEqual(repair.stripCarryover(card), null, 'and can cut it');
     assert.equal(repair.CARRYOVER_HEADING, heading.MATCH);
   } finally {
-    fs.rmSync(workspace, { recursive: true, force: true });
+    // Not fs.rmSync: on the box seedWorkspace locks .olma-identity with
+    // chattr +i and a plain rm is EPERM (deploy of 2a90d8e6, 2026-09-28).
+    // removeWorkspaceTree unlocks first, the way every real caller deletes.
+    removeWorkspaceTree(workspace);
   }
 });
 
