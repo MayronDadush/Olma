@@ -60,6 +60,7 @@ never trust a dated narrative for something you are about to act on.
 - [The slot that was already closed (fixed 2026-09-20)](#the-slot-that-was-already-closed-fixed-2026-09-20)
 - [The chase that beat its own invites (fixed 2026-09-28)](#the-chase-that-beat-its-own-invites-fixed-2026-09-28)
 - [The room never heard the times (fixed 2026-09-28)](#the-room-never-heard-the-times-fixed-2026-09-28)
+- [Answered before the question existed (fixed 2026-09-28)](#answered-before-the-question-existed-fixed-2026-09-28)
 - [The room asked five and reached four (fixed 2026-09-22)](#the-room-asked-five-and-reached-four-fixed-2026-09-22)
 - [The pause the room's invite walked through (fixed 2026-09-27)](#the-pause-the-rooms-invite-walked-through-fixed-2026-09-27)
 - [A room counted in somebody who had paused (fixed 2026-09-13)](#a-room-counted-in-somebody-who-had-paused-fixed-2026-09-13)
@@ -2272,6 +2273,26 @@ two or more. A single time with its proposer's yes stays silent — the owner's
 still holds. The stamp is `group_table_at`, so from then on the table line has
 a watermark to measure against and every later change is news the way it
 already was.
+
+### Answered before the question existed (fixed 2026-09-28)
+
+Padel Gang, meeting 57. גיא wrote "לא יכול השבוע — טס לחול" at 09:15 and it
+was recorded as a constraint; the first time went on the table eight minutes
+later. `record_meeting_constraint` declines the times ON the table that a
+constraint rules out, and there were none, so it declined nothing — and every
+time that followed was asked of him as if he had said nothing, while the room
+counted him as not having answered. מירון had said "אני יכול כל יום השבוע מ18
+בערב" in the room the night before, and not one of the evening times put up
+after it carried his yes.
+
+Neither was a model fault. The words were kept exactly; there was simply no
+shape in which "not this week" or "any evening" could answer a time that did
+not exist yet. The fix gives the words that shape: a window (answer, from, to,
+optional hours and days) beside the text, applied whenever a time goes on the
+table. The owner chose both directions — a yes as well as a no — and asked that
+whoever is answered this way be told privately, which is what keeps an
+automatic yes honest: it arrives with the sentence it came from and one word
+undoes it.
 
 ### The room asked five and reached four (fixed 2026-09-22)
 

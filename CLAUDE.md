@@ -217,6 +217,7 @@ Loads when you **Read** a file under `src/domain/reminders.js`, `src/domain/task
 - **A sixth option is refused to EVERYBODY, the initiator included, and the refusal carries the five.**
 - **…and the mirror is a CONVENIENCE, never a clock — a time whose moment has passed leaves the TABLE, and only a coordination that has just lost one is asked whether it is empty.**
 - **A constraint that rules out a time ON the table is an ANSWER, and the tool that records it is the one that declines it** — and it earns no 👍
+- **An answer given BEFORE a time existed answers it when it arrives — yes and no — and the person is told privately** (`standing-answers`, windows on a constraint)
 - **A time taken OFF that table is never a message of its own — it rides the next thing each person hears about that coordination.**
 - **A time ADDED to it rides the same thing, as long as that thing has not gone out yet** — four messages in sixty-two seconds is what queueing beside it looks like
 - **A negotiation message WAITS a quarter of an hour behind the last one that reached that person, and everything meanwhile folds into it** — the fold already existed and `urgent` never let it run; a RESULT never waits.
