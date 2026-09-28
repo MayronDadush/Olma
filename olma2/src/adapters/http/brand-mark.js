@@ -58,8 +58,19 @@ function svg(body, size) {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120"${dim}>${body}</svg>`;
 }
 
-// `variant`: 'square' (edge to edge) or 'maskable' (safe for any crop).
-function markSvg({ variant = 'square', size, palette = PALETTE, id } = {}) {
+// The round mark as it stands beside text (the brand book's "עגול עם טבעת"):
+// the maskable drawing cut to a circle, with an optional thin ring, because
+// on a background near either half's colour that half would vanish.
+function circleBody(p, id, ring) {
+  return `<clipPath id="${id}c"><circle cx="60" cy="60" r="60"/></clipPath>`
+    + `<g clip-path="url(#${id}c)">${roundBody(p, id)}</g>`
+    + (ring ? `<circle cx="60" cy="60" r="58.25" fill="none" stroke="${ring}" stroke-width="3.5"/>` : '');
+}
+
+// `variant`: 'square' (edge to edge), 'maskable' (safe for any crop) or
+// 'round' (a circle, `ring` its optional outline colour).
+function markSvg({ variant = 'square', size, palette = PALETTE, id = 'bm', ring } = {}) {
+  if (variant === 'round') return svg(circleBody(palette, id, ring), size);
   const body = variant === 'maskable' ? roundBody(palette, id) : splitBody(palette, id);
   return svg(body, size);
 }

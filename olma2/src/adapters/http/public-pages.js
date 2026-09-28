@@ -40,103 +40,101 @@ const BRAND = 'Allma - Personal Assistant';
 const ASSISTANT = 'עולמה';
 const WA_NUMBER = '972559347282';
 const CONTACT_EMAIL = 'mayrondadush@gmail.com';
+const { markSvg, PALETTE } = require('./brand-mark');
 
-// Lifted from the signed-out welcome screen in docs/design/user-dashboard.html
-// so the front door looks like the product, not like a legal notice someone
-// bolted on. Only the tokens these two pages actually use were carried over.
+// The brand the owner chose on 2026-09-28, Cypress + Mustard: sand ground,
+// a cypress band across the top, mustard for the one action on the page, and
+// a warm charcoal night. The same tokens the /me dashboard carries
+// (docs/design/user-dashboard.html), so the front door and the product are
+// one thing. Only the tokens these pages actually use were carried over.
 const SHELL_CSS = `
 :root{
-  --bg:#F4F3F8;--surface:#FFFFFF;--surface-2:#FAF9FE;--sep:#E7E5F0;
-  --text:#141322;--text-2:#6C6982;--text-3:#A29FB5;
-  --accent:#5B2FD6;--accent-2:#4A22B4;--accent-soft:#EEE8FC;
-  --shadow-m:0 1px 2px rgba(20,19,34,.05), 0 10px 28px -16px rgba(20,19,34,.28);
-  --ease:cubic-bezier(.22,1,.36,1);
+  --bg:#F0EDE5;--surface:#FFFFFF;--sep:#D7D6CF;
+  --text:#0E1F1E;--text-2:#44504E;--text-3:#646D6A;
+  --band:#004643;--on-band:#F0EDE5;--on-band-2:#C9D6D1;
+  --link:#004643;--code:#E6ECEC;
+  --action:#F9C23C;--on-action:#004643;
 }
 @media (prefers-color-scheme:dark){
   :root{
-    --bg:#0C0B11;--surface:#181720;--surface-2:#1F1D29;--sep:#2A2836;
-    --text:#F4F3FA;--text-2:#9D9AB2;--text-3:#6F6C82;
-    --accent:#9D7BFF;--accent-2:#B49BFF;--accent-soft:#241C3D;
-    --shadow-m:0 1px 2px rgba(0,0,0,.4), 0 10px 28px -16px rgba(0,0,0,.7);
+    color-scheme:dark;
+    --bg:#1B1A18;--surface:#26251F;--sep:#35332D;
+    --text:#EDE9DF;--text-2:#B9B5AC;--text-3:#A39F96;
+    --on-band:#EDE9DF;--on-band-2:#AFC6C1;
+    --link:#7CC4BA;--code:#1F3532;
+    --on-action:#0E1F1E;
   }
 }
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
 body{
-  background:radial-gradient(125% 60% at 50% -8%, var(--accent-soft) 0%, transparent 62%), var(--bg);
-  color:var(--text);
-  font-family:'Assistant',system-ui,-apple-system,'Segoe UI',Arial,sans-serif;
+  background:var(--bg);color:var(--text);
+  font-family:'IBM Plex Sans Hebrew','IBM Plex Sans',system-ui,-apple-system,'Segoe UI',Arial,sans-serif;
   font-size:16px;line-height:1.6;
   min-height:100vh;
 }
+.band{background:var(--band);color:var(--on-band);border-radius:0 0 28px 28px}
+.band .in{max-width:720px;margin:0 auto;padding:40px 22px 36px}
+.band .lede{color:var(--on-band-2)}
 .wrap{max-width:720px;margin:0 auto;padding:44px 22px 64px}
-.mark{width:76px;height:76px;filter:drop-shadow(0 14px 28px rgba(91,47,214,.28))}
+.band + .wrap{padding-top:12px}
+.mark{width:72px;height:72px}
 .mark svg{width:100%;height:100%;display:block}
-h1{
-  font-family:'Rubik',system-ui,sans-serif;font-weight:700;
-  font-size:40px;line-height:1.05;letter-spacing:-.02em;margin:20px 0 0;
-}
-h2{font-family:'Rubik',system-ui,sans-serif;font-weight:600;font-size:21px;margin:36px 0 10px;letter-spacing:-.01em}
-h3{font-size:16.5px;font-weight:700;margin:22px 0 6px}
+h1{font-weight:700;font-size:38px;line-height:1.08;letter-spacing:-.02em;margin:20px 0 0;text-wrap:balance}
+h2{font-weight:700;font-size:21px;margin:36px 0 10px;letter-spacing:-.01em;text-wrap:balance}
+h3{font-size:16.5px;font-weight:600;margin:22px 0 6px}
 .lede{margin-top:11px;font-size:17px;color:var(--text-2);max-width:32em}
 p{margin:0 0 12px}
 ul{margin:0 0 14px;padding-inline-start:1.25em}
 li{margin-bottom:7px}
-a{color:var(--accent);text-decoration:none;border-bottom:1px solid transparent}
-a:hover{border-bottom-color:currentColor}
-.card{
-  background:var(--surface);border-radius:16px;box-shadow:var(--shadow-m);
-  padding:18px 20px;margin:14px 0;
-}
+a{color:var(--link);text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:3px}
+code{font-family:'IBM Plex Mono',ui-monospace,Menlo,monospace;font-size:.86em;background:var(--code);border-radius:6px;padding:1px 6px}
+.card{background:var(--surface);border:1px solid var(--sep);border-radius:18px;padding:18px 20px;margin:14px 0}
 .card h3{margin-top:0}
 .card p:last-child{margin-bottom:0}
 .perm{font-size:13.5px;color:var(--text-3);margin-top:6px}
 .cta{
-  display:inline-flex;align-items:center;gap:9px;margin-top:8px;
-  background:var(--accent);color:#fff;border-radius:14px;
-  padding:13px 22px;font-weight:600;font-size:16px;
-  box-shadow:var(--shadow-m);border-bottom:0;
+  display:inline-flex;align-items:center;gap:9px;margin-top:10px;
+  background:var(--action);color:var(--on-action);border-radius:99px;
+  padding:13px 24px;font-weight:600;font-size:16px;text-decoration:none;
 }
-.cta:hover{background:var(--accent-2);border-bottom:0}
+.cta:hover{filter:brightness(.96)}
 .foot{margin-top:44px;padding-top:18px;border-top:1px solid var(--sep);font-size:13px;color:var(--text-3)}
 .foot a{color:var(--text-2)}
 .he{margin-top:52px;padding-top:26px;border-top:1px solid var(--sep);direction:rtl;text-align:right}
 .updated{font-size:13.5px;color:var(--text-3);margin-top:4px}
-@media (prefers-reduced-motion:no-preference){
-  .wrap>*{animation:rise .55s var(--ease) both}
-  @keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
-}
 `;
 
-const LOGO = `<svg viewBox="0 0 96 96" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="${BRAND}">
-  <defs>
-    <linearGradient id="lg" x1="18" y1="10" x2="80" y2="86" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#7C4DFF"/><stop offset="1" stop-color="#4A22B4"/>
-    </linearGradient>
-    <clipPath id="lc"><circle cx="46" cy="44" r="32"/></clipPath>
-  </defs>
-  <path d="M46 12a32 32 0 0 1 32 32 32 32 0 0 1-32 32c-3.6 0-7-.6-10.2-1.7l-13.4 6a2.4 2.4 0 0 1-3.3-2.7l2.3-11.2A32 32 0 0 1 46 12Z" fill="url(#lg)"/>
-  <g clip-path="url(#lc)" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round">
-    <path d="M14 44h64" opacity=".5"/><ellipse cx="46" cy="44" rx="14.5" ry="32" opacity=".55"/>
-  </g>
-  <circle cx="70" cy="22" r="5.2" fill="#fff" opacity=".9"/>
-</svg>`;
+// The round mark with its ring: on the cypress band the dark half is ink and
+// the ring is sand (the brand book's "על ברוש"); on sand or charcoal, below
+// the band, the dark half is cypress and the ring follows the text colour.
+// `id` keeps the clip paths apart, since a page carries more than one.
+const ON_BAND = { ink: '#0E1F1E', paper: '#F0EDE5', coral: PALETTE.coral };
+const LOGO = markSvg({ variant: 'round', palette: ON_BAND, ring: '#F0EDE5', id: 'lg' })
+  .replace('<svg ', `<svg role="img" aria-label="${BRAND}" `);
+const LOGO_PAGE = markSvg({ variant: 'round', id: 'lp', ring: 'currentColor' })
+  .replace('<svg ', `<svg role="img" aria-label="${BRAND}" `);
 
 // English first, ltr by default: this is now the primary reading direction.
 // The Hebrew section on each page opts back into rtl via the `.he` wrapper.
-function shell(title, bodyHtml, { lang = 'en', dir = 'ltr' } = {}) {
+// `band`, when given, is drawn full width above the page in the brand's
+// cypress; the home page has one, the policy pages do not.
+function shell(title, bodyHtml, { lang = 'en', dir = 'ltr', band = '' } = {}) {
   return `<!doctype html>
 <html lang="${lang}" dir="${dir}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#004643">
+<link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
 <title>${title}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700&family=Rubik:wght@600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Hebrew:wght@400;600;700&family=IBM+Plex+Sans:wght@400;600;700&family=IBM+Plex+Mono:wght@500&display=swap">
 <style>${SHELL_CSS}</style>
 </head>
-<body><div class="wrap">${bodyHtml}</div></body>
+<body>${band ? `<header class="band"><div class="in">${band}</div></header>` : ''}<div class="wrap">${bodyHtml}</div></body>
 </html>`;
 }
 
@@ -148,12 +146,6 @@ function shell(title, bodyHtml, { lang = 'en', dir = 'ltr' } = {}) {
 // Hebrew for the people actually using it today — same claims, both times.
 function homePage() {
   return shell(`${BRAND} — a WhatsApp AI assistant`, `
-    <div class="mark">${LOGO}</div>
-    <h1>${BRAND}</h1>
-    <p class="lede">A personal assistant that lives inside WhatsApp. Write to it in your own language — it remembers, reminds, and coordinates. Nothing to install.</p>
-
-    <p><a class="cta" href="https://wa.me/${WA_NUMBER}">Start a WhatsApp chat</a></p>
-
     <h2>What it does</h2>
     <ul>
       <li><b>Tasks & reminders</b> — tell it once, and it reminds you at the right time.</li>
@@ -181,7 +173,7 @@ function homePage() {
     <p>We do not sell information and do not use it for advertising. Data from Google is used solely to answer you — not to train models, and not for any other purpose. <a href="/privacy">Full privacy policy</a>.</p>
 
     <div class="he">
-      <div class="mark">${LOGO}</div>
+      <div class="mark">${LOGO_PAGE}</div>
       <h2>${ASSISTANT}</h2>
       <p class="lede">עוזרת אישית שחיה בתוך וואטסאפ. כותבים לה בשפה שלכם — היא זוכרת, מזכירה, ומתאמת. אין מה להתקין.</p>
 
@@ -217,7 +209,12 @@ function homePage() {
     <div class="foot">
       <p>allma.world · <a href="/privacy">Privacy Policy</a> · <a href="/terms">Terms of Service</a> · <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
     </div>
-  `);
+  `, { band: `
+    <div class="mark">${LOGO}</div>
+    <h1>${BRAND}</h1>
+    <p class="lede">A personal assistant that lives inside WhatsApp. Write to it in your own language — it remembers, reminds, and coordinates. Nothing to install.</p>
+    <p><a class="cta" href="https://wa.me/${WA_NUMBER}">Start a WhatsApp chat</a></p>
+  ` });
 }
 
 // ---- privacy ----------------------------------------------------------------
@@ -230,7 +227,7 @@ const UPDATED = '2026-09-06';
 
 function privacyPage() {
   return shell(`Privacy Policy — ${BRAND}`, `
-    <div class="mark">${LOGO}</div>
+    <div class="mark">${LOGO_PAGE}</div>
     <h1>Privacy Policy</h1>
     <p class="updated">Last updated: ${UPDATED}</p>
 
@@ -352,7 +349,7 @@ function privacyPage() {
 // summary of the other.
 function termsPage() {
   return shell(`Terms of Service — ${BRAND}`, `
-    <div class="mark">${LOGO}</div>
+    <div class="mark">${LOGO_PAGE}</div>
     <h1>Terms of Service</h1>
     <p class="updated">Last updated: ${UPDATED}</p>
 
