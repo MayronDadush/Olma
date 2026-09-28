@@ -54,7 +54,10 @@ const CHANNEL_RESTART_GRACE_MS = 45 * 1000;
 function renderRow(row, wording) {
   const p = (typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload) || {};
   switch (row.kind) {
-    case 'intro': return text.renderGroupIntro(wording);
+    // `ready`: the room is already open when the greeting goes out, so it says
+    // they can start — a room open from its first pass heard no other line
+    // that did (owner, 2026-09-26, fix 8). Read at delivery, like the words.
+    case 'intro': return text.renderGroupIntro(wording, { ready: row.state === 'open' });
     case 'opened': return text.renderGroupOpened(wording);
     case 'too_large': return text.renderGroupTooLarge(Number(p.maxMembers) || 25, wording);
     case 'gate_notice': return text.renderGroupGateNotice(
@@ -196,7 +199,7 @@ async function drainOnce(pool, deps = {}) {
 
   const wording = await templates.load(pool);
   const { rows } = await pool.query(
-    `SELECT o.id, o.kind, o.payload, o.reply_to, g.external_id
+    `SELECT o.id, o.kind, o.payload, o.reply_to, g.external_id, g.state
        FROM group_outbox o JOIN chat_groups g ON g.id = o.group_id
       WHERE o.sent_at IS NULL AND o.claimed_at IS NULL
       ORDER BY o.created_at

@@ -171,3 +171,22 @@ test('the room queue has no way to address a person', async () => {
   assert.equal(names.includes('user_id'), false);
   assert.deepEqual(names.filter((n) => /user|phone|recipient/.test(n)), []);
 });
+
+// Fix 8 (owner, 2026-09-26): a room already open when its greeting goes out
+// never hears "יש! כולם כאן" — that line answers a wait it was never told
+// about — so the greeting itself says they can start. Read at DELIVERY.
+test('the greeting says they can start only when the room is open as it goes out', async () => {
+  await withTx(db.pool, (c) => outbox.enqueue(c, { groupId, kind: 'intro', idempotencyKey: `g${groupId}:intro` }));
+  await db.pool.query(`UPDATE chat_groups SET state = 'locked' WHERE id = $1`, [groupId]);
+  const locked = recorder();
+  await outbox.drainOnce(db.pool, locked.deps);
+  assert.equal(locked.sent.length, 1);
+  assert.doesNotMatch(locked.sent[0].body, /אפשר כבר להתחיל/);
+
+  await db.pool.query(`DELETE FROM group_outbox`);
+  await withTx(db.pool, (c) => outbox.enqueue(c, { groupId, kind: 'intro', idempotencyKey: `g${groupId}:intro2` }));
+  await db.pool.query(`UPDATE chat_groups SET state = 'open' WHERE id = $1`, [groupId]);
+  const open = recorder();
+  await outbox.drainOnce(db.pool, open.deps);
+  assert.match(open.sent[0].body, /^נעים מאוד[\s\S]*\nאפשר כבר להתחיל — תתייגו אותי ותגידו מה לתאם 🎯$/);
+});
