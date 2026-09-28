@@ -34,7 +34,7 @@ const OPENING = Object.fromEntries(templates.TEMPLATES
   .filter((t) => templates.familyOf(t.key) === 'opening' && !templates.variantOf(t.key))
   .map((t) => [templates.langOf(t.key), t.text]));
 
-// The copy as it read until 2026-09-25, when the owner shortened it. Only
+// The copy as it read before each revision (2026-09-25, 2026-09-28). Only
 // intake.saidTheOpening reads this: the greeter's file is re-rendered by a
 // job a minute after a deploy, and somebody greeted in that minute with the
 // old words must not be read as never introduced.
@@ -44,6 +44,10 @@ const PREVIOUS_OPENINGS = [
   "Hey! I'm Allma \u{1F44B}\n\nI’m here to help you manage tasks, set reminders, and schedule with the "
     + 'people who matter most.\nText me, send a voice message, or just throw everything at me — '
     + 'I’ll keep you organized ☺️',
+  // Revision 3, 2026-09-25 until the compliance revision on 2026-09-28.
+  'היי, אני עולמה 👋\n\nאני עוזרת עם משימות, תזכורות ותיאומים — אפשר לכתוב, להקליט או לשלוח הכל בבלגן ☺️',
+  "Hey, I'm Allma \u{1F44B}\n\nI help with tasks, reminders and scheduling — text me, send a voice note, "
+    + 'or just dump it all on me ☺️',
 ];
 
 // Hebrew and English are the two languages the product ships (owner,
