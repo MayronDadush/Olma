@@ -15,6 +15,17 @@ for it.
 resvg is given exactly these files with `loadSystemFonts: false`, so a font
 installed or removed on the server can never change what a card looks like.
 
+## fonts/web/
+
+[IBM Plex](https://github.com/IBM/plex): Sans Hebrew 400/500/600/700 (Hebrew
+subset, static), Sans (Latin, variable 400–700) and Mono 500 (Latin), woff2,
+exactly as fonts.gstatic.com serves them (2026-09-29). SIL Open Font License
+1.1 — `OFL-IBM-Plex.txt`.
+
+These are the allma.world pages' fonts, inlined into every page as data: URIs
+by `src/adapters/http/fonts.js` so a visitor's browser never asks Google for
+them (GDPR: that request hands Google the visitor's IP). Not used by resvg.
+
 ## icons/
 
 [Twemoji](https://github.com/jdecked/twemoji) 15.1.0, 72×72 PNG. Graphics are
