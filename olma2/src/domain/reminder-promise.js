@@ -61,10 +61,37 @@ function bareHourMinutes(hour, rest) {
     if (!m) continue;
     const mins = fixed === null ? Number(m[1]) : fixed;
     if (!Number.isFinite(mins) || mins > 59) continue;
-    const total = (hour * 60 + mins + 24 * 60) % (24 * 60);
-    return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+    return mins;
   }
-  return `${String(hour).padStart(2, '0')}:00`;
+  return 0;
+}
+
+// Which half of the day the message names. "8 וחצי" alone is 08:30 OR 20:30
+// — people say the hour on a twelve-hour clock and let the context carry the
+// rest — so a check that heard only the morning would file a correct 20:30 as
+// a broken promise (owner, 2026-09-28, after issue 161). A daypart word
+// anywhere in the message narrows it; both kinds, or neither, keep both.
+const AM_RE = new RegExp(`(?:^|[^${'\\u0590-\\u05FF'}])ו?(?:ב|ה|ל)?בוקר(?![\\u0590-\\u05FF])|\\bam\\b|\\bmorning\\b`, 'iu');
+const PM_RE = new RegExp(`(?:^|[^${'\\u0590-\\u05FF'}])ו?(?:ב|ה|ל)?(?:ערב|לילה|צהריים|צהרים)(?![\\u0590-\\u05FF])|אחה["״']?צ|אחר\\s+ה?צהריים|\\bpm\\b|\\b(?:evening|tonight|afternoon)\\b`, 'iu');
+
+function halvesOf(text) {
+  const am = AM_RE.test(text);
+  const pm = PM_RE.test(text);
+  return { am: am || !pm, pm: pm || !am };
+}
+
+// Every clock reading of hour:minutes the message allows. Only 1-11 are
+// ambiguous: 0 and 13-23 already name their half, and 12 is noon as said.
+function readings(hour, mins, half) {
+  const at = (h) => {
+    const total = (h * 60 + mins + 24 * 60) % (24 * 60);
+    return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+  };
+  if (hour < 1 || hour > 11) return [at(hour)];
+  const out = [];
+  if (half.am) out.push(at(hour));
+  if (half.pm) out.push(at(hour + 12));
+  return out;
 }
 
 // "עוד שעתיים", "בעוד חצי שעה", "in 2 hours". The moment is relative to when
@@ -96,11 +123,13 @@ const hhmm = (ms, tz) => {
 function momentsAsked(text, atMs, tz) {
   const s = String(text || '');
   const out = new Set();
+  const half = halvesOf(s);
   for (const m of s.matchAll(TIME_RE)) {
-    out.add(`${String(Number(m[1])).padStart(2, '0')}:${m[2]}`);
+    for (const r of readings(Number(m[1]), Number(m[2]), half)) out.add(r);
   }
   for (const m of s.matchAll(BARE_HOUR_RE)) {
-    out.add(bareHourMinutes(Number(m[1]), s.slice(m.index + m[0].length)));
+    const mins = bareHourMinutes(Number(m[1]), s.slice(m.index + m[0].length));
+    for (const r of readings(Number(m[1]), mins, half)) out.add(r);
   }
   if (Number.isFinite(atMs)) {
     for (const [re, fixed] of REL_HOURS) {

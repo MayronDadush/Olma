@@ -23,12 +23,14 @@ test('a clock time is read the way people write it, with or without minutes', ()
   assert.ok(momentsAsked('תזכיר לי בשעה 8', at, TZ).has('08:00'));
   // two acceptable answers, not one — a check that picked one would invent a fault
   const both = momentsAsked('תזכיר לי ב-7:00 או ב-8:00', at, TZ);
-  assert.deepEqual([...both].sort(), ['07:00', '08:00']);
+  // …each on either half of the day, since neither names one (see below)
+  assert.deepEqual([...both].sort(), ['07:00', '08:00', '19:00', '20:00']);
 });
 
 test('minutes said in words after a bare hour are part of the hour (Dov, issue 161)', () => {
   const at = Date.parse('2026-09-27T11:18:56Z');
-  const asked = (t) => [...momentsAsked(t, at, TZ)];
+  // "בבוקר" pins the half of the day, so only the minutes are under test here
+  const asked = (t) => [...momentsAsked(`${t} בבוקר`, at, TZ)];
   // the real message — a correct 08:30 was filed as "asked 08:00"
   assert.deepEqual(asked('תזכיר לי כל יום בבוקר בשעה 8 וחצי לשתות חצי ליטר מים וכדור סגול'), ['08:30']);
   assert.deepEqual(asked('תזכיר לי בשעה 8 ורבע'), ['08:15']);
@@ -36,7 +38,7 @@ test('minutes said in words after a bare hour are part of the hour (Dov, issue 1
   assert.deepEqual(asked('תזכיר לי ב-7 ועשרה'), ['07:10']);
   assert.deepEqual(asked('תזכיר לי ב-6 ו-40'), ['06:40']);
   assert.deepEqual(asked('תזכיר לי בשעה 9 פחות רבע'), ['08:45']);
-  assert.deepEqual(asked('תזכיר לי ב-0 פחות עשרה'), ['23:50']);
+  assert.deepEqual(asked('תזכיר לי ב-0 פחות עשרה'), ['23:50']);  // 0 names its own half
   // a word that only STARTS like one is not minutes
   assert.deepEqual(asked('תזכיר לי ב-8 ועשרות דברים'), ['08:00']);
   assert.deepEqual(asked('תזכיר לי בשעה 8'), ['08:00']);
@@ -45,7 +47,7 @@ test('minutes said in words after a bare hour are part of the hour (Dov, issue 1
 test('the check still goes red when half past was asked and the hour was armed', () => {
   const found = checkPromises({
     user,
-    inbound: [{ at: '2026-09-27T11:18:56Z', text: 'תזכיר לי מחר בשעה 8 וחצי לשתות מים' }],
+    inbound: [{ at: '2026-09-27T11:18:56Z', text: 'תזכיר לי מחר בבוקר בשעה 8 וחצי לשתות מים' }],
     reminders: [{ id: 507, createdAt: '2026-09-27T11:19:01Z', remindAt: '2026-09-28T05:00:00Z' }], // 08:00
   });
   assert.equal(found.length, 1);
@@ -56,6 +58,40 @@ test('the check still goes red when half past was asked and the hour was armed',
     inbound: [{ at: '2026-09-27T11:18:56Z', text: 'תזכיר לי מחר בשעה 8 וחצי לשתות מים' }],
     reminders: [{ id: 507, createdAt: '2026-09-27T11:19:01Z', remindAt: '2026-09-28T05:30:00Z' }],
   }).length, 0);
+});
+
+test('an hour from 1 to 11 is either half of the day unless the message names one', () => {
+  const at = Date.parse('2026-09-28T12:00:00Z');
+  const asked = (t) => [...momentsAsked(t, at, TZ)].sort();
+  assert.deepEqual(asked('תזכיר לי ב-8 וחצי להתקשר לאמא'), ['08:30', '20:30']);
+  assert.deepEqual(asked('תזכיר לי בערב ב-8 וחצי'), ['20:30']);
+  assert.deepEqual(asked('תזכיר לי הלילה ב-11'), ['23:00']);
+  assert.deepEqual(asked('תזכיר לי ב-2 בצהריים'), ['14:00']);
+  assert.deepEqual(asked('remind me at 7 pm'), ['19:00']);
+  assert.deepEqual(asked('תזכיר לי מחר בבוקר ב-7:15'), ['07:15']);
+  // both halves named: every reading stays, which errs towards silence
+  assert.deepEqual(asked('תזכיר לי מחר בבוקר ב-7 ובערב ב-9'), ['07:00', '09:00', '19:00', '21:00']);
+  // a word that only CONTAINS a daypart names nothing
+  assert.deepEqual(asked('תזכיר לי לקנות ערבה ב-8'), ['08:00', '20:00']);
+  // 0, 12 and 13-23 already say which half they are
+  assert.deepEqual(asked('תזכיר לי ב19:00'), ['19:00']);
+  assert.deepEqual(asked('תזכיר לי ב-12'), ['12:00']);
+});
+
+test('an evening reading armed for a bare hour is not a broken promise; the wrong half, when named, still is', () => {
+  const quiet = checkPromises({
+    user,
+    inbound: [{ at: '2026-09-28T12:00:00Z', text: 'תזכיר לי ב-8 וחצי להתקשר לאמא' }],
+    reminders: [{ id: 1, createdAt: '2026-09-28T12:00:05Z', remindAt: '2026-09-28T17:30:00Z' }], // 20:30
+  });
+  assert.equal(quiet.length, 0);
+  const red = checkPromises({
+    user,
+    inbound: [{ at: '2026-09-28T12:00:00Z', text: 'תזכיר לי מחר בבוקר ב-8 וחצי להתקשר לאמא' }],
+    reminders: [{ id: 2, createdAt: '2026-09-28T12:00:05Z', remindAt: '2026-09-29T17:30:00Z' }], // 20:30
+  });
+  assert.equal(red.length, 1);
+  assert.deepEqual(red[0].asked, ['08:30']);
 });
 
 test('a relative ask is read against the moment they wrote it', () => {
