@@ -197,7 +197,10 @@ test('the invite reaches the man who was talking in the room, and nothing else d
     'somebody else\'s request is not what he answered');
 });
 
-test('a word said before the coordination started does not open a window on it', async () => {
+// Until 2026-09-27 any word before the start opened nothing. The owner's rule
+// since: somebody who wrote in the last few minutes is awake, before the start
+// or after it — only a word older than the fifteen-minute window is not.
+test('a word said long before the coordination started does not open a window on it', async () => {
   const dana = await makeUser(db.pool, '+972606000020');
   const yael = await makeUser(db.pool, '+972606000021');
   // Her one room-coordination invite is already spent (owner, 2026-09-22), so
@@ -214,7 +217,7 @@ test('a word said before the coordination started does not open a window on it',
   // anything. Her "🙌" an hour ago is not an answer to a question nobody had
   // asked yet — the owner's wording is "after the coordination started".
   await withTx(db.pool, (c) => groupContext.noteMemberWrote(c, {
-    chatId: g.external_id, senderE164: yael.phone, at: new Date(Date.now() - 60_000),
+    chatId: g.external_id, senderE164: yael.phone, at: new Date(Date.now() - 20 * 60_000),
   }));
   const started = await withTx(db.pool, (c) => meetings.startMeeting(
     c, dana.id, 'קפה', [yael.id], { groupId: g.id }));
@@ -352,4 +355,46 @@ test('a word in one room does not re-hear a coordination another room is running
 
   await drainOnce(db.pool, send, SHABBAT);
   assert.deepEqual(sent, [], 'and so nothing reaches her about it');
+});
+
+// Fixes 4 and 5 (owner, 2026-09-26/27): whoever wrote in the room in the last
+// few minutes is awake — the asker, whose tag is stamped seconds before the
+// tool creates the meeting, and anybody else talking there. Somebody who has
+// said nothing recently still waits for the morning.
+test('everybody who wrote in the room just now hears at once; the rest wait', async () => {
+  const asker = await makeUser(db.pool, '+972606000030');
+  const other = await makeUser(db.pool, '+972606000031');
+  for (const u of [asker, other]) await db.pool.query(`UPDATE users SET checkin_misses = 1, room_invite_sent_at = now() WHERE id = $1`, [u.id]);
+  const g = await withTx(db.pool, (c) => room(c, {
+    jid: '120363000000004@g.us', members: [{ phone: asker.phone }, { phone: other.phone }],
+  }));
+  await withTx(db.pool, (c) => groupContext.noteMemberWrote(c, {
+    chatId: g.external_id, senderE164: asker.phone, at: new Date(Date.now() - 20_000),
+  }));
+  await withTx(db.pool, (c) => groupContext.noteMemberWrote(c, {
+    chatId: g.external_id, senderE164: other.phone, at: new Date(Date.now() - 20 * 60_000),
+  }));
+  const started = await withTx(db.pool, (c) => meetings.startMeeting(
+    c, asker.id, 'קפה', [other.id], { groupId: g.id }));
+  const meetingId = Number(started.data.meeting.id);
+  for (const u of [asker, other]) {
+    await withTx(db.pool, (c) => enqueue(c, {
+      userId: u.id, kind: 'meeting_invite', payload: { meetingId, title: 'קפה' },
+      idempotencyKey: `minvite:${meetingId}:${u.id}`,
+    }));
+  }
+  const sent = [];
+  await drainOnce(db.pool, async (row) => { sent.push(row); return { ok: true }; });
+  const ours = new Set([Number(asker.id), Number(other.id)]);
+  assert.deepEqual(sent.map((r) => Number(r.user_id)).filter((id) => ours.has(id)), [Number(asker.id)],
+    'the asker hears now; somebody silent for twenty minutes waits');
+  // …and a member who spoke a minute before the start, not the asker, is awake too.
+  await withTx(db.pool, (c) => groupContext.noteMemberWrote(c, {
+    chatId: g.external_id, senderE164: other.phone, at: new Date(Date.now() - 60_000),
+  }));
+  await db.pool.query(`UPDATE outbox SET release_after = NULL, hold_reason = NULL, sent_at = NULL
+                        WHERE user_id = $1 AND kind = 'meeting_invite'`, [other.id]);
+  const later = [];
+  await drainOnce(db.pool, async (row) => { later.push(row); return { ok: true }; });
+  assert.ok(later.some((r) => Number(r.user_id) === Number(other.id)), 'a word a minute before the start counts');
 });
