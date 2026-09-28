@@ -782,3 +782,25 @@ title means this file. Grep the title, not the filename.
   `thanksOnly`. The eval harness reads the same three verdicts with the same
   functions and sends them, because the CLI fires no hook and the eval was
   otherwise measuring a reading production no longer asks the model for.
+
+- **"תזכיר לי X" with no WHEN at all is a WEEKLY chase, armed by code**
+  (owner, 2026-09-28). Dov said three in one afternoon; each was saved with no
+  date and no reminder, answered "רשמתי 🙂", and nothing would ever have
+  reached him, because he has no morning digest (22 of 30 active people have
+  none). The gateway hook (`remindWithoutTime`) reads the verb plus an
+  infinitive and NO when: no digit, day, part of the day, "עוד", "עד", "כש…"
+  and no question mark. It sends a boolean, and brokerd stamps when it was
+  heard. `turn_start` tells the model not to invent an hour or ask for one, and
+  an `add_task` on that turn that comes out undated and not an event is armed
+  by `reminders.startWeeklyNudge`:
+  - the hour is `chaseHour`, so it rides a morning digest when there is one;
+  - the first occurrence is a WEEK out, never today;
+  - it runs for `WEEKLY_NUDGE_WEEKS` (8) through `repeat_until`, so "done"
+    closes it and a quiet day moves it.
+
+  **Measured before it was written:** of 85 real messages asking for a
+  reminder, the looser noun-or-verb reading took 9, and four of those were not
+  this case. The infinitive reading takes Dov's five and nothing else. The four
+  rejected rows are the negatives in `tests/remind-without-time.test.js`. The
+  verdict is spent once and dies after fifteen minutes, like a chase. **The
+  hook is read at gateway STARTUP**, so this is inert until a restart.
