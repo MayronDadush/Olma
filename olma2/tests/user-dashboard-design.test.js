@@ -105,7 +105,7 @@ test('a shared row is tinted visibly, and everything written on it still reads',
       assert.ok(ratio(token(n, w), tint) >= 4.5, `--${n} on the shared tint (${w}): ${ratio(token(n, w), tint).toFixed(2)}`);
     });
   });
-  assert.match(page, /\.swr\.shared > \.swfront,\.hometoday \.task\.shared\{background:var\(--shared-bg\)\}/);
+  assert.match(page, /\.swr\.shared > \.swfront\{background:var\(--shared-bg\)\}/);
 });
 
 test('the band stands off the page at night, and everything on it reads', () => {
@@ -122,6 +122,14 @@ test('the band stands off the page at night, and everything on it reads', () => 
   // the title's box never animates, or it parts from the top bar mid-rise
   assert.match(page, /\.view\.active > \.title\{animation:none\}/);
   assert.match(page, /html\.intro-go \.title > \*\{animation:introUp/);
+});
+
+test('the line under a title is one line, and home no longer lists the day', () => {
+  // A second line made the band a third of the screen, and the rows of today
+  // above the home cards read as clutter (the owner, 2026-09-28).
+  assert.match(page, /\.title p\{[^}]*white-space:nowrap;overflow:hidden;text-overflow:ellipsis\}/);
+  assert.doesNotMatch(page, /id="homeToday"/);
+  assert.doesNotMatch(page, /function homeTaskHTML/);
 });
 
 test('a finger gets more than the icon does', () => {

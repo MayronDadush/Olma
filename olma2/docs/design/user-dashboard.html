@@ -500,7 +500,10 @@ html.intro-go .tabbar{animation:introBar .55s var(--ease) .3s both}
   background:var(--band);color:var(--on-band);border-radius:0 0 28px 28px;
 }
 .title h1{font-family:var(--font-display);font-weight:700;font-size:33px;line-height:1.12;letter-spacing:-.015em;text-wrap:balance}
-.title p{margin-top:6px;color:var(--on-band-2);font-size:15px;max-width:52ch}
+/* One line, always: a second line made the band a third of the screen (the
+   owner, 2026-09-28). The words are written to fit; the ellipsis is only for
+   a narrow phone or a long name. */
+.title p{margin-top:6px;color:var(--on-band-2);font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* On home the first card sits over the band's end, as in the brand book. A
    negative margin rather than a named neighbour: whichever block is shown
    first (today, the install card, the home cards) is the one that rises. */
@@ -859,18 +862,6 @@ button.row:active{background:var(--bg-tint)}
    the largest thing on the card; the chevron says it goes somewhere, because
    a new person does not yet know the tab bar is there. */
 .homecards{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:30px}
-/* Today, above the cards: the list's own rows, then what waits on you. */
-.hometoday{display:flex;flex-direction:column;gap:12px;margin-bottom:18px}
-.homemore{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;
-  padding:12px 14px;font-size:14px;font-weight:600;color:var(--accent);border-top:1px solid var(--sep)}
-.homemeet{display:flex;align-items:center;gap:12px;width:100%;padding:12px 14px;text-align:start}
-.homemeet + .homemeet{border-top:1px solid var(--sep)}
-.hmbody{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
-.hmbody b{font-size:15.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.hmbody i{font-style:normal;font-size:12.5px;color:var(--text-3)}
-.hmgo{flex:none;padding:6px 13px;border-radius:999px;background:var(--accent);color:var(--on-accent);
-  font-size:13px;font-weight:700}
-.homemeet:active,.homemore:active{background:var(--bg-tint)}
 .homeh{font-family:var(--font-display);font-weight:700;font-size:20px;letter-spacing:-.01em;padding:0 2px 12px}
 .homecard{
   position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:4px;
@@ -1706,7 +1697,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
    category uses it: the dot beside the title is the category's colour. */
 /* Its own token, because the night's accent-soft sits 1.1:1 from the row
    it would tint and the tint vanished (measured on the demo, 2026-09-28). */
-.swr.shared > .swfront,.hometoday .task.shared{background:var(--shared-bg)}
+.swr.shared > .swfront{background:var(--shared-bg)}
 .swr.dragging > .swfront{transition:none}
 .swr.open > .swfront{transform:translateX(calc(-104px * var(--dirf)))}
 /* The first-time peek: part of the way, slower, and back by itself. */
@@ -3255,11 +3246,10 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       <h1 id="toolsH"></h1>
       <p id="homeP"></p>
     </div>
-    <!-- Today, drawn by renderHome: what is due or overdue (three rows at
-         most, ticked off right here) and every coordination waiting on YOUR
-         answer. A person opening the app asks "what now", and this used to
-         answer with a welcome that never changed (the owner, 2026-09-27). -->
-    <div class="hometoday" id="homeToday" hidden></div>
+    <!-- The home page used to list today's rows and the coordinations waiting
+         on YOU here, above the cards (2026-09-27). The owner took it out a day
+         later as too busy: the title line still says how many of each, and the
+         cards are one tap from both. -->
     <!-- The home cards: what she is holding for you, one tap from its page.
          A new person used to land on a grid of services, see nothing of their
          own and leave without finding the tab bar (the owner, 2026-09-26). -->
@@ -4843,7 +4833,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "tab.tools":"בית","tab.tasks":"משימות","tab.cal":"פגישות","tab.friends":"חברים","tab.me":"פרופיל",
 
       "tools.h":"החיבורים שלך",
-      "home.p":"עולמה עוזרת לך בוואטסאפ. כאן רואים את כל מה שהיא מחזיקה בשבילך.",
+      "home.p":"כל מה שעולמה מחזיקה בשבילך, במקום אחד.",
       "home.tasks.n0":"משימות פתוחות","home.tasks.n1":"משימה פתוחה","home.tasks.nN":"משימות פתוחות",
       "home.meets.n0":"תיאומי פגישה","home.meets.n1":"תיאום פגישה","home.meets.nN":"תיאומי פגישה",
       "home.tasksStart":"הוסיפו משימה","home.tasksStartSub":"או פשוט כתבו לעולמה בוואטסאפ את המשימה",
@@ -4852,8 +4842,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "news.pill":"יש עדכונים · לרענן","news.done":"עודכן",
       "home.todayH":"היום שלך","home.clear":"אין משהו שמחכה להיום.",
       "home.due.n0":"","home.due.n1":"משימה אחת להיום","home.due.nN":"{n} משימות להיום",
-      "home.waiting.n0":"","home.waiting.n1":"תיאום אחד מחכה לתשובה שלך","home.waiting.nN":"{n} תיאומים מחכים לתשובה שלך",
-      "home.more":"ועוד {n} ברשימה","home.moreMeets":"ועוד {n} בפגישות","home.yourAnswer":"מחכים לתשובה שלך","home.answer":"לענות",
+      "home.waiting.n0":"","home.waiting.n1":"פגישה אחת מחכה לתשובה שלך","home.waiting.nN":"{n} פגישות מחכות לתשובה שלך",
+      
       "nav.hint":"כאן למטה עוברים בין העמודים",
       "tools.accounts":"חשבונות","tools.accountsHint":"התחברות אחת לכל ספק",
       "tools.work":"עבודה",
@@ -4961,12 +4951,12 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "toast.left":"יצאת מ„{name}” — היא נשארה אצל השאר",
 
       "cal.h":"פגישות",
-      "cal.p":"תצוגה בלבד. לעריכה — פתח את היומן של הטלפון בלחיצה אחת.",
+      "cal.p":"תצוגה בלבד. עורכים ביומן של הטלפון.",
       "cal.open":"פתיחה ביומן Google","cal.empty":"אין אירועים ביום הזה.","cal.connectGo":"חיבור יומן",
       "cal.todayPre":"היום · ","cal.dayPrefix":"יום ",
 
       "fr.h":"חברים בעולמה",
-      "fr.p":"לכל חבר מוגדר בנפרד מה מותר לו. שינוי כאן חל מיד, בלי לשאול אותו.",
+      "fr.p":"לכל חבר הרשאות משלו, והשינוי חל מיד.",
       "fr.connected":"מחוברים","fr.count":"{n} חברים",
       "fr.search":"חיפוש חבר","fr.clear":"ניקוי","fr.noMatch":"אין חבר בשם „{q}”.",
       "fr.none":"עוד אין כאן אף אחד. אפשר להזמין מישהו מאנשי הקשר למטה.",
@@ -4988,7 +4978,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "toast.newMeetGroupNone":"אף אחד בקבוצה הזאת עדיין לא אישר תיאום פגישות איתך",
       "cal.modeRead":"ביומן","cal.modeMeet":"תיאומי פגישות",
       "cal.fromMeet":"נקבע בתיאום","cal.meetTag":"פגישה",
-      "cal.pMeet":"מסמנים מתי מתאים, עולמה מוצאת את החלון הטוב ביותר לכולם.",
+      "cal.pMeet":"מסמנים מתי נוח, ועולמה מוצאת זמן לכולם.",
       "sheet.close":"סגירה","mt.open":"פגישות שבתיאום","mt.new":"פגישה חדשה",
       "mt.note":"תשובה אומרת אם אתה יכול — לא שקבעתם. כשכולם מסמנים את אותה אופציה היא נקבעת מעצמה, אחרי דקה שבה עוד אפשר לשנות. מי שפתח את התיאום יכול גם לקבוע לבד, גם אם לא כולם יכלו.",
       "mt.empty":"אין תיאום פעיל כרגע. אפשר לפתוח אחד למעלה, או פשוט לבקש מעולמה.",
@@ -5210,7 +5200,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "tab.tools":"Home","tab.tasks":"Tasks","tab.cal":"Meetings","tab.friends":"Friends","tab.me":"Profile",
 
       "tools.h":"Your connections",
-      "home.p":"Allma helps you on WhatsApp. Here you see everything she is holding for you.",
+      "home.p":"Everything Allma holds for you, in one place.",
       "home.tasks.n0":"open tasks","home.tasks.n1":"open task","home.tasks.nN":"open tasks",
       "home.meets.n0":"meeting coordinations","home.meets.n1":"meeting coordination","home.meets.nN":"meeting coordinations",
       "home.tasksStart":"Add a task","home.tasksStartSub":"or just send Allma the task on WhatsApp",
@@ -5219,8 +5209,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "news.pill":"New updates · Refresh","news.done":"Updated",
       "home.todayH":"Your day","home.clear":"Nothing is waiting on today.",
       "home.due.n0":"","home.due.n1":"1 task for today","home.due.nN":"{n} tasks for today",
-      "home.waiting.n0":"","home.waiting.n1":"1 plan waiting on your answer","home.waiting.nN":"{n} plans waiting on your answer",
-      "home.more":"{n} more on the list","home.moreMeets":"{n} more in Meetings","home.yourAnswer":"Waiting on your answer","home.answer":"Answer",
+      "home.waiting.n0":"","home.waiting.n1":"1 meeting waiting on you","home.waiting.nN":"{n} meetings waiting on you",
+      
       "nav.hint":"Switch between pages down here",
       "tools.accounts":"Accounts","tools.accountsHint":"One sign-in per provider",
       "tools.work":"Work",
@@ -5324,12 +5314,12 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "toast.left":"You left \u201c{name}\u201d \u2014 it stays with the others",
 
       "cal.h":"Meetings",
-      "cal.p":"Read-only here. To change anything, open your phone's calendar in one tap.",
+      "cal.p":"Read-only. Edit in your phone's calendar.",
       "cal.open":"Open in Google Calendar","cal.empty":"Nothing on this day.","cal.connectGo":"Connect a calendar",
       "cal.todayPre":"Today · ","cal.dayPrefix":"",
 
       "fr.h":"Friends on Allma",
-      "fr.p":"Every friend gets their own permissions. A change here takes effect at once, without asking them.",
+      "fr.p":"Each friend has their own permissions.",
       "fr.connected":"Connected","fr.count":"{n} friends",
       "fr.search":"Search friends","fr.clear":"Clear","fr.noMatch":"No friend matches \u201c{q}\u201d.",
       "fr.none":"Nobody here yet. Invite someone from your contacts below.",
@@ -5348,7 +5338,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "toast.newMeetGroupNone":"No one in this group has approved meeting coordination with you yet",
       "cal.modeRead":"Calendar","cal.modeMeet":"Coordinate",
       "cal.fromMeet":"Settled in a coordination","cal.meetTag":"Meeting",
-      "cal.pMeet":"Everyone marks when they can. Allma finds the window that fits.",
+      "cal.pMeet":"Everyone marks a time; Allma finds one.",
       "sheet.close":"Close","mt.open":"Active coordinations","mt.new":"New coordination",
       "mt.note":"An answer says whether you can \u2014 not that it is settled. When everyone marks the same option it settles itself, after a minute in which anyone can still change their answer. Whoever opened the coordination can also settle it alone, even if not everyone could.",
       "mt.empty":"Nothing being coordinated right now. Start one above, or just ask Allma.",
@@ -6849,20 +6839,14 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   }
   /* The top of the home page. Somebody with nothing yet — a first visit —
      still gets the welcome, because "nothing today" means nothing to them;
-     anybody with a list gets their day. Overdue first, in the list's own
-     order: the server's, never re-sorted here. */
-  var HOME_ROWS = 3, HOME_MEETS = 2;
+     anybody with a list gets their day, as one line of counts. */
   function renderToday(due, anything){
     var waiting = (MEETS || []).filter(function(m){
       return !m.settled && m.opts.some(function(o){ return !mtAns(m, 0, o.id); });
     });
-    due = due.filter(function(x){ return bucketFor(x.d) === "late"; })
-      .concat(due.filter(function(x){ return bucketFor(x.d) !== "late"; }));
-    var box = $("#homeToday");
     if(!anything){
       $("#toolsH").textContent = brandTag(myGender());
       $("#homeP").textContent = t("home.p");
-      box.hidden = true; box.innerHTML = "";
       return;
     }
     $("#toolsH").textContent = t("home.todayH");
@@ -6870,50 +6854,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     if(due.length) parts.push(pl("home.due", due.length));
     if(waiting.length) parts.push(pl("home.waiting", waiting.length));
     $("#homeP").textContent = parts.length ? parts.join(" · ") : t("home.clear");
-    if(!due.length && !waiting.length){ box.hidden = true; box.innerHTML = ""; return; }
-    var html = "";
-    if(due.length){
-      html += '<div class="group">' + due.slice(0, HOME_ROWS).map(homeTaskHTML).join("") +
-        (due.length > HOME_ROWS
-          ? '<button class="homemore" data-go="tasks">' + esc(t("home.more", {n:due.length - HOME_ROWS})) +
-            '<svg class="chev"><use href="#i-chev"/></svg></button>'
-          : "") + "</div>";
-    }
-    if(waiting.length){
-      html += '<div class="group">' + waiting.slice(0, HOME_MEETS).map(function(m){
-        return '<button class="homemeet" data-mt="' + m.id + '">' + faceStack(m.who) +
-          '<span class="hmbody"><b>' + esc(L(m.t)) + "</b><i>" + esc(t("home.yourAnswer")) + "</i></span>" +
-          '<span class="hmgo">' + esc(t("home.answer")) + "</span></button>";
-      }).join("") +
-        (waiting.length > HOME_MEETS
-          ? '<button class="homemore" data-go="cal">' + esc(t("home.moreMeets", {n:waiting.length - HOME_MEETS})) +
-            '<svg class="chev"><use href="#i-chev"/></svg></button>'
-          : "") + "</div>";
-    }
-    box.innerHTML = html;
-    box.hidden = false;
   }
-  /* The list's own row, without what only the list can do: no drag, no
-     swipe, no pin. The tick and the tap are the same. */
-  function homeTaskHTML(x){
-    var b = bucketFor(x.d), lbl = labelFor(x);
-    return '<div class="taskwrap" data-id="' + x.id + '"><div class="task' + (facesOf(x).length ? " shared" : "") +
-      '" role="button" tabindex="0">' +
-      '<button class="tick" aria-label="' + esc(t("a11y.tick")) + '"><svg><use href="#i-check"/></svg></button>' +
-      '<div class="tbody"><span class="ttitle">' + esc(L(x.t) || t("sheet.untitled")) + "</span></div>" +
-      '<span class="tend">' +
-      (x.kind === "event" ? '<svg class="tglyph kindmark" role="img" aria-label="' + esc(t("cal.eventTag")) +
-        '"><use href="#i-event"/></svg>' : "") +
-      (lbl ? '<span class="ttime' + (b === "late" ? " late" : "") + '">' + esc(lbl) + "</span>" : "") +
-      "</span></div></div>";
-  }
-  $("#homeToday").addEventListener("click", function(e){
-    var wrap = e.target.closest(".taskwrap");
-    if(e.target.closest(".tick") && wrap){ tickTask(wrap); return; }
-    var mt = e.target.closest("[data-mt]");
-    if(mt){ openMeet(+mt.dataset.mt); return; }
-    if(wrap) openSheet(+wrap.dataset.id);
-  });
   /* An empty card names the control that starts one — the same button the
      tab's own empty state presses, so there is no second way to add a task. */
   function homeZero(numEl, zero, start){
