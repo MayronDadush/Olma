@@ -19,7 +19,6 @@
 // sent without needing the session to remember it.
 const templates = require('./message-templates');
 const format = require('./message-format');
-const { phoneShape } = require('./phone-timezone');
 const meetingTime = require('./meeting-time');
 
 // Titles are the user's own words; bound them to one message-safe line — and
@@ -158,14 +157,24 @@ const MAX_TAGS = 8;
 // consulted — and neither is this change. So this is a filter, never a
 // guarantee, and a caller must not read a rendered tag list as "everybody who
 // is missing".
+//
+// **REVERSED 2026-09-27, off the owner looking at the messages themselves.**
+// Every one of those tags reached Padel Gang as a blue name — the 13-, 14- and
+// 15-digit LIDs in the 22/09 12:57 "עוד מחכה ל:" line and the 13-digit one in
+// the 26/09 opening — so "a LID is nobody" was never true: the gateway
+// resolves `@+<digits>` against the room's participants by phone OR by LID
+// (`resolveWhatsAppOutboundMentions`). A LID is a TAG now, and the length and
+// shape cuts above stay only as history. What still is not a tag: anything
+// that is not digits, and anything outside 7-15 digits (a LID tops out at 15).
+// "Is this a phone we can WRITE to" is a different question and has its own
+// function — `phone-timezone.isRealPhone` — which nothing here replaces.
 const TAGGABLE_MIN_DIGITS = 7;
-const TAGGABLE_MAX_DIGITS = 13;
+const TAGGABLE_MAX_DIGITS = 15;
 
 function isTaggableNumber(value) {
   const digits = String(value == null ? '' : value).trim().replace(/^\+/, '');
   if (!/^\d+$/.test(digits)) return false;
-  if (digits.length < TAGGABLE_MIN_DIGITS || digits.length > TAGGABLE_MAX_DIGITS) return false;
-  return phoneShape(digits) !== 'not_phone';
+  return digits.length >= TAGGABLE_MIN_DIGITS && digits.length <= TAGGABLE_MAX_DIGITS;
 }
 
 // One tag, for the places that hand a person to the MODEL rather than render a

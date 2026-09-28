@@ -959,14 +959,11 @@ test('no mapping resolves nothing, and takes nobody out of the room', async () =
 });
 
 // Padel Gang, 2026-09-22: three of its seven members reached us as LIDs, which
-// the roster hands over in the same shape as a number. The nudge is nothing but
-// its tags, so once the one real missing member had written, the line she had
-// left to say was "עוד מחכה ל:" and three tokens that ping nobody. Filtered,
-// there is no true sentence there at all — so she says nothing, rather than
-// punctuation. Her "every tag gets an answer" is not being dropped quietly:
-// what to say to a room waiting on somebody we cannot name is his sentence to
-// write, and until he writes one there is none.
-test('a room whose missing members are all LIDs is not nudged with empty tags', async () => {
+// the roster hands over in the same shape as a number. This used to stay
+// silent on the reading that a LID tag pings nobody; the owner looked at the
+// messages themselves on 2026-09-27 and every one of them had arrived as a
+// name. So a room waiting only on LIDs is told who, by tag, like any other.
+test('a room whose missing members are all LIDs is nudged, and the LIDs are tagged', async () => {
   const a = await connectedUser('+972603000140');
   const jid = JID(41);
   // One member who has written, and two the gateway only ever named by LID.
@@ -991,10 +988,9 @@ test('a room whose missing members are all LIDs is not nudged with empty tags', 
   // a tag, in a room that is locked on two members who are not numbers
   deps.listGroupSessions = () => session(at + 60_000);
   out = await pass(deps);
-  assert.equal(out.notices, 0, 'nothing to say is said');
-  const row = await withTx(db.pool, (c) => groupsDomain.getByExternalId(c, 'whatsapp', jid));
-  assert.equal(row.state, 'locked', 'and the room is still waiting on them');
-  assert.equal(row.notices_sent, 0, 'an unsaid notice is not counted as said');
-  assert.equal(row.gate_notice_at, null, 'nor recorded as a wait she announced');
-  assert.equal(sent.filter((m) => /עוד לא שלחו לי|עוד מחכה ל/.test(m.body)).length, 0);
+  assert.equal(out.notices, 1, 'the room hears who it is waiting on');
+  const notice = sent.find((m) => /עוד לא שלחו לי|עוד מחכה ל/.test(m.body));
+  assert.ok(notice, 'the wait is said');
+  assert.match(notice.body, /@\+259201444126724/);
+  assert.match(notice.body, /@\+69320805752936/);
 });

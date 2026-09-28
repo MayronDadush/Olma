@@ -452,8 +452,9 @@ async function sweepGroups(client, deps) {
       // until somebody actually asks her for something, which is what the
       // paragraph above says the nudge is for.
       const notice = groups.decideNotice(group);
-      // The whole sentence is the tags: "עוד מחכה ל: {{missing}}". A room whose
-      // missing members are all LIDs has nobody this line can name, and
+      // The whole sentence is the tags: "עוד מחכה ל: {{missing}}". Since
+      // 2026-09-27 a LID is a tag, so this now bites only on digits outside the
+      // 7-15 window. A room with nobody this line can name — and
       // `templates.render` fills an empty var with an empty string — so saying
       // it anyway means "עוד מחכה ל:  🧐", which is the shape of
       // `rules/groups.md`'s base line said to nobody. Silence is the lesser of

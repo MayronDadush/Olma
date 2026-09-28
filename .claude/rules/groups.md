@@ -446,6 +446,15 @@ have already had to be argued for.
   left as a cost, because the sentence for a room waiting on somebody we cannot
   name is his to write (`incidents.md`, "The room asked three numbers that were
   nobody").
+  **REVERSED 2026-09-27: a LID IS a tag.** The owner went back to Padel Gang's
+  own messages — 22/09 12:49, 22/09 12:57, 26/09 21:00 — and every `@+<lid>`
+  in them, 13, 14 and 15 digits, had arrived as a blue name. The gateway's
+  `resolveWhatsAppOutboundMentions` looks `@+digits` up by phone and then by
+  LID among the room's participants, so the premise above was never true.
+  `isTaggableNumber` is now digits-only, 7-15 long, with no shape refusal;
+  everything above this paragraph is the history of a cut that should not have
+  been made. `isRealPhone` still answers "can we WRITE to this" and is
+  unchanged — a LID still never becomes a `users` row.
 
 - **A number on the roster becomes a `users` row, and a row is not a person who
   has met her** (owner, 2026-09-25: "ליצור משתמש ממספר טלפון שראינו ברשימת חברים
