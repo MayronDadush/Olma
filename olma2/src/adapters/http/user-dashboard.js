@@ -115,6 +115,9 @@ const CSP = [
   // installable app's (pwa.js). Nothing else of ours is fetched as either.
   "img-src 'self' data:",
   "manifest-src 'self'",
+  // The one worker the page registers, /sw.js (pwa.js): it only draws the
+  // offline screen. Without this `default-src 'none'` refuses it silently.
+  "worker-src 'self'",
   "connect-src 'self'",
   "form-action 'self'",
   "frame-ancestors 'none'",

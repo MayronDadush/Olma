@@ -110,11 +110,55 @@ test('a path that is nearly ours falls through to the admin password, never to a
   }
 });
 
+// ---- the offline screen -----------------------------------------------------
+test('the service worker needs no sign-in and is never cached for long', async () => {
+  const res = await get('/sw.js?hl=he');
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get('content-type'), /^text\/javascript/);
+  assert.equal(res.headers.get('cache-control'), 'no-cache', 'a stale worker is how a fix never arrives');
+  const src = await res.text();
+  assert.doesNotThrow(() => new Function(src), 'the worker must parse');
+});
+
+test('the worker caches nothing and answers only a failed navigation to the page', () => {
+  const src = pwa.SW_SOURCE;
+  assert.doesNotMatch(src, /caches\./, 'nothing of anybody\'s list may be kept on the phone');
+  assert.match(src, /r\.mode !== "navigate"/, 'data and writes are never intercepted');
+  assert.match(src, /fetch\(r\)\.catch\(/, 'the network is always asked first, and a reply it gives goes through');
+});
+
+test('the worker serves the offline screen in the language it was registered with', async () => {
+  // Run the worker's own source against a stand-in `self`, so what is
+  // asserted is what a phone would execute, not a copy of it.
+  async function offlineFor(hl, url) {
+    const handlers = {};
+    const self = {
+      location: { href: 'https://allma.world/sw.js' + (hl ? '?hl=' + hl : '') },
+      addEventListener: (k, fn) => { handlers[k] = fn; },
+      skipWaiting() {}, clients: { claim: () => Promise.resolve() },
+    };
+    const failing = () => Promise.reject(new TypeError('Failed to fetch'));
+    new Function('self', 'fetch', 'Response', 'URL', pwa.SW_SOURCE)(self, failing, Response, URL);
+    let answered = null;
+    handlers.fetch({ request: { mode: 'navigate', method: 'GET', url }, respondWith: (p) => { answered = p; } });
+    return answered && (await answered);
+  }
+  const he = await offlineFor('he', 'https://allma.world/me');
+  assert.equal(he.status, 503);
+  assert.match(he.headers.get('content-security-policy'), /default-src 'none'/);
+  const heText = await he.text();
+  assert.match(heText, /אין חיבור כרגע/);
+  assert.match(heText, /dir="rtl"/);
+  assert.match(await (await offlineFor('en', 'https://allma.world/d/abc')).text(), /No connection right now/);
+  assert.equal(await offlineFor('he', 'https://allma.world/privacy'), null, 'other pages are left alone');
+});
+
 test('the page lets the browser read its manifest and its icon', async () => {
   const res = await get('/me', { headers: { cookie: await sessionFor(me) } });
   const csp = res.headers.get('content-security-policy');
   assert.match(csp, /manifest-src 'self'/);
   assert.match(csp, /img-src 'self' data:/);
+  assert.match(csp, /worker-src 'self'/, 'without it the offline worker is refused silently');
   assert.match(csp, /connect-src 'self'/, 'the rest of the policy is unchanged');
   const html = await res.text();
   assert.match(html, /<link rel="manifest" href="\/manifest\.webmanifest">/);

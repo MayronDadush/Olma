@@ -13232,8 +13232,18 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     /* Their calendar is a separate round trip to Google, and nothing a write
        on this page does can change it — so it is fetched once, at boot, and
        again only when the week on screen moves past what has been fetched. */
-    if(first) loadDays();
+    if(first){ loadDays(); registerOffline(); }
     openFromHash();
+  }
+  /* The offline screen (adapters/http/pwa.js, /sw.js). Only once the page
+     is LIVE, so the design page never registers one; in the person's own
+     language, which the worker reads off its own address. It caches nothing
+     — it only answers when opening the page fails outright. */
+  function registerOffline(){
+    try {
+      if(navigator.serviceWorker) navigator.serviceWorker.register("/sw.js?hl=" + LOCALE, {scope:"/"})
+        .catch(function(){});
+    } catch(e){}
   }
   /* A link minted for ONE meeting arrives as #meeting=<id> (the sign-in POST
      hands it over in the redirect; adapters/http/user-dashboard.js). The page

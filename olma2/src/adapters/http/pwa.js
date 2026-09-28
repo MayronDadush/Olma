@@ -12,11 +12,18 @@
 //
 // Exact paths, never `/icons/*` — the same rule as `/pick/` and `/d/`
 // (rules/dashboard-and-domains.md): anything nearly ours falls through to
-// Basic Auth, and Caddy on allma.world names these five one by one.
+// Basic Auth, and Caddy on allma.world names these six one by one.
 //
-// No service worker, on purpose. Everything the page shows is `no-store,
+//   GET /sw.js                      the offline screen, and nothing else
+//
+// The service worker CACHES NOTHING. Everything the page shows is `no-store,
 // private`, so an offline shell could only ever show a stale life or a blank
-// one, and Chrome has not needed one to install since 2024.
+// one — and a phone that kept somebody's list on disk would be keeping it
+// after they signed out. What it does is smaller: when opening the page FAILS
+// (no network at all), it answers with one screen of its own that says so,
+// instead of the phone's own error page (owner, 2026-09-28). The screen is a
+// string inside the worker, so there is nothing to fetch and nothing to store;
+// every request that reaches the network goes to the network untouched.
 //
 // The icons are drawn from brand-mark.js with resvg (already a dependency, for
 // the schedule card) the first time each size is asked for, and kept. They
@@ -31,7 +38,8 @@ const ICONS = Object.freeze({
   '/icons/icon-512-maskable.png': { size: 512, variant: 'maskable' },
   '/icons/apple-touch-icon.png': { size: 180, variant: 'square' },
 });
-const PATHS = new Set([MANIFEST_PATH, ...Object.keys(ICONS)]);
+const SW_PATH = '/sw.js';
+const PATHS = new Set([MANIFEST_PATH, SW_PATH, ...Object.keys(ICONS)]);
 
 function matches(pathname) {
   return PATHS.has(pathname);
@@ -130,6 +138,82 @@ function iconBytes(pathname) {
   return rendered.get(pathname);
 }
 
+// ── the offline screen ──────────────────────────────────────────────────────
+// The two languages the page speaks. Plural address, like the rest of the
+// page's own copy.
+const OFFLINE_COPY = {
+  he: {
+    dir: 'rtl', title: 'אין חיבור',
+    h: 'אין חיבור כרגע',
+    p: 'המשימות שלכם שמורות אצל עולמה. ברגע שיחזור האינטרנט, הכל פה.',
+    retry: 'לנסות שוב',
+  },
+  en: {
+    dir: 'ltr', title: 'No connection',
+    h: 'No connection right now',
+    p: 'Your tasks are safe with Allma. As soon as the internet is back, everything is here.',
+    retry: 'Try again',
+  },
+};
+
+// Self-contained on purpose: no font, no image, no script of ours to fetch,
+// because by definition nothing can be fetched when this is on screen. It
+// reloads itself when the phone says it is back online, so the person does
+// not have to find the button.
+function offlineHtml(lang) {
+  const c = OFFLINE_COPY[lang === 'en' ? 'en' : 'he'];
+  return '<!doctype html><html lang="' + (lang === 'en' ? 'en' : 'he') + '" dir="' + c.dir + '"><head>' +
+    '<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">' +
+    '<meta name="theme-color" content="' + BACKGROUND + '"><title>' + c.title + '</title><style>' +
+    ':root{--bg:#F4F3F8;--text:#141322;--text-2:#5A5870;--accent:#5B2FD6;--on-accent:#fff;color-scheme:light dark}' +
+    '@media (prefers-color-scheme:dark){:root{--bg:#0C0B11;--text:#F4F3FA;--text-2:#A9A7BD;--accent:#A38CFF;--on-accent:#0C0B11}}' +
+    'html,body{height:100%;margin:0}' +
+    'body{background:var(--bg);color:var(--text);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Arial,sans-serif;' +
+    'display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;' +
+    'padding:env(safe-area-inset-top,0px) 24px env(safe-area-inset-bottom,0px)}' +
+    'svg{width:72px;height:72px;border-radius:18px}' +
+    'h1{font-size:22px;margin:6px 0 0;letter-spacing:-.01em}' +
+    'p{margin:0;max-width:30ch;color:var(--text-2)}' +
+    'button{margin-top:10px;border:0;border-radius:999px;padding:12px 26px;font:600 16px system-ui,-apple-system,sans-serif;' +
+    'background:var(--accent);color:var(--on-accent);min-height:44px}' +
+    '</style></head><body>' +
+    mark.markSvg({ variant: 'square', id: 'off' }) +
+    '<h1>' + c.h + '</h1><p>' + c.p + '</p>' +
+    '<button type="button" onclick="location.reload()">' + c.retry + '</button>' +
+    '<script>addEventListener("online",function(){location.reload()})</script>' +
+    '</body></html>';
+}
+
+// Only a NAVIGATION to the page itself (or to a sign-in link, which is the
+// page by another door) is ever answered, and only when the network threw.
+// A 500, a 404, a sign-in screen — anything the server actually SAID — goes
+// through exactly as it came. Everything else (/me/data, /me/act, icons) is
+// never intercepted at all, so a write that fails offline fails the way it
+// already does, in the page, with its own toast.
+//
+// The language is the one the page registered it with (`/sw.js?hl=`), which
+// is the person's own; a phone whose setting says English does not make a
+// Hebrew speaker's offline screen English.
+const SW_SOURCE = [
+  "'use strict';",
+  'var HL = new URL(self.location.href).searchParams.get("hl") === "en" ? "en" : "he";',
+  'var PAGES = ' + JSON.stringify({ he: offlineHtml('he'), en: offlineHtml('en') }) + ';',
+  'var CSP = "default-src \'none\'; style-src \'unsafe-inline\'; script-src \'unsafe-inline\'; base-uri \'none\'";',
+  'self.addEventListener("install", function(){ self.skipWaiting(); });',
+  'self.addEventListener("activate", function(e){ e.waitUntil(self.clients.claim()); });',
+  'self.addEventListener("fetch", function(e){',
+  '  var r = e.request;',
+  '  if(r.mode !== "navigate" || r.method !== "GET") return;',
+  '  var p = new URL(r.url).pathname;',
+  '  if(p !== "/me" && p.indexOf("/d/") !== 0) return;',
+  '  e.respondWith(fetch(r).catch(function(){',
+  '    return new Response(PAGES[HL], {status: 503, headers: {',
+  '      "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store",',
+  '      "Content-Security-Policy": CSP}});',
+  '  }));',
+  '});',
+].join('\n');
+
 const COMMON = {
   'X-Content-Type-Options': 'nosniff',
   'X-Robots-Tag': 'noindex',
@@ -150,6 +234,16 @@ function handle(req, res, pathname, { lang } = {}) {
       'Cache-Control': 'no-store',
     });
     return res.end(req.method === 'HEAD' ? undefined : JSON.stringify(manifestFor(lang)));
+  }
+  if (pathname === SW_PATH) {
+    // `no-cache`, not a long max-age: the browser checks a worker for updates
+    // on every navigation anyway, and a stale one is how a fix never arrives.
+    res.writeHead(200, {
+      ...COMMON,
+      'Content-Type': 'text/javascript; charset=utf-8',
+      'Cache-Control': 'no-cache',
+    });
+    return res.end(req.method === 'HEAD' ? undefined : SW_SOURCE);
   }
   let icon;
   try { icon = iconBytes(pathname); } catch (e) {
@@ -176,4 +270,7 @@ function handle(req, res, pathname, { lang } = {}) {
   return res.end(req.method === 'HEAD' ? undefined : icon.bytes);
 }
 
-module.exports = { matches, handle, manifestFor, iconBytes, PATHS, ICONS, MANIFEST_PATH, BACKGROUND };
+module.exports = {
+  matches, handle, manifestFor, iconBytes, offlineHtml,
+  PATHS, ICONS, MANIFEST_PATH, SW_PATH, SW_SOURCE, BACKGROUND,
+};

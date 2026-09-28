@@ -17,8 +17,10 @@ title means this file. Grep the title, not the filename.
 - **`allma.world` serves an ALLOWLIST, not the admin dashboard.** Caddy passes
   a named set of routes to `:8788` — `/pick/<48 hex>`, `/d/<22 base62 | 64 hex>`, `/me`,
   `/me/data`, `/me/events`, `/me/act`, `/me/out`, `/me/code`, the installable
-  app's `/manifest.webmanifest` and its four `/icons/…png` (named one by one
-  in `src/adapters/http/pwa.js`), `/oauth/google/callback`,
+  app's `/manifest.webmanifest`, its four `/icons/…png` and its offline
+  worker `/sw.js` (named one by one in `src/adapters/http/pwa.js`; the worker
+  is registered with `?hl=`, so Caddy matches the path, not the URL),
+  `/oauth/google/callback`,
   `/health`, `/ready`, and the three stranger-readable pages `/`, `/privacy`
   and `/terms` — plus `/voice-bridge*` to `:8791`. Everything else 404s
   in Caddy and never reaches the app. **Read the Caddyfile for the current
@@ -63,7 +65,7 @@ title means this file. Grep the title, not the filename.
   find one, and the code message goes out in the language ON FILE, because a
   button typed the request and the reply gate drops English to a Hebrew
   writer (`incidents.md`, "The dashboard became an app, and an iPhone needed
-  a door of its own"). The manifest, the icons and `/me/code` are public
+  a door of its own"). The manifest, the icons, `/sw.js` and `/me/code` are public
   routes: **Caddy must name them before any phone can install the app**, and
   after the deploy, never before.
 
