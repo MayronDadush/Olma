@@ -1057,6 +1057,12 @@ html.is-new .themetog{z-index:80}
 .pausebtn:active{transform:scale(.955)}
 .pausebtn[aria-pressed="true"]{background:var(--warn);color:var(--on-accent);box-shadow:var(--shadow-m)}
 .pausewrap .note{max-width:40ch;margin-top:12px}
+/* Deleting everything sits under the pause, quieter than it: a pause is the
+   answer most people looking for "stop" want, and it undoes itself. */
+.delwrap{display:flex;justify-content:center;margin-top:28px}
+.delsheet-body{color:var(--text-2);font-size:15px;line-height:1.55;margin-top:6px}
+.goneview{position:fixed;inset:0;z-index:100;display:flex;align-items:center;justify-content:center;
+  padding:0 24px;background:var(--bg);color:var(--text);text-align:center;font-size:17px;line-height:1.6}
 
 /* while paused the whole app says so, not just the button that did it */
 html[data-paused] .livepill{color:var(--warn)}
@@ -3398,6 +3404,9 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
         </button>
         <p class="note" id="pauseNote"></p>
       </div>
+      <div class="delwrap">
+        <button class="linkbtn danger" id="delAcctBtn" data-i18n="me.deleteAll"></button>
+      </div>
     </div>
   </section>
   </main>
@@ -3637,6 +3646,19 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   <div class="group citylist" id="cityList" style="margin-top:12px"></div>
   <div class="sheetbtns">
     <button class="btn ghost" id="cityCancel" data-i18n="sheet.cancel"></button>
+  </div>
+</div>
+
+<!-- Deleting the account. Its own sheet with its own "yes" button, because the
+     server refuses the action without `confirm: true` and only this button
+     sends it (domain/user-dashboard-write.deleteAccount). -->
+<div class="sheet" id="delSheet" role="dialog" aria-modal="true" aria-labelledby="delTitle">
+  <div class="sgrab"><i class="grabber"></i></div>
+  <h2 id="delTitle" data-i18n="del.title"></h2>
+  <p class="delsheet-body" data-i18n="del.body"></p>
+  <div class="sheetbtns">
+    <button class="btn danger" id="delConfirm" data-i18n="del.confirm"></button>
+    <button class="btn ghost" id="delCancel" data-i18n="sheet.cancel"></button>
   </div>
 </div>
 
@@ -4067,7 +4089,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     setTaskOrder:"setTaskOrder", nestTask:"nestTask", unnestTask:"unnestTask",
     grantFeature:"grantFeature", revokeFeature:"revokeFeature", revokeConnection:"revokeConnection",
     setTimezone:"setTimezone", setDefaultChannel:"setDefaultChannel",
-    pause:"pause", resume:"resume", callMe:"callMe",
+    pause:"pause", resume:"resume", callMe:"callMe", deleteAccount:"deleteAccount",
     requestMoreCalls:"requestMoreCalls",
     inviteContact:"inviteContact",
     respondToMeeting:"respondToMeeting", leaveMeeting:"leaveMeeting", cancelMeeting:"cancelMeeting",
@@ -4795,6 +4817,11 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "me.appearance":"מראה","me.themeLight":"בהיר","me.themeDark":"כהה","me.themeAuto":"אוטומטי",
       "me.setupNote":"המיקום קובע כל תזכורת, כל שעת שקט וכל סיכום — קידומת טלפון היא מדינה, לא עיר. את השם אפשר להחליף; הוא יופיע בכל הודעה שהיא שולחת.",
       "me.pause":"להשהות את עולמה","me.resume":"עולמה מושהית · להפעלה",
+      "me.deleteAll":"מחיקת החשבון וכל המידע",
+      "del.title":"למחוק את כל המידע?",
+      "del.body":"המשימות, התזכורות, מה שעולמה זוכרת עליך, אנשי הקשר והחיבור לגוגל יימחקו תוך כמה דקות. משימות ותיאומים משותפים יישארו אצל האחרים, בלעדיך. אי אפשר לבטל את זה.",
+      "del.confirm":"כן, למחוק הכל",
+      "del.done":"הבקשה התקבלה. כל המידע יימחק תוך כמה דקות.",
       "me.pauseNote":"היא תפסיק לכתוב מיוזמתה. שום דבר לא נמחק, והודעה אחת ממך מחזירה הכול.",
       "me.pausedNote":"עולמה לא תיזום כלום — לא תזכורות, לא סיכומים. היא עדיין תענה כשתכתוב לה.",
       "live.paused":"{name} מושהית",
@@ -5130,6 +5157,11 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "me.appearance":"Appearance","me.themeLight":"Light","me.themeDark":"Dark","me.themeAuto":"Auto",
       "me.setupNote":"Your location decides every reminder, quiet hour and summary — a dialling code is a country, not a city. The name is yours to change; it appears in every message she sends.",
       "me.pause":"Pause Allma","me.resume":"Allma is paused · Resume",
+      "me.deleteAll":"Delete my account and all my data",
+      "del.title":"Delete all your data?",
+      "del.body":"Your tasks, reminders, what Allma remembers about you, your contacts and your Google connection will be deleted within a few minutes. Shared tasks and coordinations stay with the others, and you leave them. This cannot be undone.",
+      "del.confirm":"Yes, delete everything",
+      "del.done":"Request received. All your data will be deleted within a few minutes.",
       "me.pauseNote":"She stops writing on her own. Nothing is deleted, and one message from you brings it all back.",
       "me.pausedNote":"Allma starts nothing — no reminders, no summaries. She still answers when you write to her.",
       "live.paused":"{name} is paused",
@@ -7701,6 +7733,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   }
   makeDismissable($("#sheet"));
   makeDismissable($("#citySheet"));
+  makeDismissable($("#delSheet"));
   makeDismissable($("#cnSheet"));
   makeDismissable($("#mtSheet"));
   makeDismissable($("#mtNewSheet"));
@@ -11308,6 +11341,32 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     API.setPaused(paused);
     toast(t(paused ? "toast.paused" : "toast.resumed"));
   });
+
+  /* Deleting everything (domain/self-delete.js). Nothing is optimistic here:
+     the page changes only once the server has accepted the request, and then
+     it stops being a page at all, because in a minute there is nothing behind
+     it to show. */
+  $("#delAcctBtn").addEventListener("click", function(){ showSheet($("#delSheet")); });
+  $("#delCancel").addEventListener("click", closeSheets);
+  $("#delConfirm").addEventListener("click", function(){
+    var b = this;
+    if(b.disabled) return;
+    b.disabled = true;
+    API.call("deleteAccount", {confirm:true});
+    if(!LIVE){ closeSheets(); showGone(); return; }
+    API.send("deleteAccount", {confirm:true}, function(data){
+      b.disabled = false;
+      closeSheets();
+      if(data) showGone();
+    });
+  });
+  function showGone(){
+    var v = document.createElement("div");
+    v.className = "goneview";
+    v.setAttribute("role", "status");
+    v.textContent = t("del.done");
+    document.body.appendChild(v);
+  }
 
   $("#genderSeg").addEventListener("click", function(e){
     var b = e.target.closest("button");
