@@ -406,6 +406,23 @@ async function setReminder(client, userId, taskId, remindAt, repeatRule, { nudge
       RETURNING r.id`,
     [taskId, tz, endsAt ? endsAt.toISOString() : newDay, userId]
   );
+  // A REPEAT whose first occurrence is the very moment a one-off of theirs on
+  // this task already holds makes that one-off the same message twice. It is
+  // what "כל יום ב-8 וחצי" becomes when add_task arms 08:30 first (it has no
+  // repeat of its own) and set_task_reminder adds the daily a second later:
+  // Dov, 2026-09-27, two rows for his pill at 08:30 and four for two tasks at
+  // 20:00. Only an unfired, uncancelled one-off, only THEIRS, only within the
+  // same minute — an hour they asked for at any other moment still stands.
+  const sameMoment = rule ? await client.query(
+    `UPDATE task_reminders r SET cancelled_at = now()
+       FROM tasks t
+      WHERE r.task_id = $1 AND t.id = r.task_id AND ${RECIPIENT} = $2
+        AND NOT r.auto AND r.repeat_rule IS NULL AND r.attempts = 0
+        AND r.sent_at IS NULL AND r.cancelled_at IS NULL
+        AND abs(extract(epoch FROM r.remind_at - $3::timestamptz)) < 60
+      RETURNING r.id`,
+    [taskId, userId, at]
+  ) : { rowCount: 0, rows: [] };
   // `nudge` is the one thing on this row nobody can infer later: "תזכירי לי עד
   // שאעשה את זה" and "תזכירי לי ב-9" produce the same row otherwise, and the
   // ladder default (RUNGS) says one message for both. It is stamped only when
@@ -428,6 +445,7 @@ async function setReminder(client, userId, taskId, remindAt, repeatRule, { nudge
     ...(endsAt ? { chaseUntil: endsAt.toISOString() } : {}),
     ...(movedOff ? { movedOffQuietDay: movedOff, askedFor: remindAt } : {}),
     ...(superseded.rowCount ? { supersededAuto: superseded.rows.map((r) => Number(r.id)) } : {}),
+    ...(sameMoment.rowCount ? { supersededOneOff: sameMoment.rows.map((r) => Number(r.id)) } : {}),
   });
   return ok({ reminder: ins.rows[0], supersededAuto: superseded.rowCount });
 }
@@ -524,6 +542,44 @@ async function startChase(client, userId, taskId, { now = new Date(), at = null,
   const second = seq === 0 ? chaseReanchor(first, hour, tz) : nextOccurrence(first, 'daily', tz);
   if (!second || second.getTime() > until.getTime()) return null;
   return setReminder(client, userId, taskId, first, 'daily', { nudge: true, until, seq });
+}
+
+// "תזכיר לי לקבוע תור" — a reminder asked for with no WHEN at all (the
+// gateway hook's `remindWithoutTime`). Dov said three of these on 2026-09-27,
+// each was saved with no date and no reminder, and nothing would ever have
+// reached him: he has no morning digest. The owner's ruling (2026-09-28):
+// once a week, at the morning hour, until it is done.
+//
+// So it is a CHASE in every sense the code already knows — `repeat_until` is
+// set, so "done" closes it, a quiet day moves it (movesOffQuietDay), the
+// middle occurrences ask "בוצע?" and the last says it is the last — and only
+// the rule is weekly. The hour is `chaseHour`: their earliest morning digest,
+// where it rides the digest instead of interrupting (ridesDigest), otherwise
+// the start of their window. The first one is a WEEK out, not today: they
+// have just said it, and a reminder of something they said an hour ago is
+// noise. The end is a cap rather than a deadline nobody named — eight weeks,
+// after which a thing still open is the digest's and the stalled-goal
+// check-in's to raise, not a ninth message.
+const WEEKLY_NUDGE_WEEKS = 8;
+
+async function startWeeklyNudge(client, userId, taskId, { now = new Date() } = {}) {
+  const { rows } = await client.query(
+    `SELECT t.due_at, u.timezone, u.digest_times
+       FROM tasks t JOIN users u ON u.id = $2
+      WHERE t.id = $1 AND t.archived_at IS NULL AND t.status = 'open' AND ${TASK_THEY_ARE_ON}`,
+    [taskId, userId]
+  );
+  // A task with a date is not this case: the date armed its own reminder.
+  if (!rows[0] || rows[0].due_at) return null;
+  const tz = rows[0].timezone || 'Asia/Jerusalem';
+  const { data } = await preferences.availabilityWindow(client, userId);
+  const window = (data && data.window) || preferences.DEFAULT_WINDOW;
+  const hour = chaseHour({ digestTimes: rows[0].digest_times, windowStart: window.start });
+  const [hh, mi] = hour.split(':').map(Number);
+  const p = dt.partsInZone(tz, new Date(now));
+  const first = dt.instantInZone(tz, { y: p.y, m: p.m, d: p.d + 7, hh, mi, ss: 0 });
+  const lastDay = dt.instantInZone(tz, { y: p.y, m: p.m, d: p.d + 7 * WEEKLY_NUDGE_WEEKS, hh: 12, mi: 0, ss: 0 });
+  return setReminder(client, userId, taskId, first, 'weekly', { nudge: true, until: chaseUntil(lastDay, tz), seq: 1 });
 }
 
 // One ladder per task. Maya asked for a reminder at 16:00 AND one at 16:15
@@ -1171,7 +1227,7 @@ module.exports = {
   setReminder, attachAutoReminder, retireSiblingLadders, cancelReminder, listReminders, dueForSending, markSent,
   retireForMovedTask, stopRecentLadders, STOP_WINDOW_HOURS, momentIsPast, PAST_GRACE_MS,
   normalizeRepeatRule, nextOccurrence, resolveMonthlyAnchor, movesOffQuietDay,
-  isChase, chaseHour, firstChaseMoment, chaseUntil, chaseReanchor, startChase,
+  isChase, chaseHour, firstChaseMoment, chaseUntil, chaseReanchor, startChase, startWeeklyNudge, WEEKLY_NUDGE_WEEKS,
   CHASE_MORNING_BEFORE, CHASE_FALLBACK_AT, CHASE_EVENING_AT,
   recordAttempt, attemptKey, ESCALATION_MAX_ATTEMPTS, ESCALATION_GAP_HOURS, RUNGS,
   ridesDigest, carriedForDigest, markCarried,

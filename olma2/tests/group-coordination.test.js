@@ -505,6 +505,43 @@ test('somebody the gate never let her reach is silent but not ASKED', async () =
   assert.equal(after.coordination.silent.find((p2) => p2.phone === held.phone).asked, true);
 });
 
+// Coordination 57, 2026-09-27: the chase went out at 09:00:08 and the invites
+// it was chasing at 09:02 and 09:03. The room's chase is measured from the last
+// invite that REACHED somebody, so the status has to say when that was.
+test('the status says when the last person still in it was first reached', async () => {
+  const { group, people } = await room(45);
+  const [host, early, late] = people;
+  const started = await withTx(db.pool, (c) => groupMeetings.startCoordination(c, group, host, 'פאדל'));
+  const meetingId = Number(started.data.meeting.id);
+  const rowOf = async (userId) => (await db.pool.query(
+    `SELECT id FROM outbox WHERE user_id = $1 AND kind = 'meeting_invite'
+       AND (payload->>'meetingId')::bigint = $2`, [userId, meetingId])).rows[0];
+  const lastAsked = async () => (await withTx(db.pool, (c) => groupMeetings.coordinationStatus(c, group)))
+    .coordination.lastAskedAt;
+
+  assert.equal(await lastAsked(), null, 'nobody reached yet: nothing to measure from');
+
+  const t0 = Date.now() - 12 * 3600_000;
+  const t1 = t0 + 3600_000;
+  await db.pool.query(`UPDATE outbox SET sent_at = $2, hold_reason = NULL WHERE id = $1`,
+    [(await rowOf(host.id)).id, new Date(t0)]);
+  await db.pool.query(`UPDATE outbox SET sent_at = $2, hold_reason = NULL WHERE id = $1`,
+    [(await rowOf(early.id)).id, new Date(t1)]);
+  // A row the gate DROPPED carries sent_at too, and reached nobody.
+  await db.pool.query(`UPDATE outbox SET sent_at = now(), hold_reason = 'quiet' WHERE id = $1`,
+    [(await rowOf(late.id)).id]);
+  assert.equal(await lastAsked(), t1, 'the newest FIRST arrival, and a dropped row is not one');
+
+  // A second message to somebody already reached does not move their first.
+  await withTx(db.pool, (c) => require('../src/outbox/enqueue').enqueue(c, {
+    userId: host.id, kind: 'meeting_slot_proposed', payload: { meetingId },
+    idempotencyKey: `test-second-${meetingId}`,
+  }));
+  await db.pool.query(
+    `UPDATE outbox SET sent_at = now(), hold_reason = NULL WHERE idempotency_key = $1`, [`test-second-${meetingId}`]);
+  assert.equal(await lastAsked(), t1);
+});
+
 
 // ---------------- a time said in the room -------------------------------------
 // 2026-09-23, פחם הסעות: עמית tagged her with "מה את אומרת על שישי צהריים

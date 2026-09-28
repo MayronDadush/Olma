@@ -34,6 +34,66 @@ const TIME_RE = /(?<![\d:])([01]?\d|2[0-3]):([0-5]\d)(?![\d:])/g;
 // often than the full form when they are giving an instruction.
 const BARE_HOUR_RE = /(?:בשעה|ב-|ב\s|at)\s*([01]?\d|2[0-3])(?![\d:.,])/gi;
 
+// …and the minutes people SAY after that bare hour, in words. Dov, 2026-09-27:
+// "כל יום בבוקר בשעה 8 וחצי" armed 08:30, exactly as asked, and this check
+// read the hour alone, filed "ביקש 08:00 · נקבע 08:30" as a broken promise
+// (issue 161). An alarm that files a correct reminder as a fault is spent the
+// first time somebody opens it. Read straight after the hour, so "8 וחצי ליטר"
+// is still half past eight — which is what it says.
+const HEB = '(?![\\u0590-\\u05FF])';
+const MINUTE_WORDS = [
+  [new RegExp(`^\\s*וחצי${HEB}`), 30],
+  [new RegExp(`^\\s*ורבע${HEB}`), 15],
+  [new RegExp(`^\\s*ועשרים${HEB}`), 20],
+  [new RegExp(`^\\s*וארבעים${HEB}`), 40],
+  [new RegExp(`^\\s*ועשר(?:ה)?${HEB}`), 10],
+  [new RegExp(`^\\s*וחמש(?:ה)?${HEB}`), 5],
+  [/^\s*ו-?\s*([0-5]?\d)(?!\d)/, null],
+  [new RegExp(`^\\s*פחות\\s+רבע${HEB}`), -15],
+  [new RegExp(`^\\s*פחות\\s+עשרים${HEB}`), -20],
+  [new RegExp(`^\\s*פחות\\s+עשר(?:ה)?${HEB}`), -10],
+  [new RegExp(`^\\s*פחות\\s+חמש(?:ה)?${HEB}`), -5],
+];
+
+function bareHourMinutes(hour, rest) {
+  for (const [re, fixed] of MINUTE_WORDS) {
+    const m = re.exec(rest);
+    if (!m) continue;
+    const mins = fixed === null ? Number(m[1]) : fixed;
+    if (!Number.isFinite(mins) || mins > 59) continue;
+    return mins;
+  }
+  return 0;
+}
+
+// Which half of the day the message names. "8 וחצי" alone is 08:30 OR 20:30
+// — people say the hour on a twelve-hour clock and let the context carry the
+// rest — so a check that heard only the morning would file a correct 20:30 as
+// a broken promise (owner, 2026-09-28, after issue 161). A daypart word
+// anywhere in the message narrows it; both kinds, or neither, keep both.
+const AM_RE = new RegExp(`(?:^|[^${'\\u0590-\\u05FF'}])ו?(?:ב|ה|ל)?בוקר(?![\\u0590-\\u05FF])|\\bam\\b|\\bmorning\\b`, 'iu');
+const PM_RE = new RegExp(`(?:^|[^${'\\u0590-\\u05FF'}])ו?(?:ב|ה|ל)?(?:ערב|לילה|צהריים|צהרים)(?![\\u0590-\\u05FF])|אחה["״']?צ|אחר\\s+ה?צהריים|\\bpm\\b|\\b(?:evening|tonight|afternoon)\\b`, 'iu');
+
+function halvesOf(text) {
+  const am = AM_RE.test(text);
+  const pm = PM_RE.test(text);
+  return { am: am || !pm, pm: pm || !am };
+}
+
+// Every clock reading of hour:minutes the message allows. Only 1-11 are
+// ambiguous: 0 and 13-23 already name their half, and 12 is noon as said.
+function readings(hour, mins, half) {
+  const at = (h) => {
+    const total = (h * 60 + mins + 24 * 60) % (24 * 60);
+    return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+  };
+  if (hour < 1 || hour > 11) return [at(hour)];
+  const out = [];
+  if (half.am) out.push(at(hour));
+  if (half.pm) out.push(at(hour + 12));
+  return out;
+}
+
 // "עוד שעתיים", "בעוד חצי שעה", "in 2 hours". The moment is relative to when
 // they wrote it, so this only means anything with the message's own timestamp.
 const REL_HOURS = [
@@ -63,11 +123,13 @@ const hhmm = (ms, tz) => {
 function momentsAsked(text, atMs, tz) {
   const s = String(text || '');
   const out = new Set();
+  const half = halvesOf(s);
   for (const m of s.matchAll(TIME_RE)) {
-    out.add(`${String(Number(m[1])).padStart(2, '0')}:${m[2]}`);
+    for (const r of readings(Number(m[1]), Number(m[2]), half)) out.add(r);
   }
   for (const m of s.matchAll(BARE_HOUR_RE)) {
-    out.add(`${String(Number(m[1])).padStart(2, '0')}:00`);
+    const mins = bareHourMinutes(Number(m[1]), s.slice(m.index + m[0].length));
+    for (const r of readings(Number(m[1]), mins, half)) out.add(r);
   }
   if (Number.isFinite(atMs)) {
     for (const [re, fixed] of REL_HOURS) {

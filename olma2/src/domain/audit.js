@@ -17,7 +17,9 @@
 const PERMANENT_PREFIXES = ['share.', 'connection.', 'grant.', 'user.provisioned', 'user.blocked',
   'calendar.connected', 'calendar.disconnected', 'calendar.access_changed',
   'contacts.connected', 'contacts.reconnected', 'contacts.disconnected',
-  'admin.carryover_leak_repaired'];
+  'admin.carryover_leak_repaired',
+  // The record that a person's own deletion request was asked for and carried out.
+  'account.deletion_'];
 
 function retentionClassFor(event) {
   return PERMANENT_PREFIXES.some((p) => event.startsWith(p)) ? 'permanent' : 'routine';

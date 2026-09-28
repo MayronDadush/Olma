@@ -284,6 +284,38 @@ function asksOpenList(text) {
   return OPEN_LIST_RE.test(raw) && !A_DAY_RE.test(raw);
 }
 
+// "תזכיר לי לקבוע תור" — asked to be reminded, and said no WHEN at all.
+// Dov, 2026-09-27: three of these in one afternoon, each saved with no
+// reminder and answered "רשמתי 🙂", so nothing would ever have reached him —
+// he has no morning digest, and neither do 22 of 30 active people. The owner
+// chose (2026-09-28) a weekly nudge at the morning hour until it is done;
+// brokerd arms it on the add_task this turn makes WITHOUT a date
+// (reminders.startWeeklyNudge). Only the verdict travels, never the words.
+//
+// Strict in the direction that matters: a message that says anything about
+// WHEN — a digit, a day, a part of the day, "עוד", "עד", "כש…" — is not this,
+// because then the model has a moment to arm and must arm it. A question
+// ("תזכיר לי מה אמרתי", "תזכיר לי מראש?") asks for information, not a
+// reminder, so the verb must be followed by an infinitive and a question mark
+// refuses the whole message. Measured on the box 2026-09-28: of 85 real
+// messages asking for a reminder, the looser noun-or-verb reading took 9 and
+// four of them were not this (a question, a thank-you answer, a relay to a
+// group, a dated ask); the infinitive reading takes Dov's five and nothing
+// else. The four are in tests/remind-without-time.test.js.
+const REMIND_ASK_RE = new RegExp(`(?:^|[^${HE}])[וש]?(?:תזכיר|תזכירי|תזכרי|תזכור)\\s+(?:לי|לנו)\\s+ל[${HE}]|\\bremind\\s+(?:me|us)\\s+to\\b`, 'iu');
+const QUESTION_AFTER_RE = new RegExp(`(?:תזכיר|תזכירי|תזכרי|תזכור)\\s+(?:לי|לנו)\\s+(?:מה|מתי|איפה|מי|איך|כמה|איזה|איזו|למה|לאן|את\\s+מה)(?![${HE}])|\\bremind\\s+me\\s+(?:what|when|where|who|how)\\b`, 'iu');
+const WHEN_WORDS_RE = new RegExp(`\\d|(?:^|[^${HE}])[ובלה]{0,2}(?:מחר|מחרתיים|היום|הערב|הלילה|בוקר|ערב|לילה|צהריים|צהרים|שבוע|שבועיים|חודש|שנה|שבת|סופ"?ש|ראשון|שני|שלישי|רביעי|חמישי|שישי|יום|ימים|יומיים|פעם|עוד|בעוד|עד|אחרי|לפני|דקה|דקות|שעה|שעתיים|שעות|אחה"?צ|תמיד)(?![${HE}])|(?:^|[^${HE}])כש[${HE}]|\\b(?:tomorrow|today|tonight|morning|evening|afternoon|noon|night|hours?|minutes?|days?|week|weekend|month|monday|tuesday|wednesday|thursday|friday|saturday|sunday|every|until|before|after|when)\\b`, 'iu');
+const STOP_WORDS_RE = /(?:תפסיק|תפסיקי|להפסיק|בלי|אל\s+ת|לא\s+צריך|די\s+עם|stop|don'?t)/iu;
+const MAX_REMIND_ASK_CHARS = 300;
+
+function remindWithoutTime(text) {
+  const raw = String(text || '').replace(REPLY_BLOCK_RE, ' ').replace(/[\u200e\u200f\u202a-\u202e]/g, '').trim();
+  if (!raw || raw.length > MAX_REMIND_ASK_CHARS) return false;
+  if (/[?？]/.test(raw)) return false;
+  if (!REMIND_ASK_RE.test(raw) || QUESTION_AFTER_RE.test(raw) || STOP_WORDS_RE.test(raw)) return false;
+  return !WHEN_WORDS_RE.test(raw);
+}
+
 // Which inbound events open a turn. Measured on OpenClaw 2026.8.1 (2026-09-06,
 // olma-hook-probe): a WhatsApp DM fires `message:preprocessed` ~300ms after
 // the inbound log line and `agent:bootstrap` a second later — and NEVER
@@ -352,6 +384,9 @@ function handle(event, { connect = net.connect, sock = SOCK } = {}) {
     // "מה פתוח לי?" — brokerd leaves the today block out of this turn, so
     // the answer comes from their list and not from an empty day.
     openList: asksOpenList(said.text),
+    // "תזכיר לי X" with no when at all — brokerd arms a weekly nudge on the
+    // undated add_task this turn makes (reminders.startWeeklyNudge).
+    remindAsk: remindWithoutTime(said.text),
     at: new Date(event.timestamp || Date.now()).toISOString(),
   };
   return new Promise((resolve) => {
@@ -394,4 +429,5 @@ module.exports.thanksOnly = thanksOnly;
 module.exports.stopRemindersOnly = stopRemindersOnly;
 module.exports.chaseDeadline = chaseDeadline;
 module.exports.asksOpenList = asksOpenList;
+module.exports.remindWithoutTime = remindWithoutTime;
 module.exports._resetSeen = () => seen.clear();

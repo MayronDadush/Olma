@@ -133,7 +133,18 @@ const { IDENTITY_PARAM } = require('../src/adapters/mcp/identity-param');
 // one shared, shortened string (`WHEN_SAID` in tools/_shared.js) and a
 // duplicated offset example taken off `add_task`'s `due_at`, which the
 // description already carries. Measured 60,656 after, margin 94.
-const JSON_CEILING = 60_750;
+//
+// Raised the eighth time, 2026-09-28: 60,750 -> 60,900, for `delete_my_account`
+// (domain/self-delete.js; the owner asked for deletion from the chat as well as
+// the page). The tool is ~350 chars at its shortest — its guidance rides the
+// result's `next` — and ~200 were paid by trimming `set_my_timezone`'s
+// description (the hints sentence its result already carries, and the
+// rationale behind the 3am line). Approved by the owner over trimming ~150
+// more elsewhere ("מאשר להעלות את התקרה ל־60,900"). Measured 60,897, margin 3;
+// then main's `windows` on record_meeting_constraint (+89) landed first, and
+// the new tool was cut to fit rather than raising past what was approved —
+// its "not for stop" line moved onto the preview result. Measured 60,899.
+const JSON_CEILING = 60_900;
 const DESCRIPTION_CEILING = 700;
 const IDENTITY_DESCRIPTION_CEILING = 40;
 

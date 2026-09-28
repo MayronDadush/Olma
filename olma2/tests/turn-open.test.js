@@ -281,7 +281,7 @@ test('the hook handler sends exactly one turn_open line for an inbound message, 
   assert.equal(written.length, 1);
   const msg = JSON.parse(written[0]);
   assert.equal(msg.method, 'turn_open');
-  assert.deepEqual(msg.params, { agentId: 'u-3', messageId: '3EB0HOOK0001', kind: 'voice', senderName: 'Miron', replyToId: null, thanks: false, stopReminders: false, chase: null, openList: false, at: '2026-09-05T10:00:00.000Z' });
+  assert.deepEqual(msg.params, { agentId: 'u-3', messageId: '3EB0HOOK0001', kind: 'voice', senderName: 'Miron', replyToId: null, thanks: false, stopReminders: false, chase: null, openList: false, remindAsk: false, at: '2026-09-05T10:00:00.000Z' });
   assert.ok(!written[0].includes('סודי'), 'the text never leaves the gateway');
   // The shape the gateway ACTUALLY sends (OpenClaw 2026.8.1, measured
   // 2026-09-06): `message:preprocessed`, sender name and media type flat on
@@ -291,7 +291,7 @@ test('the hook handler sends exactly one turn_open line for an inbound message, 
     context: { from: '+972500000000', body: 'סודי', bodyForAgent: 'סודי', messageId: '3EB0HOOK0002', senderName: 'Miron', mediaType: 'audio/ogg', transcript: 'שלום', provider: 'whatsapp', cfg: {} },
   }, { connect: fakeSocket }), true);
   assert.equal(written.length, 2);
-  assert.deepEqual(JSON.parse(written[1]).params, { agentId: 'u-3', messageId: '3EB0HOOK0002', kind: 'voice', senderName: 'Miron', replyToId: null, thanks: false, stopReminders: false, chase: null, openList: false, at: '2026-09-05T10:00:05.000Z' });
+  assert.deepEqual(JSON.parse(written[1]).params, { agentId: 'u-3', messageId: '3EB0HOOK0002', kind: 'voice', senderName: 'Miron', replyToId: null, thanks: false, stopReminders: false, chase: null, openList: false, remindAsk: false, at: '2026-09-05T10:00:05.000Z' });
   assert.ok(!written[1].includes('סודי') && !written[1].includes('שלום'), 'neither text nor transcript leaves the gateway');
   // A gateway that fires BOTH for one message opens it once.
   assert.equal(await hook({
@@ -735,6 +735,56 @@ test('a task already on their list is chased to the heard deadline through set_t
   const day = require('../src/domain/chase-deadline').forTurn({ kind: 'days', n: 4 },
     { now: new Date(now), timezone: u.timezone }).day;
   assert.ok(require('../src/domain/chase-deadline').onDay(rows[0].repeat_until, day, u.timezone));
+});
+
+// ── "תזכיר לי X" with no when: a weekly nudge, armed by code ─────────────────
+// Dov, 2026-09-27 (tests/remind-without-time.test.js holds the story). The
+// hook sends a boolean, brokerd stamps when it was heard, the model is told
+// not to invent an hour, and the undated add_task comes back weekly.
+test('a reminder asked for with no time becomes a weekly nudge on the undated task the turn saves', async () => {
+  const u = await agentUser('+972641100071', 'u-971');
+  await open({ agentId: 'u-971', messageId: '3EB0WEEK01', kind: 'text', remindAsk: true });
+  const turn = newTurn();
+  const ts = await call(u, 'turn_start', { message_id: '3EB0WEEK01' }, turn);
+  assert.match(ts.text, /named no time/, 'the model is told what the server will do');
+  const res = await call(u, 'add_task', { title: 'לסיים אתר לרוזיו' }, turn);
+  assert.equal(res.ok, true, res.text);
+  assert.match(res.text, /weekly nudge is armed/);
+  const { rows } = await db.pool.query(
+    `SELECT t.due_at, r.repeat_rule, r.repeat_until FROM tasks t
+       JOIN task_reminders r ON r.task_id = t.id AND r.sent_at IS NULL AND r.cancelled_at IS NULL
+      WHERE t.owner_id = $1`, [u.id]);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].repeat_rule, 'weekly');
+  assert.equal(rows[0].due_at, null, 'a nudge never dates the task');
+  assert.ok(rows[0].repeat_until, 'and it ends, so "done" closes it');
+
+  // Spent once: a second task in the same turn is an ordinary one.
+  const other = await call(u, 'add_task', { title: 'לקנות סוללה' }, turn);
+  assert.equal(other.ok, true, other.text);
+  assert.doesNotMatch(other.text, /weekly nudge is armed/);
+});
+
+test('a heard reminder ask yields to a moment the model found, and dies after fifteen minutes', async () => {
+  const u = await agentUser('+972641100072', 'u-972');
+  await open({ agentId: 'u-972', messageId: '3EB0WEEK02', kind: 'text', remindAsk: true });
+  const turn = newTurn();
+  await call(u, 'turn_start', { message_id: '3EB0WEEK02' }, turn);
+  const tomorrow = new Date(now + 86400_000).toISOString().replace('Z', '+00:00');
+  const dated = await call(u, 'add_task', { title: 'להתקשר לרופא', due_at: tomorrow }, turn);
+  assert.equal(dated.ok, true, dated.text);
+  assert.doesNotMatch(dated.text, /weekly nudge is armed/, 'a date arms its own reminder');
+
+  await open({ agentId: 'u-972', messageId: '3EB0WEEK03', kind: 'text', remindAsk: true });
+  const late = newTurn();
+  await call(u, 'turn_start', { message_id: '3EB0WEEK03' }, late);
+  const was = now;
+  now += 16 * 60_000;
+  try {
+    const res = await call(u, 'add_task', { title: 'לתקן את הברז' }, late);
+    assert.equal(res.ok, true, res.text);
+    assert.doesNotMatch(res.text, /weekly nudge is armed/, 'a verdict nobody used does not wait for the next save');
+  } finally { now = was; }
 });
 
 test('a turn with no deadline heard arms nothing it was not asked to', async () => {
