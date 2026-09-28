@@ -144,6 +144,8 @@ function withClocks(line, co, { timezone, nowMs } = {}) {
   for (const f of SLOT_FIELDS) {
     if (line[f] && co.moments && co.moments[line[f]]) at[f] = co.moments[line[f]];
   }
+  // A line that names several times (`laid`) carries each one's moment, in order.
+  if (Array.isArray(line.slots)) at.slots = line.slots.map((t) => (co.moments && co.moments[t]) || null);
   return { ...line, multiZone: true, zones, roomTz, at };
 }
 
@@ -312,11 +314,46 @@ function decideLine(co, {
     }
   }
 
+  // The table was LAID and the room never heard what is on it (2026-09-28,
+  // coordination 57). The base line speaks only once a time has a direction,
+  // and the table line only once a base line has been said, so three times
+  // with one yes each — מירון's Monday, Tuesday and Thursday — reached the
+  // room as nothing at all for a day and a half, while the room's only picture
+  // was "we'll close an exact evening". Said ONCE, a quarter of an hour after
+  // the first time went on (the same settle as the table line, so a burst of
+  // additions is one sentence), and it is the watermark from then on: every
+  // later change is the table line's. Only the shape — which times — never who
+  // said what. TWO times at least: one time with its proposer's yes on it is
+  // still "one person agreeing with themselves", which the owner ruled is not
+  // news (the base tests below); a choice nobody has made is.
+  // Never after a REOPENING: that room heard a table settle and then that it
+  // reopened, and it carries on from where it stopped (meetings.reopenMeeting).
+  if (!saidBase && !tableSaidAtMs && !reopenedAt && (co.options || []).length >= 2) {
+    const firstAt = Math.min(...(co.tableChangedAts || []).map((t) => new Date(t).getTime())
+      .filter((t) => Number.isFinite(t)));
+    if (Number.isFinite(firstAt) && nowMs >= firstAt + TABLE_SETTLE_MS) {
+      const slots = co.options.slice()
+        .sort((a, b) => new Date(a.startsAt || 0) - new Date(b.startsAt || 0))
+        .map((o) => o.slot);
+      return { kind: 'laid', slots };
+    }
+  }
+
   // Mid-way, to speed it up: only ever about people who have answered NOTHING.
   // Somebody who said no to every option has answered — chasing them would be
   // asking them to change their mind in front of the room.
   const silent = (co.silent || []).filter(said).map((p) => p.phone).filter(Boolean);
-  if (!saidChase && silent.length && nowMs >= chaseDueAt(startedAtMs, earliestStart(co))) {
+  //
+  // The hour is counted from the LAST invite that reached anybody, never from
+  // the start alone. Coordination 57 opened at 21:00; every invite but the
+  // asker's waited for the morning, and the chase — due at 03:00, held for the
+  // room's night — went out at 09:00:08, two minutes before those invites did,
+  // and tagged the one person it could: the man who had asked for the game and
+  // answered it in the room. Measured from 09:03 it is due at 10:03, by which
+  // time he had answered on the table and the chase named the three who had
+  // just been asked.
+  const askedFromMs = Math.max(startedAtMs || 0, co.lastAskedAt ? new Date(co.lastAskedAt).getTime() : 0);
+  if (!saidChase && silent.length && nowMs >= chaseDueAt(askedFromMs, earliestStart(co))) {
     return { kind: 'chase', missing: silent.slice(0, MAX_TAGS) };
   }
 

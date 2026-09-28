@@ -214,3 +214,14 @@ test('a room on one clock hears, and its model reads, exactly what it did before
   const text = await withTx(db.pool, (c) => groupTurn.renderContext(c, group));
   assert.ok(!text.includes(groupTurn.CLOCK_RULE));
 });
+
+// Coordination 57 (2026-09-28): three times went on the table and the room
+// heard none of them. The laid line lists them once, each in every clock.
+test('the laid line lists the times, one inline and several as a list, in every clock', () => {
+  const inline = 'יום שבת 26.9 · 20:00 ישראל · 13:00 ניו יורק · 03:00 סידני (יום ראשון 27.9)';
+  assert.equal(renderGroupCoordination(clocks({ kind: 'laid', slots: ['יום שבת 26.9 20:00'], at: { slots: [SAT] } })),
+    `על הפרק כרגע: *${inline}*\nמי יכול? תגידו לי בפרטי 🙏`);
+  assert.equal(renderGroupCoordination({ kind: 'laid', slots: ['יום שני 19:00', 'יום שלישי 19:00'] }),
+    'על הפרק כרגע: \n- *יום שני 19:00*\n- *יום שלישי 19:00*\nמי יכול? תגידו לי בפרטי 🙏');
+  assert.equal(renderGroupCoordination({ kind: 'laid', slots: [] }), null, 'a list of nothing is not said');
+});
