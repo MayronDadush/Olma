@@ -58,6 +58,7 @@ never trust a dated narrative for something you are about to act on.
 - [Two paragraphs where two sentences would do (fixed 2026-09-20)](#two-paragraphs-where-two-sentences-would-do-fixed-2026-09-20)
 - [The link came back on every coordination message (2026-09-24)](#the-link-came-back-on-every-coordination-message-2026-09-24)
 - [The slot that was already closed (fixed 2026-09-20)](#the-slot-that-was-already-closed-fixed-2026-09-20)
+- [The chase that beat its own invites (fixed 2026-09-28)](#the-chase-that-beat-its-own-invites-fixed-2026-09-28)
 - [The room asked five and reached four (fixed 2026-09-22)](#the-room-asked-five-and-reached-four-fixed-2026-09-22)
 - [The pause the room's invite walked through (fixed 2026-09-27)](#the-pause-the-rooms-invite-walked-through-fixed-2026-09-27)
 - [A room counted in somebody who had paused (fixed 2026-09-13)](#a-room-counted-in-somebody-who-had-paused-fixed-2026-09-13)
@@ -2220,6 +2221,32 @@ shows the average length per window.
 **Not done, and named.** The poker example wants a place ("אצל מירון") —
 that is item F of the same plan, a `meetings.location` column, and lands
 separately.
+### The chase that beat its own invites (fixed 2026-09-28)
+
+Padel Gang's second coordination (meeting 57) was opened by מירון at 21:00 on a
+Saturday. The room heard she had started; his own invite went out at once, and
+every other invite was held for the night, as the rule says. He then answered in
+the room — "אני יכול כל יום השבוע מ18 בערב צפונה" — before any time existed to
+answer on.
+
+The chase was due six hours after the start (no dated option yet), which was
+03:00, and the room's night held it to the morning. It went out at 09:00:08.
+The invites it was chasing were released at 09:00:10 and reached people at
+09:02 and 09:03. So when the chase decided whom it could name, the only person
+who had been reached was מירון, and the room read "עוד לא שמעתי מ@M&M — תגידו
+לי בפרטי מתי אתם יכולים ואני סוגרת את זה" about the man who had asked for the
+game. It was the coordination's one chase, stamped and spent; nothing else was
+said to the room about it for the next day and a half.
+
+Every piece was correct on its own terms: the invites waited for the morning,
+the chase waited for the room's morning, and `asked` kept the three unreached
+people out of the tag. What was wrong was the clock the chase measured from —
+the START, which says nothing about whether anybody has had a chance to answer.
+`statusOf` now returns `lastAskedAt`, the newest first arrival of a `meeting_*`
+row among the people still in it, and the hour runs from there: 10:03 for
+meeting 57, by which time מירון had put three times on the table with his yes,
+and the chase would have named the three who had just been asked.
+
 ### The room asked five and reached four (fixed 2026-09-22)
 
 Padel Gang's first coordination (meeting 40) was opened with five connected

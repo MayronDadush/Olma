@@ -1013,6 +1013,32 @@ test('the room is chased an hour in, not half way to a game a day away', () => {
   assert.equal(groupVoice.decideGroupLine(soon, { ...said, startedAtMs: now - 46 * 60_000 }).kind, 'chase');
 });
 
+// Coordination 57, 2026-09-26/27: opened at 21:00, every invite but the
+// asker's held for the morning, the chase — due at 03:00, held for the night —
+// went out at 09:00:08 and tagged the one person already reached: the man who
+// had asked for the game. The others were reached at 09:02-09:03. The hour is
+// counted from the last invite that landed.
+test('the chase waits an hour after the LAST invite reached anybody, not after the start', () => {
+  const now = Date.now();
+  const asker = { phone: '+972500000031', asked: true };
+  const others = ['+972500000032', '+972500000033', '+972500000034'].map((phone) => ({ phone, asked: true }));
+  const co = padel({ silent: [asker, ...others], lastAskedAt: new Date(now - 2 * 60_000).toISOString() });
+  const said = { saidStarted: true, saidBase: true, saidChase: false, saidDone: false, nowMs: now,
+    startedAtMs: now - 12 * 3600_000 };
+  assert.equal(groupVoice.decideGroupLine(co, said).kind, 'none',
+    'twelve hours since the start, two minutes since the last invite landed');
+
+  // An hour after that invite, the room is chased about everybody still silent.
+  const later = { ...said, nowMs: now + 59 * 60_000 };
+  const line = groupVoice.decideGroupLine({ ...co, silent: others }, later);
+  assert.equal(line.kind, 'chase');
+  assert.deepEqual(line.missing, others.map((p) => p.phone), 'the asker had answered by then and is not named');
+
+  // Nobody reached at all is measured from the start, exactly as before.
+  const unknown = padel({ silent: others, lastAskedAt: null });
+  assert.equal(groupVoice.decideGroupLine(unknown, said).kind, 'chase');
+});
+
 test('the table moving is news every time it moves, and never says who said what', () => {
   const now = Date.now();
   const base = {
