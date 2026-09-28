@@ -550,6 +550,7 @@ html.intro-go .tabbar{animation:introBar .55s var(--ease) .3s both}
   /* The face is light grey in this theme, not the white every other card
      uses — on white there is nothing for the rim to be seen against. */
   --sugg-face:#EDF1F3;
+  --sugg-yes-ink:#0A6573;
   --sugg-rim:16%;
   --sugg-aura:.28;
   --sugg-mix-a:13%;
@@ -565,12 +566,12 @@ html.intro-go .tabbar{animation:introBar .55s var(--ease) .3s both}
 }
 @media (prefers-color-scheme:dark){
   :root:not([data-theme="light"]) .sugg{
-    --sugg-a:#35CEE2;--sugg-b:#8AD6FF;--sugg-face:var(--surface);
+    --sugg-a:#35CEE2;--sugg-b:#8AD6FF;--sugg-face:#33312B;--sugg-yes-ink:#8FE3EE;
     --sugg-rim:22%;--sugg-aura:.5;--sugg-mix-a:24%;--sugg-mix-b:20%;
   }
 }
 :root[data-theme="dark"] .sugg{
-  --sugg-a:#35CEE2;--sugg-b:#8AD6FF;--sugg-face:var(--surface);
+  --sugg-a:#35CEE2;--sugg-b:#8AD6FF;--sugg-face:#33312B;--sugg-yes-ink:#8FE3EE;
   --sugg-rim:22%;--sugg-aura:.5;--sugg-mix-a:24%;--sugg-mix-b:20%;
 }
 /* The travelling light, third attempt and the first one that actually goes
@@ -657,7 +658,10 @@ html.intro-go .tabbar{animation:introBar .55s var(--ease) .3s both}
   border-radius:11px;padding:8px 16px;font-size:13.5px;font-weight:600;cursor:pointer;
   transition:transform .38s var(--squash),filter .3s var(--ease-io);
 }
-.sugg .sbtn.yes{background:var(--action);color:var(--on-action)}
+/* The card's own turquoise, as a tint rather than a fill (the owner,
+   2026-09-28): the tasks screen keeps its one Mustard thing, "משימה חדשה",
+   and at night the card sits a step lighter than the cards around it. */
+.sugg .sbtn.yes{background:color-mix(in oklab,var(--sugg-a) 20%,transparent);color:var(--sugg-yes-ink)}
 .sugg .sbtn:active{transform:scale(.98)}
 .sugg .sbtn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 

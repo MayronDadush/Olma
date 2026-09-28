@@ -132,6 +132,20 @@ test('the line under a title is one line, and home no longer lists the day', () 
   assert.doesNotMatch(page, /function homeTaskHTML/);
 });
 
+test('the suggestion card answers in its own turquoise, and reads at night', () => {
+  // The owner, 2026-09-28: "להוריד" is a soft turquoise tint, not Mustard, and
+  // the card's night face is a step lighter than the cards around it.
+  assert.match(page, /\.sugg \.sbtn\.yes\{background:color-mix\(in oklab,var\(--sugg-a\) 20%,transparent\);color:var\(--sugg-yes-ink\)\}/);
+  const face = '#33312B';
+  assert.equal((page.match(/--sugg-face:#33312B;--sugg-yes-ink:#8FE3EE;/g) || []).length, 2, 'both night blocks');
+  assert.ok(ratio(face, token('surface', 1)) >= 1.1, 'lighter than a plain card');
+  ['text', 'text-3'].forEach(function (n) {
+    assert.ok(ratio(token(n, 1), face) >= 4.5, `--${n} on the night card: ${ratio(token(n, 1), face).toFixed(2)}`);
+  });
+  assert.ok(ratio('#8FE3EE', face) >= 4.5, 'the button word on the night card');
+  assert.ok(ratio('#0A6573', '#EDF1F3') >= 4.5, 'the button word on the day card');
+});
+
 test('a finger gets more than the icon does', () => {
   // Eleven controls drawn between 19 and 31px. The drawing is right — a 44px
   // bin beside a 15px line of text is not a design — so the hit area grew and
