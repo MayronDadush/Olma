@@ -139,8 +139,8 @@ const { IDENTITY_PARAM } = require('../src/adapters/mcp/identity-param');
 // the page). The tool is ~350 chars at its shortest — its guidance rides the
 // result's `next` — and ~200 were paid by trimming `set_my_timezone`'s
 // description (the hints sentence its result already carries, and the
-// rationale behind the 3am line). PENDING the owner's approval with the PR:
-// the alternative is trimming ~150 more elsewhere. Measured 60,897, margin 3.
+// rationale behind the 3am line). Approved by the owner over trimming ~150
+// more elsewhere ("מאשר להעלות את התקרה ל־60,900"). Measured 60,897, margin 3.
 const JSON_CEILING = 60_900;
 const DESCRIPTION_CEILING = 700;
 const IDENTITY_DESCRIPTION_CEILING = 40;
