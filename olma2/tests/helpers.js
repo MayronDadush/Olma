@@ -27,6 +27,11 @@ const path = require('node:path');
 if (!process.env.OLMA_OPENCLAW_HOME) {
   process.env.OLMA_OPENCLAW_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'olma2-test-home-'));
 }
+// The voice bridge's transcripts are another live directory the retention
+// sweep ages (domain/file-retention.js); same isolation, same reason.
+if (!process.env.VOICE_TRANSCRIPTS_DIR) {
+  process.env.VOICE_TRANSCRIPTS_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'olma2-test-voice-'));
+}
 if (!process.env.OLMA_OPENCLAW_CONFIG) {
   // A real shape, not an empty object. Two things read this and both draw the
   // wrong conclusion from a stub: openclaw-config picks its entries-vs-list

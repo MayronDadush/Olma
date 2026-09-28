@@ -4,6 +4,12 @@
 // stale session snapshots age out too. Days tunable via flag, no deploy.
 const flags = require('../domain/flags');
 const cardStore = require('../domain/card-store');
+const fileRetention = require('../domain/file-retention');
+
+async function daysFlag(client, key, fallback) {
+  const v = Number(await flags.getFlag(client, key) ?? fallback);
+  return Number.isFinite(v) ? v : fallback;
+}
 
 async function sweepRetention(client) {
   const days = Number(await flags.getFlag(client, 'audit_retention_days') ?? 180);
@@ -39,11 +45,25 @@ async function sweepRetention(client) {
   // near-identical sweeper is how the v1 cron jobs got hard to reason about.
   const cardHours = Number(await flags.getFlag(client, 'card_retention_hours') ?? cardStore.DEFAULT_MAX_AGE_HOURS);
   const cardsPurged = await cardStore.purgeOldCards(client, cardHours);
+  // What people said, in files: gateway session archives, the voice notes and
+  // photos they sent, finished call transcripts (domain/file-retention.js).
+  // Read per call, never at load, so the test isolation in tests/helpers.js
+  // cannot be outrun by require order.
+  const files = fileRetention.purgeFiles({
+    home: process.env.OLMA_OPENCLAW_HOME || '/root/.openclaw',
+    voiceDir: process.env.VOICE_TRANSCRIPTS_DIR || '/opt/olma2-voice-bridge/transcripts',
+    days: {
+      archives: await daysFlag(client, 'session_archive_retention_days', fileRetention.DEFAULT_DAYS.archives),
+      media: await daysFlag(client, 'inbound_media_retention_days', fileRetention.DEFAULT_DAYS.media),
+      callTranscripts: await daysFlag(client, 'call_transcript_retention_days', fileRetention.DEFAULT_DAYS.callTranscripts),
+    },
+  });
   return {
     auditPurged: audit.rowCount, outboxPurged: outbox.rowCount,
     snapshotsPurged: snapshots.rowCount, oauthStatesPurged: states.rowCount,
     pickerLinksPurged: pickerLinks.rowCount,
     cardsPurged,
+    ...files,
   };
 }
 
