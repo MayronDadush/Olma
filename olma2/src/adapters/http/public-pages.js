@@ -350,69 +350,117 @@ function privacyPage() {
 // and a real product should have terms regardless. Same house rule as the
 // privacy policy: English first in full, Hebrew second in full, neither a
 // summary of the other.
+//
+// Rewritten 2026-09-28 after a compliance review (not by a lawyer — this text
+// is a DRAFT for one). What changed and why:
+//   - Israel's Standard Contracts Law 1982 s.4 presumes a clause unduly
+//     disadvantageous when it exempts the supplier from liability, lets the
+//     supplier change the contract unilaterally, or lets the supplier end it
+//     without notice. The old text did all three ("as-is … may change without
+//     prior notice", a blanket indirect-damages exclusion, discontinuation
+//     "with reasonable notice where practical"). Now: liability is limited
+//     only "to the extent permitted by law" and never for gross negligence or
+//     intent; 14 days' notice before a material change; 30 days before the
+//     service ends, with a chance to take their data.
+//   - "By starting a conversation you agree" was consent to terms nobody was
+//     shown. The opening message now links the policy (PR #548); these terms
+//     say where they are published and claim no more than that.
+//   - The operator is named, and governing law and courts are stated, with the
+//     carve-out that a consumer keeps the non-waivable protections of their
+//     own country's law.
+// Keep the no-reliance warning prominent: it is the clause that actually
+// protects anybody.
+const TERMS_UPDATED = '2026-09-28';
+const OPERATOR = 'Mayron Dadush';
+// The Hebrew spelling is the owner's to confirm; until he does, the Latin
+// spelling stands in the Hebrew text too rather than a guessed one.
+const OPERATOR_HE = OPERATOR;
+
 function termsPage() {
   return shell(`Terms of Service — ${BRAND}`, `
     <div class="mark">${LOGO}</div>
     <h1>Terms of Service</h1>
-    <p class="updated">Last updated: ${UPDATED}</p>
+    <p class="updated">Last updated: ${TERMS_UPDATED}</p>
 
-    <h2>Agreement</h2>
-    <p>These terms govern your use of ${BRAND} (allma.world), a personal assistant that operates over WhatsApp, operated by an individual developer. By starting a conversation with the assistant, you agree to these terms and to the <a href="/privacy">Privacy Policy</a>, which describes what data is collected and how it is used.</p>
+    <h2>Who runs this</h2>
+    <p>${BRAND} (allma.world) is a personal assistant that works over WhatsApp. It is run by ${OPERATOR}, a private individual in Israel, not by a company. Contact: <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>.</p>
 
-    <h2>The service</h2>
-    <p>${BRAND} answers messages, keeps reminders and tasks, coordinates meetings between connected people, and — only if you choose to connect it — reads (and, where you explicitly grant it, edits) Google Calendar and Contacts on your behalf. The service is provided as-is and may change, and features may be added or removed, without prior notice.</p>
+    <h2>These terms</h2>
+    <p>These terms are published at allma.world/terms, and the assistant links to them and to the <a href="/privacy">Privacy Policy</a> when you first write to it. If you keep using the service after they have been shown to you, you accept them. If you do not accept them, please stop using the service and, if you like, ask us to delete your data.</p>
+
+    <h2>Don't rely on it for anything serious</h2>
+    <p><b>Do not rely on the service for medical, legal, financial or safety decisions, or for anything where a missed or wrong answer could cause you serious harm.</b> Use a professional, an emergency service, or a tool built for that purpose.</p>
+
+    <h2>What the service is</h2>
+    <p>${BRAND} is free. It answers messages, keeps reminders and tasks, coordinates meetings between people who use it, and — only if you choose to connect it — reads (and, where you explicitly grant it, edits) your Google Calendar and Contacts for you.</p>
+    <p>It is an AI assistant. Its replies are written by a language model, and they can be wrong, incomplete or misunderstood. A reminder, a calendar read or a meeting time can be late, wrong or not delivered at all. Check anything that matters.</p>
+
+    <h2>WhatsApp</h2>
+    <p>The service runs on WhatsApp, which belongs to Meta, not to us. If WhatsApp limits or blocks the service's number, or changes its rules, the service may stop working, for a while or for good, and that is outside our control. If that happens we will try to reach you another way where we can, but we may not be able to.</p>
 
     <h2>Acceptable use</h2>
     <p>Use the service only for your own personal, lawful purposes. Do not use it to harass, impersonate, or send unsolicited messages to others; do not attempt to access another person's account or data; do not attempt to disrupt, reverse-engineer, or overload the service.</p>
 
     <h2>Your account</h2>
-    <p>Your account is tied to the WhatsApp number you write from. You are responsible for the security of that number and of any Google account you connect. Connecting Google is entirely optional and can be undone at any time — ask the assistant to disconnect, or revoke access directly from your <a href="https://myaccount.google.com/permissions">Google account permissions</a>.</p>
+    <p>You must be at least 16 to use the service. Your account is tied to the WhatsApp number you write from, and you are responsible for the security of that number and of any Google account you connect. Connecting Google is optional and can be undone at any time — ask the assistant to disconnect, or revoke access directly from your <a href="https://myaccount.google.com/permissions">Google account permissions</a>.</p>
 
-    <h2>No warranty</h2>
-    <p>The service is provided without warranties of any kind, express or implied. A reminder, a calendar read, or a coordinated meeting time may be delayed, wrong, or not delivered — do not rely on it for anything where that failure would cause serious harm (medical, legal, financial, or safety-critical decisions).</p>
-
-    <h2>Limitation of liability</h2>
-    <p>To the maximum extent permitted by law, the developer is not liable for any indirect, incidental, or consequential damages arising from use of, or inability to use, the service.</p>
-
-    <h2>Ending the service</h2>
-    <p>You may stop using the service at any time. Ask the assistant to pause, or email <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a> to delete your account and all associated data. The developer may suspend or terminate access for a violation of these terms, or discontinue the service entirely, with reasonable notice where practical.</p>
+    <h2>Liability</h2>
+    <p>The service is free and is offered as it is. To the extent permitted by law, the operator is not liable for loss or damage caused by using the service or by not being able to use it, including a reminder that was late or missing or an answer that was wrong. This does not limit liability for gross negligence or intent, or any liability that the law does not allow to be limited or excluded.</p>
 
     <h2>Changes to these terms</h2>
-    <p>If these terms change materially, the date at the top is updated and you are told in the conversation.</p>
+    <p>If we change these terms in a way that matters, we will tell you in the conversation at least 14 days before the change takes effect, and update the date at the top. A change required by law, or needed urgently to protect security, may take effect sooner; we will still tell you. If you do not accept a change, you can stop using the service and ask us to delete your data.</p>
+
+    <h2>Stopping</h2>
+    <p>You can stop at any time. Ask the assistant to pause, or email <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a> to delete your account and all associated data.</p>
+    <p>If we decide to shut the service down, we will tell you in the conversation at least 30 days ahead where we can, and you can ask for a copy of your data before it closes. We may suspend someone's access without notice where that is needed to stop a serious breach of these terms, harm to others, or a security problem.</p>
+
+    <h2>Law and courts</h2>
+    <p>These terms are governed by the law of the State of Israel, and the competent courts in Tel Aviv-Jaffa have jurisdiction. Nothing here removes rights you have under the law of your country that cannot be waived.</p>
 
     <h2>Contact</h2>
-    <p><a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
+    <p>${OPERATOR} · <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
 
     <div class="he">
       <h2>תנאי שימוש (עברית)</h2>
-      <p class="updated">עודכן: ${UPDATED}</p>
+      <p class="updated">עודכן: ${TERMS_UPDATED}</p>
 
-      <h3>הסכמה</h3>
-      <p>תנאים אלה חלים על השימוש ב${ASSISTANT} (allma.world), עוזרת אישית שפועלת דרך וואטסאפ ומופעלת על ידי מפעיל יחיד. פתיחת שיחה עם העוזרת מהווה הסכמה לתנאים אלה ול<a href="/privacy">מדיניות הפרטיות</a>, המפרטת אילו נתונים נאספים וכיצד נעשה בהם שימוש.</p>
+      <h3>מי מפעיל את השירות</h3>
+      <p>${ASSISTANT} (allma.world) היא עוזרת אישית שפועלת דרך וואטסאפ. השירות מופעל על ידי ${OPERATOR_HE}, אדם פרטי בישראל, ולא על ידי חברה. לפניות: <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>.</p>
 
-      <h3>השירות</h3>
-      <p>${ASSISTANT} עונה להודעות, שומרת תזכורות ומשימות, מתאמת פגישות בין אנשים מחוברים, ו — רק אם תבחרו לחבר — קוראת (ובמקום שאישרתם עריכה במפורש, גם עורכת) יומן Google ואנשי קשר בשמכם. השירות ניתן כפי שהוא (as-is), ותכונות עשויות להשתנות, להתווסף או להוסר, ללא הודעה מוקדמת.</p>
+      <h3>התנאים האלה</h3>
+      <p>התנאים מפורסמים בכתובת allma.world/terms, ו${ASSISTANT} שולחת קישור אליהם ול<a href="/privacy">מדיניות הפרטיות</a> כשכותבים לה בפעם הראשונה. המשך השימוש בשירות אחרי שהתנאים הוצגו לכם הוא הסכמה להם. אם אינכם מסכימים, אנא הפסיקו להשתמש בשירות, ואם תרצו — בקשו שנמחק את המידע שלכם.</p>
+
+      <h3>לא להסתמך עליה בדברים חשובים</h3>
+      <p><b>אין להסתמך על השירות בהחלטות רפואיות, משפטיות, כספיות או בטיחותיות, או בכל דבר שבו תשובה שגויה או תזכורת שלא הגיעה עלולות לגרום לכם נזק חמור.</b> לדברים כאלה פנו לאיש מקצוע, לשירותי חירום, או לכלי שנבנה בשביל זה.</p>
+
+      <h3>מה השירות</h3>
+      <p>השירות ניתן בחינם. ${ASSISTANT} עונה להודעות, שומרת תזכורות ומשימות, מתאמת פגישות בין אנשים שמשתמשים בה, ו — רק אם תבחרו לחבר — קוראת (ובמקום שאישרתם עריכה במפורש, גם עורכת) את יומן Google ואנשי הקשר שלכם בשבילכם.</p>
+      <p>${ASSISTANT} היא עוזרת מבוססת בינה מלאכותית. את התשובות שלה כותב מודל שפה, והן עלולות להיות שגויות, חלקיות, או להבין אתכם לא נכון. תזכורת, קריאת יומן או מועד פגישה עלולים להתעכב, לטעות או לא להגיע בכלל. בדקו כל דבר שחשוב לכם.</p>
+
+      <h3>וואטסאפ</h3>
+      <p>השירות פועל על גבי וואטסאפ, שהיא של Meta ולא שלנו. אם וואטסאפ תגביל או תחסום את המספר של השירות, או תשנה את הכללים שלה, השירות עלול להפסיק לעבוד, לזמן מה או לתמיד, וזה אינו בשליטתנו. אם זה יקרה ננסה להגיע אליכם בדרך אחרת כשאפשר, אבל ייתכן שלא נוכל.</p>
 
       <h3>שימוש מותר</h3>
       <p>השתמשו בשירות אך ורק למטרות אישיות וחוקיות. אין להשתמש בו כדי להטריד, להתחזות, או לשלוח הודעות לא רצויות לאחרים; אין לנסות לגשת לחשבון או למידע של אדם אחר; אין לנסות לשבש, להנדס לאחור, או להעמיס על השירות.</p>
 
       <h3>החשבון שלכם</h3>
-      <p>החשבון שלכם מקושר למספר הוואטסאפ שדרכו אתם כותבים. אתם אחראים לאבטחת המספר הזה ושל כל חשבון Google שתחברו. חיבור גוגל הוא לגמרי אופציונלי וניתן לביטול בכל רגע — בקשו מהעוזרת לנתק, או בטלו את הגישה ישירות דרך <a href="https://myaccount.google.com/permissions">ההרשאות בחשבון הגוגל שלכם</a>.</p>
+      <p>השימוש בשירות מגיל 16 ומעלה בלבד. החשבון שלכם מקושר למספר הוואטסאפ שדרכו אתם כותבים, ואתם אחראים לאבטחת המספר הזה ושל כל חשבון Google שתחברו. חיבור גוגל הוא אופציונלי וניתן לביטול בכל רגע — בקשו מ${ASSISTANT} לנתק, או בטלו את הגישה ישירות דרך <a href="https://myaccount.google.com/permissions">ההרשאות בחשבון הגוגל שלכם</a>.</p>
 
-      <h3>ללא אחריות</h3>
-      <p>השירות ניתן ללא אחריות מכל סוג, מפורשת או משתמעת. תזכורת, קריאת יומן, או תיאום זמן פגישה עלולים להתעכב, לטעות, או לא להגיע — אין להסתמך על השירות בכל דבר שבו כשל כזה יגרום לנזק חמור (החלטות רפואיות, משפטיות, כספיות, או קריטיות לבטיחות).</p>
-
-      <h3>הגבלת אחריות</h3>
-      <p>ככל שהחוק מתיר זאת, המפעיל אינו אחראי לכל נזק עקיף, תוצאתי או מקרי הנובע מהשימוש בשירות או מחוסר היכולת להשתמש בו.</p>
-
-      <h3>סיום השימוש</h3>
-      <p>ניתן להפסיק את השימוש בשירות בכל רגע. בקשו מהעוזרת להשהות, או שלחו מייל ל<a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a> למחיקת החשבון וכל המידע הקשור אליו. המפעיל רשאי להשעות או לסיים גישה במקרה של הפרת תנאים אלה, או להפסיק את השירות כליל, בהודעה סבירה מראש כאשר הדבר מעשי.</p>
+      <h3>אחריות</h3>
+      <p>השירות ניתן בחינם וכפי שהוא. במידה המותרת על פי דין, המפעיל אינו אחראי לאובדן או לנזק שנגרמו מהשימוש בשירות או מחוסר היכולת להשתמש בו, לרבות תזכורת שאיחרה או לא הגיעה ותשובה שגויה. אין בכך כדי להגביל אחריות לרשלנות חמורה או לזדון, או כל אחריות שהדין אינו מאפשר להגביל או לשלול.</p>
 
       <h3>שינויים בתנאים</h3>
-      <p>אם תנאים אלה ישתנו באופן מהותי, התאריך בראש העמוד יתעדכן ונודיע על כך בשיחה.</p>
+      <p>אם נשנה את התנאים באופן מהותי, נודיע לכם בשיחה לפחות 14 יום לפני שהשינוי ייכנס לתוקף, והתאריך בראש העמוד יתעדכן. שינוי שנדרש על פי דין, או שדרוש בדחיפות לשמירה על אבטחה, עשוי להיכנס לתוקף מוקדם יותר; גם עליו נודיע. אם אינכם מסכימים לשינוי, תוכלו להפסיק להשתמש בשירות ולבקש שנמחק את המידע שלכם.</p>
+
+      <h3>הפסקת השימוש</h3>
+      <p>אפשר להפסיק בכל רגע. בקשו מ${ASSISTANT} להשהות, או שלחו מייל ל<a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a> למחיקת החשבון וכל המידע הקשור אליו.</p>
+      <p>אם נחליט לסגור את השירות, נודיע לכם בשיחה לפחות 30 יום מראש כשהדבר אפשרי, ותוכלו לבקש עותק של המידע שלכם לפני הסגירה. אנחנו רשאים להשעות גישה של משתמש ללא הודעה מוקדמת כשהדבר נדרש כדי לעצור הפרה חמורה של התנאים, פגיעה באחרים, או בעיית אבטחה.</p>
+
+      <h3>דין וסמכות שיפוט</h3>
+      <p>על תנאים אלה חל הדין של מדינת ישראל, וסמכות השיפוט נתונה לבתי המשפט המוסמכים בתל אביב-יפו. אין בתנאים אלה כדי לשלול זכויות שיש לכם לפי הדין של המדינה שלכם ושאי אפשר לוותר עליהן.</p>
 
       <h3>יצירת קשר</h3>
-      <p><a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
+      <p>${OPERATOR_HE} · <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
     </div>
 
     <div class="foot">
@@ -421,4 +469,4 @@ function termsPage() {
   `);
 }
 
-module.exports = { homePage, privacyPage, termsPage, BRAND, ASSISTANT, CONTACT_EMAIL, UPDATED };
+module.exports = { homePage, privacyPage, termsPage, BRAND, ASSISTANT, CONTACT_EMAIL, OPERATOR, UPDATED, TERMS_UPDATED };
