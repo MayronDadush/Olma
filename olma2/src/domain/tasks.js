@@ -242,7 +242,7 @@ const duplicateError = (existing) => err('conflict',
   + 'to change something about it use edit_task or set_task_reminder on that id.',
   { reason: 'duplicate', existingTaskId: Number(existing.id) });
 
-async function addTask(client, ownerId, { title, category, dueAt, endsAt, kind, location, parentId, source, remindAt, nudge, now }) {
+async function addTask(client, ownerId, { title, category, dueAt, endsAt, kind, location, parentId, source, remindAt, nudge, weekly, now }) {
   if (!title || !title.trim()) return err('invalid', 'title required');
   if (dueAt && !hasOffset(dueAt)) return badTime('due_at', dueAt);
   if (remindAt && !hasOffset(remindAt)) return badTime('remind_at', remindAt);
@@ -349,6 +349,25 @@ async function addTask(client, ownerId, { title, category, dueAt, endsAt, kind, 
       remindersAsked: true,
       ...(similarTo ? { similarTo } : {}),
     });
+  }
+  // "תזכיר לי X" with no when at all (the gateway hook heard it; the tool
+  // passes `weekly`): once a week at their morning hour until it is done,
+  // decided in reminders.startWeeklyNudge (owner, 2026-09-28). Only for a
+  // to-do that came out with no moment — a date, an hour or an event each
+  // arm their own, and those are the model reading a when the hook missed.
+  if (weekly === true && !rows[0].due_at && rows[0].kind !== 'event') {
+    const w = await reminders.startWeeklyNudge(client, ownerId, rows[0].id, { now });
+    if (w && !w.ok) return w;
+    if (w) {
+      return ok({
+        task: rows[0],
+        reminders: [w.data.reminder],
+        remindersAt: await localLabels(client, ownerId, [w.data.reminder]),
+        remindersAsked: false,
+        chase: { until: w.data.reminder.repeat_until, every: 'weekly' },
+        ...(similarTo ? { similarTo } : {}),
+      });
+    }
   }
   const auto = await autoAttach(client, ownerId, [rows[0]], now, { nudge: nudge === true });
   return ok({ task: rows[0], ...auto, ...(similarTo ? { similarTo } : {}) });

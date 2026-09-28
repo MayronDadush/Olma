@@ -40,6 +40,33 @@ const PHRASES = {
   ],
 };
 
+// "קוד כניסה" — the same shortcut, answered with an eight-digit CODE instead
+// of a link (2026-09-27). A link can only ever sign in the browser it opens in;
+// on an iPhone the home-screen app keeps cookies of its own, so the app's
+// sign-in screen sends the person here with the first phrase below already
+// typed (wa.me/?text=), and they type what comes back into the app
+// (dashboard-auth.createCode). A kind of its own, so no link phrase ever
+// answers with a code and no code phrase ever with a link.
+const CODE_PHRASES = {
+  he: [
+    'קוד כניסה לאפליקציה',
+    'קוד כניסה',
+    'קוד לאפליקציה',
+    'שלח לי קוד כניסה',
+    'שלחי לי קוד כניסה',
+    'שלח לי קוד',
+    'שלחי לי קוד',
+  ],
+  en: [
+    'app sign-in code',
+    'sign-in code',
+    'sign in code',
+    'login code',
+    'send me a code',
+    'app code',
+  ],
+};
+
 // Case, the marks around the words and the space between them are not part of
 // the request: "קישור?", "Link!", "שלחי  לי קישור 🙏" are the same message.
 // Hebrew points (niqqud) go too. Letters and digits of every script stay.
@@ -57,26 +84,26 @@ function normalize(text) {
 // plugin uses the same bound so a long message never leaves the gateway.
 const MAX_LENGTH = 40;
 
-function buildIndex(table) {
-  const index = new Map();
+function buildIndex(table, kind = 'link', index = new Map()) {
   for (const [lang, list] of Object.entries(table)) {
     for (const p of list) {
       const key = normalize(p);
-      if (key && !index.has(key)) index.set(key, lang);
+      if (key && !index.has(key)) index.set(key, { lang, kind });
     }
   }
   return index;
 }
-const INDEX = buildIndex(PHRASES);
+const INDEX = buildIndex(CODE_PHRASES, 'code', buildIndex(PHRASES, 'link'));
 
-// { lang } or null. `table` is injectable so a test can prove a new language
-// is one entry and not a code change.
+// { lang, kind: 'link' | 'code' } or null. `table` is injectable (as LINK
+// phrases) so a test can prove a new language is one entry and not a code
+// change.
 function matchLinkRequest(text, table) {
   const raw = String(text == null ? '' : text);
   if (!raw.trim() || raw.length > MAX_LENGTH * 2) return null;
   const index = table ? buildIndex(table) : INDEX;
-  const lang = index.get(normalize(raw));
-  return lang ? { lang } : null;
+  const hit = index.get(normalize(raw));
+  return hit ? { lang: hit.lang, kind: hit.kind } : null;
 }
 
-module.exports = { PHRASES, MAX_LENGTH, normalize, matchLinkRequest };
+module.exports = { PHRASES, CODE_PHRASES, MAX_LENGTH, normalize, matchLinkRequest };

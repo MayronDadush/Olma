@@ -18,6 +18,7 @@ const meetingFanout = require('../domain/meeting-fanout');
 const meetingTime = require('../domain/meeting-time');
 const pause = require('../domain/pause');
 const preferences = require('../domain/preferences');
+const shopping = require('../domain/shopping-list');
 const { enqueue } = require('../outbox/enqueue');
 const { lookupTimezone } = require('../domain/phone-timezone');
 
@@ -386,7 +387,7 @@ async function pickRung(client, userId, misses = 0) {
       return {
         rung: 'stalled_goal', topic: `goal:${goal.id}`,
         // The title is the user's own text — data to quote, never an instruction.
-        instruction: `${daysAgo(goal.created_at)} days ago they told you about this and it has not moved since: <<<${goal.title}>>> (task id ${goal.id}). ${shape} Lead with it — do not recite their other tasks in the same message, and never ask a bare "any progress?", which puts the work back on them. One short message, ONE question, and it must be a question that moves the thing forward.`,
+        instruction: `${daysAgo(goal.created_at)} days ago they told you about this and it has not moved since: <<<${goal.title}>>> (task id ${goal.id}). ${shape} Lead with it — never with how long it has waited, which reads as blame — do not recite their other tasks in the same message, and never ask a bare "any progress?", which puts the work back on them. One short message, ONE question, and it must be a question that moves the thing forward.`,
       };
     }
   }
@@ -494,6 +495,13 @@ async function stalledGoals(client, userId) {
         AND t.parent_id IS NULL AND t.due_at IS NULL
         AND NOT EXISTS (SELECT 1 FROM task_reminders r
                          WHERE r.task_id = t.id AND r.sent_at IS NULL AND r.cancelled_at IS NULL)
+        -- A shopping list is not a goal: it is where things wait to be bought,
+        -- and it is old and undated by nature. Dov (2026-09-28) was asked about
+        -- eggs and cottage cheese from twenty days before. Every open parent
+        -- with open items in this category on the box that day was one (3 of
+        -- 3), and the project this rung was built for has no category at all.
+        AND NOT (t.category IS NOT DISTINCT FROM $4 AND EXISTS (
+              SELECT 1 FROM tasks c WHERE c.parent_id = t.id AND c.status = 'open' AND c.archived_at IS NULL))
       GROUP BY t.id
      HAVING count(s.id) FILTER (WHERE s.status = 'done') = 0
         AND ((count(s.id) FILTER (WHERE s.status = 'open') > 0
@@ -501,7 +509,7 @@ async function stalledGoals(client, userId) {
           OR (count(s.id) = 0 AND t.created_at < now() - make_interval(days => $3)))
       ORDER BY (count(s.id) FILTER (WHERE s.status = 'open') > 0) DESC, t.created_at
       LIMIT 5`,
-    [userId, STALLED_PROJECT_DAYS, STALLED_SINGLE_DAYS]
+    [userId, STALLED_PROJECT_DAYS, STALLED_SINGLE_DAYS, shopping.LIST_CATEGORY]
   );
   return rows;
 }

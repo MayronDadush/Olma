@@ -117,6 +117,17 @@ function leadingOption(options) {
     || (new Date(a.startsAt || 0) - new Date(b.startsAt || 0)))[0];
 }
 
+// Whether the leading time already has what it needs: a game's number when the
+// room gave one, and otherwise two people who can both make it. One place, so
+// the base line and the offer to drop it (coordination-policy) cannot disagree
+// about whether a room has a direction.
+function enoughOn(lead) {
+  if (!lead) return false;
+  return lead.quorum && lead.quorum.known && lead.quorum.min !== null
+    ? Boolean(lead.quorum.met)
+    : (lead.yes || []).length >= 2;
+}
+
 // `co` is domain/group-meetings.coordinationStatus's `coordination`, plus the
 // three stamps off the meeting row. Returns the one line to say, or none.
 //
@@ -144,12 +155,14 @@ function withClocks(line, co, { timezone, nowMs } = {}) {
   for (const f of SLOT_FIELDS) {
     if (line[f] && co.moments && co.moments[line[f]]) at[f] = co.moments[line[f]];
   }
+  // A line that names several times (`laid`) carries each one's moment, in order.
+  if (Array.isArray(line.slots)) at.slots = line.slots.map((t) => (co.moments && co.moments[t]) || null);
   return { ...line, multiZone: true, zones, roomTz, at };
 }
 
 function decideLine(co, {
-  saidStarted, saidBase, saidBaseSlot, saidChase, saidDone, saidCalendar, saidDayOf, saidHour, saidTime,
-  pendingRelay, startedAtMs, nowMs, timezone, tableSaidAtMs, reopenedAt, reopenedFrom, saidReopened,
+  saidStarted, saidBase, saidBaseSlot, saidBaseStartAt, saidChase, saidDone, saidCalendar, saidDayOf, saidHour,
+  saidTime, pendingRelay, startedAtMs, nowMs, timezone, tableSaidAtMs, reopenedAt, reopenedFrom, saidReopened,
   roomAsleep,
 } = {}) {
   if (!co) return { kind: 'none', reason: 'nothing being coordinated' };
@@ -272,18 +285,26 @@ function decideLine(co, {
   // and a time deleted and replaced thirty seconds later is ONE thing that
   // happened. Said immediately, the room would read "שבת 16:00 כבר לא על
   // השולחן" and then, a minute later, that the table had moved again.
+  //
+  // A time is the SAME time by its moment, not its words (migration 097):
+  // deleted and put back as "שבת ב-16:00" it is still on the table, and the
+  // words alone would tell the room otherwise. Only where either side has no
+  // instant — a row stamped before 097, a time nobody pinned — are the words
+  // all there is to compare.
+  const saidMs = saidBaseStartAt ? new Date(saidBaseStartAt).getTime() : NaN;
+  const isSaid = (o) => (Number.isFinite(saidMs) && o.startsAt
+    ? new Date(o.startsAt).getTime() === saidMs
+    : o.slot === saidBaseSlot);
   const settledAt = tableSettledAt(co, tableSaidAtMs || 0);
   const settled = settledAt !== null && nowMs >= settledAt;
-  const namedGone = Boolean(saidBase && saidBaseSlot && lead && saidBaseSlot !== lead.slot
-    && !(co.options || []).some((o) => o.slot === saidBaseSlot) && settled);
+  const namedGone = Boolean(saidBase && saidBaseSlot && lead && !isSaid(lead)
+    && !(co.options || []).some(isSaid) && settled);
   if ((!saidBase || namedGone) && lead) {
     // What "a base" is depends on what the room said it needs. A game has a
     // number and it is that number; anywhere else two people who can both make
     // the same time IS the direction, and one person agreeing with themselves
     // is not.
-    const enough = lead.quorum && lead.quorum.known && lead.quorum.min !== null
-      ? lead.quorum.met
-      : lead.yes.length >= 2;
+    const enough = enoughOn(lead);
     // Counted against the whole ROOM (owner, 2026-09-26), and it names
     // everybody who has not answered this time — asked or not, because the
     // sentence is "has not answered", which is true of both, and the room
@@ -304,7 +325,7 @@ function decideLine(co, {
     // or the grace already armed, the next thing this room hears is "סגור".
     if (enough && lead.yes.length < total && !co.settleDueAt) {
       const line = {
-        slot: lead.slot, yes: lead.yes.length, total,
+        slot: lead.slot, startsAt: lead.startsAt || null, yes: lead.yes.length, total,
         missing: unanswered.slice(0, MAX_TAGS),
         more: Math.max(0, unansweredPeople.length - Math.min(unanswered.length, MAX_TAGS)),
       };
@@ -312,11 +333,46 @@ function decideLine(co, {
     }
   }
 
+  // The table was LAID and the room never heard what is on it (2026-09-28,
+  // coordination 57). The base line speaks only once a time has a direction,
+  // and the table line only once a base line has been said, so three times
+  // with one yes each — מירון's Monday, Tuesday and Thursday — reached the
+  // room as nothing at all for a day and a half, while the room's only picture
+  // was "we'll close an exact evening". Said ONCE, a quarter of an hour after
+  // the first time went on (the same settle as the table line, so a burst of
+  // additions is one sentence), and it is the watermark from then on: every
+  // later change is the table line's. Only the shape — which times — never who
+  // said what. TWO times at least: one time with its proposer's yes on it is
+  // still "one person agreeing with themselves", which the owner ruled is not
+  // news (the base tests below); a choice nobody has made is.
+  // Never after a REOPENING: that room heard a table settle and then that it
+  // reopened, and it carries on from where it stopped (meetings.reopenMeeting).
+  if (!saidBase && !tableSaidAtMs && !reopenedAt && (co.options || []).length >= 2) {
+    const firstAt = Math.min(...(co.tableChangedAts || []).map((t) => new Date(t).getTime())
+      .filter((t) => Number.isFinite(t)));
+    if (Number.isFinite(firstAt) && nowMs >= firstAt + TABLE_SETTLE_MS) {
+      const slots = co.options.slice()
+        .sort((a, b) => new Date(a.startsAt || 0) - new Date(b.startsAt || 0))
+        .map((o) => o.slot);
+      return { kind: 'laid', slots };
+    }
+  }
+
   // Mid-way, to speed it up: only ever about people who have answered NOTHING.
   // Somebody who said no to every option has answered — chasing them would be
   // asking them to change their mind in front of the room.
   const silent = (co.silent || []).filter(said).map((p) => p.phone).filter(Boolean);
-  if (!saidChase && silent.length && nowMs >= chaseDueAt(startedAtMs, earliestStart(co))) {
+  //
+  // The hour is counted from the LAST invite that reached anybody, never from
+  // the start alone. Coordination 57 opened at 21:00; every invite but the
+  // asker's waited for the morning, and the chase — due at 03:00, held for the
+  // room's night — went out at 09:00:08, two minutes before those invites did,
+  // and tagged the one person it could: the man who had asked for the game and
+  // answered it in the room. Measured from 09:03 it is due at 10:03, by which
+  // time he had answered on the table and the chase named the three who had
+  // just been asked.
+  const askedFromMs = Math.max(startedAtMs || 0, co.lastAskedAt ? new Date(co.lastAskedAt).getTime() : 0);
+  if (!saidChase && silent.length && nowMs >= chaseDueAt(askedFromMs, earliestStart(co))) {
     return { kind: 'chase', missing: silent.slice(0, MAX_TAGS) };
   }
 
@@ -378,7 +434,7 @@ function earliestStart(co) {
 }
 
 module.exports = {
-  decideGroupLine, leadingOption, chaseDueAt, localDay, whoIsIn, roomTotal,
+  decideGroupLine, leadingOption, enoughOn, chaseDueAt, localDay, whoIsIn, roomTotal,
   tableSettledAt,
   CHASE_FALLBACK_MS, CHASE_AFTER_MS, HOUR_BEFORE_MS, DAY_OF_MIN_LEAD_MS, TABLE_SETTLE_MS,
 };
