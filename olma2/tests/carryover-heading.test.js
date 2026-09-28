@@ -4,6 +4,10 @@
 // Hebrew sentence, and a reader that cannot find the heading skips the card
 // in silence — so rewording it in one place would have switched the leak
 // check off while it went on reading green.
+// helpers first: it sets OLMA_IMMUTABLE_IDENTITY=off before provision loads.
+// Without it seedWorkspace chattr +i's the fixture, which only bites as root —
+// on the box, inside deploy.sh — where the rmSync below then fails EPERM.
+require('./helpers');
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
