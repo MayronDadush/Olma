@@ -97,6 +97,26 @@ const TEMPLATES = [
     sample: { url: 'https://allma.world/d/AbCdEfGhIjKlMnOpQrStUv' },
     text: 'Here’s your page 👇\n{{url}}',
   },
+  // The whole answer to "קוד כניסה" (domain/link-request.js, the code kind):
+  // the way into the home-screen app on an iPhone, which no link can sign in
+  // because its cookies are its own. Eight digits, ten minutes, one use. The
+  // app's code field takes the whole message pasted and finds the digits, so
+  // the sentence around them costs the person nothing.
+  {
+    key: 'dashboard_code', audience: 'private', label: 'קוד כניסה לאפליקציה',
+    help: 'התשובה כשמישהו כותב "קוד כניסה" (מהאפליקציה באייפון). יוצאת בלי מודל, מיד. הקוד תקף ל־10 דקות.',
+    vars: { code: 'שמונה ספרות, נפתח פעם אחת' }, required: ['code'],
+    sample: { code: '4821 0937' },
+    text: 'הקוד לכניסה לאפליקציה 👇\n{{code}}\nתקף ל־10 דקות.',
+  },
+  {
+    key: 'dashboard_code_en', audience: 'private', label: 'קוד כניסה לאפליקציה', help: '',
+    vars: { code: 'eight digits, works once' }, required: ['code'],
+    sample: { code: '4821 0937' },
+    // Short lines on purpose: an English line of four words or more is dropped
+    // by the reply gate for a reader who writes Hebrew (reply-leak.js).
+    text: 'Your app code 👇\n{{code}}\nValid 10 minutes.',
+  },
   {
     key: 'reminder', audience: 'private', label: 'תזכורת',
     help: 'התזכורת עצמה, בשעה שהאדם ביקש. יוצאת בלי מודל, ולכן גם כשאין קרדיט.',

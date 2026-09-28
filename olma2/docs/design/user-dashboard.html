@@ -18,20 +18,34 @@
      its own white behind them for the instant before the CSS lands. -->
 <meta name="color-scheme" content="light dark">
 <title>עולמה שלי</title>
+<!-- The page as an app on the home screen (src/adapters/http/pwa.js): the
+     manifest that makes it installable, the icon iOS puts on the home screen,
+     and the colour the phone paints its own bars in. Served from
+     scripts/serve-design.js these 404 harmlessly. theme-color is the page's
+     own ground in each scheme, so the status bar and the page are one piece. -->
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icons/icon-192.png" sizes="192x192" type="image/png">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<meta name="theme-color" content="#004643" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#004643" media="(prefers-color-scheme: dark)">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="עולמה">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;500;600;700&family=Rubik:wght@500;600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Hebrew:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
 
 <style>
 /* ─────────────────────────  tokens  ───────────────────────── */
 :root{
-  --bg:#F4F3F8;
-  --bg-tint:#EDEBF6;
+  --bg:#F0EDE5;
+  --bg-tint:#E6E3DA;
   --surface:#FFFFFF;
-  --surface-2:#FAF9FE;
-  --sep:#E7E5F0;
-  --sep-2:#D9D6E6;
-  --text:#141322;
+  --surface-2:#F8F7F3;
+  --sep:#E2DFD6;
+  --sep-2:#D2CFC5;
+  --text:#0E1F1E;
   /* The tertiary grey measured 2.3:1 on either ground — quiet past the point
      of being text at all — and it carries every section label, every form
      label, the times down the side of each row and every empty state. 4.6:1
@@ -39,50 +53,51 @@
      moved with it, because a secondary tone that is no darker than the
      tertiary one is not a hierarchy, it is two greys. Measured against
      --bg-tint, the darkest ground either of them ever sits on. */
-  --text-2:#5C5973;
-  --text-3:#6A6684;
+  --text-2:#44504E;
+  --text-3:#56615E;
   /* Hue 241 is the blurple every product ships with — Discord's, Stripe's,
      half of Material's. It was the one thing on this page that could have
      been anybody's. Moved to 256: further into violet, deeper, with more
      chroma, which is also the direction the neutrals were already leaning
      (#F4F3F8 and #6C6982 are violet-biased greys, not neutral ones). Same
      colour, said properly. */
-  --accent:#5B2FD6;
-  --accent-2:#4A22B4;
-  --accent-soft:#EEE8FC;
-  --prog:rgba(91,47,214,.26);
+  --accent:#004643;
+  --accent-2:#00302E;
+  --accent-soft:#E1EBE8;
+  --shared-bg:#E1EBE8;
+  --prog:rgba(0,70,67,.24);
   /* The accent as a LINE rather than a fill: a 1.5px ring around the option
      with the most answers, which has to read on a card without becoming a
      second button. Heavier than --prog, which is an arc behind text and can
      afford to be faint. */
-  --accent-line:rgba(91,47,214,.42);
+  --accent-line:rgba(0,70,67,.40);
   /* The three semantic colours are TEXT as often as they are fill — "overdue",
      "saved", "remove the connection" — and as text they measured 3.2-4.1.
      Darkened until they pass, which also takes white-on-fill from 3.5-4.5 up
      over 5 in the same move. */
-  --danger:#C92B22;
-  --danger-soft:#FCEBE9;
-  --warn:#925E07;
-  --warn-soft:#F8EFDC;
-  --ok:#157853;
-  --ok-soft:#E4F4EE;
-  --drop-line:#2B6EF2;
+  --danger:#B03A2E;
+  --danger-soft:#F6E4E1;
+  --warn:#8A5A00;
+  --warn-soft:#F6EDD6;
+  --ok:#0F6B52;
+  --ok-soft:#E2EFE9;
+  --drop-line:#2F7F9E;
   /* The meeting ring's own three colours. A "no" needs a red that is NOT the
      danger red — deleting and being unable to come are different weights of
      bad, and the arcs sit millimetres apart. Gold is reserved for the one
      state no other colour is allowed to mean: everybody can. */
-  --no-arc:#E0736A;
-  --gold:#B07A0B;
-  --gold-arc:#D9A21C;
-  --gold-soft:#FBF1DA;
+  --no-arc:#D9776A;
+  --gold:#8A6100;
+  --gold-arc:#F9C23C;
+  --gold-soft:#FDF1D2;
   /* The two marks are drawn objects, not glyphs in a text colour, so they keep
      their own palette across both themes — a crown that inverts stops being a
      crown. Only the line colour follows the page. */
-  --mk-line:#141322;
-  --mk-gold:#F2B32C;
-  --mk-gold-s:#C4841A;
+  --mk-line:#0E1F1E;
+  --mk-gold:#F9C23C;
+  --mk-gold-s:#CF9A1F;
   --mk-paper:#FFFFFF;
-  --mk-paper-s:#DDD9EC;
+  --mk-paper-s:#E4E1D7;
   --knob:#FFFFFF;
   --seg-on:#FFFFFF;
   /* The ink that sits ON a filled control — accent, ok, warn, danger. White
@@ -95,7 +110,7 @@
   --on-accent:#FFFFFF;
   --on-accent-soft:rgba(255,255,255,.25);
   --glass:rgba(255,255,255,.74);
-  --glass-line:rgba(20,19,34,.08);
+  --glass-line:rgba(14,31,30,.08);
   /* Liquid glass, used sparingly: a lens only reads as a lens on something
      that already floats above the page. --rim is the specular hairline that
      catches light on the top edge and returns faintly along the bottom;
@@ -112,9 +127,9 @@
   --lens-bar:blur(15px) saturate(280%) brightness(1.05);
   --sheen:linear-gradient(178deg, rgba(255,255,255,.42), rgba(255,255,255,.06) 42%, rgba(255,255,255,0) 62%);
   --lens:blur(28px) saturate(190%) brightness(1.04);
-  --shadow-s:0 1px 2px rgba(20,19,34,.05);
-  --shadow-m:0 1px 2px rgba(20,19,34,.05), 0 10px 28px -16px rgba(20,19,34,.28);
-  --shadow-l:0 24px 64px -20px rgba(20,19,34,.34), 0 2px 8px rgba(20,19,34,.08);
+  --shadow-s:0 1px 2px rgba(14,31,30,.05);
+  --shadow-m:0 1px 2px rgba(14,31,30,.05), 0 10px 28px -16px rgba(14,31,30,.28);
+  --shadow-l:0 24px 64px -20px rgba(14,31,30,.34), 0 2px 8px rgba(14,31,30,.08);
   --dirf:1;
   --strike-origin:right;
   /* Cartoon timing: nothing starts or stops abruptly. --ease-io is the
@@ -134,106 +149,146 @@
      the access control it reveals all read from it, so they cannot drift out
      of step the way three hand-copied durations did. */
   --sw-t:.26s;
+  /* Allma, Cypress + Mustard (the owner, 2026-09-28; brand/README.md). The
+     primary action is the one Mustard thing on a screen, with Cypress on it
+     (6.6:1); every other fill is a SELECTION and stays --accent. The mark
+     carries its own four colours so the night can swap them. */
+  --action:#F9C23C;
+  --on-action:#004643;
+  --logo-d:#004643;
+  --logo-l:#F0EDE5;
+  --logo-lens:#F9C23C;
+  --logo-ring:#004643;
+  /* The band: the header and the page title sit on Cypress, the way the brand
+     book draws the app (the owner, 2026-09-28). At night the page
+     is warm charcoal rather than near-black cypress (the owner picked it over
+     three others, 2026-09-28), so Cypress lives in the band and nowhere else. --on-band-2 is the quiet line (greeting, clock). */
+  --band:#004643;
+  --on-band:#F0EDE5;
+  --on-band-2:#BFD3CF;
+  --band-tint:rgba(255,255,255,.14);
+  --font-body:'IBM Plex Sans Hebrew','IBM Plex Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --font-display:'IBM Plex Sans Hebrew','IBM Plex Sans',system-ui,sans-serif;
 }
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
-    --bg:#0C0B11;
-    --bg-tint:#26232F;
-    --surface:#181720;
-    --surface-2:#1F1D29;
-    --sep:#2A2836;
-    --sep-2:#3A3749;
-    --text:#F4F3FA;
-    --text-2:#9D9AB2;
-    --text-3:#8D8BA0;
-    --accent:#A38CFF;
-    --accent-2:#BBA9FF;
-    --accent-soft:#291D4C;
-    --prog:rgba(163,140,255,.34);
-    --accent-line:rgba(163,140,255,.52);
-    --danger:#FF6B60;
-    --danger-soft:#33191A;
+    --bg:#1B1A18;
+    --bg-tint:#25241F;
+    --surface:#26251F;
+    --surface-2:#2D2B26;
+    --sep:#35332D;
+    --sep-2:#44413A;
+    --text:#EDE9DF;
+    --text-2:#B9B5AC;
+    --text-3:#A39F96;
+    --accent:#7CC4BA;
+    --accent-2:#9DD6CD;
+    --accent-soft:#1F3532;
+    --shared-bg:#213C38;
+    --prog:rgba(124,196,186,.32);
+    --accent-line:rgba(124,196,186,.52);
+    --danger:#F08A7E;
+    --danger-soft:#3A1C19;
     --warn:#F0AE3E;
     --warn-soft:#332616;
-    --ok:#41CB94;
+    --ok:#6FD3A6;
     --ok-soft:#12352A;
-    --drop-line:#7FA8FF;
-    --no-arc:#C9584F;
-    --gold:#E3B45C;
-    --gold-arc:#D9A21C;
-    --gold-soft:#2C2412;
-    --mk-line:#ECEAF6;
-    --mk-paper:#3A3750;
-    --mk-paper-s:#2A2840;
+    --drop-line:#7FB8D0;
+    --no-arc:#C9665A;
+    --gold:#E9BE5C;
+    --gold-arc:#F9C23C;
+    --gold-soft:#2E2612;
+    --mk-line:#EDE9DF;
+    --mk-paper:#302E28;
+    --mk-paper-s:#26251F;
     --knob:#FFFFFF;
-    --seg-on:#383345;
+    --seg-on:#3A3832;
     /* 6.7:1 on the accent, 7-10:1 on ok/warn/danger — see the light block. */
-    --on-accent:#17112E;
+    --on-accent:#1B1A18;
     --on-accent-soft:rgba(0,0,0,.2);
-    --glass:rgba(24,23,32,.72);
+    --glass:rgba(38,37,31,.72);
     --glass-line:rgba(255,255,255,.09);
-    --glass-panel:rgba(30,28,41,.84);
+    --glass-panel:rgba(42,41,35,.84);
     --rim-soft:inset 0 .6px 0 rgba(255,255,255,.16);
-    --bar:rgba(24,23,32,.40);
-    --toast-bg:rgba(26,25,35,.58);
+    --bar:rgba(38,37,31,.40);
+    --toast-bg:rgba(38,37,31,.58);
     --lens-bar:blur(15px) saturate(300%) brightness(1.22);
     --rim:inset 0 .6px 0 rgba(255,255,255,.26), inset 0 -.6px 0 rgba(255,255,255,.07), inset .6px 0 0 rgba(255,255,255,.11), inset -.6px 0 0 rgba(255,255,255,.11);
     --sheen:linear-gradient(178deg, rgba(255,255,255,.13), rgba(255,255,255,.02) 42%, rgba(255,255,255,0) 62%);
     --lens:blur(28px) saturate(200%) brightness(1.16);
     --shadow-s:0 1px 2px rgba(0,0,0,.4);
     --shadow-m:0 1px 2px rgba(0,0,0,.4), 0 10px 28px -16px rgba(0,0,0,.8);
+    --action:#F9C23C;
+    --on-action:#0E1F1E;
+    --logo-d:#1B1A18;
+    --logo-l:#EDE9DF;
+    --logo-lens:#F9C23C;
+    --logo-ring:#EDE9DF;
+    --band:#004643;
+    --on-band:#EDE9DF;
+    --on-band-2:#AFC6C1;
+    --band-tint:rgba(255,255,255,.1);
     --shadow-l:0 24px 64px -20px rgba(0,0,0,.8), 0 2px 8px rgba(0,0,0,.5);
   }
 }
 :root[data-theme="dark"]{
-  --bg:#0C0B11;
-  --bg-tint:#26232F;
-  --surface:#181720;
-  --surface-2:#1F1D29;
-  --sep:#2A2836;
-  --sep-2:#3A3749;
-  --text:#F4F3FA;
-  --text-2:#9D9AB2;
-  --text-3:#8D8BA0;
-  --accent:#A38CFF;
-  --accent-2:#BBA9FF;
-  --accent-soft:#291D4C;
-  --prog:rgba(163,140,255,.34);
-  --accent-line:rgba(163,140,255,.52);
-  --danger:#FF6B60;
-  --danger-soft:#33191A;
+  --bg:#1B1A18;
+  --bg-tint:#25241F;
+  --surface:#26251F;
+  --surface-2:#2D2B26;
+  --sep:#35332D;
+  --sep-2:#44413A;
+  --text:#EDE9DF;
+  --text-2:#B9B5AC;
+  --text-3:#A39F96;
+  --accent:#7CC4BA;
+  --accent-2:#9DD6CD;
+  --accent-soft:#1F3532;
+  --shared-bg:#213C38;
+  --prog:rgba(124,196,186,.32);
+  --accent-line:rgba(124,196,186,.52);
+  --danger:#F08A7E;
+  --danger-soft:#3A1C19;
   --warn:#F0AE3E;
   --warn-soft:#332616;
-  --ok:#41CB94;
+  --ok:#6FD3A6;
   --ok-soft:#12352A;
-  --drop-line:#7FA8FF;
-  --no-arc:#C9584F;
-  --gold:#E3B45C;
-  --gold-arc:#D9A21C;
-  --gold-soft:#2C2412;
-  --mk-line:#ECEAF6;
-  --mk-paper:#3A3750;
-  --mk-paper-s:#2A2840;
+  --drop-line:#7FB8D0;
+  --no-arc:#C9665A;
+  --gold:#E9BE5C;
+  --gold-arc:#F9C23C;
+  --gold-soft:#2E2612;
+  --mk-line:#EDE9DF;
+  --mk-paper:#302E28;
+  --mk-paper-s:#26251F;
   --knob:#FFFFFF;
-  --seg-on:#383345;
-  --on-accent:#17112E;
+  --seg-on:#3A3832;
+  --on-accent:#1B1A18;
   --on-accent-soft:rgba(0,0,0,.2);
-  --glass:rgba(24,23,32,.72);
+  --glass:rgba(38,37,31,.72);
   --glass-line:rgba(255,255,255,.09);
-  --glass-panel:rgba(30,28,41,.84);
+  --glass-panel:rgba(42,41,35,.84);
   --rim-soft:inset 0 .6px 0 rgba(255,255,255,.16);
-  --bar:rgba(24,23,32,.40);
-  --toast-bg:rgba(26,25,35,.58);
+  --bar:rgba(38,37,31,.40);
+  --toast-bg:rgba(38,37,31,.58);
   --lens-bar:blur(15px) saturate(300%) brightness(1.22);
   --rim:inset 0 .6px 0 rgba(255,255,255,.26), inset 0 -.6px 0 rgba(255,255,255,.07), inset .6px 0 0 rgba(255,255,255,.11), inset -.6px 0 0 rgba(255,255,255,.11);
   --sheen:linear-gradient(178deg, rgba(255,255,255,.13), rgba(255,255,255,.02) 42%, rgba(255,255,255,0) 62%);
   --lens:blur(28px) saturate(200%) brightness(1.16);
   --shadow-s:0 1px 2px rgba(0,0,0,.4);
   --shadow-m:0 1px 2px rgba(0,0,0,.4), 0 10px 28px -16px rgba(0,0,0,.8);
+  --action:#F9C23C;
+  --on-action:#0E1F1E;
+  --logo-d:#1B1A18;
+  --logo-l:#EDE9DF;
+  --logo-lens:#F9C23C;
+  --logo-ring:#EDE9DF;
+  --band:#004643;
+  --on-band:#EDE9DF;
+  --on-band-2:#AFC6C1;
+  --band-tint:rgba(255,255,255,.1);
   --shadow-l:0 24px 64px -20px rgba(0,0,0,.8), 0 2px 8px rgba(0,0,0,.5);
 }
-
-[dir="ltr"]{--dirf:-1;--strike-origin:left}
 
 /* ─────────────────────────  base  ───────────────────────── */
 *{box-sizing:border-box}
@@ -249,7 +304,7 @@ body{
   margin:0;
   background:var(--bg);
   color:var(--text);
-  font-family:'Assistant','Heebo',system-ui,-apple-system,'Segoe UI',sans-serif;
+  font-family:var(--font-body);
   font-size:16px;
   line-height:1.45;
   -webkit-font-smoothing:antialiased;
@@ -270,8 +325,14 @@ h1,h2,h3,p{margin:0}
 /* ─────────────────────────  top bar  ───────────────────────── */
 .topbar{
   display:flex;align-items:center;justify-content:space-between;
-  gap:14px;padding:26px 2px 10px;position:relative;
+  gap:14px;padding:26px 20px 10px;position:relative;
+  /* the band runs to the screen's edges: .app pads 18px, and this takes it back */
+  margin-inline:-18px;background:var(--band);color:var(--on-band);
+  /* the mark on Cypress is the night mark in both themes: its dark half is
+     --logo-d, and by day that is the band's own colour */
+  --logo-d:#0A1817;--logo-l:#EDE9DF;--logo-ring:#EDE9DF;
 }
+.topbar :focus-visible{outline-color:var(--on-band)}
 /* their own local time, dead centre and deliberately quiet — the one
    number that answers "is now a reasonable time" at a glance. */
 /* The clock IS the timezone: it is the only place in the app that shows one,
@@ -284,13 +345,13 @@ h1,h2,h3,p{margin:0}
 .topclock{
   flex:none;text-align:center;
   padding:5px 11px;border-radius:999px;
-  font-size:14.5px;font-weight:600;letter-spacing:.04em;color:var(--text-3);
+  font-size:14.5px;font-weight:600;letter-spacing:.04em;color:var(--on-band-2);
   font-variant-numeric:tabular-nums;
   transition:background var(--sw-t) var(--ease-io),color var(--sw-t) var(--ease-io),
              transform .3s var(--squash);
 }
-.topclock:active{background:var(--bg-tint);color:var(--text-2);transform:scale(.94)}
-.topclock:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.topclock:active{background:var(--band-tint);color:var(--on-band);transform:scale(.94)}
+.topclock:focus-visible{outline:2px solid var(--on-band);outline-offset:2px}
 .brand{
   display:flex;align-items:center;gap:11px;min-width:0;
   transition:opacity .34s var(--ease),transform .34s var(--ease);
@@ -333,24 +394,22 @@ html[data-v="me"] .brand{opacity:0;transform:translateY(-8px) scale(.94);pointer
   .avaBody,.avaLids,.avaStars,.avaHat,.avaConf{animation:none}
   .avaLids{transform:scaleY(var(--lid))}
 }
+.bmark{width:34px;height:34px;flex:none;display:block}
 .brand-txt{min-width:0}
 /* The name leads and the line under it is the welcome. It is one line and it
    stays one line: a header that reflows to two pushes the clock and the
    status pill around, and those two are the reason anybody looks up here. */
-.brand-hi{font-size:13px;color:var(--text-2);line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.brand-name{font-family:'Rubik',sans-serif;font-weight:600;font-size:17px;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.brand-hi{font-size:13px;color:var(--on-band-2);line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.brand-name{font-family:var(--font-display);font-weight:600;font-size:17px;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hdrend{display:flex;align-items:center;gap:9px;flex:none}
-/* Three icons, one pressed at a time — the same picture language as the seg
-   controls elsewhere, just small enough to live beside the clock on every
-   tab, not only on the profile page. */
-.themeicons{display:flex;gap:2px;padding:3px;border-radius:999px;background:var(--bg-tint);flex:none}
-.themeicons button{
-  width:27px;height:27px;border-radius:50%;display:grid;place-items:center;color:var(--text-3);
-  transition:background var(--sw-t) var(--ease-io),color var(--sw-t) var(--ease-io),transform .38s var(--squash);
-}
-.themeicons button svg{width:15px;height:15px}
-.themeicons button[aria-pressed="true"]{background:var(--surface);color:var(--accent);box-shadow:var(--shadow-s)}
-.themeicons button:active{transform:scale(.88)}
+/* "עולמה פעילה" said nothing to somebody who did not know she could be
+   anything else (owner, 2026-09-28). The pill is only there when it is news:
+   paused. The slot keeps its width so the clock does not move. */
+html:not([data-paused]) .livepill{visibility:hidden}
+/* The light/dark choice, on the profile page with its words beside each
+   picture. It used to live here, beside the clock on every tab. */
+.themeseg button{display:inline-flex;align-items:center;justify-content:center;gap:6px}
+.themeseg button svg{width:15px;height:15px;flex:none}
 /* The pill under the clock, and the name says what it LOOKS like rather than
    what it means. It was `.live`, and something else on this page then used
    `live` to mean "this section has real rooms behind it" — one word, two
@@ -410,14 +469,14 @@ html[data-v="me"] .brand{opacity:0;transform:translateY(-8px) scale(.94);pointer
    top — the page revealing itself a second time, immediately. So the animation
    stays off for the view the intro just finished revealing, and go() clears the
    marker so every later view change animates normally. */
-html.intro .view.active > *,
-html.intro-settled .view.active > *{animation:none}
+html.intro .view.active > *,html.intro .view.active > .title > *,
+html.intro-settled .view.active > *,html.intro-settled .view.active > .title > *{animation:none}
 @keyframes introUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
 @keyframes introBar{from{opacity:0;transform:translateY(22px) scale(.97)}to{opacity:1;transform:none}}
-html.intro:not(.intro-go) .title,
+html.intro:not(.intro-go) .title > *,
 html.intro:not(.intro-go) [data-stage],
 html.intro:not(.intro-go) .tabbar{opacity:0}
-html.intro-go .title{animation:introUp .5s var(--ease) both}
+html.intro-go .title > *{animation:introUp .5s var(--ease) both}
 html.intro-go [data-stage="1"] .glabel{animation:introUp .5s var(--ease) .06s both}
 /* DOM order IS reading order in both directions, so one index serves rtl and
    ltr alike */
@@ -428,13 +487,30 @@ html.intro-go [data-stage="2"]{animation:introUp .5s var(--ease) .32s both}
 html.intro-go [data-stage="3"]{animation:introUp .5s var(--ease) .38s both}
 html.intro-go .tabbar{animation:introBar .55s var(--ease) .3s both}
 @media (prefers-reduced-motion:reduce){
-  html.intro .title,html.intro [data-stage],html.intro .tabbar,
+  html.intro .title > *,html.intro [data-stage],html.intro .tabbar,
   html.intro .chanrow > .chan,html.intro .glabel{animation:none;opacity:1}
 }
 
-.title{padding:8px 2px 18px}
-.title h1{font-family:'Rubik',sans-serif;font-weight:700;font-size:33px;line-height:1.12;letter-spacing:-.015em;text-wrap:balance}
-.title p{margin-top:6px;color:var(--text-2);font-size:15px;max-width:52ch}
+/* The title closes the band the top bar opened: same Cypress, same bleed,
+   and the rounded end is here. The two are separate boxes that touch, so
+   nothing may move one without the other — the rise below plays on the
+   title's WORDS, never on its box, or a seam opens for a quarter second. */
+.title{
+  padding:8px 20px 26px;margin:0 -18px 18px;
+  background:var(--band);color:var(--on-band);border-radius:0 0 28px 28px;
+}
+.title h1{font-family:var(--font-display);font-weight:700;font-size:33px;line-height:1.12;letter-spacing:-.015em;text-wrap:balance}
+/* One line, always: a second line made the band a third of the screen (the
+   owner, 2026-09-28). The words are written to fit; the ellipsis is only for
+   a narrow phone or a long name. */
+.title p{margin-top:6px;color:var(--on-band-2);font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* On home the first card sits over the band's end, as in the brand book. A
+   negative margin rather than a named neighbour: whichever block is shown
+   first (today, the install card, the home cards) is the one that rises. */
+.view[data-view="tools"] > .title{padding-bottom:52px;margin-bottom:-30px}
+.view[data-view="tools"] > .title ~ *{position:relative}
+.view.active > .title{animation:none}
+.view.active > .title > *{animation:rise .25s var(--ease) both}
 
 .glabel{
   font-size:12.5px;font-weight:600;color:var(--text-3);
@@ -474,6 +550,7 @@ html.intro-go .tabbar{animation:introBar .55s var(--ease) .3s both}
   /* The face is light grey in this theme, not the white every other card
      uses — on white there is nothing for the rim to be seen against. */
   --sugg-face:#EDF1F3;
+  --sugg-yes-ink:#0A6573;
   --sugg-rim:16%;
   --sugg-aura:.28;
   --sugg-mix-a:13%;
@@ -489,12 +566,12 @@ html.intro-go .tabbar{animation:introBar .55s var(--ease) .3s both}
 }
 @media (prefers-color-scheme:dark){
   :root:not([data-theme="light"]) .sugg{
-    --sugg-a:#35CEE2;--sugg-b:#8AD6FF;--sugg-face:var(--surface);
+    --sugg-a:#35CEE2;--sugg-b:#8AD6FF;--sugg-face:#33312B;--sugg-yes-ink:#8FE3EE;
     --sugg-rim:22%;--sugg-aura:.5;--sugg-mix-a:24%;--sugg-mix-b:20%;
   }
 }
 :root[data-theme="dark"] .sugg{
-  --sugg-a:#35CEE2;--sugg-b:#8AD6FF;--sugg-face:var(--surface);
+  --sugg-a:#35CEE2;--sugg-b:#8AD6FF;--sugg-face:#33312B;--sugg-yes-ink:#8FE3EE;
   --sugg-rim:22%;--sugg-aura:.5;--sugg-mix-a:24%;--sugg-mix-b:20%;
 }
 /* The travelling light, third attempt and the first one that actually goes
@@ -554,6 +631,11 @@ html.intro-go .tabbar{animation:introBar .55s var(--ease) .3s both}
 .sugg .sicon{flex:none;width:19px;height:19px;color:var(--sugg-a);margin-top:1px}
 .sugg .sicon svg{width:19px;height:19px;display:block}
 .sugg .stext{display:grid;gap:3px;min-width:0}
+/* Who is speaking, said on every card and not only when there is a second
+   one (owner, 2026-09-28). "Olma noticed", never "AI": nothing here is a
+   model's — `domain/task-suggestions.js` is three fixed rules and a word
+   count — and a label is a promise about where a thing came from. */
+.sugg .slbl{font-size:11.5px;font-weight:700;letter-spacing:.04em;color:var(--sugg-a);margin-bottom:-2px}
 /* Their own words, and they may be long — this wraps rather than truncating,
    because a proposal to remove a task the person cannot fully read is one
    they cannot judge. */
@@ -576,7 +658,10 @@ html.intro-go .tabbar{animation:introBar .55s var(--ease) .3s both}
   border-radius:11px;padding:8px 16px;font-size:13.5px;font-weight:600;cursor:pointer;
   transition:transform .38s var(--squash),filter .3s var(--ease-io);
 }
-.sugg .sbtn.yes{background:var(--accent);color:var(--on-accent)}
+/* The card's own turquoise, as a tint rather than a fill (the owner,
+   2026-09-28): the tasks screen keeps its one Mustard thing, "משימה חדשה",
+   and at night the card sits a step lighter than the cards around it. */
+.sugg .sbtn.yes{background:color-mix(in oklab,var(--sugg-a) 20%,transparent);color:var(--sugg-yes-ink)}
 .sugg .sbtn:active{transform:scale(.98)}
 .sugg .sbtn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
@@ -634,7 +719,9 @@ button.row:active{background:var(--bg-tint)}
 .tile.files{background:linear-gradient(160deg,#5AD08A,#1FA35F)}
 .citylist{max-height:46vh;overflow-y:auto;-webkit-overflow-scrolling:touch}
 .citylist .row-end{font-variant-numeric:tabular-nums;color:var(--text-3);font-size:13px;margin-inline-start:auto}
-.tile.call{background:var(--accent);color:var(--on-accent)}
+/* The call is the one channel that is Olma's own, so it wears the brand's
+   Mustard beside WhatsApp's green and iMessage's blue (the owner, 2026-09-28). */
+.tile.call{background:var(--action);color:var(--on-action)}
 .tile.ghost{background:var(--bg-tint);color:var(--text-2);box-shadow:none}
 
 /* ─────────────────────────  switch  ───────────────────────── */
@@ -672,7 +759,7 @@ button.row:active{background:var(--bg-tint)}
 
 .connect{
   flex:none;padding:7px 16px;border-radius:999px;
-  font-size:13.5px;font-weight:600;background:var(--accent);color:var(--on-accent);
+  font-size:13.5px;font-weight:600;background:var(--action);color:var(--on-action);
   transition:transform .38s var(--squash),background .34s var(--ease-io),color .34s var(--ease-io);
 }
 .connect:active{transform:scale(.93)}
@@ -781,7 +868,7 @@ button.row:active{background:var(--bg-tint)}
    the largest thing on the card; the chevron says it goes somewhere, because
    a new person does not yet know the tab bar is there. */
 .homecards{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:30px}
-.homeh{font-family:'Rubik',sans-serif;font-weight:700;font-size:20px;letter-spacing:-.01em;padding:0 2px 12px}
+.homeh{font-family:var(--font-display);font-weight:700;font-size:20px;letter-spacing:-.01em;padding:0 2px 12px}
 .homecard{
   position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:4px;
   background:var(--surface);border-radius:20px;box-shadow:var(--shadow-m);
@@ -792,14 +879,14 @@ button.row:active{background:var(--bg-tint)}
 /* the tab bar's own glyphs, drawn the way the bar draws them — the card and
    the tab it opens are recognisably the same place */
 .homeicon{width:28px;height:28px;color:var(--text-2);margin-bottom:10px}
-.homenum{color:var(--text);font-family:'Rubik',sans-serif;font-weight:700;font-size:38px;line-height:1;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.homenum{color:var(--text);font-family:var(--font-display);font-weight:700;font-size:38px;line-height:1;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
 .homecard b{font-size:15px;font-weight:600;margin-top:2px}
 .homecard > i{font-style:normal;font-size:12.5px;color:var(--text-3);line-height:1.35;min-height:1.35em}
 /* Nothing to count is not a zero to show — it is the first thing to do. The
    number gives its place to a plus in the same spot, the label becomes the
    invitation, and the tap goes on to open the sheet that starts one. */
 .homeplus{display:none;width:38px;height:38px;border-radius:50%;place-items:center;
-  background:var(--accent);color:var(--on-accent);box-shadow:var(--shadow-s)}
+  background:var(--action);color:var(--on-action);box-shadow:var(--shadow-s)}
 .homeplus svg{width:17px;height:17px}
 .homecard.zero .homenum{display:none}
 .homecard.zero .homeplus{display:grid}
@@ -970,7 +1057,7 @@ html.is-new .introtog{display:none}
 }
 .wcard{width:100%;max-width:376px;display:flex;flex-direction:column;align-items:center;text-align:center}
 .wword{
-  font-family:'Rubik',sans-serif;font-weight:700;
+  font-family:var(--font-display);font-weight:700;
   font-size:42px;line-height:1;letter-spacing:-.02em;color:var(--text);
 }
 .wlede{margin-top:11px;font-size:16px;line-height:1.5;color:var(--text-2);max-width:20em}
@@ -999,6 +1086,69 @@ html.is-new .introtog{display:none}
 .welcome .whint{animation-delay:.135s}
 .welcome .wrow{animation-delay:.165s}
 .welcome .wfoot{animation-delay:.21s}
+
+/* ─────────────────  signing into the app with a code  ───────────────── */
+/* A home-screen app on an iPhone keeps its own cookies, so the link that
+   signed Safari in never reaches it; eight digits from Olma do. Inside the
+   installed app (html.is-app) the first screen IS this form — the two chat
+   tiles are for a stranger, and somebody who installed the app is not one.
+   In a browser it waits behind "I have a code". */
+.wcode{margin-top:22px;width:100%;display:flex;flex-direction:column;align-items:stretch;gap:10px;text-align:center}
+.wcode[hidden]{display:none}
+.wcode-p{font-size:14.5px;line-height:1.5;color:var(--text-2)}
+.wcode-get{
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  padding:14px 16px;border-radius:14px;background:var(--surface);box-shadow:var(--shadow-m);
+  color:var(--text);font-weight:600;font-size:15.5px;text-decoration:none;
+}
+.wcode-get .tile{width:26px;height:26px;border-radius:8px}
+.wcode-in{
+  width:100%;padding:14px 12px;border-radius:14px;border:1.5px solid var(--sep-2);
+  background:var(--surface);color:var(--text);outline:none;text-align:center;direction:ltr;
+  font:600 24px/1.1 var(--font-display);letter-spacing:.18em;font-variant-numeric:tabular-nums;
+}
+.wcode-in:focus{border-color:var(--accent)}
+.wcode-in::placeholder{letter-spacing:normal;font-size:16px;font-weight:500;color:var(--text-3)}
+.wcode-go{
+  padding:14px 16px;border-radius:14px;background:var(--accent);color:var(--on-accent);
+  font-weight:700;font-size:16px;transition:opacity .2s var(--ease),transform .2s var(--spring);
+}
+.wcode-go:disabled{opacity:.45}
+.wcode-go:active{transform:scale(.98)}
+.wcode-err{min-height:1.4em;font-size:13.5px;color:var(--danger)}
+.wcode-have{margin-top:14px;font-size:14px;font-weight:600;color:var(--accent);padding:6px 10px}
+html.is-app .welcome .whint,
+html.is-app .welcome .wrow,
+html.is-app .welcome .wfoot,
+html.is-app .welcome .wcode-have{display:none}
+
+/* ─────────────────  the invitation to install  ───────────────── */
+/* One card at the top of the home tab, only where installing can actually
+   work: Chrome/Edge said so (beforeinstallprompt), or this is Safari on an
+   iPhone, where the steps are three taps the browser will not offer itself.
+   Never inside the installed app, never after "not now". */
+.inst{
+  position:relative;margin:0 0 14px;padding:15px 16px 14px;border-radius:20px;
+  background:var(--surface);box-shadow:var(--shadow-m);
+  display:grid;grid-template-columns:44px 1fr;column-gap:12px;row-gap:2px;align-items:center;
+}
+.inst[hidden]{display:none}
+.inst-mark{grid-row:1 / span 2;width:44px;height:44px;border-radius:11px;overflow:hidden;box-shadow:var(--shadow-s)}
+.inst-mark svg{display:block;width:100%;height:100%}
+.inst b{font-family:var(--font-display);font-weight:700;font-size:16px;color:var(--text)}
+.inst p{font-size:13.5px;line-height:1.45;color:var(--text-2)}
+.inst-steps{grid-column:1 / -1;margin:12px 0 2px;padding:0;list-style:none;display:flex;flex-direction:column;gap:9px;counter-reset:inst}
+.inst-steps li{display:flex;align-items:center;gap:10px;font-size:14px;line-height:1.4;color:var(--text);counter-increment:inst}
+.inst-steps li::before{
+  content:counter(inst);flex:none;width:22px;height:22px;border-radius:50%;
+  display:grid;place-items:center;background:var(--accent-soft);color:var(--accent);
+  font:700 12px var(--font-display);
+}
+.inst-steps svg{width:17px;height:17px;flex:none;color:var(--accent);vertical-align:-3px}
+.inst-acts{grid-column:1 / -1;display:flex;gap:8px;margin-top:12px}
+.inst-acts button{flex:1;padding:11px 12px;border-radius:12px;font-weight:600;font-size:14.5px}
+.inst-yes{background:var(--accent);color:var(--on-accent)}
+.inst-no{background:var(--bg-tint);color:var(--text-2)}
 .themetog{
   position:fixed;bottom:calc(env(safe-area-inset-bottom,0px) + 96px);inset-inline-start:128px;z-index:80;
   width:26px;height:26px;border-radius:999px;background:var(--surface);
@@ -1027,7 +1177,7 @@ html.is-new .themetog{z-index:80}
 [dir="ltr"] .backbtn svg{transform:none}
 .pushhead .tile{width:44px;height:44px;border-radius:14px}
 .pushtxt{min-width:0}
-.pushtxt b{display:block;font-family:'Rubik',sans-serif;font-weight:700;font-size:22px;letter-spacing:-.01em}
+.pushtxt b{display:block;font-family:var(--font-display);font-weight:700;font-size:22px;letter-spacing:-.01em}
 .pushtxt span{display:block;font-size:13.5px;color:var(--text-2);margin-top:1px}
 
 /* A value belongs beside its label, not in a box of its own that runs the
@@ -1189,6 +1339,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 .tend{display:flex;align-items:center;gap:8px;flex:none;margin-inline-start:auto;padding-top:1px}
 .tglyph{width:14px;height:14px;color:var(--text-3)}
 .tglyph.bell{color:var(--warn)}
+.tglyph.kindmark{width:20px;height:14px;--evmark:var(--accent)}
 .ttime{
   font-size:13.5px;font-weight:600;color:var(--text-2);
   font-variant-numeric:tabular-nums;white-space:nowrap;
@@ -1356,7 +1507,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 }
 .addrow:active{background:var(--bg-tint)}
 .addrow .plus{
-  width:26px;height:26px;border-radius:50%;background:var(--accent);color:var(--on-accent);
+  width:26px;height:26px;border-radius:50%;background:var(--action);color:var(--on-action);
   display:grid;place-items:center;flex:none;
 }
 .addrow .plus svg{width:14px;height:14px}
@@ -1546,6 +1697,13 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 .swfront{position:relative;background:var(--surface);
   transition:transform .26s var(--spring);touch-action:pan-y}
 .group.mtset .swfront{background:var(--accent-soft)}
+/* A task somebody else is on carries the accent's soft ground on the ROW,
+   not on its section, so it keeps it wherever it lands — pinned at the top
+   or unpinned back among the rest (owner, 2026-09-28). Violet because no
+   category uses it: the dot beside the title is the category's colour. */
+/* Its own token, because the night's accent-soft sits 1.1:1 from the row
+   it would tint and the tint vanished (measured on the demo, 2026-09-28). */
+.swr.shared > .swfront{background:var(--shared-bg)}
 .swr.dragging > .swfront{transition:none}
 .swr.open > .swfront{transform:translateX(calc(-104px * var(--dirf)))}
 /* The first-time peek: part of the way, slower, and back by itself. */
@@ -1684,11 +1842,6 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 }
 .mtcard .mtbody{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
 .mtcard .mtname{font-size:16px;font-weight:600;letter-spacing:-.012em}
-/* the one thing on this page waiting on YOU says so on the card */
-.mtcard .mtdot{
-  display:inline-block;width:6px;height:6px;border-radius:50%;
-  background:var(--accent);margin-inline-start:7px;vertical-align:2px;
-}
 .mtcard .mtstate{
   display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--text-3);
   min-width:0;
@@ -1700,6 +1853,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   padding:2px 7px;border-radius:999px;background:var(--bg-tint);color:var(--text-3);
 }
 .mtpill.ready{background:var(--ok-soft);color:var(--ok)}
+.mtpill.you{background:var(--accent);color:var(--on-accent)}
 .mtpill.settled{background:var(--accent-soft);color:var(--accent)}
 .mtpill.waiting{background:var(--warn-soft);color:var(--warn)}
 .mtpill.stuck{background:var(--danger-soft);color:var(--danger)}
@@ -1714,7 +1868,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 .group.mtset{background:var(--accent-soft)}
 .group.mtset .mtpill.settled{
   display:inline-flex;align-items:center;gap:4px;
-  background:var(--accent);color:var(--on-accent);
+  background:var(--action);color:var(--on-action);
 }
 .group.mtset .mtpill.settled::before{content:"\2713";font-size:10px;font-weight:800}
 .mtcard .chev{width:15px;height:15px;flex:none;color:var(--text-3)}
@@ -1856,7 +2010,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 .emptybig p{margin:0;max-width:34ch;line-height:1.5}
 .emptygo{
   display:inline-flex;align-items:center;gap:7px;font-family:inherit;
-  padding:9px 16px;border-radius:999px;background:var(--accent);color:var(--on-accent);
+  padding:9px 16px;border-radius:999px;background:var(--action);color:var(--on-action);
   font-size:13.5px;font-weight:600;box-shadow:var(--shadow-s);
   transition:transform .22s var(--spring);
 }
@@ -1983,7 +2137,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 .addmini{
   display:flex;align-items:center;gap:6px;flex:none;
   padding-block:6px;padding-inline-start:8px;padding-inline-end:12px;border-radius:999px;
-  background:var(--accent);color:var(--on-accent);font-weight:600;font-size:13px;
+  background:var(--action);color:var(--on-action);font-weight:600;font-size:13px;
   box-shadow:var(--shadow-s);
   transition:transform .22s var(--spring),background .2s ease;
 }
@@ -2060,7 +2214,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
    `span:last-child` until the paging arrows joined the row — at which point
    neither span was a first or last child any more and the heading silently
    lost its type. */
-#stripMonth{font-family:'Rubik',sans-serif;font-size:15.5px;font-weight:600;color:var(--text)}
+#stripMonth{font-family:var(--font-display);font-size:15.5px;font-weight:600;color:var(--text)}
 #stripYear{font-size:13px;font-weight:500;color:var(--text-3);font-variant-numeric:tabular-nums}
 /* The arrows sit at the two ends and the label floats between them, so the
    row reads as one control rather than three things that happen to be
@@ -2084,7 +2238,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   transition:background .24s var(--ease),color .24s var(--ease),transform .24s var(--spring);
 }
 .day .dn{font-size:11.5px;font-weight:600;color:var(--text-3)}
-.day .dd{font-family:'Rubik',sans-serif;font-size:17px;font-weight:600;margin-top:2px;font-variant-numeric:tabular-nums}
+.day .dd{font-family:var(--font-display);font-size:17px;font-weight:600;margin-top:2px;font-variant-numeric:tabular-nums}
 .day.today .dd{color:var(--accent)}
 /* "Today" instead of the weekday letter. A dot here sat one line above the
    dots that count what is IN the day — same shape, two meanings, and the
@@ -2422,11 +2576,18 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 .chan.isdefault{box-shadow:var(--shadow-m),inset 0 0 0 1.5px var(--accent-soft)}
 .chan{transition:transform .28s var(--squash),box-shadow .42s var(--ease-io)}
 
-.hero-profile{display:flex;flex-direction:column;align-items:center;gap:12px;padding:6px 0 28px}
+/* The profile has no title; its hero is what closes the band there. */
+.hero-profile{
+  display:flex;flex-direction:column;align-items:center;gap:12px;padding:6px 20px 26px;
+  margin:0 -18px 18px;background:var(--band);color:var(--on-band);border-radius:0 0 28px 28px;
+}
+.view.active > .hero-profile{animation:none}
+.view.active > .hero-profile > *{animation:rise .25s var(--ease) both}
+.hero-profile .linkbtn{color:var(--on-band);text-decoration:underline;text-underline-offset:3px}
 .hero-profile .avatar{width:96px;height:96px}
 .hero-profile .who{text-align:center}
-.hero-profile .who b{display:block;font-family:'Rubik',sans-serif;font-size:22px;font-weight:600}
-.hero-profile .who span{font-size:14px;color:var(--text-2)}
+.hero-profile .who b{display:block;font-family:var(--font-display);font-size:22px;font-weight:600}
+.hero-profile .who span{font-size:14px;color:var(--on-band-2)}
 
 /* ─────────────────────────  profile settings  ───────────────────────── */
 /* A row whose control is too wide to share a line with its title: the title
@@ -2514,7 +2675,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   transition:background .26s var(--ease-io),color .26s var(--ease-io),transform .38s var(--squash);
 }
 .fqok svg{width:17px;height:17px}
-.fqok:not([disabled]){background:var(--accent);color:var(--on-accent);box-shadow:var(--shadow-s)}
+.fqok:not([disabled]){background:var(--action);color:var(--on-action);box-shadow:var(--shadow-s)}
 .fqok:not([disabled]):active{transform:scale(.9)}
 .fqok[disabled]{cursor:default}
 /* saved: the tick turns green and pops, the card lifts and folds away */
@@ -2544,7 +2705,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 /* the answer on its way from the card into the list */
 .factfly{
   position:fixed;z-index:90;pointer-events:none;margin:0;
-  padding:7px 13px;border-radius:999px;background:var(--accent);color:var(--on-accent);
+  padding:7px 13px;border-radius:999px;background:var(--action);color:var(--on-action);
   font-size:13.5px;font-weight:600;white-space:nowrap;max-width:80vw;overflow:hidden;text-overflow:ellipsis;
   box-shadow:var(--shadow-m);
 }
@@ -2669,6 +2830,20 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   display:block;width:38px;height:5px;border-radius:3px;background:var(--sep-2);margin:0 auto;
   transition:background var(--sw-t) var(--ease-io),width var(--sw-t) var(--ease-io);
 }
+/* ── the way out ──
+   A zero-height sticky hold, like the scroll cue at the bottom: the X stays
+   in the corner however far the sheet has scrolled, and takes no layout. It
+   sits at the END side — the left in Hebrew — which is where iOS puts it in
+   a right-to-left language. */
+.sxhold{position:sticky;top:0;height:0;z-index:7}
+.sx{
+  position:absolute;top:-4px;inset-inline-end:-6px;width:32px;height:32px;border-radius:50%;
+  display:grid;place-items:center;background:var(--bg-tint);color:var(--text-2);
+  transition:transform .3s var(--spring),background .2s var(--ease-io);
+}
+.sx::after{content:"";position:absolute;inset:-6px}
+.sx svg{width:12px;height:12px}
+.sx:active{transform:scale(.9);background:var(--sep)}
 .sheet.dragging{transition:none}
 .sheet.dragging .sgrab{cursor:grabbing}
 .sheet.dragging .grabber{background:var(--text-3);width:48px}
@@ -2700,7 +2875,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   position:absolute;top:0;height:100%;border-radius:999px;background:var(--accent);
   width:var(--w,40%);inset-inline-start:var(--o,0%);
 }
-.sheet h2{font-family:'Rubik',sans-serif;font-size:20px;font-weight:600;margin-bottom:16px;text-align:center}
+.sheet h2{font-family:var(--font-display);font-size:20px;font-weight:600;margin-bottom:16px;text-align:center;
+  padding-inline:36px}   /* clear of the X on either side, so it stays centred */
 .sheet .group{box-shadow:none;background:var(--surface-2)}
 .sheetbtns{display:flex;flex-direction:column;gap:10px;margin-top:20px}
 /* the new-coordination steps */
@@ -2709,7 +2885,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 .mtprog i.on{background:var(--accent)}
 .mtstepn{text-align:center;font-size:12.5px;color:var(--text-3);margin:0 0 12px}
 .mtq{display:flex;align-items:baseline;justify-content:space-between;gap:10px;
-  font-family:'Rubik',sans-serif;font-size:21px;font-weight:600;margin:4px 4px 14px}
+  font-family:var(--font-display);font-size:21px;font-weight:600;margin:4px 4px 14px}
 .mtq .hint{font-family:inherit;font-size:13px;font-weight:500;color:var(--text-3)}
 .mtstep{animation:mtStepIn .28s var(--ease) both}
 @keyframes mtStepIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
@@ -2725,9 +2901,9 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
    buttons that used to sit here were most of its height, and they are the
    reason it had to scroll. What is left fits one screen with nothing to
    reach for. */
-.stitlewrap{display:flex;align-items:center;gap:8px;padding:2px 4px 10px}
+.stitlewrap{display:flex;align-items:center;gap:8px;padding:2px 40px 10px}
 .stitle{
-  flex:1;min-width:0;border:0;background:none;font:inherit;font-family:'Rubik',sans-serif;
+  flex:1;min-width:0;border:0;background:none;font:inherit;font-family:var(--font-display);
   font-size:20px;font-weight:600;color:var(--text);text-align:center;outline:none;
   padding:0;
 }
@@ -2746,7 +2922,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
    is worth filling in for a task that has no name yet. */
 .stgo{
   width:30px;height:30px;flex:none;border-radius:50%;display:grid;place-items:center;
-  background:var(--accent);color:var(--on-accent);
+  background:var(--action);color:var(--on-action);
   transition:opacity .24s var(--ease-io),transform .3s var(--spring);
 }
 .stgo svg{width:14px;height:14px}
@@ -2783,7 +2959,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   stroke-linecap:round;stroke-linejoin:round}
 [dir="rtl"] .calnav svg{transform:scaleX(-1)}
 .calttl{
-  flex:1;text-align:center;font-family:'Rubik',sans-serif;font-size:14.5px;font-weight:600;
+  flex:1;text-align:center;font-family:var(--font-display);font-size:14.5px;font-weight:600;
   color:var(--text);padding:6px 4px;border-radius:9px
 }
 .calttl:active{background:var(--bg-tint)}
@@ -2841,7 +3017,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 .tpcol::-webkit-scrollbar{display:none}
 .tpcol button{
   display:block;width:100%;height:40px;scroll-snap-align:center;
-  font-family:'Rubik',sans-serif;font-size:19px;font-weight:500;color:var(--text-3);
+  font-family:var(--font-display);font-size:19px;font-weight:500;color:var(--text-3);
   font-variant-numeric:tabular-nums;direction:ltr;
   /* `transform`, not `font-size`: a font-size transition re-lays the text out
      on every frame, which is the one property in this picker that is animated
@@ -2849,10 +3025,10 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   transition:color .18s var(--ease-io),transform .18s var(--ease-io)
 }
 .tpcol button.on{color:var(--text);font-weight:600;transform:scale(1.158)}
-.tpcolon{position:relative;font-family:'Rubik',sans-serif;font-size:20px;font-weight:600;color:var(--text-2);padding-bottom:3px}
+.tpcolon{position:relative;font-family:var(--font-display);font-size:20px;font-weight:600;color:var(--text-2);padding-bottom:3px}
 .tpfoot{margin-top:8px;display:flex;gap:6px}
 .tpfoot button{
-  width:100%;padding:10px;border-radius:12px;background:var(--accent);color:var(--on-accent);
+  width:100%;padding:10px;border-radius:12px;background:var(--action);color:var(--on-action);
   font-size:14px;font-weight:600;transition:transform .38s var(--squash)
 }
 .tpfoot button:active{transform:scale(.97)}
@@ -2862,7 +3038,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   transition:transform .38s var(--squash),filter .3s var(--ease-io);
 }
 .btn:active{transform:scale(.98)}
-.btn.primary{background:var(--accent);color:var(--on-accent)}
+.btn.primary{background:var(--action);color:var(--on-action)}
 .btn.ghost{background:var(--bg-tint);color:var(--text-2)}
 .btn.danger{background:var(--danger-soft);color:var(--danger)}
 
@@ -2912,15 +3088,38 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
    reads differently at a glance and not only by its words. */
 .toast.err{color:var(--danger);background:var(--danger-soft)}
 .toastundo{margin-inline-start:12px;color:var(--accent);font-weight:700;font-size:13px}
+/* Pull to refresh: a disc that comes down with the finger, turns while it
+   is pulled, fills when letting go would refresh, and spins while it does. */
+.ptr{
+  position:fixed;top:calc(env(safe-area-inset-top, 0px) + 6px);inset-inline:0;margin-inline:auto;z-index:70;
+  width:38px;height:38px;border-radius:50%;display:grid;place-items:center;
+  background:var(--surface);color:var(--text-3);box-shadow:var(--shadow-m);
+  opacity:0;transform:translateY(calc(var(--pull, 0px) - 44px)) rotate(calc(var(--pull, 0px) * 4));
+  pointer-events:none;transition:opacity .15s ease;
+}
+.ptr svg{width:17px;height:17px}
+.ptr.on{opacity:1}
+.ptr.armed{background:var(--accent);color:var(--on-accent)}
+.ptr.spin{opacity:1;transform:translateY(40px);background:var(--accent);color:var(--on-accent);
+  animation:ptrSpin .8s linear infinite}
+@keyframes ptrSpin{from{transform:translateY(40px) rotate(0)}to{transform:translateY(40px) rotate(360deg)}}
+/* "There is something new": said at the top, and the list waits for the tap. */
+.newspill{
+  position:fixed;top:calc(env(safe-area-inset-top, 0px) + 68px);inset-inline:0;margin-inline:auto;z-index:65;
+  width:max-content;display:flex;align-items:center;gap:7px;padding:8px 15px;border-radius:999px;
+  background:var(--accent);color:var(--on-accent);font-size:13.5px;font-weight:700;box-shadow:var(--shadow-m);
+  opacity:0;transform:translateY(-14px);pointer-events:none;
+  transition:opacity .25s var(--ease),transform .35s var(--ease);
+}
+.newspill svg{width:14px;height:14px}
+.newspill.show{opacity:1;transform:none;pointer-events:auto}
+@media (prefers-reduced-motion:reduce){.ptr.spin{animation:none}.newspill{transition:none}}
 
 @media (max-width:430px){
   .title h1{font-size:29px}
-  /* The status pill's words are what a phone header cannot fit beside the
-     clock. The dot carries the state on its own — green and pulsing when she
-     is on, amber and still when paused — and the words stay as its label.
-     Keeping them for a pause was measured at 375px: the name vanished. */
-  .livepill #olmaLive{display:none}
-  .livepill{padding:10px}
+  /* The status pill keeps its words on a phone now. They were hidden when
+     the theme icons shared this row, and a green dot with no words was the
+     one thing in the header nobody could read (the owner, 2026-09-27). */
   .topbar{gap:8px}
   .tab{min-width:0;padding:9px 11px 8px}
   .field label{width:86px;font-size:15px}
@@ -2937,12 +3136,20 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs>
   <symbol id="i-chev" viewBox="0 0 8 15"><path d="M6.6 1 1 7.5 6.6 14" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-check" viewBox="0 0 16 16"><path d="M2.6 8.4 6.2 12 13.4 4.4" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <!-- iOS's own share glyph, drawn so the install steps can point at the
+       exact button Safari shows. -->
+  <symbol id="i-share" viewBox="0 0 20 20"><path d="M10 2.6v9.2M6.6 5.8 10 2.4l3.4 3.4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M7 8.4H5.4a1.6 1.6 0 0 0-1.6 1.6v6a1.6 1.6 0 0 0 1.6 1.6h9.2a1.6 1.6 0 0 0 1.6-1.6v-6a1.6 1.6 0 0 0-1.6-1.6H13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
   <symbol id="i-plus" viewBox="0 0 16 16"><path d="M8 2v12M2 8h12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></symbol>
   <symbol id="i-bell" viewBox="0 0 16 16"><path d="M8 1.6a4 4 0 0 0-4 4v2.6L2.7 11h10.6L12 8.2V5.6a4 4 0 0 0-4-4Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M6.3 12.6a1.8 1.8 0 0 0 3.4 0" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></symbol>
   <symbol id="i-clock" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 4.6V8l2.4 1.6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-repeat" viewBox="0 0 16 16"><path d="M3 7a5 5 0 0 1 8.6-3.4M13 9a5 5 0 0 1-8.6 3.4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M11.4 1.2v2.6H8.9M4.6 14.8v-2.6h2.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-pencil" viewBox="0 0 18 18"><path d="M12.2 2.6 15.4 5.8 6.2 15H3v-3.2Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></symbol>
   <symbol id="i-out" viewBox="0 0 18 18"><path d="M7 3H3.6v11.4H15V11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M10.4 2.6H15v4.6M15 2.6 8.6 9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <!-- An event, in the brand's own picture of a meeting: two rings, and
+       only where they overlap is filled (brand kit, 2026-09-26 — two FILLED
+       discs read as a card logo). The lens takes --evmark: the accent,
+       never the mustard, which is kept for the one action on a screen. -->
+  <symbol id="i-event" viewBox="1 3 14 10"><circle cx="6" cy="8" r="4.3" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="10" cy="8" r="4.3" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M8 4.19A4.3 4.3 0 0 1 8 11.81A4.3 4.3 0 0 1 8 4.19Z" style="fill:var(--evmark,currentColor)"/></symbol>
   <symbol id="i-cal" viewBox="0 0 20 20"><rect x="2.6" y="4" width="14.8" height="13.4" rx="3.2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M2.6 8.2h14.8M6.6 2.4v3M13.4 2.4v3" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
   <symbol id="i-person" viewBox="0 0 20 20"><circle cx="10" cy="6.6" r="3.4" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M3.6 17c.7-3.4 3.3-5.2 6.4-5.2s5.7 1.8 6.4 5.2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
   <symbol id="i-mail" viewBox="0 0 20 20"><rect x="2.4" y="4.4" width="15.2" height="11.2" rx="3" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="m3.4 6.4 5.4 4.2a2 2 0 0 0 2.4 0l5.4-4.2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
@@ -3002,22 +3209,21 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   <symbol id="i-sun" viewBox="0 0 16 16"><circle cx="8" cy="8" r="3.1" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8 1.2v1.6M8 13.2v1.6M1.2 8h1.6M13.2 8h1.6M3.3 3.3l1.13 1.13M11.57 11.57l1.13 1.13M3.3 12.7l1.13-1.13M11.57 4.43l1.13-1.13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></symbol>
   <symbol id="i-moon" viewBox="0 0 16 16"><path d="M13.2 9.4A5.6 5.6 0 1 1 6.6 2.8a4.4 4.4 0 0 0 6.6 6.6Z" fill="currentColor"/></symbol>
   <symbol id="i-auto" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8 1.8a6.2 6.2 0 0 0 0 12.4Z" fill="currentColor"/></symbol>
-  <!-- The mark. A globe that talks: the meridian and the horizon say עולם,
-       the tail makes it something you speak to. Its gradient lives here in
-       the sheet's own <defs> rather than inside the symbol — a <use> clone
-       resolves url(#…) against THIS document, so one definition serves every
-       copy, but a gradient declared in another file would silently render
-       black. -->
-  <linearGradient id="i-logo-g" x1="18" y1="10" x2="80" y2="86" gradientUnits="userSpaceOnUse">
-    <stop offset="0" stop-color="#9C7BF8"/><stop offset=".55" stop-color="#5B2FD6"/><stop offset="1" stop-color="#3A1A90"/>
-  </linearGradient>
-  <clipPath id="i-logo-c"><circle cx="46" cy="44" r="32"/></clipPath>
-  <symbol id="i-logo" viewBox="0 0 96 96">
-    <path d="M46 12a32 32 0 0 1 32 32 32 32 0 0 1-32 32c-3.6 0-7-.6-10.2-1.7l-13.4 6a2.4 2.4 0 0 1-3.3-2.7l2.3-11.2A32 32 0 0 1 46 12Z" fill="url(#i-logo-g)"/>
-    <g clip-path="url(#i-logo-c)" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round">
-      <path d="M14 44h64" opacity=".5"/><ellipse cx="46" cy="44" rx="14.5" ry="32" opacity=".55"/>
+    <!-- The Allma mark, "half and half" (the owner, 2026-09-27/28): a disc cut
+       into a dark half and a light one, each holding a circle of the other
+       colour, and where the two circles meet, the lens, in Mustard. Its four
+       colours are tokens (--logo-*) so the night swaps them; the clip paths
+       sit in these <defs> rather than inside the symbol, because a <use> clone
+       resolves url(#...) against this document. -->
+  <clipPath id="i-logo-c"><circle cx="60" cy="60" r="60"/></clipPath>
+  <clipPath id="i-logo-a"><circle cx="44" cy="60" r="24"/></clipPath>
+  <symbol id="i-logo" viewBox="0 0 120 120">
+    <g clip-path="url(#i-logo-c)">
+      <rect width="60" height="120" fill="var(--logo-d)"/><rect x="60" width="60" height="120" fill="var(--logo-l)"/>
+      <circle cx="44" cy="60" r="24" fill="var(--logo-l)"/><circle cx="76" cy="60" r="24" fill="var(--logo-d)"/>
+      <circle cx="76" cy="60" r="24" fill="var(--logo-lens)" clip-path="url(#i-logo-a)"/>
     </g>
-    <circle cx="70" cy="22" r="5.2" fill="#fff" opacity=".9"/>
+    <circle cx="60" cy="60" r="58.25" fill="none" stroke="var(--logo-ring)" stroke-width="3.5"/>
   </symbol>
 </defs></svg>
 
@@ -3025,8 +3231,9 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 
   <header class="topbar">
     <button class="brand" id="brandBtn" data-go="me">
-      <!-- No mark here, and none anywhere on the page (the owner,
-           2026-09-26). #i-logo stays in the sprite for the day it returns. -->
+      <!-- The mark came back on 2026-09-28 (the owner), after being taken
+           out on 2026-09-26 with the old logo. -->
+      <svg class="bmark" aria-hidden="true"><use href="#i-logo"/></svg>
       <div class="brand-txt">
         <div class="brand-hi" id="brandHi"></div>
         <div class="brand-name" id="brandName"></div>
@@ -3034,11 +3241,6 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     </button>
     <button class="topclock" id="topClock" data-i18n-label="city.title"></button>
     <div class="hdrend">
-      <div class="themeicons" id="themeIcons" role="group" data-i18n-label="me.appearance">
-        <button data-theme-opt="light" aria-pressed="false" data-i18n-label="me.themeLight"><svg><use href="#i-sun"/></svg></button>
-        <button data-theme-opt="dark" aria-pressed="false" data-i18n-label="me.themeDark"><svg><use href="#i-moon"/></svg></button>
-        <button data-theme-opt="auto" aria-pressed="true" data-i18n-label="me.themeAuto"><svg><use href="#i-auto"/></svg></button>
-      </div>
       <div class="livepill"><span class="dot"></span><span id="olmaLive"></span></div>
     </div>
   </header>
@@ -3048,11 +3250,27 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   <section class="view active" data-view="tools">
     <div class="title" style="--i:0">
       <h1 id="toolsH"></h1>
-      <p data-i18n="home.p"></p>
+      <p id="homeP"></p>
     </div>
+    <!-- The home page used to list today's rows and the coordinations waiting
+         on YOU here, above the cards (2026-09-27). The owner took it out a day
+         later as too busy: the title line still says how many of each, and the
+         cards are one tap from both. -->
     <!-- The home cards: what she is holding for you, one tap from its page.
          A new person used to land on a grid of services, see nothing of their
          own and leave without finding the tab bar (the owner, 2026-09-26). -->
+    <!-- The invitation to install (see .inst): drawn by installMaybe(), only
+         where installing can work, and never inside the installed app. -->
+    <div class="inst" id="inst" role="region" hidden>
+      <span class="inst-mark" id="instMark" aria-hidden="true"></span>
+      <b data-i18n="inst.h"></b>
+      <p id="instP"></p>
+      <ol class="inst-steps" id="instSteps" hidden></ol>
+      <div class="inst-acts">
+        <button class="inst-yes" id="instYes" type="button"></button>
+        <button class="inst-no" id="instNo" type="button"></button>
+      </div>
+    </div>
     <div class="homecards" data-stage="0">
       <button class="homecard" data-go="tasks">
         <svg class="homeicon"><use href="#i-list"/></svg>
@@ -3353,6 +3571,17 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
             <div class="rowline"><div class="row-title" data-i18n="me.language"></div></div>
             <div class="chips" id="langChips" role="group" data-i18n-label="me.language"></div>
           </div>
+          <!-- Light, dark or the phone's own setting. It sat beside the clock on
+               every tab, three unlabelled icons for a choice made once (the
+               owner, 2026-09-27); here it has words. -->
+          <div class="row no-icon stackrow">
+            <div class="rowline"><div class="row-title" id="themeLabel" data-i18n="me.appearance"></div></div>
+            <div class="seg themeseg" id="themeIcons" role="group" aria-labelledby="themeLabel">
+              <button data-theme-opt="light" aria-pressed="false"><svg><use href="#i-sun"/></svg><span data-i18n="me.themeLight"></span></button>
+              <button data-theme-opt="dark" aria-pressed="false"><svg><use href="#i-moon"/></svg><span data-i18n="me.themeDark"></span></button>
+              <button data-theme-opt="auto" aria-pressed="true"><svg><use href="#i-auto"/></svg><span data-i18n="me.themeAuto"></span></button>
+            </div>
+          </div>
           <div class="row no-icon">
             <div class="row-txt">
               <div class="row-title" data-i18n="me.taskCal"></div>
@@ -3438,6 +3667,15 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     </div>
     <div class="wrow" id="wRow"></div>
     <p class="wfoot" data-i18n="w.foot"></p>
+    <button class="wcode-have" id="wCodeHave" type="button" data-i18n="code.have"></button>
+    <form class="wcode" id="wCode" hidden novalidate>
+      <p class="wcode-p" data-i18n="code.p"></p>
+      <a class="wcode-get" id="wCodeGet" target="_blank" rel="noopener"></a>
+      <input class="wcode-in" id="wCodeIn" type="text" inputmode="numeric" autocomplete="one-time-code"
+             maxlength="40" data-i18n-ph="code.ph" data-i18n-label="code.ph">
+      <p class="wcode-err" id="wCodeErr" role="alert"></p>
+      <button class="wcode-go" id="wCodeGo" type="submit" data-i18n="code.go" disabled></button>
+    </form>
   </div>
 </div>
 
@@ -3463,6 +3701,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 
 <div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sTitle">
   <div class="sgrab"><i class="grabber"></i></div>
+  <div class="sxhold"><button class="sx" type="button" data-sx data-i18n-label="sheet.close"><svg><use href="#i-x"/></svg></button></div>
   <!-- The heading of a sheet is not usually typeable, so it needs to say that
        it is: a pencil while editing, and on a brand-new task a check, because
        the title is the one field that has to exist before anything else here
@@ -3595,6 +3834,12 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
         <div class="row-sub" id="sCalSub"></div></div>
       <button class="switch" role="switch" aria-checked="false" id="sCal" data-i18n-label="sheet.inCal"></button>
     </div>
+    <!-- Only where there is somewhere to jump TO: a dated task that is on the
+         calendar. It was an icon on the row until 2026-09-28. -->
+    <button class="row no-icon" id="sJumpRow" hidden>
+      <div class="row-txt"><div class="row-title" data-i18n="cal.showIn"></div></div>
+      <svg class="chev"><use href="#i-chev"/></svg>
+    </button>
   </div>
 
   <!-- who else has this task. Hidden entirely when nobody else does. -->
@@ -3639,14 +3884,12 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 
 <div class="sheet" id="citySheet" role="dialog" aria-modal="true" aria-labelledby="cityTitle">
   <div class="sgrab"><i class="grabber"></i></div>
+  <div class="sxhold"><button class="sx" type="button" data-sx data-i18n-label="sheet.close"><svg><use href="#i-x"/></svg></button></div>
   <h2 id="cityTitle" data-i18n="city.title"></h2>
   <div class="group">
     <div class="field"><input id="citySearch" type="search" data-i18n-ph="city.search" autocomplete="off"></div>
   </div>
   <div class="group citylist" id="cityList" style="margin-top:12px"></div>
-  <div class="sheetbtns">
-    <button class="btn ghost" id="cityCancel" data-i18n="sheet.cancel"></button>
-  </div>
 </div>
 
 <!-- Deleting the account. Its own sheet with its own "yes" button, because the
@@ -3669,6 +3912,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      field and a scrollable list, not a wheel or a platform popup. -->
 <div class="sheet" id="timeSheet" role="dialog" aria-modal="true" aria-labelledby="timeTitle">
   <div class="sgrab"><i class="grabber"></i></div>
+  <div class="sxhold"><button class="sx" type="button" data-sx data-i18n-label="sheet.close"><svg><use href="#i-x"/></svg></button></div>
   <h2 id="timeTitle" data-i18n="sheet.pickTime"></h2>
   <div class="group">
     <div class="field"><input id="timeSearch" type="search" inputmode="numeric" data-i18n-ph="time.search" autocomplete="off"></div>
@@ -3676,7 +3920,6 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   <div class="group citylist" id="timeList" style="margin-top:12px"></div>
   <div class="sheetbtns">
     <button class="btn ghost" id="timeClear" data-i18n="time.clear"></button>
-    <button class="btn ghost" id="timeCancel" data-i18n="sheet.cancel"></button>
   </div>
 </div>
 
@@ -3692,6 +3935,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      same sentence, said shorter. -->
 <div class="sheet" id="mtSheet" role="dialog" aria-modal="true" aria-labelledby="mtTitle">
   <div class="sgrab"><i class="grabber"></i></div>
+  <div class="sxhold"><button class="sx" type="button" data-sx data-i18n-label="sheet.close"><svg><use href="#i-x"/></svg></button></div>
   <h2 id="mtTitle"></h2>
   <p class="note" id="mtWho" style="padding:0 14px 4px"></p>
   <div class="mtfaces" id="mtFaces"></div>
@@ -3719,7 +3963,6 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     <button class="btn ghost" id="mtCal" hidden></button>
     <button class="btn ghost" id="mtReopen" hidden></button>
     <button class="btn ghost danger" id="mtLeave"></button>
-    <button class="btn ghost" id="mtClose" data-i18n="sheet.close"></button>
   </div>
   <div class="scuehold deep"><div class="scue" id="mtCue"><i></i></div></div>
 </div>
@@ -3729,6 +3972,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      they ever see it until they decide. -->
 <div class="sheet" id="mtOptSheet" role="dialog" aria-modal="true" aria-labelledby="mtOptTitle">
   <div class="sgrab"><i class="grabber"></i></div>
+  <div class="sxhold"><button class="sx" type="button" data-sx data-i18n-label="sheet.close"><svg><use href="#i-x"/></svg></button></div>
   <h2 id="mtOptTitle"></h2>
   <div id="mtOptPick">
   <div class="group"><div class="foldpad tight">
@@ -3757,7 +4001,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   </div>
   <div class="sheetbtns">
     <button class="btn primary" id="mtOptGo"></button>
-    <button class="btn ghost" id="mtOptCancel" data-i18n="sheet.cancel"></button>
+    <button class="btn ghost" id="mtOptCancel" data-i18n="mt.back" hidden></button>
   </div>
   <div class="scuehold deep"><div class="scue" id="mtOptCue"><i></i></div></div>
 </div>
@@ -3770,6 +4014,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      once changed. -->
 <div class="sheet" id="mtNewSheet" role="dialog" aria-modal="true" aria-labelledby="mtNewTitle">
   <div class="sgrab"><i class="grabber"></i></div>
+  <div class="sxhold"><button class="sx" type="button" data-sx data-i18n-label="sheet.close"><svg><use href="#i-x"/></svg></button></div>
   <h2 id="mtNewTitle" data-i18n="mt.newTitle"></h2>
   <div class="mtprog" aria-hidden="true"><i></i><i></i><i></i></div>
   <p class="mtstepn" id="mtStepN"></p>
@@ -3842,7 +4087,6 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
          what is missing, and pressing it anyway points at the place to fix. -->
     <button class="btn primary" id="mtNewGo"></button>
     <button class="btn ghost" id="mtNewBack" hidden data-i18n="mt.back"></button>
-    <button class="btn ghost" id="mtNewCancel" data-i18n="sheet.cancel"></button>
   </div>
   <div class="scuehold deep"><div class="scue" id="mtNewCue"><i></i></div></div>
 </div>
@@ -3853,6 +4097,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      list and leaving them to work it out. -->
 <div class="sheet" id="cnSheet" role="dialog" aria-modal="true" aria-labelledby="cnTitle">
   <div class="sgrab"><i class="grabber"></i></div>
+  <div class="sxhold"><button class="sx" type="button" data-sx data-i18n-label="sheet.close"><svg><use href="#i-x"/></svg></button></div>
   <h2 id="cnTitle" data-i18n="cn.title"></h2>
   <p class="note" id="cnFrom" style="padding:0 14px 10px"></p>
   <div class="group" id="cnSearchWrap" hidden>
@@ -3866,9 +4111,6 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       <p data-i18n="cn.noneP"></p>
       <button class="btn primary" id="cnConnect" data-i18n="cn.connect"></button>
     </div>
-  </div>
-  <div class="sheetbtns">
-    <button class="btn ghost" id="cnCancel" data-i18n="sheet.cancel"></button>
   </div>
   <div class="scuehold deep"><div class="scue" id="cnCue"><i></i></div></div>
 </div>
@@ -3888,6 +4130,9 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 </div>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
+<!-- Pulling the page down (see "keeping the picture current"). -->
+<div class="ptr" id="ptr" aria-hidden="true"><svg><use href="#i-repeat"/></svg></div>
+<button class="newspill" id="newsPill" type="button"><svg><use href="#i-repeat"/></svg><span data-i18n="news.pill"></span></button>
 
 <!-- Until the server's answer lands, the served page is showing the SEED: a
      made-up list, made-up friends, and a fact about somebody's dog. It is the
@@ -4263,6 +4508,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
        optimistic guess. */
     send: function(action, payload, onOk, keepalive){
       if(!LIVE || !ACT[action]){ if(onOk) onOk(null); return true; }
+      lastWriteAt = Date.now();
       fetch("/me/act", {
         method:"POST", credentials:"same-origin", keepalive:!!keepalive,
         headers:{"Content-Type":"application/json"},
@@ -4561,7 +4807,11 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
        preference was tried here first and dropped on purpose: it would hand a
        Hebrew phone a Hebrew first screen, which is nicer for that one person
        and unpredictable for everybody else.) */
-    var v = q || h || document.documentElement.getAttribute("data-locale") ||
+    /* ?hl= is the installed app's start address (pwa.js): the language of
+       whoever installed it. Read only on the signed-out screen, where nothing
+       else says who this is; once signed in, what is on file wins. */
+    var hl = NEWUSER ? (new URLSearchParams(location.search).get("hl") || "") : "";
+    var v = q || h || document.documentElement.getAttribute("data-locale") || hl ||
       (NEWUSER ? "en" : "he");
     return v.slice(0,2).toLowerCase() === "en" ? "en" : "he";
   })();
@@ -4586,15 +4836,20 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
          until somebody says otherwise. */
       "brand.tagM":"ברוך הבא לעולם שלך","brand.tagF":"ברוכה הבאה לעולם שלך",
       "live":"{name} פעילה",
-      "tab.tools":"בית","tab.tasks":"משימות","tab.cal":"יומן","tab.friends":"חברים","tab.me":"פרופיל",
+      "tab.tools":"בית","tab.tasks":"משימות","tab.cal":"פגישות","tab.friends":"חברים","tab.me":"פרופיל",
 
       "tools.h":"החיבורים שלך",
-      "home.p":"עולמה עוזרת לך בוואטסאפ. כאן רואים את כל מה שהיא מחזיקה בשבילך.",
+      "home.p":"כל מה שעולמה מחזיקה בשבילך, במקום אחד.",
       "home.tasks.n0":"משימות פתוחות","home.tasks.n1":"משימה פתוחה","home.tasks.nN":"משימות פתוחות",
-      "home.meets.n0":"תיאומי פגישה","home.meets.n1":"תיאום פגישה","home.meets.nN":"תיאומי פגישה",
+      "home.meets.n0":"פגישות שבתיאום","home.meets.n1":"פגישה בתיאום","home.meets.nN":"פגישות שבתיאום",
       "home.tasksStart":"הוסיפו משימה","home.tasksStartSub":"או פשוט כתבו לעולמה בוואטסאפ את המשימה",
       "home.meetsStart":"תאמו פגישה","home.meetsStartSub":"עולמה תמצא זמן שמתאים לכולם דרך הוואטסאפ",
-      "home.tasksToday":"{n} להיום","home.tasksGo":"לרשימה המלאה","home.meetsGo":"לכל התיאומים",
+      "home.tasksToday":"{n} להיום","home.tasksGo":"לרשימה המלאה","home.meetsGo":"לכל הפגישות",
+      "news.pill":"יש עדכונים · לרענן","news.done":"עודכן",
+      "home.todayH":"היום שלך","home.clear":"אין משהו שמחכה להיום.",
+      "home.due.n0":"","home.due.n1":"משימה אחת להיום","home.due.nN":"{n} משימות להיום",
+      "home.waiting.n0":"","home.waiting.n1":"פגישה אחת מחכה לתשובה שלך","home.waiting.nN":"{n} פגישות מחכות לתשובה שלך",
+      
       "nav.hint":"כאן למטה עוברים בין העמודים",
       "tools.accounts":"חשבונות","tools.accountsHint":"התחברות אחת לכל ספק",
       "tools.work":"עבודה",
@@ -4603,6 +4858,23 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
          before she has even been written to once */
       "w.hint":"כתוב לעולמה בשפה שלך","w.open":"פתיחת שיחה",
       "w.foot":"אין מה להתקין. השיחה נפתחת ריקה — המשפט הראשון שלך הוא זה שמלמד אותה באיזו שפה לדבר.",
+      /* signing into the installed app with a code (see .wcode) */
+      "app.name":"עולמה",
+      "code.have":"יש לי קוד מעולמה","code.h":"כניסה לאפליקציה",
+      "code.p":"עולמה תשלח לך קוד כניסה בוואטסאפ. מעתיקים את ההודעה, מדביקים כאן, וזהו.",
+      "code.get":"קבלת קוד בוואטסאפ","code.waText":"קוד כניסה לאפליקציה",
+      "code.ph":"קוד בן 8 ספרות","code.go":"כניסה",
+      "code.bad":"הקוד לא מתאים, או שעברו כבר 10 דקות. אפשר לבקש חדש.",
+      "code.slow":"יותר מדי ניסיונות. אפשר לנסות שוב בעוד רבע שעה.",
+      "code.net":"אין חיבור כרגע. נסו שוב בעוד רגע.",
+      /* the invitation to install (see .inst) */
+      "inst.h":"עולמה במסך הבית",
+      "inst.p":"אייקון משלה, בלי לחפש את הקישור בוואטסאפ.",
+      "inst.pIos":"שלוש לחיצות בספארי, ועולמה נפתחת כמו אפליקציה.",
+      "inst.btn":"הוספה למסך הבית","inst.later":"לא עכשיו","inst.ok":"הבנתי",
+      "inst.ios1":"לוחצים על {share} בסרגל של ספארי",
+      "inst.ios2":"בוחרים ״הוספה למסך הבית״",
+      "inst.ios3":"פותחים את עולמה מהמסך, ומבקשים ממנה קוד כניסה",
       "ch.open":"פתיחת השיחה","ch.add":"להוספה",
       "ch.call":"שיחה","ch.callSub":"עולמה תתקשר","ch.calling":"מתקשרת אליך…",
       "ch.callArm":"מתכוננת לשיחה…","ch.callReady":"מוכנה — לחיצה נוספת",
@@ -4641,7 +4913,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "tasks.h":"המשימות שלך","tasks.open":"פתוחות","tasks.archive":"ארכיון",
       "tasks.n0":"אין משימות פתוחות","tasks.n1":"משימה פתוחה אחת","tasks.nN":"{n} משימות פתוחות",
       "remc.n0":"אין תזכורות","remc.n1":"תזכורת אחת מוגדרת","remc.nN":"{n} תזכורות מוגדרות",
-      "bucket.late":"באיחור","bucket.today":"היום","bucket.tomorrow":"מחר","bucket.later":"בהמשך","kind.event":"ביומן","kind.todo":"לעשות","cal.eventTag":"אירוע","tasks.new":"משימה חדשה","tasks.empty":"אין משימות פתוחות. יום נקי.",
+      "bucket.late":"באיחור","bucket.today":"היום","bucket.tomorrow":"מחר","bucket.later":"בהמשך","cal.eventTag":"אירוע","tasks.new":"משימה חדשה","tasks.empty":"אין משימות פתוחות. יום נקי.",
       "tasks.allDone":"סיימת הכול","tasks.allDoneSub.n1":"משימה אחת נסגרה היום","tasks.allDoneSub.nN":"{n} משימות נסגרו היום",
       "tasks.doneAt":"הושלמה {when}","tasks.justNow":"הרגע",
       "tasks.arcShown":"מוצגות {n} האחרונות מתוך {all}","tasks.arcShowAll":"הצגת כל {all}","tasks.arcShowLess":"מוצגות כל {all} · הצגת {n} האחרונות","tasks.restore":"החזרה לרשימה",
@@ -4652,7 +4924,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "sugg.overdue":"התאריך שלה עבר לפני {days} ימים והיא עדיין פתוחה. להוריד מהרשימה?",
       "sugg.duplicate":"אומרת כמעט אותו דבר כמו „{keep}”. להוריד את זו ולהשאיר את הראשונה?",
       "sugg.undo":"אפשר להחזיר מהארכיון בכל רגע.",
-      "sugg.yes":"אשר","sugg.no":"דלג","sugg.more":"הצעת Ai",
+      "sugg.yes":"אשר","sugg.no":"דלג","sugg.more":"להצעה הבאה","sugg.label":"{name} שמה לב",
       "sugg.yes.stuck":"להוריד","sugg.yes.overdue":"להוריד","sugg.yes.duplicate":"להוריד את זו",
       "toast.suggArchived":"„{name}” עברה לארכיון","toast.suggSkipped":"לא נשאל על „{name}” שוב",
       "nest.title":"המשימה נכנסה לרשימה","nest.ok":"הבנתי","nest.undo":"ביטול",
@@ -4684,13 +4956,13 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "sheet.leave":"יציאה מהמשימה המשותפת","sheet.leaveSub":"המשימה תיעלם מהרשימה שלך ותישאר אצל השאר. שום דבר לא נמחק.",
       "toast.left":"יצאת מ„{name}” — היא נשארה אצל השאר",
 
-      "cal.h":"הצצה ליומן",
-      "cal.p":"תצוגה בלבד. לעריכה — פתח את היומן של הטלפון בלחיצה אחת.",
+      "cal.h":"פגישות",
+      "cal.p":"תצוגה בלבד. עורכים ביומן של הטלפון.",
       "cal.open":"פתיחה ביומן Google","cal.empty":"אין אירועים ביום הזה.","cal.connectGo":"חיבור יומן",
       "cal.todayPre":"היום · ","cal.dayPrefix":"יום ",
 
       "fr.h":"חברים בעולמה",
-      "fr.p":"לכל חבר מוגדר בנפרד מה מותר לו. שינוי כאן חל מיד, בלי לשאול אותו.",
+      "fr.p":"לכל חבר הרשאות משלו, והשינוי חל מיד.",
       "fr.connected":"מחוברים","fr.count":"{n} חברים",
       "fr.search":"חיפוש חבר","fr.clear":"ניקוי","fr.noMatch":"אין חבר בשם „{q}”.",
       "fr.none":"עוד אין כאן אף אחד. אפשר להזמין מישהו מאנשי הקשר למטה.",
@@ -4710,14 +4982,14 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "toast.grNew":"קבוצה חדשה · תן לה שם","toast.grGone":"הקבוצה נמחקה",
       "toast.newMeetGroup":"תיאום פגישה חדש עם קבוצת {name}",
       "toast.newMeetGroupNone":"אף אחד בקבוצה הזאת עדיין לא אישר תיאום פגישות איתך",
-      "cal.modeRead":"היומן","cal.modeMeet":"תיאום פגישה",
+      "cal.modeRead":"ביומן","cal.modeMeet":"תיאומי פגישות",
       "cal.fromMeet":"נקבע בתיאום","cal.meetTag":"פגישה",
-      "cal.pMeet":"מסמנים מתי מתאים, עולמה מוצאת את החלון הטוב ביותר לכולם.",
-      "sheet.close":"סגירה","mt.open":"תיאומים פעילים","mt.new":"תיאום פגישה חדש",
+      "cal.pMeet":"מסמנים מתי נוח, ועולמה מוצאת זמן לכולם.",
+      "sheet.close":"סגירה","mt.open":"פגישות שבתיאום","mt.new":"פגישה חדשה",
       "mt.note":"תשובה אומרת אם אתה יכול — לא שקבעתם. כשכולם מסמנים את אותה אופציה היא נקבעת מעצמה, אחרי דקה שבה עוד אפשר לשנות. מי שפתח את התיאום יכול גם לקבוע לבד, גם אם לא כולם יכלו.",
       "mt.empty":"אין תיאום פעיל כרגע. אפשר לפתוח אחד למעלה, או פשוט לבקש מעולמה.",
       "toast.mtNoUnanswer":"אפשר להחליף בין ״אני יכול״ ל״לא מתאים לי״, אבל לא לחזור ללא־תשובה",
-      "mt.n0":"אין","mt.n1":"תיאום אחד","mt.nN":"{n} תיאומים",
+      "mt.n0":"אין","mt.n1":"פגישה אחת","mt.nN":"{n} פגישות",
       "mt.ask":"מתי מתאים לך?","mt.askOne":"אתה יכול להגיע?","mt.settledLbl":"המועד שנקבע",
       "mt.done":"תיאומים שנסגרו ושיצאת מהם","mt.youLeft":"יצאת מהתיאום הזה","mt.rejoin":"חזרה לתיאום",
       "toast.mtBack":"חזרת ל„{name}” — השאר עודכנו",
@@ -4752,7 +5024,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "mt.understood":"הבנתי: {list}","mt.useIt":"לסמן בלוח",
       "mt.notUnderstood":"לא הצלחתי להבין את זה — סמן בלוח למטה.",
       "mt.busy":"יש לך משהו ביום הזה","mt.clash":"מתנגש עם {what}","mt.prevWeeks":"שבועיים אחורה","mt.nextWeeks":"שבועיים קדימה",
-      "mt.pill.waiting":"ממתין","mt.pill.ready":"אפשר לסגור",
+      "mt.pill.waiting":"מחכים לאחרים","mt.pill.ready":"אפשר לקבוע","mt.pill.you":"מחכה לתשובה שלך",
       "mt.pill.settled":"נקבע","mt.pill.stuck":"תקוע","mt.pill.empty":"ריק",
       "mt.leaveAsk":"לצאת מ{name}? התשובות שלך יורדות מהספירה והתיאום יימחק מהרשימה שלך.",
       "mt.del":"מחיקת התיאום","mt.delAsk":"למחוק את {name}? נשלח ל{who} הודעה שהתיאום בוטל.",
@@ -4815,7 +5087,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "me.formNote":"״שמרתי לך״ מול ״שמרתי לך״ — עולמה תתאים את כל הניסוחים שלה.",
       "me.setup":"עולמה אצלך","me.calledBy":"השם של עולמה",
       "me.appearance":"מראה","me.themeLight":"בהיר","me.themeDark":"כהה","me.themeAuto":"אוטומטי",
-      "me.setupNote":"המיקום קובע כל תזכורת, כל שעת שקט וכל סיכום — קידומת טלפון היא מדינה, לא עיר. את השם אפשר להחליף; הוא יופיע בכל הודעה שהיא שולחת.",
+      "me.setupNote":"לפי המיקום עולמה יודעת מה השעה אצלך. את השם שלה אפשר להחליף.",
       "me.pause":"להשהות את עולמה","me.resume":"עולמה מושהית · להפעלה",
       "me.deleteAll":"מחיקת החשבון וכל המידע",
       "del.title":"למחוק את כל המידע?",
@@ -4840,7 +5112,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "me.digest":"סיכום יומי","me.digestOn":"לקבל סיכום יומי","me.digestOff":"כבוי","me.digestAt":"ב־{times}",
       "me.digestTimes":"באיזו שעה","me.digestScope":"כמה פירוט",
       "me.scope.summary":"תקציר","me.scope.today":"רק היום","me.scope.full":"הכול",
-      "me.language":"השפה שלכם בשיחה",
+      "me.language":"השפה שלך בשיחה",
       "me.taskCal":"משימות ליומן","me.taskCalSub":"משימות חדשות דרך עולמה שיש להן תאריך ושעה מתווספות ליומן אוטומטית",
       "me.nudge":"לנדנד לי","me.nudgeSub":"תזכורת שלא סימנת שבוצעה תחזור שוב באותו יום ולמחרת. כבוי — פעם אחת, בשעה שביקשת",
       "me.knows":"מה עולמה יודעת","me.knowsRow":"דברים שעולמה זוכרת",
@@ -4931,21 +5203,41 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
          rather than the caller having to know which languages inflect. */
       "brand.tagM":"Do it all. Do it Allma","brand.tagF":"Do it all. Do it Allma",
       "live":"{name} is on",
-      "tab.tools":"Home","tab.tasks":"Tasks","tab.cal":"Calendar","tab.friends":"Friends","tab.me":"Profile",
+      "tab.tools":"Home","tab.tasks":"Tasks","tab.cal":"Meetings","tab.friends":"Friends","tab.me":"Profile",
 
       "tools.h":"Your connections",
-      "home.p":"Allma helps you on WhatsApp. Here you see everything she is holding for you.",
+      "home.p":"Everything Allma holds for you, in one place.",
       "home.tasks.n0":"open tasks","home.tasks.n1":"open task","home.tasks.nN":"open tasks",
-      "home.meets.n0":"meeting coordinations","home.meets.n1":"meeting coordination","home.meets.nN":"meeting coordinations",
+      "home.meets.n0":"meetings being arranged","home.meets.n1":"meeting being arranged","home.meets.nN":"meetings being arranged",
       "home.tasksStart":"Add a task","home.tasksStartSub":"or just send Allma the task on WhatsApp",
       "home.meetsStart":"Set up a meeting","home.meetsStartSub":"Allma finds a time that suits everyone, over WhatsApp",
-      "home.tasksToday":"{n} for today","home.tasksGo":"See the full list","home.meetsGo":"See them all",
+      "home.tasksToday":"{n} for today","home.tasksGo":"See the full list","home.meetsGo":"All meetings",
+      "news.pill":"New updates · Refresh","news.done":"Updated",
+      "home.todayH":"Your day","home.clear":"Nothing is waiting on today.",
+      "home.due.n0":"","home.due.n1":"1 task for today","home.due.nN":"{n} tasks for today",
+      "home.waiting.n0":"","home.waiting.n1":"1 meeting waiting on you","home.waiting.nN":"{n} meetings waiting on you",
+      
       "nav.hint":"Switch between pages down here",
       "tools.accounts":"Accounts","tools.accountsHint":"One sign-in per provider",
       "tools.work":"Work",
       "ch.h":"Where we talk","ch.hint":"Tap to open the chat",
       "w.hint":"Write to Allma in your own language","w.open":"Opens a chat",
       "w.foot":"Nothing to install. The chat opens empty — your first sentence is what tells her which language to speak.",
+      "app.name":"Allma",
+      "code.have":"I have a code from Allma","code.h":"Sign in to the app",
+      "code.p":"Allma will send you a sign-in code on WhatsApp. Copy the message, paste it here, and you're in.",
+      "code.get":"Get a code on WhatsApp","code.waText":"App sign-in code",
+      "code.ph":"8-digit code","code.go":"Sign in",
+      "code.bad":"That code doesn't match, or its 10 minutes are up. You can ask for a new one.",
+      "code.slow":"Too many tries. You can try again in a quarter of an hour.",
+      "code.net":"No connection right now. Try again in a moment.",
+      "inst.h":"Allma on your home screen",
+      "inst.p":"Her own icon — no digging for the link in WhatsApp.",
+      "inst.pIos":"Three taps in Safari, and Allma opens like an app.",
+      "inst.btn":"Add to home screen","inst.later":"Not now","inst.ok":"Got it",
+      "inst.ios1":"Tap {share} in Safari's toolbar",
+      "inst.ios2":"Choose \u201cAdd to Home Screen\u201d",
+      "inst.ios3":"Open Allma from your home screen and ask her for a sign-in code",
       "ch.open":"Open chat","ch.add":"Add",
       "ch.call":"Call","ch.callSub":"Allma rings you","ch.calling":"Calling you…",
       "ch.callArm":"Getting ready…","ch.callReady":"Ready — tap again",
@@ -4984,7 +5276,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "tasks.h":"Your tasks","tasks.open":"Open","tasks.archive":"Archive",
       "tasks.n0":"No open tasks","tasks.n1":"1 open task","tasks.nN":"{n} open tasks",
       "remc.n0":"no reminders set","remc.n1":"1 reminder set","remc.nN":"{n} reminders set",
-      "bucket.late":"Overdue","bucket.today":"Today","bucket.tomorrow":"Tomorrow","bucket.later":"Later","kind.event":"On the calendar","kind.todo":"To do","cal.eventTag":"Event","tasks.new":"New task","tasks.empty":"Nothing open. Clear day.",
+      "bucket.late":"Overdue","bucket.today":"Today","bucket.tomorrow":"Tomorrow","bucket.later":"Later","cal.eventTag":"Event","tasks.new":"New task","tasks.empty":"Nothing open. Clear day.",
       "tasks.allDone":"All done","tasks.allDoneSub.n1":"one task closed today","tasks.allDoneSub.nN":"{n} tasks closed today",
       "tasks.doneAt":"Done {when}","tasks.justNow":"just now",
       "tasks.arcShown":"Showing the last {n} of {all}","tasks.arcShowAll":"Show all {all}","tasks.arcShowLess":"Showing all {all} · show the last {n}","tasks.restore":"Put back on the list",
@@ -4995,7 +5287,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "sugg.overdue":"Its date passed {days} days ago and it is still open. Take it off the list?",
       "sugg.duplicate":"Says almost the same as \u201c{keep}\u201d. Take this one off and keep the first?",
       "sugg.undo":"You can restore it from the archive at any time.",
-      "sugg.yes":"Confirm","sugg.no":"Skip","sugg.more":"AI suggestion",
+      "sugg.yes":"Confirm","sugg.no":"Skip","sugg.more":"Next suggestion","sugg.label":"{name} noticed",
       "sugg.yes.stuck":"Take it off","sugg.yes.overdue":"Take it off","sugg.yes.duplicate":"Take this one off",
       "toast.suggArchived":"\u201c{name}\u201d moved to the archive","toast.suggSkipped":"You will not be asked about \u201c{name}\u201d again",
       "nest.title":"Added to a list","nest.ok":"Got it","nest.undo":"Undo",
@@ -5027,13 +5319,13 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "sheet.leave":"Leave this shared task","sheet.leaveSub":"It leaves your list and stays on theirs. Nothing is deleted.",
       "toast.left":"You left \u201c{name}\u201d \u2014 it stays with the others",
 
-      "cal.h":"A look at your calendar",
-      "cal.p":"Read-only here. To change anything, open your phone's calendar in one tap.",
+      "cal.h":"Meetings",
+      "cal.p":"Read-only. Edit in your phone's calendar.",
       "cal.open":"Open in Google Calendar","cal.empty":"Nothing on this day.","cal.connectGo":"Connect a calendar",
       "cal.todayPre":"Today · ","cal.dayPrefix":"",
 
       "fr.h":"Friends on Allma",
-      "fr.p":"Every friend gets their own permissions. A change here takes effect at once, without asking them.",
+      "fr.p":"Each friend has their own permissions.",
       "fr.connected":"Connected","fr.count":"{n} friends",
       "fr.search":"Search friends","fr.clear":"Clear","fr.noMatch":"No friend matches \u201c{q}\u201d.",
       "fr.none":"Nobody here yet. Invite someone from your contacts below.",
@@ -5052,7 +5344,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "toast.newMeetGroupNone":"No one in this group has approved meeting coordination with you yet",
       "cal.modeRead":"Calendar","cal.modeMeet":"Coordinate",
       "cal.fromMeet":"Settled in a coordination","cal.meetTag":"Meeting",
-      "cal.pMeet":"Everyone marks when they can. Allma finds the window that fits.",
+      "cal.pMeet":"Everyone marks a time; Allma finds one.",
       "sheet.close":"Close","mt.open":"Active coordinations","mt.new":"New coordination",
       "mt.note":"An answer says whether you can \u2014 not that it is settled. When everyone marks the same option it settles itself, after a minute in which anyone can still change their answer. Whoever opened the coordination can also settle it alone, even if not everyone could.",
       "mt.empty":"Nothing being coordinated right now. Start one above, or just ask Allma.",
@@ -5092,7 +5384,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "mt.understood":"Read as: {list}","mt.useIt":"Use these",
       "mt.notUnderstood":"Couldn't read that \u2014 mark it on the grid below.",
       "mt.busy":"You have something that day","mt.clash":"Clashes with {what}","mt.prevWeeks":"Two weeks back","mt.nextWeeks":"Two weeks forward",
-      "mt.pill.waiting":"Waiting","mt.pill.ready":"Ready",
+      "mt.pill.waiting":"Waiting on others","mt.pill.ready":"Ready to set","mt.pill.you":"Waiting on you",
       "mt.pill.settled":"Settled","mt.pill.stuck":"Stuck","mt.pill.empty":"Empty",
       "mt.leaveAsk":"Leave {name}? Your answers stop counting and it goes off your list.",
       "mt.del":"Delete the coordination","mt.delAsk":"Delete {name}? {who} will get a message that it is off.",
@@ -6537,7 +6829,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
        has been assigned, so an unassigned list counts as none */
     if(!$("#homeTasksN")) return;
     var nT = (open || []).length, nM = (MEETS || []).length;
-    var dueNow = (open || []).filter(function(x){ var b = bucketFor(x.d); return x.d && (b === "late" || b === "today"); }).length;
+    var due = (open || []).filter(function(x){ var b = bucketFor(x.d); return x.d && (b === "late" || b === "today"); });
+    var dueNow = due.length;
     rollText($("#homeTasksN"), String(nT));
     rollText($("#homeMeetsN"), String(nM));
     homeZero($("#homeTasksN"), !nT, "addTask");
@@ -6548,6 +6841,25 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     ts.textContent = !nT ? t("home.tasksStartSub") : dueNow ? t("home.tasksToday", {n:dueNow}) : t("home.tasksGo");
     ts.classList.toggle("hot", nT > 0 && dueNow > 0);
     ms.textContent = nM ? t("home.meetsGo") : t("home.meetsStartSub");
+    renderToday(due, nT + nM);
+  }
+  /* The top of the home page. Somebody with nothing yet — a first visit —
+     still gets the welcome, because "nothing today" means nothing to them;
+     anybody with a list gets their day, as one line of counts. */
+  function renderToday(due, anything){
+    var waiting = (MEETS || []).filter(function(m){
+      return !m.settled && m.opts.some(function(o){ return !mtAns(m, 0, o.id); });
+    });
+    if(!anything){
+      $("#toolsH").textContent = brandTag(myGender());
+      $("#homeP").textContent = t("home.p");
+      return;
+    }
+    $("#toolsH").textContent = t("home.todayH");
+    var parts = [];
+    if(due.length) parts.push(pl("home.due", due.length));
+    if(waiting.length) parts.push(pl("home.waiting", waiting.length));
+    $("#homeP").textContent = parts.length ? parts.join(" · ") : t("home.clear");
   }
   /* An empty card names the control that starts one — the same button the
      tab's own empty state presses, so there is no second way to add a task. */
@@ -6954,17 +7266,20 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     }
     if(x.rep && x.rep !== "none") end += '<svg class="tglyph"><use href="#i-repeat"/></svg>';
     if(x.rem) end += '<svg class="tglyph bell"><use href="#i-bell"/></svg>';
+    if(x.kind === "event") end += '<svg class="tglyph kindmark" role="img" aria-label="' + esc(t("cal.eventTag")) +
+      '"><use href="#i-event"/></svg>';
     if(lbl) end += '<span class="ttime' + (b === "late" ? " late" : "") + '">' + esc(lbl) + "</span>";
-    /* the jump only exists where there is somewhere to jump TO */
-    if(x.d && x.cal) end += '<button class="tjump" data-jump="' + x.id + '" aria-label="' + esc(t("cal.showIn")) +
-      '"><svg><use href="#i-cal"/></svg></button>';
+    /* The jump to the calendar lives in the sheet now (#sJumpRow): on the
+       row it was the one control drawn exactly like the marks beside it, so
+       nobody could tell it was pressable (owner, 2026-09-28). */
     end += pinBtn(x);
     /* What sliding this row does: gone for good on a task of mine, off MY list
        on one others are on, and nothing at all on an imported one — that row
        lives in its source, and a delete here would come back on the next sync. */
     var verb = taskVerb(x), key = "t" + x.id;
     if(verb) end += swDel(key, verb);
-    return '<div class="taskwrap" data-id="' + x.id + '"><div class="taskin swr' + (verb ? "" : " locked") + swClass(key) +
+    return '<div class="taskwrap" data-id="' + x.id + '"><div class="taskin swr' + (verb ? "" : " locked") +
+      (facesOf(x).length ? " shared" : "") + swClass(key) +
       '" data-sw="' + key + '" data-verb="' + (verb || "") + '">' + (verb ? swBack(verb) : "") +
       '<div class="swfront"><div class="task" role="button" tabindex="0">' +
       '<button class="tick" aria-label="' + esc(t("a11y.tick")) + '"><svg><use href="#i-check"/></svg></button>' +
@@ -6972,10 +7287,10 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       /* The logo replaces the category dot rather than joining it: both answer
          "where does this belong", and on an imported task the app is the more
          useful answer — its category was decided by us, not by them. */
-      (x.src ? srcBadge(x)
-        : (viewBy === "time" && x.cat && x.cat !== "none"
-          ? '<i class="cdot" style="background:' + catOf(x.cat).c + '" title="' + esc(t("tcat." + x.cat)) + '"></i>'
-          : "")) +
+      /* No category dot in the time view (owner, 2026-09-28): nothing on the
+         page said what the colours meant, and the category view already
+         says it in words. */
+      (x.src ? srcBadge(x) : "") +
       esc(L(x.t) || t("sheet.untitled")) + "</span>" +
       (facesOf(x).length ? faceStack(facesOf(x)) : "") +
       (x.kind === "event" && x.loc ? '<span class="tloc">' + esc(x.loc) + "</span>" : "") + "</div>" +
@@ -6990,16 +7305,15 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   function taskGoesAway(x){ if(facesOf(x).length) leaveTaskRow(x.id); else deleteTaskRow(x.id); }
   /* Inside a day, the calendar comes before the plate: a meeting at 11:45 and
      "לקנות חלב" are not one list, and reading them as one is how a meeting
-     gets called a task. Both sub-labels appear only when both kinds are
-     there — a day of nothing but errands is not labelled "to do". */
+     gets called a task. The order still says it — events first — and each
+     event row carries its own mark (#i-event) beside its time. There used to
+     be two sub-labels, "ביומן" and "לעשות", under every day: a second level
+     of heading for two rows, which nobody who did not already know the
+     difference could read (the owner, 2026-09-27). */
   function kindGroups(items){
     var evs = items.filter(function(x){ return x.kind === "event"; }),
         todos = items.filter(function(x){ return x.kind !== "event"; });
-    if(!evs.length || !todos.length) return '<div class="group">' + evs.concat(todos).map(taskHTML).join("") + "</div>";
-    return '<div class="glabel"><span class="sub">' + esc(t("kind.event")) + "</span></div>" +
-      '<div class="group">' + evs.map(taskHTML).join("") + "</div>" +
-      '<div class="glabel"><span class="sub">' + esc(t("kind.todo")) + "</span></div>" +
-      '<div class="group">' + todos.map(taskHTML).join("") + "</div>";
+    return '<div class="group">' + evs.concat(todos).map(taskHTML).join("") + "</div>";
   }
   var viewBy = "time";
   /* One place for all of them, whichever way the list is sorted — so it is
@@ -7047,7 +7361,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      second question arriving the instant the first is answered is an
      interrogation, not an offer.
 
-     The one way to see another is asking for it: "הצעת Ai" (owner,
+     The one way to see another is asking for it: "להצעה הבאה" (was "הצעת Ai"; owner,
      2026-09-22) steps to the next one and appears only when there IS one.
      It decides nothing — the suggestion you step past stays unanswered — and
      it sends nothing, because the whole set is already here.
@@ -7094,6 +7408,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
         '<span class="sicon"><svg aria-hidden="true"><use href="#' +
           (SUGG_ICON[s.kind] || "i-list") + '"/></svg></span>' +
         '<span class="stext">' +
+          '<span class="slbl">' + esc(t("sugg.label", {name:olmaName()})) + "</span>" +
           '<span class="stitle">' + esc(L(s.title) || t("sheet.untitled")) + "</span>" +
           '<span class="swhy">' + esc(why) + " " + esc(t("sugg.undo")) + "</span>" +
         "</span>" +
@@ -7273,9 +7588,9 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     renderTasks(); renderStrip(selDay);
     toast(t("toast.stillRepeating"));
   }
-  $("#taskStack").addEventListener("click", function(e){
-    var wrap = e.target.closest(".taskwrap");
-    if(e.target.closest(".tick") && wrap){
+  /* Ticking a row off, wherever the row is drawn — the task list, or today
+     on the home page. One function, so there is one way to finish a task. */
+  function tickTask(wrap){
       var row = $(".task", wrap);
       if(row.classList.contains("done")) return;
       row.classList.add("done");
@@ -7302,8 +7617,10 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
            seconds anybody would want it. */
         toast(t("toast.done"), i > -1 ? function(){ restoreTask(id); } : null);
       }, 540);
-      return;
-    }
+  }
+  $("#taskStack").addEventListener("click", function(e){
+    var wrap = e.target.closest(".taskwrap");
+    if(e.target.closest(".tick") && wrap){ tickTask(wrap); return; }
     var jp = e.target.closest("[data-jump]");
     if(jp){ jumpToCalendar(+jp.dataset.jump); return; }
     var pn = e.target.closest("[data-pin]");
@@ -7667,7 +7984,19 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     if($("#mtOptSheet").classList.contains("show")){ closeOptSheet(); return; }
     closeSheets();
   });
-  $("#cityCancel").addEventListener("click", closeSheets);
+  /* The X every sheet carries (owner, 2026-09-28: people who tried it did not
+     know how to leave one). It closes exactly what the scrim and the drag
+     close — the top layer, and only that — so the three ways out never
+     disagree. Everything in a sheet has already saved by the time it is
+     pressed; the "נשמר" line under the task editor says so. */
+  $$("[data-sx]").forEach(function(b){
+    b.addEventListener("click", function(){
+      var id = b.closest(".sheet").id;
+      if(id === "timeSheet"){ closeTimeSheet(); return; }
+      if(id === "mtOptSheet"){ closeOptSheet(); return; }
+      closeSheets();
+    });
+  });
 
   /* ── a sheet is a thing you can put down ──
      Grab the top edge and it follows the finger, and the scrim thins as it
@@ -7967,6 +8296,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     $("#sEndVal").textContent = editing.tmEnd || t("sheet.pickEnd");
     $("#sEndChip").classList.toggle("set", !!editing.tmEnd);
     $("#sCalRow").hidden = !dated;
+    $("#sJumpRow").hidden = isNew || !(editing.d && editing.cal);
     $("#sCalSub").textContent = calTargetName();
     /* No calendar to write to means the switch cannot keep its word, so it is
        not offered — the row still shows, saying which calendar is missing,
@@ -8533,7 +8863,6 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     if(b) pickTime(b.dataset.time);
   });
   $("#timeClear").addEventListener("click", function(){ pickTime(""); });
-  $("#timeCancel").addEventListener("click", closeTimeSheet);
   /* The field behind the chip this sheet feeds: it holds what was chosen, or
      the 20:00 the meeting flow's "exact" chip has always started from. The
      chip itself is drawn by whoever draws the row (exactChipHTML). */
@@ -9075,8 +9404,15 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       '<span class="mtbody"><span class="mtname">' + esc(L(m.t)) +
       /* An unanswered coordination is the one thing on this page that is
          waiting on YOU, so it says so on the card and not two taps in. */
-      (!m.settled && mine ? '<i class="mtdot"></i>' : "") + "</span>" +
-      '<span class="mtstate"><em class="mtpill ' + st + '">' + esc(t("mt.pill." + st)) + "</em>" +
+      "</span>" +
+      /* ONE signal per card, and it answers "what does this want from me"
+         (owner, 2026-09-28). There used to be a dot for "waiting on you"
+         beside a pill that could say "אפשר לסגור" at the same time, and a
+         new person could not tell which of the two to act on. Waiting on
+         you wins, and is the one solid pill; otherwise the pill is the
+         state. */
+      '<span class="mtstate"><em class="mtpill ' + (!m.settled && mine ? "you" : st) + '">' +
+      esc(t("mt.pill." + (!m.settled && mine ? "you" : st))) + "</em>" +
       esc(mtState(m)) + "</span></span>" +
       '<svg class="chev"><use href="#i-chev"/></svg></button>' +
       (verb ? swDel(key, verb) : "") + "</div></div></div></div>";
@@ -9480,7 +9816,6 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     renderMeet();
     showSheet($("#mtSheet"));
   }
-  $("#mtClose").addEventListener("click", closeSheets);
   $("#mtSheet").addEventListener("scroll", function(){ paintCue($("#mtSheet"), $("#mtCue")); });
 
   $("#mtOpts").addEventListener("click", function(e){
@@ -9924,7 +10259,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     $("#mtOptPick").hidden = !!swapNew;
     $("#mtOptSwap").hidden = !swapNew;
     $("#mtOptTitle").textContent = t(swapNew ? "mt.swapTitle" : "mt.addOpt");
-    $("#mtOptCancel").textContent = t(swapNew ? "mt.back" : "sheet.cancel");
+    $("#mtOptCancel").textContent = t("mt.back");
+    $("#mtOptCancel").hidden = !swapNew;   /* leaving is the X; this only steps back */
     var go = $("#mtOptGo");
     go.hidden = !!swapNew;
     var miss = optDay < 0 ? t("mt.missDay")
@@ -10248,7 +10584,6 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       : mtStep === 1 ? t("mt.next") + " · " + pl("mtwho", mtPickWho.length)
       : t("mt.next") + " · " + pl("mtday", mtPickDays.length));
     $("#mtNewBack").hidden = mtStep === 1;
-    $("#mtNewCancel").hidden = mtStep !== 1;
   }
   function mtGoStep(n){
     mtStep = n;
@@ -10361,7 +10696,6 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     var span = $('[data-pd="' + off + ':exact"] span', $("#mtPerDayList"));
     if(span) span.textContent = inp.value;
   });
-  $("#mtNewCancel").addEventListener("click", closeSheets);
   $("#mtNewSheet").addEventListener("scroll", function(){ paintCue($("#mtNewSheet"), $("#mtNewCue")); });
   $("#mtNewGo").addEventListener("click", function(){
     var miss = mtMissing(mtStep);
@@ -10510,7 +10844,6 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     showSheet($("#cnSheet"));
   }
   $("#addFriend").addEventListener("click", openContacts);
-  $("#cnCancel").addEventListener("click", closeSheets);
   $("#cnSearch").addEventListener("input", function(){ cnQ = this.value; renderContacts(); });
   $("#cnSheet").addEventListener("scroll", function(){ paintCue($("#cnSheet"), $("#cnCue")); });
   /* No address book is not a dead end — it is one missing connection, and the
@@ -10584,6 +10917,104 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   }
   /* A phone whose screen has been off for a night arrives here first. */
   document.addEventListener("visibilitychange", function(){ if(!document.hidden) rollDay(); });
+  /* ── keeping the picture current ──
+     The installed app is never reloaded by anybody: iOS and Android keep it
+     in memory for days. Three ways it catches up, and none of them moves a
+     list under somebody's finger (the owner, 2026-09-28):
+       - coming back after a real absence reads the page again, once;
+       - pulling the page down from the top reads it now (#ptr), because an
+         installed app has no browser reload and no browser pull;
+       - while it is on screen it asks once a minute whether anything
+         changed, and if so says so (#newsPill) — the list itself only
+         changes when that is pressed. */
+  var hiddenAt = 0, lastWriteAt = 0, DATA_SIG = "", sigAt = 0;
+  var STALE_AFTER_MS = 5 * 60 * 1000, NEWS_EVERY_MS = 60 * 1000, NEWS_QUIET_MS = 20 * 1000;
+  document.addEventListener("visibilitychange", function(){
+    if(document.hidden){ hiddenAt = Date.now(); return; }
+    if(hiddenAt && LIVE && Date.now() - hiddenAt >= STALE_AFTER_MS) API.reload();
+    hiddenAt = 0;
+  });
+  /* What the page would draw, minus what changes by itself with the clock:
+     `settleIn` is a countdown, and a countdown is not news. */
+  function dataSig(d){
+    try{ return JSON.stringify(d, function(k, v){ return k === "settleIn" ? undefined : v; }); }
+    catch(e){ return ""; }
+  }
+  function hideNews(){ var p = $("#newsPill"); if(p) p.classList.remove("show"); }
+  function checkForNews(){
+    if(!LIVE || document.hidden || !DATA_SIG) return;
+    /* A write of our own is still on its way back through the server, and
+       the difference it makes is not news to the person who made it. */
+    if(Date.now() - lastWriteAt < NEWS_QUIET_MS) return;
+    var seqAt = dataSeq;
+    fetch("/me/data", {credentials:"same-origin", headers:{Accept:"application/json"}})
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(body){
+        if(!body || !body.ok || !body.data) return;
+        if(seqAt !== dataSeq || Date.now() - lastWriteAt < NEWS_QUIET_MS) return;
+        var sig = dataSig(body.data);
+        /* Most writes here do not re-read the page — the row was already
+           drawn — so after one the server's picture differs from the last
+           one READ by exactly what the person just did. That is taken as
+           the new baseline, silently, and never offered back to them as
+           news. (A change from elsewhere in the same minute waits for the
+           next read; it is not lost, only not announced.) */
+        if(lastWriteAt > sigAt){ DATA_SIG = sig; sigAt = Date.now(); return; }
+        if(sig !== DATA_SIG) $("#newsPill").classList.add("show");
+      })
+      .catch(function(){});
+  }
+  setInterval(checkForNews, NEWS_EVERY_MS);
+  $("#newsPill").addEventListener("click", function(){
+    hideNews();
+    API.reload(function(){ toast(t("news.done")); });
+  });
+
+  /* Pull to refresh. Only from the very top of the page, only downward, and
+     never from inside a sheet, a sideways swipe or a task being dragged. The
+     listeners are passive: the page scrolls and bounces exactly as before,
+     and this only watches. */
+  (function(){
+    var PULL = 64, MAX = 96, y0 = null, x0 = 0, pulled = 0, busy = false;
+    var ptr = $("#ptr");
+    function reset(){ y0 = null; pulled = 0; ptr.style.removeProperty("--pull"); ptr.classList.remove("armed", "on"); }
+    document.addEventListener("touchstart", function(e){
+      /* Only in the installed app: a browser tab has its own pull, which
+         reloads the page, and two of them on one gesture is one too many. */
+      if(!document.documentElement.classList.contains("is-app")) return;
+      if(busy || e.touches.length !== 1 || window.scrollY > 0) return;
+      if(!e.target.closest("main") || e.target.closest(".sheet,.swr.dragging,input,textarea")) return;
+      if(document.querySelector(".sheet.show,.dragsrc")) return;
+      y0 = e.touches[0].clientY; x0 = e.touches[0].clientX;
+    }, {passive:true});
+    document.addEventListener("touchmove", function(e){
+      if(y0 === null) return;
+      var dy = e.touches[0].clientY - y0, dx = e.touches[0].clientX - x0;
+      if(window.scrollY > 0 || dy <= 0 || Math.abs(dx) > dy || document.querySelector(".dragsrc")){
+        if(pulled) reset(); else y0 = null;
+        return;
+      }
+      pulled = Math.min(MAX, dy * .5);
+      ptr.classList.add("on");
+      ptr.style.setProperty("--pull", pulled + "px");
+      ptr.classList.toggle("armed", pulled >= PULL);
+    }, {passive:true});
+    document.addEventListener("touchend", function(){
+      if(y0 === null) return;
+      if(pulled < PULL){ reset(); return; }
+      busy = true;
+      ptr.classList.remove("armed");
+      ptr.classList.add("spin");
+      var started = Date.now();
+      API.reload(function(){
+        /* a read that came back in 80ms would flash; the spin is shown long
+           enough to be seen to have happened */
+        setTimeout(function(){ ptr.classList.remove("spin"); reset(); busy = false; },
+          Math.max(0, 500 - (Date.now() - started)));
+      });
+    });
+    document.addEventListener("touchcancel", function(){ if(!busy) reset(); });
+  })();
   setInterval(tickClocks, 30000);
 
   /* ── the settle grace, ticking ──
@@ -10864,7 +11295,15 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      the row it landed on rings once, presses itself, and only then does
      the editor open. Teleporting straight into the sheet would leave the
      person on a page they never saw themselves move to. */
-  function jumpToCalendar(id){
+  $("#sJumpRow").addEventListener("click", function(){
+    if(!editing) return;
+    var id = editing.id;
+    closeSheets();
+    jumpToCalendar(id, true);
+  });
+  /* `fromSheet`: the person left the editor to look at the day, so the
+     editor does not open again on top of what they came to see. */
+  function jumpToCalendar(id, fromSheet){
     var x = open.filter(function(o){ return o.id === id; })[0];
     if(!x || !x.d) return;
     var target = new Date(x.d + "T12:00:00");
@@ -10878,9 +11317,14 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
        Past the strip's own reach (WEEK_MIN..WEEK_MAX) there is no day to show,
        so the sheet opens where the person already is rather than the calendar
        landing on the wrong one. */
-    if(i < WEEK_MIN * 7 || i > WEEK_MAX * 7 + 6){ openSheet(id); return; }
+    if(i < WEEK_MIN * 7 || i > WEEK_MAX * 7 + 6){ if(!fromSheet) openSheet(id); return; }
     weekOff = Math.floor(i / 7);
     go("cal");
+    /* The tab opens on coordinations (owner, 2026-09-15), where the day's
+       rows do not exist: without this the jump landed on the wrong half and
+       found nothing to point at (found 2026-09-28, the row icon had the
+       same fault). */
+    setCalMode("cal");
     renderStrip(i);
     setTimeout(function(){
       var row = $('.ev[data-task="' + id + '"]');
@@ -10890,7 +11334,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       setTimeout(function(){ row.classList.add("pressed"); }, 310);
       setTimeout(function(){
         row.classList.remove("landing", "pressed");
-        openSheet(id);
+        if(!fromSheet) openSheet(id);
       }, 450);
     }, 240);
   }
@@ -11375,7 +11819,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     ME.gender = b.dataset.g === "f" ? "female" : "male";
     paintAvatars();
     /* the greeting on the connections page is gendered, so it moves with this */
-    $("#toolsH").textContent = brandTag(myGender());
+    renderHome();
     $("#bigAvatar").classList.remove("pop"); void $("#bigAvatar").offsetWidth; $("#bigAvatar").classList.add("pop");
     API.setPersonal({gender:ME.gender});
     toast(t(b.dataset.g === "f" ? "toast.fem" : "toast.masc"));
@@ -12124,6 +12568,10 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     document.documentElement.setAttribute("dir", D.dir);
     document.documentElement.setAttribute("lang", LOCALE);
     document.title = t("page.title");
+    /* the name under the icon when an iPhone adds this page to its home
+       screen, read at that moment — so it follows the page's language */
+    var appTitle = document.querySelector('meta[name="apple-mobile-web-app-title"]');
+    if(appTitle) appTitle.setAttribute("content", t("app.name"));
     $$("[data-i18n]").forEach(function(el){ el.textContent = t(el.dataset.i18n); });
     paintGreeting();
     $$("[data-i18n-ph]").forEach(function(el){ el.placeholder = t(el.dataset.i18nPh); });
@@ -12144,7 +12592,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     $("#sSaved").textContent = t("sheet.autosave");
     /* the first page a person lands on greets them in their own language and
        gender, rather than repeating the tab they just pressed */
-    $("#toolsH").textContent = brandTag(myGender());
+    renderHome();
     syncName();
   }
   /* ══════════════════════════════════════════════════════════════
@@ -12170,6 +12618,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
           tileFor(c.tile, c.icon) + "<b>" + esc(c.name) + "</b><i>" +
           esc(t("w.open")) + "</i></a>";
       }).join("");
+    paintCodeDoor();
   }
   function startWelcome(){
     document.documentElement.classList.add("is-new");
@@ -12187,6 +12636,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     renderFriends();
     renderGroups();
     renderWelcome();
+    renderInstall();
     /* the mode is re-applied rather than reset: a language switch must not
        throw somebody out of the coordination they were reading */
     setCalMode($("#calMeet").hidden ? "cal" : "meet");
@@ -12581,6 +13031,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      claiming to be information. */
   var CAL_EVENT_COLOR = "#5B2FD6", calConnected = false;
   function hydrate(d){
+    DATA_SIG = dataSig(d); sigAt = Date.now();
+    hideNews();
     /* Who this is, FIRST. Everything below asks "is this me?" — a shared task,
        a meeting participant — and answers it against MY_ID, so setting it
        after the mapping would have made every one of those answers "no" on
@@ -12721,8 +13173,18 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     /* Their calendar is a separate round trip to Google, and nothing a write
        on this page does can change it — so it is fetched once, at boot, and
        again only when the week on screen moves past what has been fetched. */
-    if(first) loadDays();
+    if(first){ loadDays(); registerOffline(); }
     openFromHash();
+  }
+  /* The offline screen (adapters/http/pwa.js, /sw.js). Only once the page
+     is LIVE, so the design page never registers one; in the person's own
+     language, which the worker reads off its own address. It caches nothing
+     — it only answers when opening the page fails outright. */
+  function registerOffline(){
+    try {
+      if(navigator.serviceWorker) navigator.serviceWorker.register("/sw.js?hl=" + LOCALE, {scope:"/"})
+        .catch(function(){});
+    } catch(e){}
   }
   /* A link minted for ONE meeting arrives as #meeting=<id> (the sign-in POST
      hands it over in the redirect; adapters/http/user-dashboard.js). The page
@@ -12744,6 +13206,18 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       go("tasks");
       return;
     }
+    /* The installed app's long-press shortcuts (pwa.js): straight into a new
+       task or a new coordination, the two things a person opens it to do. */
+    if(location.hash === "#new-task" || location.hash === "#new-meeting"){
+      var want = location.hash;
+      hashOpened = true;
+      try{ history.replaceState(null, "", location.pathname + location.search); }catch(e){}
+      markIntroSeen(); introFinish();
+      go(want === "#new-task" ? "tasks" : "cal");
+      /* after the tab has slid in, so the sheet rises over the right page */
+      setTimeout(function(){ $(want === "#new-task" ? "#addTask" : "#mtNew").click(); }, 320);
+      return;
+    }
     var m = /^#meeting=([1-9][0-9]{0,11})$/.exec(location.hash || "");
     if(!m) return;
     hashOpened = true;
@@ -12760,6 +13234,15 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      it has to be drivable from outside — to try a shape without a server, and
      to see what a given payload actually renders as. */
   API.hydrate = hydrate;
+  /* The installed app is told to reuse its window (launch_handler
+     navigate-existing), so a shortcut pressed while it is open changes only
+     the hash — no load, no hydrate, and openFromHash never runs. Every door
+     it knows is honoured here too, once per change. */
+  window.addEventListener("hashchange", function(){
+    if(!/^#(new-task|new-meeting|tasks|meeting=[1-9][0-9]{0,11})$/.test(location.hash || "")) return;
+    hashOpened = false;
+    openFromHash();
+  });
 
   /* One request, at boot. Nothing retries it on its own — a dashboard that
      silently reloads itself is a dashboard that can change under somebody's
@@ -12788,7 +13271,15 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     $("#bootRetry").hidden = true;
     $("#bootMsg").textContent = t("boot.loading");
     fetch("/me/data", {credentials:"same-origin", headers:{Accept:"application/json"}})
-      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(r){
+        /* The session is gone (thirty idle days, or "sign out everywhere").
+           The page itself is what knows how to sign back in — a link in a
+           browser, a code in the installed app — so ask for it again, and the
+           server answers with that screen. Once: the server's answer for /me
+           without a session is the first screen, which fetches nothing. */
+        if(r.status === 401){ location.reload(); return null; }
+        return r.ok ? r.json() : null;
+      })
       .then(function(body){
         if(body && body.ok && body.data){ hydrate(body.data); bootDone(); return; }
         bootFail();
@@ -12918,10 +13409,157 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     if(document.fonts && document.fonts.ready) document.fonts.ready.then(begin);
     setTimeout(begin, 500);
   }
+  /* ══════════════════════════════════════════════════════════════
+     THE HOME-SCREEN APP
+     The same page, installed (src/adapters/http/pwa.js). Two things differ
+     inside it, and one outside it:
+       - signing in is a CODE, because an iPhone's installed app keeps its
+         own cookies and no link from WhatsApp ever opens inside it;
+       - the invitation to install is not shown to somebody who already has;
+       - outside it, the invitation appears only where installing can work:
+         Chrome/Edge said so (beforeinstallprompt), or this is Safari on an
+         iPhone, which never says so and needs its three taps spelled out.
+     ══════════════════════════════════════════════════════════════ */
+  var STANDALONE = (function(){
+    try{
+      return (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) ||
+        window.navigator.standalone === true;
+    }catch(e){ return false; }
+  })();
+  if(STANDALONE) document.documentElement.classList.add("is-app");
+  /* Safari itself, on an iPhone or iPad. Not Chrome/Firefox/Edge for iOS,
+     whose share button sits elsewhere, and not an app's built-in browser,
+     which has no "Add to Home Screen" at all. The one place this page reads
+     the user agent: iOS offers no event to ask instead. */
+  var IOS_SAFARI = (function(){
+    var ua = navigator.userAgent || "";
+    /* an iPad asks for the desktop site and says "Macintosh" — with a touch
+       screen no Mac has. Chrome with touch emulation on a Mac says both too,
+       which is why "Version/" below matters: only Safari itself carries it
+       (Chrome, Firefox and Edge for iOS, and the in-app browsers, do not). */
+    var ios = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+    return ios && /Version\/[\d.]+.*Safari\//.test(ua) && !/Chrome|Android|CriOS|FxiOS|EdgiOS|OPiOS|GSA\/|FBAN|FBAV|Instagram|Line\/|WhatsApp/.test(ua);
+  })();
+  var installEvt = null;
+  window.addEventListener("beforeinstallprompt", function(e){
+    e.preventDefault();
+    installEvt = e;
+    renderInstall();
+  });
+  window.addEventListener("appinstalled", function(){ installEvt = null; instDismiss(); });
+  function instDismissed(){
+    try{ return localStorage.getItem("olma.installDismissed") === "1"; }catch(e){ return false; }
+  }
+  function instDismiss(){
+    try{ localStorage.setItem("olma.installDismissed", "1"); }catch(e){}
+    $("#inst").hidden = true;
+  }
+  /* "prompt", "ios" or null. On the design page, ?install=prompt|ios draws
+     either one, since neither can happen there for real. */
+  function installMode(){
+    if(NEWUSER || STANDALONE) return null;
+    var served = document.documentElement.hasAttribute("data-served");
+    if(!served){
+      var q = new URLSearchParams(location.search).get("install");
+      return q === "prompt" || q === "ios" ? q : null;
+    }
+    if(instDismissed()) return null;
+    if(installEvt) return "prompt";
+    return IOS_SAFARI ? "ios" : null;
+  }
+  function renderInstall(){
+    var box = $("#inst"), mode = installMode();
+    if(!box) return;
+    box.hidden = !mode;
+    if(!mode) return;
+    $("#instMark").innerHTML = '<img src="/icons/apple-touch-icon.png" alt="" width="44" height="44">';
+    $("#instP").textContent = t(mode === "ios" ? "inst.pIos" : "inst.p");
+    var steps = $("#instSteps");
+    steps.hidden = mode !== "ios";
+    steps.innerHTML = mode !== "ios" ? "" : ["inst.ios1", "inst.ios2", "inst.ios3"].map(function(k){
+      return "<li><span>" + esc(t(k)).split("{share}").join('<svg aria-hidden="true"><use href="#i-share"/></svg>') + "</span></li>";
+    }).join("");
+    /* On an iPhone the page cannot do the installing, so the one button is
+       the acknowledgement; where the browser can, it is the whole point. */
+    $("#instYes").textContent = t(mode === "ios" ? "inst.ok" : "inst.btn");
+    $("#instNo").textContent = t("inst.later");
+    $("#instNo").hidden = mode === "ios";
+  }
+  $("#instYes").addEventListener("click", function(){
+    if(!installEvt){ instDismiss(); return; }
+    var e = installEvt;
+    installEvt = null;
+    e.prompt();
+    if(e.userChoice) e.userChoice.then(function(c){
+      if(c && c.outcome === "accepted") instDismiss(); else renderInstall();
+    });
+  });
+  $("#instNo").addEventListener("click", instDismiss);
+
+  /* ---- signing into the installed app with a code ---- */
+  /* The digits out of whatever was pasted: the whole WhatsApp message is
+     fine, and so is "1234 5678", "1234-5678" or a bare 12345678. Bold marks
+     and direction marks that ride a copied message are dropped first. */
+  function codeOf(v){
+    var m = String(v || "").replace(/[\u200e\u200f\u2066-\u2069*]/g, "")
+      .match(/(?:^|\D)(\d{4})[\s\u00a0-]?(\d{4})(?!\d)/);
+    return m ? m[1] + m[2] : null;
+  }
+  function paintCodeDoor(){
+    var wa = CHANNELS.filter(function(c){ return c.id === "wa"; })[0];
+    var link = (wa && wa.link) || "https://wa.me/972559347282";
+    $("#wCodeGet").href = link + (link.indexOf("?") < 0 ? "?" : "&") + "text=" + encodeURIComponent(t("code.waText"));
+    $("#wCodeGet").innerHTML = tileFor("wa", "i-wa") + "<span>" + esc(t("code.get")) + "</span>";
+    /* Inside the installed app the code IS the way in, so it is the screen;
+       in a browser it waits behind "I have a code". */
+    if(STANDALONE){
+      $("#wCode").hidden = false;
+      $("#wTag").textContent = t("code.h");
+    }
+  }
+  var codeBusy = false;
+  function codeInput(){
+    var c = codeOf($("#wCodeIn").value);
+    $("#wCodeGo").disabled = !c || codeBusy;
+    return c;
+  }
+  function codeSubmit(){
+    var c = codeInput();
+    if(!c || codeBusy) return;
+    codeBusy = true;
+    $("#wCodeGo").disabled = true;
+    $("#wCodeIn").value = c.slice(0, 4) + " " + c.slice(4);
+    fetch("/me/code", {
+      method:"POST", credentials:"same-origin",
+      headers:{"Content-Type":"application/json", Accept:"application/json"},
+      body:JSON.stringify({code:c})
+    }).then(function(r){
+      if(r.ok){ location.replace("/me"); return; }
+      codeBusy = false;
+      $("#wCodeErr").textContent = t(r.status === 429 ? "code.slow" : "code.bad");
+      codeInput();
+    }).catch(function(){
+      codeBusy = false;
+      $("#wCodeErr").textContent = t("code.net");
+      codeInput();
+    });
+  }
+  /* typing again is starting again, so the last refusal goes with it */
+  $("#wCodeIn").addEventListener("input", function(){ $("#wCodeErr").textContent = ""; codeInput(); });
+  /* A paste that carries a whole code is the person saying "this one" —
+     going on without a second tap is the point of pasting. */
+  $("#wCodeIn").addEventListener("paste", function(){ setTimeout(function(){ if(codeInput()) codeSubmit(); }, 0); });
+  $("#wCode").addEventListener("submit", function(e){ e.preventDefault(); codeSubmit(); });
+  $("#wCodeHave").addEventListener("click", function(){
+    this.hidden = true;
+    $("#wCode").hidden = false;
+    $("#wCodeIn").focus();
+  });
+
   /* One or the other, never both: the intro stages the APP, and
      a stranger is not being shown the app. */
   /* a deep link skips the intro entirely — see openFromHash */
-  if(/^#(meeting=|tasks$)/.test(location.hash || "")) markIntroSeen();
+  if(/^#(meeting=|tasks$|new-task$|new-meeting$)/.test(location.hash || "")) markIntroSeen();
   if(NEWUSER) startWelcome(); else { startIntro(); navHint(); }
   /* the seed page only: on a served page the seed MEETS are placeholders and
      the real ones arrive with hydrate(), which calls this itself */

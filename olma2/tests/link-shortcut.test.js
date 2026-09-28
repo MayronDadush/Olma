@@ -36,13 +36,13 @@ const ask = (params) => broker.dispatch({ id: 1, method: 'dashboard_link_shortcu
 test('every phrase the owner listed matches, in Hebrew, and says so', () => {
   for (const p of ['שלח לי קישור לדאשבורד', 'שלח לי קישור', 'שלח קישור', 'קישור',
     'שלחי לי קישור לדאשבורד', 'שלחי לי קישור', 'שלחי קישור']) {
-    assert.deepEqual(linkRequest.matchLinkRequest(p), { lang: 'he' }, p);
+    assert.deepEqual(linkRequest.matchLinkRequest(p), { lang: 'he', kind: 'link' }, p);
   }
 });
 
 test('the English twins match, and answer in English', () => {
   for (const p of ['send me the dashboard link', 'Send me a link', 'send me the link', 'Send link', 'link', 'Dashboard link']) {
-    assert.deepEqual(linkRequest.matchLinkRequest(p), { lang: 'en' }, p);
+    assert.deepEqual(linkRequest.matchLinkRequest(p), { lang: 'en', kind: 'link' }, p);
   }
 });
 
@@ -61,8 +61,8 @@ test('anything MORE than the request goes to the model', () => {
 
 test('a new language is one table entry, not a code change', () => {
   const table = { ...linkRequest.PHRASES, fr: ['envoie-moi le lien'] };
-  assert.deepEqual(linkRequest.matchLinkRequest('Envoie moi le lien', table), { lang: 'fr' });
-  assert.deepEqual(linkRequest.matchLinkRequest('קישור', table), { lang: 'he' }, 'the others unchanged');
+  assert.deepEqual(linkRequest.matchLinkRequest('Envoie moi le lien', table), { lang: 'fr', kind: 'link' });
+  assert.deepEqual(linkRequest.matchLinkRequest('קישור', table), { lang: 'he', kind: 'link' }, 'the others unchanged');
 });
 
 test('keyFor picks a language\'s template and falls back where one is missing', () => {
@@ -97,6 +97,32 @@ test('both default sentences pass the reply gate, whoever is reading', () => {
   }
 });
 
+// ---- the code kind ("קוד כניסה") --------------------------------------------
+test('the code phrases match as a CODE, in both languages, and never as a link', () => {
+  for (const p of linkRequest.CODE_PHRASES.he) assert.deepEqual(linkRequest.matchLinkRequest(p), { lang: 'he', kind: 'code' }, p);
+  for (const p of linkRequest.CODE_PHRASES.en) assert.deepEqual(linkRequest.matchLinkRequest(p), { lang: 'en', kind: 'code' }, p);
+  // What the app's button types into WhatsApp, exactly as the page encodes it.
+  assert.deepEqual(linkRequest.matchLinkRequest('קוד כניסה לאפליקציה'), { lang: 'he', kind: 'code' });
+  assert.deepEqual(linkRequest.matchLinkRequest('App sign-in code'), { lang: 'en', kind: 'code' });
+  for (const p of ['קוד', 'מה הקוד של הזום?', 'קוד כניסה לבניין', 'code']) {
+    assert.equal(linkRequest.matchLinkRequest(p), null, p);
+  }
+  for (const p of Object.values(linkRequest.CODE_PHRASES).flat()) {
+    assert.ok(p.length <= linkRequest.MAX_LENGTH, `${p} is longer than the plugin forwards`);
+  }
+});
+
+test('both code sentences pass the reply gate, whoever is reading', () => {
+  const replyLeak = require('../src/domain/reply-leak');
+  for (const key of ['dashboard_code', 'dashboard_code_en']) {
+    const text = templates.render(key, { code: '4821 0937' }, {});
+    for (const readerWritesHebrew of [true, false, null]) {
+      const v = replyLeak.gateReply(text, { readerWritesHebrew });
+      assert.equal(v.action, 'pass', `${key} to readerWritesHebrew=${readerWritesHebrew}`);
+    }
+  }
+});
+
 // ---- brokerd ----------------------------------------------------------------
 async function person(n, extra = {}) {
   const u = await makeUser(db.pool, `+97250555${String(n).padStart(4, '0')}`, extra);
@@ -126,6 +152,34 @@ test('a match mints a link and hands back the sentence in the language they wrot
   const mine = marks.filter((m) => m.messageId === '3EB0AAAA1111');
   assert.equal(mine.length, 1);
   assert.equal(mine[0].state, 'done', 'answered, so the 👀 becomes a 👍');
+});
+
+test('"קוד כניסה" mints eight digits, answers with them, and makes no link', async () => {
+  const u = await person(7);
+  const out = await ask({ agentId: `u-${u.id}`, body: 'קוד כניסה לאפליקציה', messageId: '3EB0CCCC0001' });
+  assert.equal(out.claim, true);
+  assert.equal(out.kind, 'code');
+  const m = out.text.match(/^הקוד לכניסה לאפליקציה 👇\n(\d{4}) (\d{4})\nתקף ל־10 דקות\.$/);
+  assert.ok(m, out.text);
+  const { rows } = await db.pool.query(
+    `SELECT target, expires_at - created_at AS ttl FROM magic_links WHERE user_id = $1`, [u.id]);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].target, 'code');
+  // And the code it said is the one that opens a session.
+  const auth = require('../src/domain/dashboard-auth');
+  const opened = await withTx(db.pool, (c) => auth.redeemCode(c, m[1] + ' ' + m[2]));
+  assert.equal(opened.ok, true);
+  assert.equal(opened.data.userId, Number(u.id));
+  const audit = await db.pool.query(
+    `SELECT detail FROM audit_log WHERE actor_id = $1 AND event = 'dashboard.code_shortcut'`, [u.id]);
+  assert.deepEqual(audit.rows.map((r) => r.detail), [{ lang: 'he' }]);
+  assert.ok(!JSON.stringify(audit.rows).includes(m[1]), 'the code is never written anywhere readable');
+  // A button typed it in English; they are Hebrew on file, so Hebrew it is.
+  const typed = await ask({ agentId: `u-${u.id}`, body: 'app sign-in code' });
+  assert.match(typed.text, /^הקוד לכניסה לאפליקציה 👇\n\d{4} \d{4}\n/);
+  await db.pool.query(`UPDATE users SET locale = 'en' WHERE id = $1`, [u.id]);
+  const en = await ask({ agentId: `u-${u.id}`, body: 'קוד כניסה' });
+  assert.match(en.text, /^Your app code 👇\n\d{4} \d{4}\nValid 10 minutes\.$/, 'and English on file is English');
 });
 
 test('the owner rewords it from the admin page like every other fixed sentence', async () => {

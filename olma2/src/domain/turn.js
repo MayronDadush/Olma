@@ -218,7 +218,7 @@ async function openTurnImplicitly(client, user, { firstTool } = {}) {
 // turn by every user, for fields that appear on a handful of turns in a
 // person's life. The budget rule (CLAUDE.md, "Doctrine"): guidance about a
 // RESULT rides the result.
-function turnHints({ offerResume, languageNudge, recentReminders, recentMeetings, rooms, planHeadline, replyTarget, genderForms, thanksOnly, thanksAfterQuestion, stoppedReminders, chaseUntil, chaseNamedHour, openList, today }) {
+function turnHints({ offerResume, languageNudge, recentReminders, recentMeetings, rooms, planHeadline, replyTarget, genderForms, thanksOnly, thanksAfterQuestion, stoppedReminders, chaseUntil, chaseNamedHour, openList, remindAsk, today }) {
   const hints = {};
   if (today) {
     // Rides beside the block on every turn it is on, because a block the
@@ -345,6 +345,17 @@ function turnHints({ offerResume, languageNudge, recentReminders, recentMeetings
         : 'nudge, a repeat or a remind_at: the hour is one they already hear from Olma. ')
       + 'The result says the shape; say it back in ONE short line.';
   }
+  if (remindAsk && !chaseUntil) {
+    // The gateway read "תזכיר לי X" with no when at all (gateway-hooks/
+    // olma-turn-open .remindWithoutTime) and add_task on this turn arms a
+    // weekly morning nudge on it (reminders.startWeeklyNudge; owner,
+    // 2026-09-28). Dov's three were each saved with nothing that would ever
+    // reach him, and the only ways to spoil it are the model inventing an
+    // hour or asking for one — so it is told what the server will do.
+    hints.remindAsk = 'They asked to be reminded and named no time: save it with add_task and NO due_at, '
+      + 'remind_at or nudge — the server arms one reminder a week at their morning hour until it is '
+      + 'done. Do not ask when. The result says the shape; say it back in ONE short line.';
+  }
   if (openList) {
     // The gateway read "מה פתוח לי?" — a question about their whole list —
     // and advise() left the today block out of this turn (gateway-hooks/
@@ -462,7 +473,7 @@ async function firstTurnPageLink(client, userId) {
   } catch { return null; }
 }
 
-async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, languageNudge, thanksOnly, thanksAfterQuestion, stoppedReminders, chaseUntil, chaseNamedHour, openList, now }) {
+async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, languageNudge, thanksOnly, thanksAfterQuestion, stoppedReminders, chaseUntil, chaseNamedHour, openList, remindAsk, now }) {
   requireAdviseColumns(user);
   // A paused person who writes gets answered — pausing stops Olma
   // INITIATING, not answering (see domain/pause.js) — but before this, that
@@ -774,7 +785,7 @@ async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, 
       ...(replyTarget ? { replyTarget: true } : {}),
       ...(genderForms ? { genderForms } : {}),
       ...(today ? { today } : {}),
-      ...turnHints({ offerResume, languageNudge, recentReminders, recentMeetings, rooms, planHeadline, replyTarget, genderForms, thanksOnly, thanksAfterQuestion, stoppedReminders, chaseUntil, chaseNamedHour, openList, today }),
+      ...turnHints({ offerResume, languageNudge, recentReminders, recentMeetings, rooms, planHeadline, replyTarget, genderForms, thanksOnly, thanksAfterQuestion, stoppedReminders, chaseUntil, chaseNamedHour, openList, remindAsk, today }),
     };
   }
   const shouldNotice = await quota.shouldSendBlockNotice(client, user.id);
