@@ -388,8 +388,9 @@ have already had to be argued for.
   the hour it is said** (owner, fix 4): the start tool's `hints.room` and the
   group doctrine tell the model NO_REPLY (her "על זה" was the same sentence
   twice), and outside the room's `GROUP_WINDOW` the line carries `later` and
-  says "אשאל כל אחד בפרטי בבוקר" — at night every invite but the asker's waits
-  for morning.
+  says "שואלת בפרטי את מי שער עכשיו, ואת השאר בבוקר" — at night only whoever
+  wrote in the last fifteen minutes (room or DM) is asked now (owner,
+  2026-09-27).
   **Since 2026-09-26 the number it SAYS is the whole room** (`co.roomTotal`,
   "לכל N חברי הקבוצה") — see "A room's coordination counts everybody in the
   room" below.

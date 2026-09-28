@@ -446,8 +446,9 @@ test('the room is told she will ask, never that she has', async () => {
 test('the opening line said at night says she will ask in the morning', () => {
   const text = require('../src/domain/proactive-text');
   const line = { kind: 'started', title: 'פאדל', total: 4, outside: 0 };
-  assert.match(text.renderGroupCoordination(line), /\nשואלת כל אחד בפרטי, ואחזור לכאן/);
-  assert.match(text.renderGroupCoordination({ ...line, later: true }), /\nאשאל כל אחד בפרטי בבוקר, ואחזור לכאן/);
+  assert.match(text.renderGroupCoordination(line), /\nשואלת כל אחד בפרטי\. אחזור לכאן/);
+  assert.match(text.renderGroupCoordination({ ...line, later: true }),
+    /\nשואלת בפרטי את מי שער עכשיו, ואת השאר בבוקר\. אחזור לכאן עם מה שמסתדר\.$/);
   const groupVoice = require('../src/domain/group-voice');
   const co = { status: 'negotiating', title: 'פאדל', participants: 3, roomTotal: 4, options: [], silent: [] };
   assert.equal(groupVoice.decideGroupLine(co, { nowMs: Date.now(), roomAsleep: true }).later, true);

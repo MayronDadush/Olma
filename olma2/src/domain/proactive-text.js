@@ -405,9 +405,11 @@ function renderGroupCoordination(line, overrides) {
   // it, and the question is the point of the line — so it goes on the end.
   return timeAsk && !done.includes(timeAsk) ? `${done}\n${timeAsk}` : done;
 }
-// The opening line's verb (fix 4): at night the invites wait for the morning.
+// The opening line's verb (fix 4, owner 2026-09-27): at night only whoever
+// wrote in the last few minutes is asked now, the rest in the morning — short,
+// because that is what he asked of this sentence.
 const ASK_NOW = 'שואלת כל אחד בפרטי';
-const ASK_LATER = 'אשאל כל אחד בפרטי בבוקר';
+const ASK_LATER = 'שואלת בפרטי את מי שער עכשיו, ואת השאר בבוקר';
 const TABLE_LEAD = 'הכי מתקדם:';
 const ONE_OPTION = 'מועד אחד';
 const MANY_OPTIONS = 'מועדים';
