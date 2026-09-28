@@ -49,6 +49,7 @@ const preferences = require('./preferences');
 const digest = require('./digest');
 const facts = require('./facts');
 const factPrompts = require('./fact-prompts');
+const selfDelete = require('./self-delete');
 
 // What a task's origin system can actually hold, for the fields this page can
 // edit. Mirrors the map the page draws its locks from — the page must not be
@@ -795,6 +796,15 @@ const ACTIONS = {
 
   async resume(client, userId) {
     return pause.resumeUser(client, userId);
+  },
+
+  // Deleting everything (domain/self-delete.js). The page shows its own sheet
+  // with what goes and a separate "yes, delete" button, and only that button
+  // sends `confirm: true`; anything else is refused, so a stray tap or a
+  // replayed request without it deletes nothing.
+  async deleteAccount(client, userId, p) {
+    if (p.confirm !== true) return err('invalid', 'confirmation required', { reason: 'not_confirmed' });
+    return selfDelete.request(client, userId, { via: 'page' });
   },
 };
 

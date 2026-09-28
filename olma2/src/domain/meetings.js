@@ -186,21 +186,33 @@ async function shareableConstraints(client, meetingId, userId) {
 // `isPrivate` is the opt-out, not an opt-in: someone who explains why a day
 // does not work has said something the other side needs in order to stop
 // guessing. It is withheld only when they ask for it to be.
-async function recordConstraint(client, userId, meetingId, text, isPrivate = false) {
+//
+// `windows` (2026-09-28, `domain/standing-answers.js`) are the ANSWER inside
+// the words — "no, all of this week", "yes, any evening from 18:00" — kept on
+// the same entry so the words and what was made of them never drift apart. A
+// window that does not validate is dropped and named; the words stay.
+async function recordConstraint(client, userId, meetingId, text, isPrivate = false, { windows = [] } = {}) {
   if (!text || !text.trim()) return err('invalid', 'constraint text required');
   const p = await participantRow(client, meetingId, userId);
   if (!p) return err('not_found', 'not a participant of this meeting');
   if (p.meeting_status !== 'negotiating') return err('invalid', 'meeting is not negotiating');
   if (p.state === 'opted_out') return err('invalid', 'you opted out of this meeting');
   const entry = { text: text.trim().slice(0, CONSTRAINT_MAX_CHARS), private: isPrivate === true };
+  const kept = [];
+  const dropped = [];
+  for (const w of Array.isArray(windows) ? windows : []) {
+    const v = require('./standing-answers').validWindow(w);
+    if (v.window) kept.push(v.window); else dropped.push(v.reason);
+  }
+  if (kept.length) entry.windows = kept;
   await client.query(
     `UPDATE meeting_participants SET constraints = constraints || $3::jsonb
      WHERE meeting_id = $1 AND user_id = $2`,
     [meetingId, userId, JSON.stringify([entry])]
   );
   await audit.record(client, userId, 'meeting.constraint_recorded',
-    { meetingId, private: entry.private });
-  return ok({ meetingId, private: entry.private });
+    { meetingId, private: entry.private, windows: kept.length });
+  return ok({ meetingId, private: entry.private, windows: kept.length, ...(dropped.length ? { windowsDropped: dropped } : {}) });
 }
 
 // The two ways a well-formed slot is still wrong. Both refuse rather than
