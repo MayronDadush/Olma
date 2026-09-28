@@ -613,7 +613,10 @@ have already had to be argued for.
   the table, with two people's yes on the time she removed. `meetings.
   group_base_slot` (migration 082) is the slot text the room actually heard,
   and `group-voice.decideGroupLine`'s `namedGone` is the whole trigger: that
-  slot is no longer among the active options AND another one leads. **Three
+  slot is no longer among the active options AND another one leads. **"The
+  same slot" is the same MOMENT** (`meetings.group_base_start_at`, migration
+  097): a time deleted and put back in other words is still on the table, and
+  the words decide only where there is no instant to compare. **Three
   things it deliberately is not.** A new leading time with the old one still on
   the table says NOTHING — the room's picture is still true, and a line per
   change of lead is how this family of lines becomes the thing the owner asked
@@ -944,13 +947,17 @@ have already had to be argued for.
   sender (`incidents.md`, "The tags that vanished before any hook ran").
 
 - **A room member who has never written to her hears about a coordination
-  ONCE per room, privately, in the owner's fixed words — and is never made a
+  ONCE (per room until 2026-09-28, per person since), privately, in the owner's fixed words — and is never made a
   participant** (owner, 2026-09-26; `group-meetings.coldInvite`, flag
   `group_cold_invite`, template `group_cold_invite`). Called from the
   `group_voice` pass for every negotiating coordination; the outbox key
   `coldinvite:g<gid>:u<uid>` is the once-per-ROOM budget the owner chose,
   because a first message from an unknown number can be reported and a second
-  is how that happens. It goes on the raw pipe (`proactive-text.rawPipeTextFor`,
+  is how that happens. **Proposed 2026-09-28 (compliance review, finding 4;
+  owner to approve): once per PERSON across every room** — the copy now ends
+  "ולא אכתוב לך שוב", and a second room writing would make that false. The
+  query skips anybody with a `room_cold_invite` that reached them or is still
+  queued; one the gate held until it expired asked nothing and does not count. It goes on the raw pipe (`proactive-text.rawPipeTextFor`,
   rendered at delivery) because the title is another member's text and no model
   may speak it, and the gate lets it through as the third `PENDING_USER_KINDS`
   entry — everything else the gate does (their night, off a zone guessed from

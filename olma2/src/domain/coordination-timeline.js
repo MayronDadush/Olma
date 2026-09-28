@@ -93,6 +93,16 @@ async function timelineFor(client, meetingId) {
     .map((p) => ({ optionId: LEGACY_OPTION, userId: Number(p.user_id), answer: p.state === 'confirmed_current' ? 'y' : 'n',
       at: p.confirmed_at, byAdding: Number(p.user_id) === Number(m.initiator_id) }));
 
+  // The next coordination the same room opened after this one closed: read
+  // by the score as regret when it comes soon after a drop.
+  let laterInRoomAt = null;
+  if (m.group_id != null && m.closed_at != null) {
+    const { rows: [n] } = await client.query(
+      `SELECT min(created_at) AS at FROM meetings WHERE group_id = $1 AND id <> $2 AND created_at > $3`,
+      [m.group_id, id, m.closed_at]);
+    laterInRoomAt = n ? n.at : null;
+  }
+
   const starts = options.filter((o) => o.starts_at && o.status !== 'deleted').map((o) => new Date(o.starts_at).getTime());
 
   return {
@@ -101,6 +111,9 @@ async function timelineFor(client, meetingId) {
     initiatorId: m.initiator_id == null ? null : Number(m.initiator_id),
     status: m.status,
     startedAt: m.created_at,
+    laterInRoomAt,
+    // When this was read, so a drop too recent to judge reads as pending.
+    readAt: new Date().toISOString(),
     closedAt: m.status === 'confirmed' && lastSettle ? lastSettle.created_at : m.closed_at,
     settledAt: lastSettle ? lastSettle.created_at : null,
     settledByHand: events.some((e) => e.event === 'meeting.settled_by_hand'),

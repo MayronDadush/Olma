@@ -956,6 +956,14 @@ async function markRelaySaid(client, meetingId, userId) {
 // Only a roster row (`status = 'pending'`) with a real number: a LID has no
 // number to write to. Never while registration is closed — their reply would
 // be waitlisted, and the message promises to add them.
+//
+// Since 2026-09-28 it is once per PERSON, across every room (compliance
+// review, finding 4). The copy now ends "לא מתאים? אפשר פשוט להתעלם, ולא אכתוב
+// לך שוב", and a second room writing to the same stranger would make that a
+// lie; it is also the one message Olma sends to somebody who never chose her,
+// so the narrower line is the safer one. What counts is an invite that
+// REACHED them or is still on its way — one the gate held until it expired
+// asked nothing, so a later room may still try.
 const COLD_INVITE_FLAG = 'group_cold_invite';
 async function coldInvite(client, group, meeting) {
   if (!group || !meeting || meeting.status !== 'negotiating') return [];
@@ -965,6 +973,10 @@ async function coldInvite(client, group, meeting) {
   const { rows } = await client.query(
     `SELECT u.id, u.phone FROM chat_group_members m JOIN users u ON u.id = m.user_id
       WHERE m.group_id = $1 AND m.left_at IS NULL AND u.status = 'pending' AND NOT u.is_eval
+        AND NOT EXISTS (
+          SELECT 1 FROM outbox o
+           WHERE o.user_id = u.id AND o.kind = 'room_cold_invite'
+             AND (o.sent_at IS NULL OR o.hold_reason IS NULL))
       ORDER BY u.id`, [group.id]);
   const { isRealPhone } = require('./phone-timezone');
   const { enqueue } = require('../outbox/enqueue');

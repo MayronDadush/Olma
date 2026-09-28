@@ -13,23 +13,18 @@
 // estimator against real card strings and reports the worst error. tw() is
 // only ever used where an underestimate degrades gracefully (column sizing,
 // ellipsis), so the bar is "within a few percent", not "exact".
-const path = require('node:path');
 const { Resvg } = require('@resvg/resvg-js');
-const { tw } = require('../src/domain/schedule-card');
-
-const ASSETS = path.join(__dirname, '..', 'assets');
-const FONT_FILES = ['Regular', 'Medium', 'Bold', 'Black']
-  .map((w) => path.join(ASSETS, 'fonts', `Heebo-${w}.ttf`));
+const { tw, FONT_FAMILY, FONT_FILES } = require('../src/domain/schedule-card');
 
 const SIZE = 100; // large, so quantisation is a rounding error
 
 function measure(str, { weight = 400 } = {}) {
   const esc = str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="20000" height="400">`
-    + `<text x="100" y="200" font-family="Heebo" font-size="${SIZE}" font-weight="${weight}"`
+    + `<text x="100" y="200" font-family="${FONT_FAMILY}" font-size="${SIZE}" font-weight="${weight}"`
     + ` direction="rtl">‏${esc}</text></svg>`;
   const bbox = new Resvg(svg, {
-    font: { fontFiles: FONT_FILES, loadSystemFonts: false, defaultFontFamily: 'Heebo' },
+    font: { fontFiles: FONT_FILES, loadSystemFonts: false, defaultFontFamily: FONT_FAMILY },
   }).getBBox();
   return bbox ? bbox.width : 0;
 }
