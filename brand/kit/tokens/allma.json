@@ -1,0 +1,319 @@
+{
+  "name": "Allma · ברוש + חרדל",
+  "chosen": "2026-09-28",
+  "font": "IBM Plex Sans Hebrew / IBM Plex Sans",
+  "ratio": {
+    "60": "Sand",
+    "30": "Cypress",
+    "10": "Mustard"
+  },
+  "swatches": [
+    {
+      "name": "Cypress",
+      "he": "ברוש",
+      "hex": "#004643",
+      "role": "30 · brand: the band, the mark, headings on sand"
+    },
+    {
+      "name": "Sand",
+      "he": "חול",
+      "hex": "#F0EDE5",
+      "role": "60 · ground"
+    },
+    {
+      "name": "Mustard",
+      "he": "חרדל",
+      "hex": "#F9C23C",
+      "role": "10 · the primary action and the lens. Never as text on light"
+    },
+    {
+      "name": "Ink",
+      "he": "דיו",
+      "hex": "#0E1F1E",
+      "role": "body text"
+    },
+    {
+      "name": "Night",
+      "he": "לילה",
+      "hex": "#0A1817",
+      "role": "night ground"
+    },
+    {
+      "name": "Candle",
+      "he": "נר",
+      "hex": "#E8B84A",
+      "role": "Shabbat action and lens"
+    },
+    {
+      "name": "Shabbat ink",
+      "he": "דיו שבת",
+      "hex": "#17150F",
+      "role": "Shabbat ground"
+    },
+    {
+      "name": "Brick",
+      "he": "לבנה",
+      "hex": "#B03A2E",
+      "role": "errors and deletes only"
+    }
+  ],
+  "modes": {
+    "day": {
+      "bg": "#F0EDE5",
+      "bg-tint": "#E2E3DB",
+      "surface": "#FFFFFF",
+      "surface-2": "#F8F7F3",
+      "line": "#D7D6CF",
+      "line-strong": "#C3C4BD",
+      "text": "#0E1F1E",
+      "text-2": "#44504E",
+      "text-3": "#646D6A",
+      "brand": "#004643",
+      "on-brand": "#F0EDE5",
+      "brand-soft": "#E6ECEC",
+      "action": "#F9C23C",
+      "on-action": "#004643",
+      "action-soft": "#FEF2D4",
+      "lens": "#F9C23C",
+      "link": "#004643",
+      "success": "#004643",
+      "danger": "#B03A2E",
+      "on-danger": "#FFFFFF"
+    },
+    "night": {
+      "bg": "#0A1817",
+      "bg-tint": "#0E1F1E",
+      "surface": "#122725",
+      "surface-2": "#17302D",
+      "line": "#283331",
+      "line-strong": "#3C4643",
+      "text": "#EDE9DF",
+      "text-2": "#B2B3AB",
+      "text-3": "#8E918B",
+      "brand": "#1F6B64",
+      "on-brand": "#EDE9DF",
+      "brand-soft": "#19322F",
+      "action": "#F9C23C",
+      "on-action": "#0E1F1E",
+      "action-soft": "#3A3A1E",
+      "lens": "#F9C23C",
+      "link": "#7CC4BA",
+      "success": "#7CC4BA",
+      "danger": "#F08A7E",
+      "on-danger": "#0E1F1E"
+    },
+    "shabbat": {
+      "bg": "#17150F",
+      "bg-tint": "#1C1A13",
+      "surface": "#221F17",
+      "surface-2": "#2A261C",
+      "line": "#343128",
+      "line-strong": "#47443A",
+      "text": "#F3E9D2",
+      "text-2": "#BAB29F",
+      "text-3": "#979080",
+      "brand": "#2B4A45",
+      "on-brand": "#F3E9D2",
+      "brand-soft": "#342C17",
+      "action": "#E8B84A",
+      "on-action": "#17150F",
+      "action-soft": "#41361B",
+      "lens": "#E8B84A",
+      "link": "#E8B84A",
+      "success": "#9CCFB8",
+      "danger": "#F08A7E",
+      "on-danger": "#17150F"
+    }
+  },
+  "contrast": [
+    {
+      "mode": "day",
+      "what": "text on ground",
+      "fg": "#0E1F1E",
+      "bg": "#F0EDE5",
+      "ratio": 14.55,
+      "needs": 4.5,
+      "pass": true
+    },
+    {
+      "mode": "day",
+      "what": "secondary text",
+      "fg": "#44504E",
+      "bg": "#F0EDE5",
+      "ratio": 7.17,
+      "needs": 4.5,
+      "pass": true
+    },
+    {
+      "mode": "day",
+      "what": "tertiary text on card",
+      "fg": "#646D6A",
+      "bg": "#FFFFFF",
+      "ratio": 5.33,
+      "needs": 3.0,
+      "pass": true
+    },
+    {
+      "mode": "day",
+      "what": "label on the action button",
+      "fg": "#004643",
+      "bg": "#F9C23C",
+      "ratio": 6.55,
+      "needs": 4.5,
+      "pass": true
+    },
+    {
+      "mode": "day",
+      "what": "text on the brand band",
+      "fg": "#F0EDE5",
+      "bg": "#004643",
+      "ratio": 9.17,
+      "needs": 4.5,
+      "pass": true
+    },
+    {
+      "mode": "day",
+      "what": "link on card",
+      "fg": "#004643",
+      "bg": "#FFFFFF",
+      "ratio": 10.73,
+      "needs": 4.5,
+      "pass": true
+    },
+    {
+      "mode": "day",
+      "what": "error on card",
+      "fg": "#B03A2E",
+      "bg": "#FFFFFF",
+      "ratio": 6.02,
+      "needs": 4.5,
+      "pass": true
+    },
+    {
+      "mode": "night",
+      "what": "text on ground",
+      "fg": "#EDE9DF",
+      "bg": "#0A1817",
+      "ratio": 14.99,
+      "needs": 4.5,
+      "pass": true
+    },
+    {
+      "mode": "night",
+      "what": "secondary text",
+      "fg": "#B2B3AB",
+      "bg": "#0A1817",
+      "ratio": 8.59,
+      "needs": 4.5,
+      "pass": true
+    },
+    {
+      "mode": "night",
+      "what": "tertiary text on card",
+      "fg": "#8E918B",
+      "bg": "#122725",
+      "ratio": 4.9,
+      "needs": 3.0,
+      "pass": true
+    },
+    {
+      "mode": "night",
+      "what": "label on the action button",
+      "fg": "#0E1F1E",
+      "bg": "#F9C23C",
+      "ratio": 10.39,
+      "needs": 4.5,
+      "pass": true
+    },
+    {
+      "mode": "night",
+      "what": "text on the brand band",
+      "fg": "#EDE9DF",
+      "bg": "#1F6B64",
+      "ratio": 5.18,
+      "needs": 4.5,
+      "pass": true
+    },
+    {
+      "mode": "night",
+      "what": "link on card",
+      "fg": "#7CC4BA",
+      "bg": "#122725",
+      "ratio": 7.79,
+      "needs": 4.5,
+      "pass": true
+    },
+    {
+      "mode": "night",
+      "what": "error on card",
+      "fg": "#F08A7E",
+      "bg": "#122725",
+      "ratio": 6.44,
+      "needs": 4.5,
+      "pass": true
+    },
+    {
+      "mode": "shabbat",
+      "what": "text on ground",
+      "fg": "#F3E9D2",
+      "bg": "#17150F",
+      "ratio": 15.12,
+      "needs": 4.5,
+      "pass": true
+    },
+    {
+      "mode": "shabbat",
+      "what": "secondary text",
+      "fg": "#BAB29F",
+      "bg": "#17150F",
+      "ratio": 8.65,
+      "needs": 4.5,
+      "pass": true
+    },
+    {
+      "mode": "shabbat",
+      "what": "tertiary text on card",
+      "fg": "#979080",
+      "bg": "#221F17",
+      "ratio": 5.18,
+      "needs": 3.0,
+      "pass": true
+    },
+    {
+      "mode": "shabbat",
+      "what": "label on the action button",
+      "fg": "#17150F",
+      "bg": "#E8B84A",
+      "ratio": 9.9,
+      "needs": 4.5,
+      "pass": true
+    },
+    {
+      "mode": "shabbat",
+      "what": "text on the brand band",
+      "fg": "#F3E9D2",
+      "bg": "#2B4A45",
+      "ratio": 8.02,
+      "needs": 4.5,
+      "pass": true
+    },
+    {
+      "mode": "shabbat",
+      "what": "link on card",
+      "fg": "#E8B84A",
+      "bg": "#221F17",
+      "ratio": 8.92,
+      "needs": 4.5,
+      "pass": true
+    },
+    {
+      "mode": "shabbat",
+      "what": "error on card",
+      "fg": "#F08A7E",
+      "bg": "#221F17",
+      "ratio": 6.77,
+      "needs": 4.5,
+      "pass": true
+    }
+  ]
+}

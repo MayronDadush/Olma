@@ -1,0 +1,318 @@
+<title>עולמה · ברוש וחרדל</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Hebrew:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* The page wears its own system: day tokens in light, night tokens in dark. */
+:root{
+  --bg:#F0EDE5; --surface:#FFFFFF; --surface-2:#F8F7F3; --line:#D7D6CF; --text:#0E1F1E; --text-2:#44504E; --text-3:#646D6A;
+  --brand:#004643; --on-brand:#F0EDE5; --brand-soft:#E6ECEC; --action:#F9C23C; --on-action:#004643; --link:#004643; --danger:#B03A2E;
+  --f:"IBM Plex Sans Hebrew","IBM Plex Sans",system-ui,sans-serif; --mono:"IBM Plex Mono",ui-monospace,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0A1817;--surface:#122725;--surface-2:#17302D;--line:#283331;--text:#EDE9DF;--text-2:#B2B3AB;--text-3:#8E918B;--brand:#1F6B64;--on-brand:#EDE9DF;--brand-soft:#19322F;--action:#F9C23C;--on-action:#0E1F1E;--link:#7CC4BA;--danger:#F08A7E;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0A1817;--surface:#122725;--surface-2:#17302D;--line:#283331;--text:#EDE9DF;--text-2:#B2B3AB;--text-3:#8E918B;--brand:#1F6B64;--on-brand:#EDE9DF;--brand-soft:#19322F;--action:#F9C23C;--on-action:#0E1F1E;--link:#7CC4BA;--danger:#F08A7E;color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:var(--f);font-size:16px;line-height:1.6;margin:0}
+.wrap{max-width:1080px;margin:0 auto;padding-inline:16px;padding-block:0 80px;display:grid;gap:64px}
+h1,h2,h3{margin:0;line-height:1.12;text-wrap:balance;letter-spacing:-.015em}
+h2{font-size:clamp(26px,3.6vw,34px);font-weight:700}
+h3{font-size:17px;font-weight:600}
+p{margin:0;max-width:66ch}
+.muted{color:var(--text-2)}
+.hex{font-family:var(--mono);font-size:12px;direction:ltr;unicode-bidi:isolate}
+.sec{display:grid;gap:18px}
+.eyebrow{font-size:12px;font-weight:600;letter-spacing:.06em;color:var(--text-3)}
+.hero{background:#004643;color:#F0EDE5;border-radius:0 0 32px 32px;padding:40px 24px 44px;margin-inline:-16px;display:grid;gap:22px}
+.hero .lock{display:flex;align-items:center;gap:18px;font-weight:700;font-size:clamp(48px,9vw,96px);line-height:1;letter-spacing:-.02em}
+.hero .lock svg{width:clamp(56px,10vw,100px);height:auto}
+.hero p{font-size:18px;color:#D9DDD6;max-width:52ch}
+.hero .y{color:#F9C23C}
+.dec{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+.dec div{background:rgba(240,237,229,.08);border:1px solid rgba(240,237,229,.18);border-radius:14px;padding:12px 14px;display:grid;gap:2px}
+.dec b{font-size:12px;font-weight:600;color:#B9C7C2}
+.dec span{font-size:16px;font-weight:600}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:18px;display:grid;gap:12px;align-content:start}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}
+.grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+.ratio{display:flex;height:120px;border-radius:18px;overflow:hidden;border:1px solid var(--line)}
+.ratio div{display:flex;flex-direction:column;justify-content:flex-end;padding:12px 14px;gap:2px;min-width:0}
+.ratio b{font-size:22px;line-height:1}
+.ratio span{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sw{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+@media (max-width:640px){.sw{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.sw div{border-radius:14px;overflow:hidden;border:1px solid var(--line);background:var(--surface)}
+.sw i{display:block;height:64px}
+.sw p{padding:8px 10px 10px;font-size:13px;line-height:1.4}
+.sw p b{display:block;font-size:14px}
+.rules{margin:0;padding:0;list-style:none;display:grid;gap:10px}
+.rules li{display:grid;grid-template-columns:24px 1fr;gap:10px;align-items:start}
+.rules li::before{content:"";width:14px;height:14px;border-radius:50%;margin-top:5px;background:var(--dot,var(--brand))}
+table{border-collapse:collapse;width:100%;min-width:560px;font-size:14px}
+th,td{text-align:start;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:middle}
+thead th{font-size:12px;color:var(--text-3);font-weight:600}
+.pass{font-weight:600;color:var(--brand)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .pass{color:var(--link)}}
+:root[data-theme="dark"] .pass{color:var(--link)}
+.chipc{display:inline-flex;align-items:center;gap:6px}
+.chipc i{width:16px;height:16px;border-radius:5px;border:1px solid rgba(0,0,0,.15)}
+.modes{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
+.mode{border-radius:20px;padding:16px;display:grid;gap:12px}
+.mode .top{display:flex;justify-content:space-between;align-items:center;font-size:13px;font-weight:600}
+.mini{border-radius:14px;padding:12px;display:grid;gap:6px}
+.mini .n{font-size:30px;font-weight:700;line-height:1}
+.btn{font:inherit;font-weight:600;font-size:14px;border-radius:99px;padding:8px 16px;border:0;display:inline-flex;align-items:center;gap:6px;justify-self:start}
+.tabs{display:flex;justify-content:space-around;border-radius:16px;padding:8px 4px}
+.tabs div{display:grid;justify-items:center;font-size:10.5px;font-weight:600;gap:1px;padding:3px 6px;border-radius:10px}
+.tabs svg{width:22px;height:22px}
+.marks{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.marks figure{margin:0;border-radius:16px;padding:18px 12px 10px;display:grid;justify-items:center;gap:10px;border:1px solid var(--line)}
+.marks figcaption{font-size:12px;font-weight:600;text-align:center}
+.sizes{display:flex;align-items:flex-end;gap:18px;flex-wrap:wrap}
+.sizes span{font-size:11px;color:var(--text-3);display:block;text-align:center;margin-top:4px}
+.dont{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.dont figure{margin:0;display:grid;gap:6px;justify-items:center;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px 10px}
+.dont figcaption{font-size:12.5px;text-align:center;color:var(--text-2)}
+.dont figure>div{position:relative}
+.dont figure>div::after{content:"";position:absolute;inset:-4px;background:linear-gradient(to top left,transparent calc(50% - 1.5px),var(--danger) calc(50% - 1.5px),var(--danger) calc(50% + 1.5px),transparent calc(50% + 1.5px))}
+.type{display:grid;gap:14px}
+.type div{display:grid;grid-template-columns:120px 1fr;gap:14px;align-items:baseline;border-bottom:1px solid var(--line);padding-bottom:12px}
+.type small{font-size:12px;color:var(--text-3);font-weight:600}
+.icons{display:flex;flex-wrap:wrap;gap:14px}
+.icons figure{margin:0;display:grid;justify-items:center;gap:6px;font-size:12px;color:var(--text-2)}
+.icons .pair{display:flex;gap:6px}
+.icons svg{width:40px;height:40px;padding:8px;border-radius:12px;background:var(--surface);border:1px solid var(--line);color:var(--text)}
+.icons svg.on{background:var(--brand-soft)}
+.comp{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.shots{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.shots img{width:100%;aspect-ratio:390/844;object-fit:cover;object-position:top;border-radius:20px;border:1px solid var(--line);display:block}
+.wa{display:flex;gap:18px;align-items:center;flex-wrap:wrap}
+.wa .row{display:flex;gap:12px;align-items:center;background:#fff;color:#111;border-radius:14px;padding:10px 14px;border:1px solid #e6e6e6;min-width:0;flex:1}
+.wa .row small{color:#667781;display:block;font-size:13px}
+.steps{counter-reset:s;display:grid;gap:12px}
+.step{display:grid;grid-template-columns:44px 1fr;gap:14px;background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:16px}
+.step::before{counter-increment:s;content:counter(s);width:36px;height:36px;border-radius:50%;background:var(--action);color:var(--on-action);display:grid;place-items:center;font-weight:700}
+.step h3{margin-bottom:4px}
+.st{display:inline-block;font-size:12px;font-weight:600;padding:1px 9px;border-radius:99px;margin-inline-start:6px;vertical-align:2px}
+.st.done{background:var(--brand);color:var(--on-brand)}
+.st.next{background:var(--action);color:var(--on-action)}
+.st.wait{background:var(--brand-soft);color:var(--text-2)}
+ol.q{margin:0;padding-inline-start:22px;display:grid;gap:8px}
+code{font-family:var(--mono);font-size:13px;background:var(--brand-soft);border-radius:6px;padding:1px 6px;direction:ltr;unicode-bidi:isolate}
+.files{columns:2 260px;column-gap:24px;font-size:14px;margin:0;padding-inline-start:18px}
+.files li{break-inside:avoid;margin-bottom:6px}
+</style>
+
+<div class="wrap" dir="rtl">
+  <header class="hero">
+    <span class="eyebrow" style="color:#9FB5AF">עולמה · ספר המותג · 28.9.2026</span>
+    <div class="lock"><span id="heroMark"></span><span>עולמה</span></div>
+    <p>ברוש וחרדל. עוזרת שקטה ובטוחה בעצמה, שעושה בשבילך את הצעד הבא. הרקע נותן <b>רוגע</b>, הברוש נותן <b>אמון</b>, ו<span class="y">החרדל</span> מסמן את הרגע שבו משהו נסגר.</p>
+    <div class="dec">
+      <div><b>צבעים</b><span>חול · ברוש · חרדל</span></div>
+      <div><b>פונט</b><span>IBM Plex Sans Hebrew</span></div>
+      <div><b>סימן</b><span>חצי־חצי, עם עדשה</span></div>
+      <div><b>לפי שעה</b><span>יום · לילה · שבת</span></div>
+    </div>
+  </header>
+
+  <section class="sec">
+    <span class="eyebrow">01 · צבע</span>
+    <h2>60 · 30 · 10</h2>
+    <p class="muted">שלושה צבעים, ולכל אחד תפקיד אחד. בזה המותג יוצר תחושה: כשהחרדל מופיע תמיד באותו תפקיד, אנשים לומדים שהוא אומר "עולמה עשתה משהו בשבילך".</p>
+    <div class="ratio">
+      <div style="flex:60;background:#F0EDE5;color:#0E1F1E"><b>60</b><span>חול · רקע</span><span class="hex">#F0EDE5</span></div>
+      <div style="flex:30;background:#004643;color:#F0EDE5"><b>30</b><span>ברוש · מותג</span><span class="hex">#004643</span></div>
+      <div style="flex:10;background:#F9C23C;color:#004643"><b>10</b><span>חרדל</span><span class="hex">#F9C23C</span></div>
+    </div>
+    <div class="sw" id="sw"></div>
+    <div class="grid2">
+      <div class="card"><h3>איך משתמשים</h3>
+        <ul class="rules">
+          <li style="--dot:#F9C23C"><span><b>חרדל רק לפעולה הראשית</b> בכל מסך, אחת בלבד: "תאמו פגישה", "משימה חדשה", "חיבור". ועוד בעדשה של הסימן, באיקון הפעיל וברגע של "סגור".</span></li>
+          <li style="--dot:#004643"><span><b>ברוש</b> לפס העליון, לכותרות, לקישורים ולטקסט על כפתור חרדל.</span></li>
+          <li style="--dot:#0E1F1E"><span><b>דיו</b> לכל טקסט רץ. הוא קרוב לשחור, עם נטייה קלה לברוש.</span></li>
+          <li style="--dot:#B03A2E"><span><b>לבנה</b> רק לשגיאה ולמחיקה. היא לא חלק מהמותג.</span></li>
+        </ul></div>
+      <div class="card"><h3>מה לא עושים</h3>
+        <ul class="rules">
+          <li style="--dot:#B03A2E"><span>חרדל כטקסט על רקע בהיר. הניגודיות 1.6, וזה לא קריא.</span></li>
+          <li style="--dot:#B03A2E"><span>חרדל לאזהרות. הוא הצבע של "טוב, זה נסגר", לא של "שים לב".</span></li>
+          <li style="--dot:#B03A2E"><span>ירוק של וואטסאפ ליד הברוש. שני ירוקים מבלבלים, ועולמה צריכה להיראות אחרת מהאפליקציה שהיא חיה בתוכה.</span></li>
+          <li style="--dot:#B03A2E"><span>צבע רביעי "רק הפעם". גם ברוש בהיר הוא לא צבע חדש: הוא ברוש מעורבב עם חול.</span></li>
+        </ul></div>
+    </div>
+  </section>
+
+  <section class="sec">
+    <span class="eyebrow">02 · לפי שעה</span>
+    <h2>יום, לילה, שבת</h2>
+    <p class="muted">אותה מערכת בשלוש תאורות. היום בהיר. בלילה הרקע כהה והחרדל נשאר, כדי שהפעולה תמשיך להיות מוכרת. בשבת החרדל מתרכך לנר, והברוש כמעט נעלם. העמוד הזה עצמו עובר ללילה כשהמכשיר שלך במצב כהה.</p>
+    <div class="modes" id="modes"></div>
+  </section>
+
+  <section class="sec">
+    <span class="eyebrow">03 · ניגודיות</span>
+    <h2>כל הזוגות עוברים</h2>
+    <p class="muted">הבדיקה נעשתה לפי תקן WCAG AA: טקסט רגיל צריך 4.5 לפחות, וטקסט משני על כרטיס צריך 3. הערכים מחושבים, לא מוערכים בעין, והם נוצרים יחד עם הטוקנים.</p>
+    <div style="overflow-x:auto"><table id="contrast"><thead><tr><th>מצב</th><th>זוג</th><th>צבעים</th><th>יחס</th><th>סף</th></tr></thead><tbody></tbody></table></div>
+  </section>
+
+  <section class="sec">
+    <span class="eyebrow">04 · הסימן</span>
+    <h2>חצי־חצי</h2>
+    <p class="muted">שני עולמות, חצי חושך וחצי אור, וכל עיגול יושב בצד ההפוך לו. במקום שהם נפגשים יש עדשה בחרדל, והיא המקום שבו משהו נסגר. על רקע חול הסימן העגול מקבל טבעת דקה בברוש, כי אחרת החצי הבהיר שלו נעלם.</p>
+    <div class="marks" id="marks"></div>
+    <div class="grid2">
+      <div class="card"><h3>גודל מינימלי</h3>
+        <div class="sizes" id="sizes"></div>
+        <p class="muted" style="font-size:14px">מתחת ל־20 פיקסלים העדשה נבלעת. בגודל הזה אפשר להשתמש רק בפאביקון, ואף פעם לא ליד טקסט.</p></div>
+      <div class="card"><h3>שטח נקי</h3>
+        <svg viewBox="0 0 240 168" style="width:100%;max-width:340px" aria-hidden="true"><rect x="10" y="10" width="220" height="130" rx="10" fill="none" stroke="currentColor" stroke-dasharray="4 4" opacity=".45"/><g id="csMark"></g><text x="120" y="160" text-anchor="middle" font-size="10" fill="currentColor" opacity=".7">מסביב לסימן: לפחות חצי מקוטר של עיגול</text></svg></div>
+    </div>
+    <h3>מה לא עושים עם הסימן</h3>
+    <div class="dont" id="dont"></div>
+  </section>
+
+  <section class="sec">
+    <span class="eyebrow">05 · אות</span>
+    <h2>IBM Plex Sans Hebrew</h2>
+    <p class="muted">פונט אחד לעברית ולאנגלית, מאותה משפחה ובאותו מבנה. המשקל המקסימלי בעברית הוא 700. מספרים תמיד ברוחב אחיד (tabular), כך שהשעות בכרטיס הבוקר מתיישרות.</p>
+    <div class="type card">
+      <div><small>תצוגה · 700 · 56</small><span style="font-size:clamp(34px,6vw,56px);font-weight:700;line-height:1;letter-spacing:-.02em">הכל סגור.</span></div>
+      <div><small>כותרת · 700 · 28</small><span style="font-size:28px;font-weight:700;line-height:1.15">בוקר טוב, מירון</span></div>
+      <div><small>כותרת משנה · 600 · 18</small><span style="font-size:18px;font-weight:600">שלישי, 3 דברים</span></div>
+      <div><small>גוף · 400 · 16</small><span>סגרתי את הפגישה עם רוני, רביעי 18:30. היא כבר ביומן של שניכם.</span></div>
+      <div><small>תווית · 500 · 13</small><span style="font-size:13px;font-weight:500;color:var(--text-2)">תיאום · 4 אנשים</span></div>
+      <div><small>Latin · 700</small><span style="font-size:28px;font-weight:700;direction:ltr;text-align:right">allma. All set.</span></div>
+    </div>
+  </section>
+
+  <section class="sec">
+    <span class="eyebrow">06 · איקונים ורכיבים</span>
+    <h2>העדשה נדלקת רק כשזה שלך</h2>
+    <p class="muted">הקו של האיקון בעובי 1.9, עם קצוות מעוגלים. בכל איקון יש עדשה קטנה, והיא מתמלאת בחרדל רק בלשונית הפעילה.</p>
+    <div class="icons card" id="icons"></div>
+    <div class="card"><h3>כפתורים</h3>
+      <div class="comp">
+        <button class="btn" type="button" style="background:var(--action);color:var(--on-action)">+ משימה חדשה</button>
+        <button class="btn" type="button" style="background:transparent;color:var(--brand);box-shadow:inset 0 0 0 1.5px var(--brand)">אחר כך</button>
+        <button class="btn" type="button" style="background:var(--brand-soft);color:var(--text)">לפי זמן</button>
+        <button class="btn" type="button" style="background:transparent;color:var(--danger);box-shadow:inset 0 0 0 1.5px var(--danger)">מחיקה</button>
+      </div>
+      <p class="muted" style="font-size:14px">אלה הארבעה: ראשי בחרדל, משני עם מסגרת ברוש, טאב עם רקע רך, ומחיקה בלבנה. לא מוסיפים מעבר להם.</p></div>
+  </section>
+
+  <section class="sec">
+    <span class="eyebrow">07 · בפועל</span>
+    <h2>הדאשבורד, ותמונת הפרופיל בוואטסאפ</h2>
+    <div class="shots">
+      <img src="img/tealY-tools.jpg" alt="מסך הבית בברוש וחרדל">
+      <img src="img/tealY-tasks.jpg" alt="מסך המשימות בברוש וחרדל">
+      <img src="img/tealY-friends.jpg" alt="מסך החברים בברוש וחרדל">
+    </div>
+    <p class="muted" style="font-size:14px">אלה הדף האמיתי מהדמו המקומי, צבוע מבחוץ. זו עדיין לא הגרסה שבקוד.</p>
+    <div class="card"><h3>תמונת פרופיל</h3>
+      <div class="wa" id="wa"></div>
+      <p class="muted" style="font-size:14px">הסימן העגול ממלא את כל העיגול, כך שוואטסאפ לא חותך ממנו כלום. הוא נשאר ברור גם בגודל של רשימת הצ׳אטים.</p></div>
+  </section>
+
+  <section class="sec">
+    <span class="eyebrow">08 · טקסטורה</span>
+    <h2>גרעין נייר, רק על פוסטרים</h2>
+    <p>ההמלצה שלי, ועדיין פתוחה: <b>גרעין נייר עדין</b> על פוסטרים, סטוריז ופתיחים של סרטונים, כדי שהחול ירגיש כמו חומר ולא כמו מסך. <b>"דיו שחוק"</b> רק בכותרות ענקיות. <b>בלי טקסטורה</b> בממשק, באיקונים ובכרטיסים שנשלחים בוואטסאפ. שם החדות היא מה שמשדר אמון.</p>
+  </section>
+
+  <section class="sec">
+    <span class="eyebrow">09 · מה עכשיו</span>
+    <h2>הכנסה למוצר, צעד צעד</h2>
+    <p class="muted">כל צעד הוא PR נפרד. מיזוג ל־main הוא דיפלוי, ולכן לפני כל מיזוג אראה לך צילומים של לפני ואחרי.</p>
+    <div class="steps">
+      <div class="step"><div><h3>ערכת המותג <span class="st done">מוכן</span></h3><p class="muted">טוקנים (CSS, JSON, ASE לכלי עיצוב), סימנים ב־SVG, תמונת פרופיל 640, פאביקונים, לוגו מלא בעברית ובאנגלית, והאיקונים. הכל ב־<code>brand/kit/</code>, ונוצר מסקריפט אחד.</p></div></div>
+      <div class="step"><div><h3>תמונת הפרופיל בוואטסאפ <span class="st next">אצלך</span></h3><p class="muted">הקובץ הוא <code>whatsapp-avatar-640.png</code>. מחליפים אותו מהטלפון של המספר של עולמה, בהגדרות של וואטסאפ. זה הצעד הכי מהיר, וכל משתמש יראה אותו.</p></div></div>
+      <div class="step"><div><h3>הדאשבורד <code>/me</code> <span class="st next">הבא בתור</span></h3><p class="muted">הדף בנוי כולו על טוקנים, אז רוב העבודה היא החלפה של הצבעים, הפונט ואיקוני הלשוניות. מצב כהה יקבל את טוקני הלילה. PR אחד, עם צילומים ב־375 פיקסלים.</p></div></div>
+      <div class="step"><div><h3>כרטיס הבוקר <span class="st wait">אחרי זה</span></h3><p class="muted">הכרטיס הוא תמונה שנשלחת בוואטסאפ (<code>schedule-card.js</code>). היום הוא בכתום־ענבר עם הפונט Heebo. כדי לצייר אותו ב־Plex צריך להוסיף את קובצי הפונט לריפו. הרישיון הוא OFL, והוא מתיר את זה.</p></div></div>
+      <div class="step"><div><h3>allma.world <span class="st wait">אחרי זה</span></h3><p class="muted">דף הבית הציבורי ודף הפרטיות: הלוגו המלא, הצבעים, ופאביקון במקום הריק שיש היום.</p></div></div>
+      <div class="step"><div><h3>סרטונים ופוסטים <span class="st wait">מחכה לתשובה</span></h3><p class="muted">התבניות תלויות בכלי שאתה עורך בו.</p></div></div>
+    </div>
+  </section>
+
+  <section class="sec card">
+    <h2 style="font-size:24px">ארבע שאלות לפני שמתחילים לשנות קוד</h2>
+    <ol class="q">
+      <li>ב־26.9 ביקשת שבדאשבורד לא יהיה סימן בכלל. להחזיר אותו לראש הדף, קטן, ליד השם? בצילומים הוא מופיע, רק כדי שתוכל לראות.</li>
+      <li>להתחיל מהדאשבורד? זה השינוי שהמשתמשים ירגישו הכי הרבה.</li>
+      <li>טקסטורה: מאשר את ההמלצה (גרעין רק על פוסטרים, בלי טקסטורה בממשק)?</li>
+      <li>באיזה כלי אתה עורך סרטונים ופוסטים? Canva, Figma, CapCut או משהו אחר?</li>
+    </ol>
+  </section>
+
+  <section class="sec">
+    <span class="eyebrow">קבצים</span>
+    <ul class="files">
+      <li><code>brand/kit/tokens/allma.css</code> · הטוקנים ליום, לילה ושבת</li>
+      <li><code>brand/kit/tokens/allma.json</code> · אותו דבר, ועוד בדיקת הניגודיות</li>
+      <li><code>brand/kit/tokens/allma.ase</code> · פלטה לכלי עיצוב</li>
+      <li><code>brand/kit/mark/*.svg</code> · שבע גרסאות של הסימן</li>
+      <li><code>brand/kit/icons/*.svg</code> · חמשת איקוני הלשוניות</li>
+      <li><code>brand/kit/png/whatsapp-avatar-640.png</code></li>
+      <li><code>brand/kit/png/lockup-{he,en}-for-{light,dark}.png</code></li>
+      <li><code>brand/kit/png/favicon-32 · apple-touch-180 · icon-512</code></li>
+      <li><code>brand/tools/build_cypress.py</code> · בונה את כל הרשימה הזו מחדש</li>
+    </ul>
+  </section>
+</div>
+
+<script>
+const C='#004643',S='#F0EDE5',M='#F9C23C',I='#0E1F1E';
+let uid=0;
+function round(d,l,a,size,ring){const c='c'+(++uid),k='k'+(++uid);return `<svg viewBox="0 0 120 120" width="${size}" height="${size}" aria-hidden="true" style="display:block;flex:none"><clipPath id="${c}"><circle cx="60" cy="60" r="60"/></clipPath><clipPath id="${k}"><circle cx="44" cy="60" r="24"/></clipPath><g clip-path="url(#${c})"><rect width="60" height="120" fill="${d}"/><rect x="60" width="60" height="120" fill="${l}"/><circle cx="44" cy="60" r="24" fill="${l}"/><circle cx="76" cy="60" r="24" fill="${d}"/><circle cx="76" cy="60" r="24" fill="${a}" clip-path="url(#${k})"/></g>${ring?`<circle cx="60" cy="60" r="58.25" fill="none" stroke="${ring}" stroke-width="3.5"/>`:''}</svg>`}
+function split(d,l,a,size){const k='s'+(++uid);return `<svg viewBox="0 0 120 120" width="${size}" height="${size}" aria-hidden="true" style="display:block"><clipPath id="${k}"><circle cx="42" cy="60" r="28"/></clipPath><rect width="60" height="120" fill="${d}"/><rect x="60" width="60" height="120" fill="${l}"/><circle cx="42" cy="60" r="28" fill="${l}"/><circle cx="78" cy="60" r="28" fill="${d}"/><circle cx="78" cy="60" r="28" fill="${a}" clip-path="url(#${k})"/></svg>`}
+const $=s=>document.querySelector(s);
+$('#heroMark').innerHTML=round(I,S,M,100,S);
+$('#sw').innerHTML=[['חול','Sand','#F0EDE5','60 · רקע'],['ברוש','Cypress','#004643','30 · מותג'],['חרדל','Mustard','#F9C23C','10 · פעולה ועדשה'],['דיו','Ink','#0E1F1E','טקסט'],['לילה','Night','#0A1817','רקע לילה'],['נר','Candle','#E8B84A','חרדל של שבת'],['דיו שבת','Shabbat ink','#17150F','רקע שבת'],['לבנה','Brick','#B03A2E','שגיאה בלבד']]
+ .map(([he,en,h,r])=>`<div><i style="background:${h}"></i><p><b>${he} · ${en}</b><span class="hex">${h}</span><br>${r}</p></div>`).join('');
+const MODES=[
+ ['יום','Day',{bg:'#F0EDE5',surface:'#FFFFFF',text:'#0E1F1E',t2:'#44504E',brand:'#004643',onb:'#F0EDE5',action:'#F9C23C',ona:'#004643',soft:'#E6ECEC',lens:'#F9C23C'},'בוקר טוב'],
+ ['לילה','Night',{bg:'#0A1817',surface:'#122725',text:'#EDE9DF',t2:'#B2B3AB',brand:'#1F6B64',onb:'#EDE9DF',action:'#F9C23C',ona:'#0E1F1E',soft:'#19322F',lens:'#F9C23C'},'לילה טוב'],
+ ['שבת','Shabbat',{bg:'#17150F',surface:'#221F17',text:'#F3E9D2',t2:'#BAB29F',brand:'#2B4A45',onb:'#F3E9D2',action:'#E8B84A',ona:'#17150F',soft:'#342C17',lens:'#E8B84A'},'שבת שלום'],
+];
+const lensP=(a,b,cy,r)=>{const h=Math.sqrt(r*r-((b-a)/2)**2),x=(a+b)/2;return `M${x} ${(cy-h).toFixed(2)}A${r} ${r} 0 0 1 ${x} ${(cy+h).toFixed(2)}A${r} ${r} 0 0 1 ${x} ${(cy-h).toFixed(2)}Z`};
+const SS='fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"',LL='fill="var(--lens,none)" stroke="none"';
+const IC=[['בית',`<path d="M4 10.6 12 4l8 6.6V19a1.8 1.8 0 0 1-1.8 1.8H5.8A1.8 1.8 0 0 1 4 19z" ${SS}/><path d="${lensP(10.4,13.6,15,2.6)}" ${LL}/><circle cx="10.4" cy="15" r="2.6" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="13.6" cy="15" r="2.6" fill="none" stroke="currentColor" stroke-width="1.5"/>`],
+ ['משימות',`<circle cx="18.2" cy="6.5" r="2.3" ${LL}/><circle cx="18.2" cy="6.5" r="2.3" ${SS}/><circle cx="18.2" cy="12" r="2.3" ${SS}/><circle cx="18.2" cy="17.5" r="2.3" ${SS}/><path d="M4 6.5h9.6M4 12h9.6M4 17.5h9.6" ${SS}/>`],
+ ['יומן',`<rect x="3.5" y="5" width="17" height="15.5" rx="2.6" ${SS}/><path d="M8 3v4M16 3v4M3.5 9.6h17" ${SS}/><circle cx="15.4" cy="14.9" r="2.4" ${LL}/><circle cx="15.4" cy="14.9" r="2.4" fill="none" stroke="currentColor" stroke-width="1.6"/>`],
+ ['חברים',`<path d="${lensP(9.5,14.5,8.6,3.4)}" ${LL}/><circle cx="9.5" cy="8.6" r="3.4" ${SS}/><circle cx="14.5" cy="8.6" r="3.4" ${SS}/><path d="M2.8 19.6c.7-3.3 3.4-5.2 6.7-5.2M21.2 19.6c-.7-3.3-3.4-5.2-6.7-5.2M9.5 14.4h5" ${SS}/>`],
+ ['פרופיל',`<path d="M12 4.8a3.8 3.8 0 0 1 0 7.6z" ${LL}/><circle cx="12" cy="8.6" r="3.8" ${SS}/><path d="M4.8 20c.8-3.6 3.6-5.6 7.2-5.6s6.4 2 7.2 5.6" ${SS}/>`]];
+$('#modes').innerHTML=MODES.map(([he,en,t,hi])=>`<div class="mode" style="background:${t.bg};color:${t.text};border:1px solid ${t.soft}">
+  <div class="top"><span>${he} · ${en}</span>${round(t.brand===MODES[0][2].brand?'#004643':t.bg,t.text,t.lens,28,t.text)}</div>
+  <div style="font-size:22px;font-weight:700">${hi}, מירון</div>
+  <div class="mini" style="background:${t.surface}"><span style="font-size:12px;color:${t.t2};font-weight:600">משימות פתוחות</span><span class="n">11</span><span style="font-size:13px;color:${t.t2}">2 להיום</span></div>
+  <button class="btn" type="button" style="background:${t.action};color:${t.ona}">+ משימה חדשה</button>
+  <div class="tabs" style="background:${t.surface}">${IC.map(([n,d],i)=>`<div style="color:${i?t.t2:t.text};${i?'':`background:${t.soft}`}"><svg viewBox="0 0 24 24" style="--lens:${i?'none':t.lens}">${d}</svg>${n}</div>`).join('')}</div>
+ </div>`).join('');
+const lum=h=>{const c=h.slice(1).match(/../g).map(x=>{x=parseInt(x,16)/255;return x<=.03928?x/12.92:((x+.055)/1.055)**2.4});return .2126*c[0]+.7152*c[1]+.0722*c[2]};
+const ratio=(a,b)=>{const[x,y]=[lum(a),lum(b)].sort((m,n)=>n-m);return(x+.05)/(y+.05)};
+const PAIRS=[['יום','טקסט על רקע','#0E1F1E','#F0EDE5',4.5],['יום','טקסט משני','#44504E','#F0EDE5',4.5],['יום','כפתור חרדל: ברוש על חרדל','#004643','#F9C23C',4.5],['יום','טקסט על הפס העליון','#F0EDE5','#004643',4.5],['יום','קישור על כרטיס','#004643','#FFFFFF',4.5],['יום','שגיאה על כרטיס','#B03A2E','#FFFFFF',4.5],
+ ['לילה','טקסט על רקע','#EDE9DF','#0A1817',4.5],['לילה','כפתור חרדל: דיו על חרדל','#0E1F1E','#F9C23C',4.5],['לילה','טקסט על פס המותג','#EDE9DF','#1F6B64',4.5],['לילה','קישור על כרטיס','#7CC4BA','#122725',4.5],
+ ['שבת','טקסט על רקע','#F3E9D2','#17150F',4.5],['שבת','כפתור נר','#17150F','#E8B84A',4.5],['שבת','קישור על כרטיס','#E8B84A','#221F17',4.5],
+ ['—','לשם השוואה: חרדל כטקסט על חול','#F9C23C','#F0EDE5',4.5]];
+$('#contrast tbody').innerHTML=PAIRS.map(([m,w,f,b,n])=>{const r=ratio(f,b);return `<tr><td>${m}</td><td>${w}</td><td><span class="chipc"><i style="background:${f}"></i><i style="background:${b}"></i></span></td><td><b>${r.toFixed(1)}</b></td><td>${r>=n?`<span class="pass">עובר</span>`:`<span style="color:var(--danger);font-weight:600">לא עובר</span>`}</td></tr>`}).join('');
+$('#marks').innerHTML=[
+ [split(C,S,M,96),'#F0EDE5','#0E1F1E','חצי־חצי · ראשי'],
+ [round(C,S,M,96,C),'#F0EDE5','#0E1F1E','עגול עם טבעת · על חול'],
+ [round(I,S,M,96,S),'#004643','#F0EDE5','על ברוש'],
+ [round('#0A1817','#EDE9DF',M,96,'#EDE9DF'),'#0A1817','#EDE9DF','לילה'],
+ [round('#17150F','#F3E9D2','#E8B84A',96,'#F3E9D2'),'#17150F','#F3E9D2','שבת'],
+ [round(I,'#FFFFFF',I,96,I),'#FFFFFF','#0E1F1E','צבע אחד · הדפסה'],
+].map(([s,bg,fg,n])=>`<figure style="background:${bg};color:${fg}">${s}<figcaption>${n}</figcaption></figure>`).join('');
+$('#sizes').innerHTML=[64,40,28,20].map(z=>`<div>${round(C,S,M,z,C)}<span>${z}px</span></div>`).join('');
+$('#csMark').innerHTML=`<rect x="70" y="25" width="100" height="100" fill="none" stroke="currentColor" opacity=".25"/><g transform="translate(90,45) scale(.5)">${round(C,S,M,120,C).replace(/<svg[^>]*>/,'').replace('</svg>','')}</g>`;
+$('#dont').innerHTML=[
+ [round(C,S,'#FF7A59',64,C),'לא להחליף את צבע העדשה'],
+ [`<div style="transform:scaleX(1.4)">${round(C,S,M,64,C)}</div>`,'לא למתוח'],
+ [`<div style="transform:rotate(90deg)">${round(C,S,M,64,C)}</div>`,'לא לסובב'],
+ [`<div style="background:#F0EDE5;padding:6px;border-radius:8px">${round(C,S,M,52)}</div>`,'לא בלי טבעת על חול'],
+ [`<div style="filter:drop-shadow(0 6px 6px rgba(0,0,0,.5))">${round(C,S,M,64,C)}</div>`,'בלי צל ובלי אפקטים'],
+].map(([s,n])=>`<figure><div>${s}</div><figcaption>${n}</figcaption></figure>`).join('');
+$('#icons').innerHTML=IC.map(([n,d])=>`<figure><span class="pair"><svg viewBox="0 0 24 24" style="--lens:none">${d}</svg><svg class="on" viewBox="0 0 24 24" style="--lens:#F9C23C">${d}</svg></span>${n}</figure>`).join('');
+$('#wa').innerHTML=`${round(C,S,M,120)}${round(C,S,M,56)}<div class="row">${round(C,S,M,48)}<div style="min-width:0"><b>עולמה</b><small>סגרתי את הפגישה עם רוני, רביעי 18:30 ✓</small></div><small style="margin-inline-start:auto;font-size:12px;color:#667781">09:40</small></div>`;
+</script>

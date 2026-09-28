@@ -1,0 +1,8 @@
+ברוש	Cypress	#004643	30 · brand: the band, the mark, headings on sand
+חול	Sand	#F0EDE5	60 · ground
+חרדל	Mustard	#F9C23C	10 · the primary action and the lens. Never as text on light
+דיו	Ink	#0E1F1E	body text
+לילה	Night	#0A1817	night ground
+נר	Candle	#E8B84A	Shabbat action and lens
+דיו שבת	Shabbat ink	#17150F	Shabbat ground
+לבנה	Brick	#B03A2E	errors and deletes only
