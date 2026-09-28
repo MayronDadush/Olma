@@ -150,8 +150,8 @@ function withClocks(line, co, { timezone, nowMs } = {}) {
 }
 
 function decideLine(co, {
-  saidStarted, saidBase, saidBaseSlot, saidChase, saidDone, saidCalendar, saidDayOf, saidHour, saidTime,
-  pendingRelay, startedAtMs, nowMs, timezone, tableSaidAtMs, reopenedAt, reopenedFrom, saidReopened,
+  saidStarted, saidBase, saidBaseSlot, saidBaseStartAt, saidChase, saidDone, saidCalendar, saidDayOf, saidHour,
+  saidTime, pendingRelay, startedAtMs, nowMs, timezone, tableSaidAtMs, reopenedAt, reopenedFrom, saidReopened,
   roomAsleep,
 } = {}) {
   if (!co) return { kind: 'none', reason: 'nothing being coordinated' };
@@ -274,10 +274,20 @@ function decideLine(co, {
   // and a time deleted and replaced thirty seconds later is ONE thing that
   // happened. Said immediately, the room would read "שבת 16:00 כבר לא על
   // השולחן" and then, a minute later, that the table had moved again.
+  //
+  // A time is the SAME time by its moment, not its words (migration 097):
+  // deleted and put back as "שבת ב-16:00" it is still on the table, and the
+  // words alone would tell the room otherwise. Only where either side has no
+  // instant — a row stamped before 097, a time nobody pinned — are the words
+  // all there is to compare.
+  const saidMs = saidBaseStartAt ? new Date(saidBaseStartAt).getTime() : NaN;
+  const isSaid = (o) => (Number.isFinite(saidMs) && o.startsAt
+    ? new Date(o.startsAt).getTime() === saidMs
+    : o.slot === saidBaseSlot);
   const settledAt = tableSettledAt(co, tableSaidAtMs || 0);
   const settled = settledAt !== null && nowMs >= settledAt;
-  const namedGone = Boolean(saidBase && saidBaseSlot && lead && saidBaseSlot !== lead.slot
-    && !(co.options || []).some((o) => o.slot === saidBaseSlot) && settled);
+  const namedGone = Boolean(saidBase && saidBaseSlot && lead && !isSaid(lead)
+    && !(co.options || []).some(isSaid) && settled);
   if ((!saidBase || namedGone) && lead) {
     // What "a base" is depends on what the room said it needs. A game has a
     // number and it is that number; anywhere else two people who can both make
@@ -306,7 +316,7 @@ function decideLine(co, {
     // or the grace already armed, the next thing this room hears is "סגור".
     if (enough && lead.yes.length < total && !co.settleDueAt) {
       const line = {
-        slot: lead.slot, yes: lead.yes.length, total,
+        slot: lead.slot, startsAt: lead.startsAt || null, yes: lead.yes.length, total,
         missing: unanswered.slice(0, MAX_TAGS),
         more: Math.max(0, unansweredPeople.length - Math.min(unanswered.length, MAX_TAGS)),
       };

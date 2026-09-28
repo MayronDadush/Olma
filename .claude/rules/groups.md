@@ -613,7 +613,10 @@ have already had to be argued for.
   the table, with two people's yes on the time she removed. `meetings.
   group_base_slot` (migration 082) is the slot text the room actually heard,
   and `group-voice.decideGroupLine`'s `namedGone` is the whole trigger: that
-  slot is no longer among the active options AND another one leads. **Three
+  slot is no longer among the active options AND another one leads. **"The
+  same slot" is the same MOMENT** (`meetings.group_base_start_at`, migration
+  097): a time deleted and put back in other words is still on the table, and
+  the words decide only where there is no instant to compare. **Three
   things it deliberately is not.** A new leading time with the old one still on
   the table says NOTHING — the room's picture is still true, and a line per
   change of lead is how this family of lines becomes the thing the owner asked
