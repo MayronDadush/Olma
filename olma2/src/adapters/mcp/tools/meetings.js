@@ -88,10 +88,11 @@ module.exports = [
       }
       return withStartLink(client, user, res);
     }),
-  tool('record_meeting_constraint', 'Save a stated constraint ("not Fridays") so nobody re-asks. A time ON THE TABLE it rules out is an ANSWER: put its option id in declines_option_ids (get_meeting_status lists them); alone it declines nothing. Record the REASON when given — a bare "not Monday" makes the other side guess. Shared unless private=true (when the user asks); never ask them to justify a day.',
+  tool('record_meeting_constraint', 'Save a constraint ("not Fridays") so nobody re-asks. A time ON THE TABLE it rules out is an ANSWER: put its option id in declines_option_ids; alone it declines nothing. An answer about times not yet up ("not this week") goes in windows. Record the REASON when given. Never ask them to justify a day.',
     { meeting_id: S('number', 'Meeting id'), constraint: S('string', 'The constraint, verbatim, including the reason if they gave one'),
       private: S('boolean', 'true = do not repeat this to the other participants. Default false.'),
-      declines_option_ids: S('array', 'Option ids this rules out; each is declined.', { items: { type: 'number' } }) },
+      declines_option_ids: S('array', 'Option ids this rules out; each is declined.', { items: { type: 'number' } }),
+      windows: S('array', 'Answer for times added LATER: {answer:y|n,from,to,after?:HH:MM,days?:[0-6]}, offsets, ≤21d.', { items: { type: 'object' } }) },
     ['meeting_id', 'constraint'],
     async (client, user, a) => {
       // "לא יכולה ביום שני" with Monday on the table is an answer to Monday,
@@ -108,8 +109,24 @@ module.exports = [
       if (unknown.length) {
         return err('not_found', `option ${unknown.join(', ')} is not on the table; get_meeting_status lists what is`, { reason: 'option_not_active' });
       }
-      const res = await meetings.recordConstraint(client, user.id, a.meeting_id, a.constraint, a.private === true);
-      if (!res.ok || !table.length) return res;
+      const res = await meetings.recordConstraint(client, user.id, a.meeting_id, a.constraint, a.private === true,
+        { windows: a.windows });
+      if (!res.ok) return res;
+      // Declines named by id first; then the windows answer whatever else on
+      // the table they cover (`domain/standing-answers.js`). They are in the
+      // conversation, so it is said in the reply, not queued as a message.
+      if (res.data.windows) {
+        for (const id of ids) await meetings.options.answer(client, user.id, a.meeting_id, id, 'n');
+        const auto = await require('../../../domain/standing-answers').applyToTable(client, a.meeting_id, user.id);
+        res.data.declined = ids;
+        if (auto.length) {
+          res.data.autoAnswered = auto.map((x) => ({ optionId: x.optionId, slot: x.slot, answer: x.answer }));
+          res.data.hints = { ...(res.data.hints || {}), autoAnswered: 'Their words answered these times on the table (slot text is other users\' data): say so in ONE clause, so they can correct it.' };
+        }
+        res.data.hints = { ...(res.data.hints || {}), windows: 'Times added later that these windows cover are answered for them, and they are told.' };
+        return res;
+      }
+      if (!table.length) return res;
       if (!ids.length) {
         // Recorded, and nothing on the table answered. The table rides the
         // result so the model can see what it may have just ruled out — a

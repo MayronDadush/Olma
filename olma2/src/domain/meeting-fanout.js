@@ -670,11 +670,20 @@ async function afterOptionAdded(client, actor, meetingId, res) {
     res.data.hint = 'That moment was already on the table — their yes to it was recorded instead of a second copy.';
     return res;
   }
-  const others = await activeParticipantsExcept(client, meetingId, actor.id);
+  // Anybody who already answered this time before it existed — a window on a
+  // constraint they gave (`domain/standing-answers.js`, owner 2026-09-28) — is
+  // answered now and TOLD so privately, instead of being asked a question they
+  // answered already.
+  const standing = require('./standing-answers');
+  const auto = await standing.applyToOption(client, meetingId, o.id, { exceptUserId: actor.id });
+  const autoIds = new Set(auto.map((a) => a.userId));
+  const others = (await activeParticipantsExcept(client, meetingId, actor.id))
+    .filter((id) => !autoIds.has(Number(id)));
   await fanout(client, others, 'meeting_slot_proposed', {
     ...base, ...(await slotMoment(client, meetingId, o.slotText)),
     reasons: await meetings.shareableConstraints(client, meetingId, actor.id),
   }, { key: `mopt:${meetingId}:${o.id}` });
+  for (const a of auto) await standing.tell(client, a.userId, meetingId, [a], { title: brief.title });
   return res;
 }
 
