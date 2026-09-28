@@ -140,4 +140,47 @@ function onDay(value, day, timezone) {
   return `${p.y}-${String(p.m).padStart(2, '0')}-${String(p.d).padStart(2, '0')}` === day;
 }
 
-module.exports = { clean, resolve, forTurn, pending, onDay, weekStartsOn, KINDS, MAX_DAYS_AHEAD, TURN_CHASE_TTL_MS };
+// ── The END of a repeat they already asked for, off their own words ──────────
+// Dov, 2026-09-27: "תזכורת כל ערב בשבוע הקרוב לסדר קבלות". The model got the
+// cadence right — set_task_reminder(daily, 20:00) — and told him "לשבוע הקרוב",
+// but a repeat has nowhere to carry an end, so the row would have gone on
+// every evening for ever. The verdict above cannot help: it is read by the
+// hook only for "עד" plus an ask, it arms a MORNING chase on the first
+// add_task of the turn, and it is switched off whenever a repeat_rule is given.
+//
+// So this reads `when_said` — their words naming WHEN, which the tool already
+// takes — and ONLY on a call that already carries a repeat_rule, so the cadence
+// and the hour stay the model's and the one thing added is where it stops.
+// A verdict of the same kinds as above, resolved by `resolve` in their zone.
+// Null is "no end said", which is every standing routine ("כל יום ב-7").
+const HE = 'א-ת';
+const NB = `(?![${HE}])`;
+const WEEKDAYS = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
+const BOUNDED = [
+  [new RegExp(`(?:^|[^${HE}])(?:ב|ל|במשך\\s+ה)שבוע\\s+הקרוב${NB}`, 'u'), () => ({ kind: 'days', n: 7 })],
+  [/\b(?:for\s+)?the\s+(?:next|coming)\s+week\b/i, () => ({ kind: 'days', n: 7 })],
+  [new RegExp(`(?:^|[^${HE}])[ו]?עד\\s+(?:ל)?(?:ה)?שבוע\\s+(?:ה)?בא${NB}`, 'u'), () => ({ kind: 'next_week' })],
+  [new RegExp(`(?:^|[^${HE}])[ו]?עד\\s+(?:ל)?(?:סוף\\s+(?:ה)?שבוע|סופ"?ש)${NB}`, 'u'), () => ({ kind: 'end_of_week' })],
+  [new RegExp(`(?:^|[^${HE}])[ו]?עד\\s+(?:ל)?סוף\\s+(?:ה)?חודש${NB}`, 'u'), () => ({ kind: 'end_of_month' })],
+  [new RegExp(`(?:^|[^${HE}])[ו]?עד\\s+(?:ל)?מחרתיים${NB}`, 'u'), () => ({ kind: 'days', n: 2 })],
+  [new RegExp(`(?:^|[^${HE}])[ו]?עד\\s+(?:ל)?(?:יום\\s+)?(${WEEKDAYS.join('|')})${NB}`, 'u'),
+    (m) => ({ kind: 'weekday', weekday: WEEKDAYS.indexOf(m[1]) })],
+  [new RegExp(`(?:^|[^${HE}])[ו]?עד\\s+(?:ל)?ה[-־]?\\s*(\\d{1,2})(?![\\d:.])`, 'u'), (m) => ({ kind: 'date', day: Number(m[1]) })],
+  // "השבוע" alone — not "השבוע הבא", which is the NEXT week.
+  [new RegExp(`(?:^|[^${HE}])(?:ב|ל)?השבוע(?!\\s+(?:ה)?(?:בא|הקרוב))${NB}`, 'u'), () => ({ kind: 'end_of_week' })],
+  [/\bthis\s+week\b/i, () => ({ kind: 'end_of_week' })],
+];
+
+function boundedByWords(text) {
+  const s = String(text || '');
+  if (!s.trim() || s.length > 300) return null;
+  for (const [re, build] of BOUNDED) {
+    const m = s.match(re);
+    if (m) return clean(build(m));
+  }
+  return null;
+}
+
+module.exports = {
+  clean, resolve, forTurn, pending, onDay, weekStartsOn, boundedByWords, KINDS, MAX_DAYS_AHEAD, TURN_CHASE_TTL_MS,
+};
