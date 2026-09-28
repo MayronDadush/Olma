@@ -2,7 +2,10 @@
 // A scene is an HTML page that defines window.__seek(ms) and window.__ms (its length);
 // nothing plays on a wall clock, so a slow machine can never drop or smear a frame.
 //
-//   node brand/studio/render.js <scene.html> <out.mp4|out.png> [--fps 30] [--size 1080x1080] [--at ms]
+//   node brand/studio/render.js <scene.html> <out.mp4|out.png> [--fps 30] [--size 1080x1080] [--at ms] [--crf 16]
+//
+// --crf is x264 quality: 16 is a master copy, 28 is what goes out over WhatsApp
+// (grain is expensive to encode; a 14.6s intro is 2.2MB at 16 and ~0.5MB at 28).
 //
 // Needs Google Chrome and ffmpeg (both local). A .png output renders the single frame --at.
 const { spawn, spawnSync } = require('child_process'), fs = require('fs'), os = require('os'), path = require('path');
@@ -29,7 +32,9 @@ const chrome = spawn(CH, ['--headless=new', `--remote-debugging-port=${PORT}`, `
 
   await send('Emulation.setDeviceMetricsOverride', { width: W, height: H, deviceScaleFactor: 1, mobile: false });
   await send('Page.enable');
-  await send('Page.navigate', { url: 'file://' + path.resolve(scene) });
+  // A scene may take options as a query string: scenes/intro.html?lang=en
+  const [file, query] = scene.split('?');
+  await send('Page.navigate', { url: 'file://' + path.resolve(file) + (query ? '?' + query : '') });
   for (let i = 0; i < 40 && !(await js('typeof window.__seek === "function"')); i++) await sleep(150);
   await js('document.fonts.ready.then(() => true)');
   if (!(await js('document.fonts.check("700 40px \\"IBM Plex Sans Hebrew\\"")'))) console.warn('warning: IBM Plex Sans Hebrew did not load; the frames use a fallback font');
@@ -45,7 +50,7 @@ const chrome = spawn(CH, ['--headless=new', `--remote-debugging-port=${PORT}`, `
       await shot(path.join(tmp, `f${String(f).padStart(5, '0')}.png`));
     }
     const r = spawnSync('ffmpeg', ['-y', '-loglevel', 'error', '-framerate', String(fps), '-i', path.join(tmp, 'f%05d.png'),
-      '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '16', '-preset', 'slow', '-movflags', '+faststart', out], { stdio: 'inherit' });
+      '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', String(opt('crf', 16)), '-preset', 'slow', '-movflags', '+faststart', out], { stdio: 'inherit' });
     if (r.status !== 0) throw new Error('ffmpeg failed');
     console.log(`${n + 1} frames, ${(total / 1000).toFixed(2)}s at ${fps}fps, ${W}x${H}`);
   }
