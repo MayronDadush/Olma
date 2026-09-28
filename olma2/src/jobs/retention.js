@@ -4,6 +4,7 @@
 // stale session snapshots age out too. Days tunable via flag, no deploy.
 const flags = require('../domain/flags');
 const cardStore = require('../domain/card-store');
+const rosterExpiry = require('../domain/roster-expiry');
 
 async function sweepRetention(client) {
   const days = Number(await flags.getFlag(client, 'audit_retention_days') ?? 180);
@@ -39,11 +40,14 @@ async function sweepRetention(client) {
   // near-identical sweeper is how the v1 cron jobs got hard to reason about.
   const cardHours = Number(await flags.getFlag(client, 'card_retention_hours') ?? cardStore.DEFAULT_MAX_AGE_HOURS);
   const cardsPurged = await cardStore.purgeOldCards(client, cardHours);
+  // Numbers seen only on a room's roster (domain/roster-expiry.js).
+  const roster = await rosterExpiry.expireRoster(client);
   return {
     auditPurged: audit.rowCount, outboxPurged: outbox.rowCount,
     snapshotsPurged: snapshots.rowCount, oauthStatesPurged: states.rowCount,
     pickerLinksPurged: pickerLinks.rowCount,
     cardsPurged,
+    ...roster,
   };
 }
 

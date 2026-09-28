@@ -28,6 +28,7 @@ const audit = require('./audit');
 const { mentionToken } = require('./proactive-text');
 const users = require('./users');
 const language = require('./language');
+const rosterExpiry = require('./roster-expiry');
 const { isRealPhone, timezoneForPhone } = require('./phone-timezone');
 
 // Closed by default. Measured on the box the day this shipped, it creates
@@ -273,9 +274,13 @@ async function ensureRosterUsers(client, groupId, members) {
   }
   const roster = dedupe((members || []).filter((m) => m && m.phone));
   const known = await knownUsers(client, roster.map((m) => m.phone));
+  // Seen here for longer than the privacy page's window without a word: the
+  // row was aged out (domain/roster-expiry.js) and is not minted again.
+  const stale = await rosterExpiry.unmintable(client, groupId, roster.map((m) => m.phone));
   for (const m of roster) {
     if (known.has(m.phone)) { skipped.existing++; continue; }
     if (!isRealPhone(m.phone)) { skipped.notAPhone++; continue; }
+    if (stale.has(m.phone)) { skipped.expired = (skipped.expired || 0) + 1; continue; }
     const res = await users.createUser(client, {
       phone: m.phone,
       timezone: timezoneForPhone(m.phone),
