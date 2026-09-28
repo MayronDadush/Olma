@@ -26,42 +26,26 @@
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/icons/icon-192.png" sizes="192x192" type="image/png">
 <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
-<meta name="theme-color" content="#F4F3F8" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#0C0B11" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#F0EDE5" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0A1817" media="(prefers-color-scheme: dark)">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="עולמה">
-<!-- The brand layer (see "the brand layer" in the stylesheet) is off until the
-     owner says otherwise; ?brand=1 turns it on for this browser, ?brand=0
-     off. Here, before the stylesheet, so the page never paints once in the
-     old colours and then jumps. -->
-<script>
-try{
-  var bq = new URLSearchParams(location.search).get("brand");
-  if(bq === "1" || bq === "0") localStorage.setItem("olma.brand", bq);
-  if(localStorage.getItem("olma.brand") === "1"){
-    document.documentElement.setAttribute("data-brand", "allma");
-    document.querySelectorAll('meta[name="theme-color"]').forEach(function(m){
-      m.setAttribute("content", /dark/.test(m.getAttribute("media") || "") ? "#16122E" : "#F7F1E6");
-    });
-  }
-}catch(e){}
-</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;500;600;700&family=Rubik:wght@500;600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Hebrew:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
 
 <style>
 /* ─────────────────────────  tokens  ───────────────────────── */
 :root{
-  --bg:#F4F3F8;
-  --bg-tint:#EDEBF6;
+  --bg:#F0EDE5;
+  --bg-tint:#E6E3DA;
   --surface:#FFFFFF;
-  --surface-2:#FAF9FE;
-  --sep:#E7E5F0;
-  --sep-2:#D9D6E6;
-  --text:#141322;
+  --surface-2:#F8F7F3;
+  --sep:#E2DFD6;
+  --sep-2:#D2CFC5;
+  --text:#0E1F1E;
   /* The tertiary grey measured 2.3:1 on either ground — quiet past the point
      of being text at all — and it carries every section label, every form
      label, the times down the side of each row and every empty state. 4.6:1
@@ -69,50 +53,50 @@ try{
      moved with it, because a secondary tone that is no darker than the
      tertiary one is not a hierarchy, it is two greys. Measured against
      --bg-tint, the darkest ground either of them ever sits on. */
-  --text-2:#5C5973;
-  --text-3:#6A6684;
+  --text-2:#44504E;
+  --text-3:#56615E;
   /* Hue 241 is the blurple every product ships with — Discord's, Stripe's,
      half of Material's. It was the one thing on this page that could have
      been anybody's. Moved to 256: further into violet, deeper, with more
      chroma, which is also the direction the neutrals were already leaning
      (#F4F3F8 and #6C6982 are violet-biased greys, not neutral ones). Same
      colour, said properly. */
-  --accent:#5B2FD6;
-  --accent-2:#4A22B4;
-  --accent-soft:#EEE8FC;
-  --prog:rgba(91,47,214,.26);
+  --accent:#004643;
+  --accent-2:#00302E;
+  --accent-soft:#E1EBE8;
+  --prog:rgba(0,70,67,.24);
   /* The accent as a LINE rather than a fill: a 1.5px ring around the option
      with the most answers, which has to read on a card without becoming a
      second button. Heavier than --prog, which is an arc behind text and can
      afford to be faint. */
-  --accent-line:rgba(91,47,214,.42);
+  --accent-line:rgba(0,70,67,.40);
   /* The three semantic colours are TEXT as often as they are fill — "overdue",
      "saved", "remove the connection" — and as text they measured 3.2-4.1.
      Darkened until they pass, which also takes white-on-fill from 3.5-4.5 up
      over 5 in the same move. */
-  --danger:#C92B22;
-  --danger-soft:#FCEBE9;
-  --warn:#925E07;
-  --warn-soft:#F8EFDC;
-  --ok:#157853;
-  --ok-soft:#E4F4EE;
-  --drop-line:#2B6EF2;
+  --danger:#B03A2E;
+  --danger-soft:#F6E4E1;
+  --warn:#8A5A00;
+  --warn-soft:#F6EDD6;
+  --ok:#0F6B52;
+  --ok-soft:#E2EFE9;
+  --drop-line:#2F7F9E;
   /* The meeting ring's own three colours. A "no" needs a red that is NOT the
      danger red — deleting and being unable to come are different weights of
      bad, and the arcs sit millimetres apart. Gold is reserved for the one
      state no other colour is allowed to mean: everybody can. */
-  --no-arc:#E0736A;
-  --gold:#B07A0B;
-  --gold-arc:#D9A21C;
-  --gold-soft:#FBF1DA;
+  --no-arc:#D9776A;
+  --gold:#8A6100;
+  --gold-arc:#F9C23C;
+  --gold-soft:#FDF1D2;
   /* The two marks are drawn objects, not glyphs in a text colour, so they keep
      their own palette across both themes — a crown that inverts stops being a
      crown. Only the line colour follows the page. */
-  --mk-line:#141322;
-  --mk-gold:#F2B32C;
-  --mk-gold-s:#C4841A;
+  --mk-line:#0E1F1E;
+  --mk-gold:#F9C23C;
+  --mk-gold-s:#CF9A1F;
   --mk-paper:#FFFFFF;
-  --mk-paper-s:#DDD9EC;
+  --mk-paper-s:#E4E1D7;
   --knob:#FFFFFF;
   --seg-on:#FFFFFF;
   /* The ink that sits ON a filled control — accent, ok, warn, danger. White
@@ -125,7 +109,7 @@ try{
   --on-accent:#FFFFFF;
   --on-accent-soft:rgba(255,255,255,.25);
   --glass:rgba(255,255,255,.74);
-  --glass-line:rgba(20,19,34,.08);
+  --glass-line:rgba(14,31,30,.08);
   /* Liquid glass, used sparingly: a lens only reads as a lens on something
      that already floats above the page. --rim is the specular hairline that
      catches light on the top edge and returns faintly along the bottom;
@@ -142,9 +126,9 @@ try{
   --lens-bar:blur(15px) saturate(280%) brightness(1.05);
   --sheen:linear-gradient(178deg, rgba(255,255,255,.42), rgba(255,255,255,.06) 42%, rgba(255,255,255,0) 62%);
   --lens:blur(28px) saturate(190%) brightness(1.04);
-  --shadow-s:0 1px 2px rgba(20,19,34,.05);
-  --shadow-m:0 1px 2px rgba(20,19,34,.05), 0 10px 28px -16px rgba(20,19,34,.28);
-  --shadow-l:0 24px 64px -20px rgba(20,19,34,.34), 0 2px 8px rgba(20,19,34,.08);
+  --shadow-s:0 1px 2px rgba(14,31,30,.05);
+  --shadow-m:0 1px 2px rgba(14,31,30,.05), 0 10px 28px -16px rgba(14,31,30,.28);
+  --shadow-l:0 24px 64px -20px rgba(14,31,30,.34), 0 2px 8px rgba(14,31,30,.08);
   --dirf:1;
   --strike-origin:right;
   /* Cartoon timing: nothing starts or stops abruptly. --ease-io is the
@@ -164,227 +148,128 @@ try{
      the access control it reveals all read from it, so they cannot drift out
      of step the way three hand-copied durations did. */
   --sw-t:.26s;
-  /* The two faces, as tokens, so the brand's font pair — still being chosen
-     on 2026-09-27 — is one line here and not eighteen across the sheet. */
-  --font-head:'Rubik',sans-serif;
-  --font-body:'Assistant','Heebo',system-ui,-apple-system,'Segoe UI',sans-serif;
+  /* Allma, Cypress + Mustard (the owner, 2026-09-28; brand/README.md). The
+     primary action is the one Mustard thing on a screen, with Cypress on it
+     (6.6:1); every other fill is a SELECTION and stays --accent. The mark
+     carries its own four colours so the night can swap them. */
+  --action:#F9C23C;
+  --on-action:#004643;
+  --logo-d:#004643;
+  --logo-l:#F0EDE5;
+  --logo-lens:#F9C23C;
+  --logo-ring:#004643;
+  --font-body:'IBM Plex Sans Hebrew','IBM Plex Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --font-display:'IBM Plex Sans Hebrew','IBM Plex Sans',system-ui,sans-serif;
 }
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
-    --bg:#0C0B11;
-    --bg-tint:#26232F;
-    --surface:#181720;
-    --surface-2:#1F1D29;
-    --sep:#2A2836;
-    --sep-2:#3A3749;
-    --text:#F4F3FA;
-    --text-2:#9D9AB2;
-    --text-3:#8D8BA0;
-    --accent:#A38CFF;
-    --accent-2:#BBA9FF;
-    --accent-soft:#291D4C;
-    --prog:rgba(163,140,255,.34);
-    --accent-line:rgba(163,140,255,.52);
-    --danger:#FF6B60;
-    --danger-soft:#33191A;
+    --bg:#0A1817;
+    --bg-tint:#1A2B29;
+    --surface:#122725;
+    --surface-2:#17302D;
+    --sep:#243532;
+    --sep-2:#31433F;
+    --text:#EDE9DF;
+    --text-2:#AEB6B1;
+    --text-3:#9AA39E;
+    --accent:#7CC4BA;
+    --accent-2:#9DD6CD;
+    --accent-soft:#16332F;
+    --prog:rgba(124,196,186,.32);
+    --accent-line:rgba(124,196,186,.52);
+    --danger:#F08A7E;
+    --danger-soft:#3A1C19;
     --warn:#F0AE3E;
     --warn-soft:#332616;
-    --ok:#41CB94;
+    --ok:#6FD3A6;
     --ok-soft:#12352A;
-    --drop-line:#7FA8FF;
-    --no-arc:#C9584F;
-    --gold:#E3B45C;
-    --gold-arc:#D9A21C;
-    --gold-soft:#2C2412;
-    --mk-line:#ECEAF6;
-    --mk-paper:#3A3750;
-    --mk-paper-s:#2A2840;
+    --drop-line:#7FB8D0;
+    --no-arc:#C9665A;
+    --gold:#E9BE5C;
+    --gold-arc:#F9C23C;
+    --gold-soft:#2E2612;
+    --mk-line:#EDE9DF;
+    --mk-paper:#1C3633;
+    --mk-paper-s:#122725;
     --knob:#FFFFFF;
-    --seg-on:#383345;
+    --seg-on:#23403C;
     /* 6.7:1 on the accent, 7-10:1 on ok/warn/danger — see the light block. */
-    --on-accent:#17112E;
+    --on-accent:#0A1817;
     --on-accent-soft:rgba(0,0,0,.2);
-    --glass:rgba(24,23,32,.72);
+    --glass:rgba(18,39,37,.72);
     --glass-line:rgba(255,255,255,.09);
-    --glass-panel:rgba(30,28,41,.84);
+    --glass-panel:rgba(20,42,40,.84);
     --rim-soft:inset 0 .6px 0 rgba(255,255,255,.16);
-    --bar:rgba(24,23,32,.40);
-    --toast-bg:rgba(26,25,35,.58);
+    --bar:rgba(18,39,37,.40);
+    --toast-bg:rgba(18,39,37,.58);
     --lens-bar:blur(15px) saturate(300%) brightness(1.22);
     --rim:inset 0 .6px 0 rgba(255,255,255,.26), inset 0 -.6px 0 rgba(255,255,255,.07), inset .6px 0 0 rgba(255,255,255,.11), inset -.6px 0 0 rgba(255,255,255,.11);
     --sheen:linear-gradient(178deg, rgba(255,255,255,.13), rgba(255,255,255,.02) 42%, rgba(255,255,255,0) 62%);
     --lens:blur(28px) saturate(200%) brightness(1.16);
     --shadow-s:0 1px 2px rgba(0,0,0,.4);
     --shadow-m:0 1px 2px rgba(0,0,0,.4), 0 10px 28px -16px rgba(0,0,0,.8);
+    --action:#F9C23C;
+    --on-action:#0E1F1E;
+    --logo-d:#0A1817;
+    --logo-l:#EDE9DF;
+    --logo-lens:#F9C23C;
+    --logo-ring:#EDE9DF;
     --shadow-l:0 24px 64px -20px rgba(0,0,0,.8), 0 2px 8px rgba(0,0,0,.5);
   }
 }
 :root[data-theme="dark"]{
-  --bg:#0C0B11;
-  --bg-tint:#26232F;
-  --surface:#181720;
-  --surface-2:#1F1D29;
-  --sep:#2A2836;
-  --sep-2:#3A3749;
-  --text:#F4F3FA;
-  --text-2:#9D9AB2;
-  --text-3:#8D8BA0;
-  --accent:#A38CFF;
-  --accent-2:#BBA9FF;
-  --accent-soft:#291D4C;
-  --prog:rgba(163,140,255,.34);
-  --accent-line:rgba(163,140,255,.52);
-  --danger:#FF6B60;
-  --danger-soft:#33191A;
+  --bg:#0A1817;
+  --bg-tint:#1A2B29;
+  --surface:#122725;
+  --surface-2:#17302D;
+  --sep:#243532;
+  --sep-2:#31433F;
+  --text:#EDE9DF;
+  --text-2:#AEB6B1;
+  --text-3:#9AA39E;
+  --accent:#7CC4BA;
+  --accent-2:#9DD6CD;
+  --accent-soft:#16332F;
+  --prog:rgba(124,196,186,.32);
+  --accent-line:rgba(124,196,186,.52);
+  --danger:#F08A7E;
+  --danger-soft:#3A1C19;
   --warn:#F0AE3E;
   --warn-soft:#332616;
-  --ok:#41CB94;
+  --ok:#6FD3A6;
   --ok-soft:#12352A;
-  --drop-line:#7FA8FF;
-  --no-arc:#C9584F;
-  --gold:#E3B45C;
-  --gold-arc:#D9A21C;
-  --gold-soft:#2C2412;
-  --mk-line:#ECEAF6;
-  --mk-paper:#3A3750;
-  --mk-paper-s:#2A2840;
+  --drop-line:#7FB8D0;
+  --no-arc:#C9665A;
+  --gold:#E9BE5C;
+  --gold-arc:#F9C23C;
+  --gold-soft:#2E2612;
+  --mk-line:#EDE9DF;
+  --mk-paper:#1C3633;
+  --mk-paper-s:#122725;
   --knob:#FFFFFF;
-  --seg-on:#383345;
-  --on-accent:#17112E;
+  --seg-on:#23403C;
+  --on-accent:#0A1817;
   --on-accent-soft:rgba(0,0,0,.2);
-  --glass:rgba(24,23,32,.72);
+  --glass:rgba(18,39,37,.72);
   --glass-line:rgba(255,255,255,.09);
-  --glass-panel:rgba(30,28,41,.84);
+  --glass-panel:rgba(20,42,40,.84);
   --rim-soft:inset 0 .6px 0 rgba(255,255,255,.16);
-  --bar:rgba(24,23,32,.40);
-  --toast-bg:rgba(26,25,35,.58);
+  --bar:rgba(18,39,37,.40);
+  --toast-bg:rgba(18,39,37,.58);
   --lens-bar:blur(15px) saturate(300%) brightness(1.22);
   --rim:inset 0 .6px 0 rgba(255,255,255,.26), inset 0 -.6px 0 rgba(255,255,255,.07), inset .6px 0 0 rgba(255,255,255,.11), inset -.6px 0 0 rgba(255,255,255,.11);
   --sheen:linear-gradient(178deg, rgba(255,255,255,.13), rgba(255,255,255,.02) 42%, rgba(255,255,255,0) 62%);
   --lens:blur(28px) saturate(200%) brightness(1.16);
   --shadow-s:0 1px 2px rgba(0,0,0,.4);
   --shadow-m:0 1px 2px rgba(0,0,0,.4), 0 10px 28px -16px rgba(0,0,0,.8);
+  --action:#F9C23C;
+  --on-action:#0E1F1E;
+  --logo-d:#0A1817;
+  --logo-l:#EDE9DF;
+  --logo-lens:#F9C23C;
+  --logo-ring:#EDE9DF;
   --shadow-l:0 24px 64px -20px rgba(0,0,0,.8), 0 2px 8px rgba(0,0,0,.5);
 }
-
-/* ─────────────────  the brand layer (off by default)  ─────────────────
-   Allma Brand Kit, 2026-09-27: calm as the base, the hour as the colour
-   system. Day is "coral on ink" (ink #221C3A on paper #F7F1E6, coral
-   #FF8A6B); night is "electric night" (#16122E / #EDEAFB, violet #7C6CF2).
-   No green anywhere — green is WhatsApp's.
-
-   Only COLOURS move here; every rule on the page already reads them from the
-   tokens above, which is what makes the brand one block rather than a
-   rewrite. Two choices are made on the page's behalf and are easy to undo:
-     - the ACTION colour is ink by day and pale violet by night, and coral is
-       kept for the moment of "together" (the soft fills, the progress arcs).
-       Coral as text on paper measures 2.1:1, and a coral action sits beside
-       the overdue red and reads as a warning;
-     - "ok" is violet, not green.
-   It is switched on per viewer by ?brand=1 (and off by ?brand=0), remembered
-   in this browser only, until the owner decides it is the page. Contrast was
-   measured on every text token against bg, bg-tint and surface: 4.5 or
-   better throughout. */
-:root[data-brand="allma"]{
-  --bg:#F7F1E6;
-  --bg-tint:#EFE7D8;
-  --surface:#FFFCF6;
-  --surface-2:#FBF6EC;
-  --sep:#EAE1CF;
-  --sep-2:#DCD1BC;
-  --text:#221C3A;
-  --text-2:#554E6B;
-  --text-3:#625B76;
-  --accent:#221C3A;
-  --accent-2:#3A3160;
-  --accent-soft:#FFE3D8;
-  --prog:rgba(255,138,107,.42);
-  --accent-line:rgba(255,138,107,.75);
-  --danger:#BF2519;
-  --danger-soft:#FBE6E1;
-  --warn:#875604;
-  --warn-soft:#F6EBD3;
-  --ok:#4B3FC4;
-  --ok-soft:#EAE7FB;
-  --drop-line:#7C6CF2;
-  --mk-line:#221C3A;
-  --mk-paper:#FFFCF6;
-  --mk-paper-s:#E6DCC8;
-  --seg-on:#FFFCF6;
-  --on-accent:#F7F1E6;
-  --glass:rgba(255,252,246,.74);
-  --glass-line:rgba(34,28,58,.08);
-  --glass-panel:rgba(255,252,246,.86);
-  --bar:rgba(255,252,246,.5);
-  --toast-bg:rgba(255,252,246,.6);
-  --shadow-s:0 1px 2px rgba(34,28,58,.06);
-  --shadow-m:0 1px 2px rgba(34,28,58,.05), 0 10px 28px -16px rgba(34,28,58,.3);
-  --shadow-l:0 24px 64px -20px rgba(34,28,58,.36), 0 2px 8px rgba(34,28,58,.08);
-}
-@media (prefers-color-scheme: dark){
-  :root[data-brand="allma"]:not([data-theme="light"]){
-    --bg:#16122E;
-    --bg-tint:#262050;
-    --surface:#1F1A3D;
-    --surface-2:#262048;
-    --sep:#312A5C;
-    --sep-2:#3E366F;
-    --text:#EDEAFB;
-    --text-2:#B4ADD6;
-    --text-3:#A29BC8;
-    --accent:#A99CFF;
-    --accent-2:#C2B8FF;
-    --accent-soft:#3A2A4E;
-    --prog:rgba(255,138,107,.4);
-    --accent-line:rgba(255,138,107,.6);
-    --danger:#FF6B6B;
-    --danger-soft:#3A1830;
-    --ok:#8FD3FF;
-    --ok-soft:#1C2E52;
-    --drop-line:#A99CFF;
-    --mk-line:#EDEAFB;
-    --mk-paper:#3A3470;
-    --mk-paper-s:#2A2458;
-    --seg-on:#3A3470;
-    --on-accent:#16122E;
-    --glass:rgba(31,26,61,.72);
-    --glass-panel:rgba(35,30,68,.84);
-    --bar:rgba(31,26,61,.42);
-    --toast-bg:rgba(35,30,68,.6);
-  }
-}
-:root[data-brand="allma"][data-theme="dark"]{
-  --bg:#16122E;
-  --bg-tint:#262050;
-  --surface:#1F1A3D;
-  --surface-2:#262048;
-  --sep:#312A5C;
-  --sep-2:#3E366F;
-  --text:#EDEAFB;
-  --text-2:#B4ADD6;
-  --text-3:#A29BC8;
-  --accent:#A99CFF;
-  --accent-2:#C2B8FF;
-  --accent-soft:#3A2A4E;
-  --prog:rgba(255,138,107,.4);
-  --accent-line:rgba(255,138,107,.6);
-  --danger:#FF6B6B;
-  --danger-soft:#3A1830;
-  --ok:#8FD3FF;
-  --ok-soft:#1C2E52;
-  --drop-line:#A99CFF;
-  --mk-line:#EDEAFB;
-  --mk-paper:#3A3470;
-  --mk-paper-s:#2A2458;
-  --seg-on:#3A3470;
-  --on-accent:#16122E;
-  --glass:rgba(31,26,61,.72);
-  --glass-panel:rgba(35,30,68,.84);
-  --bar:rgba(31,26,61,.42);
-  --toast-bg:rgba(35,30,68,.6);
-}
-
-[dir="ltr"]{--dirf:-1;--strike-origin:left}
 
 /* ─────────────────────────  base  ───────────────────────── */
 *{box-sizing:border-box}
@@ -484,12 +369,13 @@ html[data-v="me"] .brand{opacity:0;transform:translateY(-8px) scale(.94);pointer
   .avaBody,.avaLids,.avaStars,.avaHat,.avaConf{animation:none}
   .avaLids{transform:scaleY(var(--lid))}
 }
+.bmark{width:34px;height:34px;flex:none;display:block}
 .brand-txt{min-width:0}
 /* The name leads and the line under it is the welcome. It is one line and it
    stays one line: a header that reflows to two pushes the clock and the
    status pill around, and those two are the reason anybody looks up here. */
 .brand-hi{font-size:13px;color:var(--text-2);line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.brand-name{font-family:var(--font-head);font-weight:600;font-size:17px;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.brand-name{font-family:var(--font-display);font-weight:600;font-size:17px;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hdrend{display:flex;align-items:center;gap:9px;flex:none}
 /* The light/dark choice, on the profile page with its words beside each
    picture. It used to live here, beside the clock on every tab. */
@@ -577,7 +463,7 @@ html.intro-go .tabbar{animation:introBar .55s var(--ease) .3s both}
 }
 
 .title{padding:8px 2px 18px}
-.title h1{font-family:var(--font-head);font-weight:700;font-size:33px;line-height:1.12;letter-spacing:-.015em;text-wrap:balance}
+.title h1{font-family:var(--font-display);font-weight:700;font-size:33px;line-height:1.12;letter-spacing:-.015em;text-wrap:balance}
 .title p{margin-top:6px;color:var(--text-2);font-size:15px;max-width:52ch}
 
 .glabel{
@@ -725,7 +611,7 @@ html.intro-go .tabbar{animation:introBar .55s var(--ease) .3s both}
   border-radius:11px;padding:8px 16px;font-size:13.5px;font-weight:600;cursor:pointer;
   transition:transform .38s var(--squash),filter .3s var(--ease-io);
 }
-.sugg .sbtn.yes{background:var(--accent);color:var(--on-accent)}
+.sugg .sbtn.yes{background:var(--action);color:var(--on-action)}
 .sugg .sbtn:active{transform:scale(.98)}
 .sugg .sbtn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
@@ -821,7 +707,7 @@ button.row:active{background:var(--bg-tint)}
 
 .connect{
   flex:none;padding:7px 16px;border-radius:999px;
-  font-size:13.5px;font-weight:600;background:var(--accent);color:var(--on-accent);
+  font-size:13.5px;font-weight:600;background:var(--action);color:var(--on-action);
   transition:transform .38s var(--squash),background .34s var(--ease-io),color .34s var(--ease-io);
 }
 .connect:active{transform:scale(.93)}
@@ -942,7 +828,7 @@ button.row:active{background:var(--bg-tint)}
 .hmgo{flex:none;padding:6px 13px;border-radius:999px;background:var(--accent);color:var(--on-accent);
   font-size:13px;font-weight:700}
 .homemeet:active,.homemore:active{background:var(--bg-tint)}
-.homeh{font-family:var(--font-head);font-weight:700;font-size:20px;letter-spacing:-.01em;padding:0 2px 12px}
+.homeh{font-family:var(--font-display);font-weight:700;font-size:20px;letter-spacing:-.01em;padding:0 2px 12px}
 .homecard{
   position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:4px;
   background:var(--surface);border-radius:20px;box-shadow:var(--shadow-m);
@@ -953,14 +839,14 @@ button.row:active{background:var(--bg-tint)}
 /* the tab bar's own glyphs, drawn the way the bar draws them — the card and
    the tab it opens are recognisably the same place */
 .homeicon{width:28px;height:28px;color:var(--text-2);margin-bottom:10px}
-.homenum{color:var(--text);font-family:var(--font-head);font-weight:700;font-size:38px;line-height:1;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.homenum{color:var(--text);font-family:var(--font-display);font-weight:700;font-size:38px;line-height:1;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
 .homecard b{font-size:15px;font-weight:600;margin-top:2px}
 .homecard > i{font-style:normal;font-size:12.5px;color:var(--text-3);line-height:1.35;min-height:1.35em}
 /* Nothing to count is not a zero to show — it is the first thing to do. The
    number gives its place to a plus in the same spot, the label becomes the
    invitation, and the tap goes on to open the sheet that starts one. */
 .homeplus{display:none;width:38px;height:38px;border-radius:50%;place-items:center;
-  background:var(--accent);color:var(--on-accent);box-shadow:var(--shadow-s)}
+  background:var(--action);color:var(--on-action);box-shadow:var(--shadow-s)}
 .homeplus svg{width:17px;height:17px}
 .homecard.zero .homenum{display:none}
 .homecard.zero .homeplus{display:grid}
@@ -1131,7 +1017,7 @@ html.is-new .introtog{display:none}
 }
 .wcard{width:100%;max-width:376px;display:flex;flex-direction:column;align-items:center;text-align:center}
 .wword{
-  font-family:var(--font-head);font-weight:700;
+  font-family:var(--font-display);font-weight:700;
   font-size:42px;line-height:1;letter-spacing:-.02em;color:var(--text);
 }
 .wlede{margin-top:11px;font-size:16px;line-height:1.5;color:var(--text-2);max-width:20em}
@@ -1179,7 +1065,7 @@ html.is-new .introtog{display:none}
 .wcode-in{
   width:100%;padding:14px 12px;border-radius:14px;border:1.5px solid var(--sep-2);
   background:var(--surface);color:var(--text);outline:none;text-align:center;direction:ltr;
-  font:600 24px/1.1 var(--font-head);letter-spacing:.18em;font-variant-numeric:tabular-nums;
+  font:600 24px/1.1 var(--font-display);letter-spacing:.18em;font-variant-numeric:tabular-nums;
 }
 .wcode-in:focus{border-color:var(--accent)}
 .wcode-in::placeholder{letter-spacing:normal;font-size:16px;font-weight:500;color:var(--text-3)}
@@ -1209,14 +1095,14 @@ html.is-app .welcome .wcode-have{display:none}
 .inst[hidden]{display:none}
 .inst-mark{grid-row:1 / span 2;width:44px;height:44px;border-radius:11px;overflow:hidden;box-shadow:var(--shadow-s)}
 .inst-mark svg{display:block;width:100%;height:100%}
-.inst b{font-family:var(--font-head);font-weight:700;font-size:16px;color:var(--text)}
+.inst b{font-family:var(--font-display);font-weight:700;font-size:16px;color:var(--text)}
 .inst p{font-size:13.5px;line-height:1.45;color:var(--text-2)}
 .inst-steps{grid-column:1 / -1;margin:12px 0 2px;padding:0;list-style:none;display:flex;flex-direction:column;gap:9px;counter-reset:inst}
 .inst-steps li{display:flex;align-items:center;gap:10px;font-size:14px;line-height:1.4;color:var(--text);counter-increment:inst}
 .inst-steps li::before{
   content:counter(inst);flex:none;width:22px;height:22px;border-radius:50%;
   display:grid;place-items:center;background:var(--accent-soft);color:var(--accent);
-  font:700 12px var(--font-head);
+  font:700 12px var(--font-display);
 }
 .inst-steps svg{width:17px;height:17px;flex:none;color:var(--accent);vertical-align:-3px}
 .inst-acts{grid-column:1 / -1;display:flex;gap:8px;margin-top:12px}
@@ -1251,7 +1137,7 @@ html.is-new .themetog{z-index:80}
 [dir="ltr"] .backbtn svg{transform:none}
 .pushhead .tile{width:44px;height:44px;border-radius:14px}
 .pushtxt{min-width:0}
-.pushtxt b{display:block;font-family:var(--font-head);font-weight:700;font-size:22px;letter-spacing:-.01em}
+.pushtxt b{display:block;font-family:var(--font-display);font-weight:700;font-size:22px;letter-spacing:-.01em}
 .pushtxt span{display:block;font-size:13.5px;color:var(--text-2);margin-top:1px}
 
 /* A value belongs beside its label, not in a box of its own that runs the
@@ -1414,7 +1300,6 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 .tglyph{width:14px;height:14px;color:var(--text-3)}
 .tglyph.bell{color:var(--warn)}
 .tglyph.kindmark{width:20px;height:14px;--evmark:var(--accent)}
-:root[data-brand="allma"] .tglyph.kindmark{--evmark:#FF8A6B}
 .ttime{
   font-size:13.5px;font-weight:600;color:var(--text-2);
   font-variant-numeric:tabular-nums;white-space:nowrap;
@@ -1582,7 +1467,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 }
 .addrow:active{background:var(--bg-tint)}
 .addrow .plus{
-  width:26px;height:26px;border-radius:50%;background:var(--accent);color:var(--on-accent);
+  width:26px;height:26px;border-radius:50%;background:var(--action);color:var(--on-action);
   display:grid;place-items:center;flex:none;
 }
 .addrow .plus svg{width:14px;height:14px}
@@ -1945,7 +1830,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 .group.mtset{background:var(--accent-soft)}
 .group.mtset .mtpill.settled{
   display:inline-flex;align-items:center;gap:4px;
-  background:var(--accent);color:var(--on-accent);
+  background:var(--action);color:var(--on-action);
 }
 .group.mtset .mtpill.settled::before{content:"\2713";font-size:10px;font-weight:800}
 .mtcard .chev{width:15px;height:15px;flex:none;color:var(--text-3)}
@@ -2087,7 +1972,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 .emptybig p{margin:0;max-width:34ch;line-height:1.5}
 .emptygo{
   display:inline-flex;align-items:center;gap:7px;font-family:inherit;
-  padding:9px 16px;border-radius:999px;background:var(--accent);color:var(--on-accent);
+  padding:9px 16px;border-radius:999px;background:var(--action);color:var(--on-action);
   font-size:13.5px;font-weight:600;box-shadow:var(--shadow-s);
   transition:transform .22s var(--spring);
 }
@@ -2214,7 +2099,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 .addmini{
   display:flex;align-items:center;gap:6px;flex:none;
   padding-block:6px;padding-inline-start:8px;padding-inline-end:12px;border-radius:999px;
-  background:var(--accent);color:var(--on-accent);font-weight:600;font-size:13px;
+  background:var(--action);color:var(--on-action);font-weight:600;font-size:13px;
   box-shadow:var(--shadow-s);
   transition:transform .22s var(--spring),background .2s ease;
 }
@@ -2291,7 +2176,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
    `span:last-child` until the paging arrows joined the row — at which point
    neither span was a first or last child any more and the heading silently
    lost its type. */
-#stripMonth{font-family:var(--font-head);font-size:15.5px;font-weight:600;color:var(--text)}
+#stripMonth{font-family:var(--font-display);font-size:15.5px;font-weight:600;color:var(--text)}
 #stripYear{font-size:13px;font-weight:500;color:var(--text-3);font-variant-numeric:tabular-nums}
 /* The arrows sit at the two ends and the label floats between them, so the
    row reads as one control rather than three things that happen to be
@@ -2315,7 +2200,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   transition:background .24s var(--ease),color .24s var(--ease),transform .24s var(--spring);
 }
 .day .dn{font-size:11.5px;font-weight:600;color:var(--text-3)}
-.day .dd{font-family:var(--font-head);font-size:17px;font-weight:600;margin-top:2px;font-variant-numeric:tabular-nums}
+.day .dd{font-family:var(--font-display);font-size:17px;font-weight:600;margin-top:2px;font-variant-numeric:tabular-nums}
 .day.today .dd{color:var(--accent)}
 /* "Today" instead of the weekday letter. A dot here sat one line above the
    dots that count what is IN the day — same shape, two meanings, and the
@@ -2656,7 +2541,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 .hero-profile{display:flex;flex-direction:column;align-items:center;gap:12px;padding:6px 0 28px}
 .hero-profile .avatar{width:96px;height:96px}
 .hero-profile .who{text-align:center}
-.hero-profile .who b{display:block;font-family:var(--font-head);font-size:22px;font-weight:600}
+.hero-profile .who b{display:block;font-family:var(--font-display);font-size:22px;font-weight:600}
 .hero-profile .who span{font-size:14px;color:var(--text-2)}
 
 /* ─────────────────────────  profile settings  ───────────────────────── */
@@ -2745,7 +2630,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   transition:background .26s var(--ease-io),color .26s var(--ease-io),transform .38s var(--squash);
 }
 .fqok svg{width:17px;height:17px}
-.fqok:not([disabled]){background:var(--accent);color:var(--on-accent);box-shadow:var(--shadow-s)}
+.fqok:not([disabled]){background:var(--action);color:var(--on-action);box-shadow:var(--shadow-s)}
 .fqok:not([disabled]):active{transform:scale(.9)}
 .fqok[disabled]{cursor:default}
 /* saved: the tick turns green and pops, the card lifts and folds away */
@@ -2775,7 +2660,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 /* the answer on its way from the card into the list */
 .factfly{
   position:fixed;z-index:90;pointer-events:none;margin:0;
-  padding:7px 13px;border-radius:999px;background:var(--accent);color:var(--on-accent);
+  padding:7px 13px;border-radius:999px;background:var(--action);color:var(--on-action);
   font-size:13.5px;font-weight:600;white-space:nowrap;max-width:80vw;overflow:hidden;text-overflow:ellipsis;
   box-shadow:var(--shadow-m);
 }
@@ -2945,7 +2830,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   position:absolute;top:0;height:100%;border-radius:999px;background:var(--accent);
   width:var(--w,40%);inset-inline-start:var(--o,0%);
 }
-.sheet h2{font-family:var(--font-head);font-size:20px;font-weight:600;margin-bottom:16px;text-align:center;
+.sheet h2{font-family:var(--font-display);font-size:20px;font-weight:600;margin-bottom:16px;text-align:center;
   padding-inline:36px}   /* clear of the X on either side, so it stays centred */
 .sheet .group{box-shadow:none;background:var(--surface-2)}
 .sheetbtns{display:flex;flex-direction:column;gap:10px;margin-top:20px}
@@ -2955,7 +2840,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 .mtprog i.on{background:var(--accent)}
 .mtstepn{text-align:center;font-size:12.5px;color:var(--text-3);margin:0 0 12px}
 .mtq{display:flex;align-items:baseline;justify-content:space-between;gap:10px;
-  font-family:var(--font-head);font-size:21px;font-weight:600;margin:4px 4px 14px}
+  font-family:var(--font-display);font-size:21px;font-weight:600;margin:4px 4px 14px}
 .mtq .hint{font-family:inherit;font-size:13px;font-weight:500;color:var(--text-3)}
 .mtstep{animation:mtStepIn .28s var(--ease) both}
 @keyframes mtStepIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
@@ -2973,7 +2858,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
    reach for. */
 .stitlewrap{display:flex;align-items:center;gap:8px;padding:2px 40px 10px}
 .stitle{
-  flex:1;min-width:0;border:0;background:none;font:inherit;font-family:var(--font-head);
+  flex:1;min-width:0;border:0;background:none;font:inherit;font-family:var(--font-display);
   font-size:20px;font-weight:600;color:var(--text);text-align:center;outline:none;
   padding:0;
 }
@@ -2992,7 +2877,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
    is worth filling in for a task that has no name yet. */
 .stgo{
   width:30px;height:30px;flex:none;border-radius:50%;display:grid;place-items:center;
-  background:var(--accent);color:var(--on-accent);
+  background:var(--action);color:var(--on-action);
   transition:opacity .24s var(--ease-io),transform .3s var(--spring);
 }
 .stgo svg{width:14px;height:14px}
@@ -3029,7 +2914,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   stroke-linecap:round;stroke-linejoin:round}
 [dir="rtl"] .calnav svg{transform:scaleX(-1)}
 .calttl{
-  flex:1;text-align:center;font-family:var(--font-head);font-size:14.5px;font-weight:600;
+  flex:1;text-align:center;font-family:var(--font-display);font-size:14.5px;font-weight:600;
   color:var(--text);padding:6px 4px;border-radius:9px
 }
 .calttl:active{background:var(--bg-tint)}
@@ -3087,7 +2972,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 .tpcol::-webkit-scrollbar{display:none}
 .tpcol button{
   display:block;width:100%;height:40px;scroll-snap-align:center;
-  font-family:var(--font-head);font-size:19px;font-weight:500;color:var(--text-3);
+  font-family:var(--font-display);font-size:19px;font-weight:500;color:var(--text-3);
   font-variant-numeric:tabular-nums;direction:ltr;
   /* `transform`, not `font-size`: a font-size transition re-lays the text out
      on every frame, which is the one property in this picker that is animated
@@ -3095,10 +2980,10 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   transition:color .18s var(--ease-io),transform .18s var(--ease-io)
 }
 .tpcol button.on{color:var(--text);font-weight:600;transform:scale(1.158)}
-.tpcolon{position:relative;font-family:var(--font-head);font-size:20px;font-weight:600;color:var(--text-2);padding-bottom:3px}
+.tpcolon{position:relative;font-family:var(--font-display);font-size:20px;font-weight:600;color:var(--text-2);padding-bottom:3px}
 .tpfoot{margin-top:8px;display:flex;gap:6px}
 .tpfoot button{
-  width:100%;padding:10px;border-radius:12px;background:var(--accent);color:var(--on-accent);
+  width:100%;padding:10px;border-radius:12px;background:var(--action);color:var(--on-action);
   font-size:14px;font-weight:600;transition:transform .38s var(--squash)
 }
 .tpfoot button:active{transform:scale(.97)}
@@ -3108,7 +2993,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   transition:transform .38s var(--squash),filter .3s var(--ease-io);
 }
 .btn:active{transform:scale(.98)}
-.btn.primary{background:var(--accent);color:var(--on-accent)}
+.btn.primary{background:var(--action);color:var(--on-action)}
 .btn.ghost{background:var(--bg-tint);color:var(--text-2)}
 .btn.danger{background:var(--danger-soft);color:var(--danger)}
 
@@ -3217,8 +3102,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   <symbol id="i-out" viewBox="0 0 18 18"><path d="M7 3H3.6v11.4H15V11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M10.4 2.6H15v4.6M15 2.6 8.6 9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <!-- An event, in the brand's own picture of a meeting: two rings, and
        only where they overlap is filled (brand kit, 2026-09-26 — two FILLED
-       discs read as a card logo). The lens takes --evmark: the accent, or
-       the coral when the brand layer is on. -->
+       discs read as a card logo). The lens takes --evmark: the accent,
+       never the mustard, which is kept for the one action on a screen. -->
   <symbol id="i-event" viewBox="1 3 14 10"><circle cx="6" cy="8" r="4.3" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="10" cy="8" r="4.3" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M8 4.19A4.3 4.3 0 0 1 8 11.81A4.3 4.3 0 0 1 8 4.19Z" style="fill:var(--evmark,currentColor)"/></symbol>
   <symbol id="i-cal" viewBox="0 0 20 20"><rect x="2.6" y="4" width="14.8" height="13.4" rx="3.2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M2.6 8.2h14.8M6.6 2.4v3M13.4 2.4v3" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
   <symbol id="i-person" viewBox="0 0 20 20"><circle cx="10" cy="6.6" r="3.4" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M3.6 17c.7-3.4 3.3-5.2 6.4-5.2s5.7 1.8 6.4 5.2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
@@ -3279,22 +3164,21 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   <symbol id="i-sun" viewBox="0 0 16 16"><circle cx="8" cy="8" r="3.1" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8 1.2v1.6M8 13.2v1.6M1.2 8h1.6M13.2 8h1.6M3.3 3.3l1.13 1.13M11.57 11.57l1.13 1.13M3.3 12.7l1.13-1.13M11.57 4.43l1.13-1.13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></symbol>
   <symbol id="i-moon" viewBox="0 0 16 16"><path d="M13.2 9.4A5.6 5.6 0 1 1 6.6 2.8a4.4 4.4 0 0 0 6.6 6.6Z" fill="currentColor"/></symbol>
   <symbol id="i-auto" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8 1.8a6.2 6.2 0 0 0 0 12.4Z" fill="currentColor"/></symbol>
-  <!-- The mark. A globe that talks: the meridian and the horizon say עולם,
-       the tail makes it something you speak to. Its gradient lives here in
-       the sheet's own <defs> rather than inside the symbol — a <use> clone
-       resolves url(#…) against THIS document, so one definition serves every
-       copy, but a gradient declared in another file would silently render
-       black. -->
-  <linearGradient id="i-logo-g" x1="18" y1="10" x2="80" y2="86" gradientUnits="userSpaceOnUse">
-    <stop offset="0" stop-color="#9C7BF8"/><stop offset=".55" stop-color="#5B2FD6"/><stop offset="1" stop-color="#3A1A90"/>
-  </linearGradient>
-  <clipPath id="i-logo-c"><circle cx="46" cy="44" r="32"/></clipPath>
-  <symbol id="i-logo" viewBox="0 0 96 96">
-    <path d="M46 12a32 32 0 0 1 32 32 32 32 0 0 1-32 32c-3.6 0-7-.6-10.2-1.7l-13.4 6a2.4 2.4 0 0 1-3.3-2.7l2.3-11.2A32 32 0 0 1 46 12Z" fill="url(#i-logo-g)"/>
-    <g clip-path="url(#i-logo-c)" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round">
-      <path d="M14 44h64" opacity=".5"/><ellipse cx="46" cy="44" rx="14.5" ry="32" opacity=".55"/>
+    <!-- The Allma mark, "half and half" (the owner, 2026-09-27/28): a disc cut
+       into a dark half and a light one, each holding a circle of the other
+       colour, and where the two circles meet, the lens, in Mustard. Its four
+       colours are tokens (--logo-*) so the night swaps them; the clip paths
+       sit in these <defs> rather than inside the symbol, because a <use> clone
+       resolves url(#...) against this document. -->
+  <clipPath id="i-logo-c"><circle cx="60" cy="60" r="60"/></clipPath>
+  <clipPath id="i-logo-a"><circle cx="44" cy="60" r="24"/></clipPath>
+  <symbol id="i-logo" viewBox="0 0 120 120">
+    <g clip-path="url(#i-logo-c)">
+      <rect width="60" height="120" fill="var(--logo-d)"/><rect x="60" width="60" height="120" fill="var(--logo-l)"/>
+      <circle cx="44" cy="60" r="24" fill="var(--logo-l)"/><circle cx="76" cy="60" r="24" fill="var(--logo-d)"/>
+      <circle cx="76" cy="60" r="24" fill="var(--logo-lens)" clip-path="url(#i-logo-a)"/>
     </g>
-    <circle cx="70" cy="22" r="5.2" fill="#fff" opacity=".9"/>
+    <circle cx="60" cy="60" r="58.25" fill="none" stroke="var(--logo-ring)" stroke-width="3.5"/>
   </symbol>
 </defs></svg>
 
@@ -3302,8 +3186,9 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 
   <header class="topbar">
     <button class="brand" id="brandBtn" data-go="me">
-      <!-- No mark here, and none anywhere on the page (the owner,
-           2026-09-26). #i-logo stays in the sprite for the day it returns. -->
+      <!-- The mark came back on 2026-09-28 (the owner), after being taken
+           out on 2026-09-26 with the old logo. -->
+      <svg class="bmark" aria-hidden="true"><use href="#i-logo"/></svg>
       <div class="brand-txt">
         <div class="brand-hi" id="brandHi"></div>
         <div class="brand-name" id="brandName"></div>

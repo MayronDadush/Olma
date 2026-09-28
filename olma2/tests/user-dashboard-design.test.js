@@ -31,10 +31,9 @@ function ratio(a, b) {
 // 0 for the bare :root (light), 1 for the prefers-color-scheme block and 2 for
 // [data-theme="dark"] — all three have to carry a new token or one of the
 // three ways a person can land on this page gets the other theme's colour.
-// The brand layer (off by default) redefines tokens after these three blocks;
-// it is checked on its own below, so it is cut off here.
-const BRAND_AT = page.indexOf(':root[data-brand="allma"]{');
-const defaults = BRAND_AT > 0 ? page.slice(0, BRAND_AT) : page;
+// Since 2026-09-28 the brand IS these three blocks; the switchable layer that
+// used to follow them is gone, and nothing may redefine a token after them.
+const defaults = page;
 function token(name, which) {
   const hits = defaults.match(new RegExp('--' + name + ':(#[0-9A-Fa-f]{6})', 'g')) || [];
   assert.equal(hits.length, 3, '--' + name + ' is defined in all three palette blocks');
@@ -46,14 +45,34 @@ test('nothing on a filled control is white-on-lavender any more', () => {
   // button, every pressed chip, the selected day and the answer buttons. The
   // colour that sits ON a fill is now its own token, so the light theme can
   // say white and the dark one can say ink.
+  // Cypress + Mustard (2026-09-28): white on Cypress in the light theme, the
+  // night ground on the pale Cypress in the dark one.
   assert.equal(token('on-accent', 0), '#FFFFFF');
-  assert.equal(token('on-accent', 1), '#17112E');
-  assert.equal(token('on-accent', 2), '#17112E');
+  assert.equal(token('on-accent', 1), '#0A1817');
+  assert.equal(token('on-accent', 2), '#0A1817');
+  assert.ok(ratio(token('on-accent', 0), token('accent', 0)) >= 4.5,
+    'white on the light theme accent clears 4.5:1');
   assert.ok(ratio(token('on-accent', 1), token('accent', 1)) >= 4.5,
     'ink on the dark theme accent clears 4.5:1');
   // And it is actually USED: a token nothing references is a comment.
   assert.ok((page.match(/color:var\(--on-accent\)/g) || []).length >= 30,
     'every filled control takes its text colour from it');
+});
+
+test('the primary action is Mustard, and what is written on it can be read', () => {
+  // The one Mustard thing on a screen is the action it exists for (the owner,
+  // 2026-09-28). Mustard is light, so the words on it are Cypress by day and
+  // ink by night — never white, which measures 1.6:1 on it.
+  [0, 1, 2].forEach(function (w) {
+    assert.equal(token('action', w), '#F9C23C');
+    assert.ok(ratio(token('on-action', w), token('action', w)) >= 4.5,
+      'text on the action fill clears 4.5:1 in palette block ' + w);
+  });
+  assert.match(page, /\.btn\.primary\{background:var\(--action\);color:var\(--on-action\)\}/);
+  // A selection is not an action: a pressed chip or the chosen day stays Cypress,
+  // or Mustard stops meaning "this is the thing to do".
+  assert.match(page, /\.chip\[aria-pressed="true"\]\{background:var\(--accent\)/);
+  assert.match(page, /\.day\[aria-selected="true"\]\{background:var\(--accent\)/);
 });
 
 test('the quiet grey is dark enough to be text', () => {
@@ -73,28 +92,6 @@ test('the quiet grey is dark enough to be text', () => {
     assert.ok(ratio(token(n, 0), token('bg', 0)) >= 4.5, '--' + n + ' as light-theme text');
     assert.ok(ratio(token(n, 1), token('bg', 1)) >= 4.5, '--' + n + ' as dark-theme text');
   });
-});
-
-test('the brand layer reads as well as the page it would replace', () => {
-  // Same bar as above, for the day and the night the brand would put on the
-  // page (?brand=1). A token it does not redefine falls back to the default
-  // block, so only what it sets is read here.
-  assert.ok(BRAND_AT > 0, 'the brand layer has moved — this test is reading nothing');
-  const layer = page.slice(BRAND_AT, page.indexOf('[dir="ltr"]{--dirf', BRAND_AT));
-  const blocks = layer.split(/\n(?=@media|:root\[data-brand="allma"\]\[data-theme)/);
-  assert.equal(blocks.length, 3, 'day, night by the phone, night by the switch');
-  const val = (b, n) => { const m = b.match(new RegExp('--' + n + ':(#[0-9A-Fa-f]{6})')); return m && m[1]; };
-  blocks.forEach(function (b, i) {
-    const ground = ['bg', 'bg-tint', 'surface'].map((g) => val(b, g));
-    ['text', 'text-2', 'text-3', 'accent', 'danger', 'ok'].forEach(function (n) {
-      const v = val(b, n);
-      assert.ok(v, `--${n} in brand block ${i}`);
-      ground.forEach((g) => assert.ok(ratio(v, g) >= 4.5, `--${n} ${v} on ${g} in brand block ${i}: ${ratio(v, g).toFixed(2)}`));
-    });
-    assert.ok(ratio(val(b, 'on-accent'), val(b, 'accent')) >= 4.5, `ink on the action colour, brand block ${i}`);
-  });
-  // "No green anywhere — green is WhatsApp's" (brand kit): ok is not green.
-  blocks.forEach((b) => { const ok = val(b, 'ok'); const [r, g, bl] = [1, 3, 5].map((k) => parseInt(ok.substr(k, 2), 16)); assert.ok(!(g > r && g > bl), `--ok ${ok} is green`); });
 });
 
 test('a finger gets more than the icon does', () => {
@@ -310,7 +307,11 @@ test('the home tab shows only what is live, and its two counts are doors', () =>
   assert.match(page, /if\(hideSoon\(ok2\) \|\| !svcShown\(p, sv\)\) return "";/);
   assert.match(page, /return s\.on && svcShown\(p, s\);/,
     'the count under the row counts only what the row shows');
-  assert.doesNotMatch(page, /<use href="#i-logo"\/>/, 'the owner took the mark off every screen, 2026-09-26');
+  // Off on 2026-09-26 with the old logo; back on 2026-09-28 as the split mark,
+  // in the header only — one place, so a second copy is a decision, not a drift.
+  assert.equal((page.match(/<use href="#i-logo"\/>/g) || []).length, 1, 'the mark is drawn once');
+  assert.match(page, /<svg class="bmark" aria-hidden="true"><use href="#i-logo"\/><\/svg>/,
+    'and that once is the header, beside the name');
   assert.match(page, /return pl\("fr\.p", n\) \+ \(bd \? " · 🎂 " \+ bd : ""\);/,
     'beside the permissions: a birthday for whoever set one, and no friendship date');
   assert.match(page, /<button class="homecard" data-go="tasks">/);
