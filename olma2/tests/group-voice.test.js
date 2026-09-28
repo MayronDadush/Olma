@@ -231,6 +231,33 @@ test('a settled coordination is announced, and nothing else about it is', async 
   assert.deepEqual(again, []);
 });
 
+// Fix 7 (owner, 2026-09-26): a close was heard three times — her reply, the
+// "סגור" line, and "📅 ביומן" a minute later. When the shared event already
+// exists as the done line is decided, the calendar sentence rides it, and the
+// model is told the fixed line is the announcement.
+test('a close whose calendar event already exists is ONE line, and her reply is told to stay out of it', async () => {
+  const { group, people } = await room(17);
+  const [a, b] = people;
+  const started = await withTx(db.pool, (c) => groupMeetings.startCoordination(c, group, a, 'ארוחה'));
+  const meetingId = Number(started.data.meeting.id);
+  const optionId = await withTx(db.pool, async (c) =>
+    (await options.add(c, a.id, meetingId, 'חמישי 19:00', slotStart('חמישי', { hours: 72 }))).data.option.id);
+  await withTx(db.pool, (c) => options.answer(c, b.id, meetingId, optionId, 'y'));
+  const fresh = await withTx(db.pool, (c) => groups.getById(c, group.id));
+  const settled = await withTx(db.pool, (c) => groupMeetings.settle(c, fresh, a, optionId));
+  assert.equal(settled.ok, true);
+  assert.match(settled.data.hints.room, /NO_REPLY/);
+  await db.pool.query(`UPDATE meetings SET calendar_event_id = 'evt_17' WHERE id = $1`, [meetingId]);
+
+  const sent = [];
+  await pass(sent, null, group.external_id);
+  assert.equal(sent.length, 1);
+  assert.match(sent[0].body, /^סגור: \*חמישי 19:00\* 🎉[\s\S]*\n📅 ביומן\. מי שחיבר יומן קיבל הזמנה/);
+  const after2 = [];
+  await pass(after2, null, group.external_id);
+  assert.deepEqual(after2, [], 'and no separate calendar line after it');
+});
+
 test('when everybody said yes the done line says so, and no calendar line without a shared event', async () => {
   const { group, people } = await room(11);
   const [a, b, c] = people;

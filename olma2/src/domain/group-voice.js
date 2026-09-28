@@ -164,9 +164,14 @@ function decideLine(co, {
       // line asks ONCE whether they want an exact hour (owner, 2026-09-24).
       // Once because this line is stamped once; an answer goes through
       // add_group_coordination_option, which sets it on a settled meeting.
+      // `calendar`: the shared event already exists, so its sentence rides this
+      // line instead of following it as a message of its own (owner,
+      // 2026-09-26, fix 7: a close was heard three times). An event made later
+      // still gets the separate line below.
       return {
         kind: 'done', slot: co.confirmedSlot, who: whoIsIn(co), placeAsk: !co.location && !saidOnline,
         timeAsk: Boolean(co.confirmedAllDay || co.confirmedDaypart),
+        calendar: Boolean(co.calendarEventId && !saidCalendar),
       };
     }
     // Somebody gave it its exact hour in a private chat. Said once; set in

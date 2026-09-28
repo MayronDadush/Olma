@@ -399,14 +399,20 @@ function renderGroupCoordination(line, overrides) {
     const zoned = tidy(templates.render('group_coord_done_zones', {
       ...roomBlock(line, 'slot'), who, place_ask: line.placeAsk && !line.timeAsk ? PLACE_ASK_ONLINE : '',
     }, overrides)).trim();
-    return timeAsk && !zoned.includes(timeAsk) ? `${zoned}\n${timeAsk}` : zoned;
+    return withCalendar(timeAsk && !zoned.includes(timeAsk) ? `${zoned}\n${timeAsk}` : zoned, line, overrides);
   }
   const done = templates.render('group_coord_done', {
     slot: slotText(line.slot), who, place_ask: line.placeAsk && !line.timeAsk ? PLACE_ASK : '', time_ask: timeAsk,
   }, overrides).trim();
   // An owner's rewording saved before {{time_ask}} existed has nowhere to put
   // it, and the question is the point of the line — so it goes on the end.
-  return timeAsk && !done.includes(timeAsk) ? `${done}\n${timeAsk}` : done;
+  return withCalendar(timeAsk && !done.includes(timeAsk) ? `${done}\n${timeAsk}` : done, line, overrides);
+}
+
+// The calendar sentence on the end of the "סגור" line, when the shared event
+// already existed as it was decided (fix 7) — the owner's own wording for it.
+function withCalendar(body, line, overrides) {
+  return line.calendar ? `${body}\n${templates.render('group_coord_calendar', {}, overrides)}` : body;
 }
 const TABLE_LEAD = 'הכי מתקדם:';
 const ONE_OPTION = 'מועד אחד';
