@@ -11,7 +11,10 @@
   #mark { width: 38vmin; height: 38vmin }
   #word { font-weight: 700; font-size: 15vmin; line-height: 1; letter-spacing: -.02em; direction: rtl }
   #sub { position: absolute; bottom: 7vh; font-weight: 500; font-size: 3.2vmin; color: #44504E; letter-spacing: .02em; direction: ltr }
-  svg.grain { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none }
+  svg.grain { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0 }
+  /* the grain lies UNDER the letters: on them it reads as dirt (owner, 29.9) */
+  .stack { position: relative; z-index: 1 }
+  #sub { z-index: 1 }
 </style>
 <div class="f">
   <div class="stack"><div id="mark"></div><div id="word">סגור.</div></div>

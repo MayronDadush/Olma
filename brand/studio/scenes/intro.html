@@ -22,7 +22,9 @@
   #closer .h { font-size: 8.6vmin }
   #closer .h span { white-space: nowrap }
   :root[lang=en] #closer .h { font-size: 7.4vmin }
-  .grain { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none }
+  .grain { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0 }
+  /* the grain lies UNDER the letters: on them it reads as dirt (owner, 29.9) */
+  .card > :not(.grain) { position: relative; z-index: 1 }
   /* WhatsApp, as it looks on a phone */
   #chat { position: absolute; inset: 0; z-index: 0; background: #EFEAE2; font-family: "Noto Sans Hebrew", "Noto Sans", Roboto, Arial, sans-serif; color: #111B21 }
   .top { position: absolute; inset: 0 0 auto 0; height: 13vmin; background: #F0F2F5; display: flex; align-items: center; gap: 2.6vmin; padding: 0 3.4vmin; z-index: 2; border-bottom: 1px solid #E2E4E7 }

@@ -117,10 +117,10 @@ code{font-family:var(--mono);font-size:13px;background:var(--brand-soft);border-
 .poster{position:relative;aspect-ratio:4/5;max-width:100%;border-radius:16px;overflow:hidden;display:grid;align-content:space-between;padding:18px;border:1px solid var(--line);font-family:var(--f)}
 .poster .big{font-size:clamp(34px,5vw,46px);font-weight:700;line-height:1;letter-spacing:-.02em}
 .poster .sm{font-size:13px;font-weight:500;opacity:.8}
-.poster .gr{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.poster .gr{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:0}
+.poster>:not(.gr),.poster .in>:not(.gr){position:relative;z-index:1} /* grain under the letters, never on them */
 .poster.zoom{padding:0}
 .poster.zoom .in{position:absolute;inset:0;transform:scale(3);transform-origin:70% 40%;padding:18px;display:grid;align-content:space-between}
-.worn{filter:url(#worn)}
 .never{display:flex;flex-wrap:wrap;gap:8px;margin:0;padding:0;list-style:none}
 .never li{font-size:13.5px;padding:5px 12px;border-radius:99px;background:var(--surface);border:1px solid var(--line)}
 .q2{display:grid;gap:10px}
@@ -146,7 +146,7 @@ code{font-family:var(--mono);font-size:13px;background:var(--brand-soft);border-
 
 <svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute" aria-hidden="true">
 <filter id="grain" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency=".8" numOctaves="3" stitchTiles="stitch" seed="7"/><feColorMatrix values="0 0 0 0 .05  0 0 0 0 .12  0 0 0 0 .12  .5 0 0 0 -.2"/></filter>
-<filter id="worn"><feTurbulence type="fractalNoise" baseFrequency="1.1" numOctaves="2" seed="3" result="n"/><feColorMatrix in="n" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  -4 0 0 0 3.1" result="m"/><feComposite in="SourceGraphic" in2="m" operator="in"/></filter>
+
 <symbol id="m-crown" viewBox="0 0 24 24">
     <path d="M3.6 17.4V7.2l4.9 4.5L12 5.6l3.5 6.1 4.9-4.5v10.2Z" fill="var(--mk-gold)"/>
     <path d="M12 5.6l3.5 6.1 4.9-4.5v10.2H12Z" fill="var(--mk-gold-s)"/>
@@ -387,11 +387,12 @@ code{font-family:var(--mono);font-size:13px;background:var(--brand-soft);border-
     <span class="eyebrow">08 · טקסטורה</span>
     <h2>גרעין נייר, רק על פוסטרים <span class="tag ok">אושר 28.9</span></h2>
     <p class="muted">צבע שטוח על מסך נראה כמו תבנית. גרעין עדין נותן לחול תחושה של חומר מודפס, מחמם את Plex, שהוא פונט מדויק וקצת קר, ומונע פסים כשוואטסאפ ואינסטגרם דוחסים את התמונה. הכמות: כזו שמרגישים ולא רואים. אם שמים לב אליה במבט ראשון, יש יותר מדי.</p>
+    <p class="muted"><b>הגרעין יושב מתחת לאותיות, אף פעם לא עליהן.</b> על הטקסט הוא נראה כמו לכלוך, גם בכותרת ענקית. מאותה סיבה "דיו שחוק" ירד לגמרי (29.9).</p>
     <div class="tex">
       <figure><div class="poster" style="background:#F0EDE5;color:#004643"><span class="sm">עולמה</span><span class="big">הכל<br>סגור.</span><span class="sm">allma.world</span></div><figcaption>בלי גרעין. נקי, אבל מרגיש כמו מסך.</figcaption></figure>
       <figure><div class="poster" style="background:#F0EDE5;color:#004643"><span class="sm">עולמה</span><span class="big">הכל<br>סגור.</span><span class="sm">allma.world</span><svg class="gr" aria-hidden="true"><rect width="100%" height="100%" filter="url(#grain)"/></svg></div><figcaption>עם גרעין, בכמות הנכונה. זה מה שנכנס לכל פוסטר וסרטון.</figcaption></figure>
       <figure><div class="poster zoom" style="background:#F0EDE5;color:#004643"><div class="in"><span class="sm">עולמה</span><span class="big">הכל<br>סגור.</span><span class="sm">allma.world</span><svg class="gr" aria-hidden="true"><rect width="100%" height="100%" filter="url(#grain)"/></svg></div></div><figcaption>אותו פוסטר מוגדל פי 3, כדי לראות את הגרעין עצמו.</figcaption></figure>
-      <figure><div class="poster" style="background:#004643;color:#F0EDE5"><span class="sm">עולמה</span><span class="big worn">סגור.</span><span class="sm" style="color:#F9C23C">חמישי 20:00 · כולם בפנים</span><svg class="gr" aria-hidden="true"><rect width="100%" height="100%" filter="url(#grain)"/></svg></div><figcaption>"דיו שחוק": רק בכותרות ענקיות, כמו כאן. בטקסט רגיל הוא מלכלך.</figcaption></figure>
+      <figure><div class="poster" style="background:#004643;color:#F0EDE5"><span class="sm">עולמה</span><span class="big">סגור.</span><span class="sm" style="color:#F9C23C">חמישי 20:00 · כולם בפנים</span><svg class="gr" aria-hidden="true"><rect width="100%" height="100%" filter="url(#grain)"/></svg></div><figcaption>על ברוש. גם כאן הגרעין רק ברקע, והאותיות נקיות.</figcaption></figure>
     </div>
     <div class="card"><h3>בלי טקסטורה אף פעם</h3>
       <ul class="never"><li>הממשק והדאשבורד</li><li>הסימן בגודל קטן</li><li>תמונת הפרופיל</li><li>הפאביקון</li><li>כרטיס הבוקר</li><li>טקסט של האתר</li><li>בתוך וואטסאפ</li></ul>
