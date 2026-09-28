@@ -777,6 +777,31 @@ test('what does NOT count as stalled: too new, being handled, or already moving'
   } finally { c.release(); }
 });
 
+test('a shopping list is not a stalled goal — Dov\'s eggs and cottage cheese', async () => {
+  const checkin = require('../src/jobs/checkin');
+  const c = await db.pool.connect();
+  try {
+    // 2026-09-28: "עשרים יום עברו וה'קניות בסופר' עדיין מחכה — ביצים, קוטג' ובשר".
+    const dov = await makeUser(db.pool, '+972641000049');
+    const list = await goal(c, dov.id, 'קניות בסופר', {
+      daysOld: 20, parts: [{ title: 'ביצים' }, { title: "קוטג'" }, { title: 'עוף או בשר' }],
+    });
+    await c.query(`UPDATE tasks SET category = 'errands' WHERE id = $1 OR parent_id = $1`, [list]);
+    assert.notEqual((await checkin.pickRung(c, dov.id)).rung, 'stalled_goal');
+    // …while a PROJECT with the same shape and no category still is one
+    const chaim = await makeUser(db.pool, '+972641000050');
+    await goal(c, chaim.id, 'להתפטר משלושה רכבים', { daysOld: 20, parts: [{ title: 'רכב 1' }] });
+    const pick = await checkin.pickRung(c, chaim.id);
+    assert.equal(pick.rung, 'stalled_goal');
+    assert.match(pick.instruction, /never with how long it has waited/);
+    // …and a single errand with no items is still asked about after its week
+    const single = await makeUser(db.pool, '+972641000051');
+    const sid = await goal(c, single.id, 'להחליף נורה במטבח', { daysOld: 9 });
+    await c.query(`UPDATE tasks SET category = 'errands' WHERE id = $1`, [sid]);
+    assert.equal((await checkin.pickRung(c, single.id)).rung, 'stalled_goal');
+  } finally { c.release(); }
+});
+
 test('a goal is raised at most once a fortnight, then rotates or steps aside', async () => {
   const checkin = require('../src/jobs/checkin');
   const u = await makeUser(db.pool, '+972641000048', { firstName: 'Chaim' });

@@ -194,6 +194,22 @@ title means this file. Grep the title, not the filename.
   negotiation step, and the negotiation family has no 👍 by rule
   (`rules/doctrine.md`) — a 👍 there says "done" about something that is not.
 
+- **…and an answer given BEFORE the time existed answers it when it arrives,
+  in both directions, and the person is TOLD** (owner, 2026-09-28,
+  `domain/standing-answers.js`). A constraint may carry `windows` — `{answer:
+  y|n, from, to, after?, before?, days?}`, offsets required, 21 days at most —
+  kept on the same `meeting_participants.constraints` entry as the words. A
+  time put up later is answered for everybody whose window covers it, on
+  THEIR clock (`meeting-fanout.afterOptionAdded`, the one door every adder
+  goes through), and they get `meeting_auto_answered` instead of the question:
+  what was marked, in their own words, and that one word changes it. A burst
+  folds into ONE unsent notice. Said with times already up, the tool answers
+  them at once and the RESULT says so (`autoAnswered`) — they are in the
+  conversation, so no second message. **Never over their own word** on a time,
+  **never a whole day** (a stand-in hour no window can judge), and the latest
+  window said wins. Every answer is audited `meeting.auto_answered`, because a
+  yes nobody said out loud is the first thing to measure (`incidents.md`,
+  "Answered before the question existed").
 - **A time taken OFF that table is never a message of its own** (owner,
   2026-09-09) — the commonest removal is somebody taking back a time they typed
   a minute ago. It rides the next thing each person hears about that

@@ -357,10 +357,12 @@ for (const [label, stop] of ASKED) {
     const { rows: [u] } = await db.pool.query(`SELECT room_invite_sent_at FROM users WHERE id = $1`, [stopped.id]);
     assert.equal(u.room_invite_sent_at, null, 'no allowance spent, because there is none');
 
-    // The room neither counts them nor tags them, and does not wait on them.
+    // The room's NUMBER still counts them (owner, 2026-09-28: the room sees how
+    // many people are in it) — but as a number, never a tag.
     const co = (await withTx(db.pool, (c) => groupMeetings.statusOf(c, group, first.meeting))).coordination;
-    assert.equal(co.roomTotal, 2);
+    assert.equal(co.roomTotal, 3, 'three people are in the room, and the room can count');
     assert.ok(!co.notInIt.some((p) => p.phone === stopped.phone), 'never tagged as not having answered');
+    assert.equal(co.notInIt.filter((p) => p.paused).length, 1, 'counted among those who have not said yes');
   });
 }
 
@@ -383,7 +385,7 @@ test('an invite that reaches the queue anyway is still dropped for somebody who 
   assert.equal(rows[0].hold_reason, 'paused');
 });
 
-test('somebody already in it who asks to stop is taken out at once, and the room closes without them', async () => {
+test('somebody already in it who asks to stop is taken out at once and still COUNTED, so the room closes it by "סגור"', async () => {
   const { group, people } = await room(14);
   const [asker, other, stopped] = people;
   const started = await start(group, asker, 'שבת');
@@ -405,8 +407,9 @@ test('somebody already in it who asks to stop is taken out at once, and the room
   assert.ok(!co.silent.some((p) => p.phone === stopped.phone));
   assert.ok(!co.options[0].missing.some((p) => p.phone === stopped.phone));
   assert.ok(!co.optedOut.some((p) => p.phone === stopped.phone), 'and not said to have left');
-  const win = await withTx(db.pool, (c) => meetingOptions.unanimousOption(c, meetingId));
-  assert.equal(win && Number(win.id), Number(opt.id));
+  assert.equal(co.roomTotal, 3, 'but the room still counts them (owner, 2026-09-28)');
+  // Two of three said yes: "everybody" is not true, so nothing closes on its own.
+  assert.equal(await withTx(db.pool, (c) => meetingOptions.unanimousOption(c, meetingId)), null);
 
   // No waiting a day: the pause is theirs.
   const res = await withTx(db.pool, (c) => groupMeetings.sweepSilentPausedMembers(c, Date.now()));
@@ -416,6 +419,23 @@ test('somebody already in it who asks to stop is taken out at once, and the room
     `SELECT detail->>'cause' AS cause FROM audit_log WHERE actor_id = $1 AND event = 'meeting.opted_out'`,
     [stopped.id]);
   assert.deepEqual(trail.map((r) => r.cause), ['paused_by_request']);
+
+  // Out of the coordination by a PAUSE is not out of the room's count.
+  const after = (await withTx(db.pool, (c) => groupMeetings.statusOf(c, group, started.meeting))).coordination;
+  assert.equal(after.roomTotal, 3);
+  assert.equal(after.notInIt.filter((p) => p.paused).length, 1);
+  assert.equal(await withTx(db.pool, (c) => meetingOptions.unanimousOption(c, meetingId)), null);
+
+  // …whereas somebody who CHOSE to leave it is out of the count, and the rest can be unanimous.
+  await db.pool.query(`UPDATE meeting_participants SET state = 'opted_out' WHERE meeting_id = $1 AND user_id = $2`,
+    [meetingId, stopped.id]);
+  await db.pool.query(
+    `INSERT INTO audit_log (actor_id, event, detail) VALUES ($1, 'meeting.opted_out', $2::jsonb)`,
+    [stopped.id, JSON.stringify({ meetingId, cause: 'user_choice' })]);
+  const chose = (await withTx(db.pool, (c) => groupMeetings.statusOf(c, group, started.meeting))).coordination;
+  assert.equal(chose.roomTotal, 2);
+  const win = await withTx(db.pool, (c) => meetingOptions.unanimousOption(c, meetingId));
+  assert.equal(win && Number(win.id), Number(opt.id));
 });
 
 test('a Google invitation is a message too: somebody who asked to stop is not on the event', async () => {

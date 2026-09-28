@@ -34,6 +34,39 @@ const TIME_RE = /(?<![\d:])([01]?\d|2[0-3]):([0-5]\d)(?![\d:])/g;
 // often than the full form when they are giving an instruction.
 const BARE_HOUR_RE = /(?:בשעה|ב-|ב\s|at)\s*([01]?\d|2[0-3])(?![\d:.,])/gi;
 
+// …and the minutes people SAY after that bare hour, in words. Dov, 2026-09-27:
+// "כל יום בבוקר בשעה 8 וחצי" armed 08:30, exactly as asked, and this check
+// read the hour alone, filed "ביקש 08:00 · נקבע 08:30" as a broken promise
+// (issue 161). An alarm that files a correct reminder as a fault is spent the
+// first time somebody opens it. Read straight after the hour, so "8 וחצי ליטר"
+// is still half past eight — which is what it says.
+const HEB = '(?![\\u0590-\\u05FF])';
+const MINUTE_WORDS = [
+  [new RegExp(`^\\s*וחצי${HEB}`), 30],
+  [new RegExp(`^\\s*ורבע${HEB}`), 15],
+  [new RegExp(`^\\s*ועשרים${HEB}`), 20],
+  [new RegExp(`^\\s*וארבעים${HEB}`), 40],
+  [new RegExp(`^\\s*ועשר(?:ה)?${HEB}`), 10],
+  [new RegExp(`^\\s*וחמש(?:ה)?${HEB}`), 5],
+  [/^\s*ו-?\s*([0-5]?\d)(?!\d)/, null],
+  [new RegExp(`^\\s*פחות\\s+רבע${HEB}`), -15],
+  [new RegExp(`^\\s*פחות\\s+עשרים${HEB}`), -20],
+  [new RegExp(`^\\s*פחות\\s+עשר(?:ה)?${HEB}`), -10],
+  [new RegExp(`^\\s*פחות\\s+חמש(?:ה)?${HEB}`), -5],
+];
+
+function bareHourMinutes(hour, rest) {
+  for (const [re, fixed] of MINUTE_WORDS) {
+    const m = re.exec(rest);
+    if (!m) continue;
+    const mins = fixed === null ? Number(m[1]) : fixed;
+    if (!Number.isFinite(mins) || mins > 59) continue;
+    const total = (hour * 60 + mins + 24 * 60) % (24 * 60);
+    return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+  }
+  return `${String(hour).padStart(2, '0')}:00`;
+}
+
 // "עוד שעתיים", "בעוד חצי שעה", "in 2 hours". The moment is relative to when
 // they wrote it, so this only means anything with the message's own timestamp.
 const REL_HOURS = [
@@ -67,7 +100,7 @@ function momentsAsked(text, atMs, tz) {
     out.add(`${String(Number(m[1])).padStart(2, '0')}:${m[2]}`);
   }
   for (const m of s.matchAll(BARE_HOUR_RE)) {
-    out.add(`${String(Number(m[1])).padStart(2, '0')}:00`);
+    out.add(bareHourMinutes(Number(m[1]), s.slice(m.index + m[0].length)));
   }
   if (Number.isFinite(atMs)) {
     for (const [re, fixed] of REL_HOURS) {
