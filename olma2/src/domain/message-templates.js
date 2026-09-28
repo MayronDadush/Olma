@@ -438,6 +438,22 @@ const TEMPLATES = [
     sample: { missing: '@+972501234567' },
     text: 'עוד לא שמעתי מ{{missing}} — תגידו לי בפרטי מתי אתם יכולים ואני סוגרת את זה.',
   },
+  // The offer to drop a coordination the room has gone quiet on (owner,
+  // 2026-09-28), said once, only after the chase, and only behind the
+  // `coordination_policy` flag. No clock time in it — a number of hours —
+  // so it needs no `_zones` twin. Nobody answering closes it quietly.
+  {
+    key: 'group_coord_drop_offer', audience: 'group', label: 'תיאום — הצעה לוותר',
+    help: 'פעם אחת בכל תיאום, אחרי שכבר זירזתי ועברו 12 שעות בלי שאף אחד ענה או כתב. אם אף אחד לא עונה עד השעה שכתובה בהודעה, התיאום נסגר בשקט. השעה היא 6 שעות אחרי ההודעה, מעוגלת לחצי שעה, ואם היא נופלת בלילה של הקבוצה — 09:00 בבוקר.',
+    vars: {
+      title: 'שם התיאום',
+      missing_note: 'משפט שלם עם התיוגים של מי שלא ענה, או ריק',
+      when: 'מתי ייסגר: ״היום ב-19:30״ / ״מחר ב-09:00״',
+    },
+    required: ['title', 'when'],
+    sample: { title: 'פאדל', missing_note: 'עוד לא שמעתי מ@+972501234567.', when: 'מחר ב-09:00' },
+    text: 'נראה שהתיאום של *{{title}}* נתקע. {{missing_note}}\nרוצים להמשיך? ענו לי בפרטי על המועדים. רוצים לוותר? תייגו אותי וכתבו "לבטל".\nאם לא אשמע מאף אחד, אסגור אותו {{when}}.',
+  },
   {
     key: 'group_coord_table', audience: 'group', label: 'תיאום — השולחן זז',
     help: 'בכל פעם שהמועדים על הפרק משתנים אחרי ששלחתי כבר עדכון — נוספו זמנים או ירדו. מחכה רבע שעה מהשינוי הראשון, כך שכמה שינויים ברצף הם הודעה אחת. אף פעם לא מי אמר מה: רק כמה מועדים יש, ומי מהם הכי מתקדם.',
@@ -629,6 +645,18 @@ const TEMPLATES = [
     vars: { title: 'שם התיאום', was: 'הזמן שהיה סגור, בכל אזורי הזמן' }, required: ['title', 'was'],
     sample: { title: 'שיחת וידאו', was: 'יום שבת 26.9 · 12:00 ישראל · 05:00 ניו יורק · 19:00 סידני' },
     text: '🔄 התיאום *{{title}}* נפתח מחדש — *{{was}}* כבר לא סגור. הזמנים האחרים נשארים על השולחן, ואפשר להוסיף חדשים. אני שואלת כל מי שבתיאום בפרטי.',
+  },
+  {
+    key: 'group_coord_drop_offer_zones', audience: 'group', label: 'תיאום — הצעה לוותר',
+    help: '',
+    vars: {
+      title: 'שם התיאום',
+      missing_note: 'משפט שלם עם התיוגים של מי שלא ענה, או ריק',
+      when: 'מתי ייסגר, בכל אזורי הזמן',
+    },
+    required: ['title', 'when'],
+    sample: { title: 'שיחת וידאו', missing_note: '', when: 'יום ראשון 27.9 · 09:00 ישראל · 02:00 ניו יורק' },
+    text: 'נראה שהתיאום של *{{title}}* נתקע. {{missing_note}}\nרוצים להמשיך? ענו לי בפרטי על המועדים. רוצים לוותר? תייגו אותי וכתבו "לבטל".\nאם לא אשמע מאף אחד, אסגור אותו ב: *{{when}}*.',
   },
   {
     key: 'group_coord_dayof_zones', audience: 'group', label: 'תיאום — תזכורת ביום עצמו',

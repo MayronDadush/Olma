@@ -37,8 +37,10 @@ test('the greeting names the person when known and speaks in the persona\'s regi
   const saved = process.env.VOICE_SPOKEN_NAME;
   delete process.env.VOICE_SPOKEN_NAME;
   try {
-    assert.equal(p.greetingText({ first_name: 'מירון' }, p.DEFAULT_PERSONA), `היי מירון, זאת ${p.DEFAULT_SPOKEN_NAME}. מה קורה?`);
-    assert.equal(p.greetingText({ first_name: null }, { gender: 'male', name: 'רונן' }), 'היי, זה רונן. מה קורה?');
+    assert.equal(p.greetingText({ first_name: 'מירון' }, p.DEFAULT_PERSONA),
+      `היי מירון, זאת ${p.DEFAULT_SPOKEN_NAME}, העוזרת הדיגיטלית שלך. אני מתמללת את השיחה כדי לשמור מה שנסכם. מה קורה?`);
+    assert.equal(p.greetingText({ first_name: null }, { gender: 'male', name: 'רונן' }),
+      'היי, זה רונן, העוזר הדיגיטלי שלך. אני מתמלל את השיחה כדי לשמור מה שנסכם. מה קורה?');
   } finally {
     if (saved === undefined) delete process.env.VOICE_SPOKEN_NAME; else process.env.VOICE_SPOKEN_NAME = saved;
   }

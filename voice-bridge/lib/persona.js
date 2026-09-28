@@ -43,9 +43,22 @@ function spokenName(persona) {
   return persona.name;
 }
 
+// Compliance review, 2026-09-28 (finding 5): the first sentence of a call now
+// says she is not a person and that the call is transcribed. A human name in
+// a human-sounding voice is exactly the case EU AI Act art. 50(1) is about,
+// and the transcript is kept (server.js, `transcripts/`), so the person on
+// the line is told before they say anything. Saying it costs one sentence
+// once per call; the greeting is the only place it can be said before the
+// first word of theirs is recorded.
+//
+// The text changed, so a frozen take keyed on the old text no longer
+// matches and the greeting is spoken live until a new take is frozen
+// (freeze-greeting.js) — the name's pronunciation rides that take.
 function greetingText(user, persona) {
   const g = gFor(persona);
-  return `היי${user.first_name ? ' ' + user.first_name : ''}, ${g('זאת', 'זה')} ${spokenName(persona)}. מה קורה?`;
+  return `היי${user.first_name ? ' ' + user.first_name : ''}, ${g('זאת', 'זה')} ${spokenName(persona)}, `
+    + `${g('העוזרת הדיגיטלית', 'העוזר הדיגיטלי')} שלך. `
+    + `אני ${g('מתמללת', 'מתמלל')} את השיחה כדי לשמור מה שנסכם. מה קורה?`;
 }
 
 module.exports = {

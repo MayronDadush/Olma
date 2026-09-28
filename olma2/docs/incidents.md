@@ -64,6 +64,7 @@ never trust a dated narrative for something you are about to act on.
 - [The room asked five and reached four (fixed 2026-09-22)](#the-room-asked-five-and-reached-four-fixed-2026-09-22)
 - [The pause the room's invite walked through (fixed 2026-09-27)](#the-pause-the-rooms-invite-walked-through-fixed-2026-09-27)
 - [The room could count, and she could not (changed 2026-09-28)](#the-room-could-count-and-she-could-not-changed-2026-09-28)
+- [The coordinations that died in silence (built 2026-09-28)](#the-coordinations-that-died-in-silence-built-2026-09-28)
 - [A room counted in somebody who had paused (fixed 2026-09-13)](#a-room-counted-in-somebody-who-had-paused-fixed-2026-09-13)
 - [The fifth draft was the rude one (fixed 2026-09-11)](#the-fifth-draft-was-the-rude-one-fixed-2026-09-11)
 - [Six good mornings for one timeout (fixed 2026-09-09)](#six-good-mornings-for-one-timeout-fixed-2026-09-09)
@@ -2406,6 +2407,54 @@ to, and a Google invitation is still a message. What did:
 - `unanimousOption` waits on them in a room, so the room closes it with
   "סגור". The cost is accepted: a room with a paused member never closes on
   its own, because "everybody said yes" would be false there.
+
+### The coordinations that died in silence (built 2026-09-28)
+
+The owner asked how Olma should run a coordination in a room: when to nudge
+the room, when to write to somebody privately, and when to say "there is not
+much response, shall I drop it?". Nothing in the system did the last two. A
+room heard at most one chase, nobody was ever reminded privately, and a
+coordination nobody answered stayed open until its last time passed, then
+ended as `expired` with no word to anyone.
+
+The report built for it (`scripts/coordination-report.js`, PR #567, reading
+what the room actually received since PR #570) put numbers on that. The chase
+tagged 16 people across the history and 1 of them answered within two hours.
+A new time asked privately was answered by about 46%, mostly within minutes.
+
+The simulator (`src/sim/coordination-sim.js`, PR #571), calibrated on those
+numbers, compared policies on the same rooms:
+- Today's policy: 22% confirmed and 78% expired.
+- An offer to drop after twelve quiet hours: 35% confirmed, most of the rest
+  ending cleanly, and 1% of rooms talked out of a coordination they would
+  have closed.
+- Adding one private nudge at six hours: 44% confirmed. The cost to people is
+  an assumption, because Olma has never sent one.
+
+The ranking held under six alternative assumptions. The owner chose:
+- Drop offer said in the room.
+- No answer closes it quietly as `no_match`.
+- Shadow before live.
+- Both texts approved word for word before any real room hears them.
+
+What was built (`domain/coordination-policy`, `jobs/coordination-moves`,
+flag `coordination_policy`, migration 098). Two measured choices:
+- **No nudge beside the offer.** Asking "shall I drop it?" and "when can you?"
+  in the same breath contradict each other.
+- **Shadow counts its own decisions as done.** Otherwise it would decide the
+  same offer on every pass and never reach the close it exists to measure.
+
+The owner approved both texts with one change: rather than "in 6 hours", the
+offer names the hour it will close. That turned a duration into a promise.
+The moment is fixed when the offer is said and stored
+(`group_drop_close_at`). It is rounded to the half hour, and moved to the
+room's morning when it would fall in its night. Two reasons: the sweep only
+closes in the room's hours, so "in 6 hours" said at 20:00 was never true; and
+recomputing the moment at close time could drift from what the room read.
+
+Open: `meetings.reopenMeeting` accepts only a confirmed coordination, so a
+room cannot reopen one that closed quietly. The offer's text says nothing
+about reopening for that reason.
 
 ### A room counted in somebody who had paused (fixed 2026-09-13)
 
