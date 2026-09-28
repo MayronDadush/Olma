@@ -317,3 +317,27 @@ test('the tab bar is pointed at once per device, and never on the stranger scree
   assert.match(page, /\.navhint,\.navhint\.out,\.tabbar\.hinted\{animation:none\}/,
     'less motion means no pulse');
 });
+
+// The settings tab ends with the three public pages, in both languages. Plain
+// same-host links: /privacy, /terms and /accessibility are served ahead of any
+// auth by the same process (and allma.world's Caddy allowlist has to name each).
+test('the settings tab links Privacy, Terms and Accessibility, in both languages', () => {
+  const me = page.slice(page.indexOf('<section class="view" data-view="me">'));
+  const section = me.slice(0, me.indexOf('</section>'));
+  const foot = (section.match(/<nav class="legalfoot"[\s\S]*?<\/nav>/) || [''])[0];
+  assert.ok(foot, 'the legal footer is not on the settings tab');
+  for (const [href, key] of [['/privacy', 'legal.privacy'], ['/terms', 'legal.terms'], ['/accessibility', 'legal.a11y']]) {
+    assert.ok(foot.includes(`<a class="legalfoot-a" href="${href}" data-i18n="${key}"></a>`), `${href} link`);
+  }
+  for (const [key, he, en] of [
+    ['legal.privacy', 'פרטיות', 'Privacy'],
+    ['legal.terms', 'תנאי שימוש', 'Terms'],
+    ['legal.a11y', 'נגישות', 'Accessibility'],
+  ]) {
+    assert.ok(page.includes(`"${key}":"${he}"`), `Hebrew label for ${key}`);
+    assert.ok(page.includes(`"${key}":"${en}"`), `English label for ${key}`);
+  }
+  // One CSS namespace: every rule naming the prefix is one of this footer's own.
+  const rules = page.match(/^\.legalfoot[^{]*\{/gm) || [];
+  assert.deepEqual(rules, ['.legalfoot{', '.legalfoot-a{', '.legalfoot-a:hover{']);
+});

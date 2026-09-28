@@ -1009,6 +1009,7 @@ test('a link that claims to be us, or lands on a path we do not serve, is caught
     `https://allma.world/d/${'AbCdEfGhIjKlMnOpQrStUv'}`,
     `https://allma.world/d/${'a'.repeat(64)}`,
     'https://allma.world/privacy', 'https://allma.world/terms', 'https://allma.world/',
+    'https://allma.world/accessibility',
     'https://olmachat.duckdns.org/',
     'https://www.google.com/search?q=x',
     'https://accounts.google.com/o/oauth2/v2/auth?client_id=x',
@@ -1017,6 +1018,16 @@ test('a link that claims to be us, or lands on a path we do not serve, is caught
     'https://olmafarm.com/shop', 'https://www.openclawresearch.org/paper',
   ];
   for (const u of real) assert.equal(leak.deadLink(u), false, u);
+});
+
+// The accessibility statement (2026-09-28) is a page we serve, so a reply that
+// hands it over — "בעיית נגישות" is the phrase the statement tells people to
+// write — must reach them whole.
+test('a reply linking the accessibility statement is delivered untouched', () => {
+  const text = 'הצהרת הנגישות שלנו כאן:\nhttps://allma.world/accessibility';
+  const v = leak.gateReply(text);
+  assert.equal(v.action, 'pass', JSON.stringify(v.leaks));
+  assert.equal(v.text, text);
 });
 
 // It is lifted OUT; the sentence it sat in is the message and is delivered.

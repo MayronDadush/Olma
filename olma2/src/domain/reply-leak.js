@@ -380,7 +380,7 @@ const SENTINEL_STRIP_RE = /\s*\bNO_REPLY\b\s*/g;
 // is the message: an invite that loses its dead line still asks when suits
 // them, and cutting the paragraph would take the question with it.
 const OUR_HOSTS = new Set(['allma.world', 'www.allma.world', 'olmachat.duckdns.org']);
-const OUR_PATHS = /^\/(?:d\/(?:[A-Za-z0-9]{22}|[a-f0-9]{64})|me|privacy|terms|health|ready)?\/?$/;
+const OUR_PATHS = /^\/(?:d\/(?:[A-Za-z0-9]{22}|[a-f0-9]{64})|me|privacy|terms|accessibility|health|ready)?\/?$/;
 const CLAIMS_US_RE = /(?:^|[.-])(?:olma|allma|openclaw)(?:[.-]|$)/i;
 const ANY_URL_RE = /\bhttps?:\/\/[^\s<>"'׳״)\]]+/gi;
 

@@ -1067,6 +1067,13 @@ html[data-paused] .livepill .dot::after{animation:none;opacity:0}
 .linkbtn{color:var(--accent);font-weight:600;font-size:14.5px}
 .linkbtn.danger{color:var(--danger)}
 
+/* The Privacy · Terms · Accessibility line at the foot of the settings tab.
+   Quiet on purpose: note-sized, secondary text, no card. The padding makes
+   each link a 44px-tall target without making it look like a button. */
+.legalfoot{display:flex;justify-content:center;align-items:center;flex-wrap:wrap;gap:2px 4px;font-size:13px;color:var(--text-3)}
+.legalfoot-a{color:var(--text-2);text-decoration:none;padding:12px 6px;border-radius:8px}
+.legalfoot-a:hover{color:var(--accent);text-decoration:underline}
+
 /* ── small controls, full-sized targets ──
    Nine controls on this page are drawn between 19 and 31 pixels across, which
    is right: a 44px trash beside a 15px line of text is not a design. What a
@@ -3398,6 +3405,19 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
         </button>
         <p class="note" id="pauseNote"></p>
       </div>
+
+      <!-- The three public pages, last thing on the settings tab: the place a
+           person goes looking for "the fine print", and nowhere else, so no
+           other tab grows a footer above the tab bar. Plain same-host links,
+           so they open the page itself rather than anything this script
+           draws. The class prefix `legalfoot` is used nowhere else. -->
+      <nav class="legalfoot" data-i18n-label="legal.nav">
+        <a class="legalfoot-a" href="/privacy" data-i18n="legal.privacy"></a>
+        <span class="legalfoot-dot" aria-hidden="true">·</span>
+        <a class="legalfoot-a" href="/terms" data-i18n="legal.terms"></a>
+        <span class="legalfoot-dot" aria-hidden="true">·</span>
+        <a class="legalfoot-a" href="/accessibility" data-i18n="legal.a11y"></a>
+      </nav>
     </div>
   </section>
   </main>
@@ -4800,6 +4820,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "live.paused":"{name} מושהית",
       "me.noName":"ללא שם",
       "me.since":"בעולמה מאז {when}","me.saved":"נשמר",
+      "legal.nav":"מידע משפטי ונגישות","legal.privacy":"פרטיות","legal.terms":"תנאי שימוש","legal.a11y":"נגישות",
       "me.when":"מתי אפשר לכתוב לך","me.hours":"שעות זמינות",
       "me.hoursDefault":"ברירת מחדל","me.hoursStated":"בחירה שלך","me.hoursReset":"איפוס",
       "me.quietDays":"ימים שקטים","me.quietNone":"בלי ימים שקטים","me.quietDefault":"ברירת מחדל",
@@ -5135,6 +5156,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "live.paused":"{name} is paused",
       "me.noName":"No name",
       "me.since":"On Allma since {when}","me.saved":"Saved",
+      "legal.nav":"Legal and accessibility","legal.privacy":"Privacy","legal.terms":"Terms","legal.a11y":"Accessibility",
       "me.when":"When she may write to you","me.hours":"Available hours",
       "me.hoursDefault":"Default","me.hoursStated":"Your choice","me.hoursReset":"Reset",
       "me.quietDays":"Quiet days","me.quietNone":"No quiet days","me.quietDefault":"Default",
