@@ -910,13 +910,17 @@ have already had to be argued for.
   sender (`incidents.md`, "The tags that vanished before any hook ran").
 
 - **A room member who has never written to her hears about a coordination
-  ONCE per room, privately, in the owner's fixed words — and is never made a
+  ONCE (per room until 2026-09-28, per person since), privately, in the owner's fixed words — and is never made a
   participant** (owner, 2026-09-26; `group-meetings.coldInvite`, flag
   `group_cold_invite`, template `group_cold_invite`). Called from the
   `group_voice` pass for every negotiating coordination; the outbox key
   `coldinvite:g<gid>:u<uid>` is the once-per-ROOM budget the owner chose,
   because a first message from an unknown number can be reported and a second
-  is how that happens. It goes on the raw pipe (`proactive-text.rawPipeTextFor`,
+  is how that happens. **Proposed 2026-09-28 (compliance review, finding 4;
+  owner to approve): once per PERSON across every room** — the copy now ends
+  "ולא אכתוב לך שוב", and a second room writing would make that false. The
+  query skips anybody with a `room_cold_invite` that reached them or is still
+  queued; one the gate held until it expired asked nothing and does not count. It goes on the raw pipe (`proactive-text.rawPipeTextFor`,
   rendered at delivery) because the title is another member's text and no model
   may speak it, and the gate lets it through as the third `PENDING_USER_KINDS`
   entry — everything else the gate does (their night, off a zone guessed from

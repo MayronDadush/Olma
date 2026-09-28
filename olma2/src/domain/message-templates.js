@@ -223,14 +223,18 @@ const TEMPLATES = [
     help: 'נשלחת בפרטי לחבר קבוצה שעוד לא כתב לעולמה, כשנפתח תיאום בקבוצה. פעם אחת לאדם בכל קבוצה, בשעות היום שלו. אם הוא עונה — היא מצרפת אותו לתיאום.',
     vars: { group: 'שם הקבוצה', title: 'מה מתאמים' }, required: ['group', 'title'],
     sample: { group: 'פאדל שלישי', title: 'משחק השבוע' },
-    text: 'היי! אני עולמה 👋 אני עוזרת לקבוצה: ״«{{group}}»״ שאתה נמצא בה לתאם {{title}}.\nאם תענה לי כאן, אצרף אותך ואשאל מתי נוח לך ☺️',
+    // Compliance revision, 2026-09-28: "AI" (EU AI Act art. 50(1)) and a way
+    // out, because this is the one message sent to somebody who never chose
+    // her. The last line is a promise group-meetings.coldInvite keeps: once
+    // per person, across every room.
+    text: 'היי! אני עולמה, עוזרת AI 👋 אני עוזרת לקבוצה: ״«{{group}}»״ שאתה נמצא בה לתאם {{title}}.\nאם תענה לי כאן, אצרף אותך ואשאל מתי נוח לך ☺️\nלא מתאים? אפשר פשוט להתעלם, ולא אכתוב לך שוב.',
   },
   {
     key: 'group_cold_invite_en', audience: 'private', label: 'הזמנה פרטית לתיאום בקבוצה (למי שעוד לא כתב)',
     help: '',
     vars: { group: 'group name', title: 'what is being coordinated' }, required: ['group', 'title'],
     sample: { group: 'Tuesday padel', title: 'this week\'s game' },
-    text: 'Hi! I\'m Olma 👋 I\'m helping the group “{{group}}” you\'re in coordinate {{title}}.\nIf you reply here, I\'ll add you and ask when works for you ☺️',
+    text: 'Hi! I\'m Allma, an AI assistant 👋 I\'m helping the group “{{group}}” you\'re in coordinate {{title}}.\nIf you reply here, I\'ll add you and ask when works for you ☺️\nNot for you? Just ignore this and I won\'t write to you again.',
   },
   // ---- in a group -----------------------------------------------------------
   {
