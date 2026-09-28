@@ -233,9 +233,10 @@ function roundedCard(x, y, w, h) {
 
 // The brand mark, drawn as shapes so resvg needs no file for it: half cypress,
 // half sand, a sand circle on the dark side and a cypress one on the light, the
-// mustard lens where they overlap, and the thin cypress ring it wears on sand.
+// mustard lens where they overlap, and a thin ring: cypress on sand, sand on
+// the header's cypress band.
 // Same geometry as brand/kit/mark/allma-round-ringed.svg (viewBox 120).
-function mark(x, y, size) {
+function mark(x, y, size, ring = CYPRESS) {
   const k = size / 120;
   return `<g transform="translate(${x} ${y}) scale(${k})">`
     + '<defs><clipPath id="mk-c"><circle cx="60" cy="60" r="60"/></clipPath>'
@@ -244,7 +245,7 @@ function mark(x, y, size) {
     + `<rect x="60" width="60" height="120" fill="${SAND}"/>`
     + `<circle cx="44" cy="60" r="24" fill="${SAND}"/><circle cx="76" cy="60" r="24" fill="${CYPRESS}"/>`
     + `<circle cx="76" cy="60" r="24" fill="${MUSTARD}" clip-path="url(#mk-a)"/></g>`
-    + `<circle cx="60" cy="60" r="58.25" fill="none" stroke="${CYPRESS}" stroke-width="3.5"/></g>`;
+    + `<circle cx="60" cy="60" r="58.25" fill="none" stroke="${ring}" stroke-width="3.5"/></g>`;
 }
 
 function pill(x, y, w, h, fill, stroke) {
@@ -288,13 +289,20 @@ function buildSvg(card) {
   let y = 78;
 
   // ---- header
-  parts.push(mark(W - M - 58, y - 47, 58));
-  parts.push(text(W - M - 74, y, { size: 52, weight: 700, fill: CYPRESS }, card.title));
+  // The header sits on a full-bleed cypress band with a mustard line under it
+  // (the owner's pick of two, 2026-09-29). The band is drawn BEHIND what is
+  // already placed, because its height is only known once the subtitle is.
+  const bandAt = parts.length;
+  parts.push(mark(W - M - 58, y - 47, 58, SAND));
+  parts.push(text(W - M - 74, y, { size: 52, weight: 700, fill: SAND }, card.title));
   if (card.subtitle) {
     y += 42;
-    parts.push(text(W - M, y, { size: 28, weight: 500, fill: INK_SOFT }, card.subtitle));
+    parts.push(text(W - M, y, { size: 28, weight: 500, fill: '#BFD3CF' }, card.subtitle));
   }
-  y += 38;
+  y += 34;
+  parts.splice(bandAt, 0, `<rect width="${W}" height="${y}" fill="${CYPRESS}"/>`
+    + `<rect y="${y - 6}" width="${W}" height="6" fill="${MUSTARD}"/>`);
+  y += 34;
 
   // ---- stat pills
   if (card.stats.length) {
