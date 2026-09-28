@@ -554,6 +554,17 @@ async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, 
       what: 'Olma sent them a short looping video (no text) introducing herself: send her everything, '
         + 'messy is fine, she sorts it into a list and reminds on time. A reply now may be about it.' }
     : null;
+  // Same channel for a changed privacy policy (domain/policy-notice.js): a
+  // "מה זה?" right after it must reach a model that knows what was sent.
+  const { rows: policyRows } = await client.query(
+    `SELECT max(sent_at) AS sent_at FROM outbox
+      WHERE user_id = $1 AND kind = 'policy_update' AND hold_reason IS NULL
+        AND sent_at > now() - interval '24 hours'`, [user.id]);
+  const policyNotice = policyRows[0] && policyRows[0].sent_at
+    ? { sentAt: policyRows[0].sent_at,
+      what: 'Olma sent them a fixed notice that the privacy policy was updated, with a link to '
+        + 'allma.world/privacy. A reply now may be about it; if they ask to delete their data, that is delete_my_account.' }
+    : null;
 
   // Coordinations this person heard about in the last day, with where each
   // stands NOW. The session remembers the question it asked; nothing told it
@@ -779,6 +790,7 @@ async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, 
       ...(languageNudge ? { languageNudge } : {}),
       ...(recentReminders.length ? { recentReminders } : {}),
       ...(introVideo ? { introVideo } : {}),
+      ...(policyNotice ? { policyNotice } : {}),
       ...(recentMeetings.length ? { recentMeetings } : {}),
       ...(rooms.length ? { rooms } : {}),
       ...(planHeadline ? { planHeadline } : {}),
