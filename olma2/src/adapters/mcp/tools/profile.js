@@ -3,6 +3,7 @@
 const {
   users, dashboardAuth, quota, pause, voice, S, ok, tool,
 } = require('./_shared');
+const selfDelete = require('../../../domain/self-delete');
 
 module.exports = [
   tool('get_my_profile', 'Your own profile: name, timezone, plan, digest settings.', {}, [],
@@ -112,7 +113,29 @@ module.exports = [
     + 'request to be messaged again. Afterwards, tell them what came back.',
     {}, [],
     (client, user) => pause.resumeUser(client, user.id)),
-  tool('set_my_timezone', 'Set the IANA timezone — THE TURN someone reveals where they actually are ("אני בניו יורק", a trip they mention). A phone number only guesses a country, and every reminder, digest and quiet-hours window runs on this value, so a wrong zone means 3am messages. confirmed=true only when they explicitly confirmed it. If the result carries hints, follow them: they name times that were corrected and meetings to re-propose.',
+  // Deleting everything, on their explicit ask only (owner, 2026-09-28;
+  // domain/self-delete.js). Two calls: the first shows what would go and is
+  // the only thing that makes the second acceptable. Never a way to delete
+  // one task, and never an answer to "stop" — that is pause_olma.
+  tool('delete_my_account',
+    'Delete their account and ALL their data — only on their explicit ask, never for "stop" (pause_olma). Call first without confirm.',
+    { confirm: S('boolean', 'true only after their yes') }, [],
+    async (client, user, a) => {
+      if (a.confirm !== true) {
+        const res = await selfDelete.preview(client, user.id);
+        if (!res.ok) return res;
+        return ok({ ...res.data, confirmed: false,
+          next: 'Nothing is deleted yet. Tell them what goes (use the counts), that shared tasks and '
+            + 'coordinations stay with the others without them, and that it cannot be undone. Ask one '
+            + 'clear yes/no question; only on a clear yes call again with confirm=true.' });
+      }
+      const res = await selfDelete.request(client, user.id, { via: 'chat' });
+      if (!res.ok) return res;
+      return ok({ ...res.data, confirmed: true,
+        next: 'Say plainly that everything will be deleted within a few minutes, and that writing '
+          + 'here again later starts from scratch. One short message; do not ask anything.' });
+    }),
+  tool('set_my_timezone', 'Set the IANA timezone — THE TURN someone reveals where they actually are ("אני בניו יורק", a trip they mention). A phone number only guesses a country; a wrong zone means 3am messages. confirmed=true only when they explicitly confirmed it. Follow any hints in the result.',
     { timezone: S('string', 'IANA name, e.g. Asia/Jerusalem'), confirmed: S('boolean', 'User explicitly confirmed') }, ['timezone'],
     async (client, user, a) => {
       const res = await users.setTimezone(client, user.id, a.timezone, a.confirmed);
