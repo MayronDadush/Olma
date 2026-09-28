@@ -120,6 +120,9 @@ test('a touch is credited with answers inside two hours: anybody for a room line
   assert.equal(invite.answeredBy, 1, 'user 3 answering is not the invite to user 2 working');
   assert.equal(chase.answeredBy, 1);
   assert.equal(chase.firstAnswerMinutes, 60);
+  // Of the people a room line TAGGED, who answered — the chase's own question.
+  const tagged = touchEffects(room({ touches: [{ at: at(0), channel: 'room', kind: 'chase', userIds: [], taggedIds: [3, 4] }] }));
+  assert.deepEqual([tagged[0].tagged, tagged[0].taggedAnswered], [2, 1], 'user 3 answered within two hours, user 4 did not');
   // The proposer's own yes, written as the time is added, moves nothing.
   const own = touchEffects(room({ answers: [{ optionId: 11, userId: 1, answer: 'y', at: at(0.1), byAdding: true }] }));
   assert.equal(own[0].answeredBy, 0);
@@ -177,4 +180,15 @@ test('the timeline reads the rows the real calls leave, and only a SENT message 
     assert.ok(!(await coordinationIds(c, { roomsOnly: true })).includes(m), 'a private coordination is not a room');
     assert.equal(await timelineFor(c, 999999), null);
   } finally { c.release(); }
+});
+
+test('a room line tags people under several names, and every one of them is read', () => {
+  const { phonesTaggedBy } = require('../src/domain/coordination-timeline');
+  // The shapes the box's group_outbox actually carries (2026-09-28).
+  assert.deepEqual(phonesTaggedBy({ kind: 'chase', missing: ['+972500000001'] }), ['+972500000001']);
+  assert.deepEqual(phonesTaggedBy({ kind: 'done', who: { all: false, phones: ['+972500000002'] } }), ['+972500000002']);
+  assert.deepEqual(phonesTaggedBy({ kind: 'joined', phones: ['+972500000003'] }), ['+972500000003']);
+  assert.deepEqual(phonesTaggedBy({ kind: 'started', outsidePhones: ['+6266525098172'] }), ['+6266525098172']);
+  assert.deepEqual(phonesTaggedBy({ kind: 'calendar' }), []);
+  assert.deepEqual(phonesTaggedBy(null), []);
 });

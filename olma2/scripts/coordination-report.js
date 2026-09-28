@@ -77,10 +77,10 @@ const pad = (s, n) => String(s).padEnd(n);
       kinds.get(k).push(t);
     }
     console.log('\nTouches — answered within 2h of it (room: anybody; private: the one it reached)');
-    console.log(`${pad('channel:kind', 36)}${pad('n', 5)}${pad('moved', 8)}${pad('people', 8)}median min to first answer`);
+    console.log(`${pad('channel:kind', 36)}${pad('n', 5)}${pad('moved', 8)}${pad('people', 8)}${pad('tagged→ans', 12)}median min to first answer`);
     for (const [k, ts] of [...kinds].sort((a, b) => b[1].length - a[1].length)) {
       const moved = ts.filter((t) => t.answeredBy > 0).length;
-      console.log(`${pad(k, 36)}${pad(ts.length, 5)}${pad(`${Math.round((100 * moved) / ts.length)}%`, 8)}${pad(ts.reduce((a, t) => a + t.answeredBy, 0), 8)}${f1(median(ts.filter((t) => t.answeredBy > 0).map((t) => t.firstAnswerMinutes)))}`);
+      console.log(`${pad(k, 36)}${pad(ts.length, 5)}${pad(`${Math.round((100 * moved) / ts.length)}%`, 8)}${pad(ts.reduce((a, t) => a + t.answeredBy, 0), 8)}${pad(ts.some((t) => t.tagged) ? `${ts.reduce((a, t) => a + t.taggedAnswered, 0)}/${ts.reduce((a, t) => a + t.tagged, 0)}` : '', 12)}${f1(median(ts.filter((t) => t.answeredBy > 0).map((t) => t.firstAnswerMinutes)))}`);
     }
 
     // When a touch lands (Israel clock) against whether it moved anybody.

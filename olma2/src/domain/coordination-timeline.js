@@ -33,9 +33,26 @@ async function timelineFor(client, meetingId) {
       `SELECT a.option_id, a.user_id, a.answer, a.answered_at, o.added_by, o.created_at AS option_at
          FROM meeting_option_answers a JOIN meeting_options o ON o.id = a.option_id
         WHERE o.meeting_id = $1`, [id]);
-  const { rows: room } = await client.query(
+  // A room line is what the ROOM received: the `group_outbox` row, sent and
+  // not held, keyed `g<gid>:m<mid>:<kind>…` — its `sent_at` is when it landed
+  // and its payload names every phone it tagged. The audit row is only when it
+  // was DECIDED, and a line held for the night was decided hours earlier. A
+  // line sent by hand never went through that queue, so it is read from the
+  // audit (`manual_*`, `owner_*`), where it is written when it goes out.
+  const { rows: roomSent } = await client.query(
+      `SELECT sent_at, idempotency_key, payload->'line' AS line FROM group_outbox
+        WHERE kind = 'coordination' AND sent_at IS NOT NULL AND hold_reason IS NULL
+          AND split_part(idempotency_key, ':', 2) = 'm' || $1::text`, [id]);
+  const { rows: roomByHand } = await client.query(
       `SELECT created_at, detail->>'kind' AS kind FROM audit_log
-        WHERE event = 'group.coordination_said' AND (detail->>'meetingId')::bigint = $1`, [id]);
+        WHERE event = 'group.coordination_said' AND (detail->>'meetingId')::bigint = $1
+          AND (detail->>'kind' LIKE 'manual\\_%' OR detail->>'kind' LIKE 'owner\\_%')`, [id]);
+  const tagged = roomSent.flatMap((r) => phonesTaggedBy(r.line));
+  const userByPhone = new Map();
+  if (tagged.length) {
+    const { rows } = await client.query('SELECT id, phone FROM users WHERE phone = ANY($1)', [[...new Set(tagged)]]);
+    for (const u of rows) userByPhone.set(u.phone, Number(u.id));
+  }
   const { rows: priv } = await client.query(
       `SELECT user_id, kind, sent_at FROM outbox
         WHERE (payload->>'meetingId')::bigint = $1 AND sent_at IS NOT NULL AND kind LIKE 'meeting%'`, [id]);
@@ -102,12 +119,26 @@ async function timelineFor(client, meetingId) {
         && Math.abs(new Date(a.answered_at) - new Date(a.option_at)) <= BY_ADDING_MS,
     }))],
     touches: [
-      ...room.map((r) => ({ at: r.created_at, channel: 'room', kind: r.kind || 'unknown', userIds: [] })),
+      ...roomSent.map((r) => ({
+        at: r.sent_at, channel: 'room', kind: (r.line && r.line.kind) || r.idempotency_key.split(':')[2] || 'unknown',
+        userIds: [],
+        taggedIds: [...new Set(phonesTaggedBy(r.line).map((p) => userByPhone.get(p)).filter((u) => u != null))],
+      })),
+      ...roomByHand.map((r) => ({ at: r.created_at, channel: 'room', kind: r.kind || 'unknown', userIds: [], taggedIds: [] })),
       ...priv.map((p) => ({ at: p.sent_at, channel: 'private', kind: p.kind, userIds: [Number(p.user_id)] })),
     ].sort((a, b) => new Date(a.at) - new Date(b.at)),
     exits: events.filter((e) => e.event === 'meeting.opted_out' || e.event === 'meeting.withdrew')
       .map((e) => ({ userId: Number(e.actor_id), at: e.created_at, cause: (e.detail && e.detail.cause) || null })),
   };
+}
+
+// Every phone a room line tagged, whichever field of its line carried them.
+function phonesTaggedBy(line) {
+  if (!line || typeof line !== 'object') return [];
+  const out = [];
+  for (const k of ['missing', 'phones', 'outsidePhones']) if (Array.isArray(line[k])) out.push(...line[k]);
+  if (line.who && Array.isArray(line.who.phones)) out.push(...line.who.phones);
+  return out.filter((p) => typeof p === 'string');
 }
 
 // Every coordination worth scoring: nobody in it is the eval user.
@@ -121,4 +152,4 @@ async function coordinationIds(client, { roomsOnly = false } = {}) {
   return rows.map((r) => Number(r.id));
 }
 
-module.exports = { timelineFor, coordinationIds, BY_ADDING_MS, LEGACY_OPTION };
+module.exports = { timelineFor, coordinationIds, phonesTaggedBy, BY_ADDING_MS, LEGACY_OPTION };
