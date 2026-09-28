@@ -408,6 +408,16 @@ html[data-v="me"] .brand{opacity:0;transform:translateY(-8px) scale(.94);pointer
 html:not([data-paused]) .livepill{visibility:hidden}
 /* The light/dark choice, on the profile page with its words beside each
    picture. It used to live here, beside the clock on every tab. */
+/* …and one tap between day and night came back to the band, on the home tab
+   only, at the far end of the bar (the owner, 2026-09-29). It flips to the
+   OTHER look and remembers it, exactly as picking it on the profile would. */
+.daynight{
+  display:none;align-items:center;justify-content:center;flex:none;
+  width:36px;height:36px;border-radius:50%;border:0;padding:0;cursor:pointer;
+  background:color-mix(in oklab,var(--on-band) 14%,transparent);color:var(--on-band);
+}
+.daynight svg{width:17px;height:17px}
+html[data-v="tools"] .daynight,html:not([data-v]) .daynight{display:inline-flex}
 .themeseg button{display:inline-flex;align-items:center;justify-content:center;gap:6px}
 .themeseg button svg{width:15px;height:15px;flex:none}
 /* The pill under the clock, and the name says what it LOOKS like rather than
@@ -3248,6 +3258,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     <button class="topclock" id="topClock" data-i18n-label="city.title"></button>
     <div class="hdrend">
       <div class="livepill"><span class="dot"></span><span id="olmaLive"></span></div>
+      <button class="daynight" id="dayNight" type="button"><svg aria-hidden="true"><use href="#i-moon"/></svg></button>
     </div>
   </header>
 
@@ -4190,21 +4201,34 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     }catch(err){ return "auto"; }
   })();
   applyTheme(THEME);
+  /* What is showing NOW, whoever decided it: a stored choice, or the phone. */
+  var DARK_MQ = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
+  function showingDark(){ return THEME === "dark" || (THEME === "auto" && !!(DARK_MQ && DARK_MQ.matches)); }
   function renderTheme(){
     $$("#themeIcons button").forEach(function(b){
       b.setAttribute("aria-pressed", b.dataset.themeOpt === THEME ? "true" : "false");
     });
+    /* the band's button shows where a tap goes: a moon by day, a sun by night */
+    var dn = $("#dayNight"), dark = showingDark();
+    dn.querySelector("use").setAttribute("href", dark ? "#i-sun" : "#i-moon");
+    /* the words wait for the strings, which are defined further down */
+    if(D) dn.setAttribute("aria-label", t(dark ? "home.toDay" : "home.toNight"));
   }
-  $("#themeIcons").addEventListener("click", function(e){
-    var b = e.target.closest("[data-theme-opt]");
-    if(!b || b.dataset.themeOpt === THEME) return;
-    THEME = b.dataset.themeOpt;
+  function setTheme(v){
+    THEME = v;
     try{
       if(THEME === "auto") localStorage.removeItem(THEME_KEY);
       else localStorage.setItem(THEME_KEY, THEME);
     }catch(err){ /* private mode or storage blocked — still applies for this visit */ }
     applyTheme(THEME);
     renderTheme();
+  }
+  $("#dayNight").addEventListener("click", function(){ setTheme(showingDark() ? "light" : "dark"); });
+  if(DARK_MQ && DARK_MQ.addEventListener) DARK_MQ.addEventListener("change", renderTheme);
+  $("#themeIcons").addEventListener("click", function(e){
+    var b = e.target.closest("[data-theme-opt]");
+    if(!b || b.dataset.themeOpt === THEME) return;
+    setTheme(b.dataset.themeOpt);
   });
   renderTheme();
 
@@ -5092,7 +5116,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "me.masc":"לשון זכר","me.fem":"לשון נקבה",
       "me.formNote":"״שמרתי לך״ מול ״שמרתי לך״ — עולמה תתאים את כל הניסוחים שלה.",
       "me.setup":"עולמה אצלך","me.calledBy":"השם של עולמה",
-      "me.appearance":"מראה","me.themeLight":"בהיר","me.themeDark":"כהה","me.themeAuto":"אוטומטי",
+      "me.appearance":"מראה","home.toNight":"מעבר למצב לילה","home.toDay":"מעבר למצב יום","me.themeLight":"בהיר","me.themeDark":"כהה","me.themeAuto":"אוטומטי",
       "me.setupNote":"לפי המיקום עולמה יודעת מה השעה אצלך. את השם שלה אפשר להחליף.",
       "me.pause":"להשהות את עולמה","me.resume":"עולמה מושהית · להפעלה",
       "me.deleteAll":"מחיקת החשבון וכל המידע",
@@ -5452,7 +5476,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "me.masc":"Male","me.fem":"Female",
       "me.formNote":"Hebrew inflects almost every verb for gender, so Allma needs to know. English has no gendered address and nothing here changes it.",
       "me.setup":"Your Allma","me.calledBy":"Allma's name",
-      "me.appearance":"Appearance","me.themeLight":"Light","me.themeDark":"Dark","me.themeAuto":"Auto",
+      "me.appearance":"Appearance","home.toNight":"Switch to dark mode","home.toDay":"Switch to light mode","me.themeLight":"Light","me.themeDark":"Dark","me.themeAuto":"Auto",
       "me.setupNote":"Your location decides every reminder, quiet hour and summary — a dialling code is a country, not a city. The name is yours to change; it appears in every message she sends.",
       "me.pause":"Pause Allma","me.resume":"Allma is paused · Resume",
       "me.deleteAll":"Delete my account and all my data",
@@ -12682,6 +12706,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 
   function renderAll(){
     paintStatic();
+    renderTheme();
     buildCatChips();
     paintAvatars();
     renderTools();

@@ -43,27 +43,21 @@ const CONTACT_EMAIL = 'mayrondadush@gmail.com';
 const { markSvg, PALETTE } = require('./brand-mark');
 
 // The brand the owner chose on 2026-09-28, Cypress + Mustard: sand ground,
-// a cypress band across the top, mustard for the one action on the page, and
-// a warm charcoal night. The same tokens the /me dashboard carries
+// a cypress band across the top, mustard for the one action on the page. The
+// same day tokens the /me dashboard carries
 // (docs/design/user-dashboard.html), so the front door and the product are
 // one thing. Only the tokens these pages actually use were carried over.
+// ALWAYS light, whatever the phone is set to (the owner, 2026-09-29): this is
+// the first impression, and there is no toggle here to change it. The
+// dashboard keeps its own day/night.
 const SHELL_CSS = `
 :root{
+  color-scheme:light;
   --bg:#F0EDE5;--surface:#FFFFFF;--sep:#D7D6CF;
   --text:#0E1F1E;--text-2:#44504E;--text-3:#646D6A;
   --band:#004643;--on-band:#F0EDE5;--on-band-2:#C9D6D1;
   --link:#004643;--code:#E6ECEC;
   --action:#F9C23C;--on-action:#004643;
-}
-@media (prefers-color-scheme:dark){
-  :root{
-    color-scheme:dark;
-    --bg:#1B1A18;--surface:#26251F;--sep:#35332D;
-    --text:#EDE9DF;--text-2:#B9B5AC;--text-3:#A39F96;
-    --on-band:#EDE9DF;--on-band-2:#AFC6C1;
-    --link:#7CC4BA;--code:#1F3532;
-    --on-action:#0E1F1E;
-  }
 }
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
@@ -106,8 +100,8 @@ code{font-family:'IBM Plex Mono',ui-monospace,Menlo,monospace;font-size:.86em;ba
 `;
 
 // The round mark with its ring: on the cypress band the dark half is ink and
-// the ring is sand (the brand book's "על ברוש"); on sand or charcoal, below
-// the band, the dark half is cypress and the ring follows the text colour.
+// the ring is sand (the brand book's "על ברוש"); on sand, below the band, the
+// dark half is cypress and the ring follows the text colour.
 // `id` keeps the clip paths apart, since a page carries more than one.
 const ON_BAND = { ink: '#0E1F1E', paper: '#F0EDE5', coral: PALETTE.coral };
 const LOGO = markSvg({ variant: 'round', palette: ON_BAND, ring: '#F0EDE5', id: 'lg' })
