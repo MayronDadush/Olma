@@ -2215,7 +2215,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 }
 .archive.open .arcbtn .chev{transform:rotate(-90deg)}
 /* what is already on the calendar: the archive's quiet fold, inside the list */
-.calfold{margin-top:26px}
+/* spacing comes from .tsec + .tsec like its neighbours; first on the page, none */
+.calfold{margin-top:0}
 .calfold .arcbtn{padding-inline:14px 4px}
 .calfoldmark{width:15px;height:15px;flex:none}
 .calfoldn{margin-inline-start:auto;font-weight:500}
@@ -7543,7 +7544,9 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   });
 
   function renderTasks(){
-    var html = pinnedSection();
+    /* Shared first, then what is already on the calendar, folded (owner,
+       2026-09-29) — both drawn once, above whichever view is on. */
+    var html = pinnedSection() + calendarSection();
     if(viewBy === "cat"){
       /* Empty categories are not drawn: the set is fixed so the person can
          always MOVE a task into one, but a heading with nothing under it is
@@ -7561,7 +7564,6 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       html += '<div class="tsec"><div class="glabel"><span class="' + (b === "late" ? "late" : "") + '">' +
         esc(t("bucket." + b)) + "</span></div>" + kindGroups(items) + "</div>";
     });
-    html += calendarSection();
     html += importedSection();
     renderSuggestion();
     if(!open.length){

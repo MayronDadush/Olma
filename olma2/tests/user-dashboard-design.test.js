@@ -408,7 +408,8 @@ test('tasks on the calendar sit in their own fold, closed by default, in both vi
   const branches = body.match(/open\.filter\(function\(x\)\{[^}]*\}\)/g) || [];
   assert.equal(branches.length, 2, 'the time view and the category view each filter the list once');
   for (const b of branches) assert.match(b, /!onCalendar\(x\)/, 'each view skips what the fold draws');
-  assert.match(body, /html \+= calendarSection\(\);/, 'the fold is drawn under whichever view is on');
+  assert.match(body, /var html = pinnedSection\(\) \+ calendarSection\(\);/,
+    'the fold sits right under the pinned section, above whichever view is on');
   // An event, or a to-do the sync has actually written out — never the switch
   // alone, which is on for tasks no calendar has seen yet.
   assert.match(page, /function onCalendar\(x\)\{ return !x\.src && !isPinned\(x\) && \(x\.kind === "event" \|\| !!x\.inCal\); \}/);
