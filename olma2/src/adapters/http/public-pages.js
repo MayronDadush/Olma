@@ -226,24 +226,52 @@ function homePage() {
 // below because that is what the people using this today read. Neither is a
 // summary of the other — a policy that says different things in two
 // languages is worse than one language.
+//
+// Rewritten 2026-09-28 (compliance review, findings 1-4 and 7). Every claim
+// here was checked against the code and the live box that day, and the
+// previous version had drifted in four places: the off-box backup is in
+// Frankfurt for 30 days, not the US for 14; voice notes, calls and the model's
+// hosts reach processors it did not name; groups were not mentioned at all;
+// and "all associated data are deleted" was not what deletion did. The
+// Privacy Protection Law s.11 (after Amendment 13) also asks for four things
+// it lacked: who the controller is, whether giving the data is obligatory,
+// what refusing costs, and the rights of access and correction.
+//
+// RETENTION is the promise the retention sweeps keep. A number changed here
+// without the sweep (or the other way round) is this page lying again.
 const UPDATED = '2026-09-06';
+const PRIVACY_UPDATED = '2026-09-28';
+const OPERATOR = { en: 'Mayron Dadush', he: 'מיירון דדוש' };
+const RETENTION = {
+  conversationDays: 90, callTranscriptDays: 30, rosterDays: 60,
+  deletionDays: 30, localBackupDays: 14, offboxBackupDays: 30,
+};
 
 function privacyPage() {
+  const R = RETENTION;
   return shell(`Privacy Policy — ${BRAND}`, `
     <div class="mark">${LOGO}</div>
     <h1>Privacy Policy</h1>
-    <p class="updated">Last updated: ${UPDATED}</p>
+    <p class="updated">Last updated: ${PRIVACY_UPDATED}</p>
 
-    <h2>Who we are</h2>
-    <p>${BRAND} (allma.world) is a personal assistant that works over WhatsApp, operated by an individual developer. Contact: <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>.</p>
+    <h2>Who is responsible for your data</h2>
+    <p>${BRAND} (allma.world) is a personal AI assistant that works over WhatsApp. The controller of your data is ${OPERATOR.en}, an individual in Israel. For anything about your privacy, email <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a> or just tell the assistant.</p>
 
-    <h2>What we store</h2>
+    <h2>Do you have to give us anything</h2>
+    <p>No. There is no legal obligation to give us any information; it is entirely your choice. Without your phone number and what you write, the assistant cannot work. Without anything else it still works, just less tailored to you.</p>
+
+    <h2>What we store and why</h2>
     <ul>
-      <li><b>Account details</b> — the phone number you write from, a first name if you gave one, timezone and language preference.</li>
-      <li><b>Conversation content</b> — your messages and the assistant's replies, so the conversation stays coherent.</li>
-      <li><b>What you asked it to remember</b> — tasks, reminders, meetings, preferences and facts.</li>
-      <li><b>Google data</b> — only if you connected it, and only under the scopes you approved.</li>
+      <li><b>Account details</b> — your phone number, name, timezone and language, so we know who you are and when we may write to you.</li>
+      <li><b>Conversation content</b> — your messages, including voice notes, and the assistant's replies, so the conversation stays coherent.</li>
+      <li><b>What you asked it to remember</b> — tasks, reminders, meetings, preferences and facts you shared. Facts can include sensitive personal information, for example about health, if you chose to share it.</li>
+      <li><b>Details you filled in on your page</b>, such as a date of birth and how you prefer to be addressed.</li>
+      <li><b>Phone calls</b>, if you used them — a transcript of the call, to keep what was agreed. The call audio itself is not recorded.</li>
+      <li><b>Google data</b> — only if you connected it, and only under the scopes you approved (below).</li>
     </ul>
+
+    <h2>WhatsApp groups</h2>
+    <p>When the assistant is added to a group, it sees the member list (numbers and display names) and the messages that tag it. It keeps the member list to coordinate between everyone. A group member who has not written to the assistant may get one private message from it about a plan in that group; if they do not reply, it does not write again. Someone who leaves the group, or does not write to the assistant within ${R.rosterDays} days, is removed from the list.</p>
 
     <h2>Google user data</h2>
     <p>Connecting Google is optional. Each permission is requested separately on Google's own consent screen, and you may grant some and decline others.</p>
@@ -254,49 +282,70 @@ function privacyPage() {
     </ul>
 
     <h2>Limited Use</h2>
-    <p>Our use and transfer of information received from Google APIs adheres to the <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including the Limited Use requirements. Specifically: Google user data is used solely to provide the user-facing features described above; it is not sold; it is not used for advertising; and it is not used to train generalized models.</p>
+    <p>Our use and transfer of information received from Google APIs adheres to the <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including the Limited Use requirements. Specifically: Google user data is used solely to provide the user-facing features described above; it is not sold; it is not used for advertising; and it is not used to train generalized models. When it is needed to answer you, it is part of the conversation sent to the language model provider listed below, under the same terms.</p>
 
     <h2>Who we share with</h2>
-    <p>We do not sell data and do not share it with advertisers. To operate the service, data is processed by:</p>
+    <p>We do not sell data and do not use it for advertising. To operate the service, data is processed by these providers and no others:</p>
     <ul>
-      <li><b>Model provider</b> — conversation text is sent to a language model via OpenRouter (currently DeepSeek, with Anthropic as fallback) to compose a reply.</li>
+      <li><b>Language model</b> — conversation text, including calendar and contact details when they are relevant to the answer, is sent through OpenRouter (US) to the providers that run the model (Novita, DeepInfra, Together; US), and, if those fail, to Anthropic (US). They are configured not to store or train on it.</li>
+      <li><b>ElevenLabs</b> — transcribing voice notes, and the voice on phone calls.</li>
+      <li><b>Deepgram</b> — transcription during phone calls.</li>
+      <li><b>Twilio</b> — phone calls.</li>
       <li><b>WhatsApp / Meta</b> — the channel messages arrive and are sent over.</li>
-      <li><b>Twilio</b> — only if you used a voice call.</li>
+      <li><b>DigitalOcean</b> — the server (US) and the backup (Germany).</li>
       <li><b>Google</b> — only for the services you connected yourself.</li>
     </ul>
     <p>Otherwise, data is disclosed only where required by law.</p>
 
     <h2>Where it is stored</h2>
-    <p>Data is held in a database on a dedicated server in the United States (DigitalOcean). Google access and refresh tokens are encrypted at rest (AES-256-GCM) with the key held outside the database. A daily backup is retained for 14 days and then deleted.</p>
+    <p>Data is held in a database on a dedicated server in the United States (DigitalOcean). A daily backup is kept on that server and a copy in a private DigitalOcean storage bucket in Frankfurt, Germany. Google access and refresh tokens are encrypted at rest (AES-256-GCM) with the key held outside the database.</p>
 
-    <h2>Deletion and control</h2>
+    <h2>How long it is kept</h2>
     <ul>
-      <li><b>Disconnect Google</b> — ask the assistant to disconnect any service at any time. We delete our stored token and revoke it with Google.</li>
-      <li>You can also revoke access directly from your <a href="https://myaccount.google.com/permissions">Google account permissions</a>.</li>
+      <li>Your account, tasks and what the assistant remembers: as long as you use the service.</li>
+      <li>Conversation content and voice notes: ${R.conversationDays} days.</li>
+      <li>Phone call transcripts: ${R.callTranscriptDays} days.</li>
+      <li>Backups: ${R.localBackupDays} days on the server and ${R.offboxBackupDays} days in the off-site copy, then deleted.</li>
+      <li>A record of consents and connections (for example, when you connected Google) is kept after deletion, so we can show we acted on what you approved.</li>
+    </ul>
+
+    <h2>Your rights</h2>
+    <ul>
+      <li><b>See your data</b> — much of it is on your personal page, and you can ask for the rest.</li>
+      <li><b>Correct it</b> — ask the assistant, change it on your page, or email us.</li>
+      <li><b>Delete everything</b> — email <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a> or tell the assistant. We delete the account and all associated data within ${R.deletionDays} days, except the backups, which expire on their own within ${R.offboxBackupDays} days, and the consent record above.</li>
       <li><b>Pause</b> — ask the assistant to stop reaching out. This is a reversible pause, not a deletion.</li>
-      <li><b>Delete everything</b> — email <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a> and the account and all associated data are deleted.</li>
+      <li><b>Disconnect Google</b> — ask the assistant to disconnect any service at any time; we delete our stored token and revoke it with Google. You can also revoke access directly from your <a href="https://myaccount.google.com/permissions">Google account permissions</a>.</li>
     </ul>
 
     <h2>Children</h2>
     <p>The service is not intended for anyone under 16.</p>
 
     <h2>Changes</h2>
-    <p>If this policy changes materially, the date at the top is updated and we tell you in the conversation.</p>
+    <p>If this policy changes materially, the date at the top is updated and the assistant tells you in the conversation.</p>
 
     <div class="he">
       <h2>מדיניות פרטיות (עברית)</h2>
-      <p class="updated">עודכן: ${UPDATED}</p>
+      <p class="updated">עודכן: ${PRIVACY_UPDATED}</p>
 
-      <h3>מי אנחנו</h3>
-      <p>${ASSISTANT} (allma.world) היא עוזרת אישית שפועלת דרך וואטסאפ. השירות מופעל על ידי מפעיל יחיד; לפניות: <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>.</p>
+      <h3>מי אחראי על המידע</h3>
+      <p>${ASSISTANT} (allma.world) היא עוזרת AI אישית שפועלת דרך וואטסאפ. בעל השליטה במידע הוא ${OPERATOR.he}, אדם פרטי בישראל. לכל פנייה בנושא פרטיות: <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>, או פשוט לכתוב ל${ASSISTANT}.</p>
 
-      <h3>איזה מידע נשמר</h3>
+      <h3>האם חובה למסור מידע</h3>
+      <p>לא. אין חובה חוקית למסור לנו מידע, והכל לפי רצונכם. בלי מספר טלפון ותוכן השיחה ${ASSISTANT} לא יכולה לעבוד. בלי כל שאר המידע היא עובדת, רק פחות מותאם אליכם.</p>
+
+      <h3>איזה מידע נשמר ולמה</h3>
       <ul>
-        <li><b>פרטי החשבון</b> — מספר הטלפון שדרכו אתם כותבים, שם פרטי אם מסרתם, אזור זמן והעדפות שפה.</li>
-        <li><b>תוכן השיחה</b> — ההודעות שאתם כותבים ל${ASSISTANT} והתשובות שלה, כדי שהשיחה תמשיך להיות רציפה.</li>
-        <li><b>מה שביקשתם שתזכור</b> — משימות, תזכורות, פגישות, העדפות ועובדות.</li>
+        <li><b>פרטי חשבון</b> — מספר הטלפון, שם, אזור זמן ושפה. כדי לדעת מי אתם ומתי מותר לכתוב לכם.</li>
+        <li><b>תוכן השיחה</b> — ההודעות שלכם, כולל הודעות קוליות, והתשובות של ${ASSISTANT}. כדי שהשיחה תהיה רציפה.</li>
+        <li><b>מה שביקשתם לזכור</b> — משימות, תזכורות, פגישות, העדפות ועובדות שסיפרתם. עובדות יכולות לכלול מידע אישי רגיש, למשל על בריאות, אם בחרתם לספר.</li>
+        <li><b>פרטים שמילאתם בדף האישי</b>, כמו תאריך לידה ולשון פנייה.</li>
+        <li><b>שיחות טלפון</b>, אם השתמשתם בהן — תמליל השיחה, כדי לשמור מה שסוכם. השיחה עצמה לא מוקלטת.</li>
         <li><b>מידע מגוגל</b> — רק אם חיברתם, ורק לפי ההרשאות שאישרתם (פירוט למטה).</li>
       </ul>
+
+      <h3>קבוצות וואטסאפ</h3>
+      <p>כשמוסיפים את ${ASSISTANT} לקבוצה, היא רואה את רשימת החברים (מספרים ושמות תצוגה) ואת ההודעות שמתייגות אותה. היא שומרת את רשימת החברים כדי לתאם בין כולם. חבר קבוצה שעוד לא כתב לה יכול לקבל ממנה הודעה פרטית אחת על תיאום בקבוצה. אם לא עונים, היא לא כותבת שוב. מי שיוצא מהקבוצה, או לא כותב לה תוך ${R.rosterDays} יום, נמחק מהרשימה.</p>
 
       <h3>מידע מחשבון גוגל</h3>
       <p>החיבור לגוגל הוא בחירה, לא תנאי. כל הרשאה מתבקשת בנפרד ובמסך ההסכמה של גוגל עצמה, ואפשר לאשר חלק ולסרב לשאר.</p>
@@ -307,34 +356,47 @@ function privacyPage() {
       </ul>
 
       <h3>שימוש מוגבל (Limited Use)</h3>
-      <p>השימוש שלנו במידע שמתקבל מממשקי Google, והעברתו, עומדים ב<a href="https://developers.google.com/terms/api-services-user-data-policy">מדיניות נתוני המשתמש של שירותי Google API</a>, לרבות דרישות ה-Limited Use. באופן קונקרטי: המידע מגוגל משמש אך ורק כדי לספק לכם את התכונות שתיארנו למעלה; הוא אינו נמכר; אינו משמש לפרסום; ואינו משמש לאימון מודלים כלליים.</p>
+      <p>השימוש שלנו במידע שמתקבל מממשקי Google, והעברתו, עומדים ב<a href="https://developers.google.com/terms/api-services-user-data-policy">מדיניות נתוני המשתמש של שירותי Google API</a>, לרבות דרישות ה-Limited Use. באופן קונקרטי: המידע מגוגל משמש אך ורק כדי לספק לכם את התכונות שתיארנו למעלה; הוא אינו נמכר; אינו משמש לפרסום; ואינו משמש לאימון מודלים כלליים. כשהוא נחוץ כדי לענות לכם, הוא חלק מהשיחה שנשלחת לספק המודל שמופיע למטה, באותם תנאים.</p>
 
-      <h3>עם מי המידע נחלק</h3>
-      <p>איננו מוכרים מידע ואיננו מעבירים אותו למפרסמים. כדי שהשירות יעבוד, מידע עובר לספקים הבאים ולהם בלבד:</p>
+      <h3>עם מי המידע עובר</h3>
+      <p>אנחנו לא מוכרים מידע ולא משתמשים בו לפרסום. כדי שהשירות יעבוד, מידע עובר לספקים האלה בלבד:</p>
       <ul>
-        <li><b>ספק המודל</b> — טקסט השיחה נשלח למודל שפה דרך OpenRouter (כיום DeepSeek, עם Anthropic כגיבוי) כדי לחבר תשובה.</li>
-        <li><b>וואטסאפ / Meta</b> — הערוץ שדרכו ההודעות מגיעות ונשלחות.</li>
-        <li><b>Twilio</b> — רק אם השתמשתם בשיחה קולית.</li>
-        <li><b>Google</b> — רק עבור השירותים שחיברתם בעצמכם.</li>
+        <li><b>מודל השפה</b> — טקסט השיחה, כולל מידע מהיומן ומאנשי הקשר כשהוא רלוונטי לתשובה, נשלח דרך OpenRouter (ארה״ב) לספקים שמריצים את המודל (Novita, DeepInfra, Together; ארה״ב), ובמקרה תקלה ל־Anthropic (ארה״ב). הגדרנו שהספקים לא ישמרו את המידע ולא יאמנו עליו.</li>
+        <li><b>ElevenLabs</b> — תמלול הודעות קוליות, וקול בשיחות טלפון.</li>
+        <li><b>Deepgram</b> — תמלול בשיחות טלפון.</li>
+        <li><b>Twilio</b> — שיחות טלפון.</li>
+        <li><b>וואטסאפ / Meta</b> — הערוץ שדרכו ההודעות עוברות.</li>
+        <li><b>DigitalOcean</b> — השרת (ארה״ב) והגיבוי (גרמניה).</li>
+        <li><b>Google</b> — רק השירותים שחיברתם בעצמכם.</li>
       </ul>
-      <p>מעבר לכך, מידע נמסר רק אם חובה על פי דין.</p>
+      <p>מעבר לזה, מידע נמסר רק אם החוק מחייב.</p>
 
       <h3>איפה זה נשמר</h3>
-      <p>המידע יושב במסד נתונים על שרת ייעודי בארצות הברית (DigitalOcean). אסימוני הגישה לגוגל מוצפנים במנוחה (AES-256-GCM) והמפתח נשמר מחוץ למסד הנתונים. מתבצע גיבוי יומי שנשמר 14 יום ואז נמחק.</p>
+      <p>המידע נשמר במסד נתונים על שרת ייעודי בארצות הברית (DigitalOcean). גיבוי יומי נשמר על השרת, ועותק שלו בדלי אחסון פרטי של DigitalOcean בפרנקפורט, גרמניה. אסימוני הגישה לגוגל מוצפנים במנוחה (AES-256-GCM) והמפתח נשמר מחוץ למסד הנתונים.</p>
 
-      <h3>מחיקה ושליטה</h3>
+      <h3>כמה זמן זה נשמר</h3>
       <ul>
-        <li><b>ניתוק גוגל</b> — אפשר לבקש מ${ASSISTANT} לנתק כל שירות בכל רגע. אנחנו מוחקים את האסימון אצלנו ומבטלים אותו מול גוגל.</li>
-        <li>אפשר גם לבטל את הגישה ישירות דרך <a href="https://myaccount.google.com/permissions">ההרשאות בחשבון הגוגל שלכם</a>.</li>
-        <li><b>השהיה</b> — אפשר לבקש מ${ASSISTANT} להפסיק ליזום פנייה. זו השהיה הפיכה, לא מחיקה.</li>
-        <li><b>מחיקת הכל</b> — פנייה ל<a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a> תמחק את החשבון ואת כל המידע הקשור אליו.</li>
+        <li>החשבון, המשימות והזיכרון: כל עוד אתם משתמשים בשירות.</li>
+        <li>תוכן השיחה והודעות קוליות: ${R.conversationDays} יום.</li>
+        <li>תמלילי שיחות טלפון: ${R.callTranscriptDays} יום.</li>
+        <li>גיבויים: ${R.localBackupDays} יום בשרת ו־${R.offboxBackupDays} יום בגיבוי החיצוני, ואז הם נמחקים.</li>
+        <li>תיעוד של הסכמות וחיבורים (למשל מתי חיברתם את גוגל) נשמר גם אחרי מחיקה, כדי שנוכל להראות שפעלנו לפי מה שאישרתם.</li>
+      </ul>
+
+      <h3>הזכויות שלכם</h3>
+      <ul>
+        <li><b>לעיין במידע שלכם</b> — הרבה ממנו מופיע בדף האישי, ואת השאר אפשר לבקש.</li>
+        <li><b>לתקן מידע לא נכון</b> — לבקש מ${ASSISTANT}, לשנות בדף האישי או לכתוב לנו.</li>
+        <li><b>למחוק הכל</b> — לכתוב ל־<a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a> או ל${ASSISTANT}. אנחנו מוחקים את החשבון ואת כל המידע הקשור אליו תוך ${R.deletionDays} יום, חוץ מהגיבויים, שנמחקים לבד בתוך ${R.offboxBackupDays} יום, ומתיעוד ההסכמות שלמעלה.</li>
+        <li><b>להשהות</b> — לבקש מ${ASSISTANT} להפסיק לפנות אליכם. זו השהיה הפיכה, לא מחיקה.</li>
+        <li><b>לנתק את גוגל</b> — לבקש מ${ASSISTANT} לנתק כל שירות בכל רגע; אנחנו מוחקים את האסימון אצלנו ומבטלים אותו מול גוגל. אפשר גם לבטל ישירות דרך <a href="https://myaccount.google.com/permissions">ההרשאות בחשבון הגוגל שלכם</a>.</li>
       </ul>
 
       <h3>ילדים</h3>
-      <p>השירות אינו מיועד לגילאים מתחת ל-16.</p>
+      <p>השירות לא מיועד למי שמתחת לגיל 16.</p>
 
       <h3>שינויים</h3>
-      <p>אם המדיניות תשתנה באופן מהותי, התאריך בראש העמוד יתעדכן ונודיע בשיחה.</p>
+      <p>אם המדיניות תשתנה באופן מהותי, התאריך למעלה יתעדכן ו${ASSISTANT} תודיע לכם בשיחה.</p>
     </div>
 
     <div class="foot">
@@ -421,4 +483,7 @@ function termsPage() {
   `);
 }
 
-module.exports = { homePage, privacyPage, termsPage, BRAND, ASSISTANT, CONTACT_EMAIL, UPDATED };
+module.exports = {
+  homePage, privacyPage, termsPage, BRAND, ASSISTANT, CONTACT_EMAIL, UPDATED,
+  PRIVACY_UPDATED, OPERATOR, RETENTION,
+};
