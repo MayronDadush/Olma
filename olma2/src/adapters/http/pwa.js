@@ -47,7 +47,7 @@ function matches(pathname) {
 
 // The ground the app opens on before the page has painted. It is the page's
 // own light `--bg`, so the splash and the first frame are one colour.
-const BACKGROUND = '#F4F3F8';
+const BACKGROUND = '#F0EDE5';
 
 // Name, description and the long-press shortcuts, in the two languages the
 // page itself speaks. The name is the assistant's, never translated beyond
@@ -165,8 +165,10 @@ function offlineHtml(lang) {
   return '<!doctype html><html lang="' + (lang === 'en' ? 'en' : 'he') + '" dir="' + c.dir + '"><head>' +
     '<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">' +
     '<meta name="theme-color" content="' + BACKGROUND + '"><title>' + c.title + '</title><style>' +
-    ':root{--bg:#F4F3F8;--text:#141322;--text-2:#5A5870;--accent:#5B2FD6;--on-accent:#fff;color-scheme:light dark}' +
-    '@media (prefers-color-scheme:dark){:root{--bg:#0C0B11;--text:#F4F3FA;--text-2:#A9A7BD;--accent:#A38CFF;--on-accent:#0C0B11}}' +
+    // The page's own tokens (Cypress + Mustard, 2026-09-28): the one button
+    // is the ACTION colour, as it is on the page.
+    ':root{--bg:#F0EDE5;--text:#0E1F1E;--text-2:#44504E;--action:#F9C23C;--on-action:#004643;color-scheme:light dark}' +
+    '@media (prefers-color-scheme:dark){:root{--bg:#0A1817;--text:#EDE9DF;--text-2:#AEB6B1;--on-action:#0E1F1E}}' +
     'html,body{height:100%;margin:0}' +
     'body{background:var(--bg);color:var(--text);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Arial,sans-serif;' +
     'display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;' +
@@ -175,7 +177,7 @@ function offlineHtml(lang) {
     'h1{font-size:22px;margin:6px 0 0;letter-spacing:-.01em}' +
     'p{margin:0;max-width:30ch;color:var(--text-2)}' +
     'button{margin-top:10px;border:0;border-radius:999px;padding:12px 26px;font:600 16px system-ui,-apple-system,sans-serif;' +
-    'background:var(--accent);color:var(--on-accent);min-height:44px}' +
+    'background:var(--action);color:var(--on-action);min-height:44px}' +
     '</style></head><body>' +
     mark.markSvg({ variant: 'square', id: 'off' }) +
     '<h1>' + c.h + '</h1><p>' + c.p + '</p>' +

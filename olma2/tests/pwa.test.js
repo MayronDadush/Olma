@@ -288,15 +288,15 @@ test('no class the new blocks own is defined twice', () => {
   }
 });
 
-test('the brand layer only moves tokens, and is off unless asked for', () => {
-  const start = PAGE.indexOf(':root[data-brand="allma"]{');
-  assert.ok(start > 0);
-  const end = PAGE.indexOf('[dir="ltr"]{--dirf', start);
-  const layer = PAGE.slice(start, end).replace(/\/\*[\s\S]*?\*\//g, '');
-  for (const line of layer.split('\n').map((l) => l.trim()).filter(Boolean)) {
-    assert.ok(/^(--[a-z0-9-]+:.+;|[}{]|:root\[data-brand="allma"\](\[data-theme="dark"\]|:not\(\[data-theme="light"\]\))?\{|@media \(prefers-color-scheme: dark\)\{)$/.test(line),
-      `the brand layer does more than set a token: ${line}`);
-  }
-  assert.match(PAGE, /localStorage\.getItem\("olma\.brand"\) === "1"/);
-  assert.ok(!/<html[^>]*data-brand/.test(PAGE), 'the page never ships with the brand on');
+test('the phone paints its bars in the same ground as the page, in both schemes', () => {
+  // The brand moved the ground on 2026-09-28 and the two metas stayed on the
+  // old one: a status bar a different colour from the page under it.
+  const light = PAGE.match(/<meta name="theme-color" content="(#[0-9A-Fa-f]{6})" media="\(prefers-color-scheme: light\)">/);
+  const dark = PAGE.match(/<meta name="theme-color" content="(#[0-9A-Fa-f]{6})" media="\(prefers-color-scheme: dark\)">/);
+  assert.ok(light && dark, 'one theme-color per scheme');
+  const rootBg = PAGE.match(/:root\{[^}]*?--bg:(#[0-9A-Fa-f]{6})/);
+  const darkBg = PAGE.match(/:root\[data-theme="dark"\]\{[^}]*?--bg:(#[0-9A-Fa-f]{6})/);
+  assert.equal(light[1].toUpperCase(), rootBg[1].toUpperCase());
+  assert.equal(dark[1].toUpperCase(), darkBg[1].toUpperCase());
+  assert.equal(pwa.BACKGROUND.toUpperCase(), rootBg[1].toUpperCase(), 'the splash is the same ground');
 });

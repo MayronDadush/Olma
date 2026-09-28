@@ -15,11 +15,13 @@
 // on ink", the day system. Changing the mark is this file and nothing else;
 // the icons are rendered from it on first request, never committed as PNGs.
 
-// Coral on ink — the day palette (brand kit, 2026-09-27).
+// Cypress + Mustard (the owner, 2026-09-28), the same four colours the
+// dashboard's own mark reads (--logo-d / --logo-l / --logo-lens). The keys
+// kept their old names: `coral` is the lens, whatever colour the lens is.
 const PALETTE = Object.freeze({
-  ink: '#221C3A',
-  paper: '#F7F1E6',
-  coral: '#FF8A6B',
+  ink: '#004643',
+  paper: '#F0EDE5',
+  coral: '#F9C23C',
 });
 
 // `id` keeps clip-path ids unique when several copies share a document.

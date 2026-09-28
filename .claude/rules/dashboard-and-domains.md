@@ -59,7 +59,7 @@ title means this file. Grep the title, not the filename.
   session it opens stays in Safari. The installed app is signed into from
   inside it, with eight digits Olma sends when asked "קוד כניסה"
   (`dashboard-auth.createCode`/`redeemCode`, a `magic_links` row with
-  `target = 'code'`, migration 095; POST `/me/code`, guesses capped per
+  `target = 'code'`, migration 096; POST `/me/code`, guesses capped per
   address and in total). **A code is not a link and a link is not a code**:
   a code never counts against `MAX_LIVE_LINKS`, `peekLink`/`redeemLink` never
   find one, and the code message goes out in the language ON FILE, because a
