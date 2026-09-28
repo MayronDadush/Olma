@@ -53,18 +53,32 @@ const TEMPLATES = [
     // their own agent's first message carries it (jobs/intake.js,
     // `welcome_followup`). The previous copy is kept in
     // onboarding.PREVIOUS_OPENINGS so a greeter still saying it is recognised.
-    text: 'היי, אני עולמה 👋\n'
+    //
+    // Revision 4 (compliance review, 2026-09-28) adds two things and moves
+    // nothing: "AI" on the greeting line, because a woman's name answering on
+    // WhatsApp reads as a person (EU AI Act art. 50(1), the Privacy Protection
+    // Authority's draft AI guidance), and the policy link as the last line,
+    // because this is the one message every person reads and the notice the
+    // Privacy Protection Law s.11 asks for was reaching nobody. The policy is
+    // a fixed public page, not their page, so the reason above still holds.
+    // The SECOND line is unchanged on purpose: intake.saidTheOpening
+    // recognises the copy by it.
+    text: 'היי, אני עולמה 👋 עוזרת AI אישית בוואטסאפ\n'
       + '\n'
-      + 'אני עוזרת עם משימות, תזכורות ותיאומים — אפשר לכתוב, להקליט או לשלוח הכל בבלגן ☺️',
+      + 'אני עוזרת עם משימות, תזכורות ותיאומים — אפשר לכתוב, להקליט או לשלוח הכל בבלגן ☺️\n'
+      + '\n'
+      + 'מה אני שומרת ואיך מוחקים: https://allma.world/privacy',
   },
   {
     key: 'opening_en', audience: 'private', label: 'הודעת הפתיחה', help: '',
     vars: {}, required: [],
     sample: {},
-    text: "Hey, I'm Allma \u{1F44B}\n"
+    text: "Hey, I'm Allma \u{1F44B} a personal AI assistant on WhatsApp\n"
       + '\n'
       + 'I help with tasks, reminders and scheduling — text me, send a voice note, '
-      + 'or just dump it all on me ☺️',
+      + 'or just dump it all on me ☺️\n'
+      + '\n'
+      + 'What I keep and how to delete it: https://allma.world/privacy',
   },
   // The whole answer to "שלח לי קישור" (domain/link-request.js): said by code,
   // with no model turn, the moment a message asks for their page and nothing
