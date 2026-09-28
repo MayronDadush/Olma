@@ -74,6 +74,13 @@ const DEFAULTS = {
   // only the test rooms are experimented on, and a relay is the first thing a
   // room hears that is somebody's own words rather than the owner's copy.
   group_relay_rooms: '',
+  // The room-coordination moves the simulator chose (domain/coordination-policy,
+  // owner 2026-09-28): a private nudge, the offer to drop it, and the quiet
+  // close after it. `mode` 'off' | 'shadow' (decide and record as
+  // `coordination.policy_shadow`, send nothing) | 'live'; `rooms` is group ids
+  // or jids, or `allRooms: true`. Off by default and earned per room, shadow
+  // first: the nudge's cost to people has never been measured.
+  coordination_policy: { mode: 'off', rooms: [] },
   // channels/openclaw.js digest branch: how many items make the morning
   // picture a wall of text worth drawing instead of listing. The number is a
   // flag because it is a taste call about a message people read every day,
