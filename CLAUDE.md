@@ -244,6 +244,7 @@ Loads when you **Read** a file under `src/domain/reminders.js`, `src/domain/task
 - **A chase is the one arming whose SHAPE is news, whoever picked the hour** — a 👍 cannot carry a cadence, and a line that says only "every day" about something with an end is a promise to keep going for ever.
 - **The second call echoes the moment already armed, and that is not an hour anybody named** — a chase replaces every automatic row in its span, and its result says which branch it took
 - **Whether a message ASKED for a chase is read by code, and the model is only told what the server will do** — the gateway hook sends a deadline KIND, `add_task` on that turn is due that day with `nudge` on, and it needs a gateway restart to go live
+- **"תזכיר לי X" with no when at all is a WEEKLY chase, armed by code** — the hook's `remindWithoutTime`, `reminders.startWeeklyNudge`: their morning hour, a week out, eight weeks, closed by "done"
 
 ### People, silence, and data you must not get wrong
 

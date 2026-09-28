@@ -319,6 +319,11 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
         // "מה פתוח לי?": the turn is told about their list, not their day —
         // domain/turn.advise leaves the today block out (see the hook).
         openList: !rec.skipped && params.openList === true,
+        // "תזכיר לי X" with no when at all: the moment it was HEARD, so the
+        // add_task this turn makes arms a weekly nudge on it
+        // (reminders.startWeeklyNudge) — and only inside the same window a
+        // chase gets, never on a turn that runs on long after the message.
+        remindAsk: !rec.skipped && params.remindAsk === true ? clock() : null,
         marked: new Set(), contextSent: false,
       };
       if (!rec.skipped && messageId) {
@@ -724,6 +729,7 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
         chaseUntil: pre && pre.chase ? pre.chase.day : null,
         chaseNamedHour: Boolean(pre && pre.chase && pre.chase.namedHour),
         openList: Boolean(pre && pre.openList),
+        remindAsk: Boolean(pre && pre.remindAsk),
       });
       if (pre) { pre.contextSent = true; eyesRunning(agentId, pre.messageId); }
       out = {
@@ -861,6 +867,7 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
           turn.stoppedReminders = pre.stoppedReminders || 0;
           turn.chase = pre.chase || null; turn.chaseUsed = false;
           turn.openList = Boolean(pre.openList);
+          turn.remindAsk = pre.remindAsk || null; turn.remindAskUsed = false;
           turn.openedByGateway = true;
         } else if (!turn.opened) {
           // No gateway open on file and this connection has not served a turn

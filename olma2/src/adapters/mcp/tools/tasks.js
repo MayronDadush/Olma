@@ -48,6 +48,18 @@ async function withDumpLink(client, user, res, { parentId } = {}) {
 // null there for the same reason).
 const CHASE_WORTH_ASKING_MS = 2 * 86400_000;
 
+// The gateway heard "תזכיר לי X" with no when (brokerd stamps the moment it
+// arrived). Spent once, and dead after the same fifteen minutes a chase gets
+// (chase-deadline.TURN_CHASE_TTL_MS): the shim keeps one turn object for
+// hours, and a verdict nobody used must not wait there for an unrelated save.
+const REMIND_ASK_TTL_MS = 15 * 60_000;
+function remindAskPending(ctx) {
+  const turn = ctx && ctx.turn;
+  if (!turn || !turn.remindAsk || turn.remindAskUsed) return false;
+  const now = ctx.now ? ctx.now() : Date.now();
+  return Number.isFinite(turn.remindAsk) && now - turn.remindAsk <= REMIND_ASK_TTL_MS;
+}
+
 function chaseWorthAsking(dueAt, reminder) {
   const due = new Date(dueAt).getTime();
   const at = new Date(reminder && reminder.remind_at).getTime();
@@ -159,7 +171,14 @@ function taskHints(res, user = {}) {
     // yet been told is in place, and a 👍 cannot carry a cadence. It says the
     // first hour and the last DAY and nothing in between, because the days
     // between are what the messages themselves will say.
-    hints.reminders = d.chase
+    hints.reminders = d.chase && d.chase.every === 'weekly'
+      // "תזכיר לי X" with no when: the shape is the whole news, and the one
+      // line must not sound like "every day" or like a date they gave.
+      ? `They named no time, so a weekly nudge is armed: first${at}, then once a week at that hour `
+        + 'until they say it is done. Say that shape back in ONE short line — once a week, in the '
+        + 'morning, until done — never "every day" and never a list of dates. If they would rather a '
+        + 'specific time, set_task_reminder changes it.'
+      : d.chase
       ? `A daily chase is armed: first${at}, then every day until ${String(d.chase.until).slice(0, 10)}, `
         + 'and it stops the moment they say it is done. Say that shape back in ONE short line — it is '
         + 'what they asked for and the 👍 cannot carry it — and never list the days. Each message after '
@@ -325,11 +344,20 @@ module.exports = [
         if (clash) return clash;
       }
 
+      // "תזכיר לי X" and no when at all (the gateway hook's remindWithoutTime):
+      // a to-do that comes out of this call with no moment is nudged once a
+      // week at their morning hour until it is done (owner, 2026-09-28). Dov
+      // said three of these in one afternoon and each was saved with nothing
+      // that would ever reach him. A moment the model found anyway wins —
+      // the hook refuses anything with a when in it, so that is rare — and a
+      // chase on the same turn is the stronger reading of the same message.
+      const weekly = !chase && !dueAt && !remindAt && a.nudge !== true && remindAskPending(ctx);
       const res = await tasks.addTask(client, user.id, {
         title: a.title, kind: a.kind, location: a.location, category: a.category, dueAt, endsAt,
-        remindAt, nudge: Boolean(chase) || a.nudge === true, parentId: a.parent_task_id,
+        remindAt, nudge: Boolean(chase) || a.nudge === true, weekly, parentId: a.parent_task_id,
       });
       if (chase && res.ok) ctx.turn.chaseUsed = true;
+      if (weekly && res.ok) ctx.turn.remindAskUsed = true;
       return taskHints(res, user);
     }),
   tool('add_tasks_bulk', 'Save a whole dump in ONE call (max 60 items). Never loop add_task. Also the way to SPLIT a goal into its parts: pass parent_task_id and the parts become subtasks in the same call. Timed items get their reminders automatically; when the reply carries hints, follow them. Any due_at MUST carry a UTC offset (2026-08-20T09:00:00+03:00), converted from their own local time (USER.md); never bare digits with a Z.',
