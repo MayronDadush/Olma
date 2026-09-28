@@ -460,6 +460,28 @@ test('the room hears again when the time it was told about left the table', () =
   assert.equal(groupVoice.decideGroupLine(justNow, { ...said, saidBaseSlot: 'שבת 16:00' }).kind, 'none',
     'inside the settle the room hears nothing about the table at all');
 
+  // The same time, put back in other words, is still on the table (migration
+  // 097). By the words alone "שבת ב-16:00" is not "שבת 16:00", and the room
+  // would be told the time it can still see is gone.
+  const SIXTEEN = new Date(NOW + 2 * 86400e3).toISOString();
+  const SEVENTEEN = new Date(NOW + 2 * 86400e3 + 3600e3).toISOString();
+  const at = (id, slot, startsAt, yes, missing) => ({ ...opt(id, slot, yes, missing), startsAt });
+  const reworded = co([
+    at(3, 'שבת ב-16:00', SIXTEEN, [p(1)], [p(2), p(3)]),
+    at(2, 'שבת 17:00', SEVENTEEN, [p(1), p(2)], [p(3)]),
+  ]);
+  const byMoment = { ...said, saidBaseSlot: 'שבת 16:00', saidBaseStartAt: SIXTEEN };
+  assert.notEqual(groupVoice.decideGroupLine(reworded, byMoment).kind, 'moved',
+    'the same moment in other words has not left the table');
+  assert.equal(groupVoice.decideGroupLine(reworded, { ...said, saidBaseSlot: 'שבת 16:00' }).kind, 'moved',
+    'without the moment (a row from before 097) the words are all there is, as before');
+  // …and a moment that really is gone is still said, whatever the words.
+  const reallyGone = co([at(2, 'שבת 17:00', SEVENTEEN, [p(1), p(2)], [p(3)])]);
+  const movedByMoment = groupVoice.decideGroupLine(reallyGone, byMoment);
+  assert.equal(movedByMoment.kind, 'moved');
+  assert.equal(movedByMoment.was, 'שבת 16:00', 'said in the words the room heard');
+  assert.equal(movedByMoment.startsAt, SEVENTEEN, 'and the line carries the new moment for the stamp');
+
   // And the first base line is unchanged — a room that has never been told a
   // time is not waiting out anything.
   assert.equal(groupVoice.decideGroupLine(gone, { saidStarted: true, nowMs: NOW }).kind, 'base');
@@ -492,8 +514,10 @@ test('the sweep says the time moved, once, and then has nothing more to say', as
   await pass(sent, null, mine);
   assert.match(sent[1].body, /יש כיוון: \*שבת 16:00\*/, 'the room is told a time');
   const slotAfterBase = await db.pool.query(
-    `SELECT group_base_slot FROM meetings WHERE id = $1`, [meetingId]);
+    `SELECT group_base_slot, group_base_start_at FROM meetings WHERE id = $1`, [meetingId]);
   assert.equal(slotAfterBase.rows[0].group_base_slot, 'שבת 16:00', 'and which time it was told');
+  assert.equal(new Date(slotAfterBase.rows[0].group_base_start_at).getTime(), new Date(at).getTime(),
+    'and the moment, which is what says whether it is still on the table');
 
   // She takes it off and puts another one on — the live sequence exactly.
   const later = slotStart('שבת 17:00', { hourUtc: 14 });
@@ -517,8 +541,10 @@ test('the sweep says the time moved, once, and then has nothing more to say', as
   assert.equal(sent.length, 3, JSON.stringify(sent));
   assert.match(sent[2].body, /\*שבת 16:00\* כבר לא על השולחן/);
   assert.match(sent[2].body, /יש כיוון: \*שבת 17:00\*/);
-  const after = await db.pool.query(`SELECT group_base_slot FROM meetings WHERE id = $1`, [meetingId]);
+  const after = await db.pool.query(
+    `SELECT group_base_slot, group_base_start_at FROM meetings WHERE id = $1`, [meetingId]);
   assert.equal(after.rows[0].group_base_slot, 'שבת 17:00');
+  assert.equal(new Date(after.rows[0].group_base_start_at).getTime(), new Date(later).getTime());
 
   await pass(sent, DAY_AT(30), mine);
   assert.equal(sent.length, 3, 'and not again for the same change');
