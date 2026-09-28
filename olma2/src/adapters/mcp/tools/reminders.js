@@ -24,6 +24,15 @@ function chaseArmedHint(reminder, timezone) {
     + 'Say that shape back in ONE short line and never list the days.';
 }
 
+// A repeat that ENDS is news its 👍 cannot carry — "כל ערב" alone reads as for
+// ever — so the result names the last day, in their clock.
+function endsHint(reminder, timezone) {
+  const u = partsInZone(timezone || 'UTC', new Date(reminder.repeat_until));
+  const pad = (n) => String(n).padStart(2, '0');
+  return `This repeat ENDS: its last day is ${u.y}-${pad(u.m)}-${pad(u.d)} (their time), the end their own words `
+    + 'named, and it stops then or when they say it is done. Say that end in ONE short line; never "every day" alone.';
+}
+
 function withHint(res, chase) {
   return { ...res, data: { ...res.data, hints: { ...((res.data && res.data.hints) || {}), chase } } };
 }
@@ -83,6 +92,17 @@ module.exports = [
         const one = await reminders.setReminder(client, user.id, a.task_id, a.remind_at, a.repeat_rule,
           { nudge: true });
         return one.ok ? withHint(one, NOT_A_CHASE) : one;
+      }
+      // A repeat whose END they said in the same words ("כל ערב בשבוע הקרוב")
+      // stops there (domain/chase-deadline.boundedByWords). The cadence and the
+      // hour stay exactly what the model passed; only where it stops is added.
+      const ends = reminders.normalizeRepeatRule(a.repeat_rule) ? chaseDeadline.boundedByWords(a.when_said) : null;
+      const endDay = ends && chaseDeadline.resolve(ends,
+        { now: new Date(ctx && ctx.now ? ctx.now() : Date.now()), timezone: user.timezone });
+      if (endDay) {
+        const bounded = await reminders.setReminder(client, user.id, a.task_id, a.remind_at, a.repeat_rule,
+          { nudge: a.nudge === true, until: reminders.chaseUntil(endDay, user.timezone) });
+        return bounded.ok ? withHint(bounded, endsHint(bounded.data.reminder, user.timezone)) : bounded;
       }
       return reminders.setReminder(client, user.id, a.task_id, a.remind_at, a.repeat_rule,
         { nudge: a.nudge === true });
