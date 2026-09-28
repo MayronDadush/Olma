@@ -375,12 +375,18 @@ async function statusOf(client, group, meeting) {
   // a removal (`meeting-options.unheardRemovals`): sent, and not held. The kind
   // filter is not decoration — `meetingId` is on meeting payloads only, and the
   // cast would throw on the first row that put something else under that name.
+  // WHEN it first reached them rides along, because the room's chase is
+  // measured from the last invite that landed and not from the start
+  // (`group-voice.chaseDueAt`): coordination 57 was chased at 09:00:08 and the
+  // invites it was chasing reached people at 09:02 and 09:03.
   const { rows: heardRows } = await client.query(
-    `SELECT DISTINCT user_id FROM outbox
+    `SELECT user_id, min(sent_at) AS first_heard_at FROM outbox
       WHERE kind LIKE 'meeting\\_%' ESCAPE '\\'
         AND sent_at IS NOT NULL AND hold_reason IS NULL
-        AND (payload->>'meetingId')::bigint = $1`, [meeting.id]);
+        AND (payload->>'meetingId')::bigint = $1
+      GROUP BY user_id`, [meeting.id]);
   const heard = new Set(heardRows.map((r) => Number(r.user_id)));
+  const firstHeardAt = new Map(heardRows.map((r) => [Number(r.user_id), r.first_heard_at]));
 
   // `asked` is the difference between somebody ignoring her and somebody she
   // never got a word to: it is what the room may say out loud about a person
@@ -527,6 +533,11 @@ async function statusOf(client, group, meeting) {
       // `participants - silent.length` — and each person carries `asked`, which
       // is what decides whether they may be NAMED.
       silent: active.filter((uid) => !answeredSomething.has(uid)).map(who),
+      // The moment the LAST person still in it was first reached, or null when
+      // nobody has been. The chase waits an hour from here, so it never names
+      // one person while the rest are still being asked.
+      lastAskedAt: active.map((uid) => firstHeardAt.get(uid)).filter(Boolean)
+        .map((t) => new Date(t).getTime()).reduce((a, b) => Math.max(a, b), 0) || null,
       optedOut,
       // Whose clocks this coordination is heard on: the zones of the people it
       // is asking, and the room's own. Somebody who never wrote to her has no

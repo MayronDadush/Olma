@@ -362,7 +362,7 @@ Loads when you **Read** a file under `src/domain/group-connections.js`, `src/dom
 - **The first thing a room hears about its own coordination is that she has STARTED, and it counts people rather than naming them** — and since 2026-09-25 it TAGS who has not written, and `admitLateMembers` lets them in once they do
 - **Every line a room hears is said once, except the TABLE moving, which is news every time** — a watermark rather than a flag, anchored on the base line, and it says the shape and never an answer.
 - **…and it waits a quarter of an hour, so a burst of changes is ONE sentence** — the same fifteen minutes as the private side, measured from the FIRST change the room has not heard about, and it gates both lines about the table.
-- **The room is chased an HOUR after she starts, not half way to the thing** — half the distance put one room at 05:11 the next morning; who may be NAMED is unchanged.
+- **The room is chased an HOUR after the last invite REACHED anybody, not half way to the thing** — half the distance put one room at 05:11 the next morning, and counting from the start chased one before its own invites landed; who may be NAMED is unchanged.
 - **The "סגור" line names who can make it, a calendar line is said only for a SHARED event, and a base line is never said to nobody**
 - **A time the room was TOLD about and that has since left the table is said again; a time merely overtaken is not**
 - **The place is the room's own words, asked for only when nobody said one, and it rides the confirmation onto the calendar event** — and a name that says it happens on Zoom has said one (`online-place.onlinePlace`, a closed list, code only)

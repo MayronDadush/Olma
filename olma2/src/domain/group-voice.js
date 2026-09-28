@@ -316,7 +316,17 @@ function decideLine(co, {
   // Somebody who said no to every option has answered — chasing them would be
   // asking them to change their mind in front of the room.
   const silent = (co.silent || []).filter(said).map((p) => p.phone).filter(Boolean);
-  if (!saidChase && silent.length && nowMs >= chaseDueAt(startedAtMs, earliestStart(co))) {
+  //
+  // The hour is counted from the LAST invite that reached anybody, never from
+  // the start alone. Coordination 57 opened at 21:00; every invite but the
+  // asker's waited for the morning, and the chase — due at 03:00, held for the
+  // room's night — went out at 09:00:08, two minutes before those invites did,
+  // and tagged the one person it could: the man who had asked for the game and
+  // answered it in the room. Measured from 09:03 it is due at 10:03, by which
+  // time he had answered on the table and the chase named the three who had
+  // just been asked.
+  const askedFromMs = Math.max(startedAtMs || 0, co.lastAskedAt ? new Date(co.lastAskedAt).getTime() : 0);
+  if (!saidChase && silent.length && nowMs >= chaseDueAt(askedFromMs, earliestStart(co))) {
     return { kind: 'chase', missing: silent.slice(0, MAX_TAGS) };
   }
 
