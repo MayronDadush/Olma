@@ -230,11 +230,13 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
         // migration 056), so a NULL here means "she was shown nothing from
         // them", never "they said nothing".
         //
-        // The one word said BEFORE it that counts is the one that ASKED for it
-        // (owner, 2026-09-26, fix 5): the requester's tag is stamped seconds
-        // before the tool creates the meeting, so "after it started" held the
-        // invite of the one person certainly awake until morning. Only the
-        // initiator, and only inside the same fifteen minutes the gate grants.
+        // A word said up to fifteen minutes BEFORE it counts too (owner,
+        // 2026-09-27: "מי שכן כתב בזמן הקרוב הודעות בקבוצה או בפרטי אז עולמה
+        // יכולה להתחיל איתו שיחה כי היא יודעת שהוא ער"). The asker's own tag is
+        // stamped seconds before the tool creates the meeting, so "after it
+        // started" held the invite of the one person certainly awake until
+        // morning. The gate still measures its fifteen minutes from the WORD,
+        // so this is "wrote recently", the same test a DM passes.
         const meetingId = Number(row.payload && row.payload.meetingId) || 0;
         let groupWroteAt = null;
         if (meetingId) {
@@ -245,8 +247,7 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
                  ON m.group_id = mt.group_id AND m.user_id = $2 AND m.left_at IS NULL
               WHERE mt.id = $1 AND mt.group_id IS NOT NULL
                 AND m.last_wrote_at IS NOT NULL
-                AND (m.last_wrote_at >= mt.created_at
-                     OR (mt.initiator_id = $2 AND m.last_wrote_at >= mt.created_at - interval '15 minutes'))`,
+                AND m.last_wrote_at >= mt.created_at - interval '15 minutes'`,
             [meetingId, row.user_id]);
           groupWroteAt = wrote[0] ? wrote[0].at : null;
         }
