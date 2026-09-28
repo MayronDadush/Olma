@@ -426,7 +426,7 @@ async function checkBootstrapBudget(client, cfg) {
   };
 }
 
-const CARRYOVER_HEADING = '## מה שכבר שיתפו';
+const CARRYOVER_HEADING = require('../domain/carryover-heading').MATCH;
 const QUOTED_RE = /<<<([\s\S]*?)>>>/;
 const norm = (s) => String(s).replace(/\s+/g, ' ').trim();
 
