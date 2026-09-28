@@ -217,6 +217,7 @@ Loads when you **Read** a file under `src/domain/reminders.js`, `src/domain/task
 - **A sixth option is refused to EVERYBODY, the initiator included, and the refusal carries the five.**
 - **…and the mirror is a CONVENIENCE, never a clock — a time whose moment has passed leaves the TABLE, and only a coordination that has just lost one is asked whether it is empty.**
 - **A constraint that rules out a time ON the table is an ANSWER, and the tool that records it is the one that declines it** — and it earns no 👍
+- **An answer given BEFORE a time existed answers it when it arrives — yes and no — and the person is told privately** (`standing-answers`, windows on a constraint)
 - **A time taken OFF that table is never a message of its own — it rides the next thing each person hears about that coordination.**
 - **A time ADDED to it rides the same thing, as long as that thing has not gone out yet** — four messages in sixty-two seconds is what queueing beside it looks like
 - **A negotiation message WAITS a quarter of an hour behind the last one that reached that person, and everything meanwhile folds into it** — the fold already existed and `urgent` never let it run; a RESULT never waits.
@@ -362,7 +363,8 @@ Loads when you **Read** a file under `src/domain/group-connections.js`, `src/dom
 - **The first thing a room hears about its own coordination is that she has STARTED, and it counts people rather than naming them** — and since 2026-09-25 it TAGS who has not written, and `admitLateMembers` lets them in once they do
 - **Every line a room hears is said once, except the TABLE moving, which is news every time** — a watermark rather than a flag, anchored on the base line, and it says the shape and never an answer.
 - **…and it waits a quarter of an hour, so a burst of changes is ONE sentence** — the same fifteen minutes as the private side, measured from the FIRST change the room has not heard about, and it gates both lines about the table.
-- **The room is chased an HOUR after she starts, not half way to the thing** — half the distance put one room at 05:11 the next morning; who may be NAMED is unchanged.
+- **A table of two or more times with no direction is LAID once — the room hears which times are on it** — one time with its proposer's yes is still not news.
+- **The room is chased an HOUR after the last invite REACHED anybody, not half way to the thing** — half the distance put one room at 05:11 the next morning, and counting from the start chased one before its own invites landed; who may be NAMED is unchanged.
 - **The "סגור" line names who can make it, a calendar line is said only for a SHARED event, and a base line is never said to nobody**
 - **A time the room was TOLD about and that has since left the table is said again; a time merely overtaken is not**
 - **The place is the room's own words, asked for only when nobody said one, and it rides the confirmation onto the calendar event** — and a name that says it happens on Zoom has said one (`online-place.onlinePlace`, a closed list, code only)

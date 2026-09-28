@@ -681,7 +681,7 @@ async function sweepGroupVoice(client, deps) {
       const column = {
         started: 'group_started_at',
         base: 'group_base_at', moved: 'group_base_at', chase: 'group_chase_at',
-        done: 'group_done_at', table: 'group_table_at',
+        done: 'group_done_at', table: 'group_table_at', laid: 'group_table_at',
         calendar: 'group_calendar_at', dayof: 'group_dayof_at', soon: 'group_hour_at', time: 'group_time_at',
         reopened: 'group_reopened_at',
       }[line.kind];

@@ -58,6 +58,9 @@ never trust a dated narrative for something you are about to act on.
 - [Two paragraphs where two sentences would do (fixed 2026-09-20)](#two-paragraphs-where-two-sentences-would-do-fixed-2026-09-20)
 - [The link came back on every coordination message (2026-09-24)](#the-link-came-back-on-every-coordination-message-2026-09-24)
 - [The slot that was already closed (fixed 2026-09-20)](#the-slot-that-was-already-closed-fixed-2026-09-20)
+- [The chase that beat its own invites (fixed 2026-09-28)](#the-chase-that-beat-its-own-invites-fixed-2026-09-28)
+- [The room never heard the times (fixed 2026-09-28)](#the-room-never-heard-the-times-fixed-2026-09-28)
+- [Answered before the question existed (fixed 2026-09-28)](#answered-before-the-question-existed-fixed-2026-09-28)
 - [The room asked five and reached four (fixed 2026-09-22)](#the-room-asked-five-and-reached-four-fixed-2026-09-22)
 - [The pause the room's invite walked through (fixed 2026-09-27)](#the-pause-the-rooms-invite-walked-through-fixed-2026-09-27)
 - [The room could count, and she could not (changed 2026-09-28)](#the-room-could-count-and-she-could-not-changed-2026-09-28)
@@ -2221,6 +2224,77 @@ shows the average length per window.
 **Not done, and named.** The poker example wants a place ("אצל מירון") —
 that is item F of the same plan, a `meetings.location` column, and lands
 separately.
+### The chase that beat its own invites (fixed 2026-09-28)
+
+Padel Gang's second coordination (meeting 57) was opened by מירון at 21:00 on a
+Saturday. The room heard she had started; his own invite went out at once, and
+every other invite was held for the night, as the rule says. He then answered in
+the room — "אני יכול כל יום השבוע מ18 בערב צפונה" — before any time existed to
+answer on.
+
+The chase was due six hours after the start (no dated option yet), which was
+03:00, and the room's night held it to the morning. It went out at 09:00:08.
+The invites it was chasing were released at 09:00:10 and reached people at
+09:02 and 09:03. So when the chase decided whom it could name, the only person
+who had been reached was מירון, and the room read "עוד לא שמעתי מ@M&M — תגידו
+לי בפרטי מתי אתם יכולים ואני סוגרת את זה" about the man who had asked for the
+game. It was the coordination's one chase, stamped and spent; nothing else was
+said to the room about it for the next day and a half.
+
+Every piece was correct on its own terms: the invites waited for the morning,
+the chase waited for the room's morning, and `asked` kept the three unreached
+people out of the tag. What was wrong was the clock the chase measured from —
+the START, which says nothing about whether anybody has had a chance to answer.
+`statusOf` now returns `lastAskedAt`, the newest first arrival of a `meeting_*`
+row among the people still in it, and the hour runs from there: 10:03 for
+meeting 57, by which time מירון had put three times on the table with his yes,
+and the chase would have named the three who had just been asked.
+
+### The room never heard the times (fixed 2026-09-28)
+
+Padel Gang, meeting 57. By 09:39 on Sunday the table held four times — Yuval's
+Tuesday 19:00 with his yes, and מירון's Sunday, Monday and Thursday 19:00 with
+his — and the room had been told nothing about any of them. Its whole picture
+of the coordination was מירון's own "אני יכול כל יום השבוע מ18" and her reply
+"נסגור ערב מדויק עם כולם ואחזור לכאן", and a day and a half later that was
+still all it had.
+
+Two lines could have spoken and each was waiting for the other. The base line
+("יש כיוון") needs a time with a direction — two yeses, or a game's minimum —
+and none had more than one. The table line ("השולחן זז") is a watermark
+anchored on the base line, because the first time somebody puts a time up the
+table has not moved, it has been laid. Both rules were right about what they
+were written for; neither was written for several times, each agreed to only by
+whoever proposed it, in a room that had to choose between them.
+
+The fix is a third sentence rather than a loosening of either: `laid`, said
+once, a quarter of an hour after the first time went on, only when there are
+two or more. A single time with its proposer's yes stays silent — the owner's
+"one person agreeing with themselves is not news" is pinned by three tests and
+still holds. The stamp is `group_table_at`, so from then on the table line has
+a watermark to measure against and every later change is news the way it
+already was.
+
+### Answered before the question existed (fixed 2026-09-28)
+
+Padel Gang, meeting 57. גיא wrote "לא יכול השבוע — טס לחול" at 09:15 and it
+was recorded as a constraint; the first time went on the table eight minutes
+later. `record_meeting_constraint` declines the times ON the table that a
+constraint rules out, and there were none, so it declined nothing — and every
+time that followed was asked of him as if he had said nothing, while the room
+counted him as not having answered. מירון had said "אני יכול כל יום השבוע מ18
+בערב" in the room the night before, and not one of the evening times put up
+after it carried his yes.
+
+Neither was a model fault. The words were kept exactly; there was simply no
+shape in which "not this week" or "any evening" could answer a time that did
+not exist yet. The fix gives the words that shape: a window (answer, from, to,
+optional hours and days) beside the text, applied whenever a time goes on the
+table. The owner chose both directions — a yes as well as a no — and asked that
+whoever is answered this way be told privately, which is what keeps an
+automatic yes honest: it arrives with the sentence it came from and one word
+undoes it.
+
 ### The room asked five and reached four (fixed 2026-09-22)
 
 Padel Gang's first coordination (meeting 40) was opened with five connected
