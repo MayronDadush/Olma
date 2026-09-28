@@ -432,3 +432,18 @@ test('the home band carries one day/night button, on the home tab only, sharing 
     assert.equal(page.split(`"${k}":`).length - 1, 2, `${k} is not in both languages`);
   }
 });
+
+// While she is paused the page stops (the owner, 2026-09-29): everything is
+// blurred and inert, and bringing her back is the one thing left to press.
+test('a paused page is blurred and inert, and the only control is bringing her back', () => {
+  assert.ok(/html\[data-paused\] \.app,html\[data-paused\] \.tabbar\{filter:blur\([^)]+\)[^}]*pointer-events:none/.test(page),
+    'the page behind a pause is still pressable');
+  assert.ok(page.includes('$(".app").inert = paused; $(".tabbar").inert = paused;'),
+    'a keyboard can still walk into the paused page');
+  const gate = page.slice(page.indexOf('<div class="pausegate"'), page.indexOf('<!-- ══════════════  the first screen'));
+  assert.equal((gate.match(/<button/g) || []).length, 1, 'the pause screen offers more than one thing');
+  assert.ok(/\$\("#pgGo"\)\.addEventListener\("click", function\(\)\{ setPausedTo\(false\); \}\)/.test(page));
+  for (const k of ['pg.go', 'pg.body']) {
+    assert.equal(page.split(`"${k}":`).length - 1, 2, `${k} is not in both languages`);
+  }
+});
