@@ -385,6 +385,7 @@ Loads when you **Read** a file under `src/domain/group-connections.js`, `src/dom
 - **The private side knows every room a person shares with Olma, off the ROSTER, and says the list is complete** (`groups.roomsOf` → the turn context's `rooms` and `list_my_meetings`)
 - **A room member who never wrote hears about a coordination ONCE per room, privately, in the owner's words, and is never counted in** (`group-meetings.coldInvite`, flag `group_cold_invite`; their reply reaches the greeter and `admitLateMembers` does the rest)
 - **A tag from somebody the gateway would have dropped is answered: a pause their next word would end is ENDED by it, and a roster row gets the fixed line on every tag** (`syncSenderGate` → `pause.endsOnWrite`/`resumeOnWrite`; `reason: 'pending_sender'` is the only addressed claim)
+- **A quiet room coordination is offered a way out ONCE and closes quietly unanswered, and somebody who answered nothing is nudged privately ONCE — only in rooms the flag names, shadow first** (`coordination-policy.nextMoves`, flag `coordination_policy`)
 
 ### Testing
 

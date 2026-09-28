@@ -226,6 +226,9 @@ async function fanout(client, userIds, kind, payload, { urgency = 'urgent', key 
 // way the dashboard cancels a message: UPDATE with a hold_reason, never
 // DELETE, so the row still tells the story and nothing re-creates it.
 async function supersedeQueuedMeetingRows(client, meetingId, kinds) {
+  // A nudge (coordination-policy) asks the same question as the invite and the
+  // proposal it follows, so whatever makes those moot makes it moot too.
+  if (kinds.includes('meeting_slot_proposed') || kinds.includes('meeting_invite')) kinds = [...kinds, 'meeting_nudge'];
   await client.query(
     `UPDATE outbox SET sent_at = now(), hold_reason = 'superseded'
       WHERE sent_at IS NULL AND kind = ANY($2)

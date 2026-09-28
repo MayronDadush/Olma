@@ -966,3 +966,34 @@ have already had to be argued for.
   which with pending rows live counts people who can never be reached
   (`incidents.md`, "The invite that would have counted people it could not
   reach").
+
+- **A room coordination that has gone quiet is offered a way out ONCE, and
+  closes quietly if nobody takes it. Somebody who answered nothing is nudged
+  privately ONCE, and only in rooms the flag names.**
+  (`domain/coordination-policy.nextMoves`, `jobs/coordination-moves.run`,
+  flag `coordination_policy` `{mode: off|shadow|live, rooms}`, owner
+  2026-09-28.) The simulator chose it: PR #571, 22% confirmed today against
+  35% with the offer and 44% with a nudge too.
+  - **The offer** (`group_coord_drop_offer`) comes only after the chase, and
+    only once `dropAfterQuietH` passes with no answer, no table change and no
+    member writing, measured from both the chase and the last activity. It
+    needs a leading time that is not `groupVoice.enoughOn`. It is said at most
+    once (`meetings.group_drop_offer_at`, migration 096, stamped on the
+    decision clock). It goes out only in a pass where the room owes no other
+    line about that coordination, and only in the room's hours.
+  - **Anything after the offer lapses it for good.** With nothing after it,
+    `dropGraceH` later the coordination closes as `no_match` with no line of
+    its own (`meeting.dropped_quiet`). Its end reaches people the way every
+    close does.
+  - **The nudge** (`meeting_nudge`) goes to somebody an invite or proposal
+    REACHED `nudgeAfterH` ago who has answered nothing. It is sent once, never
+    to somebody paused, never about a thing already started, and never in the
+    same pass as the offer.
+  - **An answer withdraws a queued nudge** at the answer
+    (`meeting-options.answer`), and the sweep repeats that as a backstop.
+  - **`shadow` writes only `coordination.policy_shadow` audit rows**, each
+    carrying the decision clock in `at`, and treats its own offer as said so
+    that it reaches the close.
+  - **Do not flip a room to `live` until the owner has approved both texts
+    word for word.**
+  (`incidents.md`, "The coordinations that died in silence".)

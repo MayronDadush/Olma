@@ -371,6 +371,13 @@ function renderGroupCoordination(line, overrides) {
     }
     return templates.render('group_coord_relay', vars, overrides).trim();
   }
+  if (line.kind === 'drop_offer') {
+    const phones = (line.missing || []).filter(isTaggableNumber);
+    return tidy(templates.render('group_coord_drop_offer', {
+      title: slotText(line.title), hours: String(line.hours),
+      missing_note: phones.length ? `${DROP_MISSING}${mentionTokens(phones)}.` : '',
+    }, overrides)).replace(/ +\n/g, '\n').trim();
+  }
   if (line.kind === 'chase') {
     return templates.render('group_coord_chase', { missing: mentionTokens(line.missing || []) }, overrides);
   }
@@ -478,6 +485,8 @@ function closeNote(line, overrides) {
 }
 const WHO_ALL = 'כולם בפנים';
 const WHO_IN = 'בפנים:';
+// The drop offer's tags, as the chase says them: "עוד לא שמעתי מ@…".
+const DROP_MISSING = 'עוד לא שמעתי מ';
 
 // The single decision point the deliverer consults: a non-null return means
 // "send this text on the raw pipe, no agent turn". Deliberately narrow —

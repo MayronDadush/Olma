@@ -117,6 +117,17 @@ function leadingOption(options) {
     || (new Date(a.startsAt || 0) - new Date(b.startsAt || 0)))[0];
 }
 
+// Whether the leading time already has what it needs: a game's number when the
+// room gave one, and otherwise two people who can both make it. One place, so
+// the base line and the offer to drop it (coordination-policy) cannot disagree
+// about whether a room has a direction.
+function enoughOn(lead) {
+  if (!lead) return false;
+  return lead.quorum && lead.quorum.known && lead.quorum.min !== null
+    ? Boolean(lead.quorum.met)
+    : (lead.yes || []).length >= 2;
+}
+
 // `co` is domain/group-meetings.coordinationStatus's `coordination`, plus the
 // three stamps off the meeting row. Returns the one line to say, or none.
 //
@@ -283,9 +294,7 @@ function decideLine(co, {
     // number and it is that number; anywhere else two people who can both make
     // the same time IS the direction, and one person agreeing with themselves
     // is not.
-    const enough = lead.quorum && lead.quorum.known && lead.quorum.min !== null
-      ? lead.quorum.met
-      : lead.yes.length >= 2;
+    const enough = enoughOn(lead);
     // Counted against the whole ROOM (owner, 2026-09-26), and it names
     // everybody who has not answered this time — asked or not, because the
     // sentence is "has not answered", which is true of both, and the room
@@ -415,7 +424,7 @@ function earliestStart(co) {
 }
 
 module.exports = {
-  decideGroupLine, leadingOption, chaseDueAt, localDay, whoIsIn, roomTotal,
+  decideGroupLine, leadingOption, enoughOn, chaseDueAt, localDay, whoIsIn, roomTotal,
   tableSettledAt,
   CHASE_FALLBACK_MS, CHASE_AFTER_MS, HOUR_BEFORE_MS, DAY_OF_MIN_LEAD_MS, TABLE_SETTLE_MS,
 };
