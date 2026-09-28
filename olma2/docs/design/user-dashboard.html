@@ -9,11 +9,16 @@
      env(safe-area-inset-*) values this stylesheet positions the tab bar and
      the preview buttons with all resolve to 0 without it, so the bar sat above
      the home indicator instead of clearing it. -->
-<!-- No zoom at all, pinch included: the owner wants the page to feel like an
-     app (Instagram has none), 2026-09-25. Android obeys these two words; iOS
-     Safari ignores them on purpose, which is why the script also cancels the
-     pinch gesture itself (search "zoom" in the script). -->
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<!-- The page CAN be pinch-zoomed (2026-09-28, compliance review finding 10).
+     From 2026-09-25 it carried `maximum-scale=1, user-scalable=no` plus a
+     script that cancelled iOS's pinch, because the owner wanted it to feel
+     like an app. Blocking zoom fails WCAG 2.0 SC 1.4.4 (Resize text, level
+     AA) — the level Israeli Standard 5568 / the Service Accessibility
+     Regulations (reg. 35) require — so this reverses that choice, pending the
+     owner's approval. Double-tap zoom stays off (`touch-action:manipulation`
+     on html), and iOS's zoom on focusing a field stays off the honest way:
+     every field is 16px or larger (see `.searchwrap input`). -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <!-- The page defines both palettes; this is what stops the browser painting
      its own white behind them for the instant before the CSS lands. -->
 <meta name="color-scheme" content="light dark">
@@ -237,13 +242,13 @@
 
 /* ─────────────────────────  base  ───────────────────────── */
 *{box-sizing:border-box}
-/* The page never zooms, the way an app never does (the owner, 2026-09-25).
-   A phone browser zooms on a double tap and on a pinch unless the page opts
-   out, so tapping a calendar arrow twice blew the page up. `pan-x pan-y`
-   allows scrolling and nothing else: no double tap, no pinch. The viewport
-   meta says the same for Android, and the script cancels iOS's pinch, which
-   ignores both. Larger text is the phone's own setting, not a zoom here. */
-html{touch-action:pan-x pan-y}
+/* A double tap never zooms: tapping a calendar arrow twice blew the page up
+   (2026-09-25). A PINCH does, since 2026-09-28 (compliance review finding 10,
+   WCAG 2.0 SC 1.4.4 — see the viewport meta): `manipulation` is pan-x pan-y
+   pinch-zoom, i.e. everything except the double tap. It was `pan-x pan-y`,
+   which Safari reads as "no pinch" even with the viewport meta fixed. The
+   swipe rows say `pan-y pinch-zoom` for the same reason. */
+html{touch-action:manipulation}
 [hidden]{display:none !important}
 body{
   margin:0;
@@ -1463,7 +1468,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   border:0;width:100%;font-family:inherit;cursor:pointer}
 .mtswipe .mtback svg{width:19px;height:19px;color:var(--on-accent)}
 .mtswipe .mtfront{position:relative;background:var(--surface);
-  transition:transform .22s cubic-bezier(.32,.72,0,1);touch-action:pan-y}
+  transition:transform .22s cubic-bezier(.32,.72,0,1);touch-action:pan-y pinch-zoom}
 .mtswipe.dragging .mtfront{transition:none}
 /* The red is only THERE while the row is off it. Painted at rest, the edge of
    the row above it antialiases against red and a hairline of it shows round
@@ -1538,7 +1543,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 [dir="ltr"] .swr.open > .swback{clip-path:inset(0 calc(100% - 104px) 0 0)}
 [dir="ltr"] .swr.peek > .swback{clip-path:inset(0 calc(100% - 88px) 0 0)}
 .swfront{position:relative;background:var(--surface);
-  transition:transform .26s var(--spring);touch-action:pan-y}
+  transition:transform .26s var(--spring);touch-action:pan-y pinch-zoom}
 .group.mtset .swfront{background:var(--accent-soft)}
 .swr.dragging > .swfront{transition:none}
 .swr.open > .swfront{transform:translateX(calc(-104px * var(--dirf)))}
@@ -3883,15 +3888,9 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 <script>
 (function(){
   "use strict";
-  /* No zoom, iOS edition. Safari ignores user-scalable=no on purpose, so the
-     pinch is cancelled where it starts: Safari's own gesture events, and any
-     move with two fingers down. Nothing on this page is a two-finger control. */
-  ["gesturestart", "gesturechange", "gestureend"].forEach(function(ev){
-    document.addEventListener(ev, function(e){ e.preventDefault(); }, {passive:false});
-  });
-  document.addEventListener("touchmove", function(e){
-    if(e.touches.length > 1) e.preventDefault();
-  }, {passive:false});
+  /* Nothing here cancels a pinch (2026-09-28, compliance review finding 10 —
+     WCAG 2.0 SC 1.4.4). The script that did, from 2026-09-25, is gone with
+     the viewport's `user-scalable=no`; see the comment on that meta. */
   var $  = function(s,r){ return (r||document).querySelector(s); };
   var $$ = function(s,r){ return Array.prototype.slice.call((r||document).querySelectorAll(s)); };
   /* A value written into an input only when the person is not standing in

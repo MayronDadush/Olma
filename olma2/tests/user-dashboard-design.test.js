@@ -237,17 +237,27 @@ test('a settled coordination stays in the list, and the card says so', () => {
   assert.match(page, /\.group\.mtset \.mtpill\.settled\{/);
 });
 
-// The page never zooms, double tap or pinch (the owner, 2026-09-25: it should
-// feel like an app). Three layers, because each browser honours a different one.
-test('the page cannot be zoomed, on Android or on iOS', () => {
-  assert.match(page, /html\{touch-action:pan-x pan-y\}/);
+// The page CAN be pinch-zoomed (2026-09-28, compliance review finding 10:
+// blocking zoom fails WCAG 2.0 SC 1.4.4, which IS 5568 / reg. 35 requires).
+// This reverses the owner's 2026-09-25 "feel like an app" choice, so every
+// layer that used to block a pinch is asserted gone — each browser honours a
+// different one. A double tap still does not zoom (`manipulation`).
+test('the page can be pinch-zoomed, on Android and on iOS', () => {
   const meta = page.match(/<meta name="viewport" content="([^"]+)">/);
   assert.ok(meta, 'the viewport meta is there');
-  assert.match(meta[1], /user-scalable=no/);
-  assert.match(meta[1], /maximum-scale=1/);
+  assert.doesNotMatch(meta[1], /user-scalable\s*=\s*(no|0)/);
+  assert.doesNotMatch(meta[1], /maximum-scale\s*=\s*1(\.0*)?(\D|$)/);
   assert.match(meta[1], /viewport-fit=cover/, 'the safe-area insets still need this');
-  assert.match(page, /"gesturestart", "gesturechange", "gestureend"/);
-  assert.match(page, /e\.touches\.length > 1\) e\.preventDefault\(\)/);
+  assert.match(page, /html\{touch-action:manipulation\}/, 'no double-tap zoom, pinch allowed');
+  // A touch-action that allows panning but omits pinch-zoom blocks the pinch
+  // on that element, Safari included. `none` on a small drag handle is fine.
+  for (const m of page.matchAll(/touch-action:([a-z -]+)/g)) {
+    const v = m[1].trim();
+    if (v === 'none' || v === 'manipulation' || v === 'auto') continue;
+    assert.match(v, /pinch-zoom/, `touch-action:${v} blocks a pinch`);
+  }
+  assert.doesNotMatch(page, /gesture(start|change|end)/, 'nothing cancels Safari\'s pinch');
+  assert.doesNotMatch(page, /touches\.length\s*>\s*1\)\s*e\.preventDefault/, 'nothing cancels a two-finger move');
 });
 
 // Every date on the page picks its year the same way: one popover, with a
