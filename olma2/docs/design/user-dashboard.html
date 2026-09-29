@@ -1030,9 +1030,11 @@ html[data-served] .groupsblock.hasrooms{display:block}
    it can honestly offer: who she is, and the two doors to her. The app
    below is taken out of the flow entirely rather than covered, or its
    tabbar sits on top of this. */
-html.is-new .app,
-html.is-new .tabbar,
 html.is-new .introtog{display:none}
+/* Inside the installed app a stranger is still somebody signing in, and the
+   code is the whole screen — the app below goes, exactly as before. */
+html.is-new.is-app .app,
+html.is-new.is-app .tabbar{display:none}
 .welcome{
   position:fixed;inset:0;z-index:70;overflow-y:auto;
   display:grid;place-items:center;
@@ -1061,6 +1063,74 @@ html.is-new .introtog{display:none}
    browser's link blue on top of the tile's own colour */
 .wrow .chan{padding:18px 8px 16px;color:var(--text);text-decoration:none}
 .wfoot{margin-top:20px;font-size:12px;line-height:1.55;color:var(--text-3);max-width:23em}
+/* ── the locked page (the owner, 2026-09-29) ──
+   In a browser the stranger's screen is the app itself, drawn from this
+   file's example data, one screen tall and blurred, with the card at its
+   foot and what Allma is — the words Google's reviewer reads — under it.
+   The app and the card share one grid cell so the card sits ON the app while
+   the page still scrolls to the words, which a fixed overlay would swallow. */
+html.is-new:not(.is-app) body{display:grid;grid-template-columns:minmax(0,1fr)}
+html.is-new:not(.is-app) .app{
+  grid-area:1/1;width:100%;height:100svh;min-height:0;overflow:hidden;
+  filter:blur(2px) saturate(.9);pointer-events:none;user-select:none;
+  /* a blur paints past its own box, onto the words below, without this */
+  clip-path:inset(0);
+}
+/* Nothing behind the lock can open a sheet, and a closed one parked under
+   the fold still casts its shadow up over the words — the tab bar hid that. */
+html.is-new:not(.is-app) .tabbar{display:none}
+html.is-new:not(.is-app) .sheet{visibility:hidden}
+html.is-new:not(.is-app) .welcome{
+  grid-area:1/1;position:relative;inset:auto;z-index:5;min-height:100svh;overflow:visible;
+  place-items:end center;
+  padding:calc(env(safe-area-inset-top,0px) + 64px) 16px calc(env(safe-area-inset-bottom,0px) + 16px);
+  background:linear-gradient(to bottom,transparent 0%,color-mix(in oklab,var(--bg) 45%,transparent) 42%,color-mix(in oklab,var(--bg) 88%,transparent) 100%);
+}
+html.is-new:not(.is-app) .wcard{
+  max-width:400px;padding:24px 20px 14px;border-radius:26px;
+  background:var(--surface);box-shadow:var(--shadow-m);
+}
+html.is-new:not(.is-app) .wword{font-size:36px}
+html.is-new:not(.is-app) .whint{margin-top:22px}
+.wdemo{display:none}
+html.is-new:not(.is-app) .wdemo{
+  display:block;position:absolute;top:calc(env(safe-area-inset-top,0px) + 14px);left:50%;transform:translateX(-50%);
+  padding:5px 13px;border-radius:999px;background:var(--surface);box-shadow:var(--shadow-s);
+  font-size:12.5px;font-weight:700;letter-spacing:.04em;color:var(--text-2);white-space:nowrap;
+}
+.wback{margin-top:22px;width:100%;display:flex;flex-direction:column;gap:10px}
+.wcode-get.wback-go{background:var(--action);color:var(--on-action);box-shadow:none}
+.wback-p{font-size:13.5px;line-height:1.5;color:var(--text-2)}
+.wnew{width:100%;display:flex;flex-direction:column;align-items:center}
+.wabout{display:none}
+html.is-new:not(.is-app) .wabout{
+  display:inline-block;margin-top:6px;padding:6px 10px;font-size:13px;color:var(--text-3);text-decoration:underline;text-underline-offset:3px;
+}
+/* The words under the lock: the same text as the public home page, and the
+   server puts them here (public-pages.homeSections), not this file. */
+.about{display:none}
+html.is-new:not(.is-app) .about{
+  display:block;grid-row:2;grid-column:1;width:100%;max-width:640px;margin-inline:auto;
+  padding:36px 20px calc(env(safe-area-inset-bottom,0px) + 44px);font-size:15.5px;line-height:1.6;
+}
+.about h1{font-family:var(--font-display);font-size:28px;line-height:1.15;font-weight:700}
+.about h2{font-family:var(--font-display);font-size:20px;line-height:1.3;font-weight:700;margin:28px 0 8px}
+.about h3{font-size:16px;font-weight:700;margin:18px 0 6px}
+.about p{margin:0 0 10px;color:var(--text-2)}
+.about ul{margin:0 0 10px;padding-inline-start:20px;color:var(--text-2)}
+.about li{margin:5px 0}
+.about b{color:var(--text)}
+.about a{color:var(--accent);font-weight:600}
+.about code{font-size:13px;padding:1px 5px;border-radius:6px;background:var(--surface-2);color:var(--text)}
+.about .ab-lede{font-size:17px;margin-top:10px}
+.about .ab-card{background:var(--surface);border-radius:16px;box-shadow:var(--shadow-s);padding:14px 16px 6px;margin:12px 0}
+.about .ab-card h3{margin-top:0}
+.about .ab-perm{font-size:13.5px}
+.about .ab-he{direction:rtl;margin-top:36px;padding-top:28px;border-top:1px solid var(--sep)}
+.about .ab-mark{width:48px;height:48px;color:var(--text);margin-bottom:6px}
+.about .ab-mark svg{width:100%;height:100%;display:block}
+.about .ab-cta{display:inline-block;padding:12px 22px;border-radius:999px;background:var(--action);color:var(--on-action);text-decoration:none;font-weight:700}
+.about .ab-foot{margin-top:32px;font-size:13px}
 /* Everything arrives in reading order, once. The global reduced-motion rule
    near the bottom of this sheet flattens all of it to nothing. */
 @keyframes wrise{from{opacity:0;transform:translateY(15px)}to{opacity:1;transform:none}}
@@ -3701,16 +3771,29 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      the first sentence has to be theirs, in their own language, because it is
      what tells her which language to speak. -->
 <div class="welcome" id="welcome" hidden>
+  <!-- Behind this card is the app itself, drawn from the example data in this
+       file and blurred (the owner, 2026-09-29), so a stranger sees what they
+       are signing up for before they sign up. The label says whose it is. -->
+  <p class="wdemo" data-i18n="w.demo"></p>
   <div class="wcard">
     <h1 class="wword" id="wWord"></h1>
     <p class="wlede" id="wTag"></p>
-    <div class="whint">
-      <b data-i18n="w.hint"></b>
-      <span class="warrow" aria-hidden="true"><svg><use href="#i-arrdown"/></svg></span>
+    <!-- Somebody this browser has already seen signed in: the fastest way
+         back is a link from her, one message away, so that leads. -->
+    <div class="wback" id="wBack" hidden>
+      <a class="wcode-get wback-go" id="wBackGo" target="_blank" rel="noopener"></a>
+      <p class="wback-p" data-i18n="w.backP"></p>
     </div>
-    <div class="wrow" id="wRow"></div>
-    <p class="wfoot" data-i18n="w.foot"></p>
+    <div class="wnew" id="wNew">
+      <div class="whint">
+        <b data-i18n="w.hint"></b>
+        <span class="warrow" aria-hidden="true"><svg><use href="#i-arrdown"/></svg></span>
+      </div>
+      <div class="wrow" id="wRow"></div>
+      <p class="wfoot" data-i18n="w.foot"></p>
+    </div>
     <button class="wcode-have" id="wCodeHave" type="button" data-i18n="code.have"></button>
+    <button class="wcode-have wback-new" id="wBackNew" type="button" data-i18n="w.backNew" hidden></button>
     <form class="wcode" id="wCode" hidden novalidate>
       <p class="wcode-p" data-i18n="code.p"></p>
       <a class="wcode-get" id="wCodeGet" target="_blank" rel="noopener"></a>
@@ -3719,6 +3802,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       <p class="wcode-err" id="wCodeErr" role="alert"></p>
       <button class="wcode-go" id="wCodeGo" type="submit" data-i18n="code.go" disabled></button>
     </form>
+    <a class="wabout" href="#about" data-i18n="w.about"></a>
   </div>
 </div>
 
@@ -4915,6 +4999,9 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "w.foot":"אין מה להתקין. השיחה נפתחת ריקה — המשפט הראשון שלך הוא זה שמלמד אותה באיזו שפה לדבר.",
       /* signing into the installed app with a code (see .wcode) */
       "app.name":"עולמה",
+      "w.demo":"דוגמה","w.about":"מה זו עולמה?",
+      "w.backH":"טוב לראות אותך שוב","w.backGo":"קבלת קישור כניסה בוואטסאפ","w.backWa":"שלח לי קישור",
+      "w.backP":"עולמה שולחת קישור, ולוחצים עליו כדי להיכנס.","w.backNew":"פעם ראשונה כאן?",
       "code.have":"יש לי קוד מעולמה","code.h":"כניסה לאפליקציה",
       "code.p":"עולמה תשלח לך קוד כניסה בוואטסאפ. מעתיקים את ההודעה, מדביקים כאן, וזהו.",
       "code.get":"קבלת קוד בוואטסאפ","code.waText":"קוד כניסה לאפליקציה",
@@ -5279,6 +5366,9 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "w.hint":"Write to Allma in your own language","w.open":"Opens a chat",
       "w.foot":"Nothing to install. The chat opens empty — your first sentence is what tells her which language to speak.",
       "app.name":"Allma",
+      "w.demo":"Example","w.about":"What is Allma?",
+      "w.backH":"Good to see you again","w.backGo":"Get a sign-in link on WhatsApp","w.backWa":"send me a link",
+      "w.backP":"Allma sends you a link, and tapping it signs you in.","w.backNew":"First time here?",
       "code.have":"I have a code from Allma","code.h":"Sign in to the app",
       "code.p":"Allma will send you a sign-in code on WhatsApp. Copy the message, paste it here, and you're in.",
       "code.get":"Get a code on WhatsApp","code.waText":"App sign-in code",
@@ -5956,8 +6046,10 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 
   /* ══════════════  mock content, both languages  ══════════════ */
   var PROFILE = {
-    phone:"+972526269826",
-    first:{he:"מירון",en:"Miron"}, last:{he:"דדוש",en:"Dadush"}, olma:{he:"עולמה",en:"Allma"}
+    /* Nobody real: the served page ships these in its source, and since
+       2026-09-29 a stranger sees them drawn behind the locked screen. */
+    phone:"+972500000000",
+    first:{he:"דניאל",en:"Daniel"}, last:{he:"כרמל",en:"Carmel"}, olma:{he:"עולמה",en:"Allma"}
   };
   var myAvatar = seedIndex(PROFILE.phone);
 
@@ -6209,7 +6301,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   ];
   var FRIENDS = [
     {id:1, n:{he:"גלי כהן",en:"Gali Cohen"},        since:{he:"מאז 12 באוגוסט",en:"since 12 Aug"}, g:"f", tz:"Asia/Jerusalem",   p:{tasks:true, meet:true, msg:true}},
-    {id:2, n:{he:"חיים דדוש",en:"Haim Dadush"},     since:{he:"מאז 19 באוגוסט",en:"since 19 Aug"}, g:"m", tz:"Asia/Jerusalem",   bd:"9-3", p:{tasks:false,meet:true, msg:true}},
+    {id:2, n:{he:"אבי כרמל",en:"Avi Carmel"},     since:{he:"מאז 19 באוגוסט",en:"since 19 Aug"}, g:"m", tz:"Asia/Jerusalem",   bd:"9-3", p:{tasks:false,meet:true, msg:true}},
     {id:3, n:{he:"עמית לוי",en:"Amit Levi"},        since:{he:"מאז 27 באוגוסט",en:"since 27 Aug"}, g:"m", tz:"America/New_York", p:{tasks:false,meet:true, msg:false}},
     {id:4, n:{he:"שרה בן־חיים",en:"Sarah Ben-Haim"},since:{he:"מאז 1 בספטמבר",en:"since 1 Sep"},  g:"f", tz:"Asia/Tokyo",        p:{tasks:true, meet:false,msg:false}},
     {id:5, n:{he:"נועה פרידמן",en:"Noa Friedman"},  since:{he:"מאז 2 בספטמבר",en:"since 2 Sep"},  g:"f", tz:"Asia/Jerusalem",   p:{tasks:false,meet:true, msg:true}},
@@ -11882,7 +11974,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     document.documentElement.toggleAttribute("data-paused", paused);
     /* inert as well as blurred: a keyboard or a screen reader must not walk
        into the page the eye has been told is closed */
-    $(".app").inert = paused; $(".tabbar").inert = paused;
+    $(".app").inert = paused || NEWUSER; $(".tabbar").inert = paused || NEWUSER;
     $("#pgTitle").textContent = t("live.paused", {name:olmaName()});
     $("#pgGoLabel").textContent = t("pg.go", {name:olmaName()});
     syncName();
@@ -12729,10 +12821,39 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
           esc(t("w.open")) + "</i></a>";
       }).join("");
     paintCodeDoor();
+    /* Somebody this browser has seen signed in before is not a stranger,
+       whatever the missing cookie says: the link from her is one message
+       away and leads. The two doors stay one tap behind it, in case the
+       phone is shared. Inside the installed app the code already leads. */
+    var back = BEEN && !STANDALONE && !welcomeFresh;
+    $("#wBack").hidden = !back;
+    $("#wBackNew").hidden = !back;
+    $("#wNew").hidden = back;
+    if(back){
+      $("#wTag").textContent = t("w.backH");
+      var wa = CHANNELS.filter(function(c){ return c.id === "wa"; })[0];
+      var link = (wa && wa.link) || "https://wa.me/972559347282";
+      $("#wBackGo").href = link + (link.indexOf("?") < 0 ? "?" : "&") + "text=" + encodeURIComponent(t("w.backWa"));
+      $("#wBackGo").innerHTML = tileFor("wa", "i-wa") + "<span>" + esc(t("w.backGo")) + "</span>";
+    }
+  }
+  /* Set by every signed-in load, read only by the signed-out one. It says
+     nothing about WHO — only that somebody here has been in before. */
+  var BEEN = (function(){
+    try{ return localStorage.getItem("olma.been") === "1"; }catch(e){ return false; }
+  })();
+  var welcomeFresh = false;
+  $("#wBackNew").addEventListener("click", function(){ welcomeFresh = true; renderWelcome(); });
+  /* The app behind the card is the example, blurred: it can be looked at and
+     not used, so it is out of the tab order too. */
+  function lockApp(on){
+    $(".app").inert = on;
+    $(".tabbar").inert = on;
   }
   function startWelcome(){
     document.documentElement.classList.add("is-new");
     $("#welcome").hidden = false;
+    lockApp(true);
     renderWelcome();
   }
 
@@ -13171,7 +13292,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
          here would be undone by the next redraw — the seed itself has to
          move. It was the owner's own name, which is exactly why this survived
          the first real phone: it read perfectly for one person and would have
-         greeted everybody else as מירון דדוש. */
+         greeted everybody else by the owner's name. */
       PROFILE.first = d.user.firstName || "";
       PROFILE.last = d.user.lastName || "";
       PROFILE.olmaCustom = d.user.assistantName || "";
@@ -13282,6 +13403,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     mtOpen = openId ? (mtById(openId) || null) : null;
     var first = !LIVE;
     LIVE = true;
+    try{ localStorage.setItem("olma.been", "1"); }catch(e){}
     renderAll();
     if(mtOpen) renderMeet();
     /* Their calendar is a separate round trip to Google, and nothing a write
@@ -13682,6 +13804,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     NEWUSER = !NEWUSER;
     document.documentElement.classList.toggle("is-new", NEWUSER);
     $("#welcome").hidden = !NEWUSER;
+    lockApp(NEWUSER);
     if(NEWUSER) renderWelcome();
   });
   $("#introTog").addEventListener("click", function(){

@@ -4,7 +4,9 @@
 // things on two hostnames, and getting that wrong exposes the admin root.
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
-const { freshDb } = require('./helpers');
+const { freshDb, makeUser } = require('./helpers');
+const { withTx } = require('../src/db/pool');
+const auth = require('../src/domain/dashboard-auth');
 const { createDashboard } = require('../src/adapters/http/dashboard');
 const publicPages = require('../src/adapters/http/public-pages');
 
@@ -24,10 +26,10 @@ after(async () => { server.close(); await db.teardown(); });
 // so undici silently drops it and every request would arrive with the
 // 127.0.0.1 host — which is exactly the variable under test here.
 const http = require('node:http');
-function get(path, host, headers = {}) {
+function get(path, host, headers = {}, method = 'GET') {
   return new Promise((resolve, reject) => {
     const req = http.request({
-      hostname: '127.0.0.1', port: server.address().port, path, method: 'GET',
+      hostname: '127.0.0.1', port: server.address().port, path, method,
       headers: { ...(host === '' ? {} : { Host: host }), ...headers },
       setHost: false,
     }, (res) => {
@@ -53,6 +55,42 @@ test('the home page is served unauthenticated on the public host', async () => {
   const html = await res.text();
   assert.ok(html.includes('עולמה'), 'the assistant is not named on its own front door');
   assert.ok(/text\/html/.test(res.headers.get('content-type')));
+});
+
+// ---- the front door is the dashboard, locked (2026-09-29) -----------------
+
+test('the public `/` is the stranger\'s dashboard, with the words Google reads under it', async () => {
+  const res = await get('/', PUBLIC);
+  assert.equal(res.status, 200, 'the front door is the page asked for, not a refusal');
+  const html = await res.text();
+  assert.match(html, /^<html data-served="1" data-new="1">/, 'not the locked dashboard');
+  const about = html.slice(html.indexOf('<section class="about" id="about"'));
+  assert.ok(about.length > 1000, 'the words under the lock are missing');
+  // What a verification reviewer matches our scopes against, and the policy.
+  for (const bit of ['calendar.readonly', 'calendar.events', 'contacts.readonly', 'href="/privacy"', 'href="/terms"']) {
+    assert.ok(about.includes(bit), `the front door lost ${bit}`);
+  }
+  assert.ok(about.includes(publicPages.homeSections((n) => 'ab-' + n)), 'the front door drifted from the home page text');
+  // Indexable: it is the product's front door and holds nothing of anybody's.
+  assert.equal(res.headers.get('x-robots-tag'), undefined);
+  assert.match(res.headers.get('content-security-policy') || '', /default-src 'none'/);
+  assert.equal(res.headers.get('vary'), 'Cookie');
+});
+
+test('a visitor with a live session is sent past the lock to their own page', async () => {
+  const me = await makeUser(db.pool, '+972531930077', { firstName: 'Front' });
+  const link = await withTx(db.pool, (c) => auth.createLink(c, me.id));
+  assert.equal(link.ok, true);
+  const opened = await get('/d/' + link.data.token, PUBLIC, {}, 'POST');
+  assert.equal(opened.status, 303);
+  const cookie = String(opened.headers.get('set-cookie') || '').split(';')[0];
+  assert.ok(cookie.includes('='), 'no session was opened');
+  const res = await get('/', PUBLIC, { cookie });
+  assert.equal(res.status, 303);
+  assert.equal(res.headers.get('location'), '/me');
+  // …and a cookie that resolves to nobody is a stranger, not an error.
+  const stale = await get('/', PUBLIC, { cookie: cookie.replace(/=.*/, '=nobody') });
+  assert.equal(stale.status, 200);
 });
 
 test('the privacy policy is served unauthenticated, on either host', async () => {
