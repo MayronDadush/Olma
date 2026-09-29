@@ -97,6 +97,9 @@ const JOB_INTERVAL_SECONDS = {
   // same board as every sweep — a backup that quietly stops is a promise
   // nobody checked. Never kicked on start (nothing arms it in-process).
   backup_offbox: 86400,
+  // The same script, for the game nights database (games/, olma_games), on
+  // its own row so the two copies are judged separately.
+  backup_offbox_games: 86400,
 };
 
 const STALE_MULTIPLIER = 3;

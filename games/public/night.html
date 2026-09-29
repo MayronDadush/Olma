@@ -1,0 +1,1982 @@
+<title>ערב משחק</title>
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#004643">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Hebrew:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+/* ═══════════════════════════════════════════════════════════════════
+   BRAND TOKENS: Allma, Cypress + Mustard (brand book 28.9.2026).
+   Values copied from the live /me dashboard on main, so this page and
+   that one are the same product. Sand is the ground, Cypress is the band
+   on top and every selection, and Mustard is exactly two things: the ONE
+   main action on a screen, and the moment the evening is "סגור.".
+   Brick is errors and deleting only. No WhatsApp green anywhere.
+   Nothing below this block names a colour or a typeface directly.
+   ═══════════════════════════════════════════════════════════════════ */
+:root{
+  color-scheme:light;
+  --font-body:'IBM Plex Sans Hebrew','IBM Plex Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --font-display:'IBM Plex Sans Hebrew','IBM Plex Sans',system-ui,sans-serif;
+  --bg:#F0EDE5;--bg-tint:#E6E3DA;--fill:#EDEAE2;--surface:#FFFFFF;--surface-2:#F8F7F3;
+  --sep:#E2DFD6;--sep-2:#D2CFC5;--text:#0E1F1E;--text-2:#44504E;--text-3:#56615E;
+  --accent:#004643;--accent-2:#00302E;--accent-soft:#E1EBE8;--accent-line:rgba(0,70,67,.40);
+  --on-accent:#FFFFFF;
+  --action:#F9C23C;--on-action:#004643;
+  --danger:#B03A2E;--danger-soft:#F6E4E1;--warn:#8A5A00;--warn-soft:#F6EDD6;
+  /* gold = mustard as a moment: the evening closed */
+  --gold:#8A6100;--gold-arc:#F9C23C;--gold-soft:#FDF1D2;
+  --band:#004643;--on-band:#F0EDE5;--on-band-2:#BFD3CF;--band-tint:rgba(255,255,255,.14);
+  --logo-d:#004643;--logo-l:#F0EDE5;--logo-lens:#F9C23C;--logo-ring:#004643;
+  --bubble-me:#E1EBE8;--bubble-ol:#FFFFFF;--chat-bg:#E9E6DD;--wall:url("data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20width%3D'132'%20height%3D'132'%20font-family%3D'sans-serif'%20font-size%3D'22'%20fill%3D'rgba(0%2C70%2C67%2C.07)'%3E%3Ctext%20x%3D'14'%20y%3D'34'%3E%E2%99%A0%3C%2Ftext%3E%3Ctext%20x%3D'84'%20y%3D'50'%20transform%3D'rotate(18%2092%2042)'%3E%E2%99%A5%3C%2Ftext%3E%3Ctext%20x%3D'38'%20y%3D'104'%20transform%3D'rotate(-14%2046%2096)'%3E%E2%99%A3%3C%2Ftext%3E%3Ctext%20x%3D'100'%20y%3D'118'%3E%E2%99%A6%3C%2Ftext%3E%3C%2Fsvg%3E");
+  --glass-line:rgba(14,31,30,.08);--bar:rgba(255,255,255,.62);--toast-bg:rgba(255,255,255,.72);
+  --scrim:rgba(14,31,30,.34);
+  --lens:blur(24px) saturate(190%) brightness(1.04);
+  --rim-soft:inset 0 .6px 0 rgba(255,255,255,.72);
+  --shadow-s:0 1px 2px rgba(14,31,30,.05);
+  --shadow-m:0 1px 2px rgba(14,31,30,.05),0 10px 28px -16px rgba(14,31,30,.28);
+  --shadow-l:0 24px 64px -20px rgba(14,31,30,.34),0 2px 8px rgba(14,31,30,.08);
+  --spring:cubic-bezier(.32,.72,0,1);--ease:cubic-bezier(.22,1,.36,1);
+  --ease-io:cubic-bezier(.62,.02,.28,1);--squash:cubic-bezier(.34,1.56,.44,1);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#1B1A18;--bg-tint:#25241F;--fill:#36342D;--surface:#26251F;--surface-2:#2D2B26;
+    --sep:#35332D;--sep-2:#44413A;--text:#EDE9DF;--text-2:#B9B5AC;--text-3:#A39F96;
+    --accent:#7CC4BA;--accent-2:#9DD6CD;--accent-soft:#1F3532;--accent-line:rgba(124,196,186,.52);
+    --on-accent:#1B1A18;
+    --action:#F9C23C;--on-action:#0E1F1E;
+    --danger:#F08A7E;--danger-soft:#3A1C19;--warn:#F0AE3E;--warn-soft:#332616;
+    --gold:#E9BE5C;--gold-arc:#F9C23C;--gold-soft:#2E2612;
+    --band:#004643;--on-band:#EDE9DF;--on-band-2:#AFC6C1;--band-tint:rgba(255,255,255,.1);
+    --logo-d:#1B1A18;--logo-l:#EDE9DF;--logo-lens:#F9C23C;--logo-ring:#EDE9DF;
+    --bubble-me:#1F3532;--bubble-ol:#2D2B26;--chat-bg:#161513;--wall:url("data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20width%3D'132'%20height%3D'132'%20font-family%3D'sans-serif'%20font-size%3D'22'%20fill%3D'rgba(240%2C237%2C229%2C.045)'%3E%3Ctext%20x%3D'14'%20y%3D'34'%3E%E2%99%A0%3C%2Ftext%3E%3Ctext%20x%3D'84'%20y%3D'50'%20transform%3D'rotate(18%2092%2042)'%3E%E2%99%A5%3C%2Ftext%3E%3Ctext%20x%3D'38'%20y%3D'104'%20transform%3D'rotate(-14%2046%2096)'%3E%E2%99%A3%3C%2Ftext%3E%3Ctext%20x%3D'100'%20y%3D'118'%3E%E2%99%A6%3C%2Ftext%3E%3C%2Fsvg%3E");
+    --glass-line:rgba(255,255,255,.09);--bar:rgba(38,37,31,.62);--toast-bg:rgba(38,37,31,.72);
+    --scrim:rgba(0,0,0,.55);
+    --lens:blur(24px) saturate(200%) brightness(1.16);
+    --rim-soft:inset 0 .6px 0 rgba(255,255,255,.16);
+    --shadow-s:0 1px 2px rgba(0,0,0,.4);
+    --shadow-m:0 1px 2px rgba(0,0,0,.4),0 10px 28px -16px rgba(0,0,0,.8);
+    --shadow-l:0 24px 64px -20px rgba(0,0,0,.8),0 2px 8px rgba(0,0,0,.5);
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#1B1A18;--bg-tint:#25241F;--fill:#36342D;--surface:#26251F;--surface-2:#2D2B26;
+  --sep:#35332D;--sep-2:#44413A;--text:#EDE9DF;--text-2:#B9B5AC;--text-3:#A39F96;
+  --accent:#7CC4BA;--accent-2:#9DD6CD;--accent-soft:#1F3532;--accent-line:rgba(124,196,186,.52);
+  --on-accent:#1B1A18;
+  --action:#F9C23C;--on-action:#0E1F1E;
+  --danger:#F08A7E;--danger-soft:#3A1C19;--warn:#F0AE3E;--warn-soft:#332616;
+  --gold:#E9BE5C;--gold-arc:#F9C23C;--gold-soft:#2E2612;
+  --band:#004643;--on-band:#EDE9DF;--on-band-2:#AFC6C1;--band-tint:rgba(255,255,255,.1);
+  --logo-d:#1B1A18;--logo-l:#EDE9DF;--logo-lens:#F9C23C;--logo-ring:#EDE9DF;
+  --bubble-me:#1F3532;--bubble-ol:#2D2B26;--chat-bg:#161513;--wall:url("data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20width%3D'132'%20height%3D'132'%20font-family%3D'sans-serif'%20font-size%3D'22'%20fill%3D'rgba(240%2C237%2C229%2C.045)'%3E%3Ctext%20x%3D'14'%20y%3D'34'%3E%E2%99%A0%3C%2Ftext%3E%3Ctext%20x%3D'84'%20y%3D'50'%20transform%3D'rotate(18%2092%2042)'%3E%E2%99%A5%3C%2Ftext%3E%3Ctext%20x%3D'38'%20y%3D'104'%20transform%3D'rotate(-14%2046%2096)'%3E%E2%99%A3%3C%2Ftext%3E%3Ctext%20x%3D'100'%20y%3D'118'%3E%E2%99%A6%3C%2Ftext%3E%3C%2Fsvg%3E");
+  --glass-line:rgba(255,255,255,.09);--bar:rgba(38,37,31,.62);--toast-bg:rgba(38,37,31,.72);
+  --scrim:rgba(0,0,0,.55);
+  --lens:blur(24px) saturate(200%) brightness(1.16);
+  --rim-soft:inset 0 .6px 0 rgba(255,255,255,.16);
+  --shadow-s:0 1px 2px rgba(0,0,0,.4);
+  --shadow-m:0 1px 2px rgba(0,0,0,.4),0 10px 28px -16px rgba(0,0,0,.8);
+  --shadow-l:0 24px 64px -20px rgba(0,0,0,.8),0 2px 8px rgba(0,0,0,.5);
+}
+
+/* ─────────────── base ─────────────── */
+*{box-sizing:border-box}
+[hidden]{display:none !important}
+html{touch-action:pan-x pan-y}
+body{
+  margin:0;background:var(--bg);color:var(--text);font-family:var(--font-body);
+  font-size:16px;line-height:1.45;-webkit-font-smoothing:antialiased;overflow-x:hidden;
+}
+button,input,select{font:inherit;color:inherit}
+button{background:none;border:0;cursor:pointer;padding:0}
+:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:8px}
+h1,h2,h3,p{margin:0}
+.num{font-variant-numeric:tabular-nums}
+.app{max-width:560px;margin-inline:auto;padding-inline:16px;padding-block:0 190px;display:grid;grid-template-columns:minmax(0,1fr);gap:22px}
+
+/* ─────────────── top bar ─────────────── */
+.band{
+  margin-inline:-16px;padding:calc(18px + env(safe-area-inset-top,0px)) 16px 50px;margin-top:calc(-1 * env(safe-area-inset-top,0px));
+  background:var(--band);color:var(--on-band);border-radius:0 0 28px 28px;
+  --logo-d:#0A1817;--logo-l:#EDE9DF;--logo-ring:#EDE9DF;
+}
+.band:has(+ #olline:empty){padding-bottom:22px}
+.band :focus-visible{outline-color:var(--on-band)}
+#olline:not(:empty){margin-top:-58px;position:relative}
+.top{display:flex;align-items:center;gap:12px}
+.brand{display:flex;align-items:center;gap:11px;min-width:0;flex:1}
+.mark{width:42px;height:42px;flex:none;display:block}
+.brand b{display:block;font-family:var(--font-display);font-weight:700;font-size:20px;letter-spacing:-.01em;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.brand span{display:block;font-size:13.5px;color:var(--on-band-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ibtn{
+  width:40px;height:40px;border-radius:50%;display:grid;place-items:center;flex:none;
+  background:var(--band-tint);color:var(--on-band);
+  transition:transform .38s var(--squash);
+}
+.ibtn:active{transform:scale(.9)}
+.ibtn svg{width:19px;height:19px;grid-area:1/1;transition:opacity .3s var(--ease-io),transform .45s var(--spring)}
+#themeBtn .sun{opacity:0;transform:rotate(-90deg) scale(.6)}
+html.is-dark #themeBtn .sun{opacity:1;transform:none}
+html.is-dark #themeBtn .moon{opacity:0;transform:rotate(90deg) scale(.6)}
+
+/* ─────────────── what Olma says now ─────────────── */
+.olline{
+  display:flex;gap:11px;align-items:flex-start;padding:13px 14px;border-radius:16px;
+  background:var(--surface);box-shadow:var(--shadow-m);
+}
+.olline .mark{width:26px;height:26px;margin-top:1px}
+.olline p{font-size:15px;line-height:1.5;flex:1;min-width:0}
+.olline b{font-weight:700}
+.olline.gold{background:var(--gold-soft);color:var(--gold)}
+.olline.warn{background:var(--warn-soft);color:var(--warn)}
+
+/* ─────────────── sections, groups, rows ─────────────── */
+.sec{display:grid;gap:10px;align-content:start}
+.sechead{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding-inline:4px}
+.sechead h2{font-family:var(--font-display);font-size:17px;font-weight:700}
+.sechead small{font-size:13px;color:var(--text-3)}
+.group{background:var(--surface);border-radius:16px;box-shadow:var(--shadow-m);overflow:hidden}
+.row{display:flex;align-items:center;gap:12px;padding:10px 14px;min-height:58px;position:relative}
+.row + .row::before,.row + details::before{content:"";position:absolute;top:0;height:1px;background:var(--sep);inset-inline-start:62px;inset-inline-end:0}
+.row.plain + .row.plain::before{inset-inline-start:14px}
+.row-txt{flex:1;min-width:0}
+.row-title{font-size:16.5px;font-weight:500;overflow-wrap:anywhere}
+.row-sub{font-size:13px;color:var(--text-2)}
+.row.flash{animation:flash 1.3s var(--ease-io)}
+@keyframes flash{0%{background:var(--accent-soft)}100%{background:transparent}}
+.me-tag{font-size:11.5px;font-weight:700;padding:1px 7px;border-radius:6px;background:var(--accent-soft);color:var(--accent);margin-inline-start:6px;vertical-align:2px}
+
+/* the buy-in counter is drawn as a poker chip: dashed edge, solid face */
+.pchip{
+  --s:38px;width:var(--s);height:var(--s);border-radius:50%;flex:none;display:grid;place-items:center;
+  background:var(--accent-soft);color:var(--accent);font-weight:700;font-size:15px;position:relative;
+  box-shadow:inset 0 0 0 3px var(--surface),inset 0 0 0 6px var(--accent-line);
+}
+.pchip::after{content:"";position:absolute;inset:0;border-radius:50%;border:3px dashed var(--accent);opacity:.55}
+.pchip.zero{background:var(--fill);color:var(--text-3)}
+.pchip.zero::after{border-color:var(--sep-2)}
+.pchip.bump{animation:bump .42s var(--squash)}
+@keyframes bump{0%{transform:scale(.7) rotate(-25deg)}60%{transform:scale(1.12) rotate(8deg)}100%{transform:none}}
+.pchip.big{--s:86px;font-family:var(--font-display);font-size:32px;font-weight:700;
+  box-shadow:inset 0 0 0 5px var(--surface),inset 0 0 0 10px var(--accent-line)}
+.pchip.big::after{border-width:5px}
+
+.step{display:flex;align-items:center;gap:6px;flex:none}
+.sbtn{
+  min-width:42px;height:42px;border-radius:13px;background:var(--fill);color:var(--text-2);
+  font-weight:700;font-size:17px;display:grid;place-items:center;padding-inline:8px;
+  transition:transform .38s var(--squash);
+}
+.sbtn:not(.plus):not(.armed){background:transparent;box-shadow:inset 0 0 0 1.5px var(--sep-2)}
+.sbtn.plus{background:var(--accent-soft);color:var(--accent)}
+.sbtn.half{font-size:13px}
+.sbtn:active{transform:scale(.9)}
+.sbtn:disabled{opacity:.4;cursor:default}
+.sbtn.del{font-size:20px;font-weight:500}
+.sbtn.del.armed{background:var(--danger-soft);color:var(--danger);font-size:14px;font-weight:600;padding-inline:12px}
+
+/* ─────────────── my card ─────────────── */
+.mine{padding:18px 16px 16px;display:grid;gap:16px}
+.mine-top{display:flex;align-items:center;gap:16px}
+.mine-top .txt{flex:1;min-width:0;display:grid;gap:2px}
+.mine-top small{font-size:13px;color:var(--text-3);letter-spacing:.02em}
+.mine-top b{font-family:var(--font-display);font-size:24px;font-weight:700;line-height:1.2}
+.mine-top span{font-size:14px;color:var(--text-2)}
+.mine .acts{display:flex;gap:8px}
+.mine .acts .btn.primary{flex:1}
+.mine .acts .btn.ghost{min-width:56px}
+.mine .count{display:flex;align-items:center;gap:10px;background:var(--fill);border-radius:14px;padding:6px 6px 6px 14px}
+.mine .count label{flex:1;font-size:15px;color:var(--text-2);padding-inline-start:8px}
+.mine .owe{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 14px;border-radius:14px;background:var(--accent-soft);color:var(--accent);font-weight:600}
+.mine .owe.pay{background:var(--fill);color:var(--text)}
+.mine .owe.zero{background:var(--fill);color:var(--text-2)}
+.mine .owe.done-line{opacity:.6}
+.mine .owe b{font-family:var(--font-display);font-size:18px;white-space:nowrap}
+
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--sep)}
+.stat{background:var(--surface);padding:12px 14px;display:grid;gap:2px;min-width:0}
+.stat small{font-size:12.5px;color:var(--text-3)}
+.stat b{font-family:var(--font-display);font-size:19px;font-weight:700;white-space:nowrap}
+
+/* ─────────────── controls ─────────────── */
+.btn{
+  padding:13px 16px;border-radius:15px;font-size:16px;font-weight:600;text-align:center;
+  transition:transform .38s var(--squash),opacity .2s;
+}
+.btn:active{transform:scale(.97)}
+.btn.primary{background:var(--action);color:var(--on-action);box-shadow:var(--shadow-s)}
+.btn.soft{background:var(--accent-soft);color:var(--accent)}
+.btn.ghost{background:transparent;color:var(--accent);box-shadow:inset 0 0 0 1.5px var(--accent-line)}
+.btn:disabled{opacity:.4;cursor:default}
+.btn.small{padding:8px 14px;border-radius:11px;font-size:14px}
+.btn.wide{width:100%}
+.btns{display:flex;gap:8px;flex-wrap:wrap}
+.btns .btn{flex:1}
+.seg{display:flex;gap:3px;padding:3px;border-radius:11px;background:var(--fill)}
+.seg button{flex:1;padding:7px 6px;border-radius:8.5px;font-size:14px;font-weight:600;color:var(--text-2);transition:background .26s var(--ease-io),color .26s var(--ease-io)}
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--text);box-shadow:var(--shadow-s)}
+.chips{display:flex;flex-wrap:wrap;gap:7px}
+.chip{
+  padding:7px 13px;border-radius:999px;font-size:13.5px;font-weight:600;background:var(--fill);color:var(--text-2);
+  transition:background .2s var(--ease),color .2s var(--ease),transform .2s var(--spring);
+}
+.chip[aria-pressed="true"]{background:var(--accent);color:var(--on-accent)}
+.chip:active{transform:scale(.95)}
+.field{display:flex;align-items:center;gap:12px;padding:10px 14px;min-height:52px;position:relative}
+.field + .field::before{content:"";position:absolute;top:0;height:1px;background:var(--sep);inset-inline:14px 0}
+.field label{width:112px;flex:none;font-size:15px;color:var(--text-2)}
+.field input,.field select{flex:1;min-width:0;border:0;background:none;font-size:16.5px;font-weight:500;padding:4px 0}
+.field input::placeholder{color:var(--text-3);font-weight:400}
+.field select{appearance:none;-webkit-appearance:none;cursor:pointer;color:var(--accent)}
+.field .unit{font-size:14px;color:var(--text-3);flex:none}
+.cin{
+  width:118px;flex:none;border:0;border-radius:11px;background:var(--surface);
+  padding:9px 10px;font-size:16px;font-weight:600;text-align:center;font-variant-numeric:tabular-nums;
+}
+.group .cin{background:var(--fill)}
+.cin:focus{outline:2px solid var(--accent);outline-offset:0}
+.cin::placeholder{font-weight:400;color:var(--text-3)}
+.addrow{display:flex;gap:8px;padding:10px 14px;border-top:1px solid var(--sep)}
+.addrow input{flex:1;min-width:0;border:0;background:var(--fill);border-radius:11px;padding:8px 12px;font-size:15.5px}
+.empty{padding:22px 16px;text-align:center;color:var(--text-3);font-size:14.5px}
+.note{font-size:13px;color:var(--text-3);padding-inline:4px;line-height:1.5}
+details.fold summary{list-style:none;cursor:pointer;padding:13px 14px;display:flex;justify-content:space-between;align-items:center;font-size:15px;color:var(--text-2)}
+details.fold summary::-webkit-details-marker{display:none}
+details.fold summary::after{content:"";width:8px;height:8px;border:solid var(--text-3);border-width:0 2px 2px 0;transform:rotate(45deg);transition:transform .3s var(--spring);margin-inline-end:4px}
+details.fold[open] summary::after{transform:rotate(-135deg)}
+details.fold[open] summary{border-bottom:1px solid var(--sep)}
+.logi{display:flex;gap:10px;padding:8px 14px;font-size:13.5px;color:var(--text-2)}
+.logi time{color:var(--text-3);flex:none;font-variant-numeric:tabular-nums;width:40px}
+.via{font-size:11px;font-weight:700;padding:1px 7px;border-radius:6px;background:var(--fill);color:var(--text-3);margin-inline-start:6px}
+.via.chat{background:var(--accent-soft);color:var(--accent)}
+
+/* ─────────────── closing ─────────────── */
+.meter{padding:14px;display:grid;gap:9px}
+.meterbar{height:8px;border-radius:999px;background:var(--fill);overflow:hidden}
+.meterbar i{display:block;height:100%;border-radius:inherit;background:var(--accent);transition:width .5s var(--ease)}
+.meter.ok .meterbar i{background:var(--gold-arc)}
+.meter.over .meterbar i{background:var(--danger)}
+.meterline{display:flex;justify-content:space-between;gap:10px;font-size:14px;color:var(--text-2);flex-wrap:wrap}
+.pill{display:inline-flex;align-items:center;padding:3px 10px;border-radius:999px;font-size:12.5px;font-weight:600;background:var(--fill);color:var(--text-2)}
+.pill.gold{background:var(--gold-soft);color:var(--gold)}
+.pill.warn{background:var(--warn-soft);color:var(--warn)}
+.pill.bad{background:var(--danger-soft);color:var(--danger)}
+.net{font-weight:700;white-space:nowrap}
+.net.pos{color:var(--accent)}
+.net.neg{color:var(--text)}
+
+/* the circle closes: the brand's own moment, drawn once when the sum lands */
+.done{display:grid;justify-items:center;gap:6px;padding:30px 16px 18px;text-align:center;background:var(--gold-soft);color:var(--gold)}
+.done svg{width:74px;height:74px;overflow:visible}
+.done .track{fill:none;stroke:var(--gold-arc);stroke-opacity:.22;stroke-width:6}
+.done .arc{fill:none;stroke:var(--gold-arc);stroke-width:6;stroke-linecap:round;stroke-dasharray:189;stroke-dashoffset:0;transform:rotate(-90deg);transform-origin:37px 37px}
+.done .dot{fill:var(--gold-arc)}
+.done.play .arc{animation:close 1.1s var(--ease-io) both}
+.done.play .dot{animation:dotin .5s .95s var(--squash) both}
+@keyframes close{from{stroke-dashoffset:189}to{stroke-dashoffset:0}}
+@keyframes dotin{from{transform:scale(0)}to{transform:none}}
+.done .dot{transform-box:fill-box;transform-origin:center}
+.done b{font-family:var(--font-display);font-size:44px;font-weight:700;letter-spacing:-.015em;line-height:1.1}
+.done span{font-size:14.5px}
+
+/* the table: Cypress felt, everybody in a seat, the pot in the middle */
+.tablewrap{padding:24px 34px 44px;position:relative}
+.felt{position:relative;height:122px;border-radius:50%;
+  background:radial-gradient(ellipse at 50% 38%,#0B5E59 0%,#004643 62%,#003A37 100%);
+  box-shadow:inset 0 0 0 7px rgba(240,237,229,.07),inset 0 10px 24px rgba(0,0,0,.3),0 0 0 6px color-mix(in srgb,var(--band) 55%,var(--surface)),0 11px 0 3px color-mix(in srgb,var(--band) 75%,#000),var(--shadow-m)}
+.pot{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:grid;justify-items:center;gap:1px;color:#F0EDE5;text-align:center;white-space:nowrap}
+.pot b{font-size:21px;font-weight:700;line-height:1.1;font-variant-numeric:tabular-nums}
+.pot span{font-size:11.5px;color:#BFD3CF}
+.pot.bump b{animation:bump .5s var(--squash)}
+.potchips{display:flex;margin-bottom:2px}
+.potchips i{width:12px;height:12px;border-radius:50%;background:#F0EDE5;box-shadow:inset 0 0 0 2px #F0EDE5,inset 0 0 0 4px #004643;margin-inline:-2px}
+.seat{position:absolute;transform:translate(-50%,-18px) scale(var(--d,1));transform-origin:50% 18px;display:grid;justify-items:center;gap:2px;width:58px;z-index:1}
+.seat .av{width:36px;height:36px;font-size:15px;background:var(--surface);color:var(--text);box-shadow:var(--shadow-s)}
+.seat.me .av{box-shadow:0 0 0 3px var(--surface),0 0 0 5px var(--accent)}
+.seat.out .av{opacity:.55}
+.seat .snm{font-size:12px;font-weight:600;color:var(--text);max-width:58px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  background:var(--surface);padding:0 6px;border-radius:999px;box-shadow:var(--shadow-s)}
+.seat .cnt{position:absolute;top:-6px;inset-inline-end:-9px;min-width:22px;height:22px;padding:0 4px;border-radius:999px;display:grid;place-items:center;
+  font-size:11.5px;font-weight:700;background:var(--accent);color:var(--on-accent);box-shadow:0 0 0 2px var(--surface);font-variant-numeric:tabular-nums}
+.seat.bump .cnt{animation:bump .45s var(--squash)}
+.fly{position:absolute;width:18px;height:18px;border-radius:50%;background:#F0EDE5;box-shadow:inset 0 0 0 2px #F0EDE5,inset 0 0 0 4px #004643,0 2px 6px rgba(0,0,0,.3);
+  transform:translate(-50%,-50%);z-index:2;animation:fly .8s var(--ease-io) forwards;pointer-events:none}
+@keyframes fly{70%{opacity:1}to{left:50%;top:38%;transform:translate(-50%,-50%) scale(.6);opacity:0}}
+
+/* my chips: a stack that grows by one with every buy-in */
+.cstack{position:relative;width:62px;height:62px;flex:none}
+.disc{position:absolute;inset-inline-start:2px;width:58px;height:18px;border-radius:50%;background:var(--accent);
+  box-shadow:0 3px 0 var(--accent-2),0 4px 5px rgba(0,0,0,.18)}
+.disc::after{content:"";position:absolute;inset:3px 7px;border-radius:50%;border:2px dashed color-mix(in srgb,var(--on-accent) 55%,transparent)}
+.disc.half{clip-path:inset(-6px 0 -8px 50%)}
+.disc.ghost{background:none;box-shadow:none;border:2px dashed var(--sep-2)}
+.disc.ghost::after{display:none}
+.disc.drop{animation:drop .55s var(--squash) both}
+@keyframes drop{from{transform:translateY(-46px);opacity:0}60%{transform:translateY(3px);opacity:1}to{transform:none}}
+.logi .ic{width:20px;flex:none;text-align:center}
+
+/* the chip tray: ten chips fill as the counts come in */
+.tray{padding:14px;display:grid;gap:10px}
+.chips10{display:grid;grid-template-columns:repeat(10,minmax(0,1fr));gap:5px}
+.tc{aspect-ratio:1;border-radius:50%;background:var(--fill);position:relative;transition:background .35s var(--ease),transform .4s var(--squash)}
+.tc::after{content:"";position:absolute;inset:3px;border-radius:50%;border:2px dashed var(--sep-2)}
+.tc.on{background:var(--accent-soft)}
+.tc.on::after{border-color:var(--accent)}
+.tray.ok .tc{background:var(--gold-soft)}
+.tray.ok .tc::after{border-color:var(--gold-arc)}
+.tray.ok.play .tc{animation:hop .5s var(--squash) both}
+.tray.over .tc.on:last-child{background:var(--danger-soft)}
+.tray.over .tc.on:last-child::after{border-color:var(--danger)}
+.tray.ok.play .tc:nth-child(1){animation-delay:0.00s}
+.tray.ok.play .tc:nth-child(2){animation-delay:0.04s}
+.tray.ok.play .tc:nth-child(3){animation-delay:0.08s}
+.tray.ok.play .tc:nth-child(4){animation-delay:0.12s}
+.tray.ok.play .tc:nth-child(5){animation-delay:0.16s}
+.tray.ok.play .tc:nth-child(6){animation-delay:0.20s}
+.tray.ok.play .tc:nth-child(7){animation-delay:0.24s}
+.tray.ok.play .tc:nth-child(8){animation-delay:0.28s}
+.tray.ok.play .tc:nth-child(9){animation-delay:0.32s}
+.tray.ok.play .tc:nth-child(10){animation-delay:0.36s}
+@keyframes hop{0%{transform:none}40%{transform:translateY(-7px)}100%{transform:none}}
+.cnt-row{display:flex;align-items:center;gap:12px;padding:10px 14px;min-height:62px;position:relative}
+.cnt-row + .cnt-row::before{content:"";position:absolute;top:0;height:1px;background:var(--sep);inset-inline:64px 0}
+.cnt-row .av{width:40px;height:40px;font-size:16px}
+.cnt-row.in .av{background:var(--accent-soft);color:var(--accent)}
+.cnt-row .who{flex:1;min-width:0}
+.cnt-row .who b{display:block;font-weight:600;font-size:16px}
+.cnt-row .who span{font-size:13px;color:var(--text-2)}
+
+/* the podium: the evening's three biggest winners */
+.podium{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));align-items:end;gap:8px;padding:6px 18px 0;background:var(--gold-soft)}
+.pod{display:grid;justify-items:center;gap:4px;min-width:0}
+.pod .av{width:44px;height:44px;background:var(--surface);color:var(--text);box-shadow:var(--shadow-s)}
+.pod.r1 .av{width:54px;height:54px;font-size:22px;background:var(--action);color:var(--on-action)}
+.pod .nm{font-size:13.5px;font-weight:600;color:var(--text);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pod .won{font-size:12.5px;font-weight:700;color:var(--gold);font-variant-numeric:tabular-nums}
+.pod .plinth{width:100%;border-radius:12px 12px 0 0;display:grid;place-items:center;font-weight:700;font-size:18px;color:var(--gold);
+  background:color-mix(in srgb,var(--gold-arc) 34%,var(--surface));transform-origin:bottom}
+.podium.play .plinth{animation:rise .6s var(--squash) both}
+.pod.r1 .plinth{height:62px}.podium.play .r1 .plinth{animation-delay:.25s}.podium.play .r3 .plinth{animation-delay:.35s}.pod.r2 .plinth{height:42px;animation-delay:.1s}.pod.r3 .plinth{height:28px}
+.pod .crown{font-size:20px;line-height:1}
+.podium.play .crown{animation:rx .5s .7s var(--squash) both}
+@keyframes rise{from{transform:scaleY(0)}to{transform:none}}
+
+/* confetti, once, when the sum lands */
+.done{position:relative;overflow:hidden}
+.confetti{position:absolute;inset:0;pointer-events:none}
+.confetti i{position:absolute;top:44px;left:50%;width:8px;height:12px;border-radius:2px;opacity:0}
+.done.play .confetti i{animation:burst 1.5s .9s var(--ease) both}
+.confetti i:nth-child(1){background:#F9C23C;--x:-120px;--y:-40px;--r:-120deg}
+.confetti i:nth-child(2){background:#004643;--x:-90px;--y:30px;--r:80deg}
+.confetti i:nth-child(3){background:#F9C23C;--x:-60px;--y:-70px;--r:240deg}
+.confetti i:nth-child(4){background:#7CC4BA;--x:-30px;--y:10px;--r:-180deg}
+.confetti i:nth-child(5){background:#004643;--x:0px;--y:-60px;--r:320deg}
+.confetti i:nth-child(6){background:#F9C23C;--x:30px;--y:20px;--r:-280deg}
+.confetti i:nth-child(7){background:#7CC4BA;--x:60px;--y:-50px;--r:140deg}
+.confetti i:nth-child(8){background:#004643;--x:90px;--y:40px;--r:-80deg}
+.confetti i:nth-child(9){background:#F9C23C;--x:120px;--y:-20px;--r:200deg}
+.confetti i:nth-child(10){background:#7CC4BA;--x:-140px;--y:60px;--r:360deg}
+.confetti i:nth-child(11){background:#004643;--x:140px;--y:-80px;--r:-240deg}
+.confetti i:nth-child(12){background:#F9C23C;--x:-10px;--y:70px;--r:60deg}
+.confetti i:nth-child(13){background:#7CC4BA;--x:105px;--y:80px;--r:300deg}
+.confetti i:nth-child(14){background:#F9C23C;--x:-100px;--y:90px;--r:-340deg}
+@keyframes burst{0%{opacity:1;transform:translate(-50%,0) rotate(0)}60%{opacity:1}100%{opacity:0;transform:translate(calc(-50% + var(--x)),calc(var(--y) + 90px)) rotate(var(--r))}}
+
+/* a transfer is a card: who, how much, to whom, and a coin on its way */
+.xprog{padding:12px 14px 4px;display:grid;gap:7px}
+.xprog .meterline{font-size:13.5px}
+.xcard{display:grid;grid-template-columns:62px minmax(0,1fr) 62px;align-items:center;gap:8px;padding:12px 14px;position:relative;transition:opacity .3s}
+.xcard + .xcard::before{content:"";position:absolute;top:0;height:1px;background:var(--sep);inset-inline:14px}
+.xcard.mine{background:var(--accent-soft)}
+.xcard .xp{display:grid;justify-items:center;gap:3px;min-width:0}
+.xcard .xp .av{width:42px;height:42px;font-size:17px}
+.xcard .xp .nm{font-size:13px;font-weight:600;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.xcard .xmid{display:grid;justify-items:center;gap:6px;min-width:0}
+.xcard .xmid b{font-size:18px;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+.xline{width:100%;height:2px;position:relative;background:repeating-linear-gradient(90deg,var(--sep-2) 0 5px,transparent 5px 9px)}
+.xline::before{content:"";position:absolute;inset-inline-end:-2px;top:50%;width:7px;height:7px;border:solid var(--sep-2);border-width:2px 0 0 2px;transform:translateY(-50%) rotate(-45deg)}
+.xline i{position:absolute;top:50%;width:12px;height:12px;margin-top:-6px;border-radius:50%;background:var(--gold-arc);box-shadow:0 0 0 2px var(--surface);
+  inset-inline-start:0;animation:coin 2.6s var(--ease-io) infinite}
+@keyframes coin{0%{inset-inline-start:0;opacity:0}15%{opacity:1}85%{opacity:1}100%{inset-inline-start:calc(100% - 12px);opacity:0}}
+.xcard.paid{opacity:.55}
+.xcard.paid .xmid b{text-decoration:line-through;text-decoration-thickness:1.5px}
+.xcard.paid .xline i{display:none}
+.xcard .xp .av .bd{font-size:12px;width:21px;height:21px}
+.xfer{display:flex;align-items:center;gap:10px;padding:12px 14px;min-height:58px;position:relative}
+.xfer + .xfer::before{content:"";position:absolute;top:0;height:1px;background:var(--sep);inset-inline:14px 0}
+.xfer .who{flex:1;display:flex;align-items:center;gap:8px;min-width:0;font-weight:600;flex-wrap:wrap}
+.xfer .arrow{color:var(--text-3)}
+.xfer .amt{font-family:var(--font-display);font-weight:700;font-size:17px;white-space:nowrap}
+.xfer.mine{background:var(--accent-soft)}
+.xfer.paid .who,.xfer.paid .amt{color:var(--text-3);text-decoration:line-through;text-decoration-thickness:1.5px}
+.tick{
+  width:38px;height:38px;border-radius:50%;flex:none;display:grid;place-items:center;
+  box-shadow:inset 0 0 0 2px var(--sep-2);color:transparent;transition:background .25s var(--ease-io),box-shadow .25s,color .25s;
+}
+.tick svg{width:17px;height:17px}
+.tick[aria-pressed="true"]{background:var(--accent);box-shadow:none;color:var(--on-accent);animation:bump .38s var(--squash)}
+
+/* ─────────────── tabs, chat button, sheets ─────────────── */
+.tabbar{
+  position:fixed;inset-inline:0;bottom:0;z-index:50;display:flex;justify-content:center;
+  padding:8px 16px calc(22px + env(safe-area-inset-bottom,0px));pointer-events:none;
+}
+.tabs{
+  pointer-events:auto;display:flex;gap:4px;padding:5px;border-radius:999px;background:var(--bar);
+  border:.5px solid var(--glass-line);-webkit-backdrop-filter:var(--lens);backdrop-filter:var(--lens);
+  box-shadow:var(--shadow-m),var(--rim-soft);flex:1;max-width:380px;
+}
+.tabs button{flex:1;padding:10px 6px;border-radius:999px;font-size:14.5px;font-weight:600;color:var(--text-2);position:relative;transition:background .26s var(--ease-io),color .26s var(--ease-io)}
+.tabs button[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent);font-weight:700}
+.tabs .dot{position:absolute;top:5px;inset-inline-end:16px;width:8px;height:8px;border-radius:50%;background:var(--gold-arc);animation:rx .4s var(--squash)}
+.tabbar{gap:8px;align-items:center}
+.fab{
+  pointer-events:auto;width:52px;height:52px;border-radius:50%;flex:none;display:grid;place-items:center;
+  background:var(--accent);color:var(--on-accent);box-shadow:var(--shadow-m);
+  transition:transform .38s var(--squash);
+}
+.fab:active{transform:scale(.92)}
+.fab svg{width:22px;height:22px}
+.tab{display:none}
+body[data-tab="night"] #tNight,body[data-tab="food"] #tFood,body[data-tab="settle"] #tSettle{display:grid}
+
+.scrim{position:fixed;inset:0;z-index:80;background:var(--scrim);opacity:0;pointer-events:none;transition:opacity .3s var(--ease-io)}
+.scrim.on{opacity:1;pointer-events:auto}
+.sheet{
+  position:fixed;z-index:82;inset-inline:0;bottom:0;margin-inline:auto;width:100%;max-width:560px;
+  background:var(--surface);border-radius:22px 22px 0 0;box-shadow:var(--shadow-l);
+  transform:translateY(105%);transition:transform .42s var(--spring);
+  padding-bottom:env(safe-area-inset-bottom,0px);display:flex;flex-direction:column;max-height:88dvh;
+}
+.sheet.on{transform:none}
+.grab{width:38px;height:5px;border-radius:999px;background:var(--sep-2);margin:8px auto 2px;flex:none}
+.sheethead{display:flex;align-items:center;gap:10px;padding:8px 16px 12px;flex:none}
+.sheethead .mark{width:34px;height:34px}
+.sheethead b{font-family:var(--font-display);font-weight:700;font-size:17px;display:block;line-height:1.2}
+.sheethead span{font-size:12.5px;color:var(--text-3)}
+.sheethead .ibtn{margin-inline-start:auto;width:34px;height:34px;background:var(--fill);box-shadow:none}
+.sheetbody{overflow-y:auto;padding:0 16px 18px;display:grid;gap:14px}
+
+/* chat */
+#chatSheet{height:86dvh}
+.msgs{flex:1;overflow-y:auto;padding:14px 12px;display:flex;flex-direction:column;gap:8px;background:var(--wall) 0 0/132px 132px local,var(--chat-bg);overscroll-behavior:contain}
+.b{max-width:84%;padding:8px 12px 9px;border-radius:16px;font-size:15.5px;line-height:1.45;position:relative;white-space:pre-line;overflow-wrap:anywhere;box-shadow:var(--shadow-s);animation:bin .32s var(--spring)}
+@keyframes bin{from{transform:translateY(8px) scale(.97);opacity:0}to{transform:none;opacity:1}}
+.b.me{align-self:flex-start;background:var(--bubble-me);border-start-start-radius:5px}
+.b.ol{align-self:flex-end;background:var(--bubble-ol);border-start-end-radius:5px}
+.b.sum{box-shadow:inset 0 0 0 1.5px var(--gold-arc),var(--shadow-s)}
+.b .rx{position:absolute;bottom:-12px;inset-inline-end:8px;background:var(--surface);border-radius:999px;padding:1px 6px;font-size:14px;box-shadow:var(--shadow-s);animation:rx .42s var(--squash)}
+.b.has-rx{margin-bottom:10px}
+@keyframes rx{0%{transform:scale(0) rotate(-35deg)}55%{transform:scale(1.45) rotate(10deg)}100%{transform:none}}
+.b .chips{margin-top:8px}
+.b .btn{margin-top:8px}
+.typing{align-self:flex-end;display:flex;gap:4px;padding:11px 13px;border-radius:16px;background:var(--bubble-ol);box-shadow:var(--shadow-s)}
+.typing i{width:6px;height:6px;border-radius:50%;background:var(--text-3);animation:tdot 1s var(--ease-io) infinite}
+.typing i:nth-child(2){animation-delay:.14s}.typing i:nth-child(3){animation-delay:.28s}
+@keyframes tdot{0%,100%{opacity:.3;transform:translateY(0)}45%{opacity:1;transform:translateY(-3px)}}
+.qr{display:flex;gap:6px;overflow-x:auto;padding:8px 12px 0;scrollbar-width:none;background:var(--chat-bg);flex:none}
+.qr::-webkit-scrollbar{display:none}
+.qr .chip{white-space:nowrap;background:var(--surface);box-shadow:var(--shadow-s);color:var(--accent);display:inline-flex;align-items:center;gap:5px}
+.qr .qi{font-size:14px}
+.composer{display:flex;gap:8px;padding:10px 12px 12px;background:var(--chat-bg);flex:none}
+.composer input{flex:1;min-width:0;border:0;border-radius:999px;background:var(--surface);padding:10px 16px;font-size:16px;box-shadow:var(--shadow-s)}
+.send{width:44px;height:44px;border-radius:50%;background:var(--action);color:var(--on-action);display:grid;place-items:center;flex:none;transition:transform .38s var(--squash)}
+.send:active{transform:scale(.9)}
+.send svg{width:18px;height:18px}
+
+/* first visit: who are you */
+.welcome{position:fixed;inset:0;z-index:100;background:var(--bg);display:grid;place-items:center;padding:24px 16px;overflow-y:auto}
+.wcard{width:100%;max-width:420px;display:grid;gap:18px;justify-items:center;text-align:center;animation:bin .5s var(--spring)}
+.wcard .mark{width:64px;height:64px}
+.wcard h1{font-family:var(--font-display);font-size:25px;font-weight:700;text-wrap:balance}
+.wcard p{color:var(--text-2);font-size:15.5px;max-width:34ch}
+.wcard .chips{justify-content:center}
+.wcard .chip{font-size:16px;padding:11px 18px;background:var(--surface);box-shadow:inset 0 0 0 1.5px var(--sep-2);color:var(--text)}
+.wcard form{display:flex;gap:8px;width:100%}
+.wcard form input{flex:1;min-width:0;border:0;border-radius:13px;background:var(--surface);padding:11px 14px;font-size:16px;box-shadow:inset 0 0 0 1.5px var(--sep-2)}
+.linkish{color:var(--text-2);font-size:14px;text-decoration:underline;text-underline-offset:3px}
+
+.toast{
+  position:fixed;bottom:calc(146px + env(safe-area-inset-bottom,0px));inset-inline:0;margin-inline:auto;width:max-content;max-width:calc(100% - 48px);
+  z-index:110;padding:8px 15px;border-radius:999px;font-size:13.5px;font-weight:600;color:var(--text-2);background:var(--toast-bg);
+  border:.5px solid var(--glass-line);-webkit-backdrop-filter:var(--lens);backdrop-filter:var(--lens);box-shadow:var(--shadow-m);
+  opacity:0;transform:translateY(9px);pointer-events:none;transition:opacity .26s var(--ease-io),transform .26s var(--ease-io);
+}
+.toast.show{opacity:1;transform:none}
+.foot{text-align:center;font-size:12.5px;color:var(--text-3)}
+/* food: who paid, who ate, and what each one's own dish cost */
+.fsec{padding:12px 14px;display:grid;gap:9px;position:relative}
+.fsec + .fsec::before,.field + .fsec::before{content:"";position:absolute;top:0;height:1px;background:var(--sep);inset-inline:14px 0}
+.fhead{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+.fhead span{font-size:14px;color:var(--text-2)}
+.fhead .linkish{font-size:13.5px}
+.amts{display:grid;gap:6px}
+.amt-row{display:flex;align-items:center;gap:10px}
+.amt-row span{flex:1;min-width:0;font-size:15.5px}
+.cin.sm{width:104px;padding:7px 10px;font-size:15px}
+.cin.xs{width:84px;padding:5px 8px;font-size:14.5px}
+.hint{font-size:13.5px;color:var(--text-2);line-height:1.45}
+.hint.warn{color:var(--warn)}
+.food-row{align-items:flex-start;padding-block:12px}
+.food-row .row-sub + .row-sub{margin-top:1px}
+.food-row .side{display:flex;gap:6px;flex:none}
+/* the order form: a few quick questions, answered by tapping */
+.fcard{display:grid}
+.fq{padding:14px;display:grid;gap:10px;position:relative}
+.fq + .fq::before{content:"";position:absolute;top:0;height:1px;background:var(--sep);inset-inline:14px 0}
+.fq-t{font-weight:600;font-size:15.5px}
+.foods{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:7px}
+.ficon{display:grid;justify-items:center;gap:3px;padding:10px 2px 8px;border-radius:16px;background:var(--fill);font-size:12.5px;color:var(--text-2);
+  transition:background .2s var(--ease),transform .3s var(--squash)}
+.ficon:active{transform:scale(.92)}
+.ficon i{font-style:normal;font-size:29px;line-height:1.1}
+.ficon[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent);font-weight:600;box-shadow:inset 0 0 0 2px var(--accent)}
+.ficon[aria-pressed="true"] i{animation:wig .5s var(--squash)}
+@keyframes wig{0%{transform:scale(.6) rotate(-16deg)}60%{transform:scale(1.18) rotate(7deg)}100%{transform:none}}
+.bigamt{display:flex;align-items:baseline;justify-content:center;gap:6px;background:var(--fill);border-radius:16px;padding:6px 14px}
+.bigamt input{border:0;background:none;font-size:36px;font-weight:700;width:5.5ch;text-align:center;font-variant-numeric:tabular-nums;padding:0}
+.bigamt input::placeholder{color:var(--text-3);font-weight:500}
+.bigamt input:focus{outline:none}
+.bigamt:focus-within{box-shadow:inset 0 0 0 2px var(--accent)}
+.bigamt span{font-size:22px;font-weight:600;color:var(--text-2)}
+.avs{display:grid;grid-template-columns:repeat(auto-fill,minmax(54px,1fr));gap:12px 4px}
+.avb{display:grid;justify-items:center;gap:3px;min-width:0;font-size:13px;color:var(--text-2)}
+.avb .nm{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.av{width:46px;height:46px;border-radius:50%;display:grid;place-items:center;background:var(--fill);color:var(--text-2);font-weight:700;font-size:19px;position:relative;
+  transition:background .22s var(--ease),color .22s var(--ease),transform .3s var(--squash)}
+.avb:active .av{transform:scale(.9)}
+.avb[aria-pressed="true"]{color:var(--text);font-weight:600}
+.avb[aria-pressed="true"] .av{background:var(--accent);color:var(--on-accent)}
+.av .bd{position:absolute;bottom:-4px;inset-inline-end:-7px;width:25px;height:25px;border-radius:50%;display:grid;place-items:center;
+  font-size:14px;background:var(--surface);box-shadow:var(--shadow-s);animation:rx .42s var(--squash)}
+.avb.pop .av{animation:bump .42s var(--squash)}
+.av-amt{font-size:12px;font-weight:600;color:var(--accent);min-height:1.2em;font-variant-numeric:tabular-nums}
+.femoji{width:46px;height:46px;border-radius:15px;background:var(--fill);display:grid;place-items:center;font-size:25px;flex:none}
+.stack{display:flex;margin-top:7px;padding-inline-start:6px}
+.stack .av{width:28px;height:28px;font-size:12px;box-shadow:0 0 0 2px var(--surface);margin-inline-start:-6px;background:var(--accent-soft);color:var(--accent)}
+.stack .av.payer{background:var(--action);color:var(--on-action)}
+.avb[data-pay][aria-pressed="true"] .av{background:var(--action);color:var(--on-action)}
+.myshare{white-space:nowrap;display:flex;align-items:center;gap:8px;margin-top:8px;font-size:14px;color:var(--text-2)}
+.mine .owe .tick{width:34px;height:34px;box-shadow:inset 0 0 0 2px var(--accent-line)}
+.mine .owe .tick[aria-pressed="true"]{box-shadow:none}
+.mine .owe-l{display:flex;align-items:center;gap:10px;min-width:0}
+.group.share .btns{display:flex;gap:8px;padding:0 14px 14px}
+.group.share .btn{text-decoration:none;display:inline-flex;align-items:center;justify-content:center}
+#shareBtn{text-decoration:none}
+.payapps{display:flex;align-items:center;gap:8px;padding-inline:4px;font-size:13px;color:var(--text-3)}
+.payapp{display:inline-flex;align-items:center;gap:4px;padding:6px 12px;border-radius:999px;background:var(--fill);color:var(--text);font-weight:600;font-size:13.5px;text-decoration:none;transition:transform .2s var(--spring)}
+.payapp:active{transform:scale(.94)}
+.whoami .row{gap:12px}
+.whoami .mark{width:34px;height:34px}
+
+/* first visit: take your seat */
+.wtable{width:min(330px,100%);padding:24px 32px 42px}
+.wtable .felt{height:118px}
+.wname{position:absolute;inset:0;display:grid;place-items:center;padding:0 48px;color:#F0EDE5;font-weight:700;font-size:14.5px;line-height:1.25;text-align:center}
+button.seat{background:none;padding:0;cursor:pointer;animation:sit .5s var(--squash) both;animation-delay:calc(var(--i) * 80ms)}
+button.seat .av{transition:transform .25s var(--spring),box-shadow .2s var(--ease)}
+button.seat:hover .av,button.seat:focus-visible .av{transform:translateY(-3px);box-shadow:0 0 0 3px var(--surface),0 0 0 5px var(--action)}
+button.seat:active .av{transform:scale(.9)}
+@keyframes sit{from{opacity:0;transform:translate(-50%,-18px) scale(.3)}}
+
+/* opening an evening: a fanned hand, the chip's worth, the table filling */
+.fan{display:flex;justify-content:center;height:66px;margin-block:6px 0;direction:ltr}
+.card{width:36px;height:50px;border-radius:7px;background:var(--surface);box-shadow:var(--shadow-s),inset 0 0 0 1px var(--sep);display:grid;place-items:center;
+  font-size:22px;color:var(--accent);margin-inline:-3px;transform-origin:50% 150%;transform:rotate(var(--r));animation:deal .6s var(--squash) both;animation-delay:calc(var(--i) * 70ms)}
+.card.gold{color:var(--action-2,var(--action))}
+@keyframes deal{from{transform:rotate(0) translateY(10px);opacity:0}}
+.cval{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--fill);margin:0 14px 10px;border-radius:12px;font-size:14.5px;color:var(--text-2)}
+.cval b{color:var(--text);font-variant-numeric:tabular-nums}
+.cval .coin{width:26px;height:26px;border-radius:50%;flex:none;background:var(--accent);box-shadow:0 2px 0 var(--accent-2);position:relative}
+.cval .coin::after{content:"";position:absolute;inset:4px;border-radius:50%;border:2px dashed color-mix(in srgb,var(--on-accent) 55%,transparent)}
+.cval.bump .coin{animation:bump .45s var(--squash)}
+.spav{display:flex;flex-wrap:wrap;gap:6px;padding:0 14px 4px}
+.spav:empty{display:none}
+.spav .av{width:34px;height:34px;font-size:14px;background:var(--fill);color:var(--text)}
+.spav .av.pop{animation:rx .42s var(--squash)}
+.setme{display:flex;align-items:center;gap:12px}
+.setme .av{width:40px;height:40px;font-size:16px;background:var(--accent);color:var(--on-accent);flex:none}
+
+/* food: the orders are a till receipt, torn off at the bottom */
+.receipt{overflow:visible;min-width:0;border-radius:16px 16px 0 0;position:relative;margin-bottom:10px}
+.receipt::after{content:"";position:absolute;inset-inline:0;bottom:-9px;height:10px;
+  background:linear-gradient(135deg,var(--surface) 50%,transparent 50%) 0 0/14px 10px repeat-x,linear-gradient(225deg,var(--surface) 50%,transparent 50%) 0 0/14px 10px repeat-x}
+.receipt .row + .row::before{height:0;background:none;border-top:1.5px dashed var(--sep-2)}
+.rtop{display:flex;align-items:center;gap:8px;padding:12px 16px 4px;font-size:12px;letter-spacing:.14em;color:var(--text-3);font-weight:600}
+.rtop::before,.rtop::after{content:"";flex:1;border-top:1.5px dashed var(--sep-2)}
+.rtotal{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:12px 16px 16px;position:relative}
+.rtotal::before{content:"";position:absolute;top:0;inset-inline:16px;border-top:1.5px dashed var(--sep-2)}
+.rtotal span{font-size:14px;color:var(--text-2)}
+.rtotal b{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums}
+/* who is owed for food: bars from the middle, the payers in mustard */
+.bars{padding:6px 14px 12px;display:grid;gap:2px}
+.brow{display:grid;grid-template-columns:60px minmax(0,1fr) 74px;align-items:center;gap:10px;min-height:38px}
+.brow .bn{font-weight:600;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.brow .net{text-align:end;font-size:14.5px}
+.bar{position:relative;height:12px;border-radius:999px;background:var(--fill)}
+.bar::before{content:"";position:absolute;left:50%;top:-4px;bottom:-4px;width:1.5px;background:var(--sep-2)}
+.bar i{position:absolute;top:0;bottom:0;border-radius:999px}
+.bars.play .bar i{animation:grow .6s var(--ease-io) both}
+.bar i.pos{left:50%;background:var(--action)}
+.bar i.neg{right:50%;background:var(--text-3);opacity:.55}
+@keyframes grow{from{width:0}}
+.blegend{display:flex;justify-content:space-between;padding:10px 14px 0;font-size:12.5px;color:var(--text-3)}
+/* closing: the awards, in whichever place is chosen, and on the pictures */
+.av .bd{width:auto;min-width:25px;padding-inline:3px;border-radius:999px;letter-spacing:-.1em}
+.awcards{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:10px}
+.awcard{background:var(--surface);border-radius:16px;box-shadow:var(--shadow-m);padding:14px 10px 12px;display:grid;justify-items:center;gap:2px;text-align:center}
+.awcard .awi{font-size:30px;line-height:1.2}
+.awcard b{font-size:15.5px}
+.awcard span:last-child{font-size:12.5px;color:var(--text-2);line-height:1.35}
+.awcards.play .awcard{animation:rx .5s var(--squash) both}
+.awcards.play .awcard:nth-child(2){animation-delay:.12s}.awcards.play .awcard:nth-child(3){animation-delay:.24s}.awcards.play .awcard:nth-child(4){animation-delay:.36s}
+.xcard .xp .av .bd,.cnt-row .av .bd,.pod .av .bd{width:auto;min-width:21px;padding-inline:3px}
+.cnt-row .av .bd{width:20px;height:20px;font-size:11px;bottom:-5px;inset-inline-end:-6px}
+.cnt-row .net.pos{background:var(--accent-soft);padding:0 6px;border-radius:999px}
+[data-copy]{display:flex;align-items:center;justify-content:center;gap:8px}
+[data-copy].copied{animation:bump .45s var(--squash)}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none !important;transition:none !important}
+}
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <!-- the Allma mark, חצי־חצי: two halves, each holding a circle of the other, and a Mustard lens where they meet -->
+  <clipPath id="logo-c"><circle cx="60" cy="60" r="60"/></clipPath>
+  <clipPath id="logo-a"><circle cx="44" cy="60" r="24"/></clipPath>
+  <symbol id="logo" viewBox="0 0 120 120">
+    <g clip-path="url(#logo-c)">
+      <rect width="60" height="120" fill="var(--logo-d)"/><rect x="60" width="60" height="120" fill="var(--logo-l)"/>
+      <circle cx="44" cy="60" r="24" fill="var(--logo-l)"/><circle cx="76" cy="60" r="24" fill="var(--logo-d)"/>
+      <circle cx="76" cy="60" r="24" fill="var(--logo-lens)" clip-path="url(#logo-a)"/>
+    </g>
+    <circle cx="60" cy="60" r="58.25" fill="none" stroke="var(--logo-ring)" stroke-width="3.5"/>
+  </symbol>
+</defs></svg>
+<div dir="rtl" lang="he">
+<div class="app">
+  <header class="band"><div class="top">
+    <div class="brand">
+      <svg class="mark" viewBox="0 0 120 120" aria-hidden="true"><use href="#logo"/></svg>
+      <div style="min-width:0"><b id="gTitle">ערב פוקר</b><span id="gSub">עולמה</span></div>
+    </div>
+    <a class="ibtn" id="shareBtn" href="https://wa.me/" target="_blank" rel="noopener" aria-label="שליחת הקישור לערב בוואטסאפ" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4M7.5 8.5 12 4l4.5 4.5M5 12v6.5A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5V12"/></svg></a>
+    <button class="ibtn" id="themeBtn" type="button" aria-label="מעבר למצב כהה">
+      <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>
+      <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></svg>
+    </button>
+    <button class="ibtn" id="setBtn" type="button" aria-label="הגדרות הערב">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>
+    </button>
+  </div></header>
+
+  <div id="olline"></div>
+
+  <main id="tNight" class="tab sec" style="gap:22px"></main>
+  <main id="tFood" class="tab sec" style="gap:22px"></main>
+  <main id="tSettle" class="tab sec" style="gap:22px"></main>
+
+  <p class="foot" id="foot">הקישור לערב הזה נשלח מעולמה בוואטסאפ</p>
+</div>
+
+
+
+<nav class="tabbar" aria-label="מסכים">
+  <div class="tabs">
+    <button type="button" data-tab="night" aria-pressed="true">הערב</button>
+    <button type="button" data-tab="food" aria-pressed="false">אוכל</button>
+    <button type="button" data-tab="settle" aria-pressed="false">סגירה</button>
+  </div>
+  <button class="fab" id="chatBtn" type="button" aria-label="לכתוב לעולמה">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 0 1-11.6 7.1L4 20l1-4.2A8 8 0 1 1 20 12z"/></svg>
+  </button>
+</nav>
+
+<div class="scrim" id="scrim"></div>
+
+<section class="sheet" id="chatSheet" aria-label="צ'אט עם עולמה" aria-hidden="true">
+  <div class="grab"></div>
+  <div class="sheethead">
+    <svg class="mark" viewBox="0 0 120 120" aria-hidden="true"><use href="#logo"/></svg>
+    <div><b>עולמה</b><span>מה שכותבים כאן נרשם בפנקס, כמו בוואטסאפ</span></div>
+    <button class="ibtn" type="button" data-close aria-label="סגירה"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+  </div>
+  <div class="msgs" id="msgs" aria-live="polite"></div>
+  <div class="qr" id="qr"></div>
+  <form class="composer" id="composer" autocomplete="off">
+    <input id="msgIn" type="text" placeholder="עוד כניסה…" aria-label="הודעה לעולמה" enterkeyhint="send">
+    <button class="send" type="submit" aria-label="שליחה"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12H5M11 5l-7 7 7 7"/></svg></button>
+  </form>
+</section>
+
+<section class="sheet" id="setSheet" aria-label="הגדרות הערב" aria-hidden="true">
+  <div class="grab"></div>
+  <div class="sheethead">
+    <div><b>הגדרות הערב</b><span>משנים כאן, וכולם רואים</span></div>
+    <button class="ibtn" type="button" data-close aria-label="סגירה"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+  </div>
+  <div class="sheetbody" id="setBody"></div>
+</section>
+
+<div class="welcome" id="welcome" hidden></div>
+<div class="toast" id="toast" role="status"></div>
+</div>
+
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+const ls = {
+  get(k){ try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v){ try { localStorage.setItem(k, v); } catch {} },
+};
+document.body.dataset.tab = 'night';
+
+/* theme: follows the phone until somebody taps, then remembers on this device */
+const darkMQ = matchMedia('(prefers-color-scheme: dark)');
+const isDark = () => { const t = document.documentElement.dataset.theme; return t ? t === 'dark' : darkMQ.matches; };
+function paintTheme(){
+  const d = isDark();
+  document.documentElement.classList.toggle('is-dark', d);
+  $('#themeBtn').setAttribute('aria-label', d ? 'מעבר למצב בהיר' : 'מעבר למצב כהה');
+}
+{ const t = ls.get('pk-theme'); if (t === 'dark' || t === 'light') document.documentElement.dataset.theme = t; }
+paintTheme();
+darkMQ.addEventListener?.('change', paintTheme);
+$('#themeBtn').addEventListener('click', () => {
+  const next = isDark() ? 'light' : 'dark';
+  document.documentElement.dataset.theme = next; ls.set('pk-theme', next); paintTheme();
+});
+
+/* ───────────── money & chips ───────────── */
+const nf = new Intl.NumberFormat('he-IL');
+const fmtChips = n => nf.format(Math.round(n));
+const fmtAg = ag => {
+  const a = Math.abs(ag), whole = a % 100 === 0;
+  // isolated, so a minus sign stays in front of its number inside Hebrew text
+  return '\u2066' + (ag < 0 ? '−' : '') + (a / 100).toLocaleString('he-IL', { minimumFractionDigits: whole ? 0 : 2, maximumFractionDigits: 2 }) + ' ₪\u2069';
+};
+// a half is isolated left-to-right, or Hebrew text around it prints 2½ as ½2
+// a win carries its plus inside the same isolate as the number
+const fmtNet = ag => ag > 0 ? '\u2066+' + fmtAg(ag).slice(1) : fmtAg(ag);
+const fmtN = n => { const f = Math.floor(n), h = n - f >= 0.5; return h ? '\u2066' + (f ? f + '½' : '½') + '\u2069' : String(f); };
+const buyWord = n => n === 1 ? 'כניסה אחת' : fmtN(n) + ' כניסות';
+
+/* Minimum number of transfers, exactly: n minus the largest number of
+   disjoint groups whose balances sum to zero (a group of m settles in m−1).
+   Subset DP up to 15 non-zero balances; past that, one greedy group. */
+function settle(bal){
+  const items = bal.filter(b => b.v !== 0);
+  const k = items.length;
+  if (!k) return [];
+  let groups;
+  if (k <= 15) {
+    const N = 1 << k, sum = new Float64Array(N), dp = new Int8Array(N), ch = new Int8Array(N);
+    for (let m = 1; m < N; m++) { const low = m & -m, b = 31 - Math.clz32(low); sum[m] = sum[m ^ low] + items[b].v; }
+    for (let m = 1; m < N; m++) {
+      let best = -1, bb = 0;
+      for (let b = 0; b < k; b++) if (m >> b & 1) { const v = dp[m ^ (1 << b)]; if (v > best) { best = v; bb = b; } }
+      dp[m] = best + (sum[m] === 0 ? 1 : 0); ch[m] = bb;
+    }
+    groups = []; let cur = [], m = N - 1;
+    while (m) { const b = ch[m]; cur.push(items[b]); m ^= 1 << b; if (sum[m] === 0) { groups.push(cur); cur = []; } }
+    if (cur.length) groups.push(cur);
+  } else groups = [items];
+  const out = [];
+  for (const g of groups) {
+    const cr = g.filter(x => x.v > 0).map(x => ({ id: x.id, v: x.v }));
+    const db = g.filter(x => x.v < 0).map(x => ({ id: x.id, v: -x.v }));
+    while (cr.length && db.length) {
+      cr.sort((a, b) => b.v - a.v); db.sort((a, b) => b.v - a.v);
+      const c = cr[0], d = db[0], a = Math.min(c.v, d.v);
+      out.push({ from: d.id, to: c.id, amt: a });
+      c.v -= a; d.v -= a;
+      if (!c.v) cr.shift(); if (!d.v) db.shift();
+    }
+  }
+  return out.sort((a, b) => b.amt - a.amt);
+}
+
+/* ───────────── store: the artifact db, or an in-page stand-in ───────────── */
+function makeLocal(){
+  const store = new Map(), dl = new Map(), cl = new Map();
+  const parent = p => p.split('/').slice(0, -1).join('/');
+  const clone = o => JSON.parse(JSON.stringify(o));
+  const sDoc = p => { const d = store.get(p); return { id: p.split('/').pop(), exists: !!d, data: () => d ? clone(d) : undefined, metadata: {} }; };
+  const sCol = c => { const docs = [...store.keys()].filter(k => parent(k) === c).map(sDoc); return { docs, size: docs.length, empty: !docs.length }; };
+  const emit = p => queueMicrotask(() => {
+    (dl.get(p) || []).forEach(f => f(sDoc(p)));
+    const c = parent(p); (cl.get(c) || []).forEach(f => f(sCol(c)));
+  });
+  const on = (m, k, f, s) => { if (!m.has(k)) m.set(k, new Set()); m.get(k).add(f); setTimeout(() => f(s()), 0); return () => m.get(k).delete(f); };
+  const doc = p => ({
+    id: p.split('/').pop(), path: p,
+    get: async () => sDoc(p),
+    set: async d => { store.set(p, clone(d)); emit(p); },
+    update: async d => { if (!store.has(p)) throw { code: 'invalid_argument' }; store.set(p, { ...store.get(p), ...clone(d) }); emit(p); },
+    delete: async () => { store.delete(p); emit(p); },
+    onSnapshot: f => on(dl, p, f, () => sDoc(p)),
+  });
+  const col = c => ({ path: c, doc: id => doc(c + '/' + (id || uid())), add: async d => { const r = doc(c + '/' + uid()); await r.set(d); return r; }, onSnapshot: f => on(cl, c, f, () => sCol(c)) });
+  // a sample night for the local preview only; the published page reads the shared store
+  const t = Date.now() - 3 * 3600e3, P = ['מיכל', 'יוסי', 'דני', 'נועה', 'אבי'];
+  store.set('meta/current', { gameId: 'sample' });
+  store.set('games/sample', { name: 'ערב לדוגמה', price: 50, chips: 1000, foodMode: 'merge', createdAt: t });
+  P.forEach((n, i) => store.set('games/sample/players/p' + i, { name: n, order: i }));
+  [[0,1],[1,1],[2,1],[3,1],[4,1],[2,1],[4,1],[2,.5]].forEach(([p, n], i) =>
+    store.set('games/sample/buyins/b' + i, { pid: 'p' + p, n, at: t + i * 1200e3, via: i % 2 ? 'chat' : 'tap' }));
+  store.set('games/sample/food/f0', { payer: 'p1', kind: 'pizza', what: 'פיצה', amount: 240, eaters: ['p0','p1','p2','p3'], at: t + 3600e3 });
+  store.set('games/sample/food/f1', { payer: 'p3', kind: 'sushi', what: 'סושי', amount: 310, eaters: ['p0','p2','p3'], own: { p0: 58, p2: 92 }, at: t + 5400e3 });
+  return { doc, collection: col };
+}
+
+/* ───────────── gamesd: the same doc/collection shape, over the night's own API ─────────────
+   One state object per night, pushed by the server over SSE after every write
+   (and returned by the write itself, so the writer never waits on the push).
+   Paths the page uses: meta/current (which night: always this link's),
+   games/<token> (the night), games/<token>/<col>[/<id>], history/* (the server
+   keeps results itself, so writes there are dropped). */
+function makeRemote(token){
+  const API = '/night/' + token + '/api/';
+  let state = null;
+  const dl = new Map(), cl = new Map();
+  const snapDoc = (id, d) => ({ id, exists: !!d, data: () => d ? JSON.parse(JSON.stringify(d)) : undefined, metadata: {} });
+  const snapCol = o => { const docs = Object.entries(o || {}).map(([id, d]) => snapDoc(id, d)); return { docs, size: docs.length, empty: !docs.length }; };
+  const docOf = p => {
+    if (p === 'meta/current') return { gameId: token };
+    const a = p.split('/');
+    if (!state || a[0] !== 'games' || a[1] !== token) return null;
+    if (a.length === 2) return state.game;
+    return (state[a[2]] || {})[a[3]] || null;
+  };
+  const colOf = p => { const a = p.split('/'); return state && a[0] === 'games' && a[1] === token && a.length === 3 ? (state[a[2]] || {}) : {}; };
+  function feed(next){
+    state = next;
+    for (const [p, fs] of dl) fs.forEach(f => f(snapDoc(p.split('/').pop(), docOf(p))));
+    for (const [p, fs] of cl) fs.forEach(f => f(snapCol(colOf(p))));
+  }
+  async function call(action, body){
+    let res;
+    try { res = await fetch(API + action, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) }); }
+    catch { throw { code: 'offline' }; }
+    const out = await res.json().catch(() => ({}));
+    if (!res.ok) throw { code: out.error || 'http_' + res.status };
+    return out;
+  }
+  async function write(w){ const out = await call('write', w); if (out.state) feed(out.state); return out; }
+  const target = p => { const a = p.split('/'); return a[0] === 'games' && a[1] === token ? { col: a.length === 2 ? 'game' : a[2], id: a[3] } : null; };
+  const on = (m, k, f, now) => { if (!m.has(k)) m.set(k, new Set()); m.get(k).add(f); if (state || k === 'meta/current') setTimeout(() => f(now()), 0); return () => m.get(k).delete(f); };
+  const doc = p => ({
+    id: p.split('/').pop(), path: p,
+    get: async () => snapDoc(p.split('/').pop(), docOf(p)),
+    set: async d => { const t = target(p); if (!t) return; return write({ op: 'set', col: t.col, id: t.id, data: d }); },
+    update: async d => { const t = target(p); if (!t) return; return write({ op: 'update', col: t.col, id: t.id, data: d }); },
+    delete: async () => { const t = target(p); if (!t) return; return write({ op: 'delete', col: t.col, id: t.id }); },
+    onSnapshot: f => on(dl, p, f, () => snapDoc(p.split('/').pop(), docOf(p))),
+  });
+  const collection = p => ({
+    path: p, doc: id => doc(p + '/' + (id || uid())),
+    add: async d => { const t = target(p); if (!t) return; const out = await write({ op: 'add', col: t.col, data: d }); return doc(p + '/' + out.id); },
+    onSnapshot: f => on(cl, p, f, () => snapCol(colOf(p))),
+  });
+  // live: the push, and a slow poll behind it for a network that eats SSE
+  let es = null, lastPush = 0;
+  function listen(){
+    try {
+      es = new EventSource(API + 'events');
+      es.addEventListener('state', e => { lastPush = Date.now(); try { feed(JSON.parse(e.data)); } catch {} });
+    } catch { es = null; }
+  }
+  async function poll(){
+    if (Date.now() - lastPush < 20000 && state) return;
+    try { const r = await fetch(API + 'state'); if (r.ok) { lastPush = Date.now(); feed(await r.json()); } } catch {}
+  }
+  listen(); poll(); setInterval(poll, 15000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) { lastPush = 0; poll(); } });
+  return { doc, collection, next: body => call('next', body) };
+}
+const NIGHT_TOKEN = (location.pathname.match(/^\/night\/([A-Za-z0-9]{22})\/?$/) || [])[1] || null;
+
+let db = null, isLocal = false, loaded = false;
+const COLS = ['players', 'buyins', 'cashouts', 'food', 'log', 'paid'];
+const fresh = gid => ({ gid, game: null, players: {}, buyins: {}, cashouts: {}, food: {}, log: {}, paid: {} });
+let S = fresh(null);
+let unsubs = [];
+
+function fail(e){
+  if (e && e.code === 'invalid_argument' && !isLocal) toast('אין לך הרשאה לשנות את הערב הזה');
+  else if (e && (e.code === 'quota_exceeded' || e.code === 'too_many')) toast('הערב הזה מלא. פתחו ערב חדש');
+  else if (e && e.code === 'rate_limited') toast('יותר מדי שינויים בדקה. חכו רגע ונסו שוב');
+  else if (e && e.code === 'offline') toast('אין חיבור. השינוי לא נשמר');
+  else toast('השינוי לא נשמר. נסו שוב');
+}
+const W = p => p.catch(fail);
+
+function openGame(gid){
+  unsubs.forEach(u => u()); unsubs = [];
+  S = fresh(gid); prev = {};
+  loadChat();
+  if (!gid) { schedule(); return; }
+  unsubs.push(db.doc('games/' + gid).onSnapshot(s => { S.game = s.exists ? s.data() : null; schedule(); }, fail));
+  for (const c of COLS) {
+    unsubs.push(db.collection(`games/${gid}/${c}`).onSnapshot(q => {
+      const o = {}; q.docs.forEach(d => { o[d.id] = d.data(); }); S[c] = o; schedule();
+    }, fail));
+  }
+}
+
+/* writes */
+const gp = c => `games/${S.gid}/${c}`;
+function logIt(t, via){ return W(db.collection(gp('log')).add({ t, via: via || 'tap', at: Date.now() })); }
+async function addPlayer(name, via){
+  name = name.trim().slice(0, 24);
+  if (!name) return null;
+  const hit = findPlayer(name, true);
+  if (hit) return hit.id;
+  const id = uid();
+  await W(db.doc(gp('players/' + id)).set({ name, order: Date.now() }));
+  logIt(`${name} בשולחן`, via);
+  return id;
+}
+function addBuyin(pid, n, via, name){
+  const p = S.players[pid] || (name && { name }); if (!p) return;
+  W(db.collection(gp('buyins')).add({ pid, n, at: Date.now(), via }));
+  logIt(`${p.name} ${n === 1 ? '+ כניסה' : '+ חצי כניסה'}`, via);
+}
+function undoBuyin(pid, via){
+  const mine = Object.entries(S.buyins).filter(([, b]) => b.pid === pid).sort((a, b) => b[1].at - a[1].at);
+  if (!mine.length) return false;
+  W(db.doc(gp('buyins/' + mine[0][0])).delete());
+  logIt(`${S.players[pid].name} − ${mine[0][1].n === 1 ? 'כניסה' : 'חצי כניסה'}`, via);
+  return true;
+}
+function setCash(pid, chips, via){
+  const p = S.players[pid]; if (!p) return;
+  if (chips == null) { W(db.doc(gp('cashouts/' + pid)).delete()); return; }
+  W(db.doc(gp('cashouts/' + pid)).set({ chips, at: Date.now(), via }));
+  logIt(`${p.name}: נשארו ${fmtChips(chips)} ז'יטונים`, via);
+}
+const FOODS = [['pizza', '🍕', 'פיצה'], ['sushi', '🍣', 'סושי'], ['burger', '🍔', 'המבורגר'], ['shawarma', '🥙', 'שווארמה'], ['drinks', '🍺', 'שתייה']];
+const FOOD = Object.fromEntries(FOODS.map(([k, i, n]) => [k, { icon: i, name: n }]));
+const kindOf = t => /פיצ/.test(t) ? 'pizza' : /סושי/.test(t) ? 'sushi' : /בורגר|המבורג/.test(t) ? 'burger'
+  : /שו?ו?ארמה|פלאפל|שיפוד|לאפה|פיתה/.test(t) ? 'shawarma' : /בירה|שתי|יין|וודקה|וויסקי|אלכוהול|קולה/.test(t) ? 'drinks' : '';
+const iconOf = f => FOOD[f.kind || kindOf(f.what || '')]?.icon || '🍽️';
+const initial = n => (String(n || '?').trim()[0] || '?').toUpperCase();
+const payersOf = f => { const ids = Object.keys(f.paid || {}); return ids.length ? ids : [f.payer]; };
+const joinNames = ids => { const n = ids.map(nameOf); return n.length > 1 ? n.slice(0, -1).join(', ') + ' ו' + n[n.length - 1] : n[0] || ''; };
+function addFood(f, via){
+  W(db.collection(gp('food')).add({ ...f, at: Date.now() }));
+  logIt(`${iconOf(f)} ${f.what}, ${fmtAg(ag(f.amount))} · 💳 ${joinNames(payersOf(f))}`, via);
+}
+function saveFood(id, f, via){
+  const old = S.food[id]; if (!old) return;
+  W(db.doc(gp('food/' + id)).set({ ...f, at: old.at }));
+  logIt(`${f.what}: עודכן`, via);
+}
+/* one person's own dish on an order that is already in: page or chat */
+function setOwn(id, pid, v){
+  const f = S.food[id]; if (!f) return 'gone';
+  const own = { ...(f.own || {}) };
+  if (v == null) delete own[pid]; else own[pid] = v;
+  const eaters = (f.eaters || []).includes(pid) ? f.eaters : [...(f.eaters || []), pid];
+  const sum = eaters.reduce((a, e) => a + ag(own[e]), 0);
+  if (sum > ag(f.amount)) return 'over';
+  const next = { ...f, eaters }; if (Object.keys(own).length) next.own = own; else delete next.own;
+  W(db.doc(gp('food/' + id)).set(next));
+  return 'ok';
+}
+function setPaid(key, on){
+  if (on) W(db.doc(gp('paid/' + key)).set({ at: Date.now() }));
+  else W(db.doc(gp('paid/' + key)).delete());
+}
+function setGame(patch){ W(db.doc('games/' + S.gid).update(patch)); }
+const splitNames = v => [...new Set(String(v || '').split(/[,،\n]+/).map(x => x.trim().slice(0, 24)).filter(Boolean))];
+async function newGame(g, names){
+  if (db.next) {   // a real night: the server opens the next one, with the same table
+    try { const out = await db.next({ price: g.price, chips: g.chips }); location.assign(out.url.replace(/^https?:\/\/[^/]+/, '')); }
+    catch (e) { fail(e); }
+    return;
+  }
+  const gid = 'g' + uid(), t = Date.now();
+  await W(db.doc('games/' + gid).set({ ...g, foodMode: 'merge', createdAt: t }));
+  for (const [i, name] of (names || []).entries()) await W(db.doc(`games/${gid}/players/${uid()}`).set({ name, order: t + i }));
+  await W(db.doc('meta/current').set({ gameId: gid }));
+}
+
+/* ───────────── food split ─────────────
+   paid: who put money down (none = the one payer paid all).
+   own:  what a person's own dish cost. Whoever left it empty splits the rest
+   evenly; when everyone named theirs, the rest (delivery, tip) is split by all.
+   Always in agorot, always zero-sum: what was paid is exactly what is owed. */
+const ag = v => Math.round((+v || 0) * 100);
+function evenly(total, ids){
+  const out = {}; if (!ids.length) return out;
+  const base = Math.floor(total / ids.length); let rem = total - base * ids.length;
+  ids.slice().sort().forEach(id => { out[id] = base + (rem-- > 0 ? 1 : 0); });
+  return out;
+}
+function foodSplit(f){
+  const amt = ag(f.amount);
+  const eaters = (f.eaters || []).filter(e => S.players[e]);
+  const pay = {};
+  const paidIds = Object.keys(f.paid || {}).filter(id => S.players[id] && ag(f.paid[id]) > 0);
+  if (paidIds.length) {
+    paidIds.forEach(id => { pay[id] = ag(f.paid[id]); });
+    const r = amt - paidIds.reduce((a, id) => a + pay[id], 0);   // rounding only
+    if (r) pay[paidIds.sort((a, b) => pay[b] - pay[a])[0]] += r;
+  } else if (S.players[f.payer]) pay[f.payer] = amt;
+  const own = {}; let ownSum = 0;
+  for (const e of eaters) if (f.own && f.own[e] != null && f.own[e] !== '') { own[e] = ag(f.own[e]); ownSum += own[e]; }
+  let warn = null;
+  if (ownSum > amt) { warn = 'over'; for (const k in own) delete own[k]; ownSum = 0; }
+  const plain = eaters.filter(e => own[e] == null);
+  const rest = evenly(amt - ownSum, plain.length ? plain : eaters);
+  const owe = {}; eaters.forEach(e => { owe[e] = (own[e] || 0) + (rest[e] || 0); });
+  const ok = eaters.length > 0 && Object.keys(pay).length > 0;
+  return { amt, pay, owe, own, plain, eaters, ok, warn, restEach: plain.length ? rest[plain[0]] : 0 };
+}
+
+/* ───────────── derived state ───────────── */
+function derive(){
+  const g = S.game;
+  const players = Object.entries(S.players).map(([id, p]) => ({ id, ...p })).sort((a, b) => a.order - b.order);
+  const bi = {}; for (const b of Object.values(S.buyins)) if (S.players[b.pid]) bi[b.pid] = (bi[b.pid] || 0) + b.n;
+  const price = Math.round((g?.price || 0) * 100), cpb = g?.chips || 1;
+  const totalBuy = Object.values(bi).reduce((a, b) => a + b, 0);
+  const expected = Math.round(totalBuy * cpb);
+  const inGame = players.filter(p => bi[p.id]);
+  const missing = inGame.filter(p => !S.cashouts[p.id]);
+  const counted = players.reduce((a, p) => a + (S.cashouts[p.id]?.chips || 0), 0);
+  const diff = counted - expected;
+  const anyIn = inGame.some(p => S.cashouts[p.id]);
+  const allIn = inGame.length > 0 && !missing.length;
+  const closed = allIn && diff === 0;
+  const phase = !inGame.length ? 'start' : closed ? 'closed' : allIn ? 'mismatch' : anyIn ? 'counting' : 'playing';
+
+  const poker = {};
+  for (const p of players) poker[p.id] = Math.round((S.cashouts[p.id]?.chips || 0) * price / cpb) - Math.round((bi[p.id] || 0) * price);
+  if (closed) { // rounding to agorot can leave a few over; the biggest balance absorbs it
+    const r = Object.values(poker).reduce((a, b) => a + b, 0);
+    if (r) { const top = players.slice().sort((a, b) => Math.abs(poker[b.id]) - Math.abs(poker[a.id]))[0]; poker[top.id] -= r; }
+  }
+  const food = {}; players.forEach(p => { food[p.id] = 0; });
+  const orders = Object.entries(S.food).map(([id, f]) => ({ id, ...f })).sort((a, b) => a.at - b.at);
+  for (const f of orders) {
+    const sp = foodSplit(f); if (!sp.ok) continue;
+    for (const id in sp.pay) food[id] += sp.pay[id];
+    for (const id in sp.owe) food[id] -= sp.owe[id];
+  }
+  const merge = (g?.foodMode || 'merge') === 'merge';
+  const hasFood = orders.length > 0;
+  const bal = obj => players.map(p => ({ id: p.id, v: obj[p.id] || 0 }));
+  let xPoker = [], xFood = [], xAll = [];
+  if (merge) { if (closed) xAll = settle(players.map(p => ({ id: p.id, v: poker[p.id] + food[p.id] }))); }
+  else { if (closed) xPoker = settle(bal(poker)); if (hasFood) xFood = settle(bal(food)); }
+  const every = merge ? xAll : xPoker.concat(xFood);
+  const keyOf = (x, kind) => `${kind}_${x.from}_${x.to}`;
+  const paidCount = merge ? xAll.filter(x => S.paid[keyOf(x, 'a')]).length
+    : xPoker.filter(x => S.paid[keyOf(x, 'p')]).length + xFood.filter(x => S.paid[keyOf(x, 'f')]).length;
+  return { g, players, bi, price, cpb, totalBuy, expected, counted, diff, missing, inGame, allIn, closed, phase,
+    poker, food, orders, merge, hasFood, xPoker, xFood, xAll, every, keyOf, paidCount };
+}
+
+function findPlayer(q, exact){
+  q = q.trim().replace(/^ל[-־]?/, '').trim().toLowerCase();
+  if (!q) return null;
+  const ps = Object.entries(S.players).map(([id, p]) => ({ id, ...p }));
+  return ps.find(p => p.name.toLowerCase() === q)
+      || (!exact && ps.find(p => p.name.toLowerCase().startsWith(q) || q.startsWith(p.name.toLowerCase())))
+      || null;
+}
+const nameOf = id => S.players[id]?.name || '?';
+
+/* ───────────── render ───────────── */
+let prev = {}, raf = 0, playedClose = false;
+function schedule(){ if (!raf) raf = requestAnimationFrame(() => { raf = 0; render(); }); }
+function keepFocus(root, fn){
+  const a = document.activeElement, inside = a && root.contains(a) && a.id;
+  const st = inside ? { id: a.id, v: a.value, s: a.selectionStart, e: a.selectionEnd } : null;
+  fn();
+  if (st) { const n = document.getElementById(st.id); if (n) { n.value = st.v; n.focus(); try { n.setSelectionRange(st.s, st.e); } catch {} } }
+}
+
+function render(){
+  const D = derive();
+  $('#gTitle').textContent = D.g ? D.g.name : 'ערב פוקר';
+  document.title = D.g ? D.g.name : 'ערב משחק';
+  $('#gSub').textContent = D.g ? `${fmtAg(D.price)} · ${fmtChips(D.cpb)} ז'יטונים` : 'עולמה';
+  $('#shareBtn').hidden = !D.g;
+  if (D.g) $('#shareBtn').href = 'https://wa.me/?text=' + encodeURIComponent(inviteText(D));
+  $('#foot').textContent = isLocal ? 'תצוגה מקומית עם ערב לדוגמה' : 'ערבי משחק של עולמה';
+  renderOlline(D);
+  keepFocus($('#tNight'), () => renderNight(D));
+  keepFocus($('#tFood'), () => renderFood(D));
+  keepFocus($('#tSettle'), () => renderSettle(D));
+  keepFocus($('#setBody'), () => renderSettings(D));
+  renderWelcome(D);
+  renderQR(D);
+  maybeSummary(D);
+  maybeRecord(D);
+}
+
+function renderOlline(D){
+  const el = $('#olline');
+  if (!loaded) { el.innerHTML = ''; return; }
+  if (!S.gid || !D.g) { el.className = ''; el.innerHTML = ''; return; }
+  let t, cls = '';
+  const names = ps => ps.map(p => `<b>${esc(p.name)}</b>`).join(', ');
+  switch (D.phase) {
+    case 'start': t = 'הערב פתוח. כל אחד רושם כניסה כשהוא נכנס, כאן או בהודעה אליי.'; break;
+    case 'playing': t = `${buyWord(D.totalBuy)}, ${fmtAg(Math.round(D.totalBuy * D.price))} בקופה. בסוף כל אחד רושם כמה ז'יטונים נשארו לו.`; break;
+    case 'counting': t = D.missing.length === 1 ? `מחכה רק ל${names(D.missing)} שיספור ז'יטונים.` : `מחכה ל${D.missing.length} שיספרו ז'יטונים: ${names(D.missing)}.`; break;
+    case 'mismatch': cls = 'warn'; t = D.diff < 0 ? `כולם דיווחו, אבל חסרים <b>${fmtChips(-D.diff)}</b> ז'יטונים. כדאי שכל אחד יספור שוב.` : `כולם דיווחו, ויש <b>${fmtChips(D.diff)}</b> ז'יטונים יותר ממה שנכנס. מישהו ספר פעמיים?`; break;
+    case 'closed': cls = 'gold'; t = D.every.length ? `<b>סגור.</b> ${D.every.length === 1 ? 'העברה אחת' : D.every.length + ' העברות'}, הכל בלשונית "סגירה".` : '<b>סגור.</b> אף אחד לא חייב לאף אחד.'; break;
+  }
+  el.className = 'olline ' + cls;
+  el.innerHTML = `<svg class="mark" viewBox="0 0 120 120" aria-hidden="true"><use href="#logo"/></svg><p>${t}</p>`;
+}
+
+/* Bit and PayBox: open the app and nothing more. A web page cannot tell whether an app is
+   installed, and neither app has a public link that opens it with an amount, so the button
+   goes to the app's own store page: "Open" there if it is installed, "Install" if it is not.
+   Only on a phone; on a computer there is nothing to open. */
+const PAY_APPS = [
+  { name: 'ביט', ios: 'https://apps.apple.com/il/app/id1182007739', android: 'https://play.google.com/store/apps/details?id=com.bnhp.payments.paymentsapp' },
+  { name: 'פייבוקס', ios: 'https://apps.apple.com/il/app/id895491053', android: 'https://play.google.com/store/apps/details?id=com.payboxapp' },
+];
+function payApps(){
+  const ua = navigator.userAgent || '';
+  const os = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1) ? 'ios' : /Android/.test(ua) ? 'android' : null;
+  if (!os) return '';
+  return '<div class="payapps"><span>לפתוח את</span>' + PAY_APPS.map(a => '<a class="payapp" href="' + a[os] + '" target="_blank" rel="noopener">' + a.name
+    + '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 7h8v8M17 7L7 17"/></svg></a>').join('') + '</div>';
+}
+function myLines(D, me){
+  const out = [];
+  const add = (xs, kind, label) => xs.forEach(x => {
+    if (x.from === me) out.push({ pay: true, other: x.to, amt: x.amt, key: D.keyOf(x, kind), label });
+    else if (x.to === me) out.push({ pay: false, other: x.from, amt: x.amt, key: D.keyOf(x, kind), label });
+  });
+  if (D.merge) add(D.xAll, 'a', ''); else { add(D.xPoker, 'p', ' (פוקר)'); add(D.xFood, 'f', ' (אוכל)'); }
+  return out;
+}
+
+const TICK = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>`;
+function chipStack(n, grew){
+  if (!n) return '<div class="cstack" aria-hidden="true"><i class="disc ghost" style="bottom:4px"></i></div>';
+  const full = Math.floor(n), half = n % 1 ? 1 : 0, k = Math.min(6, full + half);
+  let h = '';
+  for (let i = 0; i < k; i++) {
+    const isHalf = half && i === k - 1;
+    h += '<i class="disc' + (isHalf ? ' half' : '') + (grew && i === k - 1 ? ' drop' : '') + '" style="bottom:' + (4 + i * 6) + 'px"></i>';
+  }
+  return '<div class="cstack" aria-hidden="true">' + h + '</div>';
+}
+/* seats around an oval, the viewer at the bottom */
+function feltTable(D, me){
+  const ps = D.players.slice();
+  const at = ps.findIndex(p => p.id === me); if (at > 0) ps.push(...ps.splice(0, at));
+  const n = ps.length || 1, pot = Math.round(D.totalBuy * D.price);
+  const potGrew = prev.pot !== undefined && D.totalBuy > prev.pot; prev.pot = D.totalBuy;
+  let seats = '', flies = '';
+  ps.forEach((p, i) => {
+    const a = (90 + i * 360 / n) * Math.PI / 180;
+    const x = (50 + 50 * Math.cos(a)).toFixed(1), y = (50 + 50 * Math.sin(a)).toFixed(1), d = (0.8 + 0.2 * (1 + Math.sin(a)) / 2).toFixed(2);
+    const b = D.bi[p.id] || 0, was = prev['t' + p.id], grew = was !== undefined && b > was; prev['t' + p.id] = b;
+    seats += '<div class="seat' + (p.id === me ? ' me' : '') + (b ? '' : ' out') + (grew ? ' bump' : '') + '" style="left:' + x + '%;top:' + y + '%;--d:' + d + '">'
+      + '<span class="av">' + esc(initial(p.name)) + (b ? '<span class="cnt num">' + fmtN(b) + '</span>' : '') + '</span><span class="snm">' + esc(p.name) + '</span></div>';
+    if (grew) flies += '<i class="fly" style="left:' + x + '%;top:' + y + '%"></i>';
+  });
+  return '<div class="tablewrap"><div class="felt">'
+    + '<div class="pot' + (potGrew ? ' bump' : '') + '"><span class="potchips" aria-hidden="true"><i></i><i></i><i></i></span><b>' + fmtAg(pot) + '</b><span class="num">' + buyWord(D.totalBuy) + ' · ' + fmtChips(D.expected) + ' ז\'יטונים</span></div>'
+    + seats + flies + '</div></div>';
+}
+const logIcon = t => /^[🍕🍣🍔🥙🍺🍽]/u.test(t) ? '' : /כניסה/.test(t) ? '🪙' : /נשארו/.test(t) ? '🧮' : /בשולחן/.test(t) ? '👋' : '·';
+function renderNight(D){
+  const el = $('#tNight');
+  if (!loaded || (S.gid && !D.g)) { el.innerHTML = '<div class="empty">פותחת את הערב…</div>'; return; }
+  if (!S.gid) { el.innerHTML = startForm(); return; }
+  const me = myId();
+  let mine = '';
+  if (me) {
+    const n = D.bi[me] || 0, c = S.cashouts[me]?.chips;
+    const grew = prev.me !== undefined && n > prev.me; prev.me = n;
+    const lines = D.closed ? myLines(D, me) : [];
+    let bottom;
+    if (D.closed) {
+      bottom = lines.length ? lines.map(l => `<div class="owe${l.pay ? ' pay' : ''}"><span>${l.pay ? 'להעביר ל' : 'לקבל מ'}${esc(nameOf(l.other))}${l.label}</span><b class="num">${fmtAg(l.amt)}</b></div>`).join('') + (lines.some(l => l.pay) ? payApps() : '')
+        : '<div class="owe zero"><span>יצאת בדיוק באפס. אין מה להעביר.</span></div>';
+    } else if (n) {
+      bottom = `<div class="count"><label for="myCash">כמה ז'יטונים נשארו לך?</label><input class="cin" id="myCash" data-cash="${me}" inputmode="numeric" placeholder="בסוף הערב" value="${c != null ? c : ''}"></div>`;
+    } else bottom = '';
+    const net = c != null ? D.poker[me] : null;
+    mine = `<div class="sec"><div class="group mine">
+      <div class="mine-top">
+        ${chipStack(n, grew)}
+        <div class="txt"><small>${esc(nameOf(me))}, הכניסות שלך</small>
+          <b class="num">${n ? fmtAg(Math.round(n * D.price)) : 'עוד לא נכנסת'}</b>
+          <span class="num">${n ? buyWord(n) : 'לוחצים כשנכנסים'}${net != null ? ` · <span class="net ${net > 0 ? 'pos' : net < 0 ? 'neg' : ''}">${fmtNet(net)}</span>` : ''}</span></div>
+      </div>
+      ${D.closed ? '' : `<div class="acts">
+        <button class="btn primary" type="button" data-my="buy">+ כניסה</button>
+        <button class="btn ghost" type="button" data-my="half" aria-label="חצי כניסה">⁦+½⁩</button>
+        <button class="btn ghost" type="button" data-my="undo" aria-label="ביטול כניסה"${n ? '' : ' disabled'}>−</button>
+      </div>`}
+      ${bottom}
+    </div></div>`;
+  }
+
+  if (!me && D.players.length && !D.closed) mine = `<div class="sec"><div class="group whoami"><div class="row plain">
+      <svg class="mark" viewBox="0 0 120 120" aria-hidden="true"><use href="#logo"/></svg>
+      <div class="row-txt"><div class="row-title">מי משחק בטלפון הזה?</div><div class="row-sub">בוחרים שם פעם אחת, ואז כניסה היא לחיצה אחת.</div></div>
+      <button class="btn soft small" type="button" id="pickMe">בחירה</button></div></div></div>`;
+  const rows = D.players.map(p => {
+    const n = D.bi[p.id] || 0, changed = prev['b' + p.id] !== undefined && prev['b' + p.id] !== n;
+    prev['b' + p.id] = n;
+    const c = S.cashouts[p.id]?.chips;
+    return `<div class="row${changed ? ' flash' : ''}" data-pid="${p.id}">
+      <div class="pchip num${n ? '' : ' zero'}${changed ? ' bump' : ''}" aria-hidden="true">${fmtN(n)}</div>
+      <div class="row-txt"><div class="row-title">${esc(p.name)}${p.id === me ? '<span class="me-tag">אני</span>' : ''}</div>
+        <div class="row-sub num">${n ? `${fmtAg(Math.round(n * D.price))}${c != null ? ` · נשארו ${fmtChips(c)}` : ''}` : 'בלי כניסות עדיין'}</div></div>
+      ${D.closed ? '' : `<div class="step">
+        <button class="sbtn" data-act="undo" aria-label="הורדת כניסה ל${esc(p.name)}" ${n ? '' : 'disabled'}>−</button>
+        <button class="sbtn plus" data-act="buy" aria-label="כניסה ל${esc(p.name)}">+</button>
+      </div>`}</div>`;
+  }).join('');
+  const logs = Object.values(S.log).sort((a, b) => b.at - a.at).slice(0, 12).map(l =>
+    `<div class="logi"><time>${new Date(l.at).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}</time>${logIcon(l.t) ? '<span class="ic" aria-hidden="true">' + logIcon(l.t) + '</span>' : ''}<span>${esc(l.t)}<span class="via${l.via === 'chat' ? ' chat' : ''}">${l.via === 'chat' ? 'בצ׳אט' : 'בדף'}</span></span></div>`).join('');
+
+  el.innerHTML = `${mine}
+  <div class="sec">
+    <div class="sechead"><h2>השולחן</h2><small>${D.players.length} שחקנים</small></div>
+    <div class="group">${feltTable(D, me)}</div>
+    <div class="group">
+      ${rows || '<div class="empty">עוד אין שחקנים</div>'}
+      <form class="addrow" id="addP"><input id="addPIn" placeholder="להוסיף שמות: דני, יוסי" aria-label="שמות להוספה" enterkeyhint="done"><button class="btn soft small" type="submit">הוספה</button></form>
+    </div>
+  </div>
+  <div class="sec">
+    <details class="group fold"${prev.logOpen ? ' open' : ''} id="logFold"><summary>מה קרה הערב</summary>
+      ${logs || '<div class="empty">כל כניסה תופיע כאן, עם מאיפה היא נרשמה.</div>'}
+    </details>
+  </div>`;
+}
+
+/* The form lives in a draft, not in the DOM: somebody else's buy-in re-renders
+   the page, and a half-typed order must survive it. One order, one payer:
+   a second card is a second order. */
+let fd = null;
+function freshDraft(){
+  const me = myId(), ids = Object.keys(S.players);
+  const last = Object.values(S.food).sort((a, b) => b.at - a.at)[0];
+  return { id: null, kind: '', amount: '', payer: me || ids[0] || null,
+    eaters: last ? (last.eaters || []).filter(e => S.players[e]) : [], mode: 'equal', own: {}, dirty: false };
+}
+function draftOf(id){
+  const f = S.food[id]; if (!f) return null;
+  const own = {}; for (const k in f.own || {}) own[k] = String(f.own[k]);
+  return { id, kind: f.kind || kindOf(f.what || ''), what: f.what, amount: String(f.amount), payer: payersOf(f)[0],
+    eaters: [...(f.eaters || [])], mode: Object.keys(own).length ? 'own' : 'equal', own, dirty: true };
+}
+/* draft -> an order, or the one sentence that says what is missing */
+function readDraft(d){
+  const eaters = d.eaters.filter(e => S.players[e]);
+  const own = {}; let ownSum = 0, ownN = 0;
+  if (d.mode === 'own') for (const e of eaters) { const v = numOf(d.own[e]); if (v != null && d.own[e] !== '') { own[e] = v; ownSum += ag(v); ownN++; } }
+  let amt = ag(numOf(d.amount));
+  const derived = !amt && d.mode === 'own' && ownN && ownN === eaters.length;
+  if (derived) amt = ownSum;
+  const out = { eaters, own, ownSum, amt, derived };
+  if (!amt) return { ...out, err: 'כמה זה עלה?' };
+  if (!S.players[d.payer]) return { ...out, err: 'מי שילם?' };
+  if (!eaters.length) return { ...out, err: 'מי אכל?' };
+  if (ownSum > amt) return { ...out, err: 'המנות יחד (' + fmtAg(ownSum) + ') יותר מהחשבון (' + fmtAg(amt) + ').' };
+  const order = { kind: d.kind || '', what: FOOD[d.kind]?.name || d.what || 'אוכל', amount: amt / 100, payer: d.payer, eaters };
+  if (ownN) order.own = { ...own };   // already in shekels, as typed
+  return { ...out, order, sp: foodSplit(order) };
+}
+function foodHint(d, r){
+  if (!r.order) return { t: r.err && (d.amount || d.eaters.length) ? r.err : '', warn: /יותר/.test(r.err || '') };
+  const sp = r.sp, n = sp.plain.length;
+  if (d.mode === 'equal') return { t: sp.eaters.length === 1 ? 'הכל על ' + nameOf(sp.eaters[0]) + '.' : fmtAg(sp.amt) + ' על ' + sp.eaters.length + '.' };
+  const extra = sp.amt - r.ownSum;
+  if (!r.ownSum) return { t: 'רושמים ליד כל שם כמה עלתה המנה שלו. מי שנשאר ריק מתחלק שווה ביתרה.' };
+  if (r.derived) return { t: 'החשבון הוא סכום המנות, ' + fmtAg(sp.amt) + '.' };
+  if (n) return { t: 'נשארו ' + fmtAg(extra) + ', מתחלקים בין ה' + n + ' שלא רשמו.' };
+  return { t: extra ? fmtAg(extra) + ' מעבר למנות (משלוח, טיפ) מתחלקים בין כולם.' : 'המנות מכסות את כל החשבון.' };
+}
+const shekels = a => (a / 100).toFixed(a % 100 ? 2 : 0);
+function avBtn(p, attr, on, badge, extra){
+  return '<button type="button" class="avb' + (prev.pop === attr + p.id ? ' pop' : '') + '" data-' + attr + '="' + p.id + '" aria-pressed="' + on + '" aria-label="' + esc(p.name) + '">'
+    + '<span class="av">' + esc(initial(p.name)) + (on ? '<span class="bd" aria-hidden="true">' + badge + '</span>' : '') + '</span>'
+    + '<span class="nm">' + esc(p.name) + '</span>' + (extra || '') + '</button>';
+}
+function renderFood(D){
+  const el = $('#tFood');
+  if (!S.gid || !D.g) { el.innerHTML = ''; return; }
+  const me = myId();
+  if (!fd || (!fd.dirty && !fd.id)) fd = freshDraft();
+  const foods = D.orders.map(f => {
+    const sp = foodSplit(f), payer = payersOf(f).filter(p => S.players[p])[0];
+    const ownIds = Object.keys(sp.own);
+    const splitLine = !ownIds.length ? (sp.eaters.length === 1 ? 'הכל על ' + esc(nameOf(sp.eaters[0])) : sp.eaters.length + ' אכלו, ' + fmtAg(sp.owe[sp.eaters[0]] || 0) + ' לכל אחד')
+      : ownIds.map(e => esc(nameOf(e)) + ' ' + fmtAg(sp.own[e])).join(', ') + (sp.plain.length ? ' · השאר ' + fmtAg(sp.restEach) + ' לכל אחד' : '');
+    const stack = '<div class="stack" aria-hidden="true">' + sp.eaters.map(e => '<span class="av' + (e === payer ? ' payer' : '') + '">' + esc(initial(nameOf(e))) + '</span>').join('') + '</div>';
+    const mine = me && (f.eaters || []).includes(me)
+      ? '<label class="myshare">המנה שלי<input class="cin xs" id="own-' + f.id + '" data-own="' + f.id + '" inputmode="decimal" placeholder="' + shekels(sp.owe[me]) + '" value="' + (f.own && f.own[me] != null ? f.own[me] : '') + '" aria-label="כמה עלתה המנה שלי">₪</label>' : '';
+    return '<div class="row plain food-row"><div class="femoji" aria-hidden="true">' + iconOf(f) + '</div><div class="row-txt">'
+      + '<div class="row-title">' + esc(f.what) + ' · <span class="num">' + fmtAg(sp.amt) + '</span></div>'
+      + '<div class="row-sub num"><span aria-label="שילם">💳</span> ' + esc(nameOf(payer)) + ' · ' + splitLine + '</div>'
+      + (sp.warn ? '<div class="hint warn">המנות יותר מהחשבון, אז חילקתי שווה. כדאי לתקן.</div>' : '') + stack + mine + '</div>'
+      + '<div class="side"><button class="sbtn" data-food-edit="' + f.id + '" aria-label="עריכה"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg></button>'
+      + '<button class="sbtn del" data-food-del="' + f.id + '" aria-label="מחיקת ההזמנה">×</button></div></div>';
+  }).join('');
+  const fmax = Math.max(1, ...D.players.map(p => Math.abs(D.food[p.id] || 0)));
+  const bal = D.hasFood ? D.players.filter(p => D.food[p.id]).map(p => {
+    const v = D.food[p.id], w = (Math.abs(v) / fmax * 50).toFixed(1);
+    return '<div class="brow"><span class="bn">' + esc(p.name) + '</span><div class="bar" aria-hidden="true"><i class="' + (v > 0 ? 'pos' : 'neg') + '" style="width:' + w + '%"></i></div><span class="net num ' + (v > 0 ? 'pos' : 'neg') + '">' + fmtNet(v) + '</span></div>';
+  }).join('') : '';
+  const d = fd, r = readDraft(d), h = foodHint(d, r);
+  const icons = FOODS.map(([k, i, n]) => '<button type="button" class="ficon" data-kind="' + k + '" aria-pressed="' + (d.kind === k) + '"><i aria-hidden="true">' + i + '</i>' + n + '</button>').join('');
+  const payAvs = D.players.map(p => avBtn(p, 'pay', d.payer === p.id, '💳')).join('');
+  const eatAvs = D.players.map(p => {
+    const on = d.eaters.includes(p.id);
+    return avBtn(p, 'eat', on, '🍴', '<span class="av-amt" data-for="' + p.id + '">' + (on && r.sp && r.sp.owe[p.id] != null ? fmtAg(r.sp.owe[p.id]) : '') + '</span>');
+  }).join('');
+  const all = D.players.length && D.players.every(p => d.eaters.includes(p.id));
+  const ownAmts = d.mode === 'own' && d.eaters.length ? '<div class="amts">' + d.eaters.filter(e => S.players[e]).map(e =>
+    '<label class="amt-row"><span>' + esc(nameOf(e)) + '</span><input class="cin sm" data-own-amt="' + e + '" id="oa-' + e + '" inputmode="decimal" placeholder="' + (r.sp && r.sp.owe[e] != null ? shekels(r.sp.owe[e]) : 'שווה') + '" value="' + esc(d.own[e] || '') + '"></label>').join('') + '</div>' : '';
+  const open = d.id || !D.orders.length || prev.foodOpen;
+  const foodTotal = D.orders.reduce((a, f) => a + ag(f.amount), 0);
+  el.innerHTML = '<div class="sec"><div class="sechead"><h2>הזמנות</h2><small>' + (D.orders.length ? (D.orders.length === 1 ? 'הזמנה אחת' : D.orders.length + ' הזמנות') : '') + '</small></div>'
+    + (D.orders.length ? '<div class="group receipt"><div class="rtop" aria-hidden="true">🧾 הקבלה של הערב</div>' + foods
+      + '<div class="rtotal"><span>סה״כ על אוכל</span><b class="num">' + fmtAg(foodTotal) + '</b></div></div>' : '')
+    + '<div class="group">'
+    + '<details class="fold" id="foodAdd"' + (open ? ' open' : '') + '><summary>' + (d.id ? 'עריכת ההזמנה' : D.orders.length ? 'עוד הזמנה' : 'הזמנה חדשה') + '</summary>'
+    + '<form id="foodForm" class="fcard" autocomplete="off">'
+    + '<div class="fq"><span class="fq-t">מה הזמנתם?</span><div class="foods">' + icons + '</div></div>'
+    + '<div class="fq"><span class="fq-t">כמה זה עלה?</span><label class="bigamt"><input id="fAmt" data-fd="amount" inputmode="decimal" placeholder="' + (d.mode === 'own' ? 'לפי מנות' : '0') + '" value="' + esc(d.amount) + '" aria-label="סכום ההזמנה"><span>₪</span></label></div>'
+    + '<div class="fq"><span class="fq-t">מי שילם?</span><div class="avs">' + payAvs + '</div></div>'
+    + '<div class="fq"><div class="fhead"><span class="fq-t" style="color:var(--text)">מי אכל?</span><button type="button" class="linkish" data-eat-all>' + (all ? 'אף אחד' : 'כולם') + '</button></div>'
+    + '<div class="avs">' + eatAvs + '</div>'
+    + '<div class="seg" role="group" aria-label="איך מחלקים"><button type="button" data-split="equal" aria-pressed="' + (d.mode === 'equal') + '">שווה בשווה</button><button type="button" data-split="own" aria-pressed="' + (d.mode === 'own') + '">כל אחד כמה שהזמין</button></div>'
+    + ownAmts + '<p class="hint' + (h.warn ? ' warn' : '') + '" id="fHint">' + h.t + '</p>'
+    + '<div class="btns"><button class="btn primary" type="submit">' + (d.id ? 'שמירה' : 'הוספה') + '</button>' + (d.id || d.dirty ? '<button class="btn ghost" type="button" data-food-cancel>' + (d.id ? 'ביטול' : 'ניקוי') + '</button>' : '') + '</div></div>'
+    + '</form></details></div>'
+    + (D.orders.length ? '<p class="note">שילם מישהו אחר? זו הזמנה נוספת. וכל אחד יכול לרשום ליד "המנה שלי" כמה עלתה, או לכתוב לי "המנה שלי 58".</p>' : '')
+    + '</div>'
+    + '<div class="sec"><div class="sechead"><h2>איך סוגרים את האוכל</h2></div><div class="group" style="padding:12px 14px;display:grid;gap:8px">'
+    + '<div class="seg" role="group" aria-label="איך סוגרים את האוכל"><button type="button" data-food-mode="merge" aria-pressed="' + D.merge + '">🃏 יחד עם הפוקר</button><button type="button" data-food-mode="separate" aria-pressed="' + !D.merge + '">🧾 בנפרד</button></div>'
+    + '<p class="row-sub">' + (D.merge ? 'כל אחד מקבל שורה אחת בסוף, שכוללת גם את האוכל.' : 'שתי רשימות העברות: אחת לפוקר ואחת לאוכל.') + '</p></div></div>'
+    + (bal ? '<div class="sec"><div class="sechead"><h2>מי חייב על האוכל</h2><small>לפני קיזוז</small></div><div class="group"><div class="blegend" aria-hidden="true"><span>💳 מגיע לו</span><span>🍴 חייב</span></div><div class="bars' + (prev.bars ? '' : ' play') + '">' + bal + '</div></div></div>' : '');
+  prev.pop = null;
+}
+/* typing repaints only the sentence, the shares under the faces and the placeholders, never the inputs */
+function paintFoodLive(){
+  const r = readDraft(fd), h = foodHint(fd, r), hint = $('#fHint');
+  if (hint) { hint.textContent = h.t; hint.classList.toggle('warn', !!h.warn); }
+  document.querySelectorAll('#foodForm .av-amt').forEach(x => { const v = r.sp?.owe[x.dataset.for]; x.textContent = v != null && fd.eaters.includes(x.dataset.for) ? fmtAg(v) : ''; });
+  if (r.sp) document.querySelectorAll('#foodForm [data-own-amt]').forEach(i => { const v = r.sp.owe[i.dataset.ownAmt]; if (v != null) i.placeholder = shekels(v); });
+}
+
+function renderSettle(D){
+  const el = $('#tSettle');
+  if (!S.gid || !D.g) { el.innerHTML = ''; return; }
+  const me = myId();
+  const pct = D.expected ? D.counted / D.expected : 0;
+  let state, cls = '';
+  if (!D.inGame.length) state = 'עוד אין כניסות';
+  else if (D.missing.length) state = D.missing.length === 1 ? 'חסר דיווח אחד' : 'חסרים ' + D.missing.length + ' דיווחים';
+  else if (D.diff < 0) { state = 'חסרים ' + fmtChips(-D.diff); cls = 'warn'; }
+  else if (D.diff > 0) { state = 'עודפים ' + fmtChips(D.diff); cls = 'over'; }
+  else { state = 'הסכום נסגר'; cls = 'ok'; }
+  const on = cls === 'over' ? 10 : Math.min(10, Math.floor(pct * 10 + 1e-9));
+  const play = D.closed && !playedClose; if (D.closed) playedClose = true; else playedClose = false;
+  const tray = '<div class="tray ' + cls + (play ? ' play' : '') + '" aria-label="' + Math.round(pct * 100) + ' אחוז נספרו"><div class="meterline"><span class="num">נספרו ' + fmtChips(D.counted) + ' מתוך ' + fmtChips(D.expected) + '</span>'
+    + '<span class="pill ' + (cls === 'ok' ? 'gold' : cls === 'warn' ? 'warn' : cls === 'over' ? 'bad' : '') + '">' + state + '</span></div>'
+    + '<div class="chips10" aria-hidden="true">' + Array.from({ length: 10 }, (_, i) => '<i class="tc' + (i < on ? ' on' : '') + '"></i>').join('') + '</div></div>';
+
+  const top = D.closed ? D.players.filter(p => D.poker[p.id] > 0).sort((a, b) => D.poker[b.id] - D.poker[a.id])[0]?.id : null;
+  /* The awards. The crown always goes to whoever won the most money; beside it at most three
+     more, each earned by tonight's numbers. A tie shares an award between two people at most,
+     and a tie of three or more gives it to nobody, since there is no fair way to pick. */
+  const AWARDS = [];
+  if (D.closed) {
+    const inG = D.inGame;
+    const best = (xs, val) => { if (!xs.length) return []; const m = Math.max(...xs.map(val)); const w = xs.filter(p => val(p) === m); return w.length <= 2 ? w.map(p => p.id) : []; };
+    const king = best(inG.filter(p => D.poker[p.id] > 0), p => D.poker[p.id]);
+    if (king.length) AWARDS.push({ i: '👑', t: 'זכה בהכי הרבה כסף', pids: king, crown: true });
+    const cands = [];
+    if (D.hasFood) {
+      const paid = {}; D.orders.forEach(f => { const py = payersOf(f).filter(x => S.players[x])[0]; if (py) paid[py] = (paid[py] || 0) + ag(f.amount); });
+      const w = best(Object.keys(paid).map(id => ({ id })), p => paid[p.id]);
+      if (w.length) cands.push({ i: '🍕', t: 'האכיל את כולם', pids: w });
+    }
+    const one = best(inG.filter(p => D.bi[p.id] === 1 && D.poker[p.id] > 0), p => D.poker[p.id]);
+    if (one.length) cands.push({ i: '1️⃣', t: 'כניסה אחת והרוויח', pids: one });
+    const loser = best(inG.filter(p => D.poker[p.id] < 0), p => -D.poker[p.id]);
+    if (loser.length) {
+      // the same evening always draws the same one of the two names
+      const h = [...String(S.gid)].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7);
+      cands.push(h % 2 ? { i: '🏧', t: 'הכספומט של הערב', pids: loser } : { i: '💸', t: 'ספונסר הקופה', pids: loser });
+    }
+    const most = best(inG.filter(p => D.bi[p.id] > 1), p => D.bi[p.id]);
+    if (most.length) cands.push({ i: '💪', t: 'אלוף הכניסות', pids: most, x: buyWord(D.bi[most[0]]) });
+    // three at most: first the ones that reach somebody with no award yet, then in this order
+    const pick = [], has = new Set(AWARDS.flatMap(a => a.pids));
+    cands.forEach(c => { if (pick.length < 3 && c.pids.some(id => !has.has(id))) { pick.push(c); c.pids.forEach(id => has.add(id)); } });
+    cands.forEach(c => { if (pick.length < 3 && !pick.includes(c)) pick.push(c); });
+    cands.filter(c => pick.includes(c)).forEach(c => AWARDS.push(c));
+  }
+  const namesOf = ids => ids.map(id => esc(nameOf(id))).join(' ו');
+  // on the podium the crown already stands over first place, so its badge stays off there
+  const badgeOf = (pid, noCrown) => AWARDS.filter(a => a.pids.includes(pid) && !(noCrown && a.crown)).map(a => a.i).slice(0, 2).join('');
+  const rows = D.players.filter(p => D.bi[p.id] || S.cashouts[p.id]).map(p => {
+    const c = S.cashouts[p.id]?.chips, net = D.poker[p.id];
+    return '<div class="cnt-row' + (c != null ? ' in' : '') + '"><span class="av">' + esc(initial(p.name)) + (badgeOf(p.id) ? '<span class="bd" aria-hidden="true">' + badgeOf(p.id) + '</span>' : p.id === top ? '<span class="bd" aria-label="הזוכה הגדול">🏆</span>' : '') + '</span>'
+      + '<div class="who"><b>' + esc(p.name) + (p.id === me ? '<span class="me-tag">אני</span>' : '') + '</b>'
+      + '<span class="num">' + buyWord(D.bi[p.id] || 0) + (c != null ? ' · <span class="net ' + (net > 0 ? 'pos' : net < 0 ? 'neg' : '') + '">' + (net ? fmtNet(net) : 'יצא באפס') + '</span>' : '') + '</span></div>'
+      + '<input class="cin" id="cin-' + p.id + '" data-cash="' + p.id + '" inputmode="numeric" placeholder="ז\'יטונים" aria-label="ז\'יטונים של ' + esc(p.name) + '" value="' + (c != null ? c : '') + '"></div>';
+  }).join('');
+
+  const av = (id, badge) => '<span class="av">' + esc(initial(nameOf(id))) + (badge ? '<span class="bd" aria-hidden="true">' + badge + '</span>' : '') + '</span>';
+  const cards = (xs, kind) => xs.map(x => {
+    const mineRow = x.from === me || x.to === me, paid = false;
+    return '<div class="xcard' + (mineRow ? ' mine' : '') + '">'
+      + '<div class="xp">' + av(x.from, badgeOf(x.from)) + '<span class="nm">' + esc(nameOf(x.from)) + '</span></div>'
+      + '<div class="xmid"><b>' + fmtAg(x.amt) + '</b><span class="xline" aria-label="אל">' + (paid ? '' : '<i></i>') + '</span></div>'
+      + '<div class="xp">' + av(x.to, badgeOf(x.to)) + '<span class="nm">' + esc(nameOf(x.to)) + '</span></div></div>';
+  }).join('') || '<div class="empty">אף אחד לא חייב לאף אחד 🤝</div>';
+  const podium = () => {
+    const w = D.players.filter(p => D.poker[p.id] > 0).sort((a, b) => D.poker[b.id] - D.poker[a.id]).slice(0, 3);
+    if (!w.length) return '';
+    const col = (p, r) => p ? '<div class="pod r' + r + '">' + (r === 1 ? '<span class="crown" aria-hidden="true">👑</span>' : '') + '<span class="av">' + esc(initial(p.name)) + (badgeOf(p.id, true) ? '<span class="bd" aria-hidden="true">' + badgeOf(p.id, true) + '</span>' : '') + '</span>'
+      + '<span class="nm">' + esc(p.name) + '</span><span class="won">' + fmtNet(D.poker[p.id]) + '</span><span class="plinth">' + r + '</span></div>' : '<div></div>';
+    return '<div class="podium' + (play ? ' play' : '') + '" aria-label="הזוכים הערב">' + col(w[1], 2) + col(w[0], 1) + col(w[2], 3) + '</div>';
+  };
+
+  /* the awards, as cards after the copy button. The crown is not among them: the podium
+     already says who won the most, so it lives only on that person's picture. */
+  const awardCards = () => {
+    const xs = AWARDS.filter(a => !a.crown);
+    if (!xs.length) return '';
+    return '<div class="sec"><div class="sechead"><h2>הפרסים של הערב</h2></div><div class="awcards' + (play ? ' play' : '') + '">' + xs.map(a => '<div class="awcard"><span class="awi" aria-hidden="true">' + a.i + '</span><b>' + namesOf(a.pids) + '</b><span>' + a.t + (a.x ? ' · ' + a.x : '') + '</span></div>').join('') + '</div></div>';
+  };
+  let result = '';
+  const doneBlock = (title, sub) => '<div class="done' + (play ? ' play' : '') + '"><div class="confetti" aria-hidden="true">' + '<i></i>'.repeat(14) + '</div>'
+    + '<b>' + title + '</b><span>' + sub + '</span></div>';
+  const copy = '<button class="btn primary wide" type="button" data-copy><span aria-hidden="true">💬</span><span>העתקה לקבוצה בוואטסאפ</span></button>';
+  if (D.closed && D.merge) {
+    result = '<div class="sec"><div class="group">' + doneBlock('סגור.', (D.xAll.length === 1 ? 'העברה אחת' : D.xAll.length + ' העברות') + (D.hasFood ? ', כולל האוכל' : '') + '. פחות מזה אי אפשר.') + podium()
+      + cards(D.xAll, 'a') + '</div>' + copy + '</div>' + awardCards();
+  } else if (!D.merge && (D.closed || D.hasFood)) {
+    if (D.closed) result += '<div class="sec"><div class="sechead"><h2>פוקר</h2><small>' + (D.xPoker.length === 1 ? 'העברה אחת' : D.xPoker.length + ' העברות') + '</small></div><div class="group">'
+      + doneBlock('סגור.', 'הפוקר, בכמה שפחות העברות.') + podium() + cards(D.xPoker, 'p') + '</div></div>';
+    if (D.hasFood) result += '<div class="sec"><div class="sechead"><h2>אוכל</h2><small>' + (D.xFood.length === 1 ? 'העברה אחת' : D.xFood.length + ' העברות') + '</small></div><div class="group">'
+      + cards(D.xFood, 'f') + '</div></div>';
+    result += copy + (D.closed ? awardCards() : '');
+  }
+
+  el.innerHTML = result
+    + '<div class="sec"><div class="sechead"><h2>ספירת ז\'יטונים</h2><small>' + (D.closed ? 'אפשר עדיין לתקן' : 'כל אחד רושם כמה נשארו לו') + '</small></div>'
+    + '<div class="group">' + tray + (rows || '<div class="empty">כשיהיו כניסות, כאן רושמים את הז\'יטונים של כל אחד.</div>') + '</div>'
+    + (D.closed || !D.inGame.length ? '' : '<p class="note">החישוב מחכה עד שהז\'יטונים שנספרו שווים בדיוק למה שנכנס. ככה טעות בספירה לא הופכת לכסף.</p>')
+    + '</div>';
+}
+
+/* The invitation. Until Olma answers join codes (stage 3, JOIN_VIA_OLMA) it is this
+   night's own link; after, it is a chat with Olma holding "משחק <code>". wa.me with no
+   number opens WhatsApp's own "send to…" picker with the text in it. */
+const JOIN_VIA_OLMA = false;
+const OLMA_WA = '972559347282';
+const CODE_ABC = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
+const nightCode = gid => { let h = [...String(gid)].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 17), out = ''; for (let i = 0; i < 5; i++) { out += CODE_ABC[h % CODE_ABC.length]; h = Math.floor(h / CODE_ABC.length) || (h * 7 + i + 3); } return out; };
+const codeOf = () => S.game?.code || nightCode(S.gid);
+const pageLink = () => NIGHT_TOKEN ? location.origin + '/night/' + NIGHT_TOKEN : location.href.split('#')[0];
+const joinLink = () => JOIN_VIA_OLMA ? 'https://wa.me/' + OLMA_WA + '?text=' + encodeURIComponent('משחק ' + codeOf()) : pageLink();
+const inviteText = D => '🃏 ' + D.g.name + ' · כניסה ' + D.g.price + ' ₪\n'
+  + (JOIN_VIA_OLMA ? 'להצטרפות שולחים לעולמה את ההודעה המוכנה:\n' : 'נכנסים לקישור, בוחרים כיסא ורושמים כניסות:\n') + joinLink();
+function renderSettings(D){
+  const el = $('#setBody');
+  if (!S.gid || !D.g) { el.innerHTML = ''; return; }
+  const me = myId();
+  el.innerHTML = `
+    <div class="group">
+      <div class="field"><label for="gName">שם הערב</label><input id="gName" value="${esc(D.g.name)}"></div>
+      <div class="field"><label for="gPrice">מחיר כניסה</label><input id="gPrice" inputmode="decimal" value="${D.g.price}"><span class="unit">₪</span></div>
+      <div class="field"><label for="gChips">ז'יטונים לכניסה</label><input id="gChips" inputmode="numeric" value="${D.g.chips}"></div>
+      <div class="cval" id="gVal">${chipWorth(D.g.price, D.g.chips)}</div>
+    </div>
+    <div class="group share"><div class="row plain"><div class="row-txt"><div class="row-title">הזמנה לערב</div><div class="row-sub">${JOIN_VIA_OLMA ? `הקישור פותח שיחה עם עולמה עם קוד הערב, <b>משחק ${codeOf()}</b>. מי ששולח אותו נכנס לערב.` : 'מי שמקבל את הקישור בוחר כיסא ורושם כניסות'}</div></div></div>
+      <div class="btns"><a class="btn primary small" href="https://wa.me/?text=${encodeURIComponent(inviteText(D))}" target="_blank" rel="noopener">שליחה בוואטסאפ</a><button class="btn ghost small" type="button" data-copylink>העתקת הקישור</button></div></div>
+    <div class="group"><div class="row plain"><div class="row-txt setme">${me ? '<span class="av">' + esc(initial(nameOf(me))) + '</span>' : ''}<div><div class="row-title">${me ? esc(nameOf(me)) : 'עוד לא נבחר שם'}</div><div class="row-sub">מה שנרשם מהטלפון הזה נרשם על השם הזה</div></div></div>
+      <button class="btn ghost small" type="button" id="switchMe">להחליף</button></div></div>
+    <div id="newBox" style="display:grid;gap:8px"><button class="btn ghost wide" type="button" id="newAsk">פתיחת ערב חדש</button></div>`;
+}
+
+/* what one chip is worth, said the way people say it at the table */
+function chipWorth(price, chips){
+  if (!(price > 0) || !(chips > 0)) return '<span class="coin" aria-hidden="true"></span><span>מחיר וז\'יטונים, ואגיד כמה שווה כל ז\'יטון</span>';
+  const ag = price * 100 / chips;
+  const w = ag < 100 ? ag.toLocaleString('he-IL', { maximumFractionDigits: 2 }) + ' אג\'' : fmtAg(Math.round(ag));
+  return '<span class="coin" aria-hidden="true"></span><span>כל ז\'יטון שווה <b>' + w + '</b></span>';
+}
+function paintStart(t){
+  const num = id => parseFloat(($(id)?.value || '').replace(/,/g, ''));
+  if (t.id === 'sPrice' || t.id === 'sChips') { const v = $('#sVal'); v.innerHTML = chipWorth(num('#sPrice'), num('#sChips')); v.classList.remove('bump'); void v.offsetWidth; v.classList.add('bump'); }
+  if (t.id === 'gPrice' || t.id === 'gChips') { const v = $('#gVal'); if (v) v.innerHTML = chipWorth(num('#gPrice'), num('#gChips')); }
+  if (t.id === 'sPlayers') {
+    const names = splitNames(t.value), box = $('#sAv'), had = +(box.dataset.n || 0);
+    box.innerHTML = names.map((n, i) => '<span class="av' + (i >= had ? ' pop' : '') + '">' + esc(initial(n)) + '</span>').join('');
+    box.dataset.n = names.length;
+    $('#sGo').textContent = names.length > 1 ? 'פותחים שולחן ל־' + names.length : 'פותחים';
+  }
+}
+function startForm(){
+  return `<div class="sec">
+    <div class="fan" aria-hidden="true"><span class="card" style="--r:-21deg;--i:0">♠</span><span class="card gold" style="--r:-7deg;--i:1">♥</span><span class="card" style="--r:7deg;--i:2">♣</span><span class="card gold" style="--r:21deg;--i:3">♦</span></div>
+    <div class="sechead"><h2>פתיחת ערב</h2></div>
+    <form class="group" id="startF">
+      <div class="field"><label for="sName">שם הערב</label><input id="sName" placeholder="חמישי אצל יוסי"></div>
+      <div class="field"><label for="sPrice">מחיר כניסה</label><input id="sPrice" inputmode="decimal" value="50"><span class="unit">₪</span></div>
+      <div class="field"><label for="sChips">ז'יטונים לכניסה</label><input id="sChips" inputmode="numeric" value="1000"></div>
+      <div class="cval" id="sVal">${chipWorth(50, 1000)}</div>
+      <div class="field"><label for="sPlayers">מי משחק</label><input id="sPlayers" placeholder="דני, יוסי, מיכל"></div>
+      <div class="spav" id="sAv" aria-hidden="true"></div>
+      <div style="padding:12px 14px"><button class="btn primary wide" type="submit" id="sGo">פותחים</button></div>
+    </form></div>`;
+}
+
+/* first visit on this phone: who are you? Everybody already sits at the table */
+function seatPicker(D){
+  const n = D.players.length;
+  const seats = D.players.map((p, i) => {
+    const a = (90 + i * 360 / n) * Math.PI / 180;
+    const x = (50 + 50 * Math.cos(a)).toFixed(1), y = (50 + 50 * Math.sin(a)).toFixed(1), d = (0.8 + 0.2 * (1 + Math.sin(a)) / 2).toFixed(2);
+    return '<button type="button" class="seat" data-pick="' + p.id + '" style="left:' + x + '%;top:' + y + '%;--d:' + d + ';--i:' + i + '"><span class="av">' + esc(initial(p.name)) + '</span><span class="snm">' + esc(p.name) + '</span></button>';
+  }).join('');
+  return '<div class="tablewrap wtable"><div class="felt"><div class="wname">איפה יושבים?</div>' + seats + '</div></div>';
+}
+function renderWelcome(D){
+  const w = $('#welcome');
+  const show = loaded && S.gid && D.g && !myId() && !ls.get('pk-skip-' + S.gid) && !prev.pickedNow;
+  w.hidden = !show;
+  if (!show) { w.dataset.k = ''; return; }
+  // prefixed, so an evening with nobody in it is not the same key as "not shown"
+  const k = 'p:' + D.players.map(p => p.id).join();
+  if (w.dataset.k === k) return;
+  w.dataset.k = k;
+  w.innerHTML = `<div class="wcard">
+    <svg class="mark" viewBox="0 0 120 120" aria-hidden="true"><use href="#logo"/></svg>
+    <h1>${esc(D.g.name)}</h1>
+    <p>אני רושמת את הערב: כניסות, אוכל, ובסוף מי מעביר למי. ${D.players.length && D.players.length <= 9 ? 'לוחצים על הכיסא שלך.' : 'מה השם שלך?'}</p>
+    ${D.players.length && D.players.length <= 9 ? seatPicker(D) : `<div class="chips">${D.players.map(p => `<button type="button" class="chip" data-pick="${p.id}">${esc(p.name)}</button>`).join('')}</div>`}
+    <form id="wNew"><input id="wNewIn" placeholder="אני לא ברשימה, השם שלי…" aria-label="השם שלי"><button class="btn primary small" type="submit">זה אני</button></form>
+    <button type="button" class="linkish" id="wSkip">רק להסתכל</button>
+  </div>`;
+}
+
+/* ───────────── events ───────────── */
+document.addEventListener('click', e => {
+  const t = e.target.closest('button'); if (!t) return;
+  if (t.dataset.tab) { setTab(t.dataset.tab); return; }
+  if (t.dataset.my) {
+    const me = myId(); if (!me) return;
+    if (t.dataset.my === 'buy') addBuyin(me, 1, 'tap');
+    else if (t.dataset.my === 'half') addBuyin(me, .5, 'tap');
+    else undoBuyin(me, 'tap');
+    return;
+  }
+  const row = t.closest('[data-pid]');
+  if (row && t.dataset.act) {
+    if (t.dataset.act === 'buy') addBuyin(row.dataset.pid, 1, 'tap'); else undoBuyin(row.dataset.pid, 'tap');
+    return;
+  }
+  if (t.dataset.pick) { pickMe(t.dataset.pick); return; }
+  if (t.id === 'wSkip') { ls.set('pk-skip-' + S.gid, '1'); schedule(); return; }
+  if (t.dataset.paid) { setPaid(t.dataset.paid, t.getAttribute('aria-pressed') !== 'true'); return; }
+  if (t.dataset.foodMode) { setGame({ foodMode: t.dataset.foodMode }); return; }
+  if (t.dataset.foodDel) {
+    // two taps: the first one only asks, so a thumb brushing the row deletes nothing
+    if (!t.classList.contains('armed')) {
+      t.classList.add('armed'); t.textContent = 'למחוק?';
+      setTimeout(() => { if (t.isConnected) { t.classList.remove('armed'); t.textContent = '×'; } }, 3000);
+      return;
+    }
+    W(db.doc(gp('food/' + t.dataset.foodDel)).delete()); return;
+  }
+  if (t.dataset.eat) {
+    const e = t.dataset.eat, had = fd.eaters.includes(e);
+    fd.eaters = had ? fd.eaters.filter(x => x !== e) : [...fd.eaters, e];
+    if (!had) prev.pop = 'eat' + e; fd.dirty = true; schedule(); return;
+  }
+  if (t.hasAttribute('data-eat-all')) { const all = Object.keys(S.players).every(p => fd.eaters.includes(p)); fd.eaters = all ? [] : Object.keys(S.players); fd.dirty = true; schedule(); return; }
+  if (t.dataset.pay) { fd.payer = t.dataset.pay; prev.pop = 'pay' + t.dataset.pay; fd.dirty = true; schedule(); return; }
+  if (t.dataset.kind) { fd.kind = fd.kind === t.dataset.kind ? '' : t.dataset.kind; fd.dirty = true; schedule(); if (fd.kind && !fd.amount) requestAnimationFrame(() => $('#fAmt')?.focus()); return; }
+  if (t.dataset.split) { fd.mode = t.dataset.split; fd.dirty = true; schedule(); return; }
+  if (t.dataset.foodEdit) { fd = draftOf(t.dataset.foodEdit); schedule(); requestAnimationFrame(() => $('#foodAdd')?.scrollIntoView({ block: 'start', behavior: 'smooth' })); return; }
+  if (t.hasAttribute('data-food-cancel')) { fd = null; prev.foodOpen = false; schedule(); return; }
+  if (t.hasAttribute('data-copy')) { copySummary(); return; }
+  if (t.hasAttribute('data-copylink')) {
+    const link = joinLink(); navigator.clipboard.writeText(link).then(() => { toast('הקישור הועתק'); t.textContent = 'הועתק ✓'; }, () => toast('ההעתקה נחסמה. הקישור: ' + link));
+    return;
+  }
+  if (t.id === 'chatBtn') { openSheet('#chatSheet'); scrollChat(); return; }
+  if (t.id === 'setBtn') { openSheet('#setSheet'); return; }
+  if (t.hasAttribute('data-close')) { closeSheets(); return; }
+  if (t.id === 'switchMe' || t.id === 'pickMe') { ls.set('pk-me-' + S.gid, ''); ls.set('pk-skip-' + S.gid, ''); prev.pickedNow = false; closeSheets(); schedule(); return; }
+  if (t.id === 'newAsk') {
+    $('#newBox').innerHTML = `<p class="row-sub">הערב הזה יישאר שמור. לפתוח ערב חדש עם אותו מחיר ואותם ז'יטונים?</p>
+      <div class="btns"><button class="btn primary small" type="button" id="newYes">פתיחה</button><button class="btn ghost small" type="button" id="newNo">ביטול</button></div>`;
+    return;
+  }
+  if (t.id === 'newYes') { const g = S.game; closeSheets(); newGame({ name: 'ערב פוקר', price: g.price, chips: g.chips }); return; }
+  if (t.id === 'newNo') { schedule(); return; }
+  if (t.dataset.me) { setMe(t.dataset.me); return; }
+  if (t.dataset.say) { send(t.dataset.say); return; }
+  if (t.dataset.fe) {
+    t.setAttribute('aria-pressed', t.getAttribute('aria-pressed') === 'true' ? 'false' : 'true');
+    const m = chat.find(x => x.id === t.dataset.msg); if (m) { m.eaters = [...t.parentNode.querySelectorAll('[data-fe][aria-pressed="true"]')].map(b => b.dataset.fe); saveChat(); }
+    return;
+  }
+  if (t.dataset.feAll) {
+    const m = chat.find(x => x.id === t.dataset.feAll); if (!m) return;
+    m.eaters = Object.keys(S.players); saveChat(); redrawMsg(m); return;
+  }
+  if (t.dataset.feOk) { confirmFood(t.dataset.feOk); return; }
+});
+$('#scrim').addEventListener('click', closeSheets);
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeSheets();
+  // Enter walks down the list, so one person can type everybody's count in a row
+  if (e.key === 'Enter' && e.target.matches?.('.cin')) {
+    e.preventDefault();
+    const all = [...e.target.closest('main, .sheet, form, .group')?.querySelectorAll('.cin') || []];
+    const next = all[all.indexOf(e.target) + 1];
+    if (next && !e.target.dataset.own) next.focus(); else e.target.blur();
+  }
+});
+document.addEventListener('toggle', e => {
+  if (e.target.id === 'logFold') prev.logOpen = e.target.open;
+  if (e.target.id === 'foodAdd') prev.foodOpen = e.target.open;
+}, true);
+document.addEventListener('submit', e => {
+  const id = e.target.id;
+  if (id === 'addP') {
+    e.preventDefault(); const v = $('#addPIn').value; $('#addPIn').value = '';
+    (async () => { for (const n of splitNames(v)) await addPlayer(n, 'tap'); })();
+  }
+  else if (id === 'wNew') {
+    e.preventDefault(); const v = $('#wNewIn').value.trim(); if (!v) return;
+    addPlayer(v, 'tap').then(pid => { if (pid) pickMe(pid, v); });
+  }
+  else if (id === 'startF') {
+    e.preventDefault();
+    const price = parseFloat($('#sPrice').value.replace(/,/g, '')), chips = parseInt($('#sChips').value.replace(/,/g, ''), 10);
+    if (!(price > 0) || !(chips > 0)) { toast('מחיר וז\'יטונים צריכים להיות מספרים חיוביים'); return; }
+    newGame({ name: $('#sName').value.trim() || 'ערב פוקר', price, chips }, splitNames($('#sPlayers').value));
+  }
+  else if (id === 'foodForm') {
+    e.preventDefault();
+    const r = readDraft(fd);
+    if (r.err) { toast(r.err); return; }
+    if (fd.id) saveFood(fd.id, r.order, 'tap'); else addFood(r.order, 'tap');
+    toast(fd.id ? 'נשמר' : 'נוסף');
+    fd = null; prev.foodOpen = false; schedule();
+  }
+});
+document.addEventListener('input', e => {
+  const t = e.target;
+  if (/^(?:sPrice|sChips|sPlayers|gPrice|gChips)$/.test(t.id)) { paintStart(t); return; }
+  if (!fd) return;
+  if (t.dataset.fd) { fd[t.dataset.fd] = t.value; fd.dirty = true; paintFoodLive(); }
+  else if (t.dataset.ownAmt) { fd.own[t.dataset.ownAmt] = t.value; fd.dirty = true; paintFoodLive(); }
+});
+document.addEventListener('change', e => {
+  const t = e.target;
+  if (t.dataset.own) {
+    const me = myId(); if (!me) return;
+    const raw = t.value.replace(/[^\d.]/g, ''), v = raw === '' ? null : numOf(raw);
+    const res = setOwn(t.dataset.own, me, v);
+    if (res === 'over') { toast('זה יותר ממה שנשאר בחשבון. אפשר לבדוק?'); t.value = ''; }
+    return;
+  }
+  if (t.dataset.cash) {
+    const v = t.value.replace(/[^\d.]/g, '');
+    setCash(t.dataset.cash, v === '' ? null : Math.round(parseFloat(v)), 'tap');
+  } else if (t.id === 'gName' && t.value.trim()) setGame({ name: t.value.trim() });
+  else if (t.id === 'gPrice') { const v = parseFloat(t.value.replace(/,/g, '')); if (v > 0) setGame({ price: v }); }
+  else if (t.id === 'gChips') { const v = parseInt(t.value.replace(/,/g, ''), 10); if (v > 0) setGame({ chips: v }); }
+});
+
+function setTab(tab){
+  // the food bars grow once, when the tab is first seen with them on it
+  if (tab === 'food' && $('#tFood .bars')) prev.bars = true;
+  document.body.dataset.tab = tab;
+  document.querySelectorAll('.tabs button').forEach(b => { b.setAttribute('aria-pressed', String(b.dataset.tab === tab)); if (b.dataset.tab === tab) b.querySelector('.dot')?.remove(); });
+  scrollTo({ top: 0, behavior: 'smooth' });
+}
+function markTab(tab){
+  if (document.body.dataset.tab === tab) return;
+  const b = document.querySelector(`.tabs [data-tab="${tab}"]`);
+  if (b && !b.querySelector('.dot')) b.insertAdjacentHTML('beforeend', '<span class="dot" aria-hidden="true"></span>');
+}
+function openSheet(sel){
+  closeSheets();
+  $(sel).classList.add('on'); $(sel).setAttribute('aria-hidden', 'false'); $('#scrim').classList.add('on');
+}
+function closeSheets(){
+  document.querySelectorAll('.sheet.on').forEach(s => { s.classList.remove('on'); s.setAttribute('aria-hidden', 'true'); });
+  $('#scrim').classList.remove('on');
+}
+let tt = 0;
+function toast(msg){ const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(tt); tt = setTimeout(() => t.classList.remove('show'), 2400); }
+
+function summaryText(D){
+  const lines = xs => xs.map(x => `מ${nameOf(x.from)} ל${nameOf(x.to)}: ${fmtAg(x.amt)}`).join('\n') || 'אין העברות';
+  let t = `סיכום ${D.g.name}\nכניסה ${fmtAg(D.price)} = ${fmtChips(D.cpb)} ז'יטונים\n\n`;
+  if (D.merge) t += lines(D.xAll) + (D.hasFood ? '\n(כולל האוכל)' : '');
+  else { if (D.closed) t += 'פוקר:\n' + lines(D.xPoker); if (D.hasFood) t += (D.closed ? '\n\n' : '') + 'אוכל:\n' + lines(D.xFood); }
+  return t;
+}
+function copySummary(){
+  const text = summaryText(derive());
+  navigator.clipboard.writeText(text).then(() => {
+    toast('הועתק. אפשר להדביק בקבוצה');
+    const b = $('[data-copy]'); if (b) { b.classList.remove('copied'); void b.offsetWidth; b.classList.add('copied'); b.innerHTML = '<span aria-hidden="true">✅</span><span>הועתק, עכשיו להדביק בקבוצה</span>'; }
+  }, () => {
+    pushOl(text, { kind: 'sum' }); openSheet('#chatSheet'); toast('ההעתקה נחסמה. הטקסט בצ\'אט, סמנו והעתיקו משם');
+  });
+}
+
+/* ───────────── the chat, same conversation as WhatsApp ───────────── */
+let chat = [], typingOn = false;
+const myId = () => { const v = S.gid && ls.get('pk-me-' + S.gid); return v && S.players[v] ? v : null; };
+function pickMe(pid, name){
+  ls.set('pk-me-' + S.gid, pid); prev.pickedNow = true;
+  $('#welcome').hidden = true;
+  toast(`שלום ${S.players[pid]?.name || name || ''}`);
+  schedule();
+}
+function setMe(pid, name){
+  ls.set('pk-me-' + S.gid, pid); prev.pickedNow = true;
+  reply(`נעים, ${(S.players[pid] || { name }).name}. מעכשיו מה שנכתב כאן נרשם עליך.`);
+  schedule();
+}
+function loadChat(){
+  let saved = null;
+  try { saved = JSON.parse(ls.get('pk-chat-' + S.gid) || 'null'); } catch {}
+  chat = Array.isArray(saved) ? saved : [];
+  $('#msgs').innerHTML = '';
+  chat.forEach(drawMsg);
+  if (!chat.length && S.gid) pushOl('אפשר לכתוב לי כאן בדיוק כמו בוואטסאפ.\n"עוד כניסה" כשנכנסים, "בכמה כניסות אני?" כשרוצים לדעת, ובסוף "נשארו לי 1,850".\nמזמינים אוכל? "הזמנתי פיצה ב־240".');
+}
+function saveChat(){ ls.set('pk-chat-' + S.gid, JSON.stringify(chat.slice(-80))); }
+function scrollChat(){ const m = $('#msgs'); requestAnimationFrame(() => { m.scrollTop = m.scrollHeight; }); }
+function drawMsg(m){
+  const d = document.createElement('div');
+  d.className = 'b ' + (m.who === 'me' ? 'me' : 'ol') + (m.kind === 'sum' ? ' sum' : '') + (m.rx ? ' has-rx' : '');
+  d.dataset.id = m.id;
+  d.textContent = m.text;
+  const roster = () => Object.entries(S.players).sort((a, b) => a[1].order - b[1].order);
+  if (m.kind === 'who') d.insertAdjacentHTML('beforeend', `<div class="chips">${roster().map(([id, p]) => `<button type="button" class="chip" data-me="${id}">${esc(p.name)}</button>`).join('')}</div>`);
+  if (m.kind === 'food' && !m.done) {
+    const sel = new Set(m.eaters || []);
+    d.insertAdjacentHTML('beforeend', `<div class="chips">${roster().map(([id, p]) => `<button type="button" class="chip" data-fe="${id}" data-msg="${m.id}" aria-pressed="${sel.has(id)}">${esc(p.name)}</button>`).join('')}</div>
+      <button type="button" class="chip" data-fe-all="${m.id}">כולם</button><button type="button" class="btn primary small" data-fe-ok="${m.id}">זה הם</button>`);
+  }
+  if (m.kind === 'ask') d.insertAdjacentHTML('beforeend', `<div class="chips"><button type="button" class="chip" data-say="נשארו לי ${m.n}">כן, ${fmtChips(m.n)} ז'יטונים</button><button type="button" class="chip" data-say="עזרה">לא</button></div>`);
+  if (m.rx) d.insertAdjacentHTML('beforeend', `<span class="rx" aria-label="נרשם">${m.rx}</span>`);
+  $('#msgs').appendChild(d);
+  return d;
+}
+function redrawMsg(m){ const old = $(`#msgs [data-id="${m.id}"]`); if (!old) return; const n = drawMsg(m); old.replaceWith(n); }
+function pushMe(text){ const m = { id: uid(), who: 'me', text }; chat.push(m); drawMsg(m); saveChat(); scrollChat(); return m; }
+function pushOl(text, extra){ const m = { id: uid(), who: 'ol', text, ...extra }; chat.push(m); drawMsg(m); saveChat(); scrollChat(); return m; }
+function react(m, e){ setTimeout(() => { m.rx = e; redrawMsg(m); saveChat(); }, 380); }
+function reply(text, extra){
+  if (!typingOn) { typingOn = true; $('#msgs').insertAdjacentHTML('beforeend', '<div class="typing" id="typing"><i></i><i></i><i></i></div>'); scrollChat(); }
+  setTimeout(() => { $('#typing')?.remove(); typingOn = false; pushOl(text, extra); }, 650);
+}
+function askWho(){
+  if (!Object.keys(S.players).length) { reply('עוד אין שחקנים בערב. כתבו "אני ‹השם שלך›" ואוסיף אותך.'); return; }
+  reply('מה השם שלך? אפשר גם לכתוב "אני ‹שם›".', { kind: 'who' });
+}
+const qIcon = q => /כניסה$/.test(q) ? '🪙' : /בכמה/.test(q) ? '🤔' : /פיצה/.test(q) ? '🍕' : /המנה/.test(q) ? '🍽' : /נשארו/.test(q) ? '🧮' : '📊';
+function renderQR(D){
+  const el = $('#qr');
+  const qs = !S.gid ? [] : D.phase === 'counting' || D.phase === 'mismatch' ? ['נשארו לי 1,850', 'בכמה כניסות אני?', 'מה המצב?']
+    : D.phase === 'closed' ? ['בכמה כניסות אני?', 'מה המצב?'] : ['עוד כניסה', 'בכמה כניסות אני?', D.hasFood ? 'המנה שלי 58' : 'הזמנתי פיצה ב־240', 'נשארו לי 1,850', 'מה המצב?'];
+  const k = qs.join();
+  if (el.dataset.k === k) return;
+  el.dataset.k = k;
+  el.innerHTML = qs.map(q => `<button type="button" class="chip" data-say="${esc(q)}"><span class="qi" aria-hidden="true">${qIcon(q)}</span>${esc(q)}</button>`).join('');
+}
+$('#composer').addEventListener('submit', e => { e.preventDefault(); const v = $('#msgIn').value.trim(); if (!v) return; $('#msgIn').value = ''; send(v); });
+
+/* The reading is code, not a model: a closed list of sentences. Anything
+   outside it is told what she understands, never guessed at. */
+const norm = t => t.replace(/[֑-ׇ]/g, '').replace(/[׳`’]/g, "'").replace(/[״“”]/g, '"').replace(/\s+/g, ' ').trim();
+const numOf = s => { const n = parseFloat(String(s).replace(/,/g, '')); return isFinite(n) ? n : null; };
+const CHIPWORD = /^(?:ז'?יטונים|ז'?יטון|צ'?יפים|צ'?יפס|chips?)?$/i;
+function parse(raw){
+  const t = norm(raw), l = t.toLowerCase().replace(/[!?.]+$/, '').trim();
+  let m;
+  if (/^(?:עזרה|מה אפשר|מה את יודעת|help)/.test(l)) return { k: 'help' };
+  if ((m = l.match(/^(?:תרשמי|רשמי|תוסיפי|תרשום|רשום|תוסיף)\s+(חצי\s+)?(?:כניסה|עוד כניסה)\s+ל[-־]?\s*(.+)$/))) return { k: 'buyFor', n: m[1] ? .5 : 1, name: m[2], create: true };
+  if ((m = l.match(/^\+\s?(1|½|0?\.5)\s+ל[-־]?\s*(.+)$/))) return { k: 'buyFor', n: m[1] === '1' ? 1 : .5, name: m[2], create: false };
+  if (/^(?:\+\s?½|\+\s?0?\.5|חצי כניסה|עוד חצי(?: כניסה)?|נכנסתי בחצי)$/.test(l)) return { k: 'buy', n: .5 };
+  if (/^(?:\+\s?1|\+|עוד כניסה|כניסה|כניסה נוספת|עוד אחת|עוד אחד|נכנסתי(?: שוב| עוד פעם)?|אני נכנס(?:ת)? שוב|ריבאי|רי-?באי|re-?buy|תרשמי(?: לי)? כניסה|רשמי(?: לי)? כניסה)$/.test(l)) return { k: 'buy', n: 1 };
+  if ((m = l.match(/^(?:\+\s?(\d)|עוד (\d) כניסות|(\d) כניסות)$/))) { const n = +(m[1] || m[2] || m[3]); if (n >= 1 && n <= 5) return { k: 'buy', n, many: true }; }
+  if (/^(?:בטלי|בטל|תבטלי|מחקי|תמחקי|תורידי|הורידי)(?:\s+(?:לי\s+)?(?:את\s+)?(?:ה)?כניסה(?:\s+האחרונה)?)?$/.test(l)) return { k: 'undo' };
+  if (/כמה כניסות|בכמה כניסות|כמה נכנסתי|כמה אני בפנים|מה המצב שלי|כמה שמתי/.test(l)) return { k: 'mine' };
+  if (/^(?:מה המצב|מצב|סיכום|מי כמה|איפה אנחנו)$/.test(l)) return { k: 'status' };
+  if ((m = l.match(/(?:נשארו לי|נשאר לי|יצאתי עם|סיימתי עם|סיימתי ב|סוגר(?:ת)? עם|יש לי)\s*(\d[\d,\.]*)\s*(.*)$/))) {
+    const n = numOf(m[1]), rest = m[2].trim();
+    if (n != null && CHIPWORD.test(rest)) return { k: 'cash', n: Math.round(n) };
+    return { k: 'cashUnsure', n: Math.round(n || 0), rest };
+  }
+  if ((m = l.match(/^(?:הזמנתי|הזמנו|שילמתי על|קניתי)\s+(.+?)\s*(?:ב[-־]?\s*|על\s+)?(\d[\d,\.]*)\s*(?:₪|ש"ח|שח|שקל(?:ים)?)?$/))) return { k: 'food', what: m[1].replace(/\s*(?:ב|על)$/, '').trim(), amount: numOf(m[2]) };
+  if ((m = l.match(/^(?:הזמנתי|שילמתי)\s+(\d[\d,\.]*)\s*(?:₪|ש"ח|שח|שקל(?:ים)?)?\s*(?:על|ל)\s*(.+)$/))) return { k: 'food', what: m[2].trim(), amount: numOf(m[1]) };
+  if ((m = l.match(/^(?:המנה שלי|החלק שלי|שלי|אכלתי)\s*(?:היה|היתה|הייתה|עלה|עלתה|זה|הוא|היא)?\s*(?:ב[-־]?\s*)?(\d[\d,\.]*)\s*(?:₪|ש"ח|שח|שקל(?:ים)?)?$/))) return { k: 'myshare', amount: numOf(m[1]) };
+  if ((m = t.match(/^(?:אני|זה|כאן)\s+([^\d]{2,24})$/))) return { k: 'iam', name: m[1].trim() };
+  return { k: 'unknown' };
+}
+
+async function send(text){
+  if (!S.gid || !S.game) { pushMe(text); reply('עוד לא נפתח ערב.'); return; }
+  const m = pushMe(text);
+  const p = parse(text);
+  const me = myId();
+  if (['buy', 'undo', 'mine', 'cash', 'cashUnsure', 'food', 'myshare'].includes(p.k) && !me) { askWho(); return; }
+  const D = derive();
+  switch (p.k) {
+    case 'help':
+      reply('אני מבינה כאן רק את הערב:\n• "עוד כניסה" או "+1"\n• "חצי כניסה"\n• "תרשמי כניסה לדני"\n• "בכמה כניסות אני?"\n• "בטלי כניסה"\n• "נשארו לי 1,850"\n• "הזמנתי פיצה ב־240"\n• "המנה שלי 58"\n• "מה המצב?"'); break;
+    case 'buy':
+      if (D.closed) { reply('הערב כבר נסגר. אם זו טעות, מחקו קודם את הז\'יטונים של מישהו בלשונית "סגירה".'); break; }
+      for (let i = 0; i < (p.many ? p.n : 1); i++) addBuyin(me, p.many ? 1 : p.n, 'chat');
+      react(m, '👍'); break;
+    case 'buyFor': {
+      const hit = findPlayer(p.name);
+      if (!hit && !p.create) { reply(`לא מצאתי בערב את "${p.name}". כדי להוסיף: "תרשמי כניסה ל${p.name}".`); break; }
+      const clean = p.name.replace(/^ל[-־]?/, '');
+      const pid = hit?.id || await addPlayer(clean, 'chat');
+      if (!pid) break;
+      addBuyin(pid, p.n, 'chat', hit ? hit.name : clean);
+      react(m, '👍');
+      if (!hit) reply(`${clean} בשולחן, ורשמתי ${p.n === 1 ? 'כניסה' : 'חצי כניסה'}.`);
+      break;
+    }
+    case 'undo': {
+      const last = Object.values(S.buyins).filter(b => b.pid === me).sort((a, b) => b.at - a.at)[0];
+      if (undoBuyin(me, 'chat')) reply(`ביטלתי. נשארו ${buyWord(Math.max(0, (D.bi[me] || 0) - last.n))}.`);
+      else reply('אין לך כניסות לבטל.');
+      break;
+    }
+    case 'mine': {
+      const n = D.bi[me] || 0, c = S.cashouts[me]?.chips;
+      let t = n ? `${buyWord(n)} עד עכשיו · ${fmtAg(Math.round(n * D.price))}` : 'עוד לא רשמתי לך כניסות.';
+      if (c != null) { const net = D.poker[me]; t += `\nדיווחת ${fmtChips(c)} ז'יטונים, כלומר ${net >= 0 ? 'פלוס' : 'מינוס'} ${fmtAg(Math.abs(net))}.`; }
+      reply(t); break;
+    }
+    case 'status': {
+      const lines = D.players.filter(x => D.bi[x.id]).map(x => `${x.name}: ${fmtN(D.bi[x.id])}${S.cashouts[x.id] ? ` · נשארו ${fmtChips(S.cashouts[x.id].chips)}` : ''}`);
+      reply(lines.length ? `${fmtN(D.totalBuy)} כניסות, ${fmtAg(Math.round(D.totalBuy * D.price))} בקופה.\n${lines.join('\n')}` : 'עוד אין כניסות הערב.'); break;
+    }
+    case 'cash':
+      if (!D.bi[me]) { reply('לא רשומה לך כניסה הערב. אם שיחקת, קודם צריך לרשום "עוד כניסה".'); break; }
+      if (p.n > D.expected * 2) { reply(`${fmtChips(p.n)} ז'יטונים זה יותר מכל מה שיש על השולחן (${fmtChips(D.expected)}). אפשר לבדוק שוב?`); break; }
+      setCash(me, p.n, 'chat'); react(m, '👍'); break;
+    case 'cashUnsure':
+      reply(`לרשום שנשארו לך ${fmtChips(p.n)} ז'יטונים?`, { kind: 'ask', n: p.n }); break;
+    case 'food':
+      if (!(p.amount > 0)) { reply('כמה עלתה ההזמנה? למשל "הזמנתי פיצה ב־240".'); break; }
+      reply(`${FOOD[kindOf(p.what)]?.icon || '🍽️'} ${p.what} ב־${fmtAg(Math.round(p.amount * 100))}. מי אכל?`, { kind: 'food', what: p.what, amount: p.amount, payer: me, eaters: [] });
+      break;
+    case 'myshare': {
+      const last = D.orders[D.orders.length - 1];
+      if (!last) { reply('עוד אין הזמנת אוכל. כותבים קודם "הזמנתי פיצה ב־240".'); break; }
+      if (!(p.amount > 0)) { reply('כמה עלתה המנה שלך? למשל "המנה שלי 58".'); break; }
+      const first = !Object.keys(last.own || {}).length;
+      const res = setOwn(last.id, me, p.amount);
+      if (res === 'over') { reply(`ב${last.what} נשאר פחות מ־${fmtAg(ag(p.amount))} לחלק. אפשר לבדוק?`); break; }
+      react(m, '👍');
+      if (first) reply(`רשמתי את המנה שלך ב${last.what}. מי שלא כותב כמה, מתחלק שווה ביתרה.`);
+      else if (D.orders.length > 1) reply(`רשמתי ב${last.what}. להזמנה אחרת, בלשונית "אוכל".`);
+      break;
+    }
+    case 'iam': {
+      const hit = findPlayer(p.name, true);
+      if (hit) { setMe(hit.id); break; }
+      const id = await addPlayer(p.name, 'chat');
+      if (id) setMe(id, p.name);
+      break;
+    }
+    default:
+      reply('כאן אני מבינה רק את הערב. אפשר לכתוב "עוד כניסה", "בכמה כניסות אני?", "נשארו לי 1,850" או "עזרה".');
+  }
+}
+function confirmFood(msgId){
+  const m = chat.find(x => x.id === msgId); if (!m || m.done) return;
+  const eaters = (m.eaters || []).filter(e => S.players[e]);
+  if (!eaters.length) { toast('סמנו לפחות אחד שאכל'); return; }
+  m.done = true; redrawMsg(m); saveChat();
+  const k = kindOf(m.what);
+  addFood({ kind: k, what: m.what, amount: m.amount, payer: m.payer, eaters }, 'chat');
+  const per = Math.round(m.amount * 100 / eaters.length);
+  const mode = (S.game.foodMode || 'merge') === 'merge' ? 'זה יתקזז עם הפוקר בסוף.' : 'זה ייסגר בנפרד מהפוקר.';
+  reply(`רשמתי: ${m.what}, ${fmtAg(Math.round(m.amount * 100))} על ${eaters.length}, ${fmtAg(per)} לכל אחד. ${mode}\nכל אחד הזמין משהו אחר? כל אחד כותב לי "המנה שלי 58".`);
+}
+
+/* When the night closes she says so in the chat once per result, and the
+   closing tab is marked for whoever is looking elsewhere. */
+/* One document per closed night under history/, with each player's poker
+   result and nothing about the food. Rewritten if a count is corrected after
+   closing; never deleted. In Olma this becomes a table keyed by user_id. */
+function maybeRecord(D){
+  if (!isLocal) return;   // gamesd writes game_results itself, from its own copy of the math
+  if (!S.gid || !D.g || !D.closed) return;
+  const players = D.inGame.map(p => ({ pid: p.id, name: p.name, buyins: D.bi[p.id], chips: S.cashouts[p.id]?.chips ?? 0, net: D.poker[p.id] / 100 }));
+  const sig = JSON.stringify(players), k = 'pk-hist-' + S.gid;
+  if (ls.get(k) === sig) return;
+  ls.set(k, sig);
+  W(db.doc('history/' + S.gid).set({ gid: S.gid, name: D.g.name, startedAt: D.g.createdAt || null, closedAt: Date.now(),
+    price: D.g.price, chipsPerBuyin: D.g.chips, pot: Math.round(D.totalBuy * D.price) / 100, players }));
+}
+function maybeSummary(D){
+  if (!S.gid || !D.g || !D.closed) return;
+  const k = 'pk-sum-' + S.gid;
+  const sig = JSON.stringify(D.merge ? D.xAll : [D.xPoker, D.xFood]);
+  if (ls.get(k) === sig) return;
+  const first = !ls.get(k);
+  ls.set(k, sig);
+  pushOl((first ? 'סגור. ' : 'עדכון: ') + summaryText(D), { kind: 'sum' });
+  markTab('settle');
+}
+
+/* ───────────── boot ───────────── */
+async function boot(){
+  if (!NIGHT_TOKEN) try { db = window.claude && typeof window.claude.use === 'function' ? await window.claude.use('db') : null; } catch { db = null; }
+  if (NIGHT_TOKEN) db = makeRemote(NIGHT_TOKEN);
+  if (!db) { db = makeLocal(); isLocal = true; }
+  db.doc('meta/current').onSnapshot(s => {
+    const g = s.exists ? s.data().gameId : null;
+    loaded = true;
+    if (g !== S.gid) openGame(g); else schedule();
+  }, fail);
+  schedule();
+}
+render();
+boot();
+})();
+</script>

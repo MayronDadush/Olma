@@ -33,18 +33,31 @@
 # Overrides, for the test suite only:
 #   OLMA_ENV_FILE, OLMA_BACKUP_DIR, OLMA_OFFBOX_KEEP_DAYS, OLMA_OFFBOX_PREFIX
 #
-# Cron line (root, after the dump):
+# Which database, as the one argument: `olma2` (the default) or `olma_games`
+# (game nights, games/). Each has its own dump file prefix, its own folder in
+# the bucket and its OWN heartbeat row, so a green games copy can never paint
+# over a red olma2 one on the board. Anything else is refused before a word
+# is written.
+#
+# Cron lines (root, after each dump):
 #   40 2 * * * bash /opt/olma2/scripts/backup-offbox.sh >> /var/log/olma2-backup-offbox.log 2>&1
+#   45 2 * * * bash /opt/olma2/scripts/backup-offbox.sh olma_games >> /var/log/olma2-backup-offbox.log 2>&1
 set -euo pipefail
+
+SOURCE="${1:-olma2}"
+case "$SOURCE" in
+  olma2)      JOB=backup_offbox ;;
+  olma_games) JOB=backup_offbox_games ;;
+  *) echo "[backup-offbox] unknown database: $SOURCE (olma2 or olma_games)" >&2; exit 2 ;;
+esac
 
 ENV_FILE="${OLMA_ENV_FILE:-/opt/olma2/.env}"
 BACKUP_DIR="${OLMA_BACKUP_DIR:-/root/backups}"
 KEEP_DAYS="${OLMA_OFFBOX_KEEP_DAYS:-30}"
-PREFIX="${OLMA_OFFBOX_PREFIX:-olma2}"
+PREFIX="${OLMA_OFFBOX_PREFIX:-$SOURCE}"
 # A dump older than this is yesterday's: uploading it again would report a
 # backup that did not happen tonight.
 MAX_DUMP_AGE_MIN=$((36 * 60))
-JOB=backup_offbox
 
 log() { echo "[backup-offbox] $*"; }
 
@@ -112,9 +125,9 @@ REGION=$(envget SPACES_REGION)
 HOST="$REGION.digitaloceanspaces.com"
 
 # ---- the dump to copy ------------------------------------------------------------
-# Names carry the date (olma2-YYYY-MM-DD.sql.gz), so lexicographic order is
+# Names carry the date (<source>-YYYY-MM-DD.sql.gz), so lexicographic order is
 # chronological order — the same trick prune-releases.sh relies on.
-DUMP=$(ls -1 "$BACKUP_DIR"/olma2-*.sql.gz 2>/dev/null | sort | tail -1 || true)
+DUMP=$(ls -1 "$BACKUP_DIR"/"$SOURCE"-*.sql.gz 2>/dev/null | sort | tail -1 || true)
 [ -n "$DUMP" ] || fail "no dump found in $BACKUP_DIR"
 [ -s "$DUMP" ] || fail "dump is empty: $DUMP"
 [ -n "$(find "$DUMP" -mmin "-$MAX_DUMP_AGE_MIN" 2>/dev/null)" ] \
@@ -147,7 +160,7 @@ PRUNED=0
 if [ -n "$CUTOFF" ]; then
   while read -r key; do
     [ -n "$key" ] || continue
-    day=$(basename "$key" | sed -nE 's/^olma2-([0-9]{4}-[0-9]{2}-[0-9]{2})\.sql\.gz$/\1/p')
+    day=$(basename "$key" | sed -nE "s/^${SOURCE}-([0-9]{4}-[0-9]{2}-[0-9]{2})\.sql\.gz\$/\1/p")
     [ -n "$day" ] || continue
     if [[ "$day" < "$CUTOFF" ]]; then
       if s3 del "$key" >/dev/null; then PRUNED=$((PRUNED + 1)); else log "warn: could not delete $key"; fi

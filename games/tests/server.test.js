@@ -1,0 +1,177 @@
+'use strict';
+// gamesd end to end: a real server on a random port, a real database, and
+// the same HTTP calls the page makes.
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const { freshDb } = require('./helpers');
+const { createServer } = require('../src/server');
+
+async function boot(t) {
+  const pool = await freshDb(t);
+  const server = createServer({ pool, publicBase: 'https://allma.test', page: '<!doctype html><title>night</title>' });
+  await new Promise(r => server.listen(0, '127.0.0.1', r));
+  t.after(() => new Promise(r => { server.closeListeners(); server.close(r); }));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const post = (p, body, headers = {}) => fetch(base + p, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body) });
+  return { pool, base, post };
+}
+
+async function openNight(post, extra = {}) {
+  const res = await post('/api/nights', { name: 'פוקר של חמישי', price: 50, chips: 1000, players: ['מיכל', 'יוסי', 'דני'], ...extra });
+  assert.equal(res.status, 201);
+  const body = await res.json();
+  assert.match(body.token, /^[A-Za-z0-9]{22}$/);
+  assert.match(body.code, /^[2-9A-HJ-KM-NP-Z]{5}$/);
+  assert.equal(body.url, 'https://allma.test/night/' + body.token);
+  return body.token;
+}
+
+test('a night opens from the box, and the page and its state answer on its link', async t => {
+  const { base, post } = await boot(t);
+  const token = await openNight(post);
+  const page = await fetch(`${base}/night/${token}`);
+  assert.equal(page.status, 200);
+  assert.equal(page.headers.get('referrer-policy'), 'no-referrer');
+  const st = await (await fetch(`${base}/night/${token}/api/state`)).json();
+  assert.equal(st.game.name, 'פוקר של חמישי');
+  assert.equal(st.game.price, 50);
+  assert.deepEqual(Object.values(st.players).map(p => p.name).sort(), ['דני', 'יוסי', 'מיכל']);
+});
+
+test('a link that is not a night is a 404, and so is anything outside the two public shapes', async t => {
+  const { base } = await boot(t);
+  assert.equal((await fetch(`${base}/night/${'A'.repeat(22)}`)).status, 404);
+  assert.equal((await fetch(`${base}/night/short`)).status, 404);
+  assert.equal((await fetch(`${base}/night/${'A'.repeat(22)}/api/secrets`)).status, 404);
+});
+
+test('opening a night through a proxy is refused, even with the right path', async t => {
+  const { post } = await boot(t);
+  const res = await post('/api/nights', { name: 'x', price: 50, chips: 1000 }, { 'X-Forwarded-For': '203.0.113.9' });
+  assert.equal(res.status, 404);
+});
+
+test('a whole night: buy-ins, a half, an undo, counts that do not add up, then do, and game_results follows', async t => {
+  const { pool, base, post } = await boot(t);
+  const token = await openNight(post);
+  const W = async w => { const r = await post(`/night/${token}/api/write`, w); const b = await r.json(); assert.equal(r.status, 200, JSON.stringify(b)); return b; };
+  let st = (await (await fetch(`${base}/night/${token}/api/state`)).json());
+  const [m, y, d] = Object.entries(st.players).sort((a, b) => a[1].order - b[1].order).map(([id]) => id);
+
+  for (const pid of [m, y, d, d]) await W({ op: 'add', col: 'buyins', data: { pid, n: 1, at: Date.now(), via: 'tap' } });
+  const half = await W({ op: 'add', col: 'buyins', data: { pid: y, n: 0.5, at: Date.now() } });
+  await W({ op: 'delete', col: 'buyins', id: half.id });
+
+  await W({ op: 'set', col: 'cashouts', id: m, data: { chips: 2000 } });
+  await W({ op: 'set', col: 'cashouts', id: y, data: { chips: 500 } });
+  st = (await W({ op: 'set', col: 'cashouts', id: d, data: { chips: 1499 } })).state;
+  assert.equal(st.game.closedAt, null, 'one chip short: not closed');
+  assert.equal((await pool.query('SELECT count(*)::int n FROM game_results')).rows[0].n, 0);
+
+  st = (await W({ op: 'set', col: 'cashouts', id: d, data: { chips: 1500 } })).state;
+  assert.ok(st.game.closedAt, 'adds up: closed');
+  const rows = (await pool.query('SELECT player_id, net_ag, buyins, pot_ag FROM game_results ORDER BY net_ag DESC')).rows;
+  assert.deepEqual(rows.map(r => [r.player_id, r.net_ag, r.buyins, r.pot_ag]), [[m, 5000, 1, 20000], [y, -2500, 1, 20000], [d, -2500, 2, 20000]]);
+
+  // a correction after closing rewrites the rows, never adds more
+  await W({ op: 'set', col: 'cashouts', id: m, data: { chips: 1500 } });
+  await W({ op: 'set', col: 'cashouts', id: y, data: { chips: 1000 } });
+  assert.equal((await pool.query('SELECT count(*)::int n FROM game_results')).rows[0].n, 3);
+  assert.equal((await pool.query(`SELECT net_ag FROM game_results WHERE player_id = $1`, [m])).rows[0].net_ag, 2500);
+
+  // and a count taken back reopens the night and empties its results
+  st = (await W({ op: 'delete', col: 'cashouts', id: d })).state;
+  assert.equal(st.game.closedAt, null);
+  assert.equal((await pool.query('SELECT count(*)::int n FROM game_results')).rows[0].n, 0);
+});
+
+test('food, the night itself, and the log go through; nonsense is refused whole', async t => {
+  const { base, post } = await boot(t);
+  const token = await openNight(post);
+  const st = (await (await fetch(`${base}/night/${token}/api/state`)).json());
+  const [a, b] = Object.keys(st.players);
+  const w = body => post(`/night/${token}/api/write`, body);
+
+  let r = await w({ op: 'add', col: 'food', data: { kind: 'pizza', what: 'פיצה', amount: 240, payer: a, eaters: [a, b], own: { a: 58 } } });
+  assert.equal(r.status, 400, 'an own-dish key that is not an id shape is refused');
+  r = await w({ op: 'add', col: 'food', data: { kind: 'pizza', what: 'פיצה', amount: 240, payer: a, eaters: [a, b] } });
+  assert.equal(r.status, 200);
+  const { id: fid, state } = await r.json();
+  assert.equal(state.food[fid].amount, 240);
+
+  assert.equal((await w({ op: 'update', col: 'game', data: { foodMode: 'split', name: 'פוקר של שישי' } })).status, 200);
+  assert.equal((await w({ op: 'update', col: 'game', data: { token: 'x' } })).status, 400, 'only the four night fields');
+  assert.equal((await w({ op: 'add', col: 'buyins', data: { pid: a, n: 3 } })).status, 400, 'a buy-in is 1 or ½');
+  assert.equal((await w({ op: 'add', col: 'buyins', data: { pid: 'nobody00', n: 1 } })).status, 404);
+  assert.equal((await w({ op: 'set', col: 'cashouts', id: a, data: { chips: -5 } })).status, 400);
+  assert.equal((await w({ op: 'drop', col: 'nights' })).status, 400);
+  assert.equal((await w({ op: 'add', col: 'log', data: { t: 'מיכל + כניסה', via: 'tap' } })).status, 200);
+
+  const after = await (await fetch(`${base}/night/${token}/api/state`)).json();
+  assert.equal(after.game.name, 'פוקר של שישי');
+  assert.equal(after.game.foodMode, 'split');
+  assert.equal(Object.keys(after.log).length, 1);
+});
+
+test('a player cap stops a link in the wrong hands from filling the table', async t => {
+  const { post } = await boot(t);
+  const token = await openNight(post, { players: [] });
+  for (let i = 0; i < 30; i++) {
+    const r = await post(`/night/${token}/api/write`, { op: 'set', col: 'players', id: 'pl' + i, data: { name: 'שחקן ' + i, order: i } });
+    assert.equal(r.status, 200);
+  }
+  const r = await post(`/night/${token}/api/write`, { op: 'set', col: 'players', id: 'pl30', data: { name: 'עוד אחד', order: 30 } });
+  assert.equal(r.status, 429);
+});
+
+test('writes are rate limited per night', async t => {
+  const { post } = await boot(t);
+  const token = await openNight(post);
+  let last;
+  for (let i = 0; i < 125; i++) last = await post(`/night/${token}/api/write`, { op: 'add', col: 'log', data: { t: 'x' + i } });
+  assert.equal(last.status, 429);
+});
+
+test('the next night keeps the table and the price, on a new link', async t => {
+  const { base, post } = await boot(t);
+  const token = await openNight(post);
+  const r = await post(`/night/${token}/api/next`, {});
+  assert.equal(r.status, 201);
+  const { token: t2 } = await r.json();
+  assert.notEqual(t2, token);
+  const st = await (await fetch(`${base}/night/${t2}/api/state`)).json();
+  assert.equal(st.game.price, 50);
+  assert.equal(Object.keys(st.players).length, 3);
+  assert.equal(Object.keys(st.buyins).length, 0);
+});
+
+test('the event stream pushes the new state to another phone after a write', async t => {
+  const { base, post } = await boot(t);
+  const token = await openNight(post);
+  const ctrl = new AbortController();
+  t.after(() => ctrl.abort());
+  const res = await fetch(`${base}/night/${token}/api/events`, { signal: ctrl.signal });
+  assert.equal(res.headers.get('content-type'), 'text/event-stream; charset=utf-8');
+  const reader = res.body.getReader();
+  const dec = new TextDecoder();
+  let buf = '';
+  const nextState = async () => {
+    for (;;) {
+      const i = buf.indexOf('\n\n');
+      if (i >= 0) {
+        const block = buf.slice(0, i); buf = buf.slice(i + 2);
+        const data = block.split('\n').find(l => l.startsWith('data: '));
+        if (block.includes('event: state') && data) return JSON.parse(data.slice(6));
+        continue;
+      }
+      const { value, done } = await reader.read();
+      if (done) throw new Error('stream ended');
+      buf += dec.decode(value, { stream: true });
+    }
+  };
+  const first = await nextState();
+  const pid = Object.keys(first.players)[0];
+  await post(`/night/${token}/api/write`, { op: 'add', col: 'buyins', data: { pid, n: 1 } });
+  const second = await nextState();
+  assert.equal(Object.keys(second.buyins).length, 1);
+});

@@ -58,7 +58,7 @@ const daysAgo = (n) => new Date(Date.now() - n * 86400_000).toISOString().slice(
 
 // One isolated world per test: its own env file, dump dir, fake bucket and
 // PATH. Nothing here touches a directory another test file reads.
-function world({ configured = true, dumps = [today()], bucket = [], corrupt = false } = {}) {
+function world({ configured = true, dumps = [today()], bucket = [], corrupt = false, source = 'olma2', extraDumps = [] } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'olma-offbox-'));
   const bin = path.join(dir, 'bin');
   const backups = path.join(dir, 'backups');
@@ -67,7 +67,8 @@ function world({ configured = true, dumps = [today()], bucket = [], corrupt = fa
   const env = [`OLMA_DB_URL=${db.url}`];
   if (configured) env.push('SPACES_KEY=k', 'SPACES_SECRET="s"', "SPACES_BUCKET='olma-backups'", 'SPACES_REGION=fra1');
   fs.writeFileSync(path.join(dir, 'env'), env.join('\n') + '\n');
-  for (const d of dumps) fs.writeFileSync(path.join(backups, `olma2-${d}.sql.gz`), `dump-${d}-` + 'x'.repeat(100));
+  for (const d of dumps) fs.writeFileSync(path.join(backups, `${source}-${d}.sql.gz`), `dump-${d}-` + 'x'.repeat(100));
+  for (const f of extraDumps) fs.writeFileSync(path.join(backups, f), 'other-' + 'y'.repeat(50));
   const state = path.join(dir, 'bucket');
   fs.writeFileSync(state, bucket.map(([k, s]) => `${k}\t${s}`).join('\n') + (bucket.length ? '\n' : ''));
   const log = path.join(dir, 's3.log');
@@ -75,7 +76,7 @@ function world({ configured = true, dumps = [today()], bucket = [], corrupt = fa
   return { dir, backups, state, log, corrupt };
 }
 
-function run(w, extraEnv = {}) {
+function run(w, extraEnv = {}, args = []) {
   const env = {
     ...process.env,
     PATH: `${path.join(w.dir, 'bin')}:${process.env.PATH}`,
@@ -88,7 +89,7 @@ function run(w, extraEnv = {}) {
     ...extraEnv,
   };
   try {
-    return { status: 0, out: execFileSync('bash', [SCRIPT], { env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }) };
+    return { status: 0, out: execFileSync('bash', [SCRIPT, ...args], { env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }) };
   } catch (err) {
     return { status: err.status, out: String(err.stdout || ''), err: String(err.stderr || '') };
   }
@@ -97,12 +98,12 @@ function run(w, extraEnv = {}) {
 const bucketKeys = (w) => fs.readFileSync(w.state, 'utf8').split('\n').filter(Boolean).map((l) => l.split('\t')[0]);
 const s3calls = (w) => fs.readFileSync(w.log, 'utf8').split('\n').filter(Boolean);
 
-async function heartbeat() {
+async function heartbeat(job = 'backup_offbox') {
   const { rows } = await db.pool.query(
-    `SELECT last_run_at, last_ok_at, note FROM job_heartbeats WHERE job_name = 'backup_offbox'`);
+    `SELECT last_run_at, last_ok_at, note FROM job_heartbeats WHERE job_name = $1`, [job]);
   return rows[0] || null;
 }
-const clearBeat = () => db.pool.query(`DELETE FROM job_heartbeats WHERE job_name = 'backup_offbox'`);
+const clearBeat = () => db.pool.query(`DELETE FROM job_heartbeats WHERE job_name IN ('backup_offbox', 'backup_offbox_games')`);
 
 test('a fresh dump is uploaded privately, verified, and stamps a green heartbeat', { skip: !HAVE_PSQL && 'psql not on PATH' }, async () => {
   await clearBeat();
@@ -191,4 +192,61 @@ test('the job is on the board: a daily cadence, never armed in-process', () => {
   // the daemon never made.
   const brokerd = fs.readFileSync(path.join(__dirname, '..', 'bin', 'olma-brokerd.js'), 'utf8');
   assert.ok(!brokerd.includes("'backup_offbox'"), 'not armed by brokerd');
+});
+
+// The game nights database (games/, olma_games) rides the same script with
+// one argument. What must hold: its own dump, its own folder, its OWN row —
+// a green games copy painting over a red olma2 one is the failure this
+// shape exists to prevent.
+test('olma_games: its own dump, its own folder, its own heartbeat, and olma2\'s row untouched', { skip: !HAVE_PSQL && 'psql not on PATH' }, async () => {
+  await clearBeat();
+  await db.pool.query(`INSERT INTO job_heartbeats (job_name, last_run_at, note) VALUES ('backup_offbox', now(), 'ERR earlier olma2 failure')`);
+  const w = world({ source: 'olma_games', extraDumps: [`olma2-${today()}.sql.gz`] });
+  const r = run(w, {}, ['olma_games']);
+  assert.equal(r.status, 0, r.err);
+  assert.deepEqual(bucketKeys(w), [`s3://olma-backups/olma_games/olma_games-${today()}.sql.gz`], 'only the games dump, in its own folder');
+  const games = await heartbeat('backup_offbox_games');
+  assert.ok(games && games.last_ok_at);
+  assert.match(games.note, /^uploaded olma_games-\d{4}-\d{2}-\d{2}\.sql\.gz/);
+  assert.equal((await heartbeat()).note, 'ERR earlier olma2 failure', 'the olma2 row still says what happened to olma2');
+});
+
+test('olma_games with no dump tonight is red on ITS row', { skip: !HAVE_PSQL && 'psql not on PATH' }, async () => {
+  await clearBeat();
+  const w = world({ source: 'olma_games', dumps: [], extraDumps: [`olma2-${today()}.sql.gz`] });
+  const r = run(w, {}, ['olma_games']);
+  assert.notEqual(r.status, 0);
+  assert.match((await heartbeat('backup_offbox_games')).note, /^ERR no dump found/);
+  assert.equal(await heartbeat(), null, 'an olma2 dump on disk is not mistaken for the games one');
+});
+
+test('olma_games pruning touches only olma_games copies', { skip: !HAVE_PSQL && 'psql not on PATH' }, async () => {
+  await clearBeat();
+  const staleGames = `s3://olma-backups/olma_games/olma_games-${daysAgo(45)}.sql.gz`;
+  const wrongFolder = `s3://olma-backups/olma_games/olma2-${daysAgo(45)}.sql.gz`;
+  const w = world({ source: 'olma_games', bucket: [[staleGames, 100], [wrongFolder, 100]] });
+  const r = run(w, {}, ['olma_games']);
+  assert.equal(r.status, 0, r.err);
+  const keys = bucketKeys(w);
+  assert.ok(!keys.includes(staleGames), 'the old games copy is pruned');
+  assert.ok(keys.includes(wrongFolder), 'a name of the other database is never deleted');
+});
+
+test('an unknown database is refused before anything is written or uploaded', { skip: !HAVE_PSQL && 'psql not on PATH' }, async () => {
+  await clearBeat();
+  const w = world();
+  const r = run(w, {}, ['postgres']);
+  assert.equal(r.status, 2);
+  assert.match(r.err, /unknown database/);
+  assert.deepEqual(s3calls(w), []);
+  assert.equal(await heartbeat(), null);
+  assert.equal(await heartbeat('backup_offbox_games'), null);
+});
+
+test('the games copy is on the board too, at the same daily cadence', () => {
+  const { JOB_INTERVAL_SECONDS, isStale } = require('../src/jobs/expectations');
+  assert.equal(JOB_INTERVAL_SECONDS.backup_offbox_games, 86400);
+  assert.equal(isStale('backup_offbox_games', new Date(Date.now() - 4 * 86400_000)), true);
+  const brokerd = fs.readFileSync(path.join(__dirname, '..', 'bin', 'olma-brokerd.js'), 'utf8');
+  assert.ok(!brokerd.includes("'backup_offbox_games'"), 'not armed by brokerd');
 });
