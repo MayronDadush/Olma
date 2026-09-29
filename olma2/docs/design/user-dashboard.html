@@ -1354,7 +1354,9 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 .tend{display:flex;align-items:center;gap:8px;flex:none;margin-inline-start:auto;padding-top:1px}
 .tglyph{width:14px;height:14px;color:var(--text-3)}
 .tglyph.bell{color:var(--warn)}
-.tglyph.kindmark{width:20px;height:14px;--evmark:var(--accent)}
+/* The calendar, not the brand's two rings (owner, 2026-09-29): the rings
+   read as our logo, and a row is saying where the thing lives. */
+.tglyph.kindmark{width:14px;height:14px}
 .ttime{
   font-size:13.5px;font-weight:600;color:var(--text-2);
   font-variant-numeric:tabular-nums;white-space:nowrap;
@@ -2215,7 +2217,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 }
 .archive.open .arcbtn .chev{transform:rotate(-90deg)}
 /* what is already on the calendar: the archive's quiet fold, inside the list */
-.calfold{margin-top:26px}
+/* spacing comes from .tsec + .tsec like its neighbours; first on the page, none */
+.calfold{margin-top:0}
 .calfold .arcbtn{padding-inline:14px 4px}
 .calfoldmark{width:15px;height:15px;flex:none}
 .calfoldn{margin-inline-start:auto;font-weight:500}
@@ -3166,11 +3169,6 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   <symbol id="i-repeat" viewBox="0 0 16 16"><path d="M3 7a5 5 0 0 1 8.6-3.4M13 9a5 5 0 0 1-8.6 3.4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M11.4 1.2v2.6H8.9M4.6 14.8v-2.6h2.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-pencil" viewBox="0 0 18 18"><path d="M12.2 2.6 15.4 5.8 6.2 15H3v-3.2Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></symbol>
   <symbol id="i-out" viewBox="0 0 18 18"><path d="M7 3H3.6v11.4H15V11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M10.4 2.6H15v4.6M15 2.6 8.6 9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></symbol>
-  <!-- An event, in the brand's own picture of a meeting: two rings, and
-       only where they overlap is filled (brand kit, 2026-09-26 — two FILLED
-       discs read as a card logo). The lens takes --evmark: the accent,
-       never the mustard, which is kept for the one action on a screen. -->
-  <symbol id="i-event" viewBox="1 3 14 10"><circle cx="6" cy="8" r="4.3" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="10" cy="8" r="4.3" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M8 4.19A4.3 4.3 0 0 1 8 11.81A4.3 4.3 0 0 1 8 4.19Z" style="fill:var(--evmark,currentColor)"/></symbol>
   <symbol id="i-cal" viewBox="0 0 20 20"><rect x="2.6" y="4" width="14.8" height="13.4" rx="3.2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M2.6 8.2h14.8M6.6 2.4v3M13.4 2.4v3" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
   <symbol id="i-person" viewBox="0 0 20 20"><circle cx="10" cy="6.6" r="3.4" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M3.6 17c.7-3.4 3.3-5.2 6.4-5.2s5.7 1.8 6.4 5.2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
   <symbol id="i-mail" viewBox="0 0 20 20"><rect x="2.4" y="4.4" width="15.2" height="11.2" rx="3" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="m3.4 6.4 5.4 4.2a2 2 0 0 0 2.4 0l5.4-4.2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
@@ -7302,7 +7300,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     if(x.rep && x.rep !== "none") end += '<svg class="tglyph"><use href="#i-repeat"/></svg>';
     if(x.rem) end += '<svg class="tglyph bell"><use href="#i-bell"/></svg>';
     if(x.kind === "event") end += '<svg class="tglyph kindmark" role="img" aria-label="' + esc(t("cal.eventTag")) +
-      '"><use href="#i-event"/></svg>';
+      '"><use href="#i-cal"/></svg>';
     if(lbl) end += '<span class="ttime' + (b === "late" ? " late" : "") + '">' + esc(lbl) + "</span>";
     /* The jump to the calendar lives in the sheet now (#sJumpRow): on the
        row it was the one control drawn exactly like the marks beside it, so
@@ -7341,7 +7339,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   /* Inside a day, the calendar comes before the plate: a meeting at 11:45 and
      "לקנות חלב" are not one list, and reading them as one is how a meeting
      gets called a task. The order still says it — events first — and each
-     event row carries its own mark (#i-event) beside its time. There used to
+     event row carries its own mark (#i-cal) beside its time. There used to
      be two sub-labels, "ביומן" and "לעשות", under every day: a second level
      of heading for two rows, which nobody who did not already know the
      difference could read (the owner, 2026-09-27). */
@@ -7548,7 +7546,9 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   });
 
   function renderTasks(){
-    var html = pinnedSection();
+    /* Shared first, then what is already on the calendar, folded (owner,
+       2026-09-29) — both drawn once, above whichever view is on. */
+    var html = pinnedSection() + calendarSection();
     if(viewBy === "cat"){
       /* Empty categories are not drawn: the set is fixed so the person can
          always MOVE a task into one, but a heading with nothing under it is
@@ -7566,7 +7566,6 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       html += '<div class="tsec"><div class="glabel"><span class="' + (b === "late" ? "late" : "") + '">' +
         esc(t("bucket." + b)) + "</span></div>" + kindGroups(items) + "</div>";
     });
-    html += calendarSection();
     html += importedSection();
     renderSuggestion();
     if(!open.length){
