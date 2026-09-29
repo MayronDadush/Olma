@@ -123,7 +123,7 @@ test('the accessibility statement is served unauthenticated, on either host', as
 
 test('every public page links the other three in its footer', () => {
   const pages = {
-    '/': publicPages.homePage(),
+    '/': publicPages.homeSections(),
     '/privacy': publicPages.privacyPage(),
     '/terms': publicPages.termsPage(),
     '/accessibility': publicPages.accessibilityPage(),
@@ -211,8 +211,8 @@ test('the host match ignores case and a port suffix', async () => {
 
 // ---- what a verification reviewer actually checks --------------------------
 
-test('the home page names every Google scope the code really requests, and links the policy', () => {
-  const html = publicPages.homePage();
+test('the front page names every Google scope the code really requests, and links the policy', () => {
+  const html = publicPages.homeSections();
   for (const scope of ['calendar.readonly', 'calendar.events', 'contacts.readonly']) {
     assert.ok(html.includes(scope), `home page does not disclose ${scope}`);
   }
@@ -252,7 +252,7 @@ test('no public page declares a RESTRICTED scope, in either language', () => {
     'https://mail.google.com/', 'drive.readonly', 'auth/drive',
   ];
   for (const [name, html] of Object.entries({
-    home: publicPages.homePage(),
+    home: publicPages.homeSections(),
     privacy: publicPages.privacyPage(),
     terms: publicPages.termsPage(),
   })) {
@@ -265,7 +265,7 @@ test('no public page declares a RESTRICTED scope, in either language', () => {
 });
 
 test('what the pages DO promise still matches what the code can do', () => {
-  const home = publicPages.homePage();
+  const home = publicPages.homeSections();
   const privacy = publicPages.privacyPage();
   // Contacts import is the one silent read left, and both pages carry the
   // promise that it tells nobody.
@@ -275,8 +275,10 @@ test('what the pages DO promise still matches what the code can do', () => {
   assert.ok(/only if you granted edit access and explicitly asked for it/i.test(privacy));
 });
 
-test('neither page carries a form, a script, or anything that takes input', () => {
-  for (const html of [publicPages.homePage(), publicPages.privacyPage(), publicPages.termsPage()]) {
+// Not the front page: since 2026-09-29 `/` is the locked dashboard, whose
+// script and code form are the point of it (user-dashboard-http.test.js).
+test('the policy pages carry no form, no script, nothing that takes input', () => {
+  for (const html of [publicPages.privacyPage(), publicPages.termsPage(), publicPages.accessibilityPage()]) {
     assert.ok(!/<form/i.test(html), 'a public unauthenticated page must not accept input');
     assert.ok(!/<script/i.test(html), 'these pages have no moving parts on purpose');
   }
@@ -289,17 +291,15 @@ test('the terms page reads English first, links the privacy policy, and carries 
   assert.ok(html.includes('תנאי שימוש (עברית)'), 'Hebrew users still get the full terms');
 });
 
-// Cypress + Mustard (the owner, 2026-09-28): the front door wears the same
-// brand as the product, and the retired violet globe is nowhere on it.
-test('the public pages wear the brand: cypress band, mustard action, always light, the round mark', () => {
-  const home = publicPages.homePage();
-  assert.ok(home.includes('<header class="band">'), 'the home page lost its cypress band');
-  assert.ok(/--band:#004643/.test(home) && /--action:#F9C23C/.test(home));
-  assert.ok(!/prefers-color-scheme/.test(home) && /color-scheme:light/.test(home),
-    'the front door is always light, whatever the phone is set to');
-  assert.ok(home.includes('<meta name="theme-color" content="#004643">'));
-  assert.ok(home.includes("@font-face{font-family:'IBM Plex Sans Hebrew'"), 'the brand face, carried inline (fonts.js)');
-  for (const html of [home, publicPages.privacyPage(), publicPages.termsPage()]) {
+// Cypress + Mustard (the owner, 2026-09-28): the policy pages wear the same
+// brand as the product, and the retired violet globe is nowhere on them.
+test('the policy pages wear the brand: always light, the brand face, the round mark', () => {
+  const privacy = publicPages.privacyPage();
+  assert.ok(!/prefers-color-scheme/.test(privacy) && /color-scheme:light/.test(privacy),
+    'the policy pages are always light, whatever the phone is set to');
+  assert.ok(privacy.includes('<meta name="theme-color" content="#004643">'));
+  assert.ok(privacy.includes("@font-face{font-family:'IBM Plex Sans Hebrew'"), 'the brand face, carried inline (fonts.js)');
+  for (const html of [privacy, publicPages.termsPage(), publicPages.accessibilityPage()]) {
     assert.ok(!/#5B2FD6|#7C4DFF|Rubik/i.test(html), 'the old violet brand is still on a public page');
     const ids = [...html.matchAll(/<clipPath id="([^"]+)"/g)].map((m) => m[1]);
     assert.equal(new Set(ids).size, ids.length, 'two marks on one page share a clip-path id');
