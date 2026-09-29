@@ -73,3 +73,25 @@ test('enqueue reaches the served and not the paused, the pending or the eval use
   assert.equal(s.rows, first.queued);
   assert.equal(s.waiting, first.queued);
 });
+
+// The owner's sample goes first, through the same row: one person, nobody
+// else, never somebody the audience leaves out, and the full run afterwards
+// does not send it to them a second time.
+test('--only queues that one person, respects the audience, and the full run skips them', async () => {
+  const owner = await served('+972500000211', { locale: 'he' });
+  const other = await served('+972500000212', { locale: 'he' });
+  const paused = await served('+972500000213');
+  await db.pool.query(`UPDATE users SET paused_at = now() WHERE id = $1`, [paused.id]);
+  const rowsFor = async (id) => (await db.pool.query(
+    `SELECT count(*)::int AS n FROM outbox WHERE kind = $1 AND user_id = $2`, [notice.KIND, id])).rows[0].n;
+
+  const sample = await withTx(db.pool, (c) => notice.enqueueAll(c, '2026-09-28', { only: owner.id }));
+  assert.deepEqual(sample, { candidates: 1, queued: 1 });
+  assert.equal(await rowsFor(other.id), 0, 'a sample reaches nobody else');
+  const none = await withTx(db.pool, (c) => notice.enqueueAll(c, '2026-09-28', { only: paused.id }));
+  assert.deepEqual(none, { candidates: 0, queued: 0 }, 'a paused person is not a sample either');
+
+  await withTx(db.pool, (c) => notice.enqueueAll(c, '2026-09-28'));
+  assert.equal(await rowsFor(owner.id), 1, 'the sample was their notice');
+  assert.equal(await rowsFor(other.id), 1);
+});
