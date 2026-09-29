@@ -523,7 +523,8 @@ test('the locked card says what she is, and labels the example it sits on', () =
     assert.equal((page.match(new RegExp(`"${k.replace('.', '\\.')}":"`, 'g')) || []).length, 2, `${k} is not in both languages`);
   }
   assert.match(page, /"w\.what":"עוזרת אישית שחיה בוואטסאפ\. \[זוכרת, מזכירה ומתאמת\] בשבילך\."/);
-  assert.match(page, /\.wcall\{display:none\}\nhtml\.is-new:not\(\.is-app\) \.wcall\{/);
+  assert.match(page, /\n\.wcall\{display:none\}\n/);
+  assert.match(page, /html\.is-new:not\(\.is-app\) \.wcall\{\n {2}display:flex;/);
   assert.match(page, /\.wwhat\{display:none\}\nhtml\.is-new:not\(\.is-app\) \.wwhat\{/);
   assert.match(page, /html\.is-new:not\(\.is-app\) \.wcard\{border-top:6px solid var\(--action\)\}/);
 });
