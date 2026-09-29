@@ -178,6 +178,8 @@ test('a rung the ladder falls through to also replaces the step still waiting', 
     `UPDATE users SET onboarded_at = $2, created_at = $2, timezone = 'Asia/Jerusalem',
             timezone_confirmed = TRUE, last_inbound_at = $2
        WHERE id = $1`, [u.id, new Date(t0)]);
+  // He had given her something — the 5h step is silent for somebody who had not.
+  await db.pool.query(`INSERT INTO tasks (owner_id, title) VALUES ($1, 'לקנות חלב')`, [u.id]);
 
   const c = await db.pool.connect();
   try {
@@ -983,6 +985,8 @@ test('day one: a step still held when the next comes due is superseded, not stac
   await db.pool.query(
     `UPDATE users SET agent_id = 'u-' || id, onboarded_at = to_timestamp($2/1000.0) WHERE id = $1`,
     [u.id, t0]);
+  // The 5h step reflects back what she holds, and is silent when that is nothing.
+  await db.pool.query(`INSERT INTO tasks (owner_id, title) VALUES ($1, 'לקנות חלב')`, [u.id]);
 
   // 5h comes due; the row sits held for the night.
   let out = await withTx(db.pool, (c) => checkin.run(c, t0 + 5 * H + 60_000));
@@ -1007,6 +1011,7 @@ test('day one: a step still held when the next comes due is superseded, not stac
   await db.pool.query(
     `UPDATE users SET agent_id = 'u-' || id, onboarded_at = to_timestamp($2/1000.0) WHERE id = $1`,
     [v.id, t0]);
+  await db.pool.query(`INSERT INTO tasks (owner_id, title) VALUES ($1, 'לקנות חלב')`, [v.id]);
   await withTx(db.pool, (c) => checkin.run(c, t0 + 5 * H + 60_000));
   await db.pool.query(`UPDATE outbox SET sent_at = now(), hold_reason = NULL WHERE user_id = $1`, [v.id]);
   out = await withTx(db.pool, (c) => checkin.run(c, t0 + 8 * H + 60_000));
@@ -1016,4 +1021,67 @@ test('day one: a step still held when the next comes due is superseded, not stac
   assert.equal(theirs[0].hold_reason, null, 'delivered stays delivered');
   assert.ok(theirs[0].sent_at);
   assert.equal(theirs[1].sent_at, null, 'and the 8h step is live beside it');
+});
+
+// ב׳, from the real day ones of 2026-09-18..25: fifteen minutes after the
+// greeter had said who she is, the 15m step opened "היי 👋 ברוך הבא! אני
+// עולמה, העוזרת האישית שלך" (u-34, u-35, u-40, u-43), and for somebody who had
+// only said "היי" it showed them the emptiness — "כרגע הרשימה שלך נקייה",
+// "Nothing on your list yet". Every step is spoken after an introduction.
+test('day one: no step introduces her again, and the 15m step for somebody who gave nothing is an example', async () => {
+  const u = await makeUser(db.pool, '+972615000740', { firstName: 'Noa' });
+  const t0 = Date.now() - 20 * 60_000;
+  await db.pool.query(
+    `UPDATE users SET agent_id = 'u-' || id, onboarded_at = to_timestamp($2/1000.0) WHERE id = $1`,
+    [u.id, t0]);
+
+  const out = await withTx(db.pool, (c) => checkin.run(c, t0 + 16 * 60_000));
+  assert.deepEqual(out.filter((r) => r.userId === u.id).map((r) => r.rung), ['onboarding_15m']);
+  const { rows: [row] } = await db.pool.query(
+    `SELECT payload FROM outbox WHERE user_id = $1 AND idempotency_key LIKE 'onboarding:%'`, [u.id]);
+  const said = row.payload.checkinInstruction;
+  assert.match(said, /do not introduce yourself/);
+  assert.match(said, /ONE concrete example/, 'nothing to show, so an example of what to send');
+  assert.match(said, /Never tell them what you do NOT hold/);
+  assert.doesNotMatch(said, /SHOW them something/, 'there is nothing to show');
+  assert.match(said, /\+972/, 'the zone is still stated');
+
+  // Somebody with an open task is shown it, as before — and still not re-introduced.
+  const v = await makeUser(db.pool, '+972615000741', { firstName: 'Dana' });
+  await db.pool.query(
+    `UPDATE users SET agent_id = 'u-' || id, onboarded_at = to_timestamp($2/1000.0) WHERE id = $1`,
+    [v.id, t0]);
+  await db.pool.query(`INSERT INTO tasks (owner_id, title) VALUES ($1, 'לקנות חלב')`, [v.id]);
+  await withTx(db.pool, (c) => checkin.run(c, t0 + 16 * 60_000));
+  const { rows: [theirs] } = await db.pool.query(
+    `SELECT payload FROM outbox WHERE user_id = $1 AND idempotency_key LIKE 'onboarding:%'`, [v.id]);
+  assert.match(theirs.payload.checkinInstruction, /SHOW them something/);
+  assert.match(theirs.payload.checkinInstruction, /do not introduce yourself/);
+  assert.doesNotMatch(theirs.payload.checkinInstruction, /ONE concrete example/);
+
+  // Words left with the greeter are something too.
+  assert.equal(await withTx(db.pool, (c) => checkin.holdsNothing(c, u.id)), true);
+  await db.pool.query(`UPDATE users SET intake_note_at = now() WHERE id = $1`, [u.id]);
+  assert.equal(await withTx(db.pool, (c) => checkin.holdsNothing(c, u.id)), false);
+});
+
+// The 5h step reflects back what she holds. For somebody holding nothing that
+// is the empty-list message, so the slot is SILENT — and silent, not skipped:
+// a skipped step hands the slot to the ordinary ladder.
+test('day one: the 5h step says nothing to somebody who has given her nothing', async () => {
+  const H = 3600_000;
+  const u = await makeUser(db.pool, '+972615000742', { firstName: 'Roni' });
+  const t0 = Date.now() - 6 * H;
+  await db.pool.query(
+    `UPDATE users SET agent_id = 'u-' || id, onboarded_at = to_timestamp($2/1000.0) WHERE id = $1`,
+    [u.id, t0]);
+  const out = await withTx(db.pool, (c) => checkin.run(c, t0 + 5 * H + 60_000));
+  assert.deepEqual(out.filter((r) => r.userId === u.id), [], 'no step and no rung in its place');
+  const { rows } = await db.pool.query(`SELECT 1 FROM outbox WHERE user_id = $1`, [u.id]);
+  assert.equal(rows.length, 0);
+
+  // With a task on file the step goes out as before.
+  await db.pool.query(`INSERT INTO tasks (owner_id, title) VALUES ($1, 'לקנות חלב')`, [u.id]);
+  const again = await withTx(db.pool, (c) => checkin.run(c, t0 + 5 * H + 120_000));
+  assert.deepEqual(again.filter((r) => r.userId === u.id).map((r) => r.rung), ['onboarding_5h']);
 });
