@@ -1386,6 +1386,10 @@ html[data-paused] .pausegate{
 }
 .task.done .ttitle{color:var(--text-3)}
 .task.done .ttitle::after{transform:scaleX(1)}
+/* A handful of brand-coloured bits thrown from the tick (confetti(), below).
+   Fixed to the viewport and on the body, so a sheet closing or a row folding
+   away under them does not take them with it; never a target. */
+.conf{position:fixed;pointer-events:none;z-index:99;border-radius:2px}
 .task{cursor:pointer}
 .task:active{background:var(--surface-2)}
 /* ── dragging a task ──
@@ -6611,6 +6615,31 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      honours it on its own; these are the two places JS decides to move
      something and CSS never sees the decision. */
   var REDUCED = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  /* The owner's pick (2026-09-30): finishing something throws a little
+     confetti from where it was ticked — a small burst for a task, a bigger
+     one for a list that just got its last item. Once per tick, never looping,
+     gone in under a second, and nothing at all for REDUCED. */
+  function confetti(from, n, spread){
+    if(REDUCED || !from || !document.body.animate) return;
+    var r = from.getBoundingClientRect(), cs = getComputedStyle(document.documentElement);
+    if(!r.width) return;  /* nothing on screen to throw it from */
+    var x = r.left + r.width / 2, y = r.top + r.height / 2;
+    var cols = ["--gold-arc", "--accent", "--drop-line", "--no-arc"].map(function(v){ return cs.getPropertyValue(v).trim(); });
+    for(var i = 0; i < n; i++){
+      var p = document.createElement("i");
+      var w = Math.random() < .5 ? 7 : 5, h = Math.random() < .5 ? w : 11;
+      p.className = "conf";
+      p.style.cssText = "left:" + (x - w / 2) + "px;top:" + (y - h / 2) + "px;width:" + w + "px;height:" + h + "px;background:" + cols[i % 4] + (h === w ? ";border-radius:50%" : "");
+      document.body.appendChild(p);
+      var a = Math.random() * Math.PI * 2, d = spread + Math.random() * spread;
+      var dx = Math.cos(a) * d, dy = Math.sin(a) * d - 18;
+      p.animate([
+        {transform:"translate(0,0) rotate(0) scale(.6)", opacity:1},
+        {transform:"translate(" + dx * .8 + "px," + dy * .8 + "px) rotate(" + (Math.random() * 200 - 100) + "deg) scale(1)", opacity:1, offset:.55},
+        {transform:"translate(" + dx + "px," + (dy + 34) + "px) rotate(" + (Math.random() * 360 - 180) + "deg) scale(.8)", opacity:0}
+      ], {duration:620 + Math.random() * 260, easing:"cubic-bezier(.2,.7,.3,1)"}).onfinish = p.remove.bind(p);
+    }
+  }
 
   /* ───────── swipe to delete, on every list ─────────
      The tasks list and the coordinations list take a row off the same way the
@@ -7810,6 +7839,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       var row = $(".task", wrap);
       if(row.classList.contains("done")) return;
       row.classList.add("done");
+      confetti($(".tick", row), 12, 40);
       var id = +wrap.dataset.id;
       setTimeout(function(){ wrap.classList.add("gone"); }, 310);
       setTimeout(function(){
@@ -8687,11 +8717,23 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       tg.setAttribute("aria-pressed", it.done ? "true" : "false");
       paintListMeta();
       renderTasks(); flashSaved();
+      /* the whole list, not one item: said here, before the server answers,
+         so the burst leaves the item the finger is still on */
+      var full = it.done && editing.items.every(function(x){ return x.done; });
+      if(full) confetti(tg, 26, 70);
       if(it.id && itemWritable()){
+        var list = editing;
         API.send(it.done ? "completeTask" : "restoreTask", {taskId:it.id}, function(data){
           /* the last item ticked finishes the list itself (completeParentIfDrained):
-             the list is in the archive now, and a re-read is what says so */
-          if(data && data.parentCompleted){ closeSheets(); API.reload(); }
+             the list is in the archive now, and a re-read is what says so —
+             a beat later, so the last tick and its confetti are seen, and
+             only if that same sheet is still the one open */
+          if(data && data.parentCompleted){
+            setTimeout(function(){
+              if(editing === list) closeSheets();
+              API.reload();
+            }, full && !REDUCED ? 650 : 0);
+          }
         });
       }
       return;

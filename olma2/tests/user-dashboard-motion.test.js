@@ -92,3 +92,19 @@ test('less motion means less motion, including the animations that loop', () => 
     'both of them: the jump to a day in the calendar, and the tab switch');
   assert.doesNotMatch(page, /behavior:"smooth"/, 'and neither one is left unguarded');
 });
+
+test('finishing something throws confetti once, from the tick, and never for REDUCED', () => {
+  // The owner's pick from the tasks-page review (2026-09-30). The shape it
+  // must keep: nothing for somebody who asked for less movement, nothing that
+  // loops, nothing that can take a tap, and the list's own close waits a beat
+  // so the last tick is seen rather than yanked away.
+  const fn = page.slice(page.indexOf('function confetti(from, n, spread){'));
+  assert.match(fn.slice(0, 200), /if\(REDUCED \|\| !from \|\| !document\.body\.animate\) return;/);
+  assert.match(page, /\.conf\{position:fixed;pointer-events:none;/, 'the bits are never a target');
+  assert.match(fn.slice(0, 2400), /\.onfinish = p\.remove\.bind\(p\);/, 'and every one removes itself');
+  assert.match(page, /row\.classList\.add\("done"\);\n\s*confetti\(\$\("\.tick", row\), 12, 40\);/,
+    'one burst per task tick, from the tick itself');
+  assert.match(page, /if\(full\) confetti\(tg, 26, 70\);/, 'a bigger one when a list gets its last item');
+  assert.match(page, /if\(editing === list\) closeSheets\(\);/,
+    'the delayed close never shuts a sheet opened in the meantime');
+});
