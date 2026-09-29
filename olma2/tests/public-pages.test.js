@@ -341,9 +341,24 @@ test('nothing is promised on a timer: kept until they ask, and only the backups 
   assert.deepEqual(Object.keys(R).sort(), ['deletionDays', 'localBackupDays', 'offboxBackupDays']);
   assert.ok(/Nothing is deleted on a timer/.test(html) && html.includes('שום דבר לא נמחק אוטומטית'));
   assert.ok(html.includes(`within ${R.deletionDays} days`) && html.includes(`תוך ${R.deletionDays} יום`));
-  assert.ok(/even if you never used the assistant/.test(html) && html.includes('גם אם מעולם לא השתמש'),
-    'a group member who never wrote can still ask');
-  assert.ok(/WhatsApp groups/.test(html) && html.includes('קבוצות וואטסאפ'), 'groups are named');
+  assert.ok(/write to the assistant on WhatsApp and ask, even if you never used it before/.test(html)
+    && html.includes('גם בלי שהשתמשתם בה קודם'), 'a group member who never wrote can still ask');
+});
+
+// The owner's decision (2026-09-29): a deletion is asked for through Olma or
+// the button on the personal page, never by email. The address stays on the
+// pages as the general contact; it is only no longer a way to delete.
+test('deleting is asked of the assistant or the page button, never by email', () => {
+  for (const html of [publicPages.privacyPage(), publicPages.termsPage()]) {
+    for (const m of html.matchAll(/<(p|li)>[^]*?<\/\1>/g)) {
+      if (!/delete|למחוק|מחיקת/i.test(m[0]) || !/mailto:/.test(m[0])) continue;
+      assert.fail(`a deletion route still names the email: ${m[0].slice(0, 140)}`);
+    }
+  }
+  const p = publicPages.privacyPage();
+  assert.ok(p.includes('<b>Delete everything</b> — tell the assistant, or use the button on your personal page.'));
+  assert.ok(p.includes('<b>למחוק הכל</b> — לבקש מעולמה, או ללחוץ על הכפתור בדף האישי.'));
+  assert.ok(/WhatsApp groups/.test(p) && p.includes('קבוצות וואטסאפ'), 'groups are named');
 });
 
 // ---- no third party learns who is reading ----------------------------------

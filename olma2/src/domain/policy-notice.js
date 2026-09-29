@@ -35,10 +35,16 @@ async function audience(client) {
 
 // Urgent, as the video is: the daily budget would otherwise fold it into a
 // digest, where a model would paraphrase it.
-async function enqueueAll(client, version) {
+//
+// `only` narrows it to one person, for the owner's sample before the real
+// send. Same audience, same key: that person's row IS their notice, so the
+// full run afterwards skips them rather than sending it twice.
+async function enqueueAll(client, version, { only = null } = {}) {
   const v = VERSIONS[version];
   if (!v) throw new Error(`unknown policy version: ${version}`);
-  const { rows } = await client.query(`SELECT id FROM users WHERE ${AUDIENCE} ORDER BY id`);
+  const { rows } = only == null
+    ? await client.query(`SELECT id FROM users WHERE ${AUDIENCE} ORDER BY id`)
+    : await client.query(`SELECT id FROM users WHERE ${AUDIENCE} AND id = $1`, [Number(only)]);
   let queued = 0;
   for (const u of rows) {
     const r = await enqueue(client, {

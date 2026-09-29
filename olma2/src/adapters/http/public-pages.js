@@ -251,8 +251,8 @@ function homePage() {
 // No name on the page (owner, 2026-09-28): the contact is the service's own
 // address. s.11 asks for the controller's identity; that choice is the
 // owner's, flagged for the lawyer.
-const UPDATED = '2026-09-06';
-const PRIVACY_UPDATED = '2026-09-28';
+const UPDATED = '2026-09-29';
+const PRIVACY_UPDATED = '2026-09-29';
 const RETENTION = {
   deletionDays: 30, localBackupDays: 14, offboxBackupDays: 30,
 };
@@ -281,7 +281,7 @@ function privacyPage() {
     </ul>
 
     <h2>WhatsApp groups</h2>
-    <p>When the assistant is added to a group, it sees the member list (numbers and display names) and the messages that tag it. It keeps the member list to coordinate between everyone. A group member who has not written to the assistant may get one private message from it about a plan in that group; if they do not reply, it does not write again. The member list is kept, as part of the group's own list that everyone in it already sees, until someone asks for their details to be deleted — email <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>, even if you never used the assistant.</p>
+    <p>When the assistant is added to a group, it sees the member list (numbers and display names) and the messages that tag it. It keeps the member list to coordinate between everyone. A group member who has not written to the assistant may get one private message from it about a plan in that group; if they do not reply, it does not write again. The member list is kept, as part of the group's own list that everyone in it already sees, until someone asks for their details to be deleted — write to the assistant on WhatsApp and ask, even if you never used it before.</p>
 
     <h2>Google user data</h2>
     <p>Connecting Google is optional. Each permission is requested separately on Google's own consent screen, and you may grant some and decline others.</p>
@@ -321,7 +321,7 @@ function privacyPage() {
     <ul>
       <li><b>See your data</b> — much of it is on your personal page, and you can ask for the rest.</li>
       <li><b>Correct it</b> — ask the assistant, change it on your page, or email us.</li>
-      <li><b>Delete everything</b> — tell the assistant, use the button on your personal page, or email <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>. We delete the account and all associated data within ${R.deletionDays} days, except the backups, which expire on their own within ${R.offboxBackupDays} days, and the consent record above.</li>
+      <li><b>Delete everything</b> — tell the assistant, or use the button on your personal page. We delete the account and all associated data within ${R.deletionDays} days, except the backups, which expire on their own within ${R.offboxBackupDays} days, and the consent record above.</li>
       <li><b>Pause</b> — ask the assistant to stop reaching out. This is a reversible pause, not a deletion.</li>
       <li><b>Disconnect Google</b> — ask the assistant to disconnect any service at any time; we delete our stored token and revoke it with Google. You can also revoke access directly from your <a href="https://myaccount.google.com/permissions">Google account permissions</a>.</li>
     </ul>
@@ -353,7 +353,7 @@ function privacyPage() {
       </ul>
 
       <h3>קבוצות וואטסאפ</h3>
-      <p>כשמוסיפים את ${ASSISTANT} לקבוצה, היא רואה את רשימת החברים (מספרים ושמות תצוגה) ואת ההודעות שמתייגות אותה. היא שומרת את רשימת החברים כדי לתאם בין כולם. חבר קבוצה שעוד לא כתב לה יכול לקבל ממנה הודעה פרטית אחת על תיאום בקבוצה. אם לא עונים, היא לא כותבת שוב. רשימת החברים נשמרת, כחלק מרשימת הקבוצה שכל חבריה רואים ממילא, עד שמישהו מבקש למחוק את הפרטים שלו — במייל ל־<a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>, גם אם מעולם לא השתמש בעוזרת.</p>
+      <p>כשמוסיפים את ${ASSISTANT} לקבוצה, היא רואה את רשימת החברים (מספרים ושמות תצוגה) ואת ההודעות שמתייגות אותה. היא שומרת את רשימת החברים כדי לתאם בין כולם. חבר קבוצה שעוד לא כתב לה יכול לקבל ממנה הודעה פרטית אחת על תיאום בקבוצה. אם לא עונים, היא לא כותבת שוב. רשימת החברים נשמרת, כחלק מרשימת הקבוצה שכל חבריה רואים ממילא, עד שמישהו מבקש למחוק את הפרטים שלו — פשוט לכתוב ל${ASSISTANT} בוואטסאפ ולבקש, גם בלי שהשתמשתם בה קודם.</p>
 
       <h3>מידע מחשבון גוגל</h3>
       <p>החיבור לגוגל הוא בחירה, לא תנאי. כל הרשאה מתבקשת בנפרד ובמסך ההסכמה של גוגל עצמה, ואפשר לאשר חלק ולסרב לשאר.</p>
@@ -393,7 +393,7 @@ function privacyPage() {
       <ul>
         <li><b>לעיין במידע שלכם</b> — הרבה ממנו מופיע בדף האישי, ואת השאר אפשר לבקש.</li>
         <li><b>לתקן מידע לא נכון</b> — לבקש מ${ASSISTANT}, לשנות בדף האישי או לכתוב לנו.</li>
-        <li><b>למחוק הכל</b> — לבקש מ${ASSISTANT}, ללחוץ על הכפתור בדף האישי, או לכתוב ל־<a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>. אנחנו מוחקים את החשבון ואת כל המידע הקשור אליו תוך ${R.deletionDays} יום, חוץ מהגיבויים, שנמחקים לבד בתוך ${R.offboxBackupDays} יום, ומתיעוד ההסכמות שלמעלה.</li>
+        <li><b>למחוק הכל</b> — לבקש מ${ASSISTANT}, או ללחוץ על הכפתור בדף האישי. אנחנו מוחקים את החשבון ואת כל המידע הקשור אליו תוך ${R.deletionDays} יום, חוץ מהגיבויים, שנמחקים לבד בתוך ${R.offboxBackupDays} יום, ומתיעוד ההסכמות שלמעלה.</li>
         <li><b>להשהות</b> — לבקש מ${ASSISTANT} להפסיק לפנות אליכם. זו השהיה הפיכה, לא מחיקה.</li>
         <li><b>לנתק את גוגל</b> — לבקש מ${ASSISTANT} לנתק כל שירות בכל רגע; אנחנו מוחקים את האסימון אצלנו ומבטלים אותו מול גוגל. אפשר גם לבטל ישירות דרך <a href="https://myaccount.google.com/permissions">ההרשאות בחשבון הגוגל שלכם</a>.</li>
       </ul>
@@ -443,7 +443,7 @@ function termsPage() {
     <p>To the maximum extent permitted by law, the developer is not liable for any indirect, incidental, or consequential damages arising from use of, or inability to use, the service.</p>
 
     <h2>Ending the service</h2>
-    <p>You may stop using the service at any time. Ask the assistant to pause, or email <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a> to delete your account and all associated data. The developer may suspend or terminate access for a violation of these terms, or discontinue the service entirely, with reasonable notice where practical.</p>
+    <p>You may stop using the service at any time. Ask the assistant to pause; to delete your account and all associated data, ask the assistant or use the button on your personal page. The developer may suspend or terminate access for a violation of these terms, or discontinue the service entirely, with reasonable notice where practical.</p>
 
     <h2>Changes to these terms</h2>
     <p>If these terms change materially, the date at the top is updated and you are told in the conversation.</p>
@@ -474,7 +474,7 @@ function termsPage() {
       <p>ככל שהחוק מתיר זאת, המפעיל אינו אחראי לכל נזק עקיף, תוצאתי או מקרי הנובע מהשימוש בשירות או מחוסר היכולת להשתמש בו.</p>
 
       <h3>סיום השימוש</h3>
-      <p>ניתן להפסיק את השימוש בשירות בכל רגע. בקשו מהעוזרת להשהות, או שלחו מייל ל<a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a> למחיקת החשבון וכל המידע הקשור אליו. המפעיל רשאי להשעות או לסיים גישה במקרה של הפרת תנאים אלה, או להפסיק את השירות כליל, בהודעה סבירה מראש כאשר הדבר מעשי.</p>
+      <p>ניתן להפסיק את השימוש בשירות בכל רגע. בקשו מהעוזרת להשהות. למחיקת החשבון וכל המידע הקשור אליו, בקשו מהעוזרת או לחצו על הכפתור בדף האישי. המפעיל רשאי להשעות או לסיים גישה במקרה של הפרת תנאים אלה, או להפסיק את השירות כליל, בהודעה סבירה מראש כאשר הדבר מעשי.</p>
 
       <h3>שינויים בתנאים</h3>
       <p>אם תנאים אלה ישתנו באופן מהותי, התאריך בראש העמוד יתעדכן ונודיע על כך בשיחה.</p>
