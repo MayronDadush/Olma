@@ -1,0 +1,147 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>תבנית</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Hebrew:wght@400;500;700&family=IBM+Plex+Sans:wght@400;500;700&family=Noto+Sans+Hebrew:wght@400;600&family=Noto+Sans:wght@400;600&display=swap">
+<!-- The posting templates (owner, 29.9): one scene, three formats, content from a file.
+       scenes/template.html?c=<content>&fmt=post|story|carousel[&slide=N]
+     rendered at 1080x1080, 1080x1920 and 1080x1350 (make.js picks the size).
+     A frame is one of three layouts — statement, chat, closing — on sand or cypress.
+     The brand book is the spec: Plex, 60/30/10, mustard only for the lens and the
+     one word that matters (and never as text on sand), grain UNDER the letters,
+     "סגור." to finish. The chat is WhatsApp's own look: its colours, a system face,
+     no grain; ours is the avatar and the frame around it. -->
+<style>
+  :root { --sand: #F0EDE5; --cyp: #004643; --mus: #F9C23C; --ink: #0E1F1E; --ink2: #44504E }
+  html, body { margin: 0; width: 100%; height: 100%; overflow: hidden }
+  .f { position: relative; width: 100vw; height: 100vh; overflow: hidden; font-family: "IBM Plex Sans Hebrew", "IBM Plex Sans", sans-serif;
+    display: grid; grid-template-rows: auto 1fr auto; padding: 7.4vw 7.4vw 6.4vw; box-sizing: border-box; direction: rtl }
+  .sand { background: var(--sand); color: var(--cyp) }
+  .cypress { background: var(--cyp); color: var(--sand) }
+  /* Instagram draws its own bars over a story: keep the top 13% and bottom 18% for them */
+  .story { padding-top: 13vh; padding-bottom: 18vh }
+  svg.grain { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0 }
+  .f > :not(.grain) { position: relative; z-index: 1 }
+  .by { display: flex; align-items: center; gap: 2.2vw; font-weight: 500; font-size: 3.3vw }
+  .by .m { width: 6.2vw; height: 6.2vw; flex: none }
+  .sand .by { color: var(--ink2) } .cypress .by { color: #D9DDD6 }
+  .main { display: grid; align-content: center; gap: 4.4vw; min-height: 0 }
+  .h { margin: 0; font-weight: 700; line-height: 1.06; letter-spacing: -.02em }
+  .h span { display: block; white-space: nowrap; will-change: transform }
+  /* the one word: mustard on cypress; on sand, cypress on a mustard bar (mustard text on sand is 1.6:1) */
+  .cypress .h em { font-style: normal; color: var(--mus) }
+  .sand .h em { font-style: normal; background: linear-gradient(transparent 62%, var(--mus) 62%, var(--mus) 90%, transparent 90%) }
+  .sub { margin: 0; font-size: 4vw; line-height: 1.4; font-weight: 400; max-width: 30ch }
+  .sand .sub { color: var(--ink2) } .cypress .sub { color: #D9DDD6 }
+  .foot { display: flex; justify-content: space-between; align-items: center; font-weight: 500; font-size: 3vw }
+  .sand .foot { color: var(--ink2) } .cypress .foot { color: #BFD3CF }
+  .url { direction: ltr }
+  .dots { display: flex; gap: 1.2vw; direction: rtl }
+  .dots i { width: 1.6vw; height: 1.6vw; border-radius: 50%; background: currentColor; opacity: .3 }
+  .dots i.on { opacity: 1; background: var(--mus) }
+  /* WhatsApp, as it looks on a phone */
+  .wa { background: #EFEAE2; border-radius: 3.4vw; overflow: hidden; font-family: "Noto Sans Hebrew", "Noto Sans", Roboto, Arial, sans-serif; color: #111B21;
+    box-shadow: 0 1.6vw 4vw rgba(14,31,30,.18) }
+  .wa .top { background: #F0F2F5; display: flex; align-items: center; gap: 2.4vw; padding: 2.2vw 3vw; border-bottom: 1px solid #E2E4E7 }
+  .wa .top .av { width: 7.4vw; height: 7.4vw; flex: none }
+  .wa .top b { display: block; font-weight: 600; font-size: 3.5vw; line-height: 1.2 } .wa .top small { font-size: 2.6vw; color: #667781 }
+  .wa .msgs { display: grid; gap: 2.2vw; padding: 3vw 3.4vw 3.6vw }
+  .b { max-width: 78%; border-radius: 2vw; padding: 1.9vw 2.5vw 1.2vw; font-size: 3.3vw; line-height: 1.45; box-shadow: 0 .2vw .3vw rgba(11,20,26,.13); transform-origin: bottom }
+  .b b { font-weight: 600 }
+  .out { justify-self: end; background: #D9FDD3 } .in { justify-self: start; background: #FFFFFF }
+  .t { display: flex; justify-content: flex-end; gap: .9vw; font-size: 2.3vw; color: #667781; margin-top: .5vw; direction: ltr }
+  .ticks { color: #53BDEB }
+  /* closing */
+  .end { display: grid; justify-items: center; align-content: center; gap: 5vw; text-align: center }
+  .end .big { width: 34vw; height: 34vw }
+  .end .word { font-weight: 700; font-size: 14vw; line-height: 1; letter-spacing: -.02em }
+</style>
+<div class="f" id="f"></div>
+<script src="../motion.js"></script>
+<script>
+  // Content comes from ../content/<name>.js, which sets window.CONTENT. Loaded with a
+  // plain <script> because a file:// page cannot fetch() its neighbours.
+  const Q = new URLSearchParams(location.search);
+  const NAME = /^[a-z0-9-]+$/.test(Q.get('c') || '') ? Q.get('c') : 'sample';
+  document.write(`<script src="../content/${NAME}.js"><\/script>`);
+</script>
+<script>
+  const C = window.CONTENT;
+  if (!C) throw new Error('no content: brand/studio/content/' + NAME + '.js did not set window.CONTENT');
+  const FMT = ['post', 'story', 'carousel'].includes(Q.get('fmt')) ? Q.get('fmt') : 'post';
+  const SLIDES = C.carousel || [];
+  const SLIDE = Math.max(1, Math.min(SLIDES.length || 1, Number(Q.get('slide')) || 1));
+  const F = FMT === 'carousel' ? SLIDES[SLIDE - 1] : C[FMT];
+  if (!F) throw new Error(`content "${NAME}" has no ${FMT}${FMT === 'carousel' ? ' slide ' + SLIDE : ''}`);
+  const LANG = C.lang === 'en' ? 'en' : 'he';
+  const T = {
+    he: { by: 'עולמה · בוואטסאפ שלך', name: 'עולמה', status: 'מחוברת', word: 'סגור.' },
+    en: { by: 'Allma · in your WhatsApp', name: 'Allma', status: 'online', word: 'All set.' },
+  }[LANG];
+  const theme = F.theme === 'cypress' || (F.layout === 'closing' && F.theme !== 'sand') ? 'cypress' : 'sand';
+  const COL = theme === 'cypress' ? { d: '#0E1F1E', l: '#F0EDE5', a: '#F9C23C', ring: '#F0EDE5' } : { d: '#004643', l: '#F0EDE5', a: '#F9C23C', ring: '#004643' };
+  const WA = { d: '#004643', l: '#F0EDE5', a: '#F9C23C', ring: null };
+
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  // *word* is the one word that matters; **bold** is bold inside a chat bubble; \n breaks a bubble
+  const rich = (s) => esc(s).replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>').replace(/\*([^*]+)\*/g, '<em>$1</em>').replace(/\n/g, '<br>');
+  const mark = (id, ms = 1e9, c = COL) => AllmaMotion.frame('meet', ms, c, id);
+
+  const f = document.getElementById('f');
+  f.className = `f ${theme} ${FMT}`;
+  if (LANG === 'en') { f.style.direction = 'ltr'; document.documentElement.lang = 'en'; }
+  const grain = '<svg class="grain" aria-hidden="true"><filter id="g" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency=".8" numOctaves="3" stitchTiles="stitch" seed="7"/><feColorMatrix values="0 0 0 0 .05  0 0 0 0 .12  0 0 0 0 .12  .5 0 0 0 -.2"/></filter><rect width="100%" height="100%" filter="url(#g)"/></svg>';
+  const dots = FMT === 'carousel' && SLIDES.length > 1 ? `<span class="dots">${SLIDES.map((_, i) => `<i class="${i === SLIDE - 1 ? 'on' : ''}"></i>`).join('')}</span>` : '<span></span>';
+  const foot = `<div class="foot"><span class="url">allma.world</span>${dots}</div>`;
+  const head = `<div class="by"><span class="m">${mark('by')}</span><span>${T.by}</span></div>`;
+  const lines = (F.lines || []).map((l) => `<span>${rich(l)}</span>`).join('');
+  const size = F.size || (F.layout === 'chat' ? 8.4 : FMT === 'story' ? 12.5 : 11.2);
+
+  if (F.layout === 'closing') {
+    f.innerHTML = `<span></span><div class="end"><div class="big" id="cm"></div><div class="word" id="cw">${esc(F.word || T.word)}</div>
+      ${F.sub ? `<p class="sub" id="cs">${rich(F.sub)}</p>` : ''}</div>${foot}${grain}`;
+  } else {
+    const chat = F.layout === 'chat' ? `<div class="wa" id="wa"><div class="top"><div class="av">${mark('av', 1e9, WA)}</div><div><b>${T.name}</b><small>${T.status}</small></div></div>
+      <div class="msgs">${(F.chat || []).map((m, i) => `<div class="b ${m.from === 'me' ? 'out' : 'in'}" id="b${i}">${rich(m.text)}<div class="t"><span>${esc(m.time || '09:41')}</span>${m.from === 'me' ? '<span class="ticks">✓✓</span>' : ''}</div></div>`).join('')}</div></div>` : '';
+    f.innerHTML = `${head}<div class="main"><h1 class="h" id="h" style="font-size:${size}vw">${lines}</h1>
+      ${F.sub ? `<p class="sub" id="sub">${rich(F.sub)}</p>` : ''}${chat}</div>${foot}${grain}`;
+  }
+
+  // A line the author wrote must fit the width it was given, never wrap: the breaks
+  // are part of the copy. Shrink the whole headline together until every line fits.
+  let fitted = false;
+  function fit() {
+    if (fitted || document.fonts.status !== 'loaded') return; fitted = true;
+    const h = document.getElementById('h'); if (!h) return;
+    let s = size;
+    const over = () => [...h.children].some((sp) => sp.scrollWidth > h.clientWidth + 1);
+    while (over() && s > 4) { s -= 0.2; h.style.fontSize = s + 'vw'; }
+  }
+
+  // Motion, for a video render; a still is the last frame. Half a second of quiet,
+  // lines rise one by one on the brand curve, bubbles land, and a closing slide meets.
+  const { EASE } = AllmaMotion;
+  const k = (ms, a, d = 450) => EASE(Math.max(0, Math.min(1, (ms - a) / d)));
+  const QUIET = 500, LINE = 260;
+  const nLines = (F.lines || []).length, nMsgs = (F.chat || []).length;
+  const tSub = QUIET + nLines * LINE + 200, tChat = tSub + (F.sub ? 400 : 0);
+  window.__ms = F.layout === 'closing' ? 3000 : Math.max(3000, tChat + nMsgs * 900 + 1500);
+  const rise = (el, t) => { if (!el) return; el.style.opacity = t; el.style.transform = `translateY(${(1 - t) * 2.4}vh)`; };
+  window.__seek = (ms) => {
+    fit();
+    if (F.layout === 'closing') {
+      document.getElementById('cm').innerHTML = AllmaMotion.frame('meet', Math.max(0, ms - QUIET), COL, 'cm');
+      rise(document.getElementById('cw'), k(ms, QUIET + 1250));
+      rise(document.getElementById('cs'), k(ms, QUIET + 1550));
+      return;
+    }
+    const h = document.getElementById('h');
+    [...h.children].forEach((sp, i) => rise(sp, k(ms, QUIET + i * LINE)));
+    rise(document.getElementById('sub'), k(ms, tSub));
+    const wa = document.getElementById('wa'); if (wa) rise(wa, k(ms, tChat));
+    for (let i = 0; i < nMsgs; i++) {
+      const b = document.getElementById('b' + i), t = k(ms, tChat + 300 + i * 900, 380);
+      b.style.opacity = t; b.style.transform = `scale(${0.92 + 0.08 * t})`;
+    }
+  };
+  __seek(0);
+</script>
