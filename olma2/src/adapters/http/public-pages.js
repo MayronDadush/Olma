@@ -41,6 +41,7 @@
 // Google: a privacy policy whose page hands the reader's IP to Google before
 // it has said a word about privacy is the one page that must not (fonts.js).
 const { FONT_CSS } = require('./fonts');
+const { linkCard } = require('./link-card');
 
 const BRAND = 'Allma - Personal Assistant';
 const ASSISTANT = 'עולמה';
@@ -164,6 +165,7 @@ function shell(title, bodyHtml, { lang = 'en', path = '/' } = {}) {
 <meta name="theme-color" content="#004643">
 <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
 <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+${linkCard({ lang, title, path: path + (lang === 'he' ? '?lang=he' : '') })}
 <title>${title}</title>
 <style>${FONT_CSS}
 ${SHELL_CSS}</style>

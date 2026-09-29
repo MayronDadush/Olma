@@ -118,6 +118,7 @@ function newPageHtml() {
 
 const { esc } = require('./html');
 const publicPages = require('./public-pages');
+const { linkCard, withLinkCard } = require('./link-card');
 
 // The page is one inline script and one inline stylesheet, so 'unsafe-inline'
 // is unavoidable and blocking it would only break the page. What this policy is
@@ -267,6 +268,7 @@ function signInPage(res, token, firstName, meeting, locale) {
   res.writeHead(200, headers(HTML));
   return res.end(`<!doctype html><html dir="${t.dir}" lang="${lang}"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
+${linkCard({ lang, path: '/' })}
 <title>${PAGE_NAME[lang]}</title><style>
 :root{color-scheme:light dark}
 body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
@@ -530,7 +532,10 @@ async function frontPage(req, res, pool) {
   const h = headers(HTML, { Vary: 'Cookie' });
   delete h['X-Robots-Tag'];
   res.writeHead(200, h);
-  return res.end(newPageHtml());
+  // The card a shared allma.world link shows (link-card.js). Added here, where
+  // the front door is served, rather than in newPageHtml: the same locked page
+  // also answers an expired cookie on /me, which nobody shares.
+  return res.end(withLinkCard(newPageHtml(), { lang: 'he', path: '/' }));
 }
 
 module.exports = {
