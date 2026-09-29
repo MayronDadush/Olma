@@ -1,0 +1,1096 @@
+<title>סרטוני עולמה במותג החדש</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700&family=Rubik:wght@500;600;700;800&family=Playpen+Sans+Hebrew:wght@400;600;800&display=swap">
+<style>
+:root{
+  --bg:#F4F3F8; --surface:#FFFFFF; --text:#141322; --muted:#6C6982; --sep:#E7E5F0;
+  --accent:#5B2FD6; --on-accent:#FFFFFF;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0C0B11; --surface:#181720; --text:#F4F3FA; --muted:#9D9AB2; --sep:#2A2836;
+    --accent:#9C7BFF; --on-accent:#0C0B11; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0C0B11; --surface:#181720; --text:#F4F3FA; --muted:#9D9AB2; --sep:#2A2836;
+  --accent:#9C7BFF; --on-accent:#0C0B11; color-scheme:dark;
+}
+body{background:var(--bg);color:var(--text);font-family:Assistant,-apple-system,"Segoe UI",system-ui,sans-serif;font-size:16px;line-height:1.5}
+.wrap{max-width:1180px;margin:0 auto;padding-inline:20px;padding-block:28px 64px;display:grid;gap:40px}
+header{display:grid;gap:14px}
+h1{font-family:Rubik,Assistant,sans-serif;font-weight:700;font-size:clamp(26px,4vw,38px);line-height:1.15;margin:0;text-wrap:balance}
+.lede{margin:0;color:var(--muted);max-width:62ch}
+.bar{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+.seg{display:inline-flex;background:var(--surface);border:1px solid var(--sep);border-radius:999px;padding:3px}
+.seg button{font:600 14px Assistant,sans-serif;border:0;background:none;color:var(--muted);padding:7px 16px;border-radius:999px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--on-accent)}
+.seg button:focus-visible,.replay:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.hint{font-size:14px;color:var(--muted)}
+section{display:grid;gap:16px}
+h2{font-family:Rubik,Assistant,sans-serif;font-weight:600;font-size:22px;margin:0;display:flex;gap:10px;align-items:baseline}
+h2 .n{color:var(--accent);font-variant-numeric:tabular-nums}
+h2 small{font:400 15px Assistant,sans-serif;color:var(--muted)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:20px}
+figure{min-width:0;margin:0;display:grid;gap:10px;align-content:start}
+figcaption{display:grid;gap:2px}
+figcaption .row{display:flex;justify-content:space-between;align-items:center;gap:8px}
+figcaption b{font-family:Rubik,Assistant,sans-serif;font-weight:600;font-size:16px}
+figcaption span{font-size:14px;color:var(--muted)}
+.replay{font:600 13px Assistant,sans-serif;border:1px solid var(--sep);background:var(--surface);color:var(--text);border-radius:999px;padding:4px 12px;cursor:pointer}
+
+/* ---------- stage engine ---------- */
+.stage{position:relative;width:100%;max-width:100%;aspect-ratio:1;container-type:inline-size;overflow:hidden;border-radius:14px;box-shadow:0 1px 0 var(--sep),0 10px 30px -18px rgba(20,19,34,.45);font-family:Assistant,-apple-system,sans-serif;cursor:pointer}
+.stage *{box-sizing:border-box}
+.t{display:none}
+.t.on{display:block;animation:pop .38s cubic-bezier(.2,.9,.3,1.25) both}
+.t.on.off{display:none}
+.stage.reset,.stage.reset *{transition:none!important;animation:none!important}
+@keyframes pop{from{opacity:0;transform:translateY(3cqw) scale(.96)}to{opacity:1;transform:none}}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+@keyframes dots{0%,80%,100%{opacity:.25;transform:translateY(0)}40%{opacity:1;transform:translateY(-.8cqw)}}
+@keyframes rx{0%{transform:scale(0)}60%{transform:scale(1.35)}100%{transform:scale(1)}}
+@keyframes ring{from{transform:scale(.6);opacity:.8}to{transform:scale(2.2);opacity:0}}
+@keyframes jit{0%,100%{transform:translate(0,0)}25%{transform:translate(.6cqw,-.5cqw)}50%{transform:translate(-.4cqw,.7cqw)}75%{transform:translate(.5cqw,.4cqw)}}
+@keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-1.2cqw) rotate(-2deg)}40%{transform:translateX(1.2cqw) rotate(2deg)}60%{transform:translateX(-.8cqw)}80%{transform:translateX(.8cqw)}}
+@keyframes drop{from{transform:translateY(-140%)}to{transform:none}}
+
+/* ---------- A · WhatsApp ---------- */
+.wa{background:#EFEAE2;background-image:radial-gradient(rgba(0,0,0,.035) 1.2px,transparent 1.3px);background-size:4.4cqw 4.4cqw;color:#111B21}
+.wa-top{position:absolute;inset:0 0 auto 0;height:14cqw;background:#F0F2F5;display:flex;align-items:center;gap:3cqw;padding-inline:4cqw;border-bottom:1px solid rgba(0,0,0,.06);z-index:2}
+.av{width:8.5cqw;height:8.5cqw;border-radius:50%;background:#5B2FD6;color:#fff;display:grid;place-items:center;font:700 4.4cqw Rubik,sans-serif;flex:none}
+.wa-top b{display:block;font:600 4.3cqw Assistant,sans-serif;line-height:1.1}
+.wa-top small{display:block;font-size:3.2cqw;color:#667781;line-height:1.3;min-height:4.2cqw}
+.wa-top small .t.on{animation:fade .2s both;display:inline}
+.wa-top small .t.on.off{display:none}
+.wa-body{position:absolute;inset:14cqw 0 0 0;display:flex;flex-direction:column;justify-content:flex-end;gap:2cqw;padding:4cqw 4.5cqw 5cqw}
+.b{position:relative;max-width:78%;padding:2.2cqw 3cqw 1.6cqw;border-radius:2.6cqw;font-size:3.9cqw;line-height:1.38;box-shadow:0 .3cqw .4cqw rgba(0,0,0,.08)}
+.b.out{align-self:flex-end;background:#D9FDD3}
+.b.in{align-self:flex-start;background:#fff}
+.tm{display:block;text-align:end;font-size:2.6cqw;color:#667781;margin-top:.6cqw}
+.tm i{font-style:normal;color:#53BDEB}
+.rx{position:absolute;inset-inline-start:2cqw;bottom:-3.8cqw;background:#fff;border-radius:999px;padding:.4cqw 1.3cqw;font-size:3.6cqw;box-shadow:0 .3cqw .8cqw rgba(0,0,0,.15)}
+.rx.t.on{display:block;animation:rx .45s cubic-bezier(.2,.9,.3,1.3) both}
+.typing{align-self:flex-start;background:#fff;border-radius:2.6cqw;padding:2.6cqw 3.4cqw;display:none;gap:1.1cqw}
+.typing.on{display:flex}
+.typing i{width:1.6cqw;height:1.6cqw;border-radius:50%;background:#8696A0;animation:dots 1.1s infinite}
+.typing i:nth-child(2){animation-delay:.15s}.typing i:nth-child(3){animation-delay:.3s}
+.b .g{margin-top:1.4cqw}
+.b .g b{font-weight:700}
+.b .li.t.on{display:block;animation:fade .3s both}
+.daychip{align-self:center;background:#fff;color:#54656F;border-radius:1.8cqw;padding:1cqw 3cqw;font-size:3.1cqw;box-shadow:0 .2cqw .3cqw rgba(0,0,0,.08);margin-block:2cqw}
+.flash{position:absolute;inset:0;background:#0B1E3A;opacity:0;pointer-events:none;z-index:3}
+.flash.on{display:block;animation:night 1.3s ease both}
+@keyframes night{0%{opacity:0}35%,55%{opacity:.55}100%{opacity:0}}
+.wa .end{position:absolute;inset:auto 0 0 0;z-index:4;background:linear-gradient(to top,rgba(91,47,214,.97) 62%,rgba(91,47,214,0));color:#fff;padding:14cqw 6cqw 7cqw;font-family:Rubik,sans-serif}
+.wa .end.on{animation:fade .5s both}
+.wa .end p{margin:0;font-weight:700;font-size:6.6cqw;line-height:1.15}
+.wa .end p+p{color:#FFD98A}
+.wa .end small{display:block;margin-top:2.4cqw;font:500 3.4cqw Assistant,sans-serif;opacity:.9}
+
+/* ---------- B · Studio ---------- */
+.st{background:#5B2FD6;color:#fff;transition:background 1s ease}
+.st::before{content:"";position:absolute;inset:-20%;background:radial-gradient(circle at 80% 10%,rgba(255,255,255,.18),transparent 45%),radial-gradient(circle at 10% 95%,rgba(255,217,138,.20),transparent 40%);pointer-events:none}
+.st .mark{position:absolute;top:5cqw;inset-inline-start:6cqw;font:700 3.6cqw Rubik,sans-serif;letter-spacing:.02em;opacity:.75;display:flex;align-items:center;gap:1.6cqw}
+.st .mark i{width:2.2cqw;height:2.2cqw;border-radius:50%;background:#FFD98A}
+.st .col{position:absolute;inset:14cqw 6cqw 7cqw;display:flex;flex-direction:column;justify-content:center;gap:3cqw}
+.st .you{align-self:flex-end;max-width:88%;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.28);border-radius:5cqw;border-end-end-radius:1.4cqw;padding:3.4cqw 4.4cqw;font:500 4.6cqw/1.35 Assistant,sans-serif;position:relative}
+.st .her{align-self:flex-start;width:92%;background:#fff;color:#1D1440;border-radius:5cqw;border-end-start-radius:1.4cqw;padding:3.6cqw 4.6cqw;font-size:4cqw;line-height:1.35;box-shadow:0 3cqw 6cqw -3cqw rgba(20,5,60,.5)}
+.st .her .h{font:700 4.6cqw Rubik,sans-serif;color:#5B2FD6;margin-bottom:1cqw}
+.st .her .grp{display:flex;gap:2.4cqw;align-items:baseline;padding-block:1.3cqw;border-top:1px solid #ECE8F8}
+.st .her .grp.on{display:flex}
+.st .her .grp b{font:600 3.5cqw Rubik,sans-serif;color:#5B2FD6;min-width:17cqw;flex:none}
+.st .big-rx{position:absolute;inset-inline-start:-3cqw;bottom:-5cqw;width:11cqw;height:11cqw;border-radius:50%;background:#fff;display:grid;place-items:center;font-size:6cqw;box-shadow:0 1cqw 3cqw rgba(0,0,0,.25)}
+.st .big-rx.on{display:grid;animation:rx .5s cubic-bezier(.2,.9,.3,1.3) both}
+.st .big-rx::after{content:"";position:absolute;inset:0;border-radius:50%;border:.6cqw solid #FFD98A;animation:ring 1.2s .2s ease-out 2 both}
+.st .clk{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none;opacity:0;transition:opacity .5s}
+.st .clk span{grid-area:1/1;font:800 22cqw/1 Rubik,sans-serif;font-variant-numeric:tabular-nums;letter-spacing:-.02em;transition:transform .8s cubic-bezier(.7,0,.2,1),opacity .6s}
+.st .clk .d2{transform:translateY(60%);opacity:0;color:#FFD98A}
+.st .clk em{position:absolute;top:22%;font:500 4cqw Assistant,sans-serif;font-style:normal;opacity:.7;transition:opacity .4s}
+.st.night{background:#1B1140}
+.st.night .clk{opacity:1}
+.st.night .col{opacity:.12;transition:opacity .4s}
+.st.morning .clk .d1{transform:translateY(-60%);opacity:0}
+.st.morning .clk .d2{transform:none;opacity:1}
+.st.day{background:#5B2FD6}
+.st.day .clk{opacity:0}
+.st.day .col{opacity:1}
+.st .notif{position:absolute;top:5cqw;inset-inline:5cqw;background:#fff;color:#1D1440;border-radius:4cqw;padding:3cqw 3.6cqw;display:none;gap:3cqw;align-items:center;box-shadow:0 2cqw 6cqw rgba(15,5,50,.45);z-index:3}
+.st .notif.on{display:flex;animation:drop .55s cubic-bezier(.2,.9,.3,1.15) both}
+.st .notif .av{width:10cqw;height:10cqw;font-size:5cqw}
+.st .notif b{display:block;font:600 3.3cqw Rubik,sans-serif;color:#5B2FD6}
+.st .notif p{margin:0;font-size:4.2cqw;line-height:1.3}
+.st .end{position:absolute;inset:0;background:#5B2FD6;z-index:5;display:none;flex-direction:column;justify-content:center;padding:8cqw;font-family:Rubik,sans-serif}
+.st .end.on{display:flex;animation:fade .45s both}
+.st .end p{margin:0;font-weight:800;font-size:10.5cqw;line-height:1.05;letter-spacing:-.01em}
+.st .end p+p{color:#FFD98A}
+.st .end small{margin-top:6cqw;font:500 4cqw Assistant,sans-serif;opacity:.85;display:flex;gap:2cqw;align-items:center}
+.st .end small i{width:2.4cqw;height:2.4cqw;border-radius:50%;background:#FFD98A;flex:none}
+
+/* ---------- C · Wordless ---------- */
+.wl{background:#F3EFFB;transition:background 1.1s ease}
+.wl .cloud{position:absolute;left:10%;top:12%;width:80%;height:72%;border:.7cqw dashed #C9BDF0;border-radius:46% 54% 50% 50%/55% 45% 55% 45%;transition:opacity .5s,transform .8s}
+.wl.p1 .cloud{opacity:0;transform:scale(.8)}
+.wl .card{position:absolute;left:12%;top:14%;width:76%;height:72%;background:#fff;border-radius:6cqw;box-shadow:0 4cqw 8cqw -4cqw rgba(60,30,140,.35);opacity:0;transform:scale(.9);transition:opacity .5s,transform .6s cubic-bezier(.2,.9,.3,1.2)}
+.wl.p1 .card{opacity:1;transform:none}
+.wl .card::before,.wl .card::after{content:"";position:absolute;left:8%;right:8%;height:1px;background:#EEE9FA}
+.wl .card::before{top:36%}.wl .card::after{top:62%}
+.wl .chip{position:absolute;left:var(--x);top:var(--y);transform:translate(-50%,-50%) rotate(var(--r));width:14cqw;height:14cqw;border-radius:4cqw;background:#fff;display:grid;place-items:center;font-size:8cqw;box-shadow:0 1.2cqw 2.6cqw -1cqw rgba(60,30,140,.35);transition:left .9s cubic-bezier(.6,0,.2,1),top .9s cubic-bezier(.6,0,.2,1),transform .9s,box-shadow .6s,background .6s;transition-delay:var(--d,0s)}
+.wl .chip span{display:block;animation:jit 1.4s ease-in-out infinite;animation-delay:var(--d,0s)}
+.wl.p1 .chip{left:var(--sx);top:var(--sy);transform:translate(-50%,-50%);box-shadow:none;background:#F6F3FF}
+.wl.p1 .chip span{animation:none}
+.wl .gi{position:absolute;left:var(--sx);top:var(--sy);transform:translate(-50%,-50%) scale(0);width:13cqw;height:13cqw;border-radius:50%;background:var(--c);display:grid;place-items:center;font-size:7cqw;transition:transform .45s cubic-bezier(.2,.9,.3,1.4);transition-delay:var(--d,0s)}
+.wl.p2 .gi{transform:translate(-50%,-50%) scale(1)}
+.wl .ck{position:absolute;left:var(--sx);top:var(--sy);transform:translate(-50%,-50%) scale(0);width:7cqw;height:7cqw;border-radius:50%;background:#5B2FD6;display:grid;place-items:center;transition:transform .4s cubic-bezier(.2,.9,.3,1.5);transition-delay:var(--d,0s)}
+.wl .ck::after{content:"";width:2.8cqw;height:1.5cqw;border-left:.8cqw solid #fff;border-bottom:.8cqw solid #fff;transform:translateY(-.3cqw) rotate(-45deg)}
+.wl.p3 .ck{transform:translate(-50%,-50%) scale(1)}
+.wl .spark{position:absolute;right:8%;top:8%;font-size:8cqw;opacity:0;transform:scale(.4) rotate(-30deg);transition:all .5s cubic-bezier(.2,.9,.3,1.4)}
+.wl.p3 .spark{opacity:1;transform:none}
+
+.wl2 .sky{position:absolute;inset:0;background:linear-gradient(#FFF6E0,#F3EFFB);transition:opacity 1s}
+.wl2 .skyn{position:absolute;inset:0;background:linear-gradient(#0F1233,#2B1E63);opacity:0;transition:opacity 1s}
+.wl2.p2 .skyn{opacity:1}
+.wl2.p3 .skyn{opacity:0}
+.wl2 .orb{position:absolute;font-size:12cqw;left:74%;top:10%;transition:transform 1s cubic-bezier(.5,0,.2,1),opacity .8s}
+.wl2 .sun{transform:translateY(0)}
+.wl2.p2 .sun{transform:translateY(-160%);opacity:0}
+.wl2.p3 .sun{transform:none;opacity:1}
+.wl2 .moon{transform:translateY(-160%);opacity:0}
+.wl2.p2 .moon{transform:none;opacity:1}
+.wl2.p3 .moon{transform:translateY(-160%);opacity:0}
+.wl2 .stars{position:absolute;inset:0 0 50% 0;opacity:0;transition:opacity 1s;background-image:radial-gradient(#fff 1px,transparent 1.4px),radial-gradient(rgba(255,255,255,.7) 1px,transparent 1.4px);background-size:17cqw 13cqw,11cqw 19cqw;background-position:3cqw 4cqw,9cqw 2cqw}
+.wl2.p2 .stars{opacity:1}.wl2.p3 .stars{opacity:0}
+.wl2 .col{position:absolute;inset:26cqw 8cqw 8cqw;display:flex;flex-direction:column;gap:4cqw;transition:opacity .5s}
+.wl2.p2 .col{opacity:.18}.wl2.p3 .col{opacity:1}
+.wl2 .bb{position:relative;font-size:9cqw;padding:2.4cqw 4.4cqw;border-radius:5cqw;background:#fff;box-shadow:0 1.4cqw 3cqw -1.4cqw rgba(60,30,140,.4);letter-spacing:1cqw;line-height:1.2}
+.wl2 .bb.me{align-self:flex-start;background:#E3D9FF;border-end-start-radius:1.4cqw}
+.wl2 .bb.her{align-self:flex-end;border-end-end-radius:1.4cqw}
+.wl2 .bb.her.on{animation:pop .38s cubic-bezier(.2,.9,.3,1.25) both,shake .5s .45s 2}
+.wl2 .bb.sm{font-size:7cqw}
+.wl2 .brx{position:absolute;right:-3cqw;bottom:-4.5cqw;width:10cqw;height:10cqw;border-radius:50%;background:#fff;display:grid;place-items:center;font-size:5.6cqw;letter-spacing:0;box-shadow:0 1cqw 2.4cqw rgba(0,0,0,.2)}
+.wl2 .brx.on{display:grid;animation:rx .5s cubic-bezier(.2,.9,.3,1.3) both}
+.wl2 .face{position:absolute;left:50%;top:52%;width:44cqw;height:44cqw;margin:-22cqw 0 0 -22cqw;border-radius:50%;background:#fff;border:1.4cqw solid #FFD98A;opacity:0;transform:scale(.7);transition:opacity .5s,transform .6s cubic-bezier(.2,.9,.3,1.2)}
+.wl2.p2 .face{opacity:1;transform:none}
+.wl2.p3 .face{opacity:0;transform:scale(.7)}
+.wl2 .face i{position:absolute;left:50%;bottom:50%;transform-origin:50% 100%;background:#1B1140;border-radius:1cqw}
+.wl2 .face .hh{width:2cqw;height:11cqw;margin-left:-1cqw;transform:rotate(320deg);transition:transform 2.2s cubic-bezier(.6,0,.3,1)}
+.wl2 .face .mh{width:1.2cqw;height:16cqw;margin-left:-.6cqw;transform:rotate(240deg);transition:transform 2.2s cubic-bezier(.6,0,.3,1)}
+.wl2 .face::after{content:"";position:absolute;left:50%;top:50%;width:3.6cqw;height:3.6cqw;margin:-1.8cqw;border-radius:50%;background:#5B2FD6}
+.wl2.p2 .face .hh{transform:rotate(960deg)}
+.wl2.p2 .face .mh{transform:rotate(2760deg)}
+
+
+/* ---------- shared bits for script-driven scenes ---------- */
+.t.on.pre,.t.on.pre *{animation:none}
+.grid{grid-template-columns:repeat(auto-fill,minmax(300px,1fr))}
+
+/* A generic: panes, group names, captions */
+.wa .pane,.screen .pane{position:absolute;inset:0}
+.pane.t.on{animation:paneIn .45s ease both}
+@keyframes paneIn{from{opacity:0;transform:scale(1.03)}to{opacity:1;transform:none}}
+.b .who{display:block;font:600 3.1cqw Assistant,sans-serif;margin-bottom:.3cqw}
+.cap{position:absolute;top:17cqw;left:50%;transform:translateX(-50%);white-space:nowrap;background:#111B21;color:#fff;border-radius:999px;padding:1cqw 3.6cqw;font:600 3.2cqw Rubik,sans-serif;z-index:3;box-shadow:0 1cqw 3cqw rgba(0,0,0,.25)}
+.cap.t.on{animation:fade .3s both}
+.b .lnk{color:#027EB5;direction:ltr;unicode-bidi:isolate}
+
+/* B generic */
+.st .col.g{justify-content:flex-end;gap:2.6cqw}
+.st .col.g.t.on{display:flex;animation:fade .35s both}
+.st .col.g.t.on.off{display:none}
+.st .col.g .you{font-size:4cqw}
+.st .col.g .her{width:auto;max-width:90%;font-size:3.7cqw}
+.st .col.g .her.wide{width:92%}
+.st .col.g .oth{align-self:flex-start;border-end-end-radius:5cqw;border-end-start-radius:1.4cqw}
+.st .who{display:block;font:600 3cqw Rubik,sans-serif;opacity:.85;margin-bottom:.6cqw}
+.st .her .who{color:#5B2FD6;opacity:1}
+.st .her .li{padding-top:.5cqw}
+.st .her b,.st .you b{font-weight:700}
+.st .bcap{position:absolute;top:4.4cqw;inset-inline-end:6cqw;background:#FFD98A;color:#1D1440;border-radius:999px;padding:.8cqw 3cqw;font:600 3.2cqw Rubik,sans-serif;z-index:3}
+.st .bcap.t.on{animation:fade .3s both}
+.st .btyp{align-self:flex-start;background:#fff;border-radius:5cqw;padding:3cqw 4cqw;display:none;gap:1.3cqw}
+.st .btyp.on{display:flex}.st .btyp.on.off{display:none}
+.st .btyp i{width:2cqw;height:2cqw;border-radius:50%;background:#5B2FD6;animation:dots 1.1s infinite}
+.st .btyp i:nth-child(2){animation-delay:.15s}.st .btyp i:nth-child(3){animation-delay:.3s}
+.st .bchip{align-self:center;font:600 3.4cqw Rubik,sans-serif;background:rgba(255,255,255,.18);border-radius:999px;padding:1cqw 3.4cqw}
+.st .lnk{color:#5B2FD6;text-decoration:underline;direction:ltr;unicode-bidi:isolate}
+
+/* D · notebook */
+.sk{background:#FFFDF5;background-image:repeating-linear-gradient(to bottom,transparent 0 7.2cqw,#D6E4F5 7.2cqw 7.45cqw);color:#1D1440;font-family:"Playpen Sans Hebrew","Playpen Sans","Comic Sans MS",Assistant,cursive}
+.sk::before{content:"";position:absolute;top:0;bottom:0;inset-inline-start:10cqw;width:.35cqw;background:#F2A7A7}
+.sk .skcol{position:absolute;inset:14cqw 6cqw 6cqw 14cqw;display:none;flex-direction:column;justify-content:flex-end;gap:3cqw}
+.sk[dir="rtl"] .skcol{inset:14cqw 14cqw 6cqw 6cqw}
+.sk .skcol.t.on{display:flex;animation:fade .35s both}
+.sk .skcol.t.on.off{display:none}
+.sk .note{position:relative;align-self:flex-end;max-width:80%;background:#FFE872;padding:3cqw 3.6cqw 3.2cqw;font-size:4cqw;line-height:1.35;box-shadow:0 1.6cqw 2.4cqw -1.4cqw rgba(80,60,0,.45);transform:rotate(var(--r,-2deg))}
+.sk .note.t.on{animation:stick .45s cubic-bezier(.2,.9,.3,1.3) both}
+@keyframes stick{from{opacity:0;transform:rotate(var(--r,-2deg)) scale(1.25) translateY(-4cqw)}to{opacity:1;transform:rotate(var(--r,-2deg))}}
+.sk .note::before{content:"";position:absolute;top:-2.2cqw;left:50%;width:14cqw;height:4.4cqw;margin-left:-7cqw;background:rgba(255,255,255,.55);transform:rotate(3deg)}
+.sk .note.oth{align-self:flex-start;background:var(--nc,#FFC4D6)}
+.sk .note .who{display:block;font-weight:800;font-size:3.2cqw;opacity:.7}
+.sk .ink{align-self:flex-start;max-width:86%;color:#4A22B8;font-size:4cqw;line-height:1.45;padding-inline-start:9cqw;position:relative}
+.sk .ink::before{content:attr(data-av);position:absolute;inset-inline-start:0;top:0;width:6.6cqw;height:6.6cqw;border:.5cqw solid #4A22B8;border-radius:50%;display:grid;place-items:center;font-weight:800;font-size:3.6cqw}
+.sk .ink .who{display:block;font-weight:800;font-size:3.1cqw;opacity:.7}
+.sk .ink b{font-weight:800;background:linear-gradient(transparent 55%,#FFE872 55%)}
+.sk .ink .li.t.on{display:block;animation:fade .3s both}
+.sk .ink.t.on{animation:write .5s ease both}
+@keyframes write{from{opacity:0;clip-path:inset(0 0 100% 0)}to{opacity:1;clip-path:inset(0 0 0 0)}}
+.sk .stamp{position:absolute;inset-inline-start:-4cqw;bottom:-4cqw;width:11cqw;height:11cqw;border-radius:50%;border:.6cqw solid #D94848;color:#D94848;display:grid;place-items:center;font-size:5.6cqw;background:rgba(255,253,245,.9);transform:rotate(-14deg)}
+.sk .stamp.on{display:grid;animation:stamp .35s cubic-bezier(.2,.9,.3,1.4) both}
+@keyframes stamp{from{transform:rotate(-14deg) scale(2.4);opacity:0}to{transform:rotate(-14deg) scale(1);opacity:1}}
+.sk .tape{align-self:center;background:#CDEBFF;padding:1cqw 5cqw;font-weight:800;font-size:3.6cqw;transform:rotate(-2deg);box-shadow:0 .6cqw 1cqw rgba(0,0,0,.08)}
+.sk .skcap{position:absolute;top:4.6cqw;inset-inline-start:14cqw;font-weight:800;font-size:4.4cqw;color:#D94848;z-index:3}
+.sk .skcap.t.on{animation:write .5s ease both}
+.sk .sktyp{align-self:flex-start;font-size:6cqw;color:#4A22B8;letter-spacing:1cqw;padding-inline-start:9cqw}
+.sk .flipper{position:absolute;inset:0;background:#FFFDF5;background-image:repeating-linear-gradient(to bottom,transparent 0 7.2cqw,#D6E4F5 7.2cqw 7.45cqw);z-index:4;box-shadow:-2cqw 0 4cqw rgba(0,0,0,.18);display:none;place-items:center;font-weight:800;font-size:9cqw;color:#D94848}
+.sk .flipper.on{display:grid;animation:flip 1.4s cubic-bezier(.6,0,.3,1) both}
+.sk .flipper.on.off{display:none}
+@keyframes flip{0%{transform:translateX(100%)}30%,70%{transform:none}100%{transform:translateX(-100%)}}
+.sk .skend{position:absolute;inset:0;z-index:5;background:#FFFDF5;background-image:repeating-linear-gradient(to bottom,transparent 0 7.2cqw,#D6E4F5 7.2cqw 7.45cqw);display:none;flex-direction:column;justify-content:center;padding:10cqw 12cqw}
+.sk .skend.on{display:flex;animation:fade .4s both}
+.sk .skend p{margin:0;font-weight:800;font-size:9cqw;line-height:1.2}
+.sk .skend p+p span{background:linear-gradient(#FFE872,#FFE872) no-repeat;background-size:0 45%;background-position:0 85%;animation:hl .8s .5s ease forwards}
+.sk[dir="rtl"] .skend p+p span{background-position:100% 85%}
+@keyframes hl{to{background-size:100% 45%}}
+.sk .skend small{margin-top:5cqw;font-size:3.8cqw;color:#4A22B8}
+.sk .lnk{text-decoration:underline;direction:ltr;unicode-bidi:isolate}
+
+/* E · phone ad */
+.ph{background:#FFD9B8;color:#1D1440}
+.ph::before{content:"";position:absolute;width:80cqw;height:80cqw;border-radius:50%;background:radial-gradient(circle,#FF9EC0 0,rgba(255,158,192,0) 65%);top:-30cqw;inset-inline-end:-30cqw}
+.ph::after{content:"";position:absolute;width:70cqw;height:70cqw;border-radius:50%;background:radial-gradient(circle,rgba(91,47,214,.35) 0,rgba(91,47,214,0) 65%);bottom:-35cqw;inset-inline-start:-25cqw}
+.ph .phone{position:absolute;z-index:1;top:7%;height:86%;width:auto;aspect-ratio:9/18.6;inset-inline-start:7cqw;border-radius:6.5cqw;background:#1D1440;padding:1.3cqw;box-shadow:0 5cqw 8cqw -3cqw rgba(60,20,90,.55);transform:rotate(-5deg);animation:bob 4s ease-in-out infinite}
+.ph[dir="ltr"] .phone{transform:rotate(5deg)}
+@keyframes bob{0%,100%{translate:0 0}50%{translate:0 -1.2cqw}}
+.ph .screen{position:relative;width:100%;height:100%;border-radius:5.4cqw;overflow:hidden;container-type:inline-size}
+.ph .copy{position:absolute;z-index:1;inset-inline-end:5cqw;width:40%;top:50%;transform:translateY(-50%);display:grid;gap:2cqw;font-family:Rubik,sans-serif}
+.ph .copy p{margin:0;font-weight:800;font-size:6.4cqw;line-height:1.08;letter-spacing:-.01em}
+.ph .copy p.hl{color:#5B2FD6}
+.ph .copy small{font:600 3.4cqw Assistant,sans-serif;opacity:.75;margin-top:2cqw}
+.ph .copy .t.on{animation:kin .45s cubic-bezier(.2,.9,.3,1) both}
+.ph .stk{position:absolute;z-index:2;width:15cqw;height:15cqw;border-radius:50%;background:#fff;display:none;place-items:center;font-size:8cqw;box-shadow:0 2cqw 4cqw rgba(60,20,90,.35);top:12%;inset-inline-start:38%}
+.ph .stk.on{display:grid;animation:rx .5s cubic-bezier(.2,.9,.3,1.3) both}
+.ph .stk.on.off{display:none}
+
+
+/* E: the tall screen reads top-down, like a phone someone is holding up, with the input bar WhatsApp really has */
+.ph .screen .wa-body{justify-content:flex-start;bottom:17cqw;padding-top:6cqw;gap:2.6cqw}
+.ph .screen .b{font-size:4.5cqw;max-width:86%}
+.ph .screen .b .who{font-size:3.5cqw}
+.ph .screen .tm{font-size:2.9cqw}
+.ph .screen .cap{top:18cqw}
+.ph .screen .pane::after{content:"";position:absolute;left:3cqw;right:17cqw;bottom:4cqw;height:10cqw;border-radius:999px;background:#fff;box-shadow:0 .3cqw .5cqw rgba(0,0,0,.08)}
+.ph .screen .pane::before{content:"";position:absolute;right:3cqw;bottom:4cqw;width:10cqw;height:10cqw;border-radius:50%;background:#00A884;z-index:1}
+.ph[dir="rtl"] .screen .pane::after{left:17cqw;right:3cqw}
+.ph[dir="rtl"] .screen .pane::before{right:auto;left:3cqw}
+
+
+/* Every chat reads top-down now, and scrolls like a real one once it fills (engine: follow()) */
+.wa-body{justify-content:flex-start;overflow:hidden}
+.wa-body.hascap{padding-top:11cqw}
+.ph .screen .wa-body.hascap{padding-top:13cqw}
+.st .col.g{justify-content:flex-start;overflow:hidden;padding-top:2cqw}
+.sk .skcol{justify-content:flex-start;overflow:hidden;padding-top:3cqw}
+.wa-body>*,.st .col.g>*,.sk .skcol>*{flex:none}
+
+/* A variants: typing bar (A3), opening question (A2), end cards, callout */
+.wa-body.hasbar{padding-bottom:17cqw}
+.inbar{position:absolute;left:3cqw;right:3cqw;bottom:3cqw;height:11cqw;display:flex;gap:2cqw;align-items:center;z-index:2}
+.inbar .field{flex:1;min-width:0;height:100%;background:#fff;border-radius:999px;display:flex;justify-content:flex-start;align-items:center;padding-inline:4cqw;font-size:3.9cqw;color:#111B21;overflow:hidden;white-space:nowrap;box-shadow:0 .3cqw .5cqw rgba(0,0,0,.08)}
+.inbar.typing .field{justify-content:flex-end}
+.inbar .hint0{color:#8696A0}
+.inbar.typing .hint0{display:none}
+.inbar .typer{flex:none}
+.inbar .typer:empty{display:none}
+.inbar .typer::after{content:"";display:inline-block;width:.35cqw;height:4.6cqw;background:#00A884;margin-inline-start:.4cqw;vertical-align:middle;animation:blink 1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+.inbar .send{width:11cqw;height:11cqw;border-radius:50%;background:#00A884;flex:none;display:grid;place-items:center;color:#fff;font-size:4.6cqw;transition:transform .15s}
+.inbar.typing .send{transform:scale(1.08)}
+[dir="rtl"] .inbar .send{transform:scaleX(-1)}
+[dir="rtl"] .inbar.typing .send{transform:scaleX(-1) scale(1.08)}
+.hook{position:absolute;inset:0;z-index:6;background:#5B2FD6;color:#fff;display:none;flex-direction:column;justify-content:center;padding:9cqw;gap:5cqw;font-family:Rubik,sans-serif}
+.hook.on{display:flex;animation:fade .3s both}
+.hook.on.off{display:none}
+.hook p{margin:0;font-weight:800;font-size:9.4cqw;line-height:1.12;text-wrap:balance;animation:kin .5s .15s both}
+.hook small,.end2 small{display:flex;align-items:center;gap:2.4cqw;font:600 3.8cqw Assistant,sans-serif;opacity:.9}
+.hook small .av,.end2 small .av{width:8cqw;height:8cqw;font-size:4cqw;background:#fff;color:#5B2FD6}
+.end2{position:absolute;inset:0;z-index:6;background:#5B2FD6;color:#fff;display:none;flex-direction:column;justify-content:center;padding:9cqw;gap:1.6cqw;font-family:Rubik,sans-serif}
+.end2.on{display:flex;animation:paneIn .45s both}
+.end2 p{margin:0;font-weight:800;line-height:1.12;text-wrap:balance}
+.end2 p+p{color:#FFD98A}
+.end2 small{margin-top:5cqw}
+.end3{position:absolute;inset:0;z-index:6;display:none;place-items:center;background:rgba(239,234,226,.55);backdrop-filter:blur(1.2cqw);-webkit-backdrop-filter:blur(1.2cqw)}
+.end3.on{display:grid;animation:fade .4s both}
+.end3 .card{width:80%;background:#fff;border-radius:6cqw;padding:7cqw 7cqw 6cqw;box-shadow:0 4cqw 8cqw -3cqw rgba(40,20,90,.45);display:grid;gap:1.4cqw;font-family:Rubik,sans-serif;animation:pop .45s .1s both}
+.end3 .card p{margin:0;font-weight:800;line-height:1.12;color:#141322;text-wrap:balance}
+.end3 .card p+p{color:#5B2FD6}
+.end3 .card small{margin-top:3cqw;font:500 3.4cqw Assistant,sans-serif;color:#667781;display:flex;gap:2cqw;align-items:center}
+.end3 .card small .av{width:7cqw;height:7cqw;font-size:3.6cqw}
+.wa .end p{text-wrap:balance}
+.call{position:absolute;left:50%;bottom:19cqw;transform:translateX(-50%);z-index:5;background:#111B21;color:#fff;border-radius:999px;padding:1.8cqw 4.4cqw;font:600 3.8cqw Rubik,sans-serif;white-space:nowrap;box-shadow:0 1.6cqw 4cqw rgba(0,0,0,.3)}
+.call.t.on{animation:callIn .45s cubic-bezier(.2,.9,.3,1.3) both}
+.call.t.on.off{display:none}
+@keyframes callIn{from{opacity:0;transform:translate(-50%,3cqw) scale(.9)}to{opacity:1;transform:translate(-50%,0)}}
+
+/* Moving between chats is a push/pop slide, the way a phone moves between screens */
+.wa .pane{background:inherit;will-change:transform}
+.wa .pane.push.t.on{animation:none;box-shadow:0 0 6cqw rgba(0,0,0,.25)}
+.wa .pane.t.on.off{display:block;animation:none}
+.stage.wa.tr-cube{perspective:240cqw}
+@keyframes paneEnter{
+  from{transform:translate(var(--fx,0),var(--fy,0)) scale(var(--fs,1)) rotateY(var(--fr,0deg));opacity:var(--fo,1);filter:brightness(var(--fb,1));border-radius:var(--frad,0);transform-origin:var(--forg,50% 50%)}
+  to{transform:none;opacity:1;filter:none;border-radius:0;transform-origin:var(--forg,50% 50%)}}
+@keyframes paneLeave{
+  from{transform-origin:var(--torg,50% 50%)}
+  to{transform:translate(var(--tx,0),var(--ty,0)) scale(var(--ts,1)) rotateY(var(--tr,0deg));opacity:var(--to,1);filter:brightness(var(--tb,1));transform-origin:var(--torg,50% 50%)}}
+.finger{position:absolute;top:58%;width:13cqw;height:13cqw;margin:-6.5cqw;border-radius:50%;background:rgba(255,255,255,.55);border:.6cqw solid rgba(17,27,33,.35);box-shadow:0 1cqw 3cqw rgba(0,0,0,.25);z-index:5}
+.finger.on{display:block;animation:swipe .8s cubic-bezier(.4,0,.2,1) both}
+.finger.on.off{display:none}
+@keyframes swipe{0%{left:var(--x1);opacity:0;transform:scale(.7)}15%{opacity:1;transform:scale(1)}85%{opacity:1}100%{left:var(--x2);opacity:0;transform:scale(.9)}}
+.wa .pane.t.on.off .t.on{animation:none}
+@keyframes pushIn{from{transform:translateX(var(--fromX))}to{transform:none}}
+@keyframes pushOut{to{transform:translateX(var(--toX));filter:brightness(.82)}}
+
+/* F · kinetic captions */
+.kf{background:#FAFAFC;color:#141322;font-family:Rubik,sans-serif}
+.kf .kc{position:absolute;inset:0;display:none;flex-direction:column;justify-content:center;gap:2.4cqw;padding:10cqw 9cqw}
+.kf .kc.t.on{display:flex;animation:kin .35s cubic-bezier(.2,.9,.3,1) both}
+.kf .kc.t.on.off{display:none}
+@keyframes kin{from{opacity:0;transform:translateY(7cqw) skewY(2deg)}to{opacity:1;transform:none}}
+.kf .kc .tag{display:flex;align-items:center;gap:2cqw;font:600 3.4cqw Assistant,sans-serif;opacity:.6}
+.kf .kc .tag i{width:5cqw;height:5cqw;border-radius:50%;background:#C9C6D6;display:grid;place-items:center;font:700 2.8cqw Rubik,sans-serif;font-style:normal;color:#fff}
+.kf .kc .txt{font-weight:800;line-height:1.12;letter-spacing:-.01em;text-wrap:balance}
+.kf .kc.her{background:#5B2FD6;color:#fff}
+.kf .kc.her .tag{opacity:.85}
+.kf .kc.her .tag i{background:#FFD98A;color:#5B2FD6}
+.kf .kc.her b{color:#FFD98A}
+.kf .kc .li{font-weight:600;line-height:1.25}
+.kf .kc .li.t.on{display:block;animation:kin .3s cubic-bezier(.2,.9,.3,1) both}
+.kf .kc.lab{align-items:center;text-align:center}
+.kf .kc.lab .txt{font-size:9cqw;color:#5B2FD6}
+.kf .kc.clk{background:#141322;color:#fff;align-items:center}
+.kf .kc.clk span{position:absolute;font-weight:800;font-size:24cqw;font-variant-numeric:tabular-nums}
+.kf .kc.clk span.t.on{animation:kin .4s both}
+.kf .kc.clk span.b2{color:#FFD98A}
+.kf .kc.clk em{position:absolute;top:18%;font:600 4cqw Assistant,sans-serif;font-style:normal;opacity:.7}
+.kf .kstamp{position:absolute;inset-inline-end:8cqw;bottom:10cqw;font-size:18cqw;line-height:1}
+.kf .kstamp.on{display:block;animation:kstamp .45s cubic-bezier(.2,.9,.3,1.5) both}
+@keyframes kstamp{from{transform:scale(3) rotate(-25deg);opacity:0}to{transform:rotate(-10deg);opacity:1}}
+.kf .kcap{position:absolute;top:4cqw;inset-inline-start:9cqw;z-index:3;background:#FFD98A;color:#1D1440;border-radius:999px;padding:.8cqw 3cqw;font:600 3.2cqw Rubik,sans-serif}
+.kf .kcap.t.on{animation:fade .3s both}
+.kf .kc.end{background:#141322;color:#fff}
+.kf .kc.end .txt{font-size:10cqw}
+.kf .kc.end .txt+.txt{color:#B69CFF}
+.kf .kc.end small{font:500 3.8cqw Assistant,sans-serif;opacity:.7;margin-top:4cqw}
+.kf .dots{display:flex;gap:3cqw}.kf .dots i{width:5cqw;height:5cqw;border-radius:50%;background:#5B2FD6;animation:dots 1.1s infinite}
+.kf .dots i:nth-child(2){animation-delay:.15s}.kf .dots i:nth-child(3){animation-delay:.3s}
+.kf .lnk{text-decoration:underline;direction:ltr;unicode-bidi:isolate;font-size:.8em}
+
+/* C · wordless, videos 4–6 */
+.wx{background:#F3EFFB}
+.wx .av2{position:absolute;left:var(--x);top:var(--y);transform:translate(-50%,-50%);width:17cqw;height:17cqw;border-radius:50%;background:#fff;display:grid;place-items:center;font-size:9.5cqw;box-shadow:0 1.6cqw 3cqw -1.2cqw rgba(60,30,140,.35);transition:transform .4s cubic-bezier(.2,.9,.3,1.4)}
+.wx .av2.olma{background:#5B2FD6;color:#FFD98A;font-size:8cqw;width:19cqw;height:19cqw}
+.wx .av2.olma::after{content:"";position:absolute;inset:-2cqw;border-radius:50%;border:.6cqw solid rgba(91,47,214,.35);animation:ring 2s ease-out infinite}
+.wx .bub{position:absolute;left:var(--x);top:var(--y);transform:translate(-50%,-100%);background:#fff;border-radius:4cqw;padding:1.6cqw 3cqw;font-size:6.4cqw;white-space:nowrap;box-shadow:0 1.4cqw 3cqw -1.4cqw rgba(60,30,140,.45);letter-spacing:.6cqw}
+.wx .bub.on{display:block;animation:bubIn .38s cubic-bezier(.2,.9,.3,1.3) both}
+.wx .bub.on.off{display:none}
+@keyframes bubIn{from{opacity:0;transform:translate(-50%,-80%) scale(.8)}to{opacity:1;transform:translate(-50%,-100%)}}
+.wx .bub.me{background:#E3D9FF}
+.wx .bub .op{display:inline-block;padding:.4cqw 1.6cqw;border-radius:2.4cqw;background:#F3EFFB;transition:background .3s,box-shadow .3s}
+.wx.pick .bub .op.win{background:#FFD98A;box-shadow:0 0 0 .6cqw #5B2FD6}
+.wx .fly{position:absolute;top:var(--y);width:4.6cqw;height:4.6cqw;margin:-2.3cqw;border-radius:50%;background:#5B2FD6}
+.wx .fly.on{display:block;animation:fly .7s cubic-bezier(.6,0,.4,1) both}
+.wx .fly.on.off{display:none}
+@keyframes fly{from{left:var(--x1);opacity:1}to{left:var(--x2);opacity:.2}}
+.wx .cal{position:absolute;left:50%;top:80%;transform:translate(-50%,-50%);width:36cqw;background:#fff;border-radius:3.4cqw;overflow:hidden;box-shadow:0 2cqw 4cqw -1.4cqw rgba(60,30,140,.45);text-align:center}
+.wx .cal.on{display:block;animation:drop2 .5s cubic-bezier(.2,.9,.3,1.3) both}
+@keyframes drop2{from{opacity:0;transform:translate(-50%,-120%)}to{opacity:1;transform:translate(-50%,-50%)}}
+.wx .cal i{display:block;background:#E5484D;height:5cqw}
+.wx .cal span{display:block;font-size:7.4cqw;padding:1.6cqw 0 2cqw;letter-spacing:.6cqw}
+.wx .room{position:absolute;left:12%;top:12%;width:76%;height:76%;border-radius:50%;border:.6cqw dashed #C9BDF0}
+.wx svg.lines{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+.wx svg.lines line{stroke:#5B2FD6;stroke-width:.7;stroke-dasharray:2 1.6;opacity:0;transition:opacity .4s}
+.wx.p1 svg.lines line{opacity:.7;animation:march 1s linear infinite}
+.wx.p3 svg.lines line{opacity:0}
+@keyframes march{to{stroke-dashoffset:-7.2}}
+.wx .conf{position:absolute;left:var(--x);top:var(--y);font-size:7cqw;transform:translate(-50%,-50%) scale(0);transition:transform .45s cubic-bezier(.2,.9,.3,1.5);transition-delay:var(--d,0s)}
+.wx.p3 .conf{transform:translate(-50%,-50%) scale(1)}
+.wx.p3 .av2:not(.olma){transform:translate(-50%,-50%) scale(1.08)}
+.wx6{transition:background 1.2s}
+.wx6 .dawn{position:absolute;inset:0;background:linear-gradient(#141238,#3B2A7A);transition:opacity 1.6s}
+.wx6.p1 .dawn{opacity:0}
+.wx6 .sky6{position:absolute;inset:0;background:linear-gradient(#FFE3B3,#F3EFFB 70%)}
+.wx6 .sun6{position:absolute;left:50%;top:100%;transform:translate(-50%,0);font-size:22cqw;transition:top 1.8s cubic-bezier(.3,0,.2,1)}
+.wx6.p1 .sun6{top:-2%}
+.wx6 .card6{position:absolute;left:18%;top:20%;width:64%;background:#fff;border-radius:5cqw;padding:3cqw 4cqw;box-shadow:0 3cqw 6cqw -3cqw rgba(60,30,140,.45);display:grid;gap:1.4cqw}
+.wx6 .card6.on{display:grid;animation:drop2b .5s cubic-bezier(.2,.9,.3,1.2) both}
+@keyframes drop2b{from{opacity:0;transform:translateY(-6cqw)}to{opacity:1;transform:none}}
+.wx6 .row6{display:flex;align-items:center;gap:3cqw;font-size:6.4cqw;padding-block:.6cqw}
+.wx6 .row6.on{display:flex;animation:fade .35s both}
+.wx6 .row6 .bx{width:5.4cqw;height:5.4cqw;border-radius:1.4cqw;border:.6cqw solid #C9BDF0;flex:none;display:grid;place-items:center;transition:background .3s,border-color .3s}
+.wx6.p2 .row6.done .bx{background:#5B2FD6;border-color:#5B2FD6}
+.wx6.p2 .row6.done .bx::after{content:"";width:2.2cqw;height:1.2cqw;border-left:.6cqw solid #fff;border-bottom:.6cqw solid #fff;transform:translateY(-.3cqw) rotate(-45deg)}
+.wx6.p2 .row6.done span{opacity:.4}
+.wx6 .row6 .cl{width:5.4cqw;height:5.4cqw;border-radius:1.4cqw;background:#E5484D;flex:none}
+.wx6 .sep6{height:1px;background:#EEE9FA;margin-block:.6cqw}
+.wx6 .buzz{position:absolute;left:50%;top:12%;transform:translateX(-50%);font-size:8cqw}
+.wx6 .buzz.on{display:block;animation:shake .5s 2}
+.wx6 .buzz.on.off{display:none}
+@media (prefers-reduced-motion: reduce){
+  .t{display:block}.t.off{display:none}
+  .stage *{animation:none!important;transition:none!important}
+}
+
+/* ================= new brand (2026-09-26): calm base, the clock as colour, the overprint for "together" ================= */
+:root.nb{--bg:#F7F1E6;--surface:#FFFCF7;--text:#221C3A;--muted:#5F5873;--sep:#E6DED2;--accent:#5B4BD6;--on-accent:#FFFFFF;color-scheme:light}
+@media (prefers-color-scheme: dark){
+  :root.nb:not([data-theme="light"]){--bg:#1C1A38;--surface:#24214A;--text:#EDEAFB;--muted:#B3ADCC;--sep:#353163;--accent:#B9AEFF;--on-accent:#1C1A38;color-scheme:dark}
+}
+:root.nb[data-theme="dark"]{--bg:#1C1A38;--surface:#24214A;--text:#EDEAFB;--muted:#B3ADCC;--sep:#353163;--accent:#B9AEFF;--on-accent:#1C1A38;color-scheme:dark}
+.slotTag{display:none;font:600 13px Assistant,sans-serif;color:var(--muted);border:1px solid var(--sep);border-radius:999px;padding:1px 10px;align-self:center}
+.nb .slotTag{display:inline-block}
+
+/* one time of day per video: sky (top), ground (bottom), a soft light from one corner */
+.stage{--g1:#FFE6CF;--g2:#FFF4E8;--li:#FFD0A8cc;--pos:92% 0%;--fg:#221C3A;--fg2:#6A5E78}
+.s-day{--g1:#E4ECF7;--g2:#F5F8FC;--li:#CFDDF2cc;--pos:50% 0%}
+.s-evening{--g1:#EFD3E0;--g2:#F8EAF0;--li:#E3B9D8cc;--pos:10% 100%}
+.s-rem .hook{--g1:#1C1A38;--g2:#2A2752;--li:#3A347055;--pos:85% 8%;--fg:#EDEAFB;--fg2:#B9AEFF}
+
+.nb .hook,.nb .end2{background:radial-gradient(90% 80% at var(--pos),var(--li),transparent 70%),linear-gradient(180deg,var(--g2),var(--g1));color:var(--fg)}
+.nb .hook::after,.nb .end2::after,.nb .end3 .card::after{content:"";position:absolute;inset:0;pointer-events:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='.33 .33 .33 0 0 .33 .33 .33 0 0 .33 .33 .33 0 0 0 0 0 1 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");background-size:200px;mix-blend-mode:multiply;opacity:.16}
+.nb .s-rem .hook::after{mix-blend-mode:screen;opacity:.09}
+.nb .hook p{font-weight:700;letter-spacing:-.01em;animation:nbRise .6s .15s cubic-bezier(.22,1,.36,1) both}
+.nb .end2 p{font-weight:700;letter-spacing:-.01em}
+.nb .end2 p+p{color:var(--fg2)}
+.nb .end2.on{animation:fade .6s both}
+.nb .hook small,.nb .end2 small{color:var(--fg2);opacity:1;font:600 3.8cqw Rubik,sans-serif}
+@keyframes nbRise{from{opacity:0;transform:translateY(3cqw)}to{opacity:1;transform:none}}
+
+/* "together": two discs meet under the closing line, only in the videos with more than one person */
+.nb .tog .end2::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;background:radial-gradient(circle 17cqw at 22% 86%,#FF8A6B 98%,transparent 100%),radial-gradient(circle 17cqw at 42% 90%,#7C6CF2 98%,transparent 100%);background-repeat:no-repeat;background-blend-mode:multiply;mix-blend-mode:multiply;opacity:.88}
+.nb .tog .end2.on::before{animation:nbMeet 1.1s .25s cubic-bezier(.22,1,.36,1) both}
+@keyframes nbMeet{from{background-position:-38cqw 0,38cqw 0;opacity:0}to{background-position:0 0,0 0;opacity:.88}}
+
+/* A1: the band rising from the bottom takes the ground of that hour */
+.nb .wa .end{background:linear-gradient(to top,var(--g1) 62%,transparent);color:var(--fg)}
+.nb .wa .end p{font-weight:700}
+.nb .wa .end p+p{color:var(--fg2)}
+.nb .wa .end small{color:var(--fg2);opacity:1}
+
+/* A3: the closing card sits on a wash of that hour instead of WhatsApp beige */
+.nb .end3{background:color-mix(in srgb,var(--g1) 62%,transparent)}
+.nb .end3 .card{position:relative;overflow:hidden;background:#FFFCF7;animation:nbRise .55s .1s cubic-bezier(.22,1,.36,1) both}
+.nb .end3 .card p{color:#221C3A;font-weight:700}
+.nb .end3 .card p+p{color:#6A5E78}
+.nb .end3 .card small{color:#6A5E78}
+
+/* her profile picture, until there is a mark: the two inks overlapping on paper */
+.nb .stage .av{background:radial-gradient(circle at 37% 50%,#7C6CF2 0 29%,transparent 30%),radial-gradient(circle at 63% 50%,#FF8A6B 0 29%,transparent 30%),#F7F1E6;background-blend-mode:multiply;color:transparent}
+.nb .cap,.nb .call{background:#221C3A}
+.nb .flash{background:#1C1A38}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>סרטוני ההיכרות במותג החדש</h1>
+    <p class="lede">אותם סרטונים ואותן הודעות. הצ'אט עצמו נשאר וואטסאפ אמיתי, והמותג נכנס לכל מה שמסביבו: מסך הפתיחה, הסיום, הכיתובים ותמונת הפרופיל. כל סרטון מקבל את שעת היום שבה הוא קורה, לפי השעות בצ'אט. אפשר לעבור בין המותג החדש לקודם כדי להשוות.</p>
+    <div class="bar">
+      <div class="seg" role="group" aria-label="שפת הסרטונים">
+        <button id="lang-he" aria-pressed="true" data-lang="he">עברית</button>
+        <button id="lang-en" aria-pressed="false" data-lang="en">English</button>
+      </div>
+      <div class="seg" role="group" aria-label="מותג"><button id="brand-new" aria-pressed="true" data-brand="new">מותג חדש</button><button id="brand-old" aria-pressed="false" data-brand="old">מותג קודם</button></div>
+    </div>
+  </header>
+  <div id="sections" style="display:grid;gap:44px"></div>
+</div>
+
+<script>
+const L = {
+  he: {
+    dir:'rtl', name:'עולמה', av:'ע', online:'מחוברת', typing:'מקלידה…', next:'למחרת בבוקר',
+    dump:'צריך לחדש דרכון, יום הולדת לאמא ביום שלישי, להתקשר לאינסטלטור, מתנה לנועה, ולשלם ארנונה עד סוף החודש',
+    sorted:'סידרתי:',
+    groups:[['🏠 בית',['להתקשר לאינסטלטור','לשלם ארנונה · עד 30.9']],['👪 משפחה',['יום הולדת לאמא · שלישי','מתנה לנועה']],['📋 סידורים',['לחדש דרכון']]],
+    dumpEnd:['שולחים לי הכל, בבלגן.','אני מסדרת ומזכירה בזמן.'], dumpSub:'עולמה · בוואטסאפ שלך',
+    rem:'תזכירי לי מחר ב־8 לקחת כדור',
+    remReply:'⏰ תזכורת: <b>לקחת כדור</b>', remFire:'⏰ תזכורת: *לקחת כדור*',
+    remEnd:['אומרים לי מתי.','אני זוכרת.'], remSub:'⏰ על ההודעה שלך אומר: רשמתי, אזכיר.',
+    answer:'אפשר לענות לי כאן בצ\'אט או דרך הקישור:',
+    c4ask:'תתאמי לי קפה עם דנה השבוע ☕', c4ack:'שאלתי את דנה, ואעדכן כשהיא עונה 🙂',
+    c4cap:'בינתיים, בטלפון של דנה', c4inv:'היי דנה 🙂 מאיה רוצה לקבוע איתך קפה השבוע. חמישי 10:00 או שישי 9:30?',
+    c4ans:'חמישי מעולה', c4cap2:'ובטלפון של מאיה', c4done:'סגור ☕ *חמישי 10:00* עם דנה\n📅 הוספתי ליומן',
+    c4End:['אומרים לי עם מי.','אני מתאמת.'], c4Sub:'אני מדברת עם כל אחד בפרטי, ואתם לא צריכים לרדוף אחרי אף אחד.',
+    g:'ארוחה 🍝', gMembers:'נועה, יואב, רוני, את/ה', noa:'נועה', yoav:'יואב',
+    g1:'@עולמה תמצאי לנו ערב לארוחה השבוע?',
+    g2:'מתחילה לתאם *ארוחה השבוע* 🎯\nשאלתי בפרטי 4 מכם שכתבו לי, ואחזור לכאן עם מה שמסתדר.',
+    gCap:'בינתיים, בפרטי אצל מאיה', gInv:'היי מאיה 🙂 נועה פתחה בקבוצה ארוחה השבוע. חמישי 20:00 או שישי 13:00?',
+    gAns:'חמישי!', gCap2:'ובחזרה בקבוצה',
+    g3:'יש כיוון: *חמישי 20:00* — 3 כבר בפנים.\nמחכה ל@יואב 🤞',
+    g4:'סגור: *חמישי 20:00* 🎉 כולם בפנים\nאיפה נפגשים? תכתבו לי ואני אוסיף ליומן 📍',
+    gEnd:['מתייגים אותי בקבוצה.','אני מתאמת עם כולם.'], gSub:'כל אחד עונה לי בפרטי, והקבוצה שומעת רק מה שנסגר.',
+    today:'היום', m1:'בוקר טוב ☀️ היום העיקר זה הטסט לרכב.',
+    cal:'ביומן', calItems:['10:00 קפה עם דנה','18:30 החוג של נועה'], todo:'על הרשימה', todoItems:['הטסט לרכב','להתקשר לאינסטלטור','מתנה לנועה'],
+    thanks:'תודה!', mEnd:['כל בוקר אני שולחת','תמונה אחת של היום.'], mSub:'פעם ביום, בשעה שבחרתם. בלילה אני שקטה.',
+    brand:'עולמה · בוואטסאפ שלך',
+    V: {
+      v2: { a1: ['שולחים לי הכל, בבלגן.', 'אני מסדרת ומזכירה בזמן.', 'עולמה · בוואטסאפ שלך'],
+            a2: { hook: 'הראש מלא בדברים?', end: ['כותבים לי הכל.', 'אני עושה סדר, ומזכירה בזמן.', 'עולמה · בוואטסאפ שלך'] },
+            a3: { call: '👆 מסודר לפי נושא, עם תאריכים', end: ['בלי לנסח יפה.', 'אני מסדרת, ומזכירה כשצריך.', 'עולמה · בוואטסאפ שלך'] } },
+      v3: { a1: ['אומרים לי מתי.', 'אני זוכרת.', '⏰ על ההודעה שלך אומר: רשמתי, אזכיר.'],
+            a2: { hook: 'שוב שכחת?', end: ['אומרים לי מתי.', 'אני מזכירה בדיוק אז.', '⏰ על ההודעה שלך אומר: רשמתי, אזכיר.'] },
+            a3: { call: '⏰ = רשמתי, אזכיר', end: ['מבקשים פעם אחת.', 'אני לא שוכחת.', 'עולמה · בוואטסאפ שלך'] } },
+      v4: { a1: ['אומרים לי עם מי.', 'אני מתאמת.', 'אני מדברת עם כל אחד בפרטי, ואתם לא צריכים לרדוף אחרי אף אחד.'],
+            a2: { hook: '"מתי נוח לך?"\n"ולך?"\n"אולי שבוע הבא…"', end: ['אני מדברת עם כל אחד בפרטי.', 'ואתם מקבלים "סגור".', 'עולמה · בוואטסאפ שלך'] },
+            a3: { call: '👆 דנה עונה לי, לא לך', end: ['בלי פינג־פונג של הודעות.', 'אני סוגרת לכם.', 'עולמה · בוואטסאפ שלך'] } },
+      v5: { a1: ['מתייגים אותי בקבוצה.', 'אני מתאמת עם כולם.', 'כל אחד עונה לי בפרטי, והקבוצה שומעת רק מה שנסגר.'],
+            a2: { hook: '40 הודעות בקבוצה על "מתי"?', end: ['מתייגים אותי.', 'אני סוגרת עם כולם.', 'עולמה · בוואטסאפ שלך'] },
+            a3: { call: '👆 כל אחד עונה לי בפרטי', end: ['הקבוצה לא מתפוצצת.', 'היא שומעת רק "סגור".', 'עולמה · בוואטסאפ שלך'] } },
+      v6: { a1: ['כל בוקר אני שולחת', 'תמונה אחת של היום.', 'פעם ביום, בשעה שבחרתם. בלילה אני שקטה.'],
+            a2: { hook: 'מה יש לי היום?', end: ['כל בוקר, הודעה אחת.', 'כל היום שלך בתוכה.', 'פעם ביום, בשעה שבחרתם.'] },
+            a3: { call: '🙏 = בשמחה, בלי עוד הודעה', end: ['היומן והרשימה,', 'בהודעה אחת בבוקר.', 'עולמה · בוואטסאפ שלך'] } }
+    },
+    typeHint:'הודעה'
+  },
+  en: {
+    dir:'ltr', name:'Allma', av:'A', online:'online', typing:'typing…', next:'Next morning',
+    dump:"Need to renew my passport, mom's birthday Tuesday, call the plumber, gift for Noa, and pay the water bill by the end of the month",
+    sorted:'Sorted:',
+    groups:[['🏠 Home',['Call the plumber','Pay the water bill · by Sep 30']],['👪 Family',["Mom's birthday · Tue",'Gift for Noa']],['📋 Errands',['Renew passport']]],
+    dumpEnd:['Send me the mess.',"I'll sort it and remind you."], dumpSub:'Allma · in your WhatsApp',
+    rem:'Remind me tomorrow at 8 to take my pill',
+    remReply:'⏰ Reminder: <b>Take my pill</b>', remFire:'⏰ Reminder: *Take my pill*',
+    remEnd:['Tell me when.',"I'll remember."], remSub:"⏰ on your message means: got it, I'll remind you.",
+    answer:'You can answer me here in the chat or through the link:',
+    c4ask:'Set up coffee with Dana this week ☕', c4ack:"I asked Dana, and I'll let you know when she answers 🙂",
+    c4cap:"Meanwhile, on Dana's phone", c4inv:'Hi Dana 🙂 Maya wants to grab coffee with you this week. Thursday 10:00 or Friday 9:30?',
+    c4ans:'Thursday works', c4cap2:"Back on Maya's phone", c4done:'Done ☕ *Thursday 10:00* with Dana\n📅 Added to your calendar',
+    c4End:['Tell me who.',"I'll set it up."], c4Sub:'I talk to each person privately, so nobody chases anybody.',
+    g:'Dinner 🍝', gMembers:'Noa, Yoav, Roni, You', noa:'Noa', yoav:'Yoav',
+    g1:'@Allma can you find us an evening for dinner this week?',
+    g2:"Starting to coordinate *dinner this week* 🎯\nI've asked 4 of you who've messaged me privately, and I'll come back here with what works.",
+    gCap:"Meanwhile, in Maya's private chat", gInv:'Hi Maya 🙂 Noa started a dinner in the group this week. Thursday 20:00 or Saturday 13:00?',
+    gAns:'Thursday!', gCap2:'Back in the group',
+    g3:'Getting there: *Thursday 20:00* — 3 are in.\nWaiting for @Yoav 🤞',
+    g4:"Done: *Thursday 20:00* 🎉 everyone's in\nWhere are we meeting? Tell me and I'll add it to the calendar 📍",
+    gEnd:['Tag me in the group.',"I'll get everyone in."], gSub:'Everyone answers me privately. The group only hears what got settled.',
+    today:'Today', m1:"Good morning ☀️ The main thing today is the car's inspection.",
+    cal:'On your calendar', calItems:['10:00 Coffee with Dana',"18:30 Noa's class"], todo:'On your list', todoItems:['Car inspection','Call the plumber','Gift for Noa'],
+    thanks:'Thanks!', mEnd:['Every morning I send','one picture of your day.'], mSub:'Once a day, at the hour you pick. Quiet at night.',
+    brand:'Allma · in your WhatsApp',
+    V: {
+      v2: { a1: ['Send me the mess.', "I'll sort it and remind you.", 'Allma · in your WhatsApp'],
+            a2: { hook: 'Head full of stuff?', end: ['Write me everything.', "I'll sort it, and remind you on time.", 'Allma · in your WhatsApp'] },
+            a3: { call: '👆 Sorted by topic, with dates', end: ['No need to phrase it nicely.', "I'll sort it and remind you.", 'Allma · in your WhatsApp'] } },
+      v3: { a1: ['Tell me when.', "I'll remember.", "⏰ on your message means: got it, I'll remind you."],
+            a2: { hook: 'Forgot again?', end: ['Tell me when.', "I'll remind you right then.", "⏰ on your message means: got it, I'll remind you."] },
+            a3: { call: "⏰ = got it, I'll remind you", end: ['Ask once.', "I won't forget.", 'Allma · in your WhatsApp'] } },
+      v4: { a1: ['Tell me who.', "I'll set it up.", 'I talk to each person privately, so nobody chases anybody.'],
+            a2: { hook: '"When works for you?"\n"And you?"\n"Maybe next week…"', end: ['I talk to each person privately.', 'You get "done".', 'Allma · in your WhatsApp'] },
+            a3: { call: '👆 Dana answers me, not you', end: ['No message ping-pong.', "I'll settle it for you.", 'Allma · in your WhatsApp'] } },
+      v5: { a1: ['Tag me in the group.', "I'll get everyone in.", 'Everyone answers me privately. The group only hears what got settled.'],
+            a2: { hook: '40 group messages about "when"?', end: ['Tag me.', "I'll settle it with everyone.", 'Allma · in your WhatsApp'] },
+            a3: { call: '👆 Everyone answers me privately', end: ["The group doesn't explode.", 'It only hears "done".', 'Allma · in your WhatsApp'] } },
+      v6: { a1: ['Every morning I send', 'one picture of your day.', 'Once a day, at the hour you pick. Quiet at night.'],
+            a2: { hook: "What's on today?", end: ['Every morning, one message.', 'Your whole day in it.', 'Once a day, at the hour you pick.'] },
+            a3: { call: "🙏 = you're welcome, no extra message", end: ['Your calendar and your list,', 'in one morning message.', 'Allma · in your WhatsApp'] } }
+    },
+    typeHint:'Message'
+  }
+};
+
+const fmt = s => String(s).replace(/\*(.+?)\*/g, '<b>$1</b>').replace(/\n/g, '<br>');
+const LINK = '<span class="lnk">allma.world/m/…</span>';
+
+/* ---------------- scripts: one per video, read by every styled renderer ---------------- */
+function listLines(s, start, step){
+  const out = []; let t = start;
+  s.groups.forEach(([h, items]) => { out.push({ t, html: `*${h}*` }); items.forEach(i => out.push({ t: t += step, html: '• ' + i })); t += step; });
+  return out;
+}
+function pre(b, t){ return { ...b, t, pre: true, rx: b.rx ? { ...b.rx, t } : null, lines: b.lines ? b.lines.map(l => ({ ...l, t })) : null }; }
+
+const SCRIPTS = {
+  v2: s => ({ dur: 11000, endAt: 7200, end: [...s.dumpEnd, s.dumpSub], panes: [{ t: 0, beats: [
+    { t: 400, from: 'me', html: s.dump, time: '09:41' },
+    { t: 1800, typing: true, out: 3300 },
+    { t: 3300, from: 'her', html: s.sorted, time: '09:41', lines: listLines(s, 3600, 280) } ] }] }),
+  v3: s => ({ dur: 10500, endAt: 7000, end: [...s.remEnd, s.remSub], jump: { t: 2600, from: '22:40', to: '08:00', label: s.next }, panes: [{ t: 0, beats: [
+    { t: 400, from: 'me', html: s.rem, time: '22:40', rx: { t: 1500, e: '⏰' } },
+    { t: 3500, chip: s.next },
+    { t: 4800, from: 'her', html: s.remFire, time: '08:00', notif: true } ] }] }),
+  v4: s => {
+    const ask = { t: 400, from: 'me', html: s.c4ask, time: '12:05' };
+    const ack = { t: 1700, from: 'her', html: s.c4ack, time: '12:05' };
+    return { dur: 12500, endAt: 8800, end: [...s.c4End, s.c4Sub], panes: [
+      { t: 0, beats: [ask, ack] },
+      { t: 3200, caption: s.c4cap, beats: [
+        { t: 3500, from: 'her', html: s.c4inv + '\n' + s.answer + '\n' + LINK, time: '12:05' },
+        { t: 5300, from: 'me', html: s.c4ans, time: '12:20' } ] },
+      { t: 6400, back: true, caption: s.c4cap2, beats: [pre(ask, 6400), pre(ack, 6400), { t: 6700, from: 'her', html: s.c4done, time: '12:20' }] } ] };
+  },
+  v5: s => {
+    const g1 = { t: 400, from: 'other', who: s.noa, color: '#D7266A', html: s.g1, time: '19:02' };
+    const g2 = { t: 1800, from: 'her', who: s.name, color: '#5B2FD6', html: s.g2, time: '19:02' };
+    return { dur: 14000, endAt: 10300, end: [...s.gEnd, s.gSub], panes: [
+      { t: 0, group: true, beats: [g1, g2] },
+      { t: 3800, caption: s.gCap, beats: [
+        { t: 4100, from: 'her', html: s.gInv + '\n' + s.answer + '\n' + LINK, time: '19:03' },
+        { t: 5700, from: 'me', html: s.gAns, time: '19:10' } ] },
+      { t: 6700, back: true, group: true, caption: s.gCap2, beats: [pre(g1, 6700), pre(g2, 6700),
+        { t: 7000, from: 'her', who: s.name, color: '#5B2FD6', html: s.g3, time: '19:40' },
+        { t: 8400, from: 'her', who: s.name, color: '#5B2FD6', html: s.g4, time: '20:15' } ] } ] };
+  },
+  v6: s => {
+    const lines = []; let t = 1000;
+    lines.push({ t, html: `*${s.cal}*` }); s.calItems.forEach(i => lines.push({ t: t += 280, html: i }));
+    lines.push({ t: t += 280, html: `*${s.todo}*` }); s.todoItems.forEach(i => lines.push({ t: t += 280, html: '• ' + i }));
+    return { dur: 10500, endAt: 7200, end: [...s.mEnd, s.mSub], panes: [{ t: 0, beats: [
+      { t: 200, chip: s.today },
+      { t: 600, from: 'her', html: s.m1, time: '07:30', lines },
+      { t: 4600, from: 'me', html: s.thanks, time: '07:41', rx: { t: 5400, e: '🙏' } } ] }] };
+  }
+};
+
+/* ---------------- renderers ---------------- */
+const endSize = (sc, big) => { const n = Math.max(sc.end[0].length, sc.end[1].length); return n > 16 ? big * .74 : n > 12 ? big * .86 : big; };
+const outOf = (arr, i) => arr[i + 1] ? ` data-out="${arr[i + 1].t}"` : '';
+const lineHtml = (b, cls = 'li') => (b.lines || []).map(l => `<div class="${cls} t${b.pre ? ' pre' : ''}" data-in="${l.t}">${fmt(l.html)}</div>`).join('');
+const preC = b => b.pre ? ' pre' : '';
+
+// A · WhatsApp (also the screen inside E)
+// How a new chat arrives (in / backIn) and how the one under it leaves (out / backOut).
+// n = the "forward" direction on screen: -1 in Hebrew (new screens come from the left), 1 in English.
+const TRANSITIONS = {
+  push:     n => ({ in: { fx: `${100 * n}%` }, out: { tx: `${-30 * n}%`, tb: .82 }, backIn: { fx: `${-30 * n}%`, fb: .82 }, backOut: { tx: `${100 * n}%`, z: 3 } }),
+  carousel: n => ({ in: { fx: `${100 * n}%` }, out: { tx: `${-100 * n}%` }, backIn: { fx: `${-100 * n}%` }, backOut: { tx: `${100 * n}%` } }),
+  sheet:    n => ({ in: { fy: '100%', frad: '6cqw' }, out: { ts: .9, tb: .6 }, backIn: { fs: .9, fb: .6 }, backOut: { ty: '100%', z: 3 } }),
+  zoom:     n => ({ in: { fs: .82, fo: 0 }, out: { ts: 1.12, to: 0 }, backIn: { fs: 1.12, fo: 0 }, backOut: { ts: .82, to: 0, z: 3 } }),
+  cube:     n => { const a = n > 0 ? 'left' : 'right', b = n > 0 ? 'right' : 'left';
+    return { in: { fx: `${100 * n}%`, fr: `${90 * n}deg`, forg: `${a} center` }, out: { tx: `${-100 * n}%`, tr: `${-90 * n}deg`, torg: `${b} center` },
+             backIn: { fx: `${-100 * n}%`, fr: `${-90 * n}deg`, forg: `${b} center` }, backOut: { tx: `${100 * n}%`, tr: `${90 * n}deg`, torg: `${a} center` } }; },
+  finger:   n => TRANSITIONS.push(n)
+};
+const cssVars = o => Object.entries(o || {}).map(([k, v]) => `--${k}:${v};`).join('');
+function waPanes(sc, s, opt = {}){
+  return sc.panes.map((p, i, arr) => {
+    const body = p.beats.map(b => {
+      if (b.typing) return `<div class="typing t" data-in="${b.t}" data-out="${b.out}"><i></i><i></i><i></i></div>`;
+      if (b.chip) return `<div class="daychip t" data-in="${b.t}">${b.chip}</div>`;
+      const who = p.group && b.from !== 'me' ? `<span class="who" style="color:${b.color}">${b.who}</span>` : '';
+      const rx = b.rx ? `<span class="rx t${preC(b)}" data-in="${b.rx.t}">${b.rx.e}</span>` : '';
+      return `<div class="b ${b.from === 'me' ? 'out' : 'in'} t${preC(b)}" data-in="${b.t}"${b.rx ? ' style="margin-bottom:3cqw"' : ''}>${who}${fmt(b.html)}${lineHtml(b)}<span class="tm">${b.time}${b.from === 'me' ? ' <i>✓✓</i>' : ''}</span>${rx}</div>`;
+    }).join('');
+    const head = p.group ? `<div class="av" style="background:#E8E1FF;color:#5B2FD6">🍝</div><div><b>${s.g}</b><small>${s.gMembers}</small></div>`
+                         : `<div class="av">${s.av}</div><div><b>${s.name}</b><small>${s.online}</small></div>`;
+    const n = s.dir === 'rtl' ? -1 : 1, next = arr[i + 1], T = TRANSITIONS[opt.tr || 'push'](n);
+    const enter = i === 0 ? '' : ` data-enter='${JSON.stringify(p.back ? T.backIn : T.in)}'`;
+    const leave = next ? ` data-leave='${JSON.stringify(next.back ? T.backOut : T.out)}'` : '';
+    return `<div class="pane t${i ? ' push' : ''}"${enter}${leave} data-in="${p.t}"${outOf(arr, i)}><div class="wa-top">${head}</div><div class="wa-body${p.caption ? ' hascap' : ''}${opt.typers ? ' hasbar' : ''}">${body}</div>${opt.typers ? inbar(opt.typers.filter(x => x.pane === i), s) : ''}${p.caption ? `<div class="cap t" data-in="${p.t}">${p.caption}</div>` : ''}</div>`;
+  }).join('') + (opt.tr === 'finger' ? sc.panes.slice(1).map(p => {
+    const n = (s.dir === 'rtl' ? -1 : 1) * (p.back ? -1 : 1);
+    return `<div class="finger t" style="--x1:${50 + 38 * n}%;--x2:${50 - 38 * n}%" data-in="${p.t - 350}" data-out="${p.t + 450}"></div>`;
+  }).join('') : '') + (sc.jump ? `<div class="flash t" data-in="${sc.jump.t}" data-out="${sc.jump.t + 1300}"></div>` : '');
+}
+function inbar(ts, s){
+  return `<div class="inbar"><div class="field"><span class="hint0">${s.typeHint}</span>${ts.map(x => `<span class="typer" data-start="${x.start}" data-end="${x.end}" data-text="${x.text.replace(/"/g, '&quot;')}"></span>`).join('')}</div><span class="send">➤</span></div>`;
+}
+const endFs = (lines, table) => { const n = Math.max(...lines.map(l => l.length)); return (table.find(([m]) => n <= m) || table[table.length - 1])[1]; };
+function rA(sc, s, opt = {}){
+  const brand = `<small><span class="av">${s.av}</span>${sc.end[2]}</small>`;
+  const e = sc.end.slice(0, 2);
+  if (opt.variant === 2 || opt.variant === 3) {
+    const fs = endFs(e, [[14, 9.4], [20, 8], [28, 6.8], [99, 6]]);
+    const lines = e.map(l => `<p style="font-size:${fs}cqw">${l}</p>`).join('');
+    const hook = opt.hook ? `<div class="hook t" data-in="0" data-out="${opt.hookOut}"><p>${fmt(opt.hook)}</p><small><span class="av">${s.av}</span>${s.brand}</small></div>` : '';
+    const call = opt.call ? `<div class="call t" data-in="${opt.call.t}" data-out="${opt.call.t + 2300}">${opt.call.text}</div>` : '';
+    const end = opt.variant === 2 ? `<div class="end2 t" data-in="${sc.endAt}">${lines}${brand}</div>`
+                                  : `<div class="end3 t" data-in="${sc.endAt}"><div class="card">${lines}<small><span class="av">${s.av}</span>${sc.end[2]}</small></div></div>`;
+    return `<div class="stage wa${opt.tr ? ' tr-' + opt.tr : ''}" dir="${s.dir}" data-dur="${sc.dur}">${waPanes(sc, s, opt)}${call}${hook}${end}</div>`;
+  }
+  return rA1(sc, s);
+}
+function rA1(sc, s){
+  return `<div class="stage wa" dir="${s.dir}" data-dur="${sc.dur}">${waPanes(sc, s)}
+    <div class="end t" data-in="${sc.endAt}"><p style="font-size:${endSize(sc, 6.6)}cqw">${sc.end[0]}</p><p style="font-size:${endSize(sc, 6.6)}cqw">${sc.end[1]}</p><small>${sc.end[2]}</small></div></div>`;
+}
+
+// B · studio
+function rB(sc, s){
+  let notif = '';
+  const cols = sc.panes.map((p, i, arr) => {
+    const body = p.beats.map(b => {
+      if (b.typing) return `<div class="btyp t" data-in="${b.t}" data-out="${b.out}"><i></i><i></i><i></i></div>`;
+      if (b.chip) return sc.jump ? '' : `<div class="bchip t" data-in="${b.t}">${b.chip}</div>`;
+      if (b.notif) { notif = `<div class="notif t" data-in="${b.t}"><div class="av">${s.av}</div><div><b>${s.name}</b><p>${fmt(b.html)}</p></div></div>`; return ''; }
+      const who = p.group && b.who ? `<span class="who">${b.who}</span>` : '';
+      if (b.from === 'her') return `<div class="her t${b.lines ? ' wide' : ''}${preC(b)}" data-in="${b.t}">${who}${fmt(b.html)}${lineHtml(b)}</div>`;
+      const rx = b.rx ? `<span class="big-rx t${preC(b)}" data-in="${b.rx.t}">${b.rx.e}</span>` : '';
+      return `<div class="you${b.from === 'other' ? ' oth' : ''} t${preC(b)}" data-in="${b.t}">${who}${fmt(b.html)}${rx}</div>`;
+    }).join('');
+    return `<div class="col g t" data-in="${p.t}"${outOf(arr, i)}>${body}</div>` + (p.caption ? `<div class="bcap t" data-in="${p.t}"${outOf(arr, i)}>${p.caption}</div>` : '');
+  }).join('');
+  const j = sc.jump;
+  const steps = j ? `${j.t}:night ${j.t + 1200}:morning ${j.t + 2200}:day` : '';
+  return `<div class="stage st" dir="${s.dir}" data-dur="${sc.dur}" data-steps="${steps}"><div class="mark"><i></i>${s.name}</div>${cols}
+    ${j ? `<div class="clk"><span class="d1">${j.from}</span><span class="d2">${j.to}</span></div>` : ''}${notif}
+    <div class="end t" data-in="${sc.endAt}" style="--es:${endSize(sc, 10.5)}cqw"><p style="font-size:var(--es)">${sc.end[0]}</p><p style="font-size:var(--es)">${sc.end[1]}</p><small><i></i>${sc.end[2]}</small></div></div>`;
+}
+
+// D · notebook
+function rD(sc, s){
+  const tilts = ['-2.5deg', '1.8deg', '-1.2deg', '2.4deg'];
+  let k = 0;
+  const cols = sc.panes.map((p, i, arr) => {
+    const body = p.beats.map(b => {
+      if (b.typing) return `<div class="sktyp t" data-in="${b.t}" data-out="${b.out}">✏️…</div>`;
+      if (b.chip) return `<div class="tape t" data-in="${b.t}">${b.chip}</div>`;
+      const who = p.group && b.who ? `<span class="who">${b.who}</span>` : '';
+      if (b.from === 'her') return `<div class="ink t${preC(b)}" data-av="${s.av}" data-in="${b.t}">${who}${fmt(b.html)}${lineHtml(b)}</div>`;
+      const rx = b.rx ? `<span class="stamp t${preC(b)}" data-in="${b.rx.t}">${b.rx.e}</span>` : '';
+      const style = `--r:${tilts[k++ % 4]}` + (b.from === 'other' ? ';--nc:#FFC4D6' : '');
+      return `<div class="note${b.from === 'other' ? ' oth' : ''} t${preC(b)}" style="${style}" data-in="${b.t}">${who}${fmt(b.html)}${rx}</div>`;
+    }).join('');
+    return `<div class="skcol t" data-in="${p.t}"${outOf(arr, i)}>${body}</div>` + (p.caption ? `<div class="skcap t" data-in="${p.t}"${outOf(arr, i)}>✎ ${p.caption}</div>` : '');
+  }).join('');
+  const j = sc.jump;
+  return `<div class="stage sk" dir="${s.dir}" data-dur="${sc.dur}">${cols}
+    ${j ? `<div class="flipper t" data-in="${j.t}" data-out="${j.t + 1400}">${j.to}</div>` : ''}
+    <div class="skend t" data-in="${sc.endAt}"><p style="font-size:${endSize(sc, 9)}cqw">${sc.end[0]}</p><p style="font-size:${endSize(sc, 9)}cqw"><span>${sc.end[1]}</span></p><small>${sc.end[2]}</small></div></div>`;
+}
+
+// E · phone ad
+function rE(sc, s){
+  const firstHer = sc.panes.flatMap(p => p.beats).find(b => b.from === 'her');
+  const stickers = sc.panes.flatMap(p => p.beats).filter(b => b.rx && !b.pre)
+    .map(b => `<div class="stk t" data-in="${b.rx.t}" data-out="${b.rx.t + 2200}">${b.rx.e}</div>`).join('');
+  return `<div class="stage ph" dir="${s.dir}" data-dur="${sc.dur}">
+    <div class="phone"><div class="screen wa">${waPanes(sc, s)}</div></div>
+    <div class="copy"><p class="t" data-in="500">${sc.end[0]}</p><p class="hl t" data-in="${firstHer ? firstHer.t : 2500}">${sc.end[1]}</p><small class="t" data-in="${sc.endAt}">${sc.end[2]}</small></div>
+    ${stickers}</div>`;
+}
+
+// F · kinetic captions
+function rF(sc, s){
+  const size = h => { const n = h.replace(/<[^>]+>|\*/g, '').length; return n < 22 ? 10 : n < 45 ? 7.6 : n < 90 ? 5.8 : 4.8; };
+  const cards = [];
+  sc.panes.forEach(p => p.beats.forEach(b => {
+    if (b.pre) return;
+    if (b.typing) { cards.push({ t: b.t, html: `<div class="kc her t" data-in="${b.t}"%OUT%><div class="dots" style="--c:#fff"><i style="background:#FFD98A"></i><i style="background:#FFD98A"></i><i style="background:#FFD98A"></i></div></div>` }); return; }
+    if (b.chip) { if (!sc.jump) cards.push({ t: b.t, html: `<div class="kc lab t" data-in="${b.t}"%OUT%><div class="txt">${b.chip}</div></div>` }); return; }
+    const her = b.from === 'her';
+    const tag = her ? `<div class="tag"><i>${s.av}</i>${p.group ? s.name : s.name}</div>` : `<div class="tag"><i>${b.from === 'other' ? b.who[0] : '✎'}</i>${b.from === 'other' ? b.who : ''}</div>`;
+    const lines = b.lines ? `<div style="display:grid;gap:1cqw;font-size:4.6cqw">${lineHtml(b)}</div>` : '';
+    const rx = b.rx ? `<span class="kstamp t" data-in="${b.rx.t}">${b.rx.e}</span>` : '';
+    cards.push({ t: b.t, html: `<div class="kc ${her ? 'her' : 'me'} t" data-in="${b.t}"%OUT%>${tag}<div class="txt" style="font-size:${b.lines ? 6.4 : size(b.html)}cqw">${fmt(b.html)}</div>${lines}${rx}</div>` });
+  }));
+  if (sc.jump) { const j = sc.jump; cards.push({ t: j.t, html: `<div class="kc clk t" data-in="${j.t}"%OUT%><em>${j.label}</em><span class="t" data-in="${j.t}" data-out="${j.t + 1100}">${j.from}</span><span class="b2 t" data-in="${j.t + 1100}">${j.to}</span></div>` }); }
+  cards.sort((a, b) => a.t - b.t);
+  const caps = sc.panes.map((p, i, arr) => p.caption ? `<div class="kcap t" data-in="${p.t}"${outOf(arr, i)}>${p.caption}</div>` : '').join('');
+  const html = cards.map((c, i) => c.html.replace('%OUT%', cards[i + 1] ? ` data-out="${cards[i + 1].t}"` : ` data-out="${sc.endAt}"`)).join('');
+  return `<div class="stage kf" dir="${s.dir}" data-dur="${sc.dur}">${html}${caps}
+    <div class="kc end t" data-in="${sc.endAt}"><div class="txt" style="font-size:${endSize(sc, 10)}cqw">${sc.end[0]}</div><div class="txt" style="font-size:${endSize(sc, 10)}cqw">${sc.end[1]}</div><small>${sc.end[2]}</small></div></div>`;
+}
+
+/* ---------------- the original bespoke scenes (videos 2 and 3, styles A–C) ---------------- */
+function groupLines(s, start, step, cls){
+  let t = start, html = '';
+  s.groups.forEach(([h, items]) => {
+    html += cls === 'wa'
+      ? `<div class="g"><div class="li t" data-in="${t}"><b>${h}</b></div>${items.map(i => `<div class="li t" data-in="${t += step}">• ${i}</div>`).join('')}</div>`
+      : `<div class="grp t" data-in="${t}"><b>${h}</b><div>${items.join('<br>')}</div></div>`;
+    t += step;
+  });
+  return html;
+}
+const bespoke = {
+  dumpA: s => `<div class="stage wa" dir="${s.dir}" data-dur="11000">
+    <div class="wa-top"><div class="av">${s.av}</div><div><b>${s.name}</b><small>
+      <span class="t" data-in="0" data-out="1800">${s.online}</span><span class="t" data-in="1800" data-out="3300">${s.typing}</span><span class="t" data-in="3300">${s.online}</span></small></div></div>
+    <div class="wa-body">
+      <div class="b out t" data-in="400">${s.dump}<span class="tm">09:41 <i>✓✓</i></span></div>
+      <div class="typing t" data-in="1800" data-out="3300"><i></i><i></i><i></i></div>
+      <div class="b in t" data-in="3300">${s.sorted}${groupLines(s, 3600, 280, 'wa')}<span class="tm">09:41</span></div>
+    </div>
+    <div class="end t" data-in="7200"><p>${s.dumpEnd[0]}</p><p>${s.dumpEnd[1]}</p><small>${s.dumpSub}</small></div>
+  </div>`,
+  dumpB: s => `<div class="stage st" dir="${s.dir}" data-dur="11000">
+    <div class="mark"><i></i>${s.name}</div>
+    <div class="col">
+      <div class="you t" data-in="400">${s.dump}</div>
+      <div class="her t" data-in="2300"><div class="h">${s.sorted}</div>${groupLines(s, 2700, 450, 'st')}</div>
+    </div>
+    <div class="end t" data-in="6600"><p>${s.dumpEnd[0]}</p><p>${s.dumpEnd[1]}</p><small><i></i>${s.dumpSub}</small></div>
+  </div>`,
+  dumpC: () => `<div class="stage wl" dir="ltr" data-dur="9000" data-steps="2600:p1 3700:p2 4700:p3">
+    <div class="cloud"></div><div class="card"></div>
+    <div class="chip" style="--x:22%;--y:24%;--r:-12deg;--sx:30%;--sy:74%;--d:.24s"><span>🛂</span></div>
+    <div class="chip" style="--x:66%;--y:21%;--r:10deg;--sx:52%;--sy:50%;--d:.06s"><span>🎂</span></div>
+    <div class="chip" style="--x:44%;--y:47%;--r:-6deg;--sx:52%;--sy:25%;--d:.12s"><span>🔧</span></div>
+    <div class="chip" style="--x:75%;--y:60%;--r:14deg;--sx:30%;--sy:50%;--d:.18s"><span>🎁</span></div>
+    <div class="chip" style="--x:25%;--y:72%;--r:8deg;--sx:30%;--sy:25%;--d:0s"><span>💸</span></div>
+    <div class="gi" style="--sx:74%;--sy:25%;--c:#FFE7C2;--d:0s">🏠</div>
+    <div class="gi" style="--sx:74%;--sy:50%;--c:#FFD6E3;--d:.12s">👪</div>
+    <div class="gi" style="--sx:74%;--sy:74%;--c:#D8F1E6;--d:.24s">📋</div>
+    <div class="ck" style="--sx:16%;--sy:25%;--d:0s"></div>
+    <div class="ck" style="--sx:16%;--sy:50%;--d:.15s"></div>
+    <div class="ck" style="--sx:16%;--sy:74%;--d:.3s"></div>
+    <div class="spark">✨</div>
+  </div>`,
+  remA: s => `<div class="stage wa" dir="${s.dir}" data-dur="10500">
+    <div class="wa-top"><div class="av">${s.av}</div><div><b>${s.name}</b><small><span class="t" data-in="0">${s.online}</span></small></div></div>
+    <div class="wa-body">
+      <div class="b out t" data-in="400" style="margin-bottom:3cqw">${s.rem}<span class="tm">22:40 <i>✓✓</i></span><span class="rx t" data-in="1500">⏰</span></div>
+      <div class="daychip t" data-in="3400">${s.next}</div>
+      <div class="b in t" data-in="4500">${s.remReply}<span class="tm">08:00</span></div>
+    </div>
+    <div class="flash t" data-in="2600" data-out="3900"></div>
+    <div class="end t" data-in="6800"><p>${s.remEnd[0]}</p><p>${s.remEnd[1]}</p><small>${s.remSub}</small></div>
+  </div>`,
+  remB: s => `<div class="stage st" dir="${s.dir}" data-dur="11000" data-steps="2700:night 3900:morning 4900:day">
+    <div class="mark"><i></i>${s.name}</div>
+    <div class="col"><div class="you t" data-in="400">${s.rem}<span class="big-rx t" data-in="1400">⏰</span></div></div>
+    <div class="clk"><span class="d1">22:40</span><span class="d2">08:00</span></div>
+    <div class="notif t" data-in="5000"><div class="av">${s.av}</div><div><b>${s.name}</b><p>${s.remReply}</p></div></div>
+    <div class="end t" data-in="7400"><p>${s.remEnd[0]}</p><p>${s.remEnd[1]}</p><small><i></i>${s.remSub}</small></div>
+  </div>`,
+  remC: () => `<div class="stage wl2" dir="ltr" data-dur="9500" data-steps="2600:p2 5100:p3">
+    <div class="sky"></div><div class="skyn"></div><div class="stars"></div>
+    <div class="orb sun">☀️</div><div class="orb moon">🌙</div>
+    <div class="col">
+      <div class="bb me t" data-in="400">💊 🕗<span class="brx t" data-in="1400">⏰</span></div>
+      <div class="bb her t" data-in="5300">⏰ 💊</div>
+      <div class="bb me sm t" data-in="7000">✅</div>
+    </div>
+    <div class="face"><i class="hh"></i><i class="mh"></i></div>
+  </div>`,
+
+  // ---- wordless, videos 4–6 ----
+  coordC: () => `<div class="stage wx" dir="ltr" data-dur="9500" data-steps="4100:pick">
+    <div class="av2" style="--x:17%;--y:56%">🙋‍♀️</div>
+    <div class="av2 olma" style="--x:50%;--y:56%">✦</div>
+    <div class="av2" style="--x:83%;--y:56%">👩🏽</div>
+    <div class="bub me t" style="--x:20%;--y:42%" data-in="400" data-out="5600">☕ 👩🏽 ❓</div>
+    <div class="fly t" style="--y:56%;--x1:17%;--x2:50%" data-in="1400" data-out="2100"></div>
+    <div class="fly t" style="--y:56%;--x1:50%;--x2:83%" data-in="2100" data-out="2800"></div>
+    <div class="bub t" style="--x:80%;--y:42%" data-in="2800" data-out="5600">☕ <span class="op win">🕙</span> <span class="op">🕤</span></div>
+    <div class="fly t" style="--y:56%;--x1:83%;--x2:50%" data-in="4800" data-out="5500"></div>
+    <div class="bub t" style="--x:20%;--y:42%" data-in="5600">☕ 🕙 ✅</div>
+    <div class="bub t" style="--x:80%;--y:42%" data-in="5600">☕ 🕙 ✅</div>
+    <div class="cal t" data-in="6600"><i></i><span>☕ 🕙</span></div>
+  </div>`,
+  groupC: () => {
+    const P = [[50, 18], [84, 50], [50, 82], [16, 50]], F = ['🧑🏻', '👩🏼', '👨🏾', '🙋‍♀️'];
+    const lines = P.map(([x, y]) => `<line x1="50" y1="50" x2="${x}" y2="${y}"/>`).join('');
+    return `<div class="stage wx" dir="ltr" data-dur="9500" data-steps="1600:p1 5400:p3">
+      <div class="room"></div>
+      <svg class="lines" viewBox="0 0 100 100" preserveAspectRatio="none">${lines}</svg>
+      <div class="av2 olma" style="--x:50%;--y:50%">✦</div>
+      ${P.map(([x, y], i) => `<div class="av2" style="--x:${x}%;--y:${y}%">${F[i]}</div>`).join('')}
+      <div class="bub me t" style="--x:26%;--y:37%" data-in="400" data-out="1600">🍝 🗓️ ❓</div>
+      ${P.map(([x, y], i) => `<div class="bub t" style="--x:${x}%;--y:${y - 9}%" data-in="${2400 + i * 450}" data-out="5400">${i === 1 ? '🕗 ✅' : '✅'}</div>`).join('')}
+      <div class="bub t" style="--x:50%;--y:40%" data-in="5400">🍝 🕗 ✅</div>
+      ${P.map(([x, y], i) => `<div class="conf" style="--x:${x + (x < 50 ? -10 : 10)}%;--y:${y - 8}%;--d:${i * .08}s">🎉</div>`).join('')}
+    </div>`;
+  },
+  morningC: () => `<div class="stage wx6" dir="ltr" data-dur="9000" data-steps="400:p1 5400:p2">
+    <div class="sky6"></div><div class="dawn"></div><div class="sun6">☀️</div>
+    <div class="buzz t" data-in="1700" data-out="2600">📳</div>
+    <div class="card6 t" data-in="2300">
+      <div class="row6 t" data-in="2600"><span class="cl"></span><span>☕ 🕙</span></div>
+      <div class="row6 t" data-in="2900"><span class="cl"></span><span>🎨 🕡</span></div>
+      <div class="sep6"></div>
+      <div class="row6 done t" data-in="3300"><span class="bx"></span><span>🚗 🔧</span></div>
+      <div class="row6 t" data-in="3600"><span class="bx"></span><span>📞 🪠</span></div>
+      <div class="row6 t" data-in="3900"><span class="bx"></span><span>🎁</span></div>
+    </div>
+  </div>`
+};
+
+/* ---------------- sections ---------------- */
+const STYLE_NOTES = {
+  A: ['א · וואטסאפ אמיתי', 'הכי קרוב למה שהם יראו בצ\'אט, עם מסגרת סוגרת בסגול.'],
+  B: ['ב · סטודיו סגול', 'בועות גדולות בצבע של עולמה, וסיום במשפט ענק.'],
+  C: ['ג · בלי מילים', ''],
+  D: ['ד · מחברת', 'פתקים צהובים וכתב יד. עולמה עונה בדיו סגול, ומדגישה בטוש.'],
+  E: ['ה · פרסומת טלפון', 'טלפון מוטה על רקע אפרסק, והמשפט נכתב לצידו תוך כדי.'],
+  F: ['ו · כתוביות קינטיות', 'חיתוכים מהירים ומסך מלא לכל הודעה, בקצב של ריל.']
+};
+function shiftAll(sc, from, d){
+  const f = t => t >= from ? t + d : t;
+  sc.panes.forEach(p => { if (p.t >= from && !(from === 0 && p.t === 0 && d < 0)) p.t = f(p.t);
+    p.beats.forEach(b => { b.t = f(b.t); if (b.out) b.out = f(b.out); if (b.rx) b.rx.t = f(b.rx.t); if (b.lines) b.lines.forEach(l => { l.t = f(l.t); }); }); });
+  if (sc.jump) sc.jump.t = f(sc.jump.t);
+  sc.endAt = f(sc.endAt); sc.dur += d;
+}
+const plain = h => h.replace(/<[^>]+>|\*/g, '');
+function callTime(id, sc){
+  const all = sc.panes.flatMap(p => p.beats).filter(b => !b.pre);
+  if (id === 'v3' || id === 'v6') { const b = all.find(x => x.rx); return b.rx.t + 300; }
+  if (id === 'v2') { const b = all.find(x => x.lines); return b.lines[b.lines.length - 1].t + 500; }
+  const p = sc.panes[1]; return p.beats[p.beats.length - 1].t + 500;
+}
+function variantA(id, s, n, tr){
+  const sc = SCRIPTS[id](s), V = s.V[id];
+  if (n === 1) { sc.end = V.a1; return rA1(sc, s); }
+  if (n === 2) {
+    const HOOK = 2400; shiftAll(sc, 0, HOOK); sc.end = V.a2.end;
+    return rA(sc, s, { variant: 2, hook: V.a2.hook, hookOut: HOOK, tr });
+  }
+  const typers = [];
+  sc.panes.forEach((p, pi) => p.beats.forEach(b => { if (b.from === 'me' && !b.pre) typers.push({ b, pi }); }));
+  typers.sort((x, y) => x.b.t - y.b.t);
+  const segs = typers.map(({ b, pi }) => {
+    const text = plain(b.html), dt = Math.min(1900, 450 + [...text].length * 24), start = b.t;
+    shiftAll(sc, start, dt);
+    return { pane: pi, start, end: b.t, text };
+  });
+  sc.end = V.a3.end;
+  return rA(sc, s, { variant: 3, typers: segs, call: { t: callTime(id, sc), text: V.a3.call } });
+}
+
+const SECTIONS = [
+  { id: 'v2', n: 2, title: 'תזרקו עליי הכל', sub: 'הודעה מבולגנת הופכת לרשימה מסודרת',
+    A: s => bespoke.dumpA(s), B: s => bespoke.dumpB(s), C: () => bespoke.dumpC(), Cnote: 'אימוג\'י מפוזרים נכנסים לרשימה מסודרת בשלוש קבוצות.' },
+  { id: 'v3', n: 3, title: 'תזכירי לי', sub: '⏰ על ההודעה, ולמחרת בבוקר התזכורת מגיעה',
+    A: s => bespoke.remA(s), B: s => bespoke.remB(s), C: () => bespoke.remC(), Cnote: '💊 🕗, ⏰, לילה ושעון שמסתובב, בוקר, והטלפון רוטט.' },
+  { id: 'v4', n: 4, title: 'תתאמי לי קפה עם דנה', sub: 'היא שואלת את דנה בפרטי וחוזרת עם "סגור"',
+    C: () => bespoke.coordC(), Cnote: 'בקשה עוברת דרכה לדנה, דנה בוחרת שעה, ושתיהן מקבלות ✅ ויומן.' },
+  { id: 'v5', n: 5, title: 'בקבוצה', sub: 'מתייגים אותה, והיא מתאמת עם כל אחד בפרטי',
+    C: () => bespoke.groupC(), Cnote: 'קווים יוצאים ממנה לכל אחד, מגיעים ✅, ובסוף 🎉 לכולם.' },
+  { id: 'v6', n: 6, title: 'תמונת הבוקר', sub: 'הודעה אחת בבוקר עם היומן והרשימה',
+    C: () => bespoke.morningC(), Cnote: 'זריחה, רטט, וכרטיס עם היום. משימה אחת מסומנת.' }
+];
+const GENERIC = { A: rA, B: rB, D: rD, E: rE, F: rF };
+// Only the real-WhatsApp style is shown now (owner, 2026-09-26); the other five renderers stay in the file, unused.
+const TR_CHOICES = [
+  ['push', 'דחיפה', 'כמו באייפון: הצ\'אט החדש נכנס מהצד, והקודם זז קצת אחורה ומתעמעם.'],
+  ['carousel', 'קרוסלה', 'שני המסכים זזים יחד עד הסוף, כמו החלקה בין תמונות.'],
+  ['sheet', 'גיליון', 'הצ\'אט עולה מלמטה כמו כרטיס, והקודם מתכווץ ומחשיך מאחוריו.'],
+  ['zoom', 'זום', 'הצ\'אט הישן מתקרב ונעלם, והחדש מופיע מתוכו.'],
+  ['cube', 'קובייה', 'המסכים מסתובבים כמו שתי פאות של קובייה.'],
+  ['finger', 'אצבע', 'דחיפה עם עיגול של אצבע שמחליקה, כאילו מישהו עובר בין הצ\'אטים.']
+];
+const A_VARIANTS = [
+  [1, 'א1 · קלאסי', 'הצ\'אט רץ, והמשפט עולה בפס מלמטה.'],
+  [2, 'א2 · פותח בשאלה', 'נפתח במסך עם שאלה, ונסגר בכרטיס מלא.'],
+  [3, 'א3 · מקלידים', 'ההודעה מוקלדת בשורת הכתיבה, תווית מסבירה את הרגע החשוב, וכרטיס לבן בסוף.']
+];
+
+/* ---------------- engine ---------------- */
+const timers = new WeakMap();
+const visible = new WeakSet();
+function stop(stage){ (timers.get(stage) || []).forEach(clearTimeout); timers.set(stage, []); }
+const SCROLLERS = '.wa-body,.col.g,.skcol';
+// Screen-to-screen slides are computed per frame (rAF), not CSS keyframes: the frame-stepped
+// renderer that makes the GIFs does not advance compositor animations, and this is exact in both.
+const TWEEN_MS = 550;
+const num = v => [parseFloat(v), String(v).replace(/^[-\d.]+/, '')];
+function tween(el, spec, entering){
+  const stage = el.closest('.stage'), gen = stage._gen, t0 = performance.now();
+  const g = (k, d) => spec[k] === undefined ? d : spec[k];
+  const [fx, ux] = num(g(entering ? 'fx' : 'tx', 0)), [fy, uy] = num(g(entering ? 'fy' : 'ty', 0));
+  const sc = g(entering ? 'fs' : 'ts', 1), rot = parseFloat(g(entering ? 'fr' : 'tr', 0)), op = g(entering ? 'fo' : 'to', 1), br = g(entering ? 'fb' : 'tb', 1);
+  const rad = parseFloat(g('frad', 0)), org = g(entering ? 'forg' : 'torg', '50% 50%');
+  el.style.transformOrigin = org; if (spec.z) el.style.zIndex = spec.z;
+  const paint = k => { // k = how far from the resting position: 1 at the far end, 0 at rest
+    el.style.transform = `translate(${fx * k}${ux || '%'}, ${fy * k}${uy || '%'}) scale(${1 + (sc - 1) * k}) rotateY(${rot * k}deg)`;
+    el.style.opacity = 1 + (op - 1) * k; el.style.filter = `brightness(${1 + (br - 1) * k})`;
+    if (entering && rad) el.style.borderRadius = `${rad * k}cqw`;
+  };
+  const step = () => {
+    if (stage._gen !== gen) return;
+    // performance.now(), not the rAF timestamp: under the renderer's virtual clock the two differ
+    const p = Math.max(0, Math.min(1, (performance.now() - t0) / TWEEN_MS)), e = 1 - Math.pow(1 - p, 3);
+    paint(entering ? 1 - e : e);
+    if (p < 1) requestAnimationFrame(step);
+  };
+  paint(entering ? 1 : 0); requestAnimationFrame(step);
+}
+function follow(e){
+  const box = e.closest(SCROLLERS);
+  if (box) requestAnimationFrame(() => box.scrollTo({ top: box.scrollHeight, behavior: 'smooth' }));
+}
+function run(stage){
+  stop(stage);
+  const list = [];
+  const steps = (stage.dataset.steps || '').split(/\s+/).filter(Boolean).map(x => x.split(':'));
+  stage.classList.add('reset');
+  steps.forEach(([, c]) => stage.classList.remove(c));
+  stage.querySelectorAll('.t').forEach(e => e.classList.remove('on', 'off'));
+  stage._gen = (stage._gen || 0) + 1;
+  stage.querySelectorAll('.pane').forEach(p => { p.style.transform = p.style.opacity = p.style.filter = p.style.zIndex = p.style.borderRadius = p.style.transformOrigin = ''; });
+  stage.querySelectorAll(SCROLLERS).forEach(b => { b.scrollTop = 0; });
+  stage.querySelectorAll('.typer').forEach(el => { el.textContent = ''; el.closest('.inbar').classList.remove('typing'); });
+  void stage.offsetWidth;
+  stage.classList.remove('reset');
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) { steps.forEach(([, c]) => stage.classList.add(c)); return; }
+  stage.querySelectorAll('.typer').forEach(el => {
+    const bar = el.closest('.inbar'), chars = [...el.dataset.text], a = +el.dataset.start, b = +el.dataset.end;
+    const step = Math.max(18, (b - a - 250) / chars.length);
+    list.push(setTimeout(() => bar.classList.add('typing'), a));
+    chars.forEach((c, i) => list.push(setTimeout(() => { el.textContent += c; }, a + i * step)));
+    list.push(setTimeout(() => { el.textContent = ''; bar.classList.remove('typing'); }, b));
+  });
+  stage.querySelectorAll('.t').forEach(e => {
+    list.push(setTimeout(() => { e.classList.add('on'); follow(e); if (e.dataset.enter) tween(e, JSON.parse(e.dataset.enter), true); }, +e.dataset.in || 0));
+    if (e.dataset.out) list.push(setTimeout(() => { e.classList.add('off'); if (e.dataset.leave) tween(e, JSON.parse(e.dataset.leave), false); }, +e.dataset.out));
+  });
+  steps.forEach(([ms, c]) => list.push(setTimeout(() => stage.classList.add(c), +ms)));
+  list.push(setTimeout(() => visible.has(stage) ? run(stage) : stop(stage), +stage.dataset.dur || 10000));
+  timers.set(stage, list);
+}
+const io = 'IntersectionObserver' in window ? new IntersectionObserver(entries => entries.forEach(en => {
+  if (en.isIntersecting) { if (!visible.has(en.target)) { visible.add(en.target); run(en.target); } }
+  else { visible.delete(en.target); }
+}), { threshold: .25 }) : null;
+
+
+/* new brand: which hour each video happens at, read off the times in its own chat */
+const SLOT = { v2: 'morning', v3: 'rem', v4: 'day', v5: 'evening', v6: 'morning' };
+const SLOT_NAME = { morning: 'בוקר', rem: 'לילה ← בוקר', day: 'יום', evening: 'ערב' };
+const TOGETHER = new Set(['v4', 'v5']);
+const skin = (html, id) => html.replace('class="stage wa', `class="stage wa s-${SLOT[id]}${TOGETHER.has(id) ? ' tog' : ''}`);
+function render(lang){
+  const s = L[lang];
+  const root = document.getElementById('sections');
+  root.querySelectorAll('.stage').forEach(st => { stop(st); io && io.unobserve(st); });
+  const trFigs = TR_CHOICES.map(([tr, name, note]) => `<figure>${skin(variantA('v5', s, 2, tr), 'v5')}<figcaption><div class="row"><b>${name}</b><button class="replay" type="button">↻ מההתחלה</button></div><span>${note}</span></figcaption></figure>`).join('');
+  root.innerHTML = `<section id="transitions"><h2><span class="n">↔</span> מעברים בין צ'אטים <small>סרטון 5 בגרסה א2, בשש דרכים לעבור מהקבוצה לפרטי ובחזרה</small></h2><div class="grid">${trFigs}</div></section>` + SECTIONS.map(sec => {
+    const sc = SCRIPTS[sec.id](s);
+    const figs = A_VARIANTS.map(([n, name, note]) => {
+      const html = skin(variantA(sec.id, s, n), sec.id);
+      return `<figure>${html}<figcaption><div class="row"><b>${name}</b><button class="replay" type="button">↻ מההתחלה</button></div><span>${note}</span></figcaption></figure>`;
+    }).join('');
+    return `<section><h2><span class="n">${sec.n}</span> ${sec.title} <small>${sec.sub}</small><span class="slotTag">${SLOT_NAME[SLOT[sec.id]]}</span></h2><div class="grid">${figs}</div></section>`;
+  }).join('');
+  root.querySelectorAll('figure').forEach(f => {
+    const st = f.querySelector('.stage');
+    st.addEventListener('click', () => run(st));
+    f.querySelector('.replay').addEventListener('click', () => run(st));
+    if (io) io.observe(st); else { visible.add(st); run(st); }
+  });
+}
+
+document.querySelectorAll('[data-brand]').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('[data-brand]').forEach(x => x.setAttribute('aria-pressed', x === b));
+  document.documentElement.classList.toggle('nb', b.dataset.brand === 'new');
+  try { localStorage.setItem('olma-intro-brand', b.dataset.brand); } catch (e) {}
+  document.querySelectorAll('#sections .stage').forEach(st => { if (visible.has(st)) run(st); });
+}));
+let brand = 'new';
+try { brand = localStorage.getItem('olma-intro-brand') || 'new'; } catch (e) {}
+document.documentElement.classList.toggle('nb', brand !== 'old');
+document.querySelectorAll('[data-brand]').forEach(x => x.setAttribute('aria-pressed', (x.dataset.brand === 'old') === (brand === 'old')));
+
+document.querySelectorAll('[data-lang]').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('[data-lang]').forEach(x => x.setAttribute('aria-pressed', x === b));
+  try { localStorage.setItem('olma-intro-lang', b.dataset.lang); } catch (e) {}
+  render(b.dataset.lang);
+}));
+let start = 'he';
+try { start = localStorage.getItem('olma-intro-lang') || 'he'; } catch (e) {}
+if (!L[start]) start = 'he';
+document.querySelectorAll('[data-lang]').forEach(x => x.setAttribute('aria-pressed', x.dataset.lang === start));
+render(start);
+</script>

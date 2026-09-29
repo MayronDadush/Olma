@@ -1,0 +1,117 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>סרטון ההיכרות</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Hebrew:wght@500;700&family=IBM+Plex+Sans:wght@500;700&family=Noto+Sans+Hebrew:wght@400;600&family=Noto+Sans:wght@400;600&display=swap">
+<!-- The intro video, in the Cypress + Mustard brand (28.9). Same story, same words
+     as the live clip (olma2/assets/intro/v2-*.mp4): an opener, one real-looking
+     WhatsApp exchange, a closer. Only the look changes. ?lang=he|en.
+     The chat is WhatsApp's own interface, so it keeps WhatsApp's colours and a
+     plain system face, and carries no grain; ours is the avatar and the frames around it. -->
+<style>
+  html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #004643 }
+  .v { position: relative; width: 100vw; height: 100vh; overflow: hidden }
+  .card { position: absolute; inset: 0; z-index: 1; display: grid; align-content: center; gap: 5vmin; padding: 0 10vmin;
+    background: #004643; color: #F0EDE5; font-family: "IBM Plex Sans Hebrew", "IBM Plex Sans", sans-serif }
+  .h { font-weight: 700; font-size: 10.5vmin; line-height: 1.08; letter-spacing: -.02em; margin: 0 }
+  .h span { display: block }
+  .y { color: #F9C23C }
+  .by { display: flex; align-items: center; gap: 2.4vmin; font-weight: 500; font-size: 3.6vmin; color: #D9DDD6 }
+  .by .m { width: 6.4vmin; height: 6.4vmin; flex: none }
+  #closer { align-content: center }
+  #closer .big { width: 18vmin; height: 18vmin }
+  #closer .h { font-size: 8.6vmin }
+  #closer .h span { white-space: nowrap }
+  :root[lang=en] #closer .h { font-size: 7.4vmin }
+  .grain { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0 }
+  /* the grain lies UNDER the letters: on them it reads as dirt (owner, 29.9) */
+  .card > :not(.grain) { position: relative; z-index: 1 }
+  /* WhatsApp, as it looks on a phone */
+  #chat { position: absolute; inset: 0; z-index: 0; background: #EFEAE2; font-family: "Noto Sans Hebrew", "Noto Sans", Roboto, Arial, sans-serif; color: #111B21 }
+  .top { position: absolute; inset: 0 0 auto 0; height: 13vmin; background: #F0F2F5; display: flex; align-items: center; gap: 2.6vmin; padding: 0 3.4vmin; z-index: 2; border-bottom: 1px solid #E2E4E7 }
+  .top .av { width: 8.6vmin; height: 8.6vmin; flex: none }
+  .top b { display: block; font-weight: 600; font-size: 4vmin; line-height: 1.2 }
+  .top small { font-size: 2.9vmin; color: #667781 }
+  .body { position: absolute; inset: 13vmin 0 0 0; overflow: hidden }
+  .msgs { display: grid; gap: 2.6vmin; padding: 3.4vmin 4vmin }
+  .b { max-width: 70%; border-radius: 2.2vmin; padding: 2.2vmin 2.8vmin 1.4vmin; font-size: 3.7vmin; line-height: 1.45;
+    box-shadow: 0 .2vmin .3vmin rgba(11,20,26,.13); transform-origin: bottom; }
+  .out { justify-self: end; background: #D9FDD3 }
+  .in { justify-self: start; background: #FFFFFF }
+  .t { display: flex; justify-content: flex-end; gap: 1vmin; font-size: 2.5vmin; color: #667781; margin-top: .6vmin; direction: ltr }
+  .ticks { color: #53BDEB }
+  .typing { justify-self: start; background: #fff; border-radius: 2.2vmin; padding: 2.4vmin 3vmin; display: flex; gap: 1.1vmin }
+  .typing i { width: 1.4vmin; height: 1.4vmin; border-radius: 50%; background: #8696A0 }
+  .list b { font-weight: 600 }
+  .list div { white-space: nowrap }
+</style>
+<div class="v">
+  <div id="chat">
+    <div class="top"><div class="av" id="av"></div><div><b id="name"></b><small id="status"></small></div></div>
+    <div class="body"><div class="msgs" id="msgs">
+      <div class="b out" id="m1"><span id="m1t"></span><div class="t"><span>09:41</span><span class="ticks">✓✓</span></div></div>
+      <div class="typing" id="typing"><i></i><i></i><i></i></div>
+      <div class="b in list" id="m2"><div id="m2t"></div><div class="t"><span>09:41</span></div></div>
+    </div></div>
+  </div>
+  <div class="card" id="opener"><h1 class="h" id="oh"></h1><div class="by"><span class="m" id="om"></span><span id="ob"></span></div>
+    <svg class="grain" aria-hidden="true"><filter id="g1" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency=".8" numOctaves="3" stitchTiles="stitch" seed="7"/><feColorMatrix values="0 0 0 0 .94  0 0 0 0 .93  0 0 0 0 .9  .5 0 0 0 -.26"/></filter><rect width="100%" height="100%" filter="url(#g1)"/></svg></div>
+  <div class="card" id="closer"><div class="big" id="cm"></div><h1 class="h" id="ch"></h1><div class="by" id="cb"></div>
+    <svg class="grain" aria-hidden="true"><rect width="100%" height="100%" filter="url(#g1)"/></svg></div>
+</div>
+<script src="../motion.js"></script>
+<script>
+  const LANG = new URLSearchParams(location.search).get('lang') === 'en' ? 'en' : 'he';
+  const T = {
+    he: { dir: 'rtl', name: 'עולמה', status: 'מחוברת', by: 'עולמה · בוואטסאפ שלך',
+      open: ['הראש מלא', 'בדברים?'],
+      close: ['כותבים לי הכל.', '<span class="y">אני עושה סדר,</span>', '<span class="y">ומזכירה בזמן.</span>'],
+      m1: 'צריך לחדש דרכון, יום הולדת לאמא ביום שלישי, להתקשר לאינסטלטור, מתנה לנועה, ולשלם ארנונה עד סוף החודש',
+      m2: '<div>סידרתי:</div><div><b>🏠 בית</b></div><div>• להתקשר לאינסטלטור</div><div>• לשלם ארנונה · עד סוף החודש</div><div><b>👪 משפחה</b></div><div>• יום הולדת לאמא · שלישי</div><div>• מתנה לנועה</div><div><b>📋 סידורים</b></div><div>• לחדש דרכון</div>' },
+    en: { dir: 'ltr', name: 'Allma', status: 'online', by: 'Allma · in your WhatsApp',
+      open: ['Head full', 'of stuff?'],
+      close: ['Write me everything.', '<span class="y">I\'ll sort it, and</span>', '<span class="y">remind you on time.</span>'],
+      m1: 'Need to renew my passport, mom\'s birthday Tuesday, call the plumber, gift for Noa, and pay the water bill by the end of the month',
+      m2: '<div>Sorted:</div><div><b>🏠 Home</b></div><div>• Call the plumber</div><div>• Pay the water bill · by month end</div><div><b>👪 Family</b></div><div>• Mom\'s birthday · Tue</div><div>• Gift for Noa</div><div><b>📋 Errands</b></div><div>• Renew passport</div>' },
+  }[LANG];
+  document.documentElement.dir = T.dir; document.documentElement.lang = LANG;
+  const $ = (id) => document.getElementById(id);
+  $('name').textContent = T.name; $('status').textContent = T.status;
+  $('m1t').textContent = T.m1; $('m2t').innerHTML = T.m2;
+  $('oh').innerHTML = T.open.map((l) => `<span>${l}</span>`).join('');
+  $('ch').innerHTML = T.close.map((l) => `<span>${l}</span>`).join('');
+  $('ob').textContent = T.by; $('cb').textContent = T.by;
+
+  const { frame, EASE } = AllmaMotion;
+  const ON_CYPRESS = { d: '#0E1F1E', l: '#F0EDE5', a: '#F9C23C', ring: '#F0EDE5' };  // the mark on the brand band
+  const AVATAR = { d: '#004643', l: '#F0EDE5', a: '#F9C23C' };                       // the WhatsApp profile picture
+  $('av').innerHTML = frame('meet', 1e9, AVATAR, 'av');
+  $('om').innerHTML = frame('meet', 1e9, ON_CYPRESS, 'om');
+  const k = (ms, a, b) => EASE(Math.max(0, Math.min(1, (ms - a) / (b - a))));
+  const rise = (el, t, d = 3) => { el.style.opacity = t; el.style.transform = `translateY(${(1 - t) * d}vmin)`; };
+  const pop = (el, t) => { el.style.opacity = t; el.style.transform = `scale(${0.96 + 0.04 * t})`; el.style.display = t > 0 ? '' : 'none'; };
+
+  // The timeline, in ms. Same beats as the live clip, plus the brand's ending.
+  const OPEN_OUT = 2700, CHAT_IN = 3100, M1 = 3300, TYPE = 4100, M2 = 5700, SCROLL = 6300, CHAT_OUT = 10200,
+        MARK = 10700, LINES = 11700, END = 14600;
+  window.__ms = END;
+  window.__seek = (ms) => {
+    // opener: the question rises in, then the byline; it slides away to the chat
+    const ol = $('oh').children;
+    rise(ol[0], k(ms, 150, 650)); rise(ol[1], k(ms, 350, 850)); rise($('ob').parentNode, k(ms, 900, 1400));
+    $('opener').style.transform = `translateY(${-100 * k(ms, OPEN_OUT, CHAT_IN)}%)`;
+    // chat: their message, Olma typing, her answer, then the answer scrolls into view
+    pop($('m1'), k(ms, M1, M1 + 300));
+    $('typing').style.display = ms >= TYPE && ms < M2 ? '' : 'none';
+    [...$('typing').children].forEach((d, i) => { d.style.opacity = 0.45 + 0.55 * (Math.floor(ms / 200 - i) % 3 === 0); });
+    pop($('m2'), k(ms, M2, M2 + 300));
+    const body = $('msgs').parentNode, over = Math.max(0, $('msgs').scrollHeight - body.clientHeight);
+    $('msgs').style.transform = `translateY(${-over * k(ms, SCROLL, SCROLL + 700)}px)`;
+    // closer: it comes up over the chat, the circles meet, the promise rises in
+    $('closer').style.transform = `translateY(${100 * (1 - k(ms, CHAT_OUT, CHAT_OUT + 450))}%)`;
+    $('cm').innerHTML = frame('meet', Math.max(0, ms - MARK), ON_CYPRESS, 'cm');
+    const cl = $('ch').children;
+    rise(cl[0], k(ms, LINES, LINES + 450)); rise(cl[1], k(ms, LINES + 250, LINES + 700)); rise(cl[2], k(ms, LINES + 400, LINES + 850));
+    rise($('cb'), k(ms, LINES + 900, LINES + 1400));
+  };
+  __seek(0);
+</script>

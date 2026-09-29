@@ -1,0 +1,22 @@
+Core       Ink              #221C3A  rgb(34,28,58)  דיו · All text on light grounds
+Core       Paper            #F7F1E6  rgb(247,241,230)  נייר · Neutral ground, outside the clock
+Core       Moonlight        #EDEAFB  rgb(237,234,251)  אור ירח · Text on night and Shabbat
+Core       Lilac            #B9AEFF  rgb(185,174,255)  לילך · Secondary text on dark, 8.4:1
+Morning    Morning ground   #FFE6CF  rgb(255,230,207)  בוקר · רקע · 07:00-11:00 · bottom of the sky
+Morning    Morning sky      #FFF4E8  rgb(255,244,232)  בוקר · שמיים · top of the sky
+Morning    Morning light    #FFD0A8  rgb(255,208,168)  בוקר · אור · soft light, 80% at the centre
+Day        Day ground       #E4ECF7  rgb(228,236,247)  יום · רקע · 11:00-17:00 · bottom of the sky
+Day        Day sky          #F5F8FC  rgb(245,248,252)  יום · שמיים · top of the sky
+Day        Day light        #CFDDF2  rgb(207,221,242)  יום · אור · soft light, 80% at the centre
+Evening    Evening ground   #EFD3E0  rgb(239,211,224)  ערב · רקע · 17:00-21:00 · bottom of the sky
+Evening    Evening sky      #F8EAF0  rgb(248,234,240)  ערב · שמיים · top of the sky
+Evening    Evening light    #E3B9D8  rgb(227,185,216)  ערב · אור · soft light, 80% at the centre
+Night      Night ground     #1C1A38  rgb(28,26,56)  לילה · רקע · 21:00-07:00 · bottom of the sky
+Night      Night sky        #2A2752  rgb(42,39,82)  לילה · שמיים · top of the sky
+Night      Night light      #3A3470  rgb(58,52,112)  לילה · אור · soft light, 33% at the centre
+Shabbat    Shabbat ground   #2B1F3F  rgb(43,31,63)  שבת · רקע · candles to havdalah · bottom of the sky
+Shabbat    Shabbat sky      #3A2A4E  rgb(58,42,78)  שבת · שמיים · top of the sky
+Shabbat    Shabbat light    #F2C46D  rgb(242,196,109)  שבת · אור · soft light, 33% at the centre
+Overprint  Coral            #FF8A6B  rgb(255,138,107)  אלמוג · Overprint ink A, large shapes only
+Overprint  Violet           #7C6CF2  rgb(124,108,242)  סגול · Overprint ink B, large shapes only
+Overprint  Meeting          #7C3A66  rgb(124,58,102)  מפגש · Where Coral and Violet overlap, for flat use

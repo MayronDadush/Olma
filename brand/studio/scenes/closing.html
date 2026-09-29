@@ -1,0 +1,38 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>סגור · סיום של סרטון</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Hebrew:wght@500;700&family=IBM+Plex+Sans:wght@500;700&display=swap">
+<!-- The ending every Allma video shares: half a second of quiet, the circles meet,
+     the lens appears where they touch, and "סגור." rises in. Motion option "meet" (the owner's pick, 28.9), on sand, with grain. -->
+<style>
+  html, body { margin: 0; width: 100%; height: 100%; background: #F0EDE5; overflow: hidden }
+  .f { position: relative; width: 100vw; height: 100vh; display: grid; place-items: center; font-family: "IBM Plex Sans Hebrew", "IBM Plex Sans", sans-serif; color: #004643 }
+  .stack { display: grid; justify-items: center; gap: 5vh; transform: translateY(-2vh) }
+  #mark { width: 38vmin; height: 38vmin }
+  #word { font-weight: 700; font-size: 15vmin; line-height: 1; letter-spacing: -.02em; direction: rtl }
+  #sub { position: absolute; bottom: 7vh; font-weight: 500; font-size: 3.2vmin; color: #44504E; letter-spacing: .02em; direction: ltr }
+  svg.grain { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0 }
+  /* the grain lies UNDER the letters: on them it reads as dirt (owner, 29.9) */
+  .stack { position: relative; z-index: 1 }
+  #sub { z-index: 1 }
+</style>
+<div class="f">
+  <div class="stack"><div id="mark"></div><div id="word">סגור.</div></div>
+  <div id="sub">allma.world</div>
+  <svg class="grain" aria-hidden="true"><filter id="g" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency=".8" numOctaves="3" stitchTiles="stitch" seed="7"/><feColorMatrix values="0 0 0 0 .05  0 0 0 0 .12  0 0 0 0 .12  .5 0 0 0 -.2"/></filter><rect width="100%" height="100%" filter="url(#g)"/></svg>
+</div>
+<script src="../motion.js"></script>
+<script>
+  const C = { d: '#004643', l: '#F0EDE5', a: '#F9C23C', ring: '#004643' };
+  const QUIET = 500, WORD = QUIET + 1250; // the brand's half second of silence, then the mark, then the word
+  const { EASE } = AllmaMotion;
+  const k = (ms, a, b) => EASE(Math.max(0, Math.min(1, (ms - a) / (b - a))));
+  window.__ms = 3000;
+  window.__seek = (ms) => {
+    document.getElementById('mark').innerHTML = AllmaMotion.frame('meet', Math.max(0, ms - QUIET), C, 'cl');
+    const w = document.getElementById('word'), s = document.getElementById('sub'), t = k(ms, WORD, WORD + 450);
+    w.style.opacity = t; w.style.transform = `translateY(${(1 - t) * 3}vh)`;
+    s.style.opacity = k(ms, WORD + 300, WORD + 800);
+  };
+  __seek(0);
+</script>

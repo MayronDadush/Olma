@@ -1,0 +1,408 @@
+<title>עולמה בשימוש</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Hebrew:wght@400;500;700&family=IBM+Plex+Sans:wght@400;700&display=swap">
+<style>
+:root{
+  --bg:#F3F0EA; --surface:#FFFFFF; --fg:#1E1B2A; --mute:#666176; --line:#E0DBD1; --accent:#E8563A;
+  --noise:none;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){ --bg:#131120; --surface:#1C1A2A; --fg:#F0EDF5; --mute:#A29DB2; --line:#2E2A42; --accent:#FF8A6B; color-scheme:dark; }
+}
+:root[data-theme="dark"]{ --bg:#131120; --surface:#1C1A2A; --fg:#F0EDF5; --mute:#A29DB2; --line:#2E2A42; --accent:#FF8A6B; color-scheme:dark; }
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font:400 16px/1.6 "IBM Plex Sans Hebrew","IBM Plex Sans",Arial,sans-serif;padding-inline:16px;padding-block:24px 72px}
+main{max-width:1120px;margin:0 auto;display:flex;flex-direction:column;gap:56px}
+h1,h2,h3{margin:0;font-weight:700;text-wrap:balance;letter-spacing:-.01em}
+h1{font-size:clamp(32px,6vw,58px);line-height:1.05}
+h2{font-size:25px}
+h3{font-size:17px}
+p{margin:0;max-width:66ch}
+.lead{color:var(--mute);font-size:17px;margin-top:10px}
+.kicker{font:700 12px "IBM Plex Sans Hebrew",sans-serif;letter-spacing:.12em;color:var(--mute);margin-bottom:8px}
+
+/* controls */
+.controls{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(8px);padding-block:10px;display:flex;gap:10px 22px;flex-wrap:wrap;align-items:center;border-bottom:1px solid var(--line)}
+.seg{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.seg>span{font-size:13px;color:var(--mute);font-weight:500}
+.seg div{display:flex;background:var(--surface);border:1px solid var(--line);border-radius:99px;padding:3px}
+.seg button{all:unset;cursor:pointer;font:500 14px "IBM Plex Sans Hebrew";padding:5px 13px;border-radius:99px;color:var(--mute)}
+.seg button[aria-pressed="true"]{background:var(--fg);color:var(--bg)}
+.seg button:focus-visible{outline:3px solid var(--accent);outline-offset:1px}
+
+/* texture answer */
+.answer{display:grid;grid-template-columns:1.1fr 1fr;gap:24px;align-items:start}
+.answer ul{margin:12px 0 0;padding-inline-start:20px;display:flex;flex-direction:column;gap:8px;max-width:62ch}
+.answer li b{font-weight:700}
+.zooms{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.zooms figure{margin:0}
+.zoom{position:relative;aspect-ratio:1;overflow:hidden;border-radius:10px;isolation:isolate}
+.zoom svg{position:absolute;width:300%;height:auto;left:-110%;top:-250%}
+.zooms figcaption{font-size:13.5px;margin-top:6px;color:var(--mute)}
+.zooms figcaption b{color:var(--fg)}
+@media (max-width:820px){.answer{grid-template-columns:1fr}}
+
+/* grain: only on artwork we make, never on UI we don't own */
+.scene{position:relative;overflow:hidden;isolation:isolate}
+.scene svg{display:block;width:100%;height:auto}
+:root.tex-paper .scene.gr::after, :root.tex-ink .scene.gr::after, .zoom.gr::after{
+  content:"";position:absolute;inset:0;pointer-events:none;z-index:3;
+  background-image:var(--noise);background-size:160px;mix-blend-mode:soft-light;opacity:.5}
+
+/* situations */
+.group{display:flex;flex-direction:column;gap:14px}
+.row{display:grid;gap:16px;align-items:start}
+.r2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.r3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.r4{grid-template-columns:repeat(4,minmax(0,1fr))}
+.r-web{grid-template-columns:1fr}
+@media (max-width:820px){.r3,.r4{grid-template-columns:repeat(2,minmax(0,1fr))} .r2.stack{grid-template-columns:1fr}}
+figure.sc{margin:0;display:flex;flex-direction:column;gap:8px;min-width:0}
+figure.sc .scene{border-radius:8px;box-shadow:0 8px 24px rgba(20,14,40,.14)}
+figure.sc figcaption{font-size:14.5px;color:var(--mute)}
+figure.sc figcaption b{color:var(--fg);font-weight:700}
+.tri{display:grid;grid-template-columns:repeat(3,1fr);gap:4px}
+
+/* phone + chat (WhatsApp's own UI: no grain, their colours) */
+.phone{background:#0B0B0F;border-radius:34px;padding:10px;max-width:340px;width:100%;margin-inline:auto}
+.wa{border-radius:26px;overflow:hidden;background:#EFEAE2;font-family:"IBM Plex Sans Hebrew",Arial,sans-serif;display:flex;flex-direction:column}
+.wa-top{background:#F7F7F7;display:flex;align-items:center;gap:10px;padding:12px 12px 10px;border-bottom:1px solid #E4E4E4;color:#111}
+.wa-top .av{width:38px;height:38px;border-radius:50%;overflow:hidden;flex:none}
+.wa-top b{display:block;font-size:15px;line-height:1.2}
+.wa-top span{font-size:12px;color:#667}
+.wa-body{padding:12px 10px 16px;display:flex;flex-direction:column;gap:6px}
+.b{max-width:84%;padding:6px 9px 5px;border-radius:9px;font-size:13.5px;line-height:1.45;color:#111;box-shadow:0 1px .5px rgba(0,0,0,.12)}
+.b small{display:block;text-align:left;font-size:10.5px;color:#667;margin-top:2px}
+.b.in{background:#fff;align-self:flex-end}
+.b.out{background:#D9FDD3;align-self:flex-start}
+.b.img{padding:3px}
+.b.img .scene{border-radius:7px}
+.b.img p{padding:5px 6px 0}
+
+/* browser + site */
+.browser{border-radius:12px;overflow:hidden;border:1px solid var(--line);background:var(--surface)}
+.bar{display:flex;align-items:center;gap:8px;padding:9px 12px;border-bottom:1px solid var(--line);font-size:12.5px;color:var(--mute)}
+.bar i{width:10px;height:10px;border-radius:50%;background:var(--line);display:inline-block}
+.bar span{margin-inline:auto;background:var(--bg);padding:3px 14px;border-radius:99px;direction:ltr}
+.site{display:grid;grid-template-columns:1.05fr .95fr;min-height:380px}
+.site .txt{padding:22px 28px;display:flex;flex-direction:column;gap:14px}
+.site nav{display:flex;align-items:center;gap:10px;font-weight:700;font-size:17px}
+.site nav .m{width:30px;height:30px;border-radius:50%;overflow:hidden}
+.site nav a{margin-inline-start:auto;font-weight:500;font-size:14px;opacity:.75}
+.site h4{margin:auto 0 0;font:700 clamp(30px,4.4vw,52px)/1.05 "IBM Plex Sans Hebrew";letter-spacing:-.02em}
+.site .sub{font-size:16px;opacity:.8;max-width:34ch}
+.site .cta{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:auto}
+.site .cta span{font-weight:700;font-size:15px;padding:11px 20px;border-radius:99px}
+.site .cta em{font-style:normal;font-size:14px;text-decoration:underline;text-underline-offset:3px;opacity:.8}
+.site .art{min-height:100%}
+.site .art svg{height:100%;width:100%;object-fit:cover}
+@media (max-width:700px){.site{grid-template-columns:1fr}.site .art{height:300px}}
+
+.icons{display:flex;gap:18px;align-items:flex-end;flex-wrap:wrap;padding:18px;border-radius:8px}
+.icons div{flex:none;overflow:hidden}
+.icons span{display:block;font-size:12px;text-align:center;margin-top:6px}
+
+.next ol{margin:12px 0 0;padding-inline-start:22px;display:flex;flex-direction:column;gap:10px;max-width:70ch}
+.ask{background:var(--surface);border:1px solid var(--line);border-inline-start:4px solid var(--accent);border-radius:10px;padding:14px 16px;margin-top:14px;max-width:70ch}
+</style>
+
+<main dir="rtl">
+<header>
+  <div class="kicker">מותג · בשימוש</div>
+  <h1>IBM Plex, חצי־חצי,<br>ושלוש שעות ביום.</h1>
+  <p class="lead">כאן רואים את הבחירות שלך בחיים עצמם: וואטסאפ, אינסטגרם, סרטון, אתר, כרטיס הבוקר, שבת ומוצרים. בפס למעלה אפשר להחליף שעה ביום ולבדוק טקסטורה. כל המצבים משתנים ביחד.</p>
+</header>
+
+<div class="controls" role="group" aria-label="מצבים">
+  <div class="seg"><span>שעה</span><div id="c-hour"><button data-h="day">יום</button><button data-h="night">לילה</button><button data-h="shabbat">שבת</button></div></div>
+  <div class="seg"><span>טקסטורה</span><div id="c-tex"><button data-t="none">בלי</button><button data-t="paper">נייר</button><button data-t="ink">נייר + דיו שחוק</button></div></div>
+</div>
+
+<section class="answer">
+  <div>
+    <div class="kicker">השאלה שלך</div>
+    <h2>טקסטורה? כן, על הרקעים. על הכיתוב רק כשהוא ענק.</h2>
+    <ul>
+      <li><b>על הרקעים: כן, גרעין נייר עדין.</b> צבע שטוח במחשב נראה כמו תבנית. גרעין עדין נותן לו את התחושה המודפסת של הפוסטרים ששלחת. הוא גם מחמם את Plex, שהוא פונט מדויק וקצת קר, ומונע פסים במעברי צבע כשוואטסאפ ואינסטגרם דוחסים את התמונה.</li>
+      <li><b>על הכיתוב: רק באותיות ענקיות.</b> בפוסטר, בסדרה ובשער של סרטון, "דיו שחוק" עושה את האותיות מודפסות. בטקסט רגיל הוא רק מלכלך ופוגע בקריאה.</li>
+      <li><b>אף פעם לא:</b> על הסימן בגודל קטן, בתמונת הפרופיל, בפביקון, בטקסט של האתר, ובתוך וואטסאפ עצמו, כי זה הממשק שלהם ולא שלנו.</li>
+      <li><b>בסרטון: גרעין קבוע, לא זז.</b> גרעין שמרצד נראה כמו רעש ומנפח את הקובץ.</li>
+      <li><b>כמה:</b> כזה שמרגישים ולא רואים. אם שמים לב אליו במבט ראשון, יש יותר מדי.</li>
+    </ul>
+  </div>
+  <div>
+    <div class="zooms" id="zooms"></div>
+    <p class="lead" style="font-size:14px">מוגדל פי 3 מהפוסטר, כדי לראות את ההבדל. בגודל אמיתי ההבדל הרבה יותר עדין.</p>
+  </div>
+</section>
+
+<section class="group">
+  <div><div class="kicker">1</div><h2>בוואטסאפ, איפה שעולמה חיה</h2><p class="lead" style="margin-top:4px">הממשק הוא של וואטסאפ, כולל הבועות הירוקות שלהם. מה ששלנו: תמונת הפרופיל, וכרטיס הבוקר שעולמה שולחת.</p></div>
+  <div class="row r2 stack">
+    <div id="s-wa"></div>
+    <figure class="sc"><div class="scene gr" id="s-card"></div><figcaption><b>כרטיס הבוקר.</b> מה שיש לך היום, בשורה לכל דבר. מה שכבר נסגר מקבל את המפגש באלמוג. ככה הסימן חוזר בתוך המוצר עצמו, בלי לכתוב אותו.</figcaption></figure>
+  </div>
+</section>
+
+<section class="group">
+  <div><div class="kicker">2</div><h2>באינסטגרם</h2></div>
+  <div class="row r3">
+    <figure class="sc"><div class="scene gr" id="s-post"></div><figcaption><b>פוסט.</b> החפיפה, שבה המפגש הוא הרקע.</figcaption></figure>
+    <figure class="sc"><div class="scene gr" id="s-story"></div><figcaption><b>סטורי.</b> מילה אחת ענקית, והפרט הקטן מתחתיה.</figcaption></figure>
+    <figure class="sc"><div class="scene gr" id="s-night"></div><figcaption><b>סטורי לילה.</b> כך נראית עולמה אחרי תשע בערב, תמיד בצבעי הלילה.</figcaption></figure>
+  </div>
+  <figure class="sc"><div class="tri" id="s-tri"></div><figcaption><b>קרוסלה.</b> ע · ול · מה, שלוש החלקות שבונות את השם.</figcaption></figure>
+</section>
+
+<section class="group">
+  <div><div class="kicker">3</div><h2>בסרטון</h2><p class="lead" style="margin-top:4px">שלושה פריימים מסרטון של 20 שניות: פתיח, אמצע וסוף. בפתיח הסימן זז באמת.</p></div>
+  <div class="row r3" id="s-video"></div>
+</section>
+
+<section class="group">
+  <div><div class="kicker">4</div><h2>באתר ובקישור</h2></div>
+  <figure class="sc"><div class="browser"><div class="bar"><i></i><i></i><i></i><span>allma.world</span></div><div class="site" id="s-site"></div></div><figcaption><b>allma.world.</b> הטקסט נקי, והגרעין רק על החלק הגרפי. הכפתור באלמוג ולא בירוק, כדי שלא יתבלבל עם וואטסאפ.</figcaption></figure>
+  <figure class="sc" style="max-width:640px"><div class="scene gr" id="s-og"></div><figcaption><b>תצוגה מקדימה של קישור.</b> מה שרואים כשמישהו שולח את allma.world בצ'אט.</figcaption></figure>
+</section>
+
+<section class="group">
+  <div><div class="kicker">5</div><h2>בשבת</h2><p class="lead" style="margin-top:4px">הסיטואציה הכי שלנו. הפוסט הזה נשאר תמיד בצבעי השבת, בלי קשר למתג השעה.</p></div>
+  <div class="row r3">
+    <figure class="sc"><div class="scene gr" id="s-shabbat"></div><figcaption><b>סטורי ערב שבת.</b> האלמוג מתחלף בנר.</figcaption></figure>
+    <figure class="sc"><div class="scene gr" id="s-motzash"></div><figcaption><b>מוצאי שבת.</b> מה שחיכה, מחכה לך עכשיו.</figcaption></figure>
+    <figure class="sc"><div class="scene" id="s-icons"></div><figcaption><b>אייקונים.</b> תמונת פרופיל, אפליקציה ופביקון, בלי טקסטורה אף פעם.</figcaption></figure>
+  </div>
+</section>
+
+<section class="group">
+  <div><div class="kicker">6</div><h2>בעולם</h2></div>
+  <div class="row r2 stack">
+    <figure class="sc"><div class="scene gr" id="s-merch"></div><figcaption><b>תיק בד ומדבקות.</b> הסימן לבד, והמילה "סגור." כמדבקה.</figcaption></figure>
+    <figure class="sc"><div class="scene gr" id="s-card2"></div><figcaption><b>כרטיס ביקור.</b> צד אחד חצי־חצי. בצד השני כתוב רק מה שצריך.</figcaption></figure>
+  </div>
+</section>
+
+<section class="next">
+  <div class="kicker">איך ממשיכים</div>
+  <h2>שלושה צעדים עד שהמותג בחוץ</h2>
+  <ol>
+    <li><b>אתה סוגר את הטקסטורה.</b> ההמלצה שלי: "נייר" כברירת מחדל, ו"דיו שחוק" רק בפוסטרים ובשערים.</li>
+    <li><b>אני בונה את ספר המותג הסופי ואת ערכת הקבצים.</b> הערכה תכלול:
+      <ul>
+        <li>הסימן ב־SVG וב־PNG בשלוש השעות, בגרסה רגילה ובעיגול.</li>
+        <li>הסימן בתנועה.</li>
+        <li>קישור לפונטים וקובץ צבעים.</li>
+        <li>קובץ גרעין.</li>
+        <li>תבניות לפוסט, סטורי, קרוסלה ושלושת הפריימים של סרטון.</li>
+      </ul>
+    </li>
+    <li><b>מכניסים את המותג למוצר:</b>
+      <ul>
+        <li>תמונת הפרופיל בוואטסאפ.</li>
+        <li>כרטיס הבוקר, שהיום עוד מצויר בפלטה הישנה.</li>
+        <li>דפי allma.world.</li>
+      </ul>
+      כל אחד מהם ייכנס בנפרד, ותראה אותו לפני שהוא עולה.
+    </li>
+  </ol>
+  <div class="ask"><b>שאלה אחת שעוצרת אותי:</b> באיזה כלי עורכים אצלכם סרטונים ופוסטים (Canva, CapCut, Figma, Premiere או משהו אחר)? התבניות צריכות להיבנות לכלי שבו באמת עובדים.</div>
+</section>
+</main>
+
+<script>
+let uid=0;const U=()=>'u'+(++uid);
+const PALS={
+  day:{name:'יום',dark:'#221C3A',light:'#F7F1E6',accent:'#FF8A6B',field:'#F2553A',l1:'#F7F1E6',l2:'#221C3A',ft:'#221C3A',bg:'#F7F1E6',fg:'#221C3A',sub:'#5B5570'},
+  night:{name:'לילה',dark:'#16122E',light:'#EDEAFB',accent:'#FF8A6B',field:'#7C6CF2',l1:'#EDEAFB',l2:'#16122E',ft:'#EDEAFB',bg:'#16122E',fg:'#EDEAFB',sub:'#A9A3C9'},
+  shabbat:{name:'שבת',dark:'#1D1530',light:'#F3E9D8',accent:'#F2C46D',field:'#1D1530',l1:'#F2C46D',l2:'#F3E9D8',ft:'#F3E9D8',bg:'#1D1530',fg:'#F3E9D8',sub:'#B9AE9C'}
+};
+const HE='IBM Plex Sans Hebrew', EN='IBM Plex Sans';
+const S={hour:'day',tex:'paper'};
+try{Object.assign(S,JSON.parse(localStorage.getItem('olma-inuse')||'{}'))}catch(e){}
+
+// paper grain as a tiling image, used by the CSS overlay
+const noiseSVG=`<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/><feColorMatrix type='matrix' values='1.9 0 0 0 -.45  1.9 0 0 0 -.45  1.9 0 0 0 -.45  0 0 0 0 1'/></filter><rect width='160' height='160' filter='url(#n)'/></svg>`;
+document.documentElement.style.setProperty('--noise',`url("data:image/svg+xml,${encodeURIComponent(noiseSVG)}")`);
+
+// worn ink: tiny holes in large letters, only in "ink" mode
+function wear(mode=S.tex){
+  if(mode!=='ink')return {def:'',at:''};
+  const id=U();
+  return {def:`<filter id="${id}" x="-5%" y="-5%" width="110%" height="110%"><feTurbulence type="fractalNoise" baseFrequency="1.1" numOctaves="1" seed="7" result="n"/><feColorMatrix in="n" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  -18 0 0 0 13" result="m"/><feComposite in="SourceGraphic" in2="m" operator="in"/></filter>`,at:`filter="url(#${id})"`};
+}
+const TX=(x,y,size,w,col,txt,extra='',fam=HE)=>`<text x="${x}" y="${y}" font-family="${fam}" font-weight="${w}" font-size="${size}" fill="${col}" ${extra}>${txt}</text>`;
+const R=(x,y,size,w,col,txt,extra='')=>TX(x,y,size,w,col,txt,`direction="rtl" text-anchor="start" ${extra}`);   // right-aligned Hebrew
+const C=(x,y,size,w,col,txt,extra='')=>TX(x,y,size,w,col,txt,`direction="rtl" text-anchor="middle" ${extra}`);
+
+// ---- the mark ----
+function lens(a,b,fill){const id=U();return `<clipPath id="${id}"><circle cx="${a[0]}" cy="${a[1]}" r="${a[2]}"/></clipPath><circle cx="${b[0]}" cy="${b[1]}" r="${b[2]}" fill="${fill}" clip-path="url(#${id})"/>`;}
+const split=P=>`<rect width="60" height="120" fill="${P.dark}"/><rect x="60" width="60" height="120" fill="${P.light}"/><circle cx="42" cy="60" r="28" fill="${P.light}"/><circle cx="78" cy="60" r="28" fill="${P.dark}"/>`+lens([42,60,28],[78,60,28],P.accent);
+const round=P=>{const c=U();return `<clipPath id="${c}"><circle cx="60" cy="60" r="60"/></clipPath><g clip-path="url(#${c})"><rect width="60" height="120" fill="${P.dark}"/><rect x="60" width="60" height="120" fill="${P.light}"/><circle cx="44" cy="60" r="24" fill="${P.light}"/><circle cx="76" cy="60" r="24" fill="${P.dark}"/>${lens([44,60,24],[76,60,24],P.accent)}</g>`};
+const animated=P=>{const id=U(),an=(f,t)=>`<animate attributeName="cx" values="${f};${t};${t};${f}" keyTimes="0;.35;.85;1" dur="3.2s" repeatCount="indefinite" calcMode="spline" keySplines=".22 1 .36 1;0 0 1 1;.6 0 .8 .4"/>`;
+  return `<rect width="60" height="120" fill="${P.dark}"/><rect x="60" width="60" height="120" fill="${P.light}"/><circle cx="42" cy="60" r="28" fill="${P.light}">${an(30,42)}</circle><circle cx="78" cy="60" r="28" fill="${P.dark}">${an(90,78)}</circle><clipPath id="${id}"><circle cx="42" cy="60" r="28">${an(30,42)}</circle></clipPath><circle cx="78" cy="60" r="28" fill="${P.accent}" clip-path="url(#${id})">${an(90,78)}</circle>`};
+function place(P,x,y,s,kind='split',outline=false){const k=s/120,body=kind==='round'?round(P):kind==='anim'?animated(P):split(P);
+  return `<g transform="translate(${x} ${y}) scale(${k})">${body}${outline?`<rect x="0" y="0" width="120" height="120" fill="none" stroke="${P.light}" stroke-width="${Math.max(2,1.4/k)}"/>`:''}</g>`;}
+const svgBox=(w,h,inner,extra='')=>`<svg viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg" ${extra}>${inner}</svg>`;
+const onDark=P=>P.bg===P.dark;
+
+// ---- measuring, for the overlap poster ----
+const cv=document.createElement('canvas').getContext('2d');
+const measure=(t,size)=>{cv.font=`700 ${size}px "${EN}"`;return cv.measureText(t).width;};
+
+function posterOverlap(P,mode=S.tex,w=300,h=400,word='all'){
+  const size=h*.74, letters=[...word], wd=letters.map(t=>measure(t,size)), ov=size*.15, W=wear(mode);
+  let x=-size*.14; const L=letters.map((t,i)=>{const o={t,x,c:i%2?P.l2:P.l1};x+=wd[i]-ov;return o;});
+  const base=h*.915, shapes=L.map(l=>TX(l.x,base,size,700,'#000',l.t,'direction="ltr"',EN));
+  const defs=L.map((l,i)=>{l.m=U();return `<mask id="${l.m}"><rect width="${w}" height="${h}" fill="#fff"/>${shapes.filter((_,j)=>j!==i).join('')}</mask>`}).join('');
+  return svgBox(w,h,`<rect width="${w}" height="${h}" fill="${P.field}"/>${W.def}${defs}${L.map(l=>TX(l.x,base,size,700,l.c,l.t,`direction="ltr" mask="url(#${l.m})" ${W.at}`,EN)).join('')}
+    ${R(w-18,44,26,700,P.ft,'עולמה')}${R(w-18,66,11,500,P.ft,'שבת, 16:00. כל מי שצריך, באותו מקום.')}${R(w-18,82,11,500,P.ft,'בלי קבוצה חדשה. בלי 40 הודעות.')}${R(w-18,h-12,11,700,P.ft,'הכל סגור.')}`);
+}
+function splitPoster(txt,sp,size,y,P,body,dark='left',mode=S.tex){
+  const a=U(),b=U(),W=wear(mode);
+  const dR=dark==='left'?`<rect width="${sp}" height="400"/>`:`<rect x="${sp}" width="${300-sp}" height="400"/>`;
+  const lR=dark==='left'?`<rect x="${sp}" width="${300-sp}" height="400"/>`:`<rect width="${sp}" height="400"/>`;
+  const t=(c,cl)=>`<g clip-path="url(#${cl})">${TX(150,y,size,700,c,txt,`text-anchor="middle" direction="rtl" letter-spacing="-8" ${W.at}`)}</g>`;
+  return svgBox(300,400,`${W.def}<clipPath id="${a}">${dR}</clipPath><clipPath id="${b}">${lR}</clipPath><rect width="300" height="400" fill="${P.light}"/><g fill="${P.dark}">${dR}</g>${t(P.light,a)}${t(P.dark,b)}<rect x="${sp-2}" width="4" height="400" fill="${P.accent}"/>${body||''}`);
+}
+function tri(P){const tx=(x,y,c,lines,w=500)=>lines.map((l,i)=>R(x,y+i*14,11,w,c,l)).join('');
+  return [splitPoster('ע',96,300,318,P,tx(282,34,P.dark,['עולמה','העוזרת בוואטסאפ','שזוכרת ומתאמת','בשבילך.'])),
+          splitPoster('ול',196,270,300,P,tx(282,34,P.light,['כל אחד עונה לה','בפרטי. החדר שומע','רק את מה שנסגר.']),'right'),
+          splitPoster('מה',150,240,300,P,tx(282,382,P.dark,['הכל סגור.'],700))];}
+
+// ---- situations ----
+function card(P){ // morning card, 4:5
+  const bg=P.bg,fg=P.fg,sub=P.sub,rows=[['08:30','לשלוח לדנה את החוזה',0],['13:00','להתקשר לבנק',0],['17:30','איסוף מהחוג, נועם',0],['20:00','ארוחה אצל אמא',1]];
+  const dot=(y,closed)=>closed?`<g transform="translate(236 ${y-12}) scale(.12)">${split(P)}</g>`:`<circle cx="243" cy="${y-5}" r="5.5" fill="none" stroke="${fg}" stroke-width="1.6"/>`;
+  return svgBox(270,338,`<rect width="270" height="338" fill="${bg}"/>
+    ${R(252,34,11,500,sub,'יום ראשון · 27 בספטמבר')}${R(252,64,27,700,fg,'הבוקר שלך')}
+    <rect x="18" y="82" width="234" height="1" fill="${fg}" opacity=".15"/>
+    ${rows.map(([t,title,closed],i)=>{const y=118+i*46;return `${dot(y,closed)}${R(222,y,15,closed?700:500,fg,title)}${TX(18,y,13,500,sub,t,'direction="ltr"',EN)}${closed?`<rect x="150" y="${y+7}" width="72" height="16" rx="8" fill="${P.accent}"/>${C(186,y+19,10,700,P.dark,'סגור עם כולם')}`:''}<rect x="18" y="${y+28}" width="234" height="1" fill="${fg}" opacity=".08"/>`}).join('')}
+    ${place(P,18,298,22,'split',onDark(P))}${TX(46,314,12,700,fg,'עולמה','direction="rtl" text-anchor="end"')}
+    ${R(252,314,10,500,sub,'לענות לי כאן בכל שעה')}`);
+}
+function story(P,mode){ // 9:16
+  const W=wear(mode);
+  return svgBox(180,320,`<rect width="180" height="320" fill="${P.bg}"/>${W.def}
+    ${R(164,38,10,500,P.sub,'חמישי · 20:00 · אצל אמא')}${R(164,54,10,500,P.sub,'חמישה אנשים, אפס הודעות בקבוצה')}
+    ${TX(226,212,120,700,P.accent,'סגור.',`direction="rtl" text-anchor="start" letter-spacing="-4" ${W.at}`)}
+    ${place(P,16,276,26,'split',onDark(P))}${TX(48,294,13,700,P.fg,'עולמה','direction="rtl" text-anchor="end"')}`);
+}
+function nightStory(mode){const P=PALS.night,W=wear(mode);
+  return svgBox(180,320,`<rect width="180" height="320" fill="${P.bg}"/>${W.def}
+    ${R(164,38,10,500,P.sub,'22:40')}
+    ${TX(164,118,34,700,P.fg,'לילה טוב.',`direction="rtl" text-anchor="start" ${W.at}`)}
+    ${R(164,150,12,500,P.fg,'מחר ב־08:00 אזכיר לך')}${R(164,166,12,500,P.fg,'את הטופס של הגן.')}
+    ${R(164,196,11,500,P.sub,'עד הבוקר אני בשקט.')}
+    <circle cx="140" cy="258" r="30" fill="${P.field}"/><circle cx="118" cy="252" r="30" fill="${P.bg}"/>
+    ${place(P,16,276,26,'split',true)}${TX(48,294,13,700,P.fg,'עולמה','direction="rtl" text-anchor="end"')}`);
+}
+function videoFrames(P,mode){
+  const W=wear(mode),f=(inner,tc)=>`<figure class="sc"><div class="scene gr">${svgBox(180,320,`<rect width="180" height="320" fill="${P.bg}"/>${W.def}${inner}`)}</div><figcaption>${tc}</figcaption></figure>`;
+  return f(`${place(P,45,90,90,'anim',onDark(P))}${C(90,236,30,700,P.fg,'עולמה')}${TX(90,258,11,500,P.sub,'allma','text-anchor="middle" direction="ltr"',EN)}`,'<b>0:00 · פתיח.</b> העיגולים נפגשים והמפגש נדלק.')
+   + f(`${TX(164,62,26,700,P.fg,'אומרים לה',`direction="rtl" text-anchor="start" ${W.at}`)}${TX(164,92,26,700,P.accent,'פעם אחת.',`direction="rtl" text-anchor="start" ${W.at}`)}
+      <rect x="40" y="140" width="124" height="44" rx="8" fill="#D9FDD3"/>${R(156,158,9.5,500,'#111','תזכירי לי לקנות מתנה')}${R(156,172,9.5,500,'#111','לנועה עד חמישי')}
+      <rect x="16" y="194" width="124" height="44" rx="8" fill="#fff"/>${R(132,212,9.5,500,'#111','רשמתי. אזכיר לך ברביעי')}${R(132,226,9.5,500,'#111','בערב 👍')}
+      ${R(164,292,9,500,P.sub,'בלי אפליקציה חדשה. בוואטסאפ.')}`,'<b>0:08 · אמצע.</b> כותרת גדולה מעל רגע אמיתי מהצ\'אט.')
+   + f(`${posterOverlapInner(P,mode)}`,'<b>0:18 · סוף.</b> החפיפה, השם והכתובת.');
+}
+function posterOverlapInner(P,mode){ // ending frame: overlap letters on the field, 9:16
+  const s=posterOverlap(P,mode,180,320,'all');
+  return s.replace(/^<svg[^>]*>|<\/svg>$/g,'').replace(/<text[^>]*>(עולמה|שבת, 16:00.*?|בלי קבוצה.*?|הכל סגור\.)<\/text>/g,'')
+    + R(164,40,20,700,P.ft,'עולמה. הכל סגור.') + TX(164,60,11,500,P.ft,'allma.world','direction="ltr" text-anchor="end"',EN);
+}
+function site(P){
+  const art=posterOverlap(P,S.tex,300,380);
+  return `<div class="txt" style="background:${P.bg};color:${P.fg}"><nav><div class="m">${svgBox(120,120,round(P))}</div>עולמה<a>איך זה עובד</a></nav>
+     <h4>עולמה.<br>הכל <span style="color:${P.accent}">סגור.</span></h4>
+     <p class="sub">העוזרת בוואטסאפ שמתאמת בין כולם, זוכרת מה אמרת, ושותקת בשבת.</p>
+     <div class="cta"><span style="background:${P.accent};color:${P.dark}">לכתוב לעולמה</span><em>לראות דוגמה</em></div></div>
+   <div class="art scene gr">${art}</div>`;
+}
+function og(P){
+  return svgBox(240,126,`<rect width="240" height="126" fill="${P.bg}"/>${place(P,0,0,126)}
+    ${R(226,50,22,700,P.fg,'עולמה')}${R(226,70,9,500,P.fg,'העוזרת שסוגרת לך')}${R(226,82,9,500,P.fg,'מעגלים בוואטסאפ.')}
+    ${TX(226,112,9,500,P.sub,'allma.world','direction="ltr" text-anchor="end"',EN)}`);
+}
+function shabbat(mode){const P=PALS.shabbat,W=wear(mode);
+  return svgBox(180,320,`<rect width="180" height="320" fill="${P.bg}"/>${W.def}
+    ${place(P,40,48,100,'split',true)}
+    ${C(90,208,30,700,P.light,'שבת שלום',W.at)}
+    ${C(90,234,11,500,P.sub,'עולמה שותקת עד צאת השבת.')}${C(90,249,11,500,P.sub,'מה שחיכה, יחכה.')}
+    <circle cx="90" cy="286" r="3.4" fill="${P.accent}"/>`);
+}
+function motzash(mode){const P=PALS.night,W=wear(mode);
+  return svgBox(180,320,`<rect width="180" height="320" fill="${P.bg}"/>${W.def}
+    ${R(164,40,10,500,P.sub,'מוצאי שבת · 19:12')}${TX(164,92,34,700,P.fg,'שבוע טוב.',`direction="rtl" text-anchor="start" ${W.at}`)}
+    <rect x="16" y="122" width="148" height="1" fill="${P.fg}" opacity=".2"/>
+    ${[['ראשון 09:00','פגישה עם יואב',1],['שלישי','יום הולדת לאבא',0],['חמישי 20:00','ארוחה אצל אמא',1]].map(([t,x,c],i)=>`${R(164,150+i*34,12,700,P.fg,x)}${R(164,165+i*34,9.5,500,P.sub,t)}${c?`<g transform="translate(16 ${139+i*34}) scale(.13)">${split(P)}</g>`:''}`).join('')}
+    ${R(164,280,10,500,P.sub,'שלושה דברים חיכו לך. אחד עוד פתוח.')}`);
+}
+function icons(){
+  const P=PALS[S.hour],cell=(s,body,r,lab)=>`<div><div style="width:${s}px;height:${s}px;border-radius:${r}">${svgBox(120,120,body)}</div><span>${lab}</span></div>`;
+  return `<div class="icons" style="background:${P.bg};color:${P.fg}">${cell(96,split(P),'22px','אפליקציה')}${cell(64,round(P),'50%','פרופיל')}${cell(40,round(P),'50%','צ\'אט')}${cell(24,round(P),'50%','24')}${cell(16,round(P),'50%','16')}</div>`;
+}
+function merch(P,mode){
+  const W=wear(mode),D=PALS.day;
+  return svgBox(300,220,`<rect width="300" height="220" fill="#E7E1D6"/>${W.def}
+    <path d="M118 40 Q118 12 148 12 Q178 12 178 40" fill="none" stroke="#CFC5B2" stroke-width="5"/>
+    <path d="M100 40 H196 L204 206 H92 Z" fill="${P.light}" stroke="#D8CEBC"/>
+    ${place(P,118,76,60)}${C(148,160,14,700,P.dark,'עולמה')}
+    <g transform="rotate(-8 244 70)"><circle cx="244" cy="70" r="30" fill="#fff"/><g transform="translate(218 44) scale(.4333)">${round(P)}</g></g>
+    <g transform="rotate(6 246 160)"><rect x="210" y="138" width="74" height="42" rx="21" fill="#fff"/><rect x="214" y="142" width="66" height="34" rx="17" fill="${P.accent}"/>${C(247,165,15,700,P.dark,'סגור.',W.at)}</g>
+    ${ayinSticker(P)}`);
+}
+function ayinSticker(P){const a=U(),b=U();
+  const t=(c,cl)=>`<g clip-path="url(#${cl})">${TX(47,140,52,700,c,'ע','text-anchor="middle" direction="rtl"')}</g>`;
+  return `<g transform="rotate(-5 47 121)"><rect x="16" y="88" width="62" height="66" rx="9" fill="#fff"/><clipPath id="${a}"><rect x="20" y="92" width="27" height="58"/></clipPath><clipPath id="${b}"><rect x="47" y="92" width="27" height="58"/></clipPath><rect x="20" y="92" width="27" height="58" fill="${P.dark}"/><rect x="47" y="92" width="27" height="58" fill="${P.light}"/>${t(P.light,a)}${t(P.dark,b)}<rect x="46" y="92" width="2" height="58" fill="${P.accent}"/></g>`;}
+function bizCard(P){
+  return svgBox(300,200,`<rect width="300" height="200" fill="#E7E1D6"/>
+    <g transform="rotate(-4 90 100)"><rect x="18" y="44" width="150" height="100" rx="4" fill="${P.dark}"/><g transform="translate(18 44)"><rect width="75" height="100" fill="${P.dark}"/><rect x="75" width="75" height="100" fill="${P.light}"/><circle cx="56" cy="50" r="24" fill="${P.light}"/><circle cx="94" cy="50" r="24" fill="${P.dark}"/>${lens([56,50,24],[94,50,24],P.accent)}</g></g>
+    <g transform="rotate(3 214 108)"><rect x="140" y="58" width="150" height="100" rx="4" fill="${P.light}"/>
+      ${R(276,86,15,700,P.dark,'נועה כהן')}${R(276,102,9.5,500,P.dark,'עולמה · allma.world')}
+      <rect x="152" y="118" width="124" height="1" fill="${P.dark}" opacity=".2"/>${R(276,138,9.5,500,P.dark,'לכתוב לעולמה בוואטסאפ, ולשכוח מזה.')}</g>`);
+}
+
+// ---- texture comparison, fixed modes ----
+function zooms(){
+  const P=PALS.day,modes=[['none','בלי','צבע שטוח, מדויק וקצת דיגיטלי.'],['paper','נייר','ההמלצה שלי כברירת מחדל.'],['ink','נייר + דיו שחוק','רק לפוסטרים ולשערים.']];
+  return modes.map(([m,n,d])=>`<figure><div class="zoom ${m==='none'?'':'gr'}">${posterOverlap(P,m)}</div><figcaption><b>${n}.</b> ${d}</figcaption></figure>`).join('');
+}
+
+// ---- render ----
+const $=id=>document.getElementById(id);
+function render(){
+  const P=PALS[S.hour],m=S.tex;
+  document.documentElement.classList.remove('tex-none','tex-paper','tex-ink');document.documentElement.classList.add('tex-'+m);
+  document.querySelectorAll('#c-hour button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.h===S.hour));
+  document.querySelectorAll('#c-tex button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.t===S.tex));
+  $('s-wa').innerHTML=`<div class="phone"><div class="wa"><div class="wa-top"><div class="av">${svgBox(120,120,round(P))}</div><div><b>עולמה</b><span>מקוונת</span></div></div>
+    <div class="wa-body">
+      <div class="b out">אפשר לסגור לנו ארוחה עם ההורים השבוע?<small>21:04</small></div>
+      <div class="b in">סגור 👍 חמישי ב־20:00 אצל אמא. כולם אישרו, והכנסתי לכולם ליומן.<small>21:31</small></div>
+      <div class="b in img"><div class="scene gr">${card(P)}</div><p>בוקר טוב. זה היום שלך.</p><small>07:30</small></div>
+    </div></div></div>`;
+  $('s-card').innerHTML=card(P);
+  $('s-post').innerHTML=posterOverlap(P,m);
+  $('s-story').innerHTML=story(P,m);
+  $('s-night').innerHTML=nightStory(m);
+  $('s-tri').innerHTML=tri(P).map(s=>`<div class="scene gr">${s}</div>`).join('');
+  $('s-video').innerHTML=videoFrames(P,m);
+  $('s-site').innerHTML=site(P);
+  $('s-og').innerHTML=og(P);
+  $('s-shabbat').innerHTML=shabbat(m);
+  $('s-motzash').innerHTML=motzash(m);
+  $('s-icons').innerHTML=icons();
+  $('s-merch').innerHTML=merch(P,m);
+  $('s-card2').innerHTML=bizCard(P);
+  $('zooms').innerHTML=zooms();
+}
+document.addEventListener('click',e=>{
+  const b=e.target.closest('#c-hour button,#c-tex button');if(!b)return;
+  if(b.dataset.h)S.hour=b.dataset.h;if(b.dataset.t)S.tex=b.dataset.t;
+  try{localStorage.setItem('olma-inuse',JSON.stringify(S))}catch(e){}
+  render();
+});
+render();
+document.fonts.load(`700 40px "${EN}"`,'all').then(()=>document.fonts.ready).then(render);
+</script>

@@ -1,0 +1,128 @@
+{
+  "color": {
+    "core": {
+      "ink": {
+        "value": "#221C3A",
+        "type": "color",
+        "description": "דיו · All text on light grounds"
+      },
+      "paper": {
+        "value": "#F7F1E6",
+        "type": "color",
+        "description": "נייר · Neutral ground, outside the clock"
+      },
+      "moonlight": {
+        "value": "#EDEAFB",
+        "type": "color",
+        "description": "אור ירח · Text on night and Shabbat"
+      },
+      "lilac": {
+        "value": "#B9AEFF",
+        "type": "color",
+        "description": "לילך · Secondary text on dark, 8.4:1"
+      }
+    },
+    "morning": {
+      "morning-ground": {
+        "value": "#FFE6CF",
+        "type": "color",
+        "description": "בוקר · רקע · 07:00-11:00 · bottom of the sky"
+      },
+      "morning-sky": {
+        "value": "#FFF4E8",
+        "type": "color",
+        "description": "בוקר · שמיים · top of the sky"
+      },
+      "morning-light": {
+        "value": "#FFD0A8",
+        "type": "color",
+        "description": "בוקר · אור · soft light, 80% at the centre"
+      }
+    },
+    "day": {
+      "day-ground": {
+        "value": "#E4ECF7",
+        "type": "color",
+        "description": "יום · רקע · 11:00-17:00 · bottom of the sky"
+      },
+      "day-sky": {
+        "value": "#F5F8FC",
+        "type": "color",
+        "description": "יום · שמיים · top of the sky"
+      },
+      "day-light": {
+        "value": "#CFDDF2",
+        "type": "color",
+        "description": "יום · אור · soft light, 80% at the centre"
+      }
+    },
+    "evening": {
+      "evening-ground": {
+        "value": "#EFD3E0",
+        "type": "color",
+        "description": "ערב · רקע · 17:00-21:00 · bottom of the sky"
+      },
+      "evening-sky": {
+        "value": "#F8EAF0",
+        "type": "color",
+        "description": "ערב · שמיים · top of the sky"
+      },
+      "evening-light": {
+        "value": "#E3B9D8",
+        "type": "color",
+        "description": "ערב · אור · soft light, 80% at the centre"
+      }
+    },
+    "night": {
+      "night-ground": {
+        "value": "#1C1A38",
+        "type": "color",
+        "description": "לילה · רקע · 21:00-07:00 · bottom of the sky"
+      },
+      "night-sky": {
+        "value": "#2A2752",
+        "type": "color",
+        "description": "לילה · שמיים · top of the sky"
+      },
+      "night-light": {
+        "value": "#3A3470",
+        "type": "color",
+        "description": "לילה · אור · soft light, 33% at the centre"
+      }
+    },
+    "shabbat": {
+      "shabbat-ground": {
+        "value": "#2B1F3F",
+        "type": "color",
+        "description": "שבת · רקע · candles to havdalah · bottom of the sky"
+      },
+      "shabbat-sky": {
+        "value": "#3A2A4E",
+        "type": "color",
+        "description": "שבת · שמיים · top of the sky"
+      },
+      "shabbat-light": {
+        "value": "#F2C46D",
+        "type": "color",
+        "description": "שבת · אור · soft light, 33% at the centre"
+      }
+    },
+    "overprint": {
+      "coral": {
+        "value": "#FF8A6B",
+        "type": "color",
+        "description": "אלמוג · Overprint ink A, large shapes only"
+      },
+      "violet": {
+        "value": "#7C6CF2",
+        "type": "color",
+        "description": "סגול · Overprint ink B, large shapes only"
+      },
+      "meeting": {
+        "value": "#7C3A66",
+        "type": "color",
+        "description": "מפגש · Where Coral and Violet overlap, for flat use"
+      }
+    }
+  }
+}

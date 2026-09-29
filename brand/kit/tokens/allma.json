@@ -1,0 +1,222 @@
+{
+  "name": "Allma · ברוש + חרדל",
+  "chosen": "2026-09-28",
+  "font": "IBM Plex Sans Hebrew / IBM Plex Sans",
+  "ratio": {
+    "60": "Sand",
+    "30": "Cypress",
+    "10": "Mustard"
+  },
+  "swatches": [
+    {
+      "name": "Cypress",
+      "he": "ברוש",
+      "hex": "#004643",
+      "role": "30 · brand: the band, the mark, headings on sand"
+    },
+    {
+      "name": "Sand",
+      "he": "חול",
+      "hex": "#F0EDE5",
+      "role": "60 · ground"
+    },
+    {
+      "name": "Mustard",
+      "he": "חרדל",
+      "hex": "#F9C23C",
+      "role": "10 · the primary action and the lens. Never as text on light"
+    },
+    {
+      "name": "Ink",
+      "he": "דיו",
+      "hex": "#0E1F1E",
+      "role": "body text"
+    },
+    {
+      "name": "Night",
+      "he": "לילה",
+      "hex": "#1B1A18",
+      "role": "night ground"
+    },
+    {
+      "name": "Brick",
+      "he": "לבנה",
+      "hex": "#B03A2E",
+      "role": "errors and deletes only"
+    }
+  ],
+  "modes": {
+    "day": {
+      "bg": "#F0EDE5",
+      "bg-tint": "#E2E3DB",
+      "surface": "#FFFFFF",
+      "surface-2": "#F8F7F3",
+      "line": "#D7D6CF",
+      "line-strong": "#C3C4BD",
+      "text": "#0E1F1E",
+      "text-2": "#44504E",
+      "text-3": "#646D6A",
+      "brand": "#004643",
+      "on-brand": "#F0EDE5",
+      "brand-soft": "#E6ECEC",
+      "action": "#F9C23C",
+      "on-action": "#004643",
+      "action-soft": "#FEF2D4",
+      "lens": "#F9C23C",
+      "link": "#004643",
+      "success": "#004643",
+      "danger": "#B03A2E",
+      "on-danger": "#FFFFFF"
+    },
+    "night": {
+      "bg": "#1B1A18",
+      "bg-tint": "#25241F",
+      "surface": "#26251F",
+      "surface-2": "#2D2B26",
+      "line": "#35332D",
+      "line-strong": "#44413A",
+      "text": "#EDE9DF",
+      "text-2": "#B9B5AC",
+      "text-3": "#A39F96",
+      "brand": "#004643",
+      "on-brand": "#EDE9DF",
+      "brand-soft": "#1F3532",
+      "action": "#F9C23C",
+      "on-action": "#0E1F1E",
+      "action-soft": "#473C1F",
+      "lens": "#F9C23C",
+      "link": "#7CC4BA",
+      "success": "#7CC4BA",
+      "danger": "#F08A7E",
+      "on-danger": "#0E1F1E"
+    }
+  },
+  "contrast": [
+    {
+      "mode": "day",
+      "what": "text on ground",
+      "fg": "#0E1F1E",
+      "bg": "#F0EDE5",
+      "ratio": 14.55,
+      "needs": 4.5,
+      "pass": true
+    },
+    {
+      "mode": "day",
+      "what": "secondary text",
+      "fg": "#44504E",
+      "bg": "#F0EDE5",
+      "ratio": 7.17,
+      "needs": 4.5,
+      "pass": true
+    },
+    {
+      "mode": "day",
+      "what": "tertiary text on card",
+      "fg": "#646D6A",
+      "bg": "#FFFFFF",
+      "ratio": 5.33,
+      "needs": 3.0,
+      "pass": true
+    },
+    {
+      "mode": "day",
+      "what": "label on the action button",
+      "fg": "#004643",
+      "bg": "#F9C23C",
+      "ratio": 6.55,
+      "needs": 4.5,
+      "pass": true
+    },
+    {
+      "mode": "day",
+      "what": "text on the brand band",
+      "fg": "#F0EDE5",
+      "bg": "#004643",
+      "ratio": 9.17,
+      "needs": 4.5,
+      "pass": true
+    },
+    {
+      "mode": "day",
+      "what": "link on card",
+      "fg": "#004643",
+      "bg": "#FFFFFF",
+      "ratio": 10.73,
+      "needs": 4.5,
+      "pass": true
+    },
+    {
+      "mode": "day",
+      "what": "error on card",
+      "fg": "#B03A2E",
+      "bg": "#FFFFFF",
+      "ratio": 6.02,
+      "needs": 4.5,
+      "pass": true
+    },
+    {
+      "mode": "night",
+      "what": "text on ground",
+      "fg": "#EDE9DF",
+      "bg": "#1B1A18",
+      "ratio": 14.34,
+      "needs": 4.5,
+      "pass": true
+    },
+    {
+      "mode": "night",
+      "what": "secondary text",
+      "fg": "#B9B5AC",
+      "bg": "#1B1A18",
+      "ratio": 8.5,
+      "needs": 4.5,
+      "pass": true
+    },
+    {
+      "mode": "night",
+      "what": "tertiary text on card",
+      "fg": "#A39F96",
+      "bg": "#26251F",
+      "ratio": 5.82,
+      "needs": 3.0,
+      "pass": true
+    },
+    {
+      "mode": "night",
+      "what": "label on the action button",
+      "fg": "#0E1F1E",
+      "bg": "#F9C23C",
+      "ratio": 10.39,
+      "needs": 4.5,
+      "pass": true
+    },
+    {
+      "mode": "night",
+      "what": "text on the brand band",
+      "fg": "#EDE9DF",
+      "bg": "#004643",
+      "ratio": 8.85,
+      "needs": 4.5,
+      "pass": true
+    },
+    {
+      "mode": "night",
+      "what": "link on card",
+      "fg": "#7CC4BA",
+      "bg": "#26251F",
+      "ratio": 7.65,
+      "needs": 4.5,
+      "pass": true
+    },
+    {
+      "mode": "night",
+      "what": "error on card",
+      "fg": "#F08A7E",
+      "bg": "#26251F",
+      "ratio": 6.32,
+      "needs": 4.5,
+      "pass": true
+    }
+  ]
+}
