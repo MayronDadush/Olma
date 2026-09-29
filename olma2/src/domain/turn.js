@@ -473,6 +473,16 @@ async function firstTurnPageLink(client, userId) {
   } catch { return null; }
 }
 
+// A welcome follow-up queued after the room's short opening and not yet sent
+// (jobs/intake.js). Unsent is the point: once it went out, what she does has
+// been said.
+async function greetedByRoomOpening(client, userId) {
+  const { rows } = await client.query(
+    `SELECT 1 FROM outbox WHERE user_id = $1 AND kind = 'welcome_followup'
+        AND sent_at IS NULL AND (payload->>'roomOpening')::boolean IS TRUE LIMIT 1`, [userId]);
+  return rows.length > 0;
+}
+
 async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, languageNudge, thanksOnly, thanksAfterQuestion, stoppedReminders, chaseUntil, chaseNamedHour, openList, remindAsk, now }) {
   requireAdviseColumns(user);
   // A paused person who writes gets answered — pausing stops Olma
@@ -712,6 +722,18 @@ async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, 
   // names a page and leaves the url to the model is how three people got three
   // invented domains in one minute (`rules/delivering.md`).
   const pageLink = firstTurn ? await firstTurnPageLink(client, user.id) : null;
+  // Greeted by a room's short opening (domain/intake-room.js), which says she
+  // is an AI and sends the coordination, and nothing about what she does: this
+  // first turn — usually their answer to that coordination — says it, once,
+  // after the answer. The welcome follow-up waiting for the morning is then
+  // dropped by the gate as `answered_in_turn`, so it is said exactly once.
+  const roomOpening = firstTurn && user.opening_sent_at ? await greetedByRoomOpening(client, user.id) : false;
+  const ROOM_INTRO = roomOpening
+    ? ' They were greeted only briefly, through their WhatsApp group, and have not yet been told what Olma '
+      + 'does. After answering what they wrote, add ONE short line saying what else she helps them with '
+      + 'personally — tasks, reminders and coordinating with people close to them, written, as a voice note, '
+      + 'or all in a mess.'
+    : '';
   const PAGE_LINK = pageLink
     ? ` End this reply with their personal page: one short line saying this is their page, then this url on `
       + `a line of its own, bare — nothing else will deliver it: ${pageLink}`
@@ -739,7 +761,7 @@ async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, 
             ? PENDING_INTAKE_NOTE + ' Answer it together with whatever they '
               + 'wrote this turn, in one reply. '
             : 'Answer what they actually wrote, in one short reply. ')
-          + NAME_IN_FIRST_MESSAGE + PAGE_LINK,
+          + NAME_IN_FIRST_MESSAGE + ROOM_INTRO + PAGE_LINK,
       }
       : {
         sendVerbatim: onboardingDomain.openingMessage(user.locale, await templates.load(client)),

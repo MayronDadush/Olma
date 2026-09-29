@@ -949,7 +949,7 @@ async function markRelaySaid(client, meetingId, userId) {
 //
 // They are NOT made participants. A person counted in and never reached is the
 // stall `statusOf`'s `asked` already has to explain away; instead their reply
-// reaches the greeter, which already tells them "תכף אשלח לך כאן את התיאום"
+// reaches the greeter, which already tells them "שולחת לך עכשיו את התיאום"
 // (domain/intake-room.js), and admitLateMembers lets them in once they are
 // connected. So silence costs the coordination nothing.
 //
