@@ -485,7 +485,7 @@ const MIN_CONNECTED_TO_OPEN = 2;
 // **`missing` is unchanged either way.** Who has not written to her is a fact
 // about those people, and an open room is not a claim that everybody is in it —
 // the two answers are separate on purpose, because the caller has to know both:
-// it is what stops the "כולם כאן" line going out about a room where they
+// it is what stops the "יש! כולם כאן" line going out about a room where they
 // are not.
 function decideState(members, { maxMembers, openWithoutEveryone = false }) {
   const live = members.filter((m) => !m.left_at);

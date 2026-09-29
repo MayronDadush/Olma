@@ -223,7 +223,7 @@ const TEMPLATES = [
     vars: { inviter_name: 'מי ביקש להתחבר', inviter_phone: 'המספר שלו, כדי שיזהו', reason: 'הסיבה שכתב, עם מקף לפניה — או כלום אם לא כתב' },
     required: ['inviter_name', 'inviter_phone'],
     sample: { inviter_name: 'יואב', inviter_phone: '054-000-0000', reason: ' — לתאם את הטיול של סוף השבוע' },
-    text: 'היי, כאן עולמה — עוזרת אישית שעובדת בוואטסאפ.\n\n*{{inviter_name}}* ({{inviter_phone}}) ביקש/ה להתחבר אליך דרכי{{reason}}.\n\nאם זה מעניין אותך, פשוט תענה/י לי כאן ואספר איך זה עובד. אם לא — אפשר להתעלם, ולא אכתוב שוב.',
+    text: 'היי! כאן עולמה — עוזרת אישית שעובדת בוואטסאפ.\n\n*{{inviter_name}}* ({{inviter_phone}}) ביקש/ה להתחבר אליך דרכי{{reason}}.\n\nאם זה מעניין אותך, פשוט תענה/י לי כאן ואספר איך זה עובד. אם לא — אפשר להתעלם, ולא אכתוב שוב.',
   },
   {
     key: 'stranger_intro_en', audience: 'private', label: 'פנייה ראשונה לאדם חדש',
@@ -231,21 +231,21 @@ const TEMPLATES = [
     vars: { inviter_name: 'who asked to connect', inviter_phone: 'their number', reason: 'their reason, with a dash before it — or nothing' },
     required: ['inviter_name', 'inviter_phone'],
     sample: { inviter_name: 'Yoav', inviter_phone: '054-000-0000', reason: ' — to sort out the weekend trip' },
-    text: 'Hi, this is Olma — a personal assistant that lives in WhatsApp.\n\n*{{inviter_name}}* ({{inviter_phone}}) asked to connect with you through me{{reason}}.\n\nIf you\'re curious, just reply here and I\'ll explain how it works. If not — feel free to ignore this, I won\'t write again.',
+    text: 'Hi! This is Olma — a personal assistant that lives in WhatsApp.\n\n*{{inviter_name}}* ({{inviter_phone}}) asked to connect with you through me{{reason}}.\n\nIf you\'re curious, just reply here and I\'ll explain how it works. If not — feel free to ignore this, I won\'t write again.',
   },
   {
     key: 'reopen_he', audience: 'private', label: 'ההרשמה נפתחה מחדש',
     help: 'למי שפנה כשההרשמה הייתה סגורה ונכנס לרשימת ההמתנה — ההבטחה שקיימנו.',
     vars: {}, required: [],
     sample: {},
-    text: 'היי, כאן עולמה — פנית אליי כשלא הייתה אפשרות לצרף משתמשים חדשים. עכשיו נפתח מקום. אם עדיין רלוונטי, פשוט תענה/י לי כאן ונתחיל 🙂',
+    text: 'היי! כאן עולמה — פנית אליי כשלא הייתה אפשרות לצרף משתמשים חדשים. עכשיו נפתח מקום. אם עדיין רלוונטי, פשוט תענה/י לי כאן ונתחיל 🙂',
   },
   {
     key: 'reopen_en', audience: 'private', label: 'ההרשמה נפתחה מחדש',
     help: '',
     vars: {}, required: [],
     sample: {},
-    text: 'Hi, Olma here — you reached out while new sign-ups were paused. There\'s room now. If you\'re still interested, just reply here and we\'ll get started 🙂',
+    text: 'Hi! Olma here — you reached out while new sign-ups were paused. There\'s room now. If you\'re still interested, just reply here and we\'ll get started 🙂',
   },
   // A room member who has never written to her, when a coordination opens in
   // that room (`group-meetings.coldInvite`, flag `group_cold_invite`). Sent on
@@ -261,14 +261,14 @@ const TEMPLATES = [
     // out, because this is the one message sent to somebody who never chose
     // her. The last line is a promise group-meetings.coldInvite keeps: once
     // per person, across every room.
-    text: 'היי, אני עולמה, עוזרת AI 👋 אני עוזרת לקבוצה: ״«{{group}}»״ שאתה נמצא בה לתאם {{title}}.\nאם תענה לי כאן, אצרף אותך ואשאל מתי נוח לך ☺️\nלא מתאים? אפשר פשוט להתעלם, ולא אכתוב לך שוב.',
+    text: 'היי! אני עולמה, עוזרת AI 👋 אני עוזרת לקבוצה: ״«{{group}}»״ שאתה נמצא בה לתאם {{title}}.\nאם תענה לי כאן, אצרף אותך ואשאל מתי נוח לך ☺️\nלא מתאים? אפשר פשוט להתעלם, ולא אכתוב לך שוב.',
   },
   {
     key: 'group_cold_invite_en', audience: 'private', label: 'הזמנה פרטית לתיאום בקבוצה (למי שעוד לא כתב)',
     help: '',
     vars: { group: 'group name', title: 'what is being coordinated' }, required: ['group', 'title'],
     sample: { group: 'Tuesday padel', title: 'this week\'s game' },
-    text: 'Hi, I\'m Allma, an AI assistant 👋 I\'m helping the group “{{group}}” you\'re in coordinate {{title}}.\nIf you reply here, I\'ll add you and ask when works for you ☺️\nNot for you? Just ignore this and I won\'t write to you again.',
+    text: 'Hi! I\'m Allma, an AI assistant 👋 I\'m helping the group “{{group}}” you\'re in coordinate {{title}}.\nIf you reply here, I\'ll add you and ask when works for you ☺️\nNot for you? Just ignore this and I won\'t write to you again.',
   },
   // The privacy policy and terms changed (domain/policy-notice.js, compliance
   // review 2026-09-28). Raw pipe, no model, once per person per version, queued
@@ -297,7 +297,7 @@ const TEMPLATES = [
   },
   {
     key: 'group_intro_ready', audience: 'group', label: 'היכרות בקבוצה — אפשר כבר להתחיל',
-    help: 'נוספת בסוף ההיכרות רק כשהקבוצה כבר פתוחה ברגע שההיכרות יוצאת, כי קבוצה כזאת לא שומעת אף פעם ״כולם כאן״.',
+    help: 'נוספת בסוף ההיכרות רק כשהקבוצה כבר פתוחה ברגע שההיכרות יוצאת, כי קבוצה כזאת לא שומעת אף פעם ״יש! כולם כאן״.',
     vars: {}, required: [],
     sample: {},
     text: 'אפשר כבר להתחיל — תתייגו אותי ותגידו מה לתאם 🎯',
@@ -321,7 +321,7 @@ const TEMPLATES = [
     help: 'פעם אחת, כשהאחרון כתב לה בפרטי. יוצאת בשעות היום של הקבוצה, לא באמצע הלילה.',
     vars: {}, required: [],
     sample: {},
-    text: 'כולם כאן. אפשר להתחיל 🎉\nתתייגו אותי ותגידו מה לתאם — פגישה, משחק, מה שבא — ואני ארוץ לכל אחד בפרטי ואחזור עם מה שמסתדר.',
+    text: 'יש! כולם כאן ואפשר להתחיל 🎉\nתתייגו אותי ותגידו מה לתאם — פגישה, משחק, מה שבא — ואני ארוץ לכל אחד בפרטי ואחזור עם מה שמסתדר.',
   },
   {
     key: 'group_too_large', audience: 'group', label: 'הקבוצה גדולה מדי',

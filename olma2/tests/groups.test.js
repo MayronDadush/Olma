@@ -249,7 +249,7 @@ test('a newcomer re-locks an open group, and leaving reopens it', async () => {
 // locked for four days because three of its members reached us only as LIDs.
 // Two things have to be true at once for this to be safe — the room opens, and
 // it still says out loud who is not in it. `missing` is the second one, and it
-// is what keeps the "כולם כאן" line off a room where they are not.
+// is what keeps the "יש! כולם כאן" line off a room where they are not.
 test('with the switch open, a member who never wrote does not lock the room — and is still missing', async () => {
   const a = await connectedUser('+972501200010');
   const b = await connectedUser('+972501200011');
@@ -393,7 +393,7 @@ test('notices are stamped where the sweep and the opening line can read them', a
 
   // The other kind of notice. It is still an answer to a tag, so it counts and
   // it stamps the cooldown column — but nobody in that room was ever waiting
-  // on a person, and "כולם כאן" would answer a sentence she never said.
+  // on a person, and "יש! כולם כאן" would answer a sentence she never said.
   const big = await withTx(db.pool, (c) => groups.registerGroup(c, {
     externalId: JID(3) + '.y', members: [{ phone: a.phone }],
   }));

@@ -867,7 +867,7 @@ test('a room that re-locks mid-pass does not answer a tag nobody sent', async ()
 
 // The other half of `group_open_without_everyone` (owner, 2026-09-22), and the
 // half that is a SENTENCE rather than a state: the room WAS told somebody was
-// missing, and then it opens while somebody still is. "כולם כאן" names a
+// missing, and then it opens while somebody still is. "יש! כולם כאן" names a
 // fact, so it must not be said — and there is no replacement line, because the
 // sentence that would be true there is the owner's to write. The room opens in
 // silence, with an agent, which is the part that was worth four days.

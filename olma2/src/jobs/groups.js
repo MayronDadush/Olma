@@ -397,7 +397,7 @@ async function sweepGroups(client, deps) {
       // answering it, so it waits for the group's own hours. Two columns
       // rather than one because opening and announcing are different moments
       // — a group that opens at 02:00 is still open, it is just not announced
-      // until morning. And it goes out only if there was a wait to end. "כולם כאן" ANSWERS her own
+      // until morning. And it goes out only if there was a wait to end. "יש! כולם כאן" ANSWERS her own
       // "עוד לא שלחו לי: …"; in a room where nobody was ever missing it
       // announces the end of something that never started, which is what the
       // first real group got (owner, 2026-09-06 — "כולם היו מההתחלה שם"). The
@@ -409,7 +409,7 @@ async function sweepGroups(client, deps) {
       // column `mayAnnounce` judges on is fetched here rather than assumed.
       //
       // `!missing.length` is the whole of what `group_open_without_everyone`
-      // changes here. The template is "כולם כאן. אפשר להתחיל" — it names a
+      // changes here. The template is "יש! כולם כאן ואפשר להתחיל" — it names a
       // fact, not a state — so a room the flag opened while three members have
       // still never written to her must not say it. Such a room opens in
       // silence: the sentence that would be true there ("אפשר להתחיל, וגיא
