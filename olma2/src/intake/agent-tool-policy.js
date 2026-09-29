@@ -32,7 +32,8 @@
 const SEP = '__';
 
 // `u-<id>` is a person's agent, `g-<id>` a room's. Everything else — main,
-// intake, the room greeter `ggreet` — is not ours to narrow.
+// intake, the room greeter `ggreet` — keeps every tool of OURS and is denied
+// only the packs (below).
 function agentKind(agentId) {
   if (/^u-\d+$/.test(String(agentId))) return 'user';
   if (/^g-\d+$/.test(String(agentId))) return 'group';
@@ -45,27 +46,57 @@ function agentKind(agentId) {
 // nothing and look like it worked.
 function serverName(cfg) {
   const servers = (cfg && cfg.mcp && cfg.mcp.servers) || {};
-  const names = Object.keys(servers);
+  // A pack's server is never ours, so it never counts toward "one entry".
+  const packServers = new Set(Object.values(PACKS));
+  const names = Object.keys(servers).filter((n) => !packServers.has(n));
   if (names.length === 1) return names[0];
   const ours = names.find((n) => JSON.stringify(servers[n] || {}).includes('olma-mcp.js'));
   return ours || null;
 }
 
+// Tools that belong to a PACK — a whole MCP server a person turns on, not a
+// tool of ours with an audience. Game nights is the first: its server is
+// registered as `games` (scripts/register-games-mcp.js), and every agent on
+// the roster is denied all of it — main, intake and ggreet included — until
+// its person has the pack (`user_packs`, migration 100). A glob, so a tool
+// added to the games server later is hidden the day it ships, with no re-sync.
+//
+// Written whether or not the server is registered yet: a deny on a name
+// nothing serves hides nothing and costs nothing, and it means that on the day
+// the server IS registered every agent already carries it. The other order
+// would show the game tools to everybody for as long as the sync took.
+const PACKS = { games: 'games' };
+const packDeny = (packs) => Object.keys(PACKS)
+  .filter((p) => !(packs || []).includes(p))
+  .map((p) => `${PACKS[p]}${SEP}*`);
+
 // `{ deny: [...] }`, sorted so an unchanged policy compares equal, or null
-// when this agent is not narrowed at all.
-function agentToolPolicy(agentId, cfg) {
+// when this agent is not narrowed at all. `packs` are the ones its person has
+// turned on; only a person's agent can hold one, so a room, the greeters and
+// main are denied every pack whatever they are handed.
+function agentToolPolicy(agentId, cfg, { packs = [] } = {}) {
   const kind = agentKind(agentId);
-  if (!kind) return null;
-  const server = serverName(cfg);
-  if (!server) return null;
-  // Required here, not at the top: the registry pulls in every tool module,
-  // and provisioning should not pay for that until it writes an agent.
-  const { TOOLS, audienceOf } = require('../adapters/mcp/registry');
-  const deny = TOOLS
-    .filter((t) => audienceOf(t) !== kind)
-    .map((t) => `${server}${SEP}${t.name}`)
-    .sort();
-  return { deny };
+  const deny = packDeny(kind === 'user' ? packs : []);
+  const server = kind ? serverName(cfg) : null;
+  if (server) {
+    // Required here, not at the top: the registry pulls in every tool module,
+    // and provisioning should not pay for that until it writes an agent.
+    const { TOOLS, audienceOf } = require('../adapters/mcp/registry');
+    for (const t of TOOLS) if (audienceOf(t) !== kind) deny.push(`${server}${SEP}${t.name}`);
+  }
+  return deny.length ? { deny: deny.sort() } : null;
+}
+
+// agent id -> the packs its person has turned on, read once for a roster.
+// The sync, the guard and provisioning all pass it, so they agree about who
+// is shown a pack.
+async function packsByAgent(client) {
+  const { rows } = await client.query(
+    `SELECT u.agent_id, array_agg(p.pack ORDER BY p.pack) AS packs
+       FROM user_packs p JOIN users u ON u.id = p.user_id
+      WHERE u.agent_id IS NOT NULL
+      GROUP BY u.agent_id`);
+  return new Map(rows.map((r) => [r.agent_id, r.packs]));
 }
 
 // Does this entry carry exactly the policy it should? The guard's question.
@@ -75,4 +106,4 @@ function policyMatches(entry, expected) {
   return JSON.stringify(have) === JSON.stringify(expected.deny);
 }
 
-module.exports = { agentKind, serverName, agentToolPolicy, policyMatches, SEP };
+module.exports = { agentKind, serverName, agentToolPolicy, policyMatches, packsByAgent, PACKS, SEP };

@@ -14,6 +14,10 @@ in the game-nights planning document.
 | `src/server.js` | The page, its API (`state`, `events` over SSE, `write`, `next`), and two box-only routes. |
 | `public/night.html` | The page, ported from the prototype. It keeps its own copy of the math so it can redraw on every keystroke; `tests/page-parity.test.js` runs both copies on the same random nights. |
 | `bin/new-night.js` | Stage 1's only way to open a night: `node bin/new-night.js "פוקר של חמישי" 50 1000 "מיכל,יוסי"` on the box. |
+| `src/tool-defs.js` | Stage 2: Olma's six tools as the model sees them. No requires, so the shim lists them without pg. |
+| `src/tools.js` | What each tool does to a night, through `store.write` (the page's own door) with the page's own log lines, `via: 'olma'`. |
+| `src/identity.js` | Who is calling: brokerd's `identity_resolve` over its socket. gamesd never reads Olma's database. |
+| `bin/games-mcp.js` | The MCP shim the gateway spawns (`mcp.servers.games`): tools/list from `tool-defs`, tools/call as one POST to the box-only `/api/tool`. |
 
 ## Run it locally
 
@@ -57,8 +61,29 @@ npm test          # makes and drops its own database per file; GAMES_TEST_ADMIN_
 
 Rollback: `bash games/deploy.sh --rollback`. Migrations are additive only.
 
+## Stage 2: Olma's tools, shown to nobody
+
+Olma can run a night from the chat: `start_game_night`, `add_buyin`,
+`my_game_status`, `report_chips`, `add_food_order`, `game_night_summary`.
+Two locks, each enough on its own:
+
+- **The gateway never shows them.** Every agent carries `games__*` in its
+  `tools.deny` unless its person has a `user_packs` row for `games`
+  (olma2 migration 100, `intake/agent-tool-policy.js`). The deploy's policy
+  sync keeps it that way and `config_guard` names any agent that differs.
+- **gamesd refuses them.** `/api/tool` answers only on 127.0.0.1 with no
+  `X-Forwarded-For`, asks brokerd who the token belongs to, and refuses
+  anybody whose packs do not include `games`.
+
+Registering the server is a separate, deliberate step after both deploys:
+`node scripts/register-games-mcp.js` in `/opt/olma2` (dry run), then
+`--apply`. It refuses while `/opt/olma-games/bin/games-mcp.js` is missing, and
+writes the server and every agent's deny in one validated save. `--remove`
+takes the server off again. With `user_packs` empty nobody sees anything.
+
 ## Limits
 
 Per night: 30 players, 400 buy-ins, 60 food orders, the newest 300 log lines,
-5 follow-up nights; 120 writes a minute per night and per client; 60 open
+5 follow-up nights; 120 writes a minute per night and per client, and 120
+tool calls a minute per person; 60 open
 event streams per night. The unit is capped at 192 MB.

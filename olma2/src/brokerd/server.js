@@ -651,6 +651,52 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
     return out;
   }
 
+  // A pack's server asking who a token belongs to (games/, game nights). It
+  // is not a tool: the model never sees it, and the games shim calls it for
+  // the token the model handed ITS tool. The same lookup, refusal wording and
+  // audit row as a tool call of ours, so the shim's self-healing and the
+  // dashboard's auth.failed count read it the same way.
+  //
+  // A person's token only. A room holds no pack, and a group token here is a
+  // model in a room reaching for a tool it should never have been shown.
+  //
+  // What it hands back is the minimum a pack needs to act for somebody —
+  // never the phone, never the token — and the packs they have, which the
+  // pack's server checks itself: the gateway's deny decides what the model
+  // reads, and this list decides what the server will do.
+  //
+  // A resolve that succeeds stamps lastToolAt, because the pack is about to
+  // write for them and a "רשמתי" that follows is backed (phantom-save.judge).
+  async function handleIdentityResolve(params = {}) {
+    const caller = String(params.caller || 'pack').slice(0, 20);
+    const token = typeof params.token === 'string' ? params.token : '';
+    let out;
+    await withTx(pool, async (client) => {
+      const auth = await usersDomain.resolveByToken(client, token);
+      const user = auth.ok ? auth.data.user : null;
+      if (!user || user.status !== 'active') {
+        const message = auth.ok ? 'user is not active' : auth.error.message;
+        await audit.record(client, null, 'auth.failed', { tool: `${caller}:identity_resolve`, reason: message });
+        out = { ok: false, error: { code: 'forbidden', message } };
+        return;
+      }
+      const { rows } = await client.query(
+        `SELECT pack FROM user_packs WHERE user_id = $1 ORDER BY pack`, [user.id]);
+      out = {
+        ok: true,
+        user: {
+          id: Number(user.id),
+          name: user.first_name || null,
+          timezone: user.timezone || null,
+          locale: user.locale || 'he',
+        },
+        packs: rows.map((r) => r.pack),
+      };
+    });
+    if (out.ok && out.packs.length) lastToolAt.set(out.user.id, clock());
+    return out;
+  }
+
   // The plugin telling us a person's turn has put something in front of them
   // (`reply`, from reply_payload_sending) or has ended (`end`, from agent_end —
   // the only signal for a turn that ends in silence). Either way the 👀 held
@@ -1022,6 +1068,8 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
         return handleReplyClaim(msg.params || {});
       case 'turn_progress':
         return handleTurnProgress(msg.params || {});
+      case 'identity_resolve':
+        return handleIdentityResolve(msg.params || {});
       default:
         return { ok: false, error: `unknown method ${msg.method}` };
     }

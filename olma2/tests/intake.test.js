@@ -24,7 +24,8 @@ let db, tmp, configPath;
 function baseConfig() {
   return {
     agents: {
-      list: [{ id: 'intake', workspace: '/x/intake', agentDir: '/x/intake-agent' }],
+      // Denied the game-nights pack like every agent (intake/agent-tool-policy.js).
+      list: [{ id: 'intake', workspace: '/x/intake', agentDir: '/x/intake-agent', tools: { deny: ['games__*'] } }],
       defaults: {
         heartbeat: { every: '0m', target: 'none' },
         model: { primary: 'openrouter/deepseek/deepseek-v4-flash' },
@@ -895,6 +896,28 @@ test('config guard: an agent shown the other audience\'s tools is reported, and 
   const policy = require('../src/intake/agent-tool-policy');
   for (const id of ['g-7', 'u-3']) occ.setAgentTools(cfg, id, policy.agentToolPolicy(id, cfg));
   assert.deepEqual(guard.checkOpenclawConfig(cfg), []);
+});
+
+// A pack is denied to every agent and lifted for its holders only, so the
+// guard must read who holds one: a holder synced correctly is not drift, the
+// greeter losing its deny is, and a user_packs it could not read is no
+// verdict at all rather than every holder flagged.
+test('config guard: a pack\'s deny is checked against who holds the pack, and an unread table decides nothing', () => {
+  const policy = require('../src/intake/agent-tool-policy');
+  const cfg = baseConfig();
+  cfg.agents.defaults.systemAgent = { agentId: 'intake' };
+  occ.addAgent(cfg, { id: 'u-3', workspace: '/x/u-3', agentDir: '/x/u-3-agent' });
+  occ.addAgent(cfg, { id: 'u-4', workspace: '/x/u-4', agentDir: '/x/u-4-agent' });
+  const packs = new Map([['u-3', ['games']]]);
+  occ.setAgentTools(cfg, 'u-3', policy.agentToolPolicy('u-3', cfg, { packs: ['games'] }));
+  assert.ok(!occ.agentEntry(cfg, 'u-3').tools.deny.includes('games__*'), 'the holder is shown the pack');
+  assert.ok(occ.agentEntry(cfg, 'u-4').tools.deny.includes('games__*'), 'nobody else is');
+  assert.deepEqual(guard.checkOpenclawConfig(cfg, { packs }), []);
+  assert.match(guard.checkOpenclawConfig(cfg)[0], /1 agent\(s\).*u-3/, 'without the table the holder reads as drift');
+  assert.deepEqual(guard.checkOpenclawConfig(cfg, { packs: null }), [], 'unreadable is not broken');
+
+  occ.agentEntry(cfg, 'intake').tools.deny = occ.agentEntry(cfg, 'intake').tools.deny.filter((t) => t !== 'games__*');
+  assert.match(guard.checkOpenclawConfig(cfg, { packs })[0], /1 agent\(s\).*intake/, 'the greeter shown a pack is drift');
 });
 
 // Measured 2026-09-05 over seven days of transcripts: 3,051 heartbeat calls
@@ -2053,7 +2076,10 @@ test('openclaw-config: entries format — add/remove/has work and never resurrec
 
   assert.equal(occ.addAgent(cfg, { id: 'u-41', workspace: '/x/u-41', agentDir: '/x/u-41-agent' }), true);
   assert.equal(occ.addAgent(cfg, { id: 'u-41', workspace: '/x/u-41', agentDir: '/x/u-41-agent' }), false, 'idempotent');
-  assert.deepEqual(cfg.agents.entries['u-41'], { name: 'u-41', workspace: '/x/u-41', agentDir: '/x/u-41-agent' });
+  assert.deepEqual(cfg.agents.entries['u-41'], {
+    name: 'u-41', workspace: '/x/u-41', agentDir: '/x/u-41-agent',
+    tools: { deny: ['games__*'] }, // no olma server in this config, so only the pack
+  });
   assert.equal(cfg.agents.list, undefined, 'the fatal shape: list must never appear beside entries');
 
   assert.equal(occ.removeAgent(cfg, 'u-41'), true);

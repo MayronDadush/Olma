@@ -110,4 +110,26 @@ function pokerOf(night) {
   return { players, bi, price, cpb, totalBuy, expected, counted, diff, inGame, missing, allIn, closed, poker };
 }
 
-module.exports = { ag, settle, evenly, foodSplit, pokerOf };
+/* Who pays whom, the page's derive() on the server: food either folds into
+   the poker transfers ('merge') or is settled on its own ('split'). Poker
+   transfers exist only once the count closes; split food settles at once. */
+function settlementOf(night) {
+  const P = pokerOf(night);
+  const ids = new Set(P.players.map(p => p.id));
+  const food = Object.fromEntries(P.players.map(p => [p.id, 0]));
+  const orders = Object.values(night.food || {}).sort((a, b) => a.at - b.at);
+  for (const f of orders) {
+    const sp = foodSplit(f, ids); if (!sp.ok) continue;
+    for (const id in sp.pay) food[id] += sp.pay[id];
+    for (const id in sp.owe) food[id] -= sp.owe[id];
+  }
+  const merge = ((night.game || {}).foodMode || 'merge') === 'merge';
+  const hasFood = orders.length > 0;
+  const bal = fn => P.players.map(p => ({ id: p.id, v: fn(p.id) }));
+  let xAll = [], xPoker = [], xFood = [];
+  if (merge) { if (P.closed) xAll = settle(bal(id => P.poker[id] + food[id])); }
+  else { if (P.closed) xPoker = settle(bal(id => P.poker[id])); if (hasFood) xFood = settle(bal(id => food[id])); }
+  return { ...P, food, merge, hasFood, xAll, xPoker, xFood };
+}
+
+module.exports = { ag, settle, evenly, foodSplit, pokerOf, settlementOf };

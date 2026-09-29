@@ -1010,6 +1010,7 @@ test('a link that claims to be us, or lands on a path we do not serve, is caught
     `https://allma.world/d/${'a'.repeat(64)}`,
     'https://allma.world/privacy', 'https://allma.world/terms', 'https://allma.world/',
     'https://allma.world/accessibility',
+    `https://allma.world/night/${'AbCdEfGhIjKlMnOpQrStUv'}`,
     'https://olmachat.duckdns.org/',
     'https://www.google.com/search?q=x',
     'https://accounts.google.com/o/oauth2/v2/auth?client_id=x',
