@@ -12809,6 +12809,13 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     paintGreeting();
     $$("[data-i18n-ph]").forEach(function(el){ el.placeholder = t(el.dataset.i18nPh); });
     $$("[data-i18n-label]").forEach(function(el){ el.setAttribute("aria-label", t(el.dataset.i18nLabel)); });
+    /* The public pages open in English unless asked (?lang=he), so the legal
+       links open them in the language this page is in. The plain path in the
+       markup is the fallback for a page no script has painted. */
+    $$(".legalfoot-a").forEach(function(el){
+      var path = el.getAttribute("href").split("?")[0];
+      el.setAttribute("href", LOCALE === "he" ? path + "?lang=he" : path);
+    });
     /* Not while somebody is in the box. Every write on this page ends in a
        reload, and a reload repaints all three of these — so typing a surname
        while a task saved in the background swallowed the half-typed word and

@@ -420,6 +420,15 @@ test('the settings tab links Privacy, Terms and Accessibility, in both languages
   assert.deepEqual(rules, ['.legalfoot{', '.legalfoot-a{', '.legalfoot-a:hover{']);
 });
 
+// The public pages open in English unless asked (2026-09-29), so a page drawn
+// in Hebrew hands them `?lang=he`, repainted with every other label.
+test('the legal links open the public pages in the page\'s own language', () => {
+  const paint = page.slice(page.indexOf('function paintStatic(){'));
+  const body = paint.slice(0, paint.indexOf('\n  }\n'));
+  assert.match(body, /\$\$\("\.legalfoot-a"\)\.forEach\(function\(el\)\{/, 'paintStatic does not repaint the legal links');
+  assert.match(body, /LOCALE === "he" \? path \+ "\?lang=he" : path/);
+});
+
 // What is already on the calendar has one place of its own in BOTH views of
 // the task list, and it starts folded (owner, 2026-09-28). A branch that
 // forgets to skip these rows draws them twice — once in the list and once in
