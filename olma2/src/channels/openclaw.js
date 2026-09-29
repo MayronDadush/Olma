@@ -336,6 +336,21 @@ function welcomeFollowupBody(p) {
       + 'If it holds nothing to act on (a hello, a question the greeter already answered), write no answer to '
       + 'it at all. Never ask them to say anything again.'
     : ' Nothing they wrote is waiting on you — do not invent anything to answer.';
+  // The room's short opening (domain/intake-room.js) said only that she is an
+  // AI and that a coordination was coming. This row went out the NEXT MORNING
+  // because they never answered it — so it is not a continuation of a moment
+  // ago, and it is the one place what Olma does gets said.
+  if (p.roomOpening) {
+    return 'This person reached Olma through a WhatsApp group: the greeter told them only that Olma is an '
+      + 'AI assistant and sent them the group\'s coordination, and they have not written since. Do not '
+      + 'welcome them and do not mention the coordination. In one or two short lines say what Olma helps them '
+      + 'with personally — tasks, reminders, and coordinating with people close to them — and that they can '
+      + 'write, send a voice note, or dump it all in a mess.'
+      + greeter
+      + words
+      + ' Reply in the language they wrote in, one short message, no menu, no question.'
+      + link;
+  }
   return 'This person has just met Olma: the intake greeter answered their first message a moment ago and '
     + 'introduced her, and their own assistant — you — exists as of now. Do not introduce yourself, do not '
     + 'welcome them, and do not say anything about being set up or ready: from their side this is one '

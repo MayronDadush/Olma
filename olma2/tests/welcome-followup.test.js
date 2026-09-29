@@ -122,3 +122,36 @@ test('…and one that the follow-up already reached does not hand it over twice'
      VALUES ($1, 'welcome_followup', '{}', now(), 'answered_in_turn')`, [v.id]);
   assert.ok((await adviseFirstTurn(v)).onboarding.pageLink);
 });
+
+// ---- after a room's short opening (owner, 2026-09-29) ------------------------
+// The greeter said only that she is an AI and sent the coordination; what she
+// does is said ONCE, after it — by their first turn if they answer, by the
+// follow-up the next morning if they do not.
+test('a first turn after the room\'s short opening says what Olma does, once, after the answer', async () => {
+  const u = await newPerson('+972501880005');
+  await withTx(db.pool, (c) => enqueue(c, {
+    userId: u.id, kind: 'welcome_followup', payload: { hasNote: false, roomOpening: true },
+    idempotencyKey: `welcome_followup:${u.id}`, releaseAfter: new Date(Date.now() + 12 * 3600_000),
+  }));
+  const out = await adviseFirstTurn(u);
+  assert.equal(out.onboarding.alreadyOpened, true);
+  assert.match(out.onboarding.instruction, /After answering what they wrote, add ONE short line/);
+  assert.ok(out.onboarding.pageLink, 'the follow-up has not gone out, so the page comes with this turn');
+  // …and the follow-up that was waiting for the morning is then dropped.
+  const v = decide({ ...facts, lastInboundAt: new Date().toISOString(),
+    row: { kind: 'welcome_followup', urgency: 'normal', expires_at: null, payload: { roomOpening: true } } });
+  assert.deepEqual(v, { action: 'drop', holdReason: 'answered_in_turn' });
+
+  // Somebody the owner's full opening greeted is not told it twice.
+  const w = await newPerson('+972501880006');
+  assert.doesNotMatch((await adviseFirstTurn(w)).onboarding.instruction, /add ONE short line/);
+});
+
+test('the morning follow-up after a short opening introduces her, and does not pretend it is a moment later', () => {
+  const url = 'https://allma.world/d/AbCdEfGhIjKlMnOpQrStUv';
+  const text = instructionFor({ kind: 'welcome_followup', payload: { hasNote: false, roomOpening: true } }, url);
+  assert.match(text, /tasks, reminders, and coordinating/);
+  assert.match(text, /do not mention the coordination/);
+  assert.doesNotMatch(text, /a moment ago/);
+  assert.ok(text.includes(url));
+});
