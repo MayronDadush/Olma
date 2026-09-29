@@ -334,6 +334,12 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         return res.end(publicPages.termsPage());
       }
+      // Same shape as /privacy and /terms, and the same trap: allma.world
+      // reaches this only once the Caddyfile's allowlist names /accessibility.
+      if (req.method === 'GET' && parsed.pathname === '/accessibility') {
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        return res.end(publicPages.accessibilityPage());
+      }
       if (req.method === 'GET' && parsed.pathname === '/' && PUBLIC_HOSTS.has(hostOf(req))) {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         return res.end(publicPages.homePage());

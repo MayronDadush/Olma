@@ -1,6 +1,7 @@
 'use strict';
-// The two pages allma.world has to serve to a stranger: a home page that
-// explains what this is, and a privacy policy.
+// The pages allma.world has to serve to a stranger: a home page that
+// explains what this is, a privacy policy, terms, and (since 2026-09-28) an
+// accessibility statement.
 //
 // They exist because Google's OAuth verification requires both — an app
 // asking for calendar or contacts scopes must have a working home page
@@ -204,7 +205,7 @@ function homePage() {
     </div>
 
     <div class="foot">
-      <p>allma.world · <a href="/privacy">Privacy Policy</a> · <a href="/terms">Terms of Service</a> · <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
+      <p>allma.world · <a href="/privacy">Privacy Policy</a> · <a href="/terms">Terms of Service</a> · <a href="/accessibility">Accessibility</a> · <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
     </div>
   `, { band: `
     <div class="mark">${LOGO}</div>
@@ -395,7 +396,7 @@ function privacyPage() {
     </div>
 
     <div class="foot">
-      <p><a href="/">allma.world</a> · <a href="/terms">Terms of Service</a> · <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
+      <p><a href="/">allma.world</a> · <a href="/terms">Terms of Service</a> · <a href="/accessibility">Accessibility</a> · <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
     </div>
   `);
 }
@@ -473,12 +474,57 @@ function termsPage() {
     </div>
 
     <div class="foot">
-      <p><a href="/">allma.world</a> · <a href="/privacy">Privacy Policy</a> · <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
+      <p><a href="/">allma.world</a> · <a href="/privacy">Privacy Policy</a> · <a href="/accessibility">Accessibility</a> · <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
+    </div>
+  `);
+}
+
+// ---- accessibility statement ------------------------------------------------
+
+// Israel's Equal Rights for Persons with Disabilities (Service Accessibility)
+// Regulations, reg. 35, ask a service provider with a website to publish an
+// accessibility statement. Olma is likely exempt (reg. 35ו(ז)) and publishes
+// one anyway: finding 10 of the 2026-09-28 compliance review. The Hebrew is
+// the owner's wording, verbatim; the English says the same thing. No person is
+// named: the owner's decision of 2026-09-29 for every public page is the shared
+// address and no name, so the coordinator line was dropped with it.
+const A11Y_UPDATED = '2026-09-28';
+const A11Y_RESPONSE_DAYS = 7;
+
+// TRUE because docs/design/user-dashboard.html disables zoom in its viewport
+// meta today (line 16). When the PR that restores pinch-zoom merges, set this
+// to false (or delete it and the two sentences it guards), or the statement
+// confesses a limitation that no longer exists.
+const PINCH_ZOOM_DISABLED = true;
+
+function accessibilityPage() {
+  const mail = `<a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>`;
+  return shell(`Accessibility Statement — ${BRAND}`, `
+    <div class="mark">${LOGO_PAGE}</div>
+    <h1>Accessibility Statement</h1>
+    <p class="updated">Last updated: ${A11Y_UPDATED}</p>
+
+    <p>${BRAND} works mainly inside WhatsApp, so your phone's own accessibility tools (screen reader, larger text, dictation) work with it as usual. You can also send it a voice message instead of typing.</p>
+    <p>The personal page on allma.world was built to the guidelines of Israeli Standard 5568 and WCAG 2.0 at level AA: it can be navigated with a keyboard, focus is clearly marked, the colours meet the contrast requirements, and animations stop for anyone who has asked for reduced motion.</p>
+    ${PINCH_ZOOM_DISABLED ? `<p>We know that the personal page cannot currently be enlarged by pinching. You can enlarge the text through your phone's font settings.</p>` : ''}
+    <p>Ran into a problem? Write "accessibility problem" to the assistant on WhatsApp, or email ${mail}, and we will get back to you within ${A11Y_RESPONSE_DAYS} days.</p>
+
+    <div class="he" lang="he">
+      <h2>הצהרת נגישות</h2>
+      <p>${ASSISTANT} פועלת בעיקר בתוך וואטסאפ, כך שכלי הנגישות של הטלפון שלכם (קורא מסך, הגדלת טקסט, הכתבה) עובדים איתה כרגיל. אפשר גם לשלוח לה הודעה קולית במקום לכתוב.</p>
+      <p>הדף האישי באתר allma.world נבנה לפי ההנחיות של תקן ישראלי 5568 ו־WCAG 2.0 ברמה AA: אפשר לנווט בו עם מקלדת, יש סימון פוקוס ברור, הצבעים עומדים בדרישות הניגודיות, ואנימציות נעצרות למי שביקש להפחית תנועה.</p>
+      ${PINCH_ZOOM_DISABLED ? `<p>ידוע לנו שכרגע אי אפשר להגדיל את הדף האישי בצביטה. אפשר להגדיל טקסט דרך הגדרות הגופן של הטלפון.</p>` : ''}
+      <p>נתקלתם בבעיה? כתבו ל${ASSISTANT} בוואטסאפ "בעיית נגישות", או למייל ${mail}, ונחזור אליכם תוך ${A11Y_RESPONSE_DAYS} ימים.</p>
+      <p class="updated">עודכן: ${A11Y_UPDATED}</p>
+    </div>
+
+    <div class="foot">
+      <p><a href="/">allma.world</a> · <a href="/privacy">Privacy Policy</a> · <a href="/terms">Terms of Service</a> · ${mail}</p>
     </div>
   `);
 }
 
 module.exports = {
-  homePage, privacyPage, termsPage, BRAND, ASSISTANT, CONTACT_EMAIL, UPDATED,
-  PRIVACY_UPDATED, RETENTION,
+  homePage, privacyPage, termsPage, accessibilityPage, BRAND, ASSISTANT, CONTACT_EMAIL, UPDATED,
+  PRIVACY_UPDATED, RETENTION, A11Y_UPDATED, PINCH_ZOOM_DISABLED,
 };

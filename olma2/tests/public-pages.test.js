@@ -73,6 +73,64 @@ test('the terms of service page is served unauthenticated, on either host', asyn
   }
 });
 
+test('the accessibility statement is served unauthenticated, on either host', async () => {
+  for (const host of [PUBLIC, ADMIN]) {
+    const res = await get('/accessibility', host);
+    assert.equal(res.status, 200, `accessibility should not need a password on ${host}`);
+    const html = await res.text();
+    assert.ok(html.includes('<h1>Accessibility Statement</h1>'));
+    assert.ok(html.includes('<h2>הצהרת נגישות</h2>'));
+  }
+});
+
+test('every public page links the other three in its footer', () => {
+  const pages = {
+    '/': publicPages.homePage(),
+    '/privacy': publicPages.privacyPage(),
+    '/terms': publicPages.termsPage(),
+    '/accessibility': publicPages.accessibilityPage(),
+  };
+  for (const [self, html] of Object.entries(pages)) {
+    const foot = html.slice(html.lastIndexOf('<div class="foot">'));
+    for (const target of ['/privacy', '/terms', '/accessibility']) {
+      if (target === self) continue;
+      assert.ok(foot.includes(`href="${target}"`), `the ${self} footer does not link ${target}`);
+    }
+  }
+});
+
+test('the accessibility statement carries the owner\'s Hebrew and its placeholders filled', () => {
+  const html = publicPages.accessibilityPage();
+  for (const line of [
+    'עולמה פועלת בעיקר בתוך וואטסאפ, כך שכלי הנגישות של הטלפון שלכם (קורא מסך, הגדלת טקסט, הכתבה) עובדים איתה כרגיל.',
+    'תקן ישראלי 5568 ו־WCAG 2.0 ברמה AA',
+    'כתבו לעולמה בוואטסאפ "בעיית נגישות"',
+    'ונחזור אליכם תוך 7 ימים.',
+    'עודכן: 2026-09-28',
+  ]) assert.ok(html.includes(line), `missing: ${line}`);
+  assert.ok(html.includes(`mailto:${publicPages.CONTACT_EMAIL}`), 'the statement must name where to write');
+  assert.ok(!/\{[A-Z_]+\}/.test(html), 'a placeholder was left unfilled');
+  // The owner's decision of 2026-09-29: the shared address, and no person named.
+  assert.doesNotMatch(html, /מיירון|Mayron|mayrondadush|רכז נגישות|coordinator/i);
+});
+
+test('the pinch-zoom sentence follows the flag, and the flag follows the dashboard', () => {
+  // The sentence confesses that /me cannot be pinch-zoomed. It is true only
+  // while the dashboard's viewport meta forbids zoom, so the two are checked
+  // against each other: restoring zoom without flipping PINCH_ZOOM_DISABLED
+  // (or the reverse) fails here instead of publishing a false statement.
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const dash = fs.readFileSync(path.join(__dirname, '../docs/design/user-dashboard.html'), 'utf8');
+  const meta = (dash.match(/<meta name="viewport"[^>]*>/) || [''])[0];
+  const zoomOff = /user-scalable=no|maximum-scale=1(?:\.0)?\b/.test(meta);
+  assert.equal(publicPages.PINCH_ZOOM_DISABLED, zoomOff,
+    'PINCH_ZOOM_DISABLED in public-pages.js no longer matches the dashboard viewport meta');
+  const html = publicPages.accessibilityPage();
+  assert.equal(html.includes('אי אפשר להגדיל את הדף האישי בצביטה'), zoomOff);
+  assert.equal(/cannot currently be enlarged by pinching/.test(html), zoomOff);
+});
+
 // ---- the admin dashboard must NOT have moved -------------------------------
 
 test('`/` on the ADMIN host still demands the admin password', async () => {
