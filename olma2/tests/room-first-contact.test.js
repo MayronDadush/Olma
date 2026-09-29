@@ -74,13 +74,20 @@ test('the greeter is handed the room, and the line promises the coordination onl
   const a = await ask(intakeKey(withCo));
   assert.equal(a.ok, true, JSON.stringify(a));
   assert.equal(a.meetingId, meetingId);
-  assert.ok(a.context.includes('הגעת מהקבוצה «Shabi OG» — תכף אשלח לך כאן את התיאום שפתוח שם.'), a.context);
+  // With a coordination waiting, the short opening REPLACES the owner's
+  // (owner, 2026-09-29): who she is, that it is coming, the privacy link.
+  assert.ok(a.context.includes('היי, אני עולמה 👋 עוזרת AI\n'
+    + 'הגעת מהקבוצה «Shabi OG» — שולחת לך עכשיו את התיאום שפתוח שם.\n'
+    + 'מה אני שומרת ואיך מוחקים: https://allma.world/privacy'), a.context);
   assert.match(a.context, /FIRST reply only/);
+  assert.match(a.context, /INSTEAD of the opening text/);
+  assert.ok(!a.context.includes('תכף אשלח'), 'the old line under the opening is gone');
 
   const b = await ask(intakeKey(noCo));
   assert.equal(b.meetingId, null);
   assert.ok(b.context.includes('הגעת מהקבוצה «ערב שישי» — שם אני עוזרת לתאם, וכאן אני בשבילך באופן אישי.'), b.context);
   assert.ok(!b.context.includes('תכף אשלח'), 'no coordination, no promise');
+  assert.ok(!b.context.includes('INSTEAD'), 'no coordination: the owner\'s opening, with the line under it');
 
   assert.deepEqual(await ask(intakeKey('+972501770099')), { ok: true, context: null }, 'in no room: nothing');
   assert.equal((await ask('agent:u-3:whatsapp:direct:+972501770001')).ok, false, 'only the greeter key');
@@ -99,16 +106,25 @@ test('a locked room, a coordination in its settle minute, a room they left: no p
   await db.pool.query(
     `INSERT INTO meetings (initiator_id, title, status, group_id) VALUES ($1, 'x', 'negotiating', $2)`,
     [l.people[0].id, l.group.id]);
-  assert.ok(!(await ask(intakeKey(locked))).context.includes('תכף'), 'a locked room lets nobody in');
+  assert.ok(!(await ask(intakeKey(locked))).context.includes('שולחת לך'), 'a locked room lets nobody in');
 
   const s = await room('מתיישב', { members: [settling] });
   const mid = await start(s.group, s.people[0]);
   await db.pool.query(`UPDATE meetings SET settle_due_at = now() + interval '1 minute' WHERE id = $1`, [mid]);
-  assert.ok(!(await ask(intakeKey(settling))).context.includes('תכף'), 'about to be decided: nothing to join');
+  assert.ok(!(await ask(intakeKey(settling))).context.includes('שולחת לך'), 'about to be decided: nothing to join');
 
   const g = await room('עזבתי', { members: [gone] });
   await db.pool.query(`UPDATE chat_group_members SET left_at = now() WHERE group_id = $1 AND phone = $2`, [g.group.id, gone]);
   assert.equal((await ask(intakeKey(gone))).context, null);
+});
+
+test('the short opening is recognised by its room line, whatever the subject became', () => {
+  const said = intakeRoom.ROOM_OPENING.he.replace('{subject}', 'x'.repeat(40) + '…');
+  assert.equal(intakeRoom.saidRoomOpening(said), true);
+  assert.equal(intakeRoom.saidRoomOpening(intakeRoom.ROOM_OPENING.en.replace('{subject}', 'Padel').replace("'", '\u2019')), true,
+    'a curly apostrophe is the same sentence');
+  assert.equal(intakeRoom.saidRoomOpening('הגעת מהקבוצה «x» — שם אני עוזרת לתאם, וכאן אני בשבילך באופן אישי.'), false);
+  assert.equal(intakeRoom.saidRoomOpening(null), false);
 });
 
 test('a subject is somebody else\'s text: one line, no guillemets of its own, bounded', () => {
