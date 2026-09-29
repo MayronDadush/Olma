@@ -1,5 +1,10 @@
 'use strict';
-// The three things a room hears about its own coordination without being asked.
+// The lines a room hears about its own coordination without being asked.
+//
+// (The header below is the history: it began as three. Today `decideGroupLine`
+// returns started, relay, laid, base/moved, chase, table, reopened and, once
+// settled, done/time/calendar/dayof/soon — `agents-group-template.md`, "מה יוצא
+// לקבוצה בלעדייך", is the list the room's agent reads.)
 //
 // The owner named five moments (2026-09-07): when she starts coordinating,
 // when she has a base, mid-way when she wants to speed it up, when it
