@@ -46,10 +46,11 @@ const BRAND = 'Allma - Personal Assistant';
 const ASSISTANT = 'עולמה';
 const WA_NUMBER = '972559347282';
 const CONTACT_EMAIL = 'info@allma.world';
-const { markSvg, PALETTE } = require('./brand-mark');
+const { markSvg } = require('./brand-mark');
 
-// The brand the owner chose on 2026-09-28, Cypress + Mustard: sand ground,
-// a cypress band across the top, mustard for the one action on the page. The
+// The brand the owner chose on 2026-09-28, Cypress + Mustard: sand ground and
+// cypress ink. (The home page's cypress band and mustard button went with the
+// home page itself, 2026-09-29: `/` is the locked dashboard now.) The
 // same day tokens the /me dashboard carries
 // (docs/design/user-dashboard.html), so the front door and the product are
 // one thing. Only the tokens these pages actually use were carried over.
@@ -61,9 +62,7 @@ const SHELL_CSS = `
   color-scheme:light;
   --bg:#F0EDE5;--surface:#FFFFFF;--sep:#D7D6CF;
   --text:#0E1F1E;--text-2:#44504E;--text-3:#646D6A;
-  --band:#004643;--on-band:#F0EDE5;--on-band-2:#C9D6D1;
   --link:#004643;--code:#E6ECEC;
-  --action:#F9C23C;--on-action:#004643;
 }
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
@@ -73,11 +72,7 @@ body{
   font-size:16px;line-height:1.6;
   min-height:100vh;
 }
-.band{background:var(--band);color:var(--on-band);border-radius:0 0 28px 28px}
-.band .in{max-width:720px;margin:0 auto;padding:40px 22px 36px}
-.band .lede{color:var(--on-band-2)}
 .wrap{max-width:720px;margin:0 auto;padding:44px 22px 64px}
-.band + .wrap{padding-top:12px}
 .mark{width:72px;height:72px}
 .mark svg{width:100%;height:100%;display:block}
 h1{font-weight:700;font-size:38px;line-height:1.08;letter-spacing:-.02em;margin:20px 0 0;text-wrap:balance}
@@ -93,33 +88,21 @@ code{font-family:'IBM Plex Mono',ui-monospace,Menlo,monospace;font-size:.86em;ba
 .card h3{margin-top:0}
 .card p:last-child{margin-bottom:0}
 .perm{font-size:13.5px;color:var(--text-3);margin-top:6px}
-.cta{
-  display:inline-flex;align-items:center;gap:9px;margin-top:10px;
-  background:var(--action);color:var(--on-action);border-radius:99px;
-  padding:13px 24px;font-weight:600;font-size:16px;text-decoration:none;
-}
-.cta:hover{filter:brightness(.96)}
 .foot{margin-top:44px;padding-top:18px;border-top:1px solid var(--sep);font-size:13px;color:var(--text-3)}
 .foot a{color:var(--text-2)}
 .he{margin-top:52px;padding-top:26px;border-top:1px solid var(--sep);direction:rtl;text-align:right}
 .updated{font-size:13.5px;color:var(--text-3);margin-top:4px}
 `;
 
-// The round mark with its ring: on the cypress band the dark half is ink and
-// the ring is sand (the brand book's "על ברוש"); on sand, below the band, the
-// dark half is cypress and the ring follows the text colour.
-// `id` keeps the clip paths apart, since a page carries more than one.
-const ON_BAND = { ink: '#0E1F1E', paper: '#F0EDE5', coral: PALETTE.coral };
-const LOGO = markSvg({ variant: 'round', palette: ON_BAND, ring: '#F0EDE5', id: 'lg' })
-  .replace('<svg ', `<svg role="img" aria-label="${BRAND}" `);
+// The round mark with its ring, on sand: the dark half is cypress and the
+// ring follows the text colour. `id` keeps its clip paths apart from any
+// other mark on the page.
 const LOGO_PAGE = markSvg({ variant: 'round', id: 'lp', ring: 'currentColor' })
   .replace('<svg ', `<svg role="img" aria-label="${BRAND}" `);
 
 // English first, ltr by default: this is now the primary reading direction.
 // The Hebrew section on each page opts back into rtl via the `.he` wrapper.
-// `band`, when given, is drawn full width above the page in the brand's
-// cypress; the home page has one, the policy pages do not.
-function shell(title, bodyHtml, { lang = 'en', dir = 'ltr', band = '' } = {}) {
+function shell(title, bodyHtml, { lang = 'en', dir = 'ltr' } = {}) {
   return `<!doctype html>
 <html lang="${lang}" dir="${dir}">
 <head>
@@ -132,7 +115,7 @@ function shell(title, bodyHtml, { lang = 'en', dir = 'ltr', band = '' } = {}) {
 <style>${FONT_CSS}
 ${SHELL_CSS}</style>
 </head>
-<body>${band ? `<header class="band"><div class="in">${band}</div></header>` : ''}<div class="wrap">${bodyHtml}</div></body>
+<body><div class="wrap">${bodyHtml}</div></body>
 </html>`;
 }
 
@@ -142,11 +125,11 @@ ${SHELL_CSS}</style>
 // what the product says it does, so every capability below names the exact
 // permission behind it and its limit. Said once in English, then again in
 // Hebrew for the people actually using it today — same claims, both times.
-// The words under the band, and the one sentence the band says, apart from
-// the shell — the locked dashboard at `/` carries the same text under itself
-// (user-dashboard.js), and two copies of what Google's reviewer reads is how
-// they would come to say different things. `k` names each class, because the
-// dashboard is one CSS namespace and `.he` there is already somebody's.
+// What the front door says Allma is. Since 2026-09-29 `/` is the locked
+// dashboard and this text sits under it (user-dashboard.js); the standalone
+// home page it was written for is gone, so this is the only copy of what
+// Google's reviewer reads. `k` names each class, because the dashboard is one
+// CSS namespace and `.he` there is already somebody's.
 const HOME_LEDE = 'A personal assistant that lives inside WhatsApp. Write to it in your own language — it remembers, reminds, and coordinates. Nothing to install.';
 function homeSections(k = (n) => n) {
   return `
@@ -214,15 +197,6 @@ function homeSections(k = (n) => n) {
       <p>allma.world · <a href="/privacy">Privacy Policy</a> · <a href="/terms">Terms of Service</a> · <a href="/accessibility">Accessibility</a> · <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
     </div>
 `;
-}
-
-function homePage() {
-  return shell(`${BRAND} — a WhatsApp AI assistant`, homeSections(), { band: `
-    <div class="mark">${LOGO}</div>
-    <h1>${BRAND}</h1>
-    <p class="lede">${HOME_LEDE}</p>
-    <p><a class="cta" href="https://wa.me/${WA_NUMBER}">Start a WhatsApp chat</a></p>
-  ` });
 }
 
 // ---- privacy ----------------------------------------------------------------
@@ -535,6 +509,6 @@ function accessibilityPage() {
 }
 
 module.exports = {
-  homePage, homeSections, HOME_LEDE, privacyPage, termsPage, accessibilityPage, BRAND, ASSISTANT, CONTACT_EMAIL, UPDATED,
+  homeSections, HOME_LEDE, privacyPage, termsPage, accessibilityPage, BRAND, ASSISTANT, CONTACT_EMAIL, UPDATED,
   PRIVACY_UPDATED, RETENTION, A11Y_UPDATED, PINCH_ZOOM_DISABLED,
 };

@@ -341,8 +341,7 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
         return res.end(publicPages.accessibilityPage());
       }
       // Since 2026-09-29 the public `/` is the personal dashboard, locked, with
-      // the same words as publicPages.homePage under it (user-dashboard.js,
-      // frontPage). homePage stays: it is what those words were checked in.
+      // publicPages.homeSections under it (user-dashboard.js, frontPage).
       if (req.method === 'GET' && parsed.pathname === '/' && PUBLIC_HOSTS.has(hostOf(req))) {
         return userDashboard.frontPage(req, res, pool);
       }
