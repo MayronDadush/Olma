@@ -95,3 +95,20 @@ test('--only queues that one person, respects the audience, and the full run ski
   assert.equal(await rowsFor(owner.id), 1, 'the sample was their notice');
   assert.equal(await rowsFor(other.id), 1);
 });
+
+// The pages open in English unless asked (2026-09-29): the link opens the
+// page in the notice's own language, decided as the template's is.
+test('the link opens the page in the language the notice is in', async () => {
+  assert.equal(notice.urlFor('https://allma.world/privacy', 'he'), 'https://allma.world/privacy?lang=he');
+  assert.equal(notice.urlFor('https://allma.world/privacy', null), 'https://allma.world/privacy?lang=he');
+  assert.equal(notice.urlFor('https://allma.world/privacy', 'en-US'), 'https://allma.world/privacy');
+  const he = await served('+972500000221', { locale: 'he' });
+  const en = await served('+15550000222', { locale: 'en' });
+  for (const u of [he, en]) await withTx(db.pool, (c) => notice.enqueueAll(c, '2026-09-28', { only: u.id }));
+  const urlOf = async (id) => (await db.pool.query(
+    `SELECT payload->>'url' AS url FROM outbox WHERE kind = $1 AND user_id = $2`, [notice.KIND, id])).rows[0].url;
+  assert.equal(await urlOf(he.id), 'https://allma.world/privacy?lang=he');
+  assert.equal(await urlOf(en.id), 'https://allma.world/privacy');
+  const text = proactiveText.rawPipeTextFor({ kind: notice.KIND, locale: 'he', payload: { version: '2026-09-28', url: await urlOf(he.id) } }, {}, 'whatsapp');
+  assert.ok(text.includes('https://allma.world/privacy?lang=he'));
+});

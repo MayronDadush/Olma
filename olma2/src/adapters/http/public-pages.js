@@ -103,6 +103,13 @@ code{font-family:'IBM Plex Mono',ui-monospace,Menlo,monospace;font-size:.86em;ba
 .foot a{color:var(--text-2)}
 .he{margin-top:52px;padding-top:26px;border-top:1px solid var(--sep);direction:rtl;text-align:right}
 .updated{font-size:13.5px;color:var(--text-3);margin-top:4px}
+.he.only{margin-top:0;padding-top:0;border-top:0}
+.langbar{display:flex;justify-content:flex-end;margin-bottom:8px}
+.band .langbar{margin:-18px 0 6px}
+.lang{display:inline-flex;align-items:center;min-height:44px;padding:0 16px;border:1px solid var(--sep);border-radius:99px;
+  background:var(--surface);color:var(--text);font-size:14.5px;font-weight:600;text-decoration:none}
+.band .lang{background:transparent;color:var(--on-band);border-color:var(--on-band-2)}
+.lang:hover{text-decoration:underline}
 `;
 
 // The round mark with its ring: on the cypress band the dark half is ink and
@@ -115,11 +122,64 @@ const LOGO = markSvg({ variant: 'round', palette: ON_BAND, ring: '#F0EDE5', id: 
 const LOGO_PAGE = markSvg({ variant: 'round', id: 'lp', ring: 'currentColor' })
   .replace('<svg ', `<svg role="img" aria-label="${BRAND}" `);
 
-// English first, ltr by default: this is now the primary reading direction.
-// The Hebrew section on each page opts back into rtl via the `.he` wrapper.
+// ONE language per page, English by default, with a switch at the top (the
+// owner, 2026-09-29). Every page is still written as the English text followed
+// by its Hebrew twin in a `.he` block, and `oneLanguage` cuts the page down to
+// one of them: `?lang=he` is the Hebrew, anything else the English. Chosen on
+// the SERVER, from the query string, so it needs no script and no cookie, and
+// Caddy's allowlist matches the path, so no Caddyfile change. The choice rides
+// every link between the four pages, and the footer is drawn here, in the
+// page's language, rather than by each page.
+//
 // `band`, when given, is drawn full width above the page in the brand's
 // cypress; the home page has one, the policy pages do not.
-function shell(title, bodyHtml, { lang = 'en', dir = 'ltr', band = '' } = {}) {
+const PAGES = [
+  ['/', 'allma.world', 'allma.world'],
+  ['/privacy', 'Privacy Policy', 'מדיניות פרטיות'],
+  ['/terms', 'Terms of Service', 'תנאי שימוש'],
+  ['/accessibility', 'Accessibility', 'נגישות'],
+];
+
+function langOf(q) { return q === 'he' ? 'he' : 'en'; }
+function hrefFor(path, lang) { return lang === 'he' ? `${path}?lang=he` : path; }
+
+function footFor(path, lang) {
+  const links = PAGES.filter(([p]) => p !== path)
+    .map(([p, en, he]) => `<a href="${hrefFor(p, lang)}">${lang === 'he' ? he : en}</a>`);
+  return `<div class="foot"><p>${[...links, `<a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>`].join(' · ')}</p></div>`;
+}
+
+// The switch names the OTHER language in that language, so a reader who
+// cannot read this page can still find theirs.
+function langSwitch(path, lang) {
+  return lang === 'he'
+    ? `<nav class="langbar" aria-label="Language"><a class="lang" href="${path}" lang="en" hreflang="en">English</a></nav>`
+    : `<nav class="langbar" aria-label="שפה"><a class="lang" href="${path}?lang=he" lang="he" hreflang="he">עברית</a></nav>`;
+}
+
+// Keeps one language of a page written as English + `.he` block + footer. In
+// Hebrew the block's first heading becomes the page's title, and links to our
+// own pages keep the choice.
+function oneLanguage(bodyHtml, lang, { promote = true } = {}) {
+  const he = bodyHtml.indexOf('<div class="he"');
+  const foot = bodyHtml.indexOf('<div class="foot">');
+  if (he < 0 || foot < he) throw new Error('a public page must be English, then a .he block, then its footer');
+  if (lang !== 'he') return bodyHtml.slice(0, he);
+  const block = bodyHtml.slice(he, foot)
+    .replace(/<div class="he"( lang="he")?>/, `<div class="he only">${promote ? `<div class="mark">${LOGO_PAGE}</div>` : ''}`);
+  // Written as a section under the English page, so its title is an h2 and its
+  // sections h3; standing alone they move up a level to match the English.
+  return (promote
+    ? block.replace(/<h3>/g, '<h2>').replace(/<\/h3>/g, '</h2>')
+      .replace(/<h2>([^<]*?)(?: \(עברית\))?<\/h2>/, '<h1>$1</h1>')
+    : block)
+    .replace(/href="(\/(?:privacy|terms|accessibility)?)"/g, 'href="$1?lang=he"');
+}
+
+function shell(title, bodyHtml, { lang = 'en', band = '', path = '/' } = {}) {
+  const dir = lang === 'he' ? 'rtl' : 'ltr';
+  const toggle = langSwitch(path, lang);
+  const body = `${band ? '' : toggle}${oneLanguage(bodyHtml, lang, { promote: !band })}${footFor(path, lang)}`;
   return `<!doctype html>
 <html lang="${lang}" dir="${dir}">
 <head>
@@ -132,7 +192,7 @@ function shell(title, bodyHtml, { lang = 'en', dir = 'ltr', band = '' } = {}) {
 <style>${FONT_CSS}
 ${SHELL_CSS}</style>
 </head>
-<body>${band ? `<header class="band"><div class="in">${band}</div></header>` : ''}<div class="wrap">${bodyHtml}</div></body>
+<body>${band ? `<header class="band"><div class="in">${toggle}${band}</div></header>` : ''}<div class="wrap">${body}</div></body>
 </html>`;
 }
 
@@ -142,8 +202,8 @@ ${SHELL_CSS}</style>
 // what the product says it does, so every capability below names the exact
 // permission behind it and its limit. Said once in English, then again in
 // Hebrew for the people actually using it today — same claims, both times.
-function homePage() {
-  return shell(`${BRAND} — a WhatsApp AI assistant`, `
+function homePage(lang = 'en') {
+  return shell(lang === 'he' ? `${ASSISTANT} — עוזרת AI בוואטסאפ` : `${BRAND} — a WhatsApp AI assistant`, `
     <h2>What it does</h2>
     <ul>
       <li><b>Tasks & reminders</b> — tell it once, and it reminds you at the right time.</li>
@@ -171,13 +231,7 @@ function homePage() {
     <p>We do not sell information and do not use it for advertising. Data from Google is used solely to answer you — not to train models, and not for any other purpose. <a href="/privacy">Full privacy policy</a>.</p>
 
     <div class="he">
-      <div class="mark">${LOGO_PAGE}</div>
-      <h2>${ASSISTANT}</h2>
-      <p class="lede">עוזרת אישית שחיה בתוך וואטסאפ. כותבים לה בשפה שלכם — היא זוכרת, מזכירה, ומתאמת. אין מה להתקין.</p>
-
-      <p><a class="cta" href="https://wa.me/${WA_NUMBER}">פתיחת שיחה בוואטסאפ</a></p>
-
-      <h3>מה היא עושה</h3>
+      <h2>מה היא עושה</h2>
       <ul>
         <li><b>משימות ותזכורות</b> — אומרים לה משהו פעם אחת, והיא מזכירה בזמן הנכון.</li>
         <li><b>תיאום פגישות</b> — בין אנשים שמחוברים זה לזה, כולל מציאת זמן שמתאים לכולם.</li>
@@ -185,7 +239,7 @@ function homePage() {
         <li><b>זיכרון</b> — העדפות ועובדות שנאמרו בשיחה, כדי שלא צריך לחזור עליהן.</li>
       </ul>
 
-      <h3>חיבור לחשבון הגוגל שלכם — לבחירתכם</h3>
+      <h2>חיבור לחשבון הגוגל שלכם — לבחירתכם</h2>
       <p>${ASSISTANT} עובדת מצוין בלי שום חיבור. אם בכל זאת מחברים, כל הרשאה נפרדת, מתבקשת רק אחרי שביקשתם אותה במפורש, וניתנת לניתוק בכל רגע.</p>
 
       <div class="card">
@@ -200,14 +254,19 @@ function homePage() {
         <p class="perm">ההרשאה: <code>contacts.readonly</code> — קריאה בלבד.</p>
       </div>
 
-      <h3>פרטיות</h3>
+      <h2>פרטיות</h2>
       <p>אנחנו לא מוכרים מידע ולא משתמשים בו לפרסום. המידע מגוגל משמש אך ורק כדי לענות לכם — לא לאימון מודלים ולא לשום שימוש אחר. <a href="/privacy">מדיניות הפרטיות המלאה</a>.</p>
     </div>
 
     <div class="foot">
       <p>allma.world · <a href="/privacy">Privacy Policy</a> · <a href="/terms">Terms of Service</a> · <a href="/accessibility">Accessibility</a> · <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
     </div>
-  `, { band: `
+  `, { lang, path: '/', band: lang === 'he' ? `
+    <div class="mark">${LOGO}</div>
+    <h1>${ASSISTANT}</h1>
+    <p class="lede">עוזרת אישית שחיה בתוך וואטסאפ. כותבים לה בשפה שלכם — היא זוכרת, מזכירה, ומתאמת. אין מה להתקין.</p>
+    <p><a class="cta" href="https://wa.me/${WA_NUMBER}">פתיחת שיחה בוואטסאפ</a></p>
+  ` : `
     <div class="mark">${LOGO}</div>
     <h1>${BRAND}</h1>
     <p class="lede">A personal assistant that lives inside WhatsApp. Write to it in your own language — it remembers, reminds, and coordinates. Nothing to install.</p>
@@ -247,9 +306,9 @@ const RETENTION = {
   deletionDays: 30, localBackupDays: 14, offboxBackupDays: 30,
 };
 
-function privacyPage() {
+function privacyPage(lang = 'en') {
   const R = RETENTION;
-  return shell(`Privacy Policy — ${BRAND}`, `
+  return shell(lang === 'he' ? `מדיניות פרטיות — ${ASSISTANT}` : `Privacy Policy — ${BRAND}`, `
     <div class="mark">${LOGO_PAGE}</div>
     <h1>Privacy Policy</h1>
     <p class="updated">Last updated: ${PRIVACY_UPDATED}</p>
@@ -398,7 +457,7 @@ function privacyPage() {
     <div class="foot">
       <p><a href="/">allma.world</a> · <a href="/terms">Terms of Service</a> · <a href="/accessibility">Accessibility</a> · <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
     </div>
-  `);
+  `, { lang, path: '/privacy' });
 }
 
 // ---- terms of service ---------------------------------------------------
@@ -408,8 +467,8 @@ function privacyPage() {
 // and a real product should have terms regardless. Same house rule as the
 // privacy policy: English first in full, Hebrew second in full, neither a
 // summary of the other.
-function termsPage() {
-  return shell(`Terms of Service — ${BRAND}`, `
+function termsPage(lang = 'en') {
+  return shell(lang === 'he' ? `תנאי שימוש — ${ASSISTANT}` : `Terms of Service — ${BRAND}`, `
     <div class="mark">${LOGO_PAGE}</div>
     <h1>Terms of Service</h1>
     <p class="updated">Last updated: ${UPDATED}</p>
@@ -476,7 +535,7 @@ function termsPage() {
     <div class="foot">
       <p><a href="/">allma.world</a> · <a href="/privacy">Privacy Policy</a> · <a href="/accessibility">Accessibility</a> · <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
     </div>
-  `);
+  `, { lang, path: '/terms' });
 }
 
 // ---- accessibility statement ------------------------------------------------
@@ -497,9 +556,9 @@ const A11Y_RESPONSE_DAYS = 7;
 // confesses a limitation that no longer exists.
 const PINCH_ZOOM_DISABLED = true;
 
-function accessibilityPage() {
+function accessibilityPage(lang = 'en') {
   const mail = `<a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>`;
-  return shell(`Accessibility Statement — ${BRAND}`, `
+  return shell(lang === 'he' ? `הצהרת נגישות — ${ASSISTANT}` : `Accessibility Statement — ${BRAND}`, `
     <div class="mark">${LOGO_PAGE}</div>
     <h1>Accessibility Statement</h1>
     <p class="updated">Last updated: ${A11Y_UPDATED}</p>
@@ -521,10 +580,10 @@ function accessibilityPage() {
     <div class="foot">
       <p><a href="/">allma.world</a> · <a href="/privacy">Privacy Policy</a> · <a href="/terms">Terms of Service</a> · ${mail}</p>
     </div>
-  `);
+  `, { lang, path: '/accessibility' });
 }
 
 module.exports = {
-  homePage, privacyPage, termsPage, accessibilityPage, BRAND, ASSISTANT, CONTACT_EMAIL, UPDATED,
+  homePage, privacyPage, termsPage, accessibilityPage, langOf, BRAND, ASSISTANT, CONTACT_EMAIL, UPDATED,
   PRIVACY_UPDATED, RETENTION, A11Y_UPDATED, PINCH_ZOOM_DISABLED,
 };
