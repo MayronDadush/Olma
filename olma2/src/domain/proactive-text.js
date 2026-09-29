@@ -93,7 +93,13 @@ function localizedKey(key, locale) {
 function renderReminderText(payload, overrides, locale, channelType) {
   const p = typeof payload === 'string' ? JSON.parse(payload) : (payload || {});
   const key = reminderTemplateKey(p);
-  const items = (Array.isArray(p.items) ? p.items : []).map(cleanTitle).filter(Boolean);
+  // The same line twice is one reminder said twice. Dov, 2026-09-28 08:30: a
+  // one-off and a daily reminder for the same pill at the same moment rode one
+  // message as two identical bullets. The cause is closed at the write
+  // (reminders.setReminder retires a one-off a repeat lands on), but rows
+  // already on the box, and two tasks with one title, still meet here — and
+  // every row in the batch is still carried and stamped by the worker.
+  const items = [...new Set((Array.isArray(p.items) ? p.items : []).map(cleanTitle).filter(Boolean))];
   if (items.length > 1) {
     return templates.render(localizedKey(LIST_TEMPLATE[key], locale),
       { items: format.formatterFor(channelType).bullets(items) }, overrides);

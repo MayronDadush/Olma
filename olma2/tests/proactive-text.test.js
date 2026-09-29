@@ -99,3 +99,13 @@ test('a reminder is said in the language on file — English rungs for an en loc
   assert.equal(rawPipeTextFor({ kind: 'reminder', payload: { title: 'x', locale: 'en' } }), '⏰ תזכורת: *x*',
     'a locale smuggled in the payload must not pick the language — it is read at delivery, from the person');
 });
+
+// Dov, 2026-09-28 08:30: a one-off and a daily reminder for the same pill came
+// due together and rode one message as two identical bullets.
+test('a batch says the same line once, and a batch of one line is a single reminder', () => {
+  const pill = 'לשתות חצי ליטר מים וכדור סגול';
+  assert.equal(renderReminderText({ title: pill, items: [pill, ` ${pill}  `] }), `⏰ תזכורת: *${pill}*`);
+  const two = renderReminderText({ title: pill, items: [pill, 'לסדר קבלות', pill] });
+  assert.equal(two.split(pill).length - 1, 1, 'the pill appears once');
+  assert.match(two, /לסדר קבלות/);
+});
