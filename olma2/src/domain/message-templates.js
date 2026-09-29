@@ -238,14 +238,14 @@ const TEMPLATES = [
     help: 'למי שפנה כשההרשמה הייתה סגורה ונכנס לרשימת ההמתנה — ההבטחה שקיימנו.',
     vars: {}, required: [],
     sample: {},
-    text: 'היי! כאן עולמה — פנית אליי כשלא הייתה אפשרות לצרף משתמשים חדשים. עכשיו נפתח מקום! אם עדיין רלוונטי, פשוט תענה/י לי כאן ונתחיל 🙂',
+    text: 'היי! כאן עולמה — פנית אליי כשלא הייתה אפשרות לצרף משתמשים חדשים. עכשיו נפתח מקום. אם עדיין רלוונטי, פשוט תענה/י לי כאן ונתחיל 🙂',
   },
   {
     key: 'reopen_en', audience: 'private', label: 'ההרשמה נפתחה מחדש',
     help: '',
     vars: {}, required: [],
     sample: {},
-    text: 'Hi! Olma here — you reached out while new sign-ups were paused. There\'s room now! If you\'re still interested, just reply here and we\'ll get started 🙂',
+    text: 'Hi! Olma here — you reached out while new sign-ups were paused. There\'s room now. If you\'re still interested, just reply here and we\'ll get started 🙂',
   },
   // A room member who has never written to her, when a coordination opens in
   // that room (`group-meetings.coldInvite`, flag `group_cold_invite`). Sent on
