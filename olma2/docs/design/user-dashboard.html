@@ -1548,6 +1548,19 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 .litem.fresh{animation:itemIn .23s var(--ease-io)}
 .additem{text-align:start}
 .additemrow{padding-top:4px}
+/* A task that already has items opens on them, and the rest of the sheet
+   folds behind one row that says what it holds (#sheet.listmode, set in
+   openSheet). Outside listmode the row does not exist and nothing moves —
+   including the separator it would otherwise hand to the row after it. */
+#sDetailsRow{display:none}
+#sheet.listmode #sDetailsRow{display:flex}
+#sDetailsRow::before{
+  content:"";position:absolute;top:0;height:1px;background:var(--sep);
+  inset-inline-start:14px;inset-inline-end:0;
+}
+#sheet:not(.listmode) #sDetailsRow + .row::before{content:none}
+#sheet.listmode:not(.details) .lfold{display:none}
+#sheet.listmode.details .lfold{animation:itemIn .23s var(--ease-io)}
 
 /* who a shared task belongs to, spelled out inside the editor */
 .sperson{display:flex;align-items:center;gap:11px;padding:8px 0}
@@ -3873,9 +3886,14 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   </div>
   <div class="group">
     <!-- A list is what the task IS, so it heads the group, above every
-         question about when. Folded by default: the row already carries the
-         count, and an open list would push the editor past one screen —
-         which is the one rule this sheet has. -->
+         question about when. Folded on a task with no items yet: the row
+         already carries the count, and an open list would push the editor
+         past one screen — which is the one rule this sheet has.
+         A task that already HAS items opens the other way round (owner,
+         2026-09-30: "when I open a list it doesn't open straight away and I
+         see all the settings"): the items open, and every row after
+         #sDetailsRow (.lfold) folds behind it, so the screen rule still
+         holds. `listmode` on #sheet is that switch, set once in openSheet. -->
     <button class="row no-icon" id="sListRow" aria-expanded="false">
       <div class="row-txt"><div class="row-title" data-i18n="sheet.list"></div>
         <div class="row-sub" id="sListSub"></div></div>
@@ -3889,10 +3907,16 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
                data-i18n-ph="sheet.addItem" data-i18n-label="sheet.addItem" autocomplete="off">
       </div>
     </div></div>
+    <!-- Only in listmode: everything below, said in one line. -->
+    <button class="row no-icon" id="sDetailsRow" aria-expanded="false">
+      <div class="row-txt"><div class="row-title" data-i18n="sheet.details"></div>
+        <div class="row-sub" id="sDetailsSub"></div></div>
+      <svg class="chev"><use href="#i-chev"/></svg>
+    </button>
     <!-- Date, time and all-day were three rows asking one question. They are
          one row of values now: each is its own target, and the ones that do
          not apply yet simply are not there. -->
-    <div class="row no-icon whenrow">
+    <div class="row no-icon whenrow lfold">
       <div class="row-title" data-i18n="sheet.when"></div>
       <div class="whenvals">
         <!-- An undated task is one tap from today or tomorrow, without opening
@@ -3927,21 +3951,21 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       <input id="sEnd" type="time" tabindex="-1" aria-hidden="true"
              style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px">
     </div>
-    <button class="row no-icon" id="sCatRow" aria-expanded="false">
+    <button class="row no-icon lfold" id="sCatRow" aria-expanded="false">
       <div class="row-txt"><div class="row-title" data-i18n="cat.h"></div></div>
       <span class="row-val" id="sCatVal"></span>
       <span class="autotag" id="sCatAuto" hidden data-i18n="cat.auto"></span>
       <svg class="chev"><use href="#i-chev"/></svg>
     </button>
-    <div class="fold" id="sCatFold"><div><div class="foldpad tight">
+    <div class="fold lfold" id="sCatFold"><div><div class="foldpad tight">
       <div class="chips" id="sCat"></div>
     </div></div></div>
-    <button class="row no-icon" id="sRepeatRow" aria-expanded="false">
+    <button class="row no-icon lfold" id="sRepeatRow" aria-expanded="false">
       <div class="row-txt"><div class="row-title" data-i18n="sheet.repeat"></div></div>
       <span class="row-val" id="sRepeatVal"></span>
       <svg class="chev"><use href="#i-chev"/></svg>
     </button>
-    <div class="fold" id="sRepeatFold"><div><div class="foldpad tight">
+    <div class="fold lfold" id="sRepeatFold"><div><div class="foldpad tight">
       <div class="chips" id="sRepeat">
         <button class="chip mini" aria-pressed="true" data-rep="none" data-i18n="rep.once"></button>
         <button class="chip mini" aria-pressed="false" data-rep="day" data-i18n="rep.day"></button>
@@ -3954,11 +3978,11 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
         <button class="chip mini" aria-pressed="false" data-rep="until" data-i18n="rep.until"></button>
       </div>
     </div></div></div>
-    <div class="row no-icon" id="sRemindRow">
+    <div class="row no-icon lfold" id="sRemindRow">
       <div class="row-txt"><div class="row-title" data-i18n="sheet.remind"></div><div class="row-sub" id="remindSub"></div></div>
       <button class="switch" role="switch" aria-checked="false" id="sRemind" data-i18n-label="sheet.remind"></button>
     </div>
-    <div class="fold" id="sRemindFold"><div><div class="foldpad tight">
+    <div class="fold lfold" id="sRemindFold"><div><div class="foldpad tight">
       <div class="chips" id="sOffset">
         <!-- data-remoff, not data-off: #sSharePeople already uses data-off for
              "take this person off the task", and two attributes with one name
@@ -3983,21 +4007,21 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
          no chooser here on purpose: one connected calendar is the writing one,
          and picking between them is a decision for the connections page, not
          for the middle of writing a task. -->
-    <div class="row no-icon" id="sCalRow" hidden>
+    <div class="row no-icon lfold" id="sCalRow" hidden>
       <div class="row-txt"><div class="row-title" data-i18n="sheet.inCal"></div>
         <div class="row-sub" id="sCalSub"></div></div>
       <button class="switch" role="switch" aria-checked="false" id="sCal" data-i18n-label="sheet.inCal"></button>
     </div>
     <!-- Only where there is somewhere to jump TO: a dated task that is on the
          calendar. It was an icon on the row until 2026-09-28. -->
-    <button class="row no-icon" id="sJumpRow" hidden>
+    <button class="row no-icon lfold" id="sJumpRow" hidden>
       <div class="row-txt"><div class="row-title" data-i18n="cal.showIn"></div></div>
       <svg class="chev"><use href="#i-chev"/></svg>
     </button>
   </div>
 
   <!-- who else has this task. Hidden entirely when nobody else does. -->
-  <div class="group" id="sShareGroup" style="margin-top:12px">
+  <div class="group lfold" id="sShareGroup" style="margin-top:12px">
     <button class="row no-icon" id="sShareRow" aria-expanded="false">
       <div class="row-txt"><div class="row-title" data-i18n="sheet.shared"></div>
         <div class="row-sub" id="sShareSub"></div></div>
@@ -5120,7 +5144,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "sheet.sharePick":"מי עוד יראה את המשימה ויוכל לסמן אותה",
       "toast.shared":"„{name}” משותפת עכשיו עם {who}","toast.unshared":"„{name}” חזרה להיות שלך בלבד",
       "tasks.leftAt":"יצאת ממנה",
-      "sheet.list":"רשימה","sheet.listSub.n0":"אין עדיין פריטים","sheet.listSub.nN":"{done} מתוך {n} סומנו",
+      "sheet.list":"רשימה","sheet.details":"פרטים","sheet.sum.noDate":"בלי תאריך","sheet.sum.rem":"עם תזכורת","sheet.sum.noRem":"בלי תזכורת","sheet.sum.with":"עם {names}","sheet.listSub.n0":"אין עדיין פריטים","sheet.listSub.nN":"{done} מתוך {n} סומנו",
       "sheet.addItem":"הוספת פריט","sheet.itemRm":"מחיקת הפריט",
       "sheet.shared":"משותפת","share.with1":"משותפת עם {name}","share.withN":"משותפת עם {name} ועוד {n}",
       "share.ownerM":"פתח את המשימה","share.ownerF":"פתחה את המשימה","share.ownerMe":"פתחתי את המשימה","share.you":"אני",
@@ -5488,7 +5512,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "sheet.sharePick":"Who else sees this task and can tick it off",
       "toast.shared":"\u201c{name}\u201d is now shared with {who}","toast.unshared":"\u201c{name}\u201d is yours alone again",
       "tasks.leftAt":"you left it",
-      "sheet.list":"Checklist","sheet.listSub.n0":"No items yet","sheet.listSub.nN":"{done} of {n} ticked",
+      "sheet.list":"Checklist","sheet.details":"Details","sheet.sum.noDate":"No date","sheet.sum.rem":"Reminder on","sheet.sum.noRem":"No reminder","sheet.sum.with":"With {names}","sheet.listSub.n0":"No items yet","sheet.listSub.nN":"{done} of {n} ticked",
       "sheet.addItem":"Add an item","sheet.itemRm":"Remove item",
       "sheet.shared":"Shared","share.with1":"Shared with {name}","share.withN":"Shared with {name} and {n} more",
       "share.ownerM":"started it","share.ownerF":"started it","share.ownerMe":"You started it","share.you":"You",
@@ -8568,6 +8592,20 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       c.setAttribute("aria-pressed", c.dataset.cat === ck ? "true" : "false");
     });
     syncSheetSource();
+    paintDetailsSum();
+  }
+  /* What the folded rows hold, in one line, for a list opened on its items.
+     Says the unset ones too ("no date", "no reminder") — a summary that only
+     lists what is there cannot be told apart from one that forgot something. */
+  function paintDetailsSum(){
+    if(!editing) return;
+    var parts = [], ck = editing.cat || "none", who = editing.who || [];
+    if(ck !== "none") parts.push(t("tcat." + ck));
+    parts.push(editing.d ? longDate(editing.d) + (editing.tm && !editing.all ? " " + editing.tm : "")
+                         : t("sheet.sum.noDate"));
+    parts.push(t(editing.rem ? "sheet.sum.rem" : "sheet.sum.noRem"));
+    if(who.length) parts.push(t("sheet.sum.with", {names:sharedNames(who)}));
+    $("#sDetailsSub").textContent = parts.join(" · ");
   }
   /* Which calendar "add to calendar" actually writes to. The first connected
      provider whose calendar service is on and writable — the same one the
@@ -8764,6 +8802,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
        thing you do to a task that is only yours */
     $("#sLeave").hidden = !shared;
     $("#sLeaveNote").hidden = !shared;
+    paintDetailsSum();
   }
   /* Every friend is a chip and the pressed ones are on the task, so sharing
      and un-sharing are one gesture rather than two screens. */
@@ -8854,6 +8893,12 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     if(on) paintCue($("#sList"), $("#listCue"));
     if(on) setTimeout(function(){ $("#sAddItem").focus(); }, 130);
   });
+  $("#sDetailsRow").addEventListener("click", function(){
+    var on = !$("#sheet").classList.contains("details");
+    $("#sheet").classList.toggle("details", on);
+    this.setAttribute("aria-expanded", on ? "true" : "false");
+    updateSheetCue();
+  });
   $("#sShareRow").addEventListener("click", function(){
     var on = !$("#sShareFold").classList.contains("open");
     $("#sShareFold").classList.toggle("open", on);
@@ -8931,8 +8976,16 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     renderSheetList();
     renderSheetShare();
     $("#sAddItem").value = "";
-    $("#sListFold").classList.remove("open");
-    $("#sListRow").setAttribute("aria-expanded", "false");
+    /* Decided once, here: a list that has items opens on them. Adding the
+       first item to a plain task leaves it plain until the next open, so the
+       sheet never rearranges itself under a finger. No focus on the add
+       field — a keyboard coming up would cover the items this is for. */
+    var listy = !!(x && x.items && x.items.length);
+    $("#sheet").classList.toggle("listmode", listy);
+    $("#sheet").classList.remove("details");
+    $("#sDetailsRow").setAttribute("aria-expanded", "false");
+    $("#sListFold").classList.toggle("open", listy);
+    $("#sListRow").setAttribute("aria-expanded", listy ? "true" : "false");
     $("#sShareFold").classList.remove("open");
     $("#sShareRow").setAttribute("aria-expanded", "false");
     $("#sSaved").textContent = t("sheet.autosave");
@@ -8940,6 +8993,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     creating = isNew;
     syncTitleRow();
     showSheet($("#sheet"));
+    /* the list's own scroll line is measured against a list that is showing */
+    if(listy) paintCue($("#sList"), $("#listCue"));
     setTimeout(function(){ if(isNew) $("#sTitle").focus(); }, 190);
   }
 
