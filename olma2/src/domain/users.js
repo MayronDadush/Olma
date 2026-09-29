@@ -8,6 +8,7 @@ const { ok, err } = require('./results');
 const audit = require('./audit');
 const timezoneRepair = require('./timezone-repair');
 const language = require('./language');
+const underAge = require('./under-age');
 
 function newIdentityToken() {
   return 'olma_tok_' + crypto.randomBytes(16).toString('hex');
@@ -410,7 +411,7 @@ async function setPersonal(client, userId, { gender, birthDate } = {}, now = new
   if (!sets.length) return err('invalid', 'nothing to change — pass gender and/or birthDate');
   const { rows } = await client.query(
     `UPDATE users SET ${sets.join(', ')} WHERE id = $1
-      RETURNING gender, to_char(birth_date, 'YYYY-MM-DD') AS birth_date`, params);
+      RETURNING gender, to_char(birth_date, 'YYYY-MM-DD') AS birth_date, timezone`, params);
   if (!rows[0]) return err('not_found', 'no such user');
   // The fields that changed, never the values: a birthday is personal data and
   // the audit trail is read by operators.
@@ -418,6 +419,12 @@ async function setPersonal(client, userId, { gender, birthDate } = {}, now = new
     gender: gender !== undefined, birthDate: birthDate !== undefined,
   });
   if (gender !== undefined) await syncGenderForms(client, userId, rows[0].gender);
+  // This is the ONLY writer of birth_date, so the one place the under-16 check
+  // has to sit (compliance review 2026-09-28). It files an issue for the owner
+  // and does nothing to the person — see domain/under-age.js.
+  if (birthDate !== undefined && rows[0].birth_date) {
+    await underAge.flagIfUnderAge(client, userId, rows[0].birth_date, rows[0].timezone, now);
+  }
   return ok({ gender: rows[0].gender, birthDate: rows[0].birth_date });
 }
 
