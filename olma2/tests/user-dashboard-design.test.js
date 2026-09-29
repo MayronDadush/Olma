@@ -218,9 +218,8 @@ test('a class that says what something IS may not also say how it looks', () => 
   const rules = page.match(/[^\n{}]*\.hasrooms[^\n{}]*\{[^}]*\}/g) || [];
   assert.equal(rules.length, 1, 'exactly one rule may mention it');
   assert.match(rules[0], /^html\[data-served\] \.groupsblock\.hasrooms\{display:block\}$/);
-  // And the pill's own name now describes the pill.
-  assert.match(page, /<div class="livepill">/);
-  assert.match(page, /\.livepill\{/);
+  // The pill that answered to it is gone (2026-09-29): the paused card says it.
+  assert.doesNotMatch(page, /class="livepill"|id="olmaLive"/);
 });
 
 // A `var(--x)` naming a token nobody defines is the quietest failure this file
@@ -463,7 +462,7 @@ test('the home band carries one day/night button, on the home tab only, sharing 
 test('a paused page is blurred and inert, and the only control is bringing her back', () => {
   assert.ok(/html\[data-paused\] \.app,html\[data-paused\] \.tabbar\{filter:blur\([^)]+\)[^}]*pointer-events:none/.test(page),
     'the page behind a pause is still pressable');
-  assert.ok(page.includes('$(".app").inert = paused; $(".tabbar").inert = paused;'),
+  assert.ok(page.includes('$(".app").inert = paused || NEWUSER; $(".tabbar").inert = paused || NEWUSER;'),
     'a keyboard can still walk into the paused page');
   const gate = page.slice(page.indexOf('<div class="pausegate"'), page.indexOf('<!-- ══════════════  the first screen'));
   assert.equal((gate.match(/<button/g) || []).length, 1, 'the pause screen offers more than one thing');
@@ -481,3 +480,34 @@ test('a paused page is blurred and inert, and the only control is bringing her b
 test('the design file names no Google font host', () => {
   assert.doesNotMatch(page, /fonts\.googleapis\.com|fonts\.gstatic\.com/);
 });
+
+// The served page ships its example data in its source, and since 2026-09-29
+// a stranger sees it drawn behind the lock — so none of it may be a real
+// person. It was the owner's name, surname and phone number.
+test('the example data names nobody real', () => {
+  assert.doesNotMatch(page, /6269826|Dadush|דדוש|"Miron"|"מירון"/);
+});
+
+test('a stranger sees the app blurred behind the card, and cannot use it', () => {
+  assert.match(page, /html\.is-new:not\(\.is-app\) \.app\{[^}]*filter:blur\([^)]+\)[^}]*pointer-events:none/);
+  assert.match(page, /function lockApp\(on\)\{\s*\$\("\.app"\)\.inert = on;\s*\$\("\.tabbar"\)\.inert = on;/);
+  assert.match(page, /function startWelcome\(\)\{[^}]*lockApp\(true\);/);
+  // the installed app keeps its code screen, with nothing behind it
+  assert.match(page, /html\.is-new\.is-app \.app,\nhtml\.is-new\.is-app \.tabbar\{display:none\}/);
+  assert.match(page, /<p class="wdemo" data-i18n="w\.demo"><\/p>/);
+  assert.match(page, /"w\.demo":"דוגמה"/);
+  assert.match(page, /"w\.demo":"Example"/);
+});
+
+test('a browser that has been signed in before is offered a sign-in link first', () => {
+  // Written by every signed-in load, read only by the signed-out one.
+  assert.match(page, /LIVE = true;\s*try\{ localStorage\.setItem\("olma\.been", "1"\); \}catch\(e\)\{\}/);
+  assert.match(page, /var back = BEEN && !STANDALONE && !welcomeFresh;/);
+  // The text is one the chat answers with a link by code, before any turn.
+  const { matchLinkRequest } = require('../src/domain/link-request.js');
+  for (const [text, lang] of [['שלח לי קישור', 'he'], ['send me a link', 'en']]) {
+    assert.ok(page.includes(`"w.backWa":"${text}"`), `the page no longer sends "${text}"`);
+    assert.deepEqual(matchLinkRequest(text), { lang, kind: 'link' }, `the chat no longer answers "${text}" with a link`);
+  }
+});
+

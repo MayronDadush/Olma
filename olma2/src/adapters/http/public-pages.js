@@ -142,8 +142,14 @@ ${SHELL_CSS}</style>
 // what the product says it does, so every capability below names the exact
 // permission behind it and its limit. Said once in English, then again in
 // Hebrew for the people actually using it today — same claims, both times.
-function homePage() {
-  return shell(`${BRAND} — a WhatsApp AI assistant`, `
+// The words under the band, and the one sentence the band says, apart from
+// the shell — the locked dashboard at `/` carries the same text under itself
+// (user-dashboard.js), and two copies of what Google's reviewer reads is how
+// they would come to say different things. `k` names each class, because the
+// dashboard is one CSS namespace and `.he` there is already somebody's.
+const HOME_LEDE = 'A personal assistant that lives inside WhatsApp. Write to it in your own language — it remembers, reminds, and coordinates. Nothing to install.';
+function homeSections(k = (n) => n) {
+  return `
     <h2>What it does</h2>
     <ul>
       <li><b>Tasks & reminders</b> — tell it once, and it reminds you at the right time.</li>
@@ -155,27 +161,27 @@ function homePage() {
     <h2>Connecting your Google account — your choice</h2>
     <p>${BRAND} works great with no connection at all. If you do connect, every permission is separate, requested only after you explicitly asked for it, and can be disconnected at any time.</p>
 
-    <div class="card">
+    <div class="${k('card')}">
       <h3>Google Calendar</h3>
       <p>See what's on your calendar to answer "what do I have tomorrow", and suggest times that are genuinely free. If you also grant edit access, add an event you asked for.</p>
-      <p class="perm">Permission: <code>calendar.readonly</code> for viewing only, or <code>calendar.events</code> if you also approved editing. You choose before the link is created.</p>
+      <p class="${k('perm')}">Permission: <code>calendar.readonly</code> for viewing only, or <code>calendar.events</code> if you also approved editing. You choose before the link is created.</p>
     </div>
 
-    <div class="card">
+    <div class="${k('card')}">
       <h3>Google Contacts</h3>
       <p>Import names and numbers into your own private address book here, so you don't have to dictate a number already in your phone. The import is completely silent: it notifies nobody and tells no one that you use ${BRAND}.</p>
-      <p class="perm">Permission: <code>contacts.readonly</code> — read-only.</p>
+      <p class="${k('perm')}">Permission: <code>contacts.readonly</code> — read-only.</p>
     </div>
 
     <h2>Privacy</h2>
     <p>We do not sell information and do not use it for advertising. Data from Google is used solely to answer you — not to train models, and not for any other purpose. <a href="/privacy">Full privacy policy</a>.</p>
 
-    <div class="he">
-      <div class="mark">${LOGO_PAGE}</div>
+    <div class="${k('he')}">
+      <div class="${k('mark')}">${LOGO_PAGE}</div>
       <h2>${ASSISTANT}</h2>
-      <p class="lede">עוזרת אישית שחיה בתוך וואטסאפ. כותבים לה בשפה שלכם — היא זוכרת, מזכירה, ומתאמת. אין מה להתקין.</p>
+      <p class="${k('lede')}">עוזרת אישית שחיה בתוך וואטסאפ. כותבים לה בשפה שלכם — היא זוכרת, מזכירה, ומתאמת. אין מה להתקין.</p>
 
-      <p><a class="cta" href="https://wa.me/${WA_NUMBER}">פתיחת שיחה בוואטסאפ</a></p>
+      <p><a class="${k('cta')}" href="https://wa.me/${WA_NUMBER}">פתיחת שיחה בוואטסאפ</a></p>
 
       <h3>מה היא עושה</h3>
       <ul>
@@ -188,29 +194,33 @@ function homePage() {
       <h3>חיבור לחשבון הגוגל שלכם — לבחירתכם</h3>
       <p>${ASSISTANT} עובדת מצוין בלי שום חיבור. אם בכל זאת מחברים, כל הרשאה נפרדת, מתבקשת רק אחרי שביקשתם אותה במפורש, וניתנת לניתוק בכל רגע.</p>
 
-      <div class="card">
+      <div class="${k('card')}">
         <h3>יומן Google</h3>
         <p>לראות מה יש ביומן כדי לענות על "מה יש לי מחר", ולהציע זמנים שפנויים באמת. אם תבחרו גם הרשאת עריכה — להוסיף אירוע שביקשתם.</p>
-        <p class="perm">ההרשאה: <code>calendar.readonly</code> לצפייה בלבד, או <code>calendar.events</code> אם אישרתם גם עריכה. אתם בוחרים לפני שהקישור נוצר.</p>
+        <p class="${k('perm')}">ההרשאה: <code>calendar.readonly</code> לצפייה בלבד, או <code>calendar.events</code> אם אישרתם גם עריכה. אתם בוחרים לפני שהקישור נוצר.</p>
       </div>
 
-      <div class="card">
+      <div class="${k('card')}">
         <h3>אנשי קשר Google</h3>
         <p>ייבוא שמות ומספרים לפנקס הכתובות הפרטי שלכם כאן, כדי שלא תצטרכו להכתיב מספר שכבר קיים אצלכם בטלפון. הייבוא שקט לחלוטין: הוא לא שולח הודעה לאף אחד ולא מספר לאיש שאתם משתמשים ב${ASSISTANT}.</p>
-        <p class="perm">ההרשאה: <code>contacts.readonly</code> — קריאה בלבד.</p>
+        <p class="${k('perm')}">ההרשאה: <code>contacts.readonly</code> — קריאה בלבד.</p>
       </div>
 
       <h3>פרטיות</h3>
       <p>אנחנו לא מוכרים מידע ולא משתמשים בו לפרסום. המידע מגוגל משמש אך ורק כדי לענות לכם — לא לאימון מודלים ולא לשום שימוש אחר. <a href="/privacy">מדיניות הפרטיות המלאה</a>.</p>
     </div>
 
-    <div class="foot">
+    <div class="${k('foot')}">
       <p>allma.world · <a href="/privacy">Privacy Policy</a> · <a href="/terms">Terms of Service</a> · <a href="/accessibility">Accessibility</a> · <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
     </div>
-  `, { band: `
+`;
+}
+
+function homePage() {
+  return shell(`${BRAND} — a WhatsApp AI assistant`, homeSections(), { band: `
     <div class="mark">${LOGO}</div>
     <h1>${BRAND}</h1>
-    <p class="lede">A personal assistant that lives inside WhatsApp. Write to it in your own language — it remembers, reminds, and coordinates. Nothing to install.</p>
+    <p class="lede">${HOME_LEDE}</p>
     <p><a class="cta" href="https://wa.me/${WA_NUMBER}">Start a WhatsApp chat</a></p>
   ` });
 }
@@ -525,6 +535,6 @@ function accessibilityPage() {
 }
 
 module.exports = {
-  homePage, privacyPage, termsPage, accessibilityPage, BRAND, ASSISTANT, CONTACT_EMAIL, UPDATED,
+  homePage, homeSections, HOME_LEDE, privacyPage, termsPage, accessibilityPage, BRAND, ASSISTANT, CONTACT_EMAIL, UPDATED,
   PRIVACY_UPDATED, RETENTION, A11Y_UPDATED, PINCH_ZOOM_DISABLED,
 };

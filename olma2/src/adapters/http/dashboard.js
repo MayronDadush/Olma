@@ -340,9 +340,11 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         return res.end(publicPages.accessibilityPage());
       }
+      // Since 2026-09-29 the public `/` is the personal dashboard, locked, with
+      // the same words as publicPages.homePage under it (user-dashboard.js,
+      // frontPage). homePage stays: it is what those words were checked in.
       if (req.method === 'GET' && parsed.pathname === '/' && PUBLIC_HOSTS.has(hostOf(req))) {
-        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        return res.end(publicPages.homePage());
+        return userDashboard.frontPage(req, res, pool);
       }
 
       if (!checkBasicAuth(req, adminUser, adminPass)) {

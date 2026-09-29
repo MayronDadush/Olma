@@ -102,11 +102,22 @@ function ownPageHtml(locale) {
 // Both people need the same next step (write to her), the screen says so
 // without claiming to know which of the two you are, and it leaks nothing
 // about whether a number is on file.
+//
+// Since 2026-09-29 it is also allma.world's front page, and the app is drawn
+// behind the card from the file's own example data (the owner: "the landing
+// page is the dashboard, locked"). What Allma is — the text Google's reviewer
+// reads to match our scopes to the product — is put under it here, from
+// public-pages, so the two front doors can never say different things. In
+// English whatever the page's language: that is who reads it for Google, and
+// the Hebrew follows it in the same section.
 function newPageHtml() {
-  return servedPageHtml(' data-new="1"');
+  return servedPageHtml(' data-new="1"') + '\n<section class="about" id="about" lang="en" dir="ltr">'
+    + `<h1>${esc(publicPages.BRAND)}</h1><p class="ab-lede">${esc(publicPages.HOME_LEDE)}</p>`
+    + publicPages.homeSections((n) => 'ab-' + n) + '</section>\n';
 }
 
 const { esc } = require('./html');
+const publicPages = require('./public-pages');
 
 // The page is one inline script and one inline stylesheet, so 'unsafe-inline'
 // is unavoidable and blocking it would only break the page. What this policy is
@@ -447,8 +458,12 @@ async function handle(req, res, pool, pathname) {
     if (!userId) {
       // A stale cookie that resolves to nobody is cleared on the way out, so
       // the next visit starts clean rather than repeating the same silent
-      // failure. The status stays 401: nothing of theirs is being served.
-      res.writeHead(401, headers(HTML, { 'Set-Cookie': auth.clearCookieHeader() }));
+      // failure. 200 since 2026-09-29, not 401: this is the same locked page
+      // allma.world's `/` serves, nothing of theirs is in it (the data-new
+      // stamp decides that, never the status), and Caddy compressed the 200
+      // and sent the 401 whole — 767KB to a phone whose cookie had expired.
+      // The JSON routes below still answer 401.
+      res.writeHead(200, headers(HTML, { 'Set-Cookie': auth.clearCookieHeader() }));
       return res.end(newPageHtml());
     }
     res.writeHead(200, headers(HTML));
@@ -499,7 +514,26 @@ async function handle(req, res, pool, pathname) {
   return sendJson(res, status, done);
 }
 
+// allma.world's `/` — dashboard.js hands it over for the public hostnames
+// only, so the admin root on duckdns is untouched. A visitor we can see is
+// sent to their own page: the lock is for somebody we cannot see, never for
+// somebody we can. 200, not /me's 401, because this IS the page asked for;
+// and indexable, unlike everything else here, because it is the front door
+// and holds nothing of anybody's. `Vary: Cookie` because the same URL answers
+// two ways.
+async function frontPage(req, res, pool) {
+  const who = await currentUser(pool, req).catch(() => null);
+  if (who && who.userId) {
+    res.writeHead(303, headers(HTML, { Location: '/me', Vary: 'Cookie' }));
+    return res.end();
+  }
+  const h = headers(HTML, { Vary: 'Cookie' });
+  delete h['X-Robots-Tag'];
+  res.writeHead(200, h);
+  return res.end(newPageHtml());
+}
+
 module.exports = {
-  handle, matches, currentUser, pageLocale, resetCodeLimits, LINK_RE, PAGE_PATH,
+  handle, matches, currentUser, frontPage, pageLocale, resetCodeLimits, LINK_RE, PAGE_PATH,
   CODE_MAX_PER_ADDRESS, CODE_MAX_TOTAL,
 };
