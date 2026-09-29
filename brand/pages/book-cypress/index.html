@@ -8,8 +8,8 @@
   --brand:#004643; --on-brand:#F0EDE5; --brand-soft:#E6ECEC; --action:#F9C23C; --on-action:#004643; --link:#004643; --danger:#B03A2E;
   --f:"IBM Plex Sans Hebrew","IBM Plex Sans",system-ui,sans-serif; --mono:"IBM Plex Mono",ui-monospace,monospace;
 }
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0A1817;--surface:#122725;--surface-2:#17302D;--line:#283331;--text:#EDE9DF;--text-2:#B2B3AB;--text-3:#8E918B;--brand:#1F6B64;--on-brand:#EDE9DF;--brand-soft:#19322F;--action:#F9C23C;--on-action:#0E1F1E;--link:#7CC4BA;--danger:#F08A7E;color-scheme:dark}}
-:root[data-theme="dark"]{--bg:#0A1817;--surface:#122725;--surface-2:#17302D;--line:#283331;--text:#EDE9DF;--text-2:#B2B3AB;--text-3:#8E918B;--brand:#1F6B64;--on-brand:#EDE9DF;--brand-soft:#19322F;--action:#F9C23C;--on-action:#0E1F1E;--link:#7CC4BA;--danger:#F08A7E;color-scheme:dark}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1B1A18;--surface:#26251F;--surface-2:#2D2B26;--line:#35332D;--text:#EDE9DF;--text-2:#B9B5AC;--text-3:#A39F96;--brand:#004643;--on-brand:#EDE9DF;--brand-soft:#1F3532;--action:#F9C23C;--on-action:#0E1F1E;--link:#7CC4BA;--danger:#F08A7E;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#1B1A18;--surface:#26251F;--surface-2:#2D2B26;--line:#35332D;--text:#EDE9DF;--text-2:#B9B5AC;--text-3:#A39F96;--brand:#004643;--on-brand:#EDE9DF;--brand-soft:#1F3532;--action:#F9C23C;--on-action:#0E1F1E;--link:#7CC4BA;--danger:#F08A7E;color-scheme:dark}
 *{box-sizing:border-box}
 body{background:var(--bg);color:var(--text);font-family:var(--f);font-size:16px;line-height:1.6;margin:0}
 .wrap{max-width:1080px;margin:0 auto;padding-inline:16px;padding-block:0 80px;display:grid;gap:64px}
@@ -109,7 +109,7 @@ code{font-family:var(--mono);font-size:13px;background:var(--brand-soft);border-
 .cm figure{margin:0;display:grid;justify-items:center;gap:4px;font-size:11.5px;font-weight:600;text-align:center;color:var(--mk-line)}
 .cm svg{width:34px;height:34px}
 .cm.day{background:#F0EDE5;--mk-line:#0E1F1E;--mk-hi:#FFFFFF;--mk-paper:#FFFFFF;--mk-paper-s:#E4E1D7;--mk-gold:#F9C23C;--mk-gold-s:#CF9A1F;--mk-violet:#1F6B64;--mk-violet-s:#004643;--mk-lime:#C6D62B;--mk-lime-s:#90A91E;--mk-orange:#EC8A3B;--mk-orange-s:#BF6621;--mk-blue:#2F7F9E;--mk-blue-s:#1F6377;--mk-red:#C4513F;--mk-red-s:#9A3A2C;--mk-green:#3F9A6E;--mk-green-s:#2B7453;--mk-navy:#123C3A;--mk-brown:#8A5A2B}
-.cm.night{background:#0A1817;--mk-line:#EDE9DF;--mk-hi:#FFFFFF;--mk-paper:#1C3633;--mk-paper-s:#122725;--mk-gold:#F9C23C;--mk-gold-s:#CF9A1F;--mk-violet:#1F6B64;--mk-violet-s:#004643;--mk-lime:#C6D62B;--mk-lime-s:#90A91E;--mk-orange:#EC8A3B;--mk-orange-s:#BF6621;--mk-blue:#2F7F9E;--mk-blue-s:#1F6377;--mk-red:#C4513F;--mk-red-s:#9A3A2C;--mk-green:#3F9A6E;--mk-green-s:#2B7453;--mk-navy:#BFD3CF;--mk-brown:#B0763A}
+.cm.night{background:#1B1A18;--mk-line:#EDE9DF;--mk-hi:#FFFFFF;--mk-paper:#2D2B26;--mk-paper-s:#26251F;--mk-gold:#F9C23C;--mk-gold-s:#CF9A1F;--mk-violet:#1F6B64;--mk-violet-s:#004643;--mk-lime:#C6D62B;--mk-lime-s:#90A91E;--mk-orange:#EC8A3B;--mk-orange-s:#BF6621;--mk-blue:#2F7F9E;--mk-blue-s:#1F6377;--mk-red:#C4513F;--mk-red-s:#9A3A2C;--mk-green:#3F9A6E;--mk-green-s:#2B7453;--mk-navy:#BFD3CF;--mk-brown:#B0763A}
 .cm .live{outline:2px solid var(--mk-gold);outline-offset:2px;border-radius:10px}
 .tex{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
 .tex figure{margin:0;display:grid;gap:6px}
@@ -308,7 +308,7 @@ code{font-family:var(--mono);font-size:13px;background:var(--brand-soft);border-
   <section class="sec">
     <span class="eyebrow">02 · לפי שעה</span>
     <h2>יום ולילה</h2>
-    <p class="muted">אותה מערכת בשתי תאורות. היום בהיר. בלילה הרקע כהה והחרדל נשאר, כדי שהפעולה תמשיך להיות מוכרת. לשבת אין כרגע צבעים משלה: היא נראית כמו כל יום אחר. העמוד הזה עצמו עובר ללילה כשהמכשיר שלך במצב כהה.</p>
+    <p class="muted">אותה מערכת בשתי תאורות. היום בהיר. <b>בלילה הרקע פחם חם</b> (<span class="hex">#1B1A18</span>, נבחר 28.9), והכרטיסים בדרגה אחת בהירה ממנו. הפס העליון נשאר בברוש, בדיוק כמו ביום, והחרדל נשאר, כדי שהפעולה תמשיך להיות מוכרת. הלילה הקודם, ירוק־כהה, ירד: הברוש נבלע בו, והמסך כולו הרגיש ירוק. לשבת אין כרגע צבעים משלה: היא נראית כמו כל יום אחר. העמוד הזה עצמו עובר ללילה כשהמכשיר שלך במצב כהה.</p>
     <div class="modes" id="modes"></div>
   </section>
 
@@ -377,7 +377,7 @@ code{font-family:var(--mono);font-size:13px;background:var(--brand-soft);border-
       <img src="img/tealY-tasks.jpg" alt="מסך המשימות בברוש וחרדל">
       <img src="img/tealY-friends.jpg" alt="מסך החברים בברוש וחרדל">
     </div>
-    <p class="muted" style="font-size:14px">אלה הדף האמיתי מהדמו המקומי, צבוע מבחוץ. זו עדיין לא הגרסה שבקוד.</p>
+    <p class="muted" style="font-size:14px">אלה צילומים מהדמו, מלפני שהצבעים נכנסו לקוד. מאז הדאשבורד עלה (28.9), עם פס ברוש בכל הלשוניות ולילה בפחם חם.</p>
     <div class="card"><h3>תמונת פרופיל</h3>
       <div class="wa" id="wa"></div>
       <p class="muted" style="font-size:14px">הסימן העגול ממלא את כל העיגול, כך שוואטסאפ לא חותך ממנו כלום. הוא נשאר ברור גם בגודל של רשימת הצ׳אטים.</p>
@@ -489,7 +489,7 @@ code{font-family:var(--mono);font-size:13px;background:var(--brand-soft);border-
     <h2>המפגש <span class="tag ok">נבחר 28.9</span></h2>
     <p class="muted">כולן על אותה עקומה: יציאה רכה ונחיתה ארוכה, בלי קפיצה, בלי סיבוב ובלי רעידה. מי שהגדיר במכשיר "פחות תנועה" יראה את הסימן כבר במקום. בחרת ב<b>מפגש</b>, בשינוי אחד: שני החצאים נשארים במקום, ורק שני העיגולים נכנסים מהקצוות. העדשה נוצרת ברגע שהם נוגעים. שלוש האחרות נשארות כאן בשביל ההיסטוריה.</p>
     <div class="motion" id="motion"></div>
-    <p class="muted" style="font-size:14.5px"><b>שאלה אחת שנשארה:</b> המפגש לוקח 1.1 שניות. זה מושלם בסרטון ובמסך פתיחה. אבל בדאשבורד, ברגע שתיאום נסגר, זה קורה הרבה פעמים ביום, ושם אני מציע את <b>נדלק</b> (0.45 שניות): אותו רגע, רק שקט יותר.</p>
+    <p class="muted" style="font-size:14.5px"><b>בדאשבורד אין אנימציה</b> <span class="tag ok">הוחלט 28.9</span>. המפגש נשאר לסרטונים ולמסך פתיחה. כשתיאום נסגר בדאשבורד, שום דבר לא זז: הסימן פשוט מופיע במקומו. "נדלק" נשאר כאן רק כהיסטוריה.</p>
   </section>
 
   <section class="sec">
@@ -499,11 +499,11 @@ code{font-family:var(--mono);font-size:13px;background:var(--brand-soft);border-
     <div class="steps">
       <div class="step"><div><h3>ערכת המותג <span class="st done">מוכן</span></h3><p class="muted">טוקנים (CSS, JSON, ASE לכלי עיצוב), סימנים ב־SVG, תמונת פרופיל 640, פאביקונים, לוגו מלא בעברית ובאנגלית, והאיקונים. הכל ב־<code>brand/kit/</code>, ונוצר מסקריפט אחד.</p></div></div>
       <div class="step"><div><h3>תמונת הפרופיל בוואטסאפ <span class="st next">אצלך</span></h3><p class="muted">הקובץ הוא <code>mark-split-1024.png</code>, ונשלח אליך ב־29.9. מחליפים אותו מהטלפון של המספר של עולמה, בהגדרות של וואטסאפ. זה הצעד הכי מהיר, וכל משתמש יראה אותו.</p></div></div>
-      <div class="step"><div><h3>הדאשבורד <code>/me</code> <span class="st wait">חונה</span></h3><p class="muted">הצבעים, הפונט והסימן בכותרת כבר מוכנים, וכל הבדיקות עוברות. זה מחכה, כי סשן אחר עובד עכשיו על הדאשבורד. איקוני התפריט לא משתנים.</p></div></div>
+      <div class="step"><div><h3>הדאשבורד <code>/me</code> <span class="st done">עלה 28.9</span></h3><p class="muted">פס ברוש בכל הלשוניות עם כותרת משנה של שורה אחת, לילה בפחם חם, חרדל לפעולה הראשית ולאייקון השיחה, כרטיס ההצעה בטורקיז, ואייקון האפליקציה מרובע. בלי אנימציה. איקוני התפריט לא השתנו.</p></div></div>
       <div class="step"><div><h3>כרטיס הבוקר <span class="st done">באוויר 28.9</span></h3><p class="muted">עבר ל־Plex ולצבעי המותג (PR #581). הכותרת יושבת על פס ברוש עם קו חרדל, והסימן מחליף את אימוג'י הגרף. כל קטע מקבל גוון משלו מאותה רביעייה של סימני התיאום: חרדל ל"היום", ואחריו ברוש, כחול ים וחימר. החרדל רק ממלא ולא משמש לטקסט. בחרת בגרסה הזו מתוך שתיים, כי ביקשת יותר צבע. Heebo יצא מהריפו.</p>
         <img src="img/morning-card.jpg" alt="כרטיס הבוקר בברוש וחרדל" style="border-radius:12px;border:1px solid var(--line);max-width:min(100%,420px);margin-top:10px"></div></div>
       <div class="step"><div><h3>סרטוני ההיכרות <span class="st done">באוויר 28.9</span></h3><p class="muted">הוחלפו במקום (PR #583). לא נשלחו לאף אחד. פרטים בפרק 10.</p></div></div>
-      <div class="step"><div><h3>allma.world <span class="st wait">אחרי זה</span></h3><p class="muted">דף הבית הציבורי ודף הפרטיות: הלוגו המלא, הצבעים, ופאביקון במקום הריק שיש היום.</p></div></div>
+      <div class="step"><div><h3>allma.world <span class="st next">בעבודה</span></h3><p class="muted">מתחילים בדף הנחיתה: פס ברוש, Plex, הסימן, ולילה בפחם. דף הפרטיות והתנאים אחריו.</p></div></div>
       <div class="step"><div><h3>פוסטים וסטוריז <span class="st next">הבא</span></h3><p class="muted">הסטודיו כבר עובד, והסרטונים הראשונים יצאו ממנו. נשאר לבנות את התבניות: פוסט, סטורי וקרוסלה.</p></div></div>
     </div>
   </section>
@@ -515,17 +515,16 @@ code{font-family:var(--mono);font-size:13px;background:var(--brand-soft);border-
       <div class="card"><h3>1 · כרטיס הבוקר לפני האתר <span class="tag ok">בוצע 28.9</span></h3><p class="muted" style="font-size:14.5px">זה הדבר היחיד מהמותג שכל משתמש רואה כל בוקר, והוא עדיין בצבעים ובפונט הישנים. האתר נפתח פעם אחת. אני מציע להקדים את הכרטיס.</p></div>
       <div class="card"><h3>2 · איך נראה קישור שהיא שולחת</h3><p class="muted" style="font-size:14.5px">כשעולמה שולחת קישור לדף האישי, וואטסאפ מציג לו כותרת ותמונה. זה המקום השני שבו כולם רואים את המותג. אני מציע תמונה ממותגת וכותרת קבועה. קודם אבדוק מה מופיע שם היום.</p></div>
       <div class="card"><h3>3 · בדיקת קול בקוד</h3><p class="muted" style="font-size:14.5px">הטקסטים הקבועים שהיא שולחת, כמו הזמנות והשורות בקבוצה, ייבדקו אוטומטית מול הכללים החדשים: בלי סימן קריאה, אימוג'י אחד לכל היותר ובתחילת ההודעה, ושעה באותה צורה. כמו הבדיקות של העברית שכבר רצות, בקוד ולא במודל.</p></div>
-      <div class="card"><h3>4 · העדשה נדלקת כשמשהו נסגר</h3><p class="muted" style="font-size:14.5px">בדאשבורד, ברגע שתיאום נסגר, העדשה של הסימן נדלקת בחרדל. ככה המשמעות של החרדל, "זה נסגר", חוזרת במוצר עצמו ולא רק בפוסטרים.</p></div>
+      <div class="card"><h3>4 · העדשה נדלקת כשמשהו נסגר <span class="tag soft">לא, 28.9</span></h3><p class="muted" style="font-size:14.5px">הוחלט: בדאשבורד בלי אנימציה. ההצעה המקורית: בדאשבורד, ברגע שתיאום נסגר, העדשה של הסימן נדלקת בחרדל. ככה המשמעות של החרדל, "זה נסגר", חוזרת במוצר עצמו ולא רק בפוסטרים.</p></div>
       <div class="card"><h3>5 · מסכים ריקים בקול שלה</h3><p class="muted" style="font-size:14.5px">היום כתוב "אין משימות". בקול שלה: "אין כלום פתוח. רגע נדיר." המקום הכי טבעי להומור הזה, כי שם אף אחד לא לחוץ.</p></div>
     </div>
   </section>
 
   <section class="sec card">
-    <h2 style="font-size:24px">שלוש שאלות אליך</h2>
+    <h2 style="font-size:24px">שתי שאלות אליך</h2>
     <ol class="q">
-      <li><b>מה לשפר:</b> אילו מהדברים 2 עד 5 בפרק 13? אני ממליץ להתחיל מתמונת הקישור, ואחריה התבניות בסטודיו.</li>
-      <li><b>הומור בעולמה עצמה:</b> אישרת את הכללים. ההנחיות מלאות כמעט עד הסוף (39,229 מתוך 39,250 תווים), אז קודם צריך לפנות מקום. להתחיל בזה?</li>
-      <li><b>תנועה:</b> "נדלק" לדאשבורד? ההחלטה בפועל אצל הסשן של הדאשבורד.</li>
+      <li><b>מה לשפר:</b> אילו מהדברים 2, 3 ו־5 בפרק 13? (הראשון בוצע, והרביעי ירד.) אני ממליץ להתחיל מתמונת הקישור, ואחריה התבניות בסטודיו.</li>
+      <li><b>הומור בעולמה עצמה:</b> הכללים אושרו. ההנחיות שלה כמעט מלאות (39,229 מתוך 39,250 תווים), אז קודם צריך לפנות בהן מקום. להתחיל בזה?</li>
     </ol>
   </section>
 
@@ -539,8 +538,8 @@ code{font-family:var(--mono);font-size:13px;background:var(--brand-soft);border-
       <li><code>brand/kit/icons/*.svg</code> · חמשת איקוני התפריט, המקוריים</li>
       <li><code>brand/kit/coordination/</code> · 16 סימני התיאום, ליום וללילה</li>
       <li><code>brand/studio/</code> · התנועה והייצוא לווידאו</li>
-      <li><code>brand/kit/png/mark-split-1024.png</code> (תמונת הפרופיל להעלאה)</li>
-      <li><code>brand/kit/png/whatsapp-avatar-640.png</code> (עגול עם פינות שקופות, לשימוש באתר)</li>
+      <li><code>brand/kit/png/mark-split-1024.png</code> · תמונת הפרופיל להעלאה</li>
+      <li><code>brand/kit/png/whatsapp-avatar-640.png</code> · עגול עם פינות שקופות, לאתר</li>
       <li><code>brand/kit/png/lockup-{he,en}-for-{light,dark}.png</code></li>
       <li><code>brand/kit/png/favicon-32 · apple-touch-180 · icon-512</code></li>
       <li><code>brand/tools/build_cypress.py</code> · בונה את כל הרשימה הזו מחדש</li>
@@ -556,11 +555,11 @@ function round(d,l,a,size,ring){const c='c'+(++uid),k='k'+(++uid);return `<svg v
 function split(d,l,a,size){const k='s'+(++uid);return `<svg viewBox="0 0 120 120" width="${size}" height="${size}" aria-hidden="true" style="display:block"><clipPath id="${k}"><circle cx="42" cy="60" r="28"/></clipPath><rect width="60" height="120" fill="${d}"/><rect x="60" width="60" height="120" fill="${l}"/><circle cx="42" cy="60" r="28" fill="${l}"/><circle cx="78" cy="60" r="28" fill="${d}"/><circle cx="78" cy="60" r="28" fill="${a}" clip-path="url(#${k})"/></svg>`}
 const $=s=>document.querySelector(s);
 $('#heroMark').innerHTML=round(I,S,M,100,S);
-$('#sw').innerHTML=[['חול','Sand','#F0EDE5','60 · רקע'],['ברוש','Cypress','#004643','30 · מותג'],['חרדל','Mustard','#F9C23C','10 · פעולה ועדשה'],['דיו','Ink','#0E1F1E','טקסט'],['לילה','Night','#0A1817','רקע לילה'],['לבנה','Brick','#B03A2E','שגיאה בלבד']]
+$('#sw').innerHTML=[['חול','Sand','#F0EDE5','60 · רקע'],['ברוש','Cypress','#004643','30 · מותג'],['חרדל','Mustard','#F9C23C','10 · פעולה ועדשה'],['דיו','Ink','#0E1F1E','טקסט'],['פחם','Charcoal','#1B1A18','רקע לילה'],['לבנה','Brick','#B03A2E','שגיאה בלבד']]
  .map(([he,en,h,r])=>`<div><i style="background:${h}"></i><p><b>${he} · ${en}</b><span class="hex">${h}</span><br>${r}</p></div>`).join('');
 const MODES=[
  ['יום','Day',{bg:'#F0EDE5',surface:'#FFFFFF',text:'#0E1F1E',t2:'#44504E',brand:'#004643',onb:'#F0EDE5',action:'#F9C23C',ona:'#004643',soft:'#E6ECEC',lens:'#F9C23C'},'בוקר טוב'],
- ['לילה','Night',{bg:'#0A1817',surface:'#122725',text:'#EDE9DF',t2:'#B2B3AB',brand:'#1F6B64',onb:'#EDE9DF',action:'#F9C23C',ona:'#0E1F1E',soft:'#19322F',lens:'#F9C23C'},'לילה טוב'],
+ ['לילה','Night',{bg:'#1B1A18',surface:'#26251F',text:'#EDE9DF',t2:'#B9B5AC',brand:'#004643',onb:'#EDE9DF',action:'#F9C23C',ona:'#0E1F1E',soft:'#35332D',lens:'#F9C23C'},'לילה טוב'],
 ];
 const lensP=(a,b,cy,r)=>{const h=Math.sqrt(r*r-((b-a)/2)**2),x=(a+b)/2;return `M${x} ${(cy-h).toFixed(2)}A${r} ${r} 0 0 1 ${x} ${(cy+h).toFixed(2)}A${r} ${r} 0 0 1 ${x} ${(cy-h).toFixed(2)}Z`};
 const OW='fill="none" stroke="currentColor" stroke-width="1.9"';
@@ -571,7 +570,7 @@ const IC=[['בית',`<path d="M4 10.6 12 4l8 6.6V19a1.8 1.8 0 0 1-1.8 1.8H15v-5.
  ['חברים',`<circle cx="9.2" cy="8.4" r="3.4" ${OW}/><path d="M2.8 19.4c.6-3.3 3.2-5.2 6.4-5.2s5.8 1.9 6.4 5.2" ${OW} stroke-linecap="round"/><path d="M16 5.4a3.2 3.2 0 0 1 0 6.1M17.6 14.6c2.1.5 3.4 2.2 3.8 4.4" ${OW} stroke-linecap="round"/>`],
  ['פרופיל',`<circle cx="12" cy="8.2" r="4" ${OW}/><path d="M4.4 20.2c.8-3.9 3.9-6 7.6-6s6.8 2.1 7.6 6" ${OW} stroke-linecap="round"/>`]];
 $('#modes').innerHTML=MODES.map(([he,en,t,hi])=>`<div class="mode" style="background:${t.bg};color:${t.text};border:1px solid ${t.soft}">
-  <div class="top"><span>${he} · ${en}</span>${round(t.brand===MODES[0][2].brand?'#004643':t.bg,t.text,t.lens,28,t.text)}</div>
+  <div class="top"><span>${he} · ${en}</span>${round('#004643',t.text,t.lens,28,t.text)}</div>
   <div style="font-size:22px;font-weight:700">${hi}, מירון</div>
   <div class="mini" style="background:${t.surface}"><span style="font-size:12px;color:${t.t2};font-weight:600">משימות פתוחות</span><span class="n">11</span><span style="font-size:13px;color:${t.t2}">2 להיום</span></div>
   <button class="btn" type="button" style="background:${t.action};color:${t.ona}">+ משימה חדשה</button>
@@ -580,14 +579,14 @@ $('#modes').innerHTML=MODES.map(([he,en,t,hi])=>`<div class="mode" style="backgr
 const lum=h=>{const c=h.slice(1).match(/../g).map(x=>{x=parseInt(x,16)/255;return x<=.03928?x/12.92:((x+.055)/1.055)**2.4});return .2126*c[0]+.7152*c[1]+.0722*c[2]};
 const ratio=(a,b)=>{const[x,y]=[lum(a),lum(b)].sort((m,n)=>n-m);return(x+.05)/(y+.05)};
 const PAIRS=[['יום','טקסט על רקע','#0E1F1E','#F0EDE5',4.5],['יום','טקסט משני','#44504E','#F0EDE5',4.5],['יום','כפתור חרדל: ברוש על חרדל','#004643','#F9C23C',4.5],['יום','טקסט על הפס העליון','#F0EDE5','#004643',4.5],['יום','קישור על כרטיס','#004643','#FFFFFF',4.5],['יום','שגיאה על כרטיס','#B03A2E','#FFFFFF',4.5],
- ['לילה','טקסט על רקע','#EDE9DF','#0A1817',4.5],['לילה','כפתור חרדל: דיו על חרדל','#0E1F1E','#F9C23C',4.5],['לילה','טקסט על פס המותג','#EDE9DF','#1F6B64',4.5],['לילה','קישור על כרטיס','#7CC4BA','#122725',4.5],
+ ['לילה','טקסט על רקע','#EDE9DF','#1B1A18',4.5],['לילה','טקסט משני','#B9B5AC','#1B1A18',4.5],['לילה','כפתור חרדל: דיו על חרדל','#0E1F1E','#F9C23C',4.5],['לילה','טקסט על פס הברוש','#EDE9DF','#004643',4.5],['לילה','קישור על כרטיס','#7CC4BA','#26251F',4.5],['לילה','כפתור בכרטיס ההצעה','#8FE3EE','#33312B',4.5],
  ['—','לשם השוואה: חרדל כטקסט על חול','#F9C23C','#F0EDE5',4.5]];
 $('#contrast tbody').innerHTML=PAIRS.map(([m,w,f,b,n])=>{const r=ratio(f,b);return `<tr><td>${m}</td><td>${w}</td><td><span class="chipc"><i style="background:${f}"></i><i style="background:${b}"></i></span></td><td><b>${r.toFixed(1)}</b></td><td>${r>=n?`<span class="pass">עובר</span>`:`<span style="color:var(--danger);font-weight:600">לא עובר</span>`}</td></tr>`}).join('');
 $('#marks').innerHTML=[
  [split(C,S,M,96),'#F0EDE5','#0E1F1E','חצי־חצי · ראשי'],
  [round(C,S,M,96,C),'#F0EDE5','#0E1F1E','עגול עם טבעת · על חול'],
  [round(I,S,M,96,S),'#004643','#F0EDE5','על ברוש'],
- [round('#0A1817','#EDE9DF',M,96,'#EDE9DF'),'#0A1817','#EDE9DF','לילה'],
+ [round('#1B1A18','#EDE9DF',M,96,'#EDE9DF'),'#1B1A18','#EDE9DF','לילה · על פחם'],
  [round('#FFFFFF',I,'#FFFFFF',96,'#FFFFFF'),'#0E1F1E','#FFFFFF','צבע אחד · על כהה'],
  [round(I,'#FFFFFF',I,96,I),'#FFFFFF','#0E1F1E','צבע אחד · הדפסה'],
 ].map(([s,bg,fg,n])=>`<figure style="background:${bg};color:${fg}">${s}<figcaption>${n}</figcaption></figure>`).join('');
@@ -606,7 +605,7 @@ const cmHTML=CM.map(([id,n,live])=>`<figure><svg viewBox="0 0 24 24" class="${li
 $('#cmDay').innerHTML=cmHTML; $('#cmNight').innerHTML=cmHTML;
 // Motion: the same frame() the video renderer uses, so what plays here is what exports.
 const MO=[['meet','A · המפגש','1.1 שניות · נבחר, לסרטונים ולפתיחה','החצאים נשארים במקום. שני העיגולים נכנסים מהקצוות, והעדשה נוצרת מעצמה ברגע שהם נוגעים. שני עולמות שנפגשים.',1],
- ['light','C · נדלק','0.45 שניות · מוצע לתוך המוצר','שום דבר לא זז. רק העדשה עוברת מברוש לחרדל. שקט מספיק כדי לחזור עשרות פעמים ביום, ברגע שתיאום נסגר.'],
+ ['light','C · נדלק','0.45 שניות · נפסל לדאשבורד 28.9','שום דבר לא זז. רק העדשה עוברת מברוש לחרדל. הוצע לרגע שבו תיאום נסגר בדאשבורד, והוחלט שבדאשבורד אין אנימציה בכלל.'],
  ['close','B · הסגירה','1.5 שניות','הטבעת נסגרת סביב הסימן, ונקודה בחרדל נוחתת במקום המפגש והופכת לעדשה.'],
  ['rise','D · זריחה','0.9 שניות · לבוקר','העדשה מתמלאת מלמטה למעלה, כמו שמש שעולה בין שני העולמות. מתאים לפתיחה של סטורי בוקר או של כרטיס הבוקר.']];
 const MC={d:'#004643',l:'#F0EDE5',a:'#F9C23C',ring:'#004643'};

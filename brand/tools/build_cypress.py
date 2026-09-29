@@ -33,12 +33,16 @@ DAY = {
     'lens': MUSTARD, 'link': CYPRESS,
     'success': CYPRESS, 'danger': '#B03A2E', 'on-danger': '#FFFFFF',
 }
+# Night is warm charcoal, not dark cypress (chosen 28.9 with the dashboard, which
+# shipped it): on a green-black the cypress band sank and the whole screen read
+# green. The band stays cypress, exactly as by day. Values are the live
+# dashboard's (olma2/docs/design/user-dashboard.html), so the kit and /me agree.
 NIGHT = {
-    'bg': '#0A1817', 'bg-tint': '#0E1F1E', 'surface': '#122725', 'surface-2': '#17302D',
-    'line': mix('#EDE9DF', '#0A1817', 13), 'line-strong': mix('#EDE9DF', '#0A1817', 22),
-    'text': '#EDE9DF', 'text-2': mix('#EDE9DF', '#0A1817', 74), 'text-3': mix('#EDE9DF', '#0A1817', 58),
-    'brand': '#1F6B64', 'on-brand': '#EDE9DF', 'brand-soft': mix('#5FA89F', '#0A1817', 18),
-    'action': MUSTARD, 'on-action': INK, 'action-soft': mix(MUSTARD, '#0A1817', 20),
+    'bg': '#1B1A18', 'bg-tint': '#25241F', 'surface': '#26251F', 'surface-2': '#2D2B26',
+    'line': '#35332D', 'line-strong': '#44413A',
+    'text': '#EDE9DF', 'text-2': '#B9B5AC', 'text-3': '#A39F96',
+    'brand': CYPRESS, 'on-brand': '#EDE9DF', 'brand-soft': '#1F3532',
+    'action': MUSTARD, 'on-action': INK, 'action-soft': mix(MUSTARD, '#1B1A18', 20),
     'lens': MUSTARD, 'link': '#7CC4BA',
     'success': '#7CC4BA', 'danger': '#F08A7E', 'on-danger': INK,
 }

@@ -23,8 +23,8 @@
 }
 :root[data-hour="night"] {
   --mk-line: #EDE9DF;
-  --mk-paper: #1C3633;
-  --mk-paper-s: #122725;
+  --mk-paper: #302E28;
+  --mk-paper-s: #26251F;
   --mk-navy: #BFD3CF;
   --mk-brown: #B0763A;
 }

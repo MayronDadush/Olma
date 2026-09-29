@@ -2,5 +2,5 @@
 חול	Sand	#F0EDE5	60 · ground
 חרדל	Mustard	#F9C23C	10 · the primary action and the lens. Never as text on light
 דיו	Ink	#0E1F1E	body text
-לילה	Night	#0A1817	night ground
+לילה	Night	#1B1A18	night ground
 לבנה	Brick	#B03A2E	errors and deletes only

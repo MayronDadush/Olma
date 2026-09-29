@@ -23,21 +23,21 @@
   --allma-font: "IBM Plex Sans Hebrew", "IBM Plex Sans", system-ui, sans-serif;
 }
 :root[data-hour="night"] {
-  --allma-bg: #0A1817;
-  --allma-bg-tint: #0E1F1E;
-  --allma-surface: #122725;
-  --allma-surface-2: #17302D;
-  --allma-line: #283331;
-  --allma-line-strong: #3C4643;
+  --allma-bg: #1B1A18;
+  --allma-bg-tint: #25241F;
+  --allma-surface: #26251F;
+  --allma-surface-2: #2D2B26;
+  --allma-line: #35332D;
+  --allma-line-strong: #44413A;
   --allma-text: #EDE9DF;
-  --allma-text-2: #B2B3AB;
-  --allma-text-3: #8E918B;
-  --allma-brand: #1F6B64;
+  --allma-text-2: #B9B5AC;
+  --allma-text-3: #A39F96;
+  --allma-brand: #004643;
   --allma-on-brand: #EDE9DF;
-  --allma-brand-soft: #19322F;
+  --allma-brand-soft: #1F3532;
   --allma-action: #F9C23C;
   --allma-on-action: #0E1F1E;
-  --allma-action-soft: #3A3A1E;
+  --allma-action-soft: #473C1F;
   --allma-lens: #F9C23C;
   --allma-link: #7CC4BA;
   --allma-success: #7CC4BA;

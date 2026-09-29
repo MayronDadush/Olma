@@ -17,7 +17,7 @@ DAY = {
     'mk-green': '#3F9A6E', 'mk-green-s': '#2B7453', 'mk-navy': '#123C3A', 'mk-brown': '#8A5A2B',
 }
 # Night swaps only the neutrals, the same rule as the original design.
-NIGHT = dict(DAY, **{'mk-line': '#EDE9DF', 'mk-paper': '#1C3633', 'mk-paper-s': '#122725',
+NIGHT = dict(DAY, **{'mk-line': '#EDE9DF', 'mk-paper': '#302E28', 'mk-paper-s': '#26251F',
                      'mk-navy': '#BFD3CF', 'mk-brown': '#B0763A'})
 MEANING = {  # what each one says, for whoever places it
     'm-crown': 'everyone can make it', 'm-cards': 'the minimum number of people is in',
