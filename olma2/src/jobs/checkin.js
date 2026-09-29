@@ -42,6 +42,35 @@ const HOLIDAY_OFFER_DAYS = 7;
 // are all held by their quiet hours — wakes up to ONE message, the latest step
 // still live, instead of three at once.
 
+// Every day-one step is spoken AFTER an introduction — the greeter's, or their
+// own first turn's (the gate holds anything else behind one still owed). The
+// steps never said so, and the model filled the gap the way a first message
+// would: "היי 👋 ברוך הבא! אני עולמה, העוזרת האישית שלך", fifteen minutes after
+// the greeter had said who she is (u-34, u-35, u-40, u-43, 2026-09-18..25).
+const NO_SECOND_HELLO = ' They have already been introduced to you: do not introduce yourself, do not'
+  + ' welcome them and do not say who you are or what you are.';
+
+// …and "show them what you hold" has no answer for somebody who only said
+// "היי", so it was answered with the emptiness itself: "כרגע הרשימה שלך נקייה",
+// "אפס משימות, אפס תזכורות", "Nothing on your list yet". An empty list is not
+// news, and it was being sent as the reason to keep talking.
+const NEVER_SAY_EMPTY = ' Never tell them what you do NOT hold — not that their list is empty, not'
+  + ' "nothing yet", not "a fresh start".';
+
+// Anything a day-one message could be ABOUT: an open task, a coordination they
+// are in, or words they left with the greeter (users.intake_note_at).
+async function holdsNothing(client, userId) {
+  const { rows: [r] } = await client.query(
+    `SELECT u.intake_note_at IS NULL
+        AND NOT EXISTS (SELECT 1 FROM tasks t
+                         WHERE t.owner_id = u.id AND t.status = 'open' AND t.archived_at IS NULL)
+        AND NOT EXISTS (SELECT 1 FROM meeting_participants p JOIN meetings m ON m.id = p.meeting_id
+                         WHERE p.user_id = u.id AND p.state <> 'opted_out'
+                           AND m.status IN ('negotiating', 'confirmed')) AS empty
+       FROM users u WHERE u.id = $1`, [userId]);
+  return Boolean(r && r.empty);
+}
+
 // A step's `instruction` may be a function of (client, user) when what to say
 // depends on what we already hold about that person. The first message is the
 // only one that does today.
@@ -64,10 +93,17 @@ const HOLIDAY_OFFER_DAYS = 7;
 // still NULL.
 function firstContactInstruction(client, u) {
   const guess = lookupTimezone(u.phone);
-  const lines = ['They joined ~15 minutes ago. Do not ask them for anything yet — SHOW them something.'
-    + ' Look at what they already gave you and do one concretely useful thing with it: offer a reminder'
-    + ' on a task that clearly has a time, point out something due soon, or group what they dumped.'
-    + ' One short message, one offer, easy to say yes to.'];
+  // `holdsNothing` is put on the row by `run` — this stays a pure function of
+  // the person, which is what lets it be read without a database.
+  const lines = [u.holdsNothing
+    ? 'They joined ~15 minutes ago and have not given you anything yet. Do not ask them for anything —'
+      + ' give them ONE concrete example of something they could send you right now, in their language'
+      + ' and in the shape a person would type it ("תזכירי לי מחר ב־9 להתקשר לרופא"). It is an example,'
+      + ' not a question and not a list of options. One short line.' + NEVER_SAY_EMPTY + NO_SECOND_HELLO
+    : 'They joined ~15 minutes ago. Do not ask them for anything yet — SHOW them something.'
+      + ' Look at what they already gave you and do one concretely useful thing with it: offer a reminder'
+      + ' on a task that clearly has a time, point out something due soon, or group what they dumped.'
+      + ' One short message, one offer, easy to say yes to.' + NO_SECOND_HELLO];
   // Only when the guess is real AND still a guess. Someone who already told us
   // where they are must not be informed of our assumption about them.
   if (guess && !u.timezone_confirmed) {
@@ -119,6 +155,9 @@ function firstContactInstruction(client, u) {
   return lines.join(' ');
 }
 
+// The steps whose words depend on whether she holds anything for them yet.
+const READS_HOLDINGS = new Set(['15m', '2h', '5h']);
+
 const ONBOARDING_STEPS = [
   {
     slot: '15m', afterMs: 15 * MIN_MS, expiresAfterMs: 2 * HOUR_MS,
@@ -126,11 +165,17 @@ const ONBOARDING_STEPS = [
   },
   {
     slot: '2h', afterMs: 2 * HOUR_MS, expiresAfterMs: 5 * HOUR_MS,
-    instruction: 'They joined a couple of hours ago. Pick the single most useful thing you can still learn about them — how to reach them, when they want to be contacted, or who a person they mentioned is — and ask exactly ONE question about it. Warm, short, no list of questions.',
+    instruction: (client, u) => 'They joined a couple of hours ago. Pick the single most useful thing you can still learn about them — how to reach them, when they want to be contacted, or who a person they mentioned is — and ask exactly ONE question about it. Warm, short, no list of questions.'
+      + (u.holdsNothing ? NEVER_SAY_EMPTY : '') + NO_SECOND_HELLO,
   },
   {
     slot: '5h', afterMs: 5 * HOUR_MS, expiresAfterMs: 12 * HOUR_MS,
-    instruction: 'Their first day. Briefly reflect back what you are now holding for them (counts, not a recital of every item), and invite whatever else is on their mind — including as a voice note. Two lines, no pressure.',
+    // Reflecting back nothing is the empty-list message above, so for somebody
+    // who has given her nothing this slot says nothing at all. Silent, not
+    // skipped: a skipped step hands its slot to the ordinary ladder, and on
+    // day one that is a second question, not a quieter afternoon.
+    silentWhenEmpty: true,
+    instruction: 'Their first day. Briefly reflect back what you are now holding for them (counts, not a recital of every item), and invite whatever else is on their mind — including as a voice note. Two lines, no pressure.' + NO_SECOND_HELLO,
   },
   // The two things a new person cannot discover for themselves, offered once
   // each and in this order (Miron, 2026-09-04). Both are LINKS, which is why
@@ -716,6 +761,10 @@ async function run(client, now = Date.now()) {
     // link already issued) gives its slot back to the ordinary ladder instead
     // of spending the day's one message on nothing.
     if (step && step.skipIf && await step.skipIf(client, u)) step = null;
+    if (step && READS_HOLDINGS.has(step.slot)) {
+      u.holdsNothing = await holdsNothing(client, u.id);
+      if (u.holdsNothing && step.silentWhenEmpty) continue;
+    }
     if (step) {
       rung = `onboarding_${step.slot}`;
       instruction = typeof step.instruction === 'function'
@@ -814,5 +863,5 @@ async function run(client, now = Date.now()) {
 
 module.exports = {
   run, eligibleUsers, pickRung, discoveryGaps, requiredGapMs, idleHoursFor, GIVE_UP_MISSES, MISS_ONE_GAP_MS,
-  onboardingStepDue, ONBOARDING_STEPS, DEAF_SILENT_SLOTS, stalledGoals,
+  onboardingStepDue, ONBOARDING_STEPS, DEAF_SILENT_SLOTS, stalledGoals, holdsNothing,
 };
