@@ -202,7 +202,7 @@ test('the public pages wear the brand: cypress band, mustard action, always ligh
   assert.ok(!/prefers-color-scheme/.test(home) && /color-scheme:light/.test(home),
     'the front door is always light, whatever the phone is set to');
   assert.ok(home.includes('<meta name="theme-color" content="#004643">'));
-  assert.ok(home.includes('IBM+Plex+Sans+Hebrew'));
+  assert.ok(home.includes("@font-face{font-family:'IBM Plex Sans Hebrew'"), 'the brand face, carried inline (fonts.js)');
   for (const html of [home, publicPages.privacyPage(), publicPages.termsPage()]) {
     assert.ok(!/#5B2FD6|#7C4DFF|Rubik/i.test(html), 'the old violet brand is still on a public page');
     const ids = [...html.matchAll(/<clipPath id="([^"]+)"/g)].map((m) => m[1]);
@@ -248,4 +248,43 @@ test('nothing is promised on a timer: kept until they ask, and only the backups 
   assert.ok(/even if you never used the assistant/.test(html) && html.includes('גם אם מעולם לא השתמש'),
     'a group member who never wrote can still ask');
   assert.ok(/WhatsApp groups/.test(html) && html.includes('קבוצות וואטסאפ'), 'groups are named');
+});
+
+// ---- no third party learns who is reading ----------------------------------
+
+// Since 2026-09-29 (finding 13 of the 2026-09-28 compliance review): these
+// pages linked Google Fonts, so every visitor's browser sent Google its IP
+// before a word was drawn — the transfer LG München I, 3 O 17493/20, fined.
+// The fonts are inlined now (adapters/http/fonts.js). Asserted on what the
+// SERVER sends, for every page allma.world reaches, so a link re-added
+// anywhere on the way — the shell, the design file, the serve-time wrapper —
+// fails here.
+const GOOGLE_FONT_HOSTS = /fonts\.googleapis\.com|fonts\.gstatic\.com/;
+
+test('no page on the public host loads a font from Google, and each carries its own', async () => {
+  // `/me` with no session is the stranger's screen: the same file a signed-in
+  // person gets, through the same servedPageHtml.
+  for (const path of ['/', '/privacy', '/terms', '/me']) {
+    const res = await get(path, PUBLIC);
+    const html = await res.text();
+    assert.ok(html.length > 1000, `${path} answered with nothing, so the check below would prove nothing`);
+    assert.doesNotMatch(html, GOOGLE_FONT_HOSTS, `${path} still asks Google for a font`);
+    for (const family of ['IBM Plex Sans Hebrew', 'IBM Plex Sans']) {
+      assert.match(html, new RegExp(`@font-face\\{font-family:'${family}';[^}]*src:url\\(data:font/woff2;base64,`),
+        `${path} does not carry ${family} inline`);
+    }
+    const csp = res.headers.get('content-security-policy') || '';
+    assert.doesNotMatch(csp, GOOGLE_FONT_HOSTS, `${path}'s CSP still allows Google`);
+  }
+});
+
+test('the vendored fonts are real woff2 and their OFL licence travels with them', () => {
+  const fs = require('node:fs');
+  const pathMod = require('node:path');
+  const { FONT_DIR, FACES } = require('../src/adapters/http/fonts');
+  for (const [, , file] of FACES) {
+    const buf = fs.readFileSync(pathMod.join(FONT_DIR, file));
+    assert.equal(buf.subarray(0, 4).toString('latin1'), 'wOF2', `${file} is not a woff2 file`);
+  }
+  assert.match(fs.readFileSync(pathMod.join(FONT_DIR, 'OFL-IBM-Plex.txt'), 'utf8'), /SIL Open Font License/i);
 });

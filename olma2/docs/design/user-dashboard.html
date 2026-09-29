@@ -32,9 +32,11 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="עולמה">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Hebrew:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<!-- No font link here, on purpose, since 2026-09-29: this file linked Google
+     Fonts, which handed every visitor's IP to Google. The server puts IBM Plex
+     in front of this file as inline @font-face (src/adapters/http/fonts.js);
+     opened from disk the page falls back to system-ui, and the CSP refuses a
+     Google link if one is ever added back. -->
 
 <style>
 /* ─────────────────────────  tokens  ───────────────────────── */
