@@ -265,7 +265,7 @@ code{font-family:var(--mono);font-size:13px;background:var(--brand-soft);border-
 
 <div class="wrap" dir="rtl">
   <header class="hero">
-    <span class="eyebrow" style="color:#9FB5AF">עולמה · ספר המותג · 28.9.2026</span>
+    <span class="eyebrow" style="color:#9FB5AF">עולמה · ספר המותג · 29.9.2026</span>
     <div class="lock"><span id="heroMark"></span><span>עולמה</span></div>
     <p>ברוש וחרדל. עוזרת שקטה ובטוחה בעצמה, שעושה בשבילך את הצעד הבא. הרקע נותן <b>רוגע</b>, הברוש נותן <b>אמון</b>, ו<span class="y">החרדל</span> מסמן את הרגע שבו משהו נסגר.</p>
     <div class="dec">
@@ -380,7 +380,8 @@ code{font-family:var(--mono);font-size:13px;background:var(--brand-soft);border-
     <p class="muted" style="font-size:14px">אלה הדף האמיתי מהדמו המקומי, צבוע מבחוץ. זו עדיין לא הגרסה שבקוד.</p>
     <div class="card"><h3>תמונת פרופיל</h3>
       <div class="wa" id="wa"></div>
-      <p class="muted" style="font-size:14px">הסימן העגול ממלא את כל העיגול, כך שוואטסאפ לא חותך ממנו כלום. הוא נשאר ברור גם בגודל של רשימת הצ׳אטים.</p></div>
+      <p class="muted" style="font-size:14px">הסימן העגול ממלא את כל העיגול, כך שוואטסאפ לא חותך ממנו כלום. הוא נשאר ברור גם בגודל של רשימת הצ׳אטים.</p>
+      <p class="muted" style="font-size:14px"><b>הקובץ להעלאה:</b> <code>mark-split-1024.png</code>, ריבוע מלא בלי שקיפות. וואטסאפ חותך לעיגול בעצמו, ומה שיוצא הוא בדיוק העיגול שכאן. את <code>whatsapp-avatar-640.png</code>, שהפינות שלו שקופות, לא מעלים: בחלק מהמסכים של וואטסאפ שקוף נראה שחור.</p></div>
   </section>
 
   <section class="sec">
@@ -459,7 +460,7 @@ code{font-family:var(--mono);font-size:13px;background:var(--brand-soft);border-
 
   <section class="sec">
     <span class="eyebrow">10 · פוסטים וסרטונים</span>
-    <h2>עורכים דרכי: סטודיו קטן בתוך הריפו <span class="tag">הצעה</span></h2>
+    <h2>עורכים דרכי: סטודיו קטן בתוך הריפו <span class="tag ok">בשימוש 28.9</span></h2>
     <p class="muted">ככה עשינו את סרטוני ההיכרות: כל סרטון הוא עמוד שמתנגן. ההצעה היא להפוך את זה לשיטה קבועה, כך שכל פוסט או סרטון יוצא תוך כמה דקות, תמיד לפי הספר הזה. וזה כבר לא רק תצוגה: אני מייצא קבצי וידאו אמיתיים, מוכנים להעלאה.</p>
     <div class="flow">
       <div class="card"><h3>אתה כותב לי</h3><p class="muted" style="font-size:14.5px">רעיון, טקסט גולמי, צילום מסך של שיחה אמיתית, או "עוד אחד כמו הקודם, על שבת".</p></div>
@@ -470,9 +471,16 @@ code{font-family:var(--mono);font-size:13px;background:var(--brand-soft);border-
     <div class="card vid">
       <video src="closing.mp4" poster="closing-poster.png" controls muted playsinline loop preload="metadata" aria-label="סיום של סרטון: העיגולים נפגשים, העדשה נדלקת, סגור."></video>
       <div style="display:grid;gap:10px"><h3>ההוכחה: נוצר כאן, עכשיו</h3>
-        <p class="muted" style="font-size:14.5px">זה הסיום של כל סרטון, עם התנועה שבחרת: חצי שנייה של שקט, שני העיגולים נפגשים, העדשה נדלקת, ואז "סגור.". הקובץ יצא מהמחשב הזה: 1080×1080, 3 שניות, 91 פריימים, עם גרעין.</p>
+        <p class="muted" style="font-size:14.5px">זה הסיום של כל סרטון, עם התנועה שבחרת: חצי שנייה של שקט, שני העיגולים נפגשים, העדשה נדלקת, ואז "סגור.". הקובץ יצא מהמחשב הזה: 1080×1080, 3 שניות, 91 פריימים, עם גרעין מתחת לאותיות.</p>
         <p class="muted" style="font-size:14.5px"><b>מה צריך לבנות:</b> את התבניות עצמן, ב־<code>brand/studio/</code>. המנוע כבר קיים: <code>render.js</code> שמייצא ו־<code>motion.js</code> שמזיז.</p>
         <p class="muted" style="font-size:14.5px"><b>מה זה לא עושה טוב:</b> עריכה של צילומי וידאו אמיתיים וקריינות. לשם כך אייצא את החלקים שלנו (פתיח, סיום, כתוביות) כקליפים נפרדים, שנכנסים לכל עורך. מוזיקה: אם תשלח קובץ, היא תיכנס. בלי קובץ יש שקט, וזה גם מה שהספר אומר, בלי ג'ינגל.</p></div>
+    </div>
+    <div class="card vid">
+      <video src="intro-he.mp4" poster="intro-poster.jpg" controls muted playsinline preload="metadata" aria-label="סרטון ההיכרות: הראש מלא בדברים? שיחה בוואטסאפ, רשימה מסודרת, סגור."></video>
+      <div style="display:grid;gap:10px"><h3>סרטון ההיכרות, מהסטודיו <span class="tag ok">באוויר 28.9</span></h3>
+        <p class="muted" style="font-size:14.5px">הסרטון הראשון שיצא מהסטודיו, בעברית ובאנגלית: פתיח בברוש, שיחה אמיתית בוואטסאפ עם הסימן כתמונת פרופיל, הרשימה מסודרת לפי סוג, וסיום עם המפגש. 720×720, ‏14.6 שניות, 390KB.</p>
+        <p class="muted" style="font-size:14.5px">הוא החליף את הסרטון הקיים באותו מזהה (<code>v2</code>), כך שמי שכבר קיבל את הישן לא מקבל אותו שוב. אין בו תאריך ("עד סוף החודש"), אז הוא לא מתיישן. <b>לא נשלח לאף אחד</b> עד שתגיד.</p>
+        <p class="muted" style="font-size:14.5px"><b>הבא בסטודיו:</b> תבניות לפוסט 1080×1080, לסטורי 1080×1920 ולקרוסלה.</p></div>
     </div>
   </section>
 
@@ -490,11 +498,13 @@ code{font-family:var(--mono);font-size:13px;background:var(--brand-soft);border-
     <p class="muted">כל צעד הוא PR נפרד. מיזוג ל־main הוא דיפלוי, ולכן לפני כל מיזוג אראה לך צילומים של לפני ואחרי.</p>
     <div class="steps">
       <div class="step"><div><h3>ערכת המותג <span class="st done">מוכן</span></h3><p class="muted">טוקנים (CSS, JSON, ASE לכלי עיצוב), סימנים ב־SVG, תמונת פרופיל 640, פאביקונים, לוגו מלא בעברית ובאנגלית, והאיקונים. הכל ב־<code>brand/kit/</code>, ונוצר מסקריפט אחד.</p></div></div>
-      <div class="step"><div><h3>תמונת הפרופיל בוואטסאפ <span class="st next">אצלך</span></h3><p class="muted">הקובץ הוא <code>whatsapp-avatar-640.png</code>. מחליפים אותו מהטלפון של המספר של עולמה, בהגדרות של וואטסאפ. זה הצעד הכי מהיר, וכל משתמש יראה אותו.</p></div></div>
+      <div class="step"><div><h3>תמונת הפרופיל בוואטסאפ <span class="st next">אצלך</span></h3><p class="muted">הקובץ הוא <code>mark-split-1024.png</code>, ונשלח אליך ב־29.9. מחליפים אותו מהטלפון של המספר של עולמה, בהגדרות של וואטסאפ. זה הצעד הכי מהיר, וכל משתמש יראה אותו.</p></div></div>
       <div class="step"><div><h3>הדאשבורד <code>/me</code> <span class="st wait">חונה</span></h3><p class="muted">הצבעים, הפונט והסימן בכותרת כבר מוכנים, וכל הבדיקות עוברות. זה מחכה, כי סשן אחר עובד עכשיו על הדאשבורד. איקוני התפריט לא משתנים.</p></div></div>
-      <div class="step"><div><h3>כרטיס הבוקר <span class="st wait">אחרי זה</span></h3><p class="muted">הכרטיס הוא תמונה שנשלחת בוואטסאפ (<code>schedule-card.js</code>). היום הוא בכתום־ענבר עם הפונט Heebo. כדי לצייר אותו ב־Plex צריך להוסיף את קובצי הפונט לריפו. הרישיון הוא OFL, והוא מתיר את זה.</p></div></div>
+      <div class="step"><div><h3>כרטיס הבוקר <span class="st done">באוויר 28.9</span></h3><p class="muted">עבר ל־Plex ולצבעי המותג (PR #581). הכותרת יושבת על פס ברוש עם קו חרדל, והסימן מחליף את אימוג'י הגרף. כל קטע מקבל גוון משלו מאותה רביעייה של סימני התיאום: חרדל ל"היום", ואחריו ברוש, כחול ים וחימר. החרדל רק ממלא ולא משמש לטקסט. בחרת בגרסה הזו מתוך שתיים, כי ביקשת יותר צבע. Heebo יצא מהריפו.</p>
+        <img src="img/morning-card.jpg" alt="כרטיס הבוקר בברוש וחרדל" style="border-radius:12px;border:1px solid var(--line);max-width:min(100%,420px);margin-top:10px"></div></div>
+      <div class="step"><div><h3>סרטוני ההיכרות <span class="st done">באוויר 28.9</span></h3><p class="muted">הוחלפו במקום (PR #583). לא נשלחו לאף אחד. פרטים בפרק 10.</p></div></div>
       <div class="step"><div><h3>allma.world <span class="st wait">אחרי זה</span></h3><p class="muted">דף הבית הציבורי ודף הפרטיות: הלוגו המלא, הצבעים, ופאביקון במקום הריק שיש היום.</p></div></div>
-      <div class="step"><div><h3>סרטונים ופוסטים <span class="st next">הצעה בפרק 10</span></h3><p class="muted">עורכים דרכי. אחרי שתאשר, אבנה ארבע תבניות, ואז נעשה מחדש את סרטוני ההיכרות במותג החדש.</p></div></div>
+      <div class="step"><div><h3>פוסטים וסטוריז <span class="st next">הבא</span></h3><p class="muted">הסטודיו כבר עובד, והסרטונים הראשונים יצאו ממנו. נשאר לבנות את התבניות: פוסט, סטורי וקרוסלה.</p></div></div>
     </div>
   </section>
 
@@ -502,7 +512,7 @@ code{font-family:var(--mono);font-size:13px;background:var(--brand-soft);border-
     <span class="eyebrow">13 · עוד מה לשפר</span>
     <h2>חמישה דברים שאני מציע</h2>
     <div class="props">
-      <div class="card"><h3>1 · כרטיס הבוקר לפני האתר</h3><p class="muted" style="font-size:14.5px">זה הדבר היחיד מהמותג שכל משתמש רואה כל בוקר, והוא עדיין בצבעים ובפונט הישנים. האתר נפתח פעם אחת. אני מציע להקדים את הכרטיס.</p></div>
+      <div class="card"><h3>1 · כרטיס הבוקר לפני האתר <span class="tag ok">בוצע 28.9</span></h3><p class="muted" style="font-size:14.5px">זה הדבר היחיד מהמותג שכל משתמש רואה כל בוקר, והוא עדיין בצבעים ובפונט הישנים. האתר נפתח פעם אחת. אני מציע להקדים את הכרטיס.</p></div>
       <div class="card"><h3>2 · איך נראה קישור שהיא שולחת</h3><p class="muted" style="font-size:14.5px">כשעולמה שולחת קישור לדף האישי, וואטסאפ מציג לו כותרת ותמונה. זה המקום השני שבו כולם רואים את המותג. אני מציע תמונה ממותגת וכותרת קבועה. קודם אבדוק מה מופיע שם היום.</p></div>
       <div class="card"><h3>3 · בדיקת קול בקוד</h3><p class="muted" style="font-size:14.5px">הטקסטים הקבועים שהיא שולחת, כמו הזמנות והשורות בקבוצה, ייבדקו אוטומטית מול הכללים החדשים: בלי סימן קריאה, אימוג'י אחד לכל היותר ובתחילת ההודעה, ושעה באותה צורה. כמו הבדיקות של העברית שכבר רצות, בקוד ולא במודל.</p></div>
       <div class="card"><h3>4 · העדשה נדלקת כשמשהו נסגר</h3><p class="muted" style="font-size:14.5px">בדאשבורד, ברגע שתיאום נסגר, העדשה של הסימן נדלקת בחרדל. ככה המשמעות של החרדל, "זה נסגר", חוזרת במוצר עצמו ולא רק בפוסטרים.</p></div>
@@ -513,9 +523,9 @@ code{font-family:var(--mono);font-size:13px;background:var(--brand-soft);border-
   <section class="sec card">
     <h2 style="font-size:24px">שלוש שאלות אליך</h2>
     <ol class="q">
-      <li><b>הומור:</b> הכללים בפרק 09 מתאימים? ולהתחיל לעבוד על השינוי בעולמה עצמה?</li>
-      <li><b>סטודיו:</b> מה ראשון, סרטוני ההיכרות מחדש או שלושה פוסטים להשקה?</li>
-      <li><b>תנועה ומה לשפר:</b> "נדלק" לדאשבורד? ואילו מחמשת הדברים בפרק 13?</li>
+      <li><b>מה לשפר:</b> אילו מהדברים 2 עד 5 בפרק 13? אני ממליץ להתחיל מתמונת הקישור, ואחריה התבניות בסטודיו.</li>
+      <li><b>הומור בעולמה עצמה:</b> אישרת את הכללים. ההנחיות מלאות כמעט עד הסוף (39,229 מתוך 39,250 תווים), אז קודם צריך לפנות מקום. להתחיל בזה?</li>
+      <li><b>תנועה:</b> "נדלק" לדאשבורד? ההחלטה בפועל אצל הסשן של הדאשבורד.</li>
     </ol>
   </section>
 
@@ -529,7 +539,8 @@ code{font-family:var(--mono);font-size:13px;background:var(--brand-soft);border-
       <li><code>brand/kit/icons/*.svg</code> · חמשת איקוני התפריט, המקוריים</li>
       <li><code>brand/kit/coordination/</code> · 16 סימני התיאום, ליום וללילה</li>
       <li><code>brand/studio/</code> · התנועה והייצוא לווידאו</li>
-      <li><code>brand/kit/png/whatsapp-avatar-640.png</code></li>
+      <li><code>brand/kit/png/mark-split-1024.png</code> (תמונת הפרופיל להעלאה)</li>
+      <li><code>brand/kit/png/whatsapp-avatar-640.png</code> (עגול עם פינות שקופות, לשימוש באתר)</li>
       <li><code>brand/kit/png/lockup-{he,en}-for-{light,dark}.png</code></li>
       <li><code>brand/kit/png/favicon-32 · apple-touch-180 · icon-512</code></li>
       <li><code>brand/tools/build_cypress.py</code> · בונה את כל הרשימה הזו מחדש</li>
