@@ -1229,6 +1229,23 @@ html.is-app .welcome .wcode-have{display:none}
 .inst-acts button{flex:1;padding:11px 12px;border-radius:12px;font-weight:600;font-size:14.5px}
 .inst-yes{background:var(--accent);color:var(--on-accent)}
 .inst-no{background:var(--bg-tint);color:var(--text-2)}
+
+/* ─────────────────  the invitation to a friend  ───────────────── */
+/* Under the home cards (owner, 2026-09-30: the growth plan). The message and
+   its link are made by the server (domain/referral.js); the page only hands
+   them to WhatsApp or the clipboard. No data, no card. */
+.invite{
+  margin:14px 0 22px;padding:15px 16px 14px;border-radius:20px;
+  background:var(--surface);box-shadow:var(--shadow-m);
+  display:flex;flex-direction:column;gap:2px;
+}
+.invite[hidden]{display:none}
+.invite b{font-family:var(--font-display);font-weight:700;font-size:16px;color:var(--text)}
+.invite p{font-size:13.5px;line-height:1.45;color:var(--text-2)}
+.invite .inst-acts a{
+  flex:1;padding:11px 12px;border-radius:12px;font-weight:600;font-size:14.5px;
+  text-align:center;text-decoration:none;
+}
 .themetog{
   position:fixed;bottom:calc(env(safe-area-inset-bottom,0px) + 96px);inset-inline-start:128px;z-index:80;
   width:26px;height:26px;border-radius:999px;background:var(--surface);
@@ -3402,6 +3419,14 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
         <svg class="chev homechev"><use href="#i-chev"/></svg>
       </button>
     </div>
+    <div class="invite" id="invite" role="region" hidden>
+      <b data-i18n="invite.h"></b>
+      <p data-i18n="invite.p"></p>
+      <div class="inst-acts">
+        <a class="inst-yes" id="inviteSend" target="_blank" rel="noopener" data-i18n="invite.send"></a>
+        <button class="inst-no" id="inviteCopy" type="button" data-i18n="invite.copy"></button>
+      </div>
+    </div>
     <h2 class="homeh" data-stage="0" data-i18n="tools.h"></h2>
     <div class="stack" style="--i:1" id="toolsStack"></div>
   </section>
@@ -5039,6 +5064,11 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "code.slow":"יותר מדי ניסיונות. אפשר לנסות שוב בעוד רבע שעה.",
       "code.net":"אין חיבור כרגע. נסו שוב בעוד רגע.",
       /* the invitation to install (see .inst) */
+      /* the invitation to a friend (see .invite) */
+      "invite.h":"להזמין חברים לעולמה",
+      "invite.p":"הודעה מוכנה עם קישור אישי. מי שיכתוב לעולמה דרכו — היא תדע שהגיע מכם.",
+      "invite.send":"שליחה בוואטסאפ","invite.copy":"העתקת ההודעה",
+      "invite.copied":"ההודעה הועתקה","invite.copyFail":"לא הצלחתי להעתיק — אפשר לשלוח בוואטסאפ",
       "inst.h":"עולמה במסך הבית",
       "inst.p":"אייקון משלה, בלי לחפש את הקישור בוואטסאפ.",
       "inst.pIos":"שלוש לחיצות בספארי, ועולמה נפתחת כמו אפליקציה.",
@@ -5407,6 +5437,10 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "code.bad":"That code doesn't match, or its 10 minutes are up. You can ask for a new one.",
       "code.slow":"Too many tries. You can try again in a quarter of an hour.",
       "code.net":"No connection right now. Try again in a moment.",
+      "invite.h":"Invite friends to Allma",
+      "invite.p":"A ready message with your personal link. When a friend writes to Allma through it, she'll know you sent them.",
+      "invite.send":"Send on WhatsApp","invite.copy":"Copy message",
+      "invite.copied":"Message copied","invite.copyFail":"Couldn't copy \u2014 you can send it on WhatsApp",
       "inst.h":"Allma on your home screen",
       "inst.p":"Her own icon — no digging for the link in WhatsApp.",
       "inst.pIos":"Three taps in Safari, and Allma opens like an app.",
@@ -7003,6 +7037,41 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      change and every pushed event, so the numbers can never lag the lists
      they count. Both counts are the SAME arrays those tabs draw — the server
      already decided what is open and what is active; nothing is re-cut here. */
+  /* The invitation to a friend. Everything in it is the server's — the text
+     and the link carry their code (domain/referral.js) — so without an
+     `invite` in the payload there is nothing to draw, and the card stays
+     hidden, the design preview included. */
+  var INVITE = null;
+  function renderInvite(inv){
+    var box = $("#invite");
+    if(!box) return;
+    INVITE = inv && inv.shareUrl && inv.share ? inv : null;
+    box.hidden = !INVITE;
+    if(INVITE) $("#inviteSend").href = INVITE.shareUrl;
+  }
+  (function(){
+    var btn = $("#inviteCopy");
+    if(!btn) return;
+    btn.addEventListener("click", function(){
+      if(!INVITE) return;
+      var text = INVITE.share;
+      /* The old way, for a webview that refuses the clipboard API: a hidden
+         field, selected and copied inside the same tap. */
+      function legacy(){
+        var ta = document.createElement("textarea");
+        ta.value = text; ta.setAttribute("readonly", "");
+        ta.style.cssText = "position:fixed;top:0;opacity:0";
+        document.body.appendChild(ta); ta.select();
+        var done = false;
+        try{ done = document.execCommand("copy"); }catch(e){ done = false; }
+        ta.remove();
+        toast(done ? t("invite.copied") : t("invite.copyFail"), null, !done);
+      }
+      try{
+        navigator.clipboard.writeText(text).then(function(){ toast(t("invite.copied")); }, legacy);
+      }catch(e){ legacy(); }
+    });
+  })();
   function renderHome(){
     /* renderTasks can run before the meetings seed further down the script
        has been assigned, so an unassigned list counts as none */
@@ -13393,6 +13462,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
        beside it does not, because a WhatsApp room is not something this page
        can create. */
     GROUPS = (d.groups || []).map(liveGroup);
+    renderInvite(d.invite);
     var block = document.querySelector(".groupsblock:not(button)");
     if(block) block.classList.toggle("hasrooms", GROUPS.length > 0);
     /* Google is the only provider with a connection behind it, and Gmail

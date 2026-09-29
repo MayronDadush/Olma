@@ -58,7 +58,33 @@ const correctionSql = {
       OR ${a}.event LIKE 'admin.fact.%')`,
 };
 
+// The growth goal's own number (owner, 2026-09-30: 100 weekly active users).
+// Active = a real person who WROTE to Olma (message.received, one row per
+// inbound turn, never a turn she started) or did something on their own page
+// (a `dashboard.*` row, one per successful write) in the seven days ending on
+// that date. Not the eval bot, not a development account, not a roster row
+// that never met her. A headcount, not a sum: a week's value is read on its
+// last day, never added across days.
+const WAU_DAYS = 7;
+const weeklyActive = (extra = '') => `SELECT count(DISTINCT a.actor_id) FROM audit_log a
+     JOIN users u ON u.id = a.actor_id
+    WHERE a.created_at::date BETWEEN $1::date - ${WAU_DAYS - 1} AND $1::date
+      AND (a.event = 'message.received' OR a.event LIKE 'dashboard.%')
+      AND u.agent_id IS NOT NULL AND NOT u.is_eval AND NOT u.is_test${extra}`;
+// Which door they came in by (users.joined_via, migration 101). NULL — a
+// script, the testbed — is in no channel, so the channels can sum to less
+// than the whole, and that gap is the honest "unknown".
+const JOIN_CHANNELS = ['friend_link', 'room', 'invite', 'direct'];
+const byChannel = Object.fromEntries(JOIN_CHANNELS.flatMap((via) => [
+  [`joined_${via}`, `SELECT count(*) FROM users
+                      WHERE onboarded_at::date = $1::date AND joined_via = '${via}'
+                        AND agent_id IS NOT NULL AND NOT is_eval AND NOT is_test`],
+  [`wau_${via}`, weeklyActive(` AND u.joined_via = '${via}'`)],
+]));
+
 const METRIC_QUERIES = {
+  weekly_active_users: weeklyActive(),
+  ...byChannel,
   active_users: `SELECT count(DISTINCT actor_id) FROM audit_log
                  WHERE created_at::date = $1::date AND actor_id IS NOT NULL`,
   tasks_created: `SELECT count(*) FROM audit_log
@@ -235,4 +261,4 @@ async function sweepMetrics(client, now = new Date(), deps = {}) {
   return out;
 }
 
-module.exports = { rollupDay, rollupVoiceDay, sweepMetrics, METRIC_QUERIES, correctionSql, CORRECTION_WINDOW_DAYS };
+module.exports = { WAU_DAYS, JOIN_CHANNELS, rollupDay, rollupVoiceDay, sweepMetrics, METRIC_QUERIES, correctionSql, CORRECTION_WINDOW_DAYS };

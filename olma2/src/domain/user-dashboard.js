@@ -32,6 +32,7 @@ const preferences = require('./preferences');
 const holidays = require('./holidays');
 const factPrompts = require('./fact-prompts');
 const suggestions = require('./task-suggestions');
+const referral = require('./referral');
 
 // A task's own category vocabulary is closed server-side (tasks.category is
 // validated as a closed set, not free text), so the page can rely on it —
@@ -823,6 +824,12 @@ async function load(client, userId) {
     },
     meetings,
     meetingsLeft,
+    // Their invitation to a friend (owner, 2026-09-30): the text they send and
+    // the link inside it, which opens a chat with Olma carrying their code.
+    // Built from the id and never stored, so reading the page writes nothing
+    // (domain/referral.js). Null only for an id the code cannot carry, and the
+    // page then draws no card.
+    invite: referral.inviteFor({ id: user.id, firstName: user.first_name, locale: user.locale }),
   });
 }
 

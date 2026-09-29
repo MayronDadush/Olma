@@ -2349,3 +2349,73 @@ test('a gateway that refuses the delete does not turn a real deletion into a fai
   const { rows } = await db.pool.query(`SELECT count(*)::int c FROM users WHERE phone = $1`, [phone]);
   assert.equal(rows[0].c, 0);
 });
+
+// ---- where they came from (migration 101, owner 2026-09-30) -----------------
+// The growth plan is read by channel, so every provisioning says which door.
+test('intake sweep: joined_via — a friend\'s code, a room, an invite, or none of those', async () => {
+  const referral = require('../src/domain/referral');
+  const friend = await makeUser(db.pool, '+972601000901', { firstName: 'ממליצה' });
+  await db.pool.query(`UPDATE users SET status = 'active', agent_id = $2 WHERE id = $1`, [friend.id, `u-${friend.id}`]);
+  const code = referral.codeFor(friend.id);
+  const viaLink = '+972601000902', viaRoom = '+972601000903', viaInvite = '+972601000904', direct = '+972601000905';
+  const selfCode = '+972601000906';
+
+  const { rows: [g] } = await db.pool.query(
+    `INSERT INTO chat_groups (external_id, subject, state) VALUES ('120363009031@g.us', 'חדר', 'open') RETURNING id`);
+  await db.pool.query(`INSERT INTO chat_group_members (group_id, phone) VALUES ($1, $2)`, [g.id, viaRoom]);
+  const inviter = await makeUser(db.pool, '+972601000907', { firstName: 'מזמין' });
+  let connId;
+  await withTx(db.pool, async (c) => {
+    const req = await connections.requestConnection(c, inviter.id, viaInvite, { reason: 'פגישה' });
+    connId = Number(req.data.connection.id);
+    await invites.afterConnectionRequest(c, inviter, req.data.connection, false);
+  });
+  // The invite made their row long before they wrote — which is exactly what
+  // kept invited_by_connection_id NULL until now.
+  const { rows: [pending] } = await db.pool.query(
+    `SELECT invited_by_connection_id FROM users WHERE phone = $1`, [viaInvite]);
+  assert.equal(pending.invited_by_connection_id, null, 'the fixture reproduces the bug\'s precondition');
+
+  const texts = {
+    [viaLink]: `היי עולמה 👋 הגעתי דרך ממליצה (קוד ${code})`,
+    [viaRoom]: 'אני יכול מחר',
+    [viaInvite]: 'היי',
+    [direct]: 'היי מה זה',
+  };
+  const out = await withTx(db.pool, (c) => intake.sweepIntakeSessions(c, {
+    configPath,
+    listSessions: async () => [viaLink, viaRoom, viaInvite, direct].map((phone) => ({ phone, key: phone })),
+    readFirstMessage: async (phone) => texts[phone],
+    readReferralText: async (phone) => texts[phone],
+    readGreeterReply: async () => OPENING.he,
+  }));
+  assert.equal(out.provisioned.length, 4);
+  const { rows } = await db.pool.query(
+    `SELECT phone, joined_via, referred_by_user_id, invited_by_connection_id FROM users
+      WHERE phone = ANY($1)`, [[viaLink, viaRoom, viaInvite, direct]]);
+  const by = Object.fromEntries(rows.map((r) => [r.phone, r]));
+  assert.equal(by[viaLink].joined_via, 'friend_link');
+  assert.equal(Number(by[viaLink].referred_by_user_id), friend.id);
+  assert.equal(by[viaRoom].joined_via, 'room');
+  assert.equal(by[viaRoom].referred_by_user_id, null);
+  assert.equal(by[viaInvite].joined_via, 'invite');
+  assert.equal(Number(by[viaInvite].invited_by_connection_id), connId, 'the attribution bug is fixed');
+  assert.equal(by[direct].joined_via, 'direct');
+
+  // Their own code sent from their own number names nobody.
+  const { rows: [me] } = await db.pool.query(
+    `SELECT id FROM users WHERE phone = $1`, [viaLink]);
+  await withTx(db.pool, async (c) => {
+    assert.equal(await referral.referrerFor(c, `קוד ${code}`, '+972601000901'), null, 'not yourself');
+    assert.equal(await referral.referrerFor(c, `קוד ${referral.codeFor(me.id)}`, selfCode), me.id);
+    assert.equal(await referral.referrerFor(c, 'קוד ZZZZZ', selfCode), null);
+  });
+});
+
+test('a re-provision never moves joined_via', async () => {
+  const phone = '+972601000910';
+  await withTx(db.pool, (c) => provisionUser(c, { phone, configPath, joinedVia: 'room' }));
+  await withTx(db.pool, (c) => provisionUser(c, { phone, configPath, joinedVia: 'direct' }));
+  const { rows } = await db.pool.query(`SELECT joined_via FROM users WHERE phone = $1`, [phone]);
+  assert.equal(rows[0].joined_via, 'room');
+});
