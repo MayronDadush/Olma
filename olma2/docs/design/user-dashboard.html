@@ -1233,6 +1233,32 @@ html.is-new .themetog{z-index:80}
 html[data-paused] .livepill{color:var(--warn)}
 html[data-paused] .livepill .dot{background:var(--warn)}
 html[data-paused] .livepill .dot::after{animation:none;opacity:0}
+/* …and since 2026-09-29 (the owner) the page itself stops: everything behind
+   is blurred and inert, and the one thing left to press is bringing her back.
+   A paused page that still lets you add a reminder is a page promising
+   something the server will refuse. */
+html[data-paused] .app,html[data-paused] .tabbar{filter:blur(3px) saturate(.85);pointer-events:none;user-select:none}
+.pausegate{display:none}
+html[data-paused] .pausegate{
+  display:flex;position:fixed;inset:0;z-index:85;align-items:center;justify-content:center;
+  padding:24px 20px;background:color-mix(in oklab,var(--bg) 40%,transparent);
+}
+.pgcard{
+  width:100%;max-width:340px;display:grid;gap:10px;justify-items:center;text-align:center;
+  background:var(--surface);border-radius:24px;box-shadow:var(--shadow-m);padding:26px 22px 22px;
+}
+.pgicon{width:48px;height:48px;border-radius:50%;display:grid;place-items:center;background:var(--band);color:var(--on-band)}
+.pgicon svg{width:20px;height:20px}
+.pgcard h2{margin:4px 0 0;font-family:var(--font-display);font-size:22px;font-weight:700;line-height:1.2}
+.pgcard p{margin:0;color:var(--text-2);font-size:15px;line-height:1.55;max-width:30ch}
+.pggo{
+  margin-top:8px;width:100%;display:inline-flex;align-items:center;justify-content:center;gap:9px;
+  padding:14px 20px;border:0;border-radius:999px;cursor:pointer;
+  background:var(--action);color:var(--on-action);font:inherit;font-size:16.5px;font-weight:700;
+  transition:transform .2s var(--spring);
+}
+.pggo svg{width:16px;height:16px;flex:none}
+.pggo:active{transform:scale(.96)}
 
 .note{font-size:13px;color:var(--text-2);margin-top:10px;line-height:1.5}
 .linkbtn{color:var(--accent);font-weight:600;font-size:14.5px}
@@ -3690,6 +3716,16 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   <button class="tab" role="tab" aria-selected="false" data-go="me"><svg><use href="#i-user24"/></svg><span data-i18n="tab.me"></span></button>
 </nav>
 
+<!-- While she is paused, this is the page: the rest sits blurred behind it. -->
+<div class="pausegate" id="pauseGate" role="dialog" aria-modal="true" aria-labelledby="pgTitle">
+  <div class="pgcard">
+    <span class="pgicon" aria-hidden="true"><svg><use href="#i-pause"/></svg></span>
+    <h2 id="pgTitle"></h2>
+    <p data-i18n="pg.body"></p>
+    <button class="pggo" id="pgGo" type="button"><svg aria-hidden="true"><use href="#i-play"/></svg><span id="pgGoLabel"></span></button>
+  </div>
+</div>
+
 <!-- ══════════════  the first screen  ══════════════
      Shown instead of the app to somebody with no account yet. It offers
      exactly two things, because they are the only two that would work: the
@@ -5141,7 +5177,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "me.setup":"עולמה אצלך","me.calledBy":"השם של עולמה",
       "me.appearance":"מראה","home.toNight":"מעבר למצב לילה","home.toDay":"מעבר למצב יום","me.themeLight":"בהיר","me.themeDark":"כהה","me.themeAuto":"אוטומטי",
       "me.setupNote":"לפי המיקום עולמה יודעת מה השעה אצלך. את השם שלה אפשר להחליף.",
-      "me.pause":"להשהות את עולמה","me.resume":"עולמה מושהית · להפעלה",
+      "me.pause":"להשהות את עולמה","me.resume":"להחזיר את עולמה",
       "me.deleteAll":"מחיקת החשבון וכל המידע",
       "del.title":"למחוק את כל המידע?",
       "del.body":"המשימות, התזכורות, מה שעולמה זוכרת עליך, אנשי הקשר והחיבור לגוגל יימחקו תוך כמה דקות. משימות ותיאומים משותפים יישארו אצל האחרים, בלעדיך. אי אפשר לבטל את זה.",
@@ -5149,7 +5185,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "del.done":"הבקשה התקבלה. כל המידע יימחק תוך כמה דקות.",
       "me.pauseNote":"היא תפסיק לכתוב מיוזמתה. שום דבר לא נמחק, והודעה אחת ממך מחזירה הכול.",
       "me.pausedNote":"עולמה לא תיזום כלום — לא תזכורות, לא סיכומים. היא עדיין תענה כשתכתוב לה.",
-      "live.paused":"{name} מושהית",
+      "live.paused":"{name} מושהית","pg.go":"להחזיר את {name}","pg.body":"בינתיים היא לא שולחת תזכורות וסיכומים. שום דבר לא נמחק, והכול חוזר ברגע שמחזירים אותה.",
       "me.noName":"ללא שם",
       "me.since":"בעולמה מאז {when}","me.saved":"נשמר",
       "legal.nav":"מידע משפטי ונגישות","legal.privacy":"פרטיות","legal.terms":"תנאי שימוש","legal.a11y":"נגישות",
@@ -5502,7 +5538,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "me.setup":"Your Allma","me.calledBy":"Allma's name",
       "me.appearance":"Appearance","home.toNight":"Switch to dark mode","home.toDay":"Switch to light mode","me.themeLight":"Light","me.themeDark":"Dark","me.themeAuto":"Auto",
       "me.setupNote":"Your location decides every reminder, quiet hour and summary — a dialling code is a country, not a city. The name is yours to change; it appears in every message she sends.",
-      "me.pause":"Pause Allma","me.resume":"Allma is paused · Resume",
+      "me.pause":"Pause Allma","me.resume":"Bring Allma back",
       "me.deleteAll":"Delete my account and all my data",
       "del.title":"Delete all your data?",
       "del.body":"Your tasks, reminders, what Allma remembers about you, your contacts and your Google connection will be deleted within a few minutes. Shared tasks and coordinations stay with the others, and you leave them. This cannot be undone.",
@@ -5510,7 +5546,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "del.done":"Request received. All your data will be deleted within a few minutes.",
       "me.pauseNote":"She stops writing on her own. Nothing is deleted, and one message from you brings it all back.",
       "me.pausedNote":"Allma starts nothing — no reminders, no summaries. She still answers when you write to her.",
-      "live.paused":"{name} is paused",
+      "live.paused":"{name} is paused","pg.go":"Bring {name} back","pg.body":"Meanwhile she sends no reminders and no summaries. Nothing is deleted, and it all comes back the moment you bring her back.",
       "me.noName":"No name",
       "me.since":"On Allma since {when}","me.saved":"Saved",
       "legal.nav":"Legal and accessibility","legal.privacy":"Privacy","legal.terms":"Terms","legal.a11y":"Accessibility",
@@ -11881,14 +11917,21 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     $("#pauseLabel").textContent = t(paused ? "me.resume" : "me.pause");
     $("#pauseNote").textContent = t(paused ? "me.pausedNote" : "me.pauseNote");
     document.documentElement.toggleAttribute("data-paused", paused);
+    /* inert as well as blurred: a keyboard or a screen reader must not walk
+       into the page the eye has been told is closed */
+    $(".app").inert = paused; $(".tabbar").inert = paused;
+    $("#pgTitle").textContent = t("live.paused", {name:olmaName()});
+    $("#pgGoLabel").textContent = t("pg.go", {name:olmaName()});
     syncName();
   }
-  $("#pauseBtn").addEventListener("click", function(){
-    paused = !paused;
+  function setPausedTo(on){
+    paused = on;
     renderPause();
     API.setPaused(paused);
     toast(t(paused ? "toast.paused" : "toast.resumed"));
-  });
+  }
+  $("#pauseBtn").addEventListener("click", function(){ setPausedTo(!paused); });
+  $("#pgGo").addEventListener("click", function(){ setPausedTo(false); });
 
   /* Deleting everything (domain/self-delete.js). Nothing is optimistic here:
      the page changes only once the server has accepted the request, and then
