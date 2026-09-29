@@ -473,3 +473,16 @@ test('the policy says what the browser keeps, in both languages, with the real c
   assert.ok(he.includes(`היא פגה אחרי ${days} יום בלי ביקור`));
   assert.ok(en.includes('None of it is used for tracking or advertising'));
 });
+
+// The owner, 2026-09-29: the terms state the same minimum age as the policy,
+// and both read it from the constant the under-16 alarm uses.
+test('the terms and the policy state one minimum age, the one the alarm checks', () => {
+  const { MIN_AGE } = require('../src/domain/under-age');
+  assert.equal(MIN_AGE, 16);
+  const terms = { en: publicPages.termsPage('en'), he: publicPages.termsPage('he') };
+  assert.ok(terms.en.includes('<h2>Who may use it</h2>'));
+  assert.ok(terms.en.includes(`You must be at least ${MIN_AGE} years old to use the service.`));
+  assert.ok(terms.he.includes(`השימוש בשירות מותר מגיל ${MIN_AGE} ומעלה.`));
+  assert.ok(publicPages.privacyPage('en').includes(`not intended for anyone under ${MIN_AGE}`));
+  assert.ok(publicPages.privacyPage('he').includes(`מתחת לגיל ${MIN_AGE}`));
+});
