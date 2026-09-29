@@ -340,9 +340,10 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         return res.end(publicPages.accessibilityPage(publicPages.langOf(parsed.searchParams.get('lang'))));
       }
+      // Since 2026-09-29 the public `/` is the personal dashboard, locked, with
+      // publicPages.homeSections under it (user-dashboard.js, frontPage).
       if (req.method === 'GET' && parsed.pathname === '/' && PUBLIC_HOSTS.has(hostOf(req))) {
-        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        return res.end(publicPages.homePage(publicPages.langOf(parsed.searchParams.get('lang'))));
+        return userDashboard.frontPage(req, res, pool);
       }
 
       if (!checkBasicAuth(req, adminUser, adminPass)) {

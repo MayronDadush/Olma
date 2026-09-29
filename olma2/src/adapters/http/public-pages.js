@@ -46,10 +46,11 @@ const BRAND = 'Allma - Personal Assistant';
 const ASSISTANT = 'עולמה';
 const WA_NUMBER = '972559347282';
 const CONTACT_EMAIL = 'info@allma.world';
-const { markSvg, PALETTE } = require('./brand-mark');
+const { markSvg } = require('./brand-mark');
 
-// The brand the owner chose on 2026-09-28, Cypress + Mustard: sand ground,
-// a cypress band across the top, mustard for the one action on the page. The
+// The brand the owner chose on 2026-09-28, Cypress + Mustard: sand ground and
+// cypress ink. (The home page's cypress band and mustard button went with the
+// home page itself, 2026-09-29: `/` is the locked dashboard now.) The
 // same day tokens the /me dashboard carries
 // (docs/design/user-dashboard.html), so the front door and the product are
 // one thing. Only the tokens these pages actually use were carried over.
@@ -61,9 +62,7 @@ const SHELL_CSS = `
   color-scheme:light;
   --bg:#F0EDE5;--surface:#FFFFFF;--sep:#D7D6CF;
   --text:#0E1F1E;--text-2:#44504E;--text-3:#646D6A;
-  --band:#004643;--on-band:#F0EDE5;--on-band-2:#C9D6D1;
   --link:#004643;--code:#E6ECEC;
-  --action:#F9C23C;--on-action:#004643;
 }
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
@@ -73,11 +72,7 @@ body{
   font-size:16px;line-height:1.6;
   min-height:100vh;
 }
-.band{background:var(--band);color:var(--on-band);border-radius:0 0 28px 28px}
-.band .in{max-width:720px;margin:0 auto;padding:40px 22px 36px}
-.band .lede{color:var(--on-band-2)}
 .wrap{max-width:720px;margin:0 auto;padding:44px 22px 64px}
-.band + .wrap{padding-top:12px}
 .mark{width:72px;height:72px}
 .mark svg{width:100%;height:100%;display:block}
 h1{font-weight:700;font-size:38px;line-height:1.08;letter-spacing:-.02em;margin:20px 0 0;text-wrap:balance}
@@ -93,32 +88,20 @@ code{font-family:'IBM Plex Mono',ui-monospace,Menlo,monospace;font-size:.86em;ba
 .card h3{margin-top:0}
 .card p:last-child{margin-bottom:0}
 .perm{font-size:13.5px;color:var(--text-3);margin-top:6px}
-.cta{
-  display:inline-flex;align-items:center;gap:9px;margin-top:10px;
-  background:var(--action);color:var(--on-action);border-radius:99px;
-  padding:13px 24px;font-weight:600;font-size:16px;text-decoration:none;
-}
-.cta:hover{filter:brightness(.96)}
 .foot{margin-top:44px;padding-top:18px;border-top:1px solid var(--sep);font-size:13px;color:var(--text-3)}
 .foot a{color:var(--text-2)}
 .he{margin-top:52px;padding-top:26px;border-top:1px solid var(--sep);direction:rtl;text-align:right}
 .updated{font-size:13.5px;color:var(--text-3);margin-top:4px}
 .he.only{margin-top:0;padding-top:0;border-top:0}
 .langbar{display:flex;justify-content:flex-end;margin-bottom:8px}
-.band .langbar{margin:-18px 0 6px}
 .lang{display:inline-flex;align-items:center;min-height:44px;padding:0 16px;border:1px solid var(--sep);border-radius:99px;
   background:var(--surface);color:var(--text);font-size:14.5px;font-weight:600;text-decoration:none}
-.band .lang{background:transparent;color:var(--on-band);border-color:var(--on-band-2)}
 .lang:hover{text-decoration:underline}
 `;
 
-// The round mark with its ring: on the cypress band the dark half is ink and
-// the ring is sand (the brand book's "על ברוש"); on sand, below the band, the
-// dark half is cypress and the ring follows the text colour.
-// `id` keeps the clip paths apart, since a page carries more than one.
-const ON_BAND = { ink: '#0E1F1E', paper: '#F0EDE5', coral: PALETTE.coral };
-const LOGO = markSvg({ variant: 'round', palette: ON_BAND, ring: '#F0EDE5', id: 'lg' })
-  .replace('<svg ', `<svg role="img" aria-label="${BRAND}" `);
+// The round mark with its ring, on sand: the dark half is cypress and the
+// ring follows the text colour. `id` keeps its clip paths apart from any
+// other mark on the page.
 const LOGO_PAGE = markSvg({ variant: 'round', id: 'lp', ring: 'currentColor' })
   .replace('<svg ', `<svg role="img" aria-label="${BRAND}" `);
 
@@ -128,11 +111,9 @@ const LOGO_PAGE = markSvg({ variant: 'round', id: 'lp', ring: 'currentColor' })
 // one of them: `?lang=he` is the Hebrew, anything else the English. Chosen on
 // the SERVER, from the query string, so it needs no script and no cookie, and
 // Caddy's allowlist matches the path, so no Caddyfile change. The choice rides
-// every link between the four pages, and the footer is drawn here, in the
-// page's language, rather than by each page.
-//
-// `band`, when given, is drawn full width above the page in the brand's
-// cypress; the home page has one, the policy pages do not.
+// every link between the policy pages, and the footer is drawn here, in the
+// page's language, rather than by each page. `/` is the locked dashboard
+// (user-dashboard.js), which has languages of its own, so it is linked bare.
 const PAGES = [
   ['/', 'allma.world', 'allma.world'],
   ['/privacy', 'Privacy Policy', 'מדיניות פרטיות'],
@@ -141,7 +122,7 @@ const PAGES = [
 ];
 
 function langOf(q) { return q === 'he' ? 'he' : 'en'; }
-function hrefFor(path, lang) { return lang === 'he' ? `${path}?lang=he` : path; }
+function hrefFor(path, lang) { return lang === 'he' && path !== '/' ? `${path}?lang=he` : path; }
 
 function footFor(path, lang) {
   const links = PAGES.filter(([p]) => p !== path)
@@ -158,28 +139,23 @@ function langSwitch(path, lang) {
 }
 
 // Keeps one language of a page written as English + `.he` block + footer. In
-// Hebrew the block's first heading becomes the page's title, and links to our
-// own pages keep the choice.
-function oneLanguage(bodyHtml, lang, { promote = true } = {}) {
+// Hebrew the block's first heading becomes the page's title, its sections move
+// up a level to match the English, and links to our own pages keep the choice.
+function oneLanguage(bodyHtml, lang) {
   const he = bodyHtml.indexOf('<div class="he"');
   const foot = bodyHtml.indexOf('<div class="foot">');
   if (he < 0 || foot < he) throw new Error('a public page must be English, then a .he block, then its footer');
   if (lang !== 'he') return bodyHtml.slice(0, he);
-  const block = bodyHtml.slice(he, foot)
-    .replace(/<div class="he"( lang="he")?>/, `<div class="he only">${promote ? `<div class="mark">${LOGO_PAGE}</div>` : ''}`);
-  // Written as a section under the English page, so its title is an h2 and its
-  // sections h3; standing alone they move up a level to match the English.
-  return (promote
-    ? block.replace(/<h3>/g, '<h2>').replace(/<\/h3>/g, '</h2>')
-      .replace(/<h2>([^<]*?)(?: \(עברית\))?<\/h2>/, '<h1>$1</h1>')
-    : block)
-    .replace(/href="(\/(?:privacy|terms|accessibility)?)"/g, 'href="$1?lang=he"');
+  return bodyHtml.slice(he, foot)
+    .replace(/<div class="he"( lang="he")?>/, `<div class="he only"><div class="mark">${LOGO_PAGE}</div>`)
+    .replace(/<h3>/g, '<h2>').replace(/<\/h3>/g, '</h2>')
+    .replace(/<h2>([^<]*?)(?: \(עברית\))?<\/h2>/, '<h1>$1</h1>')
+    .replace(/href="(\/(?:privacy|terms|accessibility))"/g, 'href="$1?lang=he"');
 }
 
-function shell(title, bodyHtml, { lang = 'en', band = '', path = '/' } = {}) {
+function shell(title, bodyHtml, { lang = 'en', path = '/' } = {}) {
   const dir = lang === 'he' ? 'rtl' : 'ltr';
-  const toggle = langSwitch(path, lang);
-  const body = `${band ? '' : toggle}${oneLanguage(bodyHtml, lang, { promote: !band })}${footFor(path, lang)}`;
+  const body = `${langSwitch(path, lang)}${oneLanguage(bodyHtml, lang)}${footFor(path, lang)}`;
   return `<!doctype html>
 <html lang="${lang}" dir="${dir}">
 <head>
@@ -192,7 +168,7 @@ function shell(title, bodyHtml, { lang = 'en', band = '', path = '/' } = {}) {
 <style>${FONT_CSS}
 ${SHELL_CSS}</style>
 </head>
-<body>${band ? `<header class="band"><div class="in">${toggle}${band}</div></header>` : ''}<div class="wrap">${body}</div></body>
+<body><div class="wrap">${body}</div></body>
 </html>`;
 }
 
@@ -202,8 +178,14 @@ ${SHELL_CSS}</style>
 // what the product says it does, so every capability below names the exact
 // permission behind it and its limit. Said once in English, then again in
 // Hebrew for the people actually using it today — same claims, both times.
-function homePage(lang = 'en') {
-  return shell(lang === 'he' ? `${ASSISTANT} — עוזרת AI בוואטסאפ` : `${BRAND} — a WhatsApp AI assistant`, `
+// What the front door says Allma is. Since 2026-09-29 `/` is the locked
+// dashboard and this text sits under it (user-dashboard.js); the standalone
+// home page it was written for is gone, so this is the only copy of what
+// Google's reviewer reads. `k` names each class, because the dashboard is one
+// CSS namespace and `.he` there is already somebody's.
+const HOME_LEDE = 'A personal assistant that lives inside WhatsApp. Write to it in your own language — it remembers, reminds, and coordinates. Nothing to install.';
+function homeSections(k = (n) => n) {
+  return `
     <h2>What it does</h2>
     <ul>
       <li><b>Tasks & reminders</b> — tell it once, and it reminds you at the right time.</li>
@@ -215,23 +197,29 @@ function homePage(lang = 'en') {
     <h2>Connecting your Google account — your choice</h2>
     <p>${BRAND} works great with no connection at all. If you do connect, every permission is separate, requested only after you explicitly asked for it, and can be disconnected at any time.</p>
 
-    <div class="card">
+    <div class="${k('card')}">
       <h3>Google Calendar</h3>
       <p>See what's on your calendar to answer "what do I have tomorrow", and suggest times that are genuinely free. If you also grant edit access, add an event you asked for.</p>
-      <p class="perm">Permission: <code>calendar.readonly</code> for viewing only, or <code>calendar.events</code> if you also approved editing. You choose before the link is created.</p>
+      <p class="${k('perm')}">Permission: <code>calendar.readonly</code> for viewing only, or <code>calendar.events</code> if you also approved editing. You choose before the link is created.</p>
     </div>
 
-    <div class="card">
+    <div class="${k('card')}">
       <h3>Google Contacts</h3>
       <p>Import names and numbers into your own private address book here, so you don't have to dictate a number already in your phone. The import is completely silent: it notifies nobody and tells no one that you use ${BRAND}.</p>
-      <p class="perm">Permission: <code>contacts.readonly</code> — read-only.</p>
+      <p class="${k('perm')}">Permission: <code>contacts.readonly</code> — read-only.</p>
     </div>
 
     <h2>Privacy</h2>
     <p>We do not sell information and do not use it for advertising. Data from Google is used solely to answer you — not to train models, and not for any other purpose. <a href="/privacy">Full privacy policy</a>.</p>
 
-    <div class="he">
-      <h2>מה היא עושה</h2>
+    <div class="${k('he')}">
+      <div class="${k('mark')}">${LOGO_PAGE}</div>
+      <h2>${ASSISTANT}</h2>
+      <p class="${k('lede')}">עוזרת אישית שחיה בתוך וואטסאפ. כותבים לה בשפה שלכם — היא זוכרת, מזכירה, ומתאמת. אין מה להתקין.</p>
+
+      <p><a class="${k('cta')}" href="https://wa.me/${WA_NUMBER}">פתיחת שיחה בוואטסאפ</a></p>
+
+      <h3>מה היא עושה</h3>
       <ul>
         <li><b>משימות ותזכורות</b> — אומרים לה משהו פעם אחת, והיא מזכירה בזמן הנכון.</li>
         <li><b>תיאום פגישות</b> — בין אנשים שמחוברים זה לזה, כולל מציאת זמן שמתאים לכולם.</li>
@@ -239,39 +227,29 @@ function homePage(lang = 'en') {
         <li><b>זיכרון</b> — העדפות ועובדות שנאמרו בשיחה, כדי שלא צריך לחזור עליהן.</li>
       </ul>
 
-      <h2>חיבור לחשבון הגוגל שלכם — לבחירתכם</h2>
+      <h3>חיבור לחשבון הגוגל שלכם — לבחירתכם</h3>
       <p>${ASSISTANT} עובדת מצוין בלי שום חיבור. אם בכל זאת מחברים, כל הרשאה נפרדת, מתבקשת רק אחרי שביקשתם אותה במפורש, וניתנת לניתוק בכל רגע.</p>
 
-      <div class="card">
+      <div class="${k('card')}">
         <h3>יומן Google</h3>
         <p>לראות מה יש ביומן כדי לענות על "מה יש לי מחר", ולהציע זמנים שפנויים באמת. אם תבחרו גם הרשאת עריכה — להוסיף אירוע שביקשתם.</p>
-        <p class="perm">ההרשאה: <code>calendar.readonly</code> לצפייה בלבד, או <code>calendar.events</code> אם אישרתם גם עריכה. אתם בוחרים לפני שהקישור נוצר.</p>
+        <p class="${k('perm')}">ההרשאה: <code>calendar.readonly</code> לצפייה בלבד, או <code>calendar.events</code> אם אישרתם גם עריכה. אתם בוחרים לפני שהקישור נוצר.</p>
       </div>
 
-      <div class="card">
+      <div class="${k('card')}">
         <h3>אנשי קשר Google</h3>
         <p>ייבוא שמות ומספרים לפנקס הכתובות הפרטי שלכם כאן, כדי שלא תצטרכו להכתיב מספר שכבר קיים אצלכם בטלפון. הייבוא שקט לחלוטין: הוא לא שולח הודעה לאף אחד ולא מספר לאיש שאתם משתמשים ב${ASSISTANT}.</p>
-        <p class="perm">ההרשאה: <code>contacts.readonly</code> — קריאה בלבד.</p>
+        <p class="${k('perm')}">ההרשאה: <code>contacts.readonly</code> — קריאה בלבד.</p>
       </div>
 
-      <h2>פרטיות</h2>
+      <h3>פרטיות</h3>
       <p>אנחנו לא מוכרים מידע ולא משתמשים בו לפרסום. המידע מגוגל משמש אך ורק כדי לענות לכם — לא לאימון מודלים ולא לשום שימוש אחר. <a href="/privacy">מדיניות הפרטיות המלאה</a>.</p>
     </div>
 
-    <div class="foot">
+    <div class="${k('foot')}">
       <p>allma.world · <a href="/privacy">Privacy Policy</a> · <a href="/terms">Terms of Service</a> · <a href="/accessibility">Accessibility</a> · <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
     </div>
-  `, { lang, path: '/', band: lang === 'he' ? `
-    <div class="mark">${LOGO}</div>
-    <h1>${ASSISTANT}</h1>
-    <p class="lede">עוזרת אישית שחיה בתוך וואטסאפ. כותבים לה בשפה שלכם — היא זוכרת, מזכירה, ומתאמת. אין מה להתקין.</p>
-    <p><a class="cta" href="https://wa.me/${WA_NUMBER}">פתיחת שיחה בוואטסאפ</a></p>
-  ` : `
-    <div class="mark">${LOGO}</div>
-    <h1>${BRAND}</h1>
-    <p class="lede">A personal assistant that lives inside WhatsApp. Write to it in your own language — it remembers, reminds, and coordinates. Nothing to install.</p>
-    <p><a class="cta" href="https://wa.me/${WA_NUMBER}">Start a WhatsApp chat</a></p>
-  ` });
+`;
 }
 
 // ---- privacy ----------------------------------------------------------------
@@ -584,6 +562,6 @@ function accessibilityPage(lang = 'en') {
 }
 
 module.exports = {
-  homePage, privacyPage, termsPage, accessibilityPage, langOf, BRAND, ASSISTANT, CONTACT_EMAIL, UPDATED,
+  homeSections, HOME_LEDE, privacyPage, termsPage, accessibilityPage, langOf, BRAND, ASSISTANT, CONTACT_EMAIL, UPDATED,
   PRIVACY_UPDATED, RETENTION, A11Y_UPDATED, PINCH_ZOOM_DISABLED,
 };

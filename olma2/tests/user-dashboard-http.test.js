@@ -76,11 +76,12 @@ test('an unknown or malformed link is a dead end, not a 500', async () => {
 
 test('the page needs a session, and the admin password is not one', async () => {
   const anon = await get('/me');
-  assert.equal(anon.status, 401);
+  assert.equal(anon.status, 200);
   const anonHtml = await anon.text();
-  // Somebody with no session gets the first screen — the two doors into a
-  // conversation with her — not an error. It is still a 401: none of their
-  // data is in it, and the stamp is the only thing that decides that.
+  // Somebody with no session gets the locked page — the same one allma.world's
+  // `/` serves — not an error. 200 since 2026-09-29 (Caddy compressed a 200
+  // and sent a 401 whole); none of their data is in it, and the stamp is the
+  // only thing that decides that.
   assert.match(anonHtml, /<html data-served="1" data-new="1">/,
     'an anonymous visitor was not handed the first screen');
   assert.ok(anonHtml.includes('w.hint'), 'that is not the dashboard file');
@@ -89,7 +90,7 @@ test('the page needs a session, and the admin password is not one', async () => 
   const admin = await get('/me', {
     headers: { Authorization: 'Basic ' + Buffer.from('admin:test-password-123').toString('base64') },
   });
-  assert.equal(admin.status, 401,
+  assert.match(await admin.text(), /<html data-served="1" data-new="1">/,
     'the operator password opened a private page it has no identity for');
 });
 
