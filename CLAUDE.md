@@ -141,6 +141,7 @@ Loads when you **Read** a file under `src/intake/openclaw-config.js`, `src/intak
 - **Never poll `openclaw sessions list` on a timer**
 - **The gateway heartbeat stays OFF: `agents.defaults.heartbeat.every: "0m"`.**
 - **Every session resets daily: `session.reset: { mode: "daily", atHour: 2 }`**
+- **memory-core "dreaming" stays OFF: `plugins.entries["memory-core"].config.dreaming.enabled: false`** — the gateway's default is on, and `config_guard` goes red if it comes back
 - **A room's agent is shown six tools and a person's the rest, by a computed `tools.deny` per agent** — never hand-edited; the deploy re-syncs it.
 
 ### Delivering a message

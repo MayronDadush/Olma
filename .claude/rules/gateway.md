@@ -120,6 +120,18 @@ title means this file. Grep the title, not the filename.
   live session id alone is blind once a day. `config_guard` goes red if the
   mode comes back off; `scripts/set-session-reset.js --apply` sets it.
 
+- **memory-core "dreaming" stays OFF:
+  `plugins.entries["memory-core"].config.dreaming.enabled: false`.** The
+  gateway turns it on by default: at 03:00 UTC every night, three model
+  passes (light/deep/rem) per agent, writing `DREAMS.md`, `memory/dreaming/`
+  and `memory/.dreams/` into each workspace. None of it is injected into a
+  prompt; in four weeks it promoted 0 items to `MEMORY.md`, and the gateway
+  peaked at 895MB while it ran on a 2GB box (2026-09-27). Turned off by hand
+  that day (hot reload, the managed cron job is removed), the diaries deleted
+  2026-09-29 with an archive in `/root/backups/openclaw-dreams-20260929.tar.gz`.
+  Unset means ON, so `config_guard` wants `false` explicitly and goes red on
+  anything else.
+
 - **A room's agent is shown six tools and a person's is shown the rest, by a
   `tools.deny` on each agent's entry — computed, never typed.** The shim
   cannot tell who asks and serves all of them; the gateway can, and filters
