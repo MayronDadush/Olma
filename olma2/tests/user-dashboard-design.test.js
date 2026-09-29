@@ -218,9 +218,8 @@ test('a class that says what something IS may not also say how it looks', () => 
   const rules = page.match(/[^\n{}]*\.hasrooms[^\n{}]*\{[^}]*\}/g) || [];
   assert.equal(rules.length, 1, 'exactly one rule may mention it');
   assert.match(rules[0], /^html\[data-served\] \.groupsblock\.hasrooms\{display:block\}$/);
-  // And the pill's own name now describes the pill.
-  assert.match(page, /<div class="livepill">/);
-  assert.match(page, /\.livepill\{/);
+  // The pill that answered to it is gone (2026-09-29): the paused card says it.
+  assert.doesNotMatch(page, /class="livepill"|id="olmaLive"/);
 });
 
 // A `var(--x)` naming a token nobody defines is the quietest failure this file

@@ -406,11 +406,8 @@ html[data-v="me"] .brand{opacity:0;transform:translateY(-8px) scale(.94);pointer
 .brand-hi{font-size:13px;color:var(--on-band-2);line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .brand-name{font-family:var(--font-display);font-weight:600;font-size:17px;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hdrend{display:flex;align-items:center;gap:9px;flex:none}
-/* "עולמה פעילה" said nothing to somebody who did not know she could be
-   anything else (owner, 2026-09-28). The pill is only there when it is news:
-   paused. It takes no room otherwise: the clock sits at the band's end now,
-   so nothing is centred on the space the pill leaves. */
-html:not([data-paused]) .livepill{display:none}
+/* The pill that said "עולמה מושהית" here is gone (the owner, 2026-09-29):
+   a paused page is blurred behind its own card now, and that card says it. */
 /* The light/dark choice, on the profile page with its words beside each
    picture. It used to live here, beside the clock on every tab. */
 /* …and one tap between day and night came back to the band, on the home tab
@@ -425,31 +422,6 @@ html:not([data-paused]) .livepill{display:none}
 html[data-v="tools"] .daynight,html:not([data-v]) .daynight{display:inline-flex}
 .themeseg button{display:inline-flex;align-items:center;justify-content:center;gap:6px}
 .themeseg button svg{width:15px;height:15px;flex:none}
-/* The pill under the clock, and the name says what it LOOKS like rather than
-   what it means. It was `.live`, and something else on this page then used
-   `live` to mean "this section has real rooms behind it" — one word, two
-   meanings, one namespace. The groups section picked up a 999px radius, a
-   white ground and `white-space:nowrap`, and drew itself as a lozenge the
-   width of the screen with its first title running off the side. Only on a
-   SERVED page, and only for somebody who is in at least one room, which is
-   why no design review ever saw it. A name that describes a look can be worn
-   by anything; a name that describes a state cannot be worn by a look. */
-.livepill{
-  display:inline-flex;align-items:center;gap:7px;flex:none;
-  /* Logical, not physical. These were written as `6px 12px 6px 10px` — right
-     and left — in a page whose primary language reads right to left, so the
-     tighter side sat against the dot in English and against the words in
-     Hebrew. The icon is what wants the tighter side, in both. */
-  padding-block:6px;padding-inline-start:10px;padding-inline-end:12px;border-radius:999px;
-  background:var(--surface);box-shadow:var(--shadow-s);
-  font-size:12.5px;font-weight:600;color:var(--text-2);white-space:nowrap;
-}
-.livepill .dot{width:7px;height:7px;border-radius:50%;background:var(--ok);position:relative}
-.livepill .dot::after{
-  content:"";position:absolute;inset:-4px;border-radius:50%;
-  border:1.5px solid var(--ok);opacity:.5;animation:pulse 1.3s var(--ease) infinite;
-}
-@keyframes pulse{0%{transform:scale(.5);opacity:.6}70%,100%{transform:scale(1.25);opacity:0}}
 
 /* ─────────────────────────  view + titles  ───────────────────────── */
 .view{display:none}
@@ -1229,10 +1201,6 @@ html.is-new .themetog{z-index:80}
 .goneview{position:fixed;inset:0;z-index:100;display:flex;align-items:center;justify-content:center;
   padding:0 24px;background:var(--bg);color:var(--text);text-align:center;font-size:17px;line-height:1.6}
 
-/* while paused the whole app says so, not just the button that did it */
-html[data-paused] .livepill{color:var(--warn)}
-html[data-paused] .livepill .dot{background:var(--warn)}
-html[data-paused] .livepill .dot::after{animation:none;opacity:0}
 /* …and since 2026-09-29 (the owner) the page itself stops: everything behind
    is blurred and inert, and the one thing left to press is bringing her back.
    A paused page that still lets you add a reminder is a page promising
@@ -3292,7 +3260,6 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       </div>
     </button>
     <div class="hdrend">
-      <div class="livepill"><span class="dot"></span><span id="olmaLive"></span></div>
       <button class="topclock" id="topClock" data-i18n-label="city.title"></button>
       <button class="daynight" id="dayNight" type="button"><svg aria-hidden="true"><use href="#i-moon"/></svg></button>
     </div>
@@ -4924,7 +4891,6 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
          there are two; the masculine is the default the whole product uses
          until somebody says otherwise. */
       "brand.tagM":"ברוך הבא לעולם שלך","brand.tagF":"ברוכה הבאה לעולם שלך",
-      "live":"{name} פעילה",
       "tab.tools":"בית","tab.tasks":"משימות","tab.cal":"פגישות","tab.friends":"חברים","tab.me":"פרופיל",
 
       "tools.h":"החיבורים שלך",
@@ -5292,7 +5258,6 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       /* English has no gendered address, so both keys are the same sentence
          rather than the caller having to know which languages inflect. */
       "brand.tagM":"Do it all. Do it Allma","brand.tagF":"Do it all. Do it Allma",
-      "live":"{name} is on",
       "tab.tools":"Home","tab.tasks":"Tasks","tab.cal":"Meetings","tab.friends":"Friends","tab.me":"Profile",
 
       "tools.h":"Your connections",
@@ -11873,8 +11838,6 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     var full = (f + " " + l).trim() || t("me.noName");
     $("#whoName").textContent = full;
     $("#brandName").textContent = full;
-    $("#olmaLive").textContent = t(paused ? "live.paused" : "live", {name:olmaName()});
-    $("#olmaLive").parentNode.setAttribute("aria-label", $("#olmaLive").textContent);
   }
   function hop(el){
     if(!el) return;
