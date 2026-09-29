@@ -280,6 +280,9 @@ function homeSections(k = (n) => n) {
 // owner's, flagged for the lawyer.
 const UPDATED = '2026-09-29';
 const PRIVACY_UPDATED = '2026-09-29';
+// The session cookie's life, from the code that sets it, so the sentence
+// about it cannot drift from what the browser is actually told.
+const SESSION_DAYS = require('../../domain/dashboard-auth').SESSION_IDLE_DAYS;
 const RETENTION = {
   deletionDays: 30, localBackupDays: 14, offboxBackupDays: 30,
 };
@@ -353,6 +356,9 @@ function privacyPage(lang = 'en') {
       <li><b>Disconnect Google</b> — ask the assistant to disconnect any service at any time; we delete our stored token and revoke it with Google. You can also revoke access directly from your <a href="https://myaccount.google.com/permissions">Google account permissions</a>.</li>
     </ul>
 
+    <h2>Cookies and your browser</h2>
+    <p>Your personal page uses one cookie, only to keep you signed in; it expires after ${SESSION_DAYS} days without a visit. Your browser also remembers a few display choices for the page (day or night, whether you have seen a tip) and keeps an offline screen for when there is no connection. None of it is used for tracking or advertising, and nothing on these pages loads anything from another company.</p>
+
     <h2>Children</h2>
     <p>The service is not intended for anyone under 16.</p>
 
@@ -424,6 +430,9 @@ function privacyPage(lang = 'en') {
         <li><b>להשהות</b> — לבקש מ${ASSISTANT} להפסיק לפנות אליכם. זו השהיה הפיכה, לא מחיקה.</li>
         <li><b>לנתק את גוגל</b> — לבקש מ${ASSISTANT} לנתק כל שירות בכל רגע; אנחנו מוחקים את האסימון אצלנו ומבטלים אותו מול גוגל. אפשר גם לבטל ישירות דרך <a href="https://myaccount.google.com/permissions">ההרשאות בחשבון הגוגל שלכם</a>.</li>
       </ul>
+
+      <h3>עוגיות והדפדפן</h3>
+      <p>הדף האישי שלכם משתמש בעוגייה אחת, רק כדי שתישארו מחוברים. היא פגה אחרי ${SESSION_DAYS} יום בלי ביקור. הדפדפן גם זוכר כמה בחירות תצוגה של הדף (יום או לילה, האם כבר ראיתם טיפ) ושומר מסך למצב בלי חיבור. שום דבר מזה לא משמש למעקב או לפרסום, ואף דף כאן לא טוען שום דבר מחברה אחרת.</p>
 
       <h3>ילדים</h3>
       <p>השירות לא מיועד למי שמתחת לגיל 16.</p>

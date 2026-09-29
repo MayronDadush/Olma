@@ -438,3 +438,17 @@ test('the vendored fonts are real woff2 and their OFL licence travels with them'
   }
   assert.match(fs.readFileSync(pathMod.join(FONT_DIR, 'OFL-IBM-Plex.txt'), 'utf8'), /SIL Open Font License/i);
 });
+
+// The personal page sets one session cookie and keeps a few display choices
+// in the browser. None of it tracks anybody, but a policy that asks for trust
+// says what it stores; the number comes from the code that sets the cookie.
+test('the policy says what the browser keeps, in both languages, with the real cookie life', () => {
+  const days = require('../src/domain/dashboard-auth').SESSION_IDLE_DAYS;
+  const en = publicPages.privacyPage('en');
+  const he = publicPages.privacyPage('he');
+  assert.ok(en.includes('<h2>Cookies and your browser</h2>'));
+  assert.ok(en.includes(`one cookie, only to keep you signed in; it expires after ${days} days without a visit`));
+  assert.ok(he.includes('עוגייה אחת, רק כדי שתישארו מחוברים'));
+  assert.ok(he.includes(`היא פגה אחרי ${days} יום בלי ביקור`));
+  assert.ok(en.includes('None of it is used for tracking or advertising'));
+});
