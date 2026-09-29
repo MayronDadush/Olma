@@ -98,6 +98,20 @@ have already had to be argued for.
   definite non-delivery. The person queue has no hold of any kind
   (`incidents.md`, "The room was greeted twice, by its own registration").
 
+- **A NEW name on the sender list waits five minutes after the channel last
+  restarted; a name coming OFF, or a list that admits everyone, is written at
+  once** (owner, 2026-09-30; `jobs/groups.syncSenderGate`,
+  `SENDER_GATE_BATCH_MS`). `groupAllowFrom` sits under `channels.whatsapp`, so
+  every change to it restarts the channel (10-14s, and every room held 45s
+  behind it): 15 of them in ten days, and one registration on 2026-09-24 cost
+  four in six minutes. A deferral re-reads the clock every pass and needs no
+  flag. Removals never wait because a paused-by-request or deleted person's
+  tag must stop reaching the model at once. **Registration writes the list in
+  its OWN save** (`provision-group.admitRegisteredGroup({ senders })`), and
+  `provisionGroup` carries it only when its own admit wrote under
+  `channels.whatsapp` — added to a save that restarts nothing, the list would
+  be the restart (`incidents.md`, "Four channel restarts for one room").
+
 - **TWO columns say somebody has written to Olma, because two voices can hear
   their first message.** `isConnected` (the group gate) asks
   `last_inbound_at OR opening_sent_at`: their own agent stamps the first

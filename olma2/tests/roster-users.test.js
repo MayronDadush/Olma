@@ -208,6 +208,70 @@ test('the gateway sender list admits a real-number roster row, and never a LID',
   assert.equal(phones.includes(lid.phone), false, 'a LID names nobody the gateway can match');
 });
 
+// Every change to the sender list restarts the WhatsApp channel, so an ADDITION
+// waits out five minutes after the last restart and a REMOVAL does not wait at
+// all (owner, 2026-09-30). The restart clock is injected: the real one is
+// module state that any earlier save in this file may have stamped.
+test('a new name on the sender list waits five minutes after a restart; a name coming off never waits', async () => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const occ = require('../src/intake/openclaw-config');
+  const { syncSenderGate, SENDER_GATE_BATCH_MS } = require('../src/jobs/groups');
+  await openFlag(true);
+  const me = await connectedUser('+972501900140');
+  const configPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'roster-batch-')), 'openclaw.json');
+  fs.writeFileSync(configPath, JSON.stringify({ channels: { whatsapp: { accounts: { default: {} } } } }));
+  const now = new Date();
+  const listed = () => occ.groupAllowFrom(occ.loadConfig(configPath));
+
+  // Never restarted by us: written at once.
+  await withTx(db.pool, (c) => syncSenderGate(c, configPath, { now, channelWrittenAt: () => null }));
+  assert.ok(listed().includes(me.phone));
+
+  // A roster row arrives a minute after a restart: not yet.
+  const gid = await room(14, [{ phone: me.phone }]);
+  await withTx(db.pool, (c) => groups.ensureRosterUsers(c, gid,
+    [{ phone: me.phone }, { phone: '+972501900141' }]));
+  const restarted = now.getTime() - 60 * 1000;
+  const held = await withTx(db.pool, (c) => syncSenderGate(c, configPath, {
+    now, channelWrittenAt: () => restarted }));
+  assert.equal(held.deferred, true);
+  assert.equal(held.changed, false);
+  assert.equal(listed().includes('+972501900141'), false, 'an addition inside the window restarted the channel');
+
+  // Five minutes after that restart: in.
+  const later = new Date(restarted + SENDER_GATE_BATCH_MS);
+  const wrote = await withTx(db.pool, (c) => syncSenderGate(c, configPath, {
+    now: later, channelWrittenAt: () => restarted }));
+  assert.equal(wrote.changed, true);
+  assert.ok(listed().includes('+972501900141'));
+
+  // Somebody pausing by asking comes off at once, even a second after a restart.
+  await db.pool.query(`UPDATE users SET paused_at = now(), paused_reason = NULL WHERE id = $1`, [me.id]);
+  const off = await withTx(db.pool, (c) => syncSenderGate(c, configPath, {
+    now: later, channelWrittenAt: () => later.getTime() - 1000 }));
+  assert.equal(off.changed, true);
+  assert.equal(listed().includes(me.phone), false, 'a removal waited — their tag could still reach the model');
+});
+
+// A room's registration restarts the channel anyway; the list rides that save.
+test('registering a room writes the sender list in the same save', () => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const occ = require('../src/intake/openclaw-config');
+  const pg = require('../src/intake/provision-group');
+  const configPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'roster-admit-')), 'openclaw.json');
+  fs.writeFileSync(configPath, JSON.stringify({ channels: { whatsapp: { accounts: { default: {} } } } }));
+  const res = pg.admitRegisteredGroup({ configPath, jid: JID(15), senders: ['+972501900150'] });
+  assert.equal(res.changed, true);
+  assert.equal(res.listed, true);
+  const cfg = occ.loadConfig(configPath);
+  assert.deepEqual(occ.groupAllowFrom(cfg), ['+972501900150']);
+  assert.ok(Object.hasOwn(cfg.channels.whatsapp.accounts.default.groups, JID(15)));
+});
+
 test('the check-in ladder cannot see a roster row', async () => {
   await openFlag(true);
   const me = await connectedUser('+972501900050');

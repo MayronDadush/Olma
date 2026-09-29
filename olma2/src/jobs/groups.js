@@ -135,22 +135,62 @@ function mayAnnounce(group, now = new Date()) {
 // unrecognised shape never is (`phone-timezone.isRealPhone`), and a stranger
 // with no row cannot be: naming them would need `"*"`, which is every sender
 // and her own number with them.
-async function syncSenderGate(client, configPath) {
+async function wantedSenders(client) {
   const { rows } = await client.query(
     `SELECT phone, status, paused_at, paused_reason, room_invite_sent_at, room_invite_answered_at
        FROM users
       WHERE status IN ('active', 'pending') AND NOT is_eval
       ORDER BY phone`);
-  const heard = rows.filter((r) => (r.status === 'pending'
+  return rows.filter((r) => (r.status === 'pending'
     ? phoneTimezone.isRealPhone(r.phone)
-    : pause.endsOnWrite(r)));
+    : pause.endsOnWrite(r))).map((r) => r.phone);
+}
+
+// Every change to this list restarts the WhatsApp channel — measured on the
+// box, 2026-09-30: fifteen restarts in ten days, each ~10s with every send
+// refused and every room held for 45s behind it, and one room's registration
+// alone cost four inside six minutes (23:22:08, 23:22:19, 23:24:44, 23:28:17
+// on 2026-09-24), because the room's own write and each roster row minted
+// after it wrote separately.
+//
+// So the two directions are treated differently, on purpose. A list that
+// admits everyone is closed at once. Taking somebody OFF the list is written
+// at once: they paused by asking or were deleted, and
+// a tag of theirs reaching the model is the thing the list exists to stop.
+// Putting somebody ON waits until SENDER_GATE_BATCH_MS has passed since the
+// channel last restarted for any reason, and everything added meanwhile goes
+// in one write — the owner's call (2026-09-30): a new roster row's tag may go
+// unanswered for up to five minutes. A room being registered writes the list
+// in its own save (`senders` on `admitRegisteredGroup`, and on
+// `provisionGroup` in the rare case its admit writes), so that restart carries
+// it for free.
+const SENDER_GATE_BATCH_MS = 5 * 60 * 1000;
+
+async function syncSenderGate(client, configPath, {
+  now = new Date(), channelWrittenAt = occ.channelWrittenAt,
+} = {}) {
+  const phones = await wantedSenders(client);
   const cfg = occ.loadConfig(configPath);
-  const synced = occ.syncGroupAllowFrom(cfg, heard.map((r) => r.phone));
+  const before = occ.groupAllowFrom(cfg).slice();
+  // Read before the sync mutates `cfg`: a list that admits EVERYONE (absent,
+  // or falling back to `"*"`) is closed at once, never batched — five more
+  // minutes of it is five minutes of strangers waking her.
+  const wasOpen = occ.isGroupSenderGateOpen(cfg);
+  const synced = occ.syncGroupAllowFrom(cfg, phones);
+  if (!synced.changed) return { ...synced, deferred: false, open: occ.isGroupSenderGateOpen(cfg) };
+
+  const removed = before.some((p) => !synced.entries.includes(p));
+  const last = channelWrittenAt();
+  const waiting = !removed && !wasOpen && last != null && now.getTime() - last < SENDER_GATE_BATCH_MS;
+  if (waiting) {
+    // Nothing written: the answer describes the list as it still is on disk.
+    return { changed: false, deferred: true, refusedEmpty: false, entries: before, open: false };
+  }
   // Written inside the sweep's transaction and not undone on rollback, which
   // is safe in the one direction that matters: the list is derived from rows
   // this pass only READ, and the next pass re-derives it either way.
-  if (synced.changed) occ.saveConfig(cfg, configPath);
-  return { ...synced, open: occ.isGroupSenderGateOpen(cfg) };
+  occ.saveConfig(cfg, configPath);
+  return { ...synced, deferred: false, open: occ.isGroupSenderGateOpen(cfg) };
 }
 
 // A number seen on a roster becomes a `users` row (`status = 'pending'`), behind
@@ -191,7 +231,9 @@ async function sweepGroups(client, deps) {
   // Before anything else, and every pass: a stale sender gate is the one
   // failure here that is invisible from the outside — she keeps working, she
   // is just answerable by people who never signed up.
-  const senderGate = await syncSenderGate(client, configPath);
+  const senderGate = await syncSenderGate(client, configPath, {
+    now, ...(deps.channelWrittenAt ? { channelWrittenAt: deps.channelWrittenAt } : {}),
+  });
   // Scoped to the agents that can actually own a group, never a full scan.
   // `listSessions()` opens every agent's sqlite store, and on a one-core box a
   // sweep that does that every ten seconds is the polling cost this project
@@ -230,6 +272,8 @@ async function sweepGroups(client, deps) {
     // `senderGateOpen` is the loud one: true means the gateway is admitting
     // every sender in every group, and nothing else in this pass can tell.
     senderAllowFrom: senderGate.entries.length, senderGateOpen: senderGate.open,
+    // Additions waiting out the five minutes after the last channel restart.
+    senderGateDeferred: senderGate.deferred,
   };
 
   for (const session of await list(agentIds)) {
@@ -277,8 +321,10 @@ async function sweepGroups(client, deps) {
       // nothing reads the link in between.
       out.rosterUsers += await mintRosterUsers(client, group, members);
 
-      // Tag-only from here, and the deny belt goes on in the same write.
-      pg.admitRegisteredGroup({ configPath, jid });
+      // Tag-only from here, and the deny belt goes on in the same write — and
+      // the sender list with them, AFTER the rows above were minted, so this
+      // one restart is the only one the room's arrival costs.
+      pg.admitRegisteredGroup({ configPath, jid, senders: await wantedSenders(client) });
     } else {
       // Before `syncRoster`, so a row minted this pass is linked to its member
       // row by the same pass.
@@ -367,6 +413,7 @@ async function sweepGroups(client, deps) {
     if (state === 'open' && !group.agent_id) {
       const prov = await pg.provisionGroup(client, {
         groupId: group.id, configPath, registerUndo: deps.registerUndo,
+        senders: await wantedSenders(client),
       });
       if (prov.ok && prov.data.created) {
         group = prov.data.group;
@@ -762,4 +809,5 @@ async function runGroupSweep(pool, deps) {
 
 module.exports = {
   sweepGroups, runGroupSweep, sweepGroupVoice, greeterInstalled, mayAnnounce, syncSenderGate, GROUP_WINDOW,
+  SENDER_GATE_BATCH_MS,
 };

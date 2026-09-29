@@ -70,6 +70,7 @@ never trust a dated narrative for something you are about to act on.
 - [Six good mornings for one timeout (fixed 2026-09-09)](#six-good-mornings-for-one-timeout-fixed-2026-09-09)
 - [The room was told twice (fixed 2026-09-08)](#the-room-was-told-twice-fixed-2026-09-08)
 - [The room was greeted twice, by its own registration (fixed 2026-09-11)](#the-room-was-greeted-twice-by-its-own-registration-fixed-2026-09-11)
+- [Four channel restarts for one room (fixed 2026-09-30)](#four-channel-restarts-for-one-room-fixed-2026-09-30)
 - [The coordination that waited for somebody it could not name (fixed 2026-09-26)](#the-coordination-that-waited-for-somebody-it-could-not-name-fixed-2026-09-26)
 - [The invite that would have counted people it could not reach (2026-09-26)](#the-invite-that-would-have-counted-people-it-could-not-reach-2026-09-26)
 - [The tags that vanished before any hook ran (fixed 2026-09-26)](#the-tags-that-vanished-before-any-hook-ran-fixed-2026-09-26)
@@ -4154,6 +4155,29 @@ and the six are what a new person reads on her first morning.
 The markup leak in the sixth turn is the model's — a DeepSeek turn that
 emitted its tool-call frame as text — and it is not fixed here; it is why
 the eval judge and the Hebrew-quality count on the dashboard exist.
+
+### Four channel restarts for one room (fixed 2026-09-30)
+
+Any write that changes `channels.whatsapp` restarts the WhatsApp channel. On
+2026-09-30 the stop took over 5s, and the channel listened again 10-14s after
+the write. `group_outbox` then holds every room for 45s. The sender list
+(`groupAllowFrom`) lives under that subtree, and `group_sweep` rewrote it on
+any pass where the wanted list differed. On the box that was 15 reloads in ten
+days. The room registered on 2026-09-24 caused four restarts in six minutes:
+23:22:08 for the groups entry, 23:22:19 for the agent plus the list, then
+23:24:44 and 23:28:17 for the list alone, as new roster rows became senders.
+
+**Fix, as the owner decided.** Additions wait until five minutes after the
+last restart of any kind (`SENDER_GATE_BATCH_MS`). The owner accepted that
+cost: a newcomer's first tag can go unheard for up to five minutes. Removals
+are still written at once, because somebody who asked her to stop must not
+wake her in a room. A list that currently admits everyone is closed at once
+for the same reason. Registration now writes the list in the same save as the
+groups entry. `provisionGroup` carries it only when its own admit wrote under
+`channels.whatsapp`. The first draft carried it unconditionally, and in that
+case the list itself would have been the restart. The clock is the in-memory
+stamp `saveConfig` already keeps, so a brokerd restart forgets it and writes
+at once. That is the right way to fail: late at worst, never lost.
 
 ### The room was greeted twice, by its own registration (fixed 2026-09-11)
 

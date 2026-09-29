@@ -95,7 +95,7 @@ test('registration admits the group tag-only, outranking the greeter wildcard', 
   pg.installGreeter({ configPath });
   const jid = '120363000000000002@g.us';
   assert.deepEqual(pg.admitRegisteredGroup({ configPath, jid }),
-    { changed: true, admitted: true, muted: true });
+    { changed: true, admitted: true, muted: true, listed: false });
 
   const cfg = occ.loadConfig(configPath);
   assert.deepEqual(cfg.channels.whatsapp.accounts.default.groups[jid], { requireMention: true });
