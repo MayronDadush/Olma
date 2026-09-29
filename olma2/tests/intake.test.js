@@ -32,7 +32,10 @@ function baseConfig() {
       },
     },
     hooks: { internal: { enabled: true, entries: { 'olma-turn-open': { enabled: true } } } },
-    plugins: { entries: { 'olma-turn': { enabled: true, hooks: { allowConversationAccess: true }, config: { agents: [] } } } },
+    plugins: { entries: {
+      'olma-turn': { enabled: true, hooks: { allowConversationAccess: true }, config: { agents: [] } },
+      'memory-core': { config: { dreaming: { enabled: false } } },
+    } },
     messages: { queue: { mode: 'followup' } },
     session: { reset: { mode: 'daily', atHour: 2 } },
     bindings: [],
@@ -842,6 +845,25 @@ test('config guard: the turn-open hook must be enabled', () => {
   assert.match(guard.checkOpenclawConfig(cfg)[0], /olma-turn-open/);
   cfg.hooks = { internal: { enabled: false, entries: { 'olma-turn-open': { enabled: true } } } };
   assert.match(guard.checkOpenclawConfig(cfg)[0], /olma-turn-open/, 'the master switch off is the same failure');
+});
+
+// memory-core's "dreaming" is on by the gateway's default: three nightly model
+// passes per agent, diaries nobody read, 0 items promoted in four weeks, and
+// the gateway's memory at 895MB while it ran (2026-09-27). Unset is ON.
+test('config guard: dreaming must be explicitly off', () => {
+  const cfg = baseConfig();
+  assert.deepEqual(guard.checkOpenclawConfig(cfg), []);
+  delete cfg.plugins.entries['memory-core'];
+  let v = guard.checkOpenclawConfig(cfg);
+  assert.equal(v.length, 1);
+  assert.match(v[0], /dreaming\.enabled is unset \(gateway default on\)/);
+  cfg.plugins.entries['memory-core'] = { config: { dreaming: { enabled: true } } };
+  v = guard.checkOpenclawConfig(cfg);
+  assert.equal(v.length, 1);
+  assert.match(v[0], /dreaming\.enabled is true/);
+  assert.match(v[0], /set it to false/, 'says how to fix it');
+  delete cfg.plugins;
+  assert.equal(guard.checkOpenclawConfig(cfg).length, 1, 'no plugins block at all is the default too');
 });
 
 // Miron, 2026-09-06: "בוצע" quoting one reminder, "עוד לא" quoting another

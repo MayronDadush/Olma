@@ -79,6 +79,19 @@ function checkOpenclawConfig(cfg) {
   if (every !== '0m') {
     violations.push(`agents.defaults.heartbeat.every is ${every === undefined ? 'unset (gateway default 30m)' : JSON.stringify(every)} — every agent runs a NO_REPLY model turn on a timer, most of the bill (fix: scripts/disable-heartbeats.js --apply)`);
   }
+  // memory-core "dreaming": ON by the gateway's default. Every night at 03:00
+  // UTC it ran three model passes per agent and wrote DREAMS.md and
+  // memory/dreaming/ into each workspace — none of it injected into a prompt,
+  // zero items ever promoted to MEMORY.md in four weeks, and the box's memory
+  // peaked at 895MB of the gateway's while it ran (2026-09-27). Turned off
+  // that day by hand and the diaries deleted 2026-09-29; unset means the
+  // default, so the rule is "false, explicitly". Dashboard row.
+  // (fix: set plugins.entries["memory-core"].config.dreaming.enabled = false —
+  // it hot-reloads)
+  const dreaming = (((((cfg.plugins || {}).entries || {})['memory-core'] || {}).config || {}).dreaming || {}).enabled;
+  if (dreaming !== false) {
+    violations.push(`plugins.entries["memory-core"].config.dreaming.enabled is ${dreaming === undefined ? 'unset (gateway default on)' : JSON.stringify(dreaming)} — every agent runs nightly model passes that write diaries nobody reads, on a box short of memory (fix: set it to false; it hot-reloads)`);
+  }
   // What the gateway does with a message that arrives while a turn is
   // running. Its default, "steer", pushes it INTO the running turn and
   // cancels tool calls the model had just made ("Skipped due to queued user
