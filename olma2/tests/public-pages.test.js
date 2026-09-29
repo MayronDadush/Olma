@@ -73,6 +73,64 @@ test('the terms of service page is served unauthenticated, on either host', asyn
   }
 });
 
+test('the accessibility statement is served unauthenticated, on either host', async () => {
+  for (const host of [PUBLIC, ADMIN]) {
+    const res = await get('/accessibility', host);
+    assert.equal(res.status, 200, `accessibility should not need a password on ${host}`);
+    const html = await res.text();
+    assert.ok(html.includes('<h1>Accessibility Statement</h1>'));
+    assert.ok(html.includes('<h2>הצהרת נגישות</h2>'));
+  }
+});
+
+test('every public page links the other three in its footer', () => {
+  const pages = {
+    '/': publicPages.homePage(),
+    '/privacy': publicPages.privacyPage(),
+    '/terms': publicPages.termsPage(),
+    '/accessibility': publicPages.accessibilityPage(),
+  };
+  for (const [self, html] of Object.entries(pages)) {
+    const foot = html.slice(html.lastIndexOf('<div class="foot">'));
+    for (const target of ['/privacy', '/terms', '/accessibility']) {
+      if (target === self) continue;
+      assert.ok(foot.includes(`href="${target}"`), `the ${self} footer does not link ${target}`);
+    }
+  }
+});
+
+test('the accessibility statement carries the owner\'s Hebrew and its placeholders filled', () => {
+  const html = publicPages.accessibilityPage();
+  for (const line of [
+    'עולמה פועלת בעיקר בתוך וואטסאפ, כך שכלי הנגישות של הטלפון שלכם (קורא מסך, הגדלת טקסט, הכתבה) עובדים איתה כרגיל.',
+    'תקן ישראלי 5568 ו־WCAG 2.0 ברמה AA',
+    'כתבו לעולמה בוואטסאפ "בעיית נגישות"',
+    'ונחזור אליכם תוך 7 ימים.',
+    'עודכן: 2026-09-28',
+  ]) assert.ok(html.includes(line), `missing: ${line}`);
+  assert.ok(html.includes(`mailto:${publicPages.CONTACT_EMAIL}`), 'the statement must name where to write');
+  assert.ok(!/\{[A-Z_]+\}/.test(html), 'a placeholder was left unfilled');
+  // The owner's decision of 2026-09-29: the shared address, and no person named.
+  assert.doesNotMatch(html, /מיירון|Mayron|mayrondadush|רכז נגישות|coordinator/i);
+});
+
+test('the pinch-zoom sentence follows the flag, and the flag follows the dashboard', () => {
+  // The sentence confesses that /me cannot be pinch-zoomed. It is true only
+  // while the dashboard's viewport meta forbids zoom, so the two are checked
+  // against each other: restoring zoom without flipping PINCH_ZOOM_DISABLED
+  // (or the reverse) fails here instead of publishing a false statement.
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const dash = fs.readFileSync(path.join(__dirname, '../docs/design/user-dashboard.html'), 'utf8');
+  const meta = (dash.match(/<meta name="viewport"[^>]*>/) || [''])[0];
+  const zoomOff = /user-scalable=no|maximum-scale=1(?:\.0)?\b/.test(meta);
+  assert.equal(publicPages.PINCH_ZOOM_DISABLED, zoomOff,
+    'PINCH_ZOOM_DISABLED in public-pages.js no longer matches the dashboard viewport meta');
+  const html = publicPages.accessibilityPage();
+  assert.equal(html.includes('אי אפשר להגדיל את הדף האישי בצביטה'), zoomOff);
+  assert.equal(/cannot currently be enlarged by pinching/.test(html), zoomOff);
+});
+
 // ---- the admin dashboard must NOT have moved -------------------------------
 
 test('`/` on the ADMIN host still demands the admin password', async () => {
@@ -191,4 +249,100 @@ test('the terms page reads English first, links the privacy policy, and carries 
   assert.ok(/Terms of Service/i.test(html), 'a Google reviewer reads English first');
   assert.ok(html.includes('href="/privacy"'), 'terms must link the privacy policy');
   assert.ok(html.includes('תנאי שימוש (עברית)'), 'Hebrew users still get the full terms');
+});
+
+// Cypress + Mustard (the owner, 2026-09-28): the front door wears the same
+// brand as the product, and the retired violet globe is nowhere on it.
+test('the public pages wear the brand: cypress band, mustard action, always light, the round mark', () => {
+  const home = publicPages.homePage();
+  assert.ok(home.includes('<header class="band">'), 'the home page lost its cypress band');
+  assert.ok(/--band:#004643/.test(home) && /--action:#F9C23C/.test(home));
+  assert.ok(!/prefers-color-scheme/.test(home) && /color-scheme:light/.test(home),
+    'the front door is always light, whatever the phone is set to');
+  assert.ok(home.includes('<meta name="theme-color" content="#004643">'));
+  assert.ok(home.includes("@font-face{font-family:'IBM Plex Sans Hebrew'"), 'the brand face, carried inline (fonts.js)');
+  for (const html of [home, publicPages.privacyPage(), publicPages.termsPage()]) {
+    assert.ok(!/#5B2FD6|#7C4DFF|Rubik/i.test(html), 'the old violet brand is still on a public page');
+    const ids = [...html.matchAll(/<clipPath id="([^"]+)"/g)].map((m) => m[1]);
+    assert.equal(new Set(ids).size, ids.length, 'two marks on one page share a clip-path id');
+  }
+});
+
+// ---- the 2026-09-28 rewrite: what s.11 asks for, and what the box does -----
+
+test('the policy gives the service address, says giving data is voluntary, and lists the rights, in both languages', () => {
+  const html = publicPages.privacyPage();
+  // No name, by the owner's choice (2026-09-28): the contact is the service's.
+  assert.equal(publicPages.CONTACT_EMAIL, 'info@allma.world');
+  assert.ok(html.includes('mailto:info@allma.world'));
+  assert.ok(!html.includes('gmail.com'), 'no personal address on the page');
+  assert.ok(/no legal obligation/i.test(html) && html.includes('אין חובה חוקית'));
+  assert.ok(/cannot work/i.test(html) && html.includes('לא יכולה לעבוד'), 'what refusing costs');
+  assert.ok(/See your data/.test(html) && /Correct it/.test(html), 'access and correction');
+  assert.ok(html.includes('לעיין במידע שלכם') && html.includes('לתקן מידע לא נכון'));
+});
+
+test('the policy names every processor the box actually uses, and where the backup really is', () => {
+  const html = publicPages.privacyPage();
+  // StreamLake stays in the live route (owner, 2026-09-28), so it is named,
+  // with its unverified location said rather than guessed.
+  for (const who of ['OpenRouter', 'Novita', 'StreamLake', 'DeepInfra', 'Together', 'Anthropic',
+    'ElevenLabs', 'Deepgram', 'Twilio', 'DigitalOcean', 'Frankfurt']) {
+    assert.ok(html.includes(who), `the policy does not name ${who}`);
+  }
+  assert.ok(/location has not been verified/.test(html) && html.includes('לא אומת'));
+  assert.ok(!/retained for 14 days and then deleted/.test(html),
+    'the old sentence was false about the off-box copy (30 days, Frankfurt)');
+});
+
+test('nothing is promised on a timer: kept until they ask, and only the backups age out', () => {
+  const html = publicPages.privacyPage();
+  const R = publicPages.RETENTION;
+  // The owner's decision (2026-09-28). No sweep deletes conversations or
+  // group rosters, so the page must not name a number of days for them.
+  assert.deepEqual(Object.keys(R).sort(), ['deletionDays', 'localBackupDays', 'offboxBackupDays']);
+  assert.ok(/Nothing is deleted on a timer/.test(html) && html.includes('שום דבר לא נמחק אוטומטית'));
+  assert.ok(html.includes(`within ${R.deletionDays} days`) && html.includes(`תוך ${R.deletionDays} יום`));
+  assert.ok(/even if you never used the assistant/.test(html) && html.includes('גם אם מעולם לא השתמש'),
+    'a group member who never wrote can still ask');
+  assert.ok(/WhatsApp groups/.test(html) && html.includes('קבוצות וואטסאפ'), 'groups are named');
+});
+
+// ---- no third party learns who is reading ----------------------------------
+
+// Since 2026-09-29 (finding 13 of the 2026-09-28 compliance review): these
+// pages linked Google Fonts, so every visitor's browser sent Google its IP
+// before a word was drawn — the transfer LG München I, 3 O 17493/20, fined.
+// The fonts are inlined now (adapters/http/fonts.js). Asserted on what the
+// SERVER sends, for every page allma.world reaches, so a link re-added
+// anywhere on the way — the shell, the design file, the serve-time wrapper —
+// fails here.
+const GOOGLE_FONT_HOSTS = /fonts\.googleapis\.com|fonts\.gstatic\.com/;
+
+test('no page on the public host loads a font from Google, and each carries its own', async () => {
+  // `/me` with no session is the stranger's screen: the same file a signed-in
+  // person gets, through the same servedPageHtml.
+  for (const path of ['/', '/privacy', '/terms', '/me']) {
+    const res = await get(path, PUBLIC);
+    const html = await res.text();
+    assert.ok(html.length > 1000, `${path} answered with nothing, so the check below would prove nothing`);
+    assert.doesNotMatch(html, GOOGLE_FONT_HOSTS, `${path} still asks Google for a font`);
+    for (const family of ['IBM Plex Sans Hebrew', 'IBM Plex Sans']) {
+      assert.match(html, new RegExp(`@font-face\\{font-family:'${family}';[^}]*src:url\\(data:font/woff2;base64,`),
+        `${path} does not carry ${family} inline`);
+    }
+    const csp = res.headers.get('content-security-policy') || '';
+    assert.doesNotMatch(csp, GOOGLE_FONT_HOSTS, `${path}'s CSP still allows Google`);
+  }
+});
+
+test('the vendored fonts are real woff2 and their OFL licence travels with them', () => {
+  const fs = require('node:fs');
+  const pathMod = require('node:path');
+  const { FONT_DIR, FACES } = require('../src/adapters/http/fonts');
+  for (const [, , file] of FACES) {
+    const buf = fs.readFileSync(pathMod.join(FONT_DIR, file));
+    assert.equal(buf.subarray(0, 4).toString('latin1'), 'wOF2', `${file} is not a woff2 file`);
+  }
+  assert.match(fs.readFileSync(pathMod.join(FONT_DIR, 'OFL-IBM-Plex.txt'), 'utf8'), /SIL Open Font License/i);
 });

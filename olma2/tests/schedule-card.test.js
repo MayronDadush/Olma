@@ -175,7 +175,10 @@ test('a full row of stat pills wraps instead of running off the edge', () => {
 
   const rects = [...svg.matchAll(/<rect x="(-?[\d.]+)" y="([\d.]+)" width="([\d.]+)"/g)]
     .map((m) => ({ x: +m[1], y: +m[2], w: +m[3] }));
-  const pills = rects.filter((r) => r.y < 260 && r.w < 600);
+  // A pill is anything narrow above the first section card; a fixed y cut-off
+  // broke the day the header grew a band.
+  const firstCard = Math.min(...rects.filter((r) => r.w >= 600).map((r) => r.y));
+  const pills = rects.filter((r) => r.y < firstCard && r.w < 600);
   assert.ok(pills.length >= 4, `expected the four stat pills, saw ${pills.length}`);
   for (const p of pills) {
     assert.ok(p.x >= 0, `a pill starts off-canvas at x=${p.x}`);

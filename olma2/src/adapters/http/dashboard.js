@@ -35,6 +35,7 @@ const { assessJobs } = require('../../jobs/expectations');
 const { deprovisionUser } = require('../../intake/deprovision');
 const picker = require('./picker');
 const userDashboard = require('./user-dashboard');
+const pwa = require('./pwa');
 const publicPages = require('./public-pages');
 const { checkGateway } = require('../gateway-health');
 
@@ -243,6 +244,15 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
         return userDashboard.handle(req, res, pool, parsed.pathname);
       }
 
+      // The same page as a home-screen app: its manifest and icons (pwa.js).
+      // Public for the same reason, and host-agnostic like /me. The manifest
+      // names the app in the language of whoever's cookie asks for it.
+      if (pwa.matches(parsed.pathname)) {
+        const who = parsed.pathname === pwa.MANIFEST_PATH
+          ? await userDashboard.currentUser(pool, req).catch(() => null) : null;
+        return pwa.handle(req, res, parsed.pathname, { lang: userDashboard.pageLocale(who && who.locale) });
+      }
+
       // Unauthenticated READINESS probe, for the deploy gate specifically —
       // "did the release we just restarted come up", nothing more.
       //
@@ -323,6 +333,12 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
       if (req.method === 'GET' && parsed.pathname === '/terms') {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         return res.end(publicPages.termsPage());
+      }
+      // Same shape as /privacy and /terms, and the same trap: allma.world
+      // reaches this only once the Caddyfile's allowlist names /accessibility.
+      if (req.method === 'GET' && parsed.pathname === '/accessibility') {
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        return res.end(publicPages.accessibilityPage());
       }
       if (req.method === 'GET' && parsed.pathname === '/' && PUBLIC_HOSTS.has(hostOf(req))) {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });

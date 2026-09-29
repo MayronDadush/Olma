@@ -9,7 +9,7 @@
 // (the same isolation tests/helpers.js sets, for the same reason).
 //
 //   node scripts/demo-dashboard.js            # http://localhost:8790
-//   OLMA_DEMO_PORT=8791 node scripts/demo-dashboard.js
+//   OLMA_DEMO_PORT=8791 node scripts/demo-dashboard.js   # its own db, too
 'use strict';
 const fs = require('node:fs');
 const http = require('node:http');
@@ -35,7 +35,10 @@ const connections = require('../src/domain/connections');
 const shares = require('../src/domain/shares');
 
 const ADMIN_URL = process.env.OLMA_TEST_ADMIN_URL || 'postgres://olma:olma2local@127.0.0.1:5432/olma2_test';
-const DB = 'olma2_demo_dashboard';
+// Its own database per port, so a second worktree's demo (a different port)
+// does not DROP this one's out from under it — they used to share one name.
+const DB = process.env.OLMA_DEMO_DB
+  || `olma2_demo_dashboard${process.env.OLMA_DEMO_PORT ? '_' + parseInt(process.env.OLMA_DEMO_PORT, 10) : ''}`;
 const PORT = parseInt(process.env.OLMA_DEMO_PORT || '8790', 10);
 
 function zoned(daysAhead, hhmm) {

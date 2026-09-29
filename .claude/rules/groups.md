@@ -545,6 +545,19 @@ have already had to be argued for.
   **The stamp is the clock the DECISION was made on and never SQL's `now()`**:
   two of those columns are read back as moments rather than flags, so a stamp
   from a different clock is a quarter of an hour that measures nothing.
+- **A table of TWO or more times that nobody has a direction on is LAID once —
+  the room hears which times are on it** (2026-09-28, `group-voice.decideGroupLine`
+  kind `laid`, template `group_coord_laid`). The base line speaks only when a
+  time has a direction and the table line only after a base, so coordination
+  57's Monday, Tuesday and Thursday — one yes each, from whoever put it up —
+  reached the room as nothing for a day and a half. Same quarter-hour settle as
+  the table line, counted from the first time that went on; stamped on
+  `group_table_at`, which makes it the watermark every later `table` line reads.
+  Never after a reopening, which carries on from where it stopped. **One time
+  is still not laid**: one person agreeing with themselves is not
+  news (the owner's rule the base tests pin), and a choice nobody has made is.
+  Only the shape — which times — never who said yes (`incidents.md`, "The room
+  never heard the times").
 
 - **The room is chased an HOUR after she starts, not half way to the thing**
   (`group-voice.CHASE_AFTER_MS`). Half the distance, clamped to [1h, 24h],
@@ -555,6 +568,15 @@ have already had to be argued for.
   on this room — גל had been written to four times and not answered, so he is
   nameable; גיא had every message dropped at the gate as `quiet`, was never
   actually asked, and must not be.
+  **…and the hour is counted from the LAST invite that reached anybody, not
+  from the start** (2026-09-28, `statusOf.lastAskedAt` → `group-voice.decideGroupLine`).
+  Coordination 57 opened at 21:00, every invite but the asker's waited for the
+  morning, and the chase went out at 09:00:08 — two minutes before them — and
+  tagged the one person it could name: the man who had asked for the game and
+  answered it in the room. `lastAskedAt` is the newest FIRST arrival of a
+  `meeting_*` row among the people still in it (sent, and not held); a row the
+  gate dropped reached nobody and does not count. Nobody reached at all falls
+  back to the start (`incidents.md`, "The chase that beat its own invites").
 - **The "סגור" line names who can make it, a calendar line is said only for
   a SHARED event, and a base line is never said to nobody** (owner,
   2026-09-20, off coordinations 35–37). `group-meetings.statusOf` exposes
@@ -591,7 +613,10 @@ have already had to be argued for.
   the table, with two people's yes on the time she removed. `meetings.
   group_base_slot` (migration 082) is the slot text the room actually heard,
   and `group-voice.decideGroupLine`'s `namedGone` is the whole trigger: that
-  slot is no longer among the active options AND another one leads. **Three
+  slot is no longer among the active options AND another one leads. **"The
+  same slot" is the same MOMENT** (`meetings.group_base_start_at`, migration
+  097): a time deleted and put back in other words is still on the table, and
+  the words decide only where there is no instant to compare. **Three
   things it deliberately is not.** A new leading time with the old one still on
   the table says NOTHING — the room's picture is still true, and a line per
   change of lead is how this family of lines becomes the thing the owner asked
@@ -678,8 +703,9 @@ have already had to be argued for.
   only when all of them said yes** (owner, 2026-09-26: "שתיאום תמיד יספור את
   כלל האנשים שיש בקבוצה (כי רוב האנשים לא יודעים למה עולמה סופרת חלק וחלק לא)").
   `meeting-options.unanimousOption` also refuses while any member still in the
-  room has no participant row — never wrote, a LID, a paused member left out;
-  somebody who LEFT the coordination (`opted_out`) is not waited for. Short of
+  room has no participant row — never wrote, a LID, a paused member left out —
+  or is paused out of it (2026-09-28); only somebody who CHOSE to leave the
+  coordination is not waited for. Short of
   that the room closes it with "סגור" (`settleNow` never checked agreement).
   `statusOf` carries `roomTotal` (the room less anybody who left) and `notInIt`
   (every member with no row, a LID with `phone: null`); the model gets
@@ -778,11 +804,22 @@ have already had to be argued for.
   **Only a pause the ladder took gets that invite** (owner, 2026-09-27).
   Somebody who paused her THEMSELVES is never swept in, and one already in is
   taken out on the next minute sweep, cause `paused_by_request`, with no day's
-  wait. Until then `statusOf` leaves them out of `participants`, `silent`,
-  `missing`, `optedOut`, `roomTotal` and `notInIt`, and `unanimousOption`
-  does not wait on them: not counted, not tagged, not waited for, and never
-  said to have left. `calendar.meetingCalendarRoles` drops them too, because
-  a Google invitation is a message. **Somebody who left the WhatsApp GROUP**
+  wait. `statusOf` leaves them out of `participants`, `silent`, `missing` and
+  `optedOut`: never asked, never tagged, never said to have left.
+  **But the room's NUMBER still counts them** (owner, 2026-09-28, reversing
+  that half of 2026-09-27: "משתמשים מושהים גם נכללים בספירה" — the room can
+  see how many people are in it, and nobody knows whether they will come
+  back). Ten in the room, two paused, five yes is "5 מתוך 10": `roomTotal`
+  drops only somebody who CHOSE to leave this coordination, told apart from a
+  pause by the cause on their latest `meeting.opted_out`
+  (`paused_by_request`/`paused_no_answer`, `group-meetings.pausedExitsOf`),
+  because the participant row says only `opted_out`. They ride `notInIt` as
+  `{ phone: null, paused: true }`, so the base line counts them in "ועוד N"
+  and tags nobody. **And `unanimousOption` waits on them in a room** —
+  "everybody said yes" is not true without them, so the room closes it with
+  "סגור" and `whoIsIn` never says "כולם בפנים" over them. A private
+  coordination is unchanged. A Google invitation is still a message, so
+  `calendar.meetingCalendarRoles` still drops them. **Somebody who left the WhatsApp GROUP**
   is taken out of its negotiating coordination by
   `group-meetings.sweepRoomLeavers`, but only when they have no current
   roster row there, since a re-spelled row is the same person
@@ -910,13 +947,17 @@ have already had to be argued for.
   sender (`incidents.md`, "The tags that vanished before any hook ran").
 
 - **A room member who has never written to her hears about a coordination
-  ONCE per room, privately, in the owner's fixed words — and is never made a
+  ONCE (per room until 2026-09-28, per person since), privately, in the owner's fixed words — and is never made a
   participant** (owner, 2026-09-26; `group-meetings.coldInvite`, flag
   `group_cold_invite`, template `group_cold_invite`). Called from the
   `group_voice` pass for every negotiating coordination; the outbox key
   `coldinvite:g<gid>:u<uid>` is the once-per-ROOM budget the owner chose,
   because a first message from an unknown number can be reported and a second
-  is how that happens. It goes on the raw pipe (`proactive-text.rawPipeTextFor`,
+  is how that happens. **Proposed 2026-09-28 (compliance review, finding 4;
+  owner to approve): once per PERSON across every room** — the copy now ends
+  "ולא אכתוב לך שוב", and a second room writing would make that false. The
+  query skips anybody with a `room_cold_invite` that reached them or is still
+  queued; one the gate held until it expired asked nothing and does not count. It goes on the raw pipe (`proactive-text.rawPipeTextFor`,
   rendered at delivery) because the title is another member's text and no model
   may speak it, and the gate lets it through as the third `PENDING_USER_KINDS`
   entry — everything else the gate does (their night, off a zone guessed from
@@ -932,3 +973,42 @@ have already had to be argued for.
   which with pending rows live counts people who can never be reached
   (`incidents.md`, "The invite that would have counted people it could not
   reach").
+
+- **A room coordination that has gone quiet is offered a way out ONCE, and
+  closes quietly if nobody takes it. Somebody who answered nothing is nudged
+  privately ONCE, and only in rooms the flag names.**
+  (`domain/coordination-policy.nextMoves`, `jobs/coordination-moves.run`,
+  flag `coordination_policy` `{mode: off|shadow|live, rooms}`, owner
+  2026-09-28.) The simulator chose it: PR #571, 22% confirmed today against
+  35% with the offer and 44% with a nudge too.
+  - **The offer** (`group_coord_drop_offer`) comes only after the chase, and
+    only once `dropAfterQuietH` passes with no answer, no table change and no
+    member writing, measured from both the chase and the last activity. It
+    needs a leading time that is not `groupVoice.enoughOn`. It is said at most
+    once (`meetings.group_drop_offer_at`, migration 098, stamped on the
+    decision clock). It goes out only in a pass where the room owes no other
+    line about that coordination, and only in the room's hours.
+  - **The offer NAMES the moment it closes, and the close keeps it** (owner,
+    2026-09-28: "לנקוב בשעה"). `coordination-policy.closeMomentFor` fixes it
+    when the offer is said: `dropGraceH` on, up to the half hour, and moved
+    to the room's window open when that lands in its night. It is stored
+    (`meetings.group_drop_close_at`) and never recomputed. The line carries it
+    as `closeAt` and is drawn at delivery in the room's clock ("מחר ב-09:00"),
+    or in every clock through `group_coord_drop_offer_zones`. A row with no
+    `closeAt` draws nothing rather than a promise nobody can check.
+  - **Anything after the offer lapses it for good.** With nothing after it,
+    at the named moment the coordination closes as `no_match` with no line of
+    its own (`meeting.dropped_quiet`). Its end reaches people the way every
+    close does.
+  - **The nudge** (`meeting_nudge`) goes to somebody an invite or proposal
+    REACHED `nudgeAfterH` ago who has answered nothing. It is sent once, never
+    to somebody paused, never about a thing already started, and never in the
+    same pass as the offer.
+  - **An answer withdraws a queued nudge** at the answer
+    (`meeting-options.answer`), and the sweep repeats that as a backstop.
+  - **`shadow` writes only `coordination.policy_shadow` audit rows**, each
+    carrying the decision clock in `at`, and treats its own offer as said so
+    that it reaches the close.
+  - **Do not flip a room to `live` until the owner has approved both texts
+    word for word.**
+  (`incidents.md`, "The coordinations that died in silence".)
