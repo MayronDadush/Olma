@@ -458,8 +458,12 @@ async function handle(req, res, pool, pathname) {
     if (!userId) {
       // A stale cookie that resolves to nobody is cleared on the way out, so
       // the next visit starts clean rather than repeating the same silent
-      // failure. The status stays 401: nothing of theirs is being served.
-      res.writeHead(401, headers(HTML, { 'Set-Cookie': auth.clearCookieHeader() }));
+      // failure. 200 since 2026-09-29, not 401: this is the same locked page
+      // allma.world's `/` serves, nothing of theirs is in it (the data-new
+      // stamp decides that, never the status), and Caddy compressed the 200
+      // and sent the 401 whole — 767KB to a phone whose cookie had expired.
+      // The JSON routes below still answer 401.
+      res.writeHead(200, headers(HTML, { 'Set-Cookie': auth.clearCookieHeader() }));
       return res.end(newPageHtml());
     }
     res.writeHead(200, headers(HTML));
