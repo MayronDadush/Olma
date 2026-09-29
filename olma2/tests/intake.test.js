@@ -28,7 +28,7 @@ function baseConfig() {
       defaults: {
         heartbeat: { every: '0m', target: 'none' },
         model: { primary: 'openrouter/deepseek/deepseek-v4-flash' },
-        models: { 'openrouter/deepseek/deepseek-v4-flash': { params: { provider: { order: ['digitalocean', 'streamlake'], allow_fallbacks: true } } } },
+        models: { 'openrouter/deepseek/deepseek-v4-flash': { params: { provider: require('../src/domain/model-hosts').routing(['novita', 'deepinfra']) } } },
       },
     },
     hooks: { internal: { enabled: true, entries: { 'olma-turn-open': { enabled: true } } } },
@@ -963,6 +963,16 @@ test('config guard: the live OpenRouter model must name its provider order', () 
   assert.match(v[0], /pin-openrouter-provider/, 'says how to fix it');
   cfg.agents.defaults.models['openrouter/deepseek/deepseek-v4-flash'] = { params: { provider: { order: [] } } };
   assert.equal(guard.checkOpenclawConfig(cfg).length, 1, 'an empty order pins nothing');
+  // Ordered, but a CN host leads or is not excluded (compliance review,
+  // 2026-09-29): the order the box actually carried until then.
+  cfg.agents.defaults.models['openrouter/deepseek/deepseek-v4-flash'] = {
+    params: { provider: { order: ['novita', 'streamlake'], allow_fallbacks: true, data_collection: 'deny' } } };
+  v = guard.checkOpenclawConfig(cfg);
+  assert.equal(v.length, 1);
+  assert.match(v[0], /excluded host/);
+  cfg.agents.defaults.models['openrouter/deepseek/deepseek-v4-flash'] = {
+    params: { provider: require('../src/domain/model-hosts').routing(['novita', 'streamlake']) } };
+  assert.deepEqual(guard.checkOpenclawConfig(cfg), [], 'routing() drops it from the order and ignores it');
   // a direct-provider primary has no router to pin
   cfg.agents.defaults.model.primary = 'anthropic/claude-haiku-4-5';
   assert.deepEqual(guard.checkOpenclawConfig(cfg), []);

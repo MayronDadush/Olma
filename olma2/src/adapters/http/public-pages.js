@@ -333,7 +333,7 @@ function privacyPage(lang = 'en') {
     <h2>Who we share with</h2>
     <p>We do not sell data and do not use it for advertising. To operate the service, data is processed by these providers and no others:</p>
     <ul>
-      <li><b>Language model</b> — conversation text, including calendar and contact details when they are relevant to the answer, is sent through OpenRouter (US) to the providers that run the model — currently Novita, StreamLake, DeepInfra and Together, or another host OpenRouter picks when those are unavailable; StreamLake's location has not been verified — and, if those fail, to Anthropic (US). They are configured not to store or train on it.</li>
+      <li><b>Language model</b> — conversation text, including calendar and contact details when they are relevant to the answer, is sent through OpenRouter (US) to the providers that run the model — currently Novita, DeepInfra and Together, or another host OpenRouter picks when those are unavailable, never StreamLake — and, if those fail, to Anthropic (US). They are configured not to store or train on it.</li>
       <li><b>ElevenLabs</b> — transcribing voice notes, and the voice on phone calls.</li>
       <li><b>Deepgram</b> — transcription during phone calls.</li>
       <li><b>Twilio</b> — phone calls.</li>
@@ -408,7 +408,7 @@ function privacyPage(lang = 'en') {
       <h3>עם מי המידע עובר</h3>
       <p>אנחנו לא מוכרים מידע ולא משתמשים בו לפרסום. כדי שהשירות יעבוד, מידע עובר לספקים האלה בלבד:</p>
       <ul>
-        <li><b>מודל השפה</b> — טקסט השיחה, כולל מידע מהיומן ומאנשי הקשר כשהוא רלוונטי לתשובה, נשלח דרך OpenRouter (ארה״ב) לספקים שמריצים את המודל — כרגע Novita, ‏StreamLake, ‏DeepInfra ו־Together, או ספק אחר ש־OpenRouter בוחר כשהם לא זמינים; המיקום של StreamLake לא אומת — ובמקרה תקלה ל־Anthropic (ארה״ב). הגדרנו שהספקים לא ישמרו את המידע ולא יאמנו עליו.</li>
+        <li><b>מודל השפה</b> — טקסט השיחה, כולל מידע מהיומן ומאנשי הקשר כשהוא רלוונטי לתשובה, נשלח דרך OpenRouter (ארה״ב) לספקים שמריצים את המודל — כרגע Novita, ‏DeepInfra ו־Together, או ספק אחר ש־OpenRouter בוחר כשהם לא זמינים, אבל אף פעם לא StreamLake — ובמקרה תקלה ל־Anthropic (ארה״ב). הגדרנו שהספקים לא ישמרו את המידע ולא יאמנו עליו.</li>
         <li><b>ElevenLabs</b> — תמלול הודעות קוליות, וקול בשיחות טלפון.</li>
         <li><b>Deepgram</b> — תמלול בשיחות טלפון.</li>
         <li><b>Twilio</b> — שיחות טלפון.</li>

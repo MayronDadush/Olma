@@ -107,7 +107,7 @@
 |---|---|---|---|
 | DigitalOcean | הכול (השרת) | אחסון השרת | ארה״ב, NYC1 |
 | DigitalOcean Spaces | גיבוי מלא של מסד הנתונים | גיבוי מחוץ לשרת | גרמניה, fra1 |
-| OpenRouter → מארחי מודלים (Novita, StreamLake, DeepInfra, Together) | ההודעה, הקשר השיחה, `USER.md`, תוצאות כלים | הפקת תשובה (DeepSeek); `data_collection: deny` — ספק ששומר או מאמן על מידע נפסל | ארה״ב / לפי הספק — **לבירור** |
+| OpenRouter → מארחי מודלים (Novita, DeepInfra, Together; StreamLake מוחרג בכל בקשה, `domain/model-hosts.js`) | ההודעה, הקשר השיחה, `USER.md`, תוצאות כלים | הפקת תשובה (DeepSeek); `data_collection: deny` — ספק ששומר או מאמן על מידע נפסל | ארה״ב / לפי הספק — **לבירור** |
 | Anthropic | כנ״ל | מודל גיבוי בתקלה | ארה״ב |
 | ElevenLabs | הקלטת הודעה קולית; טקסט להקראה בשיחה | תמלול (STT) והקראה (TTS) | ארה״ב/אירופה — **לבירור** |
 | Deepgram | שמע של שיחת טלפון | תמלול בזמן אמת | ארה״ב |

@@ -118,6 +118,9 @@ async function completeOpenRouter({ system, user, model, maxTokens, timeoutMs, a
       headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
       body: JSON.stringify({
         model,
+        // Background calls read people's notes too, and went to any host
+        // OpenRouter chose until 2026-09-29 (domain/model-hosts.js).
+        provider: require('../domain/model-hosts').routing(),
         max_tokens: maxTokens || 2048,
         messages: [
           ...(system ? [{ role: 'system', content: String(system) }] : []),
