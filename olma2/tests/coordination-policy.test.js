@@ -251,9 +251,12 @@ test('live: an answer after the offer lapses it, and an answer withdraws that pe
   assert.ok(who);
 
   // They put a time up and say yes to it: their nudge is withdrawn at once.
+  // The words name no weekday: `slot` is three days from whenever the suite
+  // runs, and a fixed "יום חמישי" is refused by the weekday check on every
+  // day it is not a Thursday (it went red on 2026-09-29, a Tuesday).
   const slot = plus(72);
   await withTx(db.pool, async (c) => {
-    const added = await options.add(c, who.id, id, 'יום חמישי 19:00', slot.toISOString());
+    const added = await options.add(c, who.id, id, 'עוד שלושה ימים', slot.toISOString());
     assert.ok(added.ok, JSON.stringify(added));
     await options.answer(c, who.id, id, added.data.optionId || added.data.option.id, 'y');
   });

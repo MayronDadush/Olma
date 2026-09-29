@@ -447,3 +447,12 @@ test('a paused page is blurred and inert, and the only control is bringing her b
     assert.equal(page.split(`"${k}":`).length - 1, 2, `${k} is not in both languages`);
   }
 });
+
+// --- no font from Google, even in the file opened from disk -------------------
+// Since 2026-09-29: the file linked Google Fonts, which gave Google every
+// visitor's IP. The server now inlines the fonts in front of it
+// (adapters/http/fonts.js, asserted over HTTP in public-pages.test.js); this
+// guards the file itself, which is also what a design preview loads.
+test('the design file names no Google font host', () => {
+  assert.doesNotMatch(page, /fonts\.googleapis\.com|fonts\.gstatic\.com/);
+});
