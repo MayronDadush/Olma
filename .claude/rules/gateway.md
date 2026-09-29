@@ -145,8 +145,17 @@ title means this file. Grep the title, not the filename.
   differs. **Deny, never allow**: an agent-level allow list narrows the
   gateway's own tools too. **Never hand-edit one** — the next deploy puts it
   back, and a hand list is how a new person tool would leak into every room.
-  `main`, `intake` and `ggreet` are not narrowed. Brokerd is still the lock;
-  this only decides what the model reads.
+  `main`, `intake` and `ggreet` are not narrowed by audience. Brokerd is still
+  the lock; this only decides what the model reads.
+- **A PACK's tools are denied to EVERY agent, `main`, `intake` and `ggreet`
+  included, and lifted only for a person holding the pack** (`games__*`,
+  2026-09-30). Who holds one is the `user_packs` table, read by the sync and by
+  `config_guard` through `agent-tool-policy.packsByAgent`. To the sync an
+  unreadable table means nobody holds anything, never "leave it as it is";
+  `config_guard` skips the comparison instead of calling a holder drift
+  (unreadable is not broken). gamesd refuses the
+  call anyway for anybody brokerd's `identity_resolve` does not name as a
+  holder — the deny is what the model reads, not the lock.
 
 ### systemd scope
 

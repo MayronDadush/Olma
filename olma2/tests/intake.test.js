@@ -898,6 +898,28 @@ test('config guard: an agent shown the other audience\'s tools is reported, and 
   assert.deepEqual(guard.checkOpenclawConfig(cfg), []);
 });
 
+// A pack is denied to every agent and lifted for its holders only, so the
+// guard must read who holds one: a holder synced correctly is not drift, the
+// greeter losing its deny is, and a user_packs it could not read is no
+// verdict at all rather than every holder flagged.
+test('config guard: a pack\'s deny is checked against who holds the pack, and an unread table decides nothing', () => {
+  const policy = require('../src/intake/agent-tool-policy');
+  const cfg = baseConfig();
+  cfg.agents.defaults.systemAgent = { agentId: 'intake' };
+  occ.addAgent(cfg, { id: 'u-3', workspace: '/x/u-3', agentDir: '/x/u-3-agent' });
+  occ.addAgent(cfg, { id: 'u-4', workspace: '/x/u-4', agentDir: '/x/u-4-agent' });
+  const packs = new Map([['u-3', ['games']]]);
+  occ.setAgentTools(cfg, 'u-3', policy.agentToolPolicy('u-3', cfg, { packs: ['games'] }));
+  assert.ok(!occ.agentEntry(cfg, 'u-3').tools.deny.includes('games__*'), 'the holder is shown the pack');
+  assert.ok(occ.agentEntry(cfg, 'u-4').tools.deny.includes('games__*'), 'nobody else is');
+  assert.deepEqual(guard.checkOpenclawConfig(cfg, { packs }), []);
+  assert.match(guard.checkOpenclawConfig(cfg)[0], /1 agent\(s\).*u-3/, 'without the table the holder reads as drift');
+  assert.deepEqual(guard.checkOpenclawConfig(cfg, { packs: null }), [], 'unreadable is not broken');
+
+  occ.agentEntry(cfg, 'intake').tools.deny = occ.agentEntry(cfg, 'intake').tools.deny.filter((t) => t !== 'games__*');
+  assert.match(guard.checkOpenclawConfig(cfg, { packs })[0], /1 agent\(s\).*intake/, 'the greeter shown a pack is drift');
+});
+
 // Measured 2026-09-05 over seven days of transcripts: 3,051 heartbeat calls
 // against 1,072 for real messages — $7.15 of an $8.72 bill — every one of
 // them a 33k-token turn answered NO_REPLY. Nothing of ours rides on the

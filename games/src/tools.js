@@ -126,9 +126,9 @@ const TOOLS = {
   async start_game_night({ pool, user, publicBase }, a) {
     const open = (await nightsOf(pool, user.id)).filter(n => !n.closed_at);
     if (open.length) fail('already_open', `they already have an open night, code ${open[0].code}: ${publicBase}/night/${open[0].token}`);
-    const host = (user.name || 'אני').slice(0, 24);
+    const host = (user.name || (user.locale === 'en' ? 'Me' : 'אני')).slice(0, 24);
     const others = Array.isArray(a.players) ? a.players.filter(p => typeof p === 'string') : [];
-    const n = await store.createNight(pool, { name: a.name || 'ערב פוקר', price: a.price, chips: a.chips, players: [host, ...others] });
+    const n = await store.createNight(pool, { name: a.name || (user.locale === 'en' ? 'Poker night' : 'ערב פוקר'), price: a.price, chips: a.chips, players: [host, ...others] });
     // The host is the first row insertNight wrote; linking it is what makes
     // this night "theirs" to every later tool.
     await pool.query(
