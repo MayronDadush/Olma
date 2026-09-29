@@ -251,12 +251,14 @@ test('live: an answer after the offer lapses it, and an answer withdraws that pe
   assert.ok(who);
 
   // They put a time up and say yes to it: their nudge is withdrawn at once.
-  // No weekday in the words: `slot` is three days from whenever this runs, and
-  // a named day that disagrees with it is refused (weekday_mismatch), so a
-  // hard-coded "יום חמישי" passed on four days of the week and failed on three.
   const slot = plus(72);
+  // The words name the day the slot actually falls on: `options.add` refuses
+  // a weekday that disagrees with the moment, and a hard-coded "חמישי" three
+  // days out passed on Mondays only (rules/testing.md, "Never let a test
+  // depend on the hour or the weekday it runs").
+  const dayName = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'][slot.getUTCDay()];
   await withTx(db.pool, async (c) => {
-    const added = await options.add(c, who.id, id, 'בעוד שלושה ימים', slot.toISOString());
+    const added = await options.add(c, who.id, id, `יום ${dayName} 19:00`, slot.toISOString());
     assert.ok(added.ok, JSON.stringify(added));
     await options.answer(c, who.id, id, added.data.optionId || added.data.option.id, 'y');
   });
