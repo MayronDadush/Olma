@@ -54,6 +54,32 @@
   .end { display: grid; justify-items: center; align-content: center; gap: 5vw; text-align: center }
   .end .big { width: 34vw; height: 34vw }
   .end .word { font-weight: 700; font-size: 14vw; line-height: 1; letter-spacing: -.02em }
+
+  /* Looks (?style= or `style` in the content file). The same copy in each, so the
+     owner can choose between them; the chosen ones stay and the rest can go. */
+  .mustard { background: var(--mus); color: var(--cyp) }
+  .mustard .by, .mustard .sub, .mustard .foot { color: #2A3B2C }
+  .mustard .h em { font-style: normal; background: var(--cyp); color: var(--mus); padding: 0 .14em; margin: 0 -.04em; border-radius: .1em }
+  .ink { background: #1B1A18; color: var(--sand) }
+  .ink .by, .ink .sub { color: #B9B5AC } .ink .foot { color: #A39F96 }
+  .ink .h em { font-style: normal; color: var(--mus) }
+  .mustard .h, .frame .h { line-height: 1.18 }
+  /* bleed: the mark, huge and tonal, running off the corner behind the words */
+  .bleedmark { position: absolute !important; width: 96vw; height: 96vw; left: -34vw; bottom: -30vw; z-index: 0 !important }
+  /* band: the morning card's shape — a cypress band with a mustard edge, sand below */
+  .bandtop { margin: -7.4vw -7.4vw 0; padding: 7.4vw 7.4vw 7vw; background: var(--cyp); color: var(--sand);
+    border-bottom: 1.4vw solid var(--mus); display: grid; gap: 9vw; align-content: space-between }
+  .bandtop .by { color: #D9DDD6 } .bandtop .h em { font-style: normal; color: var(--mus); background: none }
+  .band .main { align-content: start; padding-top: 6vw }
+  /* frame: a poster, the cypress border inside the edge */
+  .frame { box-shadow: inset 0 0 0 3.2vw var(--cyp); padding: 11vw 11vw 9.6vw }
+  .frame .h em { background: var(--cyp); color: var(--mus); padding: 0 .14em; margin: 0 -.04em; border-radius: .1em }
+  /* bubble: the headline IS her message */
+  .bubble .main { justify-items: start }
+  .bubble .h { background: #FFFFFF; color: #111B21; padding: 4.6vw 5.6vw 3vw; border-radius: 5vw 1vw 5vw 5vw;
+    box-shadow: 0 1.6vw 5vw rgba(0,0,0,.25); max-width: 100%; box-sizing: border-box }
+  .bubble .h em { font-style: normal; color: inherit; background: linear-gradient(transparent 62%, var(--mus) 62%, var(--mus) 90%, transparent 90%) }
+  .bubble .h .bt { display: block; font: 400 2.6vw "Noto Sans", sans-serif; color: #667781; text-align: left; letter-spacing: 0; margin-top: 1.4vw; white-space: normal }
 </style>
 <div class="f" id="f"></div>
 <script src="../motion.js"></script>
@@ -77,8 +103,16 @@
     he: { by: 'עולמה · בוואטסאפ שלך', name: 'עולמה', status: 'מחוברת', word: 'סגור.' },
     en: { by: 'Allma · in your WhatsApp', name: 'Allma', status: 'online', word: 'All set.' },
   }[LANG];
-  const theme = F.theme === 'cypress' || (F.layout === 'closing' && F.theme !== 'sand') ? 'cypress' : 'sand';
-  const COL = theme === 'cypress' ? { d: '#0E1F1E', l: '#F0EDE5', a: '#F9C23C', ring: '#F0EDE5' } : { d: '#004643', l: '#F0EDE5', a: '#F9C23C', ring: '#004643' };
+  const LOOKS = { classic: 'sand', cypress: 'cypress', band: 'sand', mustard: 'mustard', ink: 'ink', bleed: 'cypress', frame: 'sand', bubble: 'cypress' };
+  const STYLE = LOOKS[Q.get('style')] ? Q.get('style') : LOOKS[F.style || C.style] ? (F.style || C.style) : null;
+  const theme = STYLE && F.layout !== 'closing' ? LOOKS[STYLE]
+    : F.theme === 'cypress' || (F.layout === 'closing' && F.theme !== 'sand') ? 'cypress' : 'sand';
+  const COL = {
+    cypress: { d: '#0E1F1E', l: '#F0EDE5', a: '#F9C23C', ring: '#F0EDE5' },
+    sand: { d: '#004643', l: '#F0EDE5', a: '#F9C23C', ring: '#004643' },
+    mustard: { d: '#004643', l: '#F0EDE5', a: '#F9C23C', ring: '#004643' },
+    ink: { d: '#004643', l: '#F0EDE5', a: '#F9C23C', ring: '#F0EDE5' },
+  }[theme];
   const WA = { d: '#004643', l: '#F0EDE5', a: '#F9C23C', ring: null };
 
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -87,7 +121,7 @@
   const mark = (id, ms = 1e9, c = COL) => AllmaMotion.frame('meet', ms, c, id);
 
   const f = document.getElementById('f');
-  f.className = `f ${theme} ${FMT}`;
+  f.className = `f ${theme} ${FMT} ${F.layout !== 'closing' && STYLE ? STYLE : ''}`;
   if (LANG === 'en') { f.style.direction = 'ltr'; document.documentElement.lang = 'en'; }
   const grain = '<svg class="grain" aria-hidden="true"><filter id="g" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency=".8" numOctaves="3" stitchTiles="stitch" seed="7"/><feColorMatrix values="0 0 0 0 .05  0 0 0 0 .12  0 0 0 0 .12  .5 0 0 0 -.2"/></filter><rect width="100%" height="100%" filter="url(#g)"/></svg>';
   const dots = FMT === 'carousel' && SLIDES.length > 1 ? `<span class="dots">${SLIDES.map((_, i) => `<i class="${i === SLIDE - 1 ? 'on' : ''}"></i>`).join('')}</span>` : '<span></span>';
@@ -102,8 +136,14 @@
   } else {
     const chat = F.layout === 'chat' ? `<div class="wa" id="wa"><div class="top"><div class="av">${mark('av', 1e9, WA)}</div><div><b>${T.name}</b><small>${T.status}</small></div></div>
       <div class="msgs">${(F.chat || []).map((m, i) => `<div class="b ${m.from === 'me' ? 'out' : 'in'}" id="b${i}">${rich(m.text)}<div class="t"><span>${esc(m.time || '09:41')}</span>${m.from === 'me' ? '<span class="ticks">✓✓</span>' : ''}</div></div>`).join('')}</div></div>` : '';
-    f.innerHTML = `${head}<div class="main"><h1 class="h" id="h" style="font-size:${size}vw">${lines}</h1>
-      ${F.sub ? `<p class="sub" id="sub">${rich(F.sub)}</p>` : ''}${chat}</div>${foot}${grain}`;
+    const h1 = `<h1 class="h" id="h" style="font-size:${size}vw">${lines}${STYLE === 'bubble' ? '<span class="bt">09:41</span>' : ''}</h1>`;
+    const sub = F.sub ? `<p class="sub" id="sub">${rich(F.sub)}</p>` : '';
+    if (STYLE === 'band') {
+      f.innerHTML = `<div class="bandtop">${head}${h1}</div><div class="main">${sub}${chat}</div>${foot}${grain}`;
+    } else {
+      const bleed = STYLE === 'bleed' ? `<div class="bleedmark">${mark('bl', 1e9, { d: '#003A37', l: '#0B5652', a: '#F9C23C', ring: null })}</div>` : '';
+      f.innerHTML = `${bleed}${head}<div class="main">${h1}${sub}${chat}</div>${foot}${grain}`;
+    }
   }
 
   // A line the author wrote must fit the width it was given, never wrap: the breaks
