@@ -32,6 +32,9 @@ const { provisionUser } = require('../intake/provision');
 const onboardingDomain = require('../domain/onboarding');
 const { reopenMessage } = require('../intake/messages');
 const templates = require('../domain/message-templates');
+const intakeRoom = require('../domain/intake-room');
+const preferences = require('../domain/preferences');
+const { minutesInTz, parseHHMM } = require('../outbox/gate');
 const occ = require('../intake/openclaw-config');
 // The worker-thread facade: this sweep ticks every 5 seconds inside brokerd,
 // and its reads are the most frequent synchronous work the daemon did
@@ -108,6 +111,21 @@ const GREETER_GRACE_MS = 5 * 60_000;
 // A welcome follow-up that has not gone out in an hour is not a follow-up to
 // anything any more; their first turn carries the page instead (turn.advise).
 const WELCOME_FOLLOWUP_TTL_MS = 60 * 60_000;
+
+// The morning after, for the welcome follow-up of somebody the greeter met
+// with a room's short opening (domain/intake-room.js): the next time their
+// window opens on a day that is not today — or today's opening, if they wrote
+// before it. The gate still decides at that moment (quiet day, pause), so
+// this is when to LOOK, not a promise to send.
+function nextMorning(window, tz, now) {
+  const mins = minutesInTz(tz, now);
+  const start = parseHHMM(window.start);
+  const delta = mins < start ? start - mins : 1440 - mins + start;
+  return new Date(now.getTime() + delta * 60_000);
+}
+// Long enough to outlast a quiet day after that morning; past it, their
+// first turn carries the page instead (turn.advise).
+const ROOM_FOLLOWUP_TTL_MS = 3 * 24 * 3600_000;
 
 async function defaultReadGreeterReply(phone) {
   try {
@@ -237,7 +255,13 @@ async function sweepIntakeSessions(client, deps) {
       reason: invited.invite_reason || null,
     } : null;
 
-    const greetedByIntake = saidTheOpening(greeterReply, await templates.load(client));
+    // The room's short opening is an introduction too — it says she is an AI
+    // and carries the privacy link — so it stamps `opening_sent_at` like the
+    // owner's, and nothing waits behind an introduction still owed. What it
+    // leaves out is what she helps with, and that is the follow-up's job.
+    const saidOwners = saidTheOpening(greeterReply, await templates.load(client));
+    const roomOpened = !saidOwners && intakeRoom.saidRoomOpening(greeterReply);
+    const greetedByIntake = saidOwners || roomOpened;
     const prov = await provisionUser(client, {
       phone, invitedByConnectionId: invited ? invited.id : null, configPath: deps.configPath,
       firstMessage, invitedInfo, registerUndo: deps.registerUndo,
@@ -261,15 +285,33 @@ async function sweepIntakeSessions(client, deps) {
     // agent's first turn still owes the opening copy, and it carries the page
     // too (turn.advise). The gate drops this row if they write to their own
     // agent first, because that turn answers the same words.
+    //
+    // After the room's short opening it waits (owner, 2026-09-29): the
+    // coordination goes first (group-meetings.admitLateMembers, within the
+    // minute), and what Olma is comes after it. If they answer, their first
+    // turn says it and the gate drops this row as `answered_in_turn`; if they
+    // do not, this says it the next morning. A coordination that closed while
+    // the greeter was speaking has nothing to go first, so then it goes now.
     if (greetedByIntake) {
+      const waiting = roomOpened ? await intakeRoom.roomFor(client, phone) : null;
+      const now = new Date();
+      let releaseAfter = null;
+      let expiresAt = new Date(now.getTime() + WELCOME_FOLLOWUP_TTL_MS);
+      if (waiting && waiting.meetingId) {
+        const pref = await preferences.availabilityWindow(client, user.id);
+        const window = pref.ok ? pref.data.window : preferences.DEFAULT_WINDOW;
+        releaseAfter = nextMorning(window, user.timezone, now);
+        expiresAt = new Date(releaseAfter.getTime() + ROOM_FOLLOWUP_TTL_MS);
+      }
       await enqueue(client, {
         userId: user.id, kind: 'welcome_followup',
         payload: {
           hasNote: Boolean(user.intake_note_at),
           greeterReply: typeof greeterReply === 'string' ? greeterReply.slice(0, 600) : null,
+          ...(roomOpened ? { roomOpening: true } : {}),
         },
         idempotencyKey: `welcome_followup:${user.id}`,
-        expiresAt: new Date(Date.now() + WELCOME_FOLLOWUP_TTL_MS),
+        expiresAt, releaseAfter,
       });
       out.welcomed = (out.welcomed || 0) + 1;
     }
@@ -340,5 +382,5 @@ async function sweepReopen(client) {
 module.exports = {
   sweepIntakeSessions, runIntakeSweep, sweepReopen, intakeConfigured, INTAKE_AGENT_ID,
   defaultListIntakeSessions, readIntakeFirstMessage,
-  defaultReadGreeterReply, saidTheOpening, GREETER_GRACE_MS,
+  defaultReadGreeterReply, saidTheOpening, nextMorning, GREETER_GRACE_MS,
 };

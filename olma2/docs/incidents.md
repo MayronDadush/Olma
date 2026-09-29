@@ -76,6 +76,7 @@ never trust a dated narrative for something you are about to act on.
 - [She said there was no group (fixed 2026-09-25)](#she-said-there-was-no-group-fixed-2026-09-25)
 - [The room coordinated without the person who opened it (fixed 2026-09-19)](#the-room-coordinated-without-the-person-who-opened-it-fixed-2026-09-19)
 - [Twice 'היי' before a word about the room (fixed 2026-09-25)](#twice-היי-before-a-word-about-the-room-fixed-2026-09-25)
+- [Three messages before the one they came for (changed 2026-09-29)](#three-messages-before-the-one-they-came-for-changed-2026-09-29)
 - [היא שבורה: the room waited for somebody who had already written (fixed 2026-09-09)](#היא-שבורה-the-room-waited-for-somebody-who-had-already-written-fixed-2026-09-09)
 - [The room was told about a meeting at 01:12 (fixed 2026-09-09)](#the-room-was-told-about-a-meeting-at-0112-fixed-2026-09-09)
 - [The room window opened on a row nobody would look at (fixed 2026-09-19)](#the-room-window-opened-on-a-row-nobody-would-look-at-fixed-2026-09-19)
@@ -2829,6 +2830,35 @@ still negotiating and not inside its settle minute — exactly the conditions
 `admitLateMembers` lets a newly connected member in on. Anywhere else the line
 promises nothing. A roster row that is a LID matches no phone and gets no line
 at all.
+
+### Three messages before the one they came for (changed 2026-09-29)
+
+**What happened.** The 2026-09-25 fix above made the room's coordination
+follow the greeter at once — and in doing so lined up three messages inside
+two minutes for every newcomer a room sent: the owner's full opening with the
+room's line under it, the welcome follow-up (their own agent, their page), and
+the invite. The person came for the third one. Found while mapping the room
+scenario end to end (item 6 of the 2026-09-26 plan), not reported by anybody.
+
+**Decision (owner, 2026-09-29).** "אפשר להתחיל איתו מהתיאום ואז אחר כך להציג
+את עצמה." With a coordination waiting, the greeter says a three-line opening
+of its own instead of the owner's: she is an AI, the coordination is on its
+way, the privacy link. The owner approved the words verbatim. The invite
+follows within the minute. What she does is said once, afterwards: by their
+first turn, which is usually the answer to the coordination, or by the welcome
+follow-up, now released at their next morning.
+
+**Why the short opening stamps `opening_sent_at`.** It is an introduction for
+every purpose the stamp serves. Leaving it unstamped would make their first
+turn send the owner's copy in the middle of an answer about padel, and it
+would leave `greetedByIntake` false, so no follow-up would be queued to say
+what she does. The compliance line (#548: AI, and the privacy link, in the
+first message a person reads) is kept by the short opening itself.
+
+**Why the follow-up is released rather than dropped.** Somebody who never
+answers the coordination still has to learn what Olma is and get their page.
+The gate's existing `answered_in_turn` drop is what keeps the two roads from
+both saying it.
 
 ### היא שבורה: the room waited for somebody who had already written (fixed 2026-09-09)
 

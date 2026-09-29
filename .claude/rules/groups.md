@@ -281,6 +281,19 @@ have already had to be argued for.
   room's hours because it and the line were one step; they are two now, and the
   line is still never said at night (`incidents.md`, "Twice 'היי' before a word
   about the room").
+  **Since 2026-09-29 a room with a coordination waiting gets a SHORT opening
+  INSTEAD of the owner's, not a line under it** (`intake-room.ROOM_OPENING`):
+  "עוזרת AI" on the first line, "שולחת לך עכשיו את התיאום", and the privacy
+  link — all a first message legally owes. What she does comes AFTER the
+  coordination: their first turn adds one line about it
+  (`turn.greetedByRoomOpening`), or the welcome follow-up says it the next
+  morning (`intake.nextMorning`, `payload.roomOpening`), and the gate's
+  `answered_in_turn` drop keeps it to once. `intake-room.saidRoomOpening`
+  recognises it by the room line, and it stamps `opening_sent_at` like the
+  owner's copy — a newcomer not stamped would have the coordination held
+  behind an introduction nobody will send. A coordination that closed while
+  the greeter spoke sends the follow-up at once (`incidents.md`, "Three
+  messages before the one they came for").
 
 - **The person who asked the ROOM for a coordination is asked privately too.**
   `startMeeting` inserts every participant at `awaiting`, the initiator

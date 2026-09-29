@@ -277,6 +277,75 @@ test('intake sweep: open registration provisions immediately — and queues ONE 
   assert.equal(again.provisioned.length, 0);
 });
 
+// ---- a newcomer from a room with a coordination waiting (owner, 2026-09-29)
+// The greeter says the room's SHORT opening instead of the owner's — she is an
+// AI, the coordination is on its way, the privacy link — and what she does is
+// said after the coordination. So the stamp still lands (nothing may wait
+// behind an introduction owed), and the follow-up waits for the morning.
+test('intake sweep: the room\'s short opening is an introduction, and the follow-up waits for the morning', async () => {
+  const intakeRoom = require('../src/domain/intake-room');
+  const inRoom = '+972601000290';
+  const closed = '+972601000291';
+  const owner = await makeUser(db.pool, '+972601000292', { firstName: 'פותח' });
+  const mk = async (subject, phone, status) => {
+    const { rows: [g] } = await db.pool.query(
+      `INSERT INTO chat_groups (external_id, subject, state) VALUES ($1, $2, 'open') RETURNING id`,
+      [`12036300${phone.slice(-4)}@g.us`, subject]);
+    await db.pool.query(`INSERT INTO chat_group_members (group_id, phone) VALUES ($1, $2)`, [g.id, phone]);
+    await db.pool.query(
+      `INSERT INTO meetings (initiator_id, title, status, group_id) VALUES ($1, 'פאדל', $2, $3)`,
+      [owner.id, status, g.id]);
+    return intakeRoom.contextFor(await withTx(db.pool, (c) => intakeRoom.roomFor(c, phone)));
+  };
+  const said = (ctx) => ctx.split('\n').slice(8, 11).join('\n'); // the Hebrew block, as the greeter says it
+  const ctxLive = await mk('פאדל', inRoom, 'negotiating');
+  const ctxClosed = await mk('ערב', closed, 'negotiating');
+  const reply = said(ctxLive);
+  assert.ok(reply.startsWith('היי, אני עולמה 👋 עוזרת AI\nהגעת מהקבוצה «פאדל»'), reply);
+  assert.equal(intake.saidTheOpening(reply), false, 'not the owner\'s copy');
+  assert.equal(require('../src/domain/intake-room').saidRoomOpening(reply), true);
+  // The second room's coordination closes while the greeter is speaking.
+  await db.pool.query(`UPDATE meetings SET status = 'confirmed' WHERE title = 'פאדל' AND group_id =
+    (SELECT group_id FROM chat_group_members WHERE phone = $1)`, [closed]);
+
+  const before = Date.now();
+  const out = await withTx(db.pool, (c) => intake.sweepIntakeSessions(c, {
+    configPath,
+    listSessions: async () => [inRoom, closed].map((phone) => ({ phone, key: `agent:intake:whatsapp:direct:${phone}` })),
+    readFirstMessage: async () => 'היי',
+    readGreeterReply: async (phone) => (phone === inRoom ? reply : said(ctxClosed)),
+  }));
+  assert.deepEqual(out.provisioned.sort(), [inRoom, closed].sort());
+
+  const { rows } = await db.pool.query(
+    `SELECT u.phone, u.opening_sent_at, u.timezone, o.payload, o.release_after, o.expires_at
+       FROM users u JOIN outbox o ON o.user_id = u.id AND o.kind = 'welcome_followup'
+      WHERE u.phone = ANY($1)`, [[inRoom, closed]]);
+  const by = Object.fromEntries(rows.map((r) => [r.phone, r]));
+  for (const p of [inRoom, closed]) {
+    assert.ok(by[p].opening_sent_at, `${p}: the short opening is an introduction`);
+    assert.equal(by[p].payload.roomOpening, true);
+  }
+  const live = by[inRoom];
+  assert.ok(live.release_after, 'the coordination goes first; what Olma does, after');
+  const localHHMM = new Intl.DateTimeFormat('en-GB', {
+    timeZone: live.timezone, hour: '2-digit', minute: '2-digit', hour12: false,
+  }).format(live.release_after);
+  assert.equal(localHHMM, '09:00', 'released when their window opens');
+  assert.ok(live.release_after.getTime() > before, 'later, not now');
+  assert.ok(live.expires_at > live.release_after, 'and still alive when it is released');
+  assert.equal(by[closed].release_after, null, 'nothing left to go first: it goes now');
+});
+
+test('nextMorning: the next window opening on a later day, or today\'s if it has not opened yet', () => {
+  const w = { start: '09:00', end: '21:00' };
+  const tz = 'Asia/Jerusalem'; // UTC+3 on these dates
+  const at = (iso) => intake.nextMorning(w, tz, new Date(iso)).toISOString();
+  assert.equal(at('2026-09-29T19:00:00Z'), '2026-09-30T06:00:00.000Z', '22:00 → 09:00 tomorrow');
+  assert.equal(at('2026-09-29T09:00:00Z'), '2026-09-30T06:00:00.000Z', 'noon → 09:00 tomorrow, not today');
+  assert.equal(at('2026-09-29T01:00:00Z'), '2026-09-29T06:00:00.000Z', '04:00 → 09:00 the same day');
+});
+
 // ---- the evening two people were provisioned before anyone had greeted them
 //
 // Real, 2026-09-07. The sweep ticks every five seconds; the greeter answers in

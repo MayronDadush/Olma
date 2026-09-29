@@ -17,24 +17,60 @@
 // under the opening, in their language. Gender-neutral on purpose: the greeter
 // knows nothing about who is writing, and slashed forms are banned there.
 //
-// "תכף אשלח" is a promise, so it is said only where something keeps it: a room
+// "שולחת לך עכשיו" is a promise, so it is said only where something keeps it: a room
 // that is open, a coordination still negotiating and not inside its settle
 // minute — exactly the conditions `group-meetings.admitLateMembers` lets a
 // newly connected member in on, day or night (`jobs/groups.sweepGroupVoice`).
 // Anything else gets the line that promises nothing.
+//
+// Since 2026-09-29 a room with a coordination waiting for them does not get
+// the opening at all, with a line under it. It gets a SHORT opening of its
+// own — who she is (an AI, said on the first line), that the coordination is
+// on its way, and the privacy link, which is the whole of what the law asks
+// of a first message (message-templates, `opening_he`) — and what she helps
+// with is said AFTER the coordination: by their own agent's first turn if they
+// answer, or by the welcome follow-up the next morning if they do not
+// (owner, 2026-09-29: "אפשר להתחיל איתו מהתיאום ואז אחר כך להציג את עצמה").
+// Before this, a newcomer read the full introduction, the welcome follow-up
+// and the invite inside two minutes — three messages before the one they came
+// for. `jobs/intake.js` recognises this opening by its room line
+// (`saidRoomOpening`), because the owner's opening's own second line is not in
+// it.
 
 const PEER_RE = /^agent:intake:whatsapp:direct:(\+\d{7,15})$/;
 
 const LINES = {
   he: {
-    coordination: 'הגעת מהקבוצה «{subject}» — תכף אשלח לך כאן את התיאום שפתוח שם.',
     plain: 'הגעת מהקבוצה «{subject}» — שם אני עוזרת לתאם, וכאן אני בשבילך באופן אישי.',
   },
   en: {
-    coordination: 'You came from the group «{subject}» — in a moment I\'ll send you here the plan being arranged there.',
     plain: 'You came from the group «{subject}» — there I help arrange things, and here I\'m here for you personally.',
   },
 };
+
+// The whole first reply, for the coordination shape. The middle line is the
+// one `saidRoomOpening` looks for, so it carries no variable before the dash
+// that is not the subject.
+const ROOM_OPENING = {
+  he: 'היי, אני עולמה 👋 עוזרת AI\n'
+    + 'הגעת מהקבוצה «{subject}» — שולחת לך עכשיו את התיאום שפתוח שם.\n'
+    + 'מה אני שומרת ואיך מוחקים: https://allma.world/privacy',
+  en: "Hey, I'm Allma \u{1F44B} an AI assistant\n"
+    + 'You came from the group «{subject}» — I\'m sending you the plan being arranged there now.\n'
+    + 'What I keep and how to delete it: https://allma.world/privacy',
+};
+// What survives the model saying the block: the tail of the room line, after
+// the subject — which is somebody else's text and may have been trimmed.
+const ROOM_OPENING_MARKS = [
+  '— שולחת לך עכשיו את התיאום שפתוח שם',
+  "— I'm sending you the plan being arranged there now",
+];
+
+function saidRoomOpening(text) {
+  if (!text) return false;
+  const t = String(text).replace(/\u2019/g, "'");
+  return ROOM_OPENING_MARKS.some((m) => t.includes(m));
+}
 
 function peerOf(sessionKey) {
   const m = PEER_RE.exec(String(sessionKey || ''));
@@ -75,18 +111,37 @@ async function roomFor(client, phone) {
   return { groupId: Number(r.id), subject, meetingId: r.meeting_id ? Number(r.meeting_id) : null };
 }
 
+// The line under the owner's opening, for a room with no coordination to
+// join. A room with one gets ROOM_OPENING instead (contextFor).
 function linesFor(room) {
-  const shape = room.meetingId ? 'coordination' : 'plain';
   return {
-    he: LINES.he[shape].replace('{subject}', room.subject),
-    en: LINES.en[shape].replace('{subject}', room.subject),
+    he: LINES.he.plain.replace('{subject}', room.subject),
+    en: LINES.en.plain.replace('{subject}', room.subject),
   };
 }
 
 // The block the plugin prepends. It restates the one exception to "add
 // nothing to the opening" and bounds it to the first reply, because the
-// greeter's own file says the opening is said once.
+// greeter's own file says the opening is said once. With a coordination
+// waiting, the exception is bigger: the short opening REPLACES the owner's.
 function contextFor(room) {
+  if (room.meetingId) {
+    const he = ROOM_OPENING.he.replace('{subject}', room.subject);
+    const en = ROOM_OPENING.en.replace('{subject}', room.subject);
+    return [
+      'Room: this person reached Olma from a WhatsApp group she is in, and a',
+      'coordination there is waiting for them. In your FIRST reply only, say',
+      'THIS text INSTEAD of the opening text in your instructions — not beside',
+      'it — exactly as written, every character, on its own lines: the Hebrew',
+      'one if they wrote Hebrew, otherwise the English one. Add nothing about',
+      'what Olma does; that is said after the coordination. If they asked for',
+      'something, one short line below it; otherwise stop there.',
+      'Hebrew:',
+      he,
+      'English:',
+      en,
+    ].join('\n');
+  }
   const l = linesFor(room);
   return [
     'Room: this person reached Olma from a WhatsApp group she is in.',
@@ -98,4 +153,6 @@ function contextFor(room) {
   ].join('\n');
 }
 
-module.exports = { peerOf, roomFor, linesFor, contextFor, cleanSubject, LINES };
+module.exports = {
+  peerOf, roomFor, linesFor, contextFor, cleanSubject, saidRoomOpening, LINES, ROOM_OPENING,
+};
