@@ -1,0 +1,71 @@
+name: games
+
+# gamesd's own light job, like voice-bridge.yml: a change under games/ must
+# run SOMETHING (a directory no workflow watches merges with no checks at
+# all), and must not redeploy olma2. Tests run against a real Postgres.
+on:
+  push:
+    paths: ['games/**', '.github/workflows/games.yml']
+  pull_request:
+    paths: ['games/**', '.github/workflows/games.yml']
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: games
+          POSTGRES_PASSWORD: ci-password
+          POSTGRES_DB: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U games"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      GAMES_TEST_ADMIN_URL: postgres://games:ci-password@127.0.0.1:5432/postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --no-audit --no-fund
+        working-directory: games
+      - run: npm run check
+        working-directory: games
+      - run: npm test
+        working-directory: games
+      - run: bash -n games/deploy.sh && bash -n games/scripts/setup-box.sh
+
+  # Off until the box is set up (games/scripts/setup-box.sh) and the owner
+  # sets the repository variable GAMES_DEPLOY_ENABLED to 'true'. Before
+  # that, a merge here tests and ships nothing, on purpose: deploy.sh would
+  # refuse a box with no database anyway, and a red deploy on every merge
+  # is an alarm nobody should learn to ignore.
+  deploy:
+    needs: test
+    timeout-minutes: 10
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.GAMES_DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: games-deploy
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up deploy SSH key
+        run: |
+          install -m 600 /dev/null /tmp/deploy_key
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > /tmp/deploy_key
+          mkdir -p ~/.ssh
+          ssh-keyscan -H 157.230.210.233 >> ~/.ssh/known_hosts
+      - name: Deploy and restart gamesd
+        run: SSH_KEY=/tmp/deploy_key bash games/deploy.sh
+      - name: Clean up deploy key
+        if: always()
+        run: rm -f /tmp/deploy_key

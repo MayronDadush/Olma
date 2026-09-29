@@ -41,6 +41,7 @@ const JOB_LABELS = {
   deploy_drift: 'השוואת הגרסה שרצה מול main',
   liveness_watch: 'שומר חיים: שער התקשורת ומשלוח ההודעות (מפעיל מחדש שער שנפל)',
   backup_offbox: 'גיבוי יומי של מסד הנתונים מחוץ לשרת',
+  backup_offbox_games: 'גיבוי יומי של ערבי המשחק מחוץ לשרת',
 };
 
 // /health sits AHEAD of Basic Auth and Caddy publishes it, so what goes in it

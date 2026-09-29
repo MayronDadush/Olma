@@ -31,6 +31,20 @@
       "url": "http://localhost:8790"
     },
     {
+      "name": "gamesd-dev",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "games/bin/gamesd.js"
+      ],
+      "env": {
+        "GAMES_DB_URL": "postgres:///games_dev",
+        "GAMES_PORT": "8794",
+        "GAMES_PUBLIC_BASE": "http://127.0.0.1:8794"
+      },
+      "port": 8794,
+      "url": "http://127.0.0.1:8794"
+    },
+    {
       "name": "design-8923",
       "runtimeExecutable": "node",
       "runtimeArgs": [
