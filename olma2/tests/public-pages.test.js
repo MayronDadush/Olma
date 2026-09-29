@@ -64,6 +64,27 @@ test('the home page is served unauthenticated on the public host', async () => {
 
 // ---- the front door is the dashboard, locked (2026-09-29) -----------------
 
+// WCAG 1.4.4: the one finding an axe run on the live pages turned up
+// (2026-09-29). The front door, and the locked page an expired link lands on,
+// can be pinch-zoomed; the signed-in app keeps its own viewport, which the
+// accessibility statement admits (PINCH_ZOOM_DISABLED, checked below).
+test('the locked front page can be zoomed, and it is the only copy that changed', async () => {
+  const viewport = (html) => (html.match(/<meta name="viewport"[^>]*>/g) || []);
+  for (const path of ['/', '/me']) {
+    const html = await (await get(path, PUBLIC)).text();
+    assert.match(html, /data-new="1"/, `${path} is not the locked page`);
+    const metas = viewport(html);
+    assert.equal(metas.length, 1, `${path} carries ${metas.length} viewport metas`);
+    assert.doesNotMatch(metas[0], /user-scalable=no|maximum-scale=1/, `${path} still forbids zoom`);
+    assert.match(metas[0], /width=device-width/);
+  }
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const file = fs.readFileSync(path.join(__dirname, '../docs/design/user-dashboard.html'), 'utf8');
+  assert.match(viewport(file)[0], /user-scalable=no/,
+    'the signed-in app was meant to keep its viewport; if zoom is restored there, flip PINCH_ZOOM_DISABLED');
+});
+
 test('the public `/` is the stranger\'s dashboard, with the words Google reads under it', async () => {
   const res = await get('/', PUBLIC);
   assert.equal(res.status, 200, 'the front door is the page asked for, not a refusal');
