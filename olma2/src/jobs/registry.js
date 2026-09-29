@@ -243,6 +243,7 @@ const deployDrift = require('./deploy-drift');
     { name: 'intake_sweep', run: () => intake.runIntakeSweep(pool, {
       configPath: OPENCLAW_CONFIG(), readFirstMessage: intake.readIntakeFirstMessage,
       readReferralText: intake.readIntakeReferralText,
+      readLanguage: intake.readIntakeLanguage,
     }) },
     { name: 'reopen_sweep', run: () => withTx(pool, (c) => intake.sweepReopen(c)) },
     // Group mode. Inert until `scripts/install-group-greeter.js` has run —

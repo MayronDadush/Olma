@@ -136,8 +136,13 @@ module.exports = [
         next: 'Say plainly that everything will be deleted within a few minutes, and that writing '
           + 'here again later starts from scratch. One short message; do not ask anything.' });
     }),
-  tool('set_my_timezone', 'Set the IANA timezone — THE TURN someone reveals where they actually are ("אני בניו יורק", a trip they mention). A phone only guesses a country; wrong zone = 3am messages. confirmed=true only when they explicitly confirmed it. Follow any hints in the result.',
-    { timezone: S('string', 'IANA name, e.g. Asia/Jerusalem'), confirmed: S('boolean', 'User explicitly confirmed') }, ['timezone'],
+  // `confirmed` said "only when they explicitly confirmed it", and the model
+  // read that as "confirmed a guess": u-45 told the greeter "אני באוסטרליה
+  // בסידני", the welcome follow-up saved Sydney with confirmed=false, and the
+  // next morning he was asked which country he is in (2026-09-26/27). Saying
+  // it IS confirming it; only our own inference is not.
+  tool('set_my_timezone', 'Set the IANA timezone THE TURN someone says where they are ("אני בניו יורק", a trip). A phone only guesses a country; wrong zone = 3am messages. confirmed=true when THEY said it, in any words, here or earlier; false only for your own guess. Follow any hints in the result.',
+    { timezone: S('string', 'IANA name, e.g. Asia/Jerusalem'), confirmed: S('boolean', 'They said it') }, ['timezone'],
     async (client, user, a) => {
       const res = await users.setTimezone(client, user.id, a.timezone, a.confirmed);
       if (!res.ok) return res;

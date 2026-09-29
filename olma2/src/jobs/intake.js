@@ -35,6 +35,7 @@ const templates = require('../domain/message-templates');
 const intakeRoom = require('../domain/intake-room');
 const referral = require('../domain/referral');
 const preferences = require('../domain/preferences');
+const language = require('../domain/language');
 const { minutesInTz, parseHHMM } = require('../outbox/gate');
 const occ = require('../intake/openclaw-config');
 // The worker-thread facade: this sweep ticks every 5 seconds inside brokerd,
@@ -112,6 +113,26 @@ async function joinedVia(client, { phone, invited, referralText }) {
       WHERE m.phone = $1 OR u.phone = $1 LIMIT 1`, [phone]);
   if (rows[0]) return { joinedVia: 'room', referredByUserId: null };
   return { joinedVia: invited ? 'invite' : 'direct', referredByUserId: null };
+}
+
+// The LANGUAGE of what they typed to the greeter, as a code and nothing else.
+//
+// The guard above drops a carryover that another peer's text matches, and the
+// commonest first message there is — "היי" — matches everybody's. With the
+// text gone, provisioning had nothing to read a language from and fell back to
+// the dialling code, which for an Israeli number is the right answer by luck
+// and for anyone else is not: u-40 (+1) wrote "היי", the greeter answered in
+// Hebrew, and every word from his own agent after that was English, with the
+// audit saying `localeSource: phone_prefix` (2026-09-24).
+//
+// A language carries none of what the guard protects. And in the one case
+// the guard fires on — two peers with the SAME text — both texts are in the
+// same language, so whose file was read cannot change the answer.
+async function readIntakeLanguage(phone) {
+  try {
+    const text = await sessions.readPeerUserText(INTAKE_AGENT_ID, phone);
+    return text ? language.detectLanguage(text, phone) : null;
+  } catch { return null; }
 }
 
 // ---- has the greeter actually spoken, and what did it say? -------------------
@@ -199,7 +220,7 @@ function intakeConfigured(configPath) {
   } catch { return false; }
 }
 
-// One discovery pass. deps: { listSessions, configPath, readFirstMessage }
+// One discovery pass. deps: { listSessions, configPath, readFirstMessage, readLanguage }
 async function sweepIntakeSessions(client, deps) {
   if (!intakeConfigured(deps.configPath)) return { skipped: 'no_intake_agent' };
   const sessions = await (deps.listSessions || defaultListIntakeSessions)();
@@ -273,6 +294,8 @@ async function sweepIntakeSessions(client, deps) {
     const firstMessage = deps.readFirstMessage
       ? await deps.readFirstMessage(phone, sessions.map((s) => s.phone))
       : null;
+    // Only consulted when the carryover above came back empty (provisionUser).
+    const languageHint = deps.readLanguage ? await deps.readLanguage(phone) : null;
     const inviter = invited
       ? (await client.query(`SELECT first_name, last_name, phone FROM users WHERE id = $1`, [invited.requester_id])).rows[0]
       : null;
@@ -296,7 +319,7 @@ async function sweepIntakeSessions(client, deps) {
     const greetedByIntake = saidOwners || roomOpened;
     const prov = await provisionUser(client, {
       phone, invitedByConnectionId: invited ? invited.id : null, configPath: deps.configPath,
-      firstMessage, invitedInfo, registerUndo: deps.registerUndo,
+      firstMessage, languageHint, invitedInfo, registerUndo: deps.registerUndo,
       joinedVia: via.joinedVia, referredByUserId: via.referredByUserId,
       // What the greeter ACTUALLY said, never what it was told to say. This
       // was `true` unconditionally for one evening, on the reasoning that
@@ -414,6 +437,6 @@ async function sweepReopen(client) {
 
 module.exports = {
   sweepIntakeSessions, runIntakeSweep, sweepReopen, intakeConfigured, INTAKE_AGENT_ID,
-  defaultListIntakeSessions, readIntakeFirstMessage, readIntakeReferralText, joinedVia,
+  defaultListIntakeSessions, readIntakeFirstMessage, readIntakeLanguage, readIntakeReferralText, joinedVia,
   defaultReadGreeterReply, saidTheOpening, nextMorning, GREETER_GRACE_MS,
 };
