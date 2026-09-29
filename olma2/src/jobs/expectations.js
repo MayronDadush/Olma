@@ -89,6 +89,8 @@ const JOB_INTERVAL_SECONDS = {
   // within the minute.
   promise_watch: 86400,
   retention_sweep: 86400,
+  // A deletion somebody asked for runs a minute after they confirmed it.
+  self_delete: 60,
   // Not a brokerd job: root's crontab runs scripts/backup-offbox.sh nightly
   // after the pg_dump, and the script writes this row itself. Listed here so
   // the one copy of the database that leaves the droplet is watched by the

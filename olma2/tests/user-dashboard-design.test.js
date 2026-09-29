@@ -31,8 +31,11 @@ function ratio(a, b) {
 // 0 for the bare :root (light), 1 for the prefers-color-scheme block and 2 for
 // [data-theme="dark"] — all three have to carry a new token or one of the
 // three ways a person can land on this page gets the other theme's colour.
+// Since 2026-09-28 the brand IS these three blocks; the switchable layer that
+// used to follow them is gone, and nothing may redefine a token after them.
+const defaults = page;
 function token(name, which) {
-  const hits = page.match(new RegExp('--' + name + ':(#[0-9A-Fa-f]{6})', 'g')) || [];
+  const hits = defaults.match(new RegExp('--' + name + ':(#[0-9A-Fa-f]{6})', 'g')) || [];
   assert.equal(hits.length, 3, '--' + name + ' is defined in all three palette blocks');
   return hits[which].split(':')[1];
 }
@@ -42,14 +45,35 @@ test('nothing on a filled control is white-on-lavender any more', () => {
   // button, every pressed chip, the selected day and the answer buttons. The
   // colour that sits ON a fill is now its own token, so the light theme can
   // say white and the dark one can say ink.
+  // Cypress + Mustard (2026-09-28): white on Cypress in the light theme, the
+  // night ground on the pale Cypress in the dark one (warm charcoal since the
+  // same day).
   assert.equal(token('on-accent', 0), '#FFFFFF');
-  assert.equal(token('on-accent', 1), '#17112E');
-  assert.equal(token('on-accent', 2), '#17112E');
+  assert.equal(token('on-accent', 1), token('bg', 1));
+  assert.equal(token('on-accent', 2), token('bg', 2));
+  assert.ok(ratio(token('on-accent', 0), token('accent', 0)) >= 4.5,
+    'white on the light theme accent clears 4.5:1');
   assert.ok(ratio(token('on-accent', 1), token('accent', 1)) >= 4.5,
     'ink on the dark theme accent clears 4.5:1');
   // And it is actually USED: a token nothing references is a comment.
   assert.ok((page.match(/color:var\(--on-accent\)/g) || []).length >= 30,
     'every filled control takes its text colour from it');
+});
+
+test('the primary action is Mustard, and what is written on it can be read', () => {
+  // The one Mustard thing on a screen is the action it exists for (the owner,
+  // 2026-09-28). Mustard is light, so the words on it are Cypress by day and
+  // ink by night — never white, which measures 1.6:1 on it.
+  [0, 1, 2].forEach(function (w) {
+    assert.equal(token('action', w), '#F9C23C');
+    assert.ok(ratio(token('on-action', w), token('action', w)) >= 4.5,
+      'text on the action fill clears 4.5:1 in palette block ' + w);
+  });
+  assert.match(page, /\.btn\.primary\{background:var\(--action\);color:var\(--on-action\)\}/);
+  // A selection is not an action: a pressed chip or the chosen day stays Cypress,
+  // or Mustard stops meaning "this is the thing to do".
+  assert.match(page, /\.chip\[aria-pressed="true"\]\{background:var\(--accent\)/);
+  assert.match(page, /\.day\[aria-selected="true"\]\{background:var\(--accent\)/);
 });
 
 test('the quiet grey is dark enough to be text', () => {
@@ -69,6 +93,57 @@ test('the quiet grey is dark enough to be text', () => {
     assert.ok(ratio(token(n, 0), token('bg', 0)) >= 4.5, '--' + n + ' as light-theme text');
     assert.ok(ratio(token(n, 1), token('bg', 1)) >= 4.5, '--' + n + ' as dark-theme text');
   });
+});
+
+test('a shared row is tinted visibly, and everything written on it still reads', () => {
+  // The night's accent-soft sat 1.15:1 from the row it tinted (1.2 here
+  // fails it), so the tint simply was not there after the brand moved.
+  [0, 1].forEach(function (w) {
+    const tint = token('shared-bg', w);
+    assert.ok(ratio(tint, token('surface', w)) >= 1.2, `the tint is visible against a plain row (${w})`);
+    ['text', 'text-3', 'danger'].forEach(function (n) {
+      assert.ok(ratio(token(n, w), tint) >= 4.5, `--${n} on the shared tint (${w}): ${ratio(token(n, w), tint).toFixed(2)}`);
+    });
+  });
+  assert.match(page, /\.swr\.shared > \.swfront\{background:var\(--shared-bg\)\}/);
+});
+
+test('the band stands off the page at night, and everything on it reads', () => {
+  // The header and the title sit on Cypress (the owner, 2026-09-28). By day
+  // that is the accent itself; at night it has to stay a band, not a smudge
+  // on --bg, and the cards that overlap it have to stay cards.
+  [0, 1].forEach(function (w) {
+    const band = token('band', w);
+    assert.ok(ratio(band, token('bg', w)) >= 1.3, `the band stands off the page (${w}): ${ratio(band, token('bg', w)).toFixed(2)}`);
+    ['on-band', 'on-band-2'].forEach(function (n) {
+      assert.ok(ratio(token(n, w), band) >= 4.5, `--${n} on the band (${w}): ${ratio(token(n, w), band).toFixed(2)}`);
+    });
+  });
+  // the title's box never animates, or it parts from the top bar mid-rise
+  assert.match(page, /\.view\.active > \.title\{animation:none\}/);
+  assert.match(page, /html\.intro-go \.title > \*\{animation:introUp/);
+});
+
+test('the line under a title is one line, and home no longer lists the day', () => {
+  // A second line made the band a third of the screen, and the rows of today
+  // above the home cards read as clutter (the owner, 2026-09-28).
+  assert.match(page, /\.title p\{[^}]*white-space:nowrap;overflow:hidden;text-overflow:ellipsis\}/);
+  assert.doesNotMatch(page, /id="homeToday"/);
+  assert.doesNotMatch(page, /function homeTaskHTML/);
+});
+
+test('the suggestion card answers in its own turquoise, and reads at night', () => {
+  // The owner, 2026-09-28: "להוריד" is a soft turquoise tint, not Mustard, and
+  // the card's night face is a step lighter than the cards around it.
+  assert.match(page, /\.sugg \.sbtn\.yes\{background:color-mix\(in oklab,var\(--sugg-a\) 20%,transparent\);color:var\(--sugg-yes-ink\)\}/);
+  const face = '#33312B';
+  assert.equal((page.match(/--sugg-face:#33312B;--sugg-yes-ink:#8FE3EE;/g) || []).length, 2, 'both night blocks');
+  assert.ok(ratio(face, token('surface', 1)) >= 1.1, 'lighter than a plain card');
+  ['text', 'text-3'].forEach(function (n) {
+    assert.ok(ratio(token(n, 1), face) >= 4.5, `--${n} on the night card: ${ratio(token(n, 1), face).toFixed(2)}`);
+  });
+  assert.ok(ratio('#8FE3EE', face) >= 4.5, 'the button word on the night card');
+  assert.ok(ratio('#0A6573', '#EDF1F3') >= 4.5, 'the button word on the day card');
 });
 
 test('a finger gets more than the icon does', () => {
@@ -284,7 +359,11 @@ test('the home tab shows only what is live, and its two counts are doors', () =>
   assert.match(page, /if\(hideSoon\(ok2\) \|\| !svcShown\(p, sv\)\) return "";/);
   assert.match(page, /return s\.on && svcShown\(p, s\);/,
     'the count under the row counts only what the row shows');
-  assert.doesNotMatch(page, /<use href="#i-logo"\/>/, 'the owner took the mark off every screen, 2026-09-26');
+  // Off on 2026-09-26 with the old logo; back on 2026-09-28 as the split mark,
+  // in the header only — one place, so a second copy is a decision, not a drift.
+  assert.equal((page.match(/<use href="#i-logo"\/>/g) || []).length, 1, 'the mark is drawn once');
+  assert.match(page, /<svg class="bmark" aria-hidden="true"><use href="#i-logo"\/><\/svg>/,
+    'and that once is the header, beside the name');
   assert.match(page, /return pl\("fr\.p", n\) \+ \(bd \? " · 🎂 " \+ bd : ""\);/,
     'beside the permissions: a birthday for whoever set one, and no friendship date');
   assert.match(page, /<button class="homecard" data-go="tasks">/);
@@ -340,4 +419,49 @@ test('the settings tab links Privacy, Terms and Accessibility, in both languages
   // One CSS namespace: every rule naming the prefix is one of this footer's own.
   const rules = page.match(/^\.legalfoot[^{]*\{/gm) || [];
   assert.deepEqual(rules, ['.legalfoot{', '.legalfoot-a{', '.legalfoot-a:hover{']);
+});
+
+// What is already on the calendar has one place of its own in BOTH views of
+// the task list, and it starts folded (owner, 2026-09-28). A branch that
+// forgets to skip these rows draws them twice — once in the list and once in
+// the fold — and a fold that starts open is the list they asked to be rid of.
+test('tasks on the calendar sit in their own fold, closed by default, in both views', () => {
+  assert.match(page, /var calFoldOpen = false;/, 'the fold starts closed');
+  const render = page.slice(page.indexOf('function renderTasks(){'));
+  const body = render.slice(0, render.indexOf('$("#taskStack").innerHTML = html;'));
+  const branches = body.match(/open\.filter\(function\(x\)\{[^}]*\}\)/g) || [];
+  assert.equal(branches.length, 2, 'the time view and the category view each filter the list once');
+  for (const b of branches) assert.match(b, /!onCalendar\(x\)/, 'each view skips what the fold draws');
+  assert.match(body, /html \+= calendarSection\(\);/, 'the fold is drawn under whichever view is on');
+  // An event, or a to-do the sync has actually written out — never the switch
+  // alone, which is on for tasks no calendar has seen yet.
+  assert.match(page, /function onCalendar\(x\)\{ return !x\.src && !isPinned\(x\) && \(x\.kind === "event" \|\| !!x\.inCal\); \}/);
+  assert.match(page, /inCal:!!x\.inCalendar,/, 'the page reads the server\'s own answer');
+  assert.match(page, /'<div class="fold' \+ \(calFoldOpen \? " open" : ""\) \+ '"><div' \+ \(calFoldOpen \? "" : " inert"\)/,
+    'folded rows are inert, not just clipped');
+});
+
+// One tap between day and night, on the band of the home tab only (the owner,
+// 2026-09-29). It writes the same stored choice the profile's three buttons
+// do, so the two can never disagree about what the page is showing.
+test('the home band carries one day/night button, on the home tab only, sharing the profile choice', () => {
+  const bar = page.slice(page.indexOf('<header class="topbar">'), page.indexOf('</header>', page.indexOf('<header class="topbar">')));
+  assert.ok(/class="hdrend"[\s\S]*id="dayNight"/.test(bar), 'the button is not at the end of the band');
+  assert.ok(/\.daynight\{[^}]*display:none/.test(page), 'the button shows on every tab');
+  assert.ok(page.includes('html[data-v="tools"] .daynight'), 'the button is not shown on the home tab');
+  assert.ok(/\$\("#dayNight"\)\.addEventListener\("click", function\(\)\{ setTheme\(/.test(page),
+    'the button does not write through the same setTheme as the profile');
+  assert.ok(/\$\("#themeIcons"\)[\s\S]{0,200}setTheme\(b\.dataset\.themeOpt\)/.test(page));
+  for (const k of ['home.toNight', 'home.toDay']) {
+    assert.equal(page.split(`"${k}":`).length - 1, 2, `${k} is not in both languages`);
+  }
+});
+
+// --- no font from Google, even in the file opened from disk -------------------
+// Since 2026-09-29: the file linked Google Fonts, which gave Google every
+// visitor's IP. The server now inlines the fonts in front of it
+// (adapters/http/fonts.js, asserted over HTTP in public-pages.test.js); this
+// guards the file itself, which is also what a design preview loads.
+test('the design file names no Google font host', () => {
+  assert.doesNotMatch(page, /fonts\.googleapis\.com|fonts\.gstatic\.com/);
 });

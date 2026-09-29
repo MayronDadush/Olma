@@ -76,8 +76,23 @@ test('the verdict: a tool since the open backs it, none leaves it unbacked, and 
   // A turn Olma started reports an earlier turn's write; it is not judged.
   assert.equal(phantom.judge({ ourTurn: true, opens: [t], now: t + 1 }).verdict, 'ours');
   // Two messages close together: the reply to the first may go out after the
-  // second opened, so a tool since the EARLIEST open backs it.
-  assert.equal(phantom.judge({ opens: [t, t + 20_000], lastToolAt: t + 10_000, now: t + 30_000 }).verdict, 'backed');
+  // second opened, so a tool since the EARLIEST open is not `unbacked` — but it
+  // is not proof either, and says so under its own name.
+  assert.equal(phantom.judge({ opens: [t, t + 20_000], lastToolAt: t + 10_000, now: t + 30_000 }).verdict, 'backed_earlier');
+  assert.equal(phantom.judge({ opens: [t, t + 20_000], lastToolAt: t + 25_000, now: t + 30_000 }).verdict, 'backed');
+});
+
+test('Dov: this turn\'s write FAILED and an earlier turn\'s success is not its backing', () => {
+  // 14:18:56 open (pill), 14:19:04 its set_task_reminder ok, 14:19:06 open
+  // ("כל צהריים בשבוע הקרוב"), 14:19:11 set_task_reminder refused (past),
+  // 14:19:16 "רשמתי — כל צהריים ב-12:00". Filed as `backed` on the day.
+  const t = Date.parse('2026-09-27T11:18:56Z');
+  const j = phantom.judge({ opens: [t, t + 10_000], lastToolAt: t + 8_000, lastFailAt: t + 15_000, now: t + 20_000 });
+  assert.equal(j.verdict, 'failed');
+  // a retry that then succeeded is a real save
+  assert.equal(phantom.judge({ opens: [t], lastToolAt: t + 6_000, lastFailAt: t + 3_000, now: t + 9_000 }).verdict, 'backed');
+  // a failure on an EARLIER turn says nothing about this one
+  assert.equal(phantom.judge({ opens: [t, t + 10_000], lastToolAt: t + 12_000, lastFailAt: t + 5_000, now: t + 20_000 }).verdict, 'backed');
 });
 
 // ---- brokerd --------------------------------------------------------------
@@ -120,12 +135,12 @@ test('a tool that ran on the turn backs the claim; turn_start alone does not', a
   await tool(u, 'list_my_tasks');
   now += 1000;
   assert.equal((await claim(u)).verdict, 'backed');
-  // A second message inside the window: a tool after the FIRST open still
-  // backs a claim, lenient on purpose (see the verdict test)…
+  // A second message inside the window: a tool after the FIRST open is not
+  // `unbacked`, but it is not this turn's either (see the verdict test)…
   now += 60_000;
   await open(u, '3EBPHANTOM03');
   now += 60_000;
-  assert.equal((await claim(u)).verdict, 'backed');
+  assert.equal((await claim(u)).verdict, 'backed_earlier');
   // …and once the window has moved past that tool, it no longer does.
   now += phantom.OPEN_WINDOW_MS;
   await open(u, '3EBPHANTOM04');
@@ -189,4 +204,19 @@ test('the gate tells brokerd the word, sends the reply untouched, and never asks
   await settle();
   // a reply the gate stops reached nobody: no `turn_progress` either
   assert.deepEqual(sent.map((m) => m.method), ['reply_gate']);
+});
+
+test('brokerd: a write that FAILED on this turn files `failed`, whatever an earlier turn saved', async () => {
+  const u = await agentUser();
+  await open(u, '3EBPHANTOM05');
+  now += 1000;
+  await tool(u, 'list_my_tasks');                 // the previous message's success
+  now += 1000;
+  await open(u, '3EBPHANTOM06');
+  now += 1000;
+  const refused = await tool(u, 'set_task_reminder'); // no task, no moment: refused
+  assert.match(refused.text, /^ERROR/);
+  now += 1000;
+  assert.equal((await claim(u)).verdict, 'failed');
+  assert.equal((await filed(u)).detail.verdict, 'failed');
 });

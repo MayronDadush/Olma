@@ -5,11 +5,26 @@ output on any box, and the droplet has no Hebrew font installed (only DejaVu).
 
 ## fonts/
 
-[Heebo](https://fonts.google.com/specimen/Heebo), four static weights
-(Regular 400 / Medium 500 / Bold 700 / Black 900). SIL Open Font License 1.1.
+[IBM Plex Sans Hebrew](https://fonts.google.com/specimen/IBM+Plex+Sans+Hebrew),
+the brand face since 2026-09-28 (it replaced Heebo), four static weights
+(Regular 400 / Medium 500 / SemiBold 600 / Bold 700). SIL Open Font License 1.1,
+text in `IBMPlexSansHebrew-OFL.txt`. It carries Latin as well, so one family
+draws both languages. Nothing heavier than 700 exists, so the card never asks
+for it.
 
 resvg is given exactly these files with `loadSystemFonts: false`, so a font
 installed or removed on the server can never change what a card looks like.
+
+## fonts/web/
+
+[IBM Plex](https://github.com/IBM/plex): Sans Hebrew 400/500/600/700 (Hebrew
+subset, static), Sans (Latin, variable 400–700) and Mono 500 (Latin), woff2,
+exactly as fonts.gstatic.com serves them (2026-09-29). SIL Open Font License
+1.1 — `OFL-IBM-Plex.txt`.
+
+These are the allma.world pages' fonts, inlined into every page as data: URIs
+by `src/adapters/http/fonts.js` so a visitor's browser never asks Google for
+them (GDPR: that request hands Google the visitor's IP). Not used by resvg.
 
 ## icons/
 

@@ -256,7 +256,9 @@ test('the opening copy is exactly what the owner wrote', () => {
   // Revision 3 (owner, 2026-09-25): shortened to the greeting and one line of
   // what she is for. The page link is deliberately NOT in it — nobody has a
   // page when the greeter speaks; the welcome follow-up carries it.
-  assert.equal(onboarding.OPENING.he.split('\n').length, 3, 'three lines');
+  // Revision 4 (compliance review, 2026-09-28): "AI" on the greeting line and
+  // the privacy policy as a last line of its own. Still no page link.
+  assert.equal(onboarding.OPENING.he.split('\n').length, 5, 'five lines');
   assert.equal(onboarding.OPENING.he.split('\n')[1], '',
     'the greeting stands on its own line — revision 2, read on a real phone');
   assert.equal(onboarding.OPENING.en.split('\n')[1], '');
@@ -264,11 +266,14 @@ test('the opening copy is exactly what the owner wrote', () => {
   for (const copy of [onboarding.OPENING.he, onboarding.OPENING.en]) {
     assert.doesNotMatch(copy, /ברוכים הבאים|Welcome to your world/,
       'the welcome-to-your-world line was cut in revision 2');
-    assert.doesNotMatch(copy, /https?:\/\//, 'no link: there is no page to link to yet');
+    const links = copy.match(/https?:\/\/\S+/g) || [];
+    assert.deepEqual(links, ['https://allma.world/privacy'],
+      'the policy and nothing else: there is no page to link to yet');
+    assert.match(copy.split('\n')[0], /\bAI\b/, 'the greeting says she is an AI');
   }
-  assert.ok(onboarding.OPENING.he.endsWith('לשלוח הכל בבלגן ☺️'));
+  assert.ok(onboarding.OPENING.he.split('\n')[2].endsWith('לשלוח הכל בבלגן ☺️'));
   assert.ok(onboarding.OPENING.en.startsWith("Hey, I'm Allma \u{1F44B}"));
-  assert.ok(onboarding.OPENING.en.endsWith('dump it all on me ☺️'));
+  assert.ok(onboarding.OPENING.en.split('\n')[2].endsWith('dump it all on me ☺️'));
   // It must not ask anything: the curiosity doctrine owns the name question,
   // and one reply carries one question at most.
   assert.doesNotMatch(onboarding.OPENING.he, /\?/, 'the opening asks nothing');

@@ -390,10 +390,13 @@ function decide(facts) {
   // And the intro video (domain/intro-video.js), by the owner's own words on
   // 2026-09-27: "לכולם חוץ ממי שמושהה" — everybody but the paused. A ladder
   // pause is a pause and is refused above; one or two misses is not, and the
-  // owner chose to reach them. Everything below still applies to it.
+  // owner chose to reach them. Everything below still applies to it. A changed
+  // privacy policy (domain/policy-notice.js) is the same audience, for the
+  // same reason and one more: a policy binds only somebody who was shown it.
   let spendsQuietRoomInvite = false;
   if ((Number(facts.checkinMisses) || 0) >= 1
     && row.kind !== 'checkin' && row.kind !== 'introduction' && row.kind !== 'intro_video'
+    && row.kind !== 'policy_update'
     && !askedForInWords(row) && !inRoomGrace && !onPageGrace && !facts.answeredCoordination) {
     if (!facts.pausedRoomInvite && !facts.quietRoomInvite) {
       return { action: 'drop', holdReason: 'quiet' };
