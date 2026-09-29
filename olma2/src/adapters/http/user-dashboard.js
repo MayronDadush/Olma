@@ -110,8 +110,20 @@ function ownPageHtml(locale) {
 // public-pages, so the two front doors can never say different things. In
 // English whatever the page's language: that is who reads it for Google, and
 // the Hebrew follows it in the same section.
+//
+// And the one page here that can be ZOOMED (the owner, 2026-09-29). The file
+// forbids pinch-zoom for the signed-in app, and this same file is allma.world's
+// front door, where a stranger reading "what Allma is" has every reason to
+// enlarge it. WCAG 1.4.4 fails a page that disables zoom — the one finding an
+// axe run on the live pages turned up — so the locked copy gets a viewport that
+// allows it, and the signed-in one is unchanged (the accessibility statement
+// says so: public-pages.PINCH_ZOOM_DISABLED).
+const APP_VIEWPORT = /<meta name="viewport" content="[^"]*user-scalable=no[^"]*">/;
+const ZOOMABLE_VIEWPORT = '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">';
 function newPageHtml() {
-  return servedPageHtml(' data-new="1"') + '\n<section class="about" id="about" lang="en" dir="ltr">'
+  // A miss leaves the page as it was rather than failing the front door;
+  // tests/public-pages.test.js is what goes red if the file's meta drifts.
+  return servedPageHtml(' data-new="1"').replace(APP_VIEWPORT, ZOOMABLE_VIEWPORT) + '\n<section class="about" id="about" lang="en" dir="ltr">'
     + `<h1>${esc(publicPages.BRAND)}</h1><p class="ab-lede">${esc(publicPages.HOME_LEDE)}</p>`
     + publicPages.homeSections((n) => 'ab-' + n) + '</section>\n';
 }
