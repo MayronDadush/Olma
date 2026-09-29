@@ -237,6 +237,10 @@ function undoProvisionSideEffects({
 async function provisionUser(client, {
   phone, firstName, invitedByConnectionId, configPath, timezone, locale,
   firstMessage, invitedInfo, registerUndo,
+  // The language of what they wrote to the greeter, as a code, for when
+  // `firstMessage` is empty — the carryover guard drops the text a "היי"
+  // shares with every other stranger (jobs/intake.js, readIntakeLanguage).
+  languageHint = null,
   // True when this person reached the intake greeter and it answered them —
   // which is every person the intake sweep provisions, because a session on
   // the intake agent is how the sweep found them at all. The greeter opens
@@ -280,9 +284,12 @@ async function provisionUser(client, {
   // dialling code only when the text carries no signal at all (see
   // domain/language.js). Resolved here because this is the first and only
   // moment we hold both their words and their number together.
+  const fromText = locale ? null : resolveLocale({ text: firstMessage, phone });
   const resolvedLocale = locale
     ? { locale, source: 'explicit' }
-    : resolveLocale({ text: firstMessage, phone });
+    : (fromText.source !== 'message' && languageHint)
+      ? { locale: languageHint, source: 'greeter_text' }
+      : fromText;
 
   if (!user) {
     // A NULL timezone is not neutral: the delivery gate and the digest sweep
