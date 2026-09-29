@@ -5,6 +5,7 @@
 // Usage (on the box, from /opt/olma2):
 //   node scripts/policy-notice.js                    # preview: who would get it, counts only
 //   node scripts/policy-notice.js --enqueue --yes    # queue it; the gate sends it in their hours
+//   node scripts/policy-notice.js --enqueue --yes --only <userId>   # one person first, as a sample
 //   node scripts/policy-notice.js --stats            # how many it reached
 //   add --version <id> for another published version (2026-09-28 is the default and the only one)
 //
@@ -32,7 +33,9 @@ const version = arg('version') || '2026-09-28';
     console.log(`policy notice ${version}: ${a.eligible} would get it (he ${a.he}, en ${a.en}); ${a.paused} paused are left out.`);
     if (!process.argv.includes('--enqueue')) { console.log('preview only — add --enqueue --yes to queue it'); return; }
     if (!process.argv.includes('--yes')) { console.error('refusing without --yes'); process.exit(2); }
-    const r = await withTx(pool, (c) => notice.enqueueAll(c, version));
+    const only = arg('only');
+    if (only != null && !/^\d+$/.test(only)) { console.error('--only takes a user id'); process.exit(2); }
+    const r = await withTx(pool, (c) => notice.enqueueAll(c, version, { only }));
     console.log(`queued ${r.queued} of ${r.candidates} (the rest were already queued)`);
   } finally {
     await pool.end();
