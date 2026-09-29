@@ -2,7 +2,7 @@
 // The queue between deciding and saying (migration 055).
 //
 // The founding case is real and dated. On 2026-09-07 at 21:00:10 UTC the group
-// sweep spawned the CLI to tell a room "יש! כולם כאן"; systemd stopped brokerd
+// sweep spawned the CLI to tell a room "כולם כאן"; systemd stopped brokerd
 // in the same second for a deploy; the child was detached, so the message was
 // delivered; and the stamp that records the sentence as said was never
 // written, because the process holding the transaction was gone. Twenty-eight
@@ -173,7 +173,7 @@ test('the room queue has no way to address a person', async () => {
 });
 
 // Fix 8 (owner, 2026-09-26): a room already open when its greeting goes out
-// never hears "יש! כולם כאן" — that line answers a wait it was never told
+// never hears "כולם כאן" — that line answers a wait it was never told
 // about — so the greeting itself says they can start. Read at DELIVERY.
 test('the greeting says they can start only when the room is open as it goes out', async () => {
   await withTx(db.pool, (c) => outbox.enqueue(c, { groupId, kind: 'intro', idempotencyKey: `g${groupId}:intro` }));

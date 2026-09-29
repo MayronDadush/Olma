@@ -228,7 +228,7 @@ const SELF_NUMBER = process.env.OLMA_WA_NUMBER || '972559347282';
 
 // The first thing said in a group, on the first message there from anyone.
 // A room already open when it goes out gets one more line saying they can
-// start: "יש! כולם כאן" answers a wait the room was told about, so a room open
+// start: "כולם כאן" answers a wait the room was told about, so a room open
 // from its first pass never heard that it could begin (owner, 2026-09-26).
 function renderGroupIntro(overrides, { ready = false } = {}) {
   const intro = templates.render('group_intro', { me: mentionTokens([SELF_NUMBER]) }, overrides);

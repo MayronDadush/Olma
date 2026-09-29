@@ -38,7 +38,7 @@ test('with nothing stored, every sender says exactly the reviewed default', () =
     /\*דני\* \(\+972501\) ביקש\/ה להתחבר אליך דרכי\./);
   assert.match(messages.introMessage({ inviterName: 'דני', inviterPhone: '+972501', reason: 'פאדל', phone: '+972502' }),
     /דרכי — פאדל\./);
-  assert.match(messages.introMessage({ inviterName: 'Dan', inviterPhone: '+1555', phone: '+1555' }), /^Hi! This is Olma/);
+  assert.match(messages.introMessage({ inviterName: 'Dan', inviterPhone: '+1555', phone: '+1555' }), /^Hi, this is Olma/);
   assert.equal(messages.reopenMessage('+972501'), templates.spec('reopen_he').text);
   assert.equal(messages.reopenMessage('+1555'), templates.spec('reopen_en').text);
 });
