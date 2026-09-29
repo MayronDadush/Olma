@@ -55,25 +55,20 @@
   .end .big { width: 34vw; height: 34vw }
   .end .word { font-weight: 700; font-size: 14vw; line-height: 1; letter-spacing: -.02em }
 
-  /* Looks (?style= or `style` in the content file). The same copy in each, so the
-     owner can choose between them; the chosen ones stay and the rest can go. */
+  /* Looks (?style= or `style` in the content file). Six, the ones the owner kept on 29.9
+     (a mark bleeding off the corner and a framed poster were dropped). */
   .mustard { background: var(--mus); color: var(--cyp) }
   .mustard .by, .mustard .sub, .mustard .foot { color: #2A3B2C }
   .mustard .h em { font-style: normal; background: var(--cyp); color: var(--mus); padding: 0 .14em; margin: 0 -.04em; border-radius: .1em }
   .ink { background: #1B1A18; color: var(--sand) }
   .ink .by, .ink .sub { color: #B9B5AC } .ink .foot { color: #A39F96 }
   .ink .h em { font-style: normal; color: var(--mus) }
-  .mustard .h, .frame .h { line-height: 1.18 }
-  /* bleed: the mark, huge and tonal, running off the corner behind the words */
-  .bleedmark { position: absolute !important; width: 96vw; height: 96vw; left: -34vw; bottom: -30vw; z-index: 0 !important }
+  .mustard .h { line-height: 1.18 }
   /* band: the morning card's shape — a cypress band with a mustard edge, sand below */
   .bandtop { margin: -7.4vw -7.4vw 0; padding: 7.4vw 7.4vw 7vw; background: var(--cyp); color: var(--sand);
     border-bottom: 1.4vw solid var(--mus); display: grid; gap: 9vw; align-content: space-between }
   .bandtop .by { color: #D9DDD6 } .bandtop .h em { font-style: normal; color: var(--mus); background: none }
   .band .main { align-content: start; padding-top: 6vw }
-  /* frame: a poster, the cypress border inside the edge */
-  .frame { box-shadow: inset 0 0 0 3.2vw var(--cyp); padding: 11vw 11vw 9.6vw }
-  .frame .h em { background: var(--cyp); color: var(--mus); padding: 0 .14em; margin: 0 -.04em; border-radius: .1em }
   /* bubble: the headline IS her message */
   .bubble .main { justify-items: start }
   .bubble .h { background: #FFFFFF; color: #111B21; padding: 4.6vw 5.6vw 3vw; border-radius: 5vw 1vw 5vw 5vw;
@@ -103,7 +98,7 @@
     he: { by: 'עולמה · בוואטסאפ שלך', name: 'עולמה', status: 'מחוברת', word: 'סגור.' },
     en: { by: 'Allma · in your WhatsApp', name: 'Allma', status: 'online', word: 'All set.' },
   }[LANG];
-  const LOOKS = { classic: 'sand', cypress: 'cypress', band: 'sand', mustard: 'mustard', ink: 'ink', bleed: 'cypress', frame: 'sand', bubble: 'cypress' };
+  const LOOKS = { classic: 'sand', cypress: 'cypress', band: 'sand', mustard: 'mustard', ink: 'ink', bubble: 'cypress' };
   const STYLE = LOOKS[Q.get('style')] ? Q.get('style') : LOOKS[F.style || C.style] ? (F.style || C.style) : null;
   const theme = STYLE && F.layout !== 'closing' ? LOOKS[STYLE]
     : F.theme === 'cypress' || (F.layout === 'closing' && F.theme !== 'sand') ? 'cypress' : 'sand';
@@ -141,8 +136,7 @@
     if (STYLE === 'band') {
       f.innerHTML = `<div class="bandtop">${head}${h1}</div><div class="main">${sub}${chat}</div>${foot}${grain}`;
     } else {
-      const bleed = STYLE === 'bleed' ? `<div class="bleedmark">${mark('bl', 1e9, { d: '#003A37', l: '#0B5652', a: '#F9C23C', ring: null })}</div>` : '';
-      f.innerHTML = `${bleed}${head}<div class="main">${h1}${sub}${chat}</div>${foot}${grain}`;
+      f.innerHTML = `${head}<div class="main">${h1}${sub}${chat}</div>${foot}${grain}`;
     }
   }
 
