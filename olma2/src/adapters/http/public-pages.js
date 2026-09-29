@@ -281,6 +281,10 @@ function homeSections(k = (n) => n) {
 // address. s.11 asks for the controller's identity; that choice is the
 // owner's, flagged for the lawyer.
 const UPDATED = '2026-09-29';
+// One minimum age for both documents (the owner, 2026-09-29), and the one
+// domain/under-age.js flags below — so the policy, the terms and the alarm
+// cannot come to disagree.
+const MIN_AGE = require('../../domain/under-age').MIN_AGE;
 const PRIVACY_UPDATED = '2026-09-29';
 // The session cookie's life, from the code that sets it, so the sentence
 // about it cannot drift from what the browser is actually told.
@@ -362,7 +366,7 @@ function privacyPage(lang = 'en') {
     <p>Your personal page uses one cookie, only to keep you signed in; it expires after ${SESSION_DAYS} days without a visit. Your browser also remembers a few display choices for the page (day or night, whether you have seen a tip) and keeps an offline screen for when there is no connection. None of it is used for tracking or advertising, and nothing on these pages loads anything from another company.</p>
 
     <h2>Children</h2>
-    <p>The service is not intended for anyone under 16.</p>
+    <p>The service is not intended for anyone under ${MIN_AGE}.</p>
 
     <h2>Changes</h2>
     <p>If this policy changes materially, the date at the top is updated and the assistant tells you in the conversation.</p>
@@ -437,7 +441,7 @@ function privacyPage(lang = 'en') {
       <p>הדף האישי שלכם משתמש בעוגייה אחת, רק כדי שתישארו מחוברים. היא פגה אחרי ${SESSION_DAYS} יום בלי ביקור. הדפדפן גם זוכר כמה בחירות תצוגה של הדף (יום או לילה, האם כבר ראיתם טיפ) ושומר מסך למצב בלי חיבור. שום דבר מזה לא משמש למעקב או לפרסום, ואף דף כאן לא טוען שום דבר מחברה אחרת.</p>
 
       <h3>ילדים</h3>
-      <p>השירות לא מיועד למי שמתחת לגיל 16.</p>
+      <p>השירות לא מיועד למי שמתחת לגיל ${MIN_AGE}.</p>
 
       <h3>שינויים</h3>
       <p>אם המדיניות תשתנה באופן מהותי, התאריך למעלה יתעדכן ו${ASSISTANT} תודיע לכם בשיחה.</p>
@@ -471,6 +475,9 @@ function termsPage(lang = 'en') {
     <h2>Acceptable use</h2>
     <p>Use the service only for your own personal, lawful purposes. Do not use it to harass, impersonate, or send unsolicited messages to others; do not attempt to access another person's account or data; do not attempt to disrupt, reverse-engineer, or overload the service.</p>
 
+    <h2>Who may use it</h2>
+    <p>You must be at least ${MIN_AGE} years old to use the service. If you are younger, please do not use it; if we learn that someone under ${MIN_AGE} is using it, we may ask about it or close the account.</p>
+
     <h2>Your account</h2>
     <p>Your account is tied to the WhatsApp number you write from. You are responsible for the security of that number and of any Google account you connect. Connecting Google is entirely optional and can be undone at any time — ask the assistant to disconnect, or revoke access directly from your <a href="https://myaccount.google.com/permissions">Google account permissions</a>.</p>
 
@@ -501,6 +508,9 @@ function termsPage(lang = 'en') {
 
       <h3>שימוש מותר</h3>
       <p>השתמשו בשירות אך ורק למטרות אישיות וחוקיות. אין להשתמש בו כדי להטריד, להתחזות, או לשלוח הודעות לא רצויות לאחרים; אין לנסות לגשת לחשבון או למידע של אדם אחר; אין לנסות לשבש, להנדס לאחור, או להעמיס על השירות.</p>
+
+      <h3>מי יכול להשתמש</h3>
+      <p>השימוש בשירות מותר מגיל ${MIN_AGE} ומעלה. אם אתם צעירים יותר, אנא אל תשתמשו בו. אם נגלה שמישהו מתחת לגיל ${MIN_AGE} משתמש בשירות, ייתכן שנברר את זה או שנסגור את החשבון.</p>
 
       <h3>החשבון שלכם</h3>
       <p>החשבון שלכם מקושר למספר הוואטסאפ שדרכו אתם כותבים. אתם אחראים לאבטחת המספר הזה ושל כל חשבון Google שתחברו. חיבור גוגל הוא לגמרי אופציונלי וניתן לביטול בכל רגע — בקשו מהעוזרת לנתק, או בטלו את הגישה ישירות דרך <a href="https://myaccount.google.com/permissions">ההרשאות בחשבון הגוגל שלכם</a>.</p>
