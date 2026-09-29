@@ -511,3 +511,19 @@ test('a browser that has been signed in before is offered a sign-in link first',
   }
 });
 
+
+// The owner's pick of 2026-09-29: the three things she does, as mustard
+// labels over the blurred example, one sentence of what she is, and a mustard
+// strip on the card. None of it inside the installed app, where nothing is
+// behind the card to label.
+test('the locked card says what she is, and labels the example it sits on', () => {
+  assert.match(page, /<ul class="wcall" id="wCall"><\/ul>/);
+  assert.match(page, /<p class="wwhat" id="wWhat"><\/p>/);
+  for (const k of ['w.c1', 'w.c2', 'w.c3', 'w.what']) {
+    assert.equal((page.match(new RegExp(`"${k.replace('.', '\\.')}":"`, 'g')) || []).length, 2, `${k} is not in both languages`);
+  }
+  assert.match(page, /"w\.what":"עוזרת אישית שחיה בוואטסאפ\. \[זוכרת, מזכירה ומתאמת\] בשבילך\."/);
+  assert.match(page, /\.wcall\{display:none\}\nhtml\.is-new:not\(\.is-app\) \.wcall\{/);
+  assert.match(page, /\.wwhat\{display:none\}\nhtml\.is-new:not\(\.is-app\) \.wwhat\{/);
+  assert.match(page, /html\.is-new:not\(\.is-app\) \.wcard\{border-top:6px solid var\(--action\)\}/);
+});

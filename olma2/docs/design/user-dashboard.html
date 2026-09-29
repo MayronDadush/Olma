@@ -1092,6 +1092,29 @@ html.is-new:not(.is-app) .wcard{
 }
 html.is-new:not(.is-app) .wword{font-size:36px}
 html.is-new:not(.is-app) .whint{margin-top:22px}
+/* A mustard strip along the card's top edge, and the three things the
+   example shows as mustard labels over it (the owner, 2026-09-29). */
+html.is-new:not(.is-app) .wcard{border-top:6px solid var(--action)}
+.wwhat{display:none}
+html.is-new:not(.is-app) .wwhat{display:block;margin-top:10px;font-size:15px;line-height:1.5;color:var(--text-2);max-width:26em}
+.wwhat b{color:var(--text);font-weight:600}
+html.is-new:not(.is-app) .warrow{color:var(--mk-gold-s)}
+.wcall{display:none}
+/* In the flow above the card, not laid over the page: when the code form
+   opens the card grows, and it has to push these up rather than slide under
+   them. */
+html.is-new:not(.is-app) .welcome{display:flex;flex-direction:column;align-items:center;gap:18px}
+html.is-new:not(.is-app) .wcard{margin-top:auto}
+html.is-new:not(.is-app) .wcall{
+  display:flex;flex-direction:column;align-items:center;gap:10px;margin:54px 0 0;padding:0;list-style:none;
+}
+.wcall li{
+  display:inline-flex;align-items:center;gap:8px;padding-block:9px;padding-inline:14px 16px;border-radius:999px;
+  background:var(--action);color:var(--on-action);font-weight:700;font-size:15px;
+  box-shadow:0 8px 22px -10px rgba(0,0,0,.45);
+}
+.wcall i{display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:#004643;color:var(--action);flex:none}
+.wcall svg{width:12px;height:12px}
 .wdemo{display:none}
 html.is-new:not(.is-app) .wdemo{
   display:block;position:absolute;top:calc(env(safe-area-inset-top,0px) + 14px);left:50%;transform:translateX(-50%);
@@ -3775,9 +3798,13 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
        file and blurred (the owner, 2026-09-29), so a stranger sees what they
        are signing up for before they sign up. The label says whose it is. -->
   <p class="wdemo" data-i18n="w.demo"></p>
+  <!-- What the blurred example is showing, said over it (the owner picked
+       this, 2026-09-29): the three things the home page says she does. -->
+  <ul class="wcall" id="wCall"></ul>
   <div class="wcard">
     <h1 class="wword" id="wWord"></h1>
     <p class="wlede" id="wTag"></p>
+    <p class="wwhat" id="wWhat"></p>
     <!-- Somebody this browser has already seen signed in: the fastest way
          back is a link from her, one message away, so that leads. -->
     <div class="wback" id="wBack" hidden>
@@ -5000,6 +5027,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       /* signing into the installed app with a code (see .wcode) */
       "app.name":"עולמה",
       "w.demo":"דוגמה","w.about":"מה זו עולמה?",
+      "w.what":"עוזרת אישית שחיה בוואטסאפ. [זוכרת, מזכירה ומתאמת] בשבילך.",
+      "w.c1":"משימות ותזכורות","w.c2":"תיאום פגישות","w.c3":"סיכום יומי",
       "w.backH":"טוב לראות אותך שוב","w.backGo":"קבלת קישור כניסה בוואטסאפ","w.backWa":"שלח לי קישור",
       "w.backP":"עולמה שולחת קישור, ולוחצים עליו כדי להיכנס.","w.backNew":"פעם ראשונה כאן?",
       "code.have":"יש לי קוד מעולמה","code.h":"כניסה לאפליקציה",
@@ -5367,6 +5396,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "w.foot":"Nothing to install. The chat opens empty — your first sentence is what tells her which language to speak.",
       "app.name":"Allma",
       "w.demo":"Example","w.about":"What is Allma?",
+      "w.what":"A personal assistant inside WhatsApp. It [remembers, reminds and coordinates] for you.",
+      "w.c1":"Tasks & reminders","w.c2":"Meeting coordination","w.c3":"Daily summary",
       "w.backH":"Good to see you again","w.backGo":"Get a sign-in link on WhatsApp","w.backWa":"send me a link",
       "w.backP":"Allma sends you a link, and tapping it signs you in.","w.backNew":"First time here?",
       "code.have":"I have a code from Allma","code.h":"Sign in to the app",
@@ -12826,6 +12857,13 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
        away and leads. The two doors stay one tap behind it, in case the
        phone is shared. Inside the installed app the code already leads. */
     var back = BEEN && !STANDALONE && !welcomeFresh;
+    /* the one sentence of what she is, with its three verbs set in bold —
+       the brackets in the string mark them, so a translation moves them */
+    $("#wWhat").innerHTML = esc(t("w.what")).replace("[", "<b>").replace("]", "</b>");
+    $("#wWhat").hidden = back;
+    $("#wCall").innerHTML = ["w.c1", "w.c2", "w.c3"].map(function(k){
+      return '<li><i aria-hidden="true"><svg><use href="#i-check"/></svg></i>' + esc(t(k)) + "</li>";
+    }).join("");
     $("#wBack").hidden = !back;
     $("#wBackNew").hidden = !back;
     $("#wNew").hidden = back;
