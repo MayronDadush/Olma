@@ -382,13 +382,17 @@ test('the policy gives the service address, says giving data is voluntary, and l
 
 test('the policy names every processor the box actually uses, and where the backup really is', () => {
   const html = both(publicPages.privacyPage);
-  // StreamLake stays in the live route (owner, 2026-09-28), so it is named,
-  // with its unverified location said rather than guessed.
-  for (const who of ['OpenRouter', 'Novita', 'StreamLake', 'DeepInfra', 'Together', 'Anthropic',
+  for (const who of ['OpenRouter', 'Novita', 'DeepInfra', 'Together', 'Anthropic',
     'ElevenLabs', 'Deepgram', 'Twilio', 'DigitalOcean', 'Frankfurt']) {
     assert.ok(html.includes(who), `the policy does not name ${who}`);
   }
-  assert.ok(/location has not been verified/.test(html) && html.includes('לא אומת'));
+  // StreamLake left the route on 2026-09-29 (owner) and every request now
+  // ignores it (domain/model-hosts.js), so the policy says "never".
+  assert.deepEqual(require('../src/domain/model-hosts').EXCLUDED_HOSTS, ['streamlake'],
+    'the excluded list changed: say so on the policy, then update this line');
+  assert.ok(publicPages.privacyPage('en').includes('never StreamLake'));
+  assert.ok(publicPages.privacyPage('he').includes('אף פעם לא StreamLake'));
+  assert.ok(!/location has not been verified/.test(html) && !html.includes('לא אומת'));
   assert.ok(!/retained for 14 days and then deleted/.test(html),
     'the old sentence was false about the off-box copy (30 days, Frankfurt)');
 });

@@ -98,6 +98,13 @@ test('provider openrouter speaks chat/completions and maps back to the same cont
       system: 'S', user: 'U', apiKey: 'k',
     });
     assert.equal(res.ok, true);
+    // Background calls read people's notes: no retention, and never an
+    // excluded host (domain/model-hosts.js, 2026-09-29).
+    const sentProvider = JSON.parse(captured.init.body).provider;
+    assert.equal(sentProvider.data_collection, 'deny');
+    for (const h of require('../src/domain/model-hosts').EXCLUDED_HOSTS) {
+      assert.ok(sentProvider.ignore.includes(h), `a background call may reach ${h}`);
+    }
     assert.equal(res.model, 'deepseek/deepseek-v4-flash');
     // reasoning models bill thinking as completion tokens — they must land in
     // output so recordUsage prices what was actually paid for. costUsd is null
