@@ -29,7 +29,7 @@ const { INTAKE_AGENT_ID } = require('./intake');
 const yieldToLoop = () => new Promise((resolve) => setImmediate(resolve));
 
 // The invariants, each with why it matters.
-function checkOpenclawConfig(cfg) {
+function checkOpenclawConfig(cfg, { packs = new Map() } = {}) {
   const violations = [];
   const tools = cfg.tools || {};
   if (!tools.fs || tools.fs.workspaceOnly !== true) {
@@ -161,10 +161,16 @@ function checkOpenclawConfig(cfg) {
   // tool called by the wrong audience, so nothing fails, a prompt is only
   // larger than it should be. One violation for all of them, ids sorted, so
   // the title is the same on every tick while the set is.
+  //
+  // EVERY agent, since the game-nights pack: main, intake and ggreet carry a
+  // deny too (`games__*`), and one of them missing it would show the game
+  // tools to every stranger the greeter talks to. `packs` is who turned a pack
+  // on (user_packs); `null` means it could not be read, and then this check
+  // declines rather than calling somebody's granted pack a drift.
   const drifted = [];
-  for (const id of occ.listAgentIds(cfg)) {
-    if (!toolPolicy.agentKind(id)) continue;
-    if (!toolPolicy.policyMatches(occ.agentEntry(cfg, id), toolPolicy.agentToolPolicy(id, cfg))) drifted.push(id);
+  for (const id of packs === null ? [] : occ.listAgentIds(cfg)) {
+    const expected = toolPolicy.agentToolPolicy(id, cfg, { packs: packs.get(id) || [] });
+    if (!toolPolicy.policyMatches(occ.agentEntry(cfg, id), expected)) drifted.push(id);
   }
   if (drifted.length) {
     violations.push(`${drifted.length} agent(s) are shown tools for the wrong audience, or miss a deny the registry now needs: ${drifted.sort().join(', ')} (fix: scripts/sync-agent-tool-policies.js --apply)`);
@@ -1163,12 +1169,28 @@ async function alertCritical(client, violations, deps) {
   return Object.keys(out).length ? out : null;
 }
 
+// Who has turned a pack on, or null when that could not be read. Under a
+// savepoint: `run` is one transaction, and a failed read must not abort
+// every check after it.
+async function readPacks(client) {
+  try {
+    await client.query('SAVEPOINT guard_packs');
+    const packs = await toolPolicy.packsByAgent(client);
+    await client.query('RELEASE SAVEPOINT guard_packs');
+    return packs;
+  } catch {
+    await client.query('ROLLBACK TO SAVEPOINT guard_packs').catch(() => {});
+    return null;
+  }
+}
+
 async function run(client, { configPath, ...deps } = {}) {
   let violations = [];
   let budget = null;
   try {
     const cfg = occ.loadConfig(configPath);
-    violations = violations.concat(checkOpenclawConfig(cfg));
+    const packs = await readPacks(client);
+    violations = violations.concat(checkOpenclawConfig(cfg, { packs }));
     violations = violations.concat(checkModelPermissions(cfg));
     violations = violations.concat(await checkOrphanAgents(client, cfg));
     violations = violations.concat(await checkTurnContextCoverage(client, cfg));

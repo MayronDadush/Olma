@@ -2,7 +2,7 @@
 // gamesd's HTTP face. Caddy passes exactly two public shapes here:
 //   GET  /night/<token>                the page
 //   *    /night/<token>/api/<action>   its API (state, events, write, next)
-// Everything else (/health, POST /api/nights) is for the box itself: Caddy
+// Everything else (/health, POST /api/nights, POST /api/tool) is for the box itself: Caddy
 // never routes it, and the handler also refuses anything that arrived through
 // a proxy, so a Caddyfile mistake cannot open night creation to the world.
 const http = require('http');
@@ -10,6 +10,8 @@ const fs = require('fs');
 const path = require('path');
 const store = require('./store');
 const { Refused } = require('./validate');
+const { runTool } = require('./tools');
+const { resolveIdentity } = require('./identity');
 
 const PAGE_FILE = path.join(__dirname, '..', 'public', 'night.html');
 const MAX_BODY = 32 * 1024;
@@ -19,7 +21,7 @@ const MAX_LISTENERS = 600;
 
 const STATUS = { not_found: 404, too_many: 429, rate_limited: 429 };
 
-function createServer({ pool, publicBase = '', page } = {}) {
+function createServer({ pool, publicBase = '', page, identify = resolveIdentity } = {}) {
   const html = page ?? fs.readFileSync(PAGE_FILE, 'utf8');
   const listeners = new Map();        // token -> Set<res>
   let listenerCount = 0;
@@ -105,6 +107,27 @@ function createServer({ pool, publicBase = '', page } = {}) {
         const body = await readBody(req);
         const n = await store.createNight(pool, body);
         return send(res, 201, { token: n.token, code: n.code, url: `${publicBase}/night/${n.token}` });
+      }
+      // Olma's tools (bin/games-mcp.js). The token in the call is the only
+      // claim; brokerd says who it is and whether they hold the pack, and a
+      // person without it is refused here whatever the gateway showed them.
+      if (p === '/api/tool' && req.method === 'POST') {
+        if (!isLocal(req)) return send(res, 404, { error: 'not_found' });
+        const { name, args } = await readBody(req);
+        const a = args && typeof args === 'object' ? { ...args } : {};
+        const token = typeof a.olma_identity === 'string' ? a.olma_identity : '';
+        delete a.olma_identity;
+        let who;
+        try { who = await identify(token); } catch (e) {
+          return send(res, 200, { text: `ERROR unavailable: could not check who is asking (${e.message})` });
+        }
+        if (!who || !who.ok) return send(res, 200, { text: `ERROR forbidden: ${who?.error?.message || 'unknown identity token'}` });
+        if (!Array.isArray(who.packs) || !who.packs.includes('games')) {
+          return send(res, 200, { text: 'ERROR forbidden: game nights are not turned on for this person' });
+        }
+        if (limited('u:' + who.user.id)) return send(res, 200, { text: 'ERROR rate_limited: too many calls this minute' });
+        const text = await runTool(name, a, { pool, user: who.user, publicBase, onState: broadcast });
+        return send(res, 200, { text });
       }
 
       const m = p.match(/^\/night\/([A-Za-z0-9]{22})(?:\/api\/(state|events|write|next))?$/);

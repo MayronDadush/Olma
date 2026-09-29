@@ -83,3 +83,26 @@ test('page and server agree on every food split and every settlement', () => {
     assert.deepEqual(JSON.parse(JSON.stringify(page.settle(bal))), money.settle(bal), `seed ${seed}: settle`);
   }
 });
+
+// The tools (src/tools.js) answer "who pays whom" from settlementOf and hand
+// the model a summary to paste; both must be the page's, character for
+// character, or a group sees two different answers to the same night.
+const fmtCode = cut('const nf = new Intl.NumberFormat', '// a half is isolated');
+const summaryCode = cut('function summaryText(D){', 'function copySummary(');
+
+test('the server\'s settlement and summary text are the page\'s, on 300 random nights', () => {
+  const { summaryText } = require('../src/tools');
+  for (let seed = 1; seed <= 300; seed++) {
+    const S = randomNight(rng(seed));
+    S.game.name = 'ערב ' + seed;
+    const D = pageRun(S).derive();
+    const M = money.settlementOf(S);
+    for (const k of ['xAll', 'xPoker', 'xFood', 'food', 'merge', 'hasFood']) {
+      assert.deepEqual(JSON.parse(JSON.stringify(D[k])), M[k], `seed ${seed}: ${k}`);
+    }
+    const ctx = vm.createContext({ S, Math, Object, Intl, Number });
+    vm.runInContext(fmtCode + summaryCode + '\nconst nameOf = id => S.players[id]?.name || "?";\nthis.out = summaryText;', ctx);
+    const page = ctx.out({ ...D, g: S.game });
+    assert.equal(summaryText(S, M, 'he'), page, `seed ${seed}: summary`);
+  }
+});

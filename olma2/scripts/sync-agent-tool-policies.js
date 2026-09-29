@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Bring every person's and room's agent to the tool policy the registry says
-// it should have (`agents.entries.<id>.tools.deny`, intake/agent-tool-policy.js).
+// Bring every agent to the tool policy the registry and the packs say it
+// should have (`agents.entries.<id>.tools.deny`, intake/agent-tool-policy.js).
 //
 // deploy.sh runs this with --apply after every release, which is what keeps a
 // NEW tool from reaching the wrong audience: provisioning writes the policy
@@ -18,59 +18,53 @@
 //
 // Usage: node scripts/sync-agent-tool-policies.js [--apply]
 'use strict';
-const fs = require('node:fs');
-const os = require('node:os');
-const path = require('node:path');
-const { execFileSync } = require('node:child_process');
 const occ = require('../src/intake/openclaw-config');
-const { agentToolPolicy, agentKind } = require('../src/intake/agent-tool-policy');
+const { agentToolPolicy, packsByAgent } = require('../src/intake/agent-tool-policy');
+const { validateCandidate: validate } = require('../src/intake/validate-candidate');
 
 const APPLY = process.argv.includes('--apply');
 
-function validate(cfg) {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'olma-toolpolicy-'));
+// Who has turned a pack on (user_packs). Unreadable is read as NOBODY: the
+// direction that fails is hiding a pack from somebody who had it until the
+// next deploy, never showing one to somebody who did not.
+async function readPacks() {
+  let pool;
   try {
-    fs.mkdirSync(path.join(home, '.openclaw'), { recursive: true });
-    fs.writeFileSync(path.join(home, '.openclaw', 'openclaw.json'), JSON.stringify(cfg, null, 2), { mode: 0o600 });
-    let out;
-    try {
-      out = execFileSync('openclaw', ['config', 'validate', '--json'], {
-        env: { ...process.env, OPENCLAW_HOME: home }, encoding: 'utf8', timeout: 60_000,
-        stdio: ['ignore', 'pipe', 'ignore'],
-      });
-    } catch (e) {
-      out = e && e.stdout ? String(e.stdout) : '';
-      if (!out) return { valid: false, why: `openclaw config validate could not run: ${e.message}` };
-    }
-    const j = JSON.parse(out);
-    return { valid: j.valid === true, why: JSON.stringify(j.errors || j.issues || []).slice(0, 500) };
+    const { createPool } = require('../src/db/pool');
+    pool = createPool();
+    return await packsByAgent(pool);
   } catch (e) {
-    return { valid: false, why: `validation unreadable: ${e.message}` };
+    console.error(`WARNING: user_packs unreadable (${e.message}) — every pack stays hidden from everyone`);
+    return new Map();
   } finally {
-    fs.rmSync(home, { recursive: true, force: true });
+    if (pool) await pool.end().catch(() => {});
   }
 }
 
-const cfg = occ.loadConfig();
-const changed = [];
-for (const id of occ.listAgentIds(cfg)) {
-  if (!agentKind(id)) continue;
-  const policy = agentToolPolicy(id, cfg);
-  if (occ.setAgentTools(cfg, id, policy)) changed.push(`${id}: deny ${policy ? policy.deny.length : 0}`);
-}
+(async () => {
+  const packs = await readPacks();
+  const cfg = occ.loadConfig();
+  const changed = [];
+  // Every agent, not only people and rooms: main, intake and ggreet carry the
+  // pack denies too (intake/agent-tool-policy.js, PACKS).
+  for (const id of occ.listAgentIds(cfg)) {
+    const policy = agentToolPolicy(id, cfg, { packs: packs.get(id) || [] });
+    if (occ.setAgentTools(cfg, id, policy)) changed.push(`${id}: deny ${policy ? policy.deny.length : 0}`);
+  }
 
-console.log(changed.length ? `would change ${changed.length} agent(s):\n  ${changed.join('\n  ')}` : 'every agent already matches — nothing to write');
-if (!APPLY || !changed.length) {
-  if (!APPLY && changed.length) console.log('\ndry run — pass --apply to write');
-  process.exit(0);
-}
+  console.log(changed.length ? `would change ${changed.length} agent(s):\n  ${changed.join('\n  ')}` : 'every agent already matches — nothing to write');
+  if (!APPLY || !changed.length) {
+    if (!APPLY && changed.length) console.log('\ndry run — pass --apply to write');
+    process.exit(0);
+  }
 
-const v = validate(cfg);
-if (!v.valid) {
-  console.error(`NOT written: the candidate config does not validate — ${v.why}`);
-  process.exit(1);
-}
-occ.saveConfig(cfg);
-console.log(`\nwritten (${changed.length} agent(s)). Confirm the gateway applied it, not just the file:`);
-console.log('  XDG_RUNTIME_DIR=/run/user/0 journalctl --user -u openclaw-gateway --since "-2min" | grep "\\[reload\\]"');
-console.log('A "reload skipped (invalid config)" line means NOTHING was applied — every later reload is dead too.');
+  const v = validate(cfg);
+  if (!v.valid) {
+    console.error(`NOT written: the candidate config does not validate — ${v.why}`);
+    process.exit(1);
+  }
+  occ.saveConfig(cfg);
+  console.log(`\nwritten (${changed.length} agent(s)). Confirm the gateway applied it, not just the file:`);
+  console.log('  XDG_RUNTIME_DIR=/run/user/0 journalctl --user -u openclaw-gateway --since "-2min" | grep "\\[reload\\]"');
+  console.log('A "reload skipped (invalid config)" line means NOTHING was applied — every later reload is dead too.');
+})().catch((e) => { console.error(e); process.exit(1); });

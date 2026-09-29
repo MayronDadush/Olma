@@ -21,7 +21,9 @@ function cfg() {
   };
 }
 
-const names = (aud) => TOOLS.filter((t) => audienceOf(t) === aud).map((t) => `olma__${t.name}`).sort();
+const GAMES = 'games__*';
+const names = (aud) => [GAMES, ...TOOLS.filter((t) => audienceOf(t) === aud).map((t) => `olma__${t.name}`)].sort();
+const ours = (deny) => deny.filter((n) => n !== GAMES);
 
 test('a room is shown exactly the group tools, a person exactly the rest', () => {
   const c = cfg();
@@ -31,8 +33,8 @@ test('a room is shown exactly the group tools, a person exactly the rest', () =>
   assert.deepEqual(person.deny, names('group'), 'a person denies every room tool and nothing else');
   // Symmetry: together the two deny lists name every tool exactly once, so a
   // tool added to either side lands in the other side's list automatically.
-  assert.equal(room.deny.length + person.deny.length, TOOLS.length);
-  assert.equal(new Set([...room.deny, ...person.deny]).size, TOOLS.length);
+  assert.equal(ours(room.deny).length + ours(person.deny).length, TOOLS.length);
+  assert.equal(new Set([...ours(room.deny), ...ours(person.deny)]).size, TOOLS.length);
   // The direction that would break a room: it keeps every one of its tools.
   for (const t of toolDefinitions({ audience: 'group' })) {
     assert.ok(!room.deny.includes(`olma__${t.name}`), `${t.name} is a room's own tool`);
@@ -40,21 +42,44 @@ test('a room is shown exactly the group tools, a person exactly the rest', () =>
   assert.ok(names('group').length > 0 && names('user').length > 0);
 });
 
-test('agents that are not a person or a room are never narrowed', () => {
+test('agents that are not a person or a room keep every tool of ours, and are denied every pack', () => {
   for (const id of ['main', 'intake', 'ggreet', 'u-', 'g-x', 'u-3-old']) {
-    assert.equal(policy.agentToolPolicy(id, cfg()), null, id);
+    assert.deepEqual(policy.agentToolPolicy(id, cfg()), { deny: [GAMES] }, id);
+    // Handing one a pack changes nothing: only a person's agent can hold one.
+    assert.deepEqual(policy.agentToolPolicy(id, cfg(), { packs: ['games'] }), { deny: [GAMES] }, id);
   }
+});
+
+// The game-nights pack (stage 2): hidden from everybody, shown to a person
+// only when user_packs says so, and never to a room.
+test('the games pack is hidden from every agent until its person turns it on', () => {
+  const c = cfg();
+  c.mcp.servers.games = { command: 'node', args: ['/opt/olma-games/bin/games-mcp.js'] };
+  const person = policy.agentToolPolicy('u-3', c);
+  assert.ok(person.deny.includes(GAMES));
+  assert.ok(person.deny.every((n) => n === GAMES || n.startsWith('olma__')),
+    'a second server does not confuse which one is ours');
+  const withPack = policy.agentToolPolicy('u-3', c, { packs: ['games'] });
+  assert.ok(!withPack.deny.includes(GAMES));
+  assert.deepEqual(withPack.deny, ours(person.deny), 'the pack lifts its own deny and nothing else');
+  assert.ok(policy.agentToolPolicy('g-7', c, { packs: ['games'] }).deny.includes(GAMES), 'a room never holds a pack');
+  assert.ok(policy.agentToolPolicy('u-3', c, { packs: ['other'] }).deny.includes(GAMES),
+    'an unknown pack name lifts nothing');
+  // With only the games server registered, nothing of ours is named, but the
+  // pack deny still is.
+  assert.deepEqual(policy.agentToolPolicy('u-3', { mcp: { servers: { games: {} } } }), { deny: [GAMES] });
+  assert.equal(policy.agentToolPolicy('u-3', { mcp: { servers: { games: {} } } }, { packs: ['games'] }), null);
 });
 
 test('the prefix is the registered server name, and an unknown server writes nothing', () => {
   const c = cfg();
   c.mcp.servers = { other: { command: 'x' }, mine: { command: 'node', args: ['/opt/olma2/bin/olma-mcp.js'] } };
-  assert.ok(policy.agentToolPolicy('g-1', c).deny.every((n) => n.startsWith('mine__')));
+  assert.ok(ours(policy.agentToolPolicy('g-1', c).deny).every((n) => n.startsWith('mine__')));
   // A deny under the wrong prefix would hide nothing and look like it worked.
   c.mcp.servers = { a: {}, b: {} };
-  assert.equal(policy.agentToolPolicy('g-1', c), null);
+  assert.deepEqual(policy.agentToolPolicy('g-1', c), { deny: [GAMES] });
   delete c.mcp;
-  assert.equal(policy.agentToolPolicy('g-1', c), null);
+  assert.deepEqual(policy.agentToolPolicy('g-1', c), { deny: [GAMES] });
 });
 
 test('addAgent writes the policy itself, in both roster formats', () => {
@@ -62,7 +87,7 @@ test('addAgent writes the policy itself, in both roster formats', () => {
   occ.addAgent(c, { id: 'g-9', workspace: '/w', agentDir: '/a' });
   assert.deepEqual(c.agents.entries['g-9'].tools.deny, names('user'));
   occ.addAgent(c, { id: 'intake2', workspace: '/w', agentDir: '/a' });
-  assert.equal(c.agents.entries.intake2.tools, undefined, 'a non-person agent gets no tools key');
+  assert.deepEqual(c.agents.entries.intake2.tools, { deny: [GAMES] }, 'a non-person agent is denied only the packs');
   occ.addAgent(c, { id: 'u-10', workspace: '/w', agentDir: '/a', tools: null });
   assert.equal(c.agents.entries['u-10'].tools, undefined, 'null overrides');
 
