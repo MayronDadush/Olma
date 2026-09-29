@@ -328,17 +328,17 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
       // a Caddyfile edit alone can never expose the admin root.
       if (req.method === 'GET' && parsed.pathname === '/privacy') {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        return res.end(publicPages.privacyPage());
+        return res.end(publicPages.privacyPage(publicPages.langOf(parsed.searchParams.get('lang'))));
       }
       if (req.method === 'GET' && parsed.pathname === '/terms') {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        return res.end(publicPages.termsPage());
+        return res.end(publicPages.termsPage(publicPages.langOf(parsed.searchParams.get('lang'))));
       }
       // Same shape as /privacy and /terms, and the same trap: allma.world
       // reaches this only once the Caddyfile's allowlist names /accessibility.
       if (req.method === 'GET' && parsed.pathname === '/accessibility') {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        return res.end(publicPages.accessibilityPage());
+        return res.end(publicPages.accessibilityPage(publicPages.langOf(parsed.searchParams.get('lang'))));
       }
       // Since 2026-09-29 the public `/` is the personal dashboard, locked, with
       // publicPages.homeSections under it (user-dashboard.js, frontPage).

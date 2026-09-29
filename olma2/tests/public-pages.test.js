@@ -47,6 +47,11 @@ function get(path, host, headers = {}, method = 'GET') {
   });
 }
 
+// Each policy page is ONE language since 2026-09-29, English unless
+// `?lang=he`. A claim about what a page SAYS is checked across both, so it
+// holds for whichever the reader chose.
+const both = (fn) => `${fn('en')}\n${fn('he')}`;
+
 // ---- the public pages exist and need no password ---------------------------
 
 test('the home page is served unauthenticated on the public host', async () => {
@@ -95,7 +100,7 @@ test('a visitor with a live session is sent past the lock to their own page', as
 
 test('the privacy policy is served unauthenticated, on either host', async () => {
   for (const host of [PUBLIC, ADMIN]) {
-    const res = await get('/privacy', host);
+    const res = await get('/privacy?lang=he', host);
     assert.equal(res.status, 200, `privacy should not need a password on ${host}`);
     const html = await res.text();
     assert.ok(html.includes('מדיניות פרטיות'));
@@ -104,7 +109,7 @@ test('the privacy policy is served unauthenticated, on either host', async () =>
 
 test('the terms of service page is served unauthenticated, on either host', async () => {
   for (const host of [PUBLIC, ADMIN]) {
-    const res = await get('/terms', host);
+    const res = await get('/terms?lang=he', host);
     assert.equal(res.status, 200, `terms should not need a password on ${host}`);
     const html = await res.text();
     assert.ok(html.includes('תנאי שימוש'));
@@ -115,18 +120,21 @@ test('the accessibility statement is served unauthenticated, on either host', as
   for (const host of [PUBLIC, ADMIN]) {
     const res = await get('/accessibility', host);
     assert.equal(res.status, 200, `accessibility should not need a password on ${host}`);
-    const html = await res.text();
-    assert.ok(html.includes('<h1>Accessibility Statement</h1>'));
-    assert.ok(html.includes('<h2>הצהרת נגישות</h2>'));
+    assert.ok((await res.text()).includes('<h1>Accessibility Statement</h1>'));
+    const he = await get('/accessibility?lang=he', host);
+    assert.equal(he.status, 200);
+    assert.ok((await he.text()).includes('<h1>הצהרת נגישות</h1>'));
   }
 });
 
 test('every public page links the other three in its footer', () => {
   const pages = {
     '/': publicPages.homeSections(),
-    '/privacy': publicPages.privacyPage(),
-    '/terms': publicPages.termsPage(),
-    '/accessibility': publicPages.accessibilityPage(),
+    // The English render; the Hebrew one's footer, which carries the choice,
+    // is checked by the language test below.
+    '/privacy': publicPages.privacyPage('en'),
+    '/terms': publicPages.termsPage('en'),
+    '/accessibility': publicPages.accessibilityPage('en'),
   };
   for (const [self, html] of Object.entries(pages)) {
     const foot = html.slice(html.lastIndexOf('<div class="foot">'));
@@ -137,8 +145,36 @@ test('every public page links the other three in its footer', () => {
   }
 });
 
+// The owner, 2026-09-29: English by default, one button at the top to switch,
+// and a page shows ONE language — never the other one underneath. The choice
+// rides the footer; `/` is the locked dashboard, which keeps its own.
+test('each policy page is one language, English by default, with a switch at the top', async () => {
+  for (const path of ['/privacy', '/terms', '/accessibility']) {
+    const en = await (await get(path, PUBLIC)).text();
+    const he = await (await get(`${path}?lang=he`, PUBLIC)).text();
+    assert.match(en, /<html lang="en" dir="ltr">/, `${path} is not English by default`);
+    assert.match(he, /<html lang="he" dir="rtl">/, `${path}?lang=he is not Hebrew`);
+    assert.ok(!en.includes('<div class="he'), `${path} still carries the Hebrew under the English`);
+    assert.ok(!/(Privacy Policy|Terms of Service|Accessibility Statement)<\/h1>|Who is responsible/.test(he),
+      `${path}?lang=he still carries English`);
+    const at = (html, x) => html.indexOf(x);
+    assert.ok(at(en, `href="${path}?lang=he" lang="he" hreflang="he">עברית</a>`) > -1, `${path} has no switch to Hebrew`);
+    assert.ok(at(he, `href="${path}" lang="en" hreflang="en">English</a>`) > -1, `${path}?lang=he has no switch to English`);
+    assert.ok(at(en, 'class="langbar"') < at(en, '<h1'), `${path}: the switch is not at the top`);
+    assert.ok(at(he, 'class="langbar"') < at(he, '<h1'), `${path}?lang=he: the switch is not at the top`);
+    const foot = he.slice(he.lastIndexOf('<div class="foot">'));
+    for (const other of ['/privacy', '/terms', '/accessibility'].filter((p) => p !== path)) {
+      assert.ok(foot.includes(`href="${other}?lang=he"`), `${path}?lang=he: the footer drops the choice for ${other}`);
+    }
+    assert.ok(foot.includes('href="/"'), 'the front door is linked bare');
+  }
+  const odd = await get('/privacy?lang=fr', PUBLIC);
+  assert.equal(odd.status, 200);
+  assert.match(await odd.text(), /<html lang="en" dir="ltr">/, 'anything else is the default, never an error');
+});
+
 test('the accessibility statement carries the owner\'s Hebrew and its placeholders filled', () => {
-  const html = publicPages.accessibilityPage();
+  const html = both(publicPages.accessibilityPage);
   for (const line of [
     'עולמה פועלת בעיקר בתוך וואטסאפ, כך שכלי הנגישות של הטלפון שלכם (קורא מסך, הגדלת טקסט, הכתבה) עובדים איתה כרגיל.',
     'תקן ישראלי 5568 ו־WCAG 2.0 ברמה AA',
@@ -164,7 +200,7 @@ test('the pinch-zoom sentence follows the flag, and the flag follows the dashboa
   const zoomOff = /user-scalable=no|maximum-scale=1(?:\.0)?\b/.test(meta);
   assert.equal(publicPages.PINCH_ZOOM_DISABLED, zoomOff,
     'PINCH_ZOOM_DISABLED in public-pages.js no longer matches the dashboard viewport meta');
-  const html = publicPages.accessibilityPage();
+  const html = both(publicPages.accessibilityPage);
   assert.equal(html.includes('אי אפשר להגדיל את הדף האישי בצביטה'), zoomOff);
   assert.equal(/cannot currently be enlarged by pinching/.test(html), zoomOff);
 });
@@ -220,7 +256,7 @@ test('the front page names every Google scope the code really requests, and link
 });
 
 test('the privacy policy carries the Limited Use disclosure and the policy link', () => {
-  const html = publicPages.privacyPage();
+  const html = both(publicPages.privacyPage);
   assert.ok(/Limited Use/.test(html), 'the Limited Use disclosure is what verification turns on');
   assert.ok(html.includes('developers.google.com/terms/api-services-user-data-policy'),
     'the Limited Use paragraph must cite the policy it claims to follow');
@@ -228,12 +264,12 @@ test('the privacy policy carries the Limited Use disclosure and the policy link'
 });
 
 test('the policy states the same scopes as the home page, in both languages', () => {
-  const html = publicPages.privacyPage();
+  const html = both(publicPages.privacyPage);
   for (const scope of ['calendar.readonly', 'calendar.events', 'contacts.readonly', 'userinfo.email']) {
     assert.ok(html.includes(scope), `privacy policy does not disclose ${scope}`);
   }
   assert.ok(/Privacy Policy/i.test(html), 'a Google reviewer reads English first');
-  assert.ok(html.includes('מדיניות פרטיות (עברית)'), 'Hebrew users still get the full policy');
+  assert.ok(publicPages.privacyPage('he').includes('<h1>מדיניות פרטיות</h1>'), 'Hebrew users still get the full policy');
   assert.ok(/myaccount\.google\.com\/permissions/.test(html), 'users must be told how to revoke directly');
 });
 
@@ -253,8 +289,8 @@ test('no public page declares a RESTRICTED scope, in either language', () => {
   ];
   for (const [name, html] of Object.entries({
     home: publicPages.homeSections(),
-    privacy: publicPages.privacyPage(),
-    terms: publicPages.termsPage(),
+    privacy: both(publicPages.privacyPage),
+    terms: both(publicPages.termsPage),
   })) {
     for (const scope of RESTRICTED) {
       assert.ok(!html.includes(scope),
@@ -266,7 +302,7 @@ test('no public page declares a RESTRICTED scope, in either language', () => {
 
 test('what the pages DO promise still matches what the code can do', () => {
   const home = publicPages.homeSections();
-  const privacy = publicPages.privacyPage();
+  const privacy = both(publicPages.privacyPage);
   // Contacts import is the one silent read left, and both pages carry the
   // promise that it tells nobody.
   assert.ok(/notifies nobody/i.test(home), 'the home page must keep the silent-import promise');
@@ -278,28 +314,31 @@ test('what the pages DO promise still matches what the code can do', () => {
 // Not the front page: since 2026-09-29 `/` is the locked dashboard, whose
 // script and code form are the point of it (user-dashboard-http.test.js).
 test('the policy pages carry no form, no script, nothing that takes input', () => {
-  for (const html of [publicPages.privacyPage(), publicPages.termsPage(), publicPages.accessibilityPage()]) {
+  for (const html of [both(publicPages.privacyPage), both(publicPages.termsPage), both(publicPages.accessibilityPage)]) {
     assert.ok(!/<form/i.test(html), 'a public unauthenticated page must not accept input');
     assert.ok(!/<script/i.test(html), 'these pages have no moving parts on purpose');
   }
 });
 
 test('the terms page reads English first, links the privacy policy, and carries the Hebrew text in full', () => {
-  const html = publicPages.termsPage();
+  const html = both(publicPages.termsPage);
   assert.ok(/Terms of Service/i.test(html), 'a Google reviewer reads English first');
   assert.ok(html.includes('href="/privacy"'), 'terms must link the privacy policy');
-  assert.ok(html.includes('תנאי שימוש (עברית)'), 'Hebrew users still get the full terms');
+  assert.ok(publicPages.termsPage('he').includes('<h1>תנאי שימוש</h1>'), 'Hebrew users still get the full terms');
 });
 
 // Cypress + Mustard (the owner, 2026-09-28): the policy pages wear the same
 // brand as the product, and the retired violet globe is nowhere on them.
 test('the policy pages wear the brand: always light, the brand face, the round mark', () => {
-  const privacy = publicPages.privacyPage();
+  const privacy = both(publicPages.privacyPage);
   assert.ok(!/prefers-color-scheme/.test(privacy) && /color-scheme:light/.test(privacy),
     'the policy pages are always light, whatever the phone is set to');
   assert.ok(privacy.includes('<meta name="theme-color" content="#004643">'));
   assert.ok(privacy.includes("@font-face{font-family:'IBM Plex Sans Hebrew'"), 'the brand face, carried inline (fonts.js)');
-  for (const html of [privacy, publicPages.termsPage(), publicPages.accessibilityPage()]) {
+  // Per rendered page: the clip-path ids only have to differ within one document.
+  const pages = [publicPages.privacyPage, publicPages.termsPage, publicPages.accessibilityPage]
+    .flatMap((fn) => [fn('en'), fn('he')]);
+  for (const html of pages) {
     assert.ok(!/#5B2FD6|#7C4DFF|Rubik/i.test(html), 'the old violet brand is still on a public page');
     const ids = [...html.matchAll(/<clipPath id="([^"]+)"/g)].map((m) => m[1]);
     assert.equal(new Set(ids).size, ids.length, 'two marks on one page share a clip-path id');
@@ -309,7 +348,7 @@ test('the policy pages wear the brand: always light, the brand face, the round m
 // ---- the 2026-09-28 rewrite: what s.11 asks for, and what the box does -----
 
 test('the policy gives the service address, says giving data is voluntary, and lists the rights, in both languages', () => {
-  const html = publicPages.privacyPage();
+  const html = both(publicPages.privacyPage);
   // No name, by the owner's choice (2026-09-28): the contact is the service's.
   assert.equal(publicPages.CONTACT_EMAIL, 'info@allma.world');
   assert.ok(html.includes('mailto:info@allma.world'));
@@ -321,7 +360,7 @@ test('the policy gives the service address, says giving data is voluntary, and l
 });
 
 test('the policy names every processor the box actually uses, and where the backup really is', () => {
-  const html = publicPages.privacyPage();
+  const html = both(publicPages.privacyPage);
   // StreamLake stays in the live route (owner, 2026-09-28), so it is named,
   // with its unverified location said rather than guessed.
   for (const who of ['OpenRouter', 'Novita', 'StreamLake', 'DeepInfra', 'Together', 'Anthropic',
@@ -334,7 +373,7 @@ test('the policy names every processor the box actually uses, and where the back
 });
 
 test('nothing is promised on a timer: kept until they ask, and only the backups age out', () => {
-  const html = publicPages.privacyPage();
+  const html = both(publicPages.privacyPage);
   const R = publicPages.RETENTION;
   // The owner's decision (2026-09-28). No sweep deletes conversations or
   // group rosters, so the page must not name a number of days for them.
@@ -349,13 +388,13 @@ test('nothing is promised on a timer: kept until they ask, and only the backups 
 // the button on the personal page, never by email. The address stays on the
 // pages as the general contact; it is only no longer a way to delete.
 test('deleting is asked of the assistant or the page button, never by email', () => {
-  for (const html of [publicPages.privacyPage(), publicPages.termsPage()]) {
+  for (const html of [both(publicPages.privacyPage), both(publicPages.termsPage)]) {
     for (const m of html.matchAll(/<(p|li)>[^]*?<\/\1>/g)) {
       if (!/delete|למחוק|מחיקת/i.test(m[0]) || !/mailto:/.test(m[0])) continue;
       assert.fail(`a deletion route still names the email: ${m[0].slice(0, 140)}`);
     }
   }
-  const p = publicPages.privacyPage();
+  const p = both(publicPages.privacyPage);
   assert.ok(p.includes('<b>Delete everything</b> — tell the assistant, or use the button on your personal page.'));
   assert.ok(p.includes('<b>למחוק הכל</b> — לבקש מעולמה, או ללחוץ על הכפתור בדף האישי.'));
   assert.ok(/WhatsApp groups/.test(p) && p.includes('קבוצות וואטסאפ'), 'groups are named');
