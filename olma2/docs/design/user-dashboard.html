@@ -496,6 +496,9 @@ html.intro-go .tabbar{animation:introBar .55s var(--ease) .3s both}
    first (today, the install card, the home cards) is the one that rises. */
 .view[data-view="tools"] > .title{padding-bottom:52px;margin-bottom:-30px}
 .view[data-view="tools"] > .title ~ *{position:relative}
+/* The tasks band is one line shorter in air, so the first screen holds tasks
+   rather than green (owner, 2026-09-30). */
+.view[data-view="tasks"] > .title{padding-bottom:18px}
 .view.active > .title{animation:none}
 .view.active > .title > *{animation:rise .25s var(--ease) both}
 
@@ -2317,6 +2320,12 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 .calfoldmark{width:15px;height:15px;flex:none}
 .calfoldn{margin-inline-start:auto;font-weight:500}
 .calfold .fold .group{margin-top:4px}
+/* Between sections the list used to take the stack's 26px AND .tsec's 19px,
+   45px of nothing four times over — three tasks on a phone's first screen.
+   The section margin alone is the gap now. */
+#taskStack{gap:0}
+/* The calendar fold is one slim row, set off by a tint rather than by air. */
+#taskStack .calfold .arcbtn{padding:8px 14px;background:var(--bg-tint);border-radius:12px}
 #arcGroup .task{opacity:.7}
 #arcGroup .ttitle{color:var(--text-3)}
 #arcGroup .pill{background:transparent;padding-inline:0;color:var(--text-3);font-weight:500}
@@ -7725,8 +7734,16 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
         : emptyBig(t("tasks.empty"), "addTask", t("tasks.new"))) + "</div>";
     }
     $("#taskStack").innerHTML = html;
+    /* What is on, by when — the same headings the list below is cut into,
+       with the same rows under them (owner, 2026-09-30). "11 open · 3
+       reminders" answered a question nobody opens this page to ask. */
+    var byWhen = BUCKETS.map(function(b){
+      var n = open.filter(function(x){ return !x.src && !isPinned(x) && !onCalendar(x) && bucketFor(x.d) === b; }).length;
+      return n ? t("bucket." + b) + " " + n : "";
+    }).filter(Boolean);
     var rems = open.filter(function(x){ return x.rem; }).length;
-    rollText($("#taskCount"), pl("tasks", open.length) + " · " + pl("remc", rems));
+    rollText($("#taskCount"), byWhen.length ? byWhen.join(" · ")
+                                            : pl("tasks", open.length) + " · " + pl("remc", rems));
     renderHome();
     rollText($("#arcCount"), String(archived.length));
     /* The archive is a safety net, not a second list. Past eight rows it
