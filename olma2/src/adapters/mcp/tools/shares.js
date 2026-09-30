@@ -6,7 +6,7 @@ const {
 const shareInvite = require('../../../intake/share-invite');
 
 module.exports = [
-  tool('share_task_with', 'Offer a specific task/project to a connected person. Someone not on Olma gets ONE intro message and the offer once they approve. Everyone on a shared task is equal: both sides rename, date, tick, add and remove items. Project shares include subtasks dynamically.',
+  tool('share_task_with', 'Offer a task/project to a person; one not on Olma gets ONE intro and the offer on approval. All sides are equal: rename, date, tick, add and remove items. Projects include subtasks.',
     { task_id: S('number', 'Task id'), phone: S('string', 'Their E.164 phone') }, ['task_id', 'phone'],
     async (client, user, a) => {
       const who = await connectedUserByPhone(client, user.id, a.phone, 'sharing');
