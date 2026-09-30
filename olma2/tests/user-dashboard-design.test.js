@@ -446,15 +446,54 @@ test('tasks on the calendar sit in their own fold, closed by default, in both vi
   const body = render.slice(0, render.indexOf('$("#taskStack").innerHTML = html;'));
   const branches = body.match(/open\.filter\(function\(x\)\{[^}]*\}\)/g) || [];
   assert.equal(branches.length, 2, 'the time view and the category view each filter the list once');
-  for (const b of branches) assert.match(b, /!onCalendar\(x\)/, 'each view skips what the fold draws');
+  for (const b of branches) assert.match(b, /!offList\(x\)/, 'each view skips what the fold draws and what went back to Google');
   assert.match(body, /var html = pinnedSection\(\) \+ calendarSection\(\);/,
     'the fold sits right under the pinned section, above whichever view is on');
-  // An event, or a to-do the sync has actually written out — never the switch
-  // alone, which is on for tasks no calendar has seen yet.
-  assert.match(page, /function onCalendar\(x\)\{ return !x\.src && !isPinned\(x\) && \(x\.kind === "event" \|\| !!x\.inCal\); \}/);
   assert.match(page, /inCal:!!x\.inCalendar,/, 'the page reads the server\'s own answer');
   assert.match(page, /'<div class="fold' \+ \(calFoldOpen \? " open" : ""\) \+ '"><div' \+ \(calFoldOpen \? "" : " inert"\)/,
     'folded rows are inert, not just clipped');
+});
+
+// The fold is the events Olma holds, not a copy of the calendar (owner,
+// 2026-10-01): a to-do is on the list even when synced, an event still ahead
+// is in the fold, and one that is over — or one Olma says nothing about that
+// Google already has — is on neither. Run on the page's own functions.
+test('the calendar fold holds what Olma reminds about and is still ahead', () => {
+  const grab = (name) => {
+    const at = page.indexOf('function ' + name + '(');
+    assert.ok(at > 0, name + ' is on the page');
+    let depth = 0, i = page.indexOf('{', at);
+    for (; i < page.length; i++) { if (page[i] === '{') depth++; else if (page[i] === '}' && --depth === 0) break; }
+    return page.slice(at, i + 1);
+  };
+  const src = ['onCalendar', 'leftToGoogle', 'offList', 'eventOver'].map(grab).join('\n');
+  const fns = new Function('isPinned', src + '\nreturn { onCalendar, leftToGoogle, offList, eventOver };')(() => false);
+  // Local calendar days, as the page reads them (bucketFor), never UTC's.
+  const day = (n) => {
+    const d = new Date(); d.setDate(d.getDate() + n);
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  };
+  const where = (x) => fns.onCalendar(x) ? 'fold' : fns.leftToGoogle(x) ? 'google' : 'list';
+  const ev = (o) => Object.assign({ kind: 'event', d: day(1), tm: '15:00', all: false, rem: true, inCal: true }, o);
+
+  assert.equal(where(ev({})), 'fold', 'a haircut tomorrow with a reminder: editable in the fold');
+  assert.equal(where(ev({ inCal: false, rem: false })), 'fold', 'on no calendar and nothing reminds: kept, or it is nowhere');
+  assert.equal(where(ev({ rem: false })), 'google', 'Google holds it and Olma says nothing: the calendar is enough');
+  assert.equal(where(ev({ d: day(-1) })), 'google', 'yesterday\'s appointment is gone from the page');
+  assert.equal(where(ev({ d: '' })), 'fold', 'an undated event is never over');
+  assert.equal(where({ kind: 'todo', d: day(1), tm: '10:00', rem: true, inCal: true }), 'list', 'a synced to-do is a to-do');
+  assert.equal(where({ kind: 'todo', d: day(-3), tm: '', rem: false, inCal: true }), 'list', 'a late to-do stays late, never hidden');
+  assert.equal(where(ev({ src: 'monday' })), 'list', 'an imported row keeps its own section');
+
+  // Over at the END: the start, the end hour, past midnight, the whole day.
+  const at = (d, hm) => new Date(d + 'T' + hm + ':00');
+  const d0 = day(0);
+  assert.equal(fns.eventOver({ d: d0, tm: '15:00' }, at(d0, '14:59')), false);
+  assert.equal(fns.eventOver({ d: d0, tm: '15:00' }, at(d0, '15:00')), true, 'no end hour: over when it starts');
+  assert.equal(fns.eventOver({ d: d0, tm: '12:00', tmEnd: '19:00' }, at(d0, '18:00')), false, 'a shift is on until it ends');
+  assert.equal(fns.eventOver({ d: d0, tm: '22:00', tmEnd: '02:00' }, at(d0, '23:30')), false, 'an end before the start is tomorrow');
+  assert.equal(fns.eventOver({ d: d0, all: true, tm: '09:00' }, at(d0, '23:59')), false, 'an all-day event lasts the day');
+  assert.equal(fns.eventOver({ d: d0, all: true }, at(day(1), '00:00')), true);
 });
 
 // One tap between day and night, on the band of the home tab only (the owner,
