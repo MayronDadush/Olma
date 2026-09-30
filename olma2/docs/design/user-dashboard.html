@@ -811,6 +811,12 @@ button.row:active{background:var(--bg-tint)}
 @keyframes connectPing{0%,100%{transform:scale(1)}20%{transform:scale(1.14)}40%{transform:scale(.98)}60%{transform:scale(1.06)}}
 .row-end.tiny{font-size:12.5px;font-weight:600;color:var(--text-3);font-variant-numeric:tabular-nums}
 .row-end.tiny.asleep{color:var(--accent);opacity:.85}
+/* A friend's clock is shown only when it is not yours (2026-09-30): the same
+   hour beside most names said nothing. A globe says "their time", a moon says
+   it is night there. */
+.row-end.away{display:inline-flex;align-items:center;gap:4px}
+.row-end.away svg{width:13px;height:13px;flex:none}
+.glabel.grlab{justify-content:flex-start;gap:6px}
 .bdaydot{font-size:13px;margin-inline-start:4px;display:inline-block;animation:avaTip 1.2s ease-in-out infinite}
 .rowset.arriving{animation:arrive .3s var(--ease)}
 @keyframes arrive{
@@ -3511,6 +3517,7 @@ button.srow:active{background:var(--bg-tint)}
   <symbol id="i-swipe" viewBox="0 0 18 18"><path d="M15 9H3.4M7.4 5 3.4 9l4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-arrdown" viewBox="0 0 16 16"><path d="M2.9 5.3h10.2L8 12.4Z" fill="currentColor" stroke="currentColor" stroke-width="2.1" stroke-linejoin="round"/></symbol>
   <symbol id="i-sun" viewBox="0 0 16 16"><circle cx="8" cy="8" r="3.1" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8 1.2v1.6M8 13.2v1.6M1.2 8h1.6M13.2 8h1.6M3.3 3.3l1.13 1.13M11.57 11.57l1.13 1.13M3.3 12.7l1.13-1.13M11.57 4.43l1.13-1.13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.5 2.6 3.5 5.4 3.5 8.5s-1 5.9-3.5 8.5c-2.5-2.6-3.5-5.4-3.5-8.5s1-5.9 3.5-8.5z"/></g></symbol>
   <symbol id="i-moon" viewBox="0 0 16 16"><path d="M13.2 9.4A5.6 5.6 0 1 1 6.6 2.8a4.4 4.4 0 0 0 6.6 6.6Z" fill="currentColor"/></symbol>
   <symbol id="i-auto" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8 1.8a6.2 6.2 0 0 0 0 12.4Z" fill="currentColor"/></symbol>
     <!-- The Allma mark, "half and half" (the owner, 2026-09-27/28): a disc cut
@@ -3736,7 +3743,6 @@ button.srow:active{background:var(--bg-tint)}
   <section class="view" data-view="friends">
     <div class="title" style="--i:0">
       <h1 data-i18n="fr.h"></h1>
-      <p data-i18n="fr.p"></p>
     </div>
     <!-- Adding somebody comes BEFORE the lists: this page is where you come
          to grow them, and the action you came for should not be below
@@ -3748,7 +3754,7 @@ button.srow:active{background:var(--bg-tint)}
       <button class="addmini ghost groupsblock" id="addGroup"><svg><use href="#i-plus"/></svg><span data-i18n="gr.new"></span></button>
     </div>
     <div style="--i:2" class="groupsblock">
-      <div class="glabel"><span data-i18n="gr.h"></span><span class="hint" data-i18n="gr.hint"></span></div>
+      <div class="glabel grlab"><span data-i18n="gr.h"></span><span class="hint" data-i18n="gr.hint"></span></div>
       <div class="searchwrap" id="groupSearch" hidden>
         <svg class="sicon"><use href="#i-search"/></svg>
         <input id="groupQ" type="search" autocomplete="off" data-i18n-ph="gr.search" data-i18n-label="gr.search">
@@ -5393,16 +5399,16 @@ button.srow:active{background:var(--bg-tint)}
       "cal.todayPre":"היום · ","cal.dayPrefix":"יום ",
 
       "fr.h":"חברים בעולמה",
-      "fr.p":"לכל חבר הרשאות משלו, והשינוי חל מיד.",
+      
       "fr.connected":"מחוברים","fr.count":"{n} חברים",
       "fr.search":"חיפוש חבר","fr.clear":"ניקוי","fr.noMatch":"אין חבר בשם „{q}”.",
       "fr.none":"עוד אין כאן אף אחד. אפשר להזמין מישהו מאנשי הקשר למטה.",
-      "fr.p.n0":"אין הרשאות פעילות","fr.p.n1":"הרשאה אחת פעילה","fr.p.nN":"{n} הרשאות פעילות",
+      "fr.w.tasks":"משימות","fr.w.meet":"פגישות","fr.w.msg":"הודעות","fr.w.none":"רק חברים",
       "fr.bday":"יום הולדת היום","fr.remove":"הסרת החיבור","fr.removeConfirm":"עוד לחיצה כדי להסיר","fr.invite":"הזמנת חבר",
       /* A group is one person's own shortcut, not a shared object — nobody is
          asked to join one and nobody is told they are in one. The hint says
          so, because a list of names usually implies the opposite. */
-      "gr.h":"קבוצות","gr.hint":"אף אחד לא מתבקש לאשר · קבוצה מוואטסאפ מגיעה מוכנה","gr.new":"קבוצה חדשה",
+      "gr.h":"קבוצות","gr.hint":"· מגיעות מוכנות מוואטסאפ","gr.new":"קבוצה חדשה",
       "gr.room":"מוואטסאפ","gr.off":"{n} עוד לא אצל עולמה",
       "gr.roomNote":"הקבוצה הזאת מגיעה מוואטסאפ — השם ומי נמצא בה נקבעים שם.",
       "gr.count.n0":"עדיין ריקה","gr.count.n1":"חבר אחד","gr.count.nN":"{n} חברים",
@@ -5773,13 +5779,13 @@ button.srow:active{background:var(--bg-tint)}
       "cal.todayPre":"Today · ","cal.dayPrefix":"",
 
       "fr.h":"Friends on Allma",
-      "fr.p":"Each friend has their own permissions.",
+      
       "fr.connected":"Connected","fr.count":"{n} friends",
       "fr.search":"Search friends","fr.clear":"Clear","fr.noMatch":"No friend matches \u201c{q}\u201d.",
       "fr.none":"Nobody here yet. Invite someone from your contacts below.",
-      "fr.p.n0":"No permissions on","fr.p.n1":"1 permission on","fr.p.nN":"{n} permissions on",
+      "fr.w.tasks":"Tasks","fr.w.meet":"Meetings","fr.w.msg":"Messages","fr.w.none":"Just friends",
       "fr.bday":"Birthday today","fr.remove":"Remove connection","fr.removeConfirm":"Press again to remove","fr.invite":"Invite a friend",
-      "gr.h":"Groups","gr.hint":"Nobody is asked to approve · a WhatsApp room arrives ready","gr.new":"New group",
+      "gr.h":"Groups","gr.hint":"· arrive ready from WhatsApp","gr.new":"New group",
       "gr.room":"From WhatsApp","gr.off":"{n} not on Allma yet",
       "gr.roomNote":"This group comes from WhatsApp \u2014 its name and who is in it are set there.",
       "gr.count.n0":"Empty so far","gr.count.n1":"1 person","gr.count.nN":"{n} people",
@@ -6475,10 +6481,20 @@ button.srow:active{background:var(--bg-tint)}
   function myTz(){
     return myZone || (CITIES[cityIdx] ? CITIES[cityIdx].tz : "UTC");
   }
-  function clockIn(tz){
+  function clockIn(tz, at){
     try{
-      return new Intl.DateTimeFormat("en-GB", {timeZone:tz, hour:"2-digit", minute:"2-digit", hour12:false}).format(new Date());
+      return new Intl.DateTimeFormat("en-GB", {timeZone:tz, hour:"2-digit", minute:"2-digit", hour12:false}).format(at || new Date());
     }catch(err){ return ""; }
+  }
+  /* A friend whose clock reads the same as yours right now — one moment, both
+     read off it, so a minute turning over between the two cannot split them. */
+  function sameClock(tz){
+    var at = new Date();
+    return clockIn(tz, at) === clockIn(myTz(), at);
+  }
+  function awayClock(tz){
+    return '<svg aria-hidden="true"><use href="#' + (isNight(tz) ? "i-moon" : "i-globe") + '"/></svg>' +
+      "<span>" + clockIn(tz) + "</span>";
   }
 
   var seq = 100;
@@ -7520,8 +7536,7 @@ button.srow:active{background:var(--bg-tint)}
         var f = FRIENDS.filter(function(x){ return x.id === +sw.dataset.f; })[0];
         f.p[sw.dataset.p] = on;
         API.setFriendPermission(f.id, sw.dataset.p, on);
-        var live = PKEYS.filter(function(k){ return f.p[k]; }).length;
-        $('[data-fs="' + f.id + '"]').textContent = permsLine(live, f);
+        $('[data-fs="' + f.id + '"]').textContent = permsLine(f);
         var pact = PERMACT[sw.dataset.p];
         if(pact) refreshPermAction(pact.attr, f.id, on);
       }
@@ -7723,9 +7738,13 @@ button.srow:active{background:var(--bg-tint)}
   /* What sits beside the permissions is their birthday, and only for somebody
      who set one — it replaced the date the friendship started, which told the
      reader nothing they would act on (the owner, 2026-09-26). */
-  function permsLine(n, f){
+  /* The permissions are NAMED, not counted (2026-09-30): "3 הרשאות פעילות"
+     sent you into the row to learn which three. */
+  function permsLine(f){
     var bd = bdayLabel(f.bd);
-    return pl("fr.p", n) + (bd ? " · 🎂 " + bd : "");
+    var on = PKEYS.filter(function(k){ return f.p[k]; });
+    var words = on.length ? on.map(function(k){ return t("fr.w." + k); }).join(" · ") : t("fr.w.none");
+    return words + (bd ? " · 🎂 " + bd : "");
   }
   /* "9-3" -> "3 בספטמבר". A leap year, so 29 February is a real day. */
   function bdayLabel(md){
@@ -11758,7 +11777,8 @@ button.srow:active{background:var(--bg-tint)}
     $("#cityClock").textContent = clockIn(myTz());
     $("#topClock").textContent = clockIn(myTz());
     $$("[data-ftz]").forEach(function(el){
-      el.textContent = clockIn(el.dataset.ftz);
+      el.hidden = sameClock(el.dataset.ftz);
+      el.innerHTML = awayClock(el.dataset.ftz);
       el.classList.toggle("asleep", isNight(el.dataset.ftz));
     });
     /* the greeting rides the same tick: a page left open through 17:00 should
@@ -12375,7 +12395,6 @@ button.srow:active{background:var(--bg-tint)}
     else if(q){ $("#friendEmpty").textContent = t("fr.noMatch", {q:friendQ.trim()}); }
     else $("#friendEmpty").innerHTML = emptyBig(t("fr.none"), "addFriend", t("fr.invite"));
     $("#friendGroup").innerHTML = list.map(function(f){
-      var live = PKEYS.filter(function(k){ return f.p[k]; }).length;
       var perms = PKEYS.map(function(k){
         /* The way to USE the permission sits on the permission's own row, and
            only while it is granted: one tap opens the thing that switch is
@@ -12401,8 +12420,9 @@ button.srow:active{background:var(--bg-tint)}
         '<div class="row-txt"><div class="row-title">' + esc(L(f.n)) +
         (bday ? ' <span class="bdaydot" title="' + esc(t("fr.bday")) + '">🎂</span>' : "") +
         '</div><div class="row-sub" data-fs="' + f.id + '">' +
-        esc(permsLine(live, f)) + "</div></div>" +
-        '<span class="row-end tiny' + (night ? " asleep" : "") + '" data-ftz="' + f.tz + '">' + clockIn(f.tz) + "</span>" +
+        esc(permsLine(f)) + "</div></div>" +
+        '<span class="row-end tiny away' + (night ? " asleep" : "") + '" data-ftz="' + esc(f.tz) + '"' +
+        (sameClock(f.tz) ? " hidden" : "") + ">" + awayClock(f.tz) + "</span>" +
         '<svg class="chev"><use href="#i-chev"/></svg></button>' +
         '<div class="fold' + (fopen ? " open" : "") + '" data-ffold="' + f.id + '"><div><div class="foldpad">' + perms +
         '<button class="linkbtn danger" data-frdel="' + f.id + '" style="margin-top:14px;display:block">' + esc(t("fr.remove")) + "</button>" +
