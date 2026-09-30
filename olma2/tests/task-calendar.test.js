@@ -314,3 +314,45 @@ test("an event's place goes out with it to Google", async () => {
   assert.equal(job.location, undefined, 'no place, no location field');
   assert.ok(t.id && plain.id);
 });
+
+// An appointment that HAPPENED is part of the person's calendar, not a row we
+// own. The expired-events sweep archives "תור לספר" three hours after it
+// passes — and until 2026-10-01 the next tick read "archived" as "take it off
+// the calendar", so the haircut vanished from Google the evening it happened.
+// Leaving the LIST is not leaving the calendar.
+test('an appointment that passed and was archived STAYS on the calendar', async () => {
+  const sweeps = require('../src/jobs/sweeps');
+  const u = await syncingUser('+972594000031');
+  await withClient(async (c) => {
+    const at = new Date(Date.now() + 3600_000).toISOString();
+    const t = await tasksDomain.addTask(c, u.id, { title: 'תור לספר', dueAt: at, kind: 'event' });
+    const id = t.data.task.id;
+    await tc.sweepTaskCalendar(c, { ...fakeGoogle(), now: new Date().toISOString() });
+
+    // Six hours after it: past the auto-archive grace. The real sweep, not a
+    // hand-written UPDATE, so the state is the one production reaches.
+    const later = new Date(Date.now() + 7 * 3600_000).toISOString();
+    await sweeps.sweepFinishedTasks(c, later);
+    const { rows } = await c.query('SELECT status, archived_at FROM tasks WHERE id = $1', [id]);
+    assert.ok(rows[0].archived_at, 'the sweep did archive it — the premise of this test');
+
+    const g = fakeGoogle();
+    const out = await tc.sweepTaskCalendar(c, { ...g, now: later });
+    assert.deepEqual(g.calls, [], 'no Google call at all for a moment that is over');
+    assert.deepEqual(out.removed, []);
+  });
+});
+
+// The other side of the same line: a plan cancelled BEFORE it happens is gone
+// from the calendar too, or the calendar keeps a haircut nobody is going to.
+test('an appointment archived while still AHEAD is taken off the calendar', async () => {
+  const u = await syncingUser('+972594000032');
+  await withClient(async (c) => {
+    const t = await tasksDomain.addTask(c, u.id, { title: 'תור לספר', dueAt: SOON, kind: 'event' });
+    await tc.sweepTaskCalendar(c, { ...fakeGoogle(), now: '2026-09-04T00:00:00Z' });
+    await tasksDomain.archiveTask(c, u.id, t.data.task.id);
+    const g = fakeGoogle();
+    const out = await tc.sweepTaskCalendar(c, { ...g, now: '2026-09-04T00:00:00Z' });
+    assert.deepEqual(out.removed, [t.data.task.id]);
+  });
+});

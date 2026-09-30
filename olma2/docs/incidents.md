@@ -203,6 +203,7 @@ never trust a dated narrative for something you are about to act on.
 - [One carryover leak filed itself seven times — `config_guard`'s dedup key wasn't deterministic (fixed 2026-09-03)](#one-carryover-leak-filed-itself-seven-times--config_guards-dedup-key-wasnt-deterministic-fixed-2026-09-03)
 
 **Time, timezones and scheduling**
+- [The haircut that left the calendar the evening it happened (fixed 2026-10-01)](#the-haircut-that-left-the-calendar-the-evening-it-happened-fixed-2026-10-01)
 
 - [The city was asked four times, because two routes each asked it once (fixed 2026-09-06)](#the-city-was-asked-four-times-because-two-routes-each-asked-it-once-fixed-2026-09-06)
 - [The first message states the timezone instead of asking for it (2026-09-06)](#the-first-message-states-the-timezone-instead-of-asking-for-it-2026-09-06)
@@ -8619,6 +8620,29 @@ instead of retiring it.
 
 ## Time, timezones and scheduling
 
+
+### The haircut that left the calendar the evening it happened (fixed 2026-10-01)
+
+Found by reading, not by a report: the owner described what "תזכיר לי לקראת
+התור שלי לספר ב־15" should do — leave the task list once it is over, and
+stay on the person's Google Calendar — and the code did the second half
+backwards. Two sweeps, each correct alone. `sweeps.sweepFinishedTasks`
+completes and archives a `kind = 'event'` row three hours after it ends
+(`task_auto_archive_grace_hours`). `task-calendar.pending` then read "not
+open / archived" as "no longer earns its place" and deleted the Google entry
+on the next tick. So for everybody with "משימות ליומן" on, every appointment
+Olma had put on their calendar was taken off it the evening it happened —
+the calendar lost its own history, silently, because a removal is a success
+for that sweep.
+
+Fix: a task whose moment is OVER (`COALESCE(ends_at, due_at) <= now`) is
+never removed or rewritten by the sweep, whatever its row says; only
+something still ahead is removed. `syncOne` draws the same line for a
+hand-built row. The dashboard's explicit delete (`removeEventsFor`) is a
+person acting and is unchanged. Not repaired: entries already deleted from
+Google are not re-created — nothing recorded which ones they were beyond the
+archived rows, and re-writing past events onto somebody's calendar unasked
+is its own surprise.
 
 ### The city was asked four times, because two routes each asked it once (fixed 2026-09-06)
 
