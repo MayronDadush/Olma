@@ -45,7 +45,6 @@ test('gate: once a check-in went unanswered, nothing Olma decided to say goes ou
     { kind: 'reminder', urgency: 'normal', payload: { rung: 3, auto: false, attempt: 3, finalAttempt: true } },
     { kind: 'reminder', urgency: 'urgent', payload: { title: 'x' } },           // an old row with no rung and no auto: not provably theirs
     { kind: 'digest', urgency: 'normal', payload: {} },
-    { kind: 'connection_request', urgency: 'urgent', payload: {} },             // somebody ELSE's action
   ]) {
     const v = decide({ ...quiet, row });
     assert.equal(v.action, 'drop', `${row.kind} ${JSON.stringify(row.payload)} must not reach them`);
@@ -54,6 +53,9 @@ test('gate: once a check-in went unanswered, nothing Olma decided to say goes ou
   // What still passes: the ladder's own "מה איתך", and rung 1 of a reminder they asked for in words.
   assert.equal(decide({ ...quiet, row: { kind: 'checkin', urgency: 'normal', payload: { rung: 'silence' } } }).action, 'deliver');
   assert.equal(decide({ ...quiet, row: { kind: 'reminder', urgency: 'urgent', payload: { rung: 1, auto: false } } }).action, 'deliver');
+  // And somebody ELSE reaching them, which this list used to drop: it is not
+  // Olma deciding to speak (owner, 2026-09-30; gate.PEER_KINDS).
+  assert.equal(decide({ ...quiet, row: { kind: 'connection_request', urgency: 'urgent', payload: {} } }).action, 'deliver');
   // Two misses and three are the same silence.
   assert.equal(decide({ ...quiet, checkinMisses: 3, row: { kind: 'digest', urgency: 'normal', payload: {} } }).holdReason, 'quiet');
   // And a person who answers gets all of it.

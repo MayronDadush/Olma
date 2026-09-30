@@ -37,12 +37,36 @@ test('gate: blocked user holds everything except paid reminders and unblock', ()
 test('gate: an introduction survives the quiet drop, like the ladder\'s own check-in', () => {
   const quiet = { ...baseFacts, checkinMisses: 1 };
   // Everything Olma decided to say stops for someone who has gone quiet...
-  assert.equal(decide({ ...quiet, row: row({ kind: 'meeting_invite' }) }).holdReason, 'quiet');
+  assert.equal(decide({ ...quiet, row: row({ kind: 'meeting_slot_proposed' }) }).holdReason, 'quiet');
   assert.equal(decide({ ...quiet, row: row({ kind: 'digest' }) }).holdReason, 'quiet');
   // ...but the introduction is the one thing she OWES, and somebody who has
   // not answered is the likeliest person never to have been told who was
   // writing to them. ג.ב would have lost his to this rule (2026-09-08).
   assert.equal(decide({ ...quiet, row: row({ kind: 'introduction' }) }).action, 'deliver');
+});
+
+test('gate: another person reaching somebody quiet is not Olma deciding to speak', () => {
+  // Miron's connection request to עידן was dropped `quiet` 22 seconds after it
+  // was queued, and Miron was told it had gone (owner, 2026-09-30). The first
+  // word of another person's errand, and the answer to one of theirs, pass the
+  // silence rule; the negotiation that follows, and Olma's own, still do not.
+  const quiet = { ...baseFacts, checkinMisses: 2 };
+  for (const kind of ['connection_request', 'connection_response',
+    'share_offer', 'share_response', 'relayed_message']) {
+    assert.equal(decide({ ...quiet, row: row({ kind }) }).action, 'deliver', kind);
+  }
+  // An invite passes when somebody opened the coordination WITH them; a room's
+  // is nobody's errand to them in particular and keeps its one allowance.
+  const invite = row({ kind: 'meeting_invite' });
+  assert.equal(decide({ ...quiet, privateInvite: true, row: invite }).action, 'deliver');
+  assert.equal(decide({ ...quiet, row: invite }).holdReason, 'quiet', 'not computed is not private');
+  for (const kind of ['meeting_slot_proposed', 'meeting_nudge', 'digest', 'reminder']) {
+    assert.equal(decide({ ...quiet, row: row({ kind }) }).holdReason, 'quiet', kind);
+  }
+  // Only the silence rule moves. A pause still refuses it, and the night still
+  // holds it for the morning.
+  assert.equal(decide({ ...quiet, paused: true, row: row({ kind: 'connection_request' }) }).holdReason, 'paused');
+  assert.equal(decide({ ...quiet, now: threeAmUTC, row: row({ kind: 'connection_request' }) }).holdReason, 'night');
 });
 
 test('gate: a write from their own page a minute ago is the person answering', () => {
@@ -52,8 +76,8 @@ test('gate: a write from their own page a minute ago is the person answering', (
   const quiet = { ...baseFacts, checkinMisses: 1 };
   const fresh = new Date(noonUTC.getTime() - 60_000).toISOString();
   const stale = new Date(noonUTC.getTime() - 60 * 60_000).toISOString();
-  assert.equal(decide({ ...quiet, dashboardWroteAt: fresh, row: row({ kind: 'meeting_invite' }) }).action, 'deliver');
-  assert.equal(decide({ ...quiet, dashboardWroteAt: stale, row: row({ kind: 'meeting_invite' }) }).holdReason, 'quiet');
+  assert.equal(decide({ ...quiet, dashboardWroteAt: fresh, row: row({ kind: 'meeting_slot_proposed' }) }).action, 'deliver');
+  assert.equal(decide({ ...quiet, dashboardWroteAt: stale, row: row({ kind: 'meeting_slot_proposed' }) }).holdReason, 'quiet');
   const night = { ...baseFacts, now: threeAmUTC };
   const justNow = new Date(threeAmUTC.getTime() - 60_000).toISOString();
   assert.equal(decide({ ...night, row: row({ kind: 'meeting_invite' }) }).holdReason, 'night');
@@ -1139,4 +1163,33 @@ test('the introduction goes out first, and the queue waits for it to be read', a
   out = await drainOnce(db.pool, rec.deliver, new Date(at.getTime() + 11 * 60_000));
   assert.equal(out.delivered, 1);
   assert.deepEqual(rec.sent, ['introduction', 'checkin']);
+});
+
+test('worker: somebody quiet still hears another person reaching them, and nothing Olma decided', async () => {
+  // עידן stood at two unanswered check-ins when Miron's connection request was
+  // queued, and the gate dropped it as `quiet` (2026-09-30). A private invite
+  // is the same thing a step later: another person's errand, not Olma's.
+  await flushOutbox();
+  await db.pool.query(`UPDATE users SET checkin_misses = 2 WHERE id = $1`, [user.id]);
+  const other = await makeUser(db.pool, '+972581009977', { firstName: 'Miron', timezone: 'UTC' });
+  const { rows: [m] } = await db.pool.query(
+    `INSERT INTO meetings (initiator_id, title, status) VALUES ($1, 'קפה', 'negotiating') RETURNING id`, [other.id]);
+  await withTx(db.pool, async (c) => {
+    await enqueue(c, { userId: user.id, kind: 'connection_request', urgency: 'urgent',
+      payload: { requesterName: 'Miron', connectionId: 1 }, idempotencyKey: 'peer-conn' });
+    await enqueue(c, { userId: user.id, kind: 'meeting_invite', urgency: 'urgent',
+      payload: { byName: 'Miron', title: 'קפה', meetingId: Number(m.id) }, idempotencyKey: 'peer-invite' });
+    await enqueue(c, { userId: user.id, kind: 'travel', payload: {}, idempotencyKey: 'peer-olma' });
+  });
+  const sent = [];
+  await drainOnce(db.pool, async (r) => { sent.push(r.kind); return { ok: true }; },
+    new Date('2026-08-16T12:00:00Z'));
+  assert.ok(sent.includes('connection_request'), 'the request reached them');
+  assert.ok(sent.includes('meeting_invite'), 'so did the private invite');
+  assert.ok(!sent.includes('travel'), 'Olma\'s own idea did not');
+  const { rows } = await db.pool.query(
+    `SELECT idempotency_key, hold_reason FROM outbox WHERE idempotency_key LIKE 'peer-%' ORDER BY idempotency_key`);
+  assert.deepEqual(rows.map((r) => [r.idempotency_key, r.hold_reason]),
+    [['peer-conn', null], ['peer-invite', null], ['peer-olma', 'quiet']]);
+  await flushOutbox();
 });

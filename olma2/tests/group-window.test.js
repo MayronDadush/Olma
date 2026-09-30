@@ -165,10 +165,12 @@ test('the invite reaches the man who was talking in the room, and nothing else d
     userId: amit.id, kind: 'meeting_invite', payload: { meetingId, title: 'פאדל' },
     idempotencyKey: `minvite:${meetingId}:${amit.id}`,
   }));
-  // And something that is NOT about this room at all, for the same man.
+  // And something that is NOT about this room at all, for the same man — one
+  // of Olma's own, since another person's request passes a silence on its own
+  // (gate.PEER_KINDS, 2026-09-30) and would not be asking about the room.
   await withTx(db.pool, (c) => enqueue(c, {
-    userId: amit.id, kind: 'connection_request', payload: { from: 'someone' },
-    idempotencyKey: `conn:${amit.id}`,
+    userId: amit.id, kind: 'travel', payload: {},
+    idempotencyKey: `travel:${amit.id}`,
   }));
 
   const sent = [];
@@ -193,8 +195,8 @@ test('the invite reaches the man who was talking in the room, and nothing else d
   await drainOnce(db.pool, send);
   assert.equal(sent.length, 1, 'the coordination, and only the coordination');
   assert.equal(sent[0].kind, 'meeting_invite');
-  assert.equal((await held('connection_request')).hold_reason, 'quiet',
-    'somebody else\'s request is not what he answered');
+  assert.equal((await held('travel')).hold_reason, 'quiet',
+    'Olma\'s own idea is not what he answered');
 });
 
 // Until 2026-09-27 any word before the start opened nothing. The owner's rule

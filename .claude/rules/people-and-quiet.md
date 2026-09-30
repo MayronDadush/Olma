@@ -116,6 +116,20 @@ title means this file. Grep the title, not the filename.
   two weeks earlier one layer up ("theirs, not ours"); the gate could not, so
   the ladder's own check-in passed and the confirmation of the coordination did
   not (`incidents.md`, "The room named him and nobody told him").
+  **And another PERSON reaching them is not Olma's idea at all** (owner,
+  2026-09-30: "זה לא הודעה יזומה מעולמה"). `gate.PEER_KINDS` —
+  `connection_request`, `connection_response`, `share_offer`,
+  `share_response`, `relayed_message` — passes the quiet drop, and so does a
+  `meeting_invite` to a coordination somebody opened with them in PRIVATE
+  (`privateInvite`, the worker's fact, `group_id IS NULL`). Miron asked to
+  connect with עידן to arrange a meeting; at two misses the request was
+  dropped `quiet` 22 seconds after it was queued, stamped `sent_at`, and
+  Miron was told it had gone (`incidents.md`, "The request that was dropped
+  as Olma's own idea"). **A room's invite is NOT on the list** — it is
+  addressed to nobody in particular and keeps its one-per-silence allowance
+  (`quietRoomInvite`) — and neither is what follows inside a coordination,
+  which still needs an answer of theirs. The first word of each errand only.
+  A pause, the night, a quiet day and the budget are all unchanged.
 
 - **A stop is acted on the moment it is HEARD, not when it is confirmed.** גל
   wrote "dont send me messages bye", was asked "בטוח?", and never answered —

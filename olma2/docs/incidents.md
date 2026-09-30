@@ -48,7 +48,9 @@ never trust a dated narrative for something you are about to act on.
 - [Rotating a token that leaked: the file first, then the DB, then the doctrine (2026-09-03)](#rotating-a-token-that-leaked-the-file-first-then-the-db-then-the-doctrine-2026-09-03)
 
 **Delivery, outbox and proactive messages**
+- [The approval that forgot the times (fixed 2026-09-30)](#the-approval-that-forgot-the-times-fixed-2026-09-30)
 - [שלח לי קישור, and the new person's page (2026-09-25)](#שלח-לי-קישור-and-the-new-persons-page-2026-09-25)
+- [The request that was dropped as Olma's own idea (fixed 2026-09-30)](#the-request-that-was-dropped-as-olmas-own-idea-fixed-2026-09-30)
 - [The stop that waited for a yes (fixed 2026-09-22)](#the-stop-that-waited-for-a-yes-fixed-2026-09-22)
 - [The table that did not say where she stood (2026-09-20)](#the-table-that-did-not-say-where-she-stood-2026-09-20)
 - [Five messages in twelve minutes, about one coordination (fixed 2026-09-22)](#five-messages-in-twelve-minutes-about-one-coordination-fixed-2026-09-22)
@@ -147,6 +149,7 @@ never trust a dated narrative for something you are about to act on.
 - ["I can't" now hands over the search (2026-09-03)](#i-cant-now-hands-over-the-search-2026-09-03)
 - [A goal said out loud left no trace anywhere (fixed 2026-08-21)](#a-goal-said-out-loud-left-no-trace-anywhere-fixed-2026-08-21)
 - [turn_start skipped on the stop turn, under two models and two rewordings (2026-08-30)](#turn_start-skipped-on-the-stop-turn-under-two-models-and-two-rewordings-2026-08-30)
+- [Not connected, read as not on Olma (fixed 2026-09-30)](#not-connected-read-as-not-on-olma-fixed-2026-09-30)
 
 **Models, evals and background cognition**
 
@@ -1674,6 +1677,34 @@ compares on anyway. (`domain/identity-repair.js`, `rotateIdentityToken`.)
 
 ## Delivery, outbox and proactive messages
 
+### The approval that forgot the times (fixed 2026-09-30)
+
+Miron asked for a meeting with עידן "לשבוע הבא — תוסיפי שאני יכול ביום שני
+שלישי ורביעי בערב". They were not connected, so Olma called
+`request_connection` and promised to coordinate once he approved. What was
+saved on the request was its `reason` — "מירון רוצה לתאם איתך פגישה" — and
+nothing else: `message` was described as "Optional personal message", so the
+model never thought the days belonged there.
+
+That broke the promise in two places. עידן was asked to approve a meeting
+with no hint of when. And the `connection_response` that resumes the errand
+on approval carried only the reason, while the days lived in Miron's
+session, which the gateway resets every night at 02:00 UTC. Approved the
+next morning, Olma would have started a coordination without the one thing
+he had said about it, or asked him again: exactly the failure the
+`connection_response` instruction says it exists to prevent.
+
+`message` is now described as the details (a meeting's times), shown to
+them and handed back on approval. `connection_response` carries it fenced as
+the requester's own words, with the day it was said, so "next week" is
+resolved from then and a time that has passed is asked about again instead
+of being proposed. Paying for the longer parameter text took trimming the
+same tool's description, because the schema budget had five characters left.
+
+**The shape:** "the agent understood, and the outcome had nowhere to go". The
+model heard the days, and the only field that could hold them was not
+described as the place for them.
+
 ### שלח לי קישור, and the new person's page (2026-09-25)
 
 Not an outage — a request from the owner, and it moved two rules, so the
@@ -2039,6 +2070,39 @@ nothing. And the tool is out of `TOOL_MARKS`, into the negotiation family that
 `tests/reactions.test.js` guards: it can only be called while a meeting is
 negotiating, so every call is a negotiation step, and the negotiation family
 has no 👍 by rule.
+
+### The request that was dropped as Olma's own idea (fixed 2026-09-30)
+
+Miron asked Olma to arrange a meeting with עידן. They were not connected, so
+she sent a connection request, carrying the reason, and told Miron she had
+sent it. She had not: outbox 13074 (`connection_request`) was queued at
+09:34:43 UTC and the gate dropped it as `quiet` at 09:35:05 — עידן stood at
+two unanswered check-ins — and the drop stamped `sent_at` like any other
+settled row. His gateway session had nothing after the previous day's
+check-in. Miron was then told "עוד לא אישר" about a request nobody had shown
+him.
+
+The silence rule was written for Vered — eighteen messages on her second day,
+all of them Olma's — and it said "not a reminder rung, not a digest, not
+another user's fan-out". The last clause is the one that was wrong. What the
+rule protects is somebody who stopped answering HER; a person asking to reach
+them is a different sender, and the owner said so the moment he saw it: "זה
+לא הודעה יזומה מעולמה".
+
+The fix is a closed list in the gate, `PEER_KINDS`: the connection request
+and its answer, the share offer and its answer, a relayed message — and a
+`meeting_invite` only when the worker says the coordination is private
+(`privateInvite`, `group_id IS NULL`). A room's invite stays on its
+one-per-silence allowance from 2026-09-22: nobody in the room addressed it to
+this person, and that allowance was the owner's own narrow call eight days
+earlier. What follows inside a coordination — a new time, a decline — is
+still the negotiation talking and still needs an answer of theirs. Nothing
+else moved: a pause refuses all of it, and the night, a quiet day and the
+budget hold it as before.
+
+What is NOT fixed here: a row the gate drops still carries `sent_at`, and
+`request_connection` still reports `notified` off the enqueue, not the
+delivery. The honest-reporting half was offered and not chosen.
 
 ### The stop that waited for a yes (fixed 2026-09-22)
 
@@ -6129,6 +6193,38 @@ checked at 19:00 Saturday, released 09:00 Sunday, not 19:00 Sunday.
 
 
 ## Stopping, pausing and doctrine
+
+### Not connected, read as not on Olma (fixed 2026-09-30)
+
+```
+30/09 12:34  Miron:  תתאמי לי פגישה עם עידן תומר לשבוע הבא - תוסיפי שאני יכול ביום שני שלישי ורביעי בערב
+30/09 12:34  Olma:   מצאתי את עידן תומר 🙌 הוא עדיין לא מחובר באולמה, אז שלחתי לו הזמנה להתחבר …
+30/09 12:36  Miron:  הוא כן מחובר זה המספר שלו
+30/09 12:36  Olma:   עידן תומר עדיין לא אישר את ההזמנה להתחבר שהוצאתי לו עכשיו …
+```
+
+עידן (u-26) had been a user since 2026-09-07. What he and Miron did not have
+was a CONNECTION, and `start_meeting_coordination` answered
+`not connected to this person (reason="not_connected")` — which is correct,
+and is the only thing the model had to go on. "לא מחובר באולמה" is its
+rendering of that, and in Hebrew it reads as "not on Olma". Miron answered the
+sentence he read, sent the number, and the coordination stalled on a
+misunderstanding rather than on anything the system did.
+
+The terse message was deliberate: `connectedUserByPhone` does not reveal
+whether a phone belongs to a user, so the error must be the same for both.
+It was not quite the same — an unknown number said "not connected to this
+person" and a known one fell through to `grants.requireFeatureBetween`'s
+"not connected", so the wording itself told the two apart. Both now return one
+error, and it carries a `hint` that says the thing the words left open: this is
+about the PAIR, it says nothing about whether the number uses Allma, and the
+next step is `request_connection`. The `request_connection` result says the
+same, worded as how to mention it rather than an order to (it carries a ⏰, and
+an unconditional "say" beside a mark is the `markPlaced` fault).
+
+**The shape:** a result the model must turn into a sentence has to say what it
+does NOT mean when the natural rendering means something else. Same family as
+"An instruction handed to the model may assert what its own columns hold".
 
 ### "אני רוצה להפסיק את השירות" was answered with a goodbye and nothing else (fixed 2026-08-22)
 

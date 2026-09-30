@@ -306,6 +306,17 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
             [meetingId, row.user_id]);
           answeredCoordination = ans.length > 0;
         }
+        // An invite to a coordination a PERSON started with them in private
+        // is that person reaching them, and the gate lets it past the silence
+        // rule (gate.PEER_KINDS, owner 2026-09-30). A ROOM's invite is not
+        // addressed to them by anybody and keeps its one-per-silence allowance
+        // above. Worker-scoped like the rest, and false for every sibling.
+        let privateInvite = false;
+        if (row.kind === 'meeting_invite' && meetingId) {
+          const { rows: mt } = await client.query(
+            `SELECT 1 FROM meetings WHERE id = $1 AND group_id IS NULL AND status = 'negotiating'`, [meetingId]);
+          privateInvite = mt.length > 0;
+        }
         // An introduction still waiting to go out. Bounded to two days on
         // purpose: a repair that was queued and somehow never delivered must
         // not silence everything else for this person for ever, and past that
@@ -378,7 +389,7 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
           window: win.data.window, quietDays, quietDates, shabbatWindow, tz: row.timezone,
           lastInboundAt: row.last_inbound_at, wokeAt: row.last_woke_at, dashboardWroteAt: row.last_dashboard_at, groupWroteAt,
           greetedAt: row.opening_sent_at,
-          pausedRoomInvite, quietRoomInvite, answeredCoordination,
+          pausedRoomInvite, quietRoomInvite, answeredCoordination, privateInvite,
           hasDigest: Boolean(row.digest_times),
           introductionPending: introRows.length > 0,
           introductionSentAt: introSent[0] ? introSent[0].sent_at : null,
@@ -453,7 +464,7 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
             // empty for every sibling — said out loud rather than relied upon.
             if (decide({
               ...facts, groupWroteAt: null, pausedRoomInvite: false, quietRoomInvite: false,
-              answeredCoordination: false, row: sib,
+              answeredCoordination: false, privateInvite: false, row: sib,
             }).action !== 'deliver') continue;
             ids.push(sib.id);
             titles.push(payloadOf(sib).title);
@@ -496,7 +507,8 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
           // it matter, and a fact about another row's coordination must not be
           // the thing that lets a sibling through.
           const deliverable = others.filter((sib) => decide({
-            ...facts, pausedRoomInvite: false, quietRoomInvite: false, answeredCoordination: false, row: sib,
+            ...facts, pausedRoomInvite: false, quietRoomInvite: false, answeredCoordination: false,
+            privateInvite: false, row: sib,
           }).action === 'deliver');
           const parts = planMerge(row, deliverable);
           if (parts) {
