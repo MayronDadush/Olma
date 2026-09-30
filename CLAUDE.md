@@ -203,6 +203,7 @@ Loads when you **Read** a file under `src/brokerd/**`, `src/domain/turn.js`, `sr
 - **…and a Hebrew reply with only an English next step on its END keeps the reply** — `hebrewReplyTail`, measured: one line in 1,461 replies, and quoted Hebrew inside English working-out still drops whole
 - **The last tier's missing input was not a pattern, it was the READER** — `writesHebrew` is a tri-state, `null` acts like `false`, and the value rides `turn_context` to a gate with no database
 - **A reply that says it SAVED something is checked against whether a tool ran — `reply.claim`, report-only** — `unknown` is not `unbacked`, and a turn Olma started is not judged
+- **A reply under a standing 👍 that only restates it is CANCELLED at the gate** (`mark-echo.echoOnly`, brokerd `mark_echo`) — every word is theirs, the title's, or a save word: nothing either side did not already know; filed as `reply.gated` kind `echo`, and `unanswered` never re-sends one
 
 ### Reminders, tasks and dates
 

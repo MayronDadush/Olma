@@ -89,6 +89,25 @@ export function readerOf(agentId) {
 }
 export function _resetReaders() { LANG.clear(); }
 
+// What the person just wrote, per agent, for the echo check at the gate: a
+// reply under a 👍 that says nothing beyond their own words and what the tool
+// wrote is the 👍 said twice (`domain/mark-echo.js`). Kept here, in memory,
+// for five minutes, because this process already has it and brokerd never
+// needs it — the words never cross the socket. A newer message replaces it.
+const INBOUND = new Map();
+const INBOUND_MS = 5 * 60 * 1000;
+const INBOUND_MAX = 1000;
+export function rememberInbound(agentId, text, now = Date.now()) {
+  const t = typeof text === "string" ? text.slice(0, INBOUND_MAX) : "";
+  if (t.trim()) INBOUND.set(agentId, { at: now, text: t });
+  else INBOUND.delete(agentId);
+}
+export function inboundOf(agentId, now = Date.now()) {
+  const held = INBOUND.get(agentId);
+  return held && now - held.at <= INBOUND_MS ? held.text : "";
+}
+export function _resetInbound() { INBOUND.clear(); }
+
 export function agentIdOf(sessionKey) {
   const m = /^agent:(u-\d+):/.exec(String(sessionKey || ""));
   return m ? m[1] : null;
@@ -147,8 +166,10 @@ export function buildHandler({ agents, connect, sock, timeoutMs, log = trace } =
     if (intake) return intakeTurnContext(String(ctx.sessionKey), { connect, sock, timeoutMs, log });
     const agentId = (ctx && ctx.agentId) || agentIdOf(ctx && ctx.sessionKey);
     if (!agentId || !/^u-\d+$/.test(agentId)) return undefined;
-    if (only && !only.has(agentId)) return undefined;
     const prompt = event && typeof event.prompt === "string" ? event.prompt : "";
+    // Before the `agents` narrowing: the gate watches every person.
+    rememberInbound(agentId, prompt);
+    if (only && !only.has(agentId)) return undefined;
     const params = {
       agentId,
       sessionKey: ctx && ctx.sessionKey ? String(ctx.sessionKey).slice(0, 120) : null,
@@ -705,6 +726,57 @@ export function claimedWrite(text) {
   return en ? en[1].toLowerCase() : null;
 }
 
+// A reply that only says again what the 👍 on their message already said — a
+// PORT of `domain/mark-echo.js`, held against it by `tests/mark-echo.test.js`.
+// What is already known = their own message (`inboundOf`, held here) + the
+// words the marked tool wrote (brokerd `mark_echo`); the reply never leaves
+// the gateway.
+const ECHO_WORD_RE = /[\p{L}\p{N}]+/gu;
+const ECHO_URL_RE = /\b(?:https?:\/\/|www\.)\S+/i;
+const ECHO_QUESTION_RE = /[?？؟]/;
+const ECHO_DIGIT_RE = /\p{N}/u;
+const ECHO_PREFIX_RE = /^[והלבשמכ]([\u0590-\u05FF]{2,})$/;
+const ECHO_MAX_CHARS = 280;
+const ECHO_MAX_LINES = 2;
+export const ECHO_FILLER = new Set([
+  "רשמתי", "רשמנו", "נרשם", "נרשמה", "נרשמו",
+  "הוספתי", "הוספנו", "נוסף", "נוספה", "נוספו",
+  "שמרתי", "נשמר", "נשמרה", "נשמרו",
+  "עדכנתי", "עודכן", "עודכנה", "עודכנו",
+  "מחקתי", "נמחק", "נמחקה", "נמחקו",
+  "ביטלתי", "בוטל", "בוטלה", "בוטלו",
+  "סימנתי", "סומן", "סומנה", "הושלם", "הושלמה", "הושלמו",
+  "בוצע", "בוצעה", "עשיתי", "סגור", "סגרתי", "סגרנו",
+  "מעולה", "אחלה", "יופי", "טוב", "אוקיי", "אוקי", "בסדר", "הנה", "נהדר",
+  "לך", "לי", "את", "זה", "זאת", "אותו", "אותה", "אותם", "גם", "כבר", "כ",
+  "משימה", "משימות", "רשימה", "רשימת", "כמשימה",
+  "ל", "ב", "ה", "ו", "ש",
+  "done", "added", "saved", "noted", "updated", "deleted", "removed",
+  "marked", "completed", "complete", "cancelled", "canceled",
+  "ok", "okay", "got", "it", "i", "ve", "have", "to", "your", "the", "a",
+  "list", "task", "tasks", "as", "and", "all", "set", "great", "sure",
+]);
+function echoWordsOf(s) { return (String(s == null ? "" : s).toLowerCase().match(ECHO_WORD_RE)) || []; }
+export function echoCandidate(text) {
+  const t = String(text == null ? "" : text).trim();
+  if (!t || t.length > ECHO_MAX_CHARS) return false;
+  if (ECHO_QUESTION_RE.test(t) || ECHO_URL_RE.test(t)) return false;
+  return t.split("\n").filter((l) => l.trim()).length <= ECHO_MAX_LINES;
+}
+export function echoOnly(text, vocab) {
+  if (!echoCandidate(text)) return false;
+  const known = new Set((Array.isArray(vocab) ? vocab : []).flatMap(echoWordsOf));
+  const has = (w) => ECHO_FILLER.has(w) || known.has(w);
+  for (const w of echoWordsOf(text)) {
+    if (has(w)) continue;
+    if (ECHO_DIGIT_RE.test(w)) return false;
+    const m = ECHO_PREFIX_RE.exec(w);
+    if (m && has(m[1])) continue;
+    return false;
+  }
+  return true;
+}
+
 // Whose text this gate is for: every agent that puts MODEL output in front of
 // a person or a room. Not `main` — that is the session the raw pipe sends as
 // (`channels/openclaw.sendRawMessage`), carrying the owner's own wording with
@@ -738,7 +810,18 @@ export function buildReplyGateHandler({ connect, sock, timeoutMs = 1500, log = t
         if (person && hasMedia) turnProgress(agentId, "reply", { connect, sock, timeoutMs, asked: false });
         return undefined;
       }
-      const verdict = gateReply(text, { readerWritesHebrew: readerOf(agentId) });
+      let verdict = gateReply(text, { readerWritesHebrew: readerOf(agentId) });
+      // A 👍 is already on their message and this reply only says it again
+      // (domain/mark-echo.js). Asked of brokerd only for a reply short enough
+      // to be one, on a short deadline, and a dead socket means "not an echo":
+      // the reply goes out, as it always did.
+      if (person && !hasMedia && verdict.action !== "cancel" && echoCandidate(verdict.text)) {
+        const held = await askBroker("mark_echo", { agentId }, { connect, sock, timeoutMs: Math.min(timeoutMs, 800) });
+        const known = [...(Array.isArray(held && held.words) ? held.words : []), inboundOf(agentId)];
+        if (held && held.ok && held.standing === true && echoOnly(verdict.text, known)) {
+          verdict = { action: "cancel", text: "", leaks: [{ kind: "echo", at: "" }], reported: [...verdict.reported, { kind: "echo", at: "", line: 0 }] };
+        }
+      }
       // Something is about to reach them, so the 👀 brokerd is holding for this
       // turn's message is no longer needed (`turnProgress` below). Not for a
       // reply the gate is about to stop entirely: nothing reached anybody, and
@@ -775,7 +858,7 @@ export function buildReplyGateHandler({ connect, sock, timeoutMs = 1500, log = t
       // still lands. `cancelled_by_reply_payload_sending_hook` is only for a
       // payload that is nothing but the words.
       if (hasMedia) return { payload: { ...payload, text: "" } };
-      return { cancel: true, reason: "olma_reply_leak" };
+      return { cancel: true, reason: verdict.reported.some((l) => l.kind === "echo") ? "olma_mark_echo" : "olma_reply_leak" };
     } catch (e) {
       // Fails open, like every other handler here: a gate that throws must
       // cost a leak we would have caught, never the reply itself.

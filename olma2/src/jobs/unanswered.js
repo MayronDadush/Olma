@@ -327,6 +327,24 @@ function undeliveredReply(msgs, sent, phone, now) {
   return delivered ? null : { composedAt: last.at, age, text: last.text };
 }
 
+// Did the reply gate cancel an echo for this person around the moment this
+// reply was composed? The window is generous on the far side: the gate runs
+// as the payload goes out, which is after the transcript's timestamp.
+const ECHO_BEFORE_MS = 60_000;
+const ECHO_AFTER_MS = 5 * 60_000;
+async function echoCancelledNear(client, userId, composedAt) {
+  const at = Date.parse(composedAt);
+  if (Number.isNaN(at)) return false;
+  const { rows } = await client.query(
+    `SELECT 1 FROM audit_log
+      WHERE actor_id = $1 AND event = 'reply.gated'
+        AND detail->>'action' = 'cancel' AND detail->'kinds' ? 'echo'
+        AND created_at BETWEEN $2::timestamptz AND $3::timestamptz
+      LIMIT 1`,
+    [userId, new Date(at - ECHO_BEFORE_MS).toISOString(), new Date(at + ECHO_AFTER_MS).toISOString()]);
+  return rows.length > 0;
+}
+
 // deps.readMessages(agentId, peer) → [{role, text, at}] so tests never touch disk.
 //
 // The peer is not optional. Silent housekeeping turns (fact extraction, memory
@@ -521,6 +539,16 @@ async function sweepUnanswered(client, { readMessages, readSentEvents, readDropp
     //     case this detector already excludes: `undeliveredReply` fires only
     //     when the assistant's reply is the LAST thing in the transcript, so
     //     there is no newer state by construction.
+    // The reply gate's echo tier (domain/mark-echo.js) cancels a reply that
+    // only restated the 👍 already on their message — which leaves this exact
+    // fingerprint, and which `resendableVerbatim` cannot see: the decision
+    // needed the words the marked tool wrote, and only the gate had them. So
+    // the gate's own filed cancel is the evidence. Re-sending it would put
+    // back on the phone the one line the gate existed to keep off it.
+    if (await echoCancelledNear(client, u.id, lost.composedAt)) {
+      unsendable.echo = (unsendable.echo || 0) + 1;
+      continue;
+    }
     const body = resendableVerbatim(lost.text);
     if (!body.ok) {
       // Detected a real loss and cannot re-send it as itself. Nothing is
@@ -567,6 +595,6 @@ async function sweepUnanswered(client, { readMessages, readSentEvents, readDropp
 module.exports = {
   sweepUnanswered, sentHashFor, undeliveredReply, resendableVerbatim,
   readSentEventsFromLog, parseSentEvents, covers,
-  readLogTails, droppedTurnsByPeer, droppedTurnFor, decidedSilence, sentReactions,
+  readLogTails, droppedTurnsByPeer, droppedTurnFor, decidedSilence, sentReactions, echoCancelledNear,
   MIN_AGE_MS, MAX_AGE_MS, SENT_SLACK_MS,
 };
