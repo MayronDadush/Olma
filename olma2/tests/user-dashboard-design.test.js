@@ -363,7 +363,8 @@ test('the home tab shows only what is live, and its two counts are doors', () =>
   assert.equal((page.match(/<use href="#i-logo"\/>/g) || []).length, 1, 'the mark is drawn once');
   assert.match(page, /<svg class="bmark" aria-hidden="true"><use href="#i-logo"\/><\/svg>/,
     'and that once is the header, beside the name');
-  assert.match(page, /return pl\("fr\.p", n\) \+ \(bd \? " · 🎂 " \+ bd : ""\);/,
+  // The permissions are named rather than counted since 2026-09-30.
+  assert.match(page, /return words \+ \(bd \? " · 🎂 " \+ bd : ""\);/,
     'beside the permissions: a birthday for whoever set one, and no friendship date');
   assert.match(page, /<button class="homecard" data-go="tasks">/);
   assert.match(page, /<button class="homecard" data-go="cal">/);
