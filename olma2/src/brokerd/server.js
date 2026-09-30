@@ -879,9 +879,19 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
     if (!phone) return { ok: false, error: 'bad sessionKey' };
     let out = { ok: true, context: null };
     await withTx(pool, async (client) => {
+      // Somebody with a row that says they were already introduced — the
+      // greeter's session resets daily and it has no other way to know.
+      const introduced = intakeRoom.wasIntroduced(await usersDomain.getByPhone(client, phone));
       const room = await intakeRoom.roomFor(client, phone);
-      if (!room) return;
-      out = { ok: true, context: intakeRoom.contextFor(room), groupId: room.groupId, meetingId: room.meetingId };
+      if (!room) {
+        if (introduced) out = { ok: true, context: intakeRoom.INTRODUCED_BLOCK, introduced: true };
+        return;
+      }
+      const roomBlock = intakeRoom.contextFor(room, { introduced });
+      out = {
+        ok: true, context: introduced ? `${intakeRoom.INTRODUCED_BLOCK}\n\n${roomBlock}` : roomBlock,
+        groupId: room.groupId, meetingId: room.meetingId, ...(introduced ? { introduced: true } : {}),
+      };
       await audit.record(client, null, 'intake.room_context_served', {
         groupId: room.groupId, meetingId: room.meetingId,
       });
