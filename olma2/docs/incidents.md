@@ -48,6 +48,7 @@ never trust a dated narrative for something you are about to act on.
 - [Rotating a token that leaked: the file first, then the DB, then the doctrine (2026-09-03)](#rotating-a-token-that-leaked-the-file-first-then-the-db-then-the-doctrine-2026-09-03)
 
 **Delivery, outbox and proactive messages**
+- [The approval that forgot the times (fixed 2026-09-30)](#the-approval-that-forgot-the-times-fixed-2026-09-30)
 - [שלח לי קישור, and the new person's page (2026-09-25)](#שלח-לי-קישור-and-the-new-persons-page-2026-09-25)
 - [The stop that waited for a yes (fixed 2026-09-22)](#the-stop-that-waited-for-a-yes-fixed-2026-09-22)
 - [The table that did not say where she stood (2026-09-20)](#the-table-that-did-not-say-where-she-stood-2026-09-20)
@@ -1674,6 +1675,34 @@ down; the audit row carries fingerprints, which is what `token-leak.js`
 compares on anyway. (`domain/identity-repair.js`, `rotateIdentityToken`.)
 
 ## Delivery, outbox and proactive messages
+
+### The approval that forgot the times (fixed 2026-09-30)
+
+Miron asked for a meeting with עידן "לשבוע הבא — תוסיפי שאני יכול ביום שני
+שלישי ורביעי בערב". They were not connected, so Olma called
+`request_connection` and promised to coordinate once he approved. What was
+saved on the request was its `reason` — "מירון רוצה לתאם איתך פגישה" — and
+nothing else: `message` was described as "Optional personal message", so the
+model never thought the days belonged there.
+
+That broke the promise in two places. עידן was asked to approve a meeting
+with no hint of when. And the `connection_response` that resumes the errand
+on approval carried only the reason, while the days lived in Miron's
+session, which the gateway resets every night at 02:00 UTC. Approved the
+next morning, Olma would have started a coordination without the one thing
+he had said about it, or asked him again: exactly the failure the
+`connection_response` instruction says it exists to prevent.
+
+`message` is now described as the details (a meeting's times), shown to
+them and handed back on approval. `connection_response` carries it fenced as
+the requester's own words, with the day it was said, so "next week" is
+resolved from then and a time that has passed is asked about again instead
+of being proposed. Paying for the longer parameter text took trimming the
+same tool's description, because the schema budget had five characters left.
+
+**The shape:** "the agent understood, and the outcome had nowhere to go". The
+model heard the days, and the only field that could hold them was not
+described as the place for them.
 
 ### שלח לי קישור, and the new person's page (2026-09-25)
 
