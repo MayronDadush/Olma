@@ -116,6 +116,7 @@ never trust a dated narrative for something you are about to act on.
 - [התיק לבית חולים: one reminder asked for, six messages delivered (fixed 2026-09-18)](#התיק-לבית-חולים-one-reminder-asked-for-six-messages-delivered-fixed-2026-09-18)
 - [The hook's timer fired late, and brokerd took the blame (fixed 2026-09-07)](#the-hooks-timer-fired-late-and-brokerd-took-the-blame-fixed-2026-09-07)
 - [Good morning at half past one (fixed 2026-09-06)](#good-morning-at-half-past-one-fixed-2026-09-06)
+- [The probe that was read as him writing (fixed 2026-09-30)](#the-probe-that-was-read-as-him-writing-fixed-2026-09-30)
 - [The morning digest asked the same question four mornings running (fixed 2026-09-06)](#the-morning-digest-asked-the-same-question-four-mornings-running-fixed-2026-09-06)
 - [Four good mornings to a man who had stopped answering (fixed 2026-09-05)](#four-good-mornings-to-a-man-who-had-stopped-answering-fixed-2026-09-05)
 - [Vered's first evening: five tasks, three that would not have arrived (fixed 2026-09-06)](#vereds-first-evening-five-tasks-three-that-would-not-have-arrived-fixed-2026-09-06)
@@ -5339,6 +5340,52 @@ fixed at the `openRecord` level anyway: any future turn Olma starts on
 somebody's agent — an eval, a repair sweep, a feature nobody has written yet —
 arrives through the same door.
 
+### The probe that was read as him writing (fixed 2026-09-30)
+
+Miron (u-3) got a message at **03:01 in the morning** on 2026-09-30, Israel
+time: the auto-archive notice that "העברות + סיבוב bit" had closed itself
+because its date had passed. Quiet hours were on and his zone was right. The
+row (`outbox` 13044, `tasks_auto_archived`) was created at 03:00:59 by the
+auto-archive sweep, which runs at midnight UTC, and was sent thirty seconds
+later with no hold at all.
+
+Seven minutes earlier, at 02:53, a Claude Code session had probed his agent
+from the CLI (`openclaw agent --agent u-3`, game nights stage 3) to prove the
+games tools were reachable. The audit trail has `turn.context_without_open`
+with `messageProvider: "webchat"` and **no** `turn.opened_by_gateway`: no
+WhatsApp message was ever accepted. The model called `turn_start` anyway, as
+it does on every turn, and `turn_start` did what it does for a person: it
+stamped `last_inbound_at`, counted a message against his quota, wrote
+`message.received`, and released every night-held row. The gate then read
+`last_inbound_at` as "they wrote seven minutes ago, they are awake" and lifted
+quiet hours for the new row under `CONVERSATION_GRACE_MS`.
+
+"Good morning at half past one" (above) had already said that a night hold is
+released by the PERSON writing and by nothing else, and gated it with
+`openRecord({ wake })`. It closed only one of the two ways through. The
+re-hearing was gated in `openRecord`. But `turn_start` had its own copy of the
+re-hearing that never got the flag. And the grace itself read a column that
+every opener moves, so a row created AFTER the turn needed no re-hearing at
+all. Same fault, second and third door.
+
+**The gate's grace now reads `users.last_woke_at` (migration 102), and only
+`openRecord` with `wake: true` stamps it**. That is the gateway opener, which
+has an accepted `message:preprocessed` behind it. `turn_start` no longer
+releases night-held rows; for a person who really wrote, the gateway opener
+already did that before the model's first call, so the 2026-08-27 case (two
+connection requests held while the recipient chatted) is still covered, one
+door earlier. What is given up: if the gateway hook misses a real message (it
+timed out on 11 of the first ~200), whatever Olma decided to say in the next
+fifteen minutes waits for the morning. That is the gate's own default and the
+safe direction. `last_inbound_at` keeps every other meaning it had, including
+the check-in backoff, the first-turn verdict and the welcome follow-up drop.
+
+A probe of a person's agent still counts as them writing everywhere else
+(quota, `message.received`, `checkin_misses`). That is recorded in the
+session memory as "probe by day, and check `outbox` for unsent rows first".
+It is not fixed here, because the fallback opener exists precisely for a real
+message whose hook missed, and nothing on the MCP side can tell the two apart.
+
 ### The morning digest asked the same question four mornings running (fixed 2026-09-06)
 
 "Nobody is asked a question they have already not answered once" was enforced
@@ -10312,6 +10359,26 @@ And a repair job is the most dangerous kind of job there is. Every other sweep
 acts on a state it observed. This one acts on a BELIEF that something failed,
 and when the belief is wrong it manufactures the exact disturbance it exists to
 prevent. Nothing was broken in Yahav's conversation until the repair arrived.
+
+**The same silence, through the other door (2026-09-30).** The fix above lives
+in case (b), which reads the transcript. Case (c) reads the gateway's own
+`no queued reply payloads` line, and the gateway writes that line for a
+`NO_REPLY` exactly as for a turn that died — an empty payload list either way.
+Once the 🙏-on-thanks and 👍 `markPlaced` paths went live, case (c) read the
+decision as a swallowed message: from 2026-09-23 to 09-29 it filed eleven
+`dropped_turn` repairs, and nine of them were a closing mark on the message and
+the sentinel in the transcript (measured on the box, one read-only pass). Two
+were not — a reply composed under a ⏰ and a 66-character reply, both on
+2026-09-24 23:2x, with no sentinel anywhere near them — and those still count.
+Nothing extra reached anybody: the repair turn's own instruction lets the model
+answer NO_REPLY, and it did. The cost was a model call per false repair and an
+audit row the onboarding review filed as `bad`, which is how a detector's rate
+stops meaning anything. `unanswered.decidedSilence` now requires BOTH halves —
+a closing mark (👍/🙏/⏰ through the dashboard vocabulary) on that very message
+in the gateway's `Sent reaction` line, and the person's transcript ending on
+the sentinel within a minute of the drop — and either half unreadable leaves
+the drop standing. Three times now the shape of the record has failed to carry
+a turn's meaning for this one sweep.
 
 ### The hour in the title nobody compared (fixed 2026-09-11)
 

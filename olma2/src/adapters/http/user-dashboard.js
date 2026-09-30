@@ -35,6 +35,7 @@ const { FONT_STYLE } = require('./fonts');
 const { withTx } = require('../../db/pool');
 const auth = require('../../domain/dashboard-auth');
 const dash = require('../../domain/user-dashboard');
+const experiments = require('../../domain/experiments');
 const events = require('../../domain/user-dashboard-events');
 const write = require('../../domain/user-dashboard-write');
 const { refreshUserCard } = require('../../intake/user-card');
@@ -491,7 +492,14 @@ async function handle(req, res, pool, pathname) {
 
   if (pathname === '/me/data') {
     if (req.method !== 'GET') return sendJson(res, 405, { ok: false, error: { code: 'invalid' } }, { Allow: 'GET' });
-    const page = await withTx(pool, (c) => dash.load(c, userId));
+    const page = await withTx(pool, async (c) => {
+      const loaded = await dash.load(c, userId);
+      // Opening the page IS the exposure, in both arms — including the arm
+      // that drew no card — so the two groups are the same kind of people
+      // (domain/experiments.js). Once per person; a no-op once it is locked.
+      if (loaded.ok) await experiments.expose(c, 'invite_card_moment', userId);
+      return loaded;
+    });
     return sendJson(res, page.ok ? 200 : 404, page);
   }
 

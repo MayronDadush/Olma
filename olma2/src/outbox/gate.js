@@ -118,6 +118,10 @@ function nextUtcMidnight(date) {
 // Quiet hours are about not waking someone, not about refusing to answer
 // someone who is right there. Within this long after their own message, they
 // are demonstrably awake and mid-conversation, so the window does not apply.
+// "Their own message" is `wokeAt` (users.last_woke_at), stamped only by the
+// gateway opener off a real inbound message — never `lastInboundAt`, which any
+// turn on their agent moves, a CLI probe at 02:53 included (`incidents.md`,
+// "The probe that was read as him writing").
 const CONVERSATION_GRACE_MS = 15 * 60_000;
 
 // How long an introduction has the floor to itself. Somebody meeting Olma for
@@ -174,7 +178,7 @@ const SAYS_IT_ONCE = new Set([
 // a sentence no model writes), once per person per room.
 const PENDING_USER_KINDS = new Set(['connection_intro', 'registration_reopened', 'room_cold_invite']);
 
-// facts: { row, plan, blocked, paused, pendingUser, window, quietDays, tz, sentToday, budget, now, lastInboundAt, dashboardWroteAt }
+// facts: { row, plan, blocked, paused, pendingUser, window, quietDays, tz, sentToday, budget, now, lastInboundAt, wokeAt, dashboardWroteAt }
 // returns { action: 'deliver' | 'hold' | 'expire' | 'drop', holdReason?, releaseAfter? }
 function decide(facts) {
   const { row, plan, blocked, paused, window, tz, sentToday, budget } = facts;
@@ -515,7 +519,10 @@ function decide(facts) {
   // while a later rung expires two hours from NOW and could land anywhere.
   const rung = Number(row.payload && row.payload.rung) || 1;
   const userChoseThisTime = row.kind === 'digest' || (row.kind === 'reminder' && rung <= 1);
-  const lastInbound = facts.lastInboundAt ? new Date(facts.lastInboundAt).getTime() : 0;
+  // Evidence a person wrote, never merely that a turn ran (see
+  // CONVERSATION_GRACE_MS). `lastInboundAt` is still the right fact for the
+  // welcome follow-up above: any turn on their own agent answers it.
+  const lastInbound = facts.wokeAt ? new Date(facts.wokeAt).getTime() : 0;
   // Somebody the intake GREETER just answered is in a conversation too, and
   // it is the only one they have had: their "היי" went to the greeter, so
   // `last_inbound_at` is still NULL and must stay so (`rules/groups.md`, two

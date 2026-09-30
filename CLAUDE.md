@@ -171,7 +171,7 @@ Loads when you **Read** a file under `src/outbox/**`, `src/domain/message-format
 - **A chag is QUIET only for somebody who asked for it, and "quiet-able" means yom tov and nothing else.**
 - **`DEFAULT_WINDOW` (09:00-21:00) is no longer only a fallback — it is a sentence somebody read.**
 - **That rung asks for the COUNTRY, not the city**
-- **Only the PERSON writing releases a night-held row.**
+- **Only the PERSON writing releases a night-held row** — and only `users.last_woke_at` (the gateway opener's stamp) opens the gate's fifteen-minute grace, never `last_inbound_at`
 - **Only rung 1 of a reminder is a moment THEY chose; every rung after it is one OLMA chose, and quiet hours apply to it.**
 - **A reminder rung the GATE held is never chased; a rung OUR pipe lost is redone at once.**
 - **Nothing Olma DECIDED to say goes out in front of an introduction she still owes.**
@@ -262,7 +262,7 @@ Loads when you **Read** a file under `src/jobs/checkin.js`, `src/jobs/onboarding
 - **A write from their own page IS the person answering** — `last_dashboard_at`, never `last_inbound_at`
 - **A "once ever" question is stamped on the PERSON, never deduped on the route that asks it.**
 - **The chag offer is that shape's second column (`holiday_quiet_asked_at`, migration 062), with two routes from the start.**
-- **…and the offer to add her to more groups is its third (`more_groups_offered_at`, migration 086)** — earned by a yes on the time a ROOM locked, and it rides the next check-in
+- **…and the offer to add her to more groups is its third (`more_groups_offered_at`, migration 086)** — earned by a yes on the time a ROOM locked (or a private coordination of 3+, since 2026-09-30), and it rides the next check-in — at once or after the meeting, an A/B test
 - **…and the zone question in a room on several clocks is its fourth (`room_zone_asked_at`, migration 092)** — only for an unconfirmed zone, riding the room invite, stamped after the send confirms
 - **Deleting a user is not deleting a person until the GATEWAY's intake session goes too.**
 - **The ledgers are append-only.**

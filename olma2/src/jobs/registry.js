@@ -242,6 +242,8 @@ const deployDrift = require('./deploy-drift');
     // its own transaction and undoes those on the way out of a failure.
     { name: 'intake_sweep', run: () => intake.runIntakeSweep(pool, {
       configPath: OPENCLAW_CONFIG(), readFirstMessage: intake.readIntakeFirstMessage,
+      readReferralText: intake.readIntakeReferralText,
+      readLanguage: intake.readIntakeLanguage,
     }) },
     { name: 'reopen_sweep', run: () => withTx(pool, (c) => intake.sweepReopen(c)) },
     // Group mode. Inert until `scripts/install-group-greeter.js` has run —
@@ -332,6 +334,10 @@ const deployDrift = require('./deploy-drift');
     { name: 'voice_usage_sweep', run: () => withTx(pool, (c) => voiceUsage.sweepVoiceUsage(c)) },
     { name: 'metrics_sweep', run: () => withTx(pool, (c) => metrics.sweepMetrics(c, new Date(), { sessions: sessionsAsync })) },
     { name: 'retention_sweep', run: () => withTx(pool, (c) => retention.sweepRetention(c)) },
+    // The owner's Sunday-morning growth report (jobs/growth-report.js): the
+    // goal of 100 weekly active users, the doors, the A/B tests. Hourly; the
+    // job owns its hour and its once-a-week stamp, on the raw pipe.
+    { name: 'growth_report', run: () => withTx(pool, (c) => require('./growth-report').run(c, { send: rawSend })) },
     // A person's own confirmed request to delete everything (domain/self-delete.js),
     // carried out a minute after it, outside the turn that asked. One
     // transaction per person, so one failure never holds another's deletion.

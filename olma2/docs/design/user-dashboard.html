@@ -84,6 +84,10 @@
   --ok:#0F6B52;
   --ok-soft:#E2EFE9;
   --drop-line:#2F7F9E;
+  /* the task sheet's icon tiles: a soft ground for the sea blue, and a clay
+     for "together" that is not the red of deleting */
+  --sea-soft:#E0EDF2;
+  --clay:#C4513F;
   /* The meeting ring's own three colours. A "no" needs a red that is NOT the
      danger red — deleting and being unable to come are different weights of
      bad, and the arcs sit millimetres apart. Gold is reserved for the one
@@ -196,6 +200,8 @@
     --ok:#6FD3A6;
     --ok-soft:#12352A;
     --drop-line:#7FB8D0;
+    --sea-soft:#1E2D33;
+    --clay:#E08A78;
     --no-arc:#C9665A;
     --gold:#E9BE5C;
     --gold-arc:#F9C23C;
@@ -256,6 +262,8 @@
   --ok:#6FD3A6;
   --ok-soft:#12352A;
   --drop-line:#7FB8D0;
+  --sea-soft:#1E2D33;
+  --clay:#E08A78;
   --no-arc:#C9665A;
   --gold:#E9BE5C;
   --gold-arc:#F9C23C;
@@ -496,6 +504,9 @@ html.intro-go .tabbar{animation:introBar .55s var(--ease) .3s both}
    first (today, the install card, the home cards) is the one that rises. */
 .view[data-view="tools"] > .title{padding-bottom:52px;margin-bottom:-30px}
 .view[data-view="tools"] > .title ~ *{position:relative}
+/* The tasks band is one line shorter in air, so the first screen holds tasks
+   rather than green (owner, 2026-09-30). */
+.view[data-view="tasks"] > .title{padding-bottom:18px}
 .view.active > .title{animation:none}
 .view.active > .title > *{animation:rise .25s var(--ease) both}
 
@@ -1229,6 +1240,23 @@ html.is-app .welcome .wcode-have{display:none}
 .inst-acts button{flex:1;padding:11px 12px;border-radius:12px;font-weight:600;font-size:14.5px}
 .inst-yes{background:var(--accent);color:var(--on-accent)}
 .inst-no{background:var(--bg-tint);color:var(--text-2)}
+
+/* ─────────────────  the invitation to a friend  ───────────────── */
+/* Under the home cards (owner, 2026-09-30: the growth plan). The message and
+   its link are made by the server (domain/referral.js); the page only hands
+   them to WhatsApp or the clipboard. No data, no card. */
+.invite{
+  margin:14px 0 22px;padding:15px 16px 14px;border-radius:20px;
+  background:var(--surface);box-shadow:var(--shadow-m);
+  display:flex;flex-direction:column;gap:2px;
+}
+.invite[hidden]{display:none}
+.invite b{font-family:var(--font-display);font-weight:700;font-size:16px;color:var(--text)}
+.invite p{font-size:13.5px;line-height:1.45;color:var(--text-2)}
+.invite .inst-acts a{
+  flex:1;padding:11px 12px;border-radius:12px;font-weight:600;font-size:14.5px;
+  text-align:center;text-decoration:none;
+}
 .themetog{
   position:fixed;bottom:calc(env(safe-area-inset-bottom,0px) + 96px);inset-inline-start:128px;z-index:80;
   width:26px;height:26px;border-radius:999px;background:var(--surface);
@@ -1386,6 +1414,10 @@ html[data-paused] .pausegate{
 }
 .task.done .ttitle{color:var(--text-3)}
 .task.done .ttitle::after{transform:scaleX(1)}
+/* A handful of brand-coloured bits thrown from the tick (confetti(), below).
+   Fixed to the viewport and on the body, so a sheet closing or a row folding
+   away under them does not take them with it; never a target. */
+.conf{position:fixed;pointer-events:none;z-index:99;border-radius:2px}
 .task{cursor:pointer}
 .task:active{background:var(--surface-2)}
 /* ── dragging a task ──
@@ -1548,6 +1580,138 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 .litem.fresh{animation:itemIn .23s var(--ease-io)}
 .additem{text-align:start}
 .additemrow{padding-top:4px}
+/* A task that already has items opens on them, and the rest of the sheet
+   folds behind one row that says what it holds (#sheet.listmode, set in
+   openSheet). Outside listmode the row does not exist and nothing moves —
+   including the separator it would otherwise hand to the row after it. */
+#sDetailsRow{display:none}
+#sheet.listmode #sDetailsRow{display:flex}
+#sDetailsRow::before{
+  content:"";position:absolute;top:0;height:1px;background:var(--sep);
+  inset-inline-start:14px;inset-inline-end:0;
+}
+#sheet:not(.listmode) #sDetailsRow + .row::before{content:none}
+#sheet.listmode:not(.details) .lfold{display:none}
+#sheet.listmode.details .lfold{animation:itemIn .23s var(--ease-io)}
+
+/* ── the task sheet as sentences (owner, 2026-09-30) ──
+   Each row is a coloured icon, a small label saying what the row is, and the
+   value said the way a person would say it. Only what the task HAS is a row;
+   the rest waits below as tiles that each say what they add. */
+#sheet .group + .group,#sheet .group + .also,#sheet .also + .group{margin-top:12px}
+#sheet [hidden].group,#sheet .srow[hidden],#sheet .atile[hidden],
+#sheet .wweekwrap[hidden],#sheet .wline[hidden],#sheet .endline[hidden],
+#sheet .also[hidden],#sheet .sval[hidden],#sheet .wpk button[hidden]{display:none}
+.srow{
+  display:flex;align-items:center;gap:12px;width:100%;min-height:60px;
+  padding:8px 14px;position:relative;text-align:start;
+}
+button.srow{cursor:pointer;transition:background .18s ease}
+button.srow:active{background:var(--bg-tint)}
+#sheet .group .srow:not(:first-child)::before{
+  content:"";position:absolute;top:0;height:1px;background:var(--sep);
+  inset-inline-start:62px;inset-inline-end:0;
+}
+.srow[aria-expanded="true"] .chev{transform:rotate(-90deg)}
+.srow.locked{opacity:.42;cursor:default}
+.stile{
+  width:36px;height:36px;border-radius:11px;flex:none;display:grid;place-items:center;
+}
+.stile svg{width:19px;height:19px}
+.st-cal{background:var(--accent-soft);color:var(--accent)}
+.st-bell,.st-gold{background:var(--gold-soft);color:var(--gold)}
+.st-rep,.st-sea{background:var(--sea-soft);color:var(--drop-line)}
+.st-share{background:var(--danger-soft);color:var(--clay)}
+.st-ghost{background:var(--bg-tint);color:var(--text-2)}
+.stx{flex:1;min-width:0;display:grid;gap:1px}
+.slab{font-size:12.5px;font-weight:600;color:var(--text-3)}
+.sval{font-size:16px;font-weight:600;color:var(--text);
+  display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px}
+.sval.off{color:var(--text-3);font-weight:500}
+.sval.small{font-size:13.5px;font-weight:500;color:var(--text-2)}
+.sval.flash{animation:svalFlash .6s ease}
+@keyframes svalFlash{0%{color:var(--gold)}100%{color:inherit}}
+/* the part of a sentence that is itself a choice */
+.sinl{
+  display:inline-flex;align-items:center;gap:3px;border-radius:8px;padding:1px 8px;
+  background:var(--gold-soft);color:var(--gold);font-size:15px;font-weight:700;
+}
+.sinl svg{width:9px;height:12px;transform:rotate(-90deg);transition:transform .3s var(--spring)}
+.sinl[aria-expanded="true"] svg{transform:rotate(90deg)}
+.spad{padding:0 14px 12px;padding-inline-start:62px;display:grid;gap:8px;justify-items:start}
+
+/* the when-row, open: a line for the day and a line for the hour */
+.wpad{padding:0 14px 12px;padding-inline-start:62px;display:grid;gap:9px}
+.wline{display:grid;gap:4px}
+.wkey{font-size:12px;font-weight:700;color:var(--text-3)}
+.wpk{display:flex;flex-wrap:wrap;gap:6px}
+.wpk button{
+  border-radius:999px;padding:5px 11px;font-size:13.5px;font-weight:600;
+  background:var(--bg-tint);color:var(--text-2);
+  display:inline-flex;align-items:center;gap:5px;font-variant-numeric:tabular-nums;
+  transition:background .2s var(--ease),color .2s var(--ease),transform .2s var(--spring);
+}
+.wpk button:active{transform:scale(.94)}
+.wpk button svg{width:13px;height:13px}
+.wpk button.quiet{background:none;box-shadow:inset 0 0 0 1.4px var(--sep-2)}
+.wpk button[aria-pressed="true"],.wpk button[aria-checked="true"]{
+  background:var(--accent);color:var(--on-accent);box-shadow:none}
+.wpk button.locked{opacity:.42;cursor:default}
+.wweekwrap{display:grid;gap:4px}
+.wweek{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.wweek button{
+  border-radius:10px;background:var(--bg-tint);padding:5px 0;display:grid;justify-items:center;
+  font-size:11px;font-weight:600;color:var(--text-3);
+}
+.wweek button b{font-size:15px;color:var(--text);font-variant-numeric:tabular-nums}
+.wweek button[aria-pressed="true"]{background:var(--accent);color:var(--on-accent)}
+.wweek button[aria-pressed="true"] b{color:var(--on-accent)}
+.wmore{justify-self:center;color:var(--accent);font-size:13px;font-weight:600;padding:2px 8px}
+.endline{display:flex;align-items:center;gap:4px;justify-self:start}
+.endlink{color:var(--accent);font-weight:600;font-size:13.5px;padding:2px 0;font-variant-numeric:tabular-nums}
+.endlink.set{background:var(--accent-soft);border-radius:999px;padding:3px 10px}
+.endx{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;color:var(--text-3)}
+.endx svg{width:10px;height:10px}
+
+/* the category, as a tag under the title */
+.catline{display:grid;justify-items:center;gap:8px;margin:-4px 0 12px}
+.catchip{
+  display:inline-flex;align-items:center;gap:0;border-radius:999px;padding:4px 12px 4px 10px;
+  background:var(--bg-tint);font-size:13.5px;font-weight:600;color:var(--text-2);
+  transition:transform .2s var(--spring);
+}
+[dir="rtl"] .catchip{padding:4px 10px 4px 12px}
+.catchip:active{transform:scale(.95)}
+.catchip small{font-size:12.5px;font-weight:500;color:var(--text-3);margin-inline-start:5px}
+.catchip.locked{opacity:.42;cursor:default}
+.catfold{display:grid;grid-template-rows:0fr;transition:grid-template-rows .36s var(--ease-io);width:100%}
+.catfold.open{grid-template-rows:1fr}
+.catfold > div{overflow:hidden;min-height:0}
+.catfold .chips{justify-content:center;padding:2px 0 2px}
+
+/* "you can also": what the task could become, each saying what it adds */
+.alsoh{font-size:13px;font-weight:700;color:var(--text-3);padding:2px 6px 8px}
+.alsotiles{display:grid;grid-template-columns:repeat(var(--n,3),1fr);gap:9px}
+.atile{
+  background:var(--surface-2);border-radius:16px;padding:12px 10px;
+  display:grid;gap:6px;justify-items:start;align-content:start;text-align:start;
+  transition:transform .15s var(--ease);
+}
+.atile:active{transform:scale(.95)}
+.atile b{font-size:15px;font-weight:600;display:flex;align-items:center;gap:4px;color:var(--text)}
+.atile b svg{width:12px;height:12px;color:var(--text-3)}
+.atile > span:last-child{font-size:12.5px;line-height:1.3;color:var(--text-3)}
+/* a tile becoming its row: the row arrives, and its icon lands */
+.fresh-row{animation:itemIn .38s var(--ease-io)}
+.fresh-row .stile{animation:stileLand .5s var(--squash)}
+@keyframes stileLand{0%{transform:scale(.4)}100%{transform:none}}
+.wline.locked,.endline.locked{opacity:.42}
+@media (prefers-reduced-motion: reduce){
+  .fresh-row,.fresh-row .stile,.sval.flash{animation:none}
+}
+/* nothing to say until something was saved */
+#sSaved{opacity:0;transition:opacity .3s var(--ease),color .2s var(--ease)}
+#sSaved.flash{opacity:1}
 
 /* who a shared task belongs to, spelled out inside the editor */
 .sperson{display:flex;align-items:center;gap:11px;padding:8px 0}
@@ -2209,10 +2373,6 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 #arcCount{display:inline-block}
 #arcCount.caught{animation:chipPop .3s var(--squash)}
 .vchip.pop{animation:chipPop .19s var(--ease-io)}
-.autotag{
-  font-size:11px;font-weight:600;color:var(--accent);background:var(--accent-soft);
-  padding:2.5px 8px;border-radius:999px;flex:none;margin-inline-start:8px;
-}
 .chip.cat{display:inline-flex;align-items:center}
 .chip.cat[aria-pressed="true"] .cdot{box-shadow:0 0 0 1.6px rgba(255,255,255,.85)}
 
@@ -2317,6 +2477,12 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 .calfoldmark{width:15px;height:15px;flex:none}
 .calfoldn{margin-inline-start:auto;font-weight:500}
 .calfold .fold .group{margin-top:4px}
+/* Between sections the list used to take the stack's 26px AND .tsec's 19px,
+   45px of nothing four times over — three tasks on a phone's first screen.
+   The section margin alone is the gap now. */
+#taskStack{gap:0}
+/* The calendar fold is one slim row, set off by a tint rather than by air. */
+#taskStack .calfold .arcbtn{padding:8px 14px;background:var(--bg-tint);border-radius:12px}
 #arcGroup .task{opacity:.7}
 #arcGroup .ttitle{color:var(--text-3)}
 #arcGroup .pill{background:transparent;padding-inline:0;color:var(--text-3);font-weight:500}
@@ -3402,6 +3568,14 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
         <svg class="chev homechev"><use href="#i-chev"/></svg>
       </button>
     </div>
+    <div class="invite" id="invite" role="region" hidden>
+      <b data-i18n="invite.h"></b>
+      <p data-i18n="invite.p"></p>
+      <div class="inst-acts">
+        <a class="inst-yes" id="inviteSend" target="_blank" rel="noopener" data-i18n="invite.send"></a>
+        <button class="inst-no" id="inviteCopy" type="button" data-i18n="invite.copy"></button>
+      </div>
+    </div>
     <h2 class="homeh" data-stage="0" data-i18n="tools.h"></h2>
     <div class="stack" style="--i:1" id="toolsStack"></div>
   </section>
@@ -3865,17 +4039,33 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     <span class="stedit" id="sTitleEdit" aria-hidden="true"><svg><use href="#i-pencil"/></svg></span>
     <button class="stgo" id="sTitleGo" hidden><svg><use href="#i-check"/></svg></button>
   </div>
+  <!-- The category is the least interesting thing about a task (owner,
+       2026-09-30), so it is not a row any more: a tag under the title, with
+       its colour, and "Olma picked this" beside it until the person answers.
+       It stays visible in listmode — it is one line, and it is what the
+       by-category view sorts on. -->
+  <div class="catline" id="sCatLine">
+    <button class="catchip" id="sCatRow" aria-expanded="false" data-i18n-label="cat.h">
+      <i class="cdot" id="sCatDot"></i><span id="sCatVal"></span>
+      <small id="sCatAuto" hidden>· <span data-i18n="cat.auto"></span></small>
+    </button>
+    <div class="catfold" id="sCatFold"><div>
+      <div class="chips" id="sCat"></div>
+    </div></div>
+  </div>
   <!-- Where it came from, said once at the top, so the greyed rows further
        down do not each have to explain themselves. -->
   <div class="srcline" id="sSrc" hidden>
     <span class="srcmark"><svg id="sSrcIcon"><use href="#i-monday"/></svg></span>
     <span id="sSrcTxt"></span>
   </div>
-  <div class="group">
-    <!-- A list is what the task IS, so it heads the group, above every
-         question about when. Folded by default: the row already carries the
-         count, and an open list would push the editor past one screen —
-         which is the one rule this sheet has. -->
+  <!-- The list is what the task IS, so when it has one it heads the sheet.
+       A task with no items shows no list row at all: the "list" tile below
+       opens it, and the first item typed turns the whole sheet into
+       listmode — the items on top, everything else behind one "details"
+       row (owner, 2026-09-30: "when I open a list it doesn't open straight
+       away and I see all the settings"). -->
+  <div class="group" id="sListGroup" hidden>
     <button class="row no-icon" id="sListRow" aria-expanded="false">
       <div class="row-txt"><div class="row-title" data-i18n="sheet.list"></div>
         <div class="row-sub" id="sListSub"></div></div>
@@ -3889,76 +4079,71 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
                data-i18n-ph="sheet.addItem" data-i18n-label="sheet.addItem" autocomplete="off">
       </div>
     </div></div>
-    <!-- Date, time and all-day were three rows asking one question. They are
-         one row of values now: each is its own target, and the ones that do
-         not apply yet simply are not there. -->
-    <div class="row no-icon whenrow">
-      <div class="row-title" data-i18n="sheet.when"></div>
-      <div class="whenvals">
-        <!-- An undated task is one tap from today or tomorrow, without opening
-             the calendar for the two days almost everybody picks. -->
-        <button class="vchip quick" data-taskday="0" data-i18n="cal.today"></button>
-        <button class="vchip quick" data-taskday="1" data-i18n="cal.tomorrow"></button>
-        <!-- The date and the way back to "no date" are one pill. Clearing a
-             date used to be the third button inside the calendar, so taking a
-             date off a task meant opening a calendar to not pick one. -->
-        <span class="vseg" id="sDateSeg">
-          <button class="vseg-b" id="sDateRow" data-cal="task" data-quick="1">
-            <svg class="vic"><use href="#i-cal"/></svg><span id="sDateVal"></span></button>
-          <button class="vclear" id="sDateClear" data-i18n-label="cal.clear">
-            <svg><use href="#i-x"/></svg></button>
-        </span>
-        <!-- Start and end are one range, so they are one pill.
-             Where it STOPS: a shift used to be a title with its hours typed
-             into it — `משמרת - ראשון 12:00-19:00` — because there was nowhere
-             else to put them, and nothing could read them there. It only
-             appears once there is a start, because an end with nothing to end
-             is not a time. -->
-        <span class="vseg" id="sTimeSeg">
-          <button class="vseg-b" id="sTimeChip">
-            <svg class="vic" id="sTimeIcon"><use href="#i-clock"/></svg><span id="sTimeVal"></span></button>
-          <button class="vseg-b end" id="sEndChip"><span id="sEndVal"></span></button>
-        </span>
-        <button class="vchip toggle" id="sAllDay" role="switch" aria-checked="false"
-                data-i18n-label="sheet.allDay"><span class="tdot"></span><span data-i18n="sheet.allDay"></span></button>
+    <!-- Only in listmode: everything below, said in one line. -->
+    <button class="row no-icon" id="sDetailsRow" aria-expanded="false">
+      <div class="row-txt"><div class="row-title" data-i18n="sheet.details"></div>
+        <div class="row-sub" id="sDetailsSub"></div></div>
+      <svg class="chev"><use href="#i-chev"/></svg>
+    </button>
+  </div>
+  <!-- Every row is a sentence: a small label saying what the row is, and the
+       value said the way a person would say it ("tomorrow, 09:00"). Rows that
+       hold nothing are not here; they wait as tiles under "you can also". -->
+  <div class="group lfold" id="sMainGroup">
+    <button class="srow" id="sWhenRow" aria-expanded="false">
+      <span class="stile st-cal"><svg><use href="#i-cal"/></svg></span>
+      <span class="stx"><span class="slab" data-i18n="sheet.when"></span><span class="sval" id="sWhenSay"></span></span>
+      <svg class="chev"><use href="#i-chev"/></svg>
+    </button>
+    <!-- "When" opens in place, as two short lines: the day, then the hour.
+         The week strip and the four hours are only the common answers — "more"
+         is the page's own calendar and "other" its own clock wheel, the same
+         two every other date and time on the page opens. -->
+    <div class="fold" id="sWhenFold"><div><div class="wpad">
+      <div class="wline"><span class="wkey" data-i18n="sheet.day"></span>
+        <span class="wpk" id="sDayPk">
+          <button data-taskday="0" data-i18n="cal.today"></button>
+          <button data-taskday="1" data-i18n="cal.tomorrow"></button>
+          <button id="sWeekTog" aria-expanded="false"><svg><use href="#i-cal"/></svg><span data-i18n="sheet.pickDate"></span></button>
+          <button class="quiet" id="sDateClear" data-i18n="sheet.sum.noDate"></button>
+        </span></div>
+      <div class="wweekwrap" id="sWeekWrap" hidden>
+        <div class="wweek" id="sWeek"></div>
+        <button class="wmore" id="sDateRow" data-cal="task" data-quick="1" data-i18n="sheet.moreDates"></button>
       </div>
+      <!-- An hour is an answer to a question there is no day for yet, so the
+           line waits for a date. -->
+      <div class="wline" id="sHourLine"><span class="wkey" data-i18n="sheet.addTime"></span>
+        <span class="wpk" id="sHourPk">
+          <button data-hour="09:00">09:00</button>
+          <button data-hour="12:00">12:00</button>
+          <button data-hour="16:00">16:00</button>
+          <button data-hour="20:00">20:00</button>
+          <button id="sTimeChip"><svg><use href="#i-clock"/></svg><span id="sTimeVal"></span></button>
+          <button class="quiet" id="sAllDay" role="switch" aria-checked="false" data-i18n="sheet.allDay"></button>
+        </span></div>
+      <!-- Where it STOPS: a shift used to be a title with its hours typed
+           into it — `משמרת - ראשון 12:00-19:00` — because there was nowhere
+           else to put them. Offered once there is a start, because an end
+           with nothing to end is not a time. -->
+      <span class="endline" id="sEndLine">
+        <button class="endlink" id="sEndChip"><span id="sEndVal"></span></button>
+        <button class="endx" id="sEndClear" hidden data-i18n-label="sheet.endClear"><svg><use href="#i-x"/></svg></button>
+      </span>
       <input id="sTime" type="time" tabindex="-1" aria-hidden="true"
              style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px">
       <input id="sEnd" type="time" tabindex="-1" aria-hidden="true"
              style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px">
-    </div>
-    <button class="row no-icon" id="sCatRow" aria-expanded="false">
-      <div class="row-txt"><div class="row-title" data-i18n="cat.h"></div></div>
-      <span class="row-val" id="sCatVal"></span>
-      <span class="autotag" id="sCatAuto" hidden data-i18n="cat.auto"></span>
-      <svg class="chev"><use href="#i-chev"/></svg>
-    </button>
-    <div class="fold" id="sCatFold"><div><div class="foldpad tight">
-      <div class="chips" id="sCat"></div>
     </div></div></div>
-    <button class="row no-icon" id="sRepeatRow" aria-expanded="false">
-      <div class="row-txt"><div class="row-title" data-i18n="sheet.repeat"></div></div>
-      <span class="row-val" id="sRepeatVal"></span>
-      <svg class="chev"><use href="#i-chev"/></svg>
-    </button>
-    <div class="fold" id="sRepeatFold"><div><div class="foldpad tight">
-      <div class="chips" id="sRepeat">
-        <button class="chip mini" aria-pressed="true" data-rep="none" data-i18n="rep.once"></button>
-        <button class="chip mini" aria-pressed="false" data-rep="day" data-i18n="rep.day"></button>
-        <button class="chip mini" aria-pressed="false" data-rep="week" data-i18n="rep.week"></button>
-        <button class="chip mini" aria-pressed="false" data-rep="month" data-i18n="rep.month"></button>
-        <!-- A CHASE: one a day until the task's own date, stopping when it is
-             done (domain/reminders.startChase — the same one חיים gets in
-             chat). Offered only on a dated task; the date IS the deadline, so
-             there is no second date to pick. -->
-        <button class="chip mini" aria-pressed="false" data-rep="until" data-i18n="rep.until"></button>
-      </div>
-    </div></div></div>
-    <div class="row no-icon" id="sRemindRow">
-      <div class="row-txt"><div class="row-title" data-i18n="sheet.remind"></div><div class="row-sub" id="remindSub"></div></div>
+    <div class="srow" id="sRemindRow">
+      <span class="stile st-bell"><svg><use href="#i-bell"/></svg></span>
+      <span class="stx"><span class="slab" data-i18n="sheet.remind"></span>
+        <span class="sval" id="sRemSay"><span id="remindSub"></span>
+          <button class="sinl" id="sRemInl" aria-expanded="false"><span id="sRemInlVal"></span><svg><use href="#i-chev"/></svg></button></span>
+        <span class="sval off" id="sRemOff" data-i18n="sheet.sum.noRem"></span></span>
       <button class="switch" role="switch" aria-checked="false" id="sRemind" data-i18n-label="sheet.remind"></button>
     </div>
-    <div class="fold" id="sRemindFold"><div><div class="foldpad tight">
+    <div class="fold" id="sRemindFold"><div><div class="spad">
       <div class="chips" id="sOffset">
         <!-- data-remoff, not data-off: #sSharePeople already uses data-off for
              "take this person off the task", and two attributes with one name
@@ -3978,29 +4163,49 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
           <svg class="vic"><use href="#i-clock"/></svg><span id="sRemindAtVal"></span></button>
       </span>
     </div></div></div>
+    <button class="srow" id="sRepeatRow" aria-expanded="false" hidden>
+      <span class="stile st-rep"><svg><use href="#i-repeat"/></svg></span>
+      <span class="stx"><span class="slab" data-i18n="sheet.repeat"></span><span class="sval" id="sRepeatVal"></span></span>
+      <svg class="chev"><use href="#i-chev"/></svg>
+    </button>
+    <div class="fold" id="sRepeatFold"><div><div class="spad">
+      <div class="chips" id="sRepeat">
+        <button class="chip mini" aria-pressed="true" data-rep="none" data-i18n="rep.once"></button>
+        <button class="chip mini" aria-pressed="false" data-rep="day" data-i18n="rep.day"></button>
+        <button class="chip mini" aria-pressed="false" data-rep="week" data-i18n="rep.week"></button>
+        <button class="chip mini" aria-pressed="false" data-rep="month" data-i18n="rep.month"></button>
+        <!-- A CHASE: one a day until the task's own date, stopping when it is
+             done (domain/reminders.startChase — the same one חיים gets in
+             chat). Offered only on a dated task; the date IS the deadline, so
+             there is no second date to pick. -->
+        <button class="chip mini" aria-pressed="false" data-rep="until" data-i18n="rep.until"></button>
+      </div>
+    </div></div></div>
     <!-- "Add to calendar" is a promise about a specific calendar, and with
          more than one connected the switch alone does not say which. There is
          no chooser here on purpose: one connected calendar is the writing one,
          and picking between them is a decision for the connections page, not
          for the middle of writing a task. -->
-    <div class="row no-icon" id="sCalRow" hidden>
-      <div class="row-txt"><div class="row-title" data-i18n="sheet.inCal"></div>
-        <div class="row-sub" id="sCalSub"></div></div>
+    <div class="srow" id="sCalRow" hidden>
+      <span class="stile st-sea"><svg><use href="#i-cal"/></svg></span>
+      <span class="stx"><span class="slab" data-i18n="sheet.inCal"></span><span class="sval small" id="sCalSub"></span></span>
       <button class="switch" role="switch" aria-checked="false" id="sCal" data-i18n-label="sheet.inCal"></button>
     </div>
     <!-- Only where there is somewhere to jump TO: a dated task that is on the
          calendar. It was an icon on the row until 2026-09-28. -->
-    <button class="row no-icon" id="sJumpRow" hidden>
-      <div class="row-txt"><div class="row-title" data-i18n="cal.showIn"></div></div>
+    <button class="srow" id="sJumpRow" hidden>
+      <span class="stile st-ghost"><svg><use href="#i-out"/></svg></span>
+      <span class="stx"><span class="sval" data-i18n="cal.showIn"></span></span>
       <svg class="chev"><use href="#i-chev"/></svg>
     </button>
   </div>
 
-  <!-- who else has this task. Hidden entirely when nobody else does. -->
-  <div class="group" id="sShareGroup" style="margin-top:12px">
-    <button class="row no-icon" id="sShareRow" aria-expanded="false">
-      <div class="row-txt"><div class="row-title" data-i18n="sheet.shared"></div>
-        <div class="row-sub" id="sShareSub"></div></div>
+  <!-- who else has this task — here only once somebody else does, or once
+       the "together" tile opened it -->
+  <div class="group lfold" id="sShareGroup" hidden>
+    <button class="srow" id="sShareRow" aria-expanded="false">
+      <span class="stile st-share"><svg><use href="#i-people"/></svg></span>
+      <span class="stx"><span class="slab" data-i18n="sheet.shared"></span><span class="sval small" id="sShareSub"></span></span>
       <span id="sShareFaces"></span>
       <svg class="chev"><use href="#i-chev"/></svg>
     </button>
@@ -4029,6 +4234,24 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       <p class="note" id="sLeaveNote" style="padding:10px 0 0" data-i18n="sheet.leaveSub" hidden></p>
       <button class="linkbtn danger" id="sLeave" style="margin-top:10px;display:block" data-i18n="sheet.leave" hidden></button>
     </div></div></div>
+  </div>
+
+  <!-- What the task could also be, each tile saying in one line what it
+       adds. A tile turns into its row, already open on its first question,
+       and goes; a row that cannot be used here (an imported task that has no
+       such field) never shows its tile. -->
+  <div class="also lfold" id="sAlso">
+    <div class="alsoh" data-i18n="sheet.also"></div>
+    <div class="alsotiles" id="sAlsoTiles">
+      <button class="atile" data-also="list"><span class="stile st-gold"><svg><use href="#i-list"/></svg></span>
+        <b><span data-i18n="sheet.list"></span><svg><use href="#i-plus"/></svg></b><span data-i18n="sheet.also.list"></span></button>
+      <button class="atile" data-also="rep"><span class="stile st-rep"><svg><use href="#i-repeat"/></svg></span>
+        <b><span data-i18n="sheet.also.repT"></span><svg><use href="#i-plus"/></svg></b><span data-i18n="sheet.also.rep"></span></button>
+      <button class="atile" data-also="share"><span class="stile st-share"><svg><use href="#i-people"/></svg></span>
+        <b><span data-i18n="sheet.also.shareT"></span><svg><use href="#i-plus"/></svg></b><span data-i18n="sheet.also.share"></span></button>
+      <button class="atile" data-also="cal"><span class="stile st-sea"><svg><use href="#i-cal"/></svg></span>
+        <b><span data-i18n="sheet.also.calT"></span><svg><use href="#i-plus"/></svg></b><span data-i18n="sheet.also.cal"></span></button>
+    </div>
   </div>
 
   <p class="savedline" id="sSaved"></p>
@@ -4503,7 +4726,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     setTimezone:"setTimezone", setDefaultChannel:"setDefaultChannel",
     pause:"pause", resume:"resume", callMe:"callMe", deleteAccount:"deleteAccount",
     requestMoreCalls:"requestMoreCalls",
-    inviteContact:"inviteContact",
+    inviteContact:"inviteContact", inviteShared:"inviteShared",
     respondToMeeting:"respondToMeeting", leaveMeeting:"leaveMeeting", cancelMeeting:"cancelMeeting",
     rejoinMeeting:"rejoinMeeting", reopenMeeting:"reopenMeeting",
     startMeeting:"startMeeting", addOption:"addOption", answerOption:"answerOption",
@@ -5039,6 +5262,11 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "code.slow":"יותר מדי ניסיונות. אפשר לנסות שוב בעוד רבע שעה.",
       "code.net":"אין חיבור כרגע. נסו שוב בעוד רגע.",
       /* the invitation to install (see .inst) */
+      /* the invitation to a friend (see .invite) */
+      "invite.h":"להזמין חברים לעולמה",
+      "invite.p":"הודעה מוכנה עם קישור אישי. מי שיכתוב לעולמה דרכו — היא תדע שהגיע מכם.",
+      "invite.send":"שליחה בוואטסאפ","invite.copy":"העתקת ההודעה",
+      "invite.copied":"ההודעה הועתקה","invite.copyFail":"לא הצלחתי להעתיק — אפשר לשלוח בוואטסאפ",
       "inst.h":"עולמה במסך הבית",
       "inst.p":"אייקון משלה, בלי לחפש את הקישור בוואטסאפ.",
       "inst.pIos":"שלוש לחיצות בספארי, ועולמה נפתחת כמו אפליקציה.",
@@ -5108,7 +5336,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "nestRefuse.notMine":"אפשר להכניס לרשימה רק משימות שלך",
       
 
-      "sheet.when":"מתי","sheet.pickTime":"בחירת שעה","sheet.pickEnd":"עד","share.andMore":" ועוד {n}",
+      "sheet.when":"מתי","sheet.pickTime":"בחירת שעה","share.andMore":" ועוד {n}",
       "cat.h":"קטגוריה","cat.auto":"עולמה בחרה","cat.byTime":"לפי זמן","cat.byCat":"לפי קטגוריה",
       "tcat.home":"בית","tcat.work":"עבודה","tcat.family":"משפחה","tcat.health":"בריאות",
       "tcat.money":"כספים","tcat.errands":"סידורים","tcat.none":"ללא קטגוריה",
@@ -5120,7 +5348,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "sheet.sharePick":"מי עוד יראה את המשימה ויוכל לסמן אותה",
       "toast.shared":"„{name}” משותפת עכשיו עם {who}","toast.unshared":"„{name}” חזרה להיות שלך בלבד",
       "tasks.leftAt":"יצאת ממנה",
-      "sheet.list":"רשימה","sheet.listSub.n0":"אין עדיין פריטים","sheet.listSub.nN":"{done} מתוך {n} סומנו",
+      "sheet.list":"רשימה","sheet.details":"פרטים","sheet.sum.noDate":"בלי תאריך","sheet.sum.rem":"עם תזכורת","sheet.sum.noRem":"בלי תזכורת","sheet.sum.with":"עם {names}","sheet.listSub.n0":"אין עדיין פריטים","sheet.listSub.nN":"{done} מתוך {n} סומנו",
       "sheet.addItem":"הוספת פריט","sheet.itemRm":"מחיקת הפריט",
       "sheet.shared":"משותפת","share.with1":"משותפת עם {name}","share.withN":"משותפת עם {name} ועוד {n}",
       "share.ownerM":"פתח את המשימה","share.ownerF":"פתחה את המשימה","share.ownerMe":"פתחתי את המשימה","share.you":"אני",
@@ -5316,7 +5544,15 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "sheet.date":"מועד","sheet.time":"שעה",
       "sheet.remind":"תזכורת","sheet.remindSub":"עולמה תזכיר ב־{name}",
       "sheet.save":"שמירה","sheet.delete":"מחיקת המשימה","sheet.cancel":"ביטול",
-      "sheet.autosave":"נשמר אוטומטית","sheet.saved":"נשמר ✓","sheet.noDate":"ללא תאריך","sheet.pickDate":"תאריך",
+      "sheet.day":"יום","sheet.moreDates":"עוד תאריכים…","sheet.otherTime":"אחרת",
+      "sheet.endAsk":"+ עד מתי?","sheet.endVal":"עד {time}","sheet.endClear":"בלי שעת סיום",
+      "sheet.whenAt":"{day}, {time}","sheet.whenAll":"{day}, כל היום","sheet.whenRange":"{start} עד {end}",
+      "sheet.remAtShort":"ב־{time}","sheet.firstItem":"מה הדבר הראשון?","toast.nowList":"זו רשימה עכשיו",
+      "sheet.also":"אפשר גם","sheet.also.list":"לפרק לכמה דברים ולסמן אחד־אחד",
+      "sheet.also.repT":"חוזרת","sheet.also.rep":"תחזור לבד כל יום, שבוע או חודש",
+      "sheet.also.shareT":"ביחד","sheet.also.share":"חבר יראה אותה ויוכל לסמן",
+      "sheet.also.calT":"ביומן","sheet.also.cal":"תופיע גם ביומן שלך",
+      "sheet.saved":"נשמר ✓","sheet.noDate":"ללא תאריך","sheet.pickDate":"תאריך",
       "cal.today":"היום","cal.tomorrow":"מחר","cal.clear":"ללא תאריך","cal.yesterday":"אתמול",
       "sheet.untitled":"משימה ללא שם",
       "boot.loading":"רק רגע, טוענים את הדף שלך…",
@@ -5407,6 +5643,10 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "code.bad":"That code doesn't match, or its 10 minutes are up. You can ask for a new one.",
       "code.slow":"Too many tries. You can try again in a quarter of an hour.",
       "code.net":"No connection right now. Try again in a moment.",
+      "invite.h":"Invite friends to Allma",
+      "invite.p":"A ready message with your personal link. When a friend writes to Allma through it, she'll know you sent them.",
+      "invite.send":"Send on WhatsApp","invite.copy":"Copy message",
+      "invite.copied":"Message copied","invite.copyFail":"Couldn't copy \u2014 you can send it on WhatsApp",
       "inst.h":"Allma on your home screen",
       "inst.p":"Her own icon — no digging for the link in WhatsApp.",
       "inst.pIos":"Three taps in Safari, and Allma opens like an app.",
@@ -5476,7 +5716,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "nestRefuse.notMine":"Only your own tasks can go into a list",
       
 
-      "sheet.when":"When","sheet.pickTime":"Pick a time","sheet.pickEnd":"until","share.andMore":" and {n} more",
+      "sheet.when":"When","sheet.pickTime":"Pick a time","share.andMore":" and {n} more",
       "cat.h":"Category","cat.auto":"Allma picked this","cat.byTime":"By time","cat.byCat":"By category",
       "tcat.home":"Home","tcat.work":"Work","tcat.family":"Family","tcat.health":"Health",
       "tcat.money":"Money","tcat.errands":"Errands","tcat.none":"No category",
@@ -5488,7 +5728,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "sheet.sharePick":"Who else sees this task and can tick it off",
       "toast.shared":"\u201c{name}\u201d is now shared with {who}","toast.unshared":"\u201c{name}\u201d is yours alone again",
       "tasks.leftAt":"you left it",
-      "sheet.list":"Checklist","sheet.listSub.n0":"No items yet","sheet.listSub.nN":"{done} of {n} ticked",
+      "sheet.list":"Checklist","sheet.details":"Details","sheet.sum.noDate":"No date","sheet.sum.rem":"Reminder on","sheet.sum.noRem":"No reminder","sheet.sum.with":"With {names}","sheet.listSub.n0":"No items yet","sheet.listSub.nN":"{done} of {n} ticked",
       "sheet.addItem":"Add an item","sheet.itemRm":"Remove item",
       "sheet.shared":"Shared","share.with1":"Shared with {name}","share.withN":"Shared with {name} and {n} more",
       "share.ownerM":"started it","share.ownerF":"started it","share.ownerMe":"You started it","share.you":"You",
@@ -5681,7 +5921,15 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "sheet.date":"Date","sheet.time":"Time",
       "sheet.remind":"Reminder","sheet.remindSub":"Allma will remind you on {name}",
       "sheet.save":"Save","sheet.delete":"Delete task","sheet.cancel":"Cancel",
-      "sheet.autosave":"Saves as you type","sheet.saved":"Saved ✓","sheet.noDate":"No date","sheet.pickDate":"Date",
+      "sheet.day":"Day","sheet.moreDates":"More dates…","sheet.otherTime":"Other",
+      "sheet.endAsk":"+ Until when?","sheet.endVal":"until {time}","sheet.endClear":"No end time",
+      "sheet.whenAt":"{day}, {time}","sheet.whenAll":"{day}, all day","sheet.whenRange":"{start}–{end}",
+      "sheet.remAtShort":"at {time}","sheet.firstItem":"What is the first thing?","toast.nowList":"It is a list now",
+      "sheet.also":"You can also","sheet.also.list":"Break it into steps and tick them off one by one",
+      "sheet.also.repT":"Repeat","sheet.also.rep":"Comes back by itself every day, week or month",
+      "sheet.also.shareT":"Together","sheet.also.share":"A friend sees it and can tick it off",
+      "sheet.also.calT":"Calendar","sheet.also.cal":"Shows on your calendar too",
+      "sheet.saved":"Saved ✓","sheet.noDate":"No date","sheet.pickDate":"Date",
       "cal.today":"Today","cal.tomorrow":"Tomorrow","cal.clear":"No date","cal.yesterday":"Yesterday",
       "sheet.untitled":"Untitled task",
       "boot.loading":"One moment — loading your page…",
@@ -6611,6 +6859,31 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      honours it on its own; these are the two places JS decides to move
      something and CSS never sees the decision. */
   var REDUCED = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  /* The owner's pick (2026-09-30): finishing something throws a little
+     confetti from where it was ticked — a small burst for a task, a bigger
+     one for a list that just got its last item. Once per tick, never looping,
+     gone in under a second, and nothing at all for REDUCED. */
+  function confetti(from, n, spread){
+    if(REDUCED || !from || !document.body.animate) return;
+    var r = from.getBoundingClientRect(), cs = getComputedStyle(document.documentElement);
+    if(!r.width) return;  /* nothing on screen to throw it from */
+    var x = r.left + r.width / 2, y = r.top + r.height / 2;
+    var cols = ["--gold-arc", "--accent", "--drop-line", "--no-arc"].map(function(v){ return cs.getPropertyValue(v).trim(); });
+    for(var i = 0; i < n; i++){
+      var p = document.createElement("i");
+      var w = Math.random() < .5 ? 7 : 5, h = Math.random() < .5 ? w : 11;
+      p.className = "conf";
+      p.style.cssText = "left:" + (x - w / 2) + "px;top:" + (y - h / 2) + "px;width:" + w + "px;height:" + h + "px;background:" + cols[i % 4] + (h === w ? ";border-radius:50%" : "");
+      document.body.appendChild(p);
+      var a = Math.random() * Math.PI * 2, d = spread + Math.random() * spread;
+      var dx = Math.cos(a) * d, dy = Math.sin(a) * d - 18;
+      p.animate([
+        {transform:"translate(0,0) rotate(0) scale(.6)", opacity:1},
+        {transform:"translate(" + dx * .8 + "px," + dy * .8 + "px) rotate(" + (Math.random() * 200 - 100) + "deg) scale(1)", opacity:1, offset:.55},
+        {transform:"translate(" + dx + "px," + (dy + 34) + "px) rotate(" + (Math.random() * 360 - 180) + "deg) scale(.8)", opacity:0}
+      ], {duration:620 + Math.random() * 260, easing:"cubic-bezier(.2,.7,.3,1)"}).onfinish = p.remove.bind(p);
+    }
+  }
 
   /* ───────── swipe to delete, on every list ─────────
      The tasks list and the coordinations list take a row off the same way the
@@ -7003,6 +7276,48 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      change and every pushed event, so the numbers can never lag the lists
      they count. Both counts are the SAME arrays those tabs draw — the server
      already decided what is open and what is active; nothing is re-cut here. */
+  /* The invitation to a friend. Everything in it is the server's — the text
+     and the link carry their code (domain/referral.js) — so without an
+     `invite` in the payload there is nothing to draw, and the card stays
+     hidden, the design preview included. */
+  var INVITE = null;
+  function renderInvite(inv){
+    var box = $("#invite");
+    if(!box) return;
+    INVITE = inv && inv.shareUrl && inv.share ? inv : null;
+    box.hidden = !INVITE;
+    if(INVITE) $("#inviteSend").href = INVITE.shareUrl;
+  }
+  /* A tap on either button is the outcome the invite experiment counts
+     (domain/experiments.js). keepalive, because "send" leaves for WhatsApp in
+     the same tap and the page may not live to see the answer. */
+  function inviteShared(how){ API.send("inviteShared", {how:how}, null, true); }
+  (function(){
+    var send = $("#inviteSend");
+    if(send) send.addEventListener("click", function(){ if(INVITE) inviteShared("send"); });
+    var btn = $("#inviteCopy");
+    if(!btn) return;
+    btn.addEventListener("click", function(){
+      if(!INVITE) return;
+      inviteShared("copy");
+      var text = INVITE.share;
+      /* The old way, for a webview that refuses the clipboard API: a hidden
+         field, selected and copied inside the same tap. */
+      function legacy(){
+        var ta = document.createElement("textarea");
+        ta.value = text; ta.setAttribute("readonly", "");
+        ta.style.cssText = "position:fixed;top:0;opacity:0";
+        document.body.appendChild(ta); ta.select();
+        var done = false;
+        try{ done = document.execCommand("copy"); }catch(e){ done = false; }
+        ta.remove();
+        toast(done ? t("invite.copied") : t("invite.copyFail"), null, !done);
+      }
+      try{
+        navigator.clipboard.writeText(text).then(function(){ toast(t("invite.copied")); }, legacy);
+      }catch(e){ legacy(); }
+    });
+  })();
   function renderHome(){
     /* renderTasks can run before the meetings seed further down the script
        has been assigned, so an unassigned list counts as none */
@@ -7725,8 +8040,16 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
         : emptyBig(t("tasks.empty"), "addTask", t("tasks.new"))) + "</div>";
     }
     $("#taskStack").innerHTML = html;
+    /* What is on, by when — the same headings the list below is cut into,
+       with the same rows under them (owner, 2026-09-30). "11 open · 3
+       reminders" answered a question nobody opens this page to ask. */
+    var byWhen = BUCKETS.map(function(b){
+      var n = open.filter(function(x){ return !x.src && !isPinned(x) && !onCalendar(x) && bucketFor(x.d) === b; }).length;
+      return n ? t("bucket." + b) + " " + n : "";
+    }).filter(Boolean);
     var rems = open.filter(function(x){ return x.rem; }).length;
-    rollText($("#taskCount"), pl("tasks", open.length) + " · " + pl("remc", rems));
+    rollText($("#taskCount"), byWhen.length ? byWhen.join(" · ")
+                                            : pl("tasks", open.length) + " · " + pl("remc", rems));
     renderHome();
     rollText($("#arcCount"), String(archived.length));
     /* The archive is a safety net, not a second list. Past eight rows it
@@ -7810,6 +8133,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       var row = $(".task", wrap);
       if(row.classList.contains("done")) return;
       row.classList.add("done");
+      confetti($(".tick", row), 12, 40);
       var id = +wrap.dataset.id;
       setTimeout(function(){ wrap.classList.add("gone"); }, 310);
       setTimeout(function(){
@@ -8366,13 +8690,14 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   }
   function both(v){ return {he:v, en:v}; }
 
+  /* "Saved" is said when something was, and is otherwise not there at all —
+     a standing "saves as you type" line was one more thing on a sheet that
+     was already too much to read (owner, 2026-09-30). */
   function flashSaved(){
     var el = $("#sSaved");
     el.textContent = t("sheet.saved"); el.classList.add("flash");
     clearTimeout(savedTimer);
-    savedTimer = setTimeout(function(){
-      el.textContent = t("sheet.autosave"); el.classList.remove("flash");
-    }, 650);
+    savedTimer = setTimeout(function(){ el.classList.remove("flash"); }, 1400);
   }
   /* One writer for every control in the sheet. A new task only joins the
      list once it has a name — an empty row appearing the moment somebody
@@ -8475,7 +8800,6 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
        switch here is only ever about mine (server: migration 073).
        Adding and removing people is decided inside the share fold, by
        renderSheetShare — the row itself opens for everyone. */
-    $$(".whenvals [data-taskday]").forEach(function(b){ b.disabled = false; });
     $("#sTitle").readOnly = false;
     lockRow($("#sDateRow"), false);
     lockRow($("#sCatRow"),    !canEdit(editing, "cat"),  why);
@@ -8490,53 +8814,97 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
             repNoField ? why : t("sheet.repeatNeedsRemind"));
     lockRow($("#sListRow"),   !canEdit(editing, "items"), why);
     lockRow($("#sShareRow"),  !canEdit(editing, "who"),  why);
-    lockRow($("#sTimeChip"),  !canEdit(editing, "time"), why);
-    lockRow($("#sEndChip"),   !canEdit(editing, "time"), why);
+    lockRow($("#sHourLine"),  !canEdit(editing, "time"), why);
+    lockRow($("#sEndLine"),   !canEdit(editing, "time"), why);
     /* the reminder and the calendar copy are OURS, not the source's — an
        imported task can still be reminded about, and so can one somebody
        shared with me. Nothing closes this row. */
     lockRow($("#sRemindRow"), false);
   }
+  /* The hours most tasks get; "other" is the wheel for the rest. */
+  var SUGGESTED_HOURS = ["09:00", "12:00", "16:00", "20:00"];
+  /* Which rows that begin life as tiles are open in this sheet. A row shows
+     when the task holds something in it, or once its tile was pressed. */
+  var shown = {};
+  /* True while openSheet paints a task in: a sentence that changes then is a
+     different task arriving, not an answer the person just gave. */
+  var sheetPainting = false;
+  function sayText(el, txt){
+    if(el.textContent === txt) return;
+    el.textContent = txt;
+    if(sheetPainting || REDUCED) return;
+    el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash");
+  }
+  /* A day said the way a person says it: today, tomorrow, a weekday for the
+     rest of this week, and a date after that. */
+  function dayWord(v){
+    for(var i = 0; i < 7; i++){
+      if(v !== isoAt(i)) continue;
+      if(i < 2) return t(i ? "cal.tomorrow" : "cal.today");
+      return new Date(v + "T00:00:00").toLocaleDateString(loc(), {weekday:"long"});
+    }
+    return longDate(v);
+  }
+  function whenSay(x){
+    if(!x.d) return t("sheet.sum.noDate");
+    var day = dayWord(x.d);
+    if(x.all) return t("sheet.whenAll", {day:day});
+    if(!x.tm) return day;
+    return t("sheet.whenAt", {day:day,
+      time:x.tmEnd ? t("sheet.whenRange", {start:x.tm, end:x.tmEnd}) : x.tm});
+  }
+  var OFFSET_KEY = {0:"off.at", 10:"off.m10", 60:"off.h1", 1440:"off.d1"};
+  /* the coming week, one tap a day; "more dates" is the page's own calendar */
+  function paintWeek(){
+    var html = "";
+    for(var i = 0; i < 7; i++){
+      var v = isoAt(i), d = new Date(v + "T00:00:00");
+      html += '<button data-wday="' + v + '" aria-pressed="' + (editing.d === v) + '">' +
+        esc(d.toLocaleDateString(loc(), {weekday:"narrow"})) + "<b>" + d.getDate() + "</b></button>";
+    }
+    $("#sWeek").innerHTML = html;
+  }
   function syncSheetRows(){
-    var dated = !!editing.d;
-    /* Undated, the pill asks for a date beside the two one-tap days; dated,
-       it shows the date with its own way back to none. */
-    $("#sDateVal").textContent = dated ? longDate(editing.d) : t("sheet.pickDate");
-    $("#sDateRow").classList.toggle("set", dated);
-    $("#sDateSeg").classList.toggle("vunset", !dated);
-    $$(".whenvals [data-taskday]").forEach(function(b){ b.hidden = dated; });
-    $("#sDateClear").hidden = !dated;
-    $("#sDateClear").title = t("cal.clear");
+    var x = editing, dated = !!x.d, who = x.who || [], items = (x.items || []).length;
+    /* ── when ── the sentence, then the two lines the row opens on */
+    sayText($("#sWhenSay"), whenSay(x));
+    $("#sWhenSay").classList.toggle("off", !dated);
+    $$("#sDayPk [data-taskday]").forEach(function(b){
+      b.setAttribute("aria-pressed", String(x.d === isoAt(+b.dataset.taskday)));
+    });
+    var weekOpen = !$("#sWeekWrap").hidden;
+    $("#sWeekTog").setAttribute("aria-expanded", String(weekOpen));
+    $("#sWeekTog").setAttribute("aria-pressed", String(dated && x.d !== isoAt(0) && x.d !== isoAt(1)));
+    $("#sDateClear").setAttribute("aria-pressed", String(!dated));
+    if(weekOpen) paintWeek();
     /* a clock and an all-day switch are both answers to a question that has
        not been asked yet when there is no date, so neither is offered */
-    $("#sAllDay").hidden = !dated;
-    $("#sAllDay").setAttribute("aria-checked", editing.all ? "true" : "false");
-    $("#sAllDay").classList.toggle("on", !!editing.all);
-    $("#sTimeSeg").hidden = !dated || !!editing.all;
-    $("#sTimeVal").textContent = editing.tm || t("sheet.addTime");
-    $("#sTimeSeg").classList.toggle("vunset", !editing.tm);
-    $("#sTimeIcon").innerHTML = '<use href="#' + (editing.tm ? "i-clock" : "i-plus") + '"/>';
-    $("#sTimeChip").classList.toggle("set", !!editing.tm);
-    /* No start, nothing to end. The chip is not merely disabled — it is a
-       question that has not been asked yet, exactly like the clock itself
-       before a date is picked. */
-    $("#sEndChip").hidden = !editing.tm;
-    $("#sEndVal").textContent = editing.tmEnd || t("sheet.pickEnd");
-    $("#sEndChip").classList.toggle("set", !!editing.tmEnd);
-    $("#sCalRow").hidden = !dated;
-    $("#sJumpRow").hidden = isNew || !(editing.d && editing.cal);
+    $("#sHourLine").hidden = !dated;
+    var clock = !x.all && x.tm ? x.tm : "", suggested = SUGGESTED_HOURS.indexOf(clock) > -1;
+    $$("#sHourPk [data-hour]").forEach(function(b){
+      b.setAttribute("aria-pressed", String(clock === b.dataset.hour));
+    });
+    $("#sTimeChip").setAttribute("aria-pressed", String(!!clock && !suggested));
+    $("#sTimeVal").textContent = clock && !suggested ? clock : t("sheet.otherTime");
+    $("#sAllDay").setAttribute("aria-checked", x.all ? "true" : "false");
+    /* No start, nothing to end. */
+    $("#sEndLine").hidden = !clock;
+    $("#sEndVal").textContent = x.tmEnd ? t("sheet.endVal", {time:x.tmEnd}) : t("sheet.endAsk");
+    $("#sEndChip").classList.toggle("set", !!x.tmEnd);
+    $("#sEndClear").hidden = !x.tmEnd;
+    /* ── calendar ── No calendar to write to means the switch cannot keep its
+       word, so the tile is not offered; a row already on stays and says which
+       calendar is missing, because "connect one" is the useful next step. */
+    $("#sCalRow").hidden = !(dated && (x.cal || shown.cal));
+    $("#sJumpRow").hidden = isNew || !(x.d && x.cal);
     $("#sCalSub").textContent = calTargetName();
-    /* No calendar to write to means the switch cannot keep its word, so it is
-       not offered — the row still shows, saying which calendar is missing,
-       because "connect one" is the useful next step and a vanished row says
-       nothing at all. */
     lockRow($("#sCalRow"), dated && !calTarget(), t("sheet.inCalNone"));
-    /* A repeat is a property of the REMINDER — task_reminders.repeat_rule is
-       the only place the system stores one — so with no reminder there is
-       nothing for "every week" to be attached to. Rather than accept it and
-       drop it, the row says why it is unavailable. That lock is applied in
-       syncSheetSource below, together with the source's own limit on the same
-       row, because two lockRow calls on one row leave only the last. */
+    /* ── repeat ── A repeat is a property of the REMINDER —
+       task_reminders.repeat_rule is the only place the system stores one — so
+       with no reminder there is nothing for "every week" to be attached to.
+       That lock is applied in syncSheetSource below, together with the
+       source's own limit on the same row, because two lockRow calls on one
+       row leave only the last. */
     /* "Daily until the date" has no date to run to on an undated task, so the
        chip goes with the date — and if the date goes while it is chosen, the
        choice falls back to none rather than sending a chase with no end. */
@@ -8544,30 +8912,70 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     untilChip.hidden = !dated;
     if(!dated && untilChip.getAttribute("aria-pressed") === "true"){
       $$("#sRepeat .chip").forEach(function(c){ c.setAttribute("aria-pressed", c.dataset.rep === "none" ? "true" : "false"); });
-      editing.rep = "none";
+      x.rep = "none";
     }
     var chosen = $$("#sRepeat .chip").filter(function(c){ return c.getAttribute("aria-pressed") === "true"; })[0];
     var chosenRep = chosen ? chosen.dataset.rep : "none";
-    $("#sRepeatVal").textContent = chosenRep === "until" ? t("rep.untilVal", {date:longDate(editing.d)})
-      : t("rep." + ({none:"once", day:"day", week:"week", month:"month"}[chosenRep] || "once"));
-    /* The reminder fold asks one question or the other, never both: how long
-       before a moment there is, or what hour when there is none. A chase asks
-       neither — its hour is the one they already hear from Olma, and the
-       fold says so instead of offering chips the server would ignore. */
+    $("#sRepeatRow").hidden = !(chosenRep !== "none" || shown.rep);
+    sayText($("#sRepeatVal"), chosenRep === "until" ? t("rep.untilVal", {date:longDate(x.d)})
+      : t("rep." + ({none:"once", day:"day", week:"week", month:"month"}[chosenRep] || "once")));
+    /* ── reminder ── one sentence: who writes, where, and the part that is a
+       choice. The fold under it asks one question or the other, never both:
+       how long before a moment there is, or what hour when there is none. A
+       chase asks neither — its hour is the one they already hear from Olma,
+       and the fold says so instead of offering chips the server would
+       ignore. */
     var chasing = chosenRep === "until";
+    $("#sRemSay").hidden = !x.rem;
+    $("#sRemOff").hidden = !!x.rem;
+    $("#sRemInlVal").textContent = chasing ? t("rep.untilVal", {date:longDate(x.d)})
+      : dated ? t(OFFSET_KEY[x.remOff || 0] || "off.at")
+      : t("sheet.remAtShort", {time:x.remAt || remDefaultAt()});
+    $("#sRemInl").setAttribute("aria-expanded", String($("#sRemindFold").classList.contains("open")));
     $("#sOffset").hidden = !dated || chasing;
     $("#sChaseSub").hidden = !chasing;
     $("#sRemindAtSeg").hidden = dated;
-    $("#sRemindAtVal").textContent = t("sheet.remindAtVal", {time:editing.remAt || remDefaultAt()});
-    var ck = editing.cat || "none";
+    $("#sRemindAtVal").textContent = t("sheet.remindAtVal", {time:x.remAt || remDefaultAt()});
+    /* ── category ── Olma's guess says so until the person overrules it — an
+       automatic choice that looks hand-made is one nobody thinks to correct. */
+    var ck = x.cat || "none";
     $("#sCatVal").textContent = t("tcat." + ck);
-    /* Olma's guess says so until the person overrules it — an automatic
-       choice that looks hand-made is one nobody thinks to correct. */
-    $("#sCatAuto").hidden = !editing.catAuto || ck === "none";
+    $("#sCatDot").style.background = (TASKCATS.filter(function(c){ return c.k === ck; })[0] || TASKCATS[TASKCATS.length - 1]).c;
+    $("#sCatAuto").hidden = !x.catAuto || ck === "none";
     $$("#sCat .chip").forEach(function(c){
       c.setAttribute("aria-pressed", c.dataset.cat === ck ? "true" : "false");
     });
+    /* ── the rows that begin as tiles ── */
+    $("#sListGroup").hidden = !(items || shown.list);
+    $("#sShareGroup").hidden = !(who.length || shown.share);
+    var tiles = {
+      list:  !items && !shown.list && canEdit(x, "items"),
+      rep:   chosenRep === "none" && !shown.rep && canEdit(x, "rep"),
+      share: !who.length && !shown.share && canEdit(x, "who"),
+      cal:   dated && !!calTarget() && !x.cal && !shown.cal
+    }, n = 0;
+    $$("#sAlsoTiles [data-also]").forEach(function(b){
+      var on = !!tiles[b.dataset.also];
+      b.hidden = !on;
+      if(on) n++;
+    });
+    $("#sAlso").hidden = !n;
+    /* four tiles are two rows of two, never three and one left alone */
+    $("#sAlsoTiles").style.setProperty("--n", n === 4 ? 2 : Math.max(n, 1));
     syncSheetSource();
+    paintDetailsSum();
+  }
+  /* What the folded rows hold, in one line, for a list opened on its items.
+     Says the unset ones too ("no date", "no reminder") — a summary that only
+     lists what is there cannot be told apart from one that forgot something.
+     The category is not in it: its tag stays in view above. */
+  function paintDetailsSum(){
+    if(!editing) return;
+    var parts = [], who = editing.who || [];
+    parts.push(whenSay(editing));
+    parts.push(t(editing.rem ? "sheet.sum.rem" : "sheet.sum.noRem"));
+    if(who.length) parts.push(t("sheet.sum.with", {names:sharedNames(who)}));
+    $("#sDetailsSub").textContent = parts.join(" · ");
   }
   /* Which calendar "add to calendar" actually writes to. The first connected
      provider whose calendar service is on and writable — the same one the
@@ -8621,6 +9029,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     if(!editing) return;
     var n = (editing.items || []).length, dn = itemsDone(editing);
     $("#sListSub").textContent = n ? t("sheet.listSub.nN", {done:dn, n:n}) : t("sheet.listSub.n0");
+    /* an empty list asks for its first thing; after that it is just "add" */
+    $("#sAddItem").placeholder = t(n ? "sheet.addItem" : "sheet.firstItem");
     var pill = $("#sListCount");
     pill.hidden = !n;
     if(!n) return;
@@ -8649,6 +9059,12 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     el.value = "";
     renderSheetList(editing.items.length - 1);
     renderTasks();
+    /* The first item is the moment a task becomes a list, and the sheet
+       becomes the one a list opens on: the items on top, the rest behind
+       "details". It happens under the finger that asked for it, so it is
+       said out loud (owner, 2026-09-30). */
+    var becameList = editing.items.length === 1 && !$("#sheet").classList.contains("listmode");
+    if(becameList) enterListMode();
     /* An item on a task that has no name yet has nothing to hang off: the
        parent does not exist on the server, so this item cannot either. It is
        kept on screen and sent by commit() the moment the task is saved — and
@@ -8659,8 +9075,18 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       $("#sTitle").focus();
       return;
     }
+    if(becameList) toast(t("toast.nowList"));
     flashSaved();
     if(itemWritable()) sendItem(item);
+  }
+  function enterListMode(){
+    $("#sheet").classList.add("listmode");
+    $("#sheet").classList.remove("details");
+    $("#sDetailsRow").setAttribute("aria-expanded", "false");
+    $("#sListFold").classList.add("open");
+    $("#sListRow").setAttribute("aria-expanded", "true");
+    syncSheetRows();
+    updateSheetCue();
   }
   /* One item, once it has a parent with a real id. */
   function sendItem(item){
@@ -8687,11 +9113,23 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       tg.setAttribute("aria-pressed", it.done ? "true" : "false");
       paintListMeta();
       renderTasks(); flashSaved();
+      /* the whole list, not one item: said here, before the server answers,
+         so the burst leaves the item the finger is still on */
+      var full = it.done && editing.items.every(function(x){ return x.done; });
+      if(full) confetti(tg, 26, 70);
       if(it.id && itemWritable()){
+        var list = editing;
         API.send(it.done ? "completeTask" : "restoreTask", {taskId:it.id}, function(data){
           /* the last item ticked finishes the list itself (completeParentIfDrained):
-             the list is in the archive now, and a re-read is what says so */
-          if(data && data.parentCompleted){ closeSheets(); API.reload(); }
+             the list is in the archive now, and a re-read is what says so —
+             a beat later, so the last tick and its confetti are seen, and
+             only if that same sheet is still the one open */
+          if(data && data.parentCompleted){
+            setTimeout(function(){
+              if(editing === list) closeSheets();
+              API.reload();
+            }, full && !REDUCED ? 650 : 0);
+          }
         });
       }
       return;
@@ -8764,6 +9202,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
        thing you do to a task that is only yours */
     $("#sLeave").hidden = !shared;
     $("#sLeaveNote").hidden = !shared;
+    paintDetailsSum();
   }
   /* Every friend is a chip and the pressed ones are on the task, so sharing
      and un-sharing are one gesture rather than two screens. */
@@ -8854,6 +9293,12 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     if(on) paintCue($("#sList"), $("#listCue"));
     if(on) setTimeout(function(){ $("#sAddItem").focus(); }, 130);
   });
+  $("#sDetailsRow").addEventListener("click", function(){
+    var on = !$("#sheet").classList.contains("details");
+    $("#sheet").classList.toggle("details", on);
+    this.setAttribute("aria-expanded", on ? "true" : "false");
+    updateSheetCue();
+  });
   $("#sShareRow").addEventListener("click", function(){
     var on = !$("#sShareFold").classList.contains("open");
     $("#sShareFold").classList.toggle("open", on);
@@ -8919,7 +9364,13 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     $$("#sOffset .chip").forEach(function(c){
       c.setAttribute("aria-pressed", +c.dataset.remoff === (editing.remOff || 0) ? "true" : "false");
     });
-    $("#sRemindFold").classList.toggle("open", editing.rem);
+    /* Every fold starts shut: each row already says its value as a sentence,
+       and opening one is the question "change it?" */
+    $("#sRemindFold").classList.remove("open");
+    $("#sWhenFold").classList.remove("open");
+    $("#sWhenRow").setAttribute("aria-expanded", "false");
+    $("#sWeekWrap").hidden = true;
+    shown = {};
     $("#sRepeatFold").classList.remove("open");
     $("#sRepeatRow").setAttribute("aria-expanded", "false");
     $$("#sRepeat .chip").forEach(function(c){
@@ -8927,19 +9378,30 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     });
     $("#sCatFold").classList.remove("open");
     $("#sCatRow").setAttribute("aria-expanded", "false");
+    sheetPainting = true;
     syncSheetRows();
+    sheetPainting = false;
     renderSheetList();
     renderSheetShare();
     $("#sAddItem").value = "";
-    $("#sListFold").classList.remove("open");
-    $("#sListRow").setAttribute("aria-expanded", "false");
+    /* A list that has items opens on them (and the first item added turns a
+       plain task into one there and then — addItem). No focus on the add
+       field — a keyboard coming up would cover the items this is for. */
+    var listy = !!(x && x.items && x.items.length);
+    $("#sheet").classList.toggle("listmode", listy);
+    $("#sheet").classList.remove("details");
+    $("#sDetailsRow").setAttribute("aria-expanded", "false");
+    $("#sListFold").classList.toggle("open", listy);
+    $("#sListRow").setAttribute("aria-expanded", listy ? "true" : "false");
     $("#sShareFold").classList.remove("open");
     $("#sShareRow").setAttribute("aria-expanded", "false");
-    $("#sSaved").textContent = t("sheet.autosave");
+    $("#sSaved").textContent = t("sheet.saved");
     $("#sSaved").classList.remove("flash");
     creating = isNew;
     syncTitleRow();
     showSheet($("#sheet"));
+    /* the list's own scroll line is measured against a list that is showing */
+    if(listy) paintCue($("#sList"), $("#listCue"));
     setTimeout(function(){ if(isNew) $("#sTitle").focus(); }, 190);
   }
 
@@ -9000,10 +9462,23 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   /* The task's two clocks use the same wheel as every other clock on the
      page. Both land in the hidden inputs, so commit() stays the one writer. */
   function setTaskClock(input, v){ input.value = v; commit(); }
+  /* An hour is not all day: picking one turns the all-day answer off, on
+     the one switch commit() reads it from. */
+  function setTaskHour(v){
+    $("#sAllDay").setAttribute("aria-checked", "false");
+    setTaskClock($("#sTime"), v);
+  }
   $("#sTimeChip").addEventListener("click", function(){
-    openTimePop(this, editing.tm, function(v){ setTaskClock($("#sTime"), v); },
-      {clear:function(){ setTaskClock($("#sTime"), ""); }});
+    openTimePop(this, editing.tm, setTaskHour,
+      {clear:function(){ setTaskHour(""); }});
   });
+  /* the four common hours; pressing the one already chosen takes it off */
+  $("#sHourPk").addEventListener("click", function(e){
+    var b = e.target.closest("[data-hour]");
+    if(!b) return;
+    setTaskHour(!editing.all && editing.tm === b.dataset.hour ? "" : b.dataset.hour);
+  });
+  $("#sEndClear").addEventListener("click", function(){ setTaskClock($("#sEnd"), ""); });
   /* The standing nudge's own hour. It writes straight onto `editing` rather
      than through a hidden input, because unlike the task's two clocks it is
      not part of the task at all — it belongs to the reminder, and the task
@@ -9099,10 +9574,77 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   }
   /* the one-tap days and the clear button write the date exactly the way a
      pick in the calendar does, so there is one path for a task's date */
-  $$(".whenvals [data-taskday]").forEach(function(b){
+  $$("#sDayPk [data-taskday]").forEach(function(b){
     b.addEventListener("click", function(){ setTaskDate(isoAt(+b.dataset.taskday)); });
   });
   $("#sDateClear").addEventListener("click", function(){ setTaskDate(""); });
+  $("#sWhenRow").addEventListener("click", function(){
+    var on = !$("#sWhenFold").classList.contains("open");
+    $("#sWhenFold").classList.toggle("open", on);
+    this.setAttribute("aria-expanded", on ? "true" : "false");
+    updateSheetCue();
+  });
+  /* "date" opens the coming week in place; the calendar is one more tap */
+  $("#sWeekTog").addEventListener("click", function(){
+    $("#sWeekWrap").hidden = !$("#sWeekWrap").hidden;
+    syncSheetRows();
+    updateSheetCue();
+  });
+  $("#sWeek").addEventListener("click", function(e){
+    var b = e.target.closest("[data-wday]");
+    if(b) setTaskDate(b.dataset.wday);
+  });
+  /* the part of the reminder sentence that is a choice opens the choices */
+  $("#sRemInl").addEventListener("click", function(){
+    var on = !$("#sRemindFold").classList.contains("open");
+    $("#sRemindFold").classList.toggle("open", on);
+    this.setAttribute("aria-expanded", on ? "true" : "false");
+    updateSheetCue();
+  });
+  /* A tile becomes its row, open on the row's first question, and the tile
+     goes. Nothing is written by the tile itself except where the row IS a
+     switch (the calendar) or cannot exist without one (a repeat lives on a
+     reminder, so asking for one turns the reminder on). */
+  function freshRow(el){
+    if(REDUCED || !el) return;
+    el.classList.remove("fresh-row"); void el.offsetWidth; el.classList.add("fresh-row");
+  }
+  $("#sAlsoTiles").addEventListener("click", function(e){
+    var b = e.target.closest("[data-also]");
+    if(!b || !editing) return;
+    var k = b.dataset.also;
+    shown[k] = true;
+    if(k === "list"){
+      $("#sListFold").classList.add("open");
+      $("#sListRow").setAttribute("aria-expanded", "true");
+      syncSheetRows();
+      freshRow($("#sListGroup"));
+      setTimeout(function(){ $("#sAddItem").focus(); }, 130);
+    } else if(k === "rep"){
+      if(!editing.rem){
+        $("#sRemind").setAttribute("aria-checked", "true");
+        commit();
+      }
+      $("#sRepeatFold").classList.add("open");
+      $("#sRepeatRow").setAttribute("aria-expanded", "true");
+      syncSheetRows();
+      freshRow($("#sRepeatRow"));
+    } else if(k === "share"){
+      syncSheetRows();
+      $("#sShareFold").classList.add("open");
+      $("#sShareRow").setAttribute("aria-expanded", "true");
+      if(canManageShare()){
+        $("#sAddFold").classList.add("open");
+        $("#sAddRow").setAttribute("aria-expanded", "true");
+      }
+      freshRow($("#sShareGroup"));
+    } else if(k === "cal"){
+      $("#sCal").setAttribute("aria-checked", "true");
+      commit();
+      freshRow($("#sCalRow"));
+    }
+    updateSheetCue();
+  });
   $("#sAllDay").addEventListener("click", function(){
     editing.all = this.getAttribute("aria-checked") !== "true";
     this.setAttribute("aria-checked", editing.all ? "true" : "false");
@@ -9124,6 +9666,9 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     editing.catAuto = false;
     API.setCategory(editing.id, editing.cat);
     commit();
+    /* the tag says the answer; the choices go back to where they came from */
+    $("#sCatFold").classList.remove("open");
+    $("#sCatRow").setAttribute("aria-expanded", "false");
   });
   function undoDelete(row){
     if(!row || open.some(function(o){ return o.id === row.id; })) return;
@@ -12829,7 +13374,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
        promise: a reminder goes out on whichever channel is the default, and
        that is a setting one page away. */
     $("#remindSub").textContent = t("sheet.remindSub", {name:chanName(defaultChannel)});
-    $("#sSaved").textContent = t("sheet.autosave");
+    $("#sSaved").textContent = t("sheet.saved");
     /* the first page a person lands on greets them in their own language and
        gender, rather than repeating the tab they just pressed */
     renderHome();
@@ -13393,6 +13938,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
        beside it does not, because a WhatsApp room is not something this page
        can create. */
     GROUPS = (d.groups || []).map(liveGroup);
+    renderInvite(d.invite);
     var block = document.querySelector(".groupsblock:not(button)");
     if(block) block.classList.toggle("hasrooms", GROUPS.length > 0);
     /* Google is the only provider with a connection behind it, and Gmail

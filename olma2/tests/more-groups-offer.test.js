@@ -3,22 +3,30 @@
 // once, to add Olma to their other groups (owner, 2026-09-23). His four
 // answers are what these tests pin: it rides the next check-in, it goes to
 // everybody who said yes to the locked time, it is once ever, and only a
-// coordination in a ROOM earns it.
+// coordination in a ROOM earns it — or, since 2026-09-30, a private one with
+// three or more people in it. WHEN it is said is an A/B test
+// (experiments.more_groups_timing); the older tests run with arm a locked,
+// which is the behaviour they were written for.
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const { freshDb, makeUser } = require('./helpers');
 const { withTx } = require('../src/db/pool');
 const checkin = require('../src/jobs/checkin');
+const experiments = require('../src/domain/experiments');
 
 let db;
-before(async () => { db = await freshDb(); });
+before(async () => {
+  db = await freshDb();
+  await withTx(db.pool, (c) => experiments.lock(c, 'more_groups_timing', 'a'));
+});
 after(async () => { await db.teardown(); });
 
 let seq = 0;
 // A meeting locked on one option, with the given answers on that option.
-// `groupId` null is a private coordination.
-async function lockedMeeting({ initiator, groupId, yes = [], no = [], daysAgo = 0 }) {
-  const startsAt = new Date(Date.now() + 3 * 86400000);
+// `groupId` null is a private coordination; everybody named is a participant,
+// and `optedOut` are participants who left.
+async function lockedMeeting({ initiator, groupId, yes = [], no = [], optedOut = [], daysAgo = 0, startsInDays = 3 }) {
+  const startsAt = new Date(Date.now() + startsInDays * 86400000);
   startsAt.setUTCMilliseconds(0);
   const { rows: [m] } = await db.pool.query(
     `INSERT INTO meetings (initiator_id, title, status, group_id, confirmed_start_at, updated_at)
@@ -30,6 +38,11 @@ async function lockedMeeting({ initiator, groupId, yes = [], no = [], daysAgo = 
   const { rows: [other] } = await db.pool.query(
     `INSERT INTO meeting_options (meeting_id, slot_text, starts_at) VALUES ($1, 'שישי', $2) RETURNING id`,
     [m.id, new Date(startsAt.getTime() + 86400000)]);
+  for (const u of new Set([initiator, ...yes, ...no, ...optedOut])) {
+    await db.pool.query(
+      `INSERT INTO meeting_participants (meeting_id, user_id, state) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+      [m.id, u.id, optedOut.includes(u) ? 'opted_out' : 'confirmed_current']);
+  }
   for (const u of yes) {
     await db.pool.query(`INSERT INTO meeting_option_answers (option_id, user_id, answer) VALUES ($1, $2, 'y')`, [locked.id, u.id]);
   }
@@ -75,7 +88,7 @@ test('everybody who said yes to the locked time in a room is offered it, with th
   }
 });
 
-test('a no, a private coordination, an old one, or a silence does not earn it', async () => {
+test('a no, a private coordination of one, an old one, or a silence does not earn it', async () => {
   const asker = await makeUser(db.pool, '+972592000011');
   const declined = await makeUser(db.pool, '+972592000012');
   await lockedMeeting({ initiator: asker, groupId: await room('שישי'), yes: [asker], no: [declined] });
@@ -83,7 +96,7 @@ test('a no, a private coordination, an old one, or a silence does not earn it', 
 
   const priv = await makeUser(db.pool, '+972592000013');
   await lockedMeeting({ initiator: priv, groupId: null, yes: [priv] });
-  assert.notEqual((await rungOf(priv.id)).rung, 'more_groups', 'only a room earns it (owner)');
+  assert.notEqual((await rungOf(priv.id)).rung, 'more_groups', 'a private one needs three people');
 
   const old = await makeUser(db.pool, '+972592000014');
   await lockedMeeting({ initiator: old, groupId: await room('ישן'), yes: [old], daysAgo: 20 });
@@ -121,4 +134,66 @@ test('what is theirs still comes first', async () => {
   }));
   await db.pool.query(`UPDATE tasks SET created_at = now() - interval '2 days' WHERE owner_id = $1`, [u.id]);
   assert.equal((await rungOf(u.id)).rung, 'deadline_risk');
+});
+
+test('a private coordination of three earns it, with its own sentence; of two, or three with one gone, does not', async () => {
+  const [a, b, c] = [await makeUser(db.pool, '+972592000041'), await makeUser(db.pool, '+972592000042'),
+    await makeUser(db.pool, '+972592000043')];
+  await lockedMeeting({ initiator: a, groupId: null, yes: [a, b, c] });
+  const r = await rungOf(b.id);
+  assert.equal(r.rung, 'more_groups');
+  assert.match(r.instruction, /איזה כיף ש«פוקר» נסגר 🙌/);
+  assert.match(r.instruction, /להוסיף אותי לקבוצת הוואטסאפ שלכם ולתייג אותי/);
+  assert.match(r.instruction, /with 3 people, arranged in private chats/);
+  assert.ok(!r.instruction.match(/"([^"]+)"/)[1].includes('?'));
+
+  const [d, e] = [await makeUser(db.pool, '+972592000044'), await makeUser(db.pool, '+972592000045')];
+  await lockedMeeting({ initiator: d, groupId: null, yes: [d, e] });
+  assert.notEqual((await rungOf(e.id)).rung, 'more_groups', 'two people have no group to add her to');
+
+  const [f, g, h] = [await makeUser(db.pool, '+972592000046'), await makeUser(db.pool, '+972592000047'),
+    await makeUser(db.pool, '+972592000048')];
+  await lockedMeeting({ initiator: f, groupId: null, yes: [f, g], optedOut: [h] });
+  assert.notEqual((await rungOf(g.id)).rung, 'more_groups', 'somebody who left is not counted');
+});
+
+test('the timing test: a offers it at once, b waits for the thing to happen, and both are exposed at the same moment', async () => {
+  await withTx(db.pool, (c) => experiments.lock(c, 'more_groups_timing', null));
+  const inArm = async (variant, n) => {
+    for (let i = 0; i < 40; i++) {
+      const u = await makeUser(db.pool, `+9725921${n}${String(i).padStart(3, '0')}`);
+      if (experiments.variantFor('more_groups_timing', u.id) === variant) return u;
+    }
+    throw new Error(`nobody landed in ${variant}`);
+  };
+  const exposed = async (id) => (await db.pool.query(
+    `SELECT detail->>'variant' AS v FROM audit_log WHERE actor_id = $1 AND event = 'experiment.exposed'`, [id])).rows;
+
+  const early = await inArm('a', 1);
+  const g = await room('ניסוי');
+  await lockedMeeting({ initiator: early, groupId: g, yes: [early] });
+  assert.equal((await rungOf(early.id)).rung, 'more_groups');
+  assert.deepEqual((await exposed(early.id)).map((r) => r.v), ['a']);
+
+  const late = await inArm('b', 2);
+  const mid = await lockedMeeting({ initiator: late, groupId: await room('ניסוי ב'), yes: [late] });
+  assert.notEqual((await rungOf(late.id)).rung, 'more_groups', 'b: the meeting has not happened yet');
+  assert.deepEqual((await exposed(late.id)).map((r) => r.v), ['b'], 'exposed anyway, so b is measured fairly');
+
+  // The meeting took place yesterday, and it closed weeks ago: b still owes it.
+  await db.pool.query(`UPDATE meetings SET confirmed_start_at = confirmed_start_at - interval '4 days',
+                         updated_at = now() - interval '20 days' WHERE id = $1`, [mid]);
+  await db.pool.query(`UPDATE meeting_options SET starts_at = starts_at - interval '4 days' WHERE meeting_id = $1`, [mid]);
+  assert.equal((await rungOf(late.id)).rung, 'more_groups');
+  assert.equal((await exposed(late.id)).length, 1, 'once per person');
+
+  // A meeting that closed before the test began gives b nothing a could not get.
+  const before = await inArm('b', 3);
+  const old = await lockedMeeting({ initiator: before, groupId: await room('ישן ב'), yes: [before], startsInDays: -1 });
+  await db.pool.query(`UPDATE meetings SET updated_at = now() - interval '20 days' WHERE id = $1`, [old]);
+  assert.notEqual((await rungOf(before.id)).rung, 'more_groups');
+  assert.equal((await exposed(before.id)).length, 0);
+
+  const res = await withTx(db.pool, (c) => experiments.results(c, 'more_groups_timing'));
+  assert.ok(res.arms.every((x) => x.exposed >= 1));
 });

@@ -191,3 +191,14 @@ test('turn_start explains its optional fields on the result, not in the descript
   const turnStart = toolDefinitions().find((d) => d.name === 'turn_start');
   assert.match(turnStart.description, /hints/, 'and the description points at hints');
 });
+
+// Not a budget line, but the next trim is where it would be lost: "confirmed
+// only when they explicitly confirmed it" was read as "confirmed a GUESS", so
+// u-45's "אני באוסטרליה בסידני" was saved unconfirmed and he was asked his
+// country the next morning (2026-09-27). A place they SAID is confirmed.
+test('set_my_timezone: a place they said is confirmed, only our guess is not', () => {
+  const tz = toolDefinitions().find((d) => d.name === 'set_my_timezone');
+  assert.match(tz.description, /confirmed=true when THEY said it/);
+  assert.match(tz.description, /false only for your own guess/);
+  assert.doesNotMatch(tz.description, /explicitly confirmed/);
+});

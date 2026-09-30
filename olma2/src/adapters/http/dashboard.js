@@ -25,6 +25,7 @@ const boostJob = require('../../jobs/boost');
 const issuesDomain = require('../../domain/issues');
 const ownerMessages = require('../../domain/owner-messages');
 const auditDomain = require('../../domain/audit');
+const experimentsDomain = require('../../domain/experiments');
 const reactionsDomain = require('../../domain/reactions');
 const groupsDomain = require('../../domain/groups');
 const templatesDomain = require('../../domain/message-templates');
@@ -37,6 +38,7 @@ const picker = require('./picker');
 const userDashboard = require('./user-dashboard');
 const pwa = require('./pwa');
 const publicPages = require('./public-pages');
+const inviteLink = require('./invite-link');
 const { checkGateway } = require('../gateway-health');
 
 // /ready's whole test. brokerd beats immediately on boot and then every 60s,
@@ -345,6 +347,9 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
       if (req.method === 'GET' && parsed.pathname === '/' && PUBLIC_HOSTS.has(hostOf(req))) {
         return userDashboard.frontPage(req, res, pool);
       }
+      // A friend's short invite link (invite-link.js), exact shape only.
+      // Reaches allma.world only once the Caddyfile names `/i/<code>`.
+      if (await inviteLink.handle(req, res, pool, parsed.pathname)) return;
 
       if (!checkBasicAuth(req, adminUser, adminPass)) {
         res.writeHead(401, { 'WWW-Authenticate': 'Basic realm="olma2"' });
@@ -417,6 +422,10 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
               if (!Number.isFinite(val) || val < 0) val = null;
             }
             if (val !== null) await flagsDomain.setFlag(client, body.key, val);
+          } else if (url.pathname === '/experiments/lock') {
+            // The owner ends an experiment by picking a variant, or reopens
+            // it with an empty one. lock() refuses an unknown key or variant.
+            await experimentsDomain.lock(client, String(body.key || ''), body.variant ? String(body.variant) : null);
           } else if (url.pathname === '/reactions') {
             // One form for the whole vocabulary: the stored object is REPLACED,
             // never merged, so clearing a box really does return that state to

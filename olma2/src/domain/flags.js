@@ -154,6 +154,10 @@ const DEFAULTS = {
   // the open list beside them to OpenRouter, which the owner allowed for this
   // on 2026-09-24, and turning it off stops that on the next tick.
   jev_shadow_twins: false,
+  // domain/experiments.js: the A/B tests the owner has ENDED, as
+  // { key: 'a' | 'b' }. Empty means every experiment in the code is running.
+  // Written only by the admin page's "לקבע" button.
+  experiments: {},
 };
 
 async function getFlag(client, key) {

@@ -385,6 +385,16 @@ const ACTIONS = {
   // straight into requestConnection would be a way to invite anybody at all
   // from a stolen session, and to find out who is on Olma by watching which
   // ones come back 'already connected'.
+  // A tap on the invite card's "send" or "copy" (owner, 2026-09-30). Only a
+  // record: the text left from their own phone, and whether a friend then
+  // writes is counted separately (users.referred_by_user_id). This is the
+  // outcome of the invite_card_moment experiment (domain/experiments.js).
+  async inviteShared(client, userId, p) {
+    const how = p.how === 'copy' ? 'copy' : 'send';
+    await audit.record(client, userId, 'referral.shared', { how });
+    return ok({ how });
+  },
+
   async inviteContact(client, userId, p) {
     const { rows } = await client.query(
       `SELECT phone FROM user_contacts WHERE id = $1 AND user_id = $2`,

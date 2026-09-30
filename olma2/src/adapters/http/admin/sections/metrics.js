@@ -84,6 +84,47 @@ function growthTable(rows, today = new Date().toISOString().slice(0, 10)) {
   return out;
 }
 
+// ---- the goal: 100 weekly active users (owner, 2026-09-30) ----------------
+// `weekly_active_users` and `wau_<via>` are headcounts over a rolling seven
+// days (jobs/metrics.js), so they are READ on a day and never summed across
+// days — which is why they are not in GROWTH_METRICS. `joined_<via>` is a
+// daily count and sums like any other. A channel with no row yet is a dash,
+// not a zero: the columns only exist since migration 101.
+const WAU_GOAL = 100;
+const CHANNEL_LABELS = { friend_link: 'קישור מחבר', room: 'קבוצה', invite: 'הזמנה אישית', direct: 'ישירות' };
+
+function goalBlock(rows, today = new Date().toISOString().slice(0, 10)) {
+  const day0 = Date.parse(`${today}T00:00:00Z`);
+  const ageOf = (d) => Math.round((day0 - Date.parse(`${dateKey(d)}T00:00:00Z`)) / 86400_000);
+  const at = new Map();
+  const sums = {};
+  for (const r of rows) {
+    const age = ageOf(r.date);
+    at.set(`${r.metric}@${age}`, Number(r.value));
+    if (r.metric.startsWith('joined_') || r.metric === 'referral_clicks') {
+      const s = sums[r.metric] || (sums[r.metric] = { w: 0, m: 0 });
+      if (age >= 0 && age <= 6) s.w += Number(r.value);
+      if (age >= 0 && age <= 29) s.m += Number(r.value);
+    }
+  }
+  const now = at.get('weekly_active_users@0');
+  if (now === undefined) return '';
+  const weekAgo = at.get('weekly_active_users@7');
+  const delta = weekAgo === undefined ? '' : ` <span class="dim small">(לפני שבוע: ${weekAgo})</span>`;
+  const cell = (v) => (v === undefined ? '—' : v);
+  const clicks = sums.referral_clicks;
+  const channelRows = Object.entries(CHANNEL_LABELS).map(([via, label]) => {
+    const j = sums[`joined_${via}`];
+    return `<tr><td class="nowrap">${label}</td><td>${j ? j.w : '—'}</td><td>${j ? j.m : '—'}</td><td>${cell(at.get(`wau_${via}@0`))}</td></tr>`;
+  }).join('');
+  return `<h3>היעד: ${WAU_GOAL} משתמשים פעילים בשבוע</h3>
+    <p><b>${now} מתוך ${WAU_GOAL}</b>${delta}
+      <span class="dim small">— כתבו לעולמה או עשו משהו בדף שלהם בשבעת הימים האחרונים</span></p>
+    <table><tr><th>איך הגיעו</th><th>הצטרפו ב־7 ימים</th><th>ב־30 יום</th><th>פעילים השבוע</th></tr>${channelRows}</table>
+    <p class="small">לחיצות על קישורי הזמנה: <b>${clicks ? clicks.w : '—'}</b> ב־7 ימים · ${clicks ? clicks.m : '—'} ב־30 יום
+      <span class="dim">— תצוגה מקדימה של הקישור לא נספרת</span></p>`;
+}
+
 // The Hebrew count is shown as "flawed of written", never as a rate, and only
 // for the days a transcript was actually read — a day with no
 // assistant_messages row is a day nobody counted, not a clean one.
@@ -212,6 +253,7 @@ async function renderMetrics(client) {
   const today = byDate.get(new Date().toISOString().slice(0, 10)) || {};
   return `<div class="stats">${cols.slice(0, 5).map((m) =>
       `<div class="stat"><div class="num">${today[m] ?? 0}</div><div class="lbl">${METRIC_LABELS[m]} היום</div></div>`).join('')}</div>
+    ${goalBlock(rows)}
     <h3>צמיחה — יום מול יום, שבוע מול שבוע</h3>
     ${growthHtml}
     ${voiceLine(rows)}
@@ -222,4 +264,4 @@ async function renderMetrics(client) {
       `<tr><td class="nowrap">${d}</td>${cols.map((m) => `<td>${vals[m] ?? 0}</td>`).join('')}</tr>`).join('')}</table>`;
 }
 
-module.exports = { METRIC_LABELS, METRIC_ORDER, GROWTH_METRICS, WINDOWS, dateKey, growthTable, voiceLine, meetingLengthLine, duplicatesLine, renderMetrics };
+module.exports = { WAU_GOAL, CHANNEL_LABELS, goalBlock, METRIC_LABELS, METRIC_ORDER, GROWTH_METRICS, WINDOWS, dateKey, growthTable, voiceLine, meetingLengthLine, duplicatesLine, renderMetrics };

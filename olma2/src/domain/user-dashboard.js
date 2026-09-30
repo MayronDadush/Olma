@@ -32,6 +32,8 @@ const preferences = require('./preferences');
 const holidays = require('./holidays');
 const factPrompts = require('./fact-prompts');
 const suggestions = require('./task-suggestions');
+const referral = require('./referral');
+const experiments = require('./experiments');
 
 // A task's own category vocabulary is closed server-side (tasks.category is
 // validated as a closed set, not free text), so the page can rely on it —
@@ -823,7 +825,39 @@ async function load(client, userId) {
     },
     meetings,
     meetingsLeft,
+    // Their invitation to a friend (owner, 2026-09-30): the text they send and
+    // the link inside it, which opens a chat with Olma carrying their code.
+    // Built from the id and never stored, so reading the page writes nothing
+    // (domain/referral.js). Null only for an id the code cannot carry, and the
+    // page then draws no card.
+    invite: await inviteCard(client, user),
   });
 }
 
-module.exports = { load, SOURCE_CAPS, KNOWN_CATEGORIES };
+// A good moment to ask: a coordination they are in closed, or a task of theirs
+// was done, in the last two days. Variant b of invite_card_moment shows the
+// card only then; a shows it always. Read only — assign() writes nothing, and
+// the exposure is recorded by the /me/data route after this returns.
+const MOMENT_HOURS = 48;
+async function goodMoment(client, userId) {
+  const { rows } = await client.query(
+    `SELECT EXISTS (SELECT 1 FROM meetings m
+                      JOIN meeting_participants mp ON mp.meeting_id = m.id
+                     WHERE mp.user_id = $1 AND mp.state <> 'opted_out'
+                       AND m.status = 'confirmed'
+                       AND m.closed_at > now() - make_interval(hours => $2))
+         OR EXISTS (SELECT 1 FROM tasks
+                     WHERE owner_id = $1 AND completed_at > now() - make_interval(hours => $2)) AS yes`,
+    [userId, MOMENT_HOURS]);
+  return Boolean(rows[0] && rows[0].yes);
+}
+
+async function inviteCard(client, user) {
+  const invite = referral.inviteFor({ id: user.id, firstName: user.first_name, locale: user.locale });
+  if (!invite) return null;
+  const { variant } = await experiments.assign(client, 'invite_card_moment', user.id);
+  if (variant === 'b' && !(await goodMoment(client, user.id))) return null;
+  return invite;
+}
+
+module.exports = { load, SOURCE_CAPS, KNOWN_CATEGORIES, goodMoment, MOMENT_HOURS };

@@ -145,6 +145,48 @@ test('provisionUser: locale comes from what they actually wrote, not the diallin
   assert.equal(rows[0].detail.localeSource, 'phone_prefix');
 });
 
+// u-40, 2026-09-24: a +1 number wrote "היי", the greeter answered in Hebrew,
+// and his own agent spoke English from then on. The carryover guard had
+// dropped "היי" because another stranger's first message was the same word,
+// and with no text the dialling code decided. The hint is the greeter's text
+// read for its language alone, and it only ever fills an empty text.
+test('provisionUser: with the carryover dropped, the greeter text still decides the language', async () => {
+  const hinted = await withTx(db.pool, (c) => provisionUser(c, {
+    phone: '+12025550143', configPath, firstMessage: null, languageHint: 'he',
+  }));
+  assert.equal(hinted.data.user.locale, 'he', 'what they wrote, not where their number is from');
+  const { rows } = await db.pool.query(
+    `SELECT a.detail FROM audit_log a JOIN users u ON u.id = a.actor_id
+     WHERE u.phone = '+12025550143' AND a.event = 'user.provisioned.workspace'`);
+  assert.equal(rows[0].detail.localeSource, 'greeter_text');
+
+  // A carryover that DOES carry a language wins over the hint.
+  const text = await withTx(db.pool, (c) => provisionUser(c, {
+    phone: '+12025550144', configPath, firstMessage: 'hi, can you help me?', languageHint: 'he',
+  }));
+  assert.equal(text.data.user.locale, 'en');
+
+  // And no hint at all is the old behaviour: the dialling code.
+  const none = await withTx(db.pool, (c) => provisionUser(c, {
+    phone: '+12025550145', configPath, firstMessage: null,
+  }));
+  assert.equal(none.data.user.locale, 'en');
+});
+
+test('the sweep: a "היי" the guard dropped is still read for its language', async () => {
+  const phone = '+12025550146';
+  await withTx(db.pool, (c) => intake.sweepIntakeSessions(c, {
+    configPath,
+    listSessions: async () => [{ phone, key: `agent:intake:whatsapp:direct:${phone}` }],
+    readGreeterReply: async () => require('../src/domain/onboarding').openingMessage('he'),
+    readFirstMessage: async () => null,
+    readLanguage: async (p) => (p === phone ? 'he' : null),
+  }));
+  const { rows } = await db.pool.query(`SELECT locale, intake_note_at FROM users WHERE phone = $1`, [phone]);
+  assert.equal(rows[0].locale, 'he');
+  assert.equal(rows[0].intake_note_at, null, 'the language travels; the words still do not');
+});
+
 test('provisionUser: firstMessage and invitedInfo both land in USER.md, wrapped as data', async () => {
   const res = await withTx(db.pool, (c) => provisionUser(c, {
     phone: '+972601000098', configPath,
@@ -1653,6 +1695,14 @@ test('a carryover that could belong to someone else is dropped, not written', as
       'היי');
     // and with no other peers known there is nothing to contradict it
     assert.equal(await intake.readIntakeFirstMessage('+972542613404'), 'היי');
+
+    // Two strangers who both wrote "היי": the words are dropped, and the
+    // language survives — it is the same for both whichever file was read.
+    sessions.readPeerUserText = async () => 'היי';
+    assert.equal(await intake.readIntakeFirstMessage('+12025550147', ['+12025550147', '+972502205854']), null);
+    assert.equal(await intake.readIntakeLanguage('+12025550147'), 'he');
+    sessions.readPeerUserText = async () => null;
+    assert.equal(await intake.readIntakeLanguage('+12025550147'), null, 'nothing read, nothing claimed');
   } finally {
     sessions.readPeerUserText = real;
   }
@@ -2348,4 +2398,74 @@ test('a gateway that refuses the delete does not turn a real deletion into a fai
   assert.equal(res.data.intakeSessionForgotten, false, 'and the failure is reported, not swallowed');
   const { rows } = await db.pool.query(`SELECT count(*)::int c FROM users WHERE phone = $1`, [phone]);
   assert.equal(rows[0].c, 0);
+});
+
+// ---- where they came from (migration 101, owner 2026-09-30) -----------------
+// The growth plan is read by channel, so every provisioning says which door.
+test('intake sweep: joined_via — a friend\'s code, a room, an invite, or none of those', async () => {
+  const referral = require('../src/domain/referral');
+  const friend = await makeUser(db.pool, '+972601000901', { firstName: 'ממליצה' });
+  await db.pool.query(`UPDATE users SET status = 'active', agent_id = $2 WHERE id = $1`, [friend.id, `u-${friend.id}`]);
+  const code = referral.codeFor(friend.id);
+  const viaLink = '+972601000902', viaRoom = '+972601000903', viaInvite = '+972601000904', direct = '+972601000905';
+  const selfCode = '+972601000906';
+
+  const { rows: [g] } = await db.pool.query(
+    `INSERT INTO chat_groups (external_id, subject, state) VALUES ('120363009031@g.us', 'חדר', 'open') RETURNING id`);
+  await db.pool.query(`INSERT INTO chat_group_members (group_id, phone) VALUES ($1, $2)`, [g.id, viaRoom]);
+  const inviter = await makeUser(db.pool, '+972601000907', { firstName: 'מזמין' });
+  let connId;
+  await withTx(db.pool, async (c) => {
+    const req = await connections.requestConnection(c, inviter.id, viaInvite, { reason: 'פגישה' });
+    connId = Number(req.data.connection.id);
+    await invites.afterConnectionRequest(c, inviter, req.data.connection, false);
+  });
+  // The invite made their row long before they wrote — which is exactly what
+  // kept invited_by_connection_id NULL until now.
+  const { rows: [pending] } = await db.pool.query(
+    `SELECT invited_by_connection_id FROM users WHERE phone = $1`, [viaInvite]);
+  assert.equal(pending.invited_by_connection_id, null, 'the fixture reproduces the bug\'s precondition');
+
+  const texts = {
+    [viaLink]: `היי עולמה 👋 הגעתי דרך ממליצה (קוד ${code})`,
+    [viaRoom]: 'אני יכול מחר',
+    [viaInvite]: 'היי',
+    [direct]: 'היי מה זה',
+  };
+  const out = await withTx(db.pool, (c) => intake.sweepIntakeSessions(c, {
+    configPath,
+    listSessions: async () => [viaLink, viaRoom, viaInvite, direct].map((phone) => ({ phone, key: phone })),
+    readFirstMessage: async (phone) => texts[phone],
+    readReferralText: async (phone) => texts[phone],
+    readGreeterReply: async () => OPENING.he,
+  }));
+  assert.equal(out.provisioned.length, 4);
+  const { rows } = await db.pool.query(
+    `SELECT phone, joined_via, referred_by_user_id, invited_by_connection_id FROM users
+      WHERE phone = ANY($1)`, [[viaLink, viaRoom, viaInvite, direct]]);
+  const by = Object.fromEntries(rows.map((r) => [r.phone, r]));
+  assert.equal(by[viaLink].joined_via, 'friend_link');
+  assert.equal(Number(by[viaLink].referred_by_user_id), friend.id);
+  assert.equal(by[viaRoom].joined_via, 'room');
+  assert.equal(by[viaRoom].referred_by_user_id, null);
+  assert.equal(by[viaInvite].joined_via, 'invite');
+  assert.equal(Number(by[viaInvite].invited_by_connection_id), connId, 'the attribution bug is fixed');
+  assert.equal(by[direct].joined_via, 'direct');
+
+  // Their own code sent from their own number names nobody.
+  const { rows: [me] } = await db.pool.query(
+    `SELECT id FROM users WHERE phone = $1`, [viaLink]);
+  await withTx(db.pool, async (c) => {
+    assert.equal(await referral.referrerFor(c, `קוד ${code}`, '+972601000901'), null, 'not yourself');
+    assert.equal(await referral.referrerFor(c, `קוד ${referral.codeFor(me.id)}`, selfCode), me.id);
+    assert.equal(await referral.referrerFor(c, 'קוד ZZZZZ', selfCode), null);
+  });
+});
+
+test('a re-provision never moves joined_via', async () => {
+  const phone = '+972601000910';
+  await withTx(db.pool, (c) => provisionUser(c, { phone, configPath, joinedVia: 'room' }));
+  await withTx(db.pool, (c) => provisionUser(c, { phone, configPath, joinedVia: 'direct' }));
+  const { rows } = await db.pool.query(`SELECT joined_via FROM users WHERE phone = $1`, [phone]);
+  assert.equal(rows[0].joined_via, 'room');
 });

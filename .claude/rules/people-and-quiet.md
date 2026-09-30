@@ -167,7 +167,14 @@ title means this file. Grep the title, not the filename.
   `more_groups` rung of `checkin.pickRung`, earned by a YES on the exact option
   a ROOM's coordination locked on (`starts_at` = `confirmed_start_at`) in the
   last fourteen days. Everybody who said yes gets it, not only whoever asked.
-  A private coordination does not earn it, by the owner's choice. It sits
+  A private coordination did not earn it, by the owner's choice, until
+  2026-09-30 (the growth plan, week 3): now one with three or more people
+  still in it (`MORE_GROUPS_PRIVATE_MIN`, `opted_out` not counted) does, with
+  its own sentence — next time, one group and one tag. WHEN it is said is an
+  A/B test (`experiments.more_groups_timing`): a at the first check-in, b only
+  once the meeting has happened; both arms are exposed at the same check-in,
+  and b never offers from a meeting that closed before its person was
+  exposed. It sits
   below `stuck_meeting`/`deadline_risk` and above Olma's own opinions, and it
   never reaches somebody at `misses >= 1`. It is spent on the enqueue in
   `checkin.run`, and the copy is quoted, not described, and asks nothing.

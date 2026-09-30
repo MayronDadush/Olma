@@ -18,9 +18,9 @@ module.exports = [
       if (ctx.flood && ctx.flood.isFlooding(user.id)) {
         return ok({ directive: 'silent', reason: 'flood' });
       }
-      // Real activity resets the checkin backoff, and records that they are
-      // awake right now — the delivery gate uses this to allow a reply during
-      // quiet hours while a conversation is actually happening.
+      // Real activity resets the checkin backoff and records the turn. It does
+      // NOT tell the delivery gate they are awake — that is `last_woke_at`,
+      // which only the gateway opener stamps (see the comment further down).
       // The self-join reads the row as it was BEFORE this statement, so
       // "have they ever written to us before" costs no extra round trip — and
       // on a 1-vCPU box every query here is latency a person is sitting
@@ -108,25 +108,19 @@ module.exports = [
         ctx.turn.reactionVocab = reactions.vocabulary(
           await flags.getFlag(client, reactions.VOCAB_FLAG));
       }
-      // A person writing is awake — give every night-held row an immediate
-      // re-hearing. The gate stays the only judge: inside the 15-minute
-      // conversation grace it delivers; otherwise it simply re-holds until
-      // the window opens, so this can never deliver something the gate would
-      // refuse. Without this nudge the worker never re-reads a held row
-      // before its release_after, so the gate's own mid-conversation rule
-      // could not fire for overnight holds — observed live 2026-08-27: two
-      // connection requests sat 'night'-held for the morning while the
-      // recipient was actively chatting. Only 'night' rows: a budget hold's
-      // budget is still spent, and a blocked user's rows wait for the
-      // unblock summary — waking either would be overriding the gate, not
-      // re-asking it.
-      // Skipped on our own turn for the same reason: "they are awake" is a
-      // claim about the person, and a delivery is evidence only that we sent
-      // something.
-      if (!ourTurn) await client.query(
-        `UPDATE outbox SET release_after = now()
-          WHERE user_id = $1 AND sent_at IS NULL AND hold_reason = 'night'
-            AND release_after > now()`, [user.id]);
+      // Night-held rows are NOT re-heard here any more, and neither is
+      // `last_woke_at` stamped. Both mean "a person is awake", and this tool
+      // has no evidence of one: the model calls it on any turn, including a
+      // CLI `openclaw agent` run nobody typed. That is how a probe of the
+      // owner's agent at 02:53 opened the gate's grace and the 03:00
+      // auto-archive notice reached his phone (2026-09-30; `incidents.md`,
+      // "The probe that was read as him writing"). The gateway opener
+      // (`turn.openFromGateway`, `wake: true`) does both, off a real
+      // message:preprocessed, before the model's first call — so for a person
+      // who actually wrote, the 2026-08-27 re-hearing (two connection
+      // requests night-held while the recipient chatted) still happens, one
+      // door earlier. If that hook missed, the rows wait for the morning,
+      // which is the gate's own default and the safe direction.
       // The WhatsApp display name is in front of the agent on EVERY turn, in the
       // gateway's "Conversation info (untrusted metadata)" block — and until
       // this line it was the one thing about a person the system watched go past

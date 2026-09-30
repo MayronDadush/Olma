@@ -33,7 +33,9 @@ const onboardingDomain = require('../domain/onboarding');
 const { reopenMessage } = require('../intake/messages');
 const templates = require('../domain/message-templates');
 const intakeRoom = require('../domain/intake-room');
+const referral = require('../domain/referral');
 const preferences = require('../domain/preferences');
+const language = require('../domain/language');
 const { minutesInTz, parseHHMM } = require('../outbox/gate');
 const occ = require('../intake/openclaw-config');
 // The worker-thread facade: this sweep ticks every 5 seconds inside brokerd,
@@ -84,6 +86,52 @@ async function readIntakeFirstMessage(phone, otherPhones = []) {
       if (await sessions.readPeerUserText(INTAKE_AGENT_ID, other) === text) return null;
     }
     return text;
+  } catch { return null; }
+}
+
+// The same words read for one thing only: a friend's invite code
+// (domain/referral.js). Deliberately WITHOUT the guard above — every friend a
+// person invites sends the identical prefilled sentence, so the guard would
+// drop exactly the messages this is for. That is safe because nothing read
+// here reaches anybody's context: the code becomes a number in a growth table,
+// and a wrong one costs a wrong line in it.
+async function readIntakeReferralText(phone) {
+  try { return await sessions.readPeerUserText(INTAKE_AGENT_ID, phone); } catch { return null; }
+}
+
+// Which door they came in by, for `users.joined_via` (migration 101). A code
+// outranks a room: the code is something they chose to send. A room outranks
+// an invite, because a room makes the connections itself (2026-09-09), so
+// every room joiner also looks invited.
+async function joinedVia(client, { phone, invited, referralText }) {
+  const referredByUserId = referralText ? await referral.referrerFor(client, referralText, phone) : null;
+  if (referredByUserId) return { joinedVia: 'friend_link', referredByUserId };
+  const { rows } = await client.query(
+    // By the roster's own number too: a member who never wrote has no user_id
+    // on their roster row until something links it.
+    `SELECT 1 FROM chat_group_members m LEFT JOIN users u ON u.id = m.user_id
+      WHERE m.phone = $1 OR u.phone = $1 LIMIT 1`, [phone]);
+  if (rows[0]) return { joinedVia: 'room', referredByUserId: null };
+  return { joinedVia: invited ? 'invite' : 'direct', referredByUserId: null };
+}
+
+// The LANGUAGE of what they typed to the greeter, as a code and nothing else.
+//
+// The guard above drops a carryover that another peer's text matches, and the
+// commonest first message there is — "היי" — matches everybody's. With the
+// text gone, provisioning had nothing to read a language from and fell back to
+// the dialling code, which for an Israeli number is the right answer by luck
+// and for anyone else is not: u-40 (+1) wrote "היי", the greeter answered in
+// Hebrew, and every word from his own agent after that was English, with the
+// audit saying `localeSource: phone_prefix` (2026-09-24).
+//
+// A language carries none of what the guard protects. And in the one case
+// the guard fires on — two peers with the SAME text — both texts are in the
+// same language, so whose file was read cannot change the answer.
+async function readIntakeLanguage(phone) {
+  try {
+    const text = await sessions.readPeerUserText(INTAKE_AGENT_ID, phone);
+    return text ? language.detectLanguage(text, phone) : null;
   } catch { return null; }
 }
 
@@ -172,7 +220,7 @@ function intakeConfigured(configPath) {
   } catch { return false; }
 }
 
-// One discovery pass. deps: { listSessions, configPath, readFirstMessage }
+// One discovery pass. deps: { listSessions, configPath, readFirstMessage, readLanguage }
 async function sweepIntakeSessions(client, deps) {
   if (!intakeConfigured(deps.configPath)) return { skipped: 'no_intake_agent' };
   const sessions = await (deps.listSessions || defaultListIntakeSessions)();
@@ -246,6 +294,8 @@ async function sweepIntakeSessions(client, deps) {
     const firstMessage = deps.readFirstMessage
       ? await deps.readFirstMessage(phone, sessions.map((s) => s.phone))
       : null;
+    // Only consulted when the carryover above came back empty (provisionUser).
+    const languageHint = deps.readLanguage ? await deps.readLanguage(phone) : null;
     const inviter = invited
       ? (await client.query(`SELECT first_name, last_name, phone FROM users WHERE id = $1`, [invited.requester_id])).rows[0]
       : null;
@@ -259,12 +309,18 @@ async function sweepIntakeSessions(client, deps) {
     // and carries the privacy link — so it stamps `opening_sent_at` like the
     // owner's, and nothing waits behind an introduction still owed. What it
     // leaves out is what she helps with, and that is the follow-up's job.
+    const via = await joinedVia(client, {
+      phone, invited,
+      referralText: deps.readReferralText ? await deps.readReferralText(phone) : null,
+    });
+
     const saidOwners = saidTheOpening(greeterReply, await templates.load(client));
     const roomOpened = !saidOwners && intakeRoom.saidRoomOpening(greeterReply);
     const greetedByIntake = saidOwners || roomOpened;
     const prov = await provisionUser(client, {
       phone, invitedByConnectionId: invited ? invited.id : null, configPath: deps.configPath,
-      firstMessage, invitedInfo, registerUndo: deps.registerUndo,
+      firstMessage, languageHint, invitedInfo, registerUndo: deps.registerUndo,
+      joinedVia: via.joinedVia, referredByUserId: via.referredByUserId,
       // What the greeter ACTUALLY said, never what it was told to say. This
       // was `true` unconditionally for one evening, on the reasoning that
       // being in the greeter's session list proved the greeter had answered
@@ -381,6 +437,6 @@ async function sweepReopen(client) {
 
 module.exports = {
   sweepIntakeSessions, runIntakeSweep, sweepReopen, intakeConfigured, INTAKE_AGENT_ID,
-  defaultListIntakeSessions, readIntakeFirstMessage,
+  defaultListIntakeSessions, readIntakeFirstMessage, readIntakeLanguage, readIntakeReferralText, joinedVia,
   defaultReadGreeterReply, saidTheOpening, nextMorning, GREETER_GRACE_MS,
 };

@@ -40,6 +40,9 @@ const audit = require('../domain/audit');
 const { review, worstOf } = require('../domain/onboarding-review');
 const sessions = require('../channels/sessions-async');
 const laneLog = require('./lane-watchdog');
+const unanswered = require('./unanswered');
+const reactionsDomain = require('../domain/reactions');
+const flags = require('../domain/flags');
 
 const REVIEW_AFTER_MS = 3 * 3600_000;
 // Stop offering to review a conversation nobody can act on any more. A person
@@ -178,10 +181,18 @@ async function evidenceFor(client, u, deps, now, stage = STAGES[0]) {
     const chunks = deps.readLogTails ? deps.readLogTails()
       : [...days].map((path) => ({ raw: laneLog.readTail(path) }));
     const { parseKey } = require('../channels/sessions');
+    // A NO_REPLY behind a closing mark is logged as a drop too, and is the
+    // answer the doctrine asked for — the same reading the repair makes
+    // (jobs/unanswered.decidedSilence), so the review and the repair never
+    // disagree about whether a message was answered.
+    const marks = unanswered.sentReactions(chunks);
+    let vocab;
+    try { vocab = reactionsDomain.vocabulary(await flags.getFlag(client, reactionsDomain.VOCAB_FLAG)); } catch { vocab = undefined; }
     for (const { raw } of chunks) {
       for (const d of laneLog.parseDroppedTurns(raw)) {
         const parsed = parseKey(d.sessionKey);
         if (parsed && parsed.peer === u.phone && d.at >= startMs && d.at <= endMs) {
+          if (unanswered.decidedSilence(d, msgs, marks, vocab)) continue;
           droppedTurns.push({ messageId: d.messageId, at: new Date(d.at).toISOString() });
         }
       }

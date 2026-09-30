@@ -85,13 +85,22 @@ async function contextEnabledFor(client, user) {
 // heartbeat: anything that runs a turn without a real inbound message can
 // still reach this. Waking someone is the one thing here that must never be
 // done on an inference (`incidents.md`, "Good morning at half past one").
+//
+// `last_woke_at` is the waking half's own column, and the gate's conversation
+// grace reads it instead of `last_inbound_at`: a probe of the owner's agent at
+// 02:53 moved `last_inbound_at` and the 03:00 auto-archive notice went straight
+// through the grace to his phone (`incidents.md`, "The probe that was read as
+// him writing"). Re-hearing held rows was gated; a row created AFTER the turn
+// never needed re-hearing, so the gate itself had to be told which stamp is
+// evidence.
 async function openRecord(client, user, { wake = false } = {}) {
   const opened = await client.query(
     `UPDATE users u SET last_inbound_at = now(),
+            last_woke_at = CASE WHEN $2::boolean THEN now() ELSE u.last_woke_at END,
             checkin_misses = CASE WHEN u.checkin_misses > 0 THEN 0 ELSE u.checkin_misses END
        FROM users prev
       WHERE u.id = prev.id AND u.id = $1
-      RETURNING prev.last_inbound_at AS prev_inbound`, [user.id]);
+      RETURNING prev.last_inbound_at AS prev_inbound`, [user.id, Boolean(wake)]);
   const firstTurn = opened.rowCount > 0 && opened.rows[0].prev_inbound === null;
 
   // Night-held rows get their re-hearing. The gate stays the only judge: this

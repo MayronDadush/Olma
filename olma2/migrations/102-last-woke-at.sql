@@ -1,0 +1,19 @@
+-- When a PERSON last wrote, as opposed to when a turn last happened on their
+-- agent.
+--
+-- `last_inbound_at` is stamped by every opener — the gateway's own
+-- message:preprocessed hook, `turn_start`, and the implicit recovery — so it
+-- also moves for a turn nobody wrote: an `openclaw agent` run from the CLI, a
+-- gateway-side poll. The delivery gate read it as "they are awake and
+-- mid-conversation" and lifted quiet hours for fifteen minutes on it: a probe
+-- of the owner's own agent at 02:53 let the 03:00 auto-archive notice straight
+-- through to his phone (2026-09-30, `incidents.md`, "The probe that was read as
+-- him writing").
+--
+-- This column is stamped ONLY by `turn.openRecord` with `wake: true` — the
+-- gateway opener, which has an accepted inbound message behind it — and it is
+-- the one thing the gate's conversation grace reads.
+--
+-- Additive: a nullable column nothing before this reads. NULL means "no
+-- evidenced message yet", which is quiet hours as usual.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS last_woke_at TIMESTAMPTZ;
