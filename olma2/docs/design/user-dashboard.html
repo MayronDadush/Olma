@@ -3270,6 +3270,26 @@ button.srow:active{background:var(--bg-tint)}
 }
 .stgo svg{width:14px;height:14px}
 .stgo:active{transform:scale(.9)}
+/* Name first (owner, 2026-10-01). A new task shows everything it could have,
+   in its own colours, and every row says what it is waiting for instead of
+   its value — "אחרי שיהיה שם". Nothing is greyed out: half a sheet in grey
+   read as broken. A press on anything below the name is answered at the
+   name, in words, and puts the cursor there (the `namefirst` handler). */
+.slock,.atile .alock{display:none}
+#sheet.namefirst #sWhenSay,#sheet.namefirst #sRemSay,#sheet.namefirst #sRemOff{display:none!important}
+#sheet.namefirst .slock{display:inline-flex;align-items:center;gap:5px;color:var(--text-3)}
+.slock svg{width:13px;height:13px}
+#sheet.namefirst #sMainGroup .chev{opacity:.25}
+#sheet.namefirst #sRemind{opacity:.35}
+#sheet.namefirst .catchip{opacity:.5}
+#sheet.namefirst .atile{opacity:.62}
+#sheet.namefirst .atile b > svg:not(.alock){display:none}
+#sheet.namefirst .atile .alock{display:inline}
+#sheet.namefirst #sSaved{visibility:hidden}
+.sneed{margin:-4px 24px 10px;text-align:center;font-size:13.5px;font-weight:500;color:var(--clay)}
+.stitlewrap.creating .stitle.need{
+  border-color:var(--clay);box-shadow:0 0 0 4px color-mix(in srgb,var(--clay) 18%,transparent);
+}
 .savedline{
   margin-top:14px;text-align:center;font-size:12.5px;font-weight:500;color:var(--text-3);
   transition:color .2s var(--ease);
@@ -3510,6 +3530,7 @@ button.srow:active{background:var(--bg-tint)}
   <symbol id="i-play" viewBox="0 0 16 16"><path d="M4.6 3.2 12.6 8l-8 4.8Z" fill="currentColor" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></symbol>
   <symbol id="i-undo" viewBox="0 0 16 16"><path d="M3.4 6.2h6.3a3.6 3.6 0 0 1 0 7.2H6.1" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 2.9 2.9 6.2 6 9.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-pin" viewBox="0 0 16 16"><path d="M5.9 1.9h4.2l-.6 4 2.4 2.5v1.3H4.1V8.4l2.4-2.5Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M8 9.7v4.6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 16 16"><rect x="3.4" y="7.2" width="9.2" height="6.6" rx="1.8" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M5.4 7.2V5.4a2.6 2.6 0 0 1 5.2 0v1.8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></symbol>
   <symbol id="i-x" viewBox="0 0 12 12"><path d="M2 2l8 8M10 2l-8 8" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></symbol>
   <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4.8 6.6h14.4M9.6 6.6V4.4h4.8v2.2" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/><path d="m6.8 6.6 1 13.4h8.4l1-13.4" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <!-- The two marks on a candidate time. Drawn objects rather than glyphs,
@@ -4122,6 +4143,7 @@ button.srow:active{background:var(--bg-tint)}
     <span class="stedit" id="sTitleEdit" aria-hidden="true"><svg><use href="#i-pencil"/></svg></span>
     <button class="stgo" id="sTitleGo" hidden><svg><use href="#i-check"/></svg></button>
   </div>
+  <p class="sneed" id="sNeed" role="status" hidden></p>
   <!-- The category is the least interesting thing about a task (owner,
        2026-09-30), so it is not a row any more: a tag under the title, with
        its colour, and "Olma picked this" beside it until the person answers.
@@ -4175,7 +4197,7 @@ button.srow:active{background:var(--bg-tint)}
   <div class="group lfold" id="sMainGroup">
     <button class="srow" id="sWhenRow" aria-expanded="false">
       <span class="stile st-cal"><svg><use href="#i-cal"/></svg></span>
-      <span class="stx"><span class="slab" data-i18n="sheet.when"></span><span class="sval" id="sWhenSay"></span></span>
+      <span class="stx"><span class="slab" data-i18n="sheet.when"></span><span class="sval" id="sWhenSay"></span><span class="sval slock"><svg><use href="#i-lock"/></svg><span data-i18n="sheet.afterName"></span></span></span>
       <svg class="chev"><use href="#i-chev"/></svg>
     </button>
     <!-- "When" opens in place, as two short lines: the day, then the hour.
@@ -4223,7 +4245,8 @@ button.srow:active{background:var(--bg-tint)}
       <span class="stx"><span class="slab" data-i18n="sheet.remind"></span>
         <span class="sval" id="sRemSay"><span id="remindSub"></span>
           <button class="sinl" id="sRemInl" aria-expanded="false"><span id="sRemInlVal"></span><svg><use href="#i-chev"/></svg></button></span>
-        <span class="sval off" id="sRemOff" data-i18n="sheet.sum.noRem"></span></span>
+        <span class="sval off" id="sRemOff" data-i18n="sheet.sum.noRem"></span>
+        <span class="sval slock"><svg><use href="#i-lock"/></svg><span data-i18n="sheet.afterName"></span></span></span>
       <button class="switch" role="switch" aria-checked="false" id="sRemind" data-i18n-label="sheet.remind"></button>
     </div>
     <div class="fold" id="sRemindFold"><div><div class="spad">
@@ -4327,13 +4350,13 @@ button.srow:active{background:var(--bg-tint)}
     <div class="alsoh" data-i18n="sheet.also"></div>
     <div class="alsotiles" id="sAlsoTiles">
       <button class="atile" data-also="list"><span class="stile st-gold"><svg><use href="#i-list"/></svg></span>
-        <b><span data-i18n="sheet.list"></span><svg><use href="#i-plus"/></svg></b><span data-i18n="sheet.also.list"></span></button>
+        <b><span data-i18n="sheet.list"></span><svg><use href="#i-plus"/></svg><svg class="alock"><use href="#i-lock"/></svg></b><span data-i18n="sheet.also.list"></span></button>
       <button class="atile" data-also="rep"><span class="stile st-rep"><svg><use href="#i-repeat"/></svg></span>
-        <b><span data-i18n="sheet.also.repT"></span><svg><use href="#i-plus"/></svg></b><span data-i18n="sheet.also.rep"></span></button>
+        <b><span data-i18n="sheet.also.repT"></span><svg><use href="#i-plus"/></svg><svg class="alock"><use href="#i-lock"/></svg></b><span data-i18n="sheet.also.rep"></span></button>
       <button class="atile" data-also="share"><span class="stile st-share"><svg><use href="#i-people"/></svg></span>
-        <b><span data-i18n="sheet.also.shareT"></span><svg><use href="#i-plus"/></svg></b><span data-i18n="sheet.also.share"></span></button>
+        <b><span data-i18n="sheet.also.shareT"></span><svg><use href="#i-plus"/></svg><svg class="alock"><use href="#i-lock"/></svg></b><span data-i18n="sheet.also.share"></span></button>
       <button class="atile" data-also="cal"><span class="stile st-sea"><svg><use href="#i-cal"/></svg></span>
-        <b><span data-i18n="sheet.also.calT"></span><svg><use href="#i-plus"/></svg></b><span data-i18n="sheet.also.cal"></span></button>
+        <b><span data-i18n="sheet.also.calT"></span><svg><use href="#i-plus"/></svg><svg class="alock"><use href="#i-lock"/></svg></b><span data-i18n="sheet.also.cal"></span></button>
     </div>
   </div>
 
@@ -5625,7 +5648,7 @@ button.srow:active{background:var(--bg-tint)}
       "time.search":"חיפוש שעה","time.none":"לא נמצאה שעה כזו.","time.clear":"ללא שעה","toast.endAfterStart":"שעת הסיום צריכה להיות אחרי שעת ההתחלה","sheet.addTime":"שעה",
 
       "sheet.new":"משימה חדשה","sheet.edit":"עריכת משימה",
-      "sheet.task":"משימה","sheet.taskPh":"מה צריך לעשות?",
+      "sheet.task":"משימה","sheet.taskPh":"מה צריך לעשות?","sheet.afterName":"אחרי שיהיה שם","sheet.need.when":"קודם שם — ואז אפשר לבחור יום","sheet.need.rem":"קודם שם — ואז אפשר להוסיף תזכורת","sheet.need.rest":"קודם שם — ואז כל השאר נפתח",
       "sheet.date":"מועד","sheet.time":"שעה",
       "sheet.remind":"תזכורת","sheet.remindSub":"עולמה תזכיר ב־{name}",
       "sheet.save":"שמירה","sheet.delete":"מחיקת המשימה","sheet.cancel":"ביטול",
@@ -6005,7 +6028,7 @@ button.srow:active{background:var(--bg-tint)}
       "time.search":"Search for a time","time.none":"No time by that name.","time.clear":"No time","toast.endAfterStart":"The end has to be after the start","sheet.addTime":"Time",
 
       "sheet.new":"New task","sheet.edit":"Edit task",
-      "sheet.task":"Task","sheet.taskPh":"What needs doing?",
+      "sheet.task":"Task","sheet.taskPh":"What needs doing?","sheet.afterName":"Once it has a name","sheet.need.when":"Name it first — then you can pick a day","sheet.need.rem":"Name it first — then you can add a reminder","sheet.need.rest":"Name it first — then the rest opens",
       "sheet.date":"Date","sheet.time":"Time",
       "sheet.remind":"Reminder","sheet.remindSub":"Allma will remind you on {name}",
       "sheet.save":"Save","sheet.delete":"Delete task","sheet.cancel":"Cancel",
@@ -9503,6 +9526,8 @@ button.srow:active{background:var(--bg-tint)}
     $("#sSaved").classList.remove("flash");
     creating = isNew;
     syncTitleRow();
+    nameFirst = isNew;
+    syncNameFirst();
     /* what a new task looks like before anybody has chosen anything — closing
        measures against it (closeSheets) */
     if(isNew){ commit(SKIP_SAVE); untouchedSig = sheetSig(); }
@@ -9559,12 +9584,43 @@ button.srow:active{background:var(--bg-tint)}
     }, false, t("toast.rename"));
   }
   $("#sTitle").addEventListener("input", syncTitleRow);
+
+  /* Name first: on a new task nothing below the name answers until there is
+     one (owner, 2026-10-01 — a day and a reminder chosen under an empty name
+     was the whole problem). It is not `inert`: a press has to reach us so it
+     can be answered, at the name, with why. The cursor goes there inside the
+     same press, which is what lets a phone raise its keyboard.
+
+     It ends at the first letter and never comes back for this task — erasing
+     the name later must not hide a day they have since chosen. */
+  var nameFirst = false;
+  var NEED_AT = "#sCatLine, #sListGroup, #sMainGroup, #sShareGroup, #sAlso";
+  function syncNameFirst(){
+    $("#sheet").classList.toggle("namefirst", nameFirst);
+    if(!nameFirst){ $("#sNeed").hidden = true; $("#sTitle").classList.remove("need"); }
+  }
+  $("#sTitle").addEventListener("input", function(){
+    if(nameFirst && $("#sTitle").value.trim()){ nameFirst = false; syncNameFirst(); }
+  });
+  $("#sheet").addEventListener("click", function(e){
+    if(!nameFirst) return;
+    var at = e.target.closest(NEED_AT);
+    if(!at) return;
+    e.preventDefault(); e.stopPropagation();
+    var kind = e.target.closest("#sWhenRow") ? "when" : e.target.closest("#sRemindRow") ? "rem" : "rest";
+    $("#sNeed").textContent = t("sheet.need." + kind);
+    $("#sNeed").hidden = false;
+    $("#sTitle").classList.add("need");
+    $("#sTitle").focus();
+  }, true);
   $("#sTitleGo").addEventListener("click", function(){
     var named = !!$("#sTitle").value.trim();
     if(named) commit();             /* it may not have been pushed yet */
     else saveUnnamed();
     creating = false;
     syncTitleRow();
+    nameFirst = false;
+    syncNameFirst();
     $("#sTitle").blur();
     if(named) toast(t("toast.saved"));
   });
