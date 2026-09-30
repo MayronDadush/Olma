@@ -30,6 +30,7 @@ const grants = require('./grants');
 const tasksDomain = require('./tasks');
 const reminders = require('./reminders');
 const { enqueue } = require('../outbox/enqueue');
+const { normalizeLocale } = require('./language');
 
 // The reminders one PERSON has pending on a task and its items, cancelled
 // the way they cancel one themselves — through reminders.cancelReminder, so
@@ -142,6 +143,52 @@ async function offerShare(client, inviterId, taskId, viewerUserId) {
     idempotencyKey: `sadded:${share.id}`,
   });
   return ok({ share });
+}
+
+// A share refused because the OTHER person has sharing switched off toward
+// the one sharing. Nothing is added and they hear nothing — that is what the
+// switch is for — but the one who tried is told, and handed a sentence to
+// pass on that turns it back on when said to their own Olma (owner,
+// 2026-09-30: "עולמה תצרף לו הודעה להעביר לאותו חבר איך להגיד לעולמה להחזיר
+// את השיתוף"). The sentence is DRAWN, never the model's: it is the same every
+// time, and it has to be something the other side's agent acts on as-is.
+// In the friend's language, since it is theirs to send; Hebrew unless we know
+// they write something else.
+function forwardTextFor(friend, inviterName) {
+  const locale = normalizeLocale(friend && friend.locale);
+  return !locale || locale === 'he'
+    ? `עולמה, תחזירי את שיתוף המשימות עם ${inviterName}`
+    : `Allma, turn task sharing with ${inviterName} back on`;
+}
+
+async function sharingOff(client, inviterId, friendId) {
+  const { rows } = await client.query(
+    `SELECT id, first_name, last_name, phone, locale FROM users WHERE id = ANY($1::bigint[])`,
+    [[inviterId, friendId]]);
+  const inviter = rows.find((r) => String(r.id) === String(inviterId));
+  const friend = rows.find((r) => String(r.id) === String(friendId));
+  if (!inviter || !friend) return null;
+  const inviterName = [inviter.first_name, inviter.last_name].filter(Boolean).join(' ') || inviter.phone;
+  return {
+    friendName: friend.first_name || friend.phone,
+    forwardText: forwardTextFor(friend, inviterName),
+  };
+}
+
+// The same news for a refusal that happened on the /me PAGE, where there is
+// no reply to carry it: a message of its own, once per task and friend.
+async function tellSharingOff(client, inviterId, friendId, taskId) {
+  const notice = await sharingOff(client, inviterId, friendId);
+  if (!notice) return null;
+  const { rows: [t] } = await client.query(`SELECT title FROM tasks WHERE id = $1`, [Number(taskId)]);
+  await enqueue(client, {
+    userId: inviterId,
+    kind: 'share_sharing_off',
+    urgency: 'normal',
+    payload: { ...notice, taskTitle: (t && t.title) || null },
+    idempotencyKey: `soff:${inviterId}:${friendId}:${Number(taskId)}`,
+  });
+  return notice;
 }
 
 async function respondToShare(client, viewerId, shareId, decision) {
@@ -372,7 +419,7 @@ async function leaveTask(client, userId, taskId) {
 }
 
 module.exports = {
-  offerShare, respondToShare, revokeShare, listMyShares, viewShared,
+  offerShare, sharingOff, tellSharingOff, forwardTextFor, respondToShare, revokeShare, listMyShares, viewShared,
   shareCovering, actingOwner, othersOn, completeSharedTask, addSubtaskToShared,
   adoptIntoList, leaveTask,
 };

@@ -791,3 +791,29 @@ test('the page reads that answer instead of assuming the tick closed the task', 
   // And it says why, rather than leaving a row that reappears on its own.
   assert.match(page, /toast\(t\("toast\.stillRepeating"\)\);/);
 });
+
+// Shared from the page with a friend who switched sharing off: nothing is
+// shared, the page is told who and why, and the sentence that turns it back
+// on goes to the one who tried as a WhatsApp message — a toast is no place to
+// copy a sentence from (owner, 2026-09-30).
+test('a share refused because the friend switched sharing off says so, and sends the line to pass on', async () => {
+  const connections = require('../src/domain/connections');
+  const grants = require('../src/domain/grants');
+  const friend = await makeUser(db.pool, '+972531920091', { firstName: 'Dana' });
+  const conn = await tx(async (c) => {
+    const req = await connections.requestConnection(c, me.id, friend.phone, {});
+    return (await connections.respondToConnection(c, friend.id, req.data.connection.id, 'approve')).data.connection;
+  });
+  await tx((c) => grants.revokeFeatureGrant(c, friend.id, conn.id, 'sharing'));
+  const t = await mkTask();
+  const r = await act('shareTask', { taskId: t.id, viewerId: friend.id });
+  assert.equal(r.ok, false);
+  assert.deepEqual({ reason: r.error.reason, name: r.error.name }, { reason: 'sharing_off', name: 'Dana' });
+  const { rows } = await db.pool.query(
+    `SELECT user_id, payload FROM outbox WHERE kind = 'share_sharing_off' AND user_id = $1`, [me.id]);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].payload.forwardText, 'עולמה, תחזירי את שיתוף המשימות עם Miron');
+  const { rows: [n] } = await db.pool.query(
+    `SELECT count(*)::int AS n FROM shares WHERE viewer_id = $1`, [friend.id]);
+  assert.equal(n.n, 0);
+});

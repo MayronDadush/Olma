@@ -118,8 +118,8 @@ title means this file. Grep the title, not the filename.
   not (`incidents.md`, "The room named him and nobody told him").
   **And another PERSON reaching them is not Olma's idea at all** (owner,
   2026-09-30: "זה לא הודעה יזומה מעולמה"). `gate.PEER_KINDS` —
-  `connection_request`, `connection_response`, `share_offer`,
-  `share_response`, `relayed_message` — passes the quiet drop, and so does a
+  `connection_request`, `connection_response`, `share_offer`, `share_added`,
+  `share_response`, `share_sharing_off`, `relayed_message` — passes the quiet drop, and so does a
   `meeting_invite` to a coordination somebody opened with them in PRIVATE
   (`privateInvite`, the worker's fact, `group_id IS NULL`). Miron asked to
   connect with עידן to arrange a meeting; at two misses the request was

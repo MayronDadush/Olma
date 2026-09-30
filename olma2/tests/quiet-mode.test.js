@@ -56,6 +56,10 @@ test('gate: once a check-in went unanswered, nothing Olma decided to say goes ou
   // And somebody ELSE reaching them, which this list used to drop: it is not
   // Olma deciding to speak (owner, 2026-09-30; gate.PEER_KINDS).
   assert.equal(decide({ ...quiet, row: { kind: 'connection_request', urgency: 'urgent', payload: {} } }).action, 'deliver');
+  // A task somebody put on their list is the same errand, and so is the
+  // answer to a share THEY tried from the page.
+  assert.equal(decide({ ...quiet, row: { kind: 'share_added', urgency: 'normal', payload: {} } }).action, 'deliver');
+  assert.equal(decide({ ...quiet, row: { kind: 'share_sharing_off', urgency: 'normal', payload: {} } }).action, 'deliver');
   // Two misses and three are the same silence.
   assert.equal(decide({ ...quiet, checkinMisses: 3, row: { kind: 'digest', urgency: 'normal', payload: {} } }).holdReason, 'quiet');
   // And a person who answers gets all of it.

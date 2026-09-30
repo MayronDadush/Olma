@@ -72,6 +72,27 @@ test('somebody who switched sharing off is not added, and hears nothing', async 
       `SELECT (SELECT count(*) FROM shares WHERE viewer_id = $1)::int AS shares,
               (SELECT count(*) FROM outbox WHERE user_id = $1 AND kind LIKE 'share%')::int AS told`, [other.id]);
     assert.deepEqual(n, { shares: 0, told: 0 });
+
+    // …and the one who tried is handed the sentence that turns it back on
+    // (owner, 2026-09-30), in the friend's language, drawn by code.
+    const notice = await shares.sharingOff(c, owner.id, other.id);
+    assert.deepEqual(notice, { friendName: 'Off', forwardText: 'עולמה, תחזירי את שיתוף המשימות עם Owner' });
+    await c.query(`UPDATE users SET locale = 'en' WHERE id = $1`, [other.id]);
+    assert.equal((await shares.sharingOff(c, owner.id, other.id)).forwardText,
+      'Allma, turn task sharing with Owner back on');
+
+    // From the page there is no reply to carry it, so it is a message of its
+    // own — to the one who tried, once per task and friend, never to the friend.
+    await shares.tellSharingOff(c, owner.id, other.id, t.id);
+    await shares.tellSharingOff(c, owner.id, other.id, t.id);
+    const { rows: sent } = await c.query(
+      `SELECT payload FROM outbox WHERE user_id = $1 AND kind = 'share_sharing_off'`, [owner.id]);
+    assert.equal(sent.length, 1, 'a second tap sent it twice');
+    assert.equal(sent[0].payload.taskTitle, 'not for them');
+    assert.equal(sent[0].payload.forwardText, 'Allma, turn task sharing with Owner back on');
+    const { rows: [again] } = await c.query(
+      `SELECT count(*)::int AS n FROM outbox WHERE user_id = $1 AND kind LIKE 'share%'`, [other.id]);
+    assert.equal(again.n, 0, 'the friend who switched it off was told');
   });
 });
 

@@ -317,8 +317,16 @@ const ACTIONS = {
   },
 
   // ---- sharing -------------------------------------------------------------
+  // Refused because the friend switched sharing off: the page says so in a
+  // toast, and the sentence to pass on goes out as a WhatsApp message, since a
+  // toast is no place to copy a sentence from (domain/shares.tellSharingOff).
   async shareTask(client, userId, p) {
-    return shares.offerShare(client, userId, p.taskId, p.viewerId);
+    const res = await shares.offerShare(client, userId, p.taskId, p.viewerId);
+    if (res.ok || res.error.reason !== 'not_granted_by_them') return res;
+    const notice = await shares.tellSharingOff(client, userId, p.viewerId, p.taskId);
+    return notice
+      ? err('forbidden', res.error.message, { reason: 'sharing_off', name: notice.friendName })
+      : res;
   },
 
   // Both "stop sharing this with them" and "take me off this" are the same

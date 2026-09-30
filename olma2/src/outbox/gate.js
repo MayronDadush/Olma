@@ -195,9 +195,13 @@ const PENDING_USER_KINDS = new Set(['connection_intro', 'registration_reopened',
 // decline) is still the negotiation talking and keeps the narrow line: it
 // passes on an answer of theirs, not on this. A pause is decided above the
 // silence branch and none of this reaches it.
+// `share_added` is the shared task since 2026-09-30 (it is on their list with
+// no yes, so the telling IS the errand), and `share_sharing_off` answers a
+// share THEY tried from the page; `share_offer` stays for the rows before it.
 const PEER_KINDS = new Set([
   'connection_request', 'connection_response',
-  'share_offer', 'share_response', 'relayed_message',
+  'share_offer', 'share_added', 'share_response', 'share_sharing_off',
+  'relayed_message',
 ]);
 
 // facts: { row, plan, blocked, paused, pendingUser, window, quietDays, tz, sentToday, budget, now, lastInboundAt, wokeAt, dashboardWroteAt }

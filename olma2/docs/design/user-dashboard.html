@@ -5005,6 +5005,7 @@ button.srow:active{background:var(--bg-tint)}
       if(error && error.reason === "paused")      say(t("toast.pausedRefusal"));
       else if(error && error.reason === "not_enabled") say(t("toast.notOpenYet"));
       else if(error && error.reason === "duplicate") say(t("toast.duplicate"));
+      else if(error && error.reason === "sharing_off") say(t("toast.sharingOff", {name:error.name || ""}));
       else if(error && error.reason === "all_days") say(t("toast.allDays"));
       else if(error && (error.reason === "no_calendar" || error.reason === "read_only")) say(t("toast.calNeeded"));
       else if(error && error.reason === "first_person") say(t("toast.factFirstPerson"));
@@ -5664,6 +5665,7 @@ button.srow:active{background:var(--bg-tint)}
       "toast.provSoon":"החיבור ל{name} עוד לא מוכן — בינתיים רק גוגל",
       "toast.notOpenYet":"זה עוד לא פתוח — יגיע בהמשך",
       "toast.duplicate":"זה כבר ברשימה שלך",
+      "toast.sharingOff":"אצל {name} שיתוף המשימות כבוי, אז לא שיתפתי. שלחתי לך בוואטסאפ משפט להעביר הלאה",
       "soon":"בקרוב",
       "toast.provFailed":"לא הצלחתי לפתוח את מסך ההרשאות של גוגל",
       "toast.open":"פותח את השיחה שלך עם עולמה ב־{name}","toast.chanOn":"{name} מחובר · עולמה תענה גם שם",
@@ -6043,6 +6045,7 @@ button.srow:active{background:var(--bg-tint)}
       "toast.provSoon":"{name} cannot be connected yet — Google only, for now",
       "toast.notOpenYet":"Not open yet — it is coming",
       "toast.duplicate":"That is already on your list",
+      "toast.sharingOff":"{name} has task sharing switched off, so nothing was shared. I sent you a WhatsApp line to pass on",
       "soon":"Soon",
       "toast.provFailed":"Google's permission screen would not open",
       "toast.open":"Opening your chat with Allma in {name}","toast.chanOn":"{name} connected · Allma answers there too",
