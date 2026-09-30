@@ -50,6 +50,7 @@ never trust a dated narrative for something you are about to act on.
 **Delivery, outbox and proactive messages**
 - [The approval that forgot the times (fixed 2026-09-30)](#the-approval-that-forgot-the-times-fixed-2026-09-30)
 - [שלח לי קישור, and the new person's page (2026-09-25)](#שלח-לי-קישור-and-the-new-persons-page-2026-09-25)
+- [The request that was dropped as Olma's own idea (fixed 2026-09-30)](#the-request-that-was-dropped-as-olmas-own-idea-fixed-2026-09-30)
 - [The stop that waited for a yes (fixed 2026-09-22)](#the-stop-that-waited-for-a-yes-fixed-2026-09-22)
 - [The table that did not say where she stood (2026-09-20)](#the-table-that-did-not-say-where-she-stood-2026-09-20)
 - [Five messages in twelve minutes, about one coordination (fixed 2026-09-22)](#five-messages-in-twelve-minutes-about-one-coordination-fixed-2026-09-22)
@@ -2069,6 +2070,39 @@ nothing. And the tool is out of `TOOL_MARKS`, into the negotiation family that
 `tests/reactions.test.js` guards: it can only be called while a meeting is
 negotiating, so every call is a negotiation step, and the negotiation family
 has no 👍 by rule.
+
+### The request that was dropped as Olma's own idea (fixed 2026-09-30)
+
+Miron asked Olma to arrange a meeting with עידן. They were not connected, so
+she sent a connection request, carrying the reason, and told Miron she had
+sent it. She had not: outbox 13074 (`connection_request`) was queued at
+09:34:43 UTC and the gate dropped it as `quiet` at 09:35:05 — עידן stood at
+two unanswered check-ins — and the drop stamped `sent_at` like any other
+settled row. His gateway session had nothing after the previous day's
+check-in. Miron was then told "עוד לא אישר" about a request nobody had shown
+him.
+
+The silence rule was written for Vered — eighteen messages on her second day,
+all of them Olma's — and it said "not a reminder rung, not a digest, not
+another user's fan-out". The last clause is the one that was wrong. What the
+rule protects is somebody who stopped answering HER; a person asking to reach
+them is a different sender, and the owner said so the moment he saw it: "זה
+לא הודעה יזומה מעולמה".
+
+The fix is a closed list in the gate, `PEER_KINDS`: the connection request
+and its answer, the share offer and its answer, a relayed message — and a
+`meeting_invite` only when the worker says the coordination is private
+(`privateInvite`, `group_id IS NULL`). A room's invite stays on its
+one-per-silence allowance from 2026-09-22: nobody in the room addressed it to
+this person, and that allowance was the owner's own narrow call eight days
+earlier. What follows inside a coordination — a new time, a decline — is
+still the negotiation talking and still needs an answer of theirs. Nothing
+else moved: a pause refuses all of it, and the night, a quiet day and the
+budget hold it as before.
+
+What is NOT fixed here: a row the gate drops still carries `sent_at`, and
+`request_connection` still reports `notified` off the enqueue, not the
+delivery. The honest-reporting half was offered and not chosen.
 
 ### The stop that waited for a yes (fixed 2026-09-22)
 

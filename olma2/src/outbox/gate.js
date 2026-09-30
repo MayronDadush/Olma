@@ -178,6 +178,28 @@ const SAYS_IT_ONCE = new Set([
 // a sentence no model writes), once per person per room.
 const PENDING_USER_KINDS = new Set(['connection_intro', 'registration_reopened', 'room_cold_invite']);
 
+// Another PERSON reaching them, or answering something they asked for — never
+// a thing Olma decided to say. The silence rule below exists so that somebody
+// who stopped answering stops hearing HER; it was never meant to stand between
+// two people, and it did: Miron asked Olma to connect him with עידן to arrange
+// a meeting, the request was dropped `quiet` 22 seconds after it was queued
+// (two unanswered check-ins), and Miron was told it had been sent (owner,
+// 2026-09-30: "זה לא הודעה יזומה מעולמה"; `incidents.md`, "The request that
+// was dropped as Olma's own idea"). The first word of each errand only — a
+// connection request, a shared task, a relayed message, and an invite to a
+// coordination somebody opened with them privately (`facts.privateInvite`,
+// the worker's, because the gate does not know what a room is) — plus the
+// answer to one of THEIRS. A ROOM's invite is addressed to nobody in
+// particular and keeps its one-per-silence allowance (`quietRoomInvite`,
+// owner 2026-09-22). What follows inside a coordination (a new time, a
+// decline) is still the negotiation talking and keeps the narrow line: it
+// passes on an answer of theirs, not on this. A pause is decided above the
+// silence branch and none of this reaches it.
+const PEER_KINDS = new Set([
+  'connection_request', 'connection_response',
+  'share_offer', 'share_response', 'relayed_message',
+]);
+
 // facts: { row, plan, blocked, paused, pendingUser, window, quietDays, tz, sentToday, budget, now, lastInboundAt, wokeAt, dashboardWroteAt }
 // returns { action: 'deliver' | 'hold' | 'expire' | 'drop', holdReason?, releaseAfter? }
 function decide(facts) {
@@ -366,10 +388,11 @@ function decide(facts) {
   // nobody told him").
   //
   // The owner chose the NARROW line, 2026-09-23: an ANSWER on record is what
-  // earns it, not membership. An invite to somebody who has engaged with
-  // nothing is still Olma's initiative and still drops — the Vered rule above
-  // is untouched — and the two one-invite allowances below (`pausedRoomInvite`,
-  // `quietRoomInvite`) remain the only ways a first invite gets through. Like `groupWroteAt` this can only be true for a row carrying
+  // earns it, not membership. A ROOM's invite to somebody who has engaged with
+  // nothing still drops — the Vered rule above is untouched — and the two
+  // one-invite allowances below (`pausedRoomInvite`, `quietRoomInvite`) remain
+  // the only ways it gets through. A private invite is another person's
+  // errand and passes on its own (PEER_KINDS, 2026-09-30). Like `groupWroteAt` this can only be true for a row carrying
   // a `payload.meetingId`, so it reaches meeting rows and nothing else.
   //
   // And one room invite, for the same reason the pause branch above lets one
@@ -400,7 +423,8 @@ function decide(facts) {
   let spendsQuietRoomInvite = false;
   if ((Number(facts.checkinMisses) || 0) >= 1
     && row.kind !== 'checkin' && row.kind !== 'introduction' && row.kind !== 'intro_video'
-    && row.kind !== 'policy_update'
+    && row.kind !== 'policy_update' && !PEER_KINDS.has(row.kind)
+    && !(row.kind === 'meeting_invite' && facts.privateInvite === true)
     && !askedForInWords(row) && !inRoomGrace && !onPageGrace && !facts.answeredCoordination) {
     if (!facts.pausedRoomInvite && !facts.quietRoomInvite) {
       return { action: 'drop', holdReason: 'quiet' };
