@@ -358,6 +358,7 @@ Loads when you **Read** a file under `src/domain/group-connections.js`, `src/dom
 - **TWO columns say somebody has written to Olma, because two voices can hear their first message.**
 - **Being in the room IS the introduction, and it is not the inferred closeness the old rule forbids.**
 - **The roster's digits may be a LID, and the gateway's own reverse map is the only way back to a number**
+- **The sweep judges a ROOM once per pass, off its newest context, and keeps a watermark per SESSION** — an open room's greeter roster is days stale, and judged first it could re-lock the room
 - **A room opens on TWO connected members, not on everybody — and it still says who is not here**
 - **The room reaches each member's OWN page as a group already made**
 - **The room is a second door to every action on its coordination, and it acts only as somebody still IN it** — cancel, rename, remove a time, leave and answer from the room; place and minimum from the chat; each the private twin's own domain call, results picked

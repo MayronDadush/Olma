@@ -62,3 +62,36 @@ test('a half-written or implausible mapping is simply not a mapping', () => {
   // and the good ones from the test above are still there
   assert.equal(map['69320805752936'], '+972509412015');
 });
+
+// The map is read from disk again only when a directory changed (2,678 files,
+// 83-95ms on the box, every ten seconds). A NEW mapping must still show up on
+// the very next call — that is the whole of what the cache may never cost.
+test('a new mapping is seen on the next call; an unchanged directory is not re-read', () => {
+  const first = sessions.lidPhoneNumbers();
+  creds('default', 'lid-mapping-444444444444_reverse.json', '"972500000044"');
+  assert.equal(sessions.lidPhoneNumbers()['444444444444'], '+972500000044');
+
+  // A file rewritten IN PLACE moves nothing the signature reads, so it waits
+  // out the cache's age — never longer.
+  const dir = path.join(HOME_DIR, 'credentials', 'whatsapp', 'default');
+  const now = Date.now();
+  sessions.lidPhoneNumbers({ now });
+  // (No utimes to "restore" the directory: an in-place write never moved it,
+  // and a Date round-trip would truncate its sub-millisecond mtime.)
+  fs.writeFileSync(path.join(dir, 'lid-mapping-444444444444_reverse.json'), '"972500000045"');
+  assert.equal(sessions.lidPhoneNumbers({ now })['444444444444'], '+972500000044', 'served from the cache');
+  assert.equal(sessions.lidPhoneNumbers({ now: now + 5 * 60 * 1000 })['444444444444'], '+972500000045',
+    'the cache outlived its age');
+
+  // A caller mutating what it was handed cannot poison the next caller.
+  const handed = sessions.lidPhoneNumbers({ now: now + 5 * 60 * 1000 });
+  handed['444444444444'] = 'poison';
+  assert.equal(sessions.lidPhoneNumbers({ now: now + 5 * 60 * 1000 })['444444444444'], '+972500000045');
+  assert.ok(Object.keys(first).length > 0);
+});
+
+test('a lock FILE beside the accounts does not stop the cache from working', () => {
+  fs.writeFileSync(path.join(HOME_DIR, 'credentials', 'whatsapp', 'default.lock'), '');
+  creds('default', 'lid-mapping-555555555555_reverse.json', '"972500000055"');
+  assert.equal(sessions.lidPhoneNumbers()['555555555555'], '+972500000055');
+});
