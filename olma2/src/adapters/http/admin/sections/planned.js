@@ -41,6 +41,7 @@ const KIND_LABELS = {
   connection_intro: 'הצגה למוזמן',
   connection_request: 'בקשת חברות',
   connection_response: 'תשובה לבקשת חברות',
+  share_added: 'משימה ששותפה איתו',
   share_offer: 'הצעת שיתוף משימה',
   share_response: 'תשובה להצעת שיתוף',
   share_reminder_dropped: 'תזכורת שירדה עם משימה משותפת',

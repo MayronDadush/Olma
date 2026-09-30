@@ -1,7 +1,7 @@
 'use strict';
 // connections — one slice of the tool registry (see ../registry.js).
 const {
-  connections, grants, contacts, users, S, err, actorName, fanout, tool,
+  connections, grants, contacts, S, err, actorName, fanout, tool,
 } = require('./_shared');
 const shareInvite = require('../../../intake/share-invite');
 
@@ -52,14 +52,9 @@ module.exports = [
         }, { key: `cresp:${a.connection_id}` });
         if (a.decision === 'approve') {
           // A task somebody shared with this person before they were on Olma
-          // is offered now (intake/share-invite.js), through the usual offer.
-          for (const o of await shareInvite.afterApproval(client, res.data.connection)) {
-            const t = await client.query(`SELECT title FROM tasks WHERE id = $1`, [o.taskId]);
-            await fanout(client, [user.id], 'share_offer', {
-              shareId: o.shareId, taskTitle: t.rows[0].title,
-              byName: actorName(await users.getById(client, res.data.connection.requester_id)),
-            }, { urgency: 'normal', key: `soffer:${o.shareId}` });
-          }
+          // goes onto their list now (intake/share-invite.js), through the
+          // usual share — which also queues the message telling them.
+          await shareInvite.afterApproval(client, res.data.connection);
           res.data.hint = 'Connected! Sharing, meetings and messages are all enabled automatically for both sides — continue straight to whatever the user wanted this connection for. Any feature can be switched off later with set_connection_feature.';
         }
       }

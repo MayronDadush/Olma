@@ -27,13 +27,60 @@ async function withClient(fn) {
   try { return await fn(client); } finally { client.release(); }
 }
 
-test('offer → accept → view; project share shows subtasks added later', async () => {
+// A share is live the moment it is made and the other person is told after
+// (owner, 2026-09-30: "היא פשוט מתווספת אליו והוא מקבל עדכון אחרי שהיא כבר
+// בפנים"). The founding case: Miron shared a task with Maya and she was asked
+// whether she wanted it; three of his shares never reached her list.
+test('sharing puts the task on their list at once and tells them after — no question', async () => {
+  await withClient(async (c) => {
+    const t = (await tasks.addTask(c, owner.id, { title: 'להעביר את הכסף' })).data.task;
+    const res = await shares.offerShare(c, owner.id, t.id, viewer.id);
+    assert.equal(res.ok, true, res.ok ? '' : JSON.stringify(res.error));
+    assert.equal(res.data.share.status, 'active', 'the share waited for an answer');
+    assert.ok(res.data.share.responded_at, 'an active share with no moment it went live');
+    assert.equal((await shares.completeSharedTask(c, viewer.id, t.id)).ok, true,
+      'on the task and still unable to tick it');
+
+    const { rows } = await c.query(
+      `SELECT kind, urgency, payload FROM outbox WHERE user_id = $1 AND idempotency_key = $2`,
+      [viewer.id, `sadded:${res.data.share.id}`]);
+    assert.equal(rows.length, 1, 'the person it was shared with was never told');
+    assert.equal(rows[0].kind, 'share_added');
+    assert.equal(rows[0].urgency, 'normal');
+    assert.equal(rows[0].payload.taskTitle, 'להעביר את הכסף');
+    assert.equal(rows[0].payload.byName, 'Owner');
+    assert.equal(rows[0].payload.shareId, Number(res.data.share.id));
+    const { rows: asked } = await c.query(
+      `SELECT 1 FROM outbox WHERE user_id = $1 AND kind = 'share_offer'`, [viewer.id]);
+    assert.equal(asked.length, 0, 'they were still asked whether they want it');
+  });
+});
+
+// The consent is the `sharing` grant, and it is still checked on BOTH sides:
+// a friend who switched sharing off is refused, never added and never told.
+test('somebody who switched sharing off is not added, and hears nothing', async () => {
+  const other = await makeUser(db.pool, '+972541000005', { firstName: 'Off' });
+  await withClient(async (c) => {
+    const req = await connections.requestConnection(c, owner.id, other.phone, {});
+    const cx = (await connections.respondToConnection(c, other.id, req.data.connection.id, 'approve')).data.connection;
+    await grants.revokeFeatureGrant(c, other.id, cx.id, 'sharing');
+    const t = (await tasks.addTask(c, owner.id, { title: 'not for them' })).data.task;
+    const res = await shares.offerShare(c, owner.id, t.id, other.id);
+    assert.equal(res.ok, false);
+    assert.equal(res.error.reason, 'not_granted_by_them');
+    const { rows: [n] } = await c.query(
+      `SELECT (SELECT count(*) FROM shares WHERE viewer_id = $1)::int AS shares,
+              (SELECT count(*) FROM outbox WHERE user_id = $1 AND kind LIKE 'share%')::int AS told`, [other.id]);
+    assert.deepEqual(n, { shares: 0, told: 0 });
+  });
+});
+
+test('share → view; project share shows subtasks added later', async () => {
   await withClient(async (c) => {
     const project = (await tasks.addTask(c, owner.id, { title: 'groceries' })).data.task;
     await tasks.addTask(c, owner.id, { title: 'milk', parentId: project.id });
 
     const s = (await shares.offerShare(c, owner.id, project.id, viewer.id)).data.share;
-    await shares.respondToShare(c, viewer.id, s.id, 'accept');
 
     let view = await shares.viewShared(c, viewer.id, s.id);
     assert.equal(view.data.subtasks.length, 1);
@@ -48,12 +95,15 @@ test('offer → accept → view; project share shows subtasks added later', asyn
 // One kind of share (2026-09-19). Whoever is on the task completes and adds
 // items; a pending offer is not being on it yet, and a `role` the row still
 // carries decides nothing — the live rows written as 'viewer' are equal too.
+// Nothing writes a pending offer since 2026-09-30, but the rows written before
+// it are still in production, so one is made by hand here.
 test('everyone on a shared task can complete and add items, and a pending offer cannot', async () => {
   await withClient(async (c) => {
     const list = (await tasks.addTask(c, owner.id, { title: 'shopping list' })).data.task;
     const item = (await tasks.addTask(c, owner.id, { title: 'eggs', parentId: list.id })).data.task;
 
     const s = (await shares.offerShare(c, owner.id, list.id, viewer.id)).data.share;
+    await c.query(`UPDATE shares SET status = 'pending_viewer', responded_at = NULL WHERE id = $1`, [s.id]);
     const early = await shares.completeSharedTask(c, viewer.id, item.id);
     assert.equal(early.ok, false, 'an offer nobody accepted let them write');
     assert.equal(early.error.code, 'forbidden');
@@ -88,12 +138,12 @@ test('leaving: a participant drops off, the opener hands the task to whoever acc
 
     const list = (await tasks.addTask(c, owner.id, { title: 'trip' })).data.task;
     const item = (await tasks.addTask(c, owner.id, { title: 'tent', parentId: list.id })).data.task;
-    // The order they ACCEPTED in decides who inherits, not the order offered.
+    // The order they came ON in decides who inherits — `responded_at`, which
+    // an accepted legacy row carries as the moment of its yes and a share
+    // made since 2026-09-30 as the moment it was made.
     const sThird = (await shares.offerShare(c, owner.id, list.id, third.id)).data.share;
     const sViewer = (await shares.offerShare(c, owner.id, list.id, viewer.id)).data.share;
-    await shares.respondToShare(c, viewer.id, sViewer.id, 'accept');
     await c.query(`UPDATE shares SET responded_at = responded_at + interval '1 minute' WHERE id = $1`, [sViewer.id]);
-    await shares.respondToShare(c, third.id, sThird.id, 'accept');
     await c.query(`UPDATE shares SET responded_at = responded_at + interval '2 minute' WHERE id = $1`, [sThird.id]);
     const reminders = require('../src/domain/reminders');
     const rem = await reminders.setReminder(c, owner.id, list.id, new Date(Date.now() + 3600e3).toISOString().replace(/\.\d+Z$/, '+00:00'));
@@ -132,8 +182,7 @@ test('leaving: a participant drops off, the opener hands the task to whoever acc
 test('a task of mine dropped onto a list shared with me goes to the list\'s owner', async () => {
   await withClient(async (c) => {
     const list = (await tasks.addTask(c, owner.id, { title: 'house' })).data.task;
-    const s = (await shares.offerShare(c, owner.id, list.id, viewer.id)).data.share;
-    await shares.respondToShare(c, viewer.id, s.id, 'accept');
+    await shares.offerShare(c, owner.id, list.id, viewer.id);
 
     const mine = (await tasks.addTask(c, viewer.id, { title: 'fix the tap' })).data.task;
     const res = await shares.adoptIntoList(c, viewer.id, mine.id, list.id);

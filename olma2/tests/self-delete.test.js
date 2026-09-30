@@ -85,8 +85,7 @@ test('carried out a minute later: shared things stay with the others, and they a
 
   const { taskId, mine, meetingId } = await withTx(db.pool, async (c) => {
     const shared = (await tasks.addTask(c, leaver.id, { title: 'groceries' })).data.task;
-    const s = (await shares.offerShare(c, leaver.id, shared.id, bob.id)).data.share;
-    await shares.respondToShare(c, bob.id, s.id, 'accept');
+    await shares.offerShare(c, leaver.id, shared.id, bob.id);
     const own = (await tasks.addTask(c, leaver.id, { title: 'my own thing' })).data.task;
     const m = (await meetings.startMeeting(c, leaver.id, 'dinner', [bob.id, carol.id])).data.meeting;
     return { taskId: shared.id, mine: own.id, meetingId: m.id };

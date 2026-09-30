@@ -82,8 +82,7 @@ test('stuck: old, undated, unreminded — and the three things that make it not 
     const approved = await connections.respondToConnection(c, friend.id, conn.data.connection.id, 'approve');
     await grants.grantFeature(c, me.id, approved.data.connection.id, 'sharing');
     await grants.grantFeature(c, friend.id, approved.data.connection.id, 'sharing');
-    const offer = await shares.offerShare(c, me.id, together, friend.id);
-    await shares.respondToShare(c, friend.id, offer.data.share.id, 'accept');
+    await shares.offerShare(c, me.id, together, friend.id);
 
     const found = await suggestions.stuckTasks(c, me.id, NOW);
     assert.deepEqual(idsOf(found), [stuck]);

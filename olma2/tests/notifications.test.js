@@ -193,21 +193,22 @@ test('two proposals are two options; a yes names one; confirming supersedes the 
   for (const r of after) assert.equal(r.hold_reason, 'superseded', `${r.payload.slot} should be superseded once the meeting confirmed`);
 });
 
-test('share offer and response fan out to the right sides', async () => {
+// Since 2026-09-30 a share asks nobody: it is on their list when the tool
+// returns, they are told after, and there is no answer to fan back.
+test('sharing tells the other side it was added, and asks nothing', async () => {
   const added = await call(miron, 'add_task', { title: 'groceries run' });
   const taskId = Number(/"id":"?(\d+)/.exec(added)[1]);
-  await call(miron, 'share_task_with', { task_id: taskId, phone: kapish.phone });
+  const res = await call(miron, 'share_task_with', { task_id: taskId, phone: kapish.phone });
+  assert.match(res, /"status":"active"/);
+  assert.match(res, /nothing is waiting on the other person/);
 
-  const offers = await outboxFor(kapish.id, 'share_offer');
-  assert.equal(offers.length, 1);
-  assert.equal(offers[0].payload.taskTitle, 'groceries run');
-  assert.equal('role' in offers[0].payload, false, 'a role reached the model on an offer that has none');
-  assert.equal(offers[0].urgency, 'normal'); // not worth waking anyone over
-
-  await call(kapish, 'respond_to_share', { share_id: offers[0].payload.shareId, decision: 'accept' });
-  const resp = await outboxFor(miron.id, 'share_response');
-  assert.equal(resp.length, 1);
-  assert.equal(resp[0].payload.decision, 'accept');
+  const told = await outboxFor(kapish.id, 'share_added');
+  assert.equal(told.length, 1);
+  assert.equal(told[0].payload.taskTitle, 'groceries run');
+  assert.equal('role' in told[0].payload, false, 'a role reached the model on a share that has none');
+  assert.equal(told[0].urgency, 'normal'); // not worth waking anyone over
+  assert.equal((await outboxFor(kapish.id, 'share_offer')).length, 0, 'they were asked whether they want it');
+  assert.equal((await outboxFor(miron.id, 'share_response')).length, 0);
 });
 
 test('connection approval notifies the requester and enables everything at once', async () => {
