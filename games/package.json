@@ -5,7 +5,7 @@
   "description": "Game nights: buy-ins, chips, food and the fewest transfers. Its own service and database, beside Olma.",
   "scripts": {
     "test": "node --test --test-timeout=60000 'tests/*.test.js'",
-    "check": "node --check bin/gamesd.js && node --check bin/new-night.js && node --check bin/games-mcp.js && node --check src/server.js && node --check src/store.js && node --check src/money.js && node --check src/validate.js && node --check src/db.js && node --check src/tools.js && node --check src/tool-defs.js && node --check src/identity.js"
+    "check": "node --check bin/gamesd.js && node --check bin/new-night.js && node --check bin/games-mcp.js && node --check src/server.js && node --check src/store.js && node --check src/money.js && node --check src/validate.js && node --check src/db.js && node --check src/tools.js && node --check src/tool-defs.js && node --check src/identity.js && node --check src/summary.js && node --check src/announce.js"
   },
   "engines": {
     "node": ">=24"
