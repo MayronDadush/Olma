@@ -25,6 +25,7 @@ const boostJob = require('../../jobs/boost');
 const issuesDomain = require('../../domain/issues');
 const ownerMessages = require('../../domain/owner-messages');
 const auditDomain = require('../../domain/audit');
+const experimentsDomain = require('../../domain/experiments');
 const reactionsDomain = require('../../domain/reactions');
 const groupsDomain = require('../../domain/groups');
 const templatesDomain = require('../../domain/message-templates');
@@ -421,6 +422,10 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
               if (!Number.isFinite(val) || val < 0) val = null;
             }
             if (val !== null) await flagsDomain.setFlag(client, body.key, val);
+          } else if (url.pathname === '/experiments/lock') {
+            // The owner ends an experiment by picking a variant, or reopens
+            // it with an empty one. lock() refuses an unknown key or variant.
+            await experimentsDomain.lock(client, String(body.key || ''), body.variant ? String(body.variant) : null);
           } else if (url.pathname === '/reactions') {
             // One form for the whole vocabulary: the stored object is REPLACED,
             // never merged, so clearing a box really does return that state to

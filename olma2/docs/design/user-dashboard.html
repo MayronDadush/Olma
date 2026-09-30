@@ -4726,7 +4726,7 @@ button.srow:active{background:var(--bg-tint)}
     setTimezone:"setTimezone", setDefaultChannel:"setDefaultChannel",
     pause:"pause", resume:"resume", callMe:"callMe", deleteAccount:"deleteAccount",
     requestMoreCalls:"requestMoreCalls",
-    inviteContact:"inviteContact",
+    inviteContact:"inviteContact", inviteShared:"inviteShared",
     respondToMeeting:"respondToMeeting", leaveMeeting:"leaveMeeting", cancelMeeting:"cancelMeeting",
     rejoinMeeting:"rejoinMeeting", reopenMeeting:"reopenMeeting",
     startMeeting:"startMeeting", addOption:"addOption", answerOption:"answerOption",
@@ -7288,11 +7288,18 @@ button.srow:active{background:var(--bg-tint)}
     box.hidden = !INVITE;
     if(INVITE) $("#inviteSend").href = INVITE.shareUrl;
   }
+  /* A tap on either button is the outcome the invite experiment counts
+     (domain/experiments.js). keepalive, because "send" leaves for WhatsApp in
+     the same tap and the page may not live to see the answer. */
+  function inviteShared(how){ API.send("inviteShared", {how:how}, null, true); }
   (function(){
+    var send = $("#inviteSend");
+    if(send) send.addEventListener("click", function(){ if(INVITE) inviteShared("send"); });
     var btn = $("#inviteCopy");
     if(!btn) return;
     btn.addEventListener("click", function(){
       if(!INVITE) return;
+      inviteShared("copy");
       var text = INVITE.share;
       /* The old way, for a webview that refuses the clipboard API: a hidden
          field, selected and copied inside the same tap. */
