@@ -202,6 +202,30 @@ function parseDroppedTurns(raw) {
   return out;
 }
 
+// Every reaction the gateway put on the wire, by the message it was put on:
+//
+//   Sent reaction "👍" -> message 3BC51A17150961D1D604
+//
+// Read for one question only — did a CLOSING mark reach the person's message
+// before the gateway called its turn empty (jobs/unanswered.decidedSilence).
+// The same log, so the same window: a mark this tail cannot see is unknown,
+// and unknown leaves the drop standing. An empty emoji is a removal, not a mark.
+const SENT_REACTION = /Sent reaction "([^"]*)" -> message (\S+)/;
+function parseSentReactions(raw) {
+  const out = [];
+  for (const line of String(raw || '').split('\n')) {
+    if (!line.startsWith('{')) continue;
+    let o;
+    try { o = JSON.parse(line); } catch { continue; }
+    const m = SENT_REACTION.exec(String(o.message || ''));
+    if (!m || !m[1].trim()) continue;
+    const at = Date.parse(o.time || '');
+    if (Number.isNaN(at)) continue;
+    out.push({ emoji: m[1].trim(), messageId: m[2], at });
+  }
+  return out;
+}
+
 // ---- the sweep --------------------------------------------------------------
 
 async function recentAbortCount(client, sinceInterval) {
@@ -278,6 +302,6 @@ async function sweepLaneWatchdog(client, deps = {}) {
 }
 
 module.exports = {
-  sweepLaneWatchdog, parseEvents, pickWedged, parseDroppedTurns, todayLogPath, readTail,
+  sweepLaneWatchdog, parseEvents, pickWedged, parseDroppedTurns, parseSentReactions, todayLogPath, readTail,
   DEFAULT_MIN_AGE_MS, COOLDOWN_MS, HOURLY_CAP, MAX_EVENT_AGE_MS,
 };

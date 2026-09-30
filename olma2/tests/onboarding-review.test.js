@@ -539,3 +539,39 @@ test('Yahav\'s first evening, end to end, comes back with what the hand-review f
   // and the correct message beside it was NOT flagged
   assert.equal(rows[0].findings.filter((f) => f.id === 'promised_time_not_armed').length, 1);
 });
+
+// A 🙏 on a bare thanks and a NO_REPLY is logged by the gateway exactly like a
+// swallowed message. The review reads it the way the repair does
+// (jobs/unanswered.decidedSilence), or a first evening that went perfectly
+// comes back `bad` — and the real drop beside it must still be counted.
+test('a NO_REPLY behind a closing mark is not a dropped turn in the review', async () => {
+  const start = Date.parse('2026-09-26T08:00:00Z');
+  const now = start + 4 * 3600_000;
+  const u = await makeUser(db.pool, '+972626000009', { firstName: 'Tal', timezone: TZ });
+  await db.pool.query(
+    `UPDATE users SET agent_id = 'u-' || id, first_turn_at = $2 WHERE id = $1`, [u.id, new Date(start)]);
+  const iso = (ms) => new Date(ms).toISOString();
+  const line = (atMs, message) => JSON.stringify({ time: iso(atMs), message });
+  const drop = (atMs, mid) => line(atMs, 'visible channel turn dispatched with no queued reply payloads: '
+    + `channel=whatsapp messageId=${mid} sessionKey=agent:u-${u.id}:whatsapp:direct:${u.phone} cause=completed`);
+  const thanksAt = start + 3600_000;
+  const lostAt = start + 2 * 3600_000;
+  const ev = await withTx(db.pool, async (c) => {
+    const { rows: [row] } = await c.query(`SELECT * FROM users WHERE id = $1`, [u.id]);
+    return job.evidenceFor(c, row, {
+      readMessages: () => [
+        { role: 'user', text: 'תודה', at: iso(thanksAt - 20_000) },
+        { role: 'assistant', text: 'NO_REPLY', at: iso(thanksAt - 6_500) },
+        { role: 'user', text: 'תזכיר לי מחר ב9', at: iso(lostAt - 30_000) },
+      ],
+      readSessionEvents: () => ({ text: '' }),
+      readLogTails: () => [{ raw: [
+        line(thanksAt - 6_000, 'Sent reaction "🙏" -> message THANKS'),
+        drop(thanksAt, 'THANKS'),
+        drop(lostAt, 'LOST'),
+      ].join('\n') }],
+      readRelease: () => null,
+    }, now);
+  });
+  assert.deepEqual(ev.droppedTurns.map((d) => d.messageId), ['LOST']);
+});
