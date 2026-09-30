@@ -222,6 +222,7 @@ never trust a dated narrative for something you are about to act on.
 - [The light that would not go round (2026-09-22)](#the-light-that-would-not-go-round-2026-09-22)
 - [The picker that opened underneath (fixed 2026-09-22)](#the-picker-that-opened-underneath-fixed-2026-09-22)
 - [Saturday's game, filed under "closed" (fixed 2026-09-23)](#saturdays-game-filed-under-closed-fixed-2026-09-23)
+- [Two coordinations for one meeting (fixed 2026-09-30)](#two-coordinations-for-one-meeting-fixed-2026-09-30)
 - [The coordination that expired on the wrong Tuesday (fixed 2026-09-23)](#the-coordination-that-expired-on-the-wrong-tuesday-fixed-2026-09-23)
 - [The list he could not put his own task into (2026-09-19)](#the-list-he-could-not-put-his-own-task-into-2026-09-19)
 - [An offer to call a number the bridge has never served (fixed 2026-09-06)](#an-offer-to-call-a-number-the-bridge-has-never-served-fixed-2026-09-06)
@@ -9361,6 +9362,64 @@ quick scan down the list it does not separate. The owner picked the whole card
 instead (2026-09-23): the card is tinted `--accent-soft` and the chip goes
 solid with a ✓ on it, active list only. An archive row is over and is worth
 pointing at with nothing.
+### Two coordinations for one meeting (fixed 2026-09-30)
+
+Miron asked for a meeting with עידן before the two were connected. The request
+waited, was re-queued, and עידן approved it at 11:57:32 UTC. Then both agents
+did the right thing at the same moment:
+
+- עידן's agent was told by `respond_to_connection_request` to "continue
+  straight to whatever the user wanted this connection for". עידן had just
+  written "הכי טוב לי שלישי בערב", so at 11:58:03 it opened coordination 63,
+  "פגישה עם מירון".
+- Miron's agent was woken by `connection_response`, which carries the reason
+  so that an approval resumes the errand. At 11:58:07 it opened coordination
+  64, "פגישה עם עידן תומר".
+
+Four seconds apart, same two people, same evening. Thirty seconds later 63's
+invite reached Miron, and his agent told him "עידן פתח תיאום" and recorded his
+days on 63 without a word about the 64 it had opened itself. They settled on 64
+by hand and Miron cancelled 63. The owner's summary was that it "didn't
+understand it had to merge them".
+
+Nothing in `startMeeting` asked whether these people were already
+negotiating, so every call opened a new coordination. A check alone would have
+caught this pair, because 63 was committed four seconds before 64 was asked
+for. It would not catch two calls in the same instant, because each
+transaction would read the other's row as absent.
+
+**The fix** (`meetings.openWithSamePeople`, called only by
+`start_meeting_coordination`). It takes a transaction-scoped advisory lock on
+the sorted set of people, then lists the private coordinations still
+negotiating among exactly that set: everybody in it not opted out, and nobody
+else. If there are any, the tool opens nothing. It returns
+`reason: 'already_open'` with each open one's id, title, who opened it and the
+times on it, and tells the model:
+
+- continue in the open one if it is the same meeting;
+- call again with `separate: true` only if it is a different one;
+- ask in one short question if the conversation does not say which.
+
+**Two coordinations between the same people are allowed.** The owner: "אפשר
+לפתוח יותר מתיאום אחד בין אותם 2 אנשים או אותה קבוצת אנשים — פשוט עולמה צריכה
+לוודא לפני שזה תיאום חדש או לא". So this is a question, never a hard refusal.
+
+Some things are deliberately out of scope:
+
+- The page's own start button never comes through the tool, because a person
+  tapping "new" has already said it is new.
+- A room's coordination never comes through it either.
+- A different set of people, one more or one fewer, is a different
+  coordination.
+
+**Measured, not assumed.** With the lock line disabled, the test that starts
+the same pair from both sides in one `Promise.all` opened two coordinations in
+3 runs of 3. With the lock, it opens one.
+
+The approver's hint was left alone. It is not wrong, since עידן had just said
+when he could, and with this check whichever agent comes second is sent to the
+first one.
+
 ### The coordination that expired on the wrong Tuesday (fixed 2026-09-23)
 
 Found while answering the owner's fourth item — "פגישות שלא נקבעו שכל המועדים

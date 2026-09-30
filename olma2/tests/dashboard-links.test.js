@@ -106,7 +106,7 @@ test('a meeting link for somebody who has since left it lands on the front page'
 // ---- meetings ----------------------------------------------------------------
 
 test('opening a coordination from chat hands back its page, and the two-options offer does not repeat it', async () => {
-  const res = await call('start_meeting_coordination', ann, { title: 'פוקר', phones: [ben.phone] });
+  const res = await call('start_meeting_coordination', ann, { title: 'פוקר', phones: [ben.phone], separate: true });
   assert.equal(res.ok, true, JSON.stringify(res.error));
   const mid = Number(res.data.meeting.id);
   assert.match(res.data.dashboard.url, /\/d\/[A-Za-z0-9]{22}$/);
@@ -230,7 +230,7 @@ test('what gets a link minted for it is exactly what would print one', () => {
 // is the test the old design could not have — there was nothing to assert on,
 // because the url only ever existed inside a model turn.
 test('an invite row is handed a link that was really minted, and the instruction carries it', async () => {
-  const started = await call('start_meeting_coordination', ann, { title: 'ערב משחקים', phones: [ben.phone] });
+  const started = await call('start_meeting_coordination', ann, { title: 'ערב משחקים', phones: [ben.phone], separate: true });
   assert.equal(started.ok, true, JSON.stringify(started.error));
   const mid = Number(started.data.meeting.id);
 

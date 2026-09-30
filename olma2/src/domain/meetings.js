@@ -120,6 +120,34 @@ async function startMeeting(client, initiatorId, title, participantUserIds, { gr
   return ok({ meeting });
 }
 
+// The private coordinations still negotiating among EXACTLY these people —
+// everybody in it not opted out, nobody else. Two may legitimately exist
+// (dinner and a work call are two meetings), so this only answers; whether a
+// new one is the same meeting is the caller's to settle. It takes a
+// transaction-scoped lock on the set first, so two agents asking for the same
+// people in the same second queue here and the second one SEES the first one's
+// row: Miron's agent and עידן's opened 64 and 63 four seconds apart, each
+// resuming the same errand after the connection was approved (2026-09-30,
+// `incidents.md`, "Two coordinations for one meeting"). Must run inside the
+// transaction that would insert, or the lock guards nothing.
+async function openWithSamePeople(client, userIds) {
+  const ids = [...new Set(userIds.map(Number))].sort((a, b) => a - b);
+  await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+    [`meeting-people:${ids.join(',')}`]);
+  const { rows } = await client.query(
+    `SELECT m.id, m.title, m.initiator_id, m.created_at,
+            u.first_name AS initiator_name,
+            (SELECT array_agg(o.slot_text ORDER BY o.id) FROM meeting_options o
+              WHERE o.meeting_id = m.id AND o.status = 'active') AS slots
+       FROM meetings m JOIN users u ON u.id = m.initiator_id
+      WHERE m.status = 'negotiating' AND m.group_id IS NULL
+        AND (SELECT array_agg(p.user_id ORDER BY p.user_id) FROM meeting_participants p
+              WHERE p.meeting_id = m.id AND p.state <> 'opted_out') = $1::bigint[]
+      ORDER BY m.id`,
+    [ids]);
+  return rows;
+}
+
 // Still in it: a participant who has not opted out. The whole of what a
 // person needs to act on a coordination for everybody.
 const IN_IT = `EXISTS (SELECT 1 FROM meeting_participants ip
@@ -973,7 +1001,7 @@ async function listNegotiating(client, userId = null) {
 
 module.exports = {
   cleanLocation,
-  startMeeting, recordConstraint, proposeSlot, respondToSlot,
+  startMeeting, openWithSamePeople, recordConstraint, proposeSlot, respondToSlot,
   optOut, rejoin, applyExit, withdrawConfirmed, cancelMeeting, reopenMeeting, setTitle, setPlace, setQuorum,
   getStatus, listMine, pendingMeetingFor, tryConfirm, settleNow, timeIsOpen, setExactTime,
   expireStaleMeetings, dropPassedOptions, expireOne, listNegotiating,
