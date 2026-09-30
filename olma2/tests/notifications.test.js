@@ -426,7 +426,7 @@ test('unanswered repair: only for messages provably never answered', async () =>
 // negotiation restarts from "he just can't" — which is how one poker game
 // burned four slots without either side learning anything.
 test('the reason a slot suits someone rides along to the other side', async () => {
-  const started = await call(miron, 'start_meeting_coordination', { title: 'poker', phones: [kapish.phone] });
+  const started = await call(miron, 'start_meeting_coordination', { title: 'poker', phones: [kapish.phone], separate: true });
   const meetingId = Number(/"id":"?(\d+)/.exec(started)[1]);
   await drain(kapish.id);
   await call(miron, 'record_meeting_constraint', {
@@ -450,7 +450,7 @@ test('the reason a slot suits someone rides along to the other side', async () =
 });
 
 test('a private reason never leaves its own agent', async () => {
-  const started = await call(miron, 'start_meeting_coordination', { title: 'poker private', phones: [kapish.phone] });
+  const started = await call(miron, 'start_meeting_coordination', { title: 'poker private', phones: [kapish.phone], separate: true });
   const meetingId = Number(/"id":"?(\d+)/.exec(started)[1]);
   await drain(kapish.id);
   await call(miron, 'record_meeting_constraint', {
@@ -1024,7 +1024,7 @@ test('resendableVerbatim: what may be re-sent as itself', () => {
 // 2026-09-20). A constraint that rules out a time on the table is that time
 // declined, on the same road respond_to_meeting_slot takes.
 test('a constraint that rules out a time on the table is that time declined', async () => {
-  const started = await call(miron, 'start_meeting_coordination', { title: 'poker constraint', phones: [kapish.phone] });
+  const started = await call(miron, 'start_meeting_coordination', { title: 'poker constraint', phones: [kapish.phone], separate: true });
   const meetingId = Number(/"id":"?(\d+)/.exec(started)[1]);
   await drain(kapish.id);
 
@@ -1098,4 +1098,62 @@ test('the details of the errand come back with the approval, dated', async () =>
   // A request with no details reads exactly as before.
   const bare = instructionFor({ kind: 'connection_response', payload: { ...resp.payload, message: null } });
   assert.ok(!bare.includes('The details they gave'));
+});
+
+test('the same people already negotiating is a question, never a second coordination', async () => {
+  // Miron and עידן, 2026-09-30: both agents resumed one errand after the
+  // approval and opened 63 and 64 four seconds apart, about the same evening.
+  const a = await makeUser(db.pool, '+972621000031', { firstName: 'Miron' });
+  const b = await makeUser(db.pool, '+972621000032', { firstName: 'Idan' });
+  const c3 = await makeUser(db.pool, '+972621000033', { firstName: 'Gal' });
+  await withTx(db.pool, async (c) => {
+    for (const [x, y] of [[a, b], [a, c3]]) {
+      const req = await connections.requestConnection(c, x.id, y.phone, {});
+      await connections.respondToConnection(c, y.id, req.data.connection.id, 'approve');
+    }
+  });
+  const count = async () => Number((await db.pool.query(
+    `SELECT count(*) FROM meetings m WHERE EXISTS (SELECT 1 FROM meeting_participants p
+       WHERE p.meeting_id = m.id AND p.user_id = $1)`, [b.id])).rows[0].count);
+
+  const first = await call(b, 'start_meeting_coordination', { title: 'פגישה עם מירון', phones: [a.phone] });
+  assert.match(first, /^OK /);
+  const firstId = JSON.parse(first.slice(3)).meeting.id;
+
+  // The other side, a moment later, same people: refused, and handed the open one.
+  const second = await call(a, 'start_meeting_coordination', { title: 'פגישה עם עידן', phones: [b.phone] });
+  assert.match(second, /^ERROR conflict: nothing was started/);
+  assert.match(second, /reason="already_open"/);
+  assert.match(second, new RegExp(`"meetingId":${firstId}`));
+  assert.match(second, /"openedBy":"Idan"/, 'who opened it, so the model can say so');
+  assert.match(second, /separate=true/);
+  assert.equal(await count(), 1);
+  assert.equal((await outboxFor(b.id, 'meeting_invite')).length, 0, 'no invite for a coordination never opened');
+
+  // The opener asking again sees it as their own.
+  assert.match(await call(b, 'start_meeting_coordination', { title: 'x', phones: [a.phone] }), /"openedBy":"you"/);
+
+  // A different set of people is a different coordination.
+  const three = await call(a, 'start_meeting_coordination', { title: 'שלושתנו', phones: [b.phone, c3.phone] });
+  assert.match(three, /^OK /);
+
+  // Two may be right: once checked, `separate` opens the second.
+  const other = await call(a, 'start_meeting_coordination', { title: 'עבודה', phones: [b.phone], separate: true });
+  assert.match(other, /^OK /);
+  assert.equal(await count(), 3);
+});
+
+test('two agents opening the same coordination in the same moment open ONE', async () => {
+  const a = await makeUser(db.pool, '+972621000034', { firstName: 'Dana' });
+  const b = await makeUser(db.pool, '+972621000035', { firstName: 'Yoav' });
+  await withTx(db.pool, async (c) => {
+    const req = await connections.requestConnection(c, a.id, b.phone, {});
+    await connections.respondToConnection(c, b.id, req.data.connection.id, 'approve');
+  });
+  const [x, y] = await Promise.all([
+    call(a, 'start_meeting_coordination', { title: 'קפה', phones: [b.phone] }),
+    call(b, 'start_meeting_coordination', { title: 'קפה', phones: [a.phone] }),
+  ]);
+  assert.equal([x, y].filter((t) => t.startsWith('OK ')).length, 1, `${x}\n${y}`);
+  assert.equal([x, y].filter((t) => /already_open/.test(t)).length, 1);
 });

@@ -177,6 +177,26 @@ title means this file. Grep the title, not the filename.
   no one, because "Tuesday came off the table" about a Tuesday that has been
   and gone is noise.
 
+- **Before a coordination opens, the same people already negotiating is a
+  QUESTION, never a second coordination and never a refusal** (owner,
+  2026-09-30: "אפשר לפתוח יותר מתיאום אחד בין אותם 2 אנשים או אותה קבוצת
+  אנשים — פשוט עולמה צריכה לוודא לפני שזה תיאום חדש או לא").
+  - The check is `meetings.openWithSamePeople`, called only by
+    `start_meeting_coordination`. It covers private coordinations still
+    `negotiating` among EXACTLY the same set: everybody not `opted_out`, and
+    nobody else. One more or one fewer person is a different coordination.
+  - When one exists, nothing is opened. The result is `reason: 'already_open'`,
+    carrying each open one's id, title, opener and times, and the model
+    continues in it, asks, or calls again with `separate: true`.
+  - **The advisory lock on the sorted set of people is load-bearing.** Two
+    agents opened the same meeting four seconds apart when an approved
+    connection resumed the errand on BOTH sides. In the same instant, each
+    would read the other's row as absent. With the lock line disabled, the race
+    test opened two coordinations in 3 of 3 runs.
+  - The page's start button and a room's coordination do not come through the
+    tool, on purpose. A tap on "new" has already answered the question.
+  - `incidents.md`, "Two coordinations for one meeting".
+
 - **A constraint that rules out a time ON the table is an ANSWER, and the tool
   that records it is the one that declines it** (2026-09-20). Maya wrote "לא
   יכולה ביום שני" with Monday on the table; the model called
