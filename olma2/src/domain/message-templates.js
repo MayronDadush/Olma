@@ -233,6 +233,42 @@ const TEMPLATES = [
     sample: { inviter_name: 'Yoav', inviter_phone: '054-000-0000', reason: ' — to sort out the weekend trip' },
     text: 'Hi! This is Olma — a personal assistant that lives in WhatsApp.\n\n*{{inviter_name}}* ({{inviter_phone}}) asked to connect with you through me{{reason}}.\n\nIf you\'re curious, just reply here and I\'ll explain how it works. If not — feel free to ignore this, I won\'t write again.',
   },
+  // A task shared with a number that is not on Olma yet (growth plan, week 2,
+  // owner 2026-09-30): ONE message, ever, per number. Two wordings, because it
+  // is an A/B test (domain/experiments.js, task_share_intro): a leads with who
+  // Olma is, b with the task. First contact, so no guessed gender.
+  {
+    key: 'task_share_intro_a_he', audience: 'private', label: 'משימה ששותפה עם מי שעוד לא אצלנו — גרסה A',
+    help: 'ניסוי A/B: גרסה A פותחת במי זו עולמה. נשלחת פעם אחת בלבד לכל מספר.',
+    vars: { inviter_name: 'מי ששיתף', inviter_phone: 'המספר שלו, כדי שיזהו', task: 'שם המשימה' },
+    required: ['inviter_name', 'inviter_phone', 'task'],
+    sample: { inviter_name: 'יואב', inviter_phone: '054-000-0000', task: 'לקנות מתנה לדנה' },
+    text: 'היי! כאן עולמה — עוזרת אישית שעובדת בוואטסאפ.\n\n*{{inviter_name}}* ({{inviter_phone}}) רוצה לשתף איתך משימה: *{{task}}*.\n\nאם מתאים לך, פשוט תענה/י לי כאן ואראה לך אותה. אם לא — אפשר להתעלם, ולא אכתוב שוב.',
+  },
+  {
+    key: 'task_share_intro_a_en', audience: 'private', label: 'משימה ששותפה עם מי שעוד לא אצלנו — גרסה A',
+    help: '',
+    vars: { inviter_name: 'who shared it', inviter_phone: 'their number', task: 'the task' },
+    required: ['inviter_name', 'inviter_phone', 'task'],
+    sample: { inviter_name: 'Yoav', inviter_phone: '054-000-0000', task: 'buy a present for Dana' },
+    text: 'Hi! This is Allma — a personal assistant that lives in WhatsApp.\n\n*{{inviter_name}}* ({{inviter_phone}}) wants to share a task with you: *{{task}}*.\n\nIf that works for you, just reply here and I\'ll show it to you. If not — feel free to ignore this, I won\'t write again.',
+  },
+  {
+    key: 'task_share_intro_b_he', audience: 'private', label: 'משימה ששותפה עם מי שעוד לא אצלנו — גרסה B',
+    help: 'ניסוי A/B: גרסה B פותחת במשימה עצמה. נשלחת פעם אחת בלבד לכל מספר.',
+    vars: { inviter_name: 'מי ששיתף', inviter_phone: 'המספר שלו, כדי שיזהו', task: 'שם המשימה' },
+    required: ['inviter_name', 'inviter_phone', 'task'],
+    sample: { inviter_name: 'יואב', inviter_phone: '054-000-0000', task: 'לקנות מתנה לדנה' },
+    text: '📋 *{{task}}*\n*{{inviter_name}}* ({{inviter_phone}}) שיתף/ה איתכם את המשימה הזו דרכי — עולמה, עוזרת אישית בוואטסאפ.\n\nכדי לראות אותה ולסמן כשהיא בוצעה, פשוט תענו לי כאן. לא מעוניינים? אפשר להתעלם, ולא אכתוב שוב.',
+  },
+  {
+    key: 'task_share_intro_b_en', audience: 'private', label: 'משימה ששותפה עם מי שעוד לא אצלנו — גרסה B',
+    help: '',
+    vars: { inviter_name: 'who shared it', inviter_phone: 'their number', task: 'the task' },
+    required: ['inviter_name', 'inviter_phone', 'task'],
+    sample: { inviter_name: 'Yoav', inviter_phone: '054-000-0000', task: 'buy a present for Dana' },
+    text: '📋 *{{task}}*\n*{{inviter_name}}* ({{inviter_phone}}) shared this task with you through me — Allma, a personal assistant on WhatsApp.\n\nTo see it and tick it off when it\'s done, just reply here. Not interested? Feel free to ignore this, I won\'t write again.',
+  },
   {
     key: 'reopen_he', audience: 'private', label: 'ההרשמה נפתחה מחדש',
     help: 'למי שפנה כשההרשמה הייתה סגורה ונכנס לרשימת ההמתנה — ההבטחה שקיימנו.',
