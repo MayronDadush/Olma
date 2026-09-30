@@ -214,7 +214,7 @@ test('sharing tells the other side it was added, and asks nothing', async () => 
 // The friend switched sharing off: nothing is shared, they are not told, and
 // the reply carries the sentence that turns it back on — no message of its own.
 test('sharing with a friend who switched it off hands over the sentence to pass on', async () => {
-  const noa = await makeUser(db.pool, '+972621000009', { firstName: 'Noa' });
+  const noa = await makeUser(db.pool, '+972621000019', { firstName: 'Noa' });
   const conn = await withTx(db.pool, async (c) => {
     const req = await connections.requestConnection(c, miron.id, noa.phone, {});
     return (await connections.respondToConnection(c, noa.id, req.data.connection.id, 'approve')).data.connection;
