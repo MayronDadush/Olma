@@ -305,10 +305,15 @@ test('a settled coordination stays in the list, and the card says so', () => {
     'the page never re-cuts the active list the server sent it');
   assert.match(body[0], /var arc = MTLEFT\.map/,
     'the archive is exactly the list the server calls left/over');
-  assert.match(page, /m\.settled \? " mtset" : ""/, 'a settled card carries the marker');
+  // Since 2026-09-30 the list is three groups, and the settled ones share one
+  // card: the marker moved from each card to that group.
+  assert.match(page, /function mtGroupOf\(m\)\{\s*return m\.settled \? "set"/,
+    'a settled coordination is grouped by the same field the server settles');
+  assert.match(page, /x\.g === "set" \? " mtset" : ""/, 'the settled group carries the marker');
   assert.match(page, /\.group\.mtset\{background:var\(--accent-soft\)\}/,
     'and the marker tints the whole card, not only the chip');
-  assert.match(page, /\.group\.mtset \.mtpill\.settled\{/);
+  assert.match(page, /\.mtstate \.mtok::before\{content:"\\2713"/,
+    'and its time carries the ✓ the solid chip used to');
 });
 
 // The page never zooms, double tap or pinch (the owner, 2026-09-25: it should
