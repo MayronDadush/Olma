@@ -1,0 +1,158 @@
+'use strict';
+// POST /api/open and /api/join: a night opened, and a seat taken, from a
+// private message with no model in between. brokerd is the only caller.
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const { freshDb } = require('./helpers');
+const { createServer } = require('../src/server');
+
+async function boot(t) {
+  const pool = await freshDb(t);
+  const server = createServer({ pool, publicBase: 'https://allma.test', page: '<!doctype html>', announce: async () => ({ ok: true, queued: [] }) });
+  await new Promise(r => server.listen(0, '127.0.0.1', r));
+  t.after(() => new Promise(r => { server.closeListeners(); server.close(r); }));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const post = async (p, body, headers = {}) => {
+    const res = await fetch(base + p, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body) });
+    return { status: res.status, body: await res.json() };
+  };
+  return { pool, base, post };
+}
+
+const HOST = 3, DANI = 8, DANA = 9;
+const open = post => post('/api/open', { userId: HOST, name: 'מירון', price: 50, chips: 1000, nightName: 'ערב משחק' });
+const tokenOf = url => url.match(/\/night\/([A-Za-z0-9]{22})#me-/)[1];
+
+test('opening: the host is seated and linked, and the link carries their seat', async t => {
+  const { pool, post } = await boot(t);
+  const { status, body } = await open(post);
+  assert.equal(status, 200);
+  assert.equal(body.opened, true);
+  assert.deepEqual({ ...body.night, code: undefined }, { name: 'ערב משחק', price: 50, chips: 1000, code: undefined });
+  assert.match(body.night.code, /^[2-9A-HJKMNP-Z]{5}$/);
+  const { rows: [p] } = await pool.query('SELECT id, name, linked_via FROM players WHERE user_id = $1', [HOST]);
+  assert.equal(p.name, 'מירון');
+  assert.equal(p.linked_via, 'host');
+  assert.equal(body.url, `https://allma.test/night/${tokenOf(body.url)}#me-${p.id}`);
+});
+
+test('opening twice hands back the night already open instead of a second one', async t => {
+  const { pool, post } = await boot(t);
+  const first = (await open(post)).body;
+  const again = (await open(post)).body;
+  assert.equal(again.already, true);
+  assert.equal(again.night.code, first.night.code);
+  assert.equal(again.url, first.url);
+  assert.equal((await pool.query('SELECT count(*)::int n FROM nights')).rows[0].n, 1);
+});
+
+test('a probe opens nothing, and finds the night already open', async t => {
+  const { pool, post } = await boot(t);
+  assert.deepEqual((await post('/api/open', { userId: HOST, probe: true })).body, { ok: true, none: true });
+  assert.equal((await pool.query('SELECT count(*)::int n FROM nights')).rows[0].n, 0);
+  const first = (await open(post)).body;
+  const probe = (await post('/api/open', { userId: HOST, probe: true })).body;
+  assert.equal(probe.already, true);
+  assert.equal(probe.night.code, first.night.code);
+});
+
+test('opening with a price the page would refuse is refused the same way', async t => {
+  const { post } = await boot(t);
+  const { body } = await post('/api/open', { userId: HOST, name: 'מירון', price: -5, chips: 1000 });
+  assert.equal(body.ok, false);
+  assert.equal(body.error, 'bad_number');
+});
+
+test('joining by code seats them under their name, linked by invite, with a log line', async t => {
+  const { pool, base, post } = await boot(t);
+  const { night } = (await open(post)).body;
+  const { body } = await post('/api/join', { userId: DANI, code: night.code.toLowerCase(), names: ['דני', 'דני ל׳'] });
+  assert.equal(body.joined, true);
+  assert.equal(body.name, 'דני');
+  assert.equal(body.buyins, 0, 'joining is not a buy-in');
+  const { rows: [p] } = await pool.query('SELECT id, linked_via FROM players WHERE user_id = $1', [DANI]);
+  assert.equal(p.linked_via, 'invite');
+  assert.ok(body.url.endsWith('#me-' + p.id));
+  const st = await (await fetch(`${base}/night/${tokenOf(body.url)}/api/state`)).json();
+  assert.ok(Object.values(st.log).some(l => l.t === 'דני בשולחן' && l.via === 'olma'));
+});
+
+test('a name the host already typed, and nobody claimed, is taken over rather than doubled', async t => {
+  const { pool, post } = await boot(t);
+  const { night } = (await open(post)).body;
+  // The host adds "דני" from the page before Dani ever writes.
+  await pool.query("INSERT INTO players (night_id, id, name, ord) SELECT id, 'pdani', 'דני', 5 FROM nights");
+  const { body } = await post('/api/join', { userId: DANI, code: night.code, names: ['דני'] });
+  assert.equal(body.joined, true);
+  assert.ok(body.url.endsWith('#me-pdani'));
+  assert.equal((await pool.query("SELECT count(*)::int n FROM players WHERE name = 'דני'")).rows[0].n, 1);
+});
+
+test('a name somebody else already holds falls to the next one offered, then to name_taken', async t => {
+  const { post } = await boot(t);
+  const { night } = (await open(post)).body;
+  assert.equal((await post('/api/join', { userId: DANI, code: night.code, names: ['דני'] })).body.name, 'דני');
+  const second = (await post('/api/join', { userId: DANA, code: night.code, names: ['דני', 'דני כ׳'] })).body;
+  assert.equal(second.name, 'דני כ׳');
+  const third = (await post('/api/join', { userId: 10, code: night.code, names: ['דני', 'דני כ׳'] })).body;
+  assert.equal(third.ok, false);
+  assert.equal(third.error, 'name_taken');
+  assert.equal(third.name, 'דני');
+  assert.equal(third.night.code, night.code);
+});
+
+test('sending the code again says where they stand, and counts their buy-ins', async t => {
+  const { pool, base, post } = await boot(t);
+  const { night } = (await open(post)).body;
+  const joined = (await post('/api/join', { userId: DANI, code: night.code, names: ['דני'] })).body;
+  const pid = joined.url.split('#me-')[1];
+  const token = tokenOf(joined.url);
+  for (const n of [1, 0.5]) {
+    await fetch(`${base}/night/${token}/api/write`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ op: 'add', col: 'buyins', data: { pid, n } }) });
+  }
+  const again = (await post('/api/join', { userId: DANI, code: night.code, names: ['שם אחר'] })).body;
+  assert.equal(again.already, true);
+  assert.equal(again.name, 'דני');
+  assert.equal(again.buyins, 1.5);
+  assert.equal((await pool.query('SELECT count(*)::int n FROM players WHERE user_id = $1', [DANI])).rows[0].n, 1);
+});
+
+test('a code that is closed, unknown or malformed is no_night', async t => {
+  const { pool, post } = await boot(t);
+  const { night } = (await open(post)).body;
+  assert.equal((await post('/api/join', { userId: DANI, code: 'ZZZZZ', names: ['דני'] })).body.error, 'no_night');
+  assert.equal((await post('/api/join', { userId: DANI, code: 'AB1', names: ['דני'] })).body.error, 'no_night');
+  await pool.query('UPDATE nights SET closed_at = now()');
+  assert.equal((await post('/api/join', { userId: DANI, code: night.code, names: ['דני'] })).body.error, 'no_night');
+});
+
+test('no name to offer: the night is named, so the question can say which one', async t => {
+  const { pool, post } = await boot(t);
+  const { night } = (await open(post)).body;
+  const { body } = await post('/api/join', { userId: DANI, code: night.code, names: [] });
+  assert.equal(body.error, 'need_name');
+  assert.equal(body.night.name, 'ערב משחק');
+  assert.equal((await pool.query('SELECT count(*)::int n FROM players')).rows[0].n, 1, 'nobody seated');
+});
+
+test('a full table is full', async t => {
+  const { pool, post } = await boot(t);
+  const { night } = (await open(post)).body;
+  await pool.query("INSERT INTO players (night_id, id, name, ord) SELECT n.id, 'p' || g, 'שחקן ' || g, g FROM nights n, generate_series(2, 30) g");
+  const { body } = await post('/api/join', { userId: DANI, code: night.code, names: ['דני'] });
+  assert.equal(body.error, 'full');
+  assert.equal(body.night.code, night.code);
+});
+
+test('both routes are the box\'s only: through a proxy they do not exist', async t => {
+  const { post } = await boot(t);
+  const fwd = { 'X-Forwarded-For': '203.0.113.9' };
+  assert.equal((await post('/api/open', { userId: HOST, price: 50, chips: 1000 }, fwd)).status, 404);
+  assert.equal((await post('/api/join', { userId: DANI, code: 'ABCDE', names: ['x'] }, fwd)).status, 404);
+});
+
+test('a missing user id is refused before anything is read', async t => {
+  const { post } = await boot(t);
+  assert.equal((await post('/api/open', { price: 50, chips: 1000 })).body.error, 'bad_user');
+  assert.equal((await post('/api/join', { userId: 'x', code: 'ABCDE', names: ['x'] })).body.error, 'bad_user');
+});
