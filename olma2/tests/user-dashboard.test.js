@@ -438,3 +438,18 @@ test('the suggestion field is null when there is nothing to suggest, and the loa
   assert.equal(Array.isArray(two.data.suggestion), false);
   assert.equal(two.data.suggestion.taskIds[0], made, 'the oldest is the one shown');
 });
+
+// The calendar tab draws Google's events AND Olma's dated tasks, and a task
+// the sync wrote out is both. Without its Google id the page cannot tell its
+// own copy from somebody else's event, and the day showed it twice (owner,
+// 2026-10-01, on Miron's account).
+test("a synced task carries its Google event id; an unsynced one carries null", async () => {
+  const a = await withTx(db.pool, (c) => tasks.addTask(c, me.id, { title: 'סונכרן', dueAt: '2027-02-01T10:00:00+02:00' }));
+  const b = await withTx(db.pool, (c) => tasks.addTask(c, me.id, { title: 'לא סונכרן', dueAt: '2027-02-01T11:00:00+02:00' }));
+  await db.pool.query(`UPDATE tasks SET calendar_event_id = 'olma0123abcd' WHERE id = $1`, [a.data.task.id]);
+  const d = (await load(me.id)).data;
+  const byId = (id) => d.tasks.find((x) => x.id === id);
+  assert.equal(byId(a.data.task.id).calendarEventId, 'olma0123abcd');
+  assert.equal(byId(a.data.task.id).inCalendar, true);
+  assert.equal(byId(b.data.task.id).calendarEventId, null);
+});
