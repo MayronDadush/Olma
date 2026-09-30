@@ -45,7 +45,8 @@ test('the invitation: a short link of ours in the share text, landing on the cha
   assert.equal(decodeURIComponent(he.shareUrl.split('?text=')[1]), he.share);
   const en = referral.inviteFor({ id: 7, firstName: null, locale: 'en' });
   assert.equal(decodeURIComponent(en.chatLink.split('?text=')[1]), `Hi Allma 👋 a friend sent me (code ${en.code})`);
-  assert.match(en.share, /^Have you met Allma\?/);
+  assert.equal(he.share, `תנסו את עולמה, עוזרת אישית בוואטסאפ 👇\n${he.link}`);
+  assert.equal(en.share, `Try Allma, a personal assistant on WhatsApp 👇\n${en.link}`);
   assert.equal(referral.inviteFor({ id: null }), null);
 });
 

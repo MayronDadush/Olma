@@ -113,14 +113,16 @@ const COPY = {
     firstWords: (name, code) => (name
       ? `היי עולמה 👋 הגעתי דרך ${name} (קוד ${code})`
       : `היי עולמה 👋 הגעתי בהמלצה (קוד ${code})`),
-    // What the PERSON sends their friend. Plural address, so it fits anybody.
-    share: (link) => `מכירים את עולמה? 😊 עוזרת אישית בוואטסאפ למשימות, תזכורות ותיאום פגישות — הכל בהודעה. אפשר להתחיל כאן:\n${link}`,
+    // What the PERSON sends their friend, in their own voice rather than an
+    // ad's (owner's pick, 2026-09-30, of three). Plural address, so it fits
+    // anybody, and it says nothing about the sender's gender.
+    share: (link) => `תנסו את עולמה, עוזרת אישית בוואטסאפ 👇\n${link}`,
   },
   en: {
     firstWords: (name, code) => (name
       ? `Hi Allma 👋 ${name} sent me (code ${code})`
       : `Hi Allma 👋 a friend sent me (code ${code})`),
-    share: (link) => `Have you met Allma? 😊 A personal assistant on WhatsApp for tasks, reminders and scheduling, all by message. Start here:\n${link}`,
+    share: (link) => `Try Allma, a personal assistant on WhatsApp 👇\n${link}`,
   },
 };
 // What a short link opens when its code names nobody (mistyped, or the person
