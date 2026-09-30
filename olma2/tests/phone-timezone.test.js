@@ -19,6 +19,37 @@ test('flags countries that span several zones as ambiguous', () => {
   assert.equal(lookupTimezone('+972526269826').ambiguous, false); // Israel
 });
 
+test('a +1 number takes its zone from the area code, and stays ambiguous', () => {
+  // u-40: an LA number stored on New York time, check-ins three hours early.
+  assert.equal(timezoneForPhone('+12135550100'), 'America/Los_Angeles');
+  assert.equal(timezoneForPhone('+14155550100'), 'America/Los_Angeles');
+  assert.equal(timezoneForPhone('+13125550100'), 'America/Chicago');
+  assert.equal(timezoneForPhone('+13035550100'), 'America/Denver');
+  assert.equal(timezoneForPhone('+16025550100'), 'America/Phoenix');
+  assert.equal(timezoneForPhone('+18085550100'), 'Pacific/Honolulu');
+  assert.equal(timezoneForPhone('+16045550100'), 'America/Vancouver');
+  // East Coast, Ontario and anything unlisted keep the old default.
+  assert.equal(timezoneForPhone('+12125550100'), 'America/New_York');
+  assert.equal(timezoneForPhone('+14165550100'), 'America/New_York');
+  assert.equal(timezoneForPhone('+18765550100'), 'America/New_York');
+  // Where the number was issued is not where its owner is: still a guess.
+  assert.equal(lookupTimezone('+12135550100').ambiguous, true);
+  assert.equal(lookupTimezone('+12135550100').code, '1');
+});
+
+test('every area code is three digits, listed once, on a real zone', () => {
+  const { NANP_ZONES } = require('../src/domain/phone-timezone');
+  const seen = new Map();
+  for (const [tz, codes] of Object.entries(NANP_ZONES)) {
+    assert.doesNotThrow(() => new Intl.DateTimeFormat('en', { timeZone: tz }), tz);
+    for (const c of codes) {
+      assert.ok(c >= 200 && c <= 999, `${c} is not an area code`);
+      assert.ok(!seen.has(c), `${c} is under both ${seen.get(c)} and ${tz}`);
+      seen.set(c, tz);
+    }
+  }
+});
+
 test('an unknown code yields null rather than a wrong guess', () => {
   assert.equal(timezoneForPhone('+99900011122'), null);
   assert.equal(timezoneForPhone(''), null);
