@@ -708,6 +708,108 @@ test('a swallowed message is repaired even with a healthy conversation on top of
   assert.equal(parsed[0].cause, 'completed');
 });
 
+// The same gateway line is written for a DECISION to stay quiet: a NO_REPLY is
+// an empty payload list too. From 2026-09-23 to 09-29, nine of the eleven drops
+// this case filed were a 👍 or 🙏 on the message and the sentinel in the
+// transcript — the answer the doctrine asked for. The shapes below are the
+// box's own: "Sent reaction" 6.5s before the line, NO_REPLY 6.5s before that.
+test('a NO_REPLY behind a closing mark is not a dropped turn, and a real drop still is', async () => {
+  const unanswered = require('../src/jobs/unanswered');
+  const laneLog = require('../src/jobs/lane-watchdog');
+  const now = Date.now();
+  const u = await makeUser(db.pool, '+972617000032', { firstName: 'Miron' });
+  await db.pool.query(
+    `UPDATE users SET agent_id = 'u-' || id, onboarded_at = now() - interval '2 days' WHERE id = $1`, [u.id]);
+
+  const dropAt = now - 8 * 60_000;
+  const iso = (ms) => new Date(ms).toISOString();
+  const dropLine = (messageId) => JSON.stringify({
+    time: iso(dropAt),
+    message: 'visible channel turn dispatched with no queued reply payloads: '
+      + `channel=whatsapp messageId=${messageId} sessionKey=agent:u-9:whatsapp:direct:${u.phone} cause=completed`,
+  });
+  const markLine = (emoji, messageId) => JSON.stringify({
+    time: iso(dropAt - 6_500), message: `Sent reaction "${emoji}" -> message ${messageId}`,
+  });
+  const thanksTurn = [
+    { role: 'user', text: 'תודה', at: iso(dropAt - 20_000) },
+    { role: 'assistant', text: 'NO_REPLY', at: iso(dropAt - 6_600) },
+  ];
+  const sweep = (raw, msgs) => withTx(db.pool, (c) => unanswered.sweepUnanswered(c, {
+    readMessages: (agentId) => (agentId === `u-${u.id}` ? msgs : []),
+    readSentEvents: () => null,
+    readDroppedTurns: () => unanswered.droppedTurnsByPeer([{ raw, openEnded: true }]),
+    readSentReactions: () => unanswered.sentReactions([{ raw }]),
+    now,
+  }));
+  const repairsFor = async (mid) => (await db.pool.query(
+    `SELECT 1 FROM outbox WHERE user_id = $1 AND idempotency_key = $2`, [u.id, `dropped:${u.id}:${mid}`])).rowCount;
+
+  // 🙏 on a bare thanks, sentinel in the transcript: a decision, not a loss.
+  const pray = await sweep([markLine('🙏', 'THX1'), dropLine('THX1')].join('\n'), thanksTurn);
+  assert.deepEqual(pray.repaired, []);
+  assert.equal(pray.decidedSilent, 1, 'a detector that declines says so on its heartbeat');
+  assert.equal(await repairsFor('THX1'), 0);
+  // 👍 on "בוצע" — the same.
+  const done = await sweep([markLine('👍', 'DONE1'), dropLine('DONE1')].join('\n'), thanksTurn);
+  assert.deepEqual(done.repaired, []);
+  assert.equal(await repairsFor('DONE1'), 0);
+
+  // And every half missing leaves it a drop. A detector that can no longer fail
+  // is not a detector.
+  // - the sentinel, but only 👀 ever reached the message: nobody saw an answer
+  assert.deepEqual((await sweep([markLine('👀', 'EYES1'), dropLine('EYES1')].join('\n'), thanksTurn)).repaired, [u.id]);
+  await db.pool.query(`DELETE FROM outbox WHERE user_id = $1`, [u.id]);
+  // - the mark went on ANOTHER message
+  assert.deepEqual((await sweep([markLine('👍', 'OTHER'), dropLine('LOST1')].join('\n'), thanksTurn)).repaired, [u.id]);
+  await db.pool.query(`DELETE FROM outbox WHERE user_id = $1`, [u.id]);
+  // - Yahav's shape: a 👍 from an earlier tool, then the turn wrote NOTHING —
+  //   the transcript ends on his message, not on a sentinel
+  const nothing = [...thanksTurn, { role: 'user', text: 'תזכיר לי מחר ב19:00', at: iso(dropAt - 5_000) }];
+  assert.deepEqual((await sweep([markLine('👍', 'YAH1'), dropLine('YAH1')].join('\n'), nothing)).repaired, [u.id]);
+  await db.pool.query(`DELETE FROM outbox WHERE user_id = $1`, [u.id]);
+  // - a composed reply that never went out, under a ⏰ (u-41's shape, 2026-09-24)
+  const composed = [thanksTurn[0], { role: 'assistant', text: 'קבעתי לך תזכורת', at: iso(dropAt - 1_000) }];
+  assert.deepEqual((await sweep([markLine('⏰', 'SCH1'), dropLine('SCH1')].join('\n'), composed)).repaired, [u.id]);
+  await db.pool.query(`DELETE FROM outbox WHERE user_id = $1`, [u.id]);
+  // - a transcript that could not be read is unknown, never a decision
+  const unread = await withTx(db.pool, (c) => unanswered.sweepUnanswered(c, {
+    readMessages: (agentId, peer, limit) => {
+      if (agentId !== `u-${u.id}`) return [];
+      if (limit) throw new Error('store locked');
+      return [];
+    },
+    readSentEvents: () => null,
+    readDroppedTurns: () => unanswered.droppedTurnsByPeer([{ raw: dropLine('UNR1'), openEnded: true }]),
+    readSentReactions: () => unanswered.sentReactions([{ raw: markLine('👍', 'UNR1') }]),
+    now,
+  }));
+  assert.deepEqual(unread.repaired, [u.id]);
+  await db.pool.query(`DELETE FROM outbox WHERE user_id = $1`, [u.id]);
+
+  // An emoji the owner changed on the dashboard is still the same state.
+  assert.equal(unanswered.decidedSilence(
+    { messageId: 'V1', at: dropAt }, thanksTurn,
+    [{ emoji: '✅', messageId: 'V1', at: dropAt - 6_500 }], { done: '✅', thanks: '🙏', scheduled: '⏰' }), true);
+  // …and the default it replaced no longer counts as one.
+  assert.equal(unanswered.decidedSilence(
+    { messageId: 'V1', at: dropAt }, thanksTurn,
+    [{ emoji: '👍', messageId: 'V1', at: dropAt - 6_500 }], { done: '✅', thanks: '🙏', scheduled: '⏰' }), false);
+  // A sentinel from an exchange long before the drop is not this turn's.
+  assert.equal(unanswered.decidedSilence(
+    { messageId: 'OLD', at: dropAt },
+    [{ role: 'user', text: 'x', at: iso(dropAt - 5 * 60_000) }, { role: 'assistant', text: 'NO_REPLY', at: iso(dropAt - 4 * 60_000) }],
+    [{ emoji: '👍', messageId: 'OLD', at: dropAt - 6_500 }]), false);
+
+  // the reaction parser, on the lines as the box writes them
+  const marks = laneLog.parseSentReactions([
+    JSON.stringify({ time: iso(dropAt), message: 'Sending reaction "👍" -> message M1' }),
+    JSON.stringify({ time: iso(dropAt), message: 'Sent reaction "👍" -> message M1' }),
+    JSON.stringify({ time: iso(dropAt), message: 'Sent reaction "" -> message M2' }),
+  ].join('\n'));
+  assert.deepEqual(marks.map((m) => [m.emoji, m.messageId]), [['👍', 'M1']]);
+});
+
 // ---------------------------------------------------------------------------
 // A decision to stay quiet is not a reply that got lost
 //

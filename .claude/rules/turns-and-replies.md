@@ -207,6 +207,12 @@ title means this file. Grep the title, not the filename.
   function: `channels/sessions.js` drops `FAILED_TURN_MARKER` because a dead
   turn was indistinguishable from a reply and blinded it the OTHER way
   (`incidents.md`, "A silence read as a delivery fault").
+  **Case (c) needed it too** (2026-09-30): the gateway logs `no queued reply
+  payloads` for a `NO_REPLY` as for a dead turn, and 9 of 11 `dropped_turn`
+  repairs in a week were a 👍/🙏 plus the sentinel. `unanswered.decidedSilence`
+  lets a drop go only when a CLOSING mark reached that message AND the
+  transcript ends on the sentinel; 👀/⚠️/❓ close nothing, and unreadable is
+  a drop.
 
 - **A repair job fires precisely when the system's belief about itself is
   already wrong, so it must be the most sceptical thing in the codebase.** Every

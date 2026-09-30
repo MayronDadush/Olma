@@ -10282,6 +10282,26 @@ acts on a state it observed. This one acts on a BELIEF that something failed,
 and when the belief is wrong it manufactures the exact disturbance it exists to
 prevent. Nothing was broken in Yahav's conversation until the repair arrived.
 
+**The same silence, through the other door (2026-09-30).** The fix above lives
+in case (b), which reads the transcript. Case (c) reads the gateway's own
+`no queued reply payloads` line, and the gateway writes that line for a
+`NO_REPLY` exactly as for a turn that died — an empty payload list either way.
+Once the 🙏-on-thanks and 👍 `markPlaced` paths went live, case (c) read the
+decision as a swallowed message: from 2026-09-23 to 09-29 it filed eleven
+`dropped_turn` repairs, and nine of them were a closing mark on the message and
+the sentinel in the transcript (measured on the box, one read-only pass). Two
+were not — a reply composed under a ⏰ and a 66-character reply, both on
+2026-09-24 23:2x, with no sentinel anywhere near them — and those still count.
+Nothing extra reached anybody: the repair turn's own instruction lets the model
+answer NO_REPLY, and it did. The cost was a model call per false repair and an
+audit row the onboarding review filed as `bad`, which is how a detector's rate
+stops meaning anything. `unanswered.decidedSilence` now requires BOTH halves —
+a closing mark (👍/🙏/⏰ through the dashboard vocabulary) on that very message
+in the gateway's `Sent reaction` line, and the person's transcript ending on
+the sentinel within a minute of the drop — and either half unreadable leaves
+the drop standing. Three times now the shape of the record has failed to carry
+a turn's meaning for this one sweep.
+
 ### The hour in the title nobody compared (fixed 2026-09-11)
 
 Task 247, Sarah: title "Brunch with a friend — Tuesday Sep 1 at 10:00",

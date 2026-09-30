@@ -38,6 +38,8 @@ const laneLog = require('./lane-watchdog');
 const { enqueue } = require('../outbox/enqueue');
 const audit = require('../domain/audit');
 const replyLeak = require('../domain/reply-leak');
+const reactionsDomain = require('../domain/reactions');
+const flags = require('../domain/flags');
 
 // Below MIN: the gateway's own recovery deserves first chance (its abort
 // threshold is 75s). Above MAX: too stale to answer as if it just arrived —
@@ -227,6 +229,51 @@ function droppedTurnFor(byPeer, phone, now) {
   return best;
 }
 
+// The gateway writes its "no queued reply payloads" line for a DECISION to
+// stay quiet exactly as it does for a turn that died: a `NO_REPLY` is an empty
+// payload list too. Since the reaction doctrine that decision is the correct
+// answer to a whole class of messages — a 👍 on "בוצע", a 🙏 on a bare thanks —
+// and from 2026-09-23 to 2026-09-29 nine of the eleven drops case (c) filed
+// were exactly that: sentinel in the transcript, closing mark on the phone.
+// Each one cost a model turn told a fault had happened, and an audit row the
+// onboarding review then read as a `bad` finding.
+//
+// A drop is a decision only when BOTH halves are visible, because a repair job
+// must be the most sceptical thing here (CLAUDE.md, "A repair job fires
+// precisely when…"):
+//   - the person's own transcript, read up to the moment the gateway logged
+//     the drop, ENDS in the sentinel, composed inside the turn's own window —
+//     so a turn that produced nothing after an earlier NO_REPLY still ends on
+//     the person's message and stays a drop;
+//   - a mark that CLOSES the exchange reached that very message. 👀 and 👂 say
+//     "working", ⚠️ says it failed and ❓ that something is still owed — none of
+//     them is the whole answer, and silence behind them is still silence.
+// Either half unreadable, and the drop stands: could-not-see is never scored as
+// did-not-happen.
+const CLOSING_STATES = ['done', 'thanks', 'scheduled'];
+// How far before the log line the sentinel may have been composed. Measured on
+// the box: 6.5s between the NO_REPLY and the line; a minute is ample and keeps
+// an earlier exchange's sentinel out.
+const SILENCE_TURN_MS = 60_000;
+function decidedSilence(drop, msgs, reactionsSent, vocab = reactionsDomain.REACTION_STATES) {
+  if (!drop || !Array.isArray(msgs) || !Array.isArray(reactionsSent)) return false;
+  const closing = new Set(CLOSING_STATES.map((s) => vocab[s]).filter(Boolean));
+  const marked = reactionsSent.some((r) => r.messageId === drop.messageId
+    && closing.has(r.emoji) && r.at <= drop.at + SENT_SLACK_MS);
+  if (!marked) return false;
+  const seq = msgs.filter((m) => (m.role === 'user' || m.role === 'assistant') && m.at
+    && Date.parse(m.at) <= drop.at + SENT_SLACK_MS);
+  const last = seq[seq.length - 1];
+  if (!last || !isSilence(last)) return false;
+  return drop.at - Date.parse(last.at) <= SILENCE_TURN_MS;
+}
+
+function sentReactions(chunks) {
+  const out = [];
+  for (const { raw } of chunks || []) out.push(...laneLog.parseSentReactions(raw));
+  return out;
+}
+
 // An undelivered reply is only repaired when it was a reply to the PERSON —
 // the previous turn is a real user message, not an injected proactive
 // instruction. A lost proactive delivery is the outbox's own row and its own
@@ -288,9 +335,11 @@ function undeliveredReply(msgs, sent, phone, now) {
 // last text-bearing message is the JOB's own instruction, in the `user` role.
 // That reads exactly like an unanswered message and would send the person a
 // "repair" reply to a conversation that was never broken.
-async function sweepUnanswered(client, { readMessages, readSentEvents, readDroppedTurns, now = Date.now() } = {}) {
+async function sweepUnanswered(client, { readMessages, readSentEvents, readDroppedTurns, readSentReactions, now = Date.now() } = {}) {
+  // The third argument is only ever passed for case (c), which needs to see
+  // back to a turn that may be forty minutes and several exchanges old.
   const read = readMessages
-    || ((agentId, peer) => sessions.readRecentMessages(agentId, 6, undefined, peer));
+    || ((agentId, peer, limit = 6) => sessions.readRecentMessages(agentId, limit, undefined, peer));
   // Read lazily, once for the whole sweep — the log tail does not change per
   // user, and most ticks never reach a case-(b) candidate at all.
   let tails;
@@ -312,6 +361,17 @@ async function sweepUnanswered(client, { readMessages, readSentEvents, readDropp
     }
     return dropped;
   };
+  let reactionsSent;
+  const marksSent = () => {
+    if (reactionsSent === undefined) {
+      reactionsSent = readSentReactions ? readSentReactions() : sentReactions(chunks());
+    }
+    return reactionsSent;
+  };
+  // The dashboard's emoji editor can change what a closing mark looks like, and
+  // the log records the emoji, not the state.
+  let vocab = reactionsDomain.REACTION_STATES;
+  try { vocab = reactionsDomain.vocabulary(await flags.getFlag(client, reactionsDomain.VOCAB_FLAG)); } catch { /* defaults */ }
   const { rows } = await client.query(
     `SELECT id, agent_id, phone FROM users
      WHERE status = 'active' AND agent_id IS NOT NULL AND onboarded_at IS NOT NULL
@@ -336,6 +396,9 @@ async function sweepUnanswered(client, { readMessages, readSentEvents, readDropp
   const coolingIds = new Set(cooling.map((r) => r.user_id));
 
   const repaired = [];
+  // Drops the gateway logged that were a decision to stay quiet, not a loss.
+  // Counted on the heartbeat, because a detector that declines must say so.
+  let decidedSilent = 0;
   // Real losses this pass could not re-send as themselves, by reason.
   const unsendable = {};
   for (const u of rows) {
@@ -391,6 +454,12 @@ async function sweepUnanswered(client, { readMessages, readSentEvents, readDropp
     // conversation and says NO_REPLY if the thing was in fact answered.
     const drop = droppedTurnFor(droppedTurns(), u.phone, now);
     if (drop) {
+      let history = null;
+      try { history = await read(u.agent_id, u.phone, 30); } catch { history = null; }
+      if (decidedSilence(drop, history, marksSent(), vocab)) {
+        decidedSilent++;
+        continue;
+      }
       const res = await enqueue(client, {
         userId: u.id, kind: 'checkin', urgency: 'urgent',
         expiresAt: new Date(now + MAX_AGE_MS).toISOString(),
@@ -488,12 +557,16 @@ async function sweepUnanswered(client, { readMessages, readSentEvents, readDropp
       repaired.push(u.id);
     }
   }
-  return { repaired, ...(Object.keys(unsendable).length ? { unsendable } : {}) };
+  return {
+    repaired,
+    ...(decidedSilent ? { decidedSilent } : {}),
+    ...(Object.keys(unsendable).length ? { unsendable } : {}),
+  };
 }
 
 module.exports = {
   sweepUnanswered, sentHashFor, undeliveredReply, resendableVerbatim,
   readSentEventsFromLog, parseSentEvents, covers,
-  readLogTails, droppedTurnsByPeer, droppedTurnFor,
+  readLogTails, droppedTurnsByPeer, droppedTurnFor, decidedSilence, sentReactions,
   MIN_AGE_MS, MAX_AGE_MS, SENT_SLACK_MS,
 };
