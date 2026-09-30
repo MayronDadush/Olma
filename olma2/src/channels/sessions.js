@@ -768,10 +768,50 @@ function lidToPhone(base) {
 // unreadable and when it holds no mappings, and for this reader the two are the
 // same instruction — resolve nothing, change no roster row. Anything else would
 // make an unreadable credentials directory look like every member leaving.
-function lidPhoneNumbers() {
+//
+// Re-read only when it could have changed. 2,678 files took 83-95ms to read on
+// the box (2026-09-30), every ten seconds, for a map that grows by one file
+// when somebody new writes. A hit costs 14-29ms, almost all of it the listing
+// below — kept, because it is what makes the answer exact. A new mapping
+// is a new FILE, which moves its directory's mtime. A file rewritten in place
+// would not, so the cache is also thrown away after LID_MAP_MAX_AGE_MS
+// whatever the directories say: stale for five minutes at worst, never for
+// ever. A directory that cannot be stat'ed reads fresh every time, never from
+// the cache.
+const LID_MAP_MAX_AGE_MS = 5 * 60 * 1000;
+let lidCache = null; // { signature, at, map }
+
+function lidMapSignature(base) {
+  const root = path.join(base, 'credentials', 'whatsapp');
+  try {
+    const parts = [root, fs.statSync(root).mtimeMs];
+    // Directories only: `default.lock` sits beside the accounts on the box, and
+    // a signature that threw on it would never cache anything.
+    const accounts = fs.readdirSync(root, { withFileTypes: true })
+      .filter((e) => e.isDirectory()).map((e) => e.name).sort();
+    for (const account of accounts) {
+      const dir = path.join(root, account);
+      // The count as well as the mtime: a file created inside the same
+      // timestamp tick as the last read leaves a coarse mtime where it was.
+      parts.push(account, fs.statSync(dir).mtimeMs, fs.readdirSync(dir).length);
+    }
+    return parts.join('|');
+  } catch {
+    return null;
+  }
+}
+
+function lidPhoneNumbers({ now = Date.now() } = {}) {
+  const base = HOME();
+  const signature = lidMapSignature(base);
+  if (signature && lidCache && lidCache.signature === signature
+    && now - lidCache.at < LID_MAP_MAX_AGE_MS) {
+    return { ...lidCache.map };
+  }
   const out = {};
-  for (const [lid, phone] of lidToPhone(HOME())) out[lid] = `+${phone}`;
-  return out;
+  for (const [lid, phone] of lidToPhone(base)) out[lid] = `+${phone}`;
+  lidCache = signature ? { signature, at: now, map: out } : null;
+  return { ...out };
 }
 
 // Olma's own number and LID, so the self-chat lane is never reported as a

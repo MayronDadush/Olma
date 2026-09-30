@@ -71,6 +71,7 @@ never trust a dated narrative for something you are about to act on.
 - [The room was told twice (fixed 2026-09-08)](#the-room-was-told-twice-fixed-2026-09-08)
 - [The room was greeted twice, by its own registration (fixed 2026-09-11)](#the-room-was-greeted-twice-by-its-own-registration-fixed-2026-09-11)
 - [Four channel restarts for one room (fixed 2026-09-30)](#four-channel-restarts-for-one-room-fixed-2026-09-30)
+- [Every open room was judged twice, once on a stale roster (fixed 2026-09-30)](#every-open-room-was-judged-twice-once-on-a-stale-roster-fixed-2026-09-30)
 - [The coordination that waited for somebody it could not name (fixed 2026-09-26)](#the-coordination-that-waited-for-somebody-it-could-not-name-fixed-2026-09-26)
 - [The invite that would have counted people it could not reach (2026-09-26)](#the-invite-that-would-have-counted-people-it-could-not-reach-2026-09-26)
 - [The tags that vanished before any hook ran (fixed 2026-09-26)](#the-tags-that-vanished-before-any-hook-ran-fixed-2026-09-26)
@@ -4186,6 +4187,42 @@ is already on the list (it is global, not per room), and a room's members at
 registration now ride the registration save. That left somebody added to an
 existing room, and somebody who paused by asking and has just come back. Few
 is still not none, and the trade was a lost message against a delayed one.
+
+### Every open room was judged twice, once on a stale roster (fixed 2026-09-30)
+
+`group_sweep` walked the gateway's group SESSIONS, not the rooms. An open room
+has two: the greeter's (`ggreet`), which hears the room until it opens, and
+its own agent's (`g-N`). The greeter's context stops moving once the room
+opens. On the box every open room's greeter row was hours to 18 days older
+than its own agent's. Each pass therefore synced and judged every open room
+twice, and the first of the two judged a roster from before the room opened.
+
+What that stale roster can do is written into
+`tests/group-sweep.test.js`, "a stale greeter roster is never judged". A member
+it still lists who has since left is re-added by `syncRoster` on the first
+iteration and marked `left_at` again on the second, every ten seconds. With
+`group_open_without_everyone` closed, a member there who never wrote to her
+re-locks the room and deletes its agent, and the fresh roster opens it again on
+the same pass. The flag is open in production, so the re-lock half did not
+happen there. Whether roster rows flapped was not measured: `left_at` is
+overwritten, so there is no history to read.
+
+**Fix.** One iteration per room. The sessions are grouped by jid, and the
+context with the newest `at` is the room. Ties go to the later session, which
+is the room's own agent. The tag watermarks stay per session (migration 059),
+because the fault that migration fixed was one column shared by several
+sessions. The test was run against the old loop first and fails there.
+
+**And the LID map is no longer read every ten seconds.** The reverse map is
+2,678 files. `lidPhoneNumbers` took 83-95ms uncached on the box, on every pass,
+through the worker facade. It now keeps the map until a directory under
+`credentials/whatsapp/` changes (its mtime, or its entry count) or five minutes
+pass, which costs 14-29ms on a hit, mostly the listing. A new mapping is a new
+file, so it shows up on the next call. A file rewritten in place waits out the
+five minutes. The first draft of the signature listed every entry in the root
+and threw on `default.lock`, a FILE that sits beside the account directories on
+the box. The cache would never have been used, and nothing would have said so.
+It lists directories only now, and a test holds that case.
 
 ### The room was greeted twice, by its own registration (fixed 2026-09-11)
 

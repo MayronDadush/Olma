@@ -819,6 +819,57 @@ test('two sessions and nothing new: the room is answered once, not on every pass
   assert.equal(row.notices_sent, 1, 'and the notice count did not climb');
 });
 
+// One iteration per ROOM (2026-09-30). The greeter's context stops moving the
+// moment a room opens — on the box every open room's greeter row was hours to
+// 18 days older than its own agent's — and walked per session, that stale
+// roster was synced and judged first. Here it still lists somebody who has
+// since left and never wrote to her: judged on it, the room re-locked and lost
+// its agent, and the fresh roster opened it again, every ten seconds.
+test('a stale greeter roster is never judged: the newest context is the room', async () => {
+  // Pinned closed, as in the re-lock test below: with it open a room with an
+  // agent never re-locks on a newcomer, and the stale roster would do nothing
+  // the assertions could see.
+  const flags = require('../src/domain/flags');
+  await withTx(db.pool, (c) => flags.setFlag(c, 'group_open_without_everyone', false));
+  try {
+  const a = await connectedUser('+972605000060');
+  const b = await connectedUser('+972605000061');
+  await makeUser(db.pool, '+972605000062');   // never wrote to her, and has left
+  const jid = JID(35);
+  const at = Date.now();
+  const opened = await pass(gatewayWith({ jid, roster: `${a.phone}, ${b.phone}`, at }).deps);
+  assert.deepEqual(opened.opened, [jid], 'two connected members open the room');
+  const room = await withTx(db.pool, (c) => groupsDomain.getByExternalId(c, 'whatsapp', jid));
+  assert.ok(room.agent_id);
+
+  const session = (agentId, t) => ({
+    key: `agent:${agentId}:whatsapp:group:${jid}`,
+    agentId, channel: 'whatsapp', chatType: 'group', peer: jid, lastInteractionAt: t,
+  });
+  const contexts = {
+    [pg.GREETER_AGENT_ID]: { subject: 'פאדל', members: `${a.phone}, ${b.phone}, +972605000062`, at: at - 86_400_000 },
+    [room.agent_id]: { subject: 'פאדל', members: `${a.phone}, ${b.phone}`, at: at + 60_000 },
+  };
+  const deps = {
+    configPath,
+    listGroupSessions: () => [session(pg.GREETER_AGENT_ID, at - 86_400_000), session(room.agent_id, at + 60_000)],
+    readGroupContext: (agentId) => ({ ...contexts[agentId], wasMentioned: true, messageId: 'MSG-9' }),
+    send: async () => true,
+  };
+  for (const n of [1, 2]) {
+    const out = await pass(deps);
+    assert.deepEqual(out.relocked, [], `pass ${n} judged the greeter's stale roster`);
+    assert.deepEqual(out.opened, [], `pass ${n} re-provisioned a room that never closed`);
+  }
+  const after = await withTx(db.pool, (c) => groupsDomain.getByExternalId(c, 'whatsapp', jid));
+  assert.equal(after.agent_id, room.agent_id);
+  const members = await withTx(db.pool, (c) => groupsDomain.listMembers(c, after.id));
+  assert.equal(members.some((m) => m.phone === '+972605000062'), false, 'the member who left came back');
+  } finally {
+    await withTx(db.pool, (c) => flags.setFlag(c, 'group_open_without_everyone', true));
+  }
+});
+
 // The one place the old fault leaked into a room today. `agentIds` is built
 // once at the top of the pass, so a room that re-locks on its GREETER's
 // iteration still has its own `g-N` session iterated afterwards — and that

@@ -143,8 +143,10 @@ have already had to be argued for.
   to no user — which is why a room could count somebody missing for ever who had
   written to Olma that morning. `channels/sessions.lidPhoneNumbers` reads
   `credentials/whatsapp/<account>/lid-mapping-<digits>_reverse.json` (the
-  gateway writes one the moment it first resolves a LID), the sweep reads it ONCE
-  per pass through the worker facade, and the pure
+  gateway writes one the moment it first resolves a LID), the sweep reads it
+  through the worker facade, cached until a directory under
+  `credentials/whatsapp/` changes or five minutes pass (2026-09-30: 2,678 files,
+  83-95ms a read, every ten seconds), and the pure
   `groups.resolveLidMembers(members, map)` rewrites the roster before
   `registerGroup`/`syncRoster` see it, returning `{ members, resolved }` so the
   caller never re-derives the predicate. **Three directions are load-bearing.**
@@ -156,6 +158,20 @@ have already had to be argued for.
   roster collapses into ONE member through `dedupe`, never a second row for one
   person. `syncRoster` then does the rest on its own: the LID row gets `left_at`,
   the phone row joins and resolves to the user, and who was here stays history.
+
+- **The sweep judges a ROOM once per pass, off its NEWEST context, and keeps
+  a watermark per SESSION** (2026-09-30, `jobs/groups.sweepGroups`). An open
+  room has two gateway sessions, and the greeter's context stops moving the
+  moment the room opens: hours to 18 days old on the box. Walked per session,
+  that roster was synced and judged first on every pass. It can put a member
+  who left back in the room for one iteration, and with
+  `group_open_without_everyone` closed it re-locks the room and deletes its
+  agent. So the sessions are grouped by jid and the context with the newest
+  `at` wins, ties to the later session. **Do not collapse the watermarks with
+  them.** `seenAt`/`noteSeen` stay keyed on each session (migration 059),
+  because one column shared by several sessions is the fault that migration
+  fixed. A tag is any session newer than its own mark (`incidents.md`, "Every
+  open room was judged twice, once on a stale roster").
 
 - **A room opens on TWO connected members, not on everybody — and it still
   says who is not here.** `group_open_without_everyone` (flag, open by the

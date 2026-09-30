@@ -240,22 +240,40 @@ async function sweepGroups(client, deps) {
     // `senderGateOpen` is the loud one: true means the gateway is admitting
     // every sender in every group, and nothing else in this pass can tell.
     senderAllowFrom: senderGate.entries.length, senderGateOpen: senderGate.open,
-    // Additions waiting out the five minutes after the last channel restart.
   };
 
+  // ONE iteration per room, not per session. An open room has two sessions —
+  // the greeter's from before it opened and its own `g-N` — and the greeter's
+  // context stops moving the moment the route does (measured 2026-09-30: every
+  // open room on the box, the greeter's newest row up to 18 days older). Walked
+  // per session, the stale roster was synced and the room's state decided on
+  // it, then undone by the fresh one, every ten seconds: harmless only while
+  // nobody joins or leaves an open room. So the roster, subject and reply id
+  // come from the context written LAST, and each session keeps its own tag
+  // watermark (migration 059) — the room was tagged if ANY of them moved.
+  const rooms = new Map();
   for (const session of await list(agentIds)) {
     const jid = session.peer;
     if (!jid || !jid.endsWith('@g.us')) { out.skipped++; continue; }
+    if (!rooms.has(jid)) rooms.set(jid, []);
+    rooms.get(jid).push(session);
+  }
 
-    const ctx = await readContext(session.agentId, session.key);
+  for (const [jid, roomSessions] of rooms) {
+    let ctx = null;
+    for (const session of roomSessions) {
+      const c = await readContext(session.agentId, session.key);
+      // `>=`: on a tie the LATER session wins, and the list puts the room's own
+      // agent after the greeter.
+      if (c && c.members && (!ctx || Number(c.at || 0) >= Number(ctx.at || 0))) ctx = c;
+    }
     // Null is "no evidence", not "an empty group" — a store we could not read
     // must never look like a group with nobody in it.
-    if (!ctx || !ctx.members) { out.unreadable++; continue; }
+    if (!ctx) { out.unreadable++; continue; }
     // A member the gateway names by LID resolves to no user, so the room's gate
-    // counts them missing for ever. The reverse map is read ONCE per pass and
-    // shared by every room: it is a directory listing plus a small file per LID
-    // (2,673 of them on the box), and doing that per room would put it on the
-    // daemon's loop several times a tick for no new information.
+    // counts them missing for ever. The reverse map is read once per pass and
+    // shared by every room (and re-read from disk only when it changed —
+    // `channels/sessions.lidPhoneNumbers`).
     const parsed = groups.parseRoster(ctx.members);
     const unparsed = parsed.unparsed;
     const resolvedRoster = groups.resolveLidMembers(parsed.members, lidPhones);
@@ -338,8 +356,10 @@ async function sweepGroups(client, deps) {
     // check. Leave the group exactly as it is rather than opening it on a
     // roster we know is incomplete.
     if (unparsed.length) {
-      await groups.noteSeen(client, group.id, session.key,
-        new Date(session.lastInteractionAt || now));
+      for (const session of roomSessions) {
+        await groups.noteSeen(client, group.id, session.key,
+          new Date(session.lastInteractionAt || now));
+      }
       out.skipped++;
       continue;
     }
@@ -354,20 +374,22 @@ async function sweepGroups(client, deps) {
     // is not going to say "nice to meet you" and "some of you have not signed
     // up" in the same breath — the nudge belongs to the next time somebody
     // actually asks her for something.
-    // THIS session's watermark, never the room's. A room has several gateway
-    // sessions and this loop runs once per session; one column per room meant
-    // each iteration overwrote the last one's mark, so every session spent the
-    // next pass comparing itself against somebody else's number and "newer
-    // than we have seen" was true for ever (migration 059).
-    const seen = await groups.seenAt(client, group.id, session.key);
-    const lastSeen = seen ? new Date(seen).getTime() : 0;
-    const activity = Number(session.lastInteractionAt || 0);
+    // Each session's OWN watermark, never the room's: one column per room
+    // meant each session overwrote the other's mark and "newer than we have
+    // seen" was true for ever (migration 059). The room is tagged when any of
+    // its sessions moved past its own.
+    let moved = false;
+    for (const session of roomSessions) {
+      const seen = await groups.seenAt(client, group.id, session.key);
+      const lastSeen = seen ? new Date(seen).getTime() : 0;
+      if (Number(session.lastInteractionAt || 0) > lastSeen) moved = true;
+    }
     // `justGreeted` covers the pass that decided the introduction; the pending
     // row covers every pass after it until the greeting has actually gone out.
     // Deciding and sending are separate transactions now, so a pass that finds
     // `introduced_at` stamped is NOT evidence the room has heard anything yet.
     const greetingOwed = justGreeted || await groupOutbox.pending(client, group.id, 'intro');
-    const isNew = !greetingOwed && activity > lastSeen;
+    const isNew = !greetingOwed && moved;
 
     // ---- the gate ----------------------------------------------------------
     const evaluated = await groups.evaluate(client, group.id);
@@ -506,7 +528,10 @@ async function sweepGroups(client, deps) {
       }
     }
 
-    await groups.noteSeen(client, group.id, session.key, new Date(activity || now));
+    for (const session of roomSessions) {
+      await groups.noteSeen(client, group.id, session.key,
+        new Date(Number(session.lastInteractionAt || 0) || now));
+    }
   }
 
   return out;
