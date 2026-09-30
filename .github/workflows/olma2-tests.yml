@@ -160,8 +160,10 @@ jobs:
     # box in a state no automation is left running to repair. So the tight
     # timeout goes where it is safe and a generous one goes here — long enough
     # that only a genuine hang reaches it, short enough that a hung deploy is
-    # not still holding main's serialized queue hours later.
-    timeout-minutes: 30
+    # not still holding main's serialized queue hours later. 40 since
+    # 2026-09-30: deploy.sh's SUITE_TIMEOUT went to 1500 and the arithmetic
+    # beside it has to fit in here.
+    timeout-minutes: 40
     # A manual run on main deploys too — that is the entire point of the
     # hand crank above. Every other event still cannot reach the box: a
     # dispatch on a feature branch fails the ref test, exactly as a push to
