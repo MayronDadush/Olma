@@ -184,13 +184,19 @@ $SSH "$SERVER" "
   # no longer a number the suite can quietly grow into: 900 against a ~397s
   # run, where 600 was 1.5x and closing.
   #
-  # The ceiling on both is the deploy job's own timeout-minutes: 30, in
+  # It grew into 900 anyway, in sixteen days: 2,851 tests took 807s on the one
+  # clean deploy of 2026-09-30, and the three around it were stopped at 900s
+  # still passing (1,987 done on the last) with nothing else running on the
+  # box. 1500 is 1.85x that run. Re-measure (the duration_ms line in the
+  # deploy log) whenever this banner fires, before raising it again.
+  #
+  # The ceiling on both is the deploy job's own timeout-minutes: 40, in
   # .github/workflows/olma2-tests.yml. Worst case is one wedge plus one capped
-  # attempt, 300 + 900, plus the ~40s of rsync/install/migrate/restart around
-  # them — about 20 minutes inside 30. A deploy killed by the JOB timeout is
+  # attempt, 300 + 1500, plus the ~40s of rsync/install/migrate/restart around
+  # them — about 31 minutes inside 40. A deploy killed by the JOB timeout is
   # the one failure that can land between the rsync and the rollback
   # safeguard, so keep that arithmetic true if you touch these.
-  SUITE_NICE=19 SUITE_CONCURRENCY=2 SUITE_ATTEMPTS=2 SUITE_SILENCE=300 SUITE_TIMEOUT=900 bash scripts/run-suite.sh
+  SUITE_NICE=19 SUITE_CONCURRENCY=2 SUITE_ATTEMPTS=2 SUITE_SILENCE=300 SUITE_TIMEOUT=1500 bash scripts/run-suite.sh
 "
 
 # Passes iff both services are actually running (catches an instant crash —
