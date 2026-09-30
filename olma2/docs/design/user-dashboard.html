@@ -3202,8 +3202,19 @@ button.srow:active{background:var(--bg-tint)}
 .stedit svg{width:13px;height:13px}
 .stitle:focus ~ .stedit{opacity:0}
 .stitlewrap.creating .stedit{display:none}
-/* On a new task the check is the one thing to press: nothing below this row
-   is worth filling in for a task that has no name yet. */
+/* On a new task the title is a FIELD, and has to look like one. Centred, bare
+   and large, "מה צריך לעשות?" read as the sheet's heading — people chose a
+   day and a reminder under it and never typed a name (owner, 2026-09-30).
+   Once the check is pressed it goes back to being the heading it is on every
+   task that already exists. */
+.stitlewrap.creating{padding:4px 24px 12px}
+.stitlewrap.creating .stitle{
+  background:var(--surface);border:1.5px solid var(--accent-line);border-radius:16px;
+  padding:12px 16px;font-size:18px;text-align:start;box-shadow:0 0 0 4px var(--accent-soft);
+}
+.stitlewrap.creating .stitle::placeholder{color:var(--text-2)}
+/* On a new task the check is the one thing to press, and it always does
+   something: with no name it saves the task as "משימה ללא שם 1" (commit). */
 .stgo{
   width:30px;height:30px;flex:none;border-radius:50%;display:grid;place-items:center;
   background:var(--action);color:var(--on-action);
@@ -3211,7 +3222,6 @@ button.srow:active{background:var(--bg-tint)}
 }
 .stgo svg{width:14px;height:14px}
 .stgo:active{transform:scale(.9)}
-.stgo[disabled]{opacity:.32;pointer-events:none}
 .savedline{
   margin-top:14px;text-align:center;font-size:12.5px;font-weight:500;color:var(--text-3);
   transition:color .2s var(--ease);
@@ -4031,9 +4041,10 @@ button.srow:active{background:var(--bg-tint)}
   <div class="sgrab"><i class="grabber"></i></div>
   <div class="sxhold"><button class="sx" type="button" data-sx data-i18n-label="sheet.close"><svg><use href="#i-x"/></svg></button></div>
   <!-- The heading of a sheet is not usually typeable, so it needs to say that
-       it is: a pencil while editing, and on a brand-new task a check, because
-       the title is the one field that has to exist before anything else here
-       means anything. Everything below still saves as you type. -->
+       it is: a pencil while editing, and on a brand-new task a field with a
+       check beside it. The check always saves — a task left without a name is
+       saved as "משימה ללא שם 1", never thrown away. Everything below still
+       saves as you type. -->
   <div class="stitlewrap">
     <input class="stitle" id="sTitle" type="text" data-i18n-ph="sheet.taskPh" data-i18n-label="sheet.task" autocomplete="off">
     <span class="stedit" id="sTitleEdit" aria-hidden="true"><svg><use href="#i-pencil"/></svg></span>
@@ -5585,6 +5596,7 @@ button.srow:active{background:var(--bg-tint)}
       "toast.callFailed":"לא הצלחתי להתקשר עכשיו — נסה שוב בעוד רגע",
       "toast.moreRequested":"הבקשה נשלחה",
       "toast.done":"המשימה הושלמה","toast.saved":"המשימה נשמרה",
+      "toast.savedAs":"נשמרה בתור ״{name}״","toast.rename":"שינוי שם","task.untitled":"משימה ללא שם {n}",
       "toast.stillRepeating":"נרשם. המשימה חוזרת, אז היא נשארת ברשימה",
       "toast.updated":"המשימה עודכנה","toast.deleted":"המשימה נמחקה",
       "toast.needTitle":"צריך שם למשימה",
@@ -5962,6 +5974,7 @@ button.srow:active{background:var(--bg-tint)}
       "toast.callFailed":"The call would not go through — try again in a moment",
       "toast.moreRequested":"Your request has been sent",
       "toast.done":"Task completed","toast.saved":"Task saved",
+      "toast.savedAs":"Saved as “{name}”","toast.rename":"Rename","task.untitled":"Untitled task {n}",
       "toast.stillRepeating":"Noted. This one repeats, so it stays on your list",
       "toast.updated":"Task updated","toast.deleted":"Task deleted",
       "toast.needTitle":"Give the task a name",
@@ -6656,7 +6669,9 @@ button.srow:active{background:var(--bg-tint)}
 
   /* ───────── toast ───────── */
   var toastEl = $("#toast"), toastT;
-  function toast(msg, undo, isErr){
+  /* `label` names the button when it is not an undo — "שינוי שם" on a task
+     saved without one. */
+  function toast(msg, undo, isErr, label){
     /* Replacing a toast that is still on screen: it re-bumps rather than
        changing its words where it stands — see .toast.bump. */
     if(toastEl.classList.contains("show")){
@@ -6670,7 +6685,7 @@ button.srow:active{background:var(--bg-tint)}
     if(undo){
       var b = document.createElement("button");
       b.className = "toastundo";
-      b.textContent = t("toast.undo");
+      b.textContent = label || t("toast.undo");
       b.addEventListener("click", function(){
         clearTimeout(toastT);
         toastEl.classList.remove("show", "act");
@@ -8493,6 +8508,14 @@ button.srow:active{background:var(--bg-tint)}
     if(el.id === "sheet") updateSheetCue();
   }
   function closeSheets(){
+    /* A new task closed with no name is kept, not thrown away, as long as
+       something in it was chosen — a day, a reminder, an item. Closing used to
+       drop all of that without a word (owner, 2026-09-30: "לשמור בסגירה").
+       A sheet opened and closed untouched still leaves nothing behind. */
+    if(isNew && editing && $("#sheet").classList.contains("show")){
+      commit(SKIP_SAVE);
+      if(sheetSig() !== untouchedSig) saveUnnamed();
+    }
     /* Anything still on the title timer goes now. A sheet closed a quarter of
        a second after the last letter must not be the one edit that never
        reached the server. */
@@ -9399,6 +9422,9 @@ button.srow:active{background:var(--bg-tint)}
     $("#sSaved").classList.remove("flash");
     creating = isNew;
     syncTitleRow();
+    /* what a new task looks like before anybody has chosen anything — closing
+       measures against it (closeSheets) */
+    if(isNew){ commit(SKIP_SAVE); untouchedSig = sheetSig(); }
     showSheet($("#sheet"));
     /* the list's own scroll line is measured against a list that is showing */
     if(listy) paintCue($("#sList"), $("#listCue"));
@@ -9413,24 +9439,53 @@ button.srow:active{background:var(--bg-tint)}
      person says the name is right.
 
      It confirms rather than creates, and says so honestly — the task is saved
-     as you type, exactly like every other field here. What the check buys is
-     that the title is visibly the one thing that MAKES a task, and that the
-     rows below it are visibly not waiting on anything. */
-  var creating = false;
+     as you type, exactly like every other field here. And it is never a dead
+     button: until 2026-09-30 it sat at a third of its opacity and ignored the
+     press while the name was empty, which read as the page being broken. Now
+     an empty name is filled in for them (saveUnnamed). */
+  var creating = false, untouchedSig = "";
   function syncTitleRow(){
     var w = $("#sTitle").parentElement;
     w.classList.toggle("creating", creating);
     $("#sTitleGo").hidden = !creating;
-    $("#sTitleGo").disabled = !$("#sTitle").value.trim();
+  }
+  /* The server refuses a task with no title (add_task, "title required"), and
+     it is right to — so the name is given HERE, before the write. "משימה ללא
+     שם 1", numbered by the first number no open task already carries. */
+  function untitledName(){
+    var taken = {};
+    open.forEach(function(o){ taken[L(o.t)] = true; });
+    for(var n = 1; taken[t("task.untitled", {n:n})]; n++);
+    return t("task.untitled", {n:n});
+  }
+  /* Everything a person can choose on a task that has no name yet. Closing
+     compares this with how the sheet opened: a difference means they started
+     something, and that is kept. */
+  function sheetSig(){
+    var e = editing;
+    return JSON.stringify([e.d, e.tm, e.tmEnd, e.all, e.cat, e.rem, e.remOff, e.remAt,
+      e.rep, e.cal, (e.items || []).length, (e.who || []).length]);
+  }
+  /* Names a nameless new task, saves it, and says what it is called — with
+     the one button that matters next. */
+  function saveUnnamed(){
+    var task = editing;
+    $("#sTitle").value = untitledName();
+    commit();
+    toast(t("toast.savedAs", {name:L(task.t)}), function(){
+      if(!(editing === task && $("#sheet").classList.contains("show"))) openSheet(task.id);
+      setTimeout(function(){ $("#sTitle").focus(); $("#sTitle").select(); }, 200);
+    }, false, t("toast.rename"));
   }
   $("#sTitle").addEventListener("input", syncTitleRow);
   $("#sTitleGo").addEventListener("click", function(){
-    if(!$("#sTitle").value.trim()) return;
-    commit();                       /* it may not have been pushed yet */
+    var named = !!$("#sTitle").value.trim();
+    if(named) commit();             /* it may not have been pushed yet */
+    else saveUnnamed();
     creating = false;
     syncTitleRow();
     $("#sTitle").blur();
-    toast(t("toast.saved"));
+    if(named) toast(t("toast.saved"));
   });
 
   $("#sRepeatRow").addEventListener("click", function(){
