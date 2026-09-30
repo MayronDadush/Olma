@@ -32,16 +32,19 @@ test('the code is found in the prefilled sentence, and not inside words', () => 
   assert.deepEqual(referral.candidateIds(null), []);
 });
 
-test('the invitation: the link carries the code, and the share text carries the link', () => {
+test('the invitation: a short link of ours in the share text, landing on the chat link', () => {
   const he = referral.inviteFor({ id: 7, firstName: ' דנה ', locale: 'he' });
   assert.equal(he.code, referral.codeFor(7));
-  const words = decodeURIComponent(he.link.split('?text=')[1]);
+  assert.equal(he.link, `https://allma.world/i/${he.code}`);
+  assert.match(new URL(he.link).pathname, referral.SHORT_PATH_RE);
+  const words = decodeURIComponent(he.chatLink.split('?text=')[1]);
   assert.equal(words, `היי עולמה 👋 הגעתי דרך דנה (קוד ${he.code})`);
-  assert.ok(he.link.startsWith(`https://wa.me/${referral.WA_NUMBER}?text=`));
+  assert.ok(he.chatLink.startsWith(`https://wa.me/${referral.WA_NUMBER}?text=`));
   assert.ok(he.share.endsWith(he.link));
+  assert.ok(he.share.length < 150, 'no percent-encoded wall in the message');
   assert.equal(decodeURIComponent(he.shareUrl.split('?text=')[1]), he.share);
   const en = referral.inviteFor({ id: 7, firstName: null, locale: 'en' });
-  assert.equal(decodeURIComponent(en.link.split('?text=')[1]), `Hi Allma 👋 a friend sent me (code ${en.code})`);
+  assert.equal(decodeURIComponent(en.chatLink.split('?text=')[1]), `Hi Allma 👋 a friend sent me (code ${en.code})`);
   assert.match(en.share, /^Have you met Allma\?/);
   assert.equal(referral.inviteFor({ id: null }), null);
 });
@@ -55,12 +58,15 @@ test('goalBlock reads the headcount on its day and sums only the joins', () => {
     { date: '2026-09-27', metric: 'joined_room', value: 1 },
     { date: '2026-09-10', metric: 'joined_room', value: 4 },
     { date: '2026-09-30', metric: 'wau_room', value: 11 },
+    { date: '2026-09-29', metric: 'referral_clicks', value: 5 },
+    { date: '2026-09-15', metric: 'referral_clicks', value: 2 },
   ];
   const html = section.goalBlock(rows, today);
   assert.match(html, /23 מתוך 100/);
   assert.match(html, /לפני שבוע: 19/);
   assert.match(html, /קבוצה<\/td><td>3<\/td><td>7<\/td><td>11<\/td>/);
   assert.match(html, /קישור מחבר<\/td><td>—<\/td><td>—<\/td><td>—<\/td>/, 'no row yet is a dash');
+  assert.match(html, /קישורי הזמנה: <b>5<\/b> ב־7 ימים · 7 ב־30 יום/);
   assert.equal(section.goalBlock([], today), '', 'nothing counted, nothing drawn');
 });
 
@@ -109,5 +115,75 @@ test('the page payload carries the invitation, built from the id', async () => {
   const res = await withTx(db.pool, (c) => dash.load(c, u.id));
   assert.equal(res.ok, true);
   assert.equal(res.data.invite.code, referral.codeFor(u.id));
-  assert.match(decodeURIComponent(res.data.invite.link), /הגעתי דרך רון/);
+  assert.match(decodeURIComponent(res.data.invite.chatLink), /הגעתי דרך רון/);
+});
+
+// ---- the short link itself, through the real router ----
+const http = require('node:http');
+const { createDashboard } = require('../src/adapters/http/dashboard');
+const PHONE_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1';
+function get(server, path, headers = {}, method = 'GET') {
+  return new Promise((resolve, reject) => {
+    const req = http.request({ hostname: '127.0.0.1', port: server.address().port, path, method,
+      headers: { Host: 'allma.world', ...headers }, setHost: false }, (res) => {
+      let body = '';
+      res.setEncoding('utf8');
+      res.on('data', (c) => { body += c; });
+      res.on('end', () => resolve({ status: res.statusCode, location: res.headers.location, body }));
+    });
+    req.on('error', reject);
+    req.end();
+  });
+}
+const clicksOf = async (id) => Number((await db.pool.query(
+  `SELECT count(*) FROM audit_log WHERE actor_id = $1 AND event = 'referral.clicked'`, [id])).rows[0].count);
+
+test('/i/<code>: a tap is counted and lands on the chat; a preview is not counted; nobody is attributed to a stranger', async () => {
+  const server = createDashboard({ pool: db.pool, adminUser: 'admin', adminPass: 'test-password-123' });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  try {
+    const u = await makeUser(db.pool, '+972601009020', { firstName: 'מיכל' });
+    await db.pool.query(`UPDATE users SET status = 'active', agent_id = $2 WHERE id = $1`, [u.id, `u-${u.id}`]);
+    const code = referral.codeFor(u.id);
+
+    const tap = await get(server, `/i/${code}`, { 'User-Agent': PHONE_UA });
+    assert.equal(tap.status, 302);
+    assert.ok(tap.location.startsWith(`https://wa.me/${referral.WA_NUMBER}?text=`));
+    assert.equal(decodeURIComponent(tap.location.split('?text=')[1]), `היי עולמה 👋 הגעתי דרך מיכל (קוד ${code})`);
+    assert.equal(await clicksOf(u.id), 1);
+
+    // The SENDING phone fetches the link to draw the card: our card, no count.
+    const preview = await get(server, `/i/${code}`, { 'User-Agent': 'WhatsApp/2.24.1 i' });
+    assert.equal(preview.status, 200);
+    assert.match(preview.body, /og:url" content="https:\/\/allma\.world\/i\//);
+    assert.match(preview.body, /http-equiv="refresh"/);
+    assert.equal((await get(server, `/i/${code}`, { 'User-Agent': PHONE_UA }, 'HEAD')).status, 200);
+    assert.equal(await get(server, `/i/${code}`, {}).then((r) => r.status), 200, 'no user agent is not a person');
+    assert.equal(await clicksOf(u.id), 1);
+
+    // A code naming nobody still opens a chat with her, attributed to no one.
+    const eval_ = await makeUser(db.pool, '+972601009021');
+    await db.pool.query(`UPDATE users SET status = 'active', agent_id = $2, is_eval = true WHERE id = $1`, [eval_.id, `u-${eval_.id}`]);
+    for (const c of [referral.codeFor(eval_.id), referral.codeFor(999999)]) {
+      const r = await get(server, `/i/${c}`, { 'User-Agent': PHONE_UA });
+      assert.equal(r.status, 302);
+      assert.equal(decodeURIComponent(r.location.split('?text=')[1]), 'היי עולמה 👋');
+    }
+    assert.equal(await clicksOf(eval_.id), 0);
+
+    // Off the exact shape it is not this route (Caddy never passes it either).
+    assert.equal((await get(server, `/i/${code}x`, { 'User-Agent': PHONE_UA })).status, 401);
+    assert.equal((await get(server, `/i/${code.toLowerCase()}`, { 'User-Agent': PHONE_UA })).status, 401);
+
+    // …and the day's count reaches the metric.
+    // The row's own day, never the clock's: a tap at 23:59:59 is yesterday's.
+    const today = (await db.pool.query(`SELECT created_at::date::text AS d FROM audit_log
+      WHERE actor_id = $1 AND event = 'referral.clicked'`, [u.id])).rows[0].d;
+    await withTx(db.pool, (c) => metrics.rollupDay(c, today));
+    const { rows } = await db.pool.query(
+      `SELECT value FROM product_metrics_daily WHERE date = $1 AND metric = 'referral_clicks'`, [today]);
+    assert.equal(Number(rows[0].value), 1);
+  } finally {
+    server.close();
+  }
 });

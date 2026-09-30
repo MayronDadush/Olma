@@ -42,6 +42,12 @@ function modInverse(a, m) {
 const P_INV = modInverse(P, N);
 
 const WA_NUMBER = String(process.env.OLMA_WA_NUMBER || '972559347282').replace(/\D/g, '');
+// The link a person actually shares is OURS, `allma.world/i/<code>`, and it
+// redirects to the wa.me chat link (adapters/http/invite-link.js). The wa.me
+// link itself is 200-odd characters of percent-encoded Hebrew, which in a
+// WhatsApp message reads as spam; ours is short, names us, and lets a tap be
+// counted. Caddy must pass `/i/<code>` on the exact shape (SHORT_PATH_RE).
+const SHORT_BASE = String(process.env.OLMA_INVITE_BASE || 'https://allma.world').replace(/\/$/, '');
 
 // id → five characters. Null for anything that is not a positive id in range.
 function codeFor(userId) {
@@ -85,6 +91,9 @@ function candidateIds(text) {
 // counts only if it names a real, provisioned person who is not them: a random
 // five-letter word that happens to decode lands in a 24M space holding a few
 // dozen ids, and this is where such a miss is refused.
+const REFERRER_SQL = `SELECT id, first_name, locale FROM users
+  WHERE id = $1 AND status = 'active' AND agent_id IS NOT NULL AND NOT is_eval`;
+
 async function referrerFor(client, text, phone) {
   for (const id of candidateIds(text)) {
     const { rows } = await client.query(
@@ -114,19 +123,44 @@ const COPY = {
     share: (link) => `Have you met Allma? 😊 A personal assistant on WhatsApp for tasks, reminders and scheduling, all by message. Start here:\n${link}`,
   },
 };
+// What a short link opens when its code names nobody (mistyped, or the person
+// has since left): still a chat with her, just with no attribution in it.
+const PLAIN_HELLO = 'היי עולמה 👋';
 const lang = (locale) => (String(locale || '').toLowerCase().startsWith('en') ? 'en' : 'he');
+const chatLink = (words) => `https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(words)}`;
+const nameOf = (firstName) => (typeof firstName === 'string' ? firstName.trim() : '');
+const SHORT_PATH_RE = new RegExp(`^/i/([${ALPHABET}]{${LEN}})$`);
 
 // Everything the page needs to offer an invitation, or null when there is no
 // id to build one from. `share` is the text they send; `shareUrl` opens
-// WhatsApp's own picker with it; `link` is the chat-with-Allma link inside it.
+// WhatsApp's own picker with it; `link` is the short link inside it, and
+// `chatLink` where that lands.
 function inviteFor({ id, firstName, locale }) {
   const code = codeFor(id);
   if (!code) return null;
   const c = COPY[lang(locale)];
-  const name = typeof firstName === 'string' ? firstName.trim() : '';
-  const link = `https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(c.firstWords(name, code))}`;
+  const link = `${SHORT_BASE}/i/${code}`;
   const share = c.share(link);
-  return { code, link, share, shareUrl: `https://wa.me/?text=${encodeURIComponent(share)}` };
+  return {
+    code, link, share,
+    chatLink: chatLink(c.firstWords(nameOf(firstName), code)),
+    shareUrl: `https://wa.me/?text=${encodeURIComponent(share)}`,
+  };
 }
 
-module.exports = { codeFor, idFor, candidateIds, referrerFor, inviteFor, ALPHABET, WA_NUMBER };
+// Where `/i/<code>` sends a tap, read at tap time so a renamed inviter's new
+// name is the one the friend sends. `referrerId` null means the code named
+// nobody, and nothing is attributed or counted.
+async function landingFor(client, code) {
+  const id = idFor(code);
+  const { rows } = id ? await client.query(REFERRER_SQL, [id]) : { rows: [] };
+  const who = rows[0];
+  if (!who) return { url: chatLink(PLAIN_HELLO), referrerId: null, lang: 'he' };
+  const l = lang(who.locale);
+  return { url: chatLink(COPY[l].firstWords(nameOf(who.first_name), code)), referrerId: Number(who.id), lang: l };
+}
+
+module.exports = {
+  codeFor, idFor, candidateIds, referrerFor, inviteFor, landingFor,
+  SHORT_PATH_RE, ALPHABET, WA_NUMBER,
+};

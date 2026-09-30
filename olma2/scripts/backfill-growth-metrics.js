@@ -21,7 +21,7 @@ const { METRIC_QUERIES, JOIN_CHANNELS } = require('../src/jobs/metrics');
 const APPLY = process.argv.includes('--apply');
 const di = process.argv.indexOf('--days');
 const DAYS = di > 0 ? Math.max(1, Math.min(180, Number(process.argv[di + 1]) || 60)) : 60;
-const METRICS = ['weekly_active_users', ...JOIN_CHANNELS.flatMap((v) => [`joined_${v}`, `wau_${v}`])];
+const METRICS = ['weekly_active_users', 'referral_clicks', ...JOIN_CHANNELS.flatMap((v) => [`joined_${v}`, `wau_${v}`])];
 
 (async () => {
   const pool = createPool();

@@ -101,7 +101,7 @@ function goalBlock(rows, today = new Date().toISOString().slice(0, 10)) {
   for (const r of rows) {
     const age = ageOf(r.date);
     at.set(`${r.metric}@${age}`, Number(r.value));
-    if (r.metric.startsWith('joined_')) {
+    if (r.metric.startsWith('joined_') || r.metric === 'referral_clicks') {
       const s = sums[r.metric] || (sums[r.metric] = { w: 0, m: 0 });
       if (age >= 0 && age <= 6) s.w += Number(r.value);
       if (age >= 0 && age <= 29) s.m += Number(r.value);
@@ -112,6 +112,7 @@ function goalBlock(rows, today = new Date().toISOString().slice(0, 10)) {
   const weekAgo = at.get('weekly_active_users@7');
   const delta = weekAgo === undefined ? '' : ` <span class="dim small">(לפני שבוע: ${weekAgo})</span>`;
   const cell = (v) => (v === undefined ? '—' : v);
+  const clicks = sums.referral_clicks;
   const channelRows = Object.entries(CHANNEL_LABELS).map(([via, label]) => {
     const j = sums[`joined_${via}`];
     return `<tr><td class="nowrap">${label}</td><td>${j ? j.w : '—'}</td><td>${j ? j.m : '—'}</td><td>${cell(at.get(`wau_${via}@0`))}</td></tr>`;
@@ -119,7 +120,9 @@ function goalBlock(rows, today = new Date().toISOString().slice(0, 10)) {
   return `<h3>היעד: ${WAU_GOAL} משתמשים פעילים בשבוע</h3>
     <p><b>${now} מתוך ${WAU_GOAL}</b>${delta}
       <span class="dim small">— כתבו לעולמה או עשו משהו בדף שלהם בשבעת הימים האחרונים</span></p>
-    <table><tr><th>איך הגיעו</th><th>הצטרפו ב־7 ימים</th><th>ב־30 יום</th><th>פעילים השבוע</th></tr>${channelRows}</table>`;
+    <table><tr><th>איך הגיעו</th><th>הצטרפו ב־7 ימים</th><th>ב־30 יום</th><th>פעילים השבוע</th></tr>${channelRows}</table>
+    <p class="small">לחיצות על קישורי הזמנה: <b>${clicks ? clicks.w : '—'}</b> ב־7 ימים · ${clicks ? clicks.m : '—'} ב־30 יום
+      <span class="dim">— תצוגה מקדימה של הקישור לא נספרת</span></p>`;
 }
 
 // The Hebrew count is shown as "flawed of written", never as a rate, and only

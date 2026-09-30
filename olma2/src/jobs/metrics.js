@@ -85,6 +85,11 @@ const byChannel = Object.fromEntries(JOIN_CHANNELS.flatMap((via) => [
 const METRIC_QUERIES = {
   weekly_active_users: weeklyActive(),
   ...byChannel,
+  // Taps on a friend's short invite link (adapters/http/invite-link.js), one
+  // row per person-looking GET; a link preview is never one. Between "shared"
+  // and "joined via friend_link" — the step that says which half leaks.
+  referral_clicks: `SELECT count(*) FROM audit_log
+                     WHERE created_at::date = $1::date AND event = 'referral.clicked'`,
   active_users: `SELECT count(DISTINCT actor_id) FROM audit_log
                  WHERE created_at::date = $1::date AND actor_id IS NOT NULL`,
   tasks_created: `SELECT count(*) FROM audit_log
