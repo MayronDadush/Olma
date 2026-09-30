@@ -2038,10 +2038,18 @@ button.srow:active{background:var(--bg-tint)}
 .mtseg button.pop{animation:chipPop .24s var(--squash)}
 .mtseg button[aria-pressed="true"]{background:var(--seg-on);color:var(--accent);box-shadow:var(--shadow-s)}
 .mtseg button[data-a="n"][aria-pressed="true"]{color:var(--danger)}
-.mtcheck{border:1px solid var(--sep-2);background:transparent;border-radius:9px;padding:0;
-  width:32px;height:32px;flex:none;display:grid;place-items:center;cursor:pointer;color:var(--accent)}
-.mtcheck svg{width:16px;height:16px}
-.mtcheck.arm{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+/* One control per row (2026-09-30): the answer, or — once "לקבוע מועד בלי
+   לחכות לכולם" is pressed under the table — "לקבוע" in its place. Settling by
+   hand is the exception, so it no longer sits on every row beside the answer. */
+.mtpick{border:0;background:var(--accent);color:var(--on-accent);border-radius:9px;
+  font:inherit;font-size:12px;font-weight:700;padding:8px 14px;flex:none;cursor:pointer;
+  transition:transform .18s var(--squash)}
+.mtpick:active{transform:scale(.93)}
+.mtpick.arm{background:var(--warn)}
+.mtpicklink{display:flex;align-items:center;gap:6px;margin:10px 4px 0;padding:6px 10px;
+  border:0;background:transparent;font:inherit;font-size:13px;font-weight:600;
+  color:var(--accent);cursor:pointer}
+.mtpicklink svg{width:14px;height:14px;flex:none}
 
 /* "Enough for me is 3 of 5" — the coordination's own minimum, set from here. */
 .minchip{display:inline-flex;align-items:center;gap:6px;background:var(--surface);
@@ -4322,16 +4330,16 @@ button.srow:active{background:var(--bg-tint)}
   <div class="sgrab"><i class="grabber"></i></div>
   <div class="sxhold"><button class="sx" type="button" data-sx data-i18n-label="sheet.close"><svg><use href="#i-x"/></svg></button></div>
   <h2 id="mtTitle"></h2>
-  <p class="note" id="mtWho" style="padding:0 14px 4px"></p>
   <div class="mtfaces" id="mtFaces"></div>
 
   <div class="glabel" style="margin-top:14px"><span id="mtAskLbl"></span></div>
   <!-- How many yeses this coordination calls enough. Anybody in it may set it,
        like everything else about the table, and it settles nothing by itself:
-       it decides which rows earn the 🃏, and a person still has to press the
-       ✓. Unset is the normal state and says so. -->
+       it decides which rows earn the 🃏, and a person still has to press
+       "לקבוע". Unset is the normal state and says so. -->
   <button class="minchip" id="mtMin"></button>
   <div class="stack" id="mtOpts"></div>
+  <button class="mtpicklink" id="mtPickLink" hidden><svg><use href="#i-check"/></svg><span></span></button>
 
   <div id="mtAddWrap" style="margin-top:12px">
     <div class="group">
@@ -5400,9 +5408,9 @@ button.srow:active{background:var(--bg-tint)}
       "mt.ask":"מתי מתאים לך?","mt.askOne":"אתה יכול להגיע?","mt.settledLbl":"המועד שנקבע",
       "mt.done":"תיאומים שנסגרו ושיצאת מהם","mt.youLeft":"יצאת מהתיאום הזה","mt.rejoin":"חזרה לתיאום",
       "toast.mtBack":"חזרת ל„{name}” — השאר עודכנו",
-      "mt.me":"אתה","mt.waiting":"בהמתנה","mt.gone":"יצא","mt.withList":"עם {list}",
+      "mt.me":"אתה","mt.waiting":"בהמתנה","mt.gone":"יצא",
       "mt.part.morning":"בוקר","mt.part.noon":"צהריים","mt.part.evening":"ערב","mt.part.night":"לילה",
-      "mt.allFree":"מתאים לכולם","mt.pick":"קביעה",
+      "mt.allFree":"מתאים לכולם","mt.pick":"לקבוע","mt.pickMode":"לקבוע מועד בלי לחכות לכולם",
       "mt.settlingIn":"כולם יכולים — נקבע בעוד {n} שניות, עוד אפשר לשנות",
       "mt.settlingNow":"כולם יכולים — נקבע עכשיו",
       "mt.iCan":"יכול","mt.iCant":"לא",
@@ -5419,7 +5427,7 @@ button.srow:active{background:var(--bg-tint)}
       "mt.missDay":"בחרו יום","mt.missTime":"בחרו שעה",
       "mt.remove":"מחיקה","mt.removeConfirm":"עוד לחיצה כדי למחוק",
       "mt.quorumMet":"יש מניין",
-      "mt.minNone":"בלי מינימום","mt.minSet":"מספיק לי {n} מתוך {of}",
+      "mt.minNone":"נקבע כשכולם יכולים","mt.minSet":"מספיק לי {n} מתוך {of}",
       "toast.mtRemoved":"ירד מהשולחן — {when}","toast.mtRemoveFailed":"לא הצלחתי להוריד את המועד",
       "mt.leave":"יציאה מהתיאום",
 
@@ -5777,9 +5785,9 @@ button.srow:active{background:var(--bg-tint)}
       "mt.ask":"When suits you?","mt.askOne":"Can you make it?","mt.settledLbl":"The time you settled on",
       "mt.done":"Settled and left","mt.youLeft":"You left this one","mt.rejoin":"Put me back in",
       "toast.mtBack":"You're back in \u201c{name}\u201d \u2014 the others were told",
-      "mt.me":"You","mt.waiting":"not yet","mt.gone":"left","mt.withList":"With {list}",
+      "mt.me":"You","mt.waiting":"not yet","mt.gone":"left",
       "mt.part.morning":"morning","mt.part.noon":"midday","mt.part.evening":"evening","mt.part.night":"night",
-      "mt.allFree":"Fits everyone","mt.pick":"Settle",
+      "mt.allFree":"Fits everyone","mt.pick":"Settle","mt.pickMode":"Settle a time without waiting for everyone",
       "mt.settlingIn":"Everyone can — settles in {n}s, you can still change it",
       "mt.settlingNow":"Everyone can — settling now",
       "mt.iCan":"Can","mt.iCant":"Can't",
@@ -5796,7 +5804,7 @@ button.srow:active{background:var(--bg-tint)}
       "mt.missDay":"Pick a day","mt.missTime":"Pick a time",
       "mt.remove":"Delete","mt.removeConfirm":"Press again to delete",
       "mt.quorumMet":"Enough people",
-      "mt.minNone":"No minimum","mt.minSet":"{n} of {of} is enough",
+      "mt.minNone":"Settles when everyone can","mt.minSet":"{n} of {of} is enough",
       "toast.mtRemoved":"Off the table — {when}","toast.mtRemoveFailed":"Could not take that time off",
       "mt.leave":"Leave the coordination",
 
@@ -10052,6 +10060,8 @@ button.srow:active{background:var(--bg-tint)}
      left:[], settled:51, inCal:true}
   ];
   var mtSeq = 100, mtOptSeq = 500, mtOpen = null, mtSettling = null, mtLeaving = null;
+  /* Whether "לקבוע" has replaced the answer on every row — the link under the table. */
+  var mtPickMode = false;
   /* Three pieces of per-row state, all of them "what is this row in the middle
      of": whose names are open, whose desktop trash is armed, and which row a
      swipe has latched open. They live out here rather than on the DOM because
@@ -10458,22 +10468,22 @@ button.srow:active{background:var(--bg-tint)}
        both be off-looking: one of them is always pressed once you have said
        anything, and pressing the pressed one takes the answer back. */
     var act = settled ? ""
+      : mtPickMode && (!LIVE || m.canSettle)
+      ? '<button class="mtpick' + (mtSettling === o.id ? " arm" : "") + '" data-settle>' +
+        esc(t("mt.pick")) + "</button>"
       : '<div class="mtseg" role="group">' +
         '<button data-a="y" aria-pressed="' + (mineAns === "y") + '">' + esc(t("mt.iCan")) + "</button>" +
         '<button data-a="n" aria-pressed="' + (mineAns === "n") + '">' + esc(t("mt.iCant")) + "</button>" +
-        "</div>" +
-        /* Settling by hand is the owner's own case (2026-09-06): everybody
-           wants Tuesday, one person cannot make it, and it happens anyway.
-           Agreement no longer needs it — a unanimous option settles itself a
-           minute later — so this is the exception, and since 2026-09-23 it
-           is anybody's who is in it: nobody manages a coordination.
-           `canSettle` is the server's answer; the seed page shows it always.
-           Two presses, and the first one only arms it: what the second does is
-           tell everybody, including whoever said they cannot make it. */
-        (!LIVE || m.canSettle
-          ? '<button class="mtcheck' + (mtSettling === o.id ? " arm" : "") + '" data-settle ' +
-            'aria-label="' + esc(t("mt.pick")) + '"><svg><use href="#i-check"/></svg></button>'
-          : "");
+        "</div>";
+    /* Settling by hand is the owner's own case (2026-09-06): everybody wants
+       Tuesday, one person cannot make it, and it happens anyway. Agreement no
+       longer needs it — a unanimous option settles itself a minute later — so
+       this is the exception, and since 2026-09-23 it is anybody's who is in
+       it: nobody manages a coordination. `canSettle` is the server's answer;
+       the seed page shows it always. Since 2026-09-30 it is reached through
+       the link under the table (mtPickMode), which swaps every row's answer
+       for "לקבוע"; that press only arms it, and the confirm under the row is
+       what tells everybody, including whoever said they cannot make it. */
 
     var confirm = "";
     if(mtSettling === o.id){
@@ -10536,7 +10546,6 @@ button.srow:active{background:var(--bg-tint)}
        language switch with the sheet up would leave a Hebrew subtitle under an
        English list. Anything a re-render must fix belongs in the re-render. */
     $("#mtTitle").textContent = L(m.t);
-    $("#mtWho").textContent = t("mt.withList", {list:nameList(m.who.map(mtName))});
     $("#mtAskLbl").textContent = t(m.settled ? "mt.settledLbl"
       : m.opts.length === 1 ? "mt.askOne" : "mt.ask");
 
@@ -10573,6 +10582,11 @@ button.srow:active{background:var(--bg-tint)}
       ? '<div class="group">' + m.opts.map(function(o){ return mtOptHTML(m, o); }).join("") + "</div>"
       : '<div class="group"><div class="empty">' + esc(t("mt.stateNoOpts")) + "</div></div>";
     mtFitDates();
+    var pk = $("#mtPickLink");
+    pk.hidden = !!m.settled || !m.opts.length || (LIVE && !m.canSettle);
+    if(pk.hidden) mtPickMode = false;
+    pk.querySelector("span").textContent = t(mtPickMode ? "sheet.cancel" : "mt.pickMode");
+    pk.querySelector("svg").style.display = mtPickMode ? "none" : "";
 
     /* Adding is capped and nothing else: whoever opened the coordination has
        no more say over the table than anybody else in it. At the cap the
@@ -10606,11 +10620,16 @@ button.srow:active{background:var(--bg-tint)}
   function openMeet(id){
     mtOpen = mtById(id);
     if(!mtOpen) return;
-    mtSettling = null;
+    mtSettling = null; mtPickMode = false;
     renderMeet();
     showSheet($("#mtSheet"));
   }
   $("#mtSheet").addEventListener("scroll", function(){ paintCue($("#mtSheet"), $("#mtCue")); });
+  $("#mtPickLink").addEventListener("click", function(){
+    mtPickMode = !mtPickMode;
+    mtSettling = null;
+    renderMeet();
+  });
 
   $("#mtOpts").addEventListener("click", function(e){
     /* The click a finished swipe leaves behind — see the gesture below. */
@@ -10667,7 +10686,7 @@ button.srow:active{background:var(--bg-tint)}
       return;
     }
     if(e.target.closest("[data-force]")){ mtSettle(o); return; }
-    if(e.target.closest("[data-cancelsettle]")){ mtSettling = null; renderMeet(); return; }
+    if(e.target.closest("[data-cancelsettle]")){ mtSettling = null; mtPickMode = false; renderMeet(); return; }
 
     /* The red under a swiped row. Getting here already took the gesture, so
        this press is the second of the two and removes it. */
@@ -10805,7 +10824,7 @@ button.srow:active{background:var(--bg-tint)}
   })();
   function mtSettle(o){
     var m = mtOpen;
-    mtSettling = null;
+    mtSettling = null; mtPickMode = false;
     if(LIVE){
       /* Everyone is told by the server, this person included — so the page
          says only that it went, and the reload brings back the meeting as it
@@ -11860,7 +11879,7 @@ button.srow:active{background:var(--bg-tint)}
      /me/data was re-read only behind this page's own writes. So while a
      coordination sheet is open and the tab is on screen, the page re-reads
      every MT_POLL_MS — one small GET, and hydrate already keeps the open sheet
-     and redraws it. An armed ✓ (mtSettling) survives the re-read; an option
+     and redraws it. An armed "לקבוע" (mtSettling) survives the re-read; an option
      somebody removed is simply not drawn. Sheet closed or tab hidden: nothing. */
   var MT_POLL_MS = 8000;
   function tickMeetPoll(){
