@@ -5464,8 +5464,8 @@ button.srow:active{background:var(--bg-tint)}
       "toast.left":"יצאת מ„{name}” — היא נשארה אצל השאר",
 
       "cal.h":"פגישות",
-      "cal.p":"תצוגה בלבד. עורכים ביומן של הטלפון.",
-      "cal.open":"פתיחה ביומן Google","cal.empty":"אין אירועים ביום הזה.","cal.connectGo":"חיבור יומן",
+      "cal.p":"מה שעולמה מחזיקה בשבילך מהיום והלאה.",
+      "cal.open":"פתיחה ביומן Google","cal.empty":"אין ביום הזה כלום דרך עולמה.",
       "cal.todayPre":"היום · ","cal.dayPrefix":"יום ",
 
       "fr.h":"חברים בעולמה",
@@ -5668,7 +5668,6 @@ button.srow:active{background:var(--bg-tint)}
       "boot.failed":"לא הצלחנו לטעון את הדף כרגע. אפשר לנסות שוב, או לכתוב לעולמה בוואטסאפ ולבקש קישור חדש.",
       "boot.retry":"לנסות שוב",
       "prov.reauth":"צריך להתחבר מחדש — ההרשאה פגה",
-      "cal.notConnected":"אין יומן מחובר. אפשר לחבר אחד במסך החיבורים.",
       "sheet.allDay":"כל היום","sheet.repeat":"חזרה",
       "sheet.inCal":"להוסיף ליומן","sheet.inCalTo":"נוסף ל־{name} · {account}","sheet.inCalNone":"אין יומן מחובר לכתיבה",
       "cal.allDay":"כל היום",
@@ -5847,8 +5846,8 @@ button.srow:active{background:var(--bg-tint)}
       "toast.left":"You left \u201c{name}\u201d \u2014 it stays with the others",
 
       "cal.h":"Meetings",
-      "cal.p":"Read-only. Edit in your phone's calendar.",
-      "cal.open":"Open in Google Calendar","cal.empty":"Nothing on this day.","cal.connectGo":"Connect a calendar",
+      "cal.p":"What Allma is holding for you, from today on.",
+      "cal.open":"Open in Google Calendar","cal.empty":"Nothing from Allma on this day.",
       "cal.todayPre":"Today · ","cal.dayPrefix":"",
 
       "fr.h":"Friends on Allma",
@@ -6048,7 +6047,6 @@ button.srow:active{background:var(--bg-tint)}
       "boot.failed":"We could not load your page just now. Try again, or write to Allma on WhatsApp for a fresh link.",
       "boot.retry":"Try again",
       "prov.reauth":"Needs reconnecting — the permission expired",
-      "cal.notConnected":"No calendar connected. You can connect one on the Connections screen.",
       "sheet.allDay":"All day","sheet.repeat":"Repeat",
       "sheet.inCal":"Add to calendar","sheet.inCalTo":"Goes to {name} · {account}","sheet.inCalNone":"No calendar connected for writing",
       "cal.allDay":"All day",
@@ -10569,7 +10567,7 @@ button.srow:active{background:var(--bg-tint)}
     return mm < 720 ? "morning" : mm < 1020 ? "noon" : mm < 1320 ? "evening" : "night";
   }
   function mtClash(m, o){
-    var evs = agendaFor(o.day).filter(function(e){ return e.meet !== m.id; });
+    var evs = agendaFor(o.day, true).filter(function(e){ return e.meet !== m.id; });
     if(!evs.length) return null;
     /* a whole day collides with anything already in it */
     if(m.allDay) return evs[0];
@@ -11180,7 +11178,7 @@ button.srow:active{background:var(--bg-tint)}
       /* A day you already have something on is not disqualified — it is a fact
          you would want before proposing it, and the alternative is finding out
          from whoever answers. */
-      var busy = !past && agendaFor(off).length > 0;
+      var busy = !past && agendaFor(off, true).length > 0;
       html += '<button class="dgc' + (past ? " past" : "") + (on ? " on" : "") +
         (off === 0 ? " now" : "") + (busy ? " busy" : "") + '"' + (past ? " disabled" : "") +
         ' data-day="' + off + '" aria-pressed="' + on + '" aria-label="' +
@@ -12106,18 +12104,32 @@ button.srow:active{background:var(--bg-tint)}
      window /me/events fetches (domain/user-dashboard-events.js, DAYS_BACK 14
      / DAYS_AHEAD 28), so the last day the arrows can reach is the last day we
      actually asked Google about. An arrow that pages into an unfetched week
-     would draw it empty, and empty is the same picture as "nothing on". */
-  var weekOff = 0, WEEK_MIN = -2, WEEK_MAX = 3;
+     would draw it empty, and empty is the same picture as "nothing on".
+
+     WEEK_MIN is 0, not the -2 that fetch reaches (owner, 2026-10-01): this
+     tab is what Olma is still holding for them, and a day that is over holds
+     nothing they can act on. Google still answers for the two weeks back —
+     that is the server's window, and nothing here reads it any more. */
+  var weekOff = 0, WEEK_MIN = 0, WEEK_MAX = 3;
   function dayAt(i){ return new Date(base.getFullYear(), base.getMonth(), base.getDate() + i); }
   function dayISO(i){ return ymd(dayAt(i)); }
   /* the inverse: how many days from today a ymd is, in the person's own days */
   function dayOffset(v){ return Math.round((new Date(v + "T12:00:00") - base) / 86400000); }
-  /* Dated tasks stand in the day next to the real events, in time order,
-     because that is where a person looks to ask what the day holds — and
-     they open the very same editor the list does, never a copy of it. */
-  function agendaFor(i){
+  /* What a day holds, in time order. Dated tasks open the very same editor
+     the list does, never a copy of it.
+
+     Two readers, two answers (owner, 2026-10-01). The DAY VIEW shows only
+     what came through Olma — tasks, the events she reminds them of, settled
+     coordinations — because everything else on their Google calendar is one
+     tap away in Google's own app (#calOpen), and a copy of it here buried
+     the things Olma is actually looking after. The CLASH CHECK (mtClash, the
+     busy dots on a date grid) still wants everything: "you already have the
+     team meeting then" is exactly what somebody answering a time needs to
+     hear, whoever wrote the meeting. So `withGoogle` is passed by those two
+     and by nothing that draws a day. */
+  function agendaFor(i, withGoogle){
     var iso = dayISO(i);
-    var evs = (EVENTS[i] || []).map(function(v){
+    var evs = (withGoogle ? EVENTS[i] || [] : []).map(function(v){
       /* `all` travels: an all-day entry heads the day, and the clash check
          treats it as filling the whole of one. The seed has no all-day rows,
          which is exactly why this was easy to leave out. */
@@ -12161,6 +12173,25 @@ button.srow:active{background:var(--bg-tint)}
     return evs.sort(function(a, b){
       return (a.allDay ? "" : (a.time || "99:99")).localeCompare(b.allDay ? "" : (b.time || "99:99"));
     });
+  }
+  /* The day as it is drawn: without what is already over. A to-do whose hour
+     passed stays — it is late, not done, and the list still owes it. An event
+     or a settled meeting that has ended is gone the moment it ends, not three
+     hours later when the server archives it; with no stated end, an hour
+     after it starts, because "15:00" at 15:01 is somebody sitting in the
+     chair. A meeting settled on a part of the day and not an hour, and
+     anything all-day, lasts the day. Past days are not reachable at all. */
+  var OVER_AFTER_MIN = 60;
+  function isOver(v, i){
+    if(i < 0) return true;
+    if(i > 0 || v.allDay || !v.time) return false;
+    if(v.task && v.kind !== "event") return false;
+    var now = new Date(), nowMin = now.getHours() * 60 + now.getMinutes();
+    var endMin = v.end ? mtMins(v.end) : mtMins(v.time) + OVER_AFTER_MIN;
+    return endMin >= 0 && endMin <= nowMin;
+  }
+  function dayFor(i){
+    return agendaFor(i).filter(function(v){ return !isOver(v, i); });
   }
   /* Google's own day view, in the account that is connected — `authuser`
      takes the address, so somebody signed into two Google accounts lands in
@@ -12213,7 +12244,7 @@ button.srow:active{background:var(--bg-tint)}
     /* Both of these are true of a strip that already exists, and both can
        change under a reload: which day is lit, and how full each day is. */
     cells.forEach(function(b, k){
-      var i = wk0 + k, n = agendaFor(i).length, dots = "";
+      var i = wk0 + k, n = dayFor(i).length, dots = "";
       for(var j = 0; j < Math.min(n, 3); j++) dots += "<i></i>";
       b.setAttribute("aria-selected", i === sel ? "true" : "false");
       var dd = b.querySelector(".dots");
@@ -12237,7 +12268,7 @@ button.srow:active{background:var(--bg-tint)}
        definition quietly won, which cost this heading its separator. */
     $("#agendaLabel").textContent = (sel === 0 ? t("cal.todayPre") : "") +
       t("cal.dayPrefix") + D.full[d2.getDay()] + ", " + d2.getDate() + " " + D.months[d2.getMonth()];
-    var list = agendaFor(sel);
+    var list = dayFor(sel);
     $("#agenda").innerHTML = list.length ? list.map(function(v){
       return '<div class="ev"' +
         (v.task ? ' data-task="' + v.task + '" role="button" tabindex="0"' : "") +
@@ -12254,11 +12285,12 @@ button.srow:active{background:var(--bg-tint)}
           esc(t("mt.calRemove")) + '" aria-label="' + esc(t("mt.calRemove")) +
           '"><svg><use href="#i-x"/></svg></button>' : "") + "</div>";
     }).join("")
-      /* "Nothing today" and "we cannot see your calendar" look identical on an
-         empty day, and the server has always told us which (`connected`). */
-      : (LIVE && !calConnected
-        ? emptyBig(t("cal.notConnected"), "go:tools", t("cal.connectGo"), "i-tools")
-        : '<div class="empty">' + esc(t("cal.empty")) + "</div>");
+      /* Nothing Olma holds on this day. It used to tell "nothing on" from "we
+         cannot see your calendar" (`connected`), and offer connecting for the
+         second — but the day no longer draws Google's events at all, so a
+         missing connection is not why it is empty. What is under it, when
+         Google IS connected, is #calOpen: the rest of their day, one tap. */
+      : '<div class="empty">' + esc(t("cal.empty")) + "</div>";
     /* …and the list rises, but only when the DAY changed. A reload landing on
        the day you are already reading must not make the page flinch. */
     if(stripSel !== sel){

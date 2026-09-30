@@ -565,3 +565,39 @@ test('a new task asks for its name before anything else', () => {
     assert.equal((page.match(new RegExp(`"${k.replace(/\./g, '\\.')}":"`, 'g')) || []).length, 2, `${k} is not in both languages`);
   }
 });
+
+// The calendar tab is what Olma is still holding (owner, 2026-10-01): no
+// Google events drawn, nothing already over. The logic is lifted out of the
+// page and RUN, because a regex over it could not tell "hides a late to-do"
+// from "keeps a late to-do", which is the whole difference between the two.
+test('the day view drops what is over, and never a late to-do', () => {
+  const grab = (re) => { const m = page.match(re); assert.ok(m, `missing ${re}`); return m[0]; };
+  const src = grab(/function mtMins\(hhmm\)\{[\s\S]*?\n {2}\}/) + '\n'
+    + grab(/var OVER_AFTER_MIN = 60;[\s\S]*?\n {2}\}\n/);
+  const RealDate = Date;
+  class At1530 extends RealDate {
+    constructor(...a) { if (a.length) super(...a); else super(2026, 9, 1, 15, 30); }
+  }
+  const isOver = new Function('Date', `${src}; return isOver;`)(At1530);
+  const ev = (o) => ({ task: 1, kind: 'event', ...o });
+  assert.equal(isOver(ev({ time: '14:00' }), 0), true, 'an hour after an endless event starts, it is over');
+  assert.equal(isOver(ev({ time: '15:00' }), 0), false, 'still inside its hour');
+  assert.equal(isOver(ev({ time: '14:00', end: '15:00' }), 0), true);
+  assert.equal(isOver(ev({ time: '15:00', end: '16:00' }), 0), false);
+  assert.equal(isOver({ task: 1, kind: 'todo', time: '09:00' }, 0), false, 'a late to-do is still owed');
+  assert.equal(isOver({ meet: 1, time: '11:00' }, 0), true);
+  assert.equal(isOver({ meet: 1, time: '', part: 'x' }, 0), false, 'a part of the day lasts the day');
+  assert.equal(isOver(ev({ allDay: true, time: '' }), 0), false);
+  assert.equal(isOver(ev({ time: '09:00' }), 1), false, 'tomorrow is never over');
+  assert.equal(isOver(ev({ time: '23:00' }), -1), true, 'yesterday always is');
+});
+
+test('Google events feed the clash check and never the day view', () => {
+  assert.match(page, /function agendaFor\(i, withGoogle\)/);
+  assert.match(page, /withGoogle \? EVENTS\[i\] \|\| \[\] : \[\]/);
+  assert.match(page, /agendaFor\(o\.day, true\)/, 'mtClash still sees the whole calendar');
+  assert.match(page, /agendaFor\(off, true\)\.length > 0/, 'so do the busy days on a date grid');
+  // Everything that DRAWS a day goes through dayFor, which asks without Google.
+  assert.doesNotMatch(page, /n = agendaFor\(i\)\.length|var list = agendaFor\(sel\)/);
+  assert.match(page, /WEEK_MIN = 0,/, 'no paging back into days that are over');
+});
