@@ -3261,8 +3261,9 @@ button.srow:active{background:var(--bg-tint)}
   padding:12px 16px;font-size:18px;text-align:start;box-shadow:0 0 0 4px var(--accent-soft);
 }
 .stitlewrap.creating .stitle::placeholder{color:var(--text-2)}
-/* On a new task the check is the one thing to press, and it always does
-   something: with no name it saves the task as "משימה ללא שם 1" (commit). */
+/* On a new task the check is the one thing to press, and it always answers:
+   with no name it says "קודם שם" at the name rather than saving (owner,
+   2026-10-01). */
 .stgo{
   width:30px;height:30px;flex:none;border-radius:50%;display:grid;place-items:center;
   background:var(--action);color:var(--on-action);
@@ -4135,9 +4136,9 @@ button.srow:active{background:var(--bg-tint)}
   <div class="sxhold"><button class="sx" type="button" data-sx data-i18n-label="sheet.close"><svg><use href="#i-x"/></svg></button></div>
   <!-- The heading of a sheet is not usually typeable, so it needs to say that
        it is: a pencil while editing, and on a brand-new task a field with a
-       check beside it. The check always saves — a task left without a name is
-       saved as "משימה ללא שם 1", never thrown away. Everything below still
-       saves as you type. -->
+       check beside it. The check with no name asks for one; a task CLOSED
+       after something was chosen is saved as "משימה ללא שם 1", never thrown
+       away. Everything below still saves as you type. -->
   <div class="stitlewrap">
     <input class="stitle" id="sTitle" type="text" data-i18n-ph="sheet.taskPh" data-i18n-label="sheet.task" autocomplete="off">
     <span class="stedit" id="sTitleEdit" aria-hidden="true"><svg><use href="#i-pencil"/></svg></span>
@@ -9547,8 +9548,11 @@ button.srow:active{background:var(--bg-tint)}
      It confirms rather than creates, and says so honestly — the task is saved
      as you type, exactly like every other field here. And it is never a dead
      button: until 2026-09-30 it sat at a third of its opacity and ignored the
-     press while the name was empty, which read as the page being broken. Now
-     an empty name is filled in for them (saveUnnamed). */
+     press while the name was empty, which read as the page being broken. For a
+     day an empty name was filled in for them (saveUnnamed); since 2026-10-01
+     the press is answered at the name instead, the same way a locked row is
+     (showNeed) — once nothing can be chosen before a name, a check that saved
+     "משימה ללא שם" saved an empty task. */
   var creating = false, untouchedSig = "";
   function syncTitleRow(){
     var w = $("#sTitle").parentElement;
@@ -9599,30 +9603,33 @@ button.srow:active{background:var(--bg-tint)}
     $("#sheet").classList.toggle("namefirst", nameFirst);
     if(!nameFirst){ $("#sNeed").hidden = true; $("#sTitle").classList.remove("need"); }
   }
+  function showNeed(kind){
+    $("#sNeed").textContent = t("sheet.need." + kind);
+    $("#sNeed").hidden = false;
+    $("#sTitle").classList.add("need");
+    $("#sTitle").focus();
+  }
   $("#sTitle").addEventListener("input", function(){
-    if(nameFirst && $("#sTitle").value.trim()){ nameFirst = false; syncNameFirst(); }
+    if(!$("#sTitle").value.trim()) return;
+    nameFirst = false;
+    syncNameFirst();
   });
   $("#sheet").addEventListener("click", function(e){
     if(!nameFirst) return;
     var at = e.target.closest(NEED_AT);
     if(!at) return;
     e.preventDefault(); e.stopPropagation();
-    var kind = e.target.closest("#sWhenRow") ? "when" : e.target.closest("#sRemindRow") ? "rem" : "rest";
-    $("#sNeed").textContent = t("sheet.need." + kind);
-    $("#sNeed").hidden = false;
-    $("#sTitle").classList.add("need");
-    $("#sTitle").focus();
+    showNeed(e.target.closest("#sWhenRow") ? "when" : e.target.closest("#sRemindRow") ? "rem" : "rest");
   }, true);
   $("#sTitleGo").addEventListener("click", function(){
-    var named = !!$("#sTitle").value.trim();
-    if(named) commit();             /* it may not have been pushed yet */
-    else saveUnnamed();
+    if(!$("#sTitle").value.trim()){ showNeed("rest"); return; }
+    commit();                       /* it may not have been pushed yet */
     creating = false;
     syncTitleRow();
     nameFirst = false;
     syncNameFirst();
     $("#sTitle").blur();
-    if(named) toast(t("toast.saved"));
+    toast(t("toast.saved"));
   });
 
   $("#sRepeatRow").addEventListener("click", function(){

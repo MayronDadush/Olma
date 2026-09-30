@@ -552,7 +552,9 @@ test('the locked card says what she is, and labels the example it sits on', () =
 // reach the page to be answered — and it must never outlive the first letter.
 test('a new task asks for its name before anything else', () => {
   assert.match(page, /nameFirst = isNew;\n {4}syncNameFirst\(\);/);
-  assert.match(page, /if\(nameFirst && \$\("#sTitle"\)\.value\.trim\(\)\)\{ nameFirst = false; syncNameFirst\(\); \}/);
+  assert.match(page, /if\(!\$\("#sTitle"\)\.value\.trim\(\)\) return;\n {4}nameFirst = false;\n {4}syncNameFirst\(\);/);
+  // …and the check with no name asks for one rather than saving an empty task
+  assert.match(page, /\$\("#sTitleGo"\)\.addEventListener\("click", function\(\)\{\n {4}if\(!\$\("#sTitle"\)\.value\.trim\(\)\)\{ showNeed\("rest"\); return; \}/);
   assert.match(page, /\$\("#sheet"\)\.addEventListener\("click", function\(e\)\{\n {4}if\(!nameFirst\) return;/);
   assert.match(page, /var NEED_AT = "#sCatLine, #sListGroup, #sMainGroup, #sShareGroup, #sAlso";/);
   assert.match(page, /#sheet\.namefirst #sWhenSay,#sheet\.namefirst #sRemSay,#sheet\.namefirst #sRemOff\{display:none!important\}/);
