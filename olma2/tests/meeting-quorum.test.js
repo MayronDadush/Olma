@@ -268,7 +268,7 @@ test('no class the option row owns is defined twice', () => {
   // The row's own structural names. Not the `.mo*` notes it reuses on purpose,
   // and not `.group`, which is the page's shared card.
   const owned = ['mtswipe', 'mtback', 'mtfront', 'mtopt', 'mttop', 'mtmain',
-    'mtring', 'mtformula', 'mtsum', 'mtseg', 'mtcheck', 'mtdel', 'mtvotes', 'minchip'];
+    'mtring', 'mtformula', 'mtsum', 'mtseg', 'mtpick', 'mtdel', 'mtvotes', 'minchip'];
 
   for (const cls of owned) {
     // A bare definition is the class at the START of a selector with nothing
