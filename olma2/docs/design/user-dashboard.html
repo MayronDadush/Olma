@@ -2892,17 +2892,35 @@ button.srow:active{background:var(--bg-tint)}
 .chan{transition:transform .28s var(--squash),box-shadow .42s var(--ease-io)}
 
 /* The profile has no title; its hero is what closes the band there. */
+/* The animal sits beside the name rather than above it (the owner,
+   2026-09-30): half a screen of band pushed every setting below the fold.
+   It stays large — 88px, bigger than the 64 first proposed, at his ask. */
 .hero-profile{
-  display:flex;flex-direction:column;align-items:center;gap:12px;padding:6px 20px 26px;
+  display:flex;align-items:center;gap:16px;padding:6px 24px 24px;
   margin:0 -18px 18px;background:var(--band);color:var(--on-band);border-radius:0 0 28px 28px;
 }
 .view.active > .hero-profile{animation:none}
 .view.active > .hero-profile > *{animation:rise .25s var(--ease) both}
-.hero-profile .linkbtn{color:var(--on-band);text-decoration:underline;text-underline-offset:3px}
-.hero-profile .avatar{width:96px;height:96px}
-.hero-profile .who{text-align:center}
-.hero-profile .who b{display:block;font-family:var(--font-display);font-size:22px;font-weight:600}
-.hero-profile .who span{font-size:14px;color:var(--on-band-2)}
+.hero-profile .linkbtn{color:var(--on-band);text-decoration:underline;text-underline-offset:3px;font-size:14.5px}
+.hero-profile .avatar{width:88px;height:88px;flex:none}
+.hero-profile .who{display:flex;flex-direction:column;align-items:flex-start;gap:4px;min-width:0}
+.hero-profile .who b{display:block;font-family:var(--font-display);font-size:24px;font-weight:600;overflow-wrap:anywhere}
+
+/* The profile as sentences: the task sheet's row (.srow — icon, what the row
+   is, what is set), and each opens its own controls in place beneath it. */
+.profrows .fold + .srow::before{
+  content:"";position:absolute;top:0;height:1px;background:var(--sep);
+  inset-inline-start:62px;inset-inline-end:0;
+}
+.profrows .slab{display:flex;align-items:baseline;gap:6px}
+.profrows .sval{overflow-wrap:anywhere}
+.pfin{border-top:1px solid var(--sep);background:color-mix(in oklab,var(--bg) 45%,var(--surface))}
+.pfpad{padding:12px 14px 12px}
+.pfin > .pfpad + .row::before,.pfin > .pnote + .row::before{
+  content:"";position:absolute;top:0;height:1px;background:var(--sep);inset-inline-start:14px;inset-inline-end:0;
+}
+.pnote{padding:0 14px 14px;margin:0}
+.pfin > .row + .pnote{padding-top:2px}
 
 /* ─────────────────────────  profile settings  ───────────────────────── */
 /* A row whose control is too wide to share a line with its title: the title
@@ -3776,43 +3794,57 @@ button.srow:active{background:var(--bg-tint)}
   </section>
 
   <!-- ══════════════  profile  ══════════════
-       Five cards, in the order a person reaches for them: who I am, when she
-       may write, the summary she sends, who she is to me, and what she knows.
+       Six rows, in the order a person reaches for them: who I am, when she
+       may write, the summary she sends, who she is to me, my tasks, and what
+       she knows.
        Every control here saves as it changes — there is no save button, and
-       the glabel's quiet "saved" is the only receipt, because a form that
+       the row label's quiet "saved" is the only receipt, because a form that
        asks you to confirm your own hours is asking twice. -->
   <section class="view" data-view="me">
     <div class="hero-profile" style="--i:0">
       <div class="avatar" id="bigAvatar"></div>
-      <div class="who"><b id="whoName"></b><span id="whoSince"></span></div>
-      <button class="linkbtn" id="shuffleAvatar" data-i18n="me.avatar"></button>
+      <div class="who">
+        <b id="whoName"></b>
+        <button class="linkbtn" id="shuffleAvatar" data-i18n="me.avatar"></button>
+      </div>
     </div>
     <div class="stack" style="--i:1">
-      <div>
-        <div class="glabel"><span data-i18n="me.personal"></span></div>
-        <div class="group fpad">
-          <div class="fgrid">
-            <div class="ffield"><label for="fname" data-i18n="me.first"></label><input id="fname" type="text" maxlength="40" autocomplete="given-name"></div>
-            <div class="ffield"><label for="lname" data-i18n="me.last"></label><input id="lname" type="text" maxlength="40" autocomplete="family-name"></div>
-            <div class="ffield"><label for="bday" data-i18n="me.bday"></label><button class="dateval" id="bday" data-cal="bday" data-calstart="1990-06-15" data-calmin="1900-01-01" data-val=""></button></div>
-            <div class="ffield">
-              <label id="genderLabel" data-i18n="me.form"></label>
-              <div class="seg" id="genderSeg" role="group" aria-labelledby="genderLabel">
-                <button aria-pressed="false" data-g="m" data-i18n="me.masc"></button>
-                <button aria-pressed="false" data-g="f" data-i18n="me.fem"></button>
+      <!-- Six rows, each saying what is set right now; a tap opens that
+           card's own controls in place (the owner, 2026-09-30). Every control
+           keeps its id, so the handlers below never learned about the rows. -->
+      <div class="group profrows" id="profRows">
+        <button class="srow prow" aria-expanded="false" aria-controls="pfAbout">
+          <span class="stile st-cal"><svg><use href="#i-person"/></svg></span>
+          <span class="stx"><span class="slab" data-i18n="me.personal"></span><span class="sval" id="pvAbout"></span></span>
+          <svg class="chev"><use href="#i-chev"/></svg>
+        </button>
+        <div class="fold" id="pfAbout"><div><div class="pfin">
+          <div class="pfpad">
+            <div class="fgrid">
+              <div class="ffield"><label for="fname" data-i18n="me.first"></label><input id="fname" type="text" maxlength="40" autocomplete="given-name"></div>
+              <div class="ffield"><label for="lname" data-i18n="me.last"></label><input id="lname" type="text" maxlength="40" autocomplete="family-name"></div>
+              <div class="ffield"><label for="bday" data-i18n="me.bday"></label><button class="dateval" id="bday" data-cal="bday" data-calstart="1990-06-15" data-calmin="1900-01-01" data-val=""></button></div>
+              <div class="ffield">
+                <label id="genderLabel" data-i18n="me.form"></label>
+                <div class="seg" id="genderSeg" role="group" aria-labelledby="genderLabel">
+                  <button aria-pressed="false" data-g="m" data-i18n="me.masc"></button>
+                  <button aria-pressed="false" data-g="f" data-i18n="me.fem"></button>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-        <p class="note" style="padding:0 14px" data-i18n="me.formNote"></p>
-      </div>
+          <p class="note pnote" data-i18n="me.formNote"></p>
+        </div></div></div>
 
-      <!-- When she may start a conversation. Hours, days, and chagim are one
-           question — "when do you not want to hear from me" — so they are one
-           card, and the note under it says what still gets through. -->
-      <div>
-        <div class="glabel"><span data-i18n="me.when"></span><span class="hint savedmark" id="whenSaved" data-i18n="me.saved"></span></div>
-        <div class="group">
+        <!-- When she may start a conversation. Hours, days, and chagim are one
+             question — "when do you not want to hear from me" — so they are one
+             row, and the note under it says what still gets through. -->
+        <button class="srow prow" aria-expanded="false" aria-controls="pfWhen">
+          <span class="stile st-sea"><svg><use href="#i-moon"/></svg></span>
+          <span class="stx"><span class="slab"><span data-i18n="me.when"></span><span class="savedmark" id="whenSaved" data-i18n="me.saved"></span></span><span class="sval" id="pvWhen"></span></span>
+          <svg class="chev"><use href="#i-chev"/></svg>
+        </button>
+        <div class="fold" id="pfWhen"><div><div class="pfin">
           <div class="row no-icon whenrow">
             <div class="row-txt">
               <div class="row-title" data-i18n="me.hours"></div>
@@ -3848,15 +3880,17 @@ button.srow:active{background:var(--bg-tint)}
               <button aria-pressed="false" data-calkind="muslim" data-i18n="me.cal.muslim"></button>
             </div>
           </div>
-        </div>
-        <p class="note" style="padding:0 14px" id="whenNote"></p>
-      </div>
+          <p class="note pnote" id="whenNote"></p>
+        </div></div></div>
 
-      <!-- The daily summary. Off is a real answer, so the switch leads and the
-           times only unfold once there is a summary to time. -->
-      <div>
-        <div class="glabel"><span data-i18n="me.digest"></span><span class="hint savedmark" id="digestSaved" data-i18n="me.saved"></span></div>
-        <div class="group">
+        <!-- The daily summary. Off is a real answer, so the switch leads and the
+             times only unfold once there is a summary to time. -->
+        <button class="srow prow" aria-expanded="false" aria-controls="pfDigest">
+          <span class="stile st-gold"><svg><use href="#i-sun"/></svg></span>
+          <span class="stx"><span class="slab"><span data-i18n="me.digest"></span><span class="savedmark" id="digestSaved" data-i18n="me.saved"></span></span><span class="sval" id="pvDigest"></span></span>
+          <svg class="chev"><use href="#i-chev"/></svg>
+        </button>
+        <div class="fold" id="pfDigest"><div><div class="pfin">
           <div class="row no-icon">
             <div class="row-txt">
               <div class="row-title" data-i18n="me.digestOn"></div>
@@ -3874,24 +3908,27 @@ button.srow:active{background:var(--bg-tint)}
               <button aria-pressed="false" data-scope="full" data-i18n="me.scope.full"></button>
             </div>
           </div></div></div>
-        </div>
-      </div>
+        </div></div></div>
 
-      <div>
-        <div class="glabel"><span data-i18n="me.setup"></span></div>
-        <div class="group fpad">
-          <div class="fgrid">
-            <div class="ffield">
-              <label data-i18n="me.where"></label>
-              <button class="dateval cityval" id="cityRow"><span id="cityName"></span><span class="row-end" id="cityClock"></span></button>
-            </div>
-            <div class="ffield">
-              <label for="oname" data-i18n="me.calledBy"></label>
-              <input id="oname" type="text" maxlength="18" autocomplete="off" data-i18n-label="me.calledBy">
+        <button class="srow prow" aria-expanded="false" aria-controls="pfSetup">
+          <span class="stile st-share"><svg><use href="#i-bubble"/></svg></span>
+          <span class="stx"><span class="slab" data-i18n="me.setup"></span><span class="sval" id="pvSetup"></span></span>
+          <svg class="chev"><use href="#i-chev"/></svg>
+        </button>
+        <div class="fold" id="pfSetup"><div><div class="pfin">
+          <div class="pfpad">
+            <div class="fgrid">
+              <div class="ffield">
+                <label data-i18n="me.where"></label>
+                <button class="dateval cityval" id="cityRow"><span id="cityName"></span><span class="row-end" id="cityClock"></span></button>
+              </div>
+              <div class="ffield">
+                <label for="oname" data-i18n="me.calledBy"></label>
+                <input id="oname" type="text" maxlength="18" autocomplete="off" data-i18n-label="me.calledBy">
+              </div>
             </div>
           </div>
-        </div>
-        <div class="group" style="margin-top:10px">
+          <p class="note pnote" id="setupNote"></p>
           <div class="row no-icon stackrow">
             <div class="rowline"><div class="row-title" data-i18n="me.language"></div></div>
             <div class="chips" id="langChips" role="group" data-i18n-label="me.language"></div>
@@ -3907,6 +3944,14 @@ button.srow:active{background:var(--bg-tint)}
               <button data-theme-opt="auto" aria-pressed="true"><svg><use href="#i-auto"/></svg><span data-i18n="me.themeAuto"></span></button>
             </div>
           </div>
+        </div></div></div>
+
+        <button class="srow prow" aria-expanded="false" aria-controls="pfTasks">
+          <span class="stile st-cal"><svg><use href="#i-list"/></svg></span>
+          <span class="stx"><span class="slab" data-i18n="me.tasksRow"></span><span class="sval" id="pvTasks"></span></span>
+          <svg class="chev"><use href="#i-chev"/></svg>
+        </button>
+        <div class="fold" id="pfTasks"><div><div class="pfin">
           <div class="row no-icon">
             <div class="row-txt">
               <div class="row-title" data-i18n="me.taskCal"></div>
@@ -3921,35 +3966,26 @@ button.srow:active{background:var(--bg-tint)}
             </div>
             <button class="switch" role="switch" aria-checked="false" id="nudgeSwitch" data-i18n-label="me.nudge"></button>
           </div>
-        </div>
-        <p class="note" style="padding:0 14px" id="setupNote"></p>
-      </div>
+        </div></div></div>
 
-      <!-- What she knows. Closed by default: it is a list that grows, and the
-           page should not get longer every time she learns something. Open,
-           it leads with three questions — each saved one leaves, lands in the
-           list below, and the next question takes its place. -->
-      <div>
-        <div class="glabel"><span data-i18n="me.knows"></span></div>
-        <div class="group">
-          <button class="row no-icon" id="factsRow" aria-expanded="false" aria-controls="factsFold">
-            <div class="row-txt">
-              <div class="row-title" data-i18n="me.knowsRow"></div>
-              <div class="row-sub" id="factsSub"></div>
-            </div>
-            <svg class="chev"><use href="#i-chev"/></svg>
-          </button>
-          <div class="fold" id="factsFold"><div><div class="foldpad tight">
-            <div class="fqhead" id="fqHead">
-              <b data-i18n="me.fqTitle"></b>
-              <span data-i18n="me.fqHint"></span>
-            </div>
-            <div class="fqlist" id="factQs"></div>
-            <div class="flabel factshead" id="factsHead" data-i18n="me.factsList"></div>
-            <div class="factlist" id="factList"></div>
-            <p class="note" id="factsEmpty" hidden data-i18n="me.factsEmpty"></p>
-          </div></div></div>
-        </div>
+        <!-- What she knows. Closed by default like every row here: it is a list
+             that grows. Open, it leads with three questions — each saved one
+             leaves, lands in the list below, and the next takes its place. -->
+        <button class="srow prow" id="factsRow" aria-expanded="false" aria-controls="factsFold">
+          <span class="stile st-sea"><svg><use href="#i-note"/></svg></span>
+          <span class="stx"><span class="slab" data-i18n="me.knows"></span><span class="sval" id="factsSub"></span></span>
+          <svg class="chev"><use href="#i-chev"/></svg>
+        </button>
+        <div class="fold" id="factsFold"><div><div class="foldpad tight">
+          <div class="fqhead" id="fqHead">
+            <b data-i18n="me.fqTitle"></b>
+            <span data-i18n="me.fqHint"></span>
+          </div>
+          <div class="fqlist" id="factQs"></div>
+          <div class="flabel factshead" id="factsHead" data-i18n="me.factsList"></div>
+          <div class="factlist" id="factList"></div>
+          <p class="note" id="factsEmpty" hidden data-i18n="me.factsEmpty"></p>
+        </div></div></div>
       </div>
 
       <div class="pausewrap">
@@ -5516,7 +5552,7 @@ button.srow:active{background:var(--bg-tint)}
       "p.msg":"העברת הודעות","p.msgSub":"יכול לשלוח לך דרך עולמה",
 
       "me.avatar":"החלפת דמות",
-      "me.personal":"פרטים אישיים","me.first":"שם פרטי","me.last":"שם משפחה","me.bday":"תאריך לידה",
+      "me.personal":"עליך","me.first":"שם פרטי","me.last":"שם משפחה","me.bday":"תאריך לידה",
       "me.where":"מיקום",
       "me.guessed":"נוחש לפי קידומת הטלפון","me.confirmed":"אישרת בעצמך",
       "me.form":"פנייה","me.formHint":"איך עולמה תדבר אליך",
@@ -5535,9 +5571,9 @@ button.srow:active{background:var(--bg-tint)}
       "me.pausedNote":"עולמה לא תיזום כלום — לא תזכורות, לא סיכומים. היא עדיין תענה כשתכתוב לה.",
       "live.paused":"{name} מושהית","pg.go":"להחזיר את {name}","pg.body":"בינתיים היא לא שולחת תזכורות וסיכומים. שום דבר לא נמחק, והכול חוזר ברגע שמחזירים אותה.",
       "me.noName":"ללא שם",
-      "me.since":"בעולמה מאז {when}","me.saved":"נשמר",
+      "me.saved":"נשמר",
       "legal.nav":"מידע משפטי ונגישות","legal.privacy":"פרטיות","legal.terms":"תנאי שימוש","legal.a11y":"נגישות",
-      "me.when":"מתי אפשר לכתוב לך","me.hours":"שעות זמינות",
+      "me.when":"מתי עולמה כותבת","me.hours":"שעות זמינות",
       "me.hoursDefault":"ברירת מחדל","me.hoursStated":"בחירה שלך","me.hoursReset":"איפוס",
       "me.quietDays":"ימים שקטים","me.quietNone":"בלי ימים שקטים","me.quietDefault":"ברירת מחדל",
       "me.quietShabbat":"שבת: מהדלקת נרות ועד צאת השבת",
@@ -5553,7 +5589,8 @@ button.srow:active{background:var(--bg-tint)}
       "me.language":"השפה שלך בשיחה",
       "me.taskCal":"משימות ליומן","me.taskCalSub":"משימות חדשות דרך עולמה שיש להן תאריך ושעה מתווספות ליומן אוטומטית",
       "me.nudge":"לנדנד לי","me.nudgeSub":"תזכורת שלא סימנת שבוצעה תחזור שוב באותו יום ולמחרת. כבוי — פעם אחת, בשעה שביקשת",
-      "me.knows":"מה עולמה יודעת","me.knowsRow":"דברים שעולמה זוכרת",
+      "me.knows":"מה עולמה זוכרת","me.tasksRow":"משימות",
+      "me.sum.quiet":"{days} בשקט","me.sum.cal.on":"ליומן","me.sum.cal.off":"לא ליומן","me.sum.nudge.on":"עם נדנוד","me.sum.nudge.off":"בלי נדנוד",
       "me.facts.n0":"עוד לא נשמר כלום","me.facts.n1":"דבר אחד","me.facts.nN":"{n} דברים",
       "me.fqTitle":"לספר לה עוד","me.fqHint":"שאלות קצרות, ואפשר לדלג על כל אחת",
       "me.fqSave":"שמירה","me.fqSkip":"דילוג","me.fqTo":"עד",
@@ -5893,7 +5930,7 @@ button.srow:active{background:var(--bg-tint)}
       "p.msg":"Message relay","p.msgSub":"Can write to you through Allma",
 
       "me.avatar":"Change character",
-      "me.personal":"Personal details","me.first":"First name","me.last":"Last name","me.bday":"Date of birth",
+      "me.personal":"About you","me.first":"First name","me.last":"Last name","me.bday":"Date of birth",
       "me.where":"Location",
       "me.guessed":"Guessed from your phone number","me.confirmed":"Confirmed by you",
       "me.form":"Gender","me.formHint":"Only matters in gendered languages",
@@ -5912,9 +5949,9 @@ button.srow:active{background:var(--bg-tint)}
       "me.pausedNote":"Allma starts nothing — no reminders, no summaries. She still answers when you write to her.",
       "live.paused":"{name} is paused","pg.go":"Bring {name} back","pg.body":"Meanwhile she sends no reminders and no summaries. Nothing is deleted, and it all comes back the moment you bring her back.",
       "me.noName":"No name",
-      "me.since":"On Allma since {when}","me.saved":"Saved",
+      "me.saved":"Saved",
       "legal.nav":"Legal and accessibility","legal.privacy":"Privacy","legal.terms":"Terms","legal.a11y":"Accessibility",
-      "me.when":"When she may write to you","me.hours":"Available hours",
+      "me.when":"When Allma writes","me.hours":"Available hours",
       "me.hoursDefault":"Default","me.hoursStated":"Your choice","me.hoursReset":"Reset",
       "me.quietDays":"Quiet days","me.quietNone":"No quiet days","me.quietDefault":"Default",
       "me.quietShabbat":"Saturday: candle-lighting to havdalah",
@@ -5930,7 +5967,8 @@ button.srow:active{background:var(--bg-tint)}
       "me.language":"Your language together",
       "me.taskCal":"Tasks on your calendar","me.taskCalSub":"New tasks Allma gives a date and time land on your calendar automatically",
       "me.nudge":"Nudge me","me.nudgeSub":"A reminder you have not marked done comes back later that day and again the next. Off — once, at the hour you asked for",
-      "me.knows":"What Allma knows","me.knowsRow":"Things Allma remembers",
+      "me.knows":"What Allma remembers","me.tasksRow":"Tasks",
+      "me.sum.quiet":"quiet on {days}","me.sum.cal.on":"to your calendar","me.sum.cal.off":"not to your calendar","me.sum.nudge.on":"with nudges","me.sum.nudge.off":"no nudges",
       "me.facts.n0":"Nothing saved yet","me.facts.n1":"One thing","me.facts.nN":"{n} things",
       "me.fqTitle":"Tell her more","me.fqHint":"Short questions, and any can be skipped",
       "me.fqSave":"Save","me.fqSkip":"Skip","me.fqTo":"to",
@@ -10002,13 +10040,17 @@ button.srow:active{background:var(--bg-tint)}
   window.addEventListener("resize", function(){ if(calAnchor) placeCal(); });
 
   /* ───────── city / time zone ───────── */
-  function renderCityRow(){
+  /* The row names the city we have a name for; the clock is the person's own
+     zone, which for an unlisted one is not that city's. */
+  function cityLabel(){
     var c = CITIES[cityIdx];
-    /* The row names the city we have a name for; the clock is the person's own
-       zone, which for an unlisted one is not that city's. */
-    $("#cityName").textContent = myZone && c.tz !== myZone ? myZone : L(c.n);
+    return myZone && c.tz !== myZone ? myZone : L(c.n);
+  }
+  function renderCityRow(){
+    $("#cityName").textContent = cityLabel();
     $("#cityClock").textContent = clockIn(myTz());
     $("#setupNote").textContent = t(cityConfirmed ? "me.confirmed" : "me.guessed") + " · " + t("me.setupNote");
+    renderSummary();
   }
   function renderCityList(q){
     q = (q || "").trim().toLowerCase();
@@ -12614,6 +12656,7 @@ button.srow:active{background:var(--bg-tint)}
     var full = (f + " " + l).trim() || t("me.noName");
     $("#whoName").textContent = full;
     $("#brandName").textContent = full;
+    renderSummary();
   }
   function hop(el){
     if(!el) return;
@@ -12704,6 +12747,7 @@ button.srow:active{background:var(--bg-tint)}
     $$("button", this).forEach(function(x){ x.setAttribute("aria-pressed", x === b ? "true" : "false"); });
     ME.gender = b.dataset.g === "f" ? "female" : "male";
     paintAvatars();
+    renderSummary();
     /* the greeting on the connections page is gendered, so it moves with this */
     renderHome();
     $("#bigAvatar").classList.remove("pop"); void $("#bigAvatar").offsetWidth; $("#bigAvatar").classList.add("pop");
@@ -12720,7 +12764,7 @@ button.srow:active{background:var(--bg-tint)}
      In design mode (nothing served) these are seeds, chosen to show every
      state a real person can be in: a default window, a stated quiet day,
      chagim off, a summary on, and a few questions already answered. */
-  var ME = {gender:null, joined:"2026-05-12", locale:"he", taskCal:false, nudge:false};
+  var ME = {gender:null, locale:"he", taskCal:false, nudge:false};
   var SCHED = {start:"09:00", end:"21:00", source:"default", def:{start:"09:00", end:"21:00"},
                days:[6], daysSource:"default", holidays:false, calendar:"jewish", shabbat:true};
   var DIGEST = {times:["08:00"], scope:"summary"}, lastDigestTimes = [];
@@ -12776,18 +12820,13 @@ button.srow:active{background:var(--bg-tint)}
     clearTimeout(el._t);
     el._t = setTimeout(function(){ el.classList.remove("show"); }, 1400);
   }
-  function monthYear(v){
-    if(!v) return "";
-    return new Date(v + "T12:00:00").toLocaleDateString(loc(), {month:"long", year:"numeric"});
-  }
-
   /* ── who I am ── */
   function renderPersonal(){
-    $("#whoSince").textContent = ME.joined ? t("me.since", {when:monthYear(ME.joined)}) : "";
     $$("#genderSeg button").forEach(function(b){
       var want = ME.gender === "female" ? "f" : ME.gender === "male" ? "m" : "";
       b.setAttribute("aria-pressed", b.dataset.g === want ? "true" : "false");
     });
+    renderSummary();
   }
   function saveName(){
     var f = $("#fname").value.trim(), l = $("#lname").value.trim();
@@ -12851,6 +12890,7 @@ button.srow:active{background:var(--bg-tint)}
       b.setAttribute("aria-pressed", b.dataset.calkind === SCHED.calendar ? "true" : "false");
     });
     $("#whenNote").textContent = t("me.whenNote");
+    renderSummary();
   }
   /* One time picker for every clock on this tab. The browser's own looked
      like a different app in each one, and inside a question card it did not
@@ -13006,6 +13046,7 @@ button.srow:active{background:var(--bg-tint)}
     $$("#digestScope button").forEach(function(b){
       b.setAttribute("aria-pressed", b.dataset.scope === DIGEST.scope ? "true" : "false");
     });
+    renderSummary();
   }
   function saveDigest(patch){
     renderDigest();
@@ -13035,7 +13076,54 @@ button.srow:active{background:var(--bg-tint)}
     }).join("");
     $("#taskCalSwitch").setAttribute("aria-checked", ME.taskCal ? "true" : "false");
     $("#nudgeSwitch").setAttribute("aria-checked", ME.nudge ? "true" : "false");
+    renderSummary();
   }
+
+  /* ── the six rows' sentences ──
+     Each row says what is set, from the same state its controls draw from,
+     and is redrawn by every render above — so a row can never say one thing
+     while its open controls say another. A value that is only the default
+     "nothing" (off, nothing saved) is greyed, the way the task sheet does. */
+  function pv(id, text, off){
+    var el = $(id);
+    if(!el) return;
+    if(el.textContent !== text && el.textContent){
+      el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash");
+    }
+    el.textContent = text;
+    el.classList.toggle("off", !!off);
+  }
+  function renderSummary(){
+    /* syncName runs once before the state below it has been declared */
+    if(!SCHED || !DIGEST || !LANGS || !FACTS) return;
+    var first = $("#fname").value.trim() || t("me.noName");
+    var g = ME.gender === "female" ? "me.fem" : ME.gender === "male" ? "me.masc" : "";
+    pv("#pvAbout", first + (g ? " · " + t(g) : ""));
+
+    /* isolated left-to-right, or a Hebrew line reads "21:00–09:00" */
+    var when = "\u2066" + SCHED.start + "–" + SCHED.end + "\u2069";
+    if(SCHED.days.length) when += " · " + t("me.sum.quiet", {days:SCHED.days.map(function(i){ return D.full[i]; }).join(", ")});
+    pv("#pvWhen", when);
+
+    var on = DIGEST.times.length > 0;
+    pv("#pvDigest", on ? (DIGEST.times[0] + " · " + t("me.scope." + DIGEST.scope)) : t("me.digestOff"), !on);
+
+    var cur = String(ME.locale || "he").slice(0, 2);
+    var lang = LANGS.filter(function(l){ return l.v === cur; })[0];
+    pv("#pvSetup", [olmaName(), cityLabel(), lang ? lang.n : ""].filter(Boolean).join(" · "));
+
+    pv("#pvTasks", t(ME.taskCal ? "me.sum.cal.on" : "me.sum.cal.off") + " · " + t(ME.nudge ? "me.sum.nudge.on" : "me.sum.nudge.off"),
+      !ME.taskCal && !ME.nudge);
+  }
+  /* One handler for all six: a row opens and closes its own fold, and any
+     number of them may be open at once. */
+  $("#profRows").addEventListener("click", function(e){
+    var r = e.target.closest(".prow");
+    if(!r || r.parentNode !== this) return;
+    var on = r.getAttribute("aria-expanded") !== "true";
+    r.setAttribute("aria-expanded", on ? "true" : "false");
+    $("#" + r.getAttribute("aria-controls")).classList.toggle("open", on);
+  });
   $("#langChips").addEventListener("click", function(e){
     var b = e.target.closest("[data-lang]");
     if(!b || b.dataset.lang === String(ME.locale || "").slice(0, 2)) return;
@@ -13069,6 +13157,7 @@ button.srow:active{background:var(--bg-tint)}
     }
     if(sw.id === "taskCalSwitch"){
       ME.taskCal = on;
+      renderSummary();
       API.setCalendarSync(on, function(ok2){
         if(!ok2){ ME.taskCal = !on; renderOlmaRows(); return; }
         toast(t(on ? "toast.on" : "toast.off"));
@@ -13077,6 +13166,7 @@ button.srow:active{background:var(--bg-tint)}
     }
     if(sw.id === "nudgeSwitch"){
       ME.nudge = on;
+      renderSummary();
       API.setReminderNudge(on, function(ok2){
         if(!ok2){ ME.nudge = !on; renderOlmaRows(); return; }
         toast(t(on ? "toast.on" : "toast.off"));
@@ -13086,7 +13176,7 @@ button.srow:active{background:var(--bg-tint)}
 
   /* ── what she knows ── */
   function renderFactsCount(){
-    $("#factsSub").textContent = pl("me.facts", FACTS.length);
+    pv("#factsSub", pl("me.facts", FACTS.length), !FACTS.length);
   }
   function factHTML(f){
     return '<div class="factwrap" data-factw="' + esc(f.id) + '"><div class="fact">' +
@@ -13180,11 +13270,6 @@ button.srow:active{background:var(--bg-tint)}
     var p = fqByKey(key), btn = $('#factQs [data-fqok="' + key + '"]');
     if(p && btn) btn.disabled = !fqValid(p, fqDraft[key]);
   }
-  $("#factsRow").addEventListener("click", function(){
-    var on = this.getAttribute("aria-expanded") !== "true";
-    this.setAttribute("aria-expanded", on ? "true" : "false");
-    $("#factsFold").classList.toggle("open", on);
-  });
   $("#factQs").addEventListener("input", function(e){
     var f = e.target.closest("[data-fqf]");
     if(!f) return;
@@ -13996,7 +14081,6 @@ button.srow:active{background:var(--bg-tint)}
       PROFILE.olmaCustom = d.user.assistantName || "";
       PROFILE.olma = d.user.assistantName || OLMA_DEFAULT;
       ME.gender = d.user.gender || null;
-      ME.joined = d.user.joinedOn || null;
       ME.locale = d.user.locale || "he";
       ME.taskCal = !!d.user.calendarSyncTasks;
       ME.nudge = !!d.user.reminderNudge;
