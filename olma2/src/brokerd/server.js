@@ -25,6 +25,7 @@ const groupContext = require('../domain/group-context');
 const groupsDomain = require('../domain/groups');
 const groupTurn = require('../domain/group-turn');
 const intakeRoom = require('../domain/intake-room');
+const onboardingDomain = require('../domain/onboarding');
 const audit = require('../domain/audit');
 const gameSummary = require('../domain/game-summary');
 const replyLeak = require('../domain/reply-leak');
@@ -88,7 +89,7 @@ const PENDING_MAX_PER_USER = 8;
 // production gets the worker facade, never `channels/sessions.js` directly,
 // because every export there is synchronous and this daemon answers live
 // users on the same loop.
-function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, timers, endSignalsLive, games }) {
+function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, timers, endSignalsLive, games, readGreeterReply }) {
   flood = flood || new FloodCounter();
   // gamesd and the gateway's config, for the game shortcut. Injectable for the
   // same reason as the roster: the defaults reach live services.
@@ -101,6 +102,17 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
   const readLidPhones = typeof lidPhoneNumbers === 'function'
     ? lidPhoneNumbers
     : () => require('../channels/sessions-async').lidPhoneNumbers();
+  // The greeter's newest reply to a number, off the gateway's session store —
+  // for the game shortcut, which must not introduce somebody the greeter just
+  // did. Injectable like the roster; unreadable is null, which is the old
+  // behaviour.
+  const readGreeterSaid = typeof readGreeterReply === 'function'
+    ? readGreeterReply
+    : async (phone) => {
+      const msgs = await require('../channels/sessions-async').readRecentMessages('intake', 10, undefined, phone);
+      const last = [...msgs].reverse().find((m) => m.role === 'assistant');
+      return last ? last.text : null;
+    };
   const clock = typeof now === 'function' ? now : Date.now;
   // userId → [{ messageId, kind, senderName, replyToId, lastInboundAt, counted, quota, firstTurn, openedAt, contextSent }], oldest first
   const pending = new Map();
@@ -574,6 +586,16 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
         WHERE event = 'games.intake_claim' AND created_at > now() - interval '1 hour'
           AND actor_id IS DISTINCT FROM $1`, [existing ? existing.id : null]);
     if (claimsThisHour >= cap) return NOT_OURS;
+    // The privacy link reaches each person ONCE, ever (owner, 2026-10-01). The
+    // greeter may have introduced them minutes ago, before any row said so —
+    // a code sent before the sweep provisioned them — and then the hello and
+    // the privacy line below would be the second time.
+    let greeterIntroduced = false;
+    if (!existing || (!existing.opening_sent_at && !existing.privacy_link_sent_at)) {
+      let said = null;
+      try { said = await readGreeterSaid(phone); } catch { said = null; }
+      greeterIntroduced = onboardingDomain.carriesPrivacyLink(said);
+    }
 
     const lang = String((code ? code.lang : ask.lang) || 'he').startsWith('en') ? 'en' : 'he';
     const joinCode = code ? code.code : ask.code;
@@ -624,9 +646,11 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
           text = say('game_no_night', { code: joinCode });
         } else throw ROLLBACK;   // a bare five letters that is no night: not ours
 
-        const introduced = !user.opening_sent_at;
-        if (introduced) {
-          text = [say('game_hello', {}), text, say('game_privacy', {})].join('\n');
+        // Stamped whenever they had no opening on record, introduced here or
+        // by the greeter: `gameClaimed` provisions off opening_sent_at.
+        const introduced = !user.opening_sent_at && !user.privacy_link_sent_at && !greeterIntroduced;
+        if (introduced) text = [say('game_hello', {}), text, say('game_privacy', {})].join('\n');
+        if (!user.opening_sent_at) {
           await client.query(
             `UPDATE users SET opening_sent_at = COALESCE(opening_sent_at, now()),
                     privacy_link_sent_at = COALESCE(privacy_link_sent_at, now())

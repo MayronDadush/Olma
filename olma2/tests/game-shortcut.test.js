@@ -108,12 +108,14 @@ const marks = [];
 const calls = [];
 const policies = [];
 const fake = { open: null, join: null };   // per test: body → answer
+const greeterSaid = new Map();             // phone → the greeter's newest reply
 
 before(async () => {
   db = await freshDb();
   now = Date.parse('2026-09-30T18:00:00Z');
   broker = createBrokerServer({
     pool: db.pool, now: () => now,
+    readGreeterReply: async (phone) => greeterSaid.get(phone) ?? null,
     placeMark: (o) => { marks.push(o); return { attempted: true }; },
     games: {
       open: async (b) => { calls.push(['open', b]); return fake.open(b); },
@@ -460,6 +462,41 @@ test('somebody the greeter already greeted is not introduced a second time', () 
   const q = await ask({ agentId: 'intake', sessionKey: intakeKey(phone), body: 'משחק K7M2Q' });
   assert.equal(q.text, '🃏 ערב משחק, כניסה 50 ₪.\nאיך קוראים לך? ככה החברים יראו אותך בערב.');
   assert.deepEqual(await claimsOf(p.id), [{ outcome: 'need_name', lang: 'he', introduced: false }]);
+}));
+
+// The privacy link reaches each person ONCE, ever (owner, 2026-10-01): a code
+// sent minutes after the greeter opened for them, before the sweep made them a
+// row, is not the place to say it again.
+test('somebody the greeter introduced minutes ago, with no row yet, is not introduced again', () => open(async () => {
+  reset();
+  const phone = newPhone();
+  const onboarding = require('../src/domain/onboarding');
+  greeterSaid.set(phone, onboarding.OPENING.he);
+  fake.join = seatByName;
+  const q = await ask({ agentId: 'intake', sessionKey: intakeKey(phone), body: 'משחק K7M2Q' });
+  assert.equal(q.claim, true);
+  assert.doesNotMatch(q.text, /privacy|עולמה/, 'no second hello, no second privacy line');
+  const u = await rowOf(phone);
+  assert.ok(u.opening_sent_at, 'still stamped, so the sweep provisions the claim');
+  assert.ok(u.privacy_link_sent_at);
+  assert.deepEqual(await claimsOf(u.id), [{ outcome: 'need_name', lang: 'he', introduced: false }]);
+
+  // A greeter that answered without the link introduced nothing we can see.
+  const other = newPhone();
+  greeterSaid.set(other, 'היי 🙂');
+  const r = await ask({ agentId: 'intake', sessionKey: intakeKey(other), body: 'משחק K7M2Q' });
+  assert.ok(r.text.startsWith(HELLO) && r.text.endsWith(PRIVACY), r.text);
+}));
+
+test('a pending row that already has the privacy link is not given it by the game either', () => open(async () => {
+  reset();
+  const phone = newPhone();
+  const p = await makeUser(db.pool, phone, { status: 'pending' });
+  await db.pool.query('UPDATE users SET privacy_link_sent_at = now() WHERE id = $1', [p.id]);
+  fake.join = seatByName;
+  const q = await ask({ agentId: 'intake', sessionKey: intakeKey(phone), body: 'משחק K7M2Q' });
+  assert.doesNotMatch(q.text, /privacy|עולמה/);
+  assert.ok((await rowOf(phone)).opening_sent_at, 'stamped for the sweep');
 }));
 
 test('given an agent between the question and the answer, the answer still seats them — by either door', () => open(async () => {
