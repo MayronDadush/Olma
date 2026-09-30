@@ -105,10 +105,25 @@ const ROOM_FUNNEL = {
       AND u.id IN (${weeklyActive().replace('count(DISTINCT a.actor_id)', 'a.actor_id')})`,
 };
 
+// Retention (owner, 2026-10-01): the WAU is who arrived minus who left, and
+// the headcount alone cannot say which half moved. So, as of that date: the
+// people who met her two to four weeks earlier (onboarded 14-27 days before),
+// and how many of them are in this week's active set. Old enough to be past
+// the first week's novelty, young enough to still be about what she does now.
+const COHORT = `FROM users u
+    WHERE u.agent_id IS NOT NULL AND NOT u.is_eval AND NOT u.is_test
+      AND u.onboarded_at::date BETWEEN $1::date - 27 AND $1::date - 14`;
+const RETENTION = {
+  cohort_2_4w: `SELECT count(*) ${COHORT}`,
+  cohort_2_4w_active: `SELECT count(*) ${COHORT}
+      AND u.id IN (${weeklyActive().replace('count(DISTINCT a.actor_id)', 'a.actor_id')})`,
+};
+
 const METRIC_QUERIES = {
   weekly_active_users: weeklyActive(),
   ...byChannel,
   ...ROOM_FUNNEL,
+  ...RETENTION,
   // Taps on a friend's short invite link (adapters/http/invite-link.js), one
   // row per person-looking GET; a link preview is never one. Between "shared"
   // and "joined via friend_link" — the step that says which half leaks.
