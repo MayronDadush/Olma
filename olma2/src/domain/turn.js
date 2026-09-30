@@ -458,7 +458,7 @@ function turnHints({ offerResume, languageNudge, recentReminders, recentMeetings
 // other door. Throwing is the right answer and a cheap one: the plugin fails
 // open, so a turn that hits this costs one `turn_start` call and nothing else,
 // and the suite hits it long before the box does.
-const ADVISE_COLUMNS = ['id', 'locale', 'paused_at', 'opening_sent_at', 'intake_note_at'];
+const ADVISE_COLUMNS = ['id', 'locale', 'paused_at', 'opening_sent_at', 'intake_note_at', 'privacy_link_sent_at'];
 function requireAdviseColumns(user) {
   const missing = ADVISE_COLUMNS.filter((c) => user[c] === undefined);
   if (missing.length) {
@@ -763,6 +763,23 @@ async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, 
   // read twice in ninety seconds (`incidents.md`, "Two introductions").
   // Everyone else — hand-provisioned, testbed-reset — has heard nobody, and
   // this turn is where the copy belongs.
+  //
+  // The privacy link is said once per person, ever (owner, 2026-10-01), and
+  // a greeter that reworded the copy but kept the link has said it without
+  // stamping `opening_sent_at` — so the copy handed out below loses that line
+  // for anybody who has read it already (migration 104). Whoever hands it out
+  // with the line in it stamps the person, on the hand-out, like the holiday
+  // offer below.
+  const openingCopy = firstTurn && !user.opening_sent_at
+    ? onboardingDomain.openingMessage(user.locale, await templates.load(client))
+    : null;
+  const sendVerbatim = openingCopy && user.privacy_link_sent_at
+    ? onboardingDomain.withoutPrivacyLine(openingCopy)
+    : openingCopy;
+  if (sendVerbatim && onboardingDomain.carriesPrivacyLink(sendVerbatim)) {
+    await client.query(
+      `UPDATE users SET privacy_link_sent_at = now() WHERE id = $1 AND privacy_link_sent_at IS NULL`, [user.id]);
+  }
   const onboarding = firstTurn
     ? (user.opening_sent_at
       ? {
@@ -782,7 +799,7 @@ async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, 
           + NAME_IN_FIRST_MESSAGE + ROOM_INTRO + PAGE_LINK,
       }
       : {
-        sendVerbatim: onboardingDomain.openingMessage(user.locale, await templates.load(client)),
+        sendVerbatim,
         ...(pendingNote ? { pendingNote: true } : {}),
         ...(pageLink ? { pageLink } : {}),
         instruction: 'Their first ever message, and nobody has greeted them '

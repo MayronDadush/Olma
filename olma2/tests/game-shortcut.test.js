@@ -380,6 +380,7 @@ test('a new number\'s code: she says she is an AI, asks the name, and the page o
   assert.equal(u.locale, 'he');
   assert.equal(u.timezone, 'Asia/Jerusalem', 'never NULL — the dialling code, as for anybody');
   assert.ok(u.opening_sent_at, 'the introduction is said, so nobody says it again');
+  assert.ok(u.privacy_link_sent_at, 'and so is the privacy link, on the person (migration 104)');
   assert.deepEqual(calls, [['join', { userId: Number(u.id), code: 'K7M2Q', names: [] }]]);
   assert.deepEqual(await packsOf(u.id), [], 'not seated yet');
   assert.deepEqual(await claimsOf(u.id), [{ outcome: 'need_name', lang: 'he', introduced: true }]);

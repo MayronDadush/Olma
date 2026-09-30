@@ -362,6 +362,10 @@ async function sweepIntakeSessions(client, deps) {
       // introduced: `turn_start` then told their own agents the introduction
       // was done, so nobody ever said who Olma was.
       greetedByIntake,
+      // Read apart from `greetedByIntake`: a greeter that reworded the copy
+      // and kept the link is not an introduction, and has still said the link
+      // — their own agent then opens with the copy minus that line (turn.advise).
+      privacyLinkSaid: onboardingDomain.carriesPrivacyLink(greeterReply),
     });
     if (!prov.ok) { out.skipped++; continue; }
     const user = prov.data.user;

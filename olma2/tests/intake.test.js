@@ -443,6 +443,36 @@ test('the greeter answered the question instead of opening — so their OWN agen
   assert.match(userMd, /אני יכול מחר/, 'the first message a group participant sends is the payload');
 });
 
+test('a greeter that reworded the copy but kept the privacy link has said the link, and the person is stamped for it', async () => {
+  // The owner's rule (2026-10-01): the link reaches each person ONCE, ever.
+  // A paraphrase is not the owner's opening, so opening_sent_at stays NULL and
+  // their own agent still introduces her — but without the link they read.
+  const reworded = 'היי! אני עולמה, עוזרת AI שעושה סדר במשימות ובתיאומים 🙂\n\n'
+    + 'מה אני שומרת ואיך מוחקים: https://allma.world/privacy';
+  const out = await withTx(db.pool, (c) => intake.sweepIntakeSessions(c, {
+    configPath,
+    listSessions: async () => [{ phone: '+972601000243', key: 'k', ageMs: 40_000 }],
+    readGreeterReply: async () => reworded,
+    readFirstMessage: async () => 'היי',
+  }));
+  assert.deepEqual(out.provisioned, ['+972601000243']);
+  const { rows } = await db.pool.query(
+    `SELECT opening_sent_at, privacy_link_sent_at FROM users WHERE phone = '+972601000243'`);
+  assert.equal(rows[0].opening_sent_at, null, 'not the owner\'s words');
+  assert.ok(rows[0].privacy_link_sent_at, 'but the link was said, and that is on the person now');
+
+  // And a greeter that said no link stamps nothing.
+  await withTx(db.pool, (c) => intake.sweepIntakeSessions(c, {
+    configPath,
+    listSessions: async () => [{ phone: '+972601000244', key: 'k', ageMs: 40_000 }],
+    readGreeterReply: async () => 'היי, מה שלומך?',
+    readFirstMessage: async () => 'היי',
+  }));
+  const { rows: none } = await db.pool.query(
+    `SELECT privacy_link_sent_at FROM users WHERE phone = '+972601000244'`);
+  assert.equal(none[0].privacy_link_sent_at, null);
+});
+
 test('a greeter that never answers cannot strand somebody outside the system', async () => {
   const out = await withTx(db.pool, (c) => intake.sweepIntakeSessions(c, {
     configPath,
