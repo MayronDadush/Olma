@@ -37,6 +37,8 @@
 // (`saidRoomOpening`), because the owner's opening's own second line is not in
 // it.
 
+const { withoutPrivacyLine } = require('./onboarding');
+
 const PEER_RE = /^agent:intake:whatsapp:direct:(\+\d{7,15})$/;
 
 const LINES = {
@@ -124,10 +126,16 @@ function linesFor(room) {
 // nothing to the opening" and bounds it to the first reply, because the
 // greeter's own file says the opening is said once. With a coordination
 // waiting, the exception is bigger: the short opening REPLACES the owner's.
-function contextFor(room) {
+//
+// `introduced` is somebody the greeter (or their own agent) already opened
+// for, on an earlier day whose session the gateway has since reset: the room
+// is still news to them, the opening and its privacy link are not
+// (introducedBlock below). The short opening loses its privacy line for them.
+function contextFor(room, { introduced = false } = {}) {
   if (room.meetingId) {
-    const he = ROOM_OPENING.he.replace('{subject}', room.subject);
-    const en = ROOM_OPENING.en.replace('{subject}', room.subject);
+    const strip = (t) => (introduced ? withoutPrivacyLine(t) : t);
+    const he = strip(ROOM_OPENING.he.replace('{subject}', room.subject));
+    const en = strip(ROOM_OPENING.en.replace('{subject}', room.subject));
     return [
       'Room: this person reached Olma from a WhatsApp group she is in, and a',
       'coordination there is waiting for them. In your FIRST reply only, say',
@@ -145,7 +153,9 @@ function contextFor(room) {
   const l = linesFor(room);
   return [
     'Room: this person reached Olma from a WhatsApp group she is in.',
-    'In your FIRST reply only, put this one line directly under the opening text,',
+    introduced
+      ? 'In your FIRST reply only, say this one line, exactly as written —'
+      : 'In your FIRST reply only, put this one line directly under the opening text,',
     'exactly as written — the Hebrew one if they wrote Hebrew, otherwise the English one.',
     'Say nothing else about the group; the line is the whole of it.',
     `Hebrew: ${l.he}`,
@@ -153,6 +163,26 @@ function contextFor(room) {
   ].join('\n');
 }
 
+// The privacy link reaches each person ONCE, ever (owner, 2026-10-01), and
+// the greeter is the one voice with no database: its session resets daily, so
+// somebody it opened for yesterday — and who has no agent of their own yet — is
+// a stranger to it today, and would read the whole opening, link and all, a
+// second time. brokerd reads the stamps on their row and hands it this.
+const INTRODUCED_BLOCK = [
+  'Introduced: this person has ALREADY been introduced to Olma, on an earlier',
+  'day. Do NOT say the opening text in your instructions, in any reply, and do',
+  'not give the privacy link (allma.world/privacy) unless they ask for it —',
+  'they have both. Answer what they wrote, in your own words.',
+].join('\n');
+
+// Whether their row says an introduction already reached them: the owner's
+// words recognised (`opening_sent_at`) or the privacy link said by any voice
+// (`privacy_link_sent_at`, migration 104).
+function wasIntroduced(user) {
+  return !!(user && (user.opening_sent_at || user.privacy_link_sent_at));
+}
+
 module.exports = {
+  INTRODUCED_BLOCK, wasIntroduced,
   peerOf, roomFor, linesFor, contextFor, cleanSubject, saidRoomOpening, LINES, ROOM_OPENING,
 };
