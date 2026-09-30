@@ -44,7 +44,7 @@ const TOOL_DEFS = [
     'Where the person stands in tonight\'s night: buy-ins, what they cost, chips reported, and the page link. For "בכמה כניסות אני?" and the like.',
     { night_code: CODE }),
   def('report_chips',
-    'Record the chips a player ends with ("נשארו לי 1,850"). When everyone has reported, returns whether the count closes: the transfers if it does, or how many chips are missing or extra and who has not reported.',
+    'Record the chips a player ends with ("נשארו לי 1,850"). When everyone has reported, returns whether the count closes: the transfers if it does, or how many chips are missing or extra and who has not reported. Once it closes, relay its `text` exactly as given.',
     {
       chips: S('integer', 'Chips left at the end.'),
       player: S('string', 'Another player\'s name. Omit for the person themselves.'),

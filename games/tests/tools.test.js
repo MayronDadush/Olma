@@ -105,12 +105,17 @@ test('a whole night through the tools: buy-ins, a cancel, food, a count that is 
   assert.deepEqual([r.closed, r.count_off, r.chips], [false, 'missing', 1]);
   r = await okOf(TOK(1), 'report_chips', { chips: 1000, player: 'רון' });
   assert.equal(r.closed, true);
+  // The text is drawn and the result says so: the owner's first night came
+  // back as the model's own "מירון → יוסי", an arrow that reads backwards in Hebrew.
+  assert.match(r.relay, /exactly as given/);
+  assert.doesNotMatch(r.text, /→/);
   // מיכל +50 poker +80 food, יוסי −50 −40, רון 0 −40
   assert.match(r.text, /^סיכום ערב פוקר\n/);
   assert.match(r.text, /מיוסי למיכל: ⁦90 ₪⁩\nמרון למיכל: ⁦40 ₪⁩\n\(כולל האוכל\)$/);
 
   const sum = await okOf(TOK(1), 'game_night_summary', { night_code: night.night_code.toLowerCase() });
   assert.equal(sum.text, r.text);
+  assert.equal(sum.relay, r.relay);
 
   // Every change is in the page's log, in the page's words, marked as Olma's.
   const log = (await pool.query(`SELECT t FROM log WHERE via = 'olma' ORDER BY at, id`)).rows.map(x => x.t);
@@ -143,6 +148,20 @@ test('a player of somebody else\'s night cannot reach it, two open nights are as
   const sam = await okOf(TOK(2), 'report_chips', { night_code: b.night_code, chips: 100 });
   assert.equal(sam.closed, true);
   assert.match(sam.text, /^Second — settlement\nBuy-in ₪20 = 100 chips\n\nNo transfers$/);
+});
+
+test('English transfers are words between isolated names, so a Hebrew name cannot turn the line around', async t => {
+  const { pool, okOf } = await boot(t);
+  const night = await okOf(TOK(2), 'start_game_night', { price: 20, chips: 100 });
+  await pool.query(
+    `INSERT INTO players (night_id, id, name, ord, user_id, linked_at, linked_via)
+     SELECT id, 'pmichal', 'מיכל', 1e12, 101, now(), 'invite' FROM nights WHERE code = $1`, [night.night_code]);
+  await okOf(TOK(2), 'add_buyin');
+  await okOf(TOK(1), 'add_buyin');
+  await okOf(TOK(1), 'report_chips', { chips: 150 });
+  const r = await okOf(TOK(2), 'report_chips', { chips: 50 });
+  assert.equal(r.closed, true);
+  assert.ok(r.text.endsWith('\u200E\u2068Sam\u2069 pays \u2068מיכל\u2069: ₪10'), JSON.stringify(r.text));
 });
 
 test('the shim lists the tools without a database and relays a call, repairing a malformed token after one success', async t => {

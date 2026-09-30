@@ -96,18 +96,30 @@ async function ensurePlayer(w, st, name) {
 
 const countOf = (st, pid) => Object.values(st.buyins).filter(b => b.pid === pid).reduce((a, b) => a + Number(b.n), 0);
 
+// A settlement text is DRAWN, and the model only says one sentence around it.
+// On 2026-09-30 the owner's first night closed and the model wrote its own
+// summary instead — "מירון → יוסי 25 ₪" — and in a Hebrew line that arrow
+// points at מירון, so it read as the wrong person paying. The description
+// asked for a relay on game_night_summary only; the instruction now rides
+// every result that carries the text, because the result is what gets read.
+const RELAY = 'Your reply is `text` exactly as given, every line and character. One short sentence before it is fine; never restate its names or amounts in your own words, and never draw arrows.';
+const withText = (s, text) => ({ ...s, text, relay: RELAY });
+
 // Where the count stands once somebody reports: still waiting, off, or closed.
 function standing(st, locale) {
   const D = settlementOf(st);
   if (!D.allIn) return { closed: false, waiting_for: D.missing.map(p => p.name) };
   if (!D.closed) return { closed: false, count_off: D.diff > 0 ? 'extra' : 'missing', chips: Math.abs(D.diff), expected: D.expected, counted: D.counted };
-  return { closed: true, text: summaryText(st, D, locale) };
+  return withText({ closed: true }, summaryText(st, D, locale));
 }
 
 function summaryText(st, D, locale = 'he') {
   const name = id => st.players[id]?.name || '?';
   if (locale === 'en') {
-    const lines = xs => xs.map(x => `${name(x.from)} → ${name(x.to)}: ${fmtAgEn(x.amt)}`).join('\n') || 'No transfers';
+    // Words, not an arrow, and every name isolated behind a left-to-right
+    // mark: a line that opens on a Hebrew name is laid out right to left, and
+    // "יוסי → מירון" then reads as the other person paying.
+    const lines = xs => xs.map(x => `\u200E\u2068${name(x.from)}\u2069 pays \u2068${name(x.to)}\u2069: ${fmtAgEn(x.amt)}`).join('\n') || 'No transfers';
     let t = `${st.game.name} — settlement\nBuy-in ${fmtAgEn(D.price)} = ${D.cpb.toLocaleString('en-US')} chips\n\n`;
     if (D.merge) t += lines(D.xAll) + (D.hasFood ? '\n(food included)' : '');
     else { if (D.closed) t += 'Poker:\n' + lines(D.xPoker); if (D.hasFood) t += (D.closed ? '\n\n' : '') + 'Food:\n' + lines(D.xFood); }
@@ -213,8 +225,8 @@ const TOOLS = {
     const D = settlementOf(st);
     const s = standing(st, user.locale);
     // Split food settles before the poker does; that text is real on its own.
-    if (!s.closed && !D.merge && D.hasFood) s.text = summaryText(st, D, user.locale);
-    return { night_code: n.code, url: `${publicBase}/night/${n.token}`, ...s };
+    const r = !s.closed && !D.merge && D.hasFood ? withText(s, summaryText(st, D, user.locale)) : s;
+    return { night_code: n.code, url: `${publicBase}/night/${n.token}`, ...r };
   },
 };
 
