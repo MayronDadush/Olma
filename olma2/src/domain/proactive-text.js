@@ -558,8 +558,8 @@ function rawPipeTextFor(row, overrides, channelType) {
   }
   // A game night's settlement (domain/game-summary.js): drawn by gamesd in
   // both languages, sent as drawn. A model that rewrote it once turned the
-  // payer around.
-  if (row.kind === gameSummary.KIND) return gameSummary.textFor(payload, row.locale) || null;
+  // payer around. The invite a host forwards is drawn the same way.
+  if (gameSummary.KINDS.has(row.kind)) return gameSummary.textFor(payload, row.locale) || null;
   if (row.kind !== 'reminder') return null;
   if (payload.instruction) return null;
   return renderReminderText(payload, overrides, row.locale, channelType);

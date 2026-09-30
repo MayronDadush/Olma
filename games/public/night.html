@@ -1633,7 +1633,7 @@ document.addEventListener('click', e => {
   if (t.id === 'chatBtn') { openSheet('#chatSheet'); scrollChat(); return; }
   if (t.id === 'setBtn') { openSheet('#setSheet'); return; }
   if (t.hasAttribute('data-close')) { closeSheets(); return; }
-  if (t.id === 'switchMe' || t.id === 'pickMe') { ls.set('pk-me-' + S.gid, ''); ls.set('pk-skip-' + S.gid, ''); prev.pickedNow = false; closeSheets(); schedule(); return; }
+  if (t.id === 'switchMe' || t.id === 'pickMe') { ls.set('pk-me-' + S.gid, ''); memMe = null; ls.set('pk-skip-' + S.gid, ''); prev.pickedNow = false; closeSheets(); schedule(); return; }
   if (t.id === 'newAsk') {
     $('#newBox').innerHTML = `<p class="row-sub">הערב הזה יישאר שמור. לפתוח ערב חדש עם אותו מחיר ואותם ז'יטונים?</p>
       <div class="btns"><button class="btn primary small" type="button" id="newYes">פתיחה</button><button class="btn ghost small" type="button" id="newNo">ביטול</button></div>`;
@@ -1760,7 +1760,17 @@ function copySummary(){
 
 /* ───────────── the chat, same conversation as WhatsApp ───────────── */
 let chat = [], typingOn = false;
-const myId = () => { const v = S.gid && ls.get('pk-me-' + S.gid); return v && S.players[v] ? v : null; };
+// A link Olma hands a person carries their seat: /night/<token>#me-<player>.
+// Read once and dropped from the address bar, so a forwarded copy of the
+// page's link never seats somebody else; kept in memory too, for a phone
+// whose storage refuses.
+let hashMe = (location.hash.match(/^#me-([A-Za-z0-9_-]{2,32})$/) || [])[1] || null, memMe = null;
+if (hashMe) try { history.replaceState(null, '', location.pathname + location.search); } catch {}
+const myId = () => {
+  if (hashMe && S.gid && S.players[hashMe]) { ls.set('pk-me-' + S.gid, hashMe); memMe = hashMe; hashMe = null; }
+  const v = S.gid && (ls.get('pk-me-' + S.gid) ?? memMe);
+  return v && S.players[v] ? v : null;
+};
 function pickMe(pid, name){
   ls.set('pk-me-' + S.gid, pid); prev.pickedNow = true;
   $('#welcome').hidden = true;

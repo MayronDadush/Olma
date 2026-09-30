@@ -2,7 +2,7 @@
 // gamesd's HTTP face. Caddy passes exactly two public shapes here:
 //   GET  /night/<token>                the page
 //   *    /night/<token>/api/<action>   its API (state, events, write, next)
-// Everything else (/health, POST /api/nights, POST /api/tool) is for the box itself: Caddy
+// Everything else (/health, POST /api/nights, /api/tool, /api/open, /api/join) is for the box itself: Caddy
 // never routes it, and the handler also refuses anything that arrived through
 // a proxy, so a Caddyfile mistake cannot open night creation to the world.
 const http = require('http');
@@ -13,6 +13,7 @@ const { Refused } = require('./validate');
 const { runTool } = require('./tools');
 const { resolveIdentity } = require('./identity');
 const { announceClose } = require('./announce');
+const { openFor, joinByCode } = require('./join');
 
 const PAGE_FILE = path.join(__dirname, '..', 'public', 'night.html');
 const MAX_BODY = 32 * 1024;
@@ -129,6 +130,19 @@ function createServer({ pool, publicBase = '', page, identify = resolveIdentity,
         if (limited('u:' + who.user.id)) return send(res, 200, { text: 'ERROR rate_limited: too many calls this minute' });
         const text = await runTool(name, a, { pool, user: who.user, publicBase, onState: broadcast, announce });
         return send(res, 200, { text });
+      }
+
+      // A night opened, or a seat taken, straight from a private message with
+      // no model in between (olma2 src/domain/game-shortcut.js). brokerd has
+      // already resolved the sender, so the user id is its word — which is
+      // why, like the two routes above, nothing but the box may call these.
+      if ((p === '/api/open' || p === '/api/join') && req.method === 'POST') {
+        if (!isLocal(req)) return send(res, 404, { error: 'not_found' });
+        const body = await readBody(req);
+        const out = p === '/api/open'
+          ? await openFor(pool, body, { publicBase })
+          : await joinByCode(pool, body, { publicBase, onState: broadcast });
+        return send(res, 200, out);
       }
 
       const m = p.match(/^\/night\/([A-Za-z0-9]{22})(?:\/api\/(state|events|write|next))?$/);

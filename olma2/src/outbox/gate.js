@@ -164,6 +164,7 @@ function askedForInWords(row) {
 // the gate can tell two chosen moments apart — is a column and a migration for
 // a preference nobody has ever set.
 const { REPEAT_WINDOW_MS } = require('../domain/repeat-guard');
+const gameSummary = require('../domain/game-summary');
 
 const SAYS_IT_ONCE = new Set([
   'digest', 'checkin', 'travel',
@@ -378,8 +379,15 @@ function decide(facts) {
   // quiet day as well as the night (the night via `midConversation` below).
   // Everybody else at that table gets it on their next kept morning.
   const wokeAtMs = facts.wokeAt ? new Date(facts.wokeAt).getTime() : 0;
-  const gameGrace = row.kind === 'game_summary'
-    && wokeAtMs > 0 && (now.getTime() - wokeAtMs) < CONVERSATION_GRACE_MS;
+  // The invite a host forwards (game-summary.INVITE_KIND) is queued by code
+  // in the same moment as the reply to their own message — the one that came
+  // through `before_dispatch`, which opens no turn and stamps no wokeAt — so
+  // its own creation is the evidence they are right there.
+  const createdMs = row.created_at ? new Date(row.created_at).getTime() : 0;
+  const inviteGrace = row.kind === gameSummary.INVITE_KIND
+    && createdMs > 0 && (now.getTime() - createdMs) < CONVERSATION_GRACE_MS;
+  const gameGrace = inviteGrace || (row.kind === gameSummary.KIND
+    && wokeAtMs > 0 && (now.getTime() - wokeAtMs) < CONVERSATION_GRACE_MS);
 
   // An `introduction` is exempt for the same reason the ladder's own check-in
   // is: it is the one thing Olma OWES rather than something she decided to
@@ -441,7 +449,7 @@ function decide(facts) {
   let spendsQuietRoomInvite = false;
   if ((Number(facts.checkinMisses) || 0) >= 1
     && row.kind !== 'checkin' && row.kind !== 'introduction' && row.kind !== 'intro_video'
-    && row.kind !== 'policy_update' && row.kind !== 'game_summary' && !PEER_KINDS.has(row.kind)
+    && row.kind !== 'policy_update' && !gameSummary.KINDS.has(row.kind) && !PEER_KINDS.has(row.kind)
     && !(row.kind === 'meeting_invite' && facts.privateInvite === true)
     && !askedForInWords(row) && !inRoomGrace && !onPageGrace && !facts.answeredCoordination) {
     if (!facts.pausedRoomInvite && !facts.quietRoomInvite) {
@@ -579,7 +587,7 @@ function decide(facts) {
   const greeterGrace = greetedAt > 0 && (now.getTime() - greetedAt) < CONVERSATION_GRACE_MS
     && Boolean(row.payload && row.payload.meetingId);
   const midConversation = (lastInbound > 0 && (now.getTime() - lastInbound) < CONVERSATION_GRACE_MS)
-    || inRoomGrace || onPageGrace || greeterGrace || welcomeGrace;
+    || inRoomGrace || onPageGrace || greeterGrace || welcomeGrace || inviteGrace;
   if (!userChoseThisTime && !midConversation && !withinWindow(window, tz, now)) {
     return {
       action: 'hold', holdReason: 'night',
