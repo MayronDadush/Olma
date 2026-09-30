@@ -6,6 +6,7 @@ const { renderHeartbeats } = require('./health');
 const { renderEvals } = require('./evals');
 const { renderCost } = require('./cost');
 const { renderMetrics } = require('./metrics');
+const { renderExperiments } = require('./experiments');
 const { renderIssues } = require('./issues');
 const { renderFlags } = require('./controls');
 const { renderUsers } = require('./users');
@@ -52,6 +53,7 @@ const SECTIONS = [
   { id: 'cost', group: 'money', title: 'עלות', hint: 'כל שירות חיצוני שהפרויקט משלם עליו — מופרד ליתרות מראש (שנגמרות) ולחיוב שוטף (שנצבר) — וכמה עולה השימוש במודל לפי יום ולפי משתמש, כולל עמודה נפרדת ליצירת תמונות ווידאו. הערכה, לא חשבונית.', render: renderCost },
   { id: 'outcomes', group: 'measure', title: 'האם זה עובד', hint: 'המדדים שנבחרו כדי לענות על השאלה הזו: ענו לנו? נסגרו משימות? נאלצו לתקן אותנו? נוצר הרגל? כל מספר עם המכנה שלו.', render: renderOutcomes },
   { id: 'metrics', group: 'measure', title: 'שימוש במוצר', hint: 'מה באמת קורה במוצר: כמה אנשים פעילים, כמה נוצר, מה הצליח.', render: renderMetrics },
+  { id: 'experiments', group: 'measure', title: 'ניסויי A/B', hint: 'שתי גרסאות של הודעה או של התזמון שלה, וכל אדם מקבל תמיד את אותה אחת. עם כמה עשרות משתמשים רוב ההבדלים מקריים — הדף לא יכריז על מנצחת לפני שיש מספיק נתונים, וגם אז הקיבוע הוא ידני.', render: renderExperiments },
   { id: 'planned', group: 'sending', title: 'מה מתוכנן להישלח', hint: 'כל מה שעולמה מתכננת לשלוח, ומתי — בשעון המקומי של כל משתמש, מקובץ לפי מי שיקרא. שורה עם ✓ יוצאת כלשונה וזה בדיוק הטקסט שיגיע; השאר נכתב ברגע השליחה, ולכן מופיע הנושא בלבד.', render: renderPlanned },
   { id: 'owner-log', group: 'sending', title: 'מה כתבתי בעצמי', hint: 'כל הודעה יזומה שנכתבה ידנית מדף משתמש, מה עולמה ניסחה ממנה בפועל, והאם ענו. כל שורה היא רגע שעולמה הייתה יכולה לזהות לבד: רושמים ליד מה היא מלמדת ומשייכים לפיצ\'ר אפשרי. שום דבר כאן לא נבנה לבד ועולמה לא קוראת את זה — עוברים על זה ביחד כשמחליטים.', render: renderOwnerLog },
   { id: 'groups', group: 'people', title: 'קבוצות', hint: 'קבוצות וואטסאפ שעולמה יושבת בהן. נעולה = מישהו שם עוד לא כתב לה בפרטי, והיא עונה לאף אחד עד שכולם כתבו. הכל נקבע מהשיחה עצמה — אין כאן כפתור לפתוח קבוצה ביד.', render: renderGroups },

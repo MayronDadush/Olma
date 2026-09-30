@@ -113,7 +113,10 @@ test('weekly_active_users: wrote or used the page in seven days, real people onl
 test('the page payload carries the invitation, built from the id', async () => {
   const dash = require('../src/domain/user-dashboard');
   const u = await makeUser(db.pool, '+972601009010', { firstName: 'רון' });
+  // Variant a of invite_card_moment always draws the card; b is its own test.
+  await withTx(db.pool, (c) => require('../src/domain/experiments').lock(c, 'invite_card_moment', 'a'));
   const res = await withTx(db.pool, (c) => dash.load(c, u.id));
+  await withTx(db.pool, (c) => require('../src/domain/experiments').lock(c, 'invite_card_moment', null));
   assert.equal(res.ok, true);
   assert.equal(res.data.invite.code, referral.codeFor(u.id));
   assert.match(decodeURIComponent(res.data.invite.chatLink), /הגעתי דרך רון/);
