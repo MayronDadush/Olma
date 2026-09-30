@@ -1040,8 +1040,9 @@ test('create_calendar_event never claims an alert it does not set', () => {
     'that contradicted the doctrine, which saves a timed thing as an event THAT TURN');
   assert.match(d, /reminds them of NOTHING/);
   // And it names the thing that DOES arm one, because an ask with nowhere to
-  // go is the shape this repo keeps rediscovering.
-  assert.match(d, /add_task kind:'event'/);
+  // go is the shape this repo keeps rediscovering. Since 2026-09-30 that is a
+  // reminder on the event itself, never a second entry (calendar-links).
+  assert.match(d, /remind_calendar_event/);
   // createEvent sends Google no reminders override — the premise, asserted
   // against the code rather than trusted.
   const src = fs.readFileSync(require.resolve('../src/domain/calendar'), 'utf8');
@@ -1069,7 +1070,8 @@ test('the create_calendar_event RESULT says nobody is reminding them', async () 
   assert.equal(res.data.created, true, 'the event itself still goes in');
   assert.match(res.data.hints.reminders, /NOTHING here reminds them/);
   assert.match(res.data.hints.reminders, /never say a reminder is set/);
-  assert.match(res.data.hints.reminders, /add_task/);
+  assert.match(res.data.hints.reminders, /remind_calendar_event/);
+  assert.match(res.data.hints.reminders, /Never add_task for the same thing/);
   // The 👍 hint the tool already carried must survive beside it — the new hint
   // forbids a sentence rather than asking for one, so it cannot outvote it.
   assert.ok(!/\bsay\b[^.]*\breminder\b/i.test(res.data.hints.reminders.replace(/never say a reminder is set/, '')),

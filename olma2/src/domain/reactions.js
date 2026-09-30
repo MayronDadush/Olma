@@ -540,6 +540,7 @@ const TOOL_MARKS = Object.freeze({
 
   // ── ⏰: armed, and it will speak to them later ──────────────────────────
   set_task_reminder: 'scheduled',
+  remind_calendar_event: 'scheduled',
   subscribe_live_updates: 'scheduled',
   // The generalised definition, not a special case: this row does not just
   // sit there, it will proactively reach THIS person again — the answer fans

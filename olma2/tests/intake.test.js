@@ -1551,7 +1551,7 @@ test('a calendar event promises no reminder it cannot send', () => {
   assert.ok(t, 'create_calendar_event exists');
   assert.ok(!/already alerts/.test(t.description));
   assert.match(t.description, /reminds them of NOTHING/);
-  assert.match(t.description, /add_task kind:'event'/, 'the ask needs somewhere to go');
+  assert.match(t.description, /remind_calendar_event/, 'the ask needs somewhere to go');
 });
 
 test('agent doctrine: a refusal hands over the search, and never a link of its own', () => {

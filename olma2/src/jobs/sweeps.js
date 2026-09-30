@@ -521,6 +521,15 @@ async function sweepFinishedTasks(client, nowIso) {
                          WHERE r.task_id = t.id AND r.repeat_rule IS NOT NULL
                            AND r.repeat_until IS NULL
                            AND r.sent_at IS NULL AND r.cancelled_at IS NULL)
+        -- A row standing for a calendar event is the calendar_links sweep's:
+        -- a series advances to its next occurrence instead of closing, and a
+        -- passed one-off is archived quietly, since the calendar is where they
+        -- look for it. Only while the calendar can still be READ — a lost
+        -- connection leaves the row to this sweep like any other event.
+        AND NOT (t.linked_event_id IS NOT NULL AND EXISTS (
+              SELECT 1 FROM integrations i
+               WHERE i.user_id = t.owner_id AND i.provider = 'google_calendar'
+                 AND i.status = 'connected'))
       ORDER BY t.owner_id, t.id
       LIMIT 200`,
     [cutoff]

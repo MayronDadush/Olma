@@ -118,6 +118,7 @@ function jobs({ pool }) {
   // it. Deliberately not inside add_task: Google must never be in the path
   // of saving a task (see domain/task-calendar.js).
   const taskCalendar = require('../domain/task-calendar');
+  const calendarLinks = require('../domain/calendar-links');
   // Behavioral evals: nightly scripted conversations against the eval
   // user, hard checks + a judge model, alerts on the credit-alarm pipe.
   // Inert until scripts/setup-eval-user.js has been run once on the box.
@@ -328,6 +329,7 @@ const deployDrift = require('./deploy-drift');
       return out;
     } },
     { name: 'task_calendar', run: () => withTx(pool, (c) => taskCalendar.sweepTaskCalendar(c, {})) },
+    { name: 'calendar_links', run: () => withTx(pool, (c) => calendarLinks.sweepCalendarLinks(c, {})) },
     { name: 'eval_sweep', run: () => evals.sweepEvals(pool, { send: rawSend }) },
     { name: 'live_updates', run: () => withTx(pool, (c) => liveUpdates.sweepLiveUpdates(c, {})) },
     { name: 'usage_sweep', run: () => withTx(pool, (c) => usage.sweepUsage(c)) },

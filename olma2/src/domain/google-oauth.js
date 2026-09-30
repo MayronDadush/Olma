@@ -48,9 +48,13 @@ const STATE_TTL_MS = 15 * 60 * 1000;
 const TOTAL_HTTP_BUDGET_MS = 8000;
 
 class GoogleError extends Error {
-  constructor(code, message) {
+  constructor(code, message, status) {
     super(message);
     this.code = code; // 'not_configured' | 'invalid_grant' | 'unauthorized' | 'timeout' | 'http'
+    // The HTTP status when there was one. A 404 or 410 on an event is the one
+    // answer that means "gone" (domain/calendar-links.js); every other failure
+    // means "could not read", and the two must never be told apart by message.
+    if (status) this.status = status;
   }
 }
 
@@ -243,7 +247,7 @@ async function calendarFetch(token, path, { budget = createBudget(), fetchImpl, 
     // (clock skew, a revoked session), and expires_at alone is never proof.
     if (res.status === 401) throw new GoogleError('unauthorized', 'the calendar rejected our access');
     const msg = (body.error && body.error.message) || `calendar API returned ${res.status}`;
-    throw new GoogleError('http', String(msg).slice(0, 200));
+    throw new GoogleError('http', String(msg).slice(0, 200), res.status);
   }
   return body;
 }
