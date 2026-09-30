@@ -1,8 +1,9 @@
 'use strict';
 // Olma's six tools, end to end: a real gamesd on a random port, a real
 // database, the box-only POST /api/tool, and — last — the MCP shim itself
-// spawned the way the gateway spawns it. brokerd is replaced by `identify`,
-// the one seam createServer takes for it.
+// spawned the way the gateway spawns it. brokerd is replaced by `identify`
+// and by the `send` under the real close announcement: the two seams
+// createServer takes for it.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('path');
@@ -10,6 +11,7 @@ const { spawn } = require('child_process');
 const { freshDb } = require('./helpers');
 const { createServer } = require('../src/server');
 const { TOOL_DEFS, IDENTITY_PARAM } = require('../src/tool-defs');
+const { announceClose } = require('../src/announce');
 
 const TOK = n => 'olma_tok_' + String(n).repeat(32).slice(0, 32);
 const PEOPLE = {
@@ -19,9 +21,15 @@ const PEOPLE = {
 };
 const identify = async token => PEOPLE[token] || { ok: false, error: { code: 'forbidden', message: 'unknown identity token — re-read AGENTS.md' } };
 
-async function boot(t, opts = {}) {
+// brokerd's `game_summary`, as far as gamesd can see it: every call recorded,
+// every linked id queued. A test that wants it down passes its own `send`.
+const queueAll = async x => ({ ok: true, queued: x.userIds, skipped: [] });
+
+async function boot(t, { send = queueAll, ...opts } = {}) {
   const pool = await freshDb(t);
-  const server = createServer({ pool, publicBase: 'https://allma.test', page: '<!doctype html>', identify, ...opts });
+  const sent = [];
+  const announce = (p, nightId, state) => announceClose(p, nightId, state, { send: async x => { sent.push(x); return send(x); } });
+  const server = createServer({ pool, publicBase: 'https://allma.test', page: '<!doctype html>', identify, announce, ...opts });
   await new Promise(r => server.listen(0, '127.0.0.1', r));
   t.after(() => new Promise(r => { server.closeListeners(); server.close(r); }));
   const port = server.address().port;
@@ -38,7 +46,7 @@ async function boot(t, opts = {}) {
     assert.match(text, /^OK /, text);
     return JSON.parse(text.slice(3));
   };
-  return { pool, port, raw, call, okOf };
+  return { pool, port, raw, call, okOf, sent };
 }
 
 test('every definition fits Olma\'s limits: identity first and required, under 700 characters, six unique names', () => {
@@ -67,7 +75,7 @@ test('brokerd unreachable is said, never read as a refusal or a pass', async t =
 });
 
 test('a whole night through the tools: buy-ins, a cancel, food, a count that is off, then closes', async t => {
-  const { pool, call, okOf } = await boot(t);
+  const { pool, call, okOf, sent } = await boot(t);
   const night = await okOf(TOK(1), 'start_game_night', { price: 50, chips: 1000, players: ['יוסי'] });
   assert.match(night.url, /^https:\/\/allma\.test\/night\/[A-Za-z0-9]{22}$/);
   assert.deepEqual(night.players, ['מיכל', 'יוסי'], 'the host sits first, under their own name');
@@ -103,19 +111,31 @@ test('a whole night through the tools: buy-ins, a cancel, food, a count that is 
   await okOf(TOK(1), 'report_chips', { chips: 1000, player: 'יוסי' });
   r = await okOf(TOK(1), 'report_chips', { chips: 999, player: 'רון' });
   assert.deepEqual([r.closed, r.count_off, r.chips], [false, 'missing', 1]);
+  assert.equal(sent.length, 0, 'nothing is announced before the count closes');
   r = await okOf(TOK(1), 'report_chips', { chips: 1000, player: 'רון' });
   assert.equal(r.closed, true);
-  // The text is drawn and the result says so: the owner's first night came
-  // back as the model's own "מירון → יוסי", an arrow that reads backwards in Hebrew.
-  assert.match(r.relay, /exactly as given/);
-  assert.doesNotMatch(r.text, /→/);
+  // The settlement went out as its own message, drawn by code; the model is
+  // handed no text to rewrite. The owner's first night came back as the
+  // model's own "מירון → יוסי", an arrow that reads backwards in Hebrew.
+  assert.equal(r.summary_sent, true);
+  assert.ok(!('text' in r) && !('relay' in r), JSON.stringify(r));
+  assert.match(r.note, /Do not write out any name, amount or transfer/);
+  assert.equal(sent.length, 1);
+  const nightId = (await pool.query('SELECT id FROM nights WHERE code = $1', [night.night_code])).rows[0].id;
+  assert.deepEqual([sent[0].nightId, sent[0].userIds], [Number(nightId), [101]], 'only the linked player; יוסי and רון are names, not users');
+  const { he, en } = sent[0].texts;
+  assert.doesNotMatch(he + en, /→/);
   // מיכל +50 poker +80 food, יוסי −50 −40, רון 0 −40
-  assert.match(r.text, /^סיכום ערב פוקר\n/);
-  assert.match(r.text, /מיוסי למיכל: ⁦90 ₪⁩\nמרון למיכל: ⁦40 ₪⁩\n\(כולל האוכל\)$/);
+  assert.match(he, /^סיכום ערב פוקר\n/);
+  assert.match(he, /מיוסי למיכל: ⁦90 ₪⁩\nמרון למיכל: ⁦40 ₪⁩\n\(כולל האוכל\)$/);
+  assert.match(en, /pays ⁨מיכל⁩: ₪90\n/);
 
+  // Asked for afterwards, the same drawing comes back to relay, and asking
+  // announces nothing a second time.
   const sum = await okOf(TOK(1), 'game_night_summary', { night_code: night.night_code.toLowerCase() });
-  assert.equal(sum.text, r.text);
-  assert.equal(sum.relay, r.relay);
+  assert.equal(sum.text, he);
+  assert.match(sum.relay, /exactly as given/);
+  assert.equal(sent.length, 1);
 
   // Every change is in the page's log, in the page's words, marked as Olma's.
   const log = (await pool.query(`SELECT t FROM log WHERE via = 'olma' ORDER BY at, id`)).rows.map(x => x.t);
@@ -127,7 +147,7 @@ test('a whole night through the tools: buy-ins, a cancel, food, a count that is 
 });
 
 test('a player of somebody else\'s night cannot reach it, two open nights are asked about, and English reads English', async t => {
-  const { pool, call, okOf } = await boot(t);
+  const { pool, call, okOf, sent } = await boot(t);
   const a = await okOf(TOK(1), 'start_game_night', { price: 20, chips: 100, name: 'ראשון' });
   assert.match(await call(TOK(2), 'my_game_status'), /^ERROR no_night/, 'Sam holds no seat in it');
 
@@ -147,11 +167,13 @@ test('a player of somebody else\'s night cannot reach it, two open nights are as
   await okOf(TOK(1), 'report_chips', { night_code: b.night_code, chips: 100 });
   const sam = await okOf(TOK(2), 'report_chips', { night_code: b.night_code, chips: 100 });
   assert.equal(sam.closed, true);
-  assert.match(sam.text, /^Second — settlement\nBuy-in ₪20 = 100 chips\n\nNo transfers$/);
+  assert.equal(sam.summary_sent, true);
+  assert.deepEqual(sent.at(-1).userIds.sort(), [101, 102]);
+  assert.match(sent.at(-1).texts.en, /^Second — settlement\nBuy-in ₪20 = 100 chips\n\nNo transfers$/);
 });
 
 test('English transfers are words between isolated names, so a Hebrew name cannot turn the line around', async t => {
-  const { pool, okOf } = await boot(t);
+  const { pool, okOf, sent } = await boot(t);
   const night = await okOf(TOK(2), 'start_game_night', { price: 20, chips: 100 });
   await pool.query(
     `INSERT INTO players (night_id, id, name, ord, user_id, linked_at, linked_via)
@@ -161,7 +183,58 @@ test('English transfers are words between isolated names, so a Hebrew name canno
   await okOf(TOK(1), 'report_chips', { chips: 150 });
   const r = await okOf(TOK(2), 'report_chips', { chips: 50 });
   assert.equal(r.closed, true);
-  assert.ok(r.text.endsWith('\u200E\u2068Sam\u2069 pays \u2068מיכל\u2069: ₪10'), JSON.stringify(r.text));
+  const en = sent.at(-1).texts.en;
+  assert.ok(en.endsWith('\u200E\u2068Sam\u2069 pays \u2068מיכל\u2069: ₪10'), JSON.stringify(en));
+});
+
+// A night that closes on a report and nothing reached brokerd: the person
+// asking still gets the settlement, as the drawn text to relay.
+async function closeOneNight(okOf) {
+  await okOf(TOK(1), 'start_game_night', { price: 20, chips: 100, players: ['יוסי'] });
+  await okOf(TOK(1), 'add_buyin');
+  await okOf(TOK(1), 'add_buyin', { player: 'יוסי' });
+  await okOf(TOK(1), 'report_chips', { chips: 150 });
+  return okOf(TOK(1), 'report_chips', { chips: 50, player: 'יוסי' });
+}
+
+test('brokerd down, or refusing, or not queueing the caller: the text comes back to relay instead', async t => {
+  for (const send of [
+    async () => { throw new Error('connect ENOENT'); },
+    async () => ({ ok: false, error: { code: 'bad_args', message: 'nope' } }),
+    async () => ({ ok: true, queued: [], skipped: [101] }),
+  ]) {
+    const { okOf } = await boot(t, { send });
+    const r = await closeOneNight(okOf);
+    assert.equal(r.closed, true);
+    assert.equal(r.summary_sent, false);
+    assert.match(r.relay, /exactly as given/);
+    assert.match(r.text, /מיוסי למיכל: ⁦10 ₪⁩$/);
+  }
+});
+
+test('taking back a buy-in that makes the count close announces it too', async t => {
+  const { okOf, sent } = await boot(t);
+  await okOf(TOK(1), 'start_game_night', { price: 20, chips: 100, players: ['יוסי'] });
+  await okOf(TOK(1), 'add_buyin');
+  await okOf(TOK(1), 'add_buyin', { player: 'יוסי' });
+  await okOf(TOK(1), 'add_buyin', { player: 'יוסי' });
+  await okOf(TOK(1), 'report_chips', { chips: 150 });
+  const off = await okOf(TOK(1), 'report_chips', { chips: 50, player: 'יוסי' });
+  assert.deepEqual([off.closed, off.count_off], [false, 'missing']);
+  const b = await okOf(TOK(1), 'add_buyin', { player: 'יוסי', cancel: true });
+  assert.deepEqual([b.closed, b.summary_sent, 'text' in b], [true, true, false]);
+  assert.equal(sent.length, 1);
+});
+
+test('a night with nobody on Olma at the table asks brokerd nothing', async t => {
+  const { pool, okOf, sent } = await boot(t);
+  await closeOneNight(okOf);
+  assert.equal(sent.length, 1);
+  // The same night, its only linked seat let go: announcing it reaches nobody.
+  await pool.query('UPDATE players SET user_id = NULL');
+  const { id } = (await pool.query('SELECT id FROM nights')).rows[0];
+  const out = await announceClose(pool, id, {}, { send: async () => { throw new Error('must not be called'); } });
+  assert.deepEqual(out, { ok: true, queued: [], skipped: [] });
 });
 
 test('the shim lists the tools without a database and relays a call, repairing a malformed token after one success', async t => {

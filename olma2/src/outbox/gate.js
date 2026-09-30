@@ -371,6 +371,15 @@ function decide(facts) {
   const greetedAt = facts.greetedAt ? new Date(facts.greetedAt).getTime() : 0;
   const welcomeGrace = row.kind === 'welcome_followup'
     && greetedAt > 0 && (now.getTime() - greetedAt) < CONVERSATION_GRACE_MS;
+  // A game night's settlement to somebody who wrote to her in the last quarter
+  // hour — nearly always the one who just reported the last chips and closed
+  // the count. The game is happening right now whatever the calendar says, and
+  // the settlement is the answer to what they just wrote, so it passes the
+  // quiet day as well as the night (the night via `midConversation` below).
+  // Everybody else at that table gets it on their next kept morning.
+  const wokeAtMs = facts.wokeAt ? new Date(facts.wokeAt).getTime() : 0;
+  const gameGrace = row.kind === 'game_summary'
+    && wokeAtMs > 0 && (now.getTime() - wokeAtMs) < CONVERSATION_GRACE_MS;
 
   // An `introduction` is exempt for the same reason the ladder's own check-in
   // is: it is the one thing Olma OWES rather than something she decided to
@@ -424,10 +433,15 @@ function decide(facts) {
   // owner chose to reach them. Everything below still applies to it. A changed
   // privacy policy (domain/policy-notice.js) is the same audience, for the
   // same reason and one more: a policy binds only somebody who was shown it.
+  //
+  // And a game night's settlement (domain/game-summary.js), on the argument the
+  // answered coordination makes: it is not something Olma decided to say but
+  // the outcome of an evening they sat at, with money in it that somebody owes
+  // somebody. It reaches only a person gamesd linked to that night.
   let spendsQuietRoomInvite = false;
   if ((Number(facts.checkinMisses) || 0) >= 1
     && row.kind !== 'checkin' && row.kind !== 'introduction' && row.kind !== 'intro_video'
-    && row.kind !== 'policy_update' && !PEER_KINDS.has(row.kind)
+    && row.kind !== 'policy_update' && row.kind !== 'game_summary' && !PEER_KINDS.has(row.kind)
     && !(row.kind === 'meeting_invite' && facts.privateInvite === true)
     && !askedForInWords(row) && !inRoomGrace && !onPageGrace && !facts.answeredCoordination) {
     if (!facts.pausedRoomInvite && !facts.quietRoomInvite) {
@@ -474,7 +488,8 @@ function decide(facts) {
   // step. It is opt-in and nothing else about it is special (owner,
   // 2026-09-11): asked once, and the calendar is yom tov only. `inRoomGrace`
   // exempts a meeting row from this one too, same reasoning as above.
-  const quietReason = !askedForInWords(row) && !inRoomGrace && !welcomeGrace && quietDayReason(facts, tz, now);
+  const quietReason = !askedForInWords(row) && !inRoomGrace && !welcomeGrace && !gameGrace
+    && quietDayReason(facts, tz, now);
   if (quietReason) {
     return {
       action: 'hold', holdReason: quietReason,
@@ -550,7 +565,7 @@ function decide(facts) {
   // Evidence a person wrote, never merely that a turn ran (see
   // CONVERSATION_GRACE_MS). `lastInboundAt` is still the right fact for the
   // welcome follow-up above: any turn on their own agent answers it.
-  const lastInbound = facts.wokeAt ? new Date(facts.wokeAt).getTime() : 0;
+  const lastInbound = wokeAtMs;
   // Somebody the intake GREETER just answered is in a conversation too, and
   // it is the only one they have had: their "היי" went to the greeter, so
   // `last_inbound_at` is still NULL and must stay so (`rules/groups.md`, two

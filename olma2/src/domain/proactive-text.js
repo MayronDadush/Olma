@@ -22,6 +22,7 @@ const format = require('./message-format');
 const meetingTime = require('./meeting-time');
 const digestBlock = require('./digest-block');
 const dt = require('./datetime');
+const gameSummary = require('./game-summary');
 
 // Titles are the user's own words; bound them to one message-safe line — and
 // take the emphasis out of them. A title carrying an asterisk arrives with
@@ -555,6 +556,10 @@ function rawPipeTextFor(row, overrides, channelType) {
     return templates.render(localizedKey('policy_update', row.locale),
       { url: payload.url || 'https://allma.world/privacy' }, overrides);
   }
+  // A game night's settlement (domain/game-summary.js): drawn by gamesd in
+  // both languages, sent as drawn. A model that rewrote it once turned the
+  // payer around.
+  if (row.kind === gameSummary.KIND) return gameSummary.textFor(payload, row.locale) || null;
   if (row.kind !== 'reminder') return null;
   if (payload.instruction) return null;
   return renderReminderText(payload, overrides, row.locale, channelType);

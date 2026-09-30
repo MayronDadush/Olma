@@ -97,7 +97,8 @@ async function playerExists(c, nightId, pid) {
 // Keeps game_results true to the night after every write: one row per player
 // while the count closes, none while it does not. closed_at on the night
 // follows the same rule, and a night that reopens takes back a join code no
-// open night is using.
+// open night is using. Returns true when THIS write is the one that closed it
+// — the moment the settlement is announced (src/announce.js).
 async function recompute(c, n) {
   const st = await stateOf(c, n);
   const P = pokerOf(st);
@@ -108,7 +109,7 @@ async function recompute(c, n) {
       const code = clash ? await freeCode(c, n.id) : n.code;
       await c.query('UPDATE nights SET closed_at = NULL, code = $2 WHERE id = $1', [n.id, code]);
     }
-    return;
+    return false;
   }
   const { rows: [{ closed_at: closedAt }] } = await c.query(
     'UPDATE nights SET closed_at = COALESCE(closed_at, now()) WHERE id = $1 RETURNING closed_at', [n.id]);
@@ -125,12 +126,14 @@ async function recompute(c, n) {
       [n.id, p.id, p.name, users[p.id] || null, P.bi[p.id], st.cashouts[p.id]?.chips ?? 0, P.poker[p.id], P.price, P.cpb, pot, closedAt]);
   }
   await c.query('DELETE FROM game_results WHERE night_id = $1 AND NOT (player_id = ANY($2::text[]))', [n.id, keep]);
+  return !n.closed_at;
 }
 
 /* One write from the page: { op: set|add|update|delete, col, id?, data? }.
    The night row is locked for the length of the write, so two phones pressing
    "+ כניסה" at once are serialized rather than interleaved. Returns the id
-   written (for add) and the whole state after it. */
+   written (for add), the whole state after it, and `closed` — the night's id
+   when this write closed the count, else null. */
 async function write(pool, token, w) {
   if (!w || typeof w !== 'object') refuse('bad_doc');
   const now = Date.now();
@@ -197,9 +200,9 @@ async function write(pool, token, w) {
     } else refuse('bad_col');
 
     const fresh = (await c.query('SELECT * FROM nights WHERE id = $1', [n.id])).rows[0];
-    await recompute(c, fresh);
+    const closedNow = await recompute(c, fresh);
     const after = (await c.query('SELECT * FROM nights WHERE id = $1', [n.id])).rows[0];
-    return { id: outId, state: await stateOf(c, after) };
+    return { id: outId, state: await stateOf(c, after), closed: closedNow ? n.id : null };
   });
 }
 

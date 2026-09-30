@@ -26,6 +26,7 @@ const groupsDomain = require('../domain/groups');
 const groupTurn = require('../domain/group-turn');
 const intakeRoom = require('../domain/intake-room');
 const audit = require('../domain/audit');
+const gameSummary = require('../domain/game-summary');
 const replyLeak = require('../domain/reply-leak');
 const phantomSave = require('../domain/phantom-save');
 const linkRequest = require('../domain/link-request');
@@ -697,6 +698,26 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
     return out;
   }
 
+  // gamesd telling us a night's count just closed (domain/game-summary.js):
+  // the settlement it drew, in both languages, and the users it linked to that
+  // night. The text is sent as given and nobody's model touches it. No token
+  // here — gamesd is not acting for one person but reporting what a table did,
+  // and the socket's owner-only mode is the door, as it is for the gateway's
+  // own hooks. What it cannot do is widen the audience: only a linked person
+  // who holds the pack is queued, and the result says who was not.
+  async function handleGameSummary(params = {}) {
+    let out;
+    await withTx(pool, async (client) => {
+      out = await gameSummary.queue(client, params);
+      if (!out.ok) return;
+      await audit.record(client, null, 'games.summary_queued', {
+        caller: String(params.caller || 'games').slice(0, 20),
+        nightId: Number(params.nightId), queued: out.queued.length, skipped: out.skipped.length,
+      });
+    });
+    return out;
+  }
+
   // The plugin telling us a person's turn has put something in front of them
   // (`reply`, from reply_payload_sending) or has ended (`end`, from agent_end —
   // the only signal for a turn that ends in silence). Either way the 👀 held
@@ -1070,6 +1091,8 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
         return handleTurnProgress(msg.params || {});
       case 'identity_resolve':
         return handleIdentityResolve(msg.params || {});
+      case 'game_summary':
+        return handleGameSummary(msg.params || {});
       default:
         return { ok: false, error: `unknown method ${msg.method}` };
     }

@@ -8,12 +8,15 @@ const { createServer } = require('../src/server');
 
 async function boot(t) {
   const pool = await freshDb(t);
-  const server = createServer({ pool, publicBase: 'https://allma.test', page: '<!doctype html><title>night</title>' });
+  // brokerd is never reached from a test: a close is recorded here instead.
+  const announced = [];
+  const announce = async (p, nightId, state) => { announced.push({ nightId, closedAt: state.game.closedAt }); return { ok: true, queued: [], skipped: [] }; };
+  const server = createServer({ pool, publicBase: 'https://allma.test', page: '<!doctype html><title>night</title>', announce });
   await new Promise(r => server.listen(0, '127.0.0.1', r));
   t.after(() => new Promise(r => { server.closeListeners(); server.close(r); }));
   const base = `http://127.0.0.1:${server.address().port}`;
   const post = (p, body, headers = {}) => fetch(base + p, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body) });
-  return { pool, base, post };
+  return { pool, base, post, announced };
 }
 
 async function openNight(post, extra = {}) {
@@ -52,7 +55,7 @@ test('opening a night through a proxy is refused, even with the right path', asy
 });
 
 test('a whole night: buy-ins, a half, an undo, counts that do not add up, then do, and game_results follows', async t => {
-  const { pool, base, post } = await boot(t);
+  const { pool, base, post, announced } = await boot(t);
   const token = await openNight(post);
   const W = async w => { const r = await post(`/night/${token}/api/write`, w); const b = await r.json(); assert.equal(r.status, 200, JSON.stringify(b)); return b; };
   let st = (await (await fetch(`${base}/night/${token}/api/state`)).json());
@@ -68,8 +71,12 @@ test('a whole night: buy-ins, a half, an undo, counts that do not add up, then d
   assert.equal(st.game.closedAt, null, 'one chip short: not closed');
   assert.equal((await pool.query('SELECT count(*)::int n FROM game_results')).rows[0].n, 0);
 
-  st = (await W({ op: 'set', col: 'cashouts', id: d, data: { chips: 1500 } })).state;
+  assert.equal(announced.length, 0);
+  const closing = await W({ op: 'set', col: 'cashouts', id: d, data: { chips: 1500 } });
+  st = closing.state;
   assert.ok(st.game.closedAt, 'adds up: closed');
+  assert.equal(announced.length, 1, 'a tap that closes the count announces it');
+  assert.ok(!('closed' in closing), 'the night\'s own id never reaches the page');
   const rows = (await pool.query('SELECT player_id, net_ag, buyins, pot_ag FROM game_results ORDER BY net_ag DESC')).rows;
   assert.deepEqual(rows.map(r => [r.player_id, r.net_ag, r.buyins, r.pot_ag]), [[m, 5000, 1, 20000], [y, -2500, 1, 20000], [d, -2500, 2, 20000]]);
 
@@ -78,10 +85,17 @@ test('a whole night: buy-ins, a half, an undo, counts that do not add up, then d
   await W({ op: 'set', col: 'cashouts', id: y, data: { chips: 1000 } });
   assert.equal((await pool.query('SELECT count(*)::int n FROM game_results')).rows[0].n, 3);
   assert.equal((await pool.query(`SELECT net_ag FROM game_results WHERE player_id = $1`, [m])).rows[0].net_ag, 2500);
+  // It reopened on the first correction and closed on the second: a new
+  // settlement, so a second announcement. A write to a night already closed
+  // announces nothing.
+  assert.equal(announced.length, 2);
+  await W({ op: 'add', col: 'log', data: { t: 'סוף', via: 'tap' } });
+  assert.equal(announced.length, 2);
 
   // and a count taken back reopens the night and empties its results
   st = (await W({ op: 'delete', col: 'cashouts', id: d })).state;
   assert.equal(st.game.closedAt, null);
+  assert.equal(announced.length, 2, 'reopening is not news');
   assert.equal((await pool.query('SELECT count(*)::int n FROM game_results')).rows[0].n, 0);
 });
 

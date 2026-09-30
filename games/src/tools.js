@@ -15,6 +15,7 @@ const crypto = require('crypto');
 const store = require('./store');
 const { Refused } = require('./validate');
 const { pokerOf, settlementOf, ag } = require('./money');
+const { summaryText, fmtChips, fmtAg } = require('./summary');
 
 const RECENT = "interval '3 days'";
 
@@ -26,14 +27,6 @@ const fail = (code, message) => { throw new ToolError(code, message); };
 const newId = () => 'o' + Date.now().toString(36) + crypto.randomBytes(4).toString('hex');
 const norm = s => String(s || '').replace(/\s+/g, ' ').trim().toLowerCase();
 
-/* ── the page's formatting, for the lines people read ── */
-const nfHe = new Intl.NumberFormat('he-IL');
-const fmtChips = n => nfHe.format(Math.round(n));
-const fmtAg = a => {
-  const x = Math.abs(a), whole = x % 100 === 0;
-  return '⁦' + (a < 0 ? '−' : '') + (x / 100).toLocaleString('he-IL', { minimumFractionDigits: whole ? 0 : 2, maximumFractionDigits: 2 }) + ' ₪⁩';
-};
-const fmtAgEn = a => '₪' + (Math.abs(a) / 100).toLocaleString('en-US', { minimumFractionDigits: a % 100 ? 2 : 0, maximumFractionDigits: 2 });
 const FOOD = { pizza: '🍕', sushi: '🍣', burger: '🍔', shawarma: '🥙', drinks: '🍺' };
 const kindOf = t => /פיצ|pizza/i.test(t) ? 'pizza' : /סושי|sushi/i.test(t) ? 'sushi' : /בורגר|המבורג|burger/i.test(t) ? 'burger'
   : /שו?ו?ארמה|פלאפל|שיפוד|לאפה|פיתה|shawarma|falafel/i.test(t) ? 'shawarma'
@@ -78,9 +71,11 @@ function writer(pool, token, onState) {
   const w = async (op, col, id, data) => {
     const out = await store.write(pool, token, { op, col, id, data });
     last = out.state;
+    if (out.closed) w.closed = out.closed;
     return out;
   };
   w.log = t => w('add', 'log', undefined, { t, via: 'olma' });
+  w.closed = null;
   w.done = () => { if (last && onState) onState(token, last); return last; };
   return w;
 }
@@ -113,25 +108,29 @@ function standing(st, locale) {
   return withText({ closed: true }, summaryText(st, D, locale));
 }
 
-function summaryText(st, D, locale = 'he') {
-  const name = id => st.players[id]?.name || '?';
-  if (locale === 'en') {
-    // Words, not an arrow, and every name isolated behind a left-to-right
-    // mark: a line that opens on a Hebrew name is laid out right to left, and
-    // "יוסי → מירון" then reads as the other person paying.
-    const lines = xs => xs.map(x => `\u200E\u2068${name(x.from)}\u2069 pays \u2068${name(x.to)}\u2069: ${fmtAgEn(x.amt)}`).join('\n') || 'No transfers';
-    let t = `${st.game.name} — settlement\nBuy-in ${fmtAgEn(D.price)} = ${D.cpb.toLocaleString('en-US')} chips\n\n`;
-    if (D.merge) t += lines(D.xAll) + (D.hasFood ? '\n(food included)' : '');
-    else { if (D.closed) t += 'Poker:\n' + lines(D.xPoker); if (D.hasFood) t += (D.closed ? '\n\n' : '') + 'Food:\n' + lines(D.xFood); }
-    return t;
+// The call that closes the count does not hand the model the settlement to
+// write out: it is sent to every linked player as its own message, by code
+// (src/announce.js), and the result says only that. The text and the relay
+// come back only when that did not happen for the person asking — brokerd
+// unreachable, or a refusal — so they are never left with no settlement.
+const SENT = 'The settlement just went to them as its own message from Olma, drawn by code, and to every other player on Olma. '
+  + 'Do not write out any name, amount or transfer. At most one short line, e.g. that the night is closed.';
+async function announced({ pool, user, announce }, w, st) {
+  if (!w.closed || !announce) return {};
+  let out;
+  try { out = await announce(pool, w.closed, st); } catch (e) { out = { ok: false, error: e.message }; }
+  if (out && out.ok && Array.isArray(out.queued) && out.queued.includes(user.id)) {
+    return { summary_sent: true, note: SENT };
   }
-  // The page's summaryText, word for word (public/night.html).
-  const lines = xs => xs.map(x => `מ${name(x.from)} ל${name(x.to)}: ${fmtAg(x.amt)}`).join('\n') || 'אין העברות';
-  let t = `סיכום ${st.game.name}\nכניסה ${fmtAg(D.price)} = ${fmtChips(D.cpb)} ז'יטונים\n\n`;
-  if (D.merge) t += lines(D.xAll) + (D.hasFood ? '\n(כולל האוכל)' : '');
-  else { if (D.closed) t += 'פוקר:\n' + lines(D.xPoker); if (D.hasFood) t += (D.closed ? '\n\n' : '') + 'אוכל:\n' + lines(D.xFood); }
-  return t;
+  console.error('[gamesd tool] the settlement was not sent:', out && out.error || 'not queued for the caller');
+  return { summary_sent: false };
 }
+const closing = async (env, w, st, s) => {
+  const a = await announced(env, w, st);
+  if (!a.summary_sent) return { ...s, ...a };
+  const { text, relay, ...rest } = s;   // eslint-disable-line no-unused-vars
+  return { ...rest, ...a };
+};
 
 /* ── the tools ── */
 const TOOLS = {
@@ -150,7 +149,8 @@ const TOOLS = {
     return { night_code: n.code, url: `${publicBase}/night/${n.token}`, name: st.game.name, price: st.game.price, chips: st.game.chips, players: namesOf(st) };
   },
 
-  async add_buyin({ pool, user, onState }, a) {
+  async add_buyin(env, a) {
+    const { pool, user, onState } = env;
     const { st, token, me, n } = await ctx(pool, user, a.night_code);
     const w = writer(pool, token, onState);
     const size = a.n == null ? 1 : Number(a.n);
@@ -168,7 +168,9 @@ const TOOLS = {
     }
     const after = w.done();
     const count = countOf(after, who.id);
-    return { night_code: n.code, player: who.name, added_to_table: who.added, cancelled: !!a.cancel, buyins: count, paid: shekels(count * ag(after.game.price)) };
+    // Taking back a buy-in can be what makes the chips add up.
+    const closedBy = w.closed ? await closing(env, w, after, standing(after, user.locale)) : {};
+    return { night_code: n.code, player: who.name, added_to_table: who.added, cancelled: !!a.cancel, buyins: count, paid: shekels(count * ag(after.game.price)), ...closedBy };
   },
 
   async my_game_status({ pool, user, publicBase }, a) {
@@ -182,7 +184,8 @@ const TOOLS = {
     };
   },
 
-  async report_chips({ pool, user, onState }, a) {
+  async report_chips(env, a) {
+    const { pool, user, onState } = env;
     const { st, token, me, n } = await ctx(pool, user, a.night_code);
     const chips = Number(a.chips);
     if (!Number.isInteger(chips) || chips < 0) fail('bad_number', 'chips is a whole number, 0 or more');
@@ -192,7 +195,7 @@ const TOOLS = {
     await w('set', 'cashouts', who.id, { chips, via: 'olma' });
     await w.log(`${who.name}: נשארו ${fmtChips(chips)} ז'יטונים`);
     const after = w.done();
-    return { night_code: n.code, player: who.name, chips, ...standing(after, user.locale) };
+    return { night_code: n.code, player: who.name, chips, ...await closing(env, w, after, standing(after, user.locale)) };
   },
 
   async add_food_order({ pool, user, onState }, a) {

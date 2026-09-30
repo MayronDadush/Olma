@@ -7,7 +7,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const net = require('net');
-const { resolveIdentity } = require('../src/identity');
+const { resolveIdentity, sendSummary } = require('../src/identity');
 
 function fakeBroker(t, onLine) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'games-id-'));
@@ -34,4 +34,19 @@ test('no socket, a hang-up and silence are each a rejection', async t => {
   await assert.rejects(resolveIdentity('t', { sock: closes }), /closed/);
   const silent = await fakeBroker(t, () => {});
   await assert.rejects(resolveIdentity('t', { sock: silent, timeoutMs: 100 }), /timeout/);
+});
+
+test('a closed count goes to brokerd as game_summary, as games, with the drawn texts', async t => {
+  let seen;
+  const sock = await fakeBroker(t, (msg, c) => { seen = msg; c.write(JSON.stringify({ id: msg.id, ok: true, queued: [101], skipped: [] }) + '\n'); });
+  const texts = { he: 'סיכום', en: 'settlement' };
+  const out = await sendSummary({ nightId: 5, userIds: [101], texts }, { sock });
+  assert.equal(seen.method, 'game_summary');
+  assert.deepEqual(seen.params, { caller: 'games', nightId: 5, userIds: [101], texts });
+  assert.deepEqual([out.ok, out.queued], [true, [101]]);
+});
+
+test('under the test runner the live socket is refused before it is dialled', async () => {
+  await assert.rejects(sendSummary({ nightId: 1, userIds: [1], texts: { he: 'x', en: 'x' } }), /live brokerd socket/);
+  await assert.rejects(resolveIdentity('t'), /live brokerd socket/);
 });
