@@ -105,13 +105,14 @@ async function inviteForShare(client, user, taskId, rawPhone) {
   await audit.record(client, user.id, EVENT, { connectionId: Number(connection.id), taskId: Number(taskId), variant });
   return ok({
     invited: true,
-    hint: 'They are not on Olma yet. They were sent ONE message saying you want to share this task, and Olma will not write to them again. If they reply and approve, the task is offered to them automatically — nothing more to do. Tell the user exactly that, briefly.',
+    hint: 'They are not on Olma yet. They were sent ONE message saying you want to share this task, and Olma will not write to them again. If they reply and approve, the task goes onto their list automatically and they are told — nothing more to do. Tell the user exactly that, briefly.',
   });
 }
 
-// On approval of a connection this module opened: offer each task that was
-// waiting on it. Approval turns sharing on for both sides, so the offer goes
-// through the ordinary gate. Returns the share offers made.
+// On approval of a connection this module opened: share each task that was
+// waiting on it. Approval turns sharing on for both sides, so the share goes
+// through the ordinary gate, and is live and announced the moment it is made
+// (shares.offerShare). Returns the shares made.
 async function afterApproval(client, connection) {
   const { rows } = await client.query(
     `SELECT DISTINCT (detail->>'taskId')::bigint AS task_id FROM audit_log

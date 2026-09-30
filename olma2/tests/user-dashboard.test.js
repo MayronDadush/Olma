@@ -310,7 +310,6 @@ test('a task somebody shared with me is on my list too, and marked as theirs', a
   const offer = await withTx(db.pool, (c) =>
     shares.offerShare(c, friend.id, t.data.task.id, me.id));
   assert.equal(offer.ok, true, offer.ok ? '' : JSON.stringify(offer.error));
-  await withTx(db.pool, (c) => shares.respondToShare(c, me.id, offer.data.share.id, 'accept'));
 
   const d = (await load(me.id)).data;
   const row = d.tasks.find((x) => String(x.id) === String(t.data.task.id));
@@ -333,8 +332,7 @@ test('a shared task names its owner, is pinned on both lists, and un-pinning is 
   const pins = require('../src/domain/task-pins');
   const t = await withTx(db.pool, (c) => tasks.addTask(c, friend.id, { title: 'לתכנן את הטיול' }));
   const id = t.data.task.id;
-  const offer = await withTx(db.pool, (c) => shares.offerShare(c, friend.id, id, me.id));
-  await withTx(db.pool, (c) => shares.respondToShare(c, me.id, offer.data.share.id, 'accept'));
+  await withTx(db.pool, (c) => shares.offerShare(c, friend.id, id, me.id));
   const solo = await withTx(db.pool, (c) => tasks.addTask(c, me.id, { title: 'רק שלי' }));
 
   const row = async (uid, tid) => (await load(uid)).data.tasks.find((x) => String(x.id) === String(tid));

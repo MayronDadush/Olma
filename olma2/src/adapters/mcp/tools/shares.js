@@ -1,12 +1,12 @@
 'use strict';
 // shares — one slice of the tool registry (see ../registry.js).
 const {
-  shares, S, actorName, fanout, tool, connectedUserByPhone,
+  shares, S, ok, actorName, fanout, tool, connectedUserByPhone,
 } = require('./_shared');
 const shareInvite = require('../../../intake/share-invite');
 
 module.exports = [
-  tool('share_task_with', 'Offer a task/project to a person; one not on Olma gets ONE intro and the offer on approval. All sides are equal: rename, date, tick, add and remove items. Projects include subtasks.',
+  tool('share_task_with', 'Put a task/project (with its items) on a person\'s list at once — no approval; they are told after. Not on Olma: ONE intro first. All sides equal: rename, date, tick, add items.',
     { task_id: S('number', 'Task id'), phone: S('string', 'Their E.164 phone') }, ['task_id', 'phone'],
     async (client, user, a) => {
       const who = await connectedUserByPhone(client, user.id, a.phone, 'sharing');
@@ -17,15 +17,14 @@ module.exports = [
           ? await shareInvite.inviteForShare(client, user, a.task_id, a.phone) : null;
         return invited || who;
       }
+      // The share is live on return and the other person's message is
+      // already queued (domain/shares.offerShare) — nothing waits on them.
       const res = await shares.offerShare(client, user.id, a.task_id, who.data.target.id);
-      if (res.ok) {
-        const t = await client.query(`SELECT title FROM tasks WHERE id = $1`, [a.task_id]);
-        await fanout(client, [who.data.target.id], 'share_offer', {
-          shareId: Number(res.data.share.id), taskTitle: t.rows[0].title,
-          byName: actorName(user),
-        }, { urgency: 'normal', key: `soffer:${res.data.share.id}` });
-      }
-      return res;
+      if (!res.ok) return res;
+      return ok({
+        ...res.data,
+        hint: 'It is on their list now and they are being told. Tell the user in one line that it was added — nothing is waiting on the other person\'s approval.',
+      });
     }),
   tool('respond_to_share', 'Accept or decline a share offered to you.',
     { share_id: S('number', 'Share id'), decision: S('string', 'accept | decline') }, ['share_id', 'decision'],
