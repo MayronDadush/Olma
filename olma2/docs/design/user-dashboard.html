@@ -2128,24 +2128,26 @@ button.srow:active{background:var(--bg-tint)}
   padding:2px 7px;border-radius:999px;background:var(--bg-tint);color:var(--text-3);
 }
 .mtpill.ready{background:var(--ok-soft);color:var(--ok)}
-.mtpill.you{background:var(--accent);color:var(--on-accent)}
-.mtpill.settled{background:var(--accent-soft);color:var(--accent)}
-.mtpill.waiting{background:var(--warn-soft);color:var(--warn)}
 .mtpill.stuck{background:var(--danger-soft);color:var(--danger)}
-/* A coordination whose time is SET is the only card in this list with nothing
-   left to ask of anybody, and since 2026-09-23 it stays here until its moment
-   has actually passed — so it needs to read as settled before the sentence on
-   it is read at all. The chip alone did not do that: it is the same size and
-   the same language as "אפשר לסגור" and "ממתין", and in a quick scan it does
-   not separate. The whole card is tinted instead, and the chip goes solid
-   (the owner chose this over marking the chip alone). Only the ACTIVE list
+/* The list is three groups since 2026-09-30 — waiting on you, waiting on
+   others, settled — each ONE card with hairlines between its rows, the shape
+   the task list has. The group's heading says what the solid "מחכה לתשובה
+   שלך" pill used to say on every card, once. A settled coordination stays
+   here until its moment has actually passed (2026-09-23), and its group is
+   still the tinted one, so it reads as settled before any sentence on it is
+   read; its time carries the ✓ the solid chip used to. Only the ACTIVE list
    tints — an archive row is over, and nothing in it is worth pointing at. */
+.mtgrps{display:flex;flex-direction:column;gap:20px}
+.mtglab .n{margin-inline-start:auto;font-weight:500;font-variant-numeric:tabular-nums}
+.mtglab .dot{width:7px;height:7px;border-radius:50%;background:var(--gold-arc);flex:none;
+  margin-inline-end:-4px}
+.mtglab{justify-content:flex-start}
+.mtgrp > *{position:relative}
+.mtgrp > * + *::before{content:"";position:absolute;top:0;height:1px;background:var(--sep);
+  inset-inline-start:14px;inset-inline-end:0;z-index:2}
 .group.mtset{background:var(--accent-soft)}
-.group.mtset .mtpill.settled{
-  display:inline-flex;align-items:center;gap:4px;
-  background:var(--action);color:var(--on-action);
-}
-.group.mtset .mtpill.settled::before{content:"\2713";font-size:10px;font-weight:800}
+.mtstate .mtok{color:var(--accent);font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.mtstate .mtok::before{content:"\2713";font-size:11px;font-weight:800;margin-inline-end:4px}
 .mtcard .chev{width:15px;height:15px;flex:none;color:var(--text-3)}
 .mtrow{display:flex;align-items:center}
 .mtrow .mtcard{padding-inline-end:10px}
@@ -2470,6 +2472,9 @@ button.srow:active{background:var(--bg-tint)}
   color:var(--text-3);font-size:14px;font-weight:600;
 }
 .archive.open .arcbtn .chev{transform:rotate(-90deg)}
+/* "How does a meeting get set?" — the paragraph that sat under the list,
+   folded into the question it answers. */
+.mthow .note{padding:0 4px 6px;margin-top:0}
 /* what is already on the calendar: the archive's quiet fold, inside the list */
 /* spacing comes from .tsec + .tsec like its neighbours; first on the page, none */
 .calfold{margin-top:0}
@@ -3675,7 +3680,6 @@ button.srow:active{background:var(--bg-tint)}
 
     <div id="calMeet">
       <div style="--i:2">
-        <div class="glabel"><span data-i18n="mt.open"></span><span class="hint" id="mtCount"></span></div>
         <div class="swhint" id="mtHint" aria-live="polite"><div><p><svg><use href="#i-swipe"/></svg><span></span></p></div></div>
         <div class="stack" id="mtList"></div>
       </div>
@@ -3696,7 +3700,15 @@ button.srow:active{background:var(--bg-tint)}
           <p class="arcnote" id="mtArcNote" hidden></p>
         </div></div>
       </div>
-      <p class="note" style="padding:14px 14px 0" data-i18n="mt.note"></p>
+      <div class="archive mthow" id="mtHow" style="--i:3;margin-top:8px">
+        <button class="arcbtn" id="mtHowBtn" aria-expanded="false">
+          <svg class="chev"><use href="#i-chev"/></svg>
+          <span data-i18n="mt.how"></span>
+        </button>
+        <div class="fold" id="mtHowFold"><div>
+          <p class="note" data-i18n="mt.note"></p>
+        </div></div>
+      </div>
     </div>
   </section>
 
@@ -5384,11 +5396,11 @@ button.srow:active{background:var(--bg-tint)}
       "cal.modeRead":"ביומן","cal.modeMeet":"תיאומי פגישות",
       "cal.fromMeet":"נקבע בתיאום","cal.meetTag":"פגישה",
       "cal.pMeet":"מסמנים מתי נוח, ועולמה מוצאת זמן לכולם.",
-      "sheet.close":"סגירה","mt.open":"פגישות שבתיאום","mt.new":"פגישה חדשה",
-      "mt.note":"תשובה אומרת אם אתה יכול — לא שקבעתם. כשכולם מסמנים את אותה אופציה היא נקבעת מעצמה, אחרי דקה שבה עוד אפשר לשנות. מי שפתח את התיאום יכול גם לקבוע לבד, גם אם לא כולם יכלו.",
+      "sheet.close":"סגירה","mt.new":"פגישה חדשה",
+      "mt.note":"תשובה אומרת אם אתה יכול, לא שקבעתם. כשכולם יכולים באותו מועד, הוא נקבע לבד אחרי דקה. כל מי שבתיאום יכול גם לקבוע מועד בלי לחכות לכולם.","mt.how":"איך נקבעת פגישה?",
       "mt.empty":"אין תיאום פעיל כרגע. אפשר לפתוח אחד למעלה, או פשוט לבקש מעולמה.",
       "toast.mtNoUnanswer":"אפשר להחליף בין ״אני יכול״ ל״לא מתאים לי״, אבל לא לחזור ללא־תשובה",
-      "mt.n0":"אין","mt.n1":"פגישה אחת","mt.nN":"{n} פגישות",
+      
       "mt.ask":"מתי מתאים לך?","mt.askOne":"אתה יכול להגיע?","mt.settledLbl":"המועד שנקבע",
       "mt.done":"תיאומים שנסגרו ושיצאת מהם","mt.youLeft":"יצאת מהתיאום הזה","mt.rejoin":"חזרה לתיאום",
       "toast.mtBack":"חזרת ל„{name}” — השאר עודכנו",
@@ -5423,8 +5435,8 @@ button.srow:active{background:var(--bg-tint)}
       "mt.understood":"הבנתי: {list}","mt.useIt":"לסמן בלוח",
       "mt.notUnderstood":"לא הצלחתי להבין את זה — סמן בלוח למטה.",
       "mt.busy":"יש לך משהו ביום הזה","mt.clash":"מתנגש עם {what}","mt.prevWeeks":"שבועיים אחורה","mt.nextWeeks":"שבועיים קדימה",
-      "mt.pill.waiting":"מחכים לאחרים","mt.pill.ready":"אפשר לקבוע","mt.pill.you":"מחכה לתשובה שלך",
-      "mt.pill.settled":"נקבע","mt.pill.stuck":"תקוע","mt.pill.empty":"ריק",
+      "mt.pill.ready":"אפשר לקבוע","mt.pill.stuck":"תקוע","mt.pill.empty":"ריק",
+      "mt.grp.you":"מחכות לך","mt.grp.others":"מחכים לאחרים","mt.grp.set":"נקבעו",
       "mt.leaveAsk":"לצאת מ{name}? התשובות שלך יורדות מהספירה והתיאום יימחק מהרשימה שלך.",
       "mt.del":"מחיקת התיאום","mt.delAsk":"למחוק את {name}? נשלח ל{who} הודעה שהתיאום בוטל.",
       "toast.mtDeleted":"{name} נמחק","toast.mtDeleteFailed":"לא הצלחתי למחוק את {name}",
@@ -5761,11 +5773,11 @@ button.srow:active{background:var(--bg-tint)}
       "cal.modeRead":"Calendar","cal.modeMeet":"Coordinate",
       "cal.fromMeet":"Settled in a coordination","cal.meetTag":"Meeting",
       "cal.pMeet":"Everyone marks a time; Allma finds one.",
-      "sheet.close":"Close","mt.open":"Active coordinations","mt.new":"New coordination",
-      "mt.note":"An answer says whether you can \u2014 not that it is settled. When everyone marks the same option it settles itself, after a minute in which anyone can still change their answer. Whoever opened the coordination can also settle it alone, even if not everyone could.",
+      "sheet.close":"Close","mt.new":"New coordination",
+      "mt.note":"An answer says whether you can, not that it is settled. When everyone can make the same time, it settles itself a minute later. Anyone in the coordination can also settle a time without waiting for everyone.","mt.how":"How does a meeting get set?",
       "mt.empty":"Nothing being coordinated right now. Start one above, or just ask Allma.",
       "toast.mtNoUnanswer":"You can switch between yes and no, but not back to no answer",
-      "mt.n0":"none","mt.n1":"1 coordination","mt.nN":"{n} coordinations",
+      
       "mt.ask":"When suits you?","mt.askOne":"Can you make it?","mt.settledLbl":"The time you settled on",
       "mt.done":"Settled and left","mt.youLeft":"You left this one","mt.rejoin":"Put me back in",
       "toast.mtBack":"You're back in \u201c{name}\u201d \u2014 the others were told",
@@ -5800,8 +5812,8 @@ button.srow:active{background:var(--bg-tint)}
       "mt.understood":"Read as: {list}","mt.useIt":"Use these",
       "mt.notUnderstood":"Couldn't read that \u2014 mark it on the grid below.",
       "mt.busy":"You have something that day","mt.clash":"Clashes with {what}","mt.prevWeeks":"Two weeks back","mt.nextWeeks":"Two weeks forward",
-      "mt.pill.waiting":"Waiting on others","mt.pill.ready":"Ready to set","mt.pill.you":"Waiting on you",
-      "mt.pill.settled":"Settled","mt.pill.stuck":"Stuck","mt.pill.empty":"Empty",
+      "mt.pill.ready":"Ready to set","mt.pill.stuck":"Stuck","mt.pill.empty":"Empty",
+      "mt.grp.you":"Waiting on you","mt.grp.others":"Waiting on others","mt.grp.set":"Settled",
       "mt.leaveAsk":"Leave {name}? Your answers stop counting and it goes off your list.",
       "mt.del":"Delete the coordination","mt.delAsk":"Delete {name}? {who} will get a message that it is off.",
       "toast.mtDeleted":"{name} deleted","toast.mtDeleteFailed":"Could not delete {name}",
@@ -10150,7 +10162,7 @@ button.srow:active{background:var(--bg-tint)}
   }
   function mtCardHTML(m){
     var st = mtStatus(m);
-    var mine = m.opts.filter(function(o){ return !mtAns(m, 0, o.id); }).length;
+    var mine = mtMine(m);
     /* Leaving is offered here, on the row, because the reason to leave is
        usually "this should stop appearing in my list" — which is a thought you
        have while looking AT the list, not one that survives two taps into the
@@ -10163,14 +10175,18 @@ button.srow:active{background:var(--bg-tint)}
       var ask = verb === "delete"
         ? t("mt.delAsk", {name:L(m.t), who:mtNames(mtActive(m).filter(function(p){ return p !== 0; }))})
         : t("mt.leaveAsk", {name:L(m.t)});
-      return '<div class="group" style="margin-bottom:10px"><div class="mtconfirm">' +
+      return '<div class="mtconfirm">' +
         "<p>" + esc(ask) + "</p>" +
         '<div class="moact"><button class="mobtn warn" data-mtleavego="' + m.id + '">' +
         esc(t(verb === "delete" ? "sw.delete" : "mt.leave")) + "</button>" +
-        '<button class="mobtn" data-mtleaveno>' + esc(t("sheet.cancel")) + "</button></div></div></div>";
+        '<button class="mobtn" data-mtleaveno>' + esc(t("sheet.cancel")) + "</button></div></div>";
     }
-    return '<div class="group' + (m.settled ? " mtset" : "") + '" style="margin-bottom:10px">' +
-      '<div class="swr' + (verb ? "" : " locked") + swClass(key) + '" data-sw="' + key + '" data-verb="' + (verb || "") + '">' +
+    /* The group heading says "waiting on you" and "settled" (mtGroupOf), so
+       the chip is left only for what a heading cannot say about one row:
+       that everybody can already make it, or that nobody's time works. */
+    var pill = m.settled || mine || st === "waiting" ? ""
+      : '<em class="mtpill ' + st + '">' + esc(t("mt.pill." + st)) + "</em>";
+    return '<div class="swr' + (verb ? "" : " locked") + swClass(key) + '" data-sw="' + key + '" data-verb="' + (verb || "") + '">' +
       (verb ? swBack(verb) : "") + '<div class="swfront"><div class="mtrow">' +
       '<button class="mtcard" data-mt="' + m.id + '">' +
       faceStack(m.who) +
@@ -10179,16 +10195,21 @@ button.srow:active{background:var(--bg-tint)}
          waiting on YOU, so it says so on the card and not two taps in. */
       "</span>" +
       /* ONE signal per card, and it answers "what does this want from me"
-         (owner, 2026-09-28). There used to be a dot for "waiting on you"
-         beside a pill that could say "אפשר לסגור" at the same time, and a
-         new person could not tell which of the two to act on. Waiting on
-         you wins, and is the one solid pill; otherwise the pill is the
-         state. */
-      '<span class="mtstate"><em class="mtpill ' + (!m.settled && mine ? "you" : st) + '">' +
-      esc(t("mt.pill." + (!m.settled && mine ? "you" : st))) + "</em>" +
-      esc(mtState(m)) + "</span></span>" +
+         (owner, 2026-09-28) — since 2026-09-30 by the group it sits in. */
+      '<span class="mtstate">' + pill +
+      (m.settled ? '<span class="mtok">' + esc(mtState(m)) + "</span>" : esc(mtState(m))) +
+      "</span></span>" +
       '<svg class="chev"><use href="#i-chev"/></svg></button>' +
-      (verb ? swDel(key, verb) : "") + "</div></div></div></div>";
+      (verb ? swDel(key, verb) : "") + "</div></div></div>";
+  }
+  /* Which of the three groups a coordination sits in — the same test that
+     used to choose the solid "waiting on you" pill: not settled, and some
+     time on the table still has no answer from you. */
+  function mtMine(m){
+    return m.opts.filter(function(o){ return !mtAns(m, 0, o.id); }).length;
+  }
+  function mtGroupOf(m){
+    return m.settled ? "set" : mtMine(m) ? "you" : "others";
   }
   /* What taking this card off the list means (owner, 2026-09-23). Nobody
      manages a coordination, so the answer never asks who opened it. Between
@@ -10231,10 +10252,19 @@ button.srow:active{background:var(--bg-tint)}
        2026-09-23). A coordination leaves this list when its moment passes,
        and that decision is the server's alone. */
     var live = MEETS;
+    var groups = ["you", "others", "set"].map(function(g){
+      return {g:g, ms:live.filter(function(m){ return mtGroupOf(m) === g; })};
+    }).filter(function(x){ return x.ms.length; });
     $("#mtList").innerHTML = live.length
-      ? live.map(mtCardHTML).join("")
+      ? '<div class="mtgrps">' + groups.map(function(x){
+          return "<div>" + '<div class="glabel mtglab">' +
+            (x.g === "you" ? '<i class="dot"></i>' : "") +
+            "<span>" + esc(t("mt.grp." + x.g)) + "</span>" +
+            (x.g === "you" ? '<span class="n">' + x.ms.length + "</span>" : "") + "</div>" +
+            '<div class="group mtgrp' + (x.g === "set" ? " mtset" : "") + '">' +
+            x.ms.map(mtCardHTML).join("") + "</div></div>";
+        }).join("") + "</div>"
       : '<div class="group">' + emptyBig(t("mt.empty"), "mtNew", t("mt.new")) + "</div>";
-    rollText($("#mtCount"), live.length ? pl("mt", live.length) : "");
     renderHome();
     /* What HAS happened, and what you left — both arrive from the server
        already reduced to a title and the words of the slot. Capped at the same
@@ -10248,6 +10278,12 @@ button.srow:active{background:var(--bg-tint)}
     $("#mtArcNote").hidden = arc.length <= ARCHIVE_MAX;
     $("#mtArcNote").textContent = t("tasks.arcShown", {n:ARCHIVE_MAX, all:arc.length});
   }
+  $("#mtHowBtn").addEventListener("click", function(){
+    var a = $("#mtHow"), on = !a.classList.contains("open");
+    a.classList.toggle("open", on);
+    $("#mtHowFold").classList.toggle("open", on);
+    this.setAttribute("aria-expanded", on ? "true" : "false");
+  });
   $("#mtArcBtn").addEventListener("click", function(){
     var a = $("#mtArchive"), on = !a.classList.contains("open");
     a.classList.toggle("open", on);
