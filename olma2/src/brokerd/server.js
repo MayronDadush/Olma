@@ -32,6 +32,8 @@ const phantomSave = require('../domain/phantom-save');
 const linkRequest = require('../domain/link-request');
 const dashboardAuth = require('../domain/dashboard-auth');
 const templates = require('../domain/message-templates');
+const gameShortcut = require('../domain/game-shortcut');
+const packsDomain = require('../domain/packs');
 
 // One of these per turn. The gateway spawns a fresh MCP shim for every agent
 // turn and the shim holds ONE socket to brokerd for its whole life, so a
@@ -85,8 +87,16 @@ const PENDING_MAX_PER_USER = 8;
 // production gets the worker facade, never `channels/sessions.js` directly,
 // because every export there is synchronous and this daemon answers live
 // users on the same loop.
-function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, timers, endSignalsLive }) {
+function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, timers, endSignalsLive, games }) {
   flood = flood || new FloodCounter();
+  // gamesd and the gateway's config, for the game shortcut. Injectable for the
+  // same reason as the roster: the defaults reach live services.
+  games = {
+    open: (b) => require('../channels/gamesd').open(b),
+    join: (b) => require('../channels/gamesd').join(b),
+    applyPolicy: (agentId, packs) => packsDomain.applyPolicy(agentId, packs),
+    ...(games || {}),
+  };
   const readLidPhones = typeof lidPhoneNumbers === 'function'
     ? lidPhoneNumbers
     : () => require('../channels/sessions-async').lidPhoneNumbers();
@@ -350,6 +360,147 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
     return out;
   }
 
+  // Game nights from a private chat (domain/game-shortcut.js has the why):
+  // "ערב משחק חדש", the price that answers it, a night's join code, and the
+  // name that answers "איך קוראים לך?". Asked FIRST by the link shortcut, on
+  // the same short DMs, and answers null for everything that is not one of
+  // them — which is nearly every message, so the common path is three pure
+  // matches and one Map read.
+  //
+  // What she just asked is held here, in memory, per agent, for a quarter of
+  // an hour, and the NEXT short message ends it whatever it says: an answer
+  // that is not a price or a name goes to the model, and nothing is read as
+  // an answer to a question two messages back. A restart forgets the
+  // question, and the answer then goes to the model, which by then has the
+  // pack's tools — the old path, never a wrong one.
+  const GAME_ASK_TTL_MS = 15 * 60_000;
+  const gameAsked = new Map();   // agentId → { kind: 'setup' | 'name', code?, at }
+  function takeGameAsk(agentId) {
+    const a = gameAsked.get(agentId);
+    gameAsked.delete(agentId);
+    return a && clock() - a.at <= GAME_ASK_TTL_MS ? a : null;
+  }
+  const askGame = (agentId, ask) => gameAsked.set(agentId, { ...ask, at: clock() });
+
+  async function handleGameShortcut(agentId, params) {
+    const body = String(params.body || '');
+    const phrase = gameShortcut.matchOpenPhrase(body);
+    const code = phrase ? null : gameShortcut.findCode(body);
+    const ask = takeGameAsk(agentId);
+    const setup = !phrase && !code && ask && ask.kind === 'setup' ? gameShortcut.parseSetup(body) : null;
+    const name = !phrase && !code && ask && ask.kind === 'name' ? gameShortcut.parseName(body) : null;
+    if (!phrase && !code && !setup && !name) return null;
+
+    const { rows } = await pool.query(
+      `SELECT id, phone, locale, first_name, last_name FROM users
+        WHERE agent_id = $1 AND status = 'active' AND is_eval = false`, [agentId]);
+    const user = rows[0];
+    if (!user) return null;
+    const userId = Number(user.id);
+    // The language on FILE, like the code shortcut: a Hebrew speaker tapping
+    // a forwarded "game K7M2Q" still reads Hebrew, and the reply gate drops
+    // an English line for them.
+    const lang = String(user.locale || (phrase || code || {}).lang || 'he').toLowerCase().startsWith('en') ? 'en' : 'he';
+    const overrides = await templates.load(pool);
+    const say = (base, vars) => templates.render(templates.keyFor(base, lang, { fallback: 'he' }), vars, overrides);
+    const nightVars = (n) => ({ night: n.name, price: gameShortcut.fmtNumber(n.price), chips: gameShortcut.fmtNumber(n.chips), code: n.code });
+
+    let text = null;
+    let outcome = null;
+    let packVia = null;      // 'phrase' | 'code' when this message turns the pack on
+    let invite = null;       // { code, texts } for the host, after the night opens
+    try {
+      if (phrase) {
+        const r = await games.open({ userId, probe: true });
+        packVia = 'phrase';
+        if (r && r.ok && r.already) {
+          outcome = 'already_open';
+          text = say('game_already_open', { ...nightVars(r.night), url: r.url });
+        } else if (r && r.ok && r.none) {
+          outcome = 'asked_setup';
+          askGame(agentId, { kind: 'setup' });
+          text = say('game_open', {});
+        } else return null;
+      } else if (setup) {
+        const nightName = lang === 'en' ? 'Game night' : 'ערב משחק';
+        const r = await games.open({
+          userId, name: gameShortcut.namesFor(user)[0] || null, locale: lang,
+          price: setup.price, chips: setup.chips, nightName,
+        });
+        if (!r || !r.ok || !(r.opened || r.already) || !r.night) return null;
+        packVia = 'phrase';
+        outcome = r.opened ? 'opened' : 'already_open';
+        const vars = { ...nightVars(r.night), url: r.url };
+        text = say(r.opened ? 'game_opened' : 'game_already_open', vars);
+        if (r.opened) {
+          // Both languages now, the reader's chosen at delivery — the host may
+          // forward it anywhere, but it goes out in the host's language.
+          const page = String(r.url).split('#')[0];
+          const inv = { ...vars, url: page };
+          invite = {
+            code: r.night.code,
+            texts: {
+              he: templates.render('game_invite', inv, overrides),
+              en: templates.render('game_invite_en', inv, overrides),
+            },
+          };
+        }
+      } else {
+        const joinCode = code ? code.code : ask.code;
+        const names = name ? [name] : gameShortcut.namesFor(user);
+        const r = await games.join({ userId, code: joinCode, names });
+        if (!r) return null;
+        outcome = r.ok ? (r.joined ? 'joined' : 'already') : r.error;
+        if (r.ok) {
+          if (!r.night) return null;
+          packVia = 'code';
+          const vars = { ...nightVars(r.night), name: r.name, url: r.url };
+          text = r.joined || !(r.buyins > 0)
+            ? say('game_joined', vars)
+            : say('game_already', { ...vars, count: gameShortcut.buyinsText(r.buyins, lang) });
+        } else if (r.error === 'need_name') {
+          askGame(agentId, { kind: 'name', code: joinCode });
+          text = say('game_ask_name', nightVars(r.night));
+        } else if (r.error === 'name_taken') {
+          askGame(agentId, { kind: 'name', code: joinCode });
+          text = say('game_name_taken', { name: r.name });
+        } else if (r.error === 'full') {
+          text = say('game_full', nightVars(r.night || {}));
+        } else if (r.error === 'no_night' && code && code.withWord) {
+          text = say('game_no_night', { code: joinCode });
+        } else return null;   // a bare five letters that is no night: not ours
+      }
+    } catch (e) {
+      // gamesd down or slow: the model runs, as it did before this existed.
+      console.error('[brokerd] game shortcut:', e && e.message || e);
+      return null;
+    }
+
+    const messageId = reactions.cleanMessageId(params.messageId);
+    let mark = null;
+    let packs = null;
+    await withTx(pool, async (client) => {
+      if (packVia) packs = (await packsDomain.enable(client, userId, 'games', packVia)).packs;
+      if (invite) await gameSummary.queueInvite(client, { userId, ...invite }, { now: new Date(clock()) });
+      await audit.record(client, userId, phrase || setup ? 'games.phrase_shortcut' : 'games.join_shortcut', { outcome, lang });
+      if (messageId) {
+        const vocab = reactions.vocabulary(await require('../domain/flags').getFlag(client, reactions.VOCAB_FLAG));
+        mark = { channel: 'whatsapp', target: user.phone, messageId, state: 'done', emoji: vocab.done };
+      }
+    });
+    // After the row, never before: the row is the permission, the deny list
+    // only what the model is shown, and the deploy's sync writes the same
+    // list if this does not (domain/packs.js).
+    if (packs) {
+      try { games.applyPolicy(agentId, packs); } catch (e) {
+        console.error('[brokerd] game shortcut: tool policy not written:', e && e.message || e);
+      }
+    }
+    if (messageId) { noteAnsweredByCode(userId, messageId); eyesAnswered(messageId); }
+    if (mark) placeMark(mark);
+    return { ok: true, claim: true, text, lang, kind: 'game' };
+  }
+
   // "שלח לי קישור" — answered by code, before any turn exists
   // (domain/link-request.js has the why). The plugin's `before_dispatch` sends
   // a SHORT direct message here; a whole-message match mints their link and
@@ -363,6 +514,8 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
   async function handleDashboardLinkShortcut(params = {}) {
     const agentId = String(params.agentId || '').trim();
     if (!/^u-\d+$/.test(agentId)) return { ok: false, error: 'bad agentId' };
+    const game = await handleGameShortcut(agentId, params);
+    if (game) return game;
     const hit = linkRequest.matchLinkRequest(params.body);
     if (!hit) return { ok: true, claim: false };
     const messageId = reactions.cleanMessageId(params.messageId);
