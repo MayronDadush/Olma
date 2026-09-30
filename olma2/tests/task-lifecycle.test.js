@@ -276,6 +276,50 @@ test('a second run has nothing left to say', async () => {
   assert.equal(after, before);
 });
 
+// Miron, 2026-09-30: offered restore_task by title alone, the model could not
+// find the archived row, and saved a copy with add_task.
+test('the message about it hands the agent each task id, and names restore_task', async () => {
+  const { rows } = await db.pool.query(
+    `SELECT kind, payload FROM outbox WHERE kind = 'tasks_auto_archived' LIMIT 1`);
+  const { instructionFor } = require('../src/channels/openclaw');
+  const body = instructionFor(rows[0]);
+  for (const t of rows[0].payload.tasks) {
+    assert.ok(body.includes(`<<<${t.title}>>> (task_id=${t.id})`), `id for ${t.title}`);
+  }
+  assert.match(body, /call restore_task with the task_id/);
+});
+
+test('a passed appointment put back comes back as a to-do, so the sweep leaves it', async () => {
+  const id = await withClient(async (c) => {
+    const r = await tasks.addTask(c, ana.id, { title: 'העברות', kind: 'event', dueAt: at(-6) });
+    return r.data.task.id;
+  });
+  await withClient((c) => sweeps.sweepFinishedTasks(c));
+  const back = await withClient((c) => tasks.unarchiveTask(c, ana.id, id));
+  assert.equal(back.ok, true);
+  assert.equal(back.data.becameTodo, true);
+
+  await withClient((c) => sweeps.sweepFinishedTasks(c));
+  const { rows } = await db.pool.query(
+    `SELECT kind, status, archived_at, due_at FROM tasks WHERE id = $1`, [id]);
+  assert.equal(rows[0].kind, 'todo');
+  assert.equal(rows[0].status, 'open');
+  assert.equal(rows[0].archived_at, null);
+  assert.ok(rows[0].due_at, 'the date is kept, so it reads as overdue');
+});
+
+test('an appointment still ahead is put back as an appointment', async () => {
+  const back = await withClient(async (c) => {
+    const r = await tasks.addTask(c, ana.id, { title: 'רופא', kind: 'event', dueAt: at(30) });
+    await tasks.archiveTask(c, ana.id, r.data.task.id);
+    return tasks.unarchiveTask(c, ana.id, r.data.task.id);
+  });
+  assert.equal(back.ok, true);
+  assert.equal(back.data.becameTodo, undefined);
+  const { rows } = await db.pool.query(`SELECT kind FROM tasks WHERE id = $1`, [back.data.taskId]);
+  assert.equal(rows[0].kind, 'event');
+});
+
 test('the grace window is a flag, so finding the right number is not a deploy', async () => {
   const t = await withClient(async (c) => (await tasks.addTask(c, ana.id, {
     title: 'תור לפיזיותרפיה', dueAt: at(-1),

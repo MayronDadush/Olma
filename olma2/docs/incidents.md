@@ -116,6 +116,7 @@ never trust a dated narrative for something you are about to act on.
 - [The hook's timer fired late, and brokerd took the blame (fixed 2026-09-07)](#the-hooks-timer-fired-late-and-brokerd-took-the-blame-fixed-2026-09-07)
 - [Good morning at half past one (fixed 2026-09-06)](#good-morning-at-half-past-one-fixed-2026-09-06)
 - [The probe that was read as him writing (fixed 2026-09-30)](#the-probe-that-was-read-as-him-writing-fixed-2026-09-30)
+- [The way back that had no id (fixed 2026-09-30)](#the-way-back-that-had-no-id-fixed-2026-09-30)
 - [The morning digest asked the same question four mornings running (fixed 2026-09-06)](#the-morning-digest-asked-the-same-question-four-mornings-running-fixed-2026-09-06)
 - [Four good mornings to a man who had stopped answering (fixed 2026-09-05)](#four-good-mornings-to-a-man-who-had-stopped-answering-fixed-2026-09-05)
 - [Vered's first evening: five tasks, three that would not have arrived (fixed 2026-09-06)](#vereds-first-evening-five-tasks-three-that-would-not-have-arrived-fixed-2026-09-06)
@@ -5354,6 +5355,32 @@ A probe of a person's agent still counts as them writing everywhere else
 session memory as "probe by day, and check `outbox` for unsent rows first".
 It is not fixed here, because the fallback opener exists precisely for a real
 message whose hook missed, and nothing on the MCP side can tell the two apart.
+
+### The way back that had no id (fixed 2026-09-30)
+
+Same night as the entry above. At 03:01 the auto-archive notice told Miron
+that "העברות + סיבוב bit" had left his list, and offered to put it back. At
+03:21 he wrote "תחזיר את לרשימה ותעשה לי על זה תזכורות היום אני חייב לסיים את
+זה". The model searched the session store (nothing), listed his done tasks
+(an archived task is not in that list) and his open ones (nor that), and with
+no id to hand `restore_task` it called `add_task`: a second row, task 1083,
+while 975 stayed archived.
+
+The instruction for `tasks_auto_archived` named each task by its title only
+and said "(restore_task)". The ids were on the outbox payload the whole time.
+Same shape as "Three people, three invented domains": the instruction named a
+tool and withheld the one value the tool needs, and the model did the next
+most plausible thing. It now carries `(task_id=N)` beside every title and
+says to restore, never to add.
+
+**The second fault was one call behind it.** Had the model found the id,
+`restore_task` would have put back an EVENT whose moment had passed, and
+`sweepFinishedTasks` runs every minute: it would have been archived again
+before he read the reply, silently, because the notice's idempotency key was
+already spent. The page's own "restore" had the same hole. `unarchiveTask`
+now turns a passed event into a to-do on the way back (date kept, so it reads
+as overdue) and says so on its result (`becameTodo`): somebody asking for a
+passed moment back is saying there is still something to do about it.
 
 ### The morning digest asked the same question four mornings running (fixed 2026-09-06)
 
