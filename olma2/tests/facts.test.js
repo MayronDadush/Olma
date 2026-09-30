@@ -1,7 +1,7 @@
 'use strict';
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
-const { freshDb, makeUser } = require('./helpers');
+const { freshDb, makeUser, daytime } = require('./helpers');
 const facts = require('../src/domain/facts');
 const extraction = require('../src/jobs/fact-extraction');
 
@@ -1104,7 +1104,11 @@ test('a task completed hours ago is not written back by the extraction pass', as
 test('a moment they stated becomes the task\'s due date, and arms its reminder', async () => {
   const u = await seedChatter('+972590009101', 40);
   // Computed ONCE — an assertion that recomputes it can straddle a second.
-  const due = new Date(Date.now() + 26 * 3600_000);
+  // And pinned to noon: a bare now+26h run between 22:00:00 and 22:00:59 UTC
+  // lands on 00:00:xx in the test user's zone, which autoReminderAt reads as a
+  // DAY-shaped due date and arms at 08:00 that morning — after the due moment,
+  // so `remind_at < due` went red once in a full run at 2026-09-30 22:00 UTC.
+  const due = daytime(new Date(Date.now() + 26 * 3600_000));
   const iso = due.toISOString().replace('Z', '+00:00');
   await withClient(async (c) => {
     const applied = await extraction.applyExtraction(c, u, {
