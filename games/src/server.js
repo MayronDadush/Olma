@@ -12,6 +12,7 @@ const store = require('./store');
 const { Refused } = require('./validate');
 const { runTool } = require('./tools');
 const { resolveIdentity } = require('./identity');
+const { announceClose } = require('./announce');
 
 const PAGE_FILE = path.join(__dirname, '..', 'public', 'night.html');
 const MAX_BODY = 32 * 1024;
@@ -21,7 +22,7 @@ const MAX_LISTENERS = 600;
 
 const STATUS = { not_found: 404, too_many: 429, rate_limited: 429 };
 
-function createServer({ pool, publicBase = '', page, identify = resolveIdentity } = {}) {
+function createServer({ pool, publicBase = '', page, identify = resolveIdentity, announce = announceClose } = {}) {
   const html = page ?? fs.readFileSync(PAGE_FILE, 'utf8');
   const listeners = new Map();        // token -> Set<res>
   let listenerCount = 0;
@@ -126,7 +127,7 @@ function createServer({ pool, publicBase = '', page, identify = resolveIdentity 
           return send(res, 200, { text: 'ERROR forbidden: game nights are not turned on for this person' });
         }
         if (limited('u:' + who.user.id)) return send(res, 200, { text: 'ERROR rate_limited: too many calls this minute' });
-        const text = await runTool(name, a, { pool, user: who.user, publicBase, onState: broadcast });
+        const text = await runTool(name, a, { pool, user: who.user, publicBase, onState: broadcast, announce });
         return send(res, 200, { text });
       }
 
@@ -150,8 +151,16 @@ function createServer({ pool, publicBase = '', page, identify = resolveIdentity 
       if (limited('n:' + token) || limited('c:' + clientOf(req))) return send(res, 429, { error: 'rate_limited' });
       const body = await readBody(req);
       if (action === 'write') {
-        const out = await store.write(pool, token, body);
+        const { closed, ...out } = await store.write(pool, token, body);
         broadcast(token, out.state);
+        // A tap on the page that closes the count announces it too. Nobody is
+        // waiting on the answer here, so a brokerd that cannot be reached
+        // costs the message and nothing else — the page already shows it.
+        if (closed) {
+          Promise.resolve().then(() => announce(pool, closed, out.state))
+            .then(r => { if (!r || !r.ok) throw new Error(r && r.error || 'no answer'); })
+            .catch(e => console.error('[gamesd] announcing a closed night failed:', e && e.message || e));
+        }
         return send(res, 200, out);
       }
       // action === 'next'

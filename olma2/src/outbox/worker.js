@@ -119,7 +119,7 @@ async function closedNewsFor(client, row, mergedParts) {
   // The intro video goes out on the raw pipe with no words at all, so nothing
   // may be recorded as said on it.
   if (row.kind === 'reminder' || row.kind === 'digest' || row.kind === 'intro_video'
-    || row.kind === 'policy_update'
+    || row.kind === 'policy_update' || row.kind === 'game_summary'
     || p.instruction || p.verbatimReply) return null;
   if (mergedParts && mergedParts.some((part) => part.kind === 'digest')) return null;
   const list = await digestDomain.unheardClosedMeetings(client, row.user_id);
