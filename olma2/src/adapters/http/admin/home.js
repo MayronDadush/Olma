@@ -479,7 +479,7 @@ function renderHome(m, { alertsHtml = '', fx = null } = {}) {
       periods: withPeriods(m.calls) }),
     kpi({ id: 'seconds', label: 'שניות בשיחות', value: fmt(Math.round(m.seconds.total)), sub: duration(m.seconds.total),
       periods: withPeriods(m.seconds, Math.round) }),
-    kpi({ id: 'google', label: 'מחוברים לגוגל', value: fmt(m.google.total), sub: 'יומן, אנשי קשר או ג׳ימייל',
+    kpi({ id: 'google', label: 'מחוברים לגוגל', value: fmt(m.google.total), sub: 'יומן או אנשי קשר',
       periods: withPeriods(m.google).map(([k, l, v]) => [k, `חדשים ${l}`, v]) }),
     kpi({ id: 'money', label: 'כסף שהוצא', value: moneyMain.main, sub: moneyMain.sub ? `${moneyMain.sub} · מתחילת הפרויקט` : 'מתחילת הפרויקט',
       periods: withPeriods(m.money), periodFmt: (v) => money(v).main, note: `החודש: ${moneyNote}${missing}` }),

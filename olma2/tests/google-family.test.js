@@ -1,7 +1,7 @@
 'use strict';
 // google-family.js: the keep-alive check that stops disconnecting ONE Google
-// service (calendar/contacts/gmail) from revoking a token a sibling still
-// depends on, when all three came from one combined consent.
+// service (calendar/contacts) from revoking a token a sibling still depends
+// on, when both came from one combined consent.
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const { freshDb, makeUser } = require('./helpers');
@@ -22,8 +22,8 @@ async function addRow(provider) {
   );
 }
 
-test('every family provider is exactly calendar, contacts, gmail — nothing more, nothing less', () => {
-  assert.deepEqual([...GOOGLE_FAMILY_PROVIDERS].sort(), ['gmail', 'google_calendar', 'google_contacts']);
+test('every family provider is exactly calendar and contacts — nothing more, nothing less', () => {
+  assert.deepEqual([...GOOGLE_FAMILY_PROVIDERS].sort(), ['google_calendar', 'google_contacts']);
 });
 
 test('no other row at all — nothing to keep alive for', async () => {

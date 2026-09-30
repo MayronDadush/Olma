@@ -18,7 +18,7 @@
 //   * Other people appear by first name and chosen character only. This payload is
 //     shipped to a browser, so a phone number in it is a phone number
 //     published — the same projection calendar.listEvents makes about
-//     attendees and mail makes about recipient lists.
+//     attendees.
 const { ok, err } = require('./results');
 // `meetingsDomain`, not `meetings`: loadMeetings below binds a local
 // `meetings` for its own rows, and a module-level shadow of that name is a
@@ -26,7 +26,6 @@ const { ok, err } = require('./results');
 const meetingsDomain = require('./meetings');
 const optionMoment = require('./meeting-option-moment');
 const meetingTime = require('./meeting-time');
-const mail = require('./mail');
 const voice = require('./voice');
 const preferences = require('./preferences');
 const holidays = require('./holidays');
@@ -62,7 +61,7 @@ const importSource = (src) => (Object.hasOwn(SOURCE_CAPS, src) ? src : null);
 // throwaway object keeps them out of anything that gets serialised, and makes
 // it obvious at the call site that this is the only thing they are for.
 //
-// Reading them at all is not optional — requireMailAccess answers "admin, or
+// Reading them at all is not optional — pageCallAllowed answers "admin, or
 // on the allowlist, or no". Handed a row without the columns it consults, it
 // would answer "no" for everybody and be quietly wrong for exactly the people
 // the allowlist exists for.
@@ -738,15 +737,11 @@ async function load(client, userId) {
   const tasks = await loadTasks(client, userId, zone, user.calendar_sync_tasks);
   const friends = await loadFriends(client, userId);
   const integrations = await loadIntegrations(client, userId);
-  // What the page may OFFER, as distinct from what is already connected. Only
-  // one entry so far and it earns its place: connecting a mailbox is behind an
-  // allowlist (mail.requireMailAccess), so for almost everybody Gmail is a
-  // service on a connected account that still cannot be switched on. Without
-  // this the page would draw it as available and find out only on the tap.
-  // One read, two gates: mail is an allowlist, and so is ringing from this
-  // page. Neither field it fetches ever reaches the payload below.
+  // What the page may OFFER, as distinct from what is already connected:
+  // ringing from this page is behind an allowlist. Neither field it fetches
+  // ever reaches the payload below. (Gmail was the other entry until
+  // 2026-09-30, when the mail connection was removed.)
   const gateUser = await gateIdentity(client, userId);
-  const mailGate = await mail.requireMailAccess(client, gateUser);
   const callAllowed = await voice.pageCallAllowed(client, gateUser);
   const callAttempts = callAllowed ? await voice.attemptsRemaining(client, gateUser.id) : null;
   const channels = await loadChannels(client, userId);
@@ -815,7 +810,6 @@ async function load(client, userId) {
     friends,
     integrations,
     available: {
-      mail: mailGate.ok,
       call: {
         allowed: callAllowed,
         attemptsUsed: callAttempts ? callAttempts.used : 0,

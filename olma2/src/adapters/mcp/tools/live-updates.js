@@ -10,18 +10,17 @@ module.exports = [
   // (never web crawling); the sweep diffs in code and summarises with the
   // cheap background model only when something actually changed.
   tool('subscribe_live_updates',
-    'Subscribe the user to a recurring proactive update from ONE structured source at their chosen hour: weather (every time), news_topic and sports_summary (real headlines, only when new), openrouter_models (new models), mail_query (their OWN mailbox, hourly, headers only). Anything else: not available yet — report_issue.',
+    'Subscribe the user to a recurring proactive update from ONE structured source at their chosen hour: weather (every time), news_topic and sports_summary (real headlines, only when new), openrouter_models (new models). Anything else: not available yet — report_issue.',
     {
       source: S('string', 'One of: ' + Object.keys(liveUpdates.SOURCES).join(', ')),
       city: S('string', 'For source=weather: the city name, in any language'),
       topic: S('string', 'For source=news_topic: the topic, in any language'),
       team: S('string', 'For source=sports_summary: optional team/league name — leave empty for general sports'),
-      mail_query: S('string', 'For source=mail_query: a Gmail search built from what THEY described (from:, subject:, has:attachment), e.g. "from:amazon.com delivery". Needs their email connected. Say it back in words: one that matches nothing fails silently, one that matches everything is a nuisance.'),
-      cadence: S('string', 'hourly, daily (default) or weekly. hourly is only for mail_query.'),
+      cadence: S('string', 'daily (default) or weekly.'),
       local_hour: S('number', 'Hour of day in the user\'s own timezone, 0-23. Default 9.'),
     }, ['source'],
     (client, user, a) => liveUpdates.subscribe(client, user, {
-      source: a.source, params: { city: a.city, topic: a.topic, team: a.team, query: a.mail_query },
+      source: a.source, params: { city: a.city, topic: a.topic, team: a.team },
       cadence: a.cadence, local_hour: a.local_hour,
     })),
   tool('list_my_live_updates', 'The user\'s active live-update subscriptions.', {}, [],

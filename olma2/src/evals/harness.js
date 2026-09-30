@@ -143,7 +143,7 @@ async function resetEvalUser(client, userId) {
 const KEPT_ACROSS_RESET = {
   entitlements: 'provisioning: what this account may use, not conversation state',
   user_channels: 'provisioning: the WhatsApp lane the agent answers on',
-  integrations: 'connection state — and `email-not-connected` asserts gmail is absent, so silently wiping it would delete the thing under test',
+  integrations: 'connection state: what the account is connected to, not conversation state',
   usage_ledger: 'append-only cost record; the ledgers are never rewritten',
   media_usage_ledger: 'append-only cost record',
   voice_usage_ledger: 'append-only cost record',

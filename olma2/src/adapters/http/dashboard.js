@@ -72,10 +72,9 @@ function readBody(req) {
 // openclaw.json instead of the live gateway's. calendarDomain/googleOpts are
 // injectable so the OAuth flow can be tested without network access — and are
 // required lazily, so a box with no /opt/olma still starts a dashboard.
-function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomain, googleContactsDomain, mailDomain, googleConnectDomain, googleOpts, gatewayCheck, gatewayCacheMs, publicHosts }) {
+function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomain, googleContactsDomain, googleConnectDomain, googleOpts, gatewayCheck, gatewayCacheMs, publicHosts }) {
   const calendar = () => calendarDomain || require('../../domain/calendar');
   const googleContacts = () => googleContactsDomain || require('../../domain/google-contacts');
-  const mail = () => mailDomain || require('../../domain/mail');
   const googleConnect = () => googleConnectDomain || require('../../domain/google-connect');
 
   // The table the /oauth/google/callback route dispatches on — see the route
@@ -90,11 +89,6 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
         ? 'עולמה יכולה לראות את היומן שלך וגם להוסיף ולערוך אירועים. אפשר לחזור לוואטסאפ.'
         : 'עולמה יכולה לראות את היומן שלך בלבד — היא לא תוכל לשנות בו דבר. אפשר לחזור לוואטסאפ.'],
     },
-    gmail: {
-      flow: mail,
-      refreshesCard: () => true,
-      success: () => ['תיבת המייל חוברה ✅', 'עולמה יכולה לחפש במיילים שלך כשתבקש — היא לא עוברת עליהם מיוזמתה, ולא יכולה לשלוח, להשיב או למחוק כלום. אפשר לחזור לוואטסאפ.'],
-    },
     google_contacts: {
       flow: googleContacts,
       refreshesCard: () => false,
@@ -102,10 +96,10 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
     },
     google_connect: {
       flow: googleConnect,
-      refreshesCard: (d) => Boolean(d.connected && (d.connected.calendar || d.connected.mail)),
+      refreshesCard: (d) => Boolean(d.connected && d.connected.calendar),
       success: (d) => {
         const got = d.connectedLabel || [];
-        const missingHe = { calendar: 'יומן', contacts: 'אנשי קשר', mail: 'מייל' };
+        const missingHe = { calendar: 'יומן', contacts: 'אנשי קשר' };
         const missed = (d.missing || []).map((k) => missingHe[k] || k);
         const gotLine = got.length ? `חובר: ${got.join(', ')}.` : '';
         const missLine = missed.length
@@ -193,8 +187,8 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
         //
         // `refreshesCard`: connecting here happens over HTTP, outside any
         // tool call, so brokerd's per-tool card refresh never sees it — the
-        // card carries calendar and mail state (the agent reads it every
-        // turn), so those refresh after the commit, the same rule as every
+        // card carries calendar state (the agent reads it every turn), so
+        // that refreshes after the commit, the same rule as every
         // card write. Contacts is the deliberate exception: connecting alone
         // moves nothing on the card; the address-book COUNT only moves once
         // the import tool actually runs (see contacts_connected below).
@@ -219,7 +213,6 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
         const reason = result.error && result.error.reason;
         if (reason === 'declined') return page(200, 'לא חובר', 'ביטלת את החיבור. אפשר לנסות שוב מתי שתרצה.');
         if (reason === 'no_calendar_scope') return page(200, 'חסרה הרשאת יומן', 'במסך של גוגל לא סומנה תיבת הסימון ליד ההרשאה ליומן, אז גוגל לא נתנה גישה ליומן. עולמה תשלח לך קישור חדש בוואטסאפ — הפעם סמני את התיבה של היומן לפני שלוחצים המשך.');
-        if (reason === 'no_mail_scope') return page(200, 'חסרה הרשאת מייל', 'במסך של גוגל לא סומנה תיבת הסימון ליד ההרשאה למייל, אז גוגל לא נתנה גישה לתיבה. עולמה תשלח לך קישור חדש בוואטסאפ — הפעם סמני את התיבה של המייל לפני שלוחצים המשך.');
         if (reason === 'no_contacts_scope') return page(200, 'חסרה הרשאת אנשי קשר', 'במסך של גוגל לא סומנה תיבת הסימון ליד ההרשאה לאנשי קשר, אז גוגל לא נתנה גישה. עולמה תשלח לך קישור חדש בוואטסאפ — הפעם סמני את התיבה של אנשי הקשר לפני שלוחצים המשך.');
         if (reason === 'no_scope_granted') return page(200, 'לא חובר כלום', 'במסך של גוגל לא סומנה אף תיבה, אז שום דבר לא חובר. עולמה תשלח לך קישור חדש בוואטסאפ — הפעם סמני את התיבות שרוצים לפני שלוחצים המשך.');
         if (reason === 'bad_state') return page(400, 'הקישור פג', 'קישורי חיבור תקפים ל-15 דקות ולשימוש אחד. בקשי מעולמה קישור חדש.');

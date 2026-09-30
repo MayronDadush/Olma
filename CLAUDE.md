@@ -338,7 +338,7 @@ Loads when you **Read** a file under `src/intake/agents-template.md`, `src/intak
 - **A fixture that writes the state by hand cannot notice the state is only ever reached the other way.**
 - **The owner's opening copy is said ONCE, by whichever voice reaches the person first.**
 - **A first message is not a hello, and the newest arrivals prove it.** …and carrying their words into USER.md is only half of it: the first-turn instruction has to SAY they are unanswered (`users.intake_note_at`) — and since 2026-09-25 their own agent answers them unasked, seconds after the greeter, with their page (`welcome_followup`)
-- **`gmail.readonly` is a RESTRICTED scope and everything else Olma asks for is merely SENSITIVE — the two words are different verification tracks, and one restricted scope prices the whole app onto the paid one**
+- **`gmail.readonly` is a RESTRICTED scope and everything else Olma asks for is merely SENSITIVE — the two words are different verification tracks, and one restricted scope prices the whole app onto the paid one** — and since 2026-09-30 the mailbox connection is REMOVED, not closed: no domain, no watch, no USER.md line, no /me switch (migration 103)
 - **Every NEW Google consent link goes through one door, and it is CLOSED**
 - **A display name is not a word to be translated.**
 - **Olma never claims a lookup it did not perform.**
@@ -735,11 +735,12 @@ Real, open, and nobody is working on them.
 
 **Corrected 2026-09-04 — this entry used to say all of v1's integrations were
 gone, and had been false since 2026-08-19.** Google is fully ported and live:
-`domain/google-oauth.js`, `calendar.js`, `google-contacts.js`, `mail.js`, the
+`domain/google-oauth.js`, `calendar.js`, `google-contacts.js`, the
 `/oauth/google/callback` route, and credential columns on `integrations`
 (`credential_enc`, `refresh_enc`, `expires_at`). Six real connections on the
 box — calendar ×4, contacts, gmail. A gap entry nobody re-checks sends the
-next session to rebuild something that already works.
+next session to rebuild something that already works. (Gmail is NOT a gap:
+it was removed on purpose on 2026-09-30, see `rules/doctrine.md`.)
 
 What is genuinely still missing is **Monday.com** (v1 had it read-only for one
 user). No tools, no domain module, nobody has asked for it since the cutover.

@@ -232,9 +232,9 @@ async function getStatus(client, userId) {
 async function disconnect(client, userId, opts = {}) {
   const row = await loadIntegration(client, userId);
   if (!row) return ok({ connected: false });
-  // Calendar or Gmail may hold the same token from a combined consent
+  // Calendar may hold the same token from a combined consent
   // (google-connect.js) — see google-family.js for why revoking here is
-  // skipped while either sibling is still connected.
+  // skipped while that sibling is still connected.
   const secret = (row.refresh_enc && cryptoStore.decrypt(row.refresh_enc))
     || (row.credential_enc && cryptoStore.decrypt(row.credential_enc));
   const keepAlive = secret && await googleFamily.hasOtherGoogleConnection(client, userId, PROVIDER);

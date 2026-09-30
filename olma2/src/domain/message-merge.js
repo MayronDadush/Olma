@@ -68,7 +68,6 @@ const MERGEABLE = {
   share_reminder_dropped: 'tells',
   calendar_connected: 'tells',
   contacts_connected: 'tells',
-  email_connected: 'tells',
 };
 
 // A merged message is still one message a person reads in one breath. Three

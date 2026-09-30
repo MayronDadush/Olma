@@ -66,10 +66,8 @@ const providers = async () => withTx(db.pool, async (c) => {
 });
 
 test('one button, one consent screen, both services on it', async () => {
-  // Calendar and contacts only. Gmail is allowlist-gated (mail.requireMailAccess)
-  // and asking for it here would fail the WHOLE consent for everybody not on
-  // that list — the button would refuse to open at all, for a service the page
-  // was only ever offering as a bonus.
+  // Calendar and contacts — the only two Google services left since Gmail
+  // was removed on 2026-09-30.
   const res = await act('startGoogle', { calendarAccess: 'read_write', contacts: true });
   assert.ok(res.ok, JSON.stringify(res.error));
   const url = new URL(res.data.url);
@@ -77,7 +75,7 @@ test('one button, one consent screen, both services on it', async () => {
   const scope = url.searchParams.get('scope');
   assert.match(scope, /calendar\.events/, 'no calendar write scope');
   assert.match(scope, /contacts\.readonly/, 'no contacts scope');
-  // Three services, ONE state row — three would mean three Google screens for
+  // Two services, ONE state row — two would mean two Google screens for
   // a person who pressed one button.
   const states = await withTx(db.pool, async (c) => {
     const { rows } = await c.query(
@@ -107,13 +105,12 @@ test('turning ONE service on asks for that scope and no others', async () => {
   assert.doesNotMatch(scope, /gmail/, 'a contacts switch asked for Gmail too');
 });
 
-// The one service on the Google row that is NOT ours to give yet. It has to
-// come back as a refusal the page can say out loud, not as a consent screen
-// that grants a mailbox nobody approved this person for.
-test('the Gmail switch is refused with a reason, not quietly opened', async () => {
+// A page cached from before Gmail left can still send `mail: true`. It is
+// asking for nothing we offer, so it is refused as asking for nothing.
+test('a stale Gmail switch opens no consent at all', async () => {
   const res = await act('startGoogle', { mail: true });
-  assert.equal(res.ok, false, 'a mailbox consent was opened for somebody not allowed one');
-  assert.equal(res.error.reason, 'not_enabled');
+  assert.equal(res.ok, false, 'a consent was opened for a mailbox we no longer offer');
+  assert.equal(res.error.code, 'invalid');
 });
 
 test('an access level the page did not offer is refused before Google is involved', async () => {
@@ -130,12 +127,11 @@ test('asking for nothing is refused rather than opening an empty consent', async
 test('one switch off removes one service and leaves the others connected', async () => {
   await connectService('google_calendar', 'read_write');
   await connectService('google_contacts', 'read_only');
-  await connectService('gmail', 'read_only');
-  assert.deepEqual(await providers(), ['gmail', 'google_calendar', 'google_contacts']);
+  assert.deepEqual(await providers(), ['google_calendar', 'google_contacts']);
 
   const res = await act('stopGoogleService', { service: 'contacts' });
   assert.ok(res.ok, JSON.stringify(res.error));
-  assert.deepEqual(await providers(), ['gmail', 'google_calendar'],
+  assert.deepEqual(await providers(), ['google_calendar'],
     'turning contacts off took something else with it');
 });
 
@@ -153,32 +149,17 @@ test('a service key the page does not draw is refused, not silently ignored', as
 test('ending the account ends all of Google, because the page draws it as one', async () => {
   await connectService('google_calendar', 'read_write');
   await connectService('google_contacts', 'read_only');
-  await connectService('gmail', 'read_only');
   const res = await act('stopGoogle', {});
   assert.ok(res.ok, JSON.stringify(res.error));
   assert.deepEqual(await providers(), [],
     'a Google service survived disconnecting the account');
 });
 
-// The page has to know what it may OFFER, not only what is already connected.
-// Gmail is a service on a connected Google account that most people still
-// cannot switch on, and a page that finds that out only on the tap has already
-// drawn a live control for something it cannot deliver.
-test('the read model says whether a mailbox may even be offered', async () => {
+// Gmail left on 2026-09-30, so the read model has nothing to say about a
+// mailbox — an `available.mail` still there would be a page offering it.
+test('the read model offers no mailbox at all', async () => {
   const dash = require('../src/domain/user-dashboard');
-  const flags = require('../src/domain/flags');
-
-  const shut = await withTx(db.pool, (c) => dash.load(c, me.id));
-  assert.ok(shut.ok, JSON.stringify(shut.error));
-  assert.equal(shut.data.available.mail, false,
-    'an ordinary person was told they could connect a mailbox');
-
-  // The gate reads role and phone off the user row, and the read model does
-  // not select either — so this also pins that it fetches them itself. Without
-  // that, the answer would be "no" for everybody, including the allowlist.
-  await withTx(db.pool, (c) => flags.setFlag(c, 'email_access_phones', 'all'));
-  const open = await withTx(db.pool, (c) => dash.load(c, me.id));
-  assert.equal(open.data.available.mail, true,
-    'the mail allowlist was opened and the page was never told');
-  await withTx(db.pool, (c) => flags.setFlag(c, 'email_access_phones', ''));
+  const res = await withTx(db.pool, (c) => dash.load(c, me.id));
+  assert.ok(res.ok, JSON.stringify(res.error));
+  assert.equal('mail' in res.data.available, false, 'the page was told a mailbox exists');
 });

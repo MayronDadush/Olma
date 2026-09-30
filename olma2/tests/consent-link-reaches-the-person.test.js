@@ -42,7 +42,6 @@ const actionLink = require('../src/domain/action-link');
 const calendar = require('../src/domain/calendar');
 const googleConnect = require('../src/domain/google-connect');
 const googleContacts = require('../src/domain/google-contacts');
-const mail = require('../src/domain/mail');
 const dashboardAuth = require('../src/domain/dashboard-auth');
 const flags = require('../src/domain/flags');
 
@@ -50,7 +49,7 @@ let db, user;
 before(async () => {
   db = await freshDb();
   user = await makeUser(db.pool, '+972611009001', { firstName: 'עידן' });
-  await withTx(db.pool, (c) => require('../src/domain/flags').setFlag(c, 'google_connect_phones', 'all'));
+  await withTx(db.pool, (c) => flags.setFlag(c, 'google_connect_phones', 'all'));
 });
 after(async () => { await db.teardown(); });
 
@@ -71,7 +70,7 @@ test('the calendar link he actually asked for', async () => {
 
 test('the combined link — the exact call that went out with no link under it', async () => {
   const res = await withTx(db.pool, (c) => googleConnect.beginConnection(c, user, {
-    calendarAccess: 'read_only', wantContacts: false, wantMail: false,
+    calendarAccess: 'read_only', wantContacts: false,
   }));
   assertCarriesTheLink(res, 'start_google_connection');
   // The wording about what is being approved stays where the owner can read
@@ -84,12 +83,6 @@ test('the combined link — the exact call that went out with no link under it',
 test('the contacts link', async () => {
   const res = await withTx(db.pool, (c) => googleContacts.beginConnection(c, user.id));
   assertCarriesTheLink(res, 'start_contacts_import');
-});
-
-test('the mailbox link', async () => {
-  await withTx(db.pool, (c) => flags.setFlag(c, 'email_access_phones', 'all'));
-  const res = await withTx(db.pool, (c) => mail.beginConnection(c, user, 'gmail'));
-  assertCarriesTheLink(res, 'start_email_connection');
 });
 
 test('the personal dashboard link', async () => {

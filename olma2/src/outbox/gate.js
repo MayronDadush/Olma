@@ -167,7 +167,7 @@ const { REPEAT_WINDOW_MS } = require('../domain/repeat-guard');
 
 const SAYS_IT_ONCE = new Set([
   'digest', 'checkin', 'travel',
-  'tasks_auto_archived', 'calendar_connected', 'contacts_connected', 'email_connected',
+  'tasks_auto_archived', 'calendar_connected', 'contacts_connected',
 ]);
 
 // The two kinds a `pending` row is MEANT to receive, both delivered through the

@@ -1,23 +1,27 @@
 'use strict';
-// One consent link for calendar + contacts + Gmail, instead of three separate
-// ones from calendar.js / google-contacts.js / mail.js. Google itself shows
-// one checkbox per scope on its consent screen, so this does not remove the
-// user's ability to grant only some of what was asked — it only removes the
-// need to click "connect" three separate times and approve three separate
-// screens for the same account.
+// One consent link for calendar + contacts, instead of two separate ones from
+// calendar.js / google-contacts.js. Google itself shows one checkbox per scope
+// on its consent screen, so this does not remove the user's ability to grant
+// only some of what was asked — it only removes the need to click "connect"
+// twice and approve two separate screens for the same account.
+//
+// Gmail was the third member until 2026-09-30. `gmail.readonly` is a
+// RESTRICTED scope and prices the whole app into Google's paid verification
+// track, so it was closed on 2026-09-07 and removed from the code entirely on
+// 2026-09-30. A state minted before then may still carry `mail: true` in
+// requested_services; it is ignored, never granted.
 //
 // This module owns exactly ONE thing the single-purpose flows do not need:
-// turning ONE code exchange into UP TO THREE `integrations` rows. Everything
+// turning ONE code exchange into UP TO TWO `integrations` rows. Everything
 // else — the encrypted-column shape, the checkbox-not-ticked trap, the
 // connected/needs_reauth/disconnected vocabulary — is copied from them
 // deliberately (same house rule stated in google-contacts.js: copying the
-// plumbing beats threading a shared parameter through three live, working
-// files).
+// plumbing beats threading a shared parameter through live, working files).
 //
 // PARTIAL grants are the normal case here, not a failure: a person who
-// wanted "calendar and mail" but unticked mail on Google's screen should end
-// up with calendar connected and a plain sentence about mail — never nothing
-// at all because one of three pieces was declined. Only when NOTHING
+// wanted "calendar and contacts" but unticked contacts on Google's screen
+// should end up with calendar connected and a plain sentence about contacts —
+// never nothing at all because one of two pieces was declined. Only when NOTHING
 // requested was actually granted is the token revoked and the whole thing
 // reported as declined.
 const { ok, err } = require('./results');
@@ -29,35 +33,25 @@ const connectGate = require('./google-connect-gate');
 const { enqueue } = require('../outbox/enqueue');
 const calendar = require('./calendar');
 const googleContacts = require('./google-contacts');
-const mail = require('./mail');
 
 const PROVIDER = 'google_connect';
 const CONTACTS_SCOPE = 'https://www.googleapis.com/auth/contacts.readonly';
-const GMAIL_SCOPE = 'https://www.googleapis.com/auth/gmail.readonly';
 
 // ---- consent ----------------------------------------------------------------
 
 // calendarAccess: null (not requested) | 'read_only' | 'read_write'.
-// wantContacts / wantMail: booleans. At least one of the three must be truthy.
-async function beginConnection(client, user, { calendarAccess, wantContacts, wantMail } = {}) {
+// wantContacts: boolean. At least one of the two must be truthy.
+async function beginConnection(client, user, { calendarAccess, wantContacts } = {}) {
   if (calendarAccess && !google.SCOPES[calendarAccess]) {
     return err('invalid', 'calendarAccess must be "read_only", "read_write", or omitted');
   }
-  if (!calendarAccess && !wantContacts && !wantMail) {
-    return err('invalid', 'ask which of calendar, contacts or mail the user wants — at least one is required');
+  if (!calendarAccess && !wantContacts) {
+    return err('invalid', 'ask which of calendar or contacts the user wants — at least one is required');
   }
   // Calendar and contacts share the consent screen this gate exists to keep
-  // people off, so the combined link is refused whenever either of them is
-  // part of it. Mail keeps its own gate below — it was closed first, for the
-  // narrower reason that its scope is on Google's restricted list.
-  if (calendarAccess || wantContacts) {
-    const gate = await connectGate.requireGoogleConnect(client, user.id);
-    if (!gate.ok) return gate;
-  }
-  if (wantMail) {
-    const gate = await mail.requireMailAccess(client, user);
-    if (!gate.ok) return gate;
-  }
+  // people off, so the combined link is refused whenever it is asked for.
+  const gate = await connectGate.requireGoogleConnect(client, user.id);
+  if (!gate.ok) return gate;
   if (!google.isConfigured()) {
     return err('invalid', 'Google is not configured on this server');
   }
@@ -65,13 +59,11 @@ async function beginConnection(client, user, { calendarAccess, wantContacts, wan
   const scopes = new Set([google.EMAIL_SCOPE]);
   if (calendarAccess) for (const s of google.SCOPES[calendarAccess].split(' ')) scopes.add(s);
   if (wantContacts) scopes.add(CONTACTS_SCOPE);
-  if (wantMail) scopes.add(GMAIL_SCOPE);
 
   const state = google.newState();
   const requestedServices = {
     calendar: calendarAccess || null,
     contacts: Boolean(wantContacts),
-    mail: Boolean(wantMail),
   };
   await client.query(
     `INSERT INTO oauth_states (state, user_id, provider, requested_services, expires_at)
@@ -84,7 +76,6 @@ async function beginConnection(client, user, { calendarAccess, wantContacts, wan
   if (calendarAccess === 'read_write') parts.push('יומן (צפייה + עריכה)');
   else if (calendarAccess === 'read_only') parts.push('יומן (צפייה בלבד)');
   if (wantContacts) parts.push('אנשי קשר (קריאה בלבד)');
-  if (wantMail) parts.push('מייל (קריאה בלבד)');
 
   return ok(actionLink.withLink(google.buildConsentUrl(state, [...scopes].join(' ')), {
     requested: requestedServices,
@@ -93,7 +84,7 @@ async function beginConnection(client, user, { calendarAccess, wantContacts, wan
   }));
 }
 
-// ---- persistence (mirrors calendar.js / google-contacts.js / mail.js) -------
+// ---- persistence (mirrors calendar.js / google-contacts.js) -----------------
 
 async function upsertIntegration(client, { userId, provider, scopes, accessLevel, tokens, label }) {
   await client.query(
@@ -161,7 +152,7 @@ async function completeOAuth(client, { state, code, error }, opts = {}) {
   }
 
   const granted = String(tokens.scope || '');
-  const connected = { calendar: null, contacts: false, mail: false };
+  const connected = { calendar: null, contacts: false };
   const missing = [];
 
   if (requested.calendar) {
@@ -173,12 +164,8 @@ async function completeOAuth(client, { state, code, error }, opts = {}) {
     if (granted.includes('contacts.readonly')) connected.contacts = true;
     else missing.push('contacts');
   }
-  if (requested.mail) {
-    if (granted.includes('gmail.readonly')) connected.mail = true;
-    else missing.push('mail');
-  }
 
-  const gotAnything = connected.calendar || connected.contacts || connected.mail;
+  const gotAnything = connected.calendar || connected.contacts;
   if (!gotAnything) {
     await audit.record(client, userId, 'google_connect.auth_incomplete', {
       reason: 'nothing_granted', granted: granted.slice(0, 200),
@@ -209,20 +196,12 @@ async function completeOAuth(client, { state, code, error }, opts = {}) {
     await enqueue(client, { userId, kind: 'contacts_connected', urgency: 'urgent', payload: { account: label } });
     connectedLabel.push('אנשי קשר');
   }
-  if (connected.mail) {
-    await upsertIntegration(client, {
-      userId, provider: 'gmail', scopes: granted, accessLevel: 'read_only', tokens, label,
-    });
-    await audit.record(client, userId, 'email.connected', { provider: 'gmail', account: label, via: 'google_connect' });
-    await enqueue(client, { userId, kind: 'email_connected', urgency: 'urgent', payload: { provider: 'gmail', account: label } });
-    connectedLabel.push('מייל');
-  }
 
   // Whatever succeeded already got its own familiar notice above
   // (calendar_connected etc, handled where those already are). This one is
   // ONLY for the pieces that were requested and did not come through — a
-  // person who asked for calendar+mail and unticked mail on Google's screen
-  // is owed a plain sentence about mail, not silence.
+  // person who asked for calendar+contacts and unticked contacts on Google's
+  // screen is owed a plain sentence about contacts, not silence.
   if (missing.length) {
     await enqueue(client, {
       userId, kind: 'google_connect_incomplete', urgency: 'urgent', payload: { connected: connectedLabel, missing },

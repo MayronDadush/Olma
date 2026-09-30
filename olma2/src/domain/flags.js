@@ -93,13 +93,6 @@ const DEFAULTS = {
   // living in a flag is what keeps a model swap an edit rather than a deploy.
   boost_mode: { on: false },
   boost_model: 'openrouter/openai/gpt-5.6-luna',
-  // Mailbox connection (domain/mail.js): '' = nobody but the admin, 'all' =
-  // everyone, or a comma-separated E.164 list. Default OFF on purpose — the
-  // code half of the feature can merge and auto-deploy while the half that
-  // lives in Google's console (the Gmail scope and its verification tier) is
-  // still open, and a consent link that lands on a Google error screen is a
-  // worse first impression than a feature nobody was offered yet.
-  email_access_phones: '',
   // Months the personal Claude subscription was billed at something other than
   // the standing $20 — a Max upgrade, a paused month. {"YYYY-MM": usd}. No API
   // exposes subscription billing, so this is the only way the page can be right
@@ -122,9 +115,9 @@ const DEFAULTS = {
   task_auto_archive_grace_hours: 3,
   // domain/google-connect-gate.js: who may mint a NEW Google consent link
   // (calendar, contacts, or the combined one). '' = nobody but an admin,
-  // 'all' = everybody, or a comma-separated E.164 list. Default CLOSED, for
-  // the reason email_access_phones is closed: the console half of the feature
-  // — scopes and the verification tier — is still open, and a link that lands
+  // 'all' = everybody, or a comma-separated E.164 list. Default CLOSED: the
+  // console half of the feature — scopes and the verification tier — is still
+  // open, and a link that lands
   // on Google's "app is not secure" screen is a worse first impression than a
   // feature nobody was offered yet. Blocks new links only; anyone already
   // connected keeps working.

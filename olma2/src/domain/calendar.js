@@ -355,8 +355,8 @@ async function disconnect(client, userId, opts = {}) {
   // Revoke at Google, not just locally. Deleting our row while leaving a live
   // refresh token in Google's account settings would make "disconnected" a
   // half-truth — the user asked for access to end, not for us to look away.
-  // EXCEPT when contacts or Gmail still hold the same token (a combined
-  // consent, google-connect.js) — revoking it here would kill those too.
+  // EXCEPT when contacts still holds the same token (a combined
+  // consent, google-connect.js) — revoking it here would kill that too.
   const secret = (row.refresh_enc && cryptoStore.decrypt(row.refresh_enc))
     || (row.credential_enc && cryptoStore.decrypt(row.credential_enc));
   const keepAlive = secret && await googleFamily.hasOtherGoogleConnection(client, userId, PROVIDER);

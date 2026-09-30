@@ -359,10 +359,11 @@ test('the home tab shows only what is live, and its two counts are doors', () =>
   assert.match(page, /var SOON_KEPT = \{imsg:true\};/,
     'the owner wants exactly one "soon" back: the iMessage tile');
   assert.match(page, /return SOON_KEPT\[c\.id\] \|\| !hideSoon\(/);
-  assert.match(page, /var SHOW_GMAIL = false;/, 'Gmail is off the Google row for now');
-  assert.match(page, /if\(hideSoon\(ok2\) \|\| !svcShown\(p, sv\)\) return "";/);
-  assert.match(page, /return s\.on && svcShown\(p, s\);/,
-    'the count under the row counts only what the row shows');
+  // The mailbox connection left on 2026-09-30: no account on the page offers
+  // a mail service, drawn or greyed, and nothing asks the server for one.
+  assert.doesNotMatch(page, /k:"mail"/, 'a mail service is back on an account row');
+  assert.doesNotMatch(page, /want\.mail|AVAIL\.mail|Gmail/, 'the page still offers a mailbox');
+  assert.match(page, /if\(hideSoon\(ok2\)\) return "";/);
   // Off on 2026-09-26 with the old logo; back on 2026-09-28 as the split mark,
   // in the header only — one place, so a second copy is a decision, not a drift.
   assert.equal((page.match(/<use href="#i-logo"\/>/g) || []).length, 1, 'the mark is drawn once');

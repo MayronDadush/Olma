@@ -32,9 +32,9 @@ test('merge: a second question is left behind — one message, one answer', () =
   const lead = row('checkin', { checkinInstruction: 'how are you' }, { id: 1 });
   const parts = planMerge(lead, [
     row('travel', { from: 'Asia/Jerusalem' }, { id: 2 }),
-    row('email_connected', {}, { id: 3 }),
+    row('contacts_connected', {}, { id: 3 }),
   ]);
-  assert.deepEqual(parts.map((p) => p.kind), ['email_connected', 'checkin']);
+  assert.deepEqual(parts.map((p) => p.kind), ['contacts_connected', 'checkin']);
   assert.ok(!parts.some((p) => p.kind === 'travel'),
     'travel asks a question and acts on the answer; two asks in one message get one reply '
     + 'and nothing can tell which was answered');
