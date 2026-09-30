@@ -16,6 +16,7 @@
 // exactly as it is; this adds nothing back.
 const { ok, err } = require('./results');
 const calendar = require('./calendar');
+const calendarLinks = require('./calendar-links');
 const { partsInZone } = require('./datetime');
 
 // Four weeks forward, two back — exactly what the week strip can be paged to
@@ -85,6 +86,11 @@ async function loadEvents(client, userId, opts = {}) {
     return ok({ connected: false, reason: res.error.reason || res.error.code, days: {} });
   }
 
+  // An event somebody asked Olma to remind them about is ONE row on the page:
+  // the event, carrying the task that holds the reminder, never the event
+  // and a task beside it (`domain/calendar-links.js`). A series link covers
+  // every occurrence the window holds.
+  const { byEvent, bySeries } = await calendarLinks.linkedEventIds(client, userId);
   const todayIso = iso(partsInZone(zone, new Date()));
   const days = {};
   for (const ev of res.data.events || []) {
@@ -93,6 +99,7 @@ async function loadEvents(client, userId, opts = {}) {
     // dropped rather than bucketed into day 0, where it would read as
     // happening today. A negative bucket is a real past day, not an error.
     if (!b || b.day < -DAYS_BACK || b.day > DAYS_AHEAD) continue;
+    const task = byEvent.get(ev.id) || (ev.seriesId && bySeries.get(ev.seriesId)) || null;
     (days[b.day] = days[b.day] || []).push({
       id: ev.id,
       title: ev.title,
@@ -100,6 +107,7 @@ async function loadEvents(client, userId, opts = {}) {
       end: b.end,
       allDay: Boolean(ev.allDay),
       where: ev.location || null,
+      ...(task ? { task } : {}),
     });
   }
   for (const k of Object.keys(days)) {

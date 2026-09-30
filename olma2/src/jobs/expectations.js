@@ -31,11 +31,15 @@ const JOB_INTERVAL_SECONDS = {
   // the promise "it turns itself off" has to survive a restart.
   boost_reconcile: 60,
   checkin_ladder: 300,
-  // Dated tasks onto the calendar. Five minutes because a task someone just
-  // gave a time to should be on their calendar while they still remember
-  // saying it — and because a tick with nothing pending is one indexed query
-  // and no Google call at all.
+  // Taking Olma's old copies of tasks back OFF the calendar (retired
+  // 2026-09-30). A tick with nothing pending is one indexed query.
   task_calendar: 300,
+  // Reminders hung on calendar events, brought after their event. Each row is
+  // read at most hourly (calendar-links.RECHECK_MS); the tick is four minutes
+  // so a passed occurrence of a series advances promptly — and deliberately
+  // under KICK_MIN_SECONDS, because the start-up herd has no room left for
+  // another kicked job and this one gains nothing from a kick.
+  calendar_links: 240,
   memory_consolidation: 3600,
   fact_extraction: 600,
   // Jev in shadow over new tasks (jobs/twin-shadow.js). Ten minutes: nothing

@@ -506,7 +506,6 @@ const TOOL_MARKS = Object.freeze({
   set_my_language: 'done',
   set_assistant_persona: 'done',
   set_digest_preferences: 'done',
-  set_calendar_task_sync: 'done',
   // `record_meeting_constraint` was here until 2026-09-20 and is now in the
   // negotiation family below the table: it can only be called while a meeting
   // is negotiating, and Maya's "לא יכולה ביום שני" got a 👍 that said "noted"
@@ -541,6 +540,7 @@ const TOOL_MARKS = Object.freeze({
 
   // ── ⏰: armed, and it will speak to them later ──────────────────────────
   set_task_reminder: 'scheduled',
+  remind_calendar_event: 'scheduled',
   subscribe_live_updates: 'scheduled',
   // The generalised definition, not a special case: this row does not just
   // sit there, it will proactively reach THIS person again — the answer fans

@@ -3960,7 +3960,10 @@ button.srow:active{background:var(--bg-tint)}
           <svg class="chev"><use href="#i-chev"/></svg>
         </button>
         <div class="fold" id="pfTasks"><div><div class="pfin">
-          <div class="row no-icon">
+          <!-- Copying tasks onto the calendar was retired 2026-09-30
+               (domain/task-calendar.js); the switch stays in the markup,
+               hidden, so the handlers that read it need no guard. -->
+          <div class="row no-icon" hidden>
             <div class="row-txt">
               <div class="row-title" data-i18n="me.taskCal"></div>
               <div class="row-sub" data-i18n="me.taskCalSub"></div>
@@ -5321,6 +5324,7 @@ button.srow:active{background:var(--bg-tint)}
       "news.pill":"יש עדכונים · לרענן","news.done":"עודכן",
       "home.todayH":"היום שלך","home.clear":"אין משהו שמחכה להיום.",
       "home.due.n0":"","home.due.n1":"משימה אחת להיום","home.due.nN":"{n} משימות להיום",
+      "home.cal.n0":"","home.cal.n1":"אירוע אחד ביומן","home.cal.nN":"{n} אירועים ביומן",
       "home.waiting.n0":"","home.waiting.n1":"פגישה אחת מחכה לתשובה שלך","home.waiting.nN":"{n} פגישות מחכות לתשובה שלך",
       
       "nav.hint":"כאן למטה עוברים בין העמודים",
@@ -5600,7 +5604,7 @@ button.srow:active{background:var(--bg-tint)}
       "me.taskCal":"משימות ליומן","me.taskCalSub":"משימות חדשות דרך עולמה שיש להן תאריך ושעה מתווספות ליומן אוטומטית",
       "me.nudge":"לנדנד לי","me.nudgeSub":"תזכורת שלא סימנת שבוצעה תחזור שוב באותו יום ולמחרת. כבוי — פעם אחת, בשעה שביקשת",
       "me.knows":"מה עולמה זוכרת","me.tasksRow":"משימות",
-      "me.sum.quiet":"{days} בשקט","me.sum.cal.on":"ליומן","me.sum.cal.off":"לא ליומן","me.sum.nudge.on":"עם נדנוד","me.sum.nudge.off":"בלי נדנוד",
+      "me.sum.quiet":"{days} בשקט","me.sum.nudge.on":"עם נדנוד","me.sum.nudge.off":"בלי נדנוד",
       "me.facts.n0":"עוד לא נשמר כלום","me.facts.n1":"דבר אחד","me.facts.nN":"{n} דברים",
       "me.fqTitle":"לספר לה עוד","me.fqHint":"שאלות קצרות, ואפשר לדלג על כל אחת",
       "me.fqSave":"שמירה","me.fqSkip":"דילוג","me.fqTo":"עד",
@@ -5648,7 +5652,7 @@ button.srow:active{background:var(--bg-tint)}
       "sheet.allDay":"כל היום","sheet.repeat":"חזרה",
       "sheet.inCal":"להוסיף ליומן","sheet.inCalTo":"נוסף ל־{name} · {account}","sheet.inCalNone":"אין יומן מחובר לכתיבה",
       "cal.allDay":"כל היום",
-      "cal.thisWeek":"השבוע","cal.taskTag":"משימה","cal.taskSub":"מהרשימה שלך בעולמה","cal.taskRem":"עולמה תזכיר ב־{name}",
+      "cal.thisWeek":"השבוע","cal.taskTag":"משימה","cal.gcalTag":"ביומן","cal.taskSub":"מהרשימה שלך בעולמה","cal.taskRem":"עולמה תזכיר ב־{name}",
       "cal.showIn":"להצגה ביומן",
       "off.at":"בזמן","off.m10":"10 דק׳ לפני","off.h1":"שעה לפני","off.d1":"יום לפני",
       "sheet.remindAt":"שעת התזכורת","sheet.remindAtVal":"להזכיר ב־{time}",
@@ -5709,6 +5713,7 @@ button.srow:active{background:var(--bg-tint)}
       "news.pill":"New updates · Refresh","news.done":"Updated",
       "home.todayH":"Your day","home.clear":"Nothing is waiting on today.",
       "home.due.n0":"","home.due.n1":"1 task for today","home.due.nN":"{n} tasks for today",
+      "home.cal.n0":"","home.cal.n1":"1 event on your calendar","home.cal.nN":"{n} events on your calendar",
       "home.waiting.n0":"","home.waiting.n1":"1 meeting waiting on you","home.waiting.nN":"{n} meetings waiting on you",
       
       "nav.hint":"Switch between pages down here",
@@ -5980,7 +5985,7 @@ button.srow:active{background:var(--bg-tint)}
       "me.taskCal":"Tasks on your calendar","me.taskCalSub":"New tasks Allma gives a date and time land on your calendar automatically",
       "me.nudge":"Nudge me","me.nudgeSub":"A reminder you have not marked done comes back later that day and again the next. Off — once, at the hour you asked for",
       "me.knows":"What Allma remembers","me.tasksRow":"Tasks",
-      "me.sum.quiet":"quiet on {days}","me.sum.cal.on":"to your calendar","me.sum.cal.off":"not to your calendar","me.sum.nudge.on":"with nudges","me.sum.nudge.off":"no nudges",
+      "me.sum.quiet":"quiet on {days}","me.sum.nudge.on":"with nudges","me.sum.nudge.off":"no nudges",
       "me.facts.n0":"Nothing saved yet","me.facts.n1":"One thing","me.facts.nN":"{n} things",
       "me.fqTitle":"Tell her more","me.fqHint":"Short questions, and any can be skipped",
       "me.fqSave":"Save","me.fqSkip":"Skip","me.fqTo":"to",
@@ -6028,7 +6033,7 @@ button.srow:active{background:var(--bg-tint)}
       "sheet.allDay":"All day","sheet.repeat":"Repeat",
       "sheet.inCal":"Add to calendar","sheet.inCalTo":"Goes to {name} · {account}","sheet.inCalNone":"No calendar connected for writing",
       "cal.allDay":"All day",
-      "cal.thisWeek":"This week","cal.taskTag":"Task","cal.taskSub":"From your Allma list","cal.taskRem":"Allma will remind you on {name}",
+      "cal.thisWeek":"This week","cal.taskTag":"Task","cal.gcalTag":"Calendar","cal.taskSub":"From your Allma list","cal.taskRem":"Allma will remind you on {name}",
       "cal.showIn":"Show in calendar",
       "off.at":"On time","off.m10":"10 min before","off.h1":"1 hour before","off.d1":"1 day before",
       "sheet.remindAt":"Reminder time","sheet.remindAtVal":"Remind at {time}",
@@ -7450,6 +7455,14 @@ button.srow:active{background:var(--bg-tint)}
     }
     $("#toolsH").textContent = t("home.todayH");
     var parts = [];
+    /* Today from their calendar, beside today from the list, so "your day"
+       is the whole day. A linked event is counted once, as the event; the
+       task holding its reminder is left out of the tasks. */
+    var calToday = (typeof EVENTS === "object" && EVENTS && EVENTS[0]) || [];
+    var linked = {};
+    calToday.forEach(function(v){ if(v.task) linked[v.task] = true; });
+    due = due.filter(function(x){ return !linked[x.id]; });
+    if(calToday.length) parts.push(pl("home.cal", calToday.length));
     if(due.length) parts.push(pl("home.due", due.length));
     if(waiting.length) parts.push(pl("home.waiting", waiting.length));
     $("#homeP").textContent = parts.length ? parts.join(" · ") : t("home.clear");
@@ -8866,7 +8879,8 @@ button.srow:active{background:var(--bg-tint)}
     if(save && (editing.rem !== wasRem || editing.remOff !== wasOff || editing.rep !== wasRep
        || editing.remAt !== wasRemAt
        || (editing.rem && whenKey !== lastWhenKey))) API.setTaskReminder(editing);
-    if(save && (editing.cal !== wasCal || (editing.cal && whenKey !== lastWhenKey))) API.setTaskCalendar(editing);
+    /* only ever OFF now: taking down a copy left from before 2026-09-30 */
+    if(save && wasCal && !editing.cal) API.setTaskCalendar(editing);
     if(save) lastWhenKey = whenKey;
     renderTasks(); renderStrip(selDay); flashSaved();
   }
@@ -8999,7 +9013,8 @@ button.srow:active{background:var(--bg-tint)}
     /* ── calendar ── No calendar to write to means the switch cannot keep its
        word, so the tile is not offered; a row already on stays and says which
        calendar is missing, because "connect one" is the useful next step. */
-    $("#sCalRow").hidden = !(dated && (x.cal || shown.cal));
+    /* only a copy still standing shows it, so it can be taken down */
+    $("#sCalRow").hidden = !(dated && x.cal);
     $("#sJumpRow").hidden = isNew || !(x.d && x.cal);
     $("#sCalSub").textContent = calTargetName();
     lockRow($("#sCalRow"), dated && !calTarget(), t("sheet.inCalNone"));
@@ -9056,7 +9071,8 @@ button.srow:active{background:var(--bg-tint)}
       list:  !items && !shown.list && canEdit(x, "items"),
       rep:   chosenRep === "none" && !shown.rep && canEdit(x, "rep"),
       share: !who.length && !shown.share && canEdit(x, "who"),
-      cal:   dated && !!calTarget() && !x.cal && !shown.cal
+      /* copying onto the calendar was retired 2026-09-30 — never offered */
+      cal:   false
     }, n = 0;
     $$("#sAlsoTiles [data-also]").forEach(function(b){
       var on = !!tiles[b.dataset.also];
@@ -12054,13 +12070,21 @@ button.srow:active{background:var(--bg-tint)}
      they open the very same editor the list does, never a copy of it. */
   function agendaFor(i){
     var iso = dayISO(i);
+    /* An event they asked Olma to remind them about is ONE row: the event,
+       with a bell, opening the task that holds the reminder. Drawn from the
+       task as well it was the same thing twice on the same day — the very
+       confusion the link exists to end (domain/calendar-links.js). */
+    var shown = {};
     var evs = (EVENTS[i] || []).map(function(v){
       /* `all` travels: an all-day entry heads the day, and the clash check
          treats it as filling the whole of one. The seed has no all-day rows,
          which is exactly why this was easy to leave out. */
-      return {time:v.t, end:v.e, allDay:!!v.all, title:L(v.n), sub:L(v.s), c:v.c};
+      if(v.task) shown[v.task] = true;
+      return {time:v.t, end:v.e, allDay:!!v.all, title:L(v.n), sub:L(v.s), c:v.c,
+              gcal:true, task:v.task || null, bell:!!v.task};
     });
     open.forEach(function(x){
+      if(shown[x.id]) return;
       /* EVERY dated task stands in its day, whether or not it is also being
          written out to Google. `x.cal` is an EXPORT switch — "put this in the
          calendar app on my phone too" — and it was being read here as a
@@ -12184,7 +12208,10 @@ button.srow:active{background:var(--bg-tint)}
         (v.end ? "<small>" + v.end + "</small>" : "") + "</div>" +
         '<div class="evbar" style="background:' + v.c + '"></div>' +
         '<div class="evbody"><div class="evtitle">' + esc(v.title) +
-        (v.task ? '<span class="evtag">' + esc(t(v.kind === "event" ? "cal.eventTag" : "cal.taskTag")) + "</span>" : "") +
+        /* Where each row lives, said on the row: 📅 is their calendar, ✓ is
+           Olma's list, and 🔔 is a reminder Olma holds for a calendar event. */
+        (v.gcal ? '<span class="evtag">📅 ' + esc(t("cal.gcalTag")) + (v.bell ? " 🔔" : "") + "</span>"
+          : v.task ? '<span class="evtag">✓ ' + esc(t(v.kind === "event" ? "cal.eventTag" : "cal.taskTag")) + "</span>" : "") +
         (v.meet ? '<span class="evtag">' + esc(t("cal.meetTag")) + "</span>" : "") +
         '</div><div class="evsub">' + esc(v.sub) + "</div></div>" +
         (v.uncal ? '<button class="evdrop" data-uncal="' + v.meet + '" title="' +
@@ -13151,8 +13178,7 @@ button.srow:active{background:var(--bg-tint)}
     var lang = LANGS.filter(function(l){ return l.v === cur; })[0];
     pv("#pvSetup", [olmaName(), cityLabel(), lang ? lang.n : ""].filter(Boolean).join(" · "));
 
-    pv("#pvTasks", t(ME.taskCal ? "me.sum.cal.on" : "me.sum.cal.off") + " · " + t(ME.nudge ? "me.sum.nudge.on" : "me.sum.nudge.off"),
-      !ME.taskCal && !ME.nudge);
+    pv("#pvTasks", t(ME.nudge ? "me.sum.nudge.on" : "me.sum.nudge.off"), !ME.nudge);
   }
   /* One handler for all six: a row opens and closes its own fold, and any
      number of them may be open at once. */
@@ -14074,10 +14100,10 @@ button.srow:active{background:var(--bg-tint)}
         Object.keys(body.data.days || {}).forEach(function(k){
           EVENTS[+k] = (body.data.days[k] || []).map(function(e){
             return {t:e.at || "", e:e.end || "", all:!!e.allDay,
-                    n:e.title || "", s:e.where || "", c:CAL_EVENT_COLOR};
+                    n:e.title || "", s:e.where || "", c:CAL_EVENT_COLOR, task:e.task || null};
           });
         });
-        renderStrip(selDay); renderMeets();
+        renderStrip(selDay); renderMeets(); renderHome();
       })
       .catch(function(){ /* offline, or Google is down: the days stay empty */ });
   }

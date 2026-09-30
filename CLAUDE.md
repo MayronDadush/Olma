@@ -236,7 +236,8 @@ Loads when you **Read** a file under `src/domain/reminders.js`, `src/domain/task
 - **A day named with ל־ in a title dates the THING, not the task.**
 - **…and a weekday they SAID travels with the time, so the two can be checked against each other** — `when_said` on all four doors that date a task, refused before the write; ל־ and a day the moment is measured FROM ("ערב לפני", "עד", "ערב שבת") are stripped first.
 - **`due_at` is when the THING is; `remind_at` is the hour THEY named.**
-- **A calendar event reminds NOBODY, and `create_calendar_event`'s result says so rather than leaving it to be guessed** — `add_task kind:'event'` is what arms one, and `eventIdFor` hashes the instant so the same moment saved both ways is one entry.
+- **A calendar event reminds NOBODY by itself, and `create_calendar_event`'s result says so rather than leaving it to be guessed** — `remind_calendar_event` is what arms one, and `eventIdFor` hashes the instant so the same moment written twice is one entry.
+- **An event on their calendar is reminded FROM the event, never from a copy of it** — `domain/calendar-links.js`, migration 103: a task STANDS FOR the event and follows it; a save that meets the same thing asks instead; a told meeting goes onto an editable calendar; copying tasks onto it is retired
 - **Everyone on a shared task is equal, and a write on it is made AS its owner** — "delete" with others on it is leaving, and only the last one left can archive.
 - **A reminder belongs to the PERSON, not to the task** — every reader asks `COALESCE(r.user_id, t.owner_id)`.
 - **A task with no date can still nudge, and a nudge must NEVER date it** — the dateless kind carries an hour of its own.

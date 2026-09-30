@@ -1,9 +1,11 @@
 'use strict';
 // tasks — one slice of the tool registry (see ../registry.js).
 const {
-  tasks, users, reminders, dashboardAuth, S, tool, ok, pastMoment, WHEN_SAID,
+  tasks, users, reminders, dashboardAuth, S, tool, ok, err, pastMoment, WHEN_SAID,
 } = require('./_shared');
 const dt = require('../../../domain/datetime');
+const calendarLinks = require('../../../domain/calendar-links');
+const taskKind = require('../../../domain/task-kind');
 const chaseDeadline = require('../../../domain/chase-deadline');
 const format = require('../../../domain/message-format');
 const listBlock = require('../../../domain/list-block');
@@ -219,6 +221,41 @@ function taskHints(res, user = {}) {
   return Object.keys(hints).length ? ok({ ...d, hints }) : res;
 }
 
+// Proposal 2 (owner, 2026-09-30): the thing they are saving is already on
+// their calendar — same words, same local day — so saving it here would be the
+// second entry "Two of everything" was about. NOTHING is saved, and the one
+// question worth asking is whether to hang a reminder on the event that is
+// there. A refusal, not an ok: an ok would earn a 👍 for a save that did not
+// happen (reactions.TOOL_MARKS).
+function inCalendarRefusal(hit) {
+  const when = hit.allDay ? String(hit.start).slice(0, 10) : hit.start;
+  const tail = hit.reminded
+    ? 'Olma ALREADY reminds them of it, so there is nothing to do — say that it is already in their '
+      + 'calendar with a reminder, in one short sentence.'
+    : 'Ask ONE short question — "זה כבר ביומן שלך, לשים לך תזכורת?" — and on yes call '
+      + 'remind_calendar_event with this event_id (and remind_at only if they name an hour).';
+  return err('conflict', `"${hit.title}" (${when}) is already on their own calendar, so NOTHING was saved `
+    + `and nothing should be: never add_task it again. ${tail}`,
+  { reason: 'in_calendar', event: { id: hit.id, title: hit.title, start: hit.start, reminded: hit.reminded } });
+}
+
+// Proposal 3: an event that went onto their calendar instead of Olma's list.
+// taskHints reads the same fields off a link as off a save; this adds what is
+// different about where it went.
+function onCalendarHints(res, user) {
+  const out = taskHints(res, user);
+  if (!out || !out.ok) return out;
+  return ok({
+    ...out.data,
+    hints: {
+      ...(out.data.hints || {}),
+      onCalendar: 'It is in their OWN Google Calendar, and Olma keeps only the reminder on it — '
+        + 'one entry, where they already look. If you say anything, say it is in their calendar. '
+        + 'Never also create_calendar_event.',
+    },
+  });
+}
+
 // The list is ONE array so nothing that reads it by shape breaks. What
 // separates it into the two lists the person hears — what is on the calendar,
 // then what is on the plate — used to be a paragraph asking the model to do
@@ -352,6 +389,25 @@ module.exports = [
       // the hook refuses anything with a when in it, so that is rare — and a
       // chase on the same turn is the stronger reading of the same message.
       const weekly = !chase && !dueAt && !remindAt && a.nudge !== true && remindAskPending(ctx);
+
+      // Their calendar, before Olma's list (owner, 2026-09-30). Only a dated,
+      // top-level save that no chase is steering, and every Google failure
+      // falls through to the ordinary save below.
+      if (dueAt && !chase && !a.parent_task_id && a.nudge !== true) {
+        const hit = (await calendarLinks.findInCalendar(client, user.id, [{ title: a.title, dueAt }])).get(0);
+        if (hit && remindAt && !hit.reminded) {
+          // They already said when to be reminded: that IS the yes.
+          const linked = await calendarLinks.linkEvent(client, user.id, { eventId: hit.id, remindAt });
+          if (linked.ok) return onCalendarHints(linked, user);
+        } else if (hit) {
+          return inCalendarRefusal(hit);
+        }
+        if (taskKind.decideKind({ title: a.title, kind: a.kind }) === 'event') {
+          const put = await calendarLinks.saveToCalendar(client, user.id,
+            { title: a.title, dueAt, endsAt, location: a.location, remindAt });
+          if (put && put.ok) return onCalendarHints(put, user);
+        }
+      }
       const res = await tasks.addTask(client, user.id, {
         title: a.title, kind: a.kind, location: a.location, category: a.category, dueAt, endsAt,
         remindAt, nudge: Boolean(chase) || a.nudge === true, weekly, parentId: a.parent_task_id,
@@ -363,9 +419,37 @@ module.exports = [
   tool('add_tasks_bulk', 'Save a whole dump in ONE call (max 60 items). Never loop add_task. Also the way to SPLIT a goal into its parts: pass parent_task_id and the parts become subtasks in the same call. Timed items get their reminders automatically; when the reply carries hints, follow them. Any due_at MUST carry a UTC offset (2026-08-20T09:00:00+03:00), converted from their own local time (USER.md); never bare digits with a Z.',
     { items: S('array', 'Array of {title, kind?, location?, category?, due_at?, ends_at?}; kind event|todo, location, category and times as in add_task.', { items: { type: 'object' } }),
       parent_task_id: S('number', 'Optional: save every item as a subtask of this project (one level)') }, ['items'],
-    async (client, user, a) => withDumpLink(client, user, taskHints(await tasks.addTasksBulk(client, user.id, (a.items || []).map((i) => ({
-      title: i.title, kind: i.kind, location: i.location, category: i.category, dueAt: i.due_at, endsAt: i.ends_at,
-    })), { parentId: a.parent_task_id }), user), { parentId: a.parent_task_id })),
+    async (client, user, a) => {
+      const items = (a.items || []).map((i) => ({
+        title: i && i.title, kind: i && i.kind, location: i && i.location, category: i && i.category,
+        dueAt: i && i.due_at, endsAt: i && i.ends_at,
+      }));
+      // What is already on their calendar is not saved a second time — the
+      // commonest shape is "turn my whole calendar into tasks", and the answer
+      // to that is reminders on the events, never copies (proposal 2).
+      const found = a.parent_task_id ? new Map() : await calendarLinks.findInCalendar(client, user.id, items);
+      const inCalendar = [...found.values()];
+      const rest = items.filter((_, i) => !found.has(i));
+      if (inCalendar.length && !rest.length) {
+        return err('conflict', 'Every item is already on their own calendar, so NOTHING was saved and nothing '
+          + 'should be. Offer ONE thing in one short question: a WhatsApp reminder on those events '
+          + '(remind_calendar_event, one call per event_id they want).', { reason: 'in_calendar', events: inCalendar });
+      }
+      const res = taskHints(await tasks.addTasksBulk(client, user.id, rest, { parentId: a.parent_task_id }), user);
+      const withCal = inCalendar.length && res && res.ok
+        ? ok({
+          ...res.data,
+          inCalendar,
+          hints: {
+            ...(res.data.hints || {}),
+            inCalendar: `${inCalendar.map((e) => `"${e.title}"`).join(', ')} — already on their own calendar, `
+              + 'so NOT saved again. Say so in passing, and offer a reminder on them '
+              + '(remind_calendar_event) in the same one question — never add them.',
+          },
+        })
+        : res;
+      return withDumpLink(client, user, withCal, { parentId: a.parent_task_id });
+    }),
   tool('complete_task', 'Mark a task done. Pending reminders on it are cancelled automatically. If the task carries a repeating CADENCE it is a standing one — the reply comes back with recurring:true and nextRemindAt, the task stays open and the cadence stays armed, because doing it once does not finish it. Say when it next comes round. To end a standing task for good: cancel_reminder first, then complete_task.',
     { task_id: S('number', 'Task id') }, ['task_id'],
     (client, user, a) => tasks.completeTask(client, user.id, a.task_id)),

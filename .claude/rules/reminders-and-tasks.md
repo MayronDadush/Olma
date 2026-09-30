@@ -603,28 +603,46 @@ title means this file. Grep the title, not the filename.
   message that carried it. It survives `summary` scope for the same reason a
   nudge is not a count: four of the six people with a digest are on it.
 
-- **A calendar event reminds NOBODY, and `create_calendar_event`'s result says
-  so rather than leaving it to be guessed.** `calendar.createEvent` sends
-  Google no reminders override, and nothing on our side speaks for a calendar
-  event: a reminder hangs on a TASK (`task_reminders.task_id` is NOT NULL), so
-  an event that exists only on Google has nowhere to hang one. עמית asked for a
-  Friday 12:00 viewing, then asked "תזכיר לי מראש?", and was told an automatic
-  reminder was set for 11:00 — the hour `auto-reminder.autoReminderAt` would
-  in fact have picked, which is why it read as true. No row existed and Friday
-  passed in silence (`incidents.md`, "The reminder that was only a sentence").
-  The result now carries `hints.reminders`, which **forbids a sentence rather
-  than asking for one** — an unconditional instruction to write beside
-  `markPlaced` is the thing that outvotes it (`rules/doctrine.md`) — and names
-  `add_task kind:'event'` as the only thing that arms one. **The same moment
-  can therefore now be saved twice, and `calendar.eventIdFor` is what stops it
-  becoming two entries**: it hashes the INSTANT, not the spelling, because
-  `createEvent` is handed the model's offset string while
-  `task-calendar.windowFor` produces UTC ISO. The second write becomes a 409,
-  which `createEvent` already treats as success, so the task binds to the event
-  already there. Every id the sweep has written came from a UTC ISO string,
-  which normalises to itself — nothing live moves. **Open**: nothing reconciles
-  the event against the task shadowing it, so an event deleted by hand still
-  reminds.
+- **A calendar event reminds NOBODY by itself, and `create_calendar_event`'s
+  result says so rather than leaving it to be guessed.** `calendar.createEvent`
+  sends Google no reminders override, and a reminder hangs on a TASK
+  (`task_reminders.task_id` is NOT NULL). עמית asked "תזכיר לי מראש?" about a
+  Friday viewing and was told an 11:00 reminder was set; no row existed and
+  Friday passed in silence (`incidents.md`, "The reminder that was only a
+  sentence"). The result carries `hints.reminders`, which **forbids a sentence
+  rather than asking for one** — an unconditional instruction to write beside
+  `markPlaced` is the thing that outvotes it (`rules/doctrine.md`) — and since
+  2026-09-30 it names `remind_calendar_event`, never `add_task`: saving the
+  event again as a task is a second entry, which is the next rule's whole
+  subject. `calendar.eventIdFor` still hashes the INSTANT, not the spelling,
+  so the same moment written twice is a 409 and one event.
+
+- **An event on their calendar is reminded FROM the event, never from a copy
+  of it** (owner, 2026-09-30; `domain/calendar-links.js`, migration 103). A
+  task may STAND FOR an event — `linked_event_id`, plus `linked_series_id` when
+  the link follows a repeating series — and the event stays the truth: the
+  `calendar_links` sweep moves the row and its reminder after a moved event,
+  renames it, advances a series past a passed occurrence and archives the row
+  QUIETLY when the event is gone or over, and `sweeps.sweepFinishedTasks`
+  skips linked rows while the calendar is connected. Five things hold it:
+  - **A read that failed is never "gone".** Only a 404/410 or a cancelled
+    status archives (`calendar.getEvent`), and the row waits for the next tick.
+  - **A named reminder keeps its LEAD** (`linked_lead_minutes`), so 20:00 on
+    the day of an all-day event is still 20:00 on the day it moved to; the
+    automatic one re-arms instead.
+  - **One open row per event or series per person** — a unique index, because
+    two rows for one event is exactly the bug.
+  - **A save that meets the same thing on the same day asks instead of
+    saving** (`calendar-links.findInCalendar`, 3s budget, fails OPEN to a
+    normal save): `add_task` refuses with `reason: 'in_calendar'`, or with a
+    `remind_at` hangs it on the event at once; `add_tasks_bulk` skips what is
+    there and refuses only when that is everything.
+  - **A meeting told to Olma goes onto a calendar she can EDIT, and only the
+    reminder stays here** (`calendar-links.saveToCalendar`); view-only or a
+    failed write saves it the ordinary way, never an error.
+  Copying tasks ONTO the calendar is retired (`domain/task-calendar.js` only
+  takes copies down) — that sync is what made the third entry
+  (`incidents.md`, "Two of everything").
 
 - **Everyone on a shared task is equal, and a write on it is made AS its
   owner** (owner, 2026-09-19). There is one kind of share: `shares.role` is

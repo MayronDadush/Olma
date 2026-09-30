@@ -116,6 +116,7 @@ never trust a dated narrative for something you are about to act on.
 - [A week of help, delivered as one reminder the night before (fixed 2026-09-22)](#a-week-of-help-delivered-as-one-reminder-the-night-before-fixed-2026-09-22)
 - [The first day coming up (fixed 2026-09-23)](#the-first-day-coming-up-fixed-2026-09-23)
 - [The reminder that was only a sentence (fixed 2026-09-22)](#the-reminder-that-was-only-a-sentence-fixed-2026-09-22)
+- [Two of everything: the calendar and the list (fixed 2026-09-30)](#two-of-everything-the-calendar-and-the-list-fixed-2026-09-30)
 - [התיק לבית חולים: one reminder asked for, six messages delivered (fixed 2026-09-18)](#התיק-לבית-חולים-one-reminder-asked-for-six-messages-delivered-fixed-2026-09-18)
 - [The hook's timer fired late, and brokerd took the blame (fixed 2026-09-07)](#the-hooks-timer-fired-late-and-brokerd-took-the-blame-fixed-2026-09-07)
 - [Good morning at half past one (fixed 2026-09-06)](#good-morning-at-half-past-one-fixed-2026-09-06)
@@ -5120,6 +5121,63 @@ task onto it, asserting the sweep aims at the id already on the calendar and rep
 What is NOT fixed: nothing reconciles a calendar event against the event task shadowing it.
 Delete the event by hand and the task still reminds. That needs a real decision about which
 of the two is the record, and it is not this.
+
+### Two of everything: the calendar and the list (fixed 2026-09-30)
+
+מירון asked Olma for something and read 👀, then 👍, then a paragraph
+explaining what she had done. Reading his list on the box to check it turned
+up a different fault, and a bigger one: the same things were in two places,
+and neither place knew about the other.
+
+- A monthly event on his Google calendar ("העברות + סיבוב bit") had been saved
+  to Olma as a **one-off task** so that she would remind him. After the first
+  month it passed, archived itself, and nothing reminded him the month after.
+  The event on his calendar repeats; the copy never could.
+- Two tasks had been **copied onto** his calendar by the task sync
+  (`calendar_event_id`), beside originals he had put there himself. His
+  calendar held the original, Olma's copy of it, and the task.
+- Nothing connected an event to the task standing for it, so an event moved or
+  deleted on the phone left the task reminding at the old hour (the "Open:"
+  line under "A calendar event reminds NOBODY" said so, and had since
+  2026-09-22).
+
+**The cause was one missing shape, not a bad reply.** A reminder hangs on a
+task (`task_reminders.task_id` is NOT NULL), so the ONLY way to be reminded
+about a calendar event was to save it again as a task — a second entry by
+construction. And the sync ran the other way on purpose, so every dated task
+could become a third. The model did what it could with the tools it had.
+
+The owner's frame: people keep their calendar app; Olma is an extra layer —
+WhatsApp reminders if they want them, and one tidy place to see everything.
+He chose five changes, and all five shipped as one branch:
+
+1. **A reminder on the calendar's own event** (`remind_calendar_event`,
+   `domain/calendar-links.js`, migration 103). A task may STAND FOR an event:
+   `linked_event_id`, `linked_series_id` for a series (reminded every
+   occurrence unless they said only this one), and `linked_lead_minutes` so
+   a named reminder keeps its lead when the event moves. The `calendar_links`
+   sweep (240s — under `KICK_MIN_SECONDS`, because the start-up kick herd was
+   full) brings each row after its event: moved, renamed, passed (next
+   occurrence of a series), deleted (archived QUIETLY — they did it
+   themselves). **A failed read is never "deleted"**; the row waits.
+2. **Saving something already there asks instead.** `add_task` looks at the
+   same day of a connected calendar (3s budget, fails open) and refuses with
+   `reason: 'in_calendar'` — "זה כבר ביומן שלך, לשים לך תזכורת?" — or, when
+   they named a reminder hour, hangs it on the event at once. A bulk save
+   skips what is there, so "turn my calendar into tasks" copies nothing.
+3. **A meeting told to Olma goes onto a calendar she can edit**, with only
+   the linked reminder kept here. View-only, or Google failing, saves it the
+   ordinary way — the thing they asked to have written down is never lost to
+   a courtesy.
+4. **One picture of the day.** The page marks 📅/✓ and draws a linked event
+   once, with 🔔; the morning digest carries today from their calendar.
+5. **Copying tasks onto the calendar is retired** (5ב): the standing switch
+   and every per-task answer back to "no", the copies taken down where the
+   connection can edit.
+
+What it does NOT fix: a view-only connection (מירון's) cannot take its own
+copies down, so those were cleaned by hand and he was asked to reconnect with
+edit access.
 
 ### התיק לבית חולים: one reminder asked for, six messages delivered (fixed 2026-09-18)
 

@@ -947,4 +947,5 @@ module.exports = {
   MAX_BULK, addTask, addTasksBulk, editTask, listTasks, completeTask,
   snoozeTask, archiveTask, deleteTask, unarchiveTask, projectOverview,
   completeParentIfDrained, joinsTwoAsks, normaliseTitle, nestTask, unnestTask,
+  localLabels, openTitles,
 };

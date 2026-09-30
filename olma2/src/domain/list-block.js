@@ -214,7 +214,10 @@ function calendarEventLine(ev, ctx) {
     when = rangeLabel({ due_at: ev.start, ends_at: ev.end }, ctx);
   }
   const head = [when, title].filter(Boolean).join(' — ');
-  return where ? `${head}, ${where}` : head;
+  // 🔔: Olma will remind them of this one (calendar-links) — the same mark
+  // the page uses, so "which of these will she tell me about" is one glance.
+  const bell = ev.reminded ? ' 🔔' : '';
+  return (where ? `${head}, ${where}` : head) + bell;
 }
 
 // One heading — this is already the calendar half of the digest's split, so

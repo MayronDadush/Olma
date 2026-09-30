@@ -169,7 +169,9 @@ function line(row, ctx, withRange) {
     ? format.stripUserMarkup(String(row.location).replace(/\s+/g, ' ').trim())
     : '';
   const head = [when, title].filter(Boolean).join(' — ');
-  return where ? `${head}, ${where}` : head;
+  // 🔔: Olma will remind them about this event from their calendar.
+  const bell = row.reminded ? ' 🔔' : '';
+  return (where ? `${head}, ${where}` : head) + bell;
 }
 
 // Below this many UNDATED tasks the flat list stays flat — grouping four
