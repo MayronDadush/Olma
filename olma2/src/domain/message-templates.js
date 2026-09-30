@@ -150,18 +150,18 @@ const TEMPLATES = [
   },
   {
     key: 'game_invite', audience: 'private', label: 'ערב משחק: הזמנה להעברה',
-    help: 'הודעה נפרדת שמי שפתח מעביר לקבוצה. הקישור הוא של הערב, בלי כיסא. הקוד בשורה האחרונה מצרף משתמשי עולמה.',
-    vars: { night: 'שם הערב', price: 'מחיר כניסה', url: 'הדף של הערב', code: 'קוד הערב, 5 תווים' },
+    help: 'הודעה נפרדת שמי שפתח מעביר לקבוצה. הקישור הראשון הוא של הערב, בלי כיסא. הקישור הקצר בשורה האחרונה פותח צ\'אט עם עולמה עם הקוד של הערב, וכל מי ששולח אותו נכנס לערב ונהיה משתמש.',
+    vars: { night: 'שם הערב', price: 'מחיר כניסה', url: 'הדף של הערב', code: 'קוד הערב, 5 תווים', join: 'הקישור הקצר לצ\'אט עם עולמה' },
     required: ['url'],
-    sample: { night: 'ערב משחק', price: '50', url: 'https://allma.world/night/AbCdEfGhIjKlMnOpQrStUv', code: 'K7M2Q' },
-    text: '🃏 {{night}} · כניסה {{price}} ₪\nנכנסים לקישור, בוחרים כיסא ורושמים כניסות:\n{{url}}\n\nכבר בעולמה? שלחו לה: משחק {{code}}',
+    sample: { night: 'ערב משחק', price: '50', url: 'https://allma.world/night/AbCdEfGhIjKlMnOpQrStUv', code: 'K7M2Q', join: 'https://allma.world/g/K7M2Q' },
+    text: '🃏 {{night}} · כניסה {{price}} ₪\nנכנסים לקישור, בוחרים כיסא ורושמים כניסות:\n{{url}}\n\nלרשום כניסות מהוואטסאפ: {{join}}',
   },
   {
     key: 'game_invite_en', audience: 'private', label: 'ערב משחק: הזמנה להעברה', help: '',
-    vars: { night: 'night name', price: 'buy-in price', url: 'the night page', code: 'the night’s 5-character code' },
+    vars: { night: 'night name', price: 'buy-in price', url: 'the night page', code: 'the night’s 5-character code', join: 'the short link into a chat with Olma' },
     required: ['url'],
-    sample: { night: 'Game night', price: '50', url: 'https://allma.world/night/AbCdEfGhIjKlMnOpQrStUv', code: 'K7M2Q' },
-    text: '🃏 {{night}} · buy-in {{price}} ₪\nOpen the link, pick a seat and log your buy-ins:\n{{url}}\n\nOn Olma already? Send her: game {{code}}',
+    sample: { night: 'Game night', price: '50', url: 'https://allma.world/night/AbCdEfGhIjKlMnOpQrStUv', code: 'K7M2Q', join: 'https://allma.world/g/K7M2Q' },
+    text: '🃏 {{night}} · buy-in {{price}} ₪\nOpen the link, pick a seat and log your buy-ins:\n{{url}}\n\nLog buy-ins from WhatsApp: {{join}}',
   },
   {
     key: 'game_already_open', audience: 'private', label: 'ערב משחק: כבר פתוח',
@@ -177,6 +177,32 @@ const TEMPLATES = [
     required: ['url'],
     sample: { night: 'Game night', code: 'K7M2Q', url: 'https://allma.world/night/AbCdEfGhIjKlMnOpQrStUv#me-o1' },
     text: '🃏 You already have an open game: {{night}}, code {{code}}.\nThe game page:\n{{url}}',
+  },
+  // Somebody NEW, who reached her by the invite's short link: code answers
+  // them, so nothing else says who she is. The hello goes above whatever
+  // the code answers, and the privacy line below it — both once per person,
+  // ever (users.opening_sent_at), like every introduction.
+  {
+    key: 'game_hello', audience: 'private', label: 'ערב משחק: שורת פתיחה למספר חדש',
+    help: 'השורה הראשונה למי שכותב לעולמה לראשונה עם קוד של ערב. אחריה באה התשובה לקוד, ובסוף שורת הפרטיות. נשלחת פעם אחת לכל אדם.',
+    vars: {}, required: [], sample: {},
+    text: 'היי, אני עולמה 👋 עוזרת AI',
+  },
+  {
+    key: 'game_hello_en', audience: 'private', label: 'ערב משחק: שורת פתיחה למספר חדש', help: '',
+    vars: {}, required: [], sample: {},
+    text: 'Hey, I’m Allma 👋 an AI assistant',
+  },
+  {
+    key: 'game_privacy', audience: 'private', label: 'ערב משחק: שורת פרטיות למספר חדש',
+    help: 'השורה האחרונה בהודעה הראשונה למי שהגיע עם קוד של ערב. נשלחת פעם אחת לכל אדם.',
+    vars: {}, required: [], sample: {},
+    text: 'מה אני שומרת ואיך מוחקים: https://allma.world/privacy',
+  },
+  {
+    key: 'game_privacy_en', audience: 'private', label: 'ערב משחק: שורת פרטיות למספר חדש', help: '',
+    vars: {}, required: [], sample: {},
+    text: 'What I keep and how to delete it: https://allma.world/privacy',
   },
   {
     key: 'game_ask_name', audience: 'private', label: 'ערב משחק: איך קוראים לך',

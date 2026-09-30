@@ -448,7 +448,10 @@ export function buildRoomWriteHandler({ connect, sock, timeoutMs = 1500, log = t
 // `src/domain/link-request.js`, keyed by language, so adding a language is a
 // deploy and never a gateway restart. What stays here is the one cheap bound
 // both sides share — a message longer than any phrase never leaves the
-// gateway at all — and the agent shape: a person's own agent only.
+// gateway at all — and the agent shape: a person's own agent, or (since
+// 2026-10-01, stage 4ב) the DM greeter's session for a number that is not
+// anybody's yet, sent as `agentId: "intake"` with its key so brokerd can read
+// the number: a game night's code from somebody new is answered by code too.
 //
 // Fails open in every direction: brokerd down, slow, refusing, or answering
 // anything but an explicit claim WITH text means the message goes to the
@@ -462,14 +465,15 @@ export function buildLinkShortcutHandler({ connect, sock, timeoutMs = 800, log =
   return async (event, ctx) => {
     try {
       const key = String((event && event.sessionKey) || (ctx && ctx.sessionKey) || "");
-      const agentId = agentIdOf(key);
+      const intake = INTAKE_KEY_RE.test(key);
+      const agentId = intake ? "intake" : agentIdOf(key);
       if (!agentId || (event && event.isGroup === true)) return undefined;
       const body = typeof (event && event.body) === "string" ? event.body
         : (typeof (event && event.content) === "string" ? event.content : "");
       if (!body.trim() || body.length > LINK_SHORTCUT_MAX_CHARS) return undefined;
       const t0 = Date.now();
       const reply = await askBroker("dashboard_link_shortcut", {
-        agentId, body,
+        agentId, body, ...(intake ? { sessionKey: key } : {}),
         messageId: String((event && event.messageId) || (ctx && ctx.messageId) || "").slice(0, 200),
       }, { connect, sock, timeoutMs });
       const claim = Boolean(reply && reply.ok === true && reply.claim === true

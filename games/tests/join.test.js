@@ -156,3 +156,18 @@ test('a missing user id is refused before anything is read', async t => {
   assert.equal((await post('/api/open', { price: 50, chips: 1000 })).body.error, 'bad_user');
   assert.equal((await post('/api/join', { userId: 'x', code: 'ABCDE', names: ['x'] })).body.error, 'bad_user');
 });
+
+test('the short link opens a chat with Olma holding the code, and reads nothing', async t => {
+  const { base } = await boot(t);
+  const get = p => fetch(base + p, { redirect: 'manual', headers: { 'X-Forwarded-For': '203.0.113.9' } });
+  const res = await get('/g/k7m2q');
+  assert.equal(res.status, 302, 'public, through the proxy');
+  assert.equal(res.headers.get('location'), `https://wa.me/972559347282?text=${encodeURIComponent('משחק K7M2Q')}`);
+  assert.equal(res.headers.get('referrer-policy'), 'no-referrer');
+  // No night has that code: the link does not say so. Olma does, in the chat.
+  for (const bad of ['/g/K7M2', '/g/K7M2Q1', '/g/K1M2Q', '/g/K7M2Q/x']) {
+    assert.equal((await get(bad)).status, 404, bad);
+  }
+  const post = await fetch(base + '/g/K7M2Q', { method: 'POST', redirect: 'manual' });
+  assert.equal(post.status, 405);
+});

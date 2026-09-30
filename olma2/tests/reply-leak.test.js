@@ -994,6 +994,8 @@ test('a link that claims to be us, or lands on a path we do not serve, is caught
     'https://dashboard.olma.ai/meetings/40',
     'https://dash.olma.app/meetings/40',
     'https://dashboard.openclaw.ai/meetings/40',
+    // a short link is a night's code, and 1 is not in its alphabet
+    'https://allma.world/g/K1M2Q', 'https://allma.world/g/K7M2Q9',
   ];
   for (const u of invented) assert.equal(leak.deadLink(u), true, u);
 
@@ -1011,6 +1013,7 @@ test('a link that claims to be us, or lands on a path we do not serve, is caught
     'https://allma.world/privacy', 'https://allma.world/terms', 'https://allma.world/',
     'https://allma.world/accessibility',
     `https://allma.world/night/${'AbCdEfGhIjKlMnOpQrStUv'}`,
+    'https://allma.world/g/K7M2Q', 'https://allma.world/g/k7m2q',
     'https://olmachat.duckdns.org/',
     'https://www.google.com/search?q=x',
     'https://accounts.google.com/o/oauth2/v2/auth?client_id=x',
