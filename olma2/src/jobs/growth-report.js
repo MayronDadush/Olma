@@ -55,7 +55,8 @@ async function gather(client, date) {
   const sums = Object.fromEntries(rows.map((r) => [r.metric, r.n]));
   const { rows: room } = await client.query(
     `SELECT metric, value::int AS v FROM product_metrics_daily
-      WHERE date = $1::date AND metric IN ('room_people', 'room_people_met', 'room_people_active')`, [w.d]);
+      WHERE date = $1::date AND metric IN ('room_people', 'room_people_met', 'room_people_active',
+                                           'cohort_2_4w', 'cohort_2_4w_active')`, [w.d]);
   const r = Object.fromEntries(room.map((x) => [x.metric, x.v]));
   const tests = [];
   for (const key of Object.keys(experiments.EXPERIMENTS)) tests.push(await experiments.results(client, key));
@@ -65,6 +66,8 @@ async function gather(client, date) {
     clicks: sums.referral_clicks ?? null,
     rooms: r.room_people === undefined ? null
       : { people: r.room_people, met: r.room_people_met ?? null, active: r.room_people_active ?? null },
+    retention: r.cohort_2_4w === undefined ? null
+      : { cohort: r.cohort_2_4w, active: r.cohort_2_4w_active ?? null },
     tests,
   };
 }
@@ -80,6 +83,7 @@ function reportText(d) {
     `הצטרפו השבוע: ${joinedTotal} — ${JOIN_CHANNELS.map((c) => `${CHANNEL_LABELS[c]} ${n(d.joined[c])}`).join(' · ')}`,
     `לחיצות על קישורי הזמנה: ${n(d.clicks)}`,
   ];
+  if (d.retention) lines.push(`הצטרפו לפני 2–4 שבועות: ${d.retention.cohort} — ${n(d.retention.active)} מהם פעילים השבוע`);
   if (d.rooms) lines.push(`בקבוצות עם עולמה: ${d.rooms.people} אנשים — ${n(d.rooms.met)} כבר אצלה, ${n(d.rooms.active)} פעילים השבוע`);
   if (d.tests.length) {
     lines.push('', 'ניסויים:');
