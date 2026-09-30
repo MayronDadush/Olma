@@ -1864,17 +1864,25 @@ button.srow:active{background:var(--bg-tint)}
    gives way when it does not fit is decided here rather than by which token
    happens to be last. The day and the MARK never shrink — one is the answer
    to "when", the other is the rule the ring is drawing — and the date is the
-   detail, so the date is what truncates and then goes. `min-width:3.9em`
-   lines the columns up between rows and is dropped for `.f-when` before any
-   of that: alignment is a nicety, a clipped crown is a lost signal. */
-.mtformula{display:flex;align-items:center;gap:0;font-size:14px;margin:0 0 2px;white-space:nowrap}
+   detail, so the date is what goes. `min-width:3.9em` lines the columns up
+   between rows and is dropped for `.f-when` before any of that: alignment is
+   a nicety, a clipped crown is a lost signal. */
+/* The date goes WHOLE, with the dot in front of it, or not at all. It used to
+   shrink with `overflow:hidden`, and in a right-to-left line a clipped number
+   loses its FIRST digits: "3.10" read ".10", and "5.10" read ".10" as well —
+   another date, not a shorter one (2026-09-30). CSS cannot drop a box whole
+   when it does not fit, so `mtFitDates` measures the line after every render
+   and sets `.nodate`; until it has, the line clips rather than spilling into
+   the buttons beside it. */
+.mtformula{display:flex;align-items:center;gap:0;font-size:14px;margin:0 0 2px;white-space:nowrap;overflow:hidden}
 .mtformula .f-day{font-weight:700;color:var(--text);min-width:3.9em;flex:none}
-.mtformula .f-when{font-weight:700;color:var(--accent);font-size:13px;min-width:3.9em;flex:0 1 auto;
-  overflow:hidden;text-overflow:ellipsis}
-.mtformula .f-date{font-weight:600;color:var(--text-3);font-size:12px;font-variant-numeric:tabular-nums;
-  flex:0 1 auto;min-width:0;overflow:hidden}
+.mtformula .f-when{font-weight:700;color:var(--accent);font-size:13px;min-width:3.9em;flex:none}
+.mtformula .f-dt{display:flex;align-items:center;flex:none}
+.mtformula .f-date{font-weight:600;color:var(--text-3);font-size:12px;font-variant-numeric:tabular-nums}
 .mtformula .f-sep{color:var(--text-3);margin:0 6px;font-weight:400;flex:none}
 .mtformula .mk{width:17px;height:17px;margin-inline-start:6px;flex:none}
+.mtformula.nodate .f-dt{display:none}
+.mtformula.nodate .f-when{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
 @media (max-width:380px){
   .mtformula .f-when{min-width:0}
   .mtformula .f-sep{margin:0 4px}
@@ -10395,9 +10403,21 @@ button.srow:active{background:var(--bg-tint)}
         : state === "min" ? '<svg class="mk" viewBox="0 0 24 24"><use href="#m-cards"/></svg>' : "";
     return '<p class="mtformula"><span class="f-day">' + esc(day) + "</span>" +
       '<span class="f-sep">·</span><span class="f-when">' + esc(mtWhen(m, o)) + "</span>" +
-      '<span class="f-sep">·</span><span class="f-date">' + d.getDate() + "." + (d.getMonth() + 1) + "</span>" +
+      '<span class="f-dt"><span class="f-sep">·</span><span class="f-date">' +
+      d.getDate() + "." + (d.getMonth() + 1) + "</span></span>" +
       mark + "</p>";
   }
+  /* Whole or not at all (see `.mtformula.nodate`). Measured with the date in:
+     a line wider than its box drops the date and its dot together. The sheet
+     is only ever moved off screen, never `display:none`, so it can be measured
+     before it is shown. */
+  function mtFitDates(){
+    $$("#mtOpts .mtformula").forEach(function(p){
+      p.classList.remove("nodate");
+      if(p.scrollWidth > p.clientWidth + 1) p.classList.add("nodate");
+    });
+  }
+  window.addEventListener("resize", function(){ if(mtOpen) mtFitDates(); });
   /* The one line under the formula. It leads with whichever of the two marks
      is showing, because that is the thing the colour already promised. */
   function mtSumHTML(m, o){
@@ -10552,6 +10572,7 @@ button.srow:active{background:var(--bg-tint)}
     $("#mtOpts").innerHTML = m.opts.length
       ? '<div class="group">' + m.opts.map(function(o){ return mtOptHTML(m, o); }).join("") + "</div>"
       : '<div class="group"><div class="empty">' + esc(t("mt.stateNoOpts")) + "</div></div>";
+    mtFitDates();
 
     /* Adding is capped and nothing else: whoever opened the coordination has
        no more say over the table than anybody else in it. At the cap the
