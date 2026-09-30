@@ -98,6 +98,19 @@ have already had to be argued for.
   definite non-delivery. The person queue has no hold of any kind
   (`incidents.md`, "The room was greeted twice, by its own registration").
 
+- **Registering a room writes the sender list in the SAME save, and nothing
+  else about the list is batched** (2026-09-30;
+  `provision-group.admitRegisteredGroup({ senders })`). `groupAllowFrom` sits
+  under `channels.whatsapp`, so every change to it restarts the channel
+  (10-14s). Registration was two restarts eleven seconds apart, and now it is
+  one. `provisionGroup` carries the list only when its own admit wrote under
+  `channels.whatsapp`: added to a save that restarts nothing, the list would
+  itself be the restart. **A five-minute window for additions was built and
+  dropped the same day, on the owner's call.** The gateway blocks a tag from a
+  number not on the list, so that tag is LOST, not delayed. A restart only
+  delays sends, and the outbox waits it out (`incidents.md`, "Four channel
+  restarts for one room").
+
 - **TWO columns say somebody has written to Olma, because two voices can hear
   their first message.** `isConnected` (the group gate) asks
   `last_inbound_at OR opening_sent_at`: their own agent stamps the first

@@ -208,6 +208,23 @@ test('the gateway sender list admits a real-number roster row, and never a LID',
   assert.equal(phones.includes(lid.phone), false, 'a LID names nobody the gateway can match');
 });
 
+// A room's registration restarts the channel anyway; the list rides that save.
+test('registering a room writes the sender list in the same save', () => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const occ = require('../src/intake/openclaw-config');
+  const pg = require('../src/intake/provision-group');
+  const configPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'roster-admit-')), 'openclaw.json');
+  fs.writeFileSync(configPath, JSON.stringify({ channels: { whatsapp: { accounts: { default: {} } } } }));
+  const res = pg.admitRegisteredGroup({ configPath, jid: JID(15), senders: ['+972501900150'] });
+  assert.equal(res.changed, true);
+  assert.equal(res.listed, true);
+  const cfg = occ.loadConfig(configPath);
+  assert.deepEqual(occ.groupAllowFrom(cfg), ['+972501900150']);
+  assert.ok(Object.hasOwn(cfg.channels.whatsapp.accounts.default.groups, JID(15)));
+});
+
 test('the check-in ladder cannot see a roster row', async () => {
   await openFlag(true);
   const me = await connectedUser('+972501900050');

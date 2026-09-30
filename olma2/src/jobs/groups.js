@@ -135,17 +135,27 @@ function mayAnnounce(group, now = new Date()) {
 // unrecognised shape never is (`phone-timezone.isRealPhone`), and a stranger
 // with no row cannot be: naming them would need `"*"`, which is every sender
 // and her own number with them.
-async function syncSenderGate(client, configPath) {
+async function wantedSenders(client) {
   const { rows } = await client.query(
     `SELECT phone, status, paused_at, paused_reason, room_invite_sent_at, room_invite_answered_at
        FROM users
       WHERE status IN ('active', 'pending') AND NOT is_eval
       ORDER BY phone`);
-  const heard = rows.filter((r) => (r.status === 'pending'
+  return rows.filter((r) => (r.status === 'pending'
     ? phoneTimezone.isRealPhone(r.phone)
-    : pause.endsOnWrite(r)));
+    : pause.endsOnWrite(r))).map((r) => r.phone);
+}
+
+// Every change to this list restarts the WhatsApp channel (10-14s, measured
+// 2026-09-30). A room being registered writes the list in its own save
+// (`senders` on `admitRegisteredGroup`, and on `provisionGroup` when its admit
+// writes), so that restart carries it and the next pass finds nothing to do.
+// Everything else is written at once, in both directions: a batching window
+// was built and dropped the same day on the owner's call, because a tag the
+// gateway blocks is lost, not delayed, while a restart only delays sends.
+async function syncSenderGate(client, configPath) {
   const cfg = occ.loadConfig(configPath);
-  const synced = occ.syncGroupAllowFrom(cfg, heard.map((r) => r.phone));
+  const synced = occ.syncGroupAllowFrom(cfg, await wantedSenders(client));
   // Written inside the sweep's transaction and not undone on rollback, which
   // is safe in the one direction that matters: the list is derived from rows
   // this pass only READ, and the next pass re-derives it either way.
@@ -230,6 +240,7 @@ async function sweepGroups(client, deps) {
     // `senderGateOpen` is the loud one: true means the gateway is admitting
     // every sender in every group, and nothing else in this pass can tell.
     senderAllowFrom: senderGate.entries.length, senderGateOpen: senderGate.open,
+    // Additions waiting out the five minutes after the last channel restart.
   };
 
   for (const session of await list(agentIds)) {
@@ -277,8 +288,10 @@ async function sweepGroups(client, deps) {
       // nothing reads the link in between.
       out.rosterUsers += await mintRosterUsers(client, group, members);
 
-      // Tag-only from here, and the deny belt goes on in the same write.
-      pg.admitRegisteredGroup({ configPath, jid });
+      // Tag-only from here, and the deny belt goes on in the same write — and
+      // the sender list with them, AFTER the rows above were minted, so this
+      // one restart is the only one the room's arrival costs.
+      pg.admitRegisteredGroup({ configPath, jid, senders: await wantedSenders(client) });
     } else {
       // Before `syncRoster`, so a row minted this pass is linked to its member
       // row by the same pass.
@@ -367,6 +380,7 @@ async function sweepGroups(client, deps) {
     if (state === 'open' && !group.agent_id) {
       const prov = await pg.provisionGroup(client, {
         groupId: group.id, configPath, registerUndo: deps.registerUndo,
+        senders: await wantedSenders(client),
       });
       if (prov.ok && prov.data.created) {
         group = prov.data.group;

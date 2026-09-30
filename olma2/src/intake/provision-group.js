@@ -217,7 +217,7 @@ function undoSideEffects({ agentId, jid, configPath, paths, removeWorkspace, add
 // Gives a registered group its own agent, workspace, route and — while it is
 // locked — its own mute. Idempotent: a group that already has an agent comes
 // back unchanged rather than being rebuilt.
-async function provisionGroup(client, { groupId, configPath, registerUndo }) {
+async function provisionGroup(client, { groupId, configPath, registerUndo, senders }) {
   const group = await groupsDomain.getById(client, groupId);
   if (!group) return err('not_found', 'no such group');
   if (group.state === 'retired') return err('conflict', 'group is retired');
@@ -258,6 +258,14 @@ async function provisionGroup(client, { groupId, configPath, registerUndo }) {
     // sendPolicy change land at all.
     unmuted: occ.unmuteGroup(cfg, updated.external_id),
   };
+  // Only when the admit above really wrote (a room registered before the admit
+  // existed): that restarts the WhatsApp channel anyway, so the sender list
+  // rides it rather than paying a restart of its own
+  // (jobs/groups.syncSenderGate). Usually the room was admitted at
+  // registration, this save touches nothing under `channels.whatsapp`, and
+  // adding the list here would CAUSE a restart. Not undone with the rest: it is
+  // derived from rows, and the next pass re-derives it either way.
+  if (senders && added.admitted) occ.syncGroupAllowFrom(cfg, senders);
   occ.saveConfig(cfg, configPath);
 
   if (typeof registerUndo === 'function') {
@@ -290,13 +298,17 @@ async function provisionGroup(client, { groupId, configPath, registerUndo }) {
 // the only thing standing between a group and a stray reply is a binding that
 // happens not to exist yet. The channels write is the hot reason that makes
 // the sendPolicy rule beside it actually load.
-function admitRegisteredGroup({ configPath, jid }) {
+// `senders`, when given, is the sender list (jobs/groups.wantedSenders) written
+// in this same save: this write restarts the channel regardless, and a second
+// write for the list a few seconds later would restart it again.
+function admitRegisteredGroup({ configPath, jid, senders }) {
   const cfg = occ.loadConfig(configPath);
   const admitted = occ.admitGroup(cfg, jid);
   const muted = occ.muteGroup(cfg, jid);
   if (!admitted && !muted) return { changed: false };
+  const listed = senders ? occ.syncGroupAllowFrom(cfg, senders).changed : false;
   occ.saveConfig(cfg, configPath);
-  return { changed: true, admitted, muted };
+  return { changed: true, admitted, muted, listed };
 }
 
 // Re-locking: take the group's agent and binding away again, so it falls back
