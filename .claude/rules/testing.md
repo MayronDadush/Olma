@@ -70,6 +70,11 @@ Two things the suite learned the hard way:
   `OLMA_PLUGIN_TRACE` into the temp home, the plugin reads every run-dir path
   per call, and under `NODE_TEST_CONTEXT` its `refuseProductionWrite` throws
   on the real path — a file that loses the environment goes red, never quiet.
+  **And not its CLI.** On the box `openclaw` is on PATH with production's
+  HOME behind it, and six places in `src/` spawn it by name; one test ran it
+  on every deploy and waited out a 10s timeout. `tests/helpers.js` puts a
+  stand-in first on PATH that exits 127 like a missing binary, so the box
+  runs what CI runs; `intake.test.js` asserts it is still there.
 
 - **`OLMA_HEARTBEAT: 'off'` does NOT turn the sweeps off** — that is
   `OLMA_WORKER`. Two separate gates in `bin/olma-brokerd.js`, and the first

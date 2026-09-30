@@ -1341,6 +1341,16 @@ test('CLI failures surface as thrown errors, never as "no new users"', async () 
   })));
 });
 
+test('a test process never reaches the real openclaw CLI', () => {
+  // On the box the real one is on PATH with production's HOME behind it; the
+  // test above used to run it on every deploy. tests/helpers.js puts a
+  // stand-in first, and this is what says it is still there.
+  const { spawnSync } = require('node:child_process');
+  const r = spawnSync('openclaw', ['--version'], { encoding: 'utf8' });
+  assert.equal(r.status, 127);
+  assert.match(r.stderr, /not available to the test suite/);
+});
+
 // 2026-09-01: the gateway's own 30-minute heartbeat polls every agent, and any
 // text an agent writes before NO_REPLY is DELIVERED — u-17 answered a poll with
 // a line about its user's brunch reminder and it landed in a different user's
