@@ -82,9 +82,33 @@ const byChannel = Object.fromEntries(JOIN_CHANNELS.flatMap((via) => [
   [`wau_${via}`, weeklyActive(` AND u.joined_via = '${via}'`)],
 ]));
 
+// The rooms as a funnel (owner, 2026-10-01): groups are the one door that has
+// brought people in, and everybody on a room's roster has already watched her
+// work there. So, as of that date: how many people are in a room with her, how
+// many of them have met her (an agent of their own — a roster row is
+// `status = 'pending'` and never one), and how many of those were active in
+// the week. A person in two rooms is one person. A LID never becomes a users
+// row (groups.js), so counting rows is counting real numbers. `retired` is a
+// room she has left; its state is today's, the only thing not read as of the
+// date — a backfilled day may count a room retired since.
+const inRoom = `FROM users u
+    WHERE NOT u.is_eval AND NOT u.is_test
+      AND EXISTS (SELECT 1 FROM chat_group_members m JOIN chat_groups g ON g.id = m.group_id
+                   WHERE m.user_id = u.id AND g.state <> 'retired'
+                     AND m.first_seen_at::date <= $1::date
+                     AND (m.left_at IS NULL OR m.left_at::date > $1::date))`;
+const hasMet = `AND u.agent_id IS NOT NULL AND u.status <> 'pending' AND u.onboarded_at::date <= $1::date`;
+const ROOM_FUNNEL = {
+  room_people: `SELECT count(*) ${inRoom}`,
+  room_people_met: `SELECT count(*) ${inRoom} ${hasMet}`,
+  room_people_active: `SELECT count(*) ${inRoom} ${hasMet}
+      AND u.id IN (${weeklyActive().replace('count(DISTINCT a.actor_id)', 'a.actor_id')})`,
+};
+
 const METRIC_QUERIES = {
   weekly_active_users: weeklyActive(),
   ...byChannel,
+  ...ROOM_FUNNEL,
   // Taps on a friend's short invite link (adapters/http/invite-link.js), one
   // row per person-looking GET; a link preview is never one. Between "shared"
   // and "joined via friend_link" — the step that says which half leaks.

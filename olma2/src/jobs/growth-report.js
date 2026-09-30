@@ -53,12 +53,18 @@ async function gather(client, date) {
         AND date BETWEEN $1::date - 6 AND $1::date
       GROUP BY metric`, [w.d]);
   const sums = Object.fromEntries(rows.map((r) => [r.metric, r.n]));
+  const { rows: room } = await client.query(
+    `SELECT metric, value::int AS v FROM product_metrics_daily
+      WHERE date = $1::date AND metric IN ('room_people', 'room_people_met', 'room_people_active')`, [w.d]);
+  const r = Object.fromEntries(room.map((x) => [x.metric, x.v]));
   const tests = [];
   for (const key of Object.keys(experiments.EXPERIMENTS)) tests.push(await experiments.results(client, key));
   return {
     asOf: w.d, wau: w.v, lastWeek: prev ? prev.v : null,
     joined: Object.fromEntries(JOIN_CHANNELS.map((c) => [c, sums[`joined_${c}`] ?? null])),
     clicks: sums.referral_clicks ?? null,
+    rooms: r.room_people === undefined ? null
+      : { people: r.room_people, met: r.room_people_met ?? null, active: r.room_people_active ?? null },
     tests,
   };
 }
@@ -74,6 +80,7 @@ function reportText(d) {
     `הצטרפו השבוע: ${joinedTotal} — ${JOIN_CHANNELS.map((c) => `${CHANNEL_LABELS[c]} ${n(d.joined[c])}`).join(' · ')}`,
     `לחיצות על קישורי הזמנה: ${n(d.clicks)}`,
   ];
+  if (d.rooms) lines.push(`בקבוצות עם עולמה: ${d.rooms.people} אנשים — ${n(d.rooms.met)} כבר אצלה, ${n(d.rooms.active)} פעילים השבוע`);
   if (d.tests.length) {
     lines.push('', 'ניסויים:');
     for (const t of d.tests) {

@@ -41,6 +41,10 @@ test('Sunday morning: one message with the goal, last week, the doors and the te
   await metric('2026-10-03', 'joined_friend_link', 1);
   await metric('2026-09-20', 'joined_direct', 9); // outside the week
   await metric('2026-10-02', 'referral_clicks', 4);
+  await metric('2026-10-04', 'room_people', 40);
+  await metric('2026-10-04', 'room_people_met', 9);
+  await metric('2026-10-04', 'room_people_active', 6);
+  await metric('2026-10-03', 'room_people', 99); // not the day WAU was read on
 
   const sent = [];
   const send = async (phone, text) => { sent.push({ phone, text }); return { ok: true }; };
@@ -54,6 +58,7 @@ test('Sunday morning: one message with the goal, last week, the doors and the te
   assert.match(t, /פעילים בשבוע: \*21 מתוך 100\* \(לפני שבוע: 18\)/);
   assert.match(t, /הצטרפו השבוע: 3 — קישור מחבר 1 · קבוצה 2 · הזמנה אישית — · ישירות —/);
   assert.match(t, /לחיצות על קישורי הזמנה: 4/);
+  assert.match(t, /בקבוצות עם עולמה: 40 אנשים — 9 כבר אצלה, 6 פעילים השבוע/);
   assert.match(t, /מתי מופיע כרטיס ההזמנה בדף האישי: A 0\/0 · B 0\/0 — עוד מוקדם/);
   assert.ok(!t.includes('?'), 'a report, not a question');
 
