@@ -237,6 +237,10 @@ function undoProvisionSideEffects({
 async function provisionUser(client, {
   phone, firstName, invitedByConnectionId, configPath, timezone, locale,
   firstMessage, invitedInfo, registerUndo,
+  // Which door they came in by, and whose invite code they carried
+  // (jobs/intake.js `joinedVia`, migration 101). Written once: a re-provision
+  // never moves either.
+  joinedVia = null, referredByUserId = null,
   // The language of what they wrote to the greeter, as a code, for when
   // `firstMessage` is empty — the carryover guard drops the text a "היי"
   // shares with every other stranger (jobs/intake.js, readIntakeLanguage).
@@ -334,10 +338,18 @@ async function provisionUser(client, {
             first_name = COALESCE(first_name, $4), onboarded_at = COALESCE(onboarded_at, now()),
             locale = $5,
             opening_sent_at = CASE WHEN $6 THEN COALESCE(opening_sent_at, now()) ELSE opening_sent_at END,
-            intake_note_at = CASE WHEN $7 THEN COALESCE(intake_note_at, now()) ELSE intake_note_at END
+            intake_note_at = CASE WHEN $7 THEN COALESCE(intake_note_at, now()) ELSE intake_note_at END,
+            joined_via = COALESCE(joined_via, $8),
+            referred_by_user_id = COALESCE(referred_by_user_id, $9),
+            invited_by_connection_id = COALESCE(invited_by_connection_id, $10)
      WHERE id = $1 RETURNING *`,
+    // `invited_by_connection_id` was written only by createUser above, which
+    // runs only when there is NO row — and an invited stranger always has one,
+    // made when they were invited. So the column was NULL for exactly the
+    // people it exists for (found 2026-09-30, migration 101 backfills it).
     [user.id, agentId, paths.workspace, firstName || null, resolvedLocale.locale,
-      greetedByIntake === true, Boolean(firstMessage)]
+      greetedByIntake === true, Boolean(firstMessage),
+      joinedVia, referredByUserId, invitedByConnectionId || null]
   );
   user = rows[0];
 

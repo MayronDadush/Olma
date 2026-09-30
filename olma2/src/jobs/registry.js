@@ -242,6 +242,7 @@ const deployDrift = require('./deploy-drift');
     // its own transaction and undoes those on the way out of a failure.
     { name: 'intake_sweep', run: () => intake.runIntakeSweep(pool, {
       configPath: OPENCLAW_CONFIG(), readFirstMessage: intake.readIntakeFirstMessage,
+      readReferralText: intake.readIntakeReferralText,
       readLanguage: intake.readIntakeLanguage,
     }) },
     { name: 'reopen_sweep', run: () => withTx(pool, (c) => intake.sweepReopen(c)) },

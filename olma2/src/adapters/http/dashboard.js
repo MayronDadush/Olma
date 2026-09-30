@@ -37,6 +37,7 @@ const picker = require('./picker');
 const userDashboard = require('./user-dashboard');
 const pwa = require('./pwa');
 const publicPages = require('./public-pages');
+const inviteLink = require('./invite-link');
 const { checkGateway } = require('../gateway-health');
 
 // /ready's whole test. brokerd beats immediately on boot and then every 60s,
@@ -345,6 +346,9 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
       if (req.method === 'GET' && parsed.pathname === '/' && PUBLIC_HOSTS.has(hostOf(req))) {
         return userDashboard.frontPage(req, res, pool);
       }
+      // A friend's short invite link (invite-link.js), exact shape only.
+      // Reaches allma.world only once the Caddyfile names `/i/<code>`.
+      if (await inviteLink.handle(req, res, pool, parsed.pathname)) return;
 
       if (!checkBasicAuth(req, adminUser, adminPass)) {
         res.writeHead(401, { 'WWW-Authenticate': 'Basic realm="olma2"' });
