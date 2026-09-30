@@ -262,6 +262,18 @@ test('live: an answer after the offer lapses it, and an answer withdraws that pe
     assert.ok(added.ok, JSON.stringify(added));
     await options.answer(c, who.id, id, added.data.optionId || added.data.option.id, 'y');
   });
+  // The time and its yes were written at the WALL clock, and every moment this
+  // test passes to the sweep is measured from DAY, 11:00 UTC today. Before
+  // 11:00 UTC the answer was hours OLDER than the sweep's own clock, so the
+  // room read as quiet, the offer was said and the close came: red for any
+  // run between midnight and mid-morning UTC, green after (main, 2026-09-30
+  // 00:04). Pinned an hour after the day's pass, where the story puts it.
+  await db.pool.query(
+    `UPDATE meeting_options SET created_at = $2, decided_at = CASE WHEN decided_at IS NULL THEN NULL ELSE $2::timestamptz END
+      WHERE meeting_id = $1`, [id, plus(1)]);
+  await db.pool.query(
+    `UPDATE meeting_option_answers SET answered_at = $2
+      WHERE option_id IN (SELECT id FROM meeting_options WHERE meeting_id = $1)`, [id, plus(1)]);
   const mine = (await nudges(id)).find((r) => Number(r.user_id) === Number(who.id));
   assert.equal(mine.hold_reason, 'superseded');
 
