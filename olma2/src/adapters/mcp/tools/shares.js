@@ -1,7 +1,7 @@
 'use strict';
 // shares — one slice of the tool registry (see ../registry.js).
 const {
-  shares, S, ok, actorName, fanout, tool, connectedUserByPhone,
+  shares, users, S, ok, err, actorName, fanout, tool, connectedUserByPhone,
 } = require('./_shared');
 const shareInvite = require('../../../intake/share-invite');
 
@@ -15,7 +15,18 @@ module.exports = [
         // request, and the share follows their approval (intake/share-invite.js).
         const invited = who.error.reason === 'not_connected'
           ? await shareInvite.inviteForShare(client, user, a.task_id, a.phone) : null;
-        return invited || who;
+        if (invited) return invited;
+        // They switched sharing off toward this user: nothing is shared and
+        // they are not told, and the user gets the sentence that turns it
+        // back on (domain/shares.sharingOff). Said in THIS reply, so no
+        // message of its own follows.
+        const target = who.error.reason === 'not_granted_by_them' ? await users.getByPhone(client, a.phone) : null;
+        const notice = target ? await shares.sharingOff(client, user.id, target.id) : null;
+        if (!notice) return who;
+        return err('forbidden', who.error.message, {
+          ...who.error, ...notice,
+          hint: `${notice.friendName} has task sharing switched off toward the user, so nothing was shared and ${notice.friendName} was not told. Say so in one line, then hand over forwardText for the user to send ${notice.friendName} — on its own line, exactly as written: said to their own Allma, it turns sharing back on, and then the user can share again. No other way around it.`,
+        });
       }
       // The share is live on return and the other person's message is
       // already queued (domain/shares.offerShare) — nothing waits on them.

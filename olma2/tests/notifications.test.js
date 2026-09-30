@@ -211,6 +211,26 @@ test('sharing tells the other side it was added, and asks nothing', async () => 
   assert.equal((await outboxFor(miron.id, 'share_response')).length, 0);
 });
 
+// The friend switched sharing off: nothing is shared, they are not told, and
+// the reply carries the sentence that turns it back on — no message of its own.
+test('sharing with a friend who switched it off hands over the sentence to pass on', async () => {
+  const noa = await makeUser(db.pool, '+972621000009', { firstName: 'Noa' });
+  const conn = await withTx(db.pool, async (c) => {
+    const req = await connections.requestConnection(c, miron.id, noa.phone, {});
+    return (await connections.respondToConnection(c, noa.id, req.data.connection.id, 'approve')).data.connection;
+  });
+  await call(noa, 'set_connection_feature', { connection_id: Number(conn.id), feature: 'sharing', on: false });
+  const added = await call(miron, 'add_task', { title: 'לקנות מתנה' });
+  const taskId = Number(/"id":"?(\d+)/.exec(added)[1]);
+  const res = await call(miron, 'share_task_with', { task_id: taskId, phone: noa.phone });
+  assert.match(res, /^ERROR forbidden/);
+  assert.match(res, /reason="not_granted_by_them"/);
+  assert.match(res, /forwardText="עולמה, תחזירי את שיתוף המשימות עם Miron"/);
+  assert.match(res, /hint="Noa has task sharing switched off/);
+  assert.equal((await outboxFor(noa.id, 'share_added')).length, 0);
+  assert.equal((await outboxFor(miron.id, 'share_sharing_off')).length, 0, 'the reply already says it');
+});
+
 test('connection approval notifies the requester and enables everything at once', async () => {
   const gali = await makeUser(db.pool, '+972621000003', { firstName: 'Gali' });
   await call(miron, 'request_connection', { phone: gali.phone, reason: 'לתאם דברים' });
