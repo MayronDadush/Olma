@@ -53,6 +53,23 @@ const EXPERIMENTS = {
     converted: `EXISTS (SELECT 1 FROM users x WHERE x.id = e.uid
                   AND x.onboarded_at BETWEEN e.at AND e.at + interval '7 days')`,
   },
+  // When to offer "add me to your groups" after a coordination they said yes
+  // to closed (jobs/checkin.moreGroupsEarned). Exposed at the first check-in
+  // that finds the offer earned, in both arms, whether or not b has said it
+  // yet. The outcome is a room she is in with them in it, registered after.
+  more_groups_timing: {
+    title: 'מתי מציעים "תוסיפו אותי לקבוצות" אחרי תיאום שנסגר',
+    variants: {
+      a: 'בצ׳ק־אין הראשון אחרי שהתיאום נסגר',
+      b: 'רק אחרי שהמפגש עצמו התקיים',
+    },
+    exposure: 'הגיע תורם לצ׳ק־אין כשההצעה כבר מגיעה להם (בשתי הקבוצות — גם מי שב־B עוד מחכה)',
+    outcome: 'עולמה נכנסה לקבוצת וואטסאפ חדשה שהם חברים בה תוך 21 ימים',
+    windowDays: 21,
+    converted: `EXISTS (SELECT 1 FROM chat_groups g JOIN chat_group_members gm ON gm.group_id = g.id
+                  WHERE gm.user_id = e.uid
+                    AND g.created_at BETWEEN e.at AND e.at + interval '21 days')`,
+  },
 };
 
 function variantFor(key, userId) {
@@ -79,11 +96,15 @@ async function assign(client, key, userId) {
 async function expose(client, key, userId, detail = {}) {
   const a = await assign(client, key, userId);
   if (!a.running || !userId) return a.variant;
+  if (!await wasExposed(client, key, userId)) await audit.record(client, userId, EXPOSED, { ...detail, exp: key, variant: a.variant });
+  return a.variant;
+}
+
+async function wasExposed(client, key, userId) {
   const { rows } = await client.query(
     `SELECT 1 FROM audit_log WHERE actor_id = $1 AND event = $2 AND detail->>'exp' = $3 LIMIT 1`,
     [userId, EXPOSED, key]);
-  if (!rows[0]) await audit.record(client, userId, EXPOSED, { ...detail, exp: key, variant: a.variant });
-  return a.variant;
+  return Boolean(rows[0]);
 }
 
 async function lock(client, key, variant) {
@@ -144,4 +165,4 @@ async function results(client, key) {
   return { key, ...exp, arms, verdict: verdict(arms), locked: (await winners(client))[key] || null };
 }
 
-module.exports = { EXPERIMENTS, FLAG, EXPOSED, MIN_DONE, variantFor, assign, expose, lock, results, pValue, verdict };
+module.exports = { EXPERIMENTS, FLAG, EXPOSED, MIN_DONE, variantFor, assign, expose, wasExposed, lock, results, pValue, verdict };
