@@ -262,7 +262,7 @@ Loads when you **Read** a file under `src/jobs/checkin.js`, `src/jobs/onboarding
 - **A write from their own page IS the person answering** — `last_dashboard_at`, never `last_inbound_at`
 - **A "once ever" question is stamped on the PERSON, never deduped on the route that asks it.**
 - **The chag offer is that shape's second column (`holiday_quiet_asked_at`, migration 062), with two routes from the start.**
-- **…and the offer to add her to more groups is its third (`more_groups_offered_at`, migration 086)** — earned by a yes on the time a ROOM locked, and it rides the next check-in
+- **…and the offer to add her to more groups is its third (`more_groups_offered_at`, migration 086)** — earned by a yes on the time a ROOM locked (or a private coordination of 3+, since 2026-09-30), and it rides the next check-in — at once or after the meeting, an A/B test
 - **…and the zone question in a room on several clocks is its fourth (`room_zone_asked_at`, migration 092)** — only for an unconfirmed zone, riding the room invite, stamped after the send confirms
 - **Deleting a user is not deleting a person until the GATEWAY's intake session goes too.**
 - **The ledgers are append-only.**
@@ -354,6 +354,7 @@ Loads when you **Read** a file under `src/domain/group-connections.js`, `src/dom
 - **Everything a room hears unasked is fixed text on the raw pipe**
 - **A sweep DECIDES and the `group_outbox` job SAYS**
 - **A room's first sentence waits out the channel restart its own registration caused.**
+- **Registering a room writes the sender list in the SAME save; nothing else about the list is batched**: a tag the gateway blocks is lost, not delayed
 - **TWO columns say somebody has written to Olma, because two voices can hear their first message.**
 - **Being in the room IS the introduction, and it is not the inferred closeness the old rule forbids.**
 - **The roster's digits may be a LID, and the gateway's own reverse map is the only way back to a number**
