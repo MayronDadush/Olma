@@ -459,3 +459,76 @@ test('nobody without a calendar ever reaches Google on a save', async () => {
     assert.equal(asked, 0);
   });
 });
+
+// ---- proposal 4: one picture of the day ----------------------------------
+
+const dashEvents = require('../src/domain/user-dashboard-events');
+const digestTools = require('../src/adapters/mcp/tools/digest');
+const digestBlock = require('../src/domain/digest-block');
+
+// Today and tomorrow in Jerusalem, off the live clock but only as DATES, so
+// nothing below depends on the hour the suite runs.
+const ymdIn = (tz, d) => new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+const TODAY = ymdIn('Asia/Jerusalem', new Date());
+const shift = (iso, n) => { const [y, m, d] = iso.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10); };
+
+async function linkedTask(u, eventId, seriesId, title) {
+  const { rows } = await db.pool.query(
+    `INSERT INTO tasks (owner_id, title, kind, due_at, source, linked_event_id, linked_series_id)
+     VALUES ($1, $2, 'event', now() + interval '1 day', 'calendar', $3, $4) RETURNING id`,
+    [u.id, title, eventId, seriesId]);
+  return Number(rows[0].id);
+}
+
+test('the page draws an event Olma reminds them about ONCE, carrying the task', async () => {
+  const u = await connectedUser('+972500001201');
+  const taskId = await linkedTask(u, 'm1_20270116', 'm1', 'העברות + סיבוב bit');
+  const day = shift(TODAY, 2);
+  const res = await withClient((c) => dashEvents.loadEvents(c, u.id, {
+    listEvents: async () => ({ ok: true, data: { events: [
+      { id: 'm1_x', seriesId: 'm1', title: 'העברות + סיבוב bit', start: day, end: shift(day, 1), allDay: true },
+      { id: 'plain', title: 'ספורט', start: `${day}T07:00:00+03:00`, end: `${day}T08:00:00+03:00`, allDay: false },
+    ] } }),
+  }));
+  assert.ok(res.ok);
+  const [a, b] = res.data.days['2'];
+  assert.equal(a.task, taskId, 'a series link covers every occurrence');
+  assert.equal(b.task, undefined);
+});
+
+test('the morning digest carries today from their calendar, and a linked event once', async () => {
+  const u = await connectedUser('+972500001202');
+  const taskId = await linkedTask(u, 'd1', null, 'רופא');
+  const events = [
+    onCal('d1', 'רופא', `${TODAY}T10:00:00+03:00`, `${TODAY}T10:30:00+03:00`),
+    onCal('d2', 'ישיבה', `${TODAY}T08:00:00+03:00`, `${TODAY}T09:00:00+03:00`),
+    // All-day from yesterday, ending today: not today's.
+    onCal('d3', 'כנס', shift(TODAY, -1), TODAY, { allDay: true }),
+  ];
+  const own = [{ id: taskId, title: 'רופא', due_at: `${TODAY}T07:00:00Z` }, { id: 999999, title: 'אחר', due_at: null }];
+  const merged = await withClient((c) => digestTools.withTodayOnCalendar(c, u.id, own, {
+    eventsBetween: async () => ({ ok: true, data: { events } }),
+  }));
+  assert.deepEqual(merged.map((r) => r.title), ['ישיבה', 'רופא', 'אחר']);
+  assert.equal(merged[1].reminded, true);
+  assert.equal(merged[1].onCalendar, true, 'the calendar line, not the task');
+
+  const block = digestBlock.renderDigestBlock({ events: merged, tasks: [] }, { locale: 'he', timezone: 'Asia/Jerusalem' });
+  assert.match(block, /רופא 🔔/);
+});
+
+test('a calendar that cannot be read leaves the digest exactly as it was', async () => {
+  const u = await connectedUser('+972500001203');
+  const own = [{ id: 1, title: 'x', due_at: null }];
+  const same = await withClient((c) => digestTools.withTodayOnCalendar(c, u.id, own, {
+    eventsBetween: async () => ({ ok: false, error: { code: 'conflict', message: 'down' } }),
+  }));
+  assert.equal(same, own);
+  const nobody = await makeUser(db.pool, '+972500001204', { timezone: 'Asia/Jerusalem' });
+  let asked = 0;
+  const none = await withClient((c) => digestTools.withTodayOnCalendar(c, nobody.id, own, {
+    eventsBetween: async () => { asked += 1; return { ok: true, data: { events: [] } }; },
+  }));
+  assert.equal(none, own);
+  assert.equal(asked, 0);
+});

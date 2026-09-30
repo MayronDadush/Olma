@@ -4,6 +4,7 @@ const {
   digest, users, flags, scheduleCard, dashboardAuth, S, tool, ok,
 } = require('./_shared');
 const digestBlock = require('../../../domain/digest-block');
+const calendarLinks = require('../../../domain/calendar-links');
 const format = require('../../../domain/message-format');
 
 // The block and a drawn card are two renderings of the SAME list, and a turn
@@ -44,6 +45,18 @@ function listWorthAPage(data, now = Date.now()) {
   return todos.length >= DIGEST_LINK_OPEN || overdue >= DIGEST_LINK_OVERDUE;
 }
 
+// The day on their own calendar joins the day Olma holds (proposal 4), in one
+// time-ordered list under the calendar heading. An event Olma reminds them
+// about is said once, as the calendar's; the task carrying its reminder steps
+// out. A calendar that could not be read leaves the list as it was.
+async function withTodayOnCalendar(client, userId, events, deps = {}) {
+  const today = await calendarLinks.todayOnCalendar(client, userId, {}, deps);
+  if (!today || !today.events.length) return events;
+  const own = events.filter((r) => !today.linkedTasks.has(Number(r.id)));
+  const at = (r) => (r.due_at ? new Date(r.due_at).getTime() : Infinity);
+  return [...today.events, ...own].sort((a, b) => at(a) - at(b));
+}
+
 module.exports = [
   tool('get_my_digest', 'Assemble the current picture. scope: summary (counts) | full (every open task) | today (due/overdue today).',
     { scope: S('string', 'summary | full | today') }, [],
@@ -56,6 +69,7 @@ module.exports = [
       // with a digest at all are on `summary`.
       const nudges = Array.isArray(res.data && res.data.nudges) ? res.data.nudges : [];
       if (!res.ok || !res.data || !(res.data.events || res.data.tasks || nudges.length)) return res;
+      if (Array.isArray(res.data.events)) res.data.events = await withTodayOnCalendar(client, user.id, res.data.events);
       // The layout of a digest is the same every morning; only the sentence
       // about it changes. So the list is DRAWN here and handed over finished
       // (domain/digest-block.js) rather than retyped, and the hint below is
@@ -111,3 +125,4 @@ module.exports = [
       scope: S('string', 'summary | full | today') }, [],
     (client, user, a) => digest.setPreferences(client, user.id, a.times, a.scope)),
 ];
+module.exports.withTodayOnCalendar = withTodayOnCalendar;

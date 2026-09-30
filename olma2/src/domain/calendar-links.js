@@ -478,7 +478,50 @@ async function linkedEventIds(client, userId) {
   return { byEvent, bySeries };
 }
 
+// Today on their calendar, in the shape the digest draws its `events` in
+// (proposal 4): the morning picture is the whole day, not only the part Olma
+// holds. An event Olma is reminding them about is one line — the calendar's —
+// so the task holding that reminder is named in `linkedTasks` for the caller to
+// leave out. `null` is "could not look" (no calendar, a slow or failing
+// Google), which is never the same as a day with nothing on it.
+async function todayOnCalendar(client, userId, { now = new Date() } = {}, deps = {}) {
+  try {
+    if (!(await calendarAccess(client, userId))) return null;
+    const tz = await zoneOf(client, userId);
+    const p = partsInZone(tz, now);
+    const next = new Date(Date.UTC(p.y, p.m - 1, p.d + 1));
+    const from = instantInZone(tz, { y: p.y, m: p.m, d: p.d, hh: 0, mi: 0, ss: 0 });
+    const to = instantInZone(tz, {
+      y: next.getUTCFullYear(), m: next.getUTCMonth() + 1, d: next.getUTCDate(), hh: 0, mi: 0, ss: 0,
+    });
+    const between = deps.eventsBetween || calendar.eventsBetween;
+    const res = await between(client, userId, { timeMin: from, timeMax: to, maxEvents: 50 },
+      { budget: google.createBudget(deps.budgetMs || SAVE_BUDGET_MS) });
+    if (!res || !res.ok) return null;
+    const { byEvent, bySeries } = await linkedEventIds(client, userId);
+    const events = [];
+    const linkedTasks = new Set();
+    for (const ev of res.data.events || []) {
+      // Google hands back an all-day event from yesterday that ends today;
+      // only one that STARTS today is today's.
+      if (dayKey(ev.start, tz, ev.allDay) !== dayKey(from.toISOString(), tz)) continue;
+      const when = momentFor(ev, tz);
+      if (!when) continue;
+      const task = byEvent.get(ev.id) || (ev.recurringEventId && bySeries.get(ev.recurringEventId)) || null;
+      if (task) linkedTasks.add(task);
+      events.push({
+        title: ev.title, due_at: when.dueAt, ends_at: when.endsAt, location: ev.location || null,
+        onCalendar: true, ...(task ? { reminded: true } : {}),
+      });
+    }
+    return { events, linkedTasks };
+  } catch (e) {
+    if (deps.onError) deps.onError(e);
+    return null;
+  }
+}
+
 module.exports = {
-  linkEvent, sweepCalendarLinks, linkedEventIds, findInCalendar, saveToCalendar, calendarAccess,
+  linkEvent, sweepCalendarLinks, linkedEventIds, findInCalendar, saveToCalendar, calendarAccess, todayOnCalendar,
   momentFor, endOf, findShadow, MAX_PER_TICK, RECHECK_MS, PASSED_RECHECK_MS, SAVE_BUDGET_MS,
 };
