@@ -4167,17 +4167,24 @@ days. The room registered on 2026-09-24 caused four restarts in six minutes:
 23:22:08 for the groups entry, 23:22:19 for the agent plus the list, then
 23:24:44 and 23:28:17 for the list alone, as new roster rows became senders.
 
-**Fix, as the owner decided.** Additions wait until five minutes after the
-last restart of any kind (`SENDER_GATE_BATCH_MS`). The owner accepted that
-cost: a newcomer's first tag can go unheard for up to five minutes. Removals
-are still written at once, because somebody who asked her to stop must not
-wake her in a room. A list that currently admits everyone is closed at once
-for the same reason. Registration now writes the list in the same save as the
-groups entry. `provisionGroup` carries it only when its own admit wrote under
-`channels.whatsapp`. The first draft carried it unconditionally, and in that
-case the list itself would have been the restart. The clock is the in-memory
-stamp `saveConfig` already keeps, so a brokerd restart forgets it and writes
-at once. That is the right way to fail: late at worst, never lost.
+**Fix.** Registration now writes the list in the same save as the groups
+entry, so that pair is one restart instead of two. `provisionGroup` carries the
+list only when its own admit wrote under `channels.whatsapp`. The first draft
+carried it unconditionally, and in that case the list itself would have been
+the restart.
+
+**Rejected the same day: batching additions.** PR #623 first held every
+addition until five minutes after the last restart. Removals, and closing a
+list that admitted everyone, were still written at once. The owner turned it
+down on reading "a new person may tag her and get no answer for five minutes".
+The wording undersold the cost, too. The WhatsApp plugin drops a tag from a
+number not on the list before any hook of ours runs, so the tag is not
+answered late — it is never answered. A restart only delays sends, and the
+outbox waits it out. Few people would ever have hit the window: an active user
+is already on the list (it is global, not per room), and a room's members at
+registration now ride the registration save. That left somebody added to an
+existing room, and somebody who paused by asking and has just come back. Few
+is still not none, and the trade was a lost message against a delayed one.
 
 ### The room was greeted twice, by its own registration (fixed 2026-09-11)
 

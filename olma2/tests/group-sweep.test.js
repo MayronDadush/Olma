@@ -670,13 +670,7 @@ test('the sweep makes the sender list the current users, every pass', async () =
   // Deleting the row takes them out too, with no separate call site: one
   // declarative rule covers joining, pausing, blocking and deletion alike.
   await db.pool.query(`UPDATE users SET paused_at = NULL WHERE id = $1`, [a.id]);
-  // Coming back ON waits five minutes after the restart the removal just caused
-  // (jobs/groups.SENDER_GATE_BATCH_MS) — held on the first pass, in once the
-  // channel has not restarted for that long.
-  const held = await pass(g.deps);
-  assert.equal(held.senderGateDeferred, true);
-  assert.ok(!admitted().includes(a.phone), 'an addition restarted the channel twice in a row');
-  await pass({ ...g.deps, channelWrittenAt: () => null });
+  await pass(g.deps);
   assert.ok(admitted().includes(a.phone), 'un-pausing puts them back');
   await db.pool.query(`DELETE FROM users WHERE id = $1`, [a.id]);
   await pass(g.deps);

@@ -354,7 +354,7 @@ Loads when you **Read** a file under `src/domain/group-connections.js`, `src/dom
 - **Everything a room hears unasked is fixed text on the raw pipe**
 - **A sweep DECIDES and the `group_outbox` job SAYS**
 - **A room's first sentence waits out the channel restart its own registration caused.**
-- **A NEW name on the room sender list waits five minutes after the last channel restart; a removal is written at once** (`syncSenderGate`), and registration writes the list in its own save
+- **Registering a room writes the sender list in the SAME save; nothing else about the list is batched**: a tag the gateway blocks is lost, not delayed
 - **TWO columns say somebody has written to Olma, because two voices can hear their first message.**
 - **Being in the room IS the introduction, and it is not the inferred closeness the old rule forbids.**
 - **The roster's digits may be a LID, and the gateway's own reverse map is the only way back to a number**
