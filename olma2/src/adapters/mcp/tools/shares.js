@@ -3,13 +3,20 @@
 const {
   shares, S, actorName, fanout, tool, connectedUserByPhone,
 } = require('./_shared');
+const shareInvite = require('../../../intake/share-invite');
 
 module.exports = [
-  tool('share_task_with', 'Offer a specific task/project to a connected person. Everyone on a shared task is equal: both sides rename, date, tick, add and remove items. Project shares include subtasks dynamically.',
+  tool('share_task_with', 'Offer a specific task/project to a connected person. Someone not on Olma gets ONE intro message and the offer once they approve. Everyone on a shared task is equal: both sides rename, date, tick, add and remove items. Project shares include subtasks dynamically.',
     { task_id: S('number', 'Task id'), phone: S('string', 'Their E.164 phone') }, ['task_id', 'phone'],
     async (client, user, a) => {
       const who = await connectedUserByPhone(client, user.id, a.phone, 'sharing');
-      if (!who.ok) return who;
+      if (!who.ok) {
+        // Somebody not on Olma at all gets one message and a connection
+        // request, and the share follows their approval (intake/share-invite.js).
+        const invited = who.error.reason === 'not_connected'
+          ? await shareInvite.inviteForShare(client, user, a.task_id, a.phone) : null;
+        return invited || who;
+      }
       const res = await shares.offerShare(client, user.id, a.task_id, who.data.target.id);
       if (res.ok) {
         const t = await client.query(`SELECT title FROM tasks WHERE id = $1`, [a.task_id]);

@@ -38,6 +38,21 @@ const EXPERIMENTS = {
                   AND o.event = 'referral.shared'
                   AND o.created_at BETWEEN e.at AND e.at + interval '7 days')`,
   },
+  // The one message to somebody a user shared a task with who is not on Olma
+  // (intake/share-invite.js). The person exposed is the stranger's pending
+  // row, which is the same row provisioning takes on when they join.
+  task_share_intro: {
+    title: 'ההודעה למי ששיתפו איתו משימה ועוד לא אצלנו',
+    variants: {
+      a: 'פותחת ב"היי! כאן עולמה" ואז המשימה',
+      b: 'פותחת בשם המשימה ואז מי זו עולמה',
+    },
+    exposure: 'קיבלו את ההודעה (נכנסה לתור השליחה)',
+    outcome: 'הצטרפו לעולמה תוך 7 ימים',
+    windowDays: 7,
+    converted: `EXISTS (SELECT 1 FROM users x WHERE x.id = e.uid
+                  AND x.onboarded_at BETWEEN e.at AND e.at + interval '7 days')`,
+  },
 };
 
 function variantFor(key, userId) {
