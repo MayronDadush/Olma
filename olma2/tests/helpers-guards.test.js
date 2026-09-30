@@ -10,7 +10,7 @@
 //
 // Driven as real child processes against real fixture files, because that is
 // the only way to observe "the process did not exit".
-const { test } = require('node:test');
+const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const { spawn } = require('node:child_process');
 const fs = require('node:fs');
@@ -50,17 +50,34 @@ function runFixture(t, source, env) {
   });
 }
 
+// One database of our own, only to ask pg_database questions from.
+const { freshDb } = require('./helpers');
+let own;
+before(async () => { own = await freshDb(); });
+after(async () => { await own.teardown(); });
+async function databaseExists(name) {
+  const { rowCount } = await own.pool.query('SELECT 1 FROM pg_database WHERE datname = $1', [name]);
+  return rowCount > 0;
+}
+
 test('a client checked out and never released fails teardown by name, and does not hang', async (t) => {
   const { code, signal, out } = await runFixture(t, `
     const { test, before, after } = require('node:test');
     const { freshDb } = require('${HELPERS}');
     let db;
-    before(async () => { db = await freshDb(); });
+    before(async () => { db = await freshDb(); console.log('FIXTURE_DB=' + new URL(db.url).pathname.slice(1)); });
     after(async () => { await db.teardown(); });
     test('leaks a client on purpose', async () => {
       await db.pool.connect();   // no release, no finally
     });
   `, { OLMA_TEST_POOL_END_MS: '1000', OLMA_TEST_EXIT_WATCHDOG_MS: '20000' });
+
+  // ...and still drops its database. It used to throw before the DROP, so
+  // every file that leaked a client leaked its database too — this one did it
+  // on purpose, once per green run, and the box had 871 of them.
+  const leaked = (out.match(/FIXTURE_DB=(olma2_t_\w+)/) || [])[1];
+  assert.ok(leaked, out);
+  assert.equal(await databaseExists(leaked), false, `${leaked} was left behind`);
 
   assert.equal(signal, null, 'the child had to be SIGKILLed — the guard did not fire');
   assert.notEqual(code, 0, 'a leaked checkout must fail the file');
@@ -116,4 +133,30 @@ test('an ordinary file still exits cleanly, with both guards armed', async (t) =
   assert.equal(signal, null);
   assert.equal(code, 0, out);
   assert.doesNotMatch(out, /\[exit-watchdog\]/);
+});
+
+test('a teardown drops test databases a killed run left behind, and only those', async (t) => {
+  // A run killed at the cap never reaches its teardowns. The name carries the
+  // birth time, so the next run can tell a leftover from a sibling's database.
+  const hex = () => require('node:crypto').randomBytes(6).toString('hex');
+  const at = (msAgo) => Math.floor((Date.now() - msAgo) / 1000).toString(36);
+  const stale = `olma2_t_${at(7 * 3600_000)}_${hex()}`;
+  const live = `olma2_t_${at(60_000)}_${hex()}`;
+  await own.pool.query(`CREATE DATABASE ${stale}`);
+  await own.pool.query(`CREATE DATABASE ${live}`);
+  t.after(() => own.pool.query(`DROP DATABASE IF EXISTS ${live}`));
+  t.after(() => own.pool.query(`DROP DATABASE IF EXISTS ${stale}`));
+
+  // a fresh process, so its once-per-process sweep has not run yet
+  const { code, out } = await runFixture(t, `
+    const { test, before, after } = require('node:test');
+    const { freshDb } = require('${HELPERS}');
+    let db;
+    before(async () => { db = await freshDb(); });
+    after(async () => { await db.teardown(); });
+    test('nothing', () => {});
+  `, { OLMA_TEST_POOL_END_MS: '5000', OLMA_TEST_EXIT_WATCHDOG_MS: '10000' });
+  assert.equal(code, 0, out);
+  assert.equal(await databaseExists(stale), false, 'seven hours old: a leftover');
+  assert.equal(await databaseExists(live), true, 'a minute old: somebody\'s running file');
 });
