@@ -262,6 +262,16 @@ test('live: an answer after the offer lapses it, and an answer withdraws that pe
     assert.ok(added.ok, JSON.stringify(added));
     await options.answer(c, who.id, id, added.data.optionId || added.data.option.id, 'y');
   });
+  // Both writes stamp the REAL clock, and every other moment here is on DAY's.
+  // Between 00:00 and 04:00 UTC "now" is more than seven hours before DAY, so
+  // the room read as quiet for twelve hours at plus(5), the offer was said and
+  // closed it at plus(24) — red at those four hours only. Put the answer where
+  // the story puts it: an hour after the pass above.
+  await db.pool.query(
+    `UPDATE meeting_options SET created_at = $2 WHERE meeting_id = $1 AND added_by = $3`, [id, plus(1), who.id]);
+  await db.pool.query(
+    `UPDATE meeting_option_answers a SET answered_at = $2 FROM meeting_options o
+      WHERE o.id = a.option_id AND o.meeting_id = $1 AND a.user_id = $3`, [id, plus(1), who.id]);
   const mine = (await nudges(id)).find((r) => Number(r.user_id) === Number(who.id));
   assert.equal(mine.hold_reason, 'superseded');
 
