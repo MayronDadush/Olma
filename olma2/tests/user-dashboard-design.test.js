@@ -379,8 +379,8 @@ test('the home tab shows only what is live, and its two counts are doors', () =>
     'the count moves with the list it counts');
   const meets = page.slice(page.indexOf('function renderMeets(){'));
   assert.match(meets.slice(0, meets.indexOf('\n  }\n')), /renderHome\(\);/);
-  assert.match(page, /var nT = \(open \|\| \[\]\)\.length, nM = \(MEETS \|\| \[\]\)\.length;/,
-    'the same arrays the tabs draw — the server already decided what is open and active');
+  assert.match(page, /var nT = shown\.length, nM = \(MEETS \|\| \[\]\)\.length;/,
+    'the same rows the tabs draw — the server decided what is open, and the tasks page what it shows (leftToGoogle)');
 });
 
 // A zero is not something to show a new person; the first thing to do is.
@@ -494,6 +494,12 @@ test('the calendar fold holds what Olma reminds about and is still ahead', () =>
   assert.equal(fns.eventOver({ d: d0, tm: '22:00', tmEnd: '02:00' }, at(d0, '23:30')), false, 'an end before the start is tomorrow');
   assert.equal(fns.eventOver({ d: d0, all: true, tm: '09:00' }, at(d0, '23:59')), false, 'an all-day event lasts the day');
   assert.equal(fns.eventOver({ d: d0, all: true }, at(day(1), '00:00')), true);
+
+  // The home tab counts the rows the tasks page draws, or yesterday's haircut
+  // is "late" on one tab and gone from the other.
+  const home = page.slice(page.indexOf('function renderHome(){'), page.indexOf('function homeWaiting(){'));
+  assert.match(home, /var shown = \(open \|\| \[\]\)\.filter\(function\(x\)\{ return !leftToGoogle\(x\); \}\);/);
+  assert.doesNotMatch(home, /\(open \|\| \[\]\)\.length/, 'nothing on the home tab counts the raw list');
 });
 
 // One tap between day and night, on the band of the home tab only (the owner,

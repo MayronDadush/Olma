@@ -7437,8 +7437,11 @@ button.srow:active{background:var(--bg-tint)}
     /* renderTasks can run before the meetings seed further down the script
        has been assigned, so an unassigned list counts as none */
     if(!$("#homeTasksN")) return;
-    var nT = (open || []).length, nM = (MEETS || []).length;
-    var due = (open || []).filter(function(x){ var b = bucketFor(x.d); return x.d && (b === "late" || b === "today"); });
+    /* Counted off the same rows the tasks page draws: an appointment that is
+       over, or one only Google needs to hold, is not "open" and never "late". */
+    var shown = (open || []).filter(function(x){ return !leftToGoogle(x); });
+    var nT = shown.length, nM = (MEETS || []).length;
+    var due = shown.filter(function(x){ var b = bucketFor(x.d); return x.d && (b === "late" || b === "today"); });
     var dueNow = due.length;
     rollText($("#homeTasksN"), String(nT));
     rollText($("#homeMeetsN"), String(nM));
