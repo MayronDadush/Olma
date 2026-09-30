@@ -29,8 +29,9 @@ const version = arg('version') || '2026-09-28';
       console.log(`policy notice ${version}: ${s.rows} queued, ${s.delivered} reached them, ${s.waiting} waiting, ${s.dropped} will never go`);
       return;
     }
-    const a = await withTx(pool, (c) => notice.audience(c));
-    console.log(`policy notice ${version}: ${a.eligible} would get it (he ${a.he}, en ${a.en}); ${a.paused} paused are left out.`);
+    const a = await withTx(pool, (c) => notice.audience(c, version));
+    console.log(`policy notice ${version}: ${a.eligible} would get it (he ${a.he}, en ${a.en}); ${a.paused} paused are left out; `
+      + `${a.shown} already read the link in their opening and are left out.`);
     if (!process.argv.includes('--enqueue')) { console.log('preview only — add --enqueue --yes to queue it'); return; }
     if (!process.argv.includes('--yes')) { console.error('refusing without --yes'); process.exit(2); }
     const only = arg('only');
