@@ -167,25 +167,40 @@ test('gate: an escalation rung is Olma\'s moment, not theirs, and waits for the 
   // And someone demonstrably awake still gets it — the conversation grace is
   // not overridden by a rule about not waking people.
   const justWrote = new Date(threeAmUTC.getTime() - 2 * 60_000).toISOString();
-  assert.equal(decide({ ...night, row: reminder({ rung: 2 }), lastInboundAt: justWrote }).action, 'deliver');
+  assert.equal(decide({ ...night, row: reminder({ rung: 2 }), wokeAt: justWrote }).action, 'deliver');
 });
 
 test('gate: someone who just wrote is awake — quiet hours do not silence a live conversation', () => {
   const night = { ...baseFacts, now: threeAmUTC };
   // 3am, well outside any window, but they messaged two minutes ago
   const justWrote = new Date(threeAmUTC.getTime() - 2 * 60_000).toISOString();
-  assert.equal(decide({ ...night, row: row(), lastInboundAt: justWrote }).action, 'deliver');
+  assert.equal(decide({ ...night, row: row(), wokeAt: justWrote }).action, 'deliver');
 
   // ...the grace is 15 minutes, not "any time today"
   const longAgo = new Date(threeAmUTC.getTime() - 40 * 60_000).toISOString();
-  assert.equal(decide({ ...night, row: row(), lastInboundAt: longAgo }).holdReason, 'night');
+  assert.equal(decide({ ...night, row: row(), wokeAt: longAgo }).holdReason, 'night');
 
   // never written → no evidence they are awake → normal quiet hours
-  assert.equal(decide({ ...night, row: row(), lastInboundAt: null }).holdReason, 'night');
+  assert.equal(decide({ ...night, row: row(), wokeAt: null }).holdReason, 'night');
 
   // the grace opens the window; it does not waive the daily budget
-  const busy = { ...night, sentToday: 4, lastInboundAt: justWrote };
+  const busy = { ...night, sentToday: 4, wokeAt: justWrote };
   assert.equal(decide({ ...busy, row: row() }).holdReason, 'budget');
+});
+
+// Miron, 2026-09-30: a CLI probe of his agent at 02:53 ran `turn_start`, which
+// moved `last_inbound_at`, and the 03:00 auto-archive notice rode the grace to
+// his phone. A turn that merely HAPPENED is not a person awake: only `wokeAt`
+// (users.last_woke_at, the gateway opener's stamp) opens the grace.
+test('gate: a turn with no real message behind it does not lift quiet hours', () => {
+  const night = { ...baseFacts, now: threeAmUTC };
+  const probeRan = new Date(threeAmUTC.getTime() - 7 * 60_000).toISOString();
+  const archived = row({ kind: 'tasks_auto_archived' });
+  const v = decide({ ...night, row: archived, lastInboundAt: probeRan, wokeAt: null });
+  assert.equal(v.action, 'hold');
+  assert.equal(v.holdReason, 'night');
+  // …and the same row, seven minutes after a message they really sent, goes.
+  assert.equal(decide({ ...night, row: archived, lastInboundAt: probeRan, wokeAt: probeRan }).action, 'deliver');
 });
 
 test('gate: default quiet hours run 21:00 to 09:00', () => {

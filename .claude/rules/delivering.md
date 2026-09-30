@@ -456,6 +456,14 @@ title means this file. Grep the title, not the filename.
   that skipped `turn_start` — passes `false`. Unconditional, it woke Sarah at
   01:26 for a gateway heartbeat poll (`incidents.md`, "Good morning at half
   past one"). A turn happening is not evidence that anyone is awake.
+  **…and the gate's fifteen-minute grace reads `users.last_woke_at`, which only
+  `wake: true` stamps, never `last_inbound_at`** (migration 102, 2026-09-30).
+  Every opener moves `last_inbound_at`, `turn_start` included, and a CLI probe
+  of Miron's agent at 02:53 opened the grace for the 03:00 auto-archive notice.
+  That row was CREATED after the turn, so gating the re-hearing could not have
+  stopped it (`incidents.md`, "The probe that was read as him writing").
+  `turn_start` releases no night-held rows either. The gateway opener already
+  did that for a real message.
 
 - **Only rung 1 of a reminder is a moment THEY chose; every rung after it is
   one OLMA chose, and quiet hours apply to it.** The gate exempted `kind ===

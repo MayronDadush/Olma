@@ -171,7 +171,7 @@ Loads when you **Read** a file under `src/outbox/**`, `src/domain/message-format
 - **A chag is QUIET only for somebody who asked for it, and "quiet-able" means yom tov and nothing else.**
 - **`DEFAULT_WINDOW` (09:00-21:00) is no longer only a fallback — it is a sentence somebody read.**
 - **That rung asks for the COUNTRY, not the city**
-- **Only the PERSON writing releases a night-held row.**
+- **Only the PERSON writing releases a night-held row** — and only `users.last_woke_at` (the gateway opener's stamp) opens the gate's fifteen-minute grace, never `last_inbound_at`
 - **Only rung 1 of a reminder is a moment THEY chose; every rung after it is one OLMA chose, and quiet hours apply to it.**
 - **A reminder rung the GATE held is never chased; a rung OUR pipe lost is redone at once.**
 - **Nothing Olma DECIDED to say goes out in front of an introduction she still owes.**

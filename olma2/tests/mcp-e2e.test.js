@@ -169,28 +169,30 @@ test('turn_start survives a wrote_in it cannot make sense of', async () => {
 });
 
 // Observed live 2026-08-27: two connection requests sat 'night'-held until
-// morning while the recipient was actively chatting — the worker never
-// re-reads a held row before its release_after, so the gate's 15-minute
-// mid-conversation grace could not fire. An inbound message now wakes
-// night-held rows for an immediate re-hearing; the gate stays the judge.
-test('an inbound message wakes night-held rows for the gate to re-decide', async () => {
+// morning while the recipient was actively chatting. The re-hearing that fixed
+// it now belongs to the gateway opener alone (`turn.openFromGateway`, tested in
+// implicit-turn-start.test.js), because `turn_start` has no evidence a person
+// wrote: a CLI probe of the owner's agent at 02:53 called it, and the grace it
+// opened let the 03:00 auto-archive notice through (2026-09-30, `incidents.md`,
+// "The probe that was read as him writing").
+test('turn_start alone neither wakes night-held rows nor marks them awake', async () => {
   const tomorrow = new Date(Date.now() + 10 * 3600_000);
   await db.pool.query(
     `INSERT INTO outbox (user_id, kind, payload, urgency, hold_reason, release_after)
-     VALUES ($1, 'connection_request', '{}', 'normal', 'night', $2),
-            ($1, 'checkin', '{}', 'normal', 'budget', $2)`,
+     VALUES ($1, 'connection_request', '{}', 'normal', 'night', $2)`,
     [alice.id, tomorrow]);
+  await db.pool.query('UPDATE users SET last_woke_at = NULL WHERE id = $1', [alice.id]);
 
   await callTool('turn_start', { olma_identity: alice.identity_token });
 
   const { rows } = await db.pool.query(
-    `SELECT hold_reason, release_after <= now() AS woken FROM outbox
-      WHERE user_id = $1 AND sent_at IS NULL ORDER BY hold_reason`, [alice.id]);
-  const byReason = Object.fromEntries(rows.map((r) => [r.hold_reason, r.woken]));
-  assert.equal(byReason.night, true, 'night hold gets an immediate re-hearing');
-  // A budget hold's budget is still spent — waking it would override the
-  // gate, not re-ask it.
-  assert.equal(byReason.budget, false, 'budget hold keeps its schedule');
+    `SELECT release_after <= now() AS woken FROM outbox
+      WHERE user_id = $1 AND sent_at IS NULL`, [alice.id]);
+  assert.equal(rows[0].woken, false, 'the night hold keeps its schedule');
+  const { rows: u } = await db.pool.query(
+    'SELECT last_inbound_at IS NOT NULL AS recorded, last_woke_at FROM users WHERE id = $1', [alice.id]);
+  assert.equal(u[0].recorded, true, 'the turn is still recorded');
+  assert.equal(u[0].last_woke_at, null, 'but nothing says a person is awake');
 
   await db.pool.query(`DELETE FROM outbox WHERE user_id = $1 AND sent_at IS NULL`, [alice.id]);
 });
