@@ -147,6 +147,7 @@ never trust a dated narrative for something you are about to act on.
 - ["I can't" now hands over the search (2026-09-03)](#i-cant-now-hands-over-the-search-2026-09-03)
 - [A goal said out loud left no trace anywhere (fixed 2026-08-21)](#a-goal-said-out-loud-left-no-trace-anywhere-fixed-2026-08-21)
 - [turn_start skipped on the stop turn, under two models and two rewordings (2026-08-30)](#turn_start-skipped-on-the-stop-turn-under-two-models-and-two-rewordings-2026-08-30)
+- [Not connected, read as not on Olma (fixed 2026-09-30)](#not-connected-read-as-not-on-olma-fixed-2026-09-30)
 
 **Models, evals and background cognition**
 
@@ -6129,6 +6130,38 @@ checked at 19:00 Saturday, released 09:00 Sunday, not 19:00 Sunday.
 
 
 ## Stopping, pausing and doctrine
+
+### Not connected, read as not on Olma (fixed 2026-09-30)
+
+```
+30/09 12:34  Miron:  תתאמי לי פגישה עם עידן תומר לשבוע הבא - תוסיפי שאני יכול ביום שני שלישי ורביעי בערב
+30/09 12:34  Olma:   מצאתי את עידן תומר 🙌 הוא עדיין לא מחובר באולמה, אז שלחתי לו הזמנה להתחבר …
+30/09 12:36  Miron:  הוא כן מחובר זה המספר שלו
+30/09 12:36  Olma:   עידן תומר עדיין לא אישר את ההזמנה להתחבר שהוצאתי לו עכשיו …
+```
+
+עידן (u-26) had been a user since 2026-09-07. What he and Miron did not have
+was a CONNECTION, and `start_meeting_coordination` answered
+`not connected to this person (reason="not_connected")` — which is correct,
+and is the only thing the model had to go on. "לא מחובר באולמה" is its
+rendering of that, and in Hebrew it reads as "not on Olma". Miron answered the
+sentence he read, sent the number, and the coordination stalled on a
+misunderstanding rather than on anything the system did.
+
+The terse message was deliberate: `connectedUserByPhone` does not reveal
+whether a phone belongs to a user, so the error must be the same for both.
+It was not quite the same — an unknown number said "not connected to this
+person" and a known one fell through to `grants.requireFeatureBetween`'s
+"not connected", so the wording itself told the two apart. Both now return one
+error, and it carries a `hint` that says the thing the words left open: this is
+about the PAIR, it says nothing about whether the number uses Allma, and the
+next step is `request_connection`. The `request_connection` result says the
+same, worded as how to mention it rather than an order to (it carries a ⏰, and
+an unconditional "say" beside a mark is the `markPlaced` fault).
+
+**The shape:** a result the model must turn into a sentence has to say what it
+does NOT mean when the natural rendering means something else. Same family as
+"An instruction handed to the model may assert what its own columns hold".
 
 ### "אני רוצה להפסיק את השירות" was answered with a goodbye and nothing else (fixed 2026-08-22)
 

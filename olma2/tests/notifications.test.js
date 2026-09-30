@@ -244,6 +244,23 @@ test('connection approval notifies the requester and enables everything at once'
   assert.ok(!text.includes('call set_connection_feature'), 'no toggle step in the approval flow');
 });
 
+test('not connected is said about the pair, and reads the same for a user and a stranger', async () => {
+  // Miron → עידן, 2026-09-30: עידן had used Olma for three weeks, the tool said
+  // "not connected", and the model told Miron he was "not connected in Olma".
+  const idan = await makeUser(db.pool, '+972621000009', { firstName: 'Idan' });
+  const known = await call(miron, 'start_meeting_coordination', { title: 'x', phones: [idan.phone] });
+  const stranger = await call(miron, 'start_meeting_coordination', { title: 'x', phones: ['+972621999999'] });
+  assert.match(known, /not_connected/);
+  assert.match(known, /never say or imply they are not on it/);
+  // The phone is echoed back on the error; everything else must be identical,
+  // or the wording itself says which number is a user.
+  const strip = (t) => t.replace(/phone="[^"]*"/, '');
+  assert.equal(strip(known), strip(stranger));
+
+  const asked = await call(miron, 'request_connection', { phone: idan.phone, reason: 'לתאם פגישה' });
+  assert.match(asked, /never about whether they use Allma/);
+});
+
 test('a relayed message reaches the other side fenced, attributed, deduped', async () => {
   await call(miron, 'send_message_to_connection', { phone: kapish.phone, message: 'תביא את הקלפים הערב' });
   const rows = await outboxFor(kapish.id, 'relayed_message');

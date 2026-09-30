@@ -166,11 +166,25 @@ function groupTool(name, description, props, required, handler) {
 // Resolve a connected counterparty by phone. Deliberately does NOT reveal
 // whether an unknown phone belongs to a user — the not_connected error is
 // identical either way.
+//
+// Identical, and so it has to SAY that it is. Told only "not connected", the
+// model wrote "הוא עדיין לא מחובר באולמה" to Miron about עידן, who had been a
+// user for three weeks; Miron read it as "not on Olma", answered "הוא כן מחובר
+// זה המספר שלו", and the coordination stalled on a misunderstanding (2026-09-30,
+// `incidents.md`, "Not connected, read as not on Olma"). The hint names the pair,
+// not the person, and forbids the reading the words invited.
+const NOT_CONNECTED_HINT = 'The two of you are not connected to each other in Allma yet. Say it about '
+  + 'the PAIR ("אתם עוד לא מחוברים זה לזה"), never about them: this answer says nothing about whether '
+  + 'this number uses Allma, so never say or imply they are not on it. Next step: request_connection '
+  + 'with what they want as the reason.';
+
 async function connectedUserByPhone(client, actorId, phone, feature) {
   const target = await users.getByPhone(client, phone);
-  if (!target) return err('forbidden', 'not connected to this person', { reason: 'not_connected' });
+  const notConnected = () => err('forbidden', 'not connected to this person',
+    { reason: 'not_connected', hint: NOT_CONNECTED_HINT });
+  if (!target) return notConnected();
   const gate = await grants.requireFeatureBetween(client, actorId, target.id, feature);
-  if (!gate.ok) return gate;
+  if (!gate.ok) return gate.error.reason === 'not_connected' ? notConnected() : gate;
   return ok({ target, connection: gate.data.connection });
 }
 
