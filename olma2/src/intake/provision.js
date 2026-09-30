@@ -380,8 +380,19 @@ async function provisionUser(client, {
   // makes the binding live without a gateway restart: a bindings-only write
   // hits the gateway's noop early-exit and is silently dropped. See
   // openclaw-config.js for the source references.
+  //
+  // A pack they already hold rides the same write: somebody who arrived with
+  // a game night's code was given the pack before they had an agent
+  // (brokerd's intake game shortcut), and a second write to lift the deny
+  // would be one more config save for the gateway to reload mid-night.
   const cfg = occ.loadConfig(configPath);
-  const agentAdded = occ.addAgent(cfg, { id: agentId, workspace: paths.workspace, agentDir: paths.agentDir });
+  const { rows: packRows } = await client.query(
+    'SELECT pack FROM user_packs WHERE user_id = $1 ORDER BY pack', [user.id]);
+  const packs = packRows.map((r) => r.pack);
+  const agentAdded = occ.addAgent(cfg, {
+    id: agentId, workspace: paths.workspace, agentDir: paths.agentDir,
+    ...(packs.length ? { tools: require('./agent-tool-policy').agentToolPolicy(agentId, cfg, { packs }) } : {}),
+  });
   const allowFromAdded = occ.addAllowFrom(cfg, phone);
   const bindingAdded = occ.addBinding(cfg, { agentId, phone });
   occ.saveConfig(cfg, configPath);

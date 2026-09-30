@@ -220,6 +220,27 @@ function intakeConfigured(configPath) {
   } catch { return false; }
 }
 
+// Somebody who arrived with a game night's code (stage 4ב) was answered by
+// code in brokerd, not by the greeter — introduced, privacy line and all, and
+// stamped `opening_sent_at` for it — so the greeter has nothing to wait for
+// and nothing to carry over. Only `provisionUser` wrote that column on a
+// pending row before this, which makes it plus the claim's own audit row the
+// whole mark: nothing else has to remember them. Three days, because a claim
+// the sweep somehow could not provision (a config write that failed) must not
+// be retried for ever. Selected by the claim and never by the gateway's
+// session list, whether or not a claimed message leaves a session there.
+const GAME_CLAIM_WINDOW = '3 days';
+async function gameClaimed(client) {
+  const { rows } = await client.query(
+    `SELECT u.phone, (extract(epoch FROM now() - max(a.created_at)) * 1000)::bigint AS age_ms
+       FROM audit_log a JOIN users u ON u.id = a.actor_id
+      WHERE a.event = 'games.intake_claim' AND a.created_at > now() - interval '${GAME_CLAIM_WINDOW}'
+        AND u.status = 'pending' AND u.agent_id IS NULL AND u.opening_sent_at IS NOT NULL
+        AND u.is_eval = false
+      GROUP BY u.phone`);
+  return rows.map((r) => ({ phone: r.phone, ageMs: Number(r.age_ms) }));
+}
+
 // One discovery pass. deps: { listSessions, configPath, readFirstMessage, readLanguage }
 async function sweepIntakeSessions(client, deps) {
   if (!intakeConfigured(deps.configPath)) return { skipped: 'no_intake_agent' };
@@ -243,7 +264,15 @@ async function sweepIntakeSessions(client, deps) {
     out.breakerTripped = true;
   }
 
-  for (const { phone, ageMs } of sessions) {
+  // After the breaker, never before it: a game claim costs no model turn and
+  // has its own cap in brokerd, and ten new players at one table must not
+  // close registration for everybody else.
+  const claimed = await gameClaimed(client);
+  const claimedPhones = new Set(claimed.map((c) => c.phone));
+  const listed = new Set(sessions.map((s) => s.phone));
+  const todo = [...sessions, ...claimed.filter((c) => !listed.has(c.phone))];
+
+  for (const { phone, ageMs } of todo) {
     if (!/^\+\d{7,15}$/.test(phone)) { out.skipped++; continue; }
     const existing = await usersDomain.getByPhone(client, phone);
     if (existing && existing.status === 'active' && existing.agent_id) { out.skipped++; continue; }
@@ -280,10 +309,11 @@ async function sweepIntakeSessions(client, deps) {
     // outside the system for ever: past the grace we provision anyway, and
     // `greetedByIntake` is then false — so their own agent opens with the
     // copy, which is exactly the behaviour that predates this whole path.
-    const greeterReply = deps.readGreeterReply
+    const gameClaim = claimedPhones.has(phone) && existing && existing.status === 'pending';
+    const greeterReply = gameClaim ? null : deps.readGreeterReply
       ? await deps.readGreeterReply(phone)
       : await defaultReadGreeterReply(phone);
-    if (greeterReply === null && (ageMs ?? Infinity) < GREETER_GRACE_MS) {
+    if (!gameClaim && greeterReply === null && (ageMs ?? Infinity) < GREETER_GRACE_MS) {
       out.waitingOnGreeter = (out.waitingOnGreeter || 0) + 1;
       continue;
     }
@@ -291,11 +321,11 @@ async function sweepIntakeSessions(client, deps) {
     // Extracted before provisioning so seedWorkspace can write it straight
     // into USER.md — facts only (readPeerUserText caps + condenses), never
     // the raw transcript.
-    const firstMessage = deps.readFirstMessage
+    const firstMessage = !gameClaim && deps.readFirstMessage
       ? await deps.readFirstMessage(phone, sessions.map((s) => s.phone))
       : null;
     // Only consulted when the carryover above came back empty (provisionUser).
-    const languageHint = deps.readLanguage ? await deps.readLanguage(phone) : null;
+    const languageHint = !gameClaim && deps.readLanguage ? await deps.readLanguage(phone) : null;
     const inviter = invited
       ? (await client.query(`SELECT first_name, last_name, phone FROM users WHERE id = $1`, [invited.requester_id])).rows[0]
       : null;
@@ -314,11 +344,14 @@ async function sweepIntakeSessions(client, deps) {
       referralText: deps.readReferralText ? await deps.readReferralText(phone) : null,
     });
 
-    const saidOwners = saidTheOpening(greeterReply, await templates.load(client));
-    const roomOpened = !saidOwners && intakeRoom.saidRoomOpening(greeterReply);
-    const greetedByIntake = saidOwners || roomOpened;
+    const saidOwners = !gameClaim && saidTheOpening(greeterReply, await templates.load(client));
+    const roomOpened = !gameClaim && !saidOwners && intakeRoom.saidRoomOpening(greeterReply);
+    const greetedByIntake = gameClaim || saidOwners || roomOpened;
     const prov = await provisionUser(client, {
       phone, invitedByConnectionId: invited ? invited.id : null, configPath: deps.configPath,
+      // The language the claim was answered in, which is on the row — there
+      // is no carryover to read one from.
+      ...(gameClaim ? { locale: existing.locale } : {}),
       firstMessage, languageHint, invitedInfo, registerUndo: deps.registerUndo,
       joinedVia: via.joinedVia, referredByUserId: via.referredByUserId,
       // What the greeter ACTUALLY said, never what it was told to say. This
@@ -348,12 +381,18 @@ async function sweepIntakeSessions(client, deps) {
     // turn says it and the gate drops this row as `answered_in_turn`; if they
     // do not, this says it the next morning. A coordination that closed while
     // the greeter was speaking has nothing to go first, so then it goes now.
+    //
+    // After a game claim it waits for the morning too, always (owner,
+    // 2026-10-01): they came for the night, and what else she does is for
+    // the day after it — never in the middle of the game. Their turns during
+    // the night do not drop it (outbox/gate.js), because "עוד כניסה" is not
+    // them hearing what she is.
     if (greetedByIntake) {
       const waiting = roomOpened ? await intakeRoom.roomFor(client, phone) : null;
       const now = new Date();
       let releaseAfter = null;
       let expiresAt = new Date(now.getTime() + WELCOME_FOLLOWUP_TTL_MS);
-      if (waiting && waiting.meetingId) {
+      if (gameClaim || (waiting && waiting.meetingId)) {
         const pref = await preferences.availabilityWindow(client, user.id);
         const window = pref.ok ? pref.data.window : preferences.DEFAULT_WINDOW;
         releaseAfter = nextMorning(window, user.timezone, now);
@@ -365,6 +404,7 @@ async function sweepIntakeSessions(client, deps) {
           hasNote: Boolean(user.intake_note_at),
           greeterReply: typeof greeterReply === 'string' ? greeterReply.slice(0, 600) : null,
           ...(roomOpened ? { roomOpening: true } : {}),
+          ...(gameClaim ? { gameOpening: true } : {}),
         },
         idempotencyKey: `welcome_followup:${user.id}`,
         expiresAt, releaseAfter,
@@ -375,6 +415,7 @@ async function sweepIntakeSessions(client, deps) {
     if (invited) {
       await connectionsDomain.attachProvisionedTarget(client, invited.id, user.id);
     }
+    if (gameClaim) out.fromGame = (out.fromGame || 0) + 1;
     out.provisioned.push(phone);
   }
   return out;
@@ -438,5 +479,5 @@ async function sweepReopen(client) {
 module.exports = {
   sweepIntakeSessions, runIntakeSweep, sweepReopen, intakeConfigured, INTAKE_AGENT_ID,
   defaultListIntakeSessions, readIntakeFirstMessage, readIntakeLanguage, readIntakeReferralText, joinedVia,
-  defaultReadGreeterReply, saidTheOpening, nextMorning, GREETER_GRACE_MS,
+  defaultReadGreeterReply, saidTheOpening, nextMorning, GREETER_GRACE_MS, gameClaimed,
 };

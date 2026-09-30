@@ -127,6 +127,64 @@ test('food, the night itself, and the log go through; nonsense is refused whole'
   assert.equal(Object.keys(after.log).length, 1);
 });
 
+test('a seat added by mistake comes off, but never with money on it, and never once the count closed', async t => {
+  const { pool, base, post } = await boot(t);
+  const token = await openNight(post, { players: ['מיכל', 'יוסי'] });
+  const w = async body => { const r = await post(`/night/${token}/api/write`, body); return { status: r.status, ...(await r.json()) }; };
+  const st0 = await (await fetch(`${base}/night/${token}/api/state`)).json();
+  const [m, y] = Object.entries(st0.players).sort((a, b) => a[1].order - b[1].order).map(([id]) => id);
+  const del = id => w({ op: 'delete', col: 'players', id });
+  const seat = async (id, name) => assert.equal((await w({ op: 'set', col: 'players', id, data: { name, order: Date.now() } })).status, 200);
+
+  // the case it exists for: a name nobody played under
+  await seat('oops01', 'דני');
+  let r = await del('oops01');
+  assert.equal(r.status, 200);
+  assert.ok(!r.state.players.oops01);
+  assert.equal((await del('oops01')).error, 'not_found', 'twice is not found, not a second removal');
+  assert.equal((await del('x')).error, 'bad_id');
+
+  // a buy-in on it: refused until the buy-in is taken back
+  const bi = await w({ op: 'add', col: 'buyins', data: { pid: y, n: 1 } });
+  assert.equal((await del(y)).error, 'has_money');
+  await w({ op: 'delete', col: 'buyins', id: bi.id });
+  assert.equal((await del(y)).status, 200);
+
+  // a count alone, and every way into an order, each hold the seat
+  await seat('cnt001', 'גל');
+  await w({ op: 'set', col: 'cashouts', id: 'cnt001', data: { chips: 0 } });
+  assert.equal((await del('cnt001')).error, 'has_money', 'a count of zero is still a count');
+  const food = async data => (await w({ op: 'add', col: 'food', data: { what: 'פיצה', amount: 100, payer: m, eaters: [m], ...data } })).id;
+  for (const [name, data] of [
+    ['payer', pid => ({ payer: pid })],
+    ['eater', pid => ({ eaters: [m, pid] })],
+    ['own dish', pid => ({ own: { [pid]: 30 } })],
+    ['paid back', pid => ({ paid: { [pid]: 30 } })],
+  ]) {
+    await seat('food01', 'רון');
+    const fid = await food(data('food01'));
+    assert.equal((await del('food01')).error, 'has_money', `the ${name} of an order`);
+    await w({ op: 'delete', col: 'food', id: fid });
+    assert.equal((await del('food01')).status, 200, `with the order gone, the ${name} comes off`);
+  }
+
+  // somebody who joined from WhatsApp comes off too, and their link with it:
+  // putting the name back is a new seat, and the code is how they return
+  await seat('link01', 'נועה');
+  await pool.query(`UPDATE players SET user_id = 7, linked_at = now(), linked_via = 'invite' WHERE id = 'link01'`);
+  assert.equal((await del('link01')).status, 200);
+  await seat('link01', 'נועה');
+  assert.equal((await pool.query(`SELECT user_id FROM players WHERE id = 'link01'`)).rows[0].user_id, null);
+
+  // closed: nothing comes off, not even an empty seat
+  await w({ op: 'delete', col: 'cashouts', id: 'cnt001' });
+  await w({ op: 'add', col: 'buyins', data: { pid: m, n: 1 } });
+  r = await w({ op: 'set', col: 'cashouts', id: m, data: { chips: 1000 } });
+  assert.ok(r.state.game.closedAt, 'one player, square count: closed');
+  assert.equal((await del('link01')).error, 'closed');
+  assert.equal((await del('cnt001')).error, 'closed');
+});
+
 test('a player cap stops a link in the wrong hands from filling the table', async t => {
   const { post } = await boot(t);
   const token = await openNight(post, { players: [] });

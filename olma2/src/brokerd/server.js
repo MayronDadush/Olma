@@ -34,6 +34,7 @@ const dashboardAuth = require('../domain/dashboard-auth');
 const templates = require('../domain/message-templates');
 const gameShortcut = require('../domain/game-shortcut');
 const packsDomain = require('../domain/packs');
+const { timezoneForPhone } = require('../domain/phone-timezone');
 
 // One of these per turn. The gateway spawns a fresh MCP shim for every agent
 // turn and the shim holds ONE socket to brokerd for its whole life, so a
@@ -251,6 +252,7 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
   const TURN_OPEN_SLOW_MS = 1000;
   async function handleTurnOpen(params = {}) {
     const agentId = String(params.agentId || '').trim();
+    if (agentId === 'intake') return handleIntakeGameShortcut(params);
     if (!/^u-\d+$/.test(agentId)) return { ok: false, error: 'bad agentId' };
     const started = Date.now();
     const steps = [];
@@ -373,26 +375,42 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
   // an answer to a question two messages back. A restart forgets the
   // question, and the answer then goes to the model, which by then has the
   // pack's tools — the old path, never a wrong one.
+  //
+  // Somebody new is asked before they have an agent, so that question is kept
+  // under `tel:<phone>` — and the intake sweep may give them one before they
+  // answer, so their own agent's path looks there too (`phoneAsk`).
   const GAME_ASK_TTL_MS = 15 * 60_000;
-  const gameAsked = new Map();   // agentId → { kind: 'setup' | 'name', code?, at }
+  const gameAsked = new Map();   // agentId | tel:<phone> → { kind: 'setup' | 'name', code?, lang?, at }
   function takeGameAsk(agentId) {
     const a = gameAsked.get(agentId);
     gameAsked.delete(agentId);
     return a && clock() - a.at <= GAME_ASK_TTL_MS ? a : null;
   }
   const askGame = (agentId, ask) => gameAsked.set(agentId, { ...ask, at: clock() });
+  async function phoneAsk(agentId) {
+    if (![...gameAsked.keys()].some((k) => k.startsWith('tel:'))) return null;
+    const { rows } = await pool.query('SELECT phone FROM users WHERE agent_id = $1', [agentId]);
+    return rows[0] ? takeGameAsk(`tel:${rows[0].phone}`) : null;
+  }
+  // The name they gave for the night is their name (owner, 2026-10-01): said
+  // by them, so confirmed — but never over a name they had already confirmed.
+  async function saveGivenName(client, user, name) {
+    if (!name || user.name_confirmed) return;
+    const [first, ...rest] = name.split(/\s+/);
+    await usersDomain.setName(client, user.id, first, rest.join(' ') || null, { confirmed: true, source: 'game_night' });
+  }
 
   async function handleGameShortcut(agentId, params) {
     const body = String(params.body || '');
     const phrase = gameShortcut.matchOpenPhrase(body);
     const code = phrase ? null : gameShortcut.findCode(body);
-    const ask = takeGameAsk(agentId);
+    const ask = takeGameAsk(agentId) || (!phrase && !code ? await phoneAsk(agentId) : null);
     const setup = !phrase && !code && ask && ask.kind === 'setup' ? gameShortcut.parseSetup(body) : null;
     const name = !phrase && !code && ask && ask.kind === 'name' ? gameShortcut.parseName(body) : null;
     if (!phrase && !code && !setup && !name) return null;
 
     const { rows } = await pool.query(
-      `SELECT id, phone, locale, first_name, last_name FROM users
+      `SELECT id, phone, locale, first_name, last_name, name_confirmed FROM users
         WHERE agent_id = $1 AND status = 'active' AND is_eval = false`, [agentId]);
     const user = rows[0];
     if (!user) return null;
@@ -409,6 +427,7 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
     let outcome = null;
     let packVia = null;      // 'phrase' | 'code' when this message turns the pack on
     let invite = null;       // { code, texts } for the host, after the night opens
+    let givenName = null;    // the name they answered with, once it seated them
     try {
       if (phrase) {
         const r = await games.open({ userId, probe: true });
@@ -435,8 +454,12 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
         if (r.opened) {
           // Both languages now, the reader's chosen at delivery — the host may
           // forward it anywhere, but it goes out in the host's language.
+          // The short link is the same host's /g/<code>, which gamesd answers
+          // with a wa.me redirect holding "משחק <code>" — somebody who has
+          // never written to her opens a chat that already says it.
           const page = String(r.url).split('#')[0];
-          const inv = { ...vars, url: page };
+          const join = `${new URL(page).origin}/g/${r.night.code}`;
+          const inv = { ...vars, url: page, join };
           invite = {
             code: r.night.code,
             texts: {
@@ -454,6 +477,7 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
         if (r.ok) {
           if (!r.night) return null;
           packVia = 'code';
+          if (name && r.joined) givenName = r.name;
           const vars = { ...nightVars(r.night), name: r.name, url: r.url };
           text = r.joined || !(r.buyins > 0)
             ? say('game_joined', vars)
@@ -481,6 +505,7 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
     let packs = null;
     await withTx(pool, async (client) => {
       if (packVia) packs = (await packsDomain.enable(client, userId, 'games', packVia)).packs;
+      await saveGivenName(client, user, givenName);
       if (invite) await gameSummary.queueInvite(client, { userId, ...invite }, { now: new Date(clock()) });
       await audit.record(client, userId, phrase || setup ? 'games.phrase_shortcut' : 'games.join_shortcut', { outcome, lang });
       if (messageId) {
@@ -501,6 +526,125 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
     return { ok: true, claim: true, text, lang, kind: 'game' };
   }
 
+  // Stage 4ב: somebody who has never written to her, arriving by the invite's
+  // short link (`allma.world/g/<code>` → wa.me with "משחק <code>" typed in).
+  // Their message reaches the intake greeter's session, and the plugin sends
+  // it here first, as `agentId: 'intake'` with the session key.
+  //
+  // What she does is exactly what she does for somebody on Olma already —
+  // seat them, or ask their name, or say the night is full or not there —
+  // with ONE sentence above it saying who she is and ONE below it saying what
+  // she keeps, both once per person ever: whoever says the introduction
+  // stamps `opening_sent_at`, and a row that already carries it hears neither.
+  // Then the intake sweep makes them a user within seconds, on the same one
+  // config write as anybody else (jobs/intake.js, `gameClaimed`), with the
+  // pack's tools already on it.
+  //
+  // It claims nothing it would not have answered for a user: registration
+  // closed, the hourly cap, a blocked or eval number, a bare five letters
+  // that is no night — each goes to the greeter exactly as before.
+  const NOT_OURS = Object.freeze({ ok: true, claim: false });
+  async function handleIntakeGameShortcut(params) {
+    const phone = intakeRoom.peerOf(params.sessionKey);
+    if (!phone) return NOT_OURS;
+    const askKey = `tel:${phone}`;
+    const body = String(params.body || '');
+    const code = gameShortcut.findCode(body);
+    // The common path: a stranger saying anything else. No database.
+    if (!code && !gameAsked.has(askKey)) return NOT_OURS;
+
+    const existing = await usersDomain.getByPhone(pool, phone);
+    if (existing && existing.status === 'active' && existing.agent_id) {
+      // Made a user between her question and their answer, with the binding
+      // not live yet: their own agent's path, which finds the question by
+      // phone.
+      if (existing.is_eval) return NOT_OURS;
+      return (await handleGameShortcut(existing.agent_id, params)) || NOT_OURS;
+    }
+    const ask = takeGameAsk(askKey);
+    const name = !code && ask && ask.kind === 'name' ? gameShortcut.parseName(body) : null;
+    if (!code && !name) return NOT_OURS;
+    if (existing && (existing.status !== 'pending' || existing.is_eval)) return NOT_OURS;
+
+    const flags = require('../domain/flags');
+    if ((await flags.getFlag(pool, 'registration_open')) !== true) return NOT_OURS;
+    const cap = Number(await flags.getFlag(pool, 'intake_hourly_cap') ?? 30);
+    const { rows: [{ n: claimsThisHour }] } = await pool.query(
+      `SELECT count(DISTINCT actor_id)::int AS n FROM audit_log
+        WHERE event = 'games.intake_claim' AND created_at > now() - interval '1 hour'
+          AND actor_id IS DISTINCT FROM $1`, [existing ? existing.id : null]);
+    if (claimsThisHour >= cap) return NOT_OURS;
+
+    const lang = String((code ? code.lang : ask.lang) || 'he').startsWith('en') ? 'en' : 'he';
+    const joinCode = code ? code.code : ask.code;
+    const overrides = await templates.load(pool);
+    const say = (base, vars) => templates.render(templates.keyFor(base, lang, { fallback: 'he' }), vars, overrides);
+    const nightVars = (n) => ({ night: n.name, price: gameShortcut.fmtNumber(n.price), chips: gameShortcut.fmtNumber(n.chips), code: n.code });
+    const messageId = reactions.cleanMessageId(params.messageId);
+    const ROLLBACK = new Error('not ours');
+
+    let out = NOT_OURS;
+    let userId = null;
+    try {
+      await withTx(pool, async (client) => {
+        let user = existing;
+        if (!user) {
+          const made = await usersDomain.createUser(client, {
+            phone, locale: lang, timezone: timezoneForPhone(phone), status: 'pending',
+            audit: { event: 'user.pending_from_game', detail: { code: joinCode } },
+          });
+          if (!made.ok) throw ROLLBACK;
+          user = made.data.user;
+        }
+        userId = Number(user.id);
+        const names = name ? [name] : (user.name_confirmed ? gameShortcut.namesFor(user) : []);
+        // A row that may yet be rolled back is fine to seat under: ids come
+        // from a sequence, and a rolled-back one is never handed out again.
+        const r = await games.join({ userId, code: joinCode, names });
+        if (!r) throw ROLLBACK;
+        const outcome = r.ok ? (r.joined ? 'joined' : 'already') : r.error;
+        let text;
+        if (r.ok) {
+          if (!r.night) throw ROLLBACK;
+          const vars = { ...nightVars(r.night), name: r.name, url: r.url };
+          text = r.joined || !(r.buyins > 0)
+            ? say('game_joined', vars)
+            : say('game_already', { ...vars, count: gameShortcut.buyinsText(r.buyins, lang) });
+          await packsDomain.enable(client, userId, 'games', 'code');
+          await saveGivenName(client, user, r.joined ? r.name : null);
+        } else if (r.error === 'need_name') {
+          askGame(askKey, { kind: 'name', code: joinCode, lang });
+          text = say('game_ask_name', nightVars(r.night));
+        } else if (r.error === 'name_taken') {
+          askGame(askKey, { kind: 'name', code: joinCode, lang });
+          text = say('game_name_taken', { name: r.name });
+        } else if (r.error === 'full') {
+          text = say('game_full', nightVars(r.night || {}));
+        } else if (r.error === 'no_night' && code && code.withWord) {
+          text = say('game_no_night', { code: joinCode });
+        } else throw ROLLBACK;   // a bare five letters that is no night: not ours
+
+        const introduced = !user.opening_sent_at;
+        if (introduced) {
+          text = [say('game_hello', {}), text, say('game_privacy', {})].join('\n');
+          await client.query('UPDATE users SET opening_sent_at = now() WHERE id = $1 AND opening_sent_at IS NULL', [userId]);
+        }
+        await audit.record(client, userId, 'games.intake_claim', { outcome, lang, introduced });
+        out = { ok: true, claim: true, text, lang, kind: 'game' };
+      });
+    } catch (e) {
+      if (e !== ROLLBACK) console.error('[brokerd] intake game shortcut:', e && e.message || e);
+      return NOT_OURS;
+    }
+    if (messageId) {
+      noteAnsweredByCode(userId, messageId);
+      eyesAnswered(messageId);
+      const vocab = reactions.vocabulary(await require('../domain/flags').getFlag(pool, reactions.VOCAB_FLAG));
+      placeMark({ channel: 'whatsapp', target: phone, messageId, state: 'done', emoji: vocab.done });
+    }
+    return out;
+  }
+
   // "שלח לי קישור" — answered by code, before any turn exists
   // (domain/link-request.js has the why). The plugin's `before_dispatch` sends
   // a SHORT direct message here; a whole-message match mints their link and
@@ -513,6 +657,7 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
   // and only the language that matched is.
   async function handleDashboardLinkShortcut(params = {}) {
     const agentId = String(params.agentId || '').trim();
+    if (agentId === 'intake') return handleIntakeGameShortcut(params);
     if (!/^u-\d+$/.test(agentId)) return { ok: false, error: 'bad agentId' };
     const game = await handleGameShortcut(agentId, params);
     if (game) return game;
@@ -784,6 +929,7 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
   // (domain/phantom-save.js).
   async function handleReplyClaim(params = {}) {
     const agentId = String(params.agentId || '').trim();
+    if (agentId === 'intake') return handleIntakeGameShortcut(params);
     if (!/^u-\d+$/.test(agentId)) return { ok: false, error: 'bad agentId' };
     const word = String(params.word || '').slice(0, 20);
     let out = { ok: false, error: 'no active user for agent' };
@@ -879,6 +1025,7 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
   // reply, so it must cost nothing.
   function handleTurnProgress(params = {}) {
     const agentId = String(params.agentId || '').trim();
+    if (agentId === 'intake') return handleIntakeGameShortcut(params);
     if (!/^u-\d+$/.test(agentId)) return { ok: false, error: 'bad agentId' };
     const what = params.what === 'end' ? 'end' : params.what === 'reply' ? 'reply' : null;
     if (!what) return { ok: false, error: 'bad what' };
@@ -897,6 +1044,7 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
 
   async function handleTurnContext(params = {}) {
     const agentId = String(params.agentId || '').trim();
+    if (agentId === 'intake') return handleIntakeGameShortcut(params);
     if (!/^u-\d+$/.test(agentId)) return { ok: false, error: 'bad agentId' };
     let out = null;
     let userId = null;
