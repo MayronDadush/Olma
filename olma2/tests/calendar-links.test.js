@@ -299,3 +299,163 @@ test('a calendar list marks the events Olma will remind them of with 🔔', () =
   assert.match(block, /אחד[^\n]*🔔/);
   assert.doesNotMatch(block, /שניים[^\n]*🔔/);
 });
+
+// ---- proposals 2 and 3: the save that meets their calendar -----------------
+
+const calendar = require('../src/domain/calendar');
+const { BY_NAME } = require('../src/adapters/mcp/registry');
+
+// Swap the Google-facing calls for the length of one test.
+async function withGoogle(stubs, fn) {
+  const saved = {};
+  for (const k of Object.keys(stubs)) { saved[k] = calendar[k]; calendar[k] = stubs[k]; }
+  try { return await fn(); } finally { Object.assign(calendar, saved); }
+}
+const call = (name, user, args) => withClient((c) => BY_NAME.get(name).handler(c, user, args, { turn: {}, now: () => Date.now() }));
+const onCal = (id, title, start, end, extra = {}) => ev(id, start, end, { title, ...extra });
+
+test('saving something already on their calendar saves NOTHING and asks about a reminder', async () => {
+  const u = await connectedUser('+972500001101');
+  const events = [onCal('g1', 'רופא שיניים', '2027-03-10T10:00:00+02:00', '2027-03-10T11:00:00+02:00')];
+  await withGoogle({ eventsBetween: async () => ({ ok: true, data: { events } }) }, async () => {
+    const res = await call('add_task', u, { title: 'רופא שיניים', kind: 'event', due_at: '2027-03-10T10:00:00+02:00' });
+    assert.equal(res.ok, false);
+    assert.equal(res.error.reason, 'in_calendar');
+    assert.equal(res.error.event.id, 'g1');
+    assert.match(res.error.message, /לשים לך תזכורת/);
+    assert.equal((await withClient((c) => openRows(c, u.id))).length, 0);
+  });
+});
+
+test('…and with an hour they NAMED, that is the yes: the reminder hangs on the event', async () => {
+  const u = await connectedUser('+972500001102');
+  const e = onCal('g2', 'תור לספר', '2027-03-11T17:00:00+02:00', '2027-03-11T17:30:00+02:00');
+  await withGoogle({
+    eventsBetween: async () => ({ ok: true, data: { events: [e] } }),
+    getEvent: async () => ({ ok: true, data: { gone: false, event: e } }),
+  }, async () => {
+    const res = await call('add_task', u, { title: 'תור לספר', due_at: '2027-03-11T17:00:00+02:00', remind_at: '2027-03-11T12:00:00+02:00' });
+    assert.ok(res.ok, JSON.stringify(res));
+    assert.equal(res.data.task.linked_event_id, 'g2');
+    assert.ok(res.data.hints.onCalendar);
+    const rows = await withClient((c) => openRows(c, u.id));
+    assert.equal(rows.length, 1);
+  });
+});
+
+test('a different thing on the same day is saved as always', async () => {
+  const u = await connectedUser('+972500001103');
+  const events = [onCal('g3', 'ישיבת צוות', '2027-03-10T10:00:00+02:00', '2027-03-10T11:00:00+02:00')];
+  await withGoogle({ eventsBetween: async () => ({ ok: true, data: { events } }) }, async () => {
+    const res = await call('add_task', u, { title: 'לקנות מתנה לנועה', kind: 'todo', due_at: '2027-03-10T18:00:00+02:00' });
+    assert.ok(res.ok, JSON.stringify(res));
+    assert.equal(res.data.task.linked_event_id, null);
+  });
+});
+
+test('a calendar that cannot be read never costs them the save', async () => {
+  const u = await connectedUser('+972500001104');
+  await withGoogle({ eventsBetween: async () => ({ ok: false, error: { code: 'conflict', message: 'timeout' } }) }, async () => {
+    const res = await call('add_task', u, { title: 'רופא שיניים', kind: 'todo', due_at: '2027-03-10T10:00:00+02:00' });
+    assert.ok(res.ok, JSON.stringify(res));
+  });
+});
+
+test('a meeting told to Olma goes onto an EDITABLE calendar, with only the reminder kept here', async () => {
+  const u = await connectedUser('+972500001105', 'read_write');
+  const created = [];
+  await withGoogle({
+    eventsBetween: async () => ({ ok: true, data: { events: [] } }),
+    createEvent: async (client, userId, input) => {
+      created.push(input);
+      return { ok: true, data: { created: true, eventId: 'new1', title: input.title } };
+    },
+  }, async () => {
+    // Inside the automatic reminder's horizon, so there is one to arm.
+    const day = new Date(Date.now() + 3 * 86400_000).toISOString().slice(0, 10);
+    const res = await call('add_task', u, {
+      title: 'פגישה עם רואה חשבון', kind: 'event', location: 'תל אביב',
+      due_at: `${day}T09:00:00+02:00`, ends_at: `${day}T10:00:00+02:00`,
+    });
+    assert.ok(res.ok, JSON.stringify(res));
+    assert.equal(created.length, 1);
+    assert.equal(created[0].location, 'תל אביב');
+    assert.equal(new Date(created[0].end).toISOString(), `${day}T08:00:00.000Z`);
+    const t = res.data.task;
+    assert.equal(t.linked_event_id, 'new1');
+    assert.equal(t.calendar_event_id, null);
+    assert.ok(res.data.hints.onCalendar);
+    assert.equal((await withClient((c) => pending(c, t.id))).length, 1, 'the usual automatic reminder');
+  });
+});
+
+test('a whole-day event goes on as an all-day event', async () => {
+  const u = await connectedUser('+972500001106', 'read_write');
+  const created = [];
+  await withGoogle({
+    eventsBetween: async () => ({ ok: true, data: { events: [] } }),
+    createEvent: async (client, userId, input) => {
+      created.push(input);
+      return { ok: true, data: { created: true, eventId: 'day1', title: input.title } };
+    },
+  }, async () => {
+    const res = await call('add_task', u, { title: 'יום הולדת לסבתא', kind: 'event', due_at: '2027-03-14T00:00:00+02:00' });
+    assert.ok(res.ok, JSON.stringify(res));
+    assert.equal(created[0].allDay, true);
+    assert.equal(created[0].start.slice(0, 10), '2027-03-14');
+  });
+});
+
+test('a view-only calendar, or a failed write, saves the meeting the ordinary way', async () => {
+  const ro = await connectedUser('+972500001107', 'read_only');
+  const rw = await connectedUser('+972500001108', 'read_write');
+  let asked = 0;
+  await withGoogle({
+    eventsBetween: async () => ({ ok: true, data: { events: [] } }),
+    createEvent: async () => { asked += 1; return { ok: false, error: { code: 'conflict', message: 'nope' } }; },
+  }, async () => {
+    const a = await call('add_task', ro, { title: 'פגישה', kind: 'event', due_at: '2027-03-12T09:00:00+02:00' });
+    assert.ok(a.ok, JSON.stringify(a));
+    assert.equal(a.data.task.linked_event_id, null);
+    assert.equal(asked, 0, 'view-only is never asked to write');
+    const b = await call('add_task', rw, { title: 'פגישה', kind: 'event', due_at: '2027-03-12T09:00:00+02:00' });
+    assert.ok(b.ok, JSON.stringify(b));
+    assert.equal(b.data.task.linked_event_id, null);
+    assert.equal(asked, 1);
+  });
+});
+
+test('"turn my calendar into tasks" saves none of what is already there', async () => {
+  const u = await connectedUser('+972500001109');
+  const events = [
+    onCal('b1', 'אימון', '2027-03-10T07:00:00+02:00', '2027-03-10T08:00:00+02:00'),
+    onCal('b2', 'ארוחת ערב אצל ההורים', '2027-03-11T19:00:00+02:00', '2027-03-11T21:00:00+02:00'),
+  ];
+  await withGoogle({ eventsBetween: async () => ({ ok: true, data: { events } }) }, async () => {
+    const all = await call('add_tasks_bulk', u, { items: [
+      { title: 'אימון', kind: 'event', due_at: '2027-03-10T07:00:00+02:00' },
+      { title: 'ארוחת ערב אצל ההורים', kind: 'event', due_at: '2027-03-11T19:00:00+02:00' },
+    ] });
+    assert.equal(all.ok, false);
+    assert.equal(all.error.reason, 'in_calendar');
+    assert.equal(all.error.events.length, 2);
+    const some = await call('add_tasks_bulk', u, { items: [
+      { title: 'אימון', kind: 'event', due_at: '2027-03-10T07:00:00+02:00' },
+      { title: 'לשלם ארנונה' },
+    ] });
+    assert.ok(some.ok, JSON.stringify(some));
+    assert.equal(some.data.tasks.length, 1);
+    assert.equal(some.data.inCalendar[0].id, 'b1');
+    assert.ok(some.data.hints.inCalendar);
+  });
+});
+
+test('nobody without a calendar ever reaches Google on a save', async () => {
+  const u = await makeUser(db.pool, '+972500001110', { timezone: 'Asia/Jerusalem' });
+  let asked = 0;
+  await withGoogle({ eventsBetween: async () => { asked += 1; return { ok: true, data: { events: [] } }; } }, async () => {
+    const res = await call('add_task', u, { title: 'פגישה', kind: 'event', due_at: '2027-03-12T09:00:00+02:00' });
+    assert.ok(res.ok, JSON.stringify(res));
+    assert.equal(asked, 0);
+  });
+});

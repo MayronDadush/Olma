@@ -34,6 +34,8 @@ const reminders = require('./reminders');
 const tasks = require('./tasks');
 const similarity = require('./task-similarity');
 const audit = require('./audit');
+const google = require('./google-oauth');
+const autoReminder = require('./auto-reminder');
 const { hasOffset, badTime, partsInZone, instantInZone } = require('./datetime');
 
 const MAX_PER_TICK = 20;
@@ -43,6 +45,13 @@ const MAX_PER_TICK = 20;
 // promptly without re-reading the same passed event every tick.
 const RECHECK_MS = 60 * 60_000;
 const PASSED_RECHECK_MS = 10 * 60_000;
+// A save waits at most this long on Google before it goes ahead as it always
+// did. Asking the calendar is a courtesy; a slow Google must never cost the
+// person the thing they asked to have written down.
+const SAVE_BUDGET_MS = 3000;
+// The widest span one bulk save asks the calendar about, in days.
+const LOOKUP_MAX_DAYS = 62;
+const EVENT_MINUTES = 30;
 
 async function zoneOf(client, userId) {
   const { rows } = await client.query(`SELECT timezone FROM users WHERE id = $1`, [userId]);
@@ -134,18 +143,23 @@ async function dropNamedReminders(client, taskId, now) {
   );
 }
 
-async function linkEvent(client, userId, { eventId, remindAt = null, onlyThisOne = false, now = new Date() } = {}, deps = {}) {
+async function linkEvent(client, userId, { eventId, remindAt = null, onlyThisOne = false, now = new Date(), known = null } = {}, deps = {}) {
   const getEvent = deps.getEvent || calendar.getEvent;
   const nextInstance = deps.nextInstance || calendar.nextInstance;
-  if (!eventId) return err('invalid', 'event_id is required — take it from my_calendar_events');
+  if (!eventId && !known) return err('invalid', 'event_id is required — take it from my_calendar_events');
   if (remindAt && !hasOffset(remindAt)) return badTime('remind_at', remindAt);
 
-  const read = await getEvent(client, userId, eventId);
-  if (!read.ok) return read;
-  if (read.data.gone) {
-    return err('not_found', 'that event is no longer on their calendar', { reason: 'gone' });
+  // `known`: an event this process has just written itself (saveToCalendar),
+  // so reading it straight back would be a Google call that says nothing new.
+  let ev = known;
+  if (!ev) {
+    const read = await getEvent(client, userId, eventId);
+    if (!read.ok) return read;
+    if (read.data.gone) {
+      return err('not_found', 'that event is no longer on their calendar', { reason: 'gone' });
+    }
+    ev = read.data.event;
   }
-  let ev = read.data.event;
   const tz = await zoneOf(client, userId);
   // A repeating event is reminded EVERY time unless they said only this one.
   let seriesId = ev.isSeries ? ev.id : (ev.recurringEventId || null);
@@ -226,6 +240,115 @@ async function linkEvent(client, userId, { eventId, remindAt = null, onlyThisOne
     ...(armed.length ? { remindersAt: await tasks.localLabels(client, userId, armed) } : {}),
     remindersAsked: Boolean(remindAt),
   });
+}
+
+// ---- before a save: is it on their calendar already? -----------------------
+
+async function calendarAccess(client, userId) {
+  const { rows } = await client.query(
+    `SELECT access_level FROM integrations
+      WHERE user_id = $1 AND provider = 'google_calendar' AND status = 'connected'`,
+    [userId]
+  );
+  return rows[0] ? rows[0].access_level : null;
+}
+
+// The local calendar day an event or a moment falls on, as 'YYYY-MM-DD'.
+function dayKey(value, tz, allDay = false) {
+  if (allDay) { const p = dateParts(value); return p ? `${p.y}-${p.m}-${p.d}` : null; }
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  const p = partsInZone(tz, d);
+  return `${p.y}-${p.m}-${p.d}`;
+}
+
+function sameThing(a, b) {
+  return tasks.normaliseTitle(a) === tasks.normaliseTitle(b) || similarity.compare(a, b).same;
+}
+
+// For each dated item, the event on their calendar that is the same thing on
+// the same local day, if there is one. ONE Google call for the whole list.
+// Everything that goes wrong answers "nothing found": the save then happens
+// exactly as it did before this existed (proposal 2, owner 2026-09-30).
+async function findInCalendar(client, userId, items, deps = {}) {
+  const found = new Map();
+  const dated = items
+    .map((it, i) => ({ ...it, i }))
+    .filter((it) => it && it.title && it.dueAt && hasOffset(it.dueAt));
+  if (!dated.length) return found;
+  try {
+    if (!(await calendarAccess(client, userId))) return found;
+    const tz = await zoneOf(client, userId);
+    const times = dated.map((it) => new Date(it.dueAt).getTime()).filter(Number.isFinite);
+    if (!times.length) return found;
+    const from = new Date(Math.min(...times) - 86400_000);
+    const to = new Date(Math.min(Math.max(...times), from.getTime() + LOOKUP_MAX_DAYS * 86400_000) + 2 * 86400_000);
+    const between = deps.eventsBetween || calendar.eventsBetween;
+    const res = await between(client, userId, { timeMin: from, timeMax: to, maxEvents: 250 },
+      { budget: google.createBudget(deps.budgetMs || SAVE_BUDGET_MS) });
+    if (!res || !res.ok) return found;
+    const linked = await linkedEventIds(client, userId);
+    for (const it of dated) {
+      const day = dayKey(it.dueAt, tz);
+      const hit = res.data.events.find((e) => dayKey(e.start, tz, e.allDay) === day && sameThing(it.title, e.title));
+      if (hit) {
+        found.set(it.i, {
+          id: hit.id, title: hit.title, start: hit.start, allDay: hit.allDay,
+          reminded: linked.byEvent.has(hit.id) || Boolean(hit.recurringEventId && linked.bySeries.has(hit.recurringEventId)),
+        });
+      }
+    }
+  } catch (e) {
+    if (deps.onError) deps.onError(e);
+  }
+  return found;
+}
+
+// A meeting told to Olma, for somebody whose calendar she can WRITE to: it
+// goes onto the calendar and Olma keeps only the reminder on it — one entry,
+// where they already look (proposal 3). Returns null whenever the calendar
+// could not take it, and the caller saves it the ordinary way; never an error
+// the person would see for a thing they only asked to have noted.
+async function saveToCalendar(client, userId, { title, dueAt, endsAt, location, remindAt, now = new Date() }, deps = {}) {
+  if (!title || !dueAt || !hasOffset(dueAt)) return null;
+  if ((await calendarAccess(client, userId)) !== 'read_write') return null;
+  const tz = await zoneOf(client, userId);
+  const allDay = autoReminder.isDayShaped(dueAt, tz);
+  let start;
+  let end;
+  if (allDay) {
+    const p = partsInZone(tz, new Date(dueAt));
+    const pad = (n) => String(n).padStart(2, '0');
+    start = `${p.y}-${pad(p.m)}-${pad(p.d)}T00:00:00Z`;
+    end = start;
+  } else {
+    start = new Date(dueAt).toISOString();
+    const stated = endsAt && hasOffset(endsAt) ? new Date(endsAt) : null;
+    end = (stated && stated > new Date(dueAt)
+      ? stated : new Date(new Date(dueAt).getTime() + EVENT_MINUTES * 60_000)).toISOString();
+  }
+  const create = deps.createEvent || calendar.createEvent;
+  let made;
+  try {
+    made = await create(client, userId, { title, start, end, location, allDay },
+      { budget: google.createBudget(deps.budgetMs || SAVE_BUDGET_MS) });
+  } catch (e) {
+    if (deps.onError) deps.onError(e);
+    return null;
+  }
+  if (!made || !made.ok || !made.data || !made.data.eventId) return null;
+  const known = {
+    id: made.data.eventId, title, location: location || null, allDay,
+    start: allDay ? start.slice(0, 10) : start,
+    end: allDay ? null : end,
+    recurringEventId: null, isSeries: false,
+  };
+  const linked = await linkEvent(client, userId, { known, remindAt, now }, deps);
+  if (!linked.ok) return null;
+  await audit.record(client, userId, 'calendar.saved_as_event', {
+    taskId: Number(linked.data.task.id), eventId: known.id,
+  });
+  return ok({ ...linked.data, onCalendar: true });
 }
 
 // ---- the sweep ---------------------------------------------------------------
@@ -356,6 +479,6 @@ async function linkedEventIds(client, userId) {
 }
 
 module.exports = {
-  linkEvent, sweepCalendarLinks, linkedEventIds, momentFor, endOf, findShadow,
-  MAX_PER_TICK, RECHECK_MS, PASSED_RECHECK_MS,
+  linkEvent, sweepCalendarLinks, linkedEventIds, findInCalendar, saveToCalendar, calendarAccess,
+  momentFor, endOf, findShadow, MAX_PER_TICK, RECHECK_MS, PASSED_RECHECK_MS, SAVE_BUDGET_MS,
 };
