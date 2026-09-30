@@ -139,7 +139,7 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
   // LOCKED below (a lock taken here would be released at this tx's commit
   // anyway, and only mislead readers into thinking it protects something).
   const { rows: candidates } = await pool.query(
-    `SELECT o.*, u.timezone, u.agent_id, u.quota_blocked_until, u.first_name, u.last_inbound_at, u.last_dashboard_at,
+    `SELECT o.*, u.timezone, u.agent_id, u.quota_blocked_until, u.first_name, u.last_inbound_at, u.last_woke_at, u.last_dashboard_at,
             u.digest_times, u.paused_at, u.paused_reason, u.room_invite_sent_at, u.is_eval, u.checkin_misses, u.locale, u.opening_sent_at,
             u.timezone_confirmed, u.room_zone_asked_at,
             -- Aliased, because the select above is o.* : an outbox.status column
@@ -376,7 +376,7 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
           checkinMisses: Number(row.checkin_misses) || 0,
           blockedUntil: row.quota_blocked_until,
           window: win.data.window, quietDays, quietDates, shabbatWindow, tz: row.timezone,
-          lastInboundAt: row.last_inbound_at, dashboardWroteAt: row.last_dashboard_at, groupWroteAt,
+          lastInboundAt: row.last_inbound_at, wokeAt: row.last_woke_at, dashboardWroteAt: row.last_dashboard_at, groupWroteAt,
           greetedAt: row.opening_sent_at,
           pausedRoomInvite, quietRoomInvite, answeredCoordination,
           hasDigest: Boolean(row.digest_times),

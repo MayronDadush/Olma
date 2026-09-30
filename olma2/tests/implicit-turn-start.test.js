@@ -221,6 +221,8 @@ test('the fallback opener counts the turn but never wakes a night-held row', asy
     `SELECT release_after <= now() AS woken FROM outbox
       WHERE user_id = $1 AND sent_at IS NULL`, [u.id]);
   assert.equal(rows[0].woken, false, 'the night hold keeps its schedule');
+  const { rows: me } = await db.pool.query('SELECT last_woke_at FROM users WHERE id = $1', [u.id]);
+  assert.equal(me[0].last_woke_at, null, 'and the gate is not told they are awake');
 });
 
 // The gateway hook is the opener that DOES have the evidence: it fires on
@@ -238,4 +240,7 @@ test('the gateway opener, which has a real message behind it, does wake them', a
     `SELECT release_after <= now() AS woken FROM outbox
       WHERE user_id = $1 AND sent_at IS NULL`, [u.id]);
   assert.equal(rows[0].woken, true, 'a real inbound message gets the gate to re-decide');
+  const { rows: woke } = await db.pool.query(
+    'SELECT last_woke_at IS NOT NULL AS stamped FROM users WHERE id = $1', [u.id]);
+  assert.equal(woke[0].stamped, true, 'and it is the one stamp the gate reads as awake');
 });
