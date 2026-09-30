@@ -99,12 +99,3 @@ test('closing the door does not touch a connection already made', async () => {
   assert.equal(status.data.access, 'read_write');
   await db.pool.query(`DELETE FROM integrations WHERE user_id = $1`, [user.id]);
 });
-
-test('mail keeps its own gate: an open Google door does not open the mail one', async () => {
-  await setFlag('all');
-  await withTx(db.pool, (c) => flags.setFlag(c, 'email_access_phones', ''));
-  const res = await withTx(db.pool, (c) => googleConnect.beginConnection(c, user,
-    { calendarAccess: 'read_only', wantMail: true }));
-  assert.equal(res.ok, false);
-  assert.equal(res.error.reason, 'not_enabled', 'mail refuses in its own words');
-});

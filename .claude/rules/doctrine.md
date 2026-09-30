@@ -8,7 +8,7 @@ paths:
   - "olma2/src/domain/search-link.js"
   - "olma2/src/domain/google-connect-gate.js"
   - "olma2/src/domain/voice.js"
-  - "olma2/src/domain/mail.js"
+  - "olma2/src/domain/google-connect.js"
   - "olma2/scripts/resync-agent-templates.js"
   - "olma2/src/adapters/http/public-pages.js"
 ---
@@ -41,8 +41,8 @@ title means this file. Grep the title, not the filename.
   **2026-09-23: 36,874 after the dead text went** — the whole "Their mailbox"
   section (its tools were deleted with `gmail.readonly` on 09-07 and it was
   still read on every turn) and the cadence list `set_task_reminder`'s own
-  schema already carries. What a mailbox is still for now lives on the one
-  USER.md line that exists only when one is connected. **Read the doctrine for
+  schema already carries. (The USER.md `Email:` line that replaced it went
+  with the whole mailbox connection on 2026-09-30.) **Read the doctrine for
   text about a tool that is gone before arguing for room**; ~11% of it was
   dead or duplicated when counted.
   **2026-09-25: the curiosity ladder's name and timezone items went from 1,994
@@ -357,11 +357,14 @@ title means this file. Grep the title, not the filename.
   is merely SENSITIVE — the two words are different verification tracks, and
   one restricted scope prices the whole app onto the paid one** (an annual
   third-party CASA assessment, on top of the free demo-video/privacy-policy
-  track calendar and contacts need). Mail is closed for that reason
-  (2026-09-07): `tools/email.js` is deleted, `start_google_connection` has no
-  `mail` parameter, and `tests/mail.test.js` fails if either returns.
-  `domain/mail.js` and its 32 tests are untouched — reopening is one small
-  file plus a re-verification. **Never add a scope without checking which list
+  track calendar and contacts need). Mail was closed for that reason on
+  2026-09-07 (the tools) and REMOVED on 2026-09-30 (the owner: stop the model
+  checking for it and stop promising it) — the mail domain module, the mailbox
+  watch, the USER.md line, the /me switch, the flag and the three connected
+  rows (migration 103, no revoke: each shared its token with a calendar).
+  `tests/google-connect.test.js` fails if `gmail.readonly` appears anywhere in
+  `src/` or any tool offers a mailbox. **Reopening is a new feature plus the
+  paid verification, not a revert.** **Never add a scope without checking which list
   it is on**; an unverified app asking for a restricted one is blocked
   outright rather than warned, which is what עידן's "This app is blocked" was.
   **The track follows what the app DECLARES, and the declaration lives in
@@ -382,8 +385,7 @@ title means this file. Grep the title, not the filename.
   AND contacts because `start_google_connection` mints ONE link covering both
   — gating only the calendar would send the same person to the same screen
   through the contacts half. It gates MINTING: an existing connection keeps
-  syncing, nothing is disconnected, and mail keeps its own separate gate for
-  the narrower restricted-scope reason above. **A closed door also silences
+  syncing, nothing is disconnected. **A closed door also silences
   the OFFER** — the day-one 8h step and both `calendar:*` check-in rungs
   decline while it is shut, because an offer the tool then refuses is the
   worst kind: they say yes first. The proactive rungs were never the main

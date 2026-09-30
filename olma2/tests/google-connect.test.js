@@ -1,6 +1,6 @@
 'use strict';
-// The combined calendar+contacts+mail consent flow (domain/google-connect.js):
-// one link, one code exchange, up to three integrations rows. Same
+// The combined calendar+contacts consent flow (domain/google-connect.js):
+// one link, one code exchange, up to two integrations rows. Same
 // no-network philosophy as calendar.test.js — every Google call is injected.
 const fs = require('node:fs');
 const os = require('node:os');
@@ -55,12 +55,11 @@ const tokenOk = (scope) => ({
 const userInfo = { body: { email: 'someone@example.com' } };
 const ALL_SCOPES = 'https://www.googleapis.com/auth/calendar.events '
   + 'https://www.googleapis.com/auth/contacts.readonly '
-  + 'https://www.googleapis.com/auth/gmail.readonly '
   + 'https://www.googleapis.com/auth/userinfo.email';
 
-async function connect(userId, { calendarAccess, wantContacts, wantMail, routes, code = 'auth-code' } = {}) {
+async function connect(userId, { calendarAccess, wantContacts, routes, code = 'auth-code' } = {}) {
   const u = { id: userId, role: 'user', phone: '+972631900099' };
-  const begun = await withTx(db.pool, (c) => googleConnect.beginConnection(c, u, { calendarAccess, wantContacts, wantMail }));
+  const begun = await withTx(db.pool, (c) => googleConnect.beginConnection(c, u, { calendarAccess, wantContacts }));
   assert.ok(begun.ok, 'beginConnection failed: ' + JSON.stringify(begun.error));
   const state = new URL(begun.data.url).searchParams.get('state');
   const fetchImpl = fakeFetch(routes || {
@@ -81,7 +80,7 @@ function integrationRow(userId, provider) {
 before(async () => {
   db = await freshDb();
   user = await makeUser(db.pool, '+972631900010', { firstName: 'Noa' });
-  await withTx(db.pool, (c) => require('../src/domain/flags').setFlag(c, 'google_connect_phones', 'all'));
+  await withTx(db.pool, (c) => flags.setFlag(c, 'google_connect_phones', 'all'));
   server = createDashboard({ pool: db.pool, adminUser: 'admin', adminPass: 'test-password-123' });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
 });
@@ -107,70 +106,87 @@ test('the consent link unions exactly the requested scopes, plus userinfo.email 
   assert.equal(scope.split('userinfo.email').length - 1, 1, 'userinfo.email must appear exactly once');
 });
 
-test('mail is gated by the same email_access_phones flag as start_email_connection', async () => {
-  const closedUser = await makeUser(db.pool, '+972631900011', { firstName: 'Guy' });
-  const u = { id: closedUser.id, role: 'user', phone: closedUser.phone };
-  const res = await withTx(db.pool, (c) => googleConnect.beginConnection(c, u, { wantMail: true }));
-  assert.equal(res.ok, false);
-  assert.equal(res.error.reason, 'not_enabled');
-});
-
-test('an admin reaches mail even while the flag is closed for everyone else', async () => {
+test('mail cannot be asked for any more: a request for only mail is refused, and it never reaches the scope', async () => {
+  // Gmail left on 2026-09-30 (docs/incidents.md, "The mailbox connection was
+  // removed"). An old caller still passing wantMail gets nothing for it.
   const admin = await makeUser(db.pool, '+972631900012', { firstName: 'Admin', role: 'admin' });
   const u = { id: admin.id, role: 'admin', phone: admin.phone };
-  const res = await withTx(db.pool, (c) => googleConnect.beginConnection(c, u, { wantMail: true }));
-  assert.ok(res.ok);
+  const onlyMail = await withTx(db.pool, (c) => googleConnect.beginConnection(c, u, { wantMail: true }));
+  assert.equal(onlyMail.ok, false);
+  assert.equal(onlyMail.error.code, 'invalid');
+  const withMail = await withTx(db.pool, (c) => googleConnect.beginConnection(c, u, { calendarAccess: 'read_only', wantMail: true }));
+  assert.ok(withMail.ok);
+  assert.ok(!new URL(withMail.data.url).searchParams.get('scope').includes('gmail'));
+});
+
+const GMAIL_IN_CODE = /googleapis\.com\/auth\/gmail|['"]gmail['"]/;
+test('nothing in the code asks Google for a mailbox, and no tool offers one', () => {
+  assert.ok(GMAIL_IN_CODE.test("const SCOPE = 'https://www.googleapis.com/auth/gmail.readonly';"), 'the guard cannot see a scope');
+  assert.ok(GMAIL_IN_CODE.test("provider: 'gmail'"), 'the guard cannot see a provider row');
+  const src = path.join(__dirname, '..', 'src');
+  const hits = [];
+  (function walk(dir) {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) walk(p);
+      // The scope URL or the provider string, never the bare word: comments
+      // are allowed to say why it is gone.
+      else if (e.name.endsWith('.js') && GMAIL_IN_CODE.test(fs.readFileSync(p, 'utf8'))) hits.push(p);
+    }
+  })(src);
+  assert.deepEqual(hits, [], 'gmail.readonly is a RESTRICTED scope — bringing it back is a new feature and a paid verification');
+  const { toolDefinitions } = require('../src/adapters/mcp/registry');
+  for (const d of toolDefinitions()) {
+    assert.ok(!/gmail|mailbox|email_connection/i.test(d.name + ' ' + d.description), `${d.name} mentions a mailbox`);
+    assert.ok(!(d.inputSchema.properties || {}).mail, `${d.name} takes a mail param`);
+    assert.ok(!(d.inputSchema.properties || {}).mail_query, `${d.name} takes a mail_query param`);
+  }
 });
 
 // ---- completeOAuth: full grant ---------------------------------------------
 
-test('granting everything asked for writes three integrations rows from ONE token', async () => {
+test('granting everything asked for writes two integrations rows from ONE token', async () => {
   const u = await makeUser(db.pool, '+972631900020', { firstName: 'Shir' });
-  await withTx(db.pool, (c) => flags.setFlag(c, 'email_access_phones', 'all'));
-  const { done, fetchImpl } = await connect(u.id, { calendarAccess: 'read_write', wantContacts: true, wantMail: true });
+  const { done, fetchImpl } = await connect(u.id, { calendarAccess: 'read_write', wantContacts: true });
   assert.ok(done.ok, JSON.stringify(done.error));
   assert.equal(done.data.missing.length, 0);
   assert.equal(done.data.connected.calendar, 'read_write');
   assert.equal(done.data.connected.contacts, true);
-  assert.equal(done.data.connected.mail, true);
+  assert.equal(done.data.connected.mail, undefined);
 
   const cal = await integrationRow(u.id, 'google_calendar');
   const contacts = await integrationRow(u.id, 'google_contacts');
-  const gmail = await integrationRow(u.id, 'gmail');
-  assert.ok(cal && contacts && gmail);
+  assert.ok(cal && contacts);
   assert.equal(cal.access_level, 'read_write');
   assert.equal(contacts.access_level, 'read_only');
-  assert.equal(gmail.access_level, 'read_only');
+  assert.equal(await integrationRow(u.id, 'gmail'), undefined);
 
-  // Exactly one code exchange for all three — never three separate ones.
+  // Exactly one code exchange for both — never two separate ones.
   const tokenCalls = fetchImpl.calls.filter((c) => c.url.includes('oauth2.googleapis.com/token'));
   assert.equal(tokenCalls.length, 1);
 
   const outboxKinds = (await db.pool.query(
     `SELECT kind FROM outbox WHERE user_id = $1 ORDER BY id`, [u.id]
   )).rows.map((r) => r.kind);
-  assert.deepEqual(outboxKinds.sort(), ['calendar_connected', 'contacts_connected', 'email_connected'].sort());
+  assert.deepEqual(outboxKinds.sort(), ['calendar_connected', 'contacts_connected'].sort());
 });
 
 // ---- completeOAuth: partial grant -------------------------------------------
 
 test('a partially-ticked consent connects what was granted and reports the rest as missing, without touching the token', async () => {
   const u = await makeUser(db.pool, '+972631900021', { firstName: 'Idan' });
-  await withTx(db.pool, (c) => flags.setFlag(c, 'email_access_phones', 'all'));
   const partialScope = 'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/userinfo.email';
   const { done, fetchImpl } = await connect(u.id, {
-    calendarAccess: 'read_write', wantContacts: true, wantMail: true,
+    calendarAccess: 'read_write', wantContacts: true,
     routes: { 'oauth2.googleapis.com/token': tokenOk(partialScope), 'oauth2/v2/userinfo': userInfo },
   });
   assert.ok(done.ok);
   assert.equal(done.data.connected.calendar, 'read_only', 'Google narrowed it — the grant Google returned wins, not what was asked');
   assert.equal(done.data.connected.contacts, false);
-  assert.equal(done.data.connected.mail, false);
-  assert.deepEqual(done.data.missing.sort(), ['contacts', 'mail']);
+  assert.deepEqual(done.data.missing, ['contacts']);
 
   assert.ok(await integrationRow(u.id, 'google_calendar'));
   assert.equal(await integrationRow(u.id, 'google_contacts'), undefined);
-  assert.equal(await integrationRow(u.id, 'gmail'), undefined);
 
   // Calendar still works, so the shared token must NOT have been revoked.
   const revokeCalls = fetchImpl.calls.filter((c) => c.url.includes('revoke'));
@@ -180,7 +196,7 @@ test('a partially-ticked consent connects what was granted and reports the rest 
   assert.ok(kinds.some((r) => r.kind === 'calendar_connected'));
   const incomplete = kinds.find((r) => r.kind === 'google_connect_incomplete');
   assert.ok(incomplete, 'the missing pieces must produce their own notice');
-  assert.deepEqual(incomplete.payload.missing.sort(), ['contacts', 'mail']);
+  assert.deepEqual(incomplete.payload.missing, ['contacts']);
 });
 
 // ---- completeOAuth: total failure -------------------------------------------
@@ -236,19 +252,17 @@ test('a state minted for the combined flow cannot be redeemed by the single-purp
 
 // ---- disconnect keeps siblings alive ---------------------------------------
 
-test('disconnecting calendar after a combined connect does NOT revoke the token that contacts and mail still use', async () => {
+test('disconnecting calendar after a combined connect does NOT revoke the token that contacts still uses', async () => {
   const u = await makeUser(db.pool, '+972631900030', { firstName: 'Tom' });
-  await withTx(db.pool, (c) => flags.setFlag(c, 'email_access_phones', 'all'));
-  await connect(u.id, { calendarAccess: 'read_write', wantContacts: true, wantMail: true });
+  await connect(u.id, { calendarAccess: 'read_write', wantContacts: true });
 
   const fetchImpl = fakeFetch({ 'oauth2.googleapis.com/revoke': { body: {} } });
   const res = await withTx(db.pool, (c) => calendar.disconnect(c, u.id, { fetchImpl }));
   assert.ok(res.ok);
-  assert.equal(res.data.revokedAtGoogle, false, 'contacts and mail still hold the same token');
+  assert.equal(res.data.revokedAtGoogle, false, 'contacts still holds the same token');
   assert.equal(fetchImpl.calls.length, 0);
   assert.equal(await integrationRow(u.id, 'google_calendar'), undefined, 'the row itself is still removed locally');
   assert.ok(await integrationRow(u.id, 'google_contacts'), 'the sibling must be untouched');
-  assert.ok(await integrationRow(u.id, 'gmail'), 'the sibling must be untouched');
 });
 
 test('disconnecting the LAST sibling finally revokes at Google', async () => {
@@ -285,7 +299,6 @@ test('a solo calendar connection (never combined) still revokes exactly as befor
 
 test('the OAuth callback routes a google_connect state to the combined domain', async () => {
   const u = await makeUser(db.pool, '+972631900040', { firstName: 'Nir' });
-  await withTx(db.pool, (c) => flags.setFlag(c, 'email_access_phones', 'all'));
   const uArg = { id: u.id, role: 'user', phone: u.phone };
   const begun = await withTx(db.pool, (c) => googleConnect.beginConnection(c, uArg, { calendarAccess: 'read_write', wantContacts: true }));
   const state = new URL(begun.data.url).searchParams.get('state');
@@ -318,14 +331,14 @@ test('start_google_connection exists and never guesses calendar access', () => {
   assert.ok(t, 'start_google_connection is not registered');
   assert.ok(/ASK FIRST/.test(t.description) || /ask which/i.test(t.description));
   assert.equal(t.inputSchema.required.filter((r) => r !== 'identity' && !/token|identity/i.test(r)).length, 0,
-    'none of calendar_access/contacts/mail should be forced required — a user may want just one');
+    'neither calendar_access nor contacts should be forced required — a user may want just one');
 });
 
 // ---- outbox delivery instructions -------------------------------------------
 
 test('the delivery instruction exists for a partially-granted combined connect', () => {
   const { instructionFor } = require('../src/channels/openclaw');
-  const text = instructionFor({ kind: 'google_connect_incomplete', payload: { connected: ['יומן (צפייה + עריכה)'], missing: ['contacts', 'mail'] } });
+  const text = instructionFor({ kind: 'google_connect_incomplete', payload: { connected: ['יומן (צפייה + עריכה)'], missing: ['contacts'] } });
   assert.ok(text && !text.includes('System update for the user'));
   assert.ok(/start_google_connection/.test(text));
 });

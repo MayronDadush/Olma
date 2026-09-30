@@ -42,7 +42,6 @@ const optionMoment = require('./meeting-option-moment');
 const calendar = require('./calendar');
 const voice = require('./voice');
 const googleContacts = require('./google-contacts');
-const mail = require('./mail');
 const googleConnect = require('./google-connect');
 const { SOURCE_CAPS } = require('./user-dashboard');
 const preferences = require('./preferences');
@@ -108,13 +107,12 @@ async function refuseIfPaused(client, userId) {
   return null;
 }
 
-// The three Google services this page draws, by the key it draws them under.
+// The two Google services this page draws, by the key it draws them under.
 // Turning one ON is a consent round trip and goes through startGoogle; only
 // the off direction is a plain write, so only that direction is a table.
 const GOOGLE_STOP = {
   cal: (client, userId) => calendar.disconnect(client, userId),
   contacts: (client, userId) => googleContacts.disconnect(client, userId),
-  mail: (client, userId) => mail.disconnect(client, userId),
 };
 
 // Who a task write is made AS. A task somebody shared with this person is
@@ -620,18 +618,17 @@ const ACTIONS = {
     }
     const me = await users.getById(client, userId);
     // ONE consent screen for however many services were asked for — the whole
-    // point of google-connect.js. Three separate round trips would mean three
-    // Google screens for a person who pressed one button, and three refresh
-    // tokens where the family logic expects one.
+    // point of google-connect.js. Separate round trips would mean a Google
+    // screen each for a person who pressed one button, and a refresh token
+    // each where the family logic expects one.
     return googleConnect.beginConnection(client, me, {
       calendarAccess: access || undefined,
       wantContacts: p.contacts === true,
-      wantMail: p.mail === true,
     });
   },
 
-  // Turning one service off. Not the same as ending the account: the other two
-  // keep working, and each disconnect decides for itself whether the shared
+  // Turning one service off. Not the same as ending the account: the other
+  // keeps working, and each disconnect decides for itself whether the shared
   // refresh token may be revoked at Google.
   async stopGoogleService(client, userId, p) {
     const stop = GOOGLE_STOP[p.service];
@@ -646,16 +643,14 @@ const ACTIONS = {
   // already answers `{connected:false}` for a service that was never on, and
   // each decides for itself whether the shared refresh token may be revoked at
   // Google (googleFamily.hasOtherGoogleConnection) — which is the whole reason
-  // these are three calls rather than one DELETE. Doing it by hand here would
-  // mean re-deriving that rule in a second place and getting it wrong the day
-  // a fourth Google service arrives.
+  // these are separate calls rather than one DELETE. Doing it by hand here
+  // would mean re-deriving that rule in a second place and getting it wrong
+  // the day another Google service arrives.
   async stopGoogle(client, userId) {
     const calRes = await calendar.disconnect(client, userId);
     if (!calRes.ok) return calRes;
     const conRes = await googleContacts.disconnect(client, userId);
     if (!conRes.ok) return conRes;
-    const mailRes = await mail.disconnect(client, userId);
-    if (!mailRes.ok) return mailRes;
     return ok({ connected: false });
   },
 

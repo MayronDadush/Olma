@@ -27,8 +27,8 @@ Started 2026-09-08. Update the status table as steps land.
 | No restricted scope on any public page | ✅ guarded | `tests/public-pages.test.js` fails if one appears |
 | Domain ownership | ✅ done | two `google-site-verification` TXT records on `allma.world` |
 | Redirect URI | ✅ matches | `/opt/olma/google-oauth.json` → `https://allma.world/oauth/google/callback` |
-| Agent cannot request Gmail | ✅ hardcoded | `tools/combined-connect.js` passes `wantMail: false`; no job or tool imports `mail` |
-| `email_access_phones` flag | ⚠️ **`all`** — one field to close | see [Loose end](#loose-end-the-mail-flag-is-open) |
+| Agent cannot request Gmail | ✅ removed | the mailbox connection was deleted 2026-09-30; `tests/google-connect.test.js` fails if `gmail.readonly` returns to `src/` |
+| `email_access_phones` flag | ✅ gone | deleted by migration 103 with the code it guarded |
 | Consent-screen scope list | ❓ **unknown — blocks everything** | see below |
 | Publishing status | ❓ unknown | console only |
 | Demo video | ⬜ not recorded | script below |
@@ -62,8 +62,9 @@ will be quoted as such. Removing it costs:
 - u-12's dormant Gmail grant stops being usable. **Nothing reads it** —
   `tools/email.js` was deleted on 2026-09-07 and no job or agent tool imports
   `mail`, so no user-facing behaviour changes.
-- Reopening mail later is one small file plus a re-verification.
-  `domain/mail.js` and its 32 tests are untouched by design.
+- Reopening mail later is a new feature plus a re-verification: since
+  2026-09-30 `domain/mail.js` is deleted too (`incidents.md`, "The mailbox
+  connection was removed").
 
 **Recommendation: remove it.** Mail is already closed in every way that a user
 can reach; leaving the scope declared buys nothing and costs the free track.
@@ -183,6 +184,9 @@ shown in full with the app name readable.
 ---
 
 ## Loose end: the mail flag is open
+
+**CLOSED 2026-09-30** — the flag, `mail.requireMailAccess` and the three
+connected gmail rows are all gone (migration 103). Kept below as history.
 
 `email_access_phones` is `"all"` on the box. `mail.requireMailAccess` therefore
 returns ok for **everybody** — the only thing preventing a Gmail consent link is

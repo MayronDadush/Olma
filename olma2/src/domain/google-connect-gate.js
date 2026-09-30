@@ -6,8 +6,8 @@
 // the app on — does not. In between, the link we hand somebody lands on
 // Google's unverified-app warning, and a first impression that opens with
 // "this app is not secure" is worse than a feature nobody was offered yet.
-// That is the same reasoning `email_access_phones` already carries for mail,
-// and this is the calendar-and-contacts twin of it (owner, 2026-09-08).
+// (owner, 2026-09-08). Mail had a twin of this gate until the mailbox
+// connection was removed on 2026-09-30.
 //
 // ONE flag for all three doors on purpose: `start_google_connection` mints a
 // single link covering calendar and contacts together, so a gate that closed

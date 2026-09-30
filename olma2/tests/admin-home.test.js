@@ -70,7 +70,7 @@ before(async () => {
     [u[who].id, provider, status, at]);
   await google('today', 'google_calendar', '2026-09-15T06:00:00Z');
   await google('today', 'google_contacts', '2026-09-15T06:00:00Z');
-  await google('month', 'gmail', '2026-09-03T06:00:00Z');
+  await google('month', 'google_contacts', '2026-09-03T06:00:00Z');
   await google('old', 'google_calendar', '2026-09-15T06:00:00Z', 'disconnected');
   await google('eval', 'google_calendar', '2026-09-15T06:00:00Z');
 

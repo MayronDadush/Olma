@@ -265,6 +265,7 @@ never trust a dated narrative for something you are about to act on.
 - [Image + video generation, access-limited, spend in its own column (2026-08-28)](#image--video-generation-access-limited-spend-in-its-own-column-2026-08-28)
 - [Friendship now enables everything, and friends can pass messages (2026-08-27)](#friendship-now-enables-everything-and-friends-can-pass-messages-2026-08-27)
 - [Long schedules go out as an image, not a wall of text (2026-08-19)](#long-schedules-go-out-as-an-image-not-a-wall-of-text-2026-08-19)
+- [The mailbox connection was removed (2026-09-30)](#the-mailbox-connection-was-removed-2026-09-30)
 - [The mailbox, Phase 1: read-only Gmail, and nobody's mail is browsed (2026-09-02)](#the-mailbox-phase-1-read-only-gmail-and-nobodys-mail-is-browsed-2026-09-02)
 - [Voice-note transcription moved to ElevenLabs Scribe v2 (2026-08-18)](#voice-note-transcription-moved-to-elevenlabs-scribe-v2-2026-08-18)
 - [Onboarding has no "welcome" step any more (redesigned 2026-08-17)](#onboarding-has-no-welcome-step-any-more-redesigned-2026-08-17)
@@ -11816,6 +11817,50 @@ instead. What makes it work, all verified against the gateway source and live:
 - **`agents-template.md` changes reach existing users only via
   `scripts/resync-agent-templates.js --apply`** — AGENTS.md is written once at
   provisioning. Run it after any doctrine edit.
+
+### The mailbox connection was removed (2026-09-30)
+
+The owner's ask, in one sentence: take the whole option of connecting Olma to
+email out of the code, so the model stops checking for it and nothing promises
+an action we no longer provide.
+
+It had been closed three weeks and was still being paid for. The tools went
+on 2026-09-07 with `gmail.readonly` (a RESTRICTED scope, and one restricted
+scope puts the whole app on the paid CASA track), but everything behind them
+stayed "untouched by design, so reopening is one small file":
+
+- **every turn** read a USER.md line, `Email: not connected — …`, for a
+  feature that could not be connected. It was the line the doctrine's
+  "Their mailbox" section had been moved into on 09-23, so the dead text left
+  the doctrine and landed in the card;
+- `set_live_update` still offered `mail_query` in its schema, an hourly
+  watch that searched a mailbox, on every turn that could see the tool;
+- `start_google_connection`'s domain still minted a gmail scope for anybody
+  the `email_access_phones` flag let through, and that flag was `all` on the
+  box. The only defence was a hardcoded `wantMail: false` in one tool file;
+- /me carried a hidden Gmail switch (`SHOW_GMAIL = false`), iCloud Mail and
+  Outlook Mail tiles, and an `available.mail` the server computed per load.
+
+**What went:** `domain/mail.js`, `mail-gmail.js` and their two test files;
+the `mail_query` source; the `email_*` outbox kinds and their instructions;
+the mail half of the combined consent, the OAuth callback and the dashboard
+writes; the USER.md line; the flag and its admin control; every mail
+service on /me; the `email-not-connected` eval scenario. Migration 103
+deletes the three `gmail` rows (u-3, u-12, u-13), each audited as
+`email.disconnected` with `reason: feature_removed`.
+
+**Nothing was revoked at Google, on purpose.** All three rows shared their
+refresh token with that person's calendar row (one combined consent, one
+token — `google-family.js`), so a revoke would have disconnected their
+calendar too. The gmail.readonly grant stays on their Google accounts,
+unusable by us, until they reconnect or remove the app. That is exactly what
+`mail.disconnect` itself did for a shared token.
+
+**The guard that replaced `tests/mail.test.js`** is in
+`tests/google-connect.test.js`: `gmail.readonly` appearing anywhere under
+`src/`, or any tool whose name, description or params offer a mailbox, is red.
+Reopening mail is a new feature and a paid verification, not a revert. The
+design and the Phase 1 story below stay as history.
 
 ### The mailbox, Phase 1: read-only Gmail, and nobody's mail is browsed (2026-09-02)
 
