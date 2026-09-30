@@ -1094,37 +1094,3 @@ test('the event id fingerprints the INSTANT, not the spelling of it', () => {
   assert.match(calendar.eventIdFor(7, 'x', 'not a date'), /^olma[0-9a-f]{32}$/);
 });
 
-test('a task syncing to a calendar event that already exists does not double-book it', async () => {
-  const taskCalendar = require('../src/domain/task-calendar');
-  const u = await makeUser(db.pool, '+972631000032', { firstName: 'Sync', timezone: 'Asia/Jerusalem' });
-  await connect(u.id, { access: 'read_write' });
-  const args = { title: 'אולם לחתונה', start: '2026-09-18T12:00:00+03:00', end: '2026-09-18T12:30:00+03:00' };
-  const direct = fakeFetch({
-    'calendars/primary/events': { body: { id: 'evt-x', summary: args.title, start: { dateTime: args.start } } },
-  });
-  await withTx(db.pool, (c) => calendar.createEvent(c, u.id, args, { fetchImpl: direct }));
-  const sentId = JSON.parse(direct.calls.at(-1).init.body).id;
-
-  // Now the same thing as an event task, the way the hint tells the model to
-  // save it, synced by the sweep — which hands windowFor's UTC ISO string.
-  const { rows } = await db.pool.query(
-    `INSERT INTO tasks (owner_id, title, kind, due_at, calendar_opt_in, source)
-     VALUES ($1, $2, 'event', $3, true, 'chat') RETURNING *`,
-    [u.id, args.title, args.start]
-  );
-  const retry = fakeFetch({
-    'calendars/primary/events': { status: 409, body: { error: { message: 'The requested identifier already exists.' } } },
-  });
-  const out = await withTx(db.pool, (c) => taskCalendar.syncOne(c, { ...rows[0], sync_wanted: true },
-    { createEvent: (c2, uid, a) => calendar.createEvent(c2, uid, a, { fetchImpl: retry }) }));
-  assert.equal(out.action, 'added');
-  assert.equal(JSON.parse(retry.calls.at(-1).init.body).id, sentId,
-    'the sweep must aim at the event already on the calendar, not a second one');
-  assert.equal(out.eventId, sentId);
-  // And the row is now bound to it, so the next tick reports `unchanged`
-  // rather than removing and re-adding the person's event every five minutes.
-  const again = await withTx(db.pool, (c) => taskCalendar.syncOne(c,
-    { ...rows[0], calendar_event_id: out.eventId, sync_wanted: true },
-    { createEvent: () => { throw new Error('must not create again'); } }));
-  assert.equal(again.action, 'unchanged');
-});

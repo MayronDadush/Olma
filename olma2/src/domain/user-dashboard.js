@@ -94,7 +94,7 @@ async function loadUser(client, userId) {
 // four queries rather than one join, because a join across children AND
 // viewers multiplies rows and the de-duplication is more code than the extra
 // round trips are worth.
-async function loadTasks(client, userId, zone, calendarSyncTasks) {
+async function loadTasks(client, userId, zone) {
   // Their own list AND the tasks other people share with them. A shared task
   // is not a copy or a notification — it is the same row, appearing on both
   // lists, which is the whole point of sharing one. Leaving it out would have
@@ -236,11 +236,10 @@ async function loadTasks(client, userId, zone, calendarSyncTasks) {
       // `until` is what makes a daily rule a CHASE rather than a rhythm —
       // the sheet draws "כל יום עד התאריך" off it, never off the rule alone.
       reminder: rem ? { id: rem.id, at: rem.remind_at, repeat: rem.repeat_rule, until: rem.repeat_until || null } : null,
-      // The EFFECTIVE answer, resolved here rather than in the browser: the
-      // page draws one switch and the precedence rule belongs on the side that
-      // enforces it. `inCalendar` is the separate question of whether the
-      // sweep has caught up yet.
-      calendar: t.calendar_opt_in ?? Boolean(calendarSyncTasks),
+      // Copying a task onto the calendar was retired on 2026-09-30
+      // (domain/task-calendar.js), so the sheet's switch is only ever ON for
+      // a copy still standing — and turning it off is how one is taken down.
+      calendar: Boolean(t.in_calendar),
       inCalendar: t.in_calendar,
       items: byParent.get(t.id) || [],
       // Who owns this, and therefore who may manage its sharing. `mine` is the
@@ -735,7 +734,7 @@ async function load(client, userId) {
   // pg serialises concurrent queries on a single client anyway — while warning
   // that it will stop doing so in pg@9. Overlapping them buys nothing here and
   // would break on that upgrade.
-  const tasks = await loadTasks(client, userId, zone, user.calendar_sync_tasks);
+  const tasks = await loadTasks(client, userId, zone);
   const friends = await loadFriends(client, userId);
   const integrations = await loadIntegrations(client, userId);
   // What the page may OFFER, as distinct from what is already connected. Only

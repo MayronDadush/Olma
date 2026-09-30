@@ -504,38 +504,23 @@ test('restoring brings a task back out of the archive', async () => {
     'restoring an unarchived task should not silently succeed');
 });
 
-test('the calendar switch refuses when there is no calendar to write to', async () => {
+test('the sheet\'s calendar switch only ever takes a copy DOWN', async () => {
   const t = await mkTask({ dueAt: iso(3 * 86400e3) });
   const r = await act('setTaskCalendar', { taskId: t.id, on: true });
-  assert.equal(r.ok, false, 'a lit switch with nowhere to write is the worst outcome');
-  assert.equal(r.error.reason, 'not_connected');
+  assert.equal(r.ok, false, 'copying onto the calendar was retired on 2026-09-30');
+  assert.equal(r.error.reason, 'retired');
   const { rows } = await db.pool.query(`SELECT calendar_opt_in FROM tasks WHERE id = $1`, [t.id]);
   assert.equal(rows[0].calendar_opt_in, null, 'the wish was stored anyway');
-});
-
-test('turning the calendar switch off is always allowed, and is per task', async () => {
-  const t = await mkTask({ dueAt: iso(3 * 86400e3) });
-  const r = await act('setTaskCalendar', { taskId: t.id, on: false });
-  assert.equal(r.ok, true, r.ok ? '' : JSON.stringify(r.error));
-  const { rows } = await db.pool.query(`SELECT calendar_opt_in FROM tasks WHERE id = $1`, [t.id]);
-  assert.equal(rows[0].calendar_opt_in, false);
-  // and the standing switch does not override it
-  await db.pool.query(`UPDATE users SET calendar_sync_tasks = true WHERE id = $1`, [me.id]);
-  const page = await tx((c) => dash.load(c, me.id));
-  const row = page.data.tasks.find((x) => String(x.id) === String(t.id));
-  assert.equal(row.calendar, false,
-    'one task turned off came back on because the standing switch won');
-  await db.pool.query(`UPDATE users SET calendar_sync_tasks = false WHERE id = $1`, [me.id]);
-});
-
-test('a task that says nothing follows the standing switch', async () => {
-  const t = await mkTask({ dueAt: iso(3 * 86400e3) });
+  assert.equal((await act('setTaskCalendar', { taskId: t.id, on: false })).ok, true);
+  // the page shows the switch ON only for a copy still standing
   await db.pool.query(`UPDATE users SET calendar_sync_tasks = true WHERE id = $1`, [me.id]);
   let page = await tx((c) => dash.load(c, me.id));
-  assert.equal(page.data.tasks.find((x) => String(x.id) === String(t.id)).calendar, true);
-  await db.pool.query(`UPDATE users SET calendar_sync_tasks = false WHERE id = $1`, [me.id]);
-  page = await tx((c) => dash.load(c, me.id));
   assert.equal(page.data.tasks.find((x) => String(x.id) === String(t.id)).calendar, false);
+  await db.pool.query(`UPDATE tasks SET calendar_event_id = 'olmaxyz' WHERE id = $1`, [t.id]);
+  page = await tx((c) => dash.load(c, me.id));
+  assert.equal(page.data.tasks.find((x) => String(x.id) === String(t.id)).calendar, true);
+  await db.pool.query(`UPDATE tasks SET calendar_event_id = NULL WHERE id = $1`, [t.id]);
+  await db.pool.query(`UPDATE users SET calendar_sync_tasks = false WHERE id = $1`, [me.id]);
 });
 
 test('the page is told which channels actually exist', async () => {

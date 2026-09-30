@@ -506,7 +506,6 @@ const TOOL_MARKS = Object.freeze({
   set_my_language: 'done',
   set_assistant_persona: 'done',
   set_digest_preferences: 'done',
-  set_calendar_task_sync: 'done',
   // `record_meeting_constraint` was here until 2026-09-20 and is now in the
   // negotiation family below the table: it can only be called while a meeting
   // is negotiating, and Maya's "לא יכולה ביום שני" got a 👍 that said "noted"

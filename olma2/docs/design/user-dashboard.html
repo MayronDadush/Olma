@@ -3962,7 +3962,10 @@ button.srow:active{background:var(--bg-tint)}
           <svg class="chev"><use href="#i-chev"/></svg>
         </button>
         <div class="fold" id="pfTasks"><div><div class="pfin">
-          <div class="row no-icon">
+          <!-- Copying tasks onto the calendar was retired 2026-09-30
+               (domain/task-calendar.js); the switch stays in the markup,
+               hidden, so the handlers that read it need no guard. -->
+          <div class="row no-icon" hidden>
             <div class="row-txt">
               <div class="row-title" data-i18n="me.taskCal"></div>
               <div class="row-sub" data-i18n="me.taskCalSub"></div>
@@ -8882,7 +8885,8 @@ button.srow:active{background:var(--bg-tint)}
     if(save && (editing.rem !== wasRem || editing.remOff !== wasOff || editing.rep !== wasRep
        || editing.remAt !== wasRemAt
        || (editing.rem && whenKey !== lastWhenKey))) API.setTaskReminder(editing);
-    if(save && (editing.cal !== wasCal || (editing.cal && whenKey !== lastWhenKey))) API.setTaskCalendar(editing);
+    /* only ever OFF now: taking down a copy left from before 2026-09-30 */
+    if(save && wasCal && !editing.cal) API.setTaskCalendar(editing);
     if(save) lastWhenKey = whenKey;
     renderTasks(); renderStrip(selDay); flashSaved();
   }
@@ -9015,7 +9019,8 @@ button.srow:active{background:var(--bg-tint)}
     /* ── calendar ── No calendar to write to means the switch cannot keep its
        word, so the tile is not offered; a row already on stays and says which
        calendar is missing, because "connect one" is the useful next step. */
-    $("#sCalRow").hidden = !(dated && (x.cal || shown.cal));
+    /* only a copy still standing shows it, so it can be taken down */
+    $("#sCalRow").hidden = !(dated && x.cal);
     $("#sJumpRow").hidden = isNew || !(x.d && x.cal);
     $("#sCalSub").textContent = calTargetName();
     lockRow($("#sCalRow"), dated && !calTarget(), t("sheet.inCalNone"));
@@ -9072,7 +9077,8 @@ button.srow:active{background:var(--bg-tint)}
       list:  !items && !shown.list && canEdit(x, "items"),
       rep:   chosenRep === "none" && !shown.rep && canEdit(x, "rep"),
       share: !who.length && !shown.share && canEdit(x, "who"),
-      cal:   dated && !!calTarget() && !x.cal && !shown.cal
+      /* copying onto the calendar was retired 2026-09-30 — never offered */
+      cal:   false
     }, n = 0;
     $$("#sAlsoTiles [data-also]").forEach(function(b){
       var on = !!tiles[b.dataset.also];
@@ -13167,8 +13173,7 @@ button.srow:active{background:var(--bg-tint)}
     var lang = LANGS.filter(function(l){ return l.v === cur; })[0];
     pv("#pvSetup", [olmaName(), cityLabel(), lang ? lang.n : ""].filter(Boolean).join(" · "));
 
-    pv("#pvTasks", t(ME.taskCal ? "me.sum.cal.on" : "me.sum.cal.off") + " · " + t(ME.nudge ? "me.sum.nudge.on" : "me.sum.nudge.off"),
-      !ME.taskCal && !ME.nudge);
+    pv("#pvTasks", t(ME.nudge ? "me.sum.nudge.on" : "me.sum.nudge.off"), !ME.nudge);
   }
   /* One handler for all six: a row opens and closes its own fold, and any
      number of them may be open at once. */

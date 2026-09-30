@@ -1,26 +1,31 @@
 'use strict';
-// Dated tasks, on the person's own Google Calendar.
+// Olma's COPIES of tasks on the person's Google Calendar — being taken down.
 //
-// Opt-in, per person, off by default. Writing to somebody's calendar is an
-// outward-facing act they will see every day, so it is never inferred from
-// "they have a calendar connected" — they ask for it, and they can stop it.
+// Until 2026-09-30 a dated task could be copied onto the person's calendar
+// (a standing switch, `users.calendar_sync_tasks`, and one per task,
+// `tasks.calendar_opt_in`). The owner retired it that day (option "5ב"): a
+// copy is a second entry for a thing that already has one, the person reads
+// both, and the thing they told Olma about was usually ON their calendar
+// already — מירון's calendar held the original and Olma's copy side by side
+// (`incidents.md`, "Two of everything"). What replaced it points the other
+// way: Olma hangs a reminder on the calendar's own event
+// (`domain/calendar-links.js`) and writes a NEW event only for a meeting told
+// to her that the calendar does not have yet.
 //
-// ---- why this is a sweep and not part of add_task ----
+// So nothing here adds an event any more. What is left is taking down the
+// copies already written, which is the old remove arm on its own:
+//   - a row carrying `calendar_event_id` is a copy; the sweep deletes the
+//     event and clears the id;
+//   - only for somebody whose calendar is connected WITH EDIT ACCESS — a
+//     view-only connection cannot delete, and the old sweep failed on it every
+//     tick, for ever. The id stays until edit access returns, so the copy is
+//     taken down then, not lost track of;
+//   - `removeEventsFor` still runs before a task is deleted for good, because
+//     the id lives on the row being deleted.
 //
-// Creating a task must not wait on Google. The MCP shim gives up at 30s while
-// brokerd commits regardless (see domain/google-oauth.js on the budget), so a
-// slow calendar call inside add_task would produce the one outcome worse than
-// a missing event: a task the agent reports as failed and the database kept.
-// Syncing separately also means a Google outage delays events instead of
-// losing tasks, and the next tick simply picks up where it stopped.
-//
-// ---- the id IS the fingerprint ----
-//
-// calendar.eventIdFor derives an event id from userId|title|start. So a stored
-// id that no longer equals the id the task's CURRENT title and due time would
-// produce is proof it was renamed or rescheduled since it synced — and the
-// repair is the obvious one: remove the stale event, write the new one. No
-// second column to drift out of step, and no way for the two to disagree.
+// `eventIdFor`'s fingerprint (userId|title|instant) is still what the ids
+// look like, and `windowFor`/`expectedIdFor` stay exported because the linked
+// path (calendar-links) creates events the same way.
 const { ok, err } = require('./results');
 const calendar = require('./calendar');
 const audit = require('./audit');
@@ -29,6 +34,7 @@ const audit = require('./audit');
 // box shared with every user's replies. A backlog drains over several ticks
 // rather than holding the loop.
 const MAX_PER_TICK = 20;
+const RETIRED = 'copying tasks onto the calendar was retired — a reminder is hung on the calendar event itself (remind_calendar_event)';
 const EVENT_MINUTES = 30;
 
 // A real end when the task has one, and thirty minutes when it does not.
@@ -58,22 +64,11 @@ function expectedIdFor(userId, task) {
   return calendar.eventIdFor(userId, task.title, windowFor(task.due_at, task.ends_at).start);
 }
 
-// Turning it ON requires edit access, and says so plainly rather than letting
-// every future sync fail quietly against a view-only grant.
+// Only OFF is left. ON is refused by name rather than silently ignored, so a
+// stale page or an old tool call learns the switch is gone.
 async function setSync(client, userId, on, { removeExisting = false, ...deps } = {}) {
   if (typeof on !== 'boolean') return err('invalid', 'on must be true or false');
-  if (on) {
-    const status = await calendar.getStatus(client, userId);
-    const s = status.ok ? status.data : null;
-    if (!s || !s.connected) {
-      return err('invalid', 'their Google Calendar is not connected — offer start_calendar_connection first');
-    }
-    if (!s.canEdit) {
-      return err('forbidden',
-        'they granted view-only calendar access, so nothing can be written to it. Offer to reconnect with edit access.',
-        { reason: 'read_only' });
-    }
-  }
+  if (on) return err('invalid', RETIRED, { reason: 'retired' });
   await client.query(`UPDATE users SET calendar_sync_tasks = $2 WHERE id = $1`, [userId, on]);
   // Turning it off is deliberately TWO decisions, not one. Events already on
   // the calendar are entries the person has been reading all week, and
@@ -117,19 +112,7 @@ async function setTaskSync(client, userId, taskId, on, deps = {}) {
   );
   const task = rows[0];
   if (!task) return err('not_found', 'task not found');
-  if (on) {
-    // A task with no date has no moment to put anywhere. The sheet already
-    // hides the row until a day is chosen; this is the same rule, enforced.
-    if (!task.due_at) return err('invalid', 'a task with no date cannot go on a calendar');
-    const status = await calendar.getStatus(client, userId);
-    const s = status.ok ? status.data : null;
-    if (!s || !s.connected) {
-      return err('invalid', 'no calendar is connected', { reason: 'not_connected' });
-    }
-    if (!s.canEdit) {
-      return err('forbidden', 'the calendar was connected view-only', { reason: 'read_only' });
-    }
-  }
+  if (on) return err('invalid', RETIRED, { reason: 'retired' });
   await client.query(`UPDATE tasks SET calendar_opt_in = $2 WHERE id = $1`, [taskId, on]);
   let removed = false;
   if (!on && task.calendar_event_id) {
@@ -168,79 +151,39 @@ async function removeEventsFor(client, ownerId, taskId, deps = {}) {
   return ok({ removed: rows.length });
 }
 
-// Everything that is not where it should be: to add, to remove, to redo.
-// One query, so a tick is one round trip before any Google call happens.
-// `sync_wanted` is the one question every branch below asks, and it is
-// answered once, in SQL: the task's own answer when it gave one, the person's
-// standing switch when it did not. Computing it here rather than in three
-// separate WHERE clauses is what stops the add, remove and re-check arms from
-// ever disagreeing about whether a row belongs on somebody's calendar.
-async function pending(client, { limit = MAX_PER_TICK, now = new Date() } = {}) {
+// Every copy still standing, for somebody who can have it taken down. One
+// query, so a tick is one round trip before any Google call happens.
+async function pending(client, { limit = MAX_PER_TICK } = {}) {
   const { rows } = await client.query(
-    `SELECT t.id, t.owner_id, t.title, t.due_at, t.ends_at, t.location, t.calendar_event_id,
-            u.calendar_sync_tasks, t.calendar_opt_in, t.status, t.archived_at,
-            COALESCE(t.calendar_opt_in, u.calendar_sync_tasks) AS sync_wanted
+    `SELECT t.id, t.owner_id, t.calendar_event_id
        FROM tasks t
        JOIN users u ON u.id = t.owner_id
-      WHERE u.status = 'active' AND u.paused_at IS NULL AND NOT u.is_eval
-        AND (
-          -- to add: they want it, it is dated, still open, still ahead
-          (COALESCE(t.calendar_opt_in, u.calendar_sync_tasks) AND t.calendar_event_id IS NULL
-             AND t.due_at IS NOT NULL AND t.due_at > $2
-             AND t.status = 'open' AND t.archived_at IS NULL)
-          -- to remove: it is on the calendar and no longer earns its place
-          OR (t.calendar_event_id IS NOT NULL
-             AND (NOT COALESCE(t.calendar_opt_in, u.calendar_sync_tasks) OR t.status <> 'open'
-                  OR t.archived_at IS NOT NULL OR t.due_at IS NULL))
-          -- to re-check: on the calendar and still wanted — the fingerprint
-          -- comparison below decides whether it actually moved
-          OR (COALESCE(t.calendar_opt_in, u.calendar_sync_tasks) AND t.calendar_event_id IS NOT NULL
-             AND t.status = 'open' AND t.archived_at IS NULL AND t.due_at IS NOT NULL)
-        )
-      ORDER BY t.due_at NULLS FIRST
+       JOIN integrations i ON i.user_id = t.owner_id AND i.provider = 'google_calendar'
+      WHERE t.calendar_event_id IS NOT NULL
+        AND i.status = 'connected' AND i.access_level = 'read_write'
+        AND u.status = 'active' AND NOT u.is_eval
+      ORDER BY t.id
       LIMIT $1`,
-    [limit, now]
+    [limit]
   );
   return rows;
 }
 
 async function syncOne(client, t, deps = {}) {
-  const create = deps.createEvent || calendar.createEvent;
   const remove = deps.deleteEvent || calendar.deleteEvent;
-  // `sync_wanted` is what pending() computed; the two fallbacks keep a
-  // hand-built row (a test, a caller with one task in hand) working without
-  // having to know the precedence rule.
-  const wants = t.sync_wanted ?? t.calendar_opt_in ?? t.calendar_sync_tasks;
-  const wanted = wants && t.status === 'open'
-    && !t.archived_at && t.due_at;
-
-  if (t.calendar_event_id) {
-    const stale = !wanted || t.calendar_event_id !== expectedIdFor(t.owner_id, t);
-    if (stale) {
-      const res = await remove(client, t.owner_id, { eventId: t.calendar_event_id });
-      if (!res.ok) return { id: t.id, action: 'remove', ok: false, error: res.error.message };
-      await client.query(`UPDATE tasks SET calendar_event_id = NULL WHERE id = $1`, [t.id]);
-      t.calendar_event_id = null;
-      if (!wanted) return { id: t.id, action: 'removed' };
-      // fall through: it moved, so it is re-added below under its new id
-    } else {
-      return { id: t.id, action: 'unchanged' };
-    }
+  const res = await remove(client, t.owner_id, { eventId: t.calendar_event_id });
+  // Already gone counts as removed: the calendar is in the state we want, and
+  // an id pointing at nothing would be retried every tick.
+  if (!res.ok && res.error.code !== 'not_found') {
+    return { id: t.id, action: 'remove', ok: false, error: res.error.message };
   }
-  if (!wanted) return { id: t.id, action: 'skipped' };
-
-  const { start, end } = windowFor(t.due_at, t.ends_at);
-  const res = await create(client, t.owner_id, { title: t.title, start, end, location: t.location || undefined });
-  if (!res.ok) return { id: t.id, action: 'add', ok: false, error: res.error.message };
-  await client.query(
-    `UPDATE tasks SET calendar_event_id = $2 WHERE id = $1`, [t.id, res.data.eventId]);
-  return { id: t.id, action: 'added', eventId: res.data.eventId };
+  await client.query(`UPDATE tasks SET calendar_event_id = NULL WHERE id = $1`, [t.id]);
+  return { id: t.id, action: 'removed' };
 }
 
 async function sweepTaskCalendar(client, deps = {}) {
-  const now = deps.now ? new Date(deps.now) : new Date();
-  const rows = await pending(client, { limit: deps.limit || MAX_PER_TICK, now });
-  const out = { considered: rows.length, added: [], removed: [], failed: [] };
+  const rows = await pending(client, { limit: deps.limit || MAX_PER_TICK });
+  const out = { considered: rows.length, removed: [], failed: [] };
   for (const t of rows) {
     let r;
     try {
@@ -252,7 +195,6 @@ async function sweepTaskCalendar(client, deps = {}) {
       continue;
     }
     if (r.ok === false) out.failed.push({ id: r.id, error: r.error });
-    else if (r.action === 'added') out.added.push(r.id);
     else if (r.action === 'removed') out.removed.push(r.id);
   }
   return out;
