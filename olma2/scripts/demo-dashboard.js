@@ -90,8 +90,7 @@ async function main() {
   const trip = await add('לתכנן את הטיול', { category: 'family' });
   const req = await withTx(pool, (c) => connections.requestConnection(c, me.id, friend.phone));
   await withTx(pool, (c) => connections.respondToConnection(c, friend.id, req.data.connection.id, 'approve'));
-  const offer = await withTx(pool, (c) => shares.offerShare(c, me.id, trip.id, friend.id, 'viewer'));
-  await withTx(pool, (c) => shares.respondToShare(c, friend.id, offer.data.share.id, 'accept'));
+  await withTx(pool, (c) => shares.offerShare(c, me.id, trip.id, friend.id));
 
   // The real app, behind one demo-only shim. /me/act refuses a write whose
   // Origin is not https://<host> (adapters/http/user-dashboard.js, sameOrigin),

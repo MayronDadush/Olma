@@ -193,21 +193,22 @@ test('two proposals are two options; a yes names one; confirming supersedes the 
   for (const r of after) assert.equal(r.hold_reason, 'superseded', `${r.payload.slot} should be superseded once the meeting confirmed`);
 });
 
-test('share offer and response fan out to the right sides', async () => {
+// Since 2026-09-30 a share asks nobody: it is on their list when the tool
+// returns, they are told after, and there is no answer to fan back.
+test('sharing tells the other side it was added, and asks nothing', async () => {
   const added = await call(miron, 'add_task', { title: 'groceries run' });
   const taskId = Number(/"id":"?(\d+)/.exec(added)[1]);
-  await call(miron, 'share_task_with', { task_id: taskId, phone: kapish.phone });
+  const res = await call(miron, 'share_task_with', { task_id: taskId, phone: kapish.phone });
+  assert.match(res, /"status":"active"/);
+  assert.match(res, /nothing is waiting on the other person/);
 
-  const offers = await outboxFor(kapish.id, 'share_offer');
-  assert.equal(offers.length, 1);
-  assert.equal(offers[0].payload.taskTitle, 'groceries run');
-  assert.equal('role' in offers[0].payload, false, 'a role reached the model on an offer that has none');
-  assert.equal(offers[0].urgency, 'normal'); // not worth waking anyone over
-
-  await call(kapish, 'respond_to_share', { share_id: offers[0].payload.shareId, decision: 'accept' });
-  const resp = await outboxFor(miron.id, 'share_response');
-  assert.equal(resp.length, 1);
-  assert.equal(resp[0].payload.decision, 'accept');
+  const told = await outboxFor(kapish.id, 'share_added');
+  assert.equal(told.length, 1);
+  assert.equal(told[0].payload.taskTitle, 'groceries run');
+  assert.equal('role' in told[0].payload, false, 'a role reached the model on a share that has none');
+  assert.equal(told[0].urgency, 'normal'); // not worth waking anyone over
+  assert.equal((await outboxFor(kapish.id, 'share_offer')).length, 0, 'they were asked whether they want it');
+  assert.equal((await outboxFor(miron.id, 'share_response')).length, 0);
 });
 
 test('connection approval notifies the requester and enables everything at once', async () => {
@@ -242,6 +243,23 @@ test('connection approval notifies the requester and enables everything at once'
   // ...and it must not send the agent chasing feature toggles any more
   assert.match(text, /enabled automatically/);
   assert.ok(!text.includes('call set_connection_feature'), 'no toggle step in the approval flow');
+});
+
+test('not connected is said about the pair, and reads the same for a user and a stranger', async () => {
+  // Miron → עידן, 2026-09-30: עידן had used Olma for three weeks, the tool said
+  // "not connected", and the model told Miron he was "not connected in Olma".
+  const idan = await makeUser(db.pool, '+972621000009', { firstName: 'Idan' });
+  const known = await call(miron, 'start_meeting_coordination', { title: 'x', phones: [idan.phone] });
+  const stranger = await call(miron, 'start_meeting_coordination', { title: 'x', phones: ['+972621999999'] });
+  assert.match(known, /not_connected/);
+  assert.match(known, /never say or imply they are not on it/);
+  // The phone is echoed back on the error; everything else must be identical,
+  // or the wording itself says which number is a user.
+  const strip = (t) => t.replace(/phone="[^"]*"/, '');
+  assert.equal(strip(known), strip(stranger));
+
+  const asked = await call(miron, 'request_connection', { phone: idan.phone, reason: 'לתאם פגישה' });
+  assert.match(asked, /never about whether they use Allma/);
 });
 
 test('a relayed message reaches the other side fenced, attributed, deduped', async () => {
@@ -1036,3 +1054,28 @@ test('a constraint that rules out a time on the table is that time declined', as
   assert.ok(theirs.constraints.includes('לא בערב'));
 });
 
+test('the details of the errand come back with the approval, dated', async () => {
+  // Miron → עידן, 2026-09-30: the days he offered lived only in a session that
+  // resets every night; the reason alone came back.
+  const idan = await makeUser(db.pool, '+972621000008', { firstName: 'Idan' });
+  const details = 'שני, שלישי או רביעי בערב, בשבוע הבא';
+  await call(miron, 'request_connection', { phone: idan.phone, reason: 'לתאם פגישה', message: details });
+  const [req] = await outboxFor(idan.id, 'connection_request');
+  const { instructionFor } = require('../src/channels/openclaw');
+  // The person asked sees the days too, not only that a meeting is wanted.
+  assert.ok(instructionFor({ kind: 'connection_request', payload: req.payload }).includes(`<<<${details}>>>`));
+
+  await call(idan, 'respond_to_connection_request', { connection_id: req.payload.connectionId, decision: 'approve' });
+  const resp = (await outboxFor(miron.id, 'connection_response'))
+    .find((r) => r.payload.connectionId === req.payload.connectionId);
+  assert.equal(resp.payload.message, details);
+  const { rows: [conn] } = await db.pool.query('SELECT invited_at FROM connections WHERE id = $1', [req.payload.connectionId]);
+  const day = conn.invited_at.toISOString().slice(0, 10);
+  const text = instructionFor({ kind: 'connection_response', payload: resp.payload });
+  assert.ok(text.includes(`<<<${details}>>>`), 'the details reach the agent, fenced as data');
+  assert.ok(text.includes(`said ${day}`), 'with the day they were said, so "next week" can be resolved');
+
+  // A request with no details reads exactly as before.
+  const bare = instructionFor({ kind: 'connection_response', payload: { ...resp.payload, message: null } });
+  assert.ok(!bare.includes('The details they gave'));
+});

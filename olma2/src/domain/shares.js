@@ -79,6 +79,19 @@ const LIVE = `('pending_viewer','pending_owner','active')`;
 // `inviterId` is whoever is asking — the person who opened the task or
 // anybody already on it. The sharing grant is checked between THEM and the
 // person they are inviting; the row is owned by the task's owner.
+//
+// The share is ACTIVE from the moment it is written, and the person it puts
+// on the task is told afterwards (owner, 2026-09-30: "אין צורך שעולמה תשאל …
+// היא פשוט מתווספת אליו והוא מקבל עדכון אחרי שהיא כבר בפנים"). The consent
+// is the `sharing` grant, and the gate above checks it on BOTH sides: somebody
+// who switched sharing off toward the inviter is still refused, never added.
+// Until then a share waited in 'pending_viewer' for a yes, and three of Maya's
+// never reached her list because the question was not answered. The status
+// stays in the schema and the readers for the rows already written that way.
+//
+// The message is sent HERE, not by the tool that called: the /me page's share
+// button went through this function too and told nobody, so a task shared from
+// the page sat pending with the other person never hearing of it.
 async function offerShare(client, inviterId, taskId, viewerUserId) {
   const gate = await grants.requireFeatureBetween(client, inviterId, viewerUserId, 'sharing');
   if (!gate.ok) return gate;
@@ -91,7 +104,7 @@ async function offerShare(client, inviterId, taskId, viewerUserId) {
     return err('conflict', 'that is the person whose task this is');
   }
   const { rows } = await client.query(
-    `SELECT id, parent_id FROM tasks WHERE id = $1 AND owner_id = $2 AND archived_at IS NULL`,
+    `SELECT id, parent_id, title FROM tasks WHERE id = $1 AND owner_id = $2 AND archived_at IS NULL`,
     [taskId, acting.ownerId]
   );
   if (!rows[0]) return err('not_found', 'task not found');
@@ -99,8 +112,8 @@ async function offerShare(client, inviterId, taskId, viewerUserId) {
   let share;
   try {
     const ins = await client.query(
-      `INSERT INTO shares (connection_id, owner_id, viewer_id, task_id, role, status, requested_by)
-       VALUES ($1, $2, $3, $4, 'editor', 'pending_viewer', $5) RETURNING *`,
+      `INSERT INTO shares (connection_id, owner_id, viewer_id, task_id, role, status, requested_by, responded_at)
+       VALUES ($1, $2, $3, $4, 'editor', 'active', $5, now()) RETURNING *`,
       [gate.data.connection.id, acting.ownerId, viewerUserId, taskId, inviterId]
     );
     share = ins.rows[0];
@@ -108,7 +121,26 @@ async function offerShare(client, inviterId, taskId, viewerUserId) {
     if (e.code === '23505') return err('conflict', 'a live share for this task and person already exists');
     throw e;
   }
-  await audit.record(client, inviterId, 'share.offered', { shareId: share.id, taskId, viewerId: viewerUserId });
+  // `share.offered` is the event metrics counts as a share made, so it keeps
+  // its name; nothing will ever answer it, so no `share.accepted` follows.
+  await audit.record(client, inviterId, 'share.offered', {
+    shareId: share.id, taskId, viewerId: viewerUserId, added: true,
+  });
+  const { rows: [who] } = await client.query(
+    `SELECT first_name, last_name, phone FROM users WHERE id = $1`, [inviterId]);
+  await enqueue(client, {
+    userId: viewerUserId,
+    kind: 'share_added',
+    // Somebody else's act, told after the fact — not a moment they chose.
+    urgency: 'normal',
+    payload: {
+      shareId: Number(share.id),
+      taskId: Number(taskId),
+      taskTitle: rows[0].title,
+      byName: (who && ([who.first_name, who.last_name].filter(Boolean).join(' ') || who.phone)) || null,
+    },
+    idempotencyKey: `sadded:${share.id}`,
+  });
   return ok({ share });
 }
 

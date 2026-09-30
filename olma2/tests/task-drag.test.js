@@ -45,7 +45,6 @@ after(async () => { if (db) await db.teardown(); });
 async function shareWithFriend(taskId, from = me, to = friend) {
   const offer = await tx((c) => shares.offerShare(c, from.id, taskId, to.id));
   okRes(offer);
-  okRes(await tx((c) => shares.respondToShare(c, to.id, offer.data.share.id, 'accept')));
   return offer.data.share;
 }
 

@@ -87,7 +87,7 @@ test('a sharer reaches at most three new numbers a day', async () => {
   assert.equal((await introsTo('+972631000203')).length, 0);
 });
 
-test('when they join and approve, the task is offered to them without anybody asking again', async () => {
+test('when they join and approve, the task is on their list without anybody asking again', async () => {
   const phone = '+972631000300';
   const taskId = await taskOf(dana, 'לתאם טיול');
   await call(dana, 'share_task_with', { task_id: taskId, phone });
@@ -101,11 +101,14 @@ test('when they join and approve, the task is offered to them without anybody as
   await withTx(db.pool, (c) => connections.attachProvisionedTarget(c, conn.id, p.id));
   await call(p, 'respond_to_connection_request', { connection_id: Number(conn.id), decision: 'approve' });
 
-  const offers = (await db.pool.query(
-    `SELECT payload FROM outbox WHERE user_id = $1 AND kind = 'share_offer'`, [p.id])).rows;
-  assert.equal(offers.length, 1);
-  assert.equal(offers[0].payload.taskTitle, 'לתאם טיול');
-  assert.equal(offers[0].payload.byName, 'דנה');
+  const told = (await db.pool.query(
+    `SELECT payload FROM outbox WHERE user_id = $1 AND kind = 'share_added'`, [p.id])).rows;
+  assert.equal(told.length, 1);
+  assert.equal(told[0].payload.taskTitle, 'לתאם טיול');
+  assert.equal(told[0].payload.byName, 'דנה');
+  const { rows: live } = await db.pool.query(
+    `SELECT status FROM shares WHERE viewer_id = $1 AND task_id = $2`, [p.id, taskId]);
+  assert.deepEqual(live.map((r) => r.status), ['active']);
 
   const res = await withTx(db.pool, (c) => experiments.results(c, 'task_share_intro'));
   assert.equal(res.arms.reduce((n, a) => n + a.exposed, 0) >= 2, true);
