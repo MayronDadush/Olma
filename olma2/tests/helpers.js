@@ -27,6 +27,21 @@ const path = require('node:path');
 if (!process.env.OLMA_OPENCLAW_HOME) {
   process.env.OLMA_OPENCLAW_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'olma2-test-home-'));
 }
+// ...and never the live gateway's CLI. Six places in src/ spawn `openclaw` by
+// name, and on a laptop or a GitHub runner there is no such binary, so every
+// one of them fails at once and the suite is written for that. On the box
+// there IS one, with production's HOME behind it: intake.test.js's "CLI
+// failures surface as thrown errors" ran the real CLI on every deploy and
+// waited out a 10s timeout for it. So a test process finds a stand-in first
+// on its PATH that fails the way a missing binary does — the box now runs
+// what CI runs. Children inherit it with the rest of process.env.
+{
+  const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'olma2-test-bin-'));
+  fs.writeFileSync(path.join(bin, 'openclaw'),
+    '#!/bin/sh\necho "openclaw: not available to the test suite (tests/helpers.js)" >&2\nexit 127\n',
+    { mode: 0o755 });
+  process.env.PATH = bin + path.delimiter + (process.env.PATH || '');
+}
 if (!process.env.OLMA_OPENCLAW_CONFIG) {
   // A real shape, not an empty object. Two things read this and both draw the
   // wrong conclusion from a stub: openclaw-config picks its entries-vs-list
