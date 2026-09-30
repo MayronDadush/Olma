@@ -890,6 +890,10 @@ button.row:active{background:var(--bg-tint)}
 .homecard.zero .homeplus{display:grid}
 .homecard.zero{background:linear-gradient(160deg,var(--accent-soft),var(--surface) 70%)}
 .homecard > i.hot{color:var(--accent);font-weight:600}
+/* What waits on YOU among the meetings — the same number the heading above
+   counts, in the place the tasks card says "N להיום" (2026-09-30). */
+.homecard > i.gold{color:var(--gold);font-weight:600;display:inline-flex;align-items:center;gap:5px}
+.homecard > i.gold::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--gold-arc);flex:none}
 .homechev{position:absolute;top:22px;inset-inline-end:16px}
 @media (max-width:340px){.homenum{font-size:32px}.homecard{padding:14px 12px 13px}}
 /* The first visit points at the tab bar once. People who landed here from a
@@ -5261,7 +5265,7 @@ button.srow:active{background:var(--bg-tint)}
       "home.meets.n0":"פגישות שבתיאום","home.meets.n1":"פגישה בתיאום","home.meets.nN":"פגישות שבתיאום",
       "home.tasksStart":"הוסיפו משימה","home.tasksStartSub":"או פשוט כתבו לעולמה בוואטסאפ את המשימה",
       "home.meetsStart":"תאמו פגישה","home.meetsStartSub":"עולמה תמצא זמן שמתאים לכולם דרך הוואטסאפ",
-      "home.tasksToday":"{n} להיום","home.tasksGo":"לרשימה המלאה","home.meetsGo":"לכל הפגישות",
+      "home.tasksToday":"{n} להיום","home.tasksGo":"לרשימה המלאה","home.meetsGo":"לכל הפגישות","home.meetsYou":"{n} מחכות לך",
       "news.pill":"יש עדכונים · לרענן","news.done":"עודכן",
       "home.todayH":"היום שלך","home.clear":"אין משהו שמחכה להיום.",
       "home.due.n0":"","home.due.n1":"משימה אחת להיום","home.due.nN":"{n} משימות להיום",
@@ -5646,7 +5650,7 @@ button.srow:active{background:var(--bg-tint)}
       "home.meets.n0":"meetings being arranged","home.meets.n1":"meeting being arranged","home.meets.nN":"meetings being arranged",
       "home.tasksStart":"Add a task","home.tasksStartSub":"or just send Allma the task on WhatsApp",
       "home.meetsStart":"Set up a meeting","home.meetsStartSub":"Allma finds a time that suits everyone, over WhatsApp",
-      "home.tasksToday":"{n} for today","home.tasksGo":"See the full list","home.meetsGo":"All meetings",
+      "home.tasksToday":"{n} for today","home.tasksGo":"See the full list","home.meetsGo":"All meetings","home.meetsYou":"{n} waiting on you",
       "news.pill":"New updates · Refresh","news.done":"Updated",
       "home.todayH":"Your day","home.clear":"Nothing is waiting on today.",
       "home.due.n0":"","home.due.n1":"1 task for today","home.due.nN":"{n} tasks for today",
@@ -7362,16 +7366,24 @@ button.srow:active{background:var(--bg-tint)}
     var ts = $("#homeTasksSub"), ms = $("#homeMeetsSub");
     ts.textContent = !nT ? t("home.tasksStartSub") : dueNow ? t("home.tasksToday", {n:dueNow}) : t("home.tasksGo");
     ts.classList.toggle("hot", nT > 0 && dueNow > 0);
-    ms.textContent = nM ? t("home.meetsGo") : t("home.meetsStartSub");
+    var waiting = homeWaiting();
+    ms.textContent = !nM ? t("home.meetsStartSub")
+      : waiting.length ? t("home.meetsYou", {n:waiting.length}) : t("home.meetsGo");
+    ms.classList.toggle("gold", nM > 0 && waiting.length > 0);
     renderToday(due, nT + nM);
+  }
+  /* The meetings still waiting on an answer from you — one list, read by the
+     heading and by the card, so the two numbers cannot disagree. */
+  function homeWaiting(){
+    return (MEETS || []).filter(function(m){
+      return !m.settled && m.opts.some(function(o){ return !mtAns(m, 0, o.id); });
+    });
   }
   /* The top of the home page. Somebody with nothing yet — a first visit —
      still gets the welcome, because "nothing today" means nothing to them;
      anybody with a list gets their day, as one line of counts. */
   function renderToday(due, anything){
-    var waiting = (MEETS || []).filter(function(m){
-      return !m.settled && m.opts.some(function(o){ return !mtAns(m, 0, o.id); });
-    });
+    var waiting = homeWaiting();
     if(!anything){
       $("#toolsH").textContent = brandTag(myGender());
       $("#homeP").textContent = t("home.p");
