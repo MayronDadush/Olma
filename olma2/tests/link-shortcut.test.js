@@ -203,7 +203,8 @@ test('no match, nobody behind the agent, or the eval user: no claim, and the mod
   const paused = await person(5);
   await db.pool.query(`UPDATE users SET status = 'pending' WHERE id = $1`, [paused.id]);
   assert.deepEqual(await ask({ agentId: `u-${paused.id}`, body: 'קישור' }), { ok: true, claim: false });
-  assert.deepEqual(await ask({ agentId: 'intake', body: 'קישור' }), { ok: false, error: 'bad agentId' });
+  // The greeter goes to the game path (stage 4ב), which claims nothing it cannot place.
+  assert.deepEqual(await ask({ agentId: 'intake', body: 'קישור' }), { ok: true, claim: false });
   assert.deepEqual(await ask({ agentId: 'g-7', body: 'קישור' }), { ok: false, error: 'bad agentId' });
 });
 
@@ -272,7 +273,20 @@ test('the plugin fails open, and a long message or a room never leaves the gatew
   assert.equal(await h({ sessionKey: DM, body: 'א'.repeat(81) }, {}), undefined);
   assert.equal(await h({ sessionKey: DM, body: '   ' }, {}), undefined);
   assert.equal(await h({ sessionKey: 'agent:g-7:whatsapp:group:1203634@g.us', body: 'קישור' }, {}), undefined);
-  assert.equal(await h({ sessionKey: 'agent:intake:whatsapp:direct:+972526269826', body: 'קישור' }, {}), undefined);
+  assert.equal(await h({ sessionKey: 'agent:intake:whatsapp:direct:+97252', body: 'קישור' }, {}), undefined,
+    'a greeter key with no whole number on it');
+  assert.equal(await h({ sessionKey: 'agent:ggreet:whatsapp:direct:+972526269826', body: 'קישור' }, {}), undefined);
   assert.equal(await h({ sessionKey: DM, body: 'קישור', isGroup: true }, {}), undefined);
   assert.equal(sent.length, 0, 'none of them asked brokerd anything');
+});
+
+test('the DM greeter\'s session goes to brokerd as "intake" with its key, and its claim is the reply', async () => {
+  const key = 'agent:intake:whatsapp:direct:+972526269826';
+  const { connect, sent } = fakeConnect({ id: 1, ok: true, claim: true, text: 'היי, אני עולמה', kind: 'game' });
+  const h = plugin.buildLinkShortcutHandler({ connect, log: () => {} });
+  assert.deepEqual(await h({ sessionKey: key, body: 'משחק K7M2Q', messageId: '3EB0X' }, {}),
+    { handled: true, text: 'היי, אני עולמה' });
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].method, 'dashboard_link_shortcut');
+  assert.deepEqual(sent[0].params, { agentId: 'intake', body: 'משחק K7M2Q', sessionKey: key, messageId: '3EB0X' });
 });

@@ -93,6 +93,17 @@ async function count(c, table, nightId) {
 async function playerExists(c, nightId, pid) {
   return (await c.query('SELECT 1 FROM players WHERE night_id = $1 AND id = $2', [nightId, pid])).rowCount > 0;
 }
+// A buy-in, a count, or any part in an order: paying it, eating from it, or a
+// line of its own or of its paid-back record.
+async function hasMoney(c, nightId, pid) {
+  const { rowCount } = await c.query(
+    `SELECT 1 FROM buyins WHERE night_id = $1 AND player_id = $2
+     UNION ALL SELECT 1 FROM cashouts WHERE night_id = $1 AND player_id = $2
+     UNION ALL SELECT 1 FROM food WHERE night_id = $1 AND (
+       data->>'payer' = $2 OR data->'eaters' ? $2 OR data->'own' ? $2 OR data->'paid' ? $2)
+     LIMIT 1`, [nightId, pid]);
+  return rowCount > 0;
+}
 
 // Keeps game_results true to the night after every write: one row per player
 // while the count closes, none while it does not. closed_at on the night
@@ -146,6 +157,16 @@ async function write(pool, token, w) {
       const p = v.gamePatch(w.data);
       const sets = Object.keys(p).map((k, i) => `${k} = $${i + 2}`);
       await c.query(`UPDATE nights SET ${sets.join(', ')} WHERE id = $1`, [n.id, ...Object.values(p)]);
+    } else if (col === 'players' && op === 'delete') {
+      // "Added by mistake" (owner, 2026-10-01): only a seat with no money on
+      // it, and never once the count has closed. Anybody holding the link can
+      // write, so a seat carrying a debt must not be one tap from gone —
+      // its buy-ins, its count and its food come off first, one by one.
+      const pid = v.id(w.id);
+      if (n.closed_at) refuse('closed');
+      if (!await playerExists(c, n.id, pid)) refuse('not_found');
+      if (await hasMoney(c, n.id, pid)) refuse('has_money');
+      await c.query('DELETE FROM players WHERE night_id = $1 AND id = $2', [n.id, pid]);
     } else if (col === 'players') {
       if (op !== 'set') refuse('bad_op');
       const pid = v.id(w.id), d = v.player(w.data);

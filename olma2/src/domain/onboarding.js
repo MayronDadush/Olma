@@ -81,4 +81,26 @@ function openingMessage(locale, overrides) {
   return templates.textFor(openingKey(locale), overrides);
 }
 
-module.exports = { openingMessage, openingKey, OPENING, PREVIOUS_OPENINGS };
+// The privacy link reaches each person ONCE, ever (owner, 2026-10-01), and is
+// stamped on them as `users.privacy_link_sent_at` (migration 104) by whichever
+// voice said it. Read off what was actually said, never off whether the rest
+// of the copy was recognised: a greeter that paraphrased the owner's words and
+// kept the link has still said it.
+const PRIVACY_HOST_PATH = 'allma.world/privacy';
+
+function carriesPrivacyLink(text) {
+  return typeof text === 'string' && text.includes(PRIVACY_HOST_PATH);
+}
+
+// The copy without its privacy line, for somebody who has already read it.
+// Drops every line carrying the link and the blank line it leaves at the end,
+// so a rewording from the admin page that moves the line still loses it.
+function withoutPrivacyLine(text) {
+  if (!carriesPrivacyLink(text)) return text;
+  return String(text).split('\n').filter((l) => !l.includes(PRIVACY_HOST_PATH)).join('\n').replace(/\s+$/, '');
+}
+
+module.exports = {
+  openingMessage, openingKey, OPENING, PREVIOUS_OPENINGS,
+  carriesPrivacyLink, withoutPrivacyLine,
+};

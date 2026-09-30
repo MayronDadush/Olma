@@ -136,3 +136,21 @@ test('re-running migrations on an up-to-date database is a no-op', async () => {
     } finally { client.release(); }
   } finally { await fresh.teardown(); }
 });
+
+test('test databases are copies of one migrated template, and nobody can connect to it', async () => {
+  // A copy fails while anybody is connected to its source, and a write into the
+  // template would reach every test database after it — so it refuses
+  // connections outright, and this proves the refusal still holds.
+  const { Client } = require('pg');
+  const { templateName } = require('./helpers');
+  const tpl = templateName();
+  const { rows } = await db.pool.query(
+    'SELECT datallowconn FROM pg_database WHERE datname = $1', [tpl]);
+  assert.equal(rows.length, 1, `freshDb() built ${tpl}`);
+  assert.equal(rows[0].datallowconn, false);
+  const url = new URL(db.url);
+  url.pathname = '/' + tpl;
+  const c = new Client({ connectionString: url.toString() });
+  await assert.rejects(() => c.connect(), /not currently accepting connections/);
+  await c.end().catch(() => {});
+});

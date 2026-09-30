@@ -280,7 +280,7 @@ function homeSections(k = (n) => n) {
 // No name on the page (owner, 2026-09-28): the contact is the service's own
 // address. s.11 asks for the controller's identity; that choice is the
 // owner's, flagged for the lawyer.
-const UPDATED = '2026-09-29';
+const UPDATED = '2026-10-01';
 // One minimum age for both documents (the owner, 2026-09-29), and the one
 // domain/under-age.js flags below — so the policy, the terms and the alarm
 // cannot come to disagree.
@@ -470,10 +470,13 @@ function termsPage(lang = 'en') {
     <p>These terms govern your use of ${BRAND} (allma.world), a personal assistant that operates over WhatsApp, operated by an individual developer. By starting a conversation with the assistant, you agree to these terms and to the <a href="/privacy">Privacy Policy</a>, which describes what data is collected and how it is used.</p>
 
     <h2>The service</h2>
-    <p>${BRAND} answers messages, keeps reminders and tasks, coordinates meetings between connected people, and — only if you choose to connect it — reads (and, where you explicitly grant it, edits) Google Calendar and Contacts on your behalf. The service is provided as-is and may change, and features may be added or removed, without prior notice.</p>
+    <p>${BRAND} answers messages, keeps reminders and tasks, coordinates meetings between connected people, and — only if you choose to connect it — reads (and, where you explicitly grant it, edits) Google Calendar and Contacts on your behalf. The service is provided as-is and may change, and features may be added or removed, without prior notice. ${BRAND} is an independent service; it is not affiliated with, endorsed by, or sponsored by WhatsApp LLC or Meta Platforms, Inc.</p>
 
     <h2>Acceptable use</h2>
     <p>Use the service only for your own personal, lawful purposes. Do not use it to harass, impersonate, or send unsolicited messages to others; do not attempt to access another person's account or data; do not attempt to disrupt, reverse-engineer, or overload the service.</p>
+
+    <h2>Your content</h2>
+    <p>What you send remains yours. You allow us to store, process and transmit it — including to the providers listed in the <a href="/privacy">Privacy Policy</a> — only to provide the service to you, and only for as long as that policy says it is kept. We do not use it for any other purpose, do not sell it, and do not use it to train models.</p>
 
     <h2>Who may use it</h2>
     <p>You must be at least ${MIN_AGE} years old to use the service. If you are younger, please do not use it; if we learn that someone under ${MIN_AGE} is using it, we may ask about it or close the account.</p>
@@ -483,6 +486,9 @@ function termsPage(lang = 'en') {
 
     <h2>No warranty</h2>
     <p>The service is provided without warranties of any kind, express or implied. A reminder, a calendar read, or a coordinated meeting time may be delayed, wrong, or not delivered — do not rely on it for anything where that failure would cause serious harm (medical, legal, financial, or safety-critical decisions).</p>
+
+    <h2>Actions on your behalf</h2>
+    <p>When you ask the assistant to act for you — send a message to another person, invite people to a meeting, or create or change a calendar event — it acts on your instruction, and you are responsible for that request and for what is sent in your name. The assistant can misunderstand; when it matters, check what it did. Anything it does in your Google account stays within the permissions you granted, which you can revoke at any time.</p>
 
     <h2>Limitation of liability</h2>
     <p>To the maximum extent permitted by law, the developer is not liable for any indirect, incidental, or consequential damages arising from use of, or inability to use, the service.</p>
@@ -504,10 +510,13 @@ function termsPage(lang = 'en') {
       <p>תנאים אלה חלים על השימוש ב${ASSISTANT} (allma.world), עוזרת אישית שפועלת דרך וואטסאפ ומופעלת על ידי מפעיל יחיד. פתיחת שיחה עם העוזרת מהווה הסכמה לתנאים אלה ול<a href="/privacy">מדיניות הפרטיות</a>, המפרטת אילו נתונים נאספים וכיצד נעשה בהם שימוש.</p>
 
       <h3>השירות</h3>
-      <p>${ASSISTANT} עונה להודעות, שומרת תזכורות ומשימות, מתאמת פגישות בין אנשים מחוברים, ו — רק אם תבחרו לחבר — קוראת (ובמקום שאישרתם עריכה במפורש, גם עורכת) יומן Google ואנשי קשר בשמכם. השירות ניתן כפי שהוא (as-is), ותכונות עשויות להשתנות, להתווסף או להוסר, ללא הודעה מוקדמת.</p>
+      <p>${ASSISTANT} עונה להודעות, שומרת תזכורות ומשימות, מתאמת פגישות בין אנשים מחוברים, ו — רק אם תבחרו לחבר — קוראת (ובמקום שאישרתם עריכה במפורש, גם עורכת) יומן Google ואנשי קשר בשמכם. השירות ניתן כפי שהוא (as-is), ותכונות עשויות להשתנות, להתווסף או להוסר, ללא הודעה מוקדמת. ${ASSISTANT} היא שירות עצמאי, שאינו קשור ל־WhatsApp LLC או ל־Meta Platforms, Inc., ואינו מאושר או ממומן על ידן.</p>
 
       <h3>שימוש מותר</h3>
       <p>השתמשו בשירות אך ורק למטרות אישיות וחוקיות. אין להשתמש בו כדי להטריד, להתחזות, או לשלוח הודעות לא רצויות לאחרים; אין לנסות לגשת לחשבון או למידע של אדם אחר; אין לנסות לשבש, להנדס לאחור, או להעמיס על השירות.</p>
+
+      <h3>התוכן שלכם</h3>
+      <p>מה שאתם שולחים נשאר שלכם. אתם מתירים לנו לשמור, לעבד ולהעביר אותו — כולל לספקים המפורטים ב<a href="/privacy">מדיניות הפרטיות</a> — אך ורק כדי לתת לכם את השירות, ורק למשך הזמן שהמדיניות קובעת. איננו משתמשים בו לשום מטרה אחרת, לא מוכרים אותו ולא משתמשים בו לאימון מודלים.</p>
 
       <h3>מי יכול להשתמש</h3>
       <p>השימוש בשירות מותר מגיל ${MIN_AGE} ומעלה. אם אתם צעירים יותר, אנא אל תשתמשו בו. אם נגלה שמישהו מתחת לגיל ${MIN_AGE} משתמש בשירות, ייתכן שנברר את זה או שנסגור את החשבון.</p>
@@ -517,6 +526,9 @@ function termsPage(lang = 'en') {
 
       <h3>ללא אחריות</h3>
       <p>השירות ניתן ללא אחריות מכל סוג, מפורשת או משתמעת. תזכורת, קריאת יומן, או תיאום זמן פגישה עלולים להתעכב, לטעות, או לא להגיע — אין להסתמך על השירות בכל דבר שבו כשל כזה יגרום לנזק חמור (החלטות רפואיות, משפטיות, כספיות, או קריטיות לבטיחות).</p>
+
+      <h3>פעולות בשמכם</h3>
+      <p>כשאתם מבקשים מהעוזרת לפעול בשבילכם — לשלוח הודעה לאדם אחר, להזמין אנשים לפגישה, או ליצור או לשנות אירוע ביומן — היא פועלת לפי הבקשה שלכם, ואתם אחראים לבקשה ולמה שנשלח בשמכם. העוזרת עלולה לטעות בהבנה; כשזה חשוב, בדקו מה היא עשתה. כל פעולה בחשבון Google שלכם נעשית רק במסגרת ההרשאות שנתתם, וניתן לבטל אותן בכל רגע.</p>
 
       <h3>הגבלת אחריות</h3>
       <p>ככל שהחוק מתיר זאת, המפעיל אינו אחראי לכל נזק עקיף, תוצאתי או מקרי הנובע מהשימוש בשירות או מחוסר היכולת להשתמש בו.</p>

@@ -1,8 +1,9 @@
 'use strict';
-// gamesd's HTTP face. Caddy passes exactly two public shapes here:
+// gamesd's HTTP face. Caddy passes exactly three public shapes here:
 //   GET  /night/<token>                the page
 //   *    /night/<token>/api/<action>   its API (state, events, write, next)
-// Everything else (/health, POST /api/nights, POST /api/tool) is for the box itself: Caddy
+//   GET  /g/<code>                     the invite's short link, into a chat with Olma
+// Everything else (/health, POST /api/nights, /api/tool, /api/open, /api/join) is for the box itself: Caddy
 // never routes it, and the handler also refuses anything that arrived through
 // a proxy, so a Caddyfile mistake cannot open night creation to the world.
 const http = require('http');
@@ -13,6 +14,7 @@ const { Refused } = require('./validate');
 const { runTool } = require('./tools');
 const { resolveIdentity } = require('./identity');
 const { announceClose } = require('./announce');
+const { openFor, joinByCode, CODE_RE } = require('./join');
 
 const PAGE_FILE = path.join(__dirname, '..', 'public', 'night.html');
 const MAX_BODY = 32 * 1024;
@@ -21,6 +23,20 @@ const MAX_LISTENERS_PER_NIGHT = 60;
 const MAX_LISTENERS = 600;
 
 const STATUS = { not_found: 404, too_many: 429, rate_limited: 429 };
+
+// Olma's WhatsApp number, the same default as olma2's referral.WA_NUMBER.
+const waNumber = () => String(process.env.OLMA_WA_NUMBER || '972559347282').replace(/\D/g, '');
+
+// The invite's "join from WhatsApp" line (olma2 game_invite): a short link that
+// opens a chat with Olma holding "משחק K7M2Q", which brokerd answers by code.
+// Every well-formed code redirects, open night or not, and nothing is read:
+// a link that answered differently for a live code would be a way to find one.
+// The reply to a dead code is Olma's to give, in the chat.
+function shortLink(p) {
+  const m = p.match(/^\/g\/([A-Za-z0-9]{5})$/);
+  if (!m || !CODE_RE.test(m[1].toUpperCase())) return null;
+  return `https://wa.me/${waNumber()}?text=${encodeURIComponent('משחק ' + m[1].toUpperCase())}`;
+}
 
 function createServer({ pool, publicBase = '', page, identify = resolveIdentity, announce = announceClose } = {}) {
   const html = page ?? fs.readFileSync(PAGE_FILE, 'utf8');
@@ -129,6 +145,26 @@ function createServer({ pool, publicBase = '', page, identify = resolveIdentity,
         if (limited('u:' + who.user.id)) return send(res, 200, { text: 'ERROR rate_limited: too many calls this minute' });
         const text = await runTool(name, a, { pool, user: who.user, publicBase, onState: broadcast, announce });
         return send(res, 200, { text });
+      }
+
+      // A night opened, or a seat taken, straight from a private message with
+      // no model in between (olma2 src/domain/game-shortcut.js). brokerd has
+      // already resolved the sender, so the user id is its word — which is
+      // why, like the two routes above, nothing but the box may call these.
+      if ((p === '/api/open' || p === '/api/join') && req.method === 'POST') {
+        if (!isLocal(req)) return send(res, 404, { error: 'not_found' });
+        const body = await readBody(req);
+        const out = p === '/api/open'
+          ? await openFor(pool, body, { publicBase })
+          : await joinByCode(pool, body, { publicBase, onState: broadcast });
+        return send(res, 200, out);
+      }
+
+      const wa = shortLink(p);
+      if (wa) {
+        if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, { error: 'method' });
+        res.writeHead(302, { ...base, Location: wa });
+        return res.end();
       }
 
       const m = p.match(/^\/night\/([A-Za-z0-9]{22})(?:\/api\/(state|events|write|next))?$/);

@@ -79,11 +79,36 @@ async function queue(client, params, { now = new Date() } = {}) {
   return { ok: true, queued, skipped: v.userIds.filter((u) => !holders.has(u)) };
 }
 
-// The raw pipe's text for a row of this kind (proactive-text.rawPipeTextFor).
+// The invite a host forwards to their group (domain/game-shortcut.js, stage
+// 4א): the second message after "פתחתי את הערב", separate so that forwarding
+// it carries nothing meant for the host alone. It rides this module because it
+// is the same thing to deliver — both languages drawn at queue time, sent as
+// drawn on the raw pipe, the reader's locale choosing — and one list of game
+// kinds is what the gate, the worker and the raw pipe each test.
+const INVITE_KIND = 'game_invite';
+const KINDS = new Set([KIND, INVITE_KIND]);
+// An invite is the answer to a message they sent a moment ago; hours later it
+// is a stale link to a night that may be over.
+const INVITE_EXPIRES_MS = 12 * 3600_000;
+
+async function queueInvite(client, { userId, code, texts }, { now = new Date() } = {}) {
+  const he = texts && typeof texts.he === 'string' ? texts.he : '';
+  const en = texts && typeof texts.en === 'string' ? texts.en : '';
+  if (!he.trim() || !en.trim()) return { ok: false, error: 'texts.he and texts.en are both required' };
+  return enqueue(client, {
+    userId, kind: INVITE_KIND,
+    payload: { code: String(code || ''), texts: { he, en } },
+    urgency: 'urgent',
+    expiresAt: new Date(now.getTime() + INVITE_EXPIRES_MS),
+    idempotencyKey: `${INVITE_KIND}:${String(code || '')}:${userId}`,
+  });
+}
+
+// The raw pipe's text for a row of either kind (proactive-text.rawPipeTextFor).
 function textFor(payload, locale) {
   const t = (payload && payload.texts) || {};
   const en = String(locale || '').trim().toLowerCase().startsWith('en');
   return String((en ? t.en : t.he) || t.he || t.en || '');
 }
 
-module.exports = { KIND, queue, validate, keyFor, textFor, EXPIRES_MS };
+module.exports = { KIND, INVITE_KIND, KINDS, queue, queueInvite, validate, keyFor, textFor, EXPIRES_MS, INVITE_EXPIRES_MS };

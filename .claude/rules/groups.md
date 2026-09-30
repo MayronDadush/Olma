@@ -315,7 +315,7 @@ have already had to be argued for.
   "עוזרת AI" on the first line, "שולחת לך עכשיו את התיאום", and the privacy
   link — all a first message legally owes. What she does comes AFTER the
   coordination: their first turn adds one line about it
-  (`turn.greetedByRoomOpening`), or the welcome follow-up says it the next
+  (`turn.shortOpeningPending`, `room`), or the welcome follow-up says it the next
   morning (`intake.nextMorning`, `payload.roomOpening`), and the gate's
   `answered_in_turn` drop keeps it to once. `intake-room.saidRoomOpening`
   recognises it by the room line, and it stamps `opening_sent_at` like the

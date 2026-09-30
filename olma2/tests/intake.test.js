@@ -443,6 +443,36 @@ test('the greeter answered the question instead of opening — so their OWN agen
   assert.match(userMd, /אני יכול מחר/, 'the first message a group participant sends is the payload');
 });
 
+test('a greeter that reworded the copy but kept the privacy link has said the link, and the person is stamped for it', async () => {
+  // The owner's rule (2026-10-01): the link reaches each person ONCE, ever.
+  // A paraphrase is not the owner's opening, so opening_sent_at stays NULL and
+  // their own agent still introduces her — but without the link they read.
+  const reworded = 'היי! אני עולמה, עוזרת AI שעושה סדר במשימות ובתיאומים 🙂\n\n'
+    + 'מה אני שומרת ואיך מוחקים: https://allma.world/privacy';
+  const out = await withTx(db.pool, (c) => intake.sweepIntakeSessions(c, {
+    configPath,
+    listSessions: async () => [{ phone: '+972601000243', key: 'k', ageMs: 40_000 }],
+    readGreeterReply: async () => reworded,
+    readFirstMessage: async () => 'היי',
+  }));
+  assert.deepEqual(out.provisioned, ['+972601000243']);
+  const { rows } = await db.pool.query(
+    `SELECT opening_sent_at, privacy_link_sent_at FROM users WHERE phone = '+972601000243'`);
+  assert.equal(rows[0].opening_sent_at, null, 'not the owner\'s words');
+  assert.ok(rows[0].privacy_link_sent_at, 'but the link was said, and that is on the person now');
+
+  // And a greeter that said no link stamps nothing.
+  await withTx(db.pool, (c) => intake.sweepIntakeSessions(c, {
+    configPath,
+    listSessions: async () => [{ phone: '+972601000244', key: 'k', ageMs: 40_000 }],
+    readGreeterReply: async () => 'היי, מה שלומך?',
+    readFirstMessage: async () => 'היי',
+  }));
+  const { rows: none } = await db.pool.query(
+    `SELECT privacy_link_sent_at FROM users WHERE phone = '+972601000244'`);
+  assert.equal(none[0].privacy_link_sent_at, null);
+});
+
 test('a greeter that never answers cannot strand somebody outside the system', async () => {
   const out = await withTx(db.pool, (c) => intake.sweepIntakeSessions(c, {
     configPath,
@@ -1339,6 +1369,16 @@ test('CLI failures surface as thrown errors, never as "no new users"', async () 
     configPath,
     listSessions: async () => { throw new Error('openclaw sessions list timed out'); },
   })));
+});
+
+test('a test process never reaches the real openclaw CLI', () => {
+  // On the box the real one is on PATH with production's HOME behind it; the
+  // test above used to run it on every deploy. tests/helpers.js puts a
+  // stand-in first, and this is what says it is still there.
+  const { spawnSync } = require('node:child_process');
+  const r = spawnSync('openclaw', ['--version'], { encoding: 'utf8' });
+  assert.equal(r.status, 127);
+  assert.match(r.stderr, /not available to the test suite/);
 });
 
 // 2026-09-01: the gateway's own 30-minute heartbeat polls every agent, and any
@@ -2468,4 +2508,63 @@ test('a re-provision never moves joined_via', async () => {
   await withTx(db.pool, (c) => provisionUser(c, { phone, configPath, joinedVia: 'direct' }));
   const { rows } = await db.pool.query(`SELECT joined_via FROM users WHERE phone = $1`, [phone]);
   assert.equal(rows[0].joined_via, 'room');
+});
+
+// ---- a new number from a game night (stage 4ב, owner 2026-10-01) -----------
+// brokerd answered them by code and left a pending row with the introduction
+// stamped and a `games.intake_claim` audit (brokerd/server.js,
+// handleIntakeGameShortcut). The sweep gives them an agent on its next tick:
+// no greeter to wait for, the pack's tools in the first write, and what Olma
+// does in the morning — never during the game.
+test('intake sweep: a game night\'s new player gets an agent at once, with the pack, and hears what she does in the morning', async () => {
+  const audit = require('../src/domain/audit');
+  const phone = '+972601000400';
+  const p = await makeUser(db.pool, phone, { status: 'pending', locale: 'en', firstName: null });
+  await db.pool.query('UPDATE users SET opening_sent_at = now() WHERE id = $1', [p.id]);
+  await withTx(db.pool, async (c) => {
+    await audit.record(c, p.id, 'games.intake_claim', { outcome: 'joined', lang: 'en', introduced: true });
+    await c.query(`INSERT INTO user_packs (user_id, pack, via) VALUES ($1, 'games', 'code')`, [p.id]);
+    await flags.setFlag(c, 'registration_open', true);
+    // A table of new players is not a flood: with the cap at nothing, the
+    // breaker still counts only the greeter's sessions.
+    await flags.setFlag(c, 'intake_hourly_cap', 0);
+  });
+  try {
+    assert.deepEqual((await withTx(db.pool, (c) => intake.gameClaimed(c))).map((r) => r.phone), [phone]);
+    const before = Date.now();
+    const out = await withTx(db.pool, (c) => intake.sweepIntakeSessions(c, {
+      configPath,
+      listSessions: async () => [],   // a claimed message may leave no session at all
+      readGreeterReply: async () => { throw new Error('the greeter never spoke to them'); },
+      readFirstMessage: async () => { throw new Error('there is nothing of theirs to carry'); },
+    }));
+    assert.deepEqual(out.provisioned, [phone]);
+    assert.equal(out.fromGame, 1);
+    assert.ok(!out.breakerTripped);
+
+    const { rows: [u] } = await db.pool.query('SELECT * FROM users WHERE phone = $1', [phone]);
+    assert.equal(u.status, 'active');
+    assert.equal(u.locale, 'en', 'the language of the code they sent, not a guess from the number');
+    assert.ok(u.opening_sent_at);
+    const cfg = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    const agent = cfg.agents.list.find((a) => a.id === u.agent_id);
+    assert.ok(agent, 'one config write, agent and binding together');
+    assert.ok(!(agent.tools && agent.tools.deny || []).includes('games__*'), 'their pack is lifted in that same write');
+    const { rows: [other] } = await db.pool.query(`SELECT agent_id FROM users WHERE phone = '+972601000002'`);
+    assert.ok(cfg.agents.list.find((a) => a.id === other.agent_id).tools.deny.includes('games__*'),
+      'and everybody without the pack still has it denied');
+
+    const { rows: [f] } = await db.pool.query(
+      `SELECT payload, release_after FROM outbox WHERE user_id = $1 AND kind = 'welcome_followup'`, [u.id]);
+    assert.equal(f.payload.gameOpening, true);
+    assert.ok(f.release_after && f.release_after.getTime() > before, 'not in the middle of the game');
+    const hhmm = new Intl.DateTimeFormat('en-GB', {
+      timeZone: u.timezone, hour: '2-digit', minute: '2-digit', hour12: false }).format(f.release_after);
+    assert.equal(hhmm, '09:00');
+
+    const again = await withTx(db.pool, (c) => intake.sweepIntakeSessions(c, { configPath, listSessions: async () => [] }));
+    assert.equal(again.provisioned.length, 0, 'claimed once, provisioned once');
+  } finally {
+    await withTx(db.pool, (c) => flags.setFlag(c, 'intake_hourly_cap', 30));
+  }
 });

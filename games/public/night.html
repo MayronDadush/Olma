@@ -179,6 +179,9 @@ html.is-dark #themeBtn .moon{opacity:0;transform:rotate(90deg) scale(.6)}
 .sbtn:active{transform:scale(.9)}
 .sbtn:disabled{opacity:.4;cursor:default}
 .sbtn.del{font-size:20px;font-weight:500}
+/* a seat's × sits beside the steppers, so it whispers until it is armed */
+.step .sbtn.del:not(.armed){min-width:30px;padding-inline:4px;box-shadow:none;color:var(--text-3)}
+.rmline{background:var(--fill)}
 .sbtn.del.armed{background:var(--danger-soft);color:var(--danger);font-size:14px;font-weight:600;padding-inline:12px}
 
 /* ─────────────── my card ─────────────── */
@@ -917,6 +920,8 @@ function fail(e){
   else if (e && (e.code === 'quota_exceeded' || e.code === 'too_many')) toast('הערב הזה מלא. פתחו ערב חדש');
   else if (e && e.code === 'rate_limited') toast('יותר מדי שינויים בדקה. חכו רגע ונסו שוב');
   else if (e && e.code === 'offline') toast('אין חיבור. השינוי לא נשמר');
+  else if (e && e.code === 'has_money') toast('יש עליו כניסות, ספירה או אוכל. קודם מבטלים אותם');
+  else if (e && e.code === 'closed') toast('הערב כבר נסגר, אי אפשר להסיר');
   else toast('השינוי לא נשמר. נסו שוב');
 }
 const W = p => p.catch(fail);
@@ -951,6 +956,27 @@ function addBuyin(pid, n, via, name){
   const p = S.players[pid] || (name && { name }); if (!p) return;
   W(db.collection(gp('buyins')).add({ pid, n, at: Date.now(), via }));
   logIt(`${p.name} ${n === 1 ? '+ כניסה' : '+ חצי כניסה'}`, via);
+}
+/* A seat added by mistake comes off, and only one with nothing on it: no
+   buy-in, no count, no part in any order. The server asks the same question
+   and refuses the rest, since anybody with the link can write. */
+function seatFree(pid){
+  if (Object.values(S.buyins).some(b => b.pid === pid) || S.cashouts[pid]) return false;
+  return !Object.values(S.food).some(f => f.payer === pid || (f.eaters || []).includes(pid) || (f.own && pid in f.own) || (f.paid && pid in f.paid));
+}
+const UNDO_MS = 10000;
+let removed = null;
+async function removePlayer(pid){
+  const p = S.players[pid]; if (!p) return;
+  try { await db.doc(gp('players/' + pid)).delete(); } catch (e) { fail(e); return; }
+  removed = { id: pid, name: p.name, order: p.order, at: Date.now() };
+  logIt(`${p.name} הוסר מהשולחן`, 'tap');
+  setTimeout(schedule, UNDO_MS + 50);
+}
+async function restorePlayer(){
+  const r = removed; removed = null; if (!r || S.players[r.id]) return;
+  await W(db.doc(gp('players/' + r.id)).set({ name: r.name, order: r.order }));
+  logIt(`${r.name} בשולחן`, 'tap');
 }
 function undoBuyin(pid, via){
   const mine = Object.entries(S.buyins).filter(([, b]) => b.pid === pid).sort((a, b) => b[1].at - a[1].at);
@@ -1248,6 +1274,7 @@ function renderNight(D){
       <div class="row-txt"><div class="row-title">${esc(p.name)}${p.id === me ? '<span class="me-tag">אני</span>' : ''}</div>
         <div class="row-sub num">${n ? `${fmtAg(Math.round(n * D.price))}${c != null ? ` · נשארו ${fmtChips(c)}` : ''}` : 'בלי כניסות עדיין'}</div></div>
       ${D.closed ? '' : `<div class="step">
+        ${seatFree(p.id) ? `<button class="sbtn del" data-rm="${p.id}" aria-label="הסרת ${esc(p.name)} מהשולחן">×</button>` : ''}
         <button class="sbtn" data-act="undo" aria-label="הורדת כניסה ל${esc(p.name)}" ${n ? '' : 'disabled'}>−</button>
         <button class="sbtn plus" data-act="buy" aria-label="כניסה ל${esc(p.name)}">+</button>
       </div>`}</div>`;
@@ -1255,12 +1282,14 @@ function renderNight(D){
   const logs = Object.values(S.log).sort((a, b) => b.at - a.at).slice(0, 12).map(l =>
     `<div class="logi"><time>${new Date(l.at).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}</time>${logIcon(l.t) ? '<span class="ic" aria-hidden="true">' + logIcon(l.t) + '</span>' : ''}<span>${esc(l.t)}<span class="via${l.via === 'chat' ? ' chat' : ''}">${l.via === 'chat' ? 'בצ׳אט' : 'בדף'}</span></span></div>`).join('');
 
+  const rm = removed && Date.now() - removed.at < UNDO_MS && !S.players[removed.id] && !D.closed
+    ? `<div class="row plain rmline"><div class="row-txt"><div class="row-sub">${esc(removed.name)} הוסר מהשולחן</div></div><button class="btn ghost small" type="button" id="rmUndo">החזרה</button></div>` : '';
   el.innerHTML = `${mine}
   <div class="sec">
     <div class="sechead"><h2>השולחן</h2><small>${D.players.length} שחקנים</small></div>
     <div class="group">${feltTable(D, me)}</div>
     <div class="group">
-      ${rows || '<div class="empty">עוד אין שחקנים</div>'}
+      ${rm}${rows || '<div class="empty">עוד אין שחקנים</div>'}
       <form class="addrow" id="addP"><input id="addPIn" placeholder="להוסיף שמות: דני, יוסי" aria-label="שמות להוספה" enterkeyhint="done"><button class="btn soft small" type="submit">הוספה</button></form>
     </div>
   </div>
@@ -1568,6 +1597,16 @@ function seatPicker(D){
 }
 function renderWelcome(D){
   const w = $('#welcome');
+  // this phone's name was taken off the table: back to choosing, said once.
+  // Only after the list has been SEEN with it — collections arrive one at a
+  // time, and an empty first snapshot is not a removal.
+  const mine = loaded && S.gid && D.g && (ls.get('pk-me-' + S.gid) || memMe);
+  if (mine && S.players[mine]) prev.sawMe = mine;
+  else if (mine && prev.sawMe === mine && !hashMe) {
+    prev.sawMe = null;
+    ls.set('pk-me-' + S.gid, ''); memMe = null; ls.set('pk-skip-' + S.gid, ''); prev.pickedNow = false;
+    if (removed?.id !== mine) toast('השם שלך הוסר מהערב. בוחרים שוב');
+  }
   const show = loaded && S.gid && D.g && !myId() && !ls.get('pk-skip-' + S.gid) && !prev.pickedNow;
   w.hidden = !show;
   if (!show) { w.dataset.k = ''; return; }
@@ -1601,6 +1640,17 @@ document.addEventListener('click', e => {
     if (t.dataset.act === 'buy') addBuyin(row.dataset.pid, 1, 'tap'); else undoBuyin(row.dataset.pid, 'tap');
     return;
   }
+  if (t.dataset.rm) {
+    // the same two taps as an order: a seat comes off only on purpose
+    if (!t.classList.contains('armed')) {
+      t.classList.add('armed'); t.textContent = 'להסיר?';
+      if (S.players[t.dataset.rm]?.linked) toast('מחובר לעולמה. אחרי הסרה ישלח שוב את הקוד כדי לחזור');
+      setTimeout(() => { if (t.isConnected) { t.classList.remove('armed'); t.textContent = '×'; } }, 3000);
+      return;
+    }
+    removePlayer(t.dataset.rm); return;
+  }
+  if (t.id === 'rmUndo') { restorePlayer(); return; }
   if (t.dataset.pick) { pickMe(t.dataset.pick); return; }
   if (t.id === 'wSkip') { ls.set('pk-skip-' + S.gid, '1'); schedule(); return; }
   if (t.dataset.paid) { setPaid(t.dataset.paid, t.getAttribute('aria-pressed') !== 'true'); return; }
@@ -1633,7 +1683,7 @@ document.addEventListener('click', e => {
   if (t.id === 'chatBtn') { openSheet('#chatSheet'); scrollChat(); return; }
   if (t.id === 'setBtn') { openSheet('#setSheet'); return; }
   if (t.hasAttribute('data-close')) { closeSheets(); return; }
-  if (t.id === 'switchMe' || t.id === 'pickMe') { ls.set('pk-me-' + S.gid, ''); ls.set('pk-skip-' + S.gid, ''); prev.pickedNow = false; closeSheets(); schedule(); return; }
+  if (t.id === 'switchMe' || t.id === 'pickMe') { ls.set('pk-me-' + S.gid, ''); memMe = null; ls.set('pk-skip-' + S.gid, ''); prev.pickedNow = false; closeSheets(); schedule(); return; }
   if (t.id === 'newAsk') {
     $('#newBox').innerHTML = `<p class="row-sub">הערב הזה יישאר שמור. לפתוח ערב חדש עם אותו מחיר ואותם ז'יטונים?</p>
       <div class="btns"><button class="btn primary small" type="button" id="newYes">פתיחה</button><button class="btn ghost small" type="button" id="newNo">ביטול</button></div>`;
@@ -1760,7 +1810,17 @@ function copySummary(){
 
 /* ───────────── the chat, same conversation as WhatsApp ───────────── */
 let chat = [], typingOn = false;
-const myId = () => { const v = S.gid && ls.get('pk-me-' + S.gid); return v && S.players[v] ? v : null; };
+// A link Olma hands a person carries their seat: /night/<token>#me-<player>.
+// Read once and dropped from the address bar, so a forwarded copy of the
+// page's link never seats somebody else; kept in memory too, for a phone
+// whose storage refuses.
+let hashMe = (location.hash.match(/^#me-([A-Za-z0-9_-]{2,32})$/) || [])[1] || null, memMe = null;
+if (hashMe) try { history.replaceState(null, '', location.pathname + location.search); } catch {}
+const myId = () => {
+  if (hashMe && S.gid && S.players[hashMe]) { ls.set('pk-me-' + S.gid, hashMe); memMe = hashMe; hashMe = null; }
+  const v = S.gid && (ls.get('pk-me-' + S.gid) ?? memMe);
+  return v && S.players[v] ? v : null;
+};
 function pickMe(pid, name){
   ls.set('pk-me-' + S.gid, pid); prev.pickedNow = true;
   $('#welcome').hidden = true;

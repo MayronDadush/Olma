@@ -156,6 +156,12 @@ title means this file. Grep the title, not the filename.
   (unreadable is not broken). gamesd refuses the
   call anyway for anybody brokerd's `identity_resolve` does not name as a
   holder — the deny is what the model reads, not the lock.
+  **A new number that joins a night with its code holds the pack BEFORE it has
+  an agent** (stage 4ב, 2026-10-01): brokerd writes `user_packs` on the
+  pending row and `src/intake/provision.js` reads it into the agent's FIRST
+  `addAgent` write, so there is one config write per person and never a second
+  policy write behind it. Anything else that grants a pack to a row with no
+  agent yet has to take the same road.
 
 ### systemd scope
 

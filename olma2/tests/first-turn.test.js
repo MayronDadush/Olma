@@ -211,6 +211,25 @@ test('somebody the greeter already welcomed is not welcomed again', async () => 
   assert.match(said, /set_my_name with confirmed: true/);
 });
 
+test('the privacy link is said once: a person who already read it gets the copy without it', async () => {
+  // The owner's rule (2026-10-01): the link reaches each person ONCE, ever.
+  // A greeter that reworded the copy but kept the link leaves opening_sent_at
+  // NULL — the words were not the owner's — and has still said the link.
+  const u = await makeUser(db.pool, '+972611003031', { firstName: null, locale: 'he' });
+  await db.pool.query(`UPDATE users SET privacy_link_sent_at = now() - interval '1 minute' WHERE id = $1`, [u.id]);
+  const { data } = await turnStart(u, { opened: false, counted: false });
+  assert.ok(data.onboarding.sendVerbatim, 'the introduction is still owed');
+  assert.doesNotMatch(data.onboarding.sendVerbatim, /allma\.world\/privacy/, 'but not the link');
+  assert.equal(data.onboarding.sendVerbatim, onboarding.withoutPrivacyLine(onboarding.OPENING.he));
+
+  // And the voice that DOES say it stamps the person, on the hand-out.
+  const fresh = await makeUser(db.pool, '+972611003032', { firstName: null, locale: 'he' });
+  const { data: first } = await turnStart(fresh, { opened: false, counted: false });
+  assert.match(first.onboarding.sendVerbatim, /allma\.world\/privacy/);
+  const { rows } = await db.pool.query(`SELECT privacy_link_sent_at FROM users WHERE id = $1`, [fresh.id]);
+  assert.ok(rows[0].privacy_link_sent_at, 'stamped when the copy carrying it was handed out');
+});
+
 // The owner rewords the opening from the admin page like every other fixed
 // sentence (2026-09-08); the words turn_start hands over are the reworded ones.
 test('a reworded opening is what turn_start hands over, character for character', async () => {
@@ -231,6 +250,17 @@ test('an English speaker gets the English opening', async () => {
   const { data } = await turnStart(u, { opened: false, counted: false });
   assert.equal(data.onboarding.sendVerbatim, onboarding.OPENING.en);
   assert.match(data.onboarding.sendVerbatim, /Allma/, 'the English name is Allma, not Olma');
+});
+
+test('withoutPrivacyLine drops the link line and nothing else, in every shipped language', () => {
+  for (const copy of Object.values(onboarding.OPENING)) {
+    assert.ok(onboarding.carriesPrivacyLink(copy), 'every opening carries the link today');
+    const cut = onboarding.withoutPrivacyLine(copy);
+    assert.doesNotMatch(cut, /allma\.world\/privacy/);
+    assert.equal(cut, copy.split('\n').slice(0, -1).join('\n').trimEnd(), 'only the last line goes, with no blank tail');
+  }
+  assert.equal(onboarding.withoutPrivacyLine('בלי קישור'), 'בלי קישור', 'a copy without it is untouched');
+  assert.equal(onboarding.carriesPrivacyLink(null), false);
 });
 
 test('an unknown locale still gets a real message, never an empty one', () => {

@@ -490,3 +490,23 @@ test('the terms and the policy state one minimum age, the one the alarm checks',
   assert.ok(publicPages.privacyPage('en').includes(`not intended for anyone under ${MIN_AGE}`));
   assert.ok(publicPages.privacyPage('he').includes(`מתחת לגיל ${MIN_AGE}`));
 });
+
+// The owner, 2026-10-01, after reading a competitor's terms: three clauses
+// that change nothing about the product — no tie to Meta, a licence on what a
+// person sends limited to running the service, and whose request an action
+// taken in their name was.
+test('the terms disclaim Meta, license content only for the service, and own actions taken on request', () => {
+  const en = publicPages.termsPage('en');
+  const he = publicPages.termsPage('he');
+  assert.ok(en.includes('not affiliated with, endorsed by, or sponsored by WhatsApp LLC or Meta Platforms, Inc.'));
+  assert.ok(he.includes('שאינו קשור ל־WhatsApp LLC או ל־Meta Platforms, Inc.'));
+  assert.ok(en.includes('<h2>Your content</h2>'));
+  assert.ok(en.includes('only to provide the service to you'));
+  assert.ok(en.includes('do not use it to train models'));
+  assert.ok(he.includes('<h2>התוכן שלכם</h2>') || he.includes('<h3>התוכן שלכם</h3>'));
+  assert.ok(he.includes('אך ורק כדי לתת לכם את השירות'));
+  assert.ok(en.includes('<h2>Actions on your behalf</h2>'));
+  assert.ok(en.includes('you are responsible for that request and for what is sent in your name'));
+  assert.ok(he.includes('ואתם אחראים לבקשה ולמה שנשלח בשמכם'));
+  assert.equal(publicPages.UPDATED, '2026-10-01');
+});

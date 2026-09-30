@@ -16,6 +16,7 @@ const { decide } = require('./gate');
 const audit = require('../domain/audit');
 const { mergeRoleFor, planMerge, MERGEABLE_KINDS } = require('../domain/message-merge');
 const { checkChannels } = require('../adapters/gateway-health');
+const gameSummary = require('../domain/game-summary');
 
 // A delivery is a full model turn — 30-90s of wall time and most of the box's
 // one core. An unbounded tick over a backlog (observed live 2026-08-27: ~20
@@ -119,7 +120,7 @@ async function closedNewsFor(client, row, mergedParts) {
   // The intro video goes out on the raw pipe with no words at all, so nothing
   // may be recorded as said on it.
   if (row.kind === 'reminder' || row.kind === 'digest' || row.kind === 'intro_video'
-    || row.kind === 'policy_update' || row.kind === 'game_summary'
+    || row.kind === 'policy_update' || gameSummary.KINDS.has(row.kind)
     || p.instruction || p.verbatimReply) return null;
   if (mergedParts && mergedParts.some((part) => part.kind === 'digest')) return null;
   const list = await digestDomain.unheardClosedMeetings(client, row.user_id);
