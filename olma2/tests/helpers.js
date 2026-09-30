@@ -81,8 +81,44 @@ const { migrate } = require('../src/db/migrate');
 const ADMIN_URL = process.env.OLMA_TEST_ADMIN_URL
   || 'postgres://olma:olma2local@127.0.0.1:5432/olma2_test';
 
+// The name carries its own birth time (base-36 seconds), because Postgres
+// records none for a database, and a leftover is only recognisable as one by
+// its age: see sweepStaleTestDbs.
 function testDbName() {
-  return 'olma2_t_' + crypto.randomBytes(6).toString('hex');
+  return 'olma2_t_' + Math.floor(Date.now() / 1000).toString(36)
+    + '_' + crypto.randomBytes(6).toString('hex');
+}
+
+// A run that is killed — capped, cancelled, a runner that dies — never reaches
+// its teardowns, and every database it made stays behind. On the box that had
+// come to 871 of them, 6.5GB of Postgres's 7.9GB, which autovacuum kept
+// visiting for ever (measured 2026-09-30). So each file's teardown also drops
+// any test database older than any run could be. One process at a time, under
+// an advisory lock, and once per process: a DROP DATABASE forces a checkpoint,
+// so this must never become a storm — the first file drops what is stale and
+// the rest find nothing. Names from before the timestamp carry no age
+// and are left alone — those were cleared by hand.
+const STALE_TEST_DB_MS = 6 * 3600_000;
+let staleSwept = false;
+async function sweepStaleTestDbs(admin) {
+  if (staleSwept) return;
+  staleSwept = true;
+  await admin.query("SELECT pg_advisory_lock(hashtext('olma2_t_stale_sweep'))");
+  try {
+    const { rows } = await admin.query(
+      "SELECT datname FROM pg_database WHERE datname ~ '^olma2_t_[0-9a-z]+_[0-9a-f]+$'");
+    for (const { datname } of rows) {
+      const born = parseInt(datname.split('_')[2], 36) * 1000;
+      if (!(Date.now() - born > STALE_TEST_DB_MS)) continue;
+      try {
+        await admin.query(`DROP DATABASE IF EXISTS ${datname} WITH (FORCE)`);
+      } catch (e) {
+        console.warn(`[test] could not drop stale ${datname}: ${e.message}`);
+      }
+    }
+  } finally {
+    await admin.query("SELECT pg_advisory_unlock(hashtext('olma2_t_stale_sweep'))");
+  }
 }
 
 // How long teardown waits for pool.end() before declaring a leaked client, and
@@ -314,7 +350,12 @@ async function freshDb() {
     // would shed itself after its idle window, but a test child waiting on
     // that is the silent-hang shape this helper exists to prevent.
     try { await require('../src/channels/sessions-async').close(); } catch { /* none spawned */ }
-    await endPool();
+    // A pool that will not end is a failure to REPORT, not a reason to skip
+    // the drop: endPool has already forced its sockets shut, and until this
+    // was split every file that leaked a client leaked its database too —
+    // tests/helpers-guards.test.js did it on purpose, once per green run.
+    let failure = null;
+    try { await endPool(); } catch (e) { failure = e; }
     const admin2 = new Client({ connectionString: ADMIN_URL });
     await admin2.connect();
     try {
@@ -326,7 +367,13 @@ async function freshDb() {
       // the next run's CREATE uses a fresh random name anyway.
       console.warn(`[test] could not drop ${name}: ${e.message}`);
     }
+    try {
+      await sweepStaleTestDbs(admin2);
+    } catch (e) {
+      console.warn(`[test] stale test database sweep: ${e.message}`);
+    }
     await admin2.end();
+    if (failure) throw failure;
   };
   return { pool, teardown, url };
 }
