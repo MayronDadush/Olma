@@ -340,6 +340,21 @@ function welcomeFollowupBody(p) {
   // AI and that a coordination was coming. This row went out the NEXT MORNING
   // because they never answered it — so it is not a continuation of a moment
   // ago, and it is the one place what Olma does gets said.
+  // A game night's code (stage 4ב): brokerd seated them, said she is an AI
+  // and where her privacy page is, and nothing else. This goes out the
+  // morning after, whatever they wrote during the game, and it is the one
+  // place what Olma does gets said. The night itself is theirs and the
+  // settlement already reached them, so it is not mentioned.
+  if (p.gameOpening) {
+    return 'This person reached Olma through a game night: they sent the night\'s code, were seated at the '
+      + 'table, and told only that Olma is an AI assistant and where her privacy page is. Whatever they wrote '
+      + 'since was about that game. Do not welcome them and do not mention the game night, its buy-ins or its '
+      + 'settlement. In one or two short lines say what Olma helps them with personally — tasks, reminders, '
+      + 'and coordinating with people close to them — and that they can write, send a voice note, or dump it '
+      + 'all in a mess.'
+      + ' Reply in the language they wrote in, one short message, no menu, no question.'
+      + link;
+  }
   if (p.roomOpening) {
     return 'This person reached Olma through a WhatsApp group: the greeter told them only that Olma is an '
       + 'AI assistant and sent them the group\'s coordination, and they have not written since. Do not '

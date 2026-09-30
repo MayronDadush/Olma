@@ -482,14 +482,18 @@ async function firstTurnPageLink(client, userId) {
   } catch { return null; }
 }
 
-// A welcome follow-up queued after the room's short opening and not yet sent
-// (jobs/intake.js). Unsent is the point: once it went out, what she does has
+// A welcome follow-up queued after a short opening and not yet sent
+// (jobs/intake.js): 'room' after a room's, 'game' after a game night's code,
+// null otherwise. Unsent is the point: once it went out, what she does has
 // been said.
-async function greetedByRoomOpening(client, userId) {
+async function shortOpeningPending(client, userId) {
   const { rows } = await client.query(
-    `SELECT 1 FROM outbox WHERE user_id = $1 AND kind = 'welcome_followup'
-        AND sent_at IS NULL AND (payload->>'roomOpening')::boolean IS TRUE LIMIT 1`, [userId]);
-  return rows.length > 0;
+    `SELECT (payload->>'gameOpening')::boolean IS TRUE AS game FROM outbox
+      WHERE user_id = $1 AND kind = 'welcome_followup' AND sent_at IS NULL
+        AND ((payload->>'roomOpening')::boolean IS TRUE OR (payload->>'gameOpening')::boolean IS TRUE)
+      LIMIT 1`, [userId]);
+  if (!rows[0]) return null;
+  return rows[0].game ? 'game' : 'room';
 }
 
 async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, languageNudge, thanksOnly, thanksAfterQuestion, stoppedReminders, chaseUntil, chaseNamedHour, openList, remindAsk, now }) {
@@ -730,13 +734,18 @@ async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, 
   // person. The characters are handed over, never asked for: a prompt that
   // names a page and leaves the url to the model is how three people got three
   // invented domains in one minute (`rules/delivering.md`).
-  const pageLink = firstTurn ? await firstTurnPageLink(client, user.id) : null;
+  //
+  // Not after a game night's code: that first turn is a buy-in in the middle
+  // of the game, and the page and what she does wait for the morning's
+  // follow-up (jobs/intake.js), which the gate does not drop for it.
+  const shortOpening = firstTurn && user.opening_sent_at ? await shortOpeningPending(client, user.id) : null;
+  const pageLink = firstTurn && shortOpening !== 'game' ? await firstTurnPageLink(client, user.id) : null;
   // Greeted by a room's short opening (domain/intake-room.js), which says she
   // is an AI and sends the coordination, and nothing about what she does: this
   // first turn — usually their answer to that coordination — says it, once,
   // after the answer. The welcome follow-up waiting for the morning is then
   // dropped by the gate as `answered_in_turn`, so it is said exactly once.
-  const roomOpening = firstTurn && user.opening_sent_at ? await greetedByRoomOpening(client, user.id) : false;
+  const roomOpening = shortOpening === 'room';
   const ROOM_INTRO = roomOpening
     ? ' They were greeted only briefly, through their WhatsApp group, and have not yet been told what Olma '
       + 'does. After answering what they wrote, add ONE short line saying what else she helps them with '
