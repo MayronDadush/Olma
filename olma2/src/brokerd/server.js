@@ -627,7 +627,10 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
         const introduced = !user.opening_sent_at;
         if (introduced) {
           text = [say('game_hello', {}), text, say('game_privacy', {})].join('\n');
-          await client.query('UPDATE users SET opening_sent_at = now() WHERE id = $1 AND opening_sent_at IS NULL', [userId]);
+          await client.query(
+            `UPDATE users SET opening_sent_at = COALESCE(opening_sent_at, now()),
+                    privacy_link_sent_at = COALESCE(privacy_link_sent_at, now())
+              WHERE id = $1 AND opening_sent_at IS NULL`, [userId]);
         }
         await audit.record(client, userId, 'games.intake_claim', { outcome, lang, introduced });
         out = { ok: true, claim: true, text, lang, kind: 'game' };

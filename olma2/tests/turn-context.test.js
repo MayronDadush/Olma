@@ -137,6 +137,17 @@ test('somebody the greeter already welcomed is not welcomed again — on the doo
   assert.match(data.onboarding.instruction, /already been greeted/i);
 });
 
+test('the privacy link is not handed out twice — on the door production actually uses', async () => {
+  // first-turn.test.js asserts this through turn_start; this is the other door.
+  const u = await agentUser({ locale: 'he' });
+  await enable(u.phone);
+  await db.pool.query(`UPDATE users SET privacy_link_sent_at = now() WHERE id = $1`, [u.id]);
+  await open({ agentId: u.agentId, messageId: '3EB0CTX0030', kind: 'text' });
+  const data = parse((await context({ agentId: u.agentId })).context);
+  assert.ok(data.onboarding.sendVerbatim, 'nobody said the owner\'s words, so the copy is still owed');
+  assert.doesNotMatch(data.onboarding.sendVerbatim, /allma\.world\/privacy/, 'without the link they already read');
+});
+
 test('a projection reaches advise as undefined, not as NULL, so advise refuses one', async () => {
   // The bug above is not "somebody forgot a column", it is that forgetting one
   // is SILENT: `undefined` and NULL are both falsy, so a missing column does
