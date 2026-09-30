@@ -467,13 +467,13 @@ test('the calendar fold holds what Olma reminds about and is still ahead', () =>
     return page.slice(at, i + 1);
   };
   const src = ['onCalendar', 'leftToGoogle', 'offList', 'eventOver'].map(grab).join('\n');
-  const fns = new Function('isPinned', src + '\nreturn { onCalendar, leftToGoogle, offList, eventOver };')(() => false);
+  const fns = new Function('isPinned', src + '\nreturn { onCalendar, leftToGoogle, offList, eventOver };')((x) => !!x.pin);
   // Local calendar days, as the page reads them (bucketFor), never UTC's.
   const day = (n) => {
     const d = new Date(); d.setDate(d.getDate() + n);
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
   };
-  const where = (x) => fns.onCalendar(x) ? 'fold' : fns.leftToGoogle(x) ? 'google' : 'list';
+  const where = (x) => fns.leftToGoogle(x) ? 'google' : x.pin ? 'shared' : fns.onCalendar(x) ? 'fold' : 'list';
   const ev = (o) => Object.assign({ kind: 'event', d: day(1), tm: '15:00', all: false, rem: true, inCal: true }, o);
 
   assert.equal(where(ev({})), 'fold', 'a haircut tomorrow with a reminder: editable in the fold');
@@ -484,6 +484,9 @@ test('the calendar fold holds what Olma reminds about and is still ahead', () =>
   assert.equal(where({ kind: 'todo', d: day(1), tm: '10:00', rem: true, inCal: true }), 'list', 'a synced to-do is a to-do');
   assert.equal(where({ kind: 'todo', d: day(-3), tm: '', rem: false, inCal: true }), 'list', 'a late to-do stays late, never hidden');
   assert.equal(where(ev({ src: 'monday' })), 'list', 'an imported row keeps its own section');
+  assert.equal(where(ev({ pin: true, rem: false })), 'shared', 'a shared event ahead stays shared, reminder or not');
+  assert.equal(where(ev({ pin: true, d: day(-1) })), 'google', 'a shared event that is over leaves too');
+  assert.equal(where({ kind: 'todo', pin: true, d: day(-1), tm: '10:00' }), 'shared', 'a late shared to-do stays');
 
   // Over at the END: the start, the end hour, past midnight, the whole day.
   const at = (d, hm) => new Date(d + 'T' + hm + ':00');
@@ -500,6 +503,21 @@ test('the calendar fold holds what Olma reminds about and is still ahead', () =>
   const home = page.slice(page.indexOf('function renderHome(){'), page.indexOf('function homeWaiting(){'));
   assert.match(home, /var shown = \(open \|\| \[\]\)\.filter\(function\(x\)\{ return !leftToGoogle\(x\); \}\);/);
   assert.doesNotMatch(home, /\(open \|\| \[\]\)\.length/, 'nothing on the home tab counts the raw list');
+  assert.match(page, /var items = open\.filter\(function\(x\)\{ return isPinned\(x\) && !leftToGoogle\(x\); \}\);/,
+    'the shared section drops what is over');
+
+  // Left while the page was open: redrawn within a minute, and only then.
+  assert.match(page, /setInterval\(function\(\)\{ if\(goneNow\(\) !== goneSig\) renderTasks\(\); \}, 60000\);/);
+  const render = page.slice(page.indexOf('function renderTasks(){'));
+  assert.match(render.slice(0, render.indexOf('\n  }\n')), /goneSig = goneNow\(\);/, 'each render records what it left out');
+
+  // Sent away by an edit: the sheet says where it went, in both languages.
+  assert.match(page, /editingShown = !leftToGoogle\(editing\);/, 'remembered when the sheet opens');
+  const close = page.slice(page.indexOf('function closeSheets(){'));
+  assert.match(close.slice(0, close.indexOf('\n  }\n')),
+    /toast\(t\(eventOver\(editing\) \? "toast\.eventPast" : "toast\.toGoogle"\)\);/);
+  for (const k of ['toast.toGoogle', 'toast.eventPast'])
+    assert.equal((page.match(new RegExp('"' + k.replace('.', '\\.') + '":"', 'g')) || []).length, 2, k + ' in he and en');
 });
 
 // One tap between day and night, on the band of the home tab only (the owner,

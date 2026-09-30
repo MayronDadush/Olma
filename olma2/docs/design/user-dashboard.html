@@ -5695,6 +5695,7 @@ button.srow:active{background:var(--bg-tint)}
       "toast.callFailed":"לא הצלחתי להתקשר עכשיו — נסה שוב בעוד רגע",
       "toast.moreRequested":"הבקשה נשלחה",
       "toast.done":"המשימה הושלמה","toast.saved":"המשימה נשמרה",
+      "toast.toGoogle":"האירוע נשאר ביומן שלך ב־Google","toast.eventPast":"האירוע כבר עבר, אז הוא לא ברשימה",
       "toast.savedAs":"נשמרה בתור ״{name}״","toast.rename":"שינוי שם","task.untitled":"משימה ללא שם {n}",
       "toast.stillRepeating":"נרשם. המשימה חוזרת, אז היא נשארת ברשימה",
       "toast.updated":"המשימה עודכנה","toast.deleted":"המשימה נמחקה",
@@ -6075,6 +6076,7 @@ button.srow:active{background:var(--bg-tint)}
       "toast.callFailed":"The call would not go through — try again in a moment",
       "toast.moreRequested":"Your request has been sent",
       "toast.done":"Task completed","toast.saved":"Task saved",
+      "toast.toGoogle":"The event stays on your Google Calendar","toast.eventPast":"The event is over, so it is off the list",
       "toast.savedAs":"Saved as “{name}”","toast.rename":"Rename","task.untitled":"Untitled task {n}",
       "toast.stillRepeating":"Noted. This one repeats, so it stays on your list",
       "toast.updated":"Task updated","toast.deleted":"Task deleted",
@@ -7952,12 +7954,20 @@ button.srow:active{background:var(--bg-tint)}
          already holds (`inCal`), is not on this page at all — it stays on
          the calendar, and the calendar tab still draws it.
      An event with no reminder that is on no calendar either stays in the
-     fold, because leaving it out would put it nowhere. */
+     fold, because leaving it out would put it nowhere. A SHARED event keeps
+     its own section until it is over, and then leaves like any other: a
+     share is a reason to show it, never a reason to show it after. */
   function onCalendar(x){ return !x.src && !isPinned(x) && x.kind === "event" && !leftToGoogle(x); }
   function leftToGoogle(x){
-    return !x.src && !isPinned(x) && x.kind === "event" && (eventOver(x) || (!x.rem && x.inCal));
+    return !x.src && x.kind === "event" && (eventOver(x) || (!isPinned(x) && !x.rem && x.inCal));
   }
   function offList(x){ return onCalendar(x) || leftToGoogle(x); }
+  /* The page can sit open past an appointment's end. Once a minute, ask which
+     rows have left; redraw only when that set moved, so an open list is not
+     re-rendered under somebody's thumb for nothing. */
+  var goneSig = "";
+  function goneNow(){ return open.filter(leftToGoogle).map(function(x){ return x.id; }).join(","); }
+  setInterval(function(){ if(goneNow() !== goneSig) renderTasks(); }, 60000);
   /* Over at its END, on this device's clock like bucketFor: the end hour when
      there is one (past midnight when it is earlier than the start), the start
      hour when there is not, and the whole day for an all-day or hourless row.
@@ -8016,7 +8026,7 @@ button.srow:active{background:var(--bg-tint)}
      arrangement the imported section has at the other end. Unpinning one only
      stops it being skipped, so it lands exactly where it would have been. */
   function pinnedSection(){
-    var items = open.filter(isPinned);
+    var items = open.filter(function(x){ return isPinned(x) && !leftToGoogle(x); });
     if(!items.length) return "";
     return '<div class="tsec pinned"><div class="glabel"><span>' +
       '<svg class="pinmark" aria-hidden="true"><use href="#i-pin"/></svg>' + esc(t("tasks.pinned")) +
@@ -8191,6 +8201,7 @@ button.srow:active{background:var(--bg-tint)}
         : emptyBig(t("tasks.empty"), "addTask", t("tasks.new"))) + "</div>";
     }
     $("#taskStack").innerHTML = html;
+    goneSig = goneNow();
     /* What is on, by when — the same headings the list below is cut into,
        with the same rows under them (owner, 2026-09-30). "11 open · 3
        reminders" answered a question nobody opens this page to ask. */
@@ -8663,6 +8674,11 @@ button.srow:active{background:var(--bg-tint)}
       jumpAfterSheet = null;
       if(!isNew && editing && open.indexOf(editing) > -1) go("tasks");
     }
+    if(editing && editingShown && $("#sheet").classList.contains("show") &&
+       open.indexOf(editing) > -1 && leftToGoogle(editing)){
+      editingShown = false;
+      toast(t(eventOver(editing) ? "toast.eventPast" : "toast.toGoogle"));
+    }
     closeCal();
     $("#scrim").classList.remove("show");
     /* Every sheet, not a list of them. This used to name six by hand, and the
@@ -8820,6 +8836,11 @@ button.srow:active{background:var(--bg-tint)}
      typing already did, and it was most of the height that made this
      scroll. Closing is the whole gesture: scrim, grabber, or Escape. */
   var editing = null, isNew = false, savedTimer = null, jumpAfterSheet = null;
+  /* Whether the row being edited was on the page when its sheet opened. An
+     edit can send it away — the reminder switched off on an event Google
+     holds, a date moved into the past — and a row that vanishes behind the
+     sheet reads as deleted. closeSheets says where it went instead. */
+  var editingShown = false;
 
   function bucketFor(dateStr){
     if(!dateStr) return "later";
@@ -9506,6 +9527,7 @@ button.srow:active{background:var(--bg-tint)}
        a reminder is only rewritten when the moment it points at actually
        moved — every other keystroke leaves the existing row alone. */
     lastWhenKey = String(editing.d) + "|" + String(editing.tm) + "|" + String(editing.all);
+    editingShown = !leftToGoogle(editing);
     pickQ = ""; $("#pickQ").value = ""; $("#pickQClear").hidden = true;
     $("#sAddFold").classList.remove("open");
     $("#sAddRow").setAttribute("aria-expanded", "false");
