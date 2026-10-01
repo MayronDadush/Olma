@@ -523,7 +523,17 @@ async function sweepFinishedTasks(client, nowIso) {
     `SELECT t.id, t.owner_id, t.title
        FROM tasks t JOIN users u ON u.id = t.owner_id
       WHERE t.kind = 'event' AND t.status = 'open' AND t.archived_at IS NULL
-        AND t.due_at IS NOT NULL AND COALESCE(t.ends_at, t.due_at) < $1
+        AND t.due_at IS NOT NULL
+        -- A task saved for a DAY sits at local midnight (auto-reminder.isDayShaped,
+        -- the page's own all_day), and that midnight is when the day STARTS: read
+        -- as its end, "יום הולדת לליאם" left the list at 00:00 on the birthday
+        -- itself and the morning's digest never showed it. Its end is the next
+        -- local midnight, in THEIR zone.
+        AND COALESCE(t.ends_at,
+              CASE WHEN (t.due_at AT TIME ZONE COALESCE(u.timezone, 'UTC'))::time = '00:00'
+                   THEN ((t.due_at AT TIME ZONE COALESCE(u.timezone, 'UTC'))::date + 1)::timestamp
+                          AT TIME ZONE COALESCE(u.timezone, 'UTC')
+                   ELSE t.due_at END) < $1
         AND u.status = 'active' AND u.is_eval = false
         AND NOT EXISTS (SELECT 1 FROM task_reminders r
                          WHERE r.task_id = t.id AND r.repeat_rule IS NOT NULL

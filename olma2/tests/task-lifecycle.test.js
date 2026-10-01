@@ -491,3 +491,64 @@ test('a checklist item is not a task anybody has to do, and the counts say so', 
     assert.equal(summary.counts.openTasks, 2, 'the counts-only scope reads the same number');
   });
 });
+
+// Miron's birthday entry for Liam was told back as "ביומן" while the Google
+// connection behind it was VIEW-ONLY: it sat on Olma's list and never reached
+// Google (2026-10-01). The result has to say so, and only when it is true.
+test('an event saved against a view-only Google Calendar says it is NOT on Google', async () => {
+  const { BY_NAME } = require('../src/adapters/mcp/registry');
+  const { withTx } = require('../src/db/pool');
+  const add = BY_NAME.get('add_task');
+  const u = await makeUser(db.pool, '+972501000187', { firstName: 'Miron', timezone: 'Asia/Jerusalem' });
+
+  const none = await withTx(db.pool, (c) => add.handler(c, u, { title: 'אירוע בלי יומן', kind: 'event', due_at: at(20), ends_at: at(21) }));
+  assert.equal(none.data.hints.googleCalendar, undefined, 'no calendar connected, nothing to warn about');
+
+  await db.pool.query(
+    `INSERT INTO integrations (user_id, provider, status, access_level)
+     VALUES ($1, 'google_calendar', 'connected', 'read_only')`, [u.id]);
+  const viewOnly = await withTx(db.pool, (c) => add.handler(c, u, { title: 'יום הולדת לליאם', kind: 'event', due_at: at(22), ends_at: at(23) }));
+  assert.match(viewOnly.data.hints.googleCalendar, /VIEW-ONLY/);
+  assert.match(viewOnly.data.hints.googleCalendar, /no permission to write there/);
+  assert.match(viewOnly.data.hints.googleCalendar, /Never say it is on their calendar/);
+
+  // The other two doors that can put an event on the calendar say the same.
+  const bulk = BY_NAME.get('add_tasks_bulk');
+  const many = await withTx(db.pool, (c) => bulk.handler(c, u, { items: [
+    { title: 'חתונה של דנה', kind: 'event', due_at: at(26), ends_at: at(27) }, { title: 'לקנות כרטיס' }] }));
+  assert.match(many.data.hints.googleCalendar, /VIEW-ONLY/);
+  const edit = BY_NAME.get('edit_task');
+  const plan = await withTx(db.pool, (c) => add.handler(c, u, { title: 'ארוחה עם אבא', kind: 'todo' }));
+  const made = await withTx(db.pool, (c) => edit.handler(c, u, { task_id: plan.data.task.id, kind: 'event', due_at: at(28) }));
+  assert.match(made.data.hints.googleCalendar, /VIEW-ONLY/, 'turning it into an event is the same claim');
+  const renamed = await withTx(db.pool, (c) => edit.handler(c, u, { task_id: plan.data.task.id, title: 'ארוחת ערב עם אבא' }));
+  assert.equal(renamed.data.hints, undefined, 'a rename says nothing about the calendar');
+  const todo = await withTx(db.pool, (c) => add.handler(c, u, { title: 'לקנות מתנה', kind: 'todo' }));
+  assert.equal(todo.data.hints && todo.data.hints.googleCalendar, undefined, 'a to-do never claimed Google');
+
+  await db.pool.query(`UPDATE integrations SET access_level = 'read_write' WHERE user_id = $1`, [u.id]);
+  const writable = await withTx(db.pool, (c) => add.handler(c, u, { title: 'אירוע עם יומן', kind: 'event', due_at: at(24), ends_at: at(25) }));
+  assert.equal(writable.data.hints.googleCalendar, undefined, 'a writable calendar gets the sweep, not a caveat');
+});
+
+// A day-shaped event sits at local midnight, which is when its day STARTS. It
+// used to be archived at that midnight, so a birthday was gone from the list
+// on the birthday itself. It now leaves at the NEXT local midnight.
+test('an event saved for a day stays on the list through that whole day', async () => {
+  const sweeps = require('../src/jobs/sweeps');
+  const u = await makeUser(db.pool, '+972501000188', { timezone: 'Asia/Jerusalem' });
+  const c = await db.pool.connect();
+  try {
+    // 30 Oct 2026 in Jerusalem is UTC+2 (DST ended on the 25th).
+    const t = await tasks.addTask(c, u.id, { title: 'יום הולדת לליאם', kind: 'event', dueAt: '2026-10-30T00:00:00+02:00' });
+    const id = t.data.task.id;
+    const archived = async () => (await c.query('SELECT archived_at FROM tasks WHERE id = $1', [id])).rows[0].archived_at;
+
+    await sweeps.sweepFinishedTasks(c, '2026-10-30T08:00:00+02:00');
+    assert.equal(await archived(), null, 'the morning of the birthday it is still there');
+    await sweeps.sweepFinishedTasks(c, '2026-10-30T23:30:00+02:00');
+    assert.equal(await archived(), null, 'and late that evening');
+    await sweeps.sweepFinishedTasks(c, '2026-10-31T00:30:00+02:00');
+    assert.ok(await archived(), 'gone once its day is over');
+  } finally { c.release(); }
+});

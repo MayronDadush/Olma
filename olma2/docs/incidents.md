@@ -8743,15 +8743,41 @@ the end, too.
 
 **Follow-up, same day: a DAY is not half an hour.** The owner asked for a
 birthday on 30.10 ("יום הולדת לליאם, כל היום") and was told it was on the
-calendar; it did not look that way. A task saved for a day is stored at local
+calendar; it did not look that way. The first diagnosis, read off the code
+with no access to the box, was this: a task saved for a day is stored at local
 midnight, and `task-calendar.windowFor` wrote every task as a timed block,
-thirty minutes from `due_at`, so the entry was a 00:00-00:30 slot in the night.
+thirty minutes from `due_at`, so it WOULD have been a 00:00-00:30 slot in the
+night. Real, and fixed here, but it was not his failure: nothing had reached
+Google at all, because the connection was view-only (next entry). A cause
+stated before the box was asked is a hypothesis, and this entry first recorded
+it as the fact.
 `windowFor` now takes the person's zone and, for a day-shaped `due_at` with no
 `ends_at` (`auto-reminder.isDayShaped`, the same discriminator the reminder
 uses), returns an all-day window whose `localStart` carries THEIR offset so
 `calendar.createEvent` reads the right date. The instant, and so
 `expectedIdFor`, is unchanged. An entry already written as a midnight block
 keeps its id and is not rewritten.
+
+**Second follow-up: the connection was VIEW-ONLY, and the reply said "ביומן"
+anyway.** The all-day fix above was not the whole of Miron's birthday: Olma had
+only been given view access to his calendar. `task-calendar.WANTED_SQL` asks for
+`read_write`, so nothing was ever written, with no error anywhere, while
+`taskHints.event` told the model the event "went onto their CALENDAR" and it
+said "ביומן". `tools/tasks.calendarNote` now adds `hints.googleCalendar` to an
+`add_task` result when a Google connection exists and cannot be written
+(view-only, or `needs_reauth`): it is NOT on Google, never say it was, one line
+and an offer to reconnect with edit access. No connection at all says nothing,
+because "ביומן" is then the list they already use, and a writable one gets the
+sweep and no caveat. A caveat rather than an order to write, so it does not
+outvote `markPlaced`.
+
+**Third, found reviewing the first two: the birthday left the list at the
+START of its own day.** `sweeps.sweepFinishedTasks` archives an event once
+`COALESCE(ends_at, due_at)` has passed, and a day-shaped event has no
+`ends_at` and a `due_at` at local midnight, so "יום הולדת לליאם" would have gone
+at 00:00 on 30.10 and the morning digest would not have shown it. Its end is
+now the next local midnight in the owner's zone, the same `all_day` reading the
+tasks page already makes.
 
 ### The city was asked four times, because two routes each asked it once (fixed 2026-09-06)
 

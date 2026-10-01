@@ -322,7 +322,7 @@ async function withAccessToken(client, userId, opts, fn) {
 function requireWritable(accessLevel) {
   if (accessLevel === 'read_write') return null;
   return err('forbidden',
-    'the user granted view-only access to their calendar, so events cannot be added or changed. Offer to reconnect with read_write if they want that.',
+    'you have VIEW-ONLY access to their calendar, so you could not add or change this event. Tell them so plainly, never say it was done, and offer to reconnect with read_write if they want that.',
     { reason: 'read_only' });
 }
 
