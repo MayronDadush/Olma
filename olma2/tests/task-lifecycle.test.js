@@ -193,25 +193,25 @@ test('putting a task back puts it back OPEN, not back and already ticked', async
 
 test('an appointment whose moment passed leaves the list; a late job does not', async () => {
   const made = await withClient(async (c) => ({
-    // Four hours ago, and the grace is three.
+    // Four hours ago; the grace is zero now, and it would be past three too.
     passed: (await tasks.addTask(c, ana.id, { title: 'תור לרופא עיניים', dueAt: at(-4) })).data.task,
     // Same shape, same lateness, but it is a job — and staying late is what
     // being late MEANS for a job.
     late: (await tasks.addTask(c, ana.id, { title: 'לקבוע תור לרופא עיניים', dueAt: at(-4) })).data.task,
-    // Inside the grace: somebody may still be in the waiting room.
-    fresh: (await tasks.addTask(c, ana.id, { title: 'תור לספר', dueAt: at(-1) })).data.task,
+    // Still ahead: it stays until it is over.
+    fresh: (await tasks.addTask(c, ana.id, { title: 'תור לספר', dueAt: at(1) })).data.task,
   }));
   assert.equal(made.passed.kind, 'event');
   assert.equal(made.late.kind, 'todo');
 
   const res = await withClient((c) => sweeps.sweepFinishedTasks(c));
-  assert.ok(res.tasks >= 1);
+  assert.ok(res.passed >= 1);
 
   const state = async (id) => (await db.pool.query(
     `SELECT status, archived_at FROM tasks WHERE id = $1`, [id])).rows[0];
   assert.equal((await state(made.passed.id)).archived_at !== null, true);
   assert.equal((await state(made.late.id)).archived_at, null, 'a late job stays on the list');
-  assert.equal((await state(made.fresh.id)).archived_at, null, 'the grace window is real');
+  assert.equal((await state(made.fresh.id)).archived_at, null, 'nothing ahead is swept');
 });
 
 test('a range is over when it ENDS, not when it starts', async () => {
@@ -236,7 +236,7 @@ test('a standing appointment is never swept — doing it once does not finish it
   assert.equal(rows[0].archived_at, null);
 });
 
-test('a project left drained by an older path is swept, and both kinds ride ONE message', async () => {
+test('a drained project is swept and SAID; an appointment that passed leaves quietly', async () => {
   const bob = await makeUser(db.pool, '+972501000082', { firstName: 'Bob' });
   const ids = await withClient(async (c) => {
     const p = await tasks.addTask(c, bob.id, { title: 'סופר' });
@@ -258,14 +258,67 @@ test('a project left drained by an older path is swept, and both kinds ride ONE 
     [[ids.project, ids.event]]);
   assert.equal(state.every((r) => r.archived_at !== null), true);
 
-  // One interruption, not two. And it names what went, because a task that
-  // leaves on its own is otherwise indistinguishable from one we lost.
+  // The list is named, because a list that leaves on its own is otherwise
+  // indistinguishable from one we lost. The appointment is not: it was
+  // reminded about, it happened, and it is still on their Google Calendar
+  // (owner, 2026-10-01).
   const { rows: out } = await db.pool.query(
     `SELECT payload FROM outbox WHERE user_id = $1 AND kind = 'tasks_auto_archived'`, [bob.id]);
   assert.equal(out.length, 1);
-  const titles = out[0].payload.tasks.map((t) => t.title).sort();
-  assert.deepEqual(titles, ['סופר', 'פגישה עם דני'].sort());
-  assert.deepEqual(out[0].payload.tasks.map((t) => t.why).sort(), ['finished', 'passed']);
+  assert.deepEqual(out[0].payload.tasks.map((t) => t.title), ['סופר']);
+  assert.deepEqual(out[0].payload.tasks.map((t) => t.why), ['finished']);
+});
+
+test('a person whose only swept row is a passed appointment hears nothing at all', async () => {
+  const dan = await makeUser(db.pool, '+972501990001', { firstName: 'Dan' });
+  const ev = await withClient(async (c) => (await tasks.addTask(c, dan.id, {
+    title: 'תור לספר', dueAt: at(-2),
+  })).data.task);
+  const res = await withClient((c) => sweeps.sweepFinishedTasks(c));
+  assert.ok(res.passed >= 1);
+  assert.notEqual((await db.pool.query(`SELECT archived_at FROM tasks WHERE id = $1`, [ev.id])).rows[0].archived_at, null);
+  const { rows } = await db.pool.query(`SELECT 1 FROM outbox WHERE user_id = $1`, [dan.id]);
+  assert.equal(rows.length, 0);
+});
+
+test('with no grace left, a reminder that is due goes out before its appointment is swept', async () => {
+  const eli = await makeUser(db.pool, '+972501990002', { firstName: 'Eli' });
+  const made = await withClient(async (c) => {
+    const ev = (await tasks.addTask(c, eli.id, { title: 'תור לרופא', dueAt: at(2) })).data.task;
+    const r = await reminders.setReminder(c, eli.id, ev.id, at(1));
+    // Straight to the columns: the appointment started a minute ago, and the
+    // reminder for that same minute has not been picked up yet.
+    await c.query(`UPDATE tasks SET due_at = $2 WHERE id = $1`, [ev.id, at(-1 / 60)]);
+    await c.query(`UPDATE task_reminders SET remind_at = $2 WHERE id = $1`, [r.data.reminder.id, at(-1 / 60)]);
+    return { ev, reminderId: r.data.reminder.id };
+  });
+  const archived = async () => (await db.pool.query(
+    `SELECT archived_at FROM tasks WHERE id = $1`, [made.ev.id])).rows[0].archived_at;
+
+  await withClient((c) => sweeps.sweepFinishedTasks(c));
+  assert.equal(await archived(), null, 'the reminder has not gone out yet');
+  const { rows: rem } = await db.pool.query(
+    `SELECT cancelled_at FROM task_reminders WHERE id = $1`, [made.reminderId]);
+  assert.equal(rem[0].cancelled_at, null);
+
+  // Once its first rung has been handed over, nothing holds it back.
+  await db.pool.query(`UPDATE task_reminders SET attempts = 1 WHERE id = $1`, [made.reminderId]);
+  await withClient((c) => sweeps.sweepFinishedTasks(c));
+  assert.notEqual(await archived(), null);
+});
+
+test('a reminder that will never go out does not pin its appointment for ever', async () => {
+  const fay = await makeUser(db.pool, '+972501990003', { firstName: 'Fay' });
+  const ev = await withClient(async (c) => {
+    const t = (await tasks.addTask(c, fay.id, { title: 'תור לשיננית', dueAt: at(2) })).data.task;
+    const r = await reminders.setReminder(c, fay.id, t.id, at(1));
+    // Five hours stale and never attempted — somebody paused, say.
+    await c.query(`UPDATE tasks SET due_at = $2 WHERE id = $1`, [t.id, at(-4)]);
+    await c.query(`UPDATE task_reminders SET remind_at = $2 WHERE id = $1`, [r.data.reminder.id, at(-5)]);
+    return t;
+  });
+  await withClient((c) => sweeps.sweepFinishedTasks(c));
+  assert.notEqual((await db.pool.query(`SELECT archived_at FROM tasks WHERE id = $1`, [ev.id])).rows[0].archived_at, null);
 });
 
 test('a second run has nothing left to say', async () => {
@@ -280,13 +333,14 @@ test('the grace window is a flag, so finding the right number is not a deploy', 
   const t = await withClient(async (c) => (await tasks.addTask(c, ana.id, {
     title: 'תור לפיזיותרפיה', dueAt: at(-1),
   })).data.task);
+  await withClient((c) => flags.setFlag(c, 'task_auto_archive_grace_hours', 3));
   await withClient((c) => sweeps.sweepFinishedTasks(c));
   assert.equal((await db.pool.query(`SELECT archived_at FROM tasks WHERE id = $1`, [t.id])).rows[0].archived_at, null);
 
+  // The default is zero: over is over.
   await withClient((c) => flags.setFlag(c, 'task_auto_archive_grace_hours', 0));
   await withClient((c) => sweeps.sweepFinishedTasks(c));
   assert.notEqual((await db.pool.query(`SELECT archived_at FROM tasks WHERE id = $1`, [t.id])).rows[0].archived_at, null);
-  await withClient((c) => flags.setFlag(c, 'task_auto_archive_grace_hours', 3));
 });
 
 test('a blocked or eval user is never swept', async () => {

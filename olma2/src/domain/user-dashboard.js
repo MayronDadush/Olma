@@ -33,6 +33,7 @@ const factPrompts = require('./fact-prompts');
 const suggestions = require('./task-suggestions');
 const referral = require('./referral');
 const experiments = require('./experiments');
+const taskCalendar = require('./task-calendar');
 
 // A task's own category vocabulary is closed server-side (tasks.category is
 // validated as a closed set, not free text), so the page can rely on it —
@@ -93,7 +94,7 @@ async function loadUser(client, userId) {
 // four queries rather than one join, because a join across children AND
 // viewers multiplies rows and the de-duplication is more code than the extra
 // round trips are worth.
-async function loadTasks(client, userId, zone, calendarSyncTasks) {
+async function loadTasks(client, userId, zone, calendarSyncTasks, calendarWritable = false) {
   // Their own list AND the tasks other people share with them. A shared task
   // is not a copy or a notification — it is the same row, appearing on both
   // lists, which is the whole point of sharing one. Leaving it out would have
@@ -239,8 +240,10 @@ async function loadTasks(client, userId, zone, calendarSyncTasks) {
       // The EFFECTIVE answer, resolved here rather than in the browser: the
       // page draws one switch and the precedence rule belongs on the side that
       // enforces it. `inCalendar` is the separate question of whether the
-      // sweep has caught up yet.
-      calendar: t.calendar_opt_in ?? Boolean(calendarSyncTasks),
+      // sweep has caught up yet. The rule itself is task-calendar's, so the
+      // switch cannot drift from what the sweep does: an event follows a
+      // calendar they let Olma write to, whatever the to-do switch says.
+      calendar: taskCalendar.wantedFor(t, { syncTasks: calendarSyncTasks, writable: calendarWritable }),
       inCalendar: t.in_calendar,
       // The Google id itself, so the calendar tab can recognise this task's
       // own copy among the events /me/events brings back and draw it ONCE.
@@ -745,7 +748,8 @@ async function load(client, userId) {
   // pg serialises concurrent queries on a single client anyway — while warning
   // that it will stop doing so in pg@9. Overlapping them buys nothing here and
   // would break on that upgrade.
-  const tasks = await loadTasks(client, userId, zone, user.calendar_sync_tasks);
+  const calendarWritable = await taskCalendar.canWrite(client, userId);
+  const tasks = await loadTasks(client, userId, zone, user.calendar_sync_tasks, calendarWritable);
   const friends = await loadFriends(client, userId);
   const integrations = await loadIntegrations(client, userId);
   // What the page may OFFER, as distinct from what is already connected:
