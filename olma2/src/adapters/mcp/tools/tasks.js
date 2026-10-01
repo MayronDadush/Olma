@@ -1,7 +1,7 @@
 'use strict';
 // tasks — one slice of the tool registry (see ../registry.js).
 const {
-  tasks, users, reminders, dashboardAuth, S, tool, ok, pastMoment, WHEN_SAID,
+  tasks, users, reminders, dashboardAuth, calendar, S, tool, ok, pastMoment, WHEN_SAID,
 } = require('./_shared');
 const dt = require('../../../domain/datetime');
 const chaseDeadline = require('../../../domain/chase-deadline');
@@ -65,6 +65,34 @@ function chaseWorthAsking(dueAt, reminder) {
   const at = new Date(reminder && reminder.remind_at).getTime();
   if (!Number.isFinite(due) || !Number.isFinite(at)) return false;
   return due - Date.now() >= CHASE_WORTH_ASKING_MS && at - Date.now() >= CHASE_WORTH_ASKING_MS;
+}
+
+// An event saved while their Google Calendar cannot be written to is on Olma's
+// list and NOT on Google, and the result used to say "went onto their CALENDAR"
+// either way. Miron's birthday entry for Liam was told back as "ביומן" with a
+// view-only connection behind it, and nothing ever reached Google (2026-10-01).
+// Only a connection that EXISTS and cannot be written is worth a sentence: with
+// no calendar at all, "ביומן" is the list they already use. Conditional like
+// the event hint beside it — a caveat the 👍 cannot carry, never a reason to
+// write when everything went through.
+async function calendarNote(client, user, res) {
+  if (!res || !res.ok || !res.data) return res;
+  const d = res.data;
+  if (![d.task, ...(Array.isArray(d.tasks) ? d.tasks : [])].some((t) => t && t.kind === 'event')) return res;
+  const st = await calendar.getStatus(client, user.id);
+  const s = st && st.ok ? st.data : null;
+  if (!s || s.canEdit || !(s.connected || s.needsReauth)) return res;
+  return ok({
+    ...d,
+    hints: {
+      ...(d.hints || {}),
+      googleCalendar: (s.needsReauth
+        ? 'Their Google Calendar needs reconnecting, so this event is on Olma\'s list and NOT on Google. '
+        : 'Their Google Calendar is connected VIEW-ONLY, so this event is on Olma\'s list and NOT on Google. ')
+        + 'Never say it was added to their Google Calendar. Say in ONE short line that it did not go there, '
+        + 'and offer to reconnect with edit access (start_calendar_connection, access chosen by THEM — ask first).',
+    },
+  });
 }
 
 function taskHints(res, user = {}) {
@@ -358,7 +386,7 @@ module.exports = [
       });
       if (chase && res.ok) ctx.turn.chaseUsed = true;
       if (weekly && res.ok) ctx.turn.remindAskUsed = true;
-      return taskHints(res, user);
+      return calendarNote(client, user, taskHints(res, user));
     }),
   tool('add_tasks_bulk', 'Save a whole dump in ONE call (max 60 items). Never loop add_task. Also the way to SPLIT a goal into its parts: pass parent_task_id and the parts become subtasks in the same call. Timed items get their reminders automatically; when the reply carries hints, follow them. Any due_at MUST carry a UTC offset (2026-08-20T09:00:00+03:00), converted from their own local time (USER.md); never bare digits with a Z.',
     { items: S('array', 'Array of {title, kind?, location?, category?, due_at?, ends_at?}; kind event|todo, location, category and times as in add_task.', { items: { type: 'object' } }),

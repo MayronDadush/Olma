@@ -8692,6 +8692,19 @@ uses), returns an all-day window whose `localStart` carries THEIR offset so
 `expectedIdFor`, is unchanged. An entry already written as a midnight block
 keeps its id and is not rewritten.
 
+**Second follow-up: the connection was VIEW-ONLY, and the reply said "ביומן"
+anyway.** The all-day fix above was not the whole of Miron's birthday: Olma had
+only been given view access to his calendar. `task-calendar.WANTED_SQL` asks for
+`read_write`, so nothing was ever written, with no error anywhere, while
+`taskHints.event` told the model the event "went onto their CALENDAR" and it
+said "ביומן". `tools/tasks.calendarNote` now adds `hints.googleCalendar` to an
+`add_task` result when a Google connection exists and cannot be written
+(view-only, or `needs_reauth`): it is NOT on Google, never say it was, one line
+and an offer to reconnect with edit access. No connection at all says nothing,
+because "ביומן" is then the list they already use, and a writable one gets the
+sweep and no caveat. A caveat rather than an order to write, so it does not
+outvote `markPlaced`.
+
 ### The city was asked four times, because two routes each asked it once (fixed 2026-09-06)
 
 Sarah was asked which city she lives in on her first contact, and then again,

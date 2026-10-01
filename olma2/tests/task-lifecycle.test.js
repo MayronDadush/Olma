@@ -491,3 +491,29 @@ test('a checklist item is not a task anybody has to do, and the counts say so', 
     assert.equal(summary.counts.openTasks, 2, 'the counts-only scope reads the same number');
   });
 });
+
+// Miron's birthday entry for Liam was told back as "ביומן" while the Google
+// connection behind it was VIEW-ONLY: it sat on Olma's list and never reached
+// Google (2026-10-01). The result has to say so, and only when it is true.
+test('an event saved against a view-only Google Calendar says it is NOT on Google', async () => {
+  const { BY_NAME } = require('../src/adapters/mcp/registry');
+  const { withTx } = require('../src/db/pool');
+  const add = BY_NAME.get('add_task');
+  const u = await makeUser(db.pool, '+972501000187', { firstName: 'Miron', timezone: 'Asia/Jerusalem' });
+
+  const none = await withTx(db.pool, (c) => add.handler(c, u, { title: 'אירוע בלי יומן', kind: 'event', due_at: at(20), ends_at: at(21) }));
+  assert.equal(none.data.hints.googleCalendar, undefined, 'no calendar connected, nothing to warn about');
+
+  await db.pool.query(
+    `INSERT INTO integrations (user_id, provider, status, access_level)
+     VALUES ($1, 'google_calendar', 'connected', 'read_only')`, [u.id]);
+  const viewOnly = await withTx(db.pool, (c) => add.handler(c, u, { title: 'יום הולדת לליאם', kind: 'event', due_at: at(22), ends_at: at(23) }));
+  assert.match(viewOnly.data.hints.googleCalendar, /VIEW-ONLY/);
+  assert.match(viewOnly.data.hints.googleCalendar, /Never say it was added/);
+  const todo = await withTx(db.pool, (c) => add.handler(c, u, { title: 'לקנות מתנה', kind: 'todo' }));
+  assert.equal(todo.data.hints && todo.data.hints.googleCalendar, undefined, 'a to-do never claimed Google');
+
+  await db.pool.query(`UPDATE integrations SET access_level = 'read_write' WHERE user_id = $1`, [u.id]);
+  const writable = await withTx(db.pool, (c) => add.handler(c, u, { title: 'אירוע עם יומן', kind: 'event', due_at: at(24), ends_at: at(25) }));
+  assert.equal(writable.data.hints.googleCalendar, undefined, 'a writable calendar gets the sweep, not a caveat');
+});
