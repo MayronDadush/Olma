@@ -74,6 +74,72 @@ const PREFIXES = [
 // Longest code first, so 972 wins over 97 and 351 over 35.
 const SORTED = [...PREFIXES].sort((a, b) => b.code.length - a.code.length);
 
+// +1 spans six zones, and the three digits after it say which one far better
+// than "New York" does: u-40, an Israeli in Los Angeles on a 213 number, was
+// stored on Eastern time and every check-in reached him three hours early
+// (2026-09-30). An area code is where the number was ISSUED, not where its
+// owner is today, so the answer stays `ambiguous` and unconfirmed exactly as
+// before — this only moves the starting guess. Only codes whose whole area
+// keeps one clock are listed; a split code takes the zone most of its people
+// live on (Idaho's 208 is Boise, Mountain). Anything unlisted — the East
+// Coast, Ontario, Quebec, the Caribbean — keeps America/New_York.
+const NANP_ZONES = {
+  'America/Los_Angeles': [
+    // California
+    209, 213, 279, 310, 323, 341, 350, 408, 415, 424, 442, 510, 530, 559, 562,
+    619, 626, 628, 650, 657, 661, 669, 707, 714, 747, 760, 805, 818, 820, 831,
+    840, 858, 909, 916, 925, 949, 951,
+    206, 253, 360, 425, 509, 564, // Washington
+    458, 503, 541, 971, // Oregon
+    702, 725, 775, // Nevada
+  ],
+  'America/Vancouver': [236, 250, 604, 672, 778],
+  'America/Denver': [
+    303, 719, 720, 970, 983, // Colorado
+    385, 435, 801, // Utah
+    505, 575, // New Mexico
+    307, 406, 208, 986, // Wyoming, Montana, Idaho
+    915, // El Paso
+  ],
+  'America/Edmonton': [368, 403, 587, 780, 825],
+  // No daylight saving: Denver would be an hour off half the year.
+  'America/Phoenix': [480, 520, 602, 623, 928],
+  'America/Regina': [306, 474, 639],
+  'America/Chicago': [
+    // Texas (El Paso is Mountain, above)
+    210, 214, 254, 281, 325, 346, 361, 409, 430, 432, 469, 512, 682, 713, 726,
+    737, 806, 817, 830, 832, 903, 936, 940, 945, 956, 972, 979,
+    // Illinois
+    217, 224, 309, 312, 331, 447, 464, 618, 630, 708, 730, 773, 779, 815, 847, 872,
+    262, 274, 353, 414, 534, 608, 715, 920, // Wisconsin
+    218, 320, 507, 612, 651, 763, 952, // Minnesota
+    319, 515, 563, 641, 712, // Iowa
+    235, 314, 417, 557, 573, 636, 660, 816, 975, // Missouri
+    327, 479, 501, 870, // Arkansas
+    225, 318, 337, 504, 985, // Louisiana
+    228, 601, 662, 769, // Mississippi
+    205, 251, 256, 334, 659, 938, // Alabama
+    405, 539, 572, 580, 918, // Oklahoma
+    316, 620, 785, 913, // Kansas
+    308, 402, 531, // Nebraska
+    605, 701, // the Dakotas
+    615, 629, 731, 901, 931, // Tennessee, west of the Cumberland Plateau
+    270, 364, // western Kentucky
+    448, 850, // the Florida panhandle
+    219, // north-west Indiana
+  ],
+  'America/Winnipeg': [204, 431],
+  'America/Halifax': [506, 782, 902],
+  'America/St_Johns': [709, 879],
+  'America/Anchorage': [907],
+  'Pacific/Honolulu': [808],
+};
+
+const NANP = new Map();
+for (const [tz, codes] of Object.entries(NANP_ZONES)) {
+  for (const code of codes) NANP.set(String(code), tz);
+}
+
 function lookupTimezone(phone) {
   const digits = String(phone || '').replace(/[^\d]/g, '');
   if (!digits) return null;
@@ -83,7 +149,8 @@ function lookupTimezone(phone) {
       // its reasoning ("your number starts +972") cannot re-derive which
       // prefix matched — the codes vary from one digit to three, and slicing
       // a fixed number off the phone produces "+9725".
-      return { code: e.code, country: e.country, timezone: e.tz, lang: e.lang, ambiguous: Boolean(e.ambiguous) };
+      const tz = (e.code === '1' && NANP.get(digits.slice(1, 4))) || e.tz;
+      return { code: e.code, country: e.country, timezone: tz, lang: e.lang, ambiguous: Boolean(e.ambiguous) };
     }
   }
   return null;
@@ -140,4 +207,4 @@ function isRealPhone(value) {
   return phoneShape(value) === 'phone';
 }
 
-module.exports = { lookupTimezone, timezoneForPhone, phoneShape, isRealPhone, PREFIXES };
+module.exports = { lookupTimezone, timezoneForPhone, phoneShape, isRealPhone, PREFIXES, NANP_ZONES };

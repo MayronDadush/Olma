@@ -58,7 +58,7 @@ test('enqueue reaches the served and not the paused, the pending or the eval use
   const evalU = await served('+972500000205');
   await db.pool.query(`UPDATE users SET is_eval = true WHERE id = $1`, [evalU.id]);
 
-  const a = await withTx(db.pool, (c) => notice.audience(c));
+  const a = await withTx(db.pool, (c) => notice.audience(c, '2026-09-28'));
   const first = await withTx(db.pool, (c) => notice.enqueueAll(c, '2026-09-28'));
   const again = await withTx(db.pool, (c) => notice.enqueueAll(c, '2026-09-28'));
   const { rows } = await db.pool.query(`SELECT user_id, urgency FROM outbox WHERE kind = $1`, [notice.KIND]);
@@ -111,4 +111,36 @@ test('the link opens the page in the language the notice is in', async () => {
   assert.equal(await urlOf(en.id), 'https://allma.world/privacy');
   const text = proactiveText.rawPipeTextFor({ kind: notice.KIND, locale: 'he', payload: { version: '2026-09-28', url: await urlOf(he.id) } }, {}, 'whatsapp');
   assert.ok(text.includes('https://allma.world/privacy?lang=he'));
+});
+
+// The owner's rule (2026-10-01): the privacy link reaches a person ONCE. Since
+// PR #548 the opening carries it, so somebody introduced after that already
+// read it — by the greeter or code (`opening_sent_at`), or by their own agent
+// on a first turn nobody greeted (`first_turn_at`, the column NULL). Somebody
+// introduced before it read an opening without the link and still gets it.
+test('somebody whose opening already carried the link is not sent it again', async () => {
+  const since = new Date(notice.VERSIONS['2026-09-28'].shownSince);
+  const before = new Date(since.getTime() - 3600_000);
+  const afterIt = new Date(since.getTime() + 3600_000);
+  const oldTimer = await served('+972500000231');
+  await db.pool.query(`UPDATE users SET opening_sent_at = $2 WHERE id = $1`, [oldTimer.id, before]);
+  const greeted = await served('+972500000232');
+  await db.pool.query(`UPDATE users SET opening_sent_at = $2 WHERE id = $1`, [greeted.id, afterIt]);
+  const ownAgent = await served('+972500000233');
+  await db.pool.query(`UPDATE users SET opening_sent_at = NULL, first_turn_at = $2 WHERE id = $1`, [ownAgent.id, afterIt]);
+  const greetedEarlyTalkedLate = await served('+972500000234');
+  await db.pool.query(`UPDATE users SET opening_sent_at = $2, first_turn_at = $3 WHERE id = $1`,
+    [greetedEarlyTalkedLate.id, before, afterIt]);
+
+  const a = await withTx(db.pool, (c) => notice.audience(c, '2026-09-28'));
+  assert.ok(a.shown >= 2);
+  for (const u of [oldTimer, greeted, ownAgent, greetedEarlyTalkedLate]) {
+    await withTx(db.pool, (c) => notice.enqueueAll(c, '2026-09-28', { only: u.id }));
+  }
+  const { rows } = await db.pool.query(`SELECT user_id FROM outbox WHERE kind = $1`, [notice.KIND]);
+  const ids = new Set(rows.map((r) => Number(r.user_id)));
+  assert.ok(ids.has(Number(oldTimer.id)), 'introduced before the link: still told');
+  assert.ok(ids.has(Number(greetedEarlyTalkedLate.id)), 'the opening they read had no link');
+  assert.ok(!ids.has(Number(greeted.id)), 'the greeter already gave them the link');
+  assert.ok(!ids.has(Number(ownAgent.id)), 'their own agent already gave them the link');
 });

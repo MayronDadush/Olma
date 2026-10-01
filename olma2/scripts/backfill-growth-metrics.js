@@ -21,7 +21,12 @@ const { METRIC_QUERIES, JOIN_CHANNELS } = require('../src/jobs/metrics');
 const APPLY = process.argv.includes('--apply');
 const di = process.argv.indexOf('--days');
 const DAYS = di > 0 ? Math.max(1, Math.min(180, Number(process.argv[di + 1]) || 60)) : 60;
-const METRICS = ['weekly_active_users', 'referral_clicks', ...JOIN_CHANNELS.flatMap((v) => [`joined_${v}`, `wau_${v}`])];
+// The room funnel (2026-10-01) reads room membership and the same WAU rows,
+// so it is as safe to rebuild as the rest; a room's `retired` state is
+// today's, which the metric's own comment owns.
+const ROOM = ['room_people', 'room_people_met', 'room_people_active'];
+const RETENTION = ['cohort_2_4w', 'cohort_2_4w_active'];
+const METRICS = ['weekly_active_users', 'referral_clicks', ...JOIN_CHANNELS.flatMap((v) => [`joined_${v}`, `wau_${v}`]), ...ROOM, ...RETENTION];
 
 (async () => {
   const pool = createPool();
@@ -41,7 +46,8 @@ const METRICS = ['weekly_active_users', 'referral_clicks', ...JOIN_CHANNELS.flat
           }
         }
         console.log(date, `wau=${vals.weekly_active_users}`,
-          JOIN_CHANNELS.map((v) => `${v}:${vals[`joined_${v}`]}/${vals[`wau_${v}`]}`).join(' '));
+          JOIN_CHANNELS.map((v) => `${v}:${vals[`joined_${v}`]}/${vals[`wau_${v}`]}`).join(' '),
+          `rooms=${ROOM.map((m) => vals[m]).join('/')}`, `retained=${vals.cohort_2_4w_active}/${vals.cohort_2_4w}`);
       }
     });
     console.log(APPLY ? `written: ${METRICS.length} metrics × ${DAYS + 1} days` : 'dry run — pass --apply to write');

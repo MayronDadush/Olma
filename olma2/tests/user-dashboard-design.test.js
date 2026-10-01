@@ -544,3 +544,24 @@ test('the locked card says what she is, and labels the example it sits on', () =
   assert.match(page, /\.wwhat\{display:none\}\nhtml\.is-new:not\(\.is-app\) \.wwhat\{/);
   assert.match(page, /html\.is-new:not\(\.is-app\) \.wcard\{border-top:6px solid var\(--action\)\}/);
 });
+
+// The owner's pick of 2026-10-01: on a new task nothing below the name
+// answers until there is one. Every row keeps its colours and says "אחרי שיהיה
+// שם" instead of its value, and a press on one is answered at the name, in
+// words. It is a click handler rather than `inert` because the press has to
+// reach the page to be answered — and it must never outlive the first letter.
+test('a new task asks for its name before anything else', () => {
+  assert.match(page, /nameFirst = isNew;\n {4}syncNameFirst\(\);/);
+  assert.match(page, /if\(!\$\("#sTitle"\)\.value\.trim\(\)\) return;\n {4}nameFirst = false;\n {4}syncNameFirst\(\);/);
+  // …and the check with no name asks for one rather than saving an empty task
+  assert.match(page, /\$\("#sTitleGo"\)\.addEventListener\("click", function\(\)\{\n {4}if\(!\$\("#sTitle"\)\.value\.trim\(\)\)\{ showNeed\("rest"\); return; \}/);
+  assert.match(page, /\$\("#sheet"\)\.addEventListener\("click", function\(e\)\{\n {4}if\(!nameFirst\) return;/);
+  assert.match(page, /var NEED_AT = "#sCatLine, #sListGroup, #sMainGroup, #sShareGroup, #sAlso";/);
+  assert.match(page, /#sheet\.namefirst #sWhenSay,#sheet\.namefirst #sRemSay,#sheet\.namefirst #sRemOff\{display:none!important\}/);
+  // nothing greyed out: half a sheet in grey read as broken
+  assert.doesNotMatch(page, /#sheet\.namefirst[^{]*\{[^}]*grayscale/);
+  assert.equal((page.match(/<svg class="alock"><use href="#i-lock"\/><\/svg>/g) || []).length, 4);
+  for (const k of ['sheet.afterName', 'sheet.need.when', 'sheet.need.rem', 'sheet.need.rest']) {
+    assert.equal((page.match(new RegExp(`"${k.replace(/\./g, '\\.')}":"`, 'g')) || []).length, 2, `${k} is not in both languages`);
+  }
+});

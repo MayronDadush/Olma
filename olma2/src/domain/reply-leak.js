@@ -380,8 +380,9 @@ const SENTINEL_STRIP_RE = /\s*\bNO_REPLY\b\s*/g;
 // is the message: an invite that loses its dead line still asks when suits
 // them, and cutting the paragraph would take the question with it.
 const OUR_HOSTS = new Set(['allma.world', 'www.allma.world', 'olmachat.duckdns.org']);
-// `night/<token>` is a game night's shared page (games/, since 2026-09-29).
-const OUR_PATHS = /^\/(?:d\/(?:[A-Za-z0-9]{22}|[a-f0-9]{64})|night\/[A-Za-z0-9]{22}|me|privacy|terms|accessibility|health|ready)?\/?$/;
+// `night/<token>` is a game night's shared page (games/, since 2026-09-29);
+// `g/<code>` is its invite's short link into a chat with Olma (2026-10-01).
+const OUR_PATHS = /^\/(?:d\/(?:[A-Za-z0-9]{22}|[a-f0-9]{64})|night\/[A-Za-z0-9]{22}|g\/[2-9A-HJKMNP-Za-hjkmnp-z]{5}|me|privacy|terms|accessibility|health|ready)?\/?$/;
 const CLAIMS_US_RE = /(?:^|[.-])(?:olma|allma|openclaw)(?:[.-]|$)/i;
 const ANY_URL_RE = /\bhttps?:\/\/[^\s<>"'׳״)\]]+/gi;
 

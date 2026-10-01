@@ -1,7 +1,7 @@
 'use strict';
-// Each test file gets its own throwaway database, built by running the real
-// migrations — the same runner production uses. No hand-applied ALTERs in
-// tests, ever (the v1 wound this design exists to close).
+// Each test file gets its own throwaway database, copied from a template that
+// the real migrations built — the same runner production uses. No hand-applied
+// ALTERs in tests, ever (the v1 wound this design exists to close).
 require('../src/db/types'); // tests must see production's int8 typing
 // Never chattr +i inside test fixtures — an immutable file under /tmp
 // survives the teardown's rm -rf and litters the box (see intake/provision).
@@ -26,6 +26,21 @@ const os = require('node:os');
 const path = require('node:path');
 if (!process.env.OLMA_OPENCLAW_HOME) {
   process.env.OLMA_OPENCLAW_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'olma2-test-home-'));
+}
+// ...and never the live gateway's CLI. Six places in src/ spawn `openclaw` by
+// name, and on a laptop or a GitHub runner there is no such binary, so every
+// one of them fails at once and the suite is written for that. On the box
+// there IS one, with production's HOME behind it: intake.test.js's "CLI
+// failures surface as thrown errors" ran the real CLI on every deploy and
+// waited out a 10s timeout for it. So a test process finds a stand-in first
+// on its PATH that fails the way a missing binary does — the box now runs
+// what CI runs. Children inherit it with the rest of process.env.
+{
+  const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'olma2-test-bin-'));
+  fs.writeFileSync(path.join(bin, 'openclaw'),
+    '#!/bin/sh\necho "openclaw: not available to the test suite (tests/helpers.js)" >&2\nexit 127\n',
+    { mode: 0o755 });
+  process.env.PATH = bin + path.delimiter + (process.env.PATH || '');
 }
 if (!process.env.OLMA_OPENCLAW_CONFIG) {
   // A real shape, not an empty object. Two things read this and both draw the
@@ -66,8 +81,44 @@ const { migrate } = require('../src/db/migrate');
 const ADMIN_URL = process.env.OLMA_TEST_ADMIN_URL
   || 'postgres://olma:olma2local@127.0.0.1:5432/olma2_test';
 
+// The name carries its own birth time (base-36 seconds), because Postgres
+// records none for a database, and a leftover is only recognisable as one by
+// its age: see sweepStaleTestDbs.
 function testDbName() {
-  return 'olma2_t_' + crypto.randomBytes(6).toString('hex');
+  return 'olma2_t_' + Math.floor(Date.now() / 1000).toString(36)
+    + '_' + crypto.randomBytes(6).toString('hex');
+}
+
+// A run that is killed — capped, cancelled, a runner that dies — never reaches
+// its teardowns, and every database it made stays behind. On the box that had
+// come to 871 of them, 6.5GB of Postgres's 7.9GB, which autovacuum kept
+// visiting for ever (measured 2026-09-30). So each file's teardown also drops
+// any test database older than any run could be. One process at a time, under
+// an advisory lock, and once per process: a DROP DATABASE forces a checkpoint,
+// so this must never become a storm — the first file drops what is stale and
+// the rest find nothing. Names from before the timestamp carry no age
+// and are left alone — those were cleared by hand.
+const STALE_TEST_DB_MS = 6 * 3600_000;
+let staleSwept = false;
+async function sweepStaleTestDbs(admin) {
+  if (staleSwept) return;
+  staleSwept = true;
+  await admin.query("SELECT pg_advisory_lock(hashtext('olma2_t_stale_sweep'))");
+  try {
+    const { rows } = await admin.query(
+      "SELECT datname FROM pg_database WHERE datname ~ '^olma2_t_[0-9a-z]+_[0-9a-f]+$'");
+    for (const { datname } of rows) {
+      const born = parseInt(datname.split('_')[2], 36) * 1000;
+      if (!(Date.now() - born > STALE_TEST_DB_MS)) continue;
+      try {
+        await admin.query(`DROP DATABASE IF EXISTS ${datname} WITH (FORCE)`);
+      } catch (e) {
+        console.warn(`[test] could not drop stale ${datname}: ${e.message}`);
+      }
+    }
+  } finally {
+    await admin.query("SELECT pg_advisory_unlock(hashtext('olma2_t_stale_sweep'))");
+  }
 }
 
 // How long teardown waits for pool.end() before declaring a leaked client, and
@@ -119,24 +170,118 @@ function armExitWatchdog() {
 // See incidents.md, "A test file poisoned every other one".
 armExitWatchdog();
 
+const dbUrl = (name) => ADMIN_URL.replace(/\/[^/]*$/, '/' + name);
+
+// The migrations run ONCE per tree, into a template, and every test database
+// is a copy of it. They used to run into every one of them: 258 databases a
+// run, each paying all 96 migrations — 2.1-2.3s apiece on the box, measured,
+// against 130-140ms for a copy — which made the setup ~40% of the deploy
+// suite's time and made it grow with migrations x test files rather than with
+// the tests. It is still exactly the production runner that builds the
+// schema, once; what changed is only how many times.
+//
+// The name is a hash of every byte that decides the schema — each migration
+// file and the runner itself — so a changed migration builds a new template
+// and can never be served a stale one, and two trees with different
+// migrations on one Postgres cannot see each other's. The advisory lock makes
+// the first file build it and the rest wait; the build goes into a temporary
+// name and is RENAMED into place, so a template that exists is a finished one
+// (a build that dies half way leaves a *_build_* database, never a template).
+// Connections to it are then refused, because a copy fails while anybody is
+// connected to its source.
+function templateName() {
+  const { listMigrations } = require('../src/db/migrate');
+  const dir = path.join(__dirname, '..', 'migrations');
+  const h = crypto.createHash('sha256');
+  h.update(fs.readFileSync(require.resolve('../src/db/migrate')));
+  for (const m of listMigrations()) {
+    h.update(m.file);
+    h.update(fs.readFileSync(path.join(dir, m.file)));
+  }
+  return 'olma2_tpl_' + h.digest('hex').slice(0, 12);
+}
+
+// A template nobody has built from in a day belongs to a tree that has moved
+// on. Swept only while building a new one, which is rare (once per migration
+// change), and never the one being built. The age rides the database's
+// COMMENT, because Postgres records no creation time for a database.
+const TEMPLATE_KEEP_MS = 24 * 3600_000;
+
+async function sweepOldTemplates(admin, keep) {
+  const { rows } = await admin.query(
+    `SELECT datname, shobj_description(oid, 'pg_database') AS note
+       FROM pg_database WHERE datname ~ '^olma2_tpl_[0-9a-f]{12}$' AND datname <> $1`, [keep]);
+  for (const r of rows) {
+    const built = Date.parse((r.note || '').replace(/^built /, ''));
+    if (Number.isFinite(built) && Date.now() - built < TEMPLATE_KEEP_MS) continue;
+    try {
+      await admin.query(`DROP DATABASE IF EXISTS ${r.datname}`);
+    } catch (e) {
+      console.warn(`[test] could not drop old template ${r.datname}: ${e.message}`);
+    }
+  }
+}
+
+async function ensureTemplate(admin) {
+  const tpl = templateName();
+  const exists = async () =>
+    (await admin.query('SELECT 1 FROM pg_database WHERE datname = $1', [tpl])).rowCount > 0;
+  if (await exists()) return tpl;
+  await admin.query('SELECT pg_advisory_lock(hashtext($1))', [tpl]);
+  try {
+    if (await exists()) return tpl;
+    const build = `${tpl}_build_${crypto.randomBytes(3).toString('hex')}`;
+    await admin.query(`CREATE DATABASE ${build}`);
+    try {
+      const setup = new Client({ connectionString: dbUrl(build) });
+      await setup.connect();
+      try {
+        await migrate(setup);
+      } finally {
+        await setup.end();
+      }
+      // The backend behind `setup` can outlive its socket by a moment, and a
+      // rename refuses while it is still there.
+      for (let i = 0; ; i++) {
+        try {
+          await admin.query(`ALTER DATABASE ${build} RENAME TO ${tpl}`);
+          break;
+        } catch (e) {
+          if (e.code !== '55006' || i >= 50) throw e;
+          await new Promise((r) => setTimeout(r, 100));
+        }
+      }
+    } catch (e) {
+      await admin.query(`DROP DATABASE IF EXISTS ${build} WITH (FORCE)`).catch(() => {});
+      throw e;
+    }
+    await admin.query(`ALTER DATABASE ${tpl} WITH ALLOW_CONNECTIONS false`);
+    await admin.query(`COMMENT ON DATABASE ${tpl} IS 'built ${new Date().toISOString()}'`);
+    await sweepOldTemplates(admin, tpl);
+    return tpl;
+  } finally {
+    await admin.query('SELECT pg_advisory_unlock(hashtext($1))', [tpl]);
+  }
+}
+
 async function freshDb() {
   const name = testDbName();
   const admin = new Client({ connectionString: ADMIN_URL });
   await admin.connect();
   try {
-    await admin.query(`CREATE DATABASE ${name}`);
+    try {
+      await admin.query(`CREATE DATABASE ${name} TEMPLATE ${await ensureTemplate(admin)}`);
+    } catch (e) {
+      // 3D000: another tree's build swept this template between our check and
+      // our copy. Building it again is the whole recovery.
+      if (e.code !== '3D000') throw e;
+      await admin.query(`CREATE DATABASE ${name} TEMPLATE ${await ensureTemplate(admin)}`);
+    }
   } finally {
     await admin.end();
   }
 
-  const url = ADMIN_URL.replace(/\/[^/]*$/, '/' + name);
-  const setup = new Client({ connectionString: url });
-  await setup.connect();
-  try {
-    await migrate(setup);
-  } finally {
-    await setup.end();
-  }
+  const url = dbUrl(name);
 
   // Production's Postgres session runs in Etc/UTC (verified on the box), and
   // several jobs quietly depend on it: jobs/metrics.js picks its day with
@@ -205,7 +350,12 @@ async function freshDb() {
     // would shed itself after its idle window, but a test child waiting on
     // that is the silent-hang shape this helper exists to prevent.
     try { await require('../src/channels/sessions-async').close(); } catch { /* none spawned */ }
-    await endPool();
+    // A pool that will not end is a failure to REPORT, not a reason to skip
+    // the drop: endPool has already forced its sockets shut, and until this
+    // was split every file that leaked a client leaked its database too —
+    // tests/helpers-guards.test.js did it on purpose, once per green run.
+    let failure = null;
+    try { await endPool(); } catch (e) { failure = e; }
     const admin2 = new Client({ connectionString: ADMIN_URL });
     await admin2.connect();
     try {
@@ -217,7 +367,13 @@ async function freshDb() {
       // the next run's CREATE uses a fresh random name anyway.
       console.warn(`[test] could not drop ${name}: ${e.message}`);
     }
+    try {
+      await sweepStaleTestDbs(admin2);
+    } catch (e) {
+      console.warn(`[test] stale test database sweep: ${e.message}`);
+    }
     await admin2.end();
+    if (failure) throw failure;
   };
   return { pool, teardown, url };
 }
@@ -310,4 +466,4 @@ function daytime(date = new Date()) {
   return d;
 }
 
-module.exports = { freshDb, makeUser, slotStart, daytime };
+module.exports = { freshDb, makeUser, slotStart, daytime, templateName };

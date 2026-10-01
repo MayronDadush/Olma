@@ -69,6 +69,19 @@ test('the instruction points at their words, never carries them, and hands over 
   assert.doesNotMatch(bare, /https?:/, 'no link minted, no link — never an invented one');
 });
 
+test('the privacy link the greeter gave is not handed to the follow-up to give again', () => {
+  // The owner's rule (2026-10-01): the link reaches each person once, ever.
+  const onboarding = require('../src/domain/onboarding');
+  const row = { kind: 'welcome_followup', payload: { hasNote: false, greeterReply: onboarding.OPENING.he } };
+  const text = instructionFor(row, null);
+  assert.doesNotMatch(text, /allma\.world\/privacy/, 'nothing in the turn to copy it from');
+  assert.match(text, /<<<היי, אני עולמה/, 'the rest of what the greeter said is still fenced');
+  assert.match(text, /privacy page, which is not to be given again/, 'and the fence says what it left out');
+
+  const plain = instructionFor({ kind: 'welcome_followup', payload: { hasNote: false, greeterReply: 'היי 🙂' } }, null);
+  assert.doesNotMatch(plain, /privacy/, 'a greeter that never gave it is not said to have');
+});
+
 // ---- the worker ------------------------------------------------------------
 async function newPerson(phone) {
   const u = await makeUser(db.pool, phone);
@@ -153,5 +166,32 @@ test('the morning follow-up after a short opening introduces her, and does not p
   assert.match(text, /tasks, reminders, and coordinating/);
   assert.match(text, /do not mention the coordination/);
   assert.doesNotMatch(text, /a moment ago/);
+  assert.ok(text.includes(url));
+});
+
+// ---- after a game night's code (stage 4ב, owner 2026-10-01) -----------------
+// brokerd seated them and said only that she is an AI; they came for the
+// night, so what she does waits for the morning and their buy-ins during the
+// game neither drop it nor say it.
+test('a first turn after a game night\'s code carries neither the page nor what she does', async () => {
+  const u = await newPerson('+972501880007');
+  await withTx(db.pool, (c) => enqueue(c, {
+    userId: u.id, kind: 'welcome_followup', payload: { hasNote: false, greeterReply: null, gameOpening: true },
+    idempotencyKey: `welcome_followup:${u.id}`, releaseAfter: new Date(Date.now() + 12 * 3600_000),
+  }));
+  const out = await adviseFirstTurn(u);
+  assert.equal(out.onboarding.alreadyOpened, true);
+  assert.equal(out.onboarding.pageLink, undefined);
+  assert.doesNotMatch(out.onboarding.instruction, /add ONE short line|\/d\//);
+  const v = decide({ ...facts, lastInboundAt: new Date().toISOString(),
+    row: { kind: 'welcome_followup', urgency: 'normal', expires_at: null, payload: { gameOpening: true } } });
+  assert.notEqual(v.holdReason, 'answered_in_turn', '"עוד כניסה" is not them hearing what she is');
+});
+
+test('the morning after the game, the follow-up says what she does and leaves the game out', () => {
+  const url = 'https://allma.world/d/AbCdEfGhIjKlMnOpQrStUv';
+  const text = instructionFor({ kind: 'welcome_followup', payload: { hasNote: false, gameOpening: true } }, url);
+  assert.match(text, /tasks, reminders, and coordinating/);
+  assert.match(text, /do not mention the game night/);
   assert.ok(text.includes(url));
 });

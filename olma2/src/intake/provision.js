@@ -253,6 +253,12 @@ async function provisionUser(client, {
   // a hand-provisioned or testbed-reset account has met nobody, and their own
   // agent is the first voice they will hear.
   greetedByIntake = false,
+  // True when a voice before this one — the greeter, a room's opening, a game
+  // night's first answer — already said the privacy link, whether or not the
+  // rest of what it said was the owner's copy (onboarding.carriesPrivacyLink).
+  // Stamps `privacy_link_sent_at` (migration 104), which is what keeps their own
+  // agent's first turn from saying the link again.
+  privacyLinkSaid = false,
   // The bindings-only fallback below. Injectable so the suite never spawns
   // systemctl; production takes the default (intake/gateway-restart.js).
   restartGateway = require('./gateway-restart').restartGateway,
@@ -341,7 +347,8 @@ async function provisionUser(client, {
             intake_note_at = CASE WHEN $7 THEN COALESCE(intake_note_at, now()) ELSE intake_note_at END,
             joined_via = COALESCE(joined_via, $8),
             referred_by_user_id = COALESCE(referred_by_user_id, $9),
-            invited_by_connection_id = COALESCE(invited_by_connection_id, $10)
+            invited_by_connection_id = COALESCE(invited_by_connection_id, $10),
+            privacy_link_sent_at = CASE WHEN $11 THEN COALESCE(privacy_link_sent_at, now()) ELSE privacy_link_sent_at END
      WHERE id = $1 RETURNING *`,
     // `invited_by_connection_id` was written only by createUser above, which
     // runs only when there is NO row — and an invited stranger always has one,
@@ -349,7 +356,7 @@ async function provisionUser(client, {
     // people it exists for (found 2026-09-30, migration 101 backfills it).
     [user.id, agentId, paths.workspace, firstName || null, resolvedLocale.locale,
       greetedByIntake === true, Boolean(firstMessage),
-      joinedVia, referredByUserId, invitedByConnectionId || null]
+      joinedVia, referredByUserId, invitedByConnectionId || null, privacyLinkSaid === true]
   );
   user = rows[0];
 
@@ -380,8 +387,19 @@ async function provisionUser(client, {
   // makes the binding live without a gateway restart: a bindings-only write
   // hits the gateway's noop early-exit and is silently dropped. See
   // openclaw-config.js for the source references.
+  //
+  // A pack they already hold rides the same write: somebody who arrived with
+  // a game night's code was given the pack before they had an agent
+  // (brokerd's intake game shortcut), and a second write to lift the deny
+  // would be one more config save for the gateway to reload mid-night.
   const cfg = occ.loadConfig(configPath);
-  const agentAdded = occ.addAgent(cfg, { id: agentId, workspace: paths.workspace, agentDir: paths.agentDir });
+  const { rows: packRows } = await client.query(
+    'SELECT pack FROM user_packs WHERE user_id = $1 ORDER BY pack', [user.id]);
+  const packs = packRows.map((r) => r.pack);
+  const agentAdded = occ.addAgent(cfg, {
+    id: agentId, workspace: paths.workspace, agentDir: paths.agentDir,
+    ...(packs.length ? { tools: require('./agent-tool-policy').agentToolPolicy(agentId, cfg, { packs }) } : {}),
+  });
   const allowFromAdded = occ.addAllowFrom(cfg, phone);
   const bindingAdded = occ.addBinding(cfg, { agentId, phone });
   occ.saveConfig(cfg, configPath);

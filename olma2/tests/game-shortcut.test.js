@@ -87,9 +87,9 @@ test('buy-ins are said the way the table says them', () => {
 
 test('every game sentence passes the reply gate, whoever is reading', () => {
   const vars = { night: 'ערב משחק', price: '50', chips: '1,000', code: 'K7M2Q', name: 'דני',
-    count: 'כניסה אחת', url: 'https://allma.world/night/AbCdEfGhIjKlMnOpQrStUv' };
+    count: 'כניסה אחת', url: 'https://allma.world/night/AbCdEfGhIjKlMnOpQrStUv', join: 'https://allma.world/g/K7M2Q' };
   for (const base of ['game_open', 'game_opened', 'game_invite', 'game_already_open', 'game_ask_name',
-    'game_joined', 'game_name_taken', 'game_already', 'game_no_night', 'game_full']) {
+    'game_joined', 'game_name_taken', 'game_already', 'game_no_night', 'game_full', 'game_hello', 'game_privacy']) {
     for (const lang of ['he', 'en']) {
       const text = templates.render(templates.keyFor(base, lang, { fallback: 'he' }), vars, {});
       // An English sentence reaches only somebody on English, so it is judged
@@ -108,12 +108,14 @@ const marks = [];
 const calls = [];
 const policies = [];
 const fake = { open: null, join: null };   // per test: body → answer
+const greeterSaid = new Map();             // phone → the greeter's newest reply
 
 before(async () => {
   db = await freshDb();
   now = Date.parse('2026-09-30T18:00:00Z');
   broker = createBrokerServer({
     pool: db.pool, now: () => now,
+    readGreeterReply: async (phone) => greeterSaid.get(phone) ?? null,
     placeMark: (o) => { marks.push(o); return { attempted: true }; },
     games: {
       open: async (b) => { calls.push(['open', b]); return fake.open(b); },
@@ -161,9 +163,9 @@ test('"ערב משחק חדש" turns the pack on, asks the price, and the answer
   assert.equal(inv.urgency, 'urgent');
   assert.equal(inv.idempotency_key, `game_invite:K7M2Q:${u.id}`);
   assert.equal(inv.payload.texts.he,
-    `🃏 ערב משחק · כניסה 50 ₪\nנכנסים לקישור, בוחרים כיסא ורושמים כניסות:\n${URL}\n\nכבר בעולמה? שלחו לה: משחק K7M2Q`);
+    `🃏 ערב משחק · כניסה 50 ₪\nנכנסים לקישור, בוחרים כיסא ורושמים כניסות:\n${URL}\n\nלרשום כניסות מהוואטסאפ: https://allma.world/g/K7M2Q`);
   assert.ok(!inv.payload.texts.he.includes('#me-'), 'the host\'s own seat never goes to the group');
-  assert.match(inv.payload.texts.en, /On Olma already\? Send her: game K7M2Q$/);
+  assert.match(inv.payload.texts.en, /Log buy-ins from WhatsApp: https:\/\/allma\.world\/g\/K7M2Q$/);
   // And the raw pipe says the Hebrew to a Hebrew host.
   assert.equal(proactiveText.rawPipeTextFor({ kind: inv.kind, payload: inv.payload, locale: 'he' }, {}), inv.payload.texts.he);
   assert.equal(proactiveText.rawPipeTextFor({ kind: inv.kind, payload: inv.payload, locale: 'en' }, {}), inv.payload.texts.en);
@@ -342,6 +344,187 @@ test('the eval user and a stranger are not answered', async () => {
   assert.deepEqual(await ask({ agentId: 'u-999999', body: 'ערב משחק חדש' }), { ok: true, claim: false });
   assert.deepEqual(calls, []);
 });
+
+// ---- a new number (stage 4ב) ------------------------------------------------
+// Somebody Olma has never heard of taps the invite's short link and sends
+// "משחק K7M2Q". The greeter's session key reaches brokerd as agentId 'intake';
+// brokerd makes the pending row, seats them, and the intake sweep gives them an
+// agent (jobs/intake.js, `gameClaimed`).
+const flags = require('../src/domain/flags');
+const intakeKey = (phone) => `agent:intake:whatsapp:direct:${phone}`;
+const HELLO = 'היי, אני עולמה 👋 עוזרת AI';
+const PRIVACY = 'מה אני שומרת ואיך מוחקים: https://allma.world/privacy';
+let tel = 0;
+const newPhone = () => `+97252888${String(++tel).padStart(4, '0')}`;
+const rowOf = async (phone) => (await db.pool.query('SELECT * FROM users WHERE phone = $1', [phone])).rows[0];
+const claimsOf = async (id) => (await db.pool.query(
+  "SELECT detail FROM audit_log WHERE actor_id = $1 AND event = 'games.intake_claim' ORDER BY id", [id])).rows.map((r) => r.detail);
+const seatByName = (b) => (b.names.length
+  ? { ok: true, joined: true, night: NIGHT, name: b.names[0], buyins: 0, url: `${URL}#me-p4` }
+  : { ok: false, error: 'need_name', night: NIGHT });
+async function withFlag(key, value, fn) {
+  const before = await flags.getFlag(db.pool, key);
+  await flags.setFlag(db.pool, key, value);
+  try { return await fn(); } finally { await flags.setFlag(db.pool, key, before ?? null); }
+}
+const open = (fn) => withFlag('registration_open', true, fn);
+
+test('a new number\'s code: she says she is an AI, asks the name, and the page on privacy — once', () => open(async () => {
+  reset();
+  const phone = newPhone();
+  fake.join = seatByName;
+  const q = await ask({ agentId: 'intake', sessionKey: intakeKey(phone), body: 'משחק K7M2Q', messageId: '3EB0NEW00001' });
+  assert.equal(q.claim, true);
+  assert.equal(q.text, `${HELLO}\n🃏 ערב משחק, כניסה 50 ₪.\nאיך קוראים לך? ככה החברים יראו אותך בערב.\n${PRIVACY}`);
+  const u = await rowOf(phone);
+  assert.equal(u.status, 'pending');
+  assert.equal(u.agent_id, null, 'the sweep gives the agent, never brokerd');
+  assert.equal(u.locale, 'he');
+  assert.equal(u.timezone, 'Asia/Jerusalem', 'never NULL — the dialling code, as for anybody');
+  assert.ok(u.opening_sent_at, 'the introduction is said, so nobody says it again');
+  assert.ok(u.privacy_link_sent_at, 'and so is the privacy link, on the person (migration 104)');
+  assert.deepEqual(calls, [['join', { userId: Number(u.id), code: 'K7M2Q', names: [] }]]);
+  assert.deepEqual(await packsOf(u.id), [], 'not seated yet');
+  assert.deepEqual(await claimsOf(u.id), [{ outcome: 'need_name', lang: 'he', introduced: true }]);
+  assert.ok(marks.some((m) => m.target === phone && m.messageId === '3EB0NEW00001' && m.state === 'done'));
+
+  const a = await ask({ agentId: 'intake', sessionKey: intakeKey(phone), body: 'יוסי כהן' });
+  assert.deepEqual(calls[1], ['join', { userId: Number(u.id), code: 'K7M2Q', names: ['יוסי כהן'] }]);
+  assert.match(a.text, /^👍 יוסי כהן, נכנסת לערב משחק\./, 'no second hello, no second privacy line');
+  assert.doesNotMatch(a.text, /privacy|עולמה/);
+  const after = await rowOf(phone);
+  assert.deepEqual([after.first_name, after.last_name, after.name_confirmed], ['יוסי', 'כהן', true]);
+  assert.deepEqual(await packsOf(u.id), [{ pack: 'games', via: 'code' }]);
+  assert.deepEqual(policies, [], 'no agent yet: the pack rides the first config write instead');
+  assert.equal((await claimsOf(u.id))[1].outcome, 'joined');
+}));
+
+test('a new number in English is answered in English, and its row says so', () => open(async () => {
+  reset();
+  const phone = '+14155550142';
+  fake.join = seatByName;
+  const q = await ask({ agentId: 'intake', sessionKey: intakeKey(phone), body: 'game K7M2Q' });
+  assert.match(q.text, /^Hey, I’m Allma 👋 an AI assistant\n/);
+  assert.match(q.text, /\nWhat I keep and how to delete it: https:\/\/allma\.world\/privacy$/);
+  assert.doesNotMatch(q.text.replace(NIGHT.name, ''), /[֐-׿]/, 'only the host\'s own name for the night');
+  const u = await rowOf(phone);
+  assert.equal(u.locale, 'en');
+  assert.ok(u.timezone);
+}));
+
+test('a wrong code from a new number is answered; a bare five letters is not ours', () => open(async () => {
+  reset();
+  fake.join = () => ({ ok: false, error: 'no_night' });
+  const phone = newPhone();
+  const out = await ask({ agentId: 'intake', sessionKey: intakeKey(phone), body: 'משחק ABCDE' });
+  assert.equal(out.text, `${HELLO}\nלא מצאתי ערב פתוח עם הקוד ABCDE. אולי הוא כבר נסגר? אפשר לבקש קוד חדש ממי שפתח את הערב.\n${PRIVACY}`);
+  const bare = newPhone();
+  assert.deepEqual(await ask({ agentId: 'intake', sessionKey: intakeKey(bare), body: 'HAPPY' }), { ok: true, claim: false });
+  assert.equal(await rowOf(bare), undefined, 'rolled back: the greeter meets them as before');
+}));
+
+test('closed registration, the hourly cap, a blocked number and any other message all go to the greeter', async () => {
+  reset();
+  fake.join = seatByName;
+  const closed = newPhone();
+  await withFlag('registration_open', false, async () => {
+    assert.deepEqual(await ask({ agentId: 'intake', sessionKey: intakeKey(closed), body: 'משחק K7M2Q' }), { ok: true, claim: false });
+  });
+  assert.equal(await rowOf(closed), undefined);
+
+  await open(async () => {
+    const capped = newPhone();
+    await withFlag('intake_hourly_cap', 0, async () => {
+      assert.deepEqual(await ask({ agentId: 'intake', sessionKey: intakeKey(capped), body: 'משחק K7M2Q' }), { ok: true, claim: false });
+    });
+    assert.equal(await rowOf(capped), undefined);
+
+    const blocked = newPhone();
+    const b = await makeUser(db.pool, blocked);
+    await db.pool.query("UPDATE users SET status = 'blocked' WHERE id = $1", [b.id]);
+    assert.deepEqual(await ask({ agentId: 'intake', sessionKey: intakeKey(blocked), body: 'משחק K7M2Q' }), { ok: true, claim: false });
+
+    const chat = newPhone();
+    assert.deepEqual(await ask({ agentId: 'intake', sessionKey: intakeKey(chat), body: 'היי, מה את?' }), { ok: true, claim: false });
+    assert.deepEqual(await ask({ agentId: 'intake', sessionKey: 'agent:intake:whatsapp:group:1203@g.us', body: 'משחק K7M2Q' }),
+      { ok: true, claim: false });
+    assert.equal(await rowOf(chat), undefined);
+  });
+  assert.deepEqual(calls, [], 'gamesd was never asked');
+});
+
+test('somebody the greeter already greeted is not introduced a second time', () => open(async () => {
+  reset();
+  const phone = newPhone();
+  const p = await makeUser(db.pool, phone, { status: 'pending' });
+  await db.pool.query('UPDATE users SET opening_sent_at = now() WHERE id = $1', [p.id]);
+  fake.join = seatByName;
+  const q = await ask({ agentId: 'intake', sessionKey: intakeKey(phone), body: 'משחק K7M2Q' });
+  assert.equal(q.text, '🃏 ערב משחק, כניסה 50 ₪.\nאיך קוראים לך? ככה החברים יראו אותך בערב.');
+  assert.deepEqual(await claimsOf(p.id), [{ outcome: 'need_name', lang: 'he', introduced: false }]);
+}));
+
+// The privacy link reaches each person ONCE, ever (owner, 2026-10-01): a code
+// sent minutes after the greeter opened for them, before the sweep made them a
+// row, is not the place to say it again.
+test('somebody the greeter introduced minutes ago, with no row yet, is not introduced again', () => open(async () => {
+  reset();
+  const phone = newPhone();
+  const onboarding = require('../src/domain/onboarding');
+  greeterSaid.set(phone, onboarding.OPENING.he);
+  fake.join = seatByName;
+  const q = await ask({ agentId: 'intake', sessionKey: intakeKey(phone), body: 'משחק K7M2Q' });
+  assert.equal(q.claim, true);
+  assert.doesNotMatch(q.text, /privacy|עולמה/, 'no second hello, no second privacy line');
+  const u = await rowOf(phone);
+  assert.ok(u.opening_sent_at, 'still stamped, so the sweep provisions the claim');
+  assert.ok(u.privacy_link_sent_at);
+  assert.deepEqual(await claimsOf(u.id), [{ outcome: 'need_name', lang: 'he', introduced: false }]);
+
+  // A greeter that answered without the link introduced nothing we can see.
+  const other = newPhone();
+  greeterSaid.set(other, 'היי 🙂');
+  const r = await ask({ agentId: 'intake', sessionKey: intakeKey(other), body: 'משחק K7M2Q' });
+  assert.ok(r.text.startsWith(HELLO) && r.text.endsWith(PRIVACY), r.text);
+}));
+
+test('a pending row that already has the privacy link is not given it by the game either', () => open(async () => {
+  reset();
+  const phone = newPhone();
+  const p = await makeUser(db.pool, phone, { status: 'pending' });
+  await db.pool.query('UPDATE users SET privacy_link_sent_at = now() WHERE id = $1', [p.id]);
+  fake.join = seatByName;
+  const q = await ask({ agentId: 'intake', sessionKey: intakeKey(phone), body: 'משחק K7M2Q' });
+  assert.doesNotMatch(q.text, /privacy|עולמה/);
+  assert.ok((await rowOf(phone)).opening_sent_at, 'stamped for the sweep');
+}));
+
+test('given an agent between the question and the answer, the answer still seats them — by either door', () => open(async () => {
+  reset();
+  fake.join = seatByName;
+  const provisioned = async (phone) => {
+    const u = await rowOf(phone);
+    await db.pool.query("UPDATE users SET status = 'active', agent_id = $2 WHERE id = $1", [u.id, `u-${u.id}`]);
+    return { ...u, agent: `u-${u.id}` };
+  };
+  // Their own agent's door: the binding went live before they answered.
+  const one = newPhone();
+  await ask({ agentId: 'intake', sessionKey: intakeKey(one), body: 'משחק K7M2Q' });
+  const u1 = await provisioned(one);
+  const a1 = await ask({ agentId: u1.agent, body: 'דנה' });
+  assert.match(a1.text, /^👍 דנה, נכנסת לערב משחק\./);
+  assert.deepEqual(await packsOf(u1.id), [{ pack: 'games', via: 'code' }]);
+  assert.deepEqual(policies, [[u1.agent, ['games']]], 'an agent exists now, so the deny list follows at once');
+
+  // The greeter's door: the binding was not live yet.
+  const two = newPhone();
+  await ask({ agentId: 'intake', sessionKey: intakeKey(two), body: 'משחק K7M2Q' });
+  const u2 = await provisioned(two);
+  const a2 = await ask({ agentId: 'intake', sessionKey: intakeKey(two), body: 'רוני' });
+  assert.match(a2.text, /^👍 רוני, נכנסת לערב משחק\./);
+  assert.equal((await rowOf(two)).first_name, 'רוני');
+  assert.deepEqual(await packsOf(u2.id), [{ pack: 'games', via: 'code' }]);
+}));
 
 // ---- the gate ---------------------------------------------------------------
 const WED_NIGHT = new Date('2026-08-12T23:40:00Z');

@@ -87,9 +87,12 @@ title means this file. Grep the title, not the filename.
   420 (2026-09-06) and 397s by 2026-09-14 — 23 seconds under the cap — so one
   live agent turn's worth of contention killed both attempts of #366's deploy
   at the same test, and a re-run seven minutes later passed 1974/1974 in 397s.
-  The cap is `SUITE_TIMEOUT=600` since then, bounded by the deploy job's own
-  `timeout-minutes: 30`: two attempts plus the rsync/install/migrate/restart
-  around them must fit inside it. Re-measure the run when you raise the cap —
+  The cap went to 600, then 900 (2026-09-18, when silence became the wedge
+  test), and the suite grew into that too: 807s for 2,851 tests on
+  2026-09-30, and three deploys stopped at 900s still passing. It is
+  `SUITE_TIMEOUT=1500` since, bounded by the deploy job's own
+  `timeout-minutes: 40`: a wedge plus one capped attempt plus the
+  rsync/install/migrate/restart around them must fit inside it. Re-measure the run when you raise the cap —
   a suite creeping up on its own timeout announces itself as a wedge.
 
 - **A red suite inside `deploy.sh` leaves a MIXED box and does not roll back.**

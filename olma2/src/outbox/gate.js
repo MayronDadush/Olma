@@ -288,7 +288,9 @@ function decide(facts) {
   // page. If they have written to their OWN agent since, that turn is their
   // first and it does both (turn.advise, PENDING_INTAKE_NOTE and the page), so
   // this one would be the same answer twice. Dropped with its own reason.
-  if (row.kind === 'welcome_followup' && facts.lastInboundAt) {
+  // Not after a game night's claim (jobs/intake.js, `gameOpening`): what they
+  // write during the game is buy-ins, and no turn of it says what she is.
+  if (row.kind === 'welcome_followup' && facts.lastInboundAt && !(row.payload && row.payload.gameOpening)) {
     return { action: 'drop', holdReason: 'answered_in_turn' };
   }
 

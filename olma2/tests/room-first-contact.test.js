@@ -118,6 +118,44 @@ test('a locked room, a coordination in its settle minute, a room they left: no p
   assert.equal((await ask(intakeKey(gone))).context, null);
 });
 
+// The privacy link reaches each person ONCE, ever (owner, 2026-10-01). The
+// greeter's session resets daily and it has no database, so somebody it
+// opened for yesterday is told so by brokerd, off the stamps on their row.
+test('somebody already introduced is not given the opening or the privacy link a second time', async () => {
+  const fresh = '+972501770041';
+  const opened = await makeUser(db.pool, '+972501770042', { status: 'pending' });
+  await db.pool.query(`UPDATE users SET opening_sent_at = now() - interval '1 day' WHERE id = $1`, [opened.id]);
+  const onlyLink = await makeUser(db.pool, '+972501770043', { status: 'pending' });
+  await db.pool.query(`UPDATE users SET privacy_link_sent_at = now() - interval '1 day' WHERE id = $1`, [onlyLink.id]);
+  await makeUser(db.pool, fresh, { status: 'pending' });
+
+  assert.deepEqual(await ask(intakeKey(fresh)), { ok: true, context: null }, 'a row with neither stamp: the old greeting');
+  for (const phone of [opened.phone, onlyLink.phone]) {
+    const r = await ask(intakeKey(phone));
+    assert.equal(r.introduced, true, phone);
+    assert.match(r.context, /ALREADY been introduced/);
+    assert.match(r.context, /Do NOT say the opening text/);
+  }
+
+  // In a room with a coordination: the room is news, its privacy line is not.
+  const withCo = await makeUser(db.pool, '+972501770044', { status: 'pending' });
+  await db.pool.query(`UPDATE users SET privacy_link_sent_at = now() - interval '1 day' WHERE id = $1`, [withCo.id]);
+  const { group, people } = await room('נכנסו אתמול', { members: [withCo.phone] });
+  await start(group, people[0]);
+  const a = await ask(intakeKey(withCo.phone));
+  assert.ok(a.context.includes('הגעת מהקבוצה «נכנסו אתמול» — שולחת לך עכשיו את התיאום שפתוח שם.'), a.context);
+  assert.ok(!a.context.includes('https://allma.world/privacy'), 'the short opening lost its privacy line');
+  assert.match(a.context, /ALREADY been introduced/);
+
+  // In a room with none: the line stands on its own, not under an opening.
+  const plain = await makeUser(db.pool, '+972501770045', { status: 'pending' });
+  await db.pool.query(`UPDATE users SET opening_sent_at = now() - interval '1 day' WHERE id = $1`, [plain.id]);
+  await room('בלי תיאום', { members: [plain.phone] });
+  const b = await ask(intakeKey(plain.phone));
+  assert.ok(b.context.includes('הגעת מהקבוצה «בלי תיאום»'), b.context);
+  assert.ok(!b.context.includes('directly under the opening text'), b.context);
+});
+
 test('the short opening is recognised by its room line, whatever the subject became', () => {
   const said = intakeRoom.ROOM_OPENING.he.replace('{subject}', 'x'.repeat(40) + '…');
   assert.equal(intakeRoom.saidRoomOpening(said), true);

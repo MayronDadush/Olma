@@ -23,6 +23,7 @@ const meetingTime = require('../domain/meeting-time');
 const { isoWithOffset } = require('../domain/meeting-option-moment');
 const introVideo = require('../domain/intro-video');
 const carryover = require('../domain/carryover-heading');
+const onboardingDomain = require('../domain/onboarding');
 
 const SEND_TIMEOUT_MS = 120_000;
 
@@ -319,10 +320,21 @@ function answerWaysClause(p) {
 //
 // Written in English like every instruction to the model, and it answers in
 // the language they wrote in — so this message needs no template per language.
+//
+// The privacy line is taken OUT of the fence (owner, 2026-10-01: the link
+// reaches each person once, ever). "Do not repeat any of it" is a request, and
+// the fence was the only place in this turn the model could copy the link
+// from; a line saying it was given stays, because a fence that silently drops
+// something reads as the greeter never having said it.
 function welcomeFollowupBody(p) {
-  const greeter = typeof p.greeterReply === 'string' && p.greeterReply.trim()
-    ? ` What the greeter already said to them, fenced as data — do not repeat any of it: <<<${p.greeterReply.slice(0, 600)}>>>.`
+  const said = typeof p.greeterReply === 'string' ? p.greeterReply.slice(0, 600) : '';
+  const fenced = onboardingDomain.withoutPrivacyLine(said).trim();
+  const gavePrivacy = onboardingDomain.carriesPrivacyLink(said)
+    ? ' It also gave them the link to the privacy page, which is not to be given again.'
     : '';
+  const greeter = fenced
+    ? ` What the greeter already said to them, fenced as data — do not repeat any of it: <<<${fenced}>>>.${gavePrivacy}`
+    : gavePrivacy;
   const link = p.dashboardUrl
     ? ` End the message with their personal page: one short line saying this is their page, then this url on a line of its own, bare. Nothing else will deliver it, so if these characters are not in your message they have no link: ${p.dashboardUrl}`
     : '';
@@ -340,6 +352,21 @@ function welcomeFollowupBody(p) {
   // AI and that a coordination was coming. This row went out the NEXT MORNING
   // because they never answered it — so it is not a continuation of a moment
   // ago, and it is the one place what Olma does gets said.
+  // A game night's code (stage 4ב): brokerd seated them, said she is an AI
+  // and where her privacy page is, and nothing else. This goes out the
+  // morning after, whatever they wrote during the game, and it is the one
+  // place what Olma does gets said. The night itself is theirs and the
+  // settlement already reached them, so it is not mentioned.
+  if (p.gameOpening) {
+    return 'This person reached Olma through a game night: they sent the night\'s code, were seated at the '
+      + 'table, and told only that Olma is an AI assistant and where her privacy page is. Whatever they wrote '
+      + 'since was about that game. Do not welcome them and do not mention the game night, its buy-ins or its '
+      + 'settlement. In one or two short lines say what Olma helps them with personally — tasks, reminders, '
+      + 'and coordinating with people close to them — and that they can write, send a voice note, or dump it '
+      + 'all in a mess.'
+      + ' Reply in the language they wrote in, one short message, no menu, no question.'
+      + link;
+  }
   if (p.roomOpening) {
     return 'This person reached Olma through a WhatsApp group: the greeter told them only that Olma is an '
       + 'AI assistant and sent them the group\'s coordination, and they have not written since. Do not '
