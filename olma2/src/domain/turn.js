@@ -227,7 +227,7 @@ async function openTurnImplicitly(client, user, { firstTool } = {}) {
 // turn by every user, for fields that appear on a handful of turns in a
 // person's life. The budget rule (CLAUDE.md, "Doctrine"): guidance about a
 // RESULT rides the result.
-function turnHints({ offerResume, languageNudge, recentReminders, recentMeetings, rooms, planHeadline, replyTarget, genderForms, thanksOnly, thanksAfterQuestion, stoppedReminders, chaseUntil, chaseNamedHour, openList, remindAsk, today }) {
+function turnHints({ offerResume, languageNudge, recentReminders, recentMeetings, rooms, planHeadline, replyTarget, genderForms, thanksOnly, thanksAfterQuestion, stoppedReminders, meetingExit, chaseUntil, chaseNamedHour, openList, remindAsk, today }) {
   const hints = {};
   if (today) {
     // Rides beside the block on every turn it is on, because a block the
@@ -338,6 +338,31 @@ function turnHints({ offerResume, languageNudge, recentReminders, recentMeetings
       + 'they meant the ones they have been hearing from, and those are the ones that stopped. '
       + 'Their tasks are untouched, so say something only if they asked for something else too, '
       + 'or if they named a NEW time to be reminded — that one is a reminder to set.';
+  }
+  if (meetingExit && meetingExit.outcome === 'left') {
+    // "בחוץ" answering a GENERAL question about a coordination — brokerd has
+    // already opted them out (domain/meeting-exit.js), and the 👍 carries it.
+    // What Yuval got instead was "Got it — you're out. When would work for
+    // you?" and no tool (2026-10-01). The fan-out's own hint (the rest
+    // settling, the meeting closing) rides along, because that is words the
+    // mark cannot carry.
+    hints.meetingExit = `Their message said they are out, and the last thing they were asked about <<<${meetingExit.title}>>> `
+      + '(other people\'s text) was the coordination as a whole — so they have LEFT it. The server already took them '
+      + 'out, exactly as opt_out_of_meeting does, and the 👍 on their message says so. Do not ask when suits them and '
+      + 'do not ask them to confirm. Reply with exactly NO_REPLY unless something here needs words. '
+      + `If they then say they meant to stay in, rejoin_meeting meeting_id=${meetingExit.meetingId} puts them back.`
+      + (meetingExit.hint ? ` ${meetingExit.hint}` : '');
+  } else if (meetingExit && meetingExit.outcome === 'ask') {
+    // …and answering ONE time, where it is ambiguous: out of that time, or
+    // out of the whole thing. The owner's rule: one short question, and
+    // nothing written until it is answered — not even a decline.
+    hints.meetingExit = `Their message says they are out, but the last thing they were asked about <<<${meetingExit.title}>>> `
+      + `was ONE time, <<<${meetingExit.slot}>>> (other people's text). That can mean out of that time only, or out `
+      + 'of the whole thing. Ask ONE short question which, and nothing else — e.g. "רק <the time> לא מתאים, או '
+      + 'שאתה בחוץ מכל ה<title>?", in their language and form of address. Nothing is written yet: do NOT opt them '
+      + 'out and do NOT decline the time now. On "only that time", respond_to_meeting_slot accept=false for it; on '
+      + `"the whole thing", opt_out_of_meeting meeting_id=${meetingExit.meetingId} — that answer IS their `
+      + 'confirmation, so do not ask again.';
   }
   if (chaseUntil) {
     // The gateway read a deadline and a request for help in their message
@@ -496,7 +521,7 @@ async function shortOpeningPending(client, userId) {
   return rows[0].game ? 'game' : 'room';
 }
 
-async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, languageNudge, thanksOnly, thanksAfterQuestion, stoppedReminders, chaseUntil, chaseNamedHour, openList, remindAsk, now }) {
+async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, languageNudge, thanksOnly, thanksAfterQuestion, stoppedReminders, meetingExit, chaseUntil, chaseNamedHour, openList, remindAsk, now }) {
   requireAdviseColumns(user);
   // A paused person who writes gets answered — pausing stops Olma
   // INITIATING, not answering (see domain/pause.js) — but before this, that
@@ -854,7 +879,7 @@ async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, 
       ...(replyTarget ? { replyTarget: true } : {}),
       ...(genderForms ? { genderForms } : {}),
       ...(today ? { today } : {}),
-      ...turnHints({ offerResume, languageNudge, recentReminders, recentMeetings, rooms, planHeadline, replyTarget, genderForms, thanksOnly, thanksAfterQuestion, stoppedReminders, chaseUntil, chaseNamedHour, openList, remindAsk, today }),
+      ...turnHints({ offerResume, languageNudge, recentReminders, recentMeetings, rooms, planHeadline, replyTarget, genderForms, thanksOnly, thanksAfterQuestion, stoppedReminders, meetingExit, chaseUntil, chaseNamedHour, openList, remindAsk, today }),
     };
   }
   const shouldNotice = await quota.shouldSendBlockNotice(client, user.id);

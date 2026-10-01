@@ -256,6 +256,7 @@ function evalVerdicts(message) {
     chase: hook.chaseDeadline(message),
     openList: hook.asksOpenList(message),
     remindAsk: hook.remindWithoutTime(message),
+    out: hook.outOnly(message),
   };
 }
 

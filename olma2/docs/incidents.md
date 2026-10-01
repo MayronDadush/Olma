@@ -48,6 +48,7 @@ never trust a dated narrative for something you are about to act on.
 - [Rotating a token that leaked: the file first, then the DB, then the doctrine (2026-09-03)](#rotating-a-token-that-leaked-the-file-first-then-the-db-then-the-doctrine-2026-09-03)
 
 **Delivery, outbox and proactive messages**
+- [בחוץ (fixed 2026-10-01)](#בחוץ-fixed-2026-10-01)
 - [The approval that forgot the times (fixed 2026-09-30)](#the-approval-that-forgot-the-times-fixed-2026-09-30)
 - [שלח לי קישור, and the new person's page (2026-09-25)](#שלח-לי-קישור-and-the-new-persons-page-2026-09-25)
 - [The request that was dropped as Olma's own idea (fixed 2026-09-30)](#the-request-that-was-dropped-as-olmas-own-idea-fixed-2026-09-30)
@@ -1683,6 +1684,67 @@ down; the audit row carries fingerprints, which is what `token-leak.js`
 compares on anyway. (`domain/identity-repair.js`, `rotateIdentityToken`.)
 
 ## Delivery, outbox and proactive messages
+
+### בחוץ (fixed 2026-10-01)
+
+The room "חייב קבוצה לפוקר" (chat_groups 13) opened a coordination for poker
+(meeting 66, a game room with a minimum of five) at 17:52 UTC. Yuval was asked
+privately, in the invite's words, what was being arranged and when suits him.
+At 17:57 he answered one word: "בחוץ". Olma replied "Got it — you're out. When
+would work for you, so I can put it on the table?" and called no tool at all —
+the audit log has `turn.opened_by_gateway` and nothing after it. He stayed
+`awaiting`. At 18:10 the next question about the same poker reached him, three
+numbered times and a calendar clash.
+
+The model understood (it said "you're out") and the outcome had nowhere to go.
+`opt_out_of_meeting`'s description ends "Confirm with the user first", the
+invite it was answering had asked a question, and the two pulled it into
+confirming and asking again in one breath. Same shape as "להפסיק להזכיר": the
+person was not ambiguous, and asking cost the thing they asked for.
+
+The owner's rule (2026-10-01) is a distinction, and the code holds it in both
+directions. An answer to a GENERAL question — the invite, "when suits you",
+the table as a whole — is leaving the coordination, with no question back. An
+answer to ONE time ("can you do Saturday?") is ambiguous: out of Saturday, or
+out of the poker. There she asks one short question and writes nothing, not
+even a decline of that time.
+
+**Which question it answered is not in the words; it is in the outbox.** So
+the reading is split the way `stopRemindersOnly` splits it. The gateway hook's
+`outOnly` says only that the message is nothing but "out" ("בחוץ", "אני
+בחוץ", "לא מגיע", "תוציאי אותי", "I'm out", a few fillers allowed). brokerd
+(`meeting-exit.onOut`) reads the last row that REACHED them. A
+`meeting_invite`, a `meeting_nudge` or a folded `meeting_slot_proposed`
+(`tableChanged`) is general: `meetings.optOut` plus
+`meetingFanout.afterOptOut`, the same two calls the tool makes, then a 👍 and a
+hint that says it is done and forbids asking when. A bare
+`meeting_slot_proposed`, or the check-in ladder's `stuck_meeting` rung, is one
+time: nothing written, the ordinary 👀, and a hint asking for one question with
+the two answers mapped to their tools.
+
+**Three guards keep it to the case the rule describes**, because "בחוץ" also
+means "outside". The question must be the last thing delivered to them, of any
+kind. This message must be the first thing they wrote since it arrived, so
+after another exchange the last thing Olma said was a reply. And they must
+still be in a coordination that is still negotiating. A WhatsApp reply is left
+to the model, because the quoted message may be an older one. Anything else is
+today's behaviour.
+
+**Measured before it was written.** All 4,274 real inbound messages in every
+agent's store (the eval user excluded) were read. Five carry one of the words,
+and all five are about leaving this same poker. The classifier takes exactly
+one: Yuval's. The other four are Eden's longer sentences ("שקרן תרשום להם שאני
+לא מגיע"), which stay the model's.
+
+**Eden, the same poker, the same hour, the other direction.** He said he was
+not coming, and the model did opt him out. Six minutes later he said "אני בא"
+and "נכנסתי", and was told the opt-out had "locked" him and there was no way
+back from the chat. That was true of the tools that day, and a parallel
+session fixed it the same evening (`rejoin_meeting` / `rejoin_group_coordination`,
+#686, "Eden could not come back" below). It matters more here than there: an
+exit code makes on one word has to be undoable, and it is — the exit is
+recorded as `user_choice`, the one kind `meetings.rejoin` puts back, and a
+test holds that.
 
 ### The approval that forgot the times (fixed 2026-09-30)
 

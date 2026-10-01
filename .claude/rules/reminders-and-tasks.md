@@ -311,6 +311,23 @@ title means this file. Grep the title, not the filename.
   הפגישה" line say "anyone in it"; a test still asserting "initiator only" is
   asserting the old product.
 
+- **"בחוץ" to a GENERAL question about a coordination is LEAVING it, and to
+  ONE time it is a question back** (owner, 2026-10-01; `incidents.md`, "בחוץ").
+  Yuval answered the poker invite "בחוץ" and was asked when suits him, with
+  nothing written. The gateway hook's `outOnly` sends a boolean (the message
+  is nothing but "out"). `meeting-exit.onOut` reads the last row that REACHED
+  them. A `meeting_invite`, a `meeting_nudge` or a folded `meeting_slot_proposed`
+  (`tableChanged`) gets `meetings.optOut` plus `meetingFanout.afterOptOut` and
+  a 👍. A bare `meeting_slot_proposed` or a `stuck_meeting` check-in gets
+  nothing written, not even a decline, and the turn is told to ask one short
+  question. **Three guards, because "בחוץ" also means "outside"**: the question
+  is the last thing delivered of any kind, this is the first message since it,
+  and they are still in a coordination that is still negotiating. A WhatsApp
+  reply is left to the model. The classifier took 1 of 4,274 real messages,
+  Yuval's. **A misread is undone the same way any exit is**: the exit is
+  `user_choice`, so `rejoin_meeting` (#686) can put them back, and the hint
+  names it. Like every hook change, this is inert until the gateway restarts.
+
 - **A settled coordination can be REOPENED, and it carries on from where it
   stopped** (owner, 2026-09-25). `meetings.reopenMeeting` is the one writer
   that moves `confirmed` back to `negotiating`. Anybody still in it may call

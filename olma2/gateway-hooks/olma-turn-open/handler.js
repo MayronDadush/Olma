@@ -316,6 +316,39 @@ function remindWithoutTime(text) {
   return !WHEN_WORDS_RE.test(raw);
 }
 
+// ── A message that is only "I'm out" ─────────────────────────────────────────
+// Yuval, 2026-10-01: asked privately when suits him for the poker his room was
+// arranging, he answered "בחוץ" — and was told "Got it — you're out. When would
+// work for you?", with no tool called and the next question twelve minutes
+// later. The owner's rule: an answer to a GENERAL question about a coordination
+// is leaving it, and an answer to ONE time is a question back. Which of the two
+// it answered is in the outbox, not in the words, so this says only that the
+// message is nothing but "out" and brokerd decides the rest
+// (domain/meeting-exit.js). Only the verdict travels.
+//
+// Strict the thanksOnly way: after a few fillers are dropped, what is left
+// must BE one of the phrases — so "לא מגיע בשבת" (a day: a decline, the
+// model's), "אולי לא אגיע" (a hedge), "אני בחוץ עכשיו" (outdoors) and any
+// question are not this. Measured on the box before it was written: 4,274
+// real inbound messages, and the five that carry one of these words are all
+// about leaving this same poker (incidents.md, "בחוץ").
+const OUT_FILLER = new Set(['אני', 'הפעם', 'מזה', 'סורי', 'לצערי', 'תודה', 'אחי',
+  'sorry', 'thanks', 'i', 'im', 'am', 'ill', 'this', 'time']);
+const OUT_PHRASES = new Set([
+  'בחוץ', 'לא בא', 'לא באה', 'לא מגיע', 'לא מגיעה', 'לא אגיע', 'לא אבוא', 'לא משתתף', 'לא משתתפת',
+  'תוציא אותי', 'תוציאי אותי', 'תוציאו אותי', 'תוריד אותי', 'תורידי אותי', 'פאס', 'מוותר', 'מוותרת',
+  'out', 'count me out', 'not coming', 'pass',
+]);
+const MAX_OUT_WORDS = 5;
+
+function outOnly(text) {
+  const raw = String(text || '').replace(REPLY_BLOCK_RE, ' ').replace(/[‎‏‪-‮]/g, '');
+  if (/[?？]/.test(raw)) return false;
+  const words = raw.replace(/['’]/g, '').replace(/[^\p{L}\s]/gu, ' ').toLowerCase().split(/\s+/).filter(Boolean);
+  if (!words.length || words.length > MAX_OUT_WORDS) return false;
+  return OUT_PHRASES.has(words.filter((w) => !OUT_FILLER.has(w)).join(' '));
+}
+
 // Which inbound events open a turn. Measured on OpenClaw 2026.8.1 (2026-09-06,
 // olma-hook-probe): a WhatsApp DM fires `message:preprocessed` ~300ms after
 // the inbound log line and `agent:bootstrap` a second later — and NEVER
@@ -387,6 +420,10 @@ function handle(event, { connect = net.connect, sock = SOCK } = {}) {
     // "תזכיר לי X" with no when at all — brokerd arms a weekly nudge on the
     // undated add_task this turn makes (reminders.startWeeklyNudge).
     remindAsk: remindWithoutTime(said.text),
+    // "בחוץ" — brokerd reads which coordination question it answered: a
+    // general one is leaving it, one time is a question back
+    // (domain/meeting-exit.js). The verdict travels; the words do not.
+    out: outOnly(said.text),
     at: new Date(event.timestamp || Date.now()).toISOString(),
   };
   return new Promise((resolve) => {
@@ -430,4 +467,5 @@ module.exports.stopRemindersOnly = stopRemindersOnly;
 module.exports.chaseDeadline = chaseDeadline;
 module.exports.asksOpenList = asksOpenList;
 module.exports.remindWithoutTime = remindWithoutTime;
+module.exports.outOnly = outOnly;
 module.exports._resetSeen = () => seen.clear();
