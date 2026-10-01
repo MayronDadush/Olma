@@ -27,8 +27,10 @@ const MAX_DELIVERIES_PER_TICK = 5;
 // The intro video (domain/intro-video.js) is queued for everybody at once and
 // released for a whole time zone at the same window-open, and each one is a
 // cold CLI send of several seconds. So it goes LAST in a tick, behind anything
-// a person is waiting for, and at most two ride any one tick.
+// a person is waiting for, and at most two ride any one tick. An ad from the
+// library (domain/brand-ads.js) is the same kind of send and shares the cap.
 const MAX_INTRO_VIDEOS_PER_TICK = 2;
+const CLIP_KINDS = new Set(['intro_video', 'brand_ad']);
 
 // ── Reminders that come due together go out together ────────────────────────
 // The outbox drains a row at a time, so nine reminders due at 08:00 were nine
@@ -119,7 +121,7 @@ async function closedNewsFor(client, row, mergedParts) {
   const p = payloadOf(row);
   // The intro video goes out on the raw pipe with no words at all, so nothing
   // may be recorded as said on it.
-  if (row.kind === 'reminder' || row.kind === 'digest' || row.kind === 'intro_video'
+  if (row.kind === 'reminder' || row.kind === 'digest' || CLIP_KINDS.has(row.kind)
     || row.kind === 'policy_update' || gameSummary.KINDS.has(row.kind)
     || p.instruction || p.verbatimReply) return null;
   if (mergedParts && mergedParts.some((part) => part.kind === 'digest')) return null;
@@ -155,7 +157,7 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
        -- the next day, and skipping it here is what left those rows unsent
        -- forever despite the release time the gate had set.
        AND (o.hold_reason IS DISTINCT FROM 'budget' OR o.release_after IS NOT NULL)
-     ORDER BY (o.kind = 'intro_video'), o.created_at LIMIT 50`,
+     ORDER BY (o.kind IN ('intro_video', 'brand_ad')), o.created_at LIMIT 50`,
     [now]
   );
 
@@ -169,7 +171,7 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
   for (const row of candidates) {
     if (outcomes.delivered + outcomes.failed >= MAX_DELIVERIES_PER_TICK) break;
     if (carried.has(String(row.id))) continue;
-    if (row.kind === 'intro_video' && introVideos++ >= MAX_INTRO_VIDEOS_PER_TICK) continue;
+    if (CLIP_KINDS.has(row.kind) && introVideos++ >= MAX_INTRO_VIDEOS_PER_TICK) continue;
     try {
       await withTx(pool, async (client) => {
         // re-lock this row; skip if another tick got it meanwhile

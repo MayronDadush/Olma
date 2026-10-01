@@ -364,6 +364,11 @@ const deployDrift = require('./deploy-drift');
     // nothing — it walks only the people whose week is up.
     { name: 'task_suggestions', run: () => withTx(pool, (c) => taskSuggestions.sweepSuggestions(c, {})) },
     { name: 'twin_shadow', run: () => withTx(pool, (c) => twinShadow.sweepTwinShadow(c)) },
+    // The ad library (domain/brand-ads.js). Reads one flag and stops while the
+    // owner has it off; on, it queues rows and the gate and the worker do the
+    // rest. The 'morning' timing is a release time on the row, not this tick's
+    // hour, and the daily idempotency key makes a frequent tick harmless.
+    { name: 'brand_ads', run: () => withTx(pool, (c) => require('../domain/brand-ads').sweep(c)) },
     { name: 'deploy_drift', run: () => withTx(pool, (c) => deployDrift.sweepDeployDrift(c)) },
   ];
 }
