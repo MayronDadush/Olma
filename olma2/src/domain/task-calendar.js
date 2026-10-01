@@ -57,8 +57,9 @@ const EVENT_MINUTES = 30;
 // And a task saved for a DAY — "יום הולדת לליאם ב-30.10", stored as local
 // midnight, the discriminator `auto-reminder.isDayShaped` reads — IS a whole
 // day: nobody said an hour, so a 00:00-00:30 block on their calendar asserts
-// one that nobody said, at the worst hour there is (owner, 2026-10-01: the
-// birthday went in as a half-hour entry in the middle of the night). With the
+// one that nobody said, at the worst hour there is (found 2026-10-01 reading
+// the code behind a birthday that never reached Google — that one failed for a
+// different reason, a view-only connection, see tools/tasks.calendarNote). With the
 // person's zone it comes back `allDay` and `start` carries THEIR offset, so
 // `calendar.createEvent` reads the right date off it. The instant is the same
 // one either way, which is what keeps `expectedIdFor` stable.

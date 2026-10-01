@@ -517,3 +517,25 @@ test('an event saved against a view-only Google Calendar says it is NOT on Googl
   const writable = await withTx(db.pool, (c) => add.handler(c, u, { title: 'אירוע עם יומן', kind: 'event', due_at: at(24), ends_at: at(25) }));
   assert.equal(writable.data.hints.googleCalendar, undefined, 'a writable calendar gets the sweep, not a caveat');
 });
+
+// A day-shaped event sits at local midnight, which is when its day STARTS. It
+// used to be archived at that midnight, so a birthday was gone from the list
+// on the birthday itself. It now leaves at the NEXT local midnight.
+test('an event saved for a day stays on the list through that whole day', async () => {
+  const sweeps = require('../src/jobs/sweeps');
+  const u = await makeUser(db.pool, '+972501000188', { timezone: 'Asia/Jerusalem' });
+  const c = await db.pool.connect();
+  try {
+    // 30 Oct 2026 in Jerusalem is UTC+2 (DST ended on the 25th).
+    const t = await tasks.addTask(c, u.id, { title: 'יום הולדת לליאם', kind: 'event', dueAt: '2026-10-30T00:00:00+02:00' });
+    const id = t.data.task.id;
+    const archived = async () => (await c.query('SELECT archived_at FROM tasks WHERE id = $1', [id])).rows[0].archived_at;
+
+    await sweeps.sweepFinishedTasks(c, '2026-10-30T08:00:00+02:00');
+    assert.equal(await archived(), null, 'the morning of the birthday it is still there');
+    await sweeps.sweepFinishedTasks(c, '2026-10-30T23:30:00+02:00');
+    assert.equal(await archived(), null, 'and late that evening');
+    await sweeps.sweepFinishedTasks(c, '2026-10-31T00:30:00+02:00');
+    assert.ok(await archived(), 'gone once its day is over');
+  } finally { c.release(); }
+});
