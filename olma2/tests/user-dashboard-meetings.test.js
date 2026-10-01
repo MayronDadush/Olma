@@ -491,6 +491,20 @@ test('putting yourself back in is a real rejoin, and the others are told', async
   assert.deepEqual(rows.map((r) => Number(r.user_id)).sort(), [gali.id, ron.id].sort());
 });
 
+test('the archive offers a way back only from an exit they chose, never from a pause', async () => {
+  // Owner, 2026-10-01: only somebody who left by their own choice comes back.
+  // A pause took them out; the button would be drawn over a refusal.
+  const id = await coordination(gali, [me, ron], 'השהיה');
+  await tx((c) => meetings.proposeSlot(c, gali.id, id, 'מחר ב־19:00', tomorrowAt('19')));
+  await tx((c) => meetings.applyExit(c, me.id, id, 'paused_by_request'));
+
+  const page = await tx((c) => dash.load(c, me.id));
+  assert.equal(page.data.meetingsLeft.some((x) => x.id === id), false);
+  const res = await actAs(me, 'rejoinMeeting', { meetingId: id });
+  assert.equal(res.ok, false);
+  assert.equal(res.error.reason, 'not_left_by_choice');
+});
+
 test('the archive never offers a way back into something already closed', async () => {
   // Two people: one leaving takes it below two, so it closes for both. The row
   // must not sit in the archive wearing a button the server would refuse.

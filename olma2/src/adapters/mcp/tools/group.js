@@ -308,6 +308,29 @@ module.exports = [
       });
     }),
 
+  // The way back in (owner, 2026-10-01: Eden left the poker room's
+  // coordination, asked the room to put him back, and she could not). The
+  // one room door `participantFor` cannot guard, since it refuses exactly the
+  // person this is for: the room check is `roomMeetingFor`, and whether they
+  // may come back is `meetings.rejoin`'s alone — the same call and fan-out
+  // the page and the chat use, so only somebody who left by their own choice
+  // is let back, and nobody new is added this way.
+  groupTool('rejoin_group_coordination',
+    'GROUP AGENTS ONLY. Undo leave_group_coordination for the member who tagged you: back in, unanswered.',
+    {}, [],
+    async (client, ctx) => {
+      const found = await groupMeetings.roomMeetingFor(client, ctx.group, ctx.actingUser);
+      if (!found.ok) return found;
+      const meetingId = Number(found.data.id);
+      const res = await meetingFanout.afterRejoin(client, ctx.actingUser, meetingId,
+        await meetings.rejoin(client, ctx.actingUser.id, meetingId));
+      if (!res.ok) return err(res.error.code, res.error.message, res.error.reason ? { reason: res.error.reason } : undefined);
+      return ok({
+        meetingId, meetingStatus: res.data.meetingStatus, back: true,
+        hints: { room: 'Say ONE short line to them: they are back in and have not answered the times yet. Nothing about anybody else.' },
+      });
+    }),
+
   // Their OWN answer, said in front of everyone — so the room hears nothing
   // it had not just heard from them. What it never hears is anybody else's:
   // the result carries this one answer and not the table's.

@@ -86,6 +86,7 @@ never trust a dated narrative for something you are about to act on.
 - [The room window opened on a row nobody would look at (fixed 2026-09-19)](#the-room-window-opened-on-a-row-nobody-would-look-at-fixed-2026-09-19)
 - [The times the room said went nowhere (fixed 2026-09-23)](#the-times-the-room-said-went-nowhere-fixed-2026-09-23)
 - [The room could not cancel its own coordination (fixed 2026-09-25)](#the-room-could-not-cancel-its-own-coordination-fixed-2026-09-25)
+- [Eden could not come back (fixed 2026-10-01)](#eden-could-not-come-back-fixed-2026-10-01)
 - [The coordination waited on the man who started it (fixed 2026-09-19)](#the-coordination-waited-on-the-man-who-started-it-fixed-2026-09-19)
 - [The room heard its own state from memory (fixed 2026-09-19)](#the-room-heard-its-own-state-from-memory-fixed-2026-09-19)
 - [The room held a time that no longer existed (fixed 2026-09-22)](#the-room-held-a-time-that-no-longer-existed-fixed-2026-09-22)
@@ -3008,6 +3009,32 @@ are picked field by field: the private ones carry hints about a person's own
 calendar and dashboard, and an answer from the room returns that one answer,
 never the table's. It cost the fourth raise of the tool-schema ceiling
 (57,000 → 59,500, measured 56,558 → 59,407).
+
+### Eden could not come back (fixed 2026-10-01)
+
+The poker room "חייב קבוצה לפוקר" (meeting 66, a game with a minimum of 5),
+1 October. Eden (user 56) asked to leave the coordination, then changed his
+mind and asked to be put back. She could not do it, in the room or anywhere
+else the model could reach: `meetings.rejoin` existed and so did its fan-out,
+but only the page's archive button called them. The room's five doors added
+on 2026-09-25 all go through `groupMeetings.participantFor`, which refuses
+anybody whose row says `opted_out` — correctly for cancel, rename, a time and
+an answer, and by construction for the one action whose whole point is that
+the row says `opted_out`.
+
+Same shape as the two entries above: the agent understood and the outcome
+had nowhere to go. The fix is two tools, `rejoin_meeting` (chat) and
+`rejoin_group_coordination` (room), both into the page's own
+`meetings.rejoin` → `meetingFanout.afterRejoin`. **The owner narrowed who may
+use them**: only somebody who left by their own choice — "I'm out" while
+negotiating, "I can't come" after it settled. `rejoin` used to accept any
+`opted_out` row, so the page would have put back somebody a pause or leaving
+the WhatsApp group had taken out; the cause was never on the participant row,
+only on the exit's audit row, and the check now reads it there
+(`meetings.LEFT_BY_CHOICE_SQL`, also what the page's archive lists). Measured
+on the box before writing it: every one of the 11 `opted_out` rows had an
+exit on record, Eden's being `user_choice`. Ninth raise of the tool-schema
+ceiling (60,900 → 61,050, measured 61,046).
 
 ### The times the room said went nowhere (fixed 2026-09-23)
 

@@ -143,8 +143,9 @@ test('every tool in the group file is a group tool, and no other file has one', 
   for (const t of groupFile) assert.equal(t.audience, 'group', `${t.name} is a group tool`);
   assert.deepEqual(groupFile.map((t) => t.name).sort(),
     ['add_group_coordination_option', 'answer_group_coordination_option', 'cancel_group_coordination',
-      'group_coordination_status', 'group_status', 'leave_group_coordination', 'remember_sender_gender',
-      'remove_group_coordination_option', 'rename_group_coordination', 'reopen_group_coordination',
+      'group_coordination_status', 'group_status', 'leave_group_coordination', 'rejoin_group_coordination',
+      'remember_sender_gender', 'remove_group_coordination_option', 'rename_group_coordination',
+      'reopen_group_coordination',
       'set_group_coordination_place', 'set_group_kind',
       'settle_group_coordination', 'start_group_coordination']);
 
