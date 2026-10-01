@@ -791,14 +791,40 @@ async function getStatus(client, userId, meetingId) {
   const room = m.rows[0] && m.rows[0].group_id
     ? (await client.query(`SELECT kind, quorum_min, quorum_max FROM chat_groups WHERE id = $1`, [m.rows[0].group_id])).rows[0]
     : null;
+  const opts = (await options.list(client, meetingId)).map((o) => ({
+    ...o, yes: Object.values(o.answers || {}).filter((v) => v === 'y').length,
+  }));
   return ok({
     meeting: m.rows[0], participants,
     ...(room ? { room: { kind: room.kind || null, min: room.quorum_min === null ? null : Number(room.quorum_min), max: room.quorum_max === null ? null : Number(room.quorum_max) } } : {}),
-    options: (await options.list(client, meetingId)).map((o) => ({
-      ...o, yes: Object.values(o.answers || {}).filter((v) => v === 'y').length,
-    })),
+    ...(room && room.kind ? { headcount: headcountOf(room, opts, participants) } : {}),
+    options: opts,
     removedOptions: await options.removed(client, meetingId),
   });
+}
+
+// "How many are in so far" for a game room, drawn here so the model copies it.
+// `participants` is who is being ASKED: a poker room read four of them as
+// "כרגע אנחנו 4" with one yes on the table (2026-10-01, incidents.md, "The
+// poker count was the people asked"). The number is the yes count of the
+// option furthest along, among people still in it; ties go to the earlier time.
+function headcountOf(room, opts, participants) {
+  const inIt = new Set(participants.filter((p) => p.state !== 'opted_out').map((p) => String(p.user_id)));
+  let lead = null;
+  let leadYes = 0;
+  for (const o of opts) {
+    const yes = Object.entries(o.answers || {}).filter(([uid, v]) => v === 'y' && inIt.has(String(uid))).length;
+    const earlier = lead && o.startsAt && (!lead.startsAt || new Date(o.startsAt) < new Date(lead.startsAt));
+    if (!lead || yes > leadYes || (yes === leadYes && earlier)) { lead = o; leadYes = yes; }
+  }
+  const q = require('./groups').quorumFor({ kind: room.kind, quorum_min: room.quorum_min, quorum_max: room.quorum_max }, leadYes);
+  return {
+    inSoFar: leadYes,
+    needs: q.min === undefined ? null : q.min,
+    short: q.short === undefined ? null : q.short,
+    optionId: lead ? lead.id : null,
+    slot: lead ? lead.slotText : null,
+  };
 }
 
 async function listMine(client, userId) {
