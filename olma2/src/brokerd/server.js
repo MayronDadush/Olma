@@ -915,19 +915,23 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
     await withTx(pool, async (client) => {
       // Somebody with a row that says they were already introduced — the
       // greeter's session resets daily and it has no other way to know.
-      const introduced = intakeRoom.wasIntroduced(await usersDomain.getByPhone(client, phone));
+      const row = await usersDomain.getByPhone(client, phone);
+      const introduced = intakeRoom.wasIntroduced(row);
       const room = await intakeRoom.roomFor(client, phone);
       if (!room) {
         if (introduced) out = { ok: true, context: intakeRoom.INTRODUCED_BLOCK, introduced: true };
         return;
       }
-      const roomBlock = intakeRoom.contextFor(room, { introduced });
+      // The room's cold invite already said hello; their reply is the yes.
+      const invited = await intakeRoom.coldInviteReached(client, row && row.id, room.groupId);
+      const roomBlock = intakeRoom.contextFor(room, { introduced, invited });
       out = {
         ok: true, context: introduced ? `${intakeRoom.INTRODUCED_BLOCK}\n\n${roomBlock}` : roomBlock,
-        groupId: room.groupId, meetingId: room.meetingId, ...(introduced ? { introduced: true } : {}),
+        groupId: room.groupId, meetingId: room.meetingId,
+        ...(introduced ? { introduced: true } : {}), ...(invited ? { invited: true } : {}),
       };
       await audit.record(client, null, 'intake.room_context_served', {
-        groupId: room.groupId, meetingId: room.meetingId,
+        groupId: room.groupId, meetingId: room.meetingId, ...(invited ? { invited: true } : {}),
       });
     });
     return out;
