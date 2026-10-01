@@ -34,6 +34,8 @@
 const { ok, err } = require('./results');
 const calendar = require('./calendar');
 const audit = require('./audit');
+const { isDayShaped } = require('./auto-reminder');
+const { partsInZone, zoneOffsetMs } = require('./datetime');
 
 // Bounded per tick because each item is one or two Google calls on a 1-vCPU
 // box shared with every user's replies. A backlog drains over several ticks
@@ -43,22 +45,39 @@ const EVENT_MINUTES = 30;
 
 // A real end when the task has one, and thirty minutes when it does not.
 //
-// The fallback is the older half of this and its reasoning still holds: an
-// all-day event would claim we know the task fills a day, which `due_at`
-// cannot tell us — it cannot separate "the 14th" from "09:00 on the 14th" once
-// it is a timestamptz. A modest honest block beats an all-day banner asserting
-// something nobody said.
+// The fallback is the older half of this and its reasoning still holds for a
+// MOMENT: an all-day event would claim we know the task fills a day, which a
+// stated hour contradicts. A modest honest block beats an all-day banner
+// asserting something nobody said.
 //
 // What changed is that a task CAN now say where it stops (`tasks.ends_at`), and
 // when it does, guessing thirty minutes over the top of a stated seven-hour
 // shift is not modesty, it is discarding the answer.
-function windowFor(dueAt, endsAt) {
+//
+// And a task saved for a DAY — "יום הולדת לליאם ב-30.10", stored as local
+// midnight, the discriminator `auto-reminder.isDayShaped` reads — IS a whole
+// day: nobody said an hour, so a 00:00-00:30 block on their calendar asserts
+// one that nobody said, at the worst hour there is (owner, 2026-10-01: the
+// birthday went in as a half-hour entry in the middle of the night). With the
+// person's zone it comes back `allDay` and `start` carries THEIR offset, so
+// `calendar.createEvent` reads the right date off it. The instant is the same
+// one either way, which is what keeps `expectedIdFor` stable.
+function windowFor(dueAt, endsAt, timezone) {
   const start = new Date(dueAt);
   const stated = endsAt ? new Date(endsAt) : null;
+  if (!stated && timezone && isDayShaped(start, timezone)) {
+    const p = partsInZone(timezone, start);
+    const off = Math.round(zoneOffsetMs(timezone, start) / 60_000);
+    const sign = off < 0 ? '-' : '+';
+    const hhmm = `${String(Math.floor(Math.abs(off) / 60)).padStart(2, '0')}:${String(Math.abs(off) % 60).padStart(2, '0')}`;
+    const pad = (n) => String(n).padStart(2, '0');
+    const local = `${p.y}-${pad(p.m)}-${pad(p.d)}T00:00:00${sign}${hhmm}`;
+    return { start: start.toISOString(), end: start.toISOString(), allDay: true, localStart: local };
+  }
   const end = stated && !Number.isNaN(stated.getTime()) && stated > start
     ? stated
     : new Date(start.getTime() + EVENT_MINUTES * 60_000);
-  return { start: start.toISOString(), end: end.toISOString() };
+  return { start: start.toISOString(), end: end.toISOString(), allDay: false };
 }
 
 // The id is keyed on the START only, deliberately: moving the end of a shift
@@ -222,7 +241,7 @@ async function removeEventsFor(client, ownerId, taskId, deps = {}) {
 async function pending(client, { limit = MAX_PER_TICK, now = new Date() } = {}) {
   const { rows } = await client.query(
     `SELECT t.id, t.owner_id, t.title, t.due_at, t.ends_at, t.location, t.calendar_event_id,
-            u.calendar_sync_tasks, t.calendar_opt_in, t.status, t.archived_at,
+            u.calendar_sync_tasks, u.timezone, t.calendar_opt_in, t.status, t.archived_at,
             ${WANTED_SQL} AS sync_wanted
        FROM tasks t
        JOIN users u ON u.id = t.owner_id
@@ -280,8 +299,10 @@ async function syncOne(client, t, deps = {}) {
   }
   if (!wanted) return { id: t.id, action: 'skipped' };
 
-  const { start, end } = windowFor(t.due_at, t.ends_at);
-  const res = await create(client, t.owner_id, { title: t.title, start, end, location: t.location || undefined });
+  const w = windowFor(t.due_at, t.ends_at, t.timezone);
+  const res = await create(client, t.owner_id, w.allDay
+    ? { title: t.title, start: w.localStart, end: w.localStart, allDay: true, location: t.location || undefined }
+    : { title: t.title, start: w.start, end: w.end, location: t.location || undefined });
   if (!res.ok) return { id: t.id, action: 'add', ok: false, error: res.error.message };
   await client.query(
     `UPDATE tasks SET calendar_event_id = $2 WHERE id = $1`, [t.id, res.data.eventId]);

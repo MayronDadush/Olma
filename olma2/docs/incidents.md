@@ -8680,6 +8680,18 @@ Depends on "The haircut that left the calendar the evening it happened": with
 no grace, archiving at the end would otherwise have deleted it from Google at
 the end, too.
 
+**Follow-up, same day: a DAY is not half an hour.** The owner asked for a
+birthday on 30.10 ("יום הולדת לליאם, כל היום") and was told it was on the
+calendar; it did not look that way. A task saved for a day is stored at local
+midnight, and `task-calendar.windowFor` wrote every task as a timed block,
+thirty minutes from `due_at`, so the entry was a 00:00-00:30 slot in the night.
+`windowFor` now takes the person's zone and, for a day-shaped `due_at` with no
+`ends_at` (`auto-reminder.isDayShaped`, the same discriminator the reminder
+uses), returns an all-day window whose `localStart` carries THEIR offset so
+`calendar.createEvent` reads the right date. The instant, and so
+`expectedIdFor`, is unchanged. An entry already written as a midnight block
+keeps its id and is not rewritten.
+
 ### The city was asked four times, because two routes each asked it once (fixed 2026-09-06)
 
 Sarah was asked which city she lives in on her first contact, and then again,
