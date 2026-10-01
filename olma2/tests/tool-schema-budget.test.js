@@ -151,7 +151,7 @@ const { IDENTITY_PARAM } = require('../src/adapters/mcp/identity-param');
 // asked to come back, and nothing but the page could do it. +610 between them
 // with one-line descriptions (the guidance rides the results); the margin was
 // 464. Per turn a person pays ~365 and a room ~290 (agent-tool-policy).
-// PUT TO THE OWNER WITH ITS COST BEFORE MERGING. Measured 61,046.
+// Put to the owner with its cost and approved ("מאשר את התקרה"). Measured 61,046.
 const JSON_CEILING = 61_050;
 const DESCRIPTION_CEILING = 700;
 const IDENTITY_DESCRIPTION_CEILING = 40;

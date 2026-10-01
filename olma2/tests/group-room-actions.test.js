@@ -219,14 +219,14 @@ test('the place and the minimum can be set from the private chat too', async () 
 // Owner, 2026-10-01: Eden left the poker room's coordination (meeting 66),
 // asked to come back, and nothing in the room or the chat could do it. Only
 // somebody who left by their OWN choice comes back, and nobody new is added.
-test('somebody who left from the room comes back from the room, unanswered, and the others are told', async () => {
+test('somebody who left from the room comes back from the room, unanswered, and nobody else is messaged', async () => {
   const { group, people, meetingId } = await started(11);
   const [amit, miron, bar] = people;
   const optionId = await addTime(group, amit, 50);
   assert.equal((await inRoom('answer_group_coordination_option', group, bar, { option_id: optionId, accept: true })).ok, true);
   assert.equal((await inRoom('leave_group_coordination', group, bar)).ok, true);
-  // Everything about it has reached everybody, as on the box: an unsent
-  // question would fold the news into itself (meeting-fanout FOLDABLE_KINDS).
+  // Everything about it has reached everybody, as on the box, so anything
+  // queued after this point is something the rejoin itself wrote.
   await db.pool.query(`UPDATE outbox SET sent_at = now() WHERE sent_at IS NULL`);
 
   const res = await inRoom('rejoin_group_coordination', group, bar);
@@ -242,8 +242,10 @@ test('somebody who left from the room comes back from the room, unanswered, and 
   assert.equal(p.state, 'awaiting', 'back in, and the yes they gave before leaving is not restored');
   const { rows } = await db.pool.query(
     `SELECT user_id FROM outbox WHERE kind = 'meeting_rejoined' AND (payload->>'meetingId')::bigint = $1`, [meetingId]);
-  assert.deepEqual(rows.map((r) => Number(r.user_id)).sort(), [Number(amit.id), Number(miron.id)].sort(),
-    'the same fan-out the page uses, to everybody still in it');
+  assert.deepEqual(rows, [], 'quiet, like the exit it undoes (owner, 2026-10-01)');
+  const { rows: queued } = await db.pool.query(
+    `SELECT 1 FROM outbox WHERE sent_at IS NULL AND user_id = ANY($1::bigint[])`, [[amit.id, miron.id]]);
+  assert.equal(queued.length, 0, 'nobody else is messaged about it in any form');
 
   // In again, so the room's other doors open to them again.
   const yes = await inRoom('answer_group_coordination_option', group, bar, { option_id: optionId, accept: true });

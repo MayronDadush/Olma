@@ -3034,7 +3034,14 @@ only on the exit's audit row, and the check now reads it there
 (`meetings.LEFT_BY_CHOICE_SQL`, also what the page's archive lists). Measured
 on the box before writing it: every one of the 11 `opted_out` rows had an
 exit on record, Eden's being `user_choice`. Ninth raise of the tool-schema
-ceiling (60,900 → 61,050, measured 61,046).
+ceiling (60,900 → 61,050, measured 61,046), approved by the owner.
+
+**And coming back is quiet now, like leaving.** `afterRejoin` used to send
+everybody else `meeting_rejoined`, on the argument that they had been told
+about the exit — false since 2026-09-22, when stepping out became an update
+and not a message. Through the page that was rare; through the room it was
+four private messages in a five-person poker game for one person changing
+their mind. Asked, the owner chose silence ("חזרה שתהיה שקטה כמו יציאה").
 
 ### The times the room said went nowhere (fixed 2026-09-23)
 

@@ -471,7 +471,7 @@ test('the archive carries a title and an id, and nothing about the negotiation',
   assert.deepEqual(Object.keys(arc).sort(), ['id', 'title', 'youLeft']);
 });
 
-test('putting yourself back in is a real rejoin, and the others are told', async () => {
+test('putting yourself back in is a real rejoin, and nobody else is messaged', async () => {
   const id = await coordination(gali, [me, ron], 'חזרה');
   await tx((c) => meetings.proposeSlot(c, gali.id, id, 'מחר ב־21:00', tomorrowAt('21')));
   await actAs(me, 'leaveMeeting', { meetingId: id });
@@ -483,12 +483,12 @@ test('putting yourself back in is a real rejoin, and the others are told', async
   assert.ok(page.data.meetings.some((x) => Number(x.id) === id), 'back on the active list');
   assert.equal(page.data.meetingsLeft.some((x) => x.id === id), false, 'and out of the archive');
 
-  // The others were told they left; they are told they are back, or everyone
-  // is holding a tally that is quietly wrong.
+  // Quiet, like leaving (owner, 2026-10-01): the table and the counts say
+  // who is in, and nobody gets a message of its own about it.
   const { rows } = await db.pool.query(
     `SELECT user_id FROM outbox WHERE kind = 'meeting_rejoined'
-       AND (payload->>'meetingId')::bigint = $1 ORDER BY user_id`, [id]);
-  assert.deepEqual(rows.map((r) => Number(r.user_id)).sort(), [gali.id, ron.id].sort());
+       AND (payload->>'meetingId')::bigint = $1`, [id]);
+  assert.deepEqual(rows, []);
 });
 
 test('the archive offers a way back only from an exit they chose, never from a pause', async () => {

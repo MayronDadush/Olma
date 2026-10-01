@@ -300,7 +300,9 @@ have already had to be argued for.
   `rejoin_group_coordination` checks the room with
   `groupMeetings.roomMeetingFor`, and `rejoin_meeting` is its private twin;
   both, and the page's archive button, go through `meetings.rejoin` →
-  `meetingFanout.afterRejoin`. **Only an exit they CHOSE is undone**
+  `meetingFanout.afterRejoin`, which is QUIET like the exit it undoes —
+  nobody else gets a message, the table and the counts say who is in
+  (owner: "חזרה שתהיה שקטה כמו יציאה"). **Only an exit they CHOSE is undone**
   (`meetings.LEFT_BY_CHOICE_SQL`: the latest `meeting.opted_out` with cause
   `user_choice`, or `meeting.withdrew`). A pause, leaving the WhatsApp group
   and revoking a connection are not, an `opted_out` row with no exit on
