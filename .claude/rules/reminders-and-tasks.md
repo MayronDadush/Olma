@@ -626,6 +626,15 @@ title means this file. Grep the title, not the filename.
   the event against the task shadowing it, so an event deleted by hand still
   reminds.
 
+- **Leaving the LIST is not leaving the CALENDAR: a moment that is over stays
+  on Google** (`task-calendar.pending`, 2026-10-01). The expired-events sweep
+  archives a passed appointment, and the calendar sweep read that as "remove"
+  — every haircut vanished from Google the evening it happened
+  (`incidents.md`, "The haircut that left the calendar the evening it
+  happened"). Only a task still AHEAD is taken off (cancelled, deleted, done
+  early, undated); anything whose `COALESCE(ends_at, due_at)` has passed is
+  never touched again by the sweep.
+
 - **Everyone on a shared task is equal, and a write on it is made AS its
   owner** (owner, 2026-09-19). There is one kind of share: `shares.role` is
   still a column and is read by nothing. `shares.actingOwner` answers whom a
