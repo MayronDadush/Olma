@@ -659,7 +659,9 @@ async function loadMeetings(client, userId, zone, locale) {
 //
 // Bounded by what `meetings.rejoin` will actually accept, so the button is
 // never drawn over a refusal: still negotiating or confirmed, and not already
-// started. A coordination that closed when you left is gone from here too.
+// started. A coordination that closed when you left is gone from here too,
+// and so is one a pause or leaving the group took you out of — only an exit
+// you chose can be walked back (`meetings.LEFT_BY_CHOICE_SQL`, owner 2026-10-01).
 async function loadLeftMeetings(client, userId, zone, locale) {
   const { rows } = await client.query(
     `SELECT m.id, m.title
@@ -668,6 +670,7 @@ async function loadLeftMeetings(client, userId, zone, locale) {
       WHERE p.user_id = $1 AND p.state = 'opted_out'
         AND m.status IN ('negotiating', 'confirmed')
         AND (m.confirmed_start_at IS NULL OR m.confirmed_start_at > now())
+        AND ${meetingsDomain.LEFT_BY_CHOICE_SQL}
       ORDER BY m.id DESC
       LIMIT 20`,
     [userId]

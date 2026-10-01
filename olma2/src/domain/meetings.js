@@ -449,12 +449,43 @@ async function respondToSlot(client, userId, meetingId, accept, counterProposal,
 // as `awaiting`, because the last thing you actually said was that you were
 // out, and re-asserting a yes on your behalf is the sort of thing this whole
 // screen exists to avoid.
+//
+// And only an exit they CHOSE (owner, 2026-10-01, after Eden left meeting 66
+// and asked to come back): "I'm out" while negotiating (`meeting.opted_out`,
+// cause `user_choice`) or "I can't come" after it settled (`meeting.withdrew`).
+// A pause the system acted on, leaving the WhatsApp group and revoking a
+// connection are exits nobody said in words about THIS coordination, so they
+// are not undone by one either. The participant row says only `opted_out`;
+// the cause is on the latest exit's audit row, the same place
+// `group-meetings.pausedExitsOf` reads it. No exit row at all is not a
+// choice anybody made, and is refused too (none on the box, 2026-10-01).
+// Written against `p` (meeting_participants) and `m` (meetings) so the page's
+// archive asks exactly the question this function does.
+const LEFT_BY_CHOICE_SQL = `(
+  SELECT a.event = 'meeting.withdrew' OR a.detail->>'cause' = 'user_choice'
+    FROM audit_log a
+   WHERE a.actor_id = p.user_id AND a.event IN ('meeting.opted_out', 'meeting.withdrew')
+     AND (a.detail->>'meetingId')::bigint = m.id
+   ORDER BY a.created_at DESC, a.id DESC LIMIT 1) IS TRUE`;
+
+async function leftByChoice(client, userId, meetingId) {
+  const { rows } = await client.query(
+    `SELECT ${LEFT_BY_CHOICE_SQL} AS chose
+       FROM meeting_participants p JOIN meetings m ON m.id = p.meeting_id
+      WHERE p.meeting_id = $1 AND p.user_id = $2`, [meetingId, userId]);
+  return Boolean(rows[0] && rows[0].chose);
+}
+
 async function rejoin(client, userId, meetingId, now = Date.now()) {
   const p = await participantRow(client, meetingId, userId);
   if (!p) return err('not_found', 'not a participant of this meeting');
   if (p.state !== 'opted_out') return err('invalid', 'you are already in this meeting');
   if (!['negotiating', 'confirmed'].includes(p.meeting_status)) {
     return err('invalid', 'that coordination is closed — it cannot be rejoined');
+  }
+  if (!(await leftByChoice(client, userId, meetingId))) {
+    return err('forbidden', 'only somebody who left this coordination themselves can come back into it',
+      { reason: 'not_left_by_choice' });
   }
   const { rows: mrows } = await client.query(
     `SELECT confirmed_start_at FROM meetings WHERE id = $1`, [meetingId]);
@@ -791,14 +822,40 @@ async function getStatus(client, userId, meetingId) {
   const room = m.rows[0] && m.rows[0].group_id
     ? (await client.query(`SELECT kind, quorum_min, quorum_max FROM chat_groups WHERE id = $1`, [m.rows[0].group_id])).rows[0]
     : null;
+  const opts = (await options.list(client, meetingId)).map((o) => ({
+    ...o, yes: Object.values(o.answers || {}).filter((v) => v === 'y').length,
+  }));
   return ok({
     meeting: m.rows[0], participants,
     ...(room ? { room: { kind: room.kind || null, min: room.quorum_min === null ? null : Number(room.quorum_min), max: room.quorum_max === null ? null : Number(room.quorum_max) } } : {}),
-    options: (await options.list(client, meetingId)).map((o) => ({
-      ...o, yes: Object.values(o.answers || {}).filter((v) => v === 'y').length,
-    })),
+    ...(room && room.kind ? { headcount: headcountOf(room, opts, participants) } : {}),
+    options: opts,
     removedOptions: await options.removed(client, meetingId),
   });
+}
+
+// "How many are in so far" for a game room, drawn here so the model copies it.
+// `participants` is who is being ASKED: a poker room read four of them as
+// "כרגע אנחנו 4" with one yes on the table (2026-10-01, incidents.md, "The
+// poker count was the people asked"). The number is the yes count of the
+// option furthest along, among people still in it; ties go to the earlier time.
+function headcountOf(room, opts, participants) {
+  const inIt = new Set(participants.filter((p) => p.state !== 'opted_out').map((p) => String(p.user_id)));
+  let lead = null;
+  let leadYes = 0;
+  for (const o of opts) {
+    const yes = Object.entries(o.answers || {}).filter(([uid, v]) => v === 'y' && inIt.has(String(uid))).length;
+    const earlier = lead && o.startsAt && (!lead.startsAt || new Date(o.startsAt) < new Date(lead.startsAt));
+    if (!lead || yes > leadYes || (yes === leadYes && earlier)) { lead = o; leadYes = yes; }
+  }
+  const q = require('./groups').quorumFor({ kind: room.kind, quorum_min: room.quorum_min, quorum_max: room.quorum_max }, leadYes);
+  return {
+    inSoFar: leadYes,
+    needs: q.min === undefined ? null : q.min,
+    short: q.short === undefined ? null : q.short,
+    optionId: lead ? lead.id : null,
+    slot: lead ? lead.slotText : null,
+  };
 }
 
 async function listMine(client, userId) {
@@ -1002,7 +1059,7 @@ async function listNegotiating(client, userId = null) {
 module.exports = {
   cleanLocation,
   startMeeting, openWithSamePeople, recordConstraint, proposeSlot, respondToSlot,
-  optOut, rejoin, applyExit, withdrawConfirmed, cancelMeeting, reopenMeeting, setTitle, setPlace, setQuorum,
+  optOut, rejoin, leftByChoice, LEFT_BY_CHOICE_SQL, applyExit, withdrawConfirmed, cancelMeeting, reopenMeeting, setTitle, setPlace, setQuorum,
   getStatus, listMine, pendingMeetingFor, tryConfirm, settleNow, timeIsOpen, setExactTime,
   expireStaleMeetings, dropPassedOptions, expireOne, listNegotiating,
   EXPIRE_AFTER_START_MS, LEGACY_STALE_DAYS, ALL_DAY_EXTRA_MS,

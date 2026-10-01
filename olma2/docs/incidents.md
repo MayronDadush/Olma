@@ -61,6 +61,7 @@ never trust a dated narrative for something you are about to act on.
 - [Two paragraphs where two sentences would do (fixed 2026-09-20)](#two-paragraphs-where-two-sentences-would-do-fixed-2026-09-20)
 - [The link came back on every coordination message (2026-09-24)](#the-link-came-back-on-every-coordination-message-2026-09-24)
 - [The slot that was already closed (fixed 2026-09-20)](#the-slot-that-was-already-closed-fixed-2026-09-20)
+- [The poker count was the people asked (fixed 2026-10-01)](#the-poker-count-was-the-people-asked-fixed-2026-10-01)
 - [The chase that beat its own invites (fixed 2026-09-28)](#the-chase-that-beat-its-own-invites-fixed-2026-09-28)
 - [The room never heard the times (fixed 2026-09-28)](#the-room-never-heard-the-times-fixed-2026-09-28)
 - [Answered before the question existed (fixed 2026-09-28)](#answered-before-the-question-existed-fixed-2026-09-28)
@@ -87,6 +88,7 @@ never trust a dated narrative for something you are about to act on.
 - [The room window opened on a row nobody would look at (fixed 2026-09-19)](#the-room-window-opened-on-a-row-nobody-would-look-at-fixed-2026-09-19)
 - [The times the room said went nowhere (fixed 2026-09-23)](#the-times-the-room-said-went-nowhere-fixed-2026-09-23)
 - [The room could not cancel its own coordination (fixed 2026-09-25)](#the-room-could-not-cancel-its-own-coordination-fixed-2026-09-25)
+- [Eden could not come back (fixed 2026-10-01)](#eden-could-not-come-back-fixed-2026-10-01)
 - [The coordination waited on the man who started it (fixed 2026-09-19)](#the-coordination-waited-on-the-man-who-started-it-fixed-2026-09-19)
 - [The room heard its own state from memory (fixed 2026-09-19)](#the-room-heard-its-own-state-from-memory-fixed-2026-09-19)
 - [The room held a time that no longer existed (fixed 2026-09-22)](#the-room-held-a-time-that-no-longer-existed-fixed-2026-09-22)
@@ -2357,6 +2359,32 @@ shows the average length per window.
 **Not done, and named.** The poker example wants a place ("אצל מירון") —
 that is item F of the same plan, a `meetings.location` column, and lands
 separately.
+### The poker count was the people asked (fixed 2026-10-01)
+
+"חייב קבוצה לפוקר": thirteen people in the room, a game, a minimum of
+five. Coordination 66 had ONE yes on its only time, from the person who
+put it up, and Olma told Bar privately "כרגע אנחנו 4 וצריך 5". Nobody had
+said four. Four was the number of people she was ASKING at that moment.
+
+`ROOM_COUNT` already said the count was to be read, never estimated, and
+`get_meeting_status` already carried each option's `yes`. But it also
+carried `participants`, a list of people with no answer attached, beside
+`room.min`. "How many are in" is a number, and the list was the one
+number-shaped thing on the result. The model picked it, and no line of
+the instruction could tell it that list meant something else.
+
+So the number is drawn now. `meetings.getStatus` returns `headcount` for
+a room whose kind is known: `inSoFar` is the yes answers on the leading
+option (the most yes, ties to the earlier time), counted only from people
+still in the coordination; `needs` and `short` come from
+`groups.quorumFor`, the same reading the room's own lines use. `ROOM_COUNT`
+tells the model to copy `inSoFar` and `needs` exactly, never count
+`participants`, and say nothing about numbers when `inSoFar` is 0. A room
+nobody has told its kind gets no `headcount`, because NULL is the honest
+third state, and a private coordination never had a minimum.
+`tests/meeting-headcount.test.js` holds the founding case: four people
+asked, one yes, and the answer is one.
+
 ### The chase that beat its own invites (fixed 2026-09-28)
 
 Padel Gang's second coordination (meeting 57) was opened by מירון at 21:00 on a
@@ -3067,6 +3095,39 @@ are picked field by field: the private ones carry hints about a person's own
 calendar and dashboard, and an answer from the room returns that one answer,
 never the table's. It cost the fourth raise of the tool-schema ceiling
 (57,000 → 59,500, measured 56,558 → 59,407).
+
+### Eden could not come back (fixed 2026-10-01)
+
+The poker room "חייב קבוצה לפוקר" (meeting 66, a game with a minimum of 5),
+1 October. Eden (user 56) asked to leave the coordination, then changed his
+mind and asked to be put back. She could not do it, in the room or anywhere
+else the model could reach: `meetings.rejoin` existed and so did its fan-out,
+but only the page's archive button called them. The room's five doors added
+on 2026-09-25 all go through `groupMeetings.participantFor`, which refuses
+anybody whose row says `opted_out` — correctly for cancel, rename, a time and
+an answer, and by construction for the one action whose whole point is that
+the row says `opted_out`.
+
+Same shape as the two entries above: the agent understood and the outcome
+had nowhere to go. The fix is two tools, `rejoin_meeting` (chat) and
+`rejoin_group_coordination` (room), both into the page's own
+`meetings.rejoin` → `meetingFanout.afterRejoin`. **The owner narrowed who may
+use them**: only somebody who left by their own choice — "I'm out" while
+negotiating, "I can't come" after it settled. `rejoin` used to accept any
+`opted_out` row, so the page would have put back somebody a pause or leaving
+the WhatsApp group had taken out; the cause was never on the participant row,
+only on the exit's audit row, and the check now reads it there
+(`meetings.LEFT_BY_CHOICE_SQL`, also what the page's archive lists). Measured
+on the box before writing it: every one of the 11 `opted_out` rows had an
+exit on record, Eden's being `user_choice`. Ninth raise of the tool-schema
+ceiling (60,900 → 61,050, measured 61,046), approved by the owner.
+
+**And coming back is quiet now, like leaving.** `afterRejoin` used to send
+everybody else `meeting_rejoined`, on the argument that they had been told
+about the exit — false since 2026-09-22, when stepping out became an update
+and not a message. Through the page that was rare; through the room it was
+four private messages in a five-person poker game for one person changing
+their mind. Asked, the owner chose silence ("חזרה שתהיה שקטה כמו יציאה").
 
 ### The times the room said went nowhere (fixed 2026-09-23)
 

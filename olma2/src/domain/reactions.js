@@ -536,6 +536,8 @@ const TOOL_MARKS = Object.freeze({
   revoke_share: 'done',
   respond_to_share: 'done',
   opt_out_of_meeting: 'done',
+  // Its undo (2026-10-01): back in the moment it returns, waiting on nobody.
+  rejoin_meeting: 'done',
   cancel_meeting: 'done',
   create_shared_meeting_event: 'done',
 

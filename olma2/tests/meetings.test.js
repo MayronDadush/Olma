@@ -907,6 +907,55 @@ test('a stranger cannot rejoin a coordination they were never in', async () => {
   });
 });
 
+// Owner, 2026-10-01: only somebody who left by their OWN choice comes back.
+// Every exit cause there is, through the function that writes it.
+test('only an exit they chose can be walked back: a pause, the room or a revoke cannot', async () => {
+  await withClient(async (c) => {
+    const back = async (cause) => {
+      const m = (await meetings.startMeeting(c, alice.id, `by ${cause}`, [bob.id, carol.id])).data.meeting;
+      await meetings.proposeSlot(c, alice.id, m.id, 'Thursday 18:00', slotStart('Thursday 18:00'));
+      if (cause === 'withdrew') {
+        // "I can't come" after it settled — a different exit with its own event.
+        await c.query(`UPDATE meetings SET status = 'confirmed', confirmed_slot = 'Thursday 18:00',
+                              confirmed_start_at = $2 WHERE id = $1`, [m.id, slotStart('Thursday 18:00')]);
+      }
+      const out = cause === 'withdrew'
+        ? await meetings.optOut(c, bob.id, m.id)
+        : await meetings.applyExit(c, bob.id, m.id, cause);
+      assert.equal(out.ok, true, `${cause}: the exit itself went through`);
+      if (cause === 'withdrew') assert.equal(out.data.withdrew, true);
+      return meetings.rejoin(c, bob.id, m.id);
+    };
+    for (const cause of ['user_choice', 'withdrew']) {
+      const r = await back(cause);
+      assert.equal(r.ok, true, `${cause}: ${r.ok ? '' : JSON.stringify(r.error)}`);
+    }
+    for (const cause of ['paused_by_request', 'paused_no_answer', 'left_room', 'connection_revoked']) {
+      const r = await back(cause);
+      assert.equal(r.ok, false, `${cause}: not a choice they made about this coordination`);
+      assert.equal(r.error.reason, 'not_left_by_choice');
+    }
+  });
+});
+
+test('the LATEST exit decides, and an opted_out row with no exit on record is not a choice', async () => {
+  await withClient(async (c) => {
+    const m = (await meetings.startMeeting(c, alice.id, 'twice out', [bob.id, carol.id])).data.meeting;
+    await meetings.proposeSlot(c, alice.id, m.id, 'Friday 18:00', slotStart('Friday 18:00'));
+    await meetings.applyExit(c, bob.id, m.id, 'paused_no_answer');
+    assert.equal((await meetings.rejoin(c, bob.id, m.id)).ok, false);
+    // They come back and leave in words: that exit is the one that counts.
+    await c.query(`UPDATE meeting_participants SET state = 'awaiting' WHERE meeting_id = $1 AND user_id = $2`, [m.id, bob.id]);
+    await meetings.optOut(c, bob.id, m.id);
+    assert.equal((await meetings.rejoin(c, bob.id, m.id)).ok, true);
+
+    await c.query(`UPDATE meeting_participants SET state = 'opted_out' WHERE meeting_id = $1 AND user_id = $2`, [m.id, carol.id]);
+    const unknown = await meetings.rejoin(c, carol.id, m.id);
+    assert.equal(unknown.ok, false, 'nothing says they chose to leave');
+    assert.equal(unknown.error.reason, 'not_left_by_choice');
+  });
+});
+
 // ---- get_meeting_status draws the numbered choice (domain/list-block.js) ---
 // The tool itself, not just meetings.getStatus — the wiring that swaps the
 // old instruction hints for the drawn block, and never lets both stand.

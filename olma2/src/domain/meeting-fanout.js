@@ -581,19 +581,17 @@ async function afterSlotResponse(client, actor, meetingId, res, _opts = {}) {
   return res;
 }
 
-// After meetings.optOut succeeded.
-// The others were told this person was out. Not telling them they are back
-// would leave everyone holding a tally that is quietly wrong — and the tally
-// is the entire content of this screen.
+// After meetings.rejoin succeeded. QUIET, like the exit it undoes (owner,
+// 2026-10-01: "חזרה שתהיה שקטה כמו יציאה"). This used to send everybody else
+// `meeting_rejoined`, on the argument that they had been told about the exit —
+// which stopped being true on 2026-09-22, when stepping out became an update
+// and not a message (see `afterOptOut`). Coming back is the same kind of
+// update: the table and the counts say who is in, and a five-person game was
+// four private messages for one person changing their mind. The kind stays
+// rendered in channels/openclaw.js for any row already queued.
 async function afterRejoin(client, actor, meetingId, res) {
   if (!res.ok) return res;
-  const brief = await meetingBrief(client, meetingId);
-  const others = await activeParticipantsExcept(client, meetingId, actor.id);
-  await fanout(client, others, 'meeting_rejoined', {
-    meetingId: Number(meetingId), title: brief.title || 'meeting',
-    byName: actorName(actor),
-  }, { key: `mrejoin:${meetingId}:${actor.id}` });
-  res.data.hint = 'They are back in and have not answered yet — the others were told.';
+  res.data.hint = 'They are back in and have not answered the times yet. Nobody else is messaged about it.';
   return res;
 }
 
