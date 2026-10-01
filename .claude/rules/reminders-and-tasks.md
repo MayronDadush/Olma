@@ -324,9 +324,9 @@ title means this file. Grep the title, not the filename.
   is the last thing delivered of any kind, this is the first message since it,
   and they are still in a coordination that is still negotiating. A WhatsApp
   reply is left to the model. The classifier took 1 of 4,274 real messages,
-  Yuval's. **The way back is not in the chat**: `meetings.rejoin` is called
-  only by the page (Eden, the same hour). Like every hook change, this is inert
-  until the gateway restarts.
+  Yuval's. **A misread is undone the same way any exit is**: the exit is
+  `user_choice`, so `rejoin_meeting` (#686) can put them back, and the hint
+  names it. Like every hook change, this is inert until the gateway restarts.
 
 - **A settled coordination can be REOPENED, and it carries on from where it
   stopped** (owner, 2026-09-25). `meetings.reopenMeeting` is the one writer

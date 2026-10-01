@@ -1738,9 +1738,12 @@ one: Yuval's. The other four are Eden's longer sentences ("שקרן תרשום �
 **Eden, the same poker, the same hour, the other direction.** He said he was
 not coming, and the model did opt him out. Six minutes later he said "אני בא"
 and "נכנסתי", and was told the opt-out had "locked" him and there was no way
-back from the chat. That is true of the tools: `meetings.rejoin` exists, and
-only the page calls it. Not fixed here — it is a separate question for the
-owner — but an exit that code now makes on one word raises its price.
+back from the chat. That was true of the tools that day, and a parallel
+session fixed it the same evening (`rejoin_meeting` / `rejoin_group_coordination`,
+#686, "Eden could not come back" below). It matters more here than there: an
+exit code makes on one word has to be undoable, and it is — the exit is
+recorded as `user_choice`, the one kind `meetings.rejoin` puts back, and a
+test holds that.
 
 ### The approval that forgot the times (fixed 2026-09-30)
 

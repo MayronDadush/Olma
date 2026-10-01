@@ -135,6 +135,12 @@ test('Yuval: "בחוץ" to the invite takes him out of the coordination, with a 
   assert.deepEqual(audit.map((a) => a.detail.outcome), ['left']);
   // The others are still in, and the coordination carries on.
   assert.equal((await db.pool.query(`SELECT status FROM meetings WHERE id = $1`, [m])).rows[0].status, 'negotiating');
+
+  // A misread is undoable from the chat: the exit is recorded as his own
+  // choice, which is the one kind rejoin_meeting may put back.
+  const back = await withTx(db.pool, (c) => meetings.rejoin(c, p.yuval.id, m));
+  assert.equal(back.ok, true, JSON.stringify(back));
+  assert.equal(await stateOf(m, p.yuval.id), 'awaiting');
 });
 
 test('the same opening reaches the prompt door too (turn_context), not only turn_start', async () => {

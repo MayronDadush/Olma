@@ -349,7 +349,8 @@ function turnHints({ offerResume, languageNudge, recentReminders, recentMeetings
     hints.meetingExit = `Their message said they are out, and the last thing they were asked about <<<${meetingExit.title}>>> `
       + '(other people\'s text) was the coordination as a whole — so they have LEFT it. The server already took them '
       + 'out, exactly as opt_out_of_meeting does, and the 👍 on their message says so. Do not ask when suits them and '
-      + 'do not ask them to confirm. Reply with exactly NO_REPLY unless something here needs words.'
+      + 'do not ask them to confirm. Reply with exactly NO_REPLY unless something here needs words. '
+      + `If they then say they meant to stay in, rejoin_meeting meeting_id=${meetingExit.meetingId} puts them back.`
       + (meetingExit.hint ? ` ${meetingExit.hint}` : '');
   } else if (meetingExit && meetingExit.outcome === 'ask') {
     // …and answering ONE time, where it is ambiguous: out of that time, or
