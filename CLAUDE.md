@@ -203,6 +203,7 @@ Loads when you **Read** a file under `src/brokerd/**`, `src/domain/turn.js`, `sr
 - **…and a Hebrew reply with only an English next step on its END keeps the reply** — `hebrewReplyTail`, measured: one line in 1,461 replies, and quoted Hebrew inside English working-out still drops whole
 - **The last tier's missing input was not a pattern, it was the READER** — `writesHebrew` is a tri-state, `null` acts like `false`, and the value rides `turn_context` to a gate with no database
 - **A reply that says it SAVED something is checked against whether a tool ran — `reply.claim`, report-only** — `unknown` is not `unbacked`, and a turn Olma started is not judged
+- **A reply under a standing 👍 that only restates it is CANCELLED at the gate** (`mark-echo.echoOnly`, brokerd `mark_echo`) — every word is theirs, the title's, or a save word: nothing either side did not already know; filed as `reply.gated` kind `echo`, and `unanswered` never re-sends one
 
 ### Reminders, tasks and dates
 
@@ -237,6 +238,7 @@ Loads when you **Read** a file under `src/domain/reminders.js`, `src/domain/task
 - **…and a weekday they SAID travels with the time, so the two can be checked against each other** — `when_said` on all four doors that date a task, refused before the write; ל־ and a day the moment is measured FROM ("ערב לפני", "עד", "ערב שבת") are stripped first.
 - **`due_at` is when the THING is; `remind_at` is the hour THEY named.**
 - **A calendar event reminds NOBODY, and `create_calendar_event`'s result says so rather than leaving it to be guessed** — `add_task kind:'event'` is what arms one, and `eventIdFor` hashes the instant so the same moment saved both ways is one entry.
+- **Leaving the LIST is not leaving the CALENDAR: a moment that is over stays on Google** — `task-calendar.pending` removes only what is still ahead
 - **Everyone on a shared task is equal, and a write on it is made AS its owner** — "delete" with others on it is leaving, and only the last one left can archive.
 - **A reminder belongs to the PERSON, not to the task** — every reader asks `COALESCE(r.user_id, t.owner_id)`.
 - **A task with no date can still nudge, and a nudge must NEVER date it** — the dateless kind carries an hour of its own.

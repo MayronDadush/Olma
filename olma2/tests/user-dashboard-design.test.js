@@ -628,3 +628,33 @@ test('a new task asks for its name before anything else', () => {
     assert.equal((page.match(new RegExp(`"${k.replace(/\./g, '\\.')}":"`, 'g')) || []).length, 2, `${k} is not in both languages`);
   }
 });
+
+// The calendar tab drew the same thing twice (owner, 2026-10-01, on Miron's
+// account): once from /me/events and once as Olma's own row. Run agendaFor
+// itself over a day holding every shape of duplicate, and one real event.
+test("the calendar tab draws Google's copy of Olma's own row once", () => {
+  const m = page.match(/function agendaFor\(i\)\{[\s\S]*?\n {2}\}\n/);
+  assert.ok(m, 'agendaFor not found');
+  const t = (k) => k;
+  const env = {
+    dayISO: () => '2026-10-05', L: (o) => (o && typeof o === 'object' ? o.he : o), t,
+    chanName: () => 'WhatsApp', defaultChannel: 'wa',
+    mtOptById: (mm) => mm.opt,
+    open: [
+      { id: 1, d: '2026-10-05', tm: '15:00', all: false, t: { he: 'תור לספר' }, kind: 'event', gid: 'olmaA' },
+      { id: 2, d: '2026-10-05', tm: '18:00', all: false, t: { he: 'לשלם שכר דירה' }, kind: 'todo', gid: '' },
+    ],
+    MEETS: [{ id: 9, settled: 1, gid: 'olmaM', t: 'ערב משחקים', allDay: false, opt: { day: 3, time: '20:00' } }],
+    EVENTS: { 3: [
+      { id: 'olmaA', t: '15:00', e: '15:30', all: false, n: 'תור לספר (שם אחר)', s: '' },  // same id
+      { id: 'g-x', t: '18:00', e: '18:30', all: false, n: 'לשלם  שכר דירה', s: '' },        // same title+time
+      { id: 'olmaM', t: '20:00', e: '22:00', all: false, n: 'ערב משחקים', s: '' },          // the meeting
+      { id: 'g-y', t: '10:00', e: '11:00', all: false, n: 'ישיבת צוות', s: '' },            // really theirs
+      { id: 'g-z', t: '15:00', e: '16:00', all: false, n: 'שיחה עם רון', s: '' },           // same hour, other thing
+    ] },
+  };
+  const agendaFor = new Function(...Object.keys(env), `${m[0]}; return agendaFor;`)(...Object.values(env));
+  const titles = agendaFor(3).map((v) => v.title);
+  assert.deepEqual(titles.sort(), ['ישיבת צוות', 'ערב משחקים', 'לשלם שכר דירה', 'שיחה עם רון', 'תור לספר'].sort());
+  assert.equal(titles.filter((x) => x === 'ערב משחקים').length, 1);
+});

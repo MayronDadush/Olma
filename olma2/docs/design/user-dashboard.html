@@ -12170,7 +12170,34 @@ button.srow:active{background:var(--bg-tint)}
      they open the very same editor the list does, never a copy of it. */
   function agendaFor(i){
     var iso = dayISO(i);
-    var evs = (EVENTS[i] || []).map(function(v){
+    /* The same thing twice (owner, 2026-10-01, on Miron's account). A task
+       the sync wrote out, a settled coordination on their calendar, an event
+       Olma created — each is ALSO one of Google's events, so the day drew it
+       once from /me/events and once as itself. Olma's row wins, because it
+       is the one that opens the editor and carries the reminder; Google's
+       copy is dropped by its id when we know it (`gid`), and otherwise by
+       the same title at the same time on the same day — the event
+       `create_calendar_event` wrote with no task behind it, or one written
+       under an id we did not keep. */
+    var ownIds = {}, ownKeys = {};
+    var sameKey = function(title, time){
+      return String(title || "").replace(/\s+/g, " ").trim().toLowerCase() + "|" + (time || "");
+    };
+    open.forEach(function(x){
+      if(x.d !== iso) return;
+      if(x.gid) ownIds[x.gid] = 1;
+      ownKeys[sameKey(L(x.t), x.all ? "" : x.tm)] = 1;
+    });
+    MEETS.forEach(function(m){
+      if(!m.settled) return;
+      var o = mtOptById(m, m.settled);
+      if(!o || o.day !== i) return;
+      if(m.gid) ownIds[m.gid] = 1;
+      ownKeys[sameKey(L(m.t), m.allDay ? "" : o.time)] = 1;
+    });
+    var evs = (EVENTS[i] || []).filter(function(v){
+      return !(v.id && ownIds[v.id]) && !ownKeys[sameKey(L(v.n), v.all ? "" : v.t)];
+    }).map(function(v){
       /* `all` travels: an all-day entry heads the day, and the clash check
          treats it as filling the whole of one. The seed has no all-day rows,
          which is exactly why this was easy to leave out. */
@@ -13940,6 +13967,9 @@ button.srow:active{background:var(--bg-tint)}
       /* …and whether it is really there yet: the sync has written it out. The
          list folds these away under "ביומן" (calendarSection). */
       inCal:!!x.inCalendar,
+      /* …and under which Google id, so the calendar tab can drop Google's
+         copy of it (agendaFor) instead of drawing the same thing twice. */
+      gid:x.calendarEventId || "",
       tmEnd:x.endTime || "",
       /* A moment they will be at, or a job until it is done — the server's
          reading of tasks.kind, with the place an event carries. The list
@@ -14114,6 +14144,8 @@ button.srow:active{background:var(--bg-tint)}
     }
     return {
       id:m.id,
+      /* the Google id a settled one was written under — see agendaFor */
+      gid:m.calendarEventId || "",
       t:m.title || "",
       by:m.mine ? 0 : m.initiatorId,
       who:who, allDay:allDay, opts:opts, ans:ans, left:left,
@@ -14189,7 +14221,7 @@ button.srow:active{background:var(--bg-tint)}
         EVENTS = {};
         Object.keys(body.data.days || {}).forEach(function(k){
           EVENTS[+k] = (body.data.days[k] || []).map(function(e){
-            return {t:e.at || "", e:e.end || "", all:!!e.allDay,
+            return {id:e.id || "", t:e.at || "", e:e.end || "", all:!!e.allDay,
                     n:e.title || "", s:e.where || "", c:CAL_EVENT_COLOR};
           });
         });

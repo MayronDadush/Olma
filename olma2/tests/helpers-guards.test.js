@@ -160,3 +160,30 @@ test('a teardown drops test databases a killed run left behind, and only those',
   assert.equal(await databaseExists(stale), false, 'seven hours old: a leftover');
   assert.equal(await databaseExists(live), true, 'a minute old: somebody\'s running file');
 });
+
+test('a drop that FORCE may not make falls back to a plain one, and nothing else does', async () => {
+  // On the box the test role has no pg_signal_backend, so FORCE is refused
+  // whenever an autovacuum worker is in the database — five or six leftovers
+  // a deploy. A plain DROP signals autovacuum itself. Postgres will not start
+  // a worker on demand, so the branch is pinned here on the error it raises.
+  const { dropTestDb } = require('./helpers');
+  const client = (fail) => {
+    const said = [];
+    return { said, query: async (sql) => { said.push(sql); if (fail && said.length === 1) throw fail; } };
+  };
+  const refused = Object.assign(new Error('permission denied to terminate process'), { code: '42501' });
+  const a = client(refused);
+  await dropTestDb(a, 'olma2_t_x_ab');
+  assert.deepEqual(a.said, [
+    'DROP DATABASE IF EXISTS olma2_t_x_ab WITH (FORCE)',
+    'DROP DATABASE IF EXISTS olma2_t_x_ab',
+  ]);
+
+  const b = client(null);
+  await dropTestDb(b, 'olma2_t_x_ab');
+  assert.equal(b.said.length, 1, 'a FORCE that works is the only statement');
+
+  const other = Object.assign(new Error('database is being accessed by other users'), { code: '55006' });
+  await assert.rejects(dropTestDb(client(other), 'olma2_t_x_ab'), /being accessed/,
+    'any other failure is the caller\'s to report, never retried blind');
+});

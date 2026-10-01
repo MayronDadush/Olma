@@ -25,10 +25,12 @@ const groupContext = require('../domain/group-context');
 const groupsDomain = require('../domain/groups');
 const groupTurn = require('../domain/group-turn');
 const intakeRoom = require('../domain/intake-room');
+const onboardingDomain = require('../domain/onboarding');
 const audit = require('../domain/audit');
 const gameSummary = require('../domain/game-summary');
 const replyLeak = require('../domain/reply-leak');
 const phantomSave = require('../domain/phantom-save');
+const markEcho = require('../domain/mark-echo');
 const linkRequest = require('../domain/link-request');
 const dashboardAuth = require('../domain/dashboard-auth');
 const templates = require('../domain/message-templates');
@@ -88,7 +90,7 @@ const PENDING_MAX_PER_USER = 8;
 // production gets the worker facade, never `channels/sessions.js` directly,
 // because every export there is synchronous and this daemon answers live
 // users on the same loop.
-function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, timers, endSignalsLive, games }) {
+function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, timers, endSignalsLive, games, readGreeterReply }) {
   flood = flood || new FloodCounter();
   // gamesd and the gateway's config, for the game shortcut. Injectable for the
   // same reason as the roster: the defaults reach live services.
@@ -101,6 +103,17 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
   const readLidPhones = typeof lidPhoneNumbers === 'function'
     ? lidPhoneNumbers
     : () => require('../channels/sessions-async').lidPhoneNumbers();
+  // The greeter's newest reply to a number, off the gateway's session store —
+  // for the game shortcut, which must not introduce somebody the greeter just
+  // did. Injectable like the roster; unreadable is null, which is the old
+  // behaviour.
+  const readGreeterSaid = typeof readGreeterReply === 'function'
+    ? readGreeterReply
+    : async (phone) => {
+      const msgs = await require('../channels/sessions-async').readRecentMessages('intake', 10, undefined, phone);
+      const last = [...msgs].reverse().find((m) => m.role === 'assistant');
+      return last ? last.text : null;
+    };
   const clock = typeof now === 'function' ? now : Date.now;
   // userId → [{ messageId, kind, senderName, replyToId, lastInboundAt, counted, quota, firstTurn, openedAt, contextSent }], oldest first
   const pending = new Map();
@@ -173,7 +186,16 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
   // …and when one last FAILED, so a claim on a turn whose own write was refused
   // reads `failed` rather than borrowing an earlier turn's success.
   const lastFailAt = new Map();
+  // What the tool that earned this turn's 👍 wrote — its title, its name —
+  // for the reply gate's echo check (domain/mark-echo.js). Set only where
+  // `hints.markPlaced` is set, and forgotten by anything that could make a
+  // following sentence worth saying: a new message, a tool that earned no 👍,
+  // a failure. In process, like the claim memory above, so a restart forgets
+  // it and the gate passes — the old behaviour, never a dropped answer.
+  const markEchoes = new Map();
+  const MARK_ECHO_MS = 5 * 60 * 1000;
   function noteOpen(userId) {
+    markEchoes.delete(userId);
     const at = clock();
     const list = (claimOpens.get(userId) || []).filter((t) => at - t <= phantomSave.OPEN_WINDOW_MS);
     list.push(at);
@@ -574,6 +596,16 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
         WHERE event = 'games.intake_claim' AND created_at > now() - interval '1 hour'
           AND actor_id IS DISTINCT FROM $1`, [existing ? existing.id : null]);
     if (claimsThisHour >= cap) return NOT_OURS;
+    // The privacy link reaches each person ONCE, ever (owner, 2026-10-01). The
+    // greeter may have introduced them minutes ago, before any row said so —
+    // a code sent before the sweep provisioned them — and then the hello and
+    // the privacy line below would be the second time.
+    let greeterIntroduced = false;
+    if (!existing || (!existing.opening_sent_at && !existing.privacy_link_sent_at)) {
+      let said = null;
+      try { said = await readGreeterSaid(phone); } catch { said = null; }
+      greeterIntroduced = onboardingDomain.carriesPrivacyLink(said);
+    }
 
     const lang = String((code ? code.lang : ask.lang) || 'he').startsWith('en') ? 'en' : 'he';
     const joinCode = code ? code.code : ask.code;
@@ -624,9 +656,11 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
           text = say('game_no_night', { code: joinCode });
         } else throw ROLLBACK;   // a bare five letters that is no night: not ours
 
-        const introduced = !user.opening_sent_at;
-        if (introduced) {
-          text = [say('game_hello', {}), text, say('game_privacy', {})].join('\n');
+        // Stamped whenever they had no opening on record, introduced here or
+        // by the greeter: `gameClaimed` provisions off opening_sent_at.
+        const introduced = !user.opening_sent_at && !user.privacy_link_sent_at && !greeterIntroduced;
+        if (introduced) text = [say('game_hello', {}), text, say('game_privacy', {})].join('\n');
+        if (!user.opening_sent_at) {
           await client.query(
             `UPDATE users SET opening_sent_at = COALESCE(opening_sent_at, now()),
                     privacy_link_sent_at = COALESCE(privacy_link_sent_at, now())
@@ -879,9 +913,19 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
     if (!phone) return { ok: false, error: 'bad sessionKey' };
     let out = { ok: true, context: null };
     await withTx(pool, async (client) => {
+      // Somebody with a row that says they were already introduced — the
+      // greeter's session resets daily and it has no other way to know.
+      const introduced = intakeRoom.wasIntroduced(await usersDomain.getByPhone(client, phone));
       const room = await intakeRoom.roomFor(client, phone);
-      if (!room) return;
-      out = { ok: true, context: intakeRoom.contextFor(room), groupId: room.groupId, meetingId: room.meetingId };
+      if (!room) {
+        if (introduced) out = { ok: true, context: intakeRoom.INTRODUCED_BLOCK, introduced: true };
+        return;
+      }
+      const roomBlock = intakeRoom.contextFor(room, { introduced });
+      out = {
+        ok: true, context: introduced ? `${intakeRoom.INTRODUCED_BLOCK}\n\n${roomBlock}` : roomBlock,
+        groupId: room.groupId, meetingId: room.meetingId, ...(introduced ? { introduced: true } : {}),
+      };
       await audit.record(client, null, 'intake.room_context_served', {
         groupId: room.groupId, meetingId: room.meetingId,
       });
@@ -952,6 +996,26 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
       out = { ok: true, verdict: judged.verdict };
     });
     return out;
+  }
+
+  // The reply gate holds a short reply and asks whether a 👍 is standing on
+  // this turn's message, and if so, what the tool behind it wrote. Only the
+  // WORDS of what was written go back — the gateway already carried that tool
+  // result to the model — and the reply itself never comes here: the gate
+  // decides locally (domain/mark-echo.js) and files a cancel through
+  // `reply_gate` like any other.
+  async function handleMarkEcho(params = {}) {
+    const agentId = String(params.agentId || '').trim();
+    if (!/^u-\d+$/.test(agentId)) return { ok: false, error: 'bad agentId' };
+    const { rows } = await pool.query(
+      `SELECT id FROM users WHERE agent_id = $1 AND status = 'active'`, [agentId]);
+    if (!rows[0]) return { ok: true, standing: false };
+    const userId = Number(rows[0].id);
+    const held = markEchoes.get(userId);
+    if (!held || clock() - held.at > MARK_ECHO_MS) return { ok: true, standing: false };
+    // A turn Olma started has no message of theirs a 👍 could be standing on.
+    if (selfInitiated.isActive(userId)) return { ok: true, standing: false };
+    return { ok: true, standing: true, words: held.words };
   }
 
   // A pack's server asking who a token belongs to (games/, game nights). It
@@ -1352,6 +1416,13 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
             + 'asking, no caveat, no error, no other hint here — reply with exactly NO_REPLY and '
             + 'nothing else. Write only when the words carry something the mark cannot.',
         };
+        if (actorId) {
+          const prev = markEchoes.get(Number(actorId));
+          const words = [...(prev ? prev.words : []), ...markEcho.vocabOf(result.data)].slice(0, 60);
+          markEchoes.set(Number(actorId), { at: clock(), words });
+        }
+      } else if (actorId && name !== 'turn_start') {
+        markEchoes.delete(Number(actorId));
       }
       return { ok: true, text: renderResult(result) };
     } catch (e) {
@@ -1391,6 +1462,8 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
         return handleReplyGate(msg.params || {});
       case 'reply_claim':
         return handleReplyClaim(msg.params || {});
+      case 'mark_echo':
+        return handleMarkEcho(msg.params || {});
       case 'turn_progress':
         return handleTurnProgress(msg.params || {});
       case 'identity_resolve':

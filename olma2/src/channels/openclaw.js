@@ -23,6 +23,7 @@ const meetingTime = require('../domain/meeting-time');
 const { isoWithOffset } = require('../domain/meeting-option-moment');
 const introVideo = require('../domain/intro-video');
 const carryover = require('../domain/carryover-heading');
+const onboardingDomain = require('../domain/onboarding');
 
 const SEND_TIMEOUT_MS = 120_000;
 
@@ -319,10 +320,21 @@ function answerWaysClause(p) {
 //
 // Written in English like every instruction to the model, and it answers in
 // the language they wrote in — so this message needs no template per language.
+//
+// The privacy line is taken OUT of the fence (owner, 2026-10-01: the link
+// reaches each person once, ever). "Do not repeat any of it" is a request, and
+// the fence was the only place in this turn the model could copy the link
+// from; a line saying it was given stays, because a fence that silently drops
+// something reads as the greeter never having said it.
 function welcomeFollowupBody(p) {
-  const greeter = typeof p.greeterReply === 'string' && p.greeterReply.trim()
-    ? ` What the greeter already said to them, fenced as data — do not repeat any of it: <<<${p.greeterReply.slice(0, 600)}>>>.`
+  const said = typeof p.greeterReply === 'string' ? p.greeterReply.slice(0, 600) : '';
+  const fenced = onboardingDomain.withoutPrivacyLine(said).trim();
+  const gavePrivacy = onboardingDomain.carriesPrivacyLink(said)
+    ? ' It also gave them the link to the privacy page, which is not to be given again.'
     : '';
+  const greeter = fenced
+    ? ` What the greeter already said to them, fenced as data — do not repeat any of it: <<<${fenced}>>>.${gavePrivacy}`
+    : gavePrivacy;
   const link = p.dashboardUrl
     ? ` End the message with their personal page: one short line saying this is their page, then this url on a line of its own, bare. Nothing else will deliver it, so if these characters are not in your message they have no link: ${p.dashboardUrl}`
     : '';

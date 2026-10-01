@@ -175,6 +175,15 @@ async function removeEventsFor(client, ownerId, taskId, deps = {}) {
 // standing switch when it did not. Computing it here rather than in three
 // separate WHERE clauses is what stops the add, remove and re-check arms from
 // ever disagreeing about whether a row belongs on somebody's calendar.
+//
+// A moment that is OVER is left exactly where it is, whatever happened to its
+// row since. The expired-events sweep archives "תור לספר" three hours after
+// it passes, and this used to read "archived" as "take it off the calendar":
+// the haircut vanished from Google the evening it happened. Leaving the list
+// is not leaving the calendar — what already happened is the person's
+// record, not a row we own. Only something still AHEAD is removed (cancelled,
+// deleted, done early, undated, switched off); the dashboard's own delete
+// (`removeEventsFor`) is a person acting on it and is untouched.
 async function pending(client, { limit = MAX_PER_TICK, now = new Date() } = {}) {
   const { rows } = await client.query(
     `SELECT t.id, t.owner_id, t.title, t.due_at, t.ends_at, t.location, t.calendar_event_id,
@@ -190,12 +199,14 @@ async function pending(client, { limit = MAX_PER_TICK, now = new Date() } = {}) 
              AND t.status = 'open' AND t.archived_at IS NULL)
           -- to remove: it is on the calendar and no longer earns its place
           OR (t.calendar_event_id IS NOT NULL
+             AND (t.due_at IS NULL OR COALESCE(t.ends_at, t.due_at) > $2)
              AND (NOT COALESCE(t.calendar_opt_in, u.calendar_sync_tasks) OR t.status <> 'open'
                   OR t.archived_at IS NOT NULL OR t.due_at IS NULL))
           -- to re-check: on the calendar and still wanted — the fingerprint
           -- comparison below decides whether it actually moved
           OR (COALESCE(t.calendar_opt_in, u.calendar_sync_tasks) AND t.calendar_event_id IS NOT NULL
-             AND t.status = 'open' AND t.archived_at IS NULL AND t.due_at IS NOT NULL)
+             AND t.status = 'open' AND t.archived_at IS NULL AND t.due_at IS NOT NULL
+             AND COALESCE(t.ends_at, t.due_at) > $2)
         )
       ORDER BY t.due_at NULLS FIRST
       LIMIT $1`,
@@ -213,6 +224,11 @@ async function syncOne(client, t, deps = {}) {
   const wants = t.sync_wanted ?? t.calendar_opt_in ?? t.calendar_sync_tasks;
   const wanted = wants && t.status === 'open'
     && !t.archived_at && t.due_at;
+
+  // The same line pending() draws, for a caller that handed us a row itself.
+  const now = deps.now ? new Date(deps.now) : new Date();
+  const over = t.due_at && new Date(t.ends_at || t.due_at) <= now;
+  if (t.calendar_event_id && over) return { id: t.id, action: 'unchanged' };
 
   if (t.calendar_event_id) {
     const stale = !wanted || t.calendar_event_id !== expectedIdFor(t.owner_id, t);

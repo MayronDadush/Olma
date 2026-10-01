@@ -122,7 +122,30 @@ function goalBlock(rows, today = new Date().toISOString().slice(0, 10)) {
       <span class="dim small">— כתבו לעולמה או עשו משהו בדף שלהם בשבעת הימים האחרונים</span></p>
     <table><tr><th>איך הגיעו</th><th>הצטרפו ב־7 ימים</th><th>ב־30 יום</th><th>פעילים השבוע</th></tr>${channelRows}</table>
     <p class="small">לחיצות על קישורי הזמנה: <b>${clicks ? clicks.w : '—'}</b> ב־7 ימים · ${clicks ? clicks.m : '—'} ב־30 יום
-      <span class="dim">— תצוגה מקדימה של הקישור לא נספרת</span></p>`;
+      <span class="dim">— תצוגה מקדימה של הקישור לא נספרת</span></p>${roomLine(at)}${retentionLine(at)}`;
+}
+
+// Retention (jobs/metrics.js RETENTION): of the people who met her two to
+// four weeks ago, how many were active this week. Two counts, never a rate —
+// "2 of 3" is a statement, 67% is an invitation to misread a small cohort.
+function retentionLine(at) {
+  const cohort = at.get('cohort_2_4w@0');
+  if (cohort === undefined) return '';
+  const back = at.get('cohort_2_4w_active@0');
+  return `
+    <p class="small">הצטרפו לפני 2–4 שבועות: <b>${cohort}</b> · ${back === undefined ? '—' : back} מהם פעילים השבוע
+      <span class="dim">— השימור: מי שנשאר אחרי שהחידוש עבר</span></p>`;
+}
+
+// The rooms as a funnel (jobs/metrics.js ROOM_FUNNEL): headcounts, read on
+// today's row like the WAU. Nothing drawn before the sweep first wrote one.
+function roomLine(at) {
+  const people = at.get('room_people@0');
+  if (people === undefined) return '';
+  const cell = (v) => (v === undefined ? '—' : v);
+  return `
+    <p class="small">בקבוצות עם עולמה: <b>${people}</b> אנשים · ${cell(at.get('room_people_met@0'))} מהם כבר אצלה · ${cell(at.get('room_people_active@0'))} פעילים השבוע
+      <span class="dim">— מי שבקבוצה ועוד לא כתב לה הוא הקהל הכי קרוב להצטרף</span></p>`;
 }
 
 // The Hebrew count is shown as "flawed of written", never as a rate, and only

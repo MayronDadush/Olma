@@ -775,20 +775,24 @@ test('the hook arms the english tier off the agent id, and only for an agent bro
 
   const quiet = gateHandler();
   assert.equal(await quiet.handler({ payload: { text: english }, sessionKey: key('u-36') }, {}), undefined);
-  assert.equal(quiet.sent.length, 0, 'unknown reader, so the tier is not armed and brokerd hears nothing');
+  // `mark_echo` is a question about a short reply (tests/mark-echo.test.js),
+  // not a report of one.
+  const reports = (sent) => sent.filter((m) => m.method !== 'mark_echo');
+  assert.equal(reports(quiet.sent).length, 0, 'unknown reader, so the tier is not armed and brokerd hears nothing');
 
   plugin.rememberReader('u-36', true);
   const armed = gateHandler();
   const out = await armed.handler({ payload: { text: english }, sessionKey: key('u-36') }, {});
   assert.deepEqual(out, { cancel: true, reason: 'olma_reply_leak' });
-  assert.equal(armed.sent[0].params.agentId, 'u-36');
-  assert.deepEqual(armed.sent[0].params.leaks.map((l) => l.kind), ['english']);
+  const gated = armed.sent.find((m) => m.method === 'reply_gate');
+  assert.equal(gated.params.agentId, 'u-36');
+  assert.deepEqual(gated.params.leaks.map((l) => l.kind), ['english']);
   assert.ok(!JSON.stringify(armed.sent).includes('image content'), 'the message never leaves the gateway');
 
   // …and it is remembered PER AGENT: u-12 writes English and was never marked.
   const other = gateHandler();
   assert.equal(await other.handler({ payload: { text: english }, sessionKey: key('u-12') }, {}), undefined);
-  assert.equal(other.sent.length, 0);
+  assert.equal(reports(other.sent).length, 0);
   plugin._resetReaders();
 });
 

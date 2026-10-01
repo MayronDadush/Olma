@@ -234,6 +234,7 @@ test('an empty judge reply is named as truncation, not vague unparseability', as
   const r = await harness.runScenario(db.pool, evalUser, byId['general-knowledge'], {
     runTurn: fakeTurns([{ reply: 'זה לא התחום שלי.' }]),
     complete: async () => ({ ok: true, text: '', usage: { input: 900, output: 700 } }),
+    judgeRetryDelayMs: 0,
   });
   assert.equal(r.status, 'error');
   assert.match(r.judge.error, /reasoning likely consumed max_tokens/);
@@ -256,12 +257,14 @@ test('a provider-confirmed truncation is named as such, empty or cut', async () 
   const turns = [{ message: 'x', reply: 'y' }];
   const empty = await harness.judgeScenario(byId['general-knowledge'], turns, {
     complete: async () => ({ ok: true, text: '', finishReason: 'length' }),
+    judgeRetryDelayMs: 0,
   });
   assert.equal(empty.ok, false);
   assert.match(empty.error, /finish_reason=length/);
 
   const cut = await harness.judgeScenario(byId['general-knowledge'], turns, {
     complete: async () => ({ ok: true, text: '{"verdict":"concern","problems":[{"ru', finishReason: 'length' }),
+    judgeRetryDelayMs: 0,
   });
   assert.equal(cut.ok, false);
   assert.match(cut.error, /cut mid-object/);
@@ -342,6 +345,7 @@ test('the judge retries once, and a recovered run remembers the first failure', 
     complete: (() => { let n = 0; return async () => (++n === 1
       ? { ok: false, error: 'llm timeout' }
       : { ok: true, text: '{"verdict":"pass","problems":[]}' }); })(),
+    judgeRetryDelayMs: 0,
   });
   assert.equal(r.status, 'green');
   assert.match(r.judge.retriedAfter, /llm timeout/);
@@ -430,6 +434,7 @@ test('an unparseable judge is an ERROR, never a silent green', async () => {
       },
     ]),
     complete: async () => ({ ok: true, text: 'אין לי מושג, אבל נשמע בסדר!' }),
+    judgeRetryDelayMs: 0,
   });
   assert.equal(r.status, 'error');
 });

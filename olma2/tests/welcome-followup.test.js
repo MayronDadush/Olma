@@ -69,6 +69,19 @@ test('the instruction points at their words, never carries them, and hands over 
   assert.doesNotMatch(bare, /https?:/, 'no link minted, no link — never an invented one');
 });
 
+test('the privacy link the greeter gave is not handed to the follow-up to give again', () => {
+  // The owner's rule (2026-10-01): the link reaches each person once, ever.
+  const onboarding = require('../src/domain/onboarding');
+  const row = { kind: 'welcome_followup', payload: { hasNote: false, greeterReply: onboarding.OPENING.he } };
+  const text = instructionFor(row, null);
+  assert.doesNotMatch(text, /allma\.world\/privacy/, 'nothing in the turn to copy it from');
+  assert.match(text, /<<<היי, אני עולמה/, 'the rest of what the greeter said is still fenced');
+  assert.match(text, /privacy page, which is not to be given again/, 'and the fence says what it left out');
+
+  const plain = instructionFor({ kind: 'welcome_followup', payload: { hasNote: false, greeterReply: 'היי 🙂' } }, null);
+  assert.doesNotMatch(plain, /privacy/, 'a greeter that never gave it is not said to have');
+});
+
 // ---- the worker ------------------------------------------------------------
 async function newPerson(phone) {
   const u = await makeUser(db.pool, phone);

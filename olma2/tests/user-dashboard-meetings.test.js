@@ -560,3 +560,15 @@ test('an English page gets a meeting\'s time in English; a Hebrew page keeps the
   assert.equal(hebrew.slotReader, null, 'a Hebrew page reads the words themselves');
   assert.equal(hebrew.slot, 'מחר ב־20:00');
 });
+
+// Same reason as a task: a settled coordination written to Google comes back
+// from /me/events too, under the organiser's event id on every attendee's
+// calendar, and the calendar tab must recognise it to draw it once.
+test('a settled coordination carries the Google event id it was written under', async () => {
+  const id = await coordination(gali, [me, ron], 'ערב משחקים');
+  await db.pool.query(`UPDATE meetings SET status = 'confirmed', confirmed_slot = 'מחר 19:00', confirmed_start_at = $2,
+                         calendar_event_id = 'olmameet42', calendar_organiser_id = $3 WHERE id = $1`,
+    [id, tomorrowAt('19'), gali.id]);
+  const page = await tx((c) => dash.load(c, me.id));
+  assert.equal(page.data.meetings.find((x) => Number(x.id) === id).calendarEventId, 'olmameet42');
+});

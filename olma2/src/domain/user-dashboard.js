@@ -119,6 +119,7 @@ async function loadTasks(client, userId, zone, calendarSyncTasks) {
             -- minutes, so wanting it and having it are two different facts and
             -- the page has to be able to tell them apart
             t.calendar_event_id IS NOT NULL AS in_calendar,
+            t.calendar_event_id,
             -- who started it, by first name only: on a task somebody shared
             -- WITH this person the owner is on no share row, so without this
             -- the list could draw every face on it except the one who shared
@@ -241,6 +242,11 @@ async function loadTasks(client, userId, zone, calendarSyncTasks) {
       // sweep has caught up yet.
       calendar: t.calendar_opt_in ?? Boolean(calendarSyncTasks),
       inCalendar: t.in_calendar,
+      // The Google id itself, so the calendar tab can recognise this task's
+      // own copy among the events /me/events brings back and draw it ONCE.
+      // A synced task stood in its day twice — as itself and as Google's
+      // event (owner, 2026-10-01, on Miron's account).
+      calendarEventId: t.calendar_event_id || null,
       items: byParent.get(t.id) || [],
       // Who owns this, and therefore who may manage its sharing. `mine` is the
       // question the page actually asks; `owner` carries the id so a task
@@ -470,6 +476,7 @@ async function loadMeetings(client, userId, zone, locale) {
     `SELECT m.id, m.title, m.initiator_id, m.status, m.quorum_min,
             m.proposed_slot, m.proposed_start_at, m.confirmed_start_at,
             m.confirmed_slot, m.settling_option_id, m.settled_by,
+            m.calendar_event_id,
             -- Seconds left of the settle grace, not the instant it ends: the
             -- page counts down, and a clock on a phone that is four minutes
             -- fast would otherwise count down to the wrong thing. Negative or
@@ -612,6 +619,10 @@ async function loadMeetings(client, userId, zone, locale) {
     slotReader: locals.get(m.id).slotReader,
     confirmedReader: locals.get(m.id).confirmedReader,
     confirmedStartAt: m.confirmed_start_at,
+    // Same reason as a task's: a settled coordination written to Google comes
+    // back from /me/events under this id — on the organiser's calendar and on
+    // every attendee's, since an invite keeps the organiser's event id.
+    calendarEventId: m.calendar_event_id || null,
     confirmedTime: m.confirmed_time,
     confirmedDay: m.confirmed_day === null ? null : Number(m.confirmed_day),
     // The minute between the last yes and the meeting being over. `settleIn`
