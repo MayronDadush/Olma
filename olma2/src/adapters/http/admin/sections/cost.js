@@ -180,10 +180,10 @@ async function groupCosts(client, agentIds) {
   if (!ids.length) return new Map();
   const { rows } = await client.query(
     `SELECT agent_id, date, model, input_tokens, output_tokens, cache_read_tokens,
-            cache_write_tokens, cost_usd
+            cache_write_tokens, cost_usd,
+            date >= date_trunc('month', CURRENT_DATE)::date AS this_month
        FROM usage_system_ledger WHERE agent_id = ANY($1)`, [ids]);
   const blended = await pricing.blendedRate(client);
-  const monthStart = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1));
   const out = new Map();
   for (const r of rows) {
     const p = pricing.priceUsage({
@@ -193,7 +193,7 @@ async function groupCosts(client, agentIds) {
     const cost = p.estimated ? Number(r.cost_usd) : p.cost;
     const g = out.get(r.agent_id) || { month: 0, total: 0, estimated: false };
     g.total += cost;
-    if (new Date(r.date) >= monthStart) g.month += cost;
+    if (r.this_month) g.month += cost;
     if (p.estimated) g.estimated = true;
     out.set(r.agent_id, g);
   }
@@ -222,12 +222,14 @@ async function renderCost(client) {
   // than a rate known to be wrong.
   const ledgerRows = await client.query(
     `SELECT l.date, l.model, l.input_tokens, l.output_tokens, l.cache_read_tokens,
-            l.cache_write_tokens, l.cost_usd, l.user_id, u.first_name, u.phone, NULL AS agent_id
+            l.cache_write_tokens, l.cost_usd, l.user_id, u.first_name, u.phone, NULL AS agent_id,
+            l.date >= date_trunc('month', CURRENT_DATE)::date AS this_month
        FROM usage_ledger l JOIN users u ON u.id = l.user_id
       WHERE l.date >= LEAST(date_trunc('month', CURRENT_DATE)::date, CURRENT_DATE - 30)
      UNION ALL
      SELECT s.date, s.model, s.input_tokens, s.output_tokens, s.cache_read_tokens,
-            s.cache_write_tokens, s.cost_usd, NULL, NULL, NULL, s.agent_id
+            s.cache_write_tokens, s.cost_usd, NULL, NULL, NULL, s.agent_id,
+            s.date >= date_trunc('month', CURRENT_DATE)::date
        FROM usage_system_ledger s
       WHERE s.date >= LEAST(date_trunc('month', CURRENT_DATE)::date, CURRENT_DATE - 30)`);
   const blended = await pricing.blendedRate(client);
@@ -243,8 +245,15 @@ async function renderCost(client) {
   });
   const days = { rows: rollup(priced, (r) => String(r.date), (k, rows) => ({ date: rows[0].date }))
     .sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, 14) };
-  const monthStart = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1));
-  const thisMonth = priced.filter((r) => new Date(r.date) >= monthStart);
+  // "This month" is asked of the database, on the same clock as the
+  // CURRENT_DATE that wrote the rows and bounds the window above. It used to
+  // be a JS comparison of `r.date` against a UTC month start — but node-pg
+  // builds a DATE at LOCAL midnight, so in any zone east of UTC the 1st of
+  // the month parsed to the previous day and every row of the 1st dropped off
+  // the page. Green on the UTC box, red for an hour or more on a dev machine
+  // in Asia/Jerusalem on 2026-10-01, and wrong for anybody whose process
+  // clock is not UTC.
+  const thisMonth = priced.filter((r) => r.this_month);
   // Every person who cost anything this month, not a top-10. The slice that
   // used to be here was invisible from the page — the eleventh person simply
   // was not there — and it was not only a display cut: `usersTotal` below is

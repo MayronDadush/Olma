@@ -155,3 +155,35 @@ test('every person who cost money is on the page, not just the top ten', async (
   assert.ok(active, 'the active-user count is not on the page');
   assert.equal(Number(active[1]), 13, 'the count was capped at the slice, so it read 10 for ever');
 });
+
+test('the first of the month counts as this month whatever clock node runs on', async () => {
+  // node-pg builds a DATE at LOCAL midnight, and the page used to compare it
+  // with a month start built in UTC. In any zone east of UTC the 1st parsed
+  // to the evening of the last day of the previous month, so every row of
+  // the 1st left the page: on 2026-10-01 this whole file went red on a dev
+  // machine in Asia/Jerusalem, while the UTC box and CI stayed green. The row
+  // is dated the 1st of THIS month explicitly, so the case is exercised on
+  // every day the suite runs, not only on the one day it bites.
+  const u = await makeUser(db.pool, '+972500001007', { firstName: 'ראשון' });
+  await db.pool.query(
+    `INSERT INTO usage_ledger (user_id, date, model, input_tokens, output_tokens,
+       cache_read_tokens, cache_write_tokens, total_tokens, cost_usd, estimated)
+     VALUES ($1, date_trunc('month', CURRENT_DATE)::date, 'deepseek/deepseek-v4-flash',
+       100000, 1000, 0, 0, 101000, 0.02, false)`, [u.id]);
+  await db.pool.query(
+    `INSERT INTO usage_system_ledger (agent_id, date, model, input_tokens, output_tokens, cost_usd)
+     VALUES ('g-first', date_trunc('month', CURRENT_DATE)::date, 'deepseek/deepseek-v4-flash',
+       100000, 1000, 0.02)`);
+
+  const tz = process.env.TZ;
+  process.env.TZ = 'Asia/Jerusalem';
+  try {
+    assert.ok(usdFor(await render(), 'ראשון') > 0, 'the 1st was read as last month');
+    const { groupCosts } = require('../src/adapters/http/admin/sections/cost');
+    const g = (await withTx(db.pool, (c) => groupCosts(c, ['g-first']))).get('g-first');
+    assert.ok(g && g.month > 0, `a room's 1st was read as last month: ${JSON.stringify(g)}`);
+  } finally {
+    if (tz === undefined) delete process.env.TZ; else process.env.TZ = tz;
+    await db.pool.query(`DELETE FROM usage_system_ledger WHERE agent_id = 'g-first'`);
+  }
+});
