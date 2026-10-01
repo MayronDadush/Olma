@@ -23,8 +23,8 @@ function fakeGoogle() {
   const calls = [];
   return {
     calls,
-    createEvent: async (client, userId, { title, start, location }) => {
-      calls.push({ op: 'create', userId, title, start, location });
+    createEvent: async (client, userId, { title, start, location, allDay }) => {
+      calls.push({ op: 'create', userId, title, start, location, allDay });
       return { ok: true, data: { eventId: calendar.eventIdFor(userId, title, start), created: true } };
     },
     deleteEvent: async (client, userId, { eventId }) => {
@@ -447,4 +447,37 @@ test('an appointment archived while still AHEAD is taken off the calendar', asyn
     const out = await tc.sweepTaskCalendar(c, { ...g, now: '2026-09-04T00:00:00Z' });
     assert.deepEqual(out.removed, [t.data.task.id]);
   });
+});
+
+// A task saved for a DAY is stored as local midnight. Written to Google as a
+// timed block it became a 00:00-00:30 entry in the middle of the night, so a
+// birthday looked like it had not been added (owner, 2026-10-01).
+test('a day-shaped event goes to Google as an ALL-DAY entry on the right date', async () => {
+  const u = await syncingUser('+972594000041');
+  const g = fakeGoogle();
+  await withClient(async (c) => {
+    // 30 Oct 2026, local midnight in Asia/Jerusalem (UTC+2 after DST ends).
+    const t = await tasksDomain.addTask(c, u.id, {
+      title: 'יום הולדת לליאם', kind: 'event', dueAt: '2026-10-30T00:00:00+02:00',
+    });
+    await tc.sweepTaskCalendar(c, { ...g, now: '2026-10-01T00:00:00Z' });
+    const made = g.calls.find((x) => x.op === 'create');
+    assert.ok(made, 'the entry was written');
+    assert.equal(made.allDay, true);
+    assert.equal(made.start.slice(0, 10), '2026-10-30', 'the date they meant, not the UTC day before');
+
+    // Same id as before, so the re-check sees a steady state and writes nothing.
+    const again = fakeGoogle();
+    await tc.sweepTaskCalendar(c, { ...again, now: '2026-10-01T00:00:00Z' });
+    assert.deepEqual(again.calls, []);
+    assert.ok(t.data.task.id);
+  });
+});
+
+test('a stated hour stays a timed block, and a stated end beats the day', () => {
+  const tz = 'Asia/Jerusalem';
+  const timed = tc.windowFor('2026-10-30T07:00:00.000Z', null, tz);
+  assert.equal(timed.allDay, false);
+  const shift = tc.windowFor('2026-10-29T22:00:00.000Z', '2026-10-30T05:00:00.000Z', tz);
+  assert.equal(shift.allDay, false, 'a task that says where it stops is not a banner');
 });
