@@ -40,6 +40,9 @@ const pwa = require('./pwa');
 const publicPages = require('./public-pages');
 const inviteLink = require('./invite-link');
 const { checkGateway } = require('../gateway-health');
+const fs = require('node:fs');
+const brandAds = require('../../domain/brand-ads');
+const multipart = require('./admin/multipart');
 
 // /ready's whole test. brokerd beats immediately on boot and then every 60s,
 // so three intervals is generous enough that an ordinary slow tick under load
@@ -66,6 +69,33 @@ function readBody(req) {
     req.on('data', (d) => { b += d; if (b.length > 64_000) req.destroy(); });
     req.on('end', () => resolve(Object.fromEntries(new URLSearchParams(b))));
   });
+}
+
+// A clip from the ad library, for the admin page's <video>. Ranges are
+// answered because Safari will not play a video from a server that ignores
+// them; the file is streamed, never read whole into memory.
+async function serveClip(req, res, pool, id, lang) {
+  let f = null;
+  const c = await pool.connect();
+  try { f = await brandAds.storedFile(c, id, lang); } finally { c.release(); }
+  let size = null;
+  try { size = f ? fs.statSync(f.path).size : null; } catch { size = null; }
+  if (size === null) { res.writeHead(404); return res.end('no clip'); }
+  const head = { 'Content-Type': 'video/mp4', 'Accept-Ranges': 'bytes', 'Cache-Control': 'private, max-age=3600' };
+  const r = /^bytes=(\d*)-(\d*)$/.exec(String(req.headers.range || ''));
+  if (!r || (r[1] === '' && r[2] === '')) {
+    res.writeHead(200, { ...head, 'Content-Length': size });
+    return fs.createReadStream(f.path).pipe(res);
+  }
+  let start; let end;
+  if (r[1] === '') { start = Math.max(0, size - Number(r[2])); end = size - 1; }
+  else { start = Number(r[1]); end = r[2] === '' ? size - 1 : Math.min(Number(r[2]), size - 1); }
+  if (start > end || start >= size) {
+    res.writeHead(416, { 'Content-Range': `bytes */${size}` });
+    return res.end();
+  }
+  res.writeHead(206, { ...head, 'Content-Range': `bytes ${start}-${end}/${size}`, 'Content-Length': end - start + 1 });
+  return fs.createReadStream(f.path, { start, end }).pipe(res);
 }
 
 // configPath is injectable so tests can exercise deletion against a temp
@@ -350,6 +380,50 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
       }
       const url = new URL(req.url, 'http://x');
 
+      // ---- the ad library (admin/sections/brand.js) ----------------------
+      // Admin only, and never on a public hostname even with the password:
+      // Caddy does not pass /brand from allma.world at all, and this is the
+      // second lock, the same shape as `/` above.
+      if (url.pathname.startsWith('/brand/') && PUBLIC_HOSTS.has(hostOf(req))) {
+        res.writeHead(404); return res.end();
+      }
+      const clip = req.method === 'GET'
+        && /^\/brand\/ads\/file\/([a-z0-9][a-z0-9-]{0,39})\/(he|en)$/.exec(url.pathname);
+      if (clip) return serveClip(req, res, pool, clip[1], clip[2]);
+      // The upload is the one multipart POST on the page, so it is read here,
+      // bounded, before the form reader below (which caps a body at 64KB).
+      if (req.method === 'POST' && url.pathname === '/brand/ads/upload') {
+        const raw = await multipart.readRaw(req, brandAds.MAX_BYTES + 64 * 1024);
+        const form = raw.body ? multipart.parse(raw.body, req.headers['content-type']) : null;
+        const cookieCsrf = getCookie(req, 'csrf');
+        // A body too big to read carries no csrf we could check, so the refusal
+        // is recorded only when the cookie at least exists — it writes one
+        // audit row and changes nothing else.
+        if (!raw.tooBig && (!form || !cookieCsrf || form.fields.csrf !== cookieCsrf)) {
+          res.writeHead(403); return res.end('csrf');
+        }
+        if (raw.tooBig && !cookieCsrf) { res.writeHead(403); return res.end('csrf'); }
+        let replaced = null;
+        await withTx(pool, async (client) => {
+          const file = form && form.files.file;
+          const r = raw.tooBig
+            ? { ok: false, error: 'too_big' }
+            : await brandAds.saveFile(client, { adId: form.fields.ad, lang: form.fields.lang, data: file && file.data });
+          if (r.ok) {
+            replaced = r.replaced;
+            await auditDomain.record(client, null, 'admin.brand_ad_uploaded',
+              { ad: form.fields.ad, lang: form.fields.lang, bytes: r.bytes });
+          } else {
+            await auditDomain.record(client, null, 'admin.brand_ad_refused',
+              { reason: r.error, ad: form ? form.fields.ad : null });
+          }
+        });
+        // Removed only once the row naming the new file has committed.
+        if (replaced) brandAds.removeStoredFile(replaced);
+        res.writeHead(303, { Location: safeBack('/#ads') });
+        return res.end();
+      }
+
       if (req.method === 'POST') {
         const body = await readBody(req);
         const cookieCsrf = getCookie(req, 'csrf');
@@ -451,6 +525,24 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
               max: body.maximum === '' ? null : body.maximum,
               closeAtTarget: body.close_at_target === 'on',
             }, null);
+          } else if (url.pathname === '/brand/ads/settings') {
+            const prev = await brandAds.getSettings(client);
+            const next = await brandAds.saveSettings(client, {
+              enabled: body.enabled === 'true',
+              everyDays: Number(body.everyDays), activeWithinDays: Number(body.activeWithinDays),
+              introGapDays: Number(body.introGapDays), timing: body.timing,
+            });
+            await auditDomain.record(client, null, 'admin.brand_ads_settings', { from: prev, to: next });
+          } else if (url.pathname === '/brand/ads/create' || url.pathname === '/brand/ads/update') {
+            const r = url.pathname === '/brand/ads/create'
+              ? await brandAds.createAd(client, { id: body.id, title: body.title, about: body.about })
+              : await brandAds.updateAd(client, String(body.id || ''), {
+                title: body.title, about: body.about, inRotation: body.in_rotation === 'on',
+                format: body.format, skipIfIntro: body.skip_if_intro === 'on',
+              });
+            await auditDomain.record(client, null, r.ok ? 'admin.brand_ad_saved' : 'admin.brand_ad_refused',
+              r.ok ? { ad: String(body.id || ''), inRotation: body.in_rotation === 'on', format: body.format || null }
+                : { reason: r.error, ad: String(body.id || '') });
           } else if (url.pathname === '/owner-log/note') {
             await ownerMessages.setNote(client, body.id, { insight: body.insight, ideaId: body.idea_id });
           } else if (url.pathname === '/owner-log/idea') {

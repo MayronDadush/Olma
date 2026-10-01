@@ -53,10 +53,11 @@ function fileFor(videoId, locale) {
 // workspace (a path under /tmp is refused with LocalMediaAccessError, measured
 // 2026-09-26). So the shipped asset is copied there before the send, and again
 // whenever the copy there differs — a redeployed clip must not be shadowed by
-// yesterday's.
-function stageMedia(file, { home = process.env.OLMA_OPENCLAW_HOME || '/root/.openclaw', assetDir = ASSET_DIR } = {}) {
+// yesterday's. The ad library (domain/brand-ads.js) stages the same way, from
+// its own store into its own `subdir`.
+function stageMedia(file, { home = process.env.OLMA_OPENCLAW_HOME || '/root/.openclaw', assetDir = ASSET_DIR, subdir = 'intro' } = {}) {
   const src = path.join(assetDir, file);
-  const destDir = path.join(home, 'workspace', 'outbox-media', 'intro');
+  const destDir = path.join(home, 'workspace', 'outbox-media', subdir);
   const dest = path.join(destDir, file);
   const want = fs.statSync(src).size;
   let have = -1;

@@ -22,6 +22,7 @@ const gatewayRpc = require('./gateway-rpc');
 const meetingTime = require('../domain/meeting-time');
 const { isoWithOffset } = require('../domain/meeting-option-moment');
 const introVideo = require('../domain/intro-video');
+const brandAds = require('../domain/brand-ads');
 const carryover = require('../domain/carryover-heading');
 const onboardingDomain = require('../domain/onboarding');
 
@@ -952,6 +953,25 @@ function makeDeliverer(pool) {
         '--target', channel.channel_identifier,
         '--media', media,
         '--gif-playback',
+      ]);
+    }
+    // An ad from the library (domain/brand-ads.js): the same clip-and-no-words
+    // send, with the clip and the format read NOW off the admin page's rows —
+    // 'gif' loops silently like the intro, 'mp4' is an ordinary video.
+    if (row.kind === brandAds.KIND) {
+      const p = typeof row.payload === 'string' ? JSON.parse(row.payload) : (row.payload || {});
+      const c = await pool.connect();
+      let clip;
+      try { clip = await brandAds.forDelivery(c, p.ad, row.locale); } finally { c.release(); }
+      if (!clip) return { ok: false, error: `no ${introVideo.langFor(row.locale)} clip for ad: ${p.ad}` };
+      let media;
+      try { media = brandAds.stageMedia(clip.file); } catch (e) { return { ok: false, error: `stage media: ${e.message}` }; }
+      return runOpenclaw([
+        'message', 'send',
+        '--channel', channel.channel_type,
+        '--target', channel.channel_identifier,
+        '--media', media,
+        ...(clip.format === 'gif' ? ['--gif-playback'] : []),
       ]);
     }
 

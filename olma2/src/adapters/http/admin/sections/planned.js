@@ -33,6 +33,7 @@ const CANCELLED_BY_ADMIN = 'cancelled_by_admin';
 // learn an internal identifier to understand what Olma is about to say.
 const KIND_LABELS = {
   checkin: 'פנייה יזומה',
+  brand_ad: 'פרסומת מהספרייה',
   introduction: 'היכרות ראשונה',
   reminder: 'תזכורת',
   digest: 'סיכום יומי',
@@ -106,6 +107,7 @@ function plannedSubject(row) {
   // no agent will reword it, because no agent is in the path.
   if (p.verbatimReply) return esc(String(p.verbatimReply).slice(0, 90));
   if (row.kind === 'checkin' && p.rung) return RUNG_LABELS[p.rung] || esc(p.rung);
+  if (row.kind === 'brand_ad' && p.ad) return esc(String(p.ad));
   if (p.title) return esc(String(p.title).slice(0, 60));
   return '<span class="dim">—</span>';
 }

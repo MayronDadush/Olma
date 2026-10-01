@@ -30,6 +30,7 @@ const { genderFromWords } = require('./gender-forms');
 const groups = require('./groups');
 const dashboardAuth = require('./dashboard-auth');
 const carryover = require('./carryover-heading');
+const brandAds = require('./brand-ads');
 
 // Rollout control. Absent/empty = off everywhere, so deploying this changes
 // nothing until someone turns it on: a fix for an invisible defect must not
@@ -602,6 +603,8 @@ async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, 
       what: 'Olma sent them a short looping video (no text) introducing herself: send her everything, '
         + 'messy is fine, she sorts it into a list and reminds on time. A reply now may be about it.' }
     : null;
+  // Same channel for an ad from the library (domain/brand-ads.js).
+  const brandAd = await brandAds.recentForTurn(client, user.id);
   // Same channel for a changed privacy policy (domain/policy-notice.js): a
   // "מה זה?" right after it must reach a model that knows what was sent.
   const { rows: policyRows } = await client.query(
@@ -872,6 +875,7 @@ async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, 
       ...(languageNudge ? { languageNudge } : {}),
       ...(recentReminders.length ? { recentReminders } : {}),
       ...(introVideo ? { introVideo } : {}),
+      ...(brandAd ? { brandAd } : {}),
       ...(policyNotice ? { policyNotice } : {}),
       ...(recentMeetings.length ? { recentMeetings } : {}),
       ...(rooms.length ? { rooms } : {}),

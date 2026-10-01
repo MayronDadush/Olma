@@ -19,6 +19,7 @@ const { renderGroups } = require('./groups');
 const { renderTemplates } = require('./templates');
 const { renderOnboardingReviews } = require('./onboarding');
 const { renderOwnerLog } = require('./owner-log');
+const { renderAds } = require('./brand');
 
 
 // Since 2026-09-15 each group is its own menu page at /g/<id>, and `/` is the
@@ -31,6 +32,7 @@ const GROUPS = [
   { id: 'people', nav: 'אנשים', title: 'אנשים: משתמשים, המתנות וזיכרון' },
   { id: 'measure', nav: 'מדידה', title: 'מדידה: תוצאות, שימוש ובדיקות' },
   { id: 'money', nav: 'עלויות', title: 'עלויות ותשתית' },
+  { id: 'brand', nav: 'מותג', title: 'מותג: הפרסומות ומתי הן נשלחות' },
   { id: 'controls', nav: 'הגדרות', title: 'הגדרות ויומן פעילות' },
 ];
 
@@ -62,6 +64,7 @@ const SECTIONS = [
   { id: 'templates', group: 'controls', title: 'ניסוחים', hint: 'כל הודעה שעולמה שולחת כמו שהיא, בלי מודל — תזכורות, פנייה ראשונה לאדם חדש, וכל מה שהיא אומרת בקבוצה. ברירת המחדל מוצגת ליד כל תיבה; תיבה ריקה = ברירת המחדל. ניסוח שחסר בו משתנה חובה לא נשמר, ונאמר למה.', render: renderTemplates },
   { id: 'contacts', group: 'people', title: 'ספר הכתובות', hint: 'כל אנשי הקשר שהמשתמשים ייבאו או שמרו, מקובצים לפי מספר טלפון — כל השמות שניתנו לאותו מספר, ומי מהם כבר משתמש אצלנו.', render: renderContactsSection },
   { id: 'waitlist', group: 'people', title: 'רשימת המתנה', hint: 'אנשים שפנו כשההרשמה הייתה סגורה. יקבלו הודעה כשתיפתח.', render: renderWaitlist },
+  { id: 'ads', group: 'brand', title: 'ספריית הפרסומות', hint: 'כל סרטון פרסומת של עולמה, עם נגן. מסמנים מה בסבב ואיך הוא נשלח (GIF או MP4), וקובעים למטה כל כמה זמן, למי ומתי. כלום לא נשלח כשהמתג הראשי סגור.', render: renderAds },
   { id: 'audit', group: 'controls', title: 'יומן פעילות', hint: 'הפעולות האחרונות במערכת, לפי סדר.', render: renderAudit },
 ];
 

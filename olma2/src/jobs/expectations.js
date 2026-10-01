@@ -82,6 +82,10 @@ const JOB_INTERVAL_SECONDS = {
   // experiences is on their own row, so the sweep only has to come round
   // often enough that nobody waits a day past their week.
   task_suggestions: 3600,
+  // Under KICK_MIN_SECONDS on purpose: the startup-kick window is full (23
+  // jobs at the 10s floor), and an hourly job that is not kicked starves
+  // between deploys. While the flag is off a tick is one flag read.
+  brand_ads: 240,
   // Five minutes: two bad ticks before a word means an outage is reported
   // within ten. Faster would alarm on a single probe timeout.
   liveness_watch: 300,
