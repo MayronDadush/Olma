@@ -155,3 +155,44 @@ test('every person who cost money is on the page, not just the top ten', async (
   assert.ok(active, 'the active-user count is not on the page');
   assert.equal(Number(active[1]), 13, 'the count was capped at the slice, so it read 10 for ever');
 });
+
+test('"this month" does not depend on the timezone the Node process runs in', async () => {
+  // pg parses a DATE into a JS Date at LOCAL midnight of the process. The page
+  // used to compare that Date with a month start built in UTC, so in any zone
+  // east of UTC the 1st of the month read as the 30th at 21:00 UTC and left
+  // the month — every row above failed on a dev Mac in Asia/Jerusalem on
+  // 2026-10-01 while CI and the box, both on UTC, stayed green. The rows here
+  // are dated the 1st of THIS month (and the last day of the previous one, to
+  // pin the other edge), so the old code fails on any day the suite runs, not
+  // only on the 1st. Node re-reads process.env.TZ when it is assigned, which
+  // is what makes the switch below real for pg's own parser.
+  const { groupCosts } = require('../src/adapters/http/admin/sections/cost');
+  const u = await makeUser(db.pool, '+972500003001', { firstName: 'ראשון-לחודש' });
+  const agent = 'g-tz-probe';
+  const insert = (table, who, day) => db.pool.query(
+    `INSERT INTO ${table} (${table === 'usage_ledger' ? 'user_id' : 'agent_id'}, date, model,
+       input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_usd, estimated)
+     VALUES ($1, ${day}, 'deepseek/deepseek-v4-flash', 100000, 1000, 0, 0, 0.01, false)`,
+    [who]);
+  const first = "date_trunc('month', CURRENT_DATE)::date";
+  const lastOfPrev = "(date_trunc('month', CURRENT_DATE)::date - 1)";
+  await insert('usage_ledger', u.id, first);
+  await insert('usage_system_ledger', agent, first);
+  await insert('usage_system_ledger', agent, lastOfPrev);
+
+  const was = process.env.TZ;
+  try {
+    for (const tz of ['Asia/Jerusalem', 'Pacific/Kiritimati', 'America/Los_Angeles']) {
+      process.env.TZ = tz;
+      assert.ok(usdFor(await render(), 'ראשון-לחודש') > 0,
+        `in ${tz}, a row dated the 1st fell out of this month`);
+      const g = (await withTx(db.pool, (c) => groupCosts(c, [agent]))).get(agent);
+      assert.ok(g && g.month > 0, `in ${tz}, the room's 1st-of-month cost fell out of the month`);
+      assert.ok(Math.abs(g.total - 2 * g.month) < 1e-9,
+        `in ${tz}, the previous month's last day was counted as this month (month ${g.month}, total ${g.total})`);
+    }
+  } finally {
+    if (was === undefined) delete process.env.TZ; else process.env.TZ = was;
+    await db.pool.query('DELETE FROM usage_system_ledger WHERE agent_id = $1', [agent]);
+  }
+});
