@@ -60,6 +60,7 @@ never trust a dated narrative for something you are about to act on.
 - [Two paragraphs where two sentences would do (fixed 2026-09-20)](#two-paragraphs-where-two-sentences-would-do-fixed-2026-09-20)
 - [The link came back on every coordination message (2026-09-24)](#the-link-came-back-on-every-coordination-message-2026-09-24)
 - [The slot that was already closed (fixed 2026-09-20)](#the-slot-that-was-already-closed-fixed-2026-09-20)
+- [Introduced twice, by the invite and the greeter (fixed 2026-10-01)](#introduced-twice-by-the-invite-and-the-greeter-fixed-2026-10-01)
 - [The poker count was the people asked (fixed 2026-10-01)](#the-poker-count-was-the-people-asked-fixed-2026-10-01)
 - [The chase that beat its own invites (fixed 2026-09-28)](#the-chase-that-beat-its-own-invites-fixed-2026-09-28)
 - [The room never heard the times (fixed 2026-09-28)](#the-room-never-heard-the-times-fixed-2026-09-28)
@@ -2300,6 +2301,32 @@ shows the average length per window.
 **Not done, and named.** The poker example wants a place ("אצל מירון") —
 that is item F of the same plan, a `meetings.location` column, and lands
 separately.
+### Introduced twice, by the invite and the greeter (fixed 2026-10-01)
+
+"חייב קבוצה לפוקר", the evening coordination 66 opened. Nine members had
+never written to Olma, and each got the room's cold invite at 17:53-17:54:
+"היי! אני עולמה, עוזרת AI 👋 אני עוזרת לקבוצה … אם תענה לי כאן, אצרף אותך".
+Three of them answered. Each answer reached the intake greeter, and the
+greeter opened with the short room opening: "היי, אני עולמה 👋 עוזרת AI /
+הגעת מהקבוצה «…» — שולחת לך עכשיו את התיאום". That was the same
+introduction a second time, one or two minutes after the first, and the owner
+saw it as the opening being sent twice to everybody in the room.
+
+Nothing was sent twice. Each outbox row went out once and the room's own
+intro went out once. The duplication was two voices, and neither knew about
+the other. The cold invite is raw-pipe text the gateway never shows the
+greeter. brokerd's `intake_context` only knew whether a person had been
+introduced on an earlier day (`opening_sent_at`, `privacy_link_sent_at`), and
+a cold invite stamps neither.
+
+So `intake-room.coldInviteReached` asks the outbox whether THIS room's cold
+invite reached them: sent and not held, keyed on the room, because the answer
+names the room and keeps its promise to add them. If it did, the greeter is
+handed `INVITED_ANSWER` instead of the short opening. That keeps the yes and
+the privacy link, which the invite never carried, and drops the hello. An
+invite the gate dropped reached nobody, so that person still gets the hello.
+`saidRoomOpening` recognises the new text too, so `opening_sent_at` is still
+stamped and the welcome follow-up still waits behind the coordination.
 ### The poker count was the people asked (fixed 2026-10-01)
 
 "חייב קבוצה לפוקר": thirteen people in the room, a game, a minimum of

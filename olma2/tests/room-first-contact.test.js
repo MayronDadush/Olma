@@ -156,6 +156,41 @@ test('somebody already introduced is not given the opening or the privacy link a
   assert.ok(!b.context.includes('directly under the opening text'), b.context);
 });
 
+// The room's cold invite already said who she is and promised "reply and I'll
+// add you". In "חייב קבוצה לפוקר" every newcomer who replied then read a second
+// hello from the greeter a minute later (2026-10-01, `incidents.md`,
+// "Introduced twice, by the invite and the greeter").
+test('somebody the room\'s cold invite reached is answered with the yes, never a second hello', async () => {
+  const reached = await makeUser(db.pool, '+972501770051', { status: 'pending' });
+  const dropped = await makeUser(db.pool, '+972501770052', { status: 'pending' });
+  const { group, people } = await room('חייב קבוצה לפוקר', { members: [reached.phone, dropped.phone] });
+  await start(group, people[0]);
+  const invite = (u, holdReason) => db.pool.query(
+    `INSERT INTO outbox (user_id, kind, payload, idempotency_key, sent_at, hold_reason)
+     VALUES ($1, 'room_cold_invite', '{}', $2, now(), $3)`,
+    [u.id, `coldinvite:g${group.id}:u${u.id}`, holdReason]);
+  await invite(reached, null);
+  await invite(dropped, 'quiet');
+
+  const a = await ask(intakeKey(reached.phone));
+  assert.equal(a.invited, true, JSON.stringify(a));
+  assert.ok(a.context.includes('מעולה, מצרפת אותך ושולחת לך עכשיו את התיאום מ«חייב קבוצה לפוקר» ☺️\n'
+    + 'מה אני שומרת ואיך מוחקים: https://allma.world/privacy'), a.context);
+  assert.ok(!a.context.includes('היי, אני עולמה'), 'no second hello');
+  assert.match(a.context, /INSTEAD of the opening text/);
+
+  // An invite the gate dropped reached nobody: they still get the hello.
+  const b = await ask(intakeKey(dropped.phone));
+  assert.equal(b.invited, undefined);
+  assert.ok(b.context.includes('היי, אני עולמה 👋 עוזרת AI'), b.context);
+
+  // And the yes is still recognised as the room's opening, so it stamps
+  // opening_sent_at and the welcome follow-up waits behind the coordination.
+  for (const lang of ['he', 'en']) {
+    assert.equal(intakeRoom.saidRoomOpening(intakeRoom.INVITED_ANSWER[lang].replace('{subject}', 'x')), true, lang);
+  }
+});
+
 test('the short opening is recognised by its room line, whatever the subject became', () => {
   const said = intakeRoom.ROOM_OPENING.he.replace('{subject}', 'x'.repeat(40) + '…');
   assert.equal(intakeRoom.saidRoomOpening(said), true);

@@ -61,11 +61,28 @@ const ROOM_OPENING = {
     + 'You came from the group «{subject}» — I\'m sending you the plan being arranged there now.\n'
     + 'What I keep and how to delete it: https://allma.world/privacy',
 };
+// The same reply for somebody the room's COLD INVITE already reached
+// (`group-meetings.coldInvite`): that message said who she is, that she is an
+// AI and which room, and promised "if you reply here I'll add you". Their
+// reply is the yes, and the greeter's short opening was then a second
+// introduction a minute after the first — to every newcomer in
+// "חייב קבוצה לפוקר" (`incidents.md`, "Introduced twice, by the invite and the
+// greeter"). So it keeps the promise and the privacy link, which the invite
+// did not carry, and drops the hello.
+const INVITED_ANSWER = {
+  he: 'מעולה, מצרפת אותך ושולחת לך עכשיו את התיאום מ«{subject}» ☺️\n'
+    + 'מה אני שומרת ואיך מוחקים: https://allma.world/privacy',
+  en: 'Great, adding you and sending you the plan from «{subject}» now ☺️\n'
+    + 'What I keep and how to delete it: https://allma.world/privacy',
+};
 // What survives the model saying the block: the tail of the room line, after
-// the subject — which is somebody else's text and may have been trimmed.
+// the subject — which is somebody else's text and may have been trimmed. The
+// invited answer puts the subject at the END, so its mark is the part before.
 const ROOM_OPENING_MARKS = [
   '— שולחת לך עכשיו את התיאום שפתוח שם',
   "— I'm sending you the plan being arranged there now",
+  'מצרפת אותך ושולחת לך עכשיו את התיאום',
+  'adding you and sending you the plan from',
 ];
 
 function saidRoomOpening(text) {
@@ -131,11 +148,15 @@ function linesFor(room) {
 // for, on an earlier day whose session the gateway has since reset: the room
 // is still news to them, the opening and its privacy link are not
 // (introducedBlock below). The short opening loses its privacy line for them.
-function contextFor(room, { introduced = false } = {}) {
+//
+// `invited` is somebody this room's cold invite reached: the reply is the
+// INVITED_ANSWER, never a second hello.
+function contextFor(room, { introduced = false, invited = false } = {}) {
   if (room.meetingId) {
     const strip = (t) => (introduced ? withoutPrivacyLine(t) : t);
-    const he = strip(ROOM_OPENING.he.replace('{subject}', room.subject));
-    const en = strip(ROOM_OPENING.en.replace('{subject}', room.subject));
+    const words = invited ? INVITED_ANSWER : ROOM_OPENING;
+    const he = strip(words.he.replace('{subject}', room.subject));
+    const en = strip(words.en.replace('{subject}', room.subject));
     return [
       'Room: this person reached Olma from a WhatsApp group she is in, and a',
       'coordination there is waiting for them. In your FIRST reply only, say',
@@ -175,6 +196,20 @@ const INTRODUCED_BLOCK = [
   'they have both. Answer what they wrote, in your own words.',
 ].join('\n');
 
+// Whether this room's cold invite REACHED them: sent, and not dropped by the
+// gate. Keyed on the room, because the answer names it and promises to add
+// them to it; an invite from another room introduced her, and the
+// `introduced` stamps are what speak for that.
+async function coldInviteReached(client, userId, groupId) {
+  if (!userId || !groupId) return false;
+  const { rows } = await client.query(
+    `SELECT 1 FROM outbox
+      WHERE user_id = $1 AND kind = 'room_cold_invite' AND idempotency_key = $2
+        AND sent_at IS NOT NULL AND hold_reason IS NULL
+      LIMIT 1`, [userId, `coldinvite:g${groupId}:u${userId}`]);
+  return rows.length > 0;
+}
+
 // Whether their row says an introduction already reached them: the owner's
 // words recognised (`opening_sent_at`) or the privacy link said by any voice
 // (`privacy_link_sent_at`, migration 104).
@@ -183,6 +218,6 @@ function wasIntroduced(user) {
 }
 
 module.exports = {
-  INTRODUCED_BLOCK, wasIntroduced,
-  peerOf, roomFor, linesFor, contextFor, cleanSubject, saidRoomOpening, LINES, ROOM_OPENING,
+  INTRODUCED_BLOCK, wasIntroduced, coldInviteReached,
+  peerOf, roomFor, linesFor, contextFor, cleanSubject, saidRoomOpening, LINES, ROOM_OPENING, INVITED_ANSWER,
 };
