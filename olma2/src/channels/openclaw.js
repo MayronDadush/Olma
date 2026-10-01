@@ -412,10 +412,15 @@ const BRIEF = ' LENGTH: one sentence of context and one question, in their regis
 
 // A game room counts heads: "כרגע אנחנו 4, אתה בעניין?" is what a poker
 // invite sounds like, and the count is the one thing in it the person cannot
-// guess. get_meeting_status carries `room` (kind, min, max) and each option's
-// `yes` since 2026-09-20, so the number is read, never estimated.
-const ROOM_COUNT = ' If get_meeting_status shows room.kind "game", say how many are in so far and how many it needs'
-  + ' — the option\'s yes count and room.min, as plain numbers ("כרגע אנחנו 4").';
+// guess. Pointing the model at `room.min` and "the option's yes count" was not
+// enough: Bar was told "כרגע אנחנו 4 וצריך 5" with ONE yes on the table, the
+// four being the people asked (2026-10-01, incidents.md, "The poker count was
+// the people asked"). So get_meeting_status draws `headcount` and the model
+// copies its numbers.
+const ROOM_COUNT = ' If get_meeting_status shows room.kind "game" and a headcount with an optionId, say how many are in'
+  + ' so far and how many it needs, copying headcount.inSoFar and headcount.needs exactly ("כרגע אנחנו'
+  + ' {inSoFar} וצריך {needs}") — never count participants (those are the people being asked) and never'
+  + ' add anything up yourself; needs null drops the second half. No headcount, or inSoFar 0, means nothing about numbers.';
 
 // `tableChanged` is set by `meeting-fanout.foldIntoPendingQuestion`: times were
 // added to this coordination while this row was still waiting — most often
