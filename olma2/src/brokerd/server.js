@@ -30,6 +30,7 @@ const audit = require('../domain/audit');
 const gameSummary = require('../domain/game-summary');
 const replyLeak = require('../domain/reply-leak');
 const phantomSave = require('../domain/phantom-save');
+const markEcho = require('../domain/mark-echo');
 const linkRequest = require('../domain/link-request');
 const dashboardAuth = require('../domain/dashboard-auth');
 const templates = require('../domain/message-templates');
@@ -185,7 +186,16 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
   // …and when one last FAILED, so a claim on a turn whose own write was refused
   // reads `failed` rather than borrowing an earlier turn's success.
   const lastFailAt = new Map();
+  // What the tool that earned this turn's 👍 wrote — its title, its name —
+  // for the reply gate's echo check (domain/mark-echo.js). Set only where
+  // `hints.markPlaced` is set, and forgotten by anything that could make a
+  // following sentence worth saying: a new message, a tool that earned no 👍,
+  // a failure. In process, like the claim memory above, so a restart forgets
+  // it and the gate passes — the old behaviour, never a dropped answer.
+  const markEchoes = new Map();
+  const MARK_ECHO_MS = 5 * 60 * 1000;
   function noteOpen(userId) {
+    markEchoes.delete(userId);
     const at = clock();
     const list = (claimOpens.get(userId) || []).filter((t) => at - t <= phantomSave.OPEN_WINDOW_MS);
     list.push(at);
@@ -988,6 +998,26 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
     return out;
   }
 
+  // The reply gate holds a short reply and asks whether a 👍 is standing on
+  // this turn's message, and if so, what the tool behind it wrote. Only the
+  // WORDS of what was written go back — the gateway already carried that tool
+  // result to the model — and the reply itself never comes here: the gate
+  // decides locally (domain/mark-echo.js) and files a cancel through
+  // `reply_gate` like any other.
+  async function handleMarkEcho(params = {}) {
+    const agentId = String(params.agentId || '').trim();
+    if (!/^u-\d+$/.test(agentId)) return { ok: false, error: 'bad agentId' };
+    const { rows } = await pool.query(
+      `SELECT id FROM users WHERE agent_id = $1 AND status = 'active'`, [agentId]);
+    if (!rows[0]) return { ok: true, standing: false };
+    const userId = Number(rows[0].id);
+    const held = markEchoes.get(userId);
+    if (!held || clock() - held.at > MARK_ECHO_MS) return { ok: true, standing: false };
+    // A turn Olma started has no message of theirs a 👍 could be standing on.
+    if (selfInitiated.isActive(userId)) return { ok: true, standing: false };
+    return { ok: true, standing: true, words: held.words };
+  }
+
   // A pack's server asking who a token belongs to (games/, game nights). It
   // is not a tool: the model never sees it, and the games shim calls it for
   // the token the model handed ITS tool. The same lookup, refusal wording and
@@ -1386,6 +1416,13 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
             + 'asking, no caveat, no error, no other hint here — reply with exactly NO_REPLY and '
             + 'nothing else. Write only when the words carry something the mark cannot.',
         };
+        if (actorId) {
+          const prev = markEchoes.get(Number(actorId));
+          const words = [...(prev ? prev.words : []), ...markEcho.vocabOf(result.data)].slice(0, 60);
+          markEchoes.set(Number(actorId), { at: clock(), words });
+        }
+      } else if (actorId && name !== 'turn_start') {
+        markEchoes.delete(Number(actorId));
       }
       return { ok: true, text: renderResult(result) };
     } catch (e) {
@@ -1425,6 +1462,8 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
         return handleReplyGate(msg.params || {});
       case 'reply_claim':
         return handleReplyClaim(msg.params || {});
+      case 'mark_echo':
+        return handleMarkEcho(msg.params || {});
       case 'turn_progress':
         return handleTurnProgress(msg.params || {});
       case 'identity_resolve':

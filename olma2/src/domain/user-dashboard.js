@@ -33,6 +33,7 @@ const factPrompts = require('./fact-prompts');
 const suggestions = require('./task-suggestions');
 const referral = require('./referral');
 const experiments = require('./experiments');
+const taskCalendar = require('./task-calendar');
 
 // A task's own category vocabulary is closed server-side (tasks.category is
 // validated as a closed set, not free text), so the page can rely on it —
@@ -93,7 +94,7 @@ async function loadUser(client, userId) {
 // four queries rather than one join, because a join across children AND
 // viewers multiplies rows and the de-duplication is more code than the extra
 // round trips are worth.
-async function loadTasks(client, userId, zone, calendarSyncTasks) {
+async function loadTasks(client, userId, zone, calendarSyncTasks, calendarWritable = false) {
   // Their own list AND the tasks other people share with them. A shared task
   // is not a copy or a notification — it is the same row, appearing on both
   // lists, which is the whole point of sharing one. Leaving it out would have
@@ -119,6 +120,7 @@ async function loadTasks(client, userId, zone, calendarSyncTasks) {
             -- minutes, so wanting it and having it are two different facts and
             -- the page has to be able to tell them apart
             t.calendar_event_id IS NOT NULL AS in_calendar,
+            t.calendar_event_id,
             -- who started it, by first name only: on a task somebody shared
             -- WITH this person the owner is on no share row, so without this
             -- the list could draw every face on it except the one who shared
@@ -238,9 +240,16 @@ async function loadTasks(client, userId, zone, calendarSyncTasks) {
       // The EFFECTIVE answer, resolved here rather than in the browser: the
       // page draws one switch and the precedence rule belongs on the side that
       // enforces it. `inCalendar` is the separate question of whether the
-      // sweep has caught up yet.
-      calendar: t.calendar_opt_in ?? Boolean(calendarSyncTasks),
+      // sweep has caught up yet. The rule itself is task-calendar's, so the
+      // switch cannot drift from what the sweep does: an event follows a
+      // calendar they let Olma write to, whatever the to-do switch says.
+      calendar: taskCalendar.wantedFor(t, { syncTasks: calendarSyncTasks, writable: calendarWritable }),
       inCalendar: t.in_calendar,
+      // The Google id itself, so the calendar tab can recognise this task's
+      // own copy among the events /me/events brings back and draw it ONCE.
+      // A synced task stood in its day twice — as itself and as Google's
+      // event (owner, 2026-10-01, on Miron's account).
+      calendarEventId: t.calendar_event_id || null,
       items: byParent.get(t.id) || [],
       // Who owns this, and therefore who may manage its sharing. `mine` is the
       // question the page actually asks; `owner` carries the id so a task
@@ -470,6 +479,7 @@ async function loadMeetings(client, userId, zone, locale) {
     `SELECT m.id, m.title, m.initiator_id, m.status, m.quorum_min,
             m.proposed_slot, m.proposed_start_at, m.confirmed_start_at,
             m.confirmed_slot, m.settling_option_id, m.settled_by,
+            m.calendar_event_id,
             -- Seconds left of the settle grace, not the instant it ends: the
             -- page counts down, and a clock on a phone that is four minutes
             -- fast would otherwise count down to the wrong thing. Negative or
@@ -612,6 +622,10 @@ async function loadMeetings(client, userId, zone, locale) {
     slotReader: locals.get(m.id).slotReader,
     confirmedReader: locals.get(m.id).confirmedReader,
     confirmedStartAt: m.confirmed_start_at,
+    // Same reason as a task's: a settled coordination written to Google comes
+    // back from /me/events under this id — on the organiser's calendar and on
+    // every attendee's, since an invite keeps the organiser's event id.
+    calendarEventId: m.calendar_event_id || null,
     confirmedTime: m.confirmed_time,
     confirmedDay: m.confirmed_day === null ? null : Number(m.confirmed_day),
     // The minute between the last yes and the meeting being over. `settleIn`
@@ -734,7 +748,8 @@ async function load(client, userId) {
   // pg serialises concurrent queries on a single client anyway — while warning
   // that it will stop doing so in pg@9. Overlapping them buys nothing here and
   // would break on that upgrade.
-  const tasks = await loadTasks(client, userId, zone, user.calendar_sync_tasks);
+  const calendarWritable = await taskCalendar.canWrite(client, userId);
+  const tasks = await loadTasks(client, userId, zone, user.calendar_sync_tasks, calendarWritable);
   const friends = await loadFriends(client, userId);
   const integrations = await loadIntegrations(client, userId);
   // What the page may OFFER, as distinct from what is already connected:

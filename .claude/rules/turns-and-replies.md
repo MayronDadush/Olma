@@ -388,6 +388,30 @@ title means this file. Grep the title, not the filename.
   claim (`incidents.md`, "רשמתי לך הכל, and nothing was"). The plugin carries
   a port of `claimedWrite`, held by `tests/phantom-save.test.js`.
 
+- **A reply under a standing 👍 that only says the 👍 again is cancelled at
+  the gate, because the hint alone lost** (`mark-echo.echoOnly`, 2026-09-30;
+  `incidents.md`, "The hint that arrived alone and still lost"). Miron's
+  `add_task` result carried `hints.markPlaced` and nothing else, and he still
+  got his own title back as "רשמתי: …". brokerd holds what the marked tool
+  WROTE (`mark-echo.vocabOf`: title/name/fact, never a hint or a category) and
+  forgets it on a new message, on any tool that earned no 👍, and after five
+  minutes. The gate asks brokerd `mark_echo` about a short reply only, and
+  cancels it when **every word is something both sides already know**: a word
+  of THEIR OWN message (the plugin holds it five minutes, `inboundOf`, and it
+  never crosses the socket), a word of that title, or a closed grammatical
+  class (save verbs, acknowledgements, the glue joining them). **Redundancy is
+  measured against what they know, never against a list of phrasings** — the
+  owner rejected the list-only version as patch on patch, and a word goes on
+  the grammar list only if it is grammar. A question, a link, a digit neither
+  side wrote, or one word neither said lets it through, and a dead socket is
+  "not an echo". **The cancel is
+  filed (`reply.gated`, kind `echo`) and `unanswered.echoCancelledNear`
+  reads it**: the gate cannot tell case (b) an echo from a lost reply, and
+  without that row the raw pipe re-sends the line the gate kept off the
+  phone. Not measured on traffic before shipping (the read was refused). Read
+  its rows before widening the list. Inert until the gateway restarts, like
+  every plugin change.
+
 - **The last tier's missing input was not a pattern, it was the READER**
   (2026-09-22; `incidents.md`, "The gate had no idea who was reading"). The
   residue the measurement above left behind was English prose with no tell of

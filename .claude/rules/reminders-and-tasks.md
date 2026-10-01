@@ -626,6 +626,38 @@ title means this file. Grep the title, not the filename.
   the event against the task shadowing it, so an event deleted by hand still
   reminds.
 
+- **Leaving the LIST is not leaving the CALENDAR: a moment that is over stays
+  on Google** (`task-calendar.pending`, 2026-10-01). The expired-events sweep
+  archives a passed appointment, and the calendar sweep read that as "remove"
+  — every haircut vanished from Google the evening it happened
+  (`incidents.md`, "The haircut that left the calendar the evening it
+  happened"). Only a task still AHEAD is taken off (cancelled, deleted, done
+  early, undated); anything whose `COALESCE(ends_at, due_at)` has passed is
+  never touched again by the sweep.
+
+- **An EVENT goes to Google on its own when the calendar is writable; a
+  TO-DO still waits for "משימות ליומן"** (`task-calendar.WANTED_SQL`,
+  owner, 2026-10-01). The switch is about to-dos. An appointment with no
+  answer of its own is synced whenever an `integrations` row for
+  `google_calendar` is `connected` AND `read_write` — a view-only or
+  `needs_reauth` connection asks nothing, or creation would fail every tick
+  for ever. A task that said no (`calendar_opt_in = false`, the sheet's
+  switch) still wins. The page's switch reads the SAME rule
+  (`task-calendar.wantedFor`, `canWrite`), or it shows "off" beside an event
+  that is on Google. `t.kind IS NOT DISTINCT FROM 'event'`, never `=`: a
+  NULL kind would make the whole answer NULL, and `NOT NULL` never reaches
+  the remove arm (`incidents.md`, "The appointment that waited for a switch
+  about to-dos").
+
+- **An appointment leaves the list at its END, and nothing is SAID about it**
+  (`sweeps.sweepFinishedTasks`, 2026-10-01). `task_auto_archive_grace_hours`
+  defaults to 0, and `tasks_auto_archived` carries only `why: 'finished'`
+  (a drained list) — a passed appointment was reminded about, happened, and
+  is still on Google. With no grace left, an event whose reminder is due in
+  the last two hours and not yet attempted (`attempts = 0`) is held one
+  tick, because `completeTask` cancels every unsent reminder. A box row for
+  the flag overrides the default.
+
 - **Everyone on a shared task is equal, and a write on it is made AS its
   owner** (owner, 2026-09-19). There is one kind of share: `shares.role` is
   still a column and is read by nothing. `shares.actingOwner` answers whom a

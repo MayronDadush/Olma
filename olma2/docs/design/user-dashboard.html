@@ -5695,6 +5695,7 @@ button.srow:active{background:var(--bg-tint)}
       "toast.callFailed":"לא הצלחתי להתקשר עכשיו — נסה שוב בעוד רגע",
       "toast.moreRequested":"הבקשה נשלחה",
       "toast.done":"המשימה הושלמה","toast.saved":"המשימה נשמרה",
+      "toast.toGoogle":"האירוע נשאר ביומן שלך ב־Google","toast.eventPast":"האירוע כבר עבר, אז הוא לא ברשימה",
       "toast.savedAs":"נשמרה בתור ״{name}״","toast.rename":"שינוי שם","task.untitled":"משימה ללא שם {n}",
       "toast.stillRepeating":"נרשם. המשימה חוזרת, אז היא נשארת ברשימה",
       "toast.updated":"המשימה עודכנה","toast.deleted":"המשימה נמחקה",
@@ -6075,6 +6076,7 @@ button.srow:active{background:var(--bg-tint)}
       "toast.callFailed":"The call would not go through — try again in a moment",
       "toast.moreRequested":"Your request has been sent",
       "toast.done":"Task completed","toast.saved":"Task saved",
+      "toast.toGoogle":"The event stays on your Google Calendar","toast.eventPast":"The event is over, so it is off the list",
       "toast.savedAs":"Saved as “{name}”","toast.rename":"Rename","task.untitled":"Untitled task {n}",
       "toast.stillRepeating":"Noted. This one repeats, so it stays on your list",
       "toast.updated":"Task updated","toast.deleted":"Task deleted",
@@ -7437,8 +7439,11 @@ button.srow:active{background:var(--bg-tint)}
     /* renderTasks can run before the meetings seed further down the script
        has been assigned, so an unassigned list counts as none */
     if(!$("#homeTasksN")) return;
-    var nT = (open || []).length, nM = (MEETS || []).length;
-    var due = (open || []).filter(function(x){ var b = bucketFor(x.d); return x.d && (b === "late" || b === "today"); });
+    /* Counted off the same rows the tasks page draws: an appointment that is
+       over, or one only Google needs to hold, is not "open" and never "late". */
+    var shown = (open || []).filter(function(x){ return !leftToGoogle(x); });
+    var nT = shown.length, nM = (MEETS || []).length;
+    var due = shown.filter(function(x){ var b = bucketFor(x.d); return x.d && (b === "late" || b === "today"); });
     var dueNow = due.length;
     rollText($("#homeTasksN"), String(nT));
     rollText($("#homeMeetsN"), String(nM));
@@ -7931,17 +7936,52 @@ button.srow:active{background:var(--bg-tint)}
   }
   var viewBy = "time";
   /* What is already on the calendar has a place of its own, whichever way the
-     list is sorted, and it starts folded (owner, 2026-09-28): the calendar
-     already reminds them of it, and the list is for what they still have to
-     DO. Two ways onto the calendar: an event, and a to-do the sync has
-     actually written out (`inCal`, the server's calendar_event_id). `cal` —
-     the switch — is not enough: a switch that is on and a sweep that has not
-     caught up would hide a task that is on no calendar anywhere. Shared and
-     imported rows keep their own sections, the same as they do from the
-     other two. The fold is not remembered across loads on purpose: folded is
-     the answer they asked for, not a preference that drifts. */
+     list is sorted, and it starts folded (owner, 2026-09-28). Until
+     2026-10-01 a to-do the sync had written out went into it too; now what
+     goes where is the rule below. Hiding a synced event reads `inCal` (the
+     server's calendar_event_id), never `cal` — a switch that is on and a
+     sweep that has not caught up would hide an event that is on no calendar
+     anywhere. Shared and imported rows keep their own sections. The fold is
+     not remembered across loads on purpose: folded is the answer they asked
+     for, not a preference that drifts. */
   var calFoldOpen = false;
-  function onCalendar(x){ return !x.src && !isPinned(x) && (x.kind === "event" || !!x.inCal); }
+  /* REDRAWN 2026-10-01 (owner): the fold is not a copy of their calendar —
+     Google already shows them that — it is the events OLMA holds for them.
+     Three answers, one per row:
+       - a to-do is on the list, always, whether or not it was also synced;
+       - an event still ahead sits in the fold, where it can be edited;
+       - an event that is OVER, or one Olma sends nothing about and Google
+         already holds (`inCal`), is not on this page at all — it stays on
+         the calendar, and the calendar tab still draws it.
+     An event with no reminder that is on no calendar either stays in the
+     fold, because leaving it out would put it nowhere. A SHARED event keeps
+     its own section until it is over, and then leaves like any other: a
+     share is a reason to show it, never a reason to show it after. */
+  function onCalendar(x){ return !x.src && !isPinned(x) && x.kind === "event" && !leftToGoogle(x); }
+  function leftToGoogle(x){
+    return !x.src && x.kind === "event" && (eventOver(x) || (!isPinned(x) && !x.rem && x.inCal));
+  }
+  function offList(x){ return onCalendar(x) || leftToGoogle(x); }
+  /* The page can sit open past an appointment's end. Once a minute, ask which
+     rows have left; redraw only when that set moved, so an open list is not
+     re-rendered under somebody's thumb for nothing. */
+  var goneSig = "";
+  function goneNow(){ return open.filter(leftToGoogle).map(function(x){ return x.id; }).join(","); }
+  setInterval(function(){ if(goneNow() !== goneSig) renderTasks(); }, 60000);
+  /* Over at its END, on this device's clock like bucketFor: the end hour when
+     there is one (past midnight when it is earlier than the start), the start
+     hour when there is not, and the whole day for an all-day or hourless row.
+     An undated event is never over. */
+  function eventOver(x, now){
+    if(!x.d) return false;
+    var end, tm = x.all ? "" : (x.tm || "");
+    if(!tm) end = new Date(x.d + "T00:00:00"), end.setDate(end.getDate() + 1);
+    else {
+      end = new Date(x.d + "T" + (x.tmEnd || tm) + ":00");
+      if(x.tmEnd && x.tmEnd < tm) end.setDate(end.getDate() + 1);
+    }
+    return (now || new Date()) >= end;
+  }
   function calendarSection(){
     var items = open.filter(onCalendar);
     if(!items.length) return "";
@@ -7986,7 +8026,7 @@ button.srow:active{background:var(--bg-tint)}
      arrangement the imported section has at the other end. Unpinning one only
      stops it being skipped, so it lands exactly where it would have been. */
   function pinnedSection(){
-    var items = open.filter(isPinned);
+    var items = open.filter(function(x){ return isPinned(x) && !leftToGoogle(x); });
     if(!items.length) return "";
     return '<div class="tsec pinned"><div class="glabel"><span>' +
       '<svg class="pinmark" aria-hidden="true"><use href="#i-pin"/></svg>' + esc(t("tasks.pinned")) +
@@ -8135,21 +8175,22 @@ button.srow:active{background:var(--bg-tint)}
          always MOVE a task into one, but a heading with nothing under it is
          a list of things you do not have. */
       TASKCATS.forEach(function(c){
-        var items = open.filter(function(x){ return !x.src && !isPinned(x) && !onCalendar(x) && (x.cat || "none") === c.k; });
+        var items = open.filter(function(x){ return !x.src && !isPinned(x) && !offList(x) && (x.cat || "none") === c.k; });
         if(!items.length) return;
         html += '<div class="tsec"><div class="glabel"><span><i class="cdot" style="background:' + c.c +
           '"></i>' + esc(t("tcat." + c.k)) + "</span></div>" +
           '<div class="group">' + items.map(taskHTML).join("") + "</div></div>";
       });
     } else BUCKETS.forEach(function(b){
-      var items = open.filter(function(x){ return !x.src && !isPinned(x) && !onCalendar(x) && bucketFor(x.d) === b; });
+      var items = open.filter(function(x){ return !x.src && !isPinned(x) && !offList(x) && bucketFor(x.d) === b; });
       if(!items.length) return;
       html += '<div class="tsec"><div class="glabel"><span class="' + (b === "late" ? "late" : "") + '">' +
         esc(t("bucket." + b)) + "</span></div>" + kindGroups(items) + "</div>";
     });
     html += importedSection();
     renderSuggestion();
-    if(!open.length){
+    /* A list whose only rows went back to Google is an empty list here. */
+    if(!open.some(function(x){ return !leftToGoogle(x); })){
       /* Finished is not the same as empty: somebody who has just closed the
          last thing on their list should be told they finished it, and only a
          list that never had anything in it today is a clear day. */
@@ -8160,14 +8201,15 @@ button.srow:active{background:var(--bg-tint)}
         : emptyBig(t("tasks.empty"), "addTask", t("tasks.new"))) + "</div>";
     }
     $("#taskStack").innerHTML = html;
+    goneSig = goneNow();
     /* What is on, by when — the same headings the list below is cut into,
        with the same rows under them (owner, 2026-09-30). "11 open · 3
        reminders" answered a question nobody opens this page to ask. */
     var byWhen = BUCKETS.map(function(b){
-      var n = open.filter(function(x){ return !x.src && !isPinned(x) && !onCalendar(x) && bucketFor(x.d) === b; }).length;
+      var n = open.filter(function(x){ return !x.src && !isPinned(x) && !offList(x) && bucketFor(x.d) === b; }).length;
       return n ? t("bucket." + b) + " " + n : "";
     }).filter(Boolean);
-    var rems = open.filter(function(x){ return x.rem; }).length;
+    var rems = open.filter(function(x){ return x.rem && !leftToGoogle(x); }).length;
     rollText($("#taskCount"), byWhen.length ? byWhen.join(" · ")
                                             : pl("tasks", open.length) + " · " + pl("remc", rems));
     renderHome();
@@ -8632,6 +8674,11 @@ button.srow:active{background:var(--bg-tint)}
       jumpAfterSheet = null;
       if(!isNew && editing && open.indexOf(editing) > -1) go("tasks");
     }
+    if(editing && editingShown && $("#sheet").classList.contains("show") &&
+       open.indexOf(editing) > -1 && leftToGoogle(editing)){
+      editingShown = false;
+      toast(t(eventOver(editing) ? "toast.eventPast" : "toast.toGoogle"));
+    }
     closeCal();
     $("#scrim").classList.remove("show");
     /* Every sheet, not a list of them. This used to name six by hand, and the
@@ -8789,6 +8836,11 @@ button.srow:active{background:var(--bg-tint)}
      typing already did, and it was most of the height that made this
      scroll. Closing is the whole gesture: scrim, grabber, or Escape. */
   var editing = null, isNew = false, savedTimer = null, jumpAfterSheet = null;
+  /* Whether the row being edited was on the page when its sheet opened. An
+     edit can send it away — the reminder switched off on an event Google
+     holds, a date moved into the past — and a row that vanishes behind the
+     sheet reads as deleted. closeSheets says where it went instead. */
+  var editingShown = false;
 
   function bucketFor(dateStr){
     if(!dateStr) return "later";
@@ -9475,6 +9527,7 @@ button.srow:active{background:var(--bg-tint)}
        a reminder is only rewritten when the moment it points at actually
        moved — every other keystroke leaves the existing row alone. */
     lastWhenKey = String(editing.d) + "|" + String(editing.tm) + "|" + String(editing.all);
+    editingShown = !leftToGoogle(editing);
     pickQ = ""; $("#pickQ").value = ""; $("#pickQClear").hidden = true;
     $("#sAddFold").classList.remove("open");
     $("#sAddRow").setAttribute("aria-expanded", "false");
@@ -12117,7 +12170,34 @@ button.srow:active{background:var(--bg-tint)}
      they open the very same editor the list does, never a copy of it. */
   function agendaFor(i){
     var iso = dayISO(i);
-    var evs = (EVENTS[i] || []).map(function(v){
+    /* The same thing twice (owner, 2026-10-01, on Miron's account). A task
+       the sync wrote out, a settled coordination on their calendar, an event
+       Olma created — each is ALSO one of Google's events, so the day drew it
+       once from /me/events and once as itself. Olma's row wins, because it
+       is the one that opens the editor and carries the reminder; Google's
+       copy is dropped by its id when we know it (`gid`), and otherwise by
+       the same title at the same time on the same day — the event
+       `create_calendar_event` wrote with no task behind it, or one written
+       under an id we did not keep. */
+    var ownIds = {}, ownKeys = {};
+    var sameKey = function(title, time){
+      return String(title || "").replace(/\s+/g, " ").trim().toLowerCase() + "|" + (time || "");
+    };
+    open.forEach(function(x){
+      if(x.d !== iso) return;
+      if(x.gid) ownIds[x.gid] = 1;
+      ownKeys[sameKey(L(x.t), x.all ? "" : x.tm)] = 1;
+    });
+    MEETS.forEach(function(m){
+      if(!m.settled) return;
+      var o = mtOptById(m, m.settled);
+      if(!o || o.day !== i) return;
+      if(m.gid) ownIds[m.gid] = 1;
+      ownKeys[sameKey(L(m.t), m.allDay ? "" : o.time)] = 1;
+    });
+    var evs = (EVENTS[i] || []).filter(function(v){
+      return !(v.id && ownIds[v.id]) && !ownKeys[sameKey(L(v.n), v.all ? "" : v.t)];
+    }).map(function(v){
       /* `all` travels: an all-day entry heads the day, and the clash check
          treats it as filling the whole of one. The seed has no all-day rows,
          which is exactly why this was easy to leave out. */
@@ -13887,6 +13967,9 @@ button.srow:active{background:var(--bg-tint)}
       /* …and whether it is really there yet: the sync has written it out. The
          list folds these away under "ביומן" (calendarSection). */
       inCal:!!x.inCalendar,
+      /* …and under which Google id, so the calendar tab can drop Google's
+         copy of it (agendaFor) instead of drawing the same thing twice. */
+      gid:x.calendarEventId || "",
       tmEnd:x.endTime || "",
       /* A moment they will be at, or a job until it is done — the server's
          reading of tasks.kind, with the place an event carries. The list
@@ -14061,6 +14144,8 @@ button.srow:active{background:var(--bg-tint)}
     }
     return {
       id:m.id,
+      /* the Google id a settled one was written under — see agendaFor */
+      gid:m.calendarEventId || "",
       t:m.title || "",
       by:m.mine ? 0 : m.initiatorId,
       who:who, allDay:allDay, opts:opts, ans:ans, left:left,
@@ -14136,7 +14221,7 @@ button.srow:active{background:var(--bg-tint)}
         EVENTS = {};
         Object.keys(body.data.days || {}).forEach(function(k){
           EVENTS[+k] = (body.data.days[k] || []).map(function(e){
-            return {t:e.at || "", e:e.end || "", all:!!e.allDay,
+            return {id:e.id || "", t:e.at || "", e:e.end || "", all:!!e.allDay,
                     n:e.title || "", s:e.where || "", c:CAL_EVENT_COLOR};
           });
         });

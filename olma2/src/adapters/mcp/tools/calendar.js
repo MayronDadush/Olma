@@ -16,15 +16,17 @@ module.exports = [
     (client, user) => calendar.getStatus(client, user.id)),
   tool('disconnect_calendar', 'Remove the user\'s Google Calendar access (also revokes it at Google). Confirm with them first.', {}, [],
     (client, user) => calendar.disconnect(client, user.id)),
-  // The standing preference behind every dated task, not a per-task action:
-  // once on, every task with a due time appears on their calendar by itself
+  // The standing preference behind every dated TO-DO, not a per-task action
+  // (an appointment follows an editable calendar regardless, since
+  // 2026-10-01 — task-calendar.WANTED_SQL): once on, every to-do with a due
+  // time appears on their calendar by itself
   // and leaves it when the task is done, rescheduled or dropped. Needs edit
   // access, and setSync says so rather than failing quietly every tick.
   tool('set_calendar_task_sync',
-    'Turn ON or OFF putting the user\'s dated tasks on their Google Calendar automatically. '
+    'Turn ON or OFF putting the user\'s dated to-dos on their Google Calendar automatically. '
     + 'Needs a calendar connected with edit access. When turning it OFF you must ASK whether to also remove '
     + 'the entries already there — never decide that for them — and pass their answer as remove_existing. '
-    + 'Events appear as a 30-minute block at the task\'s due time and disappear when it is completed or dropped.',
+    + 'Appointments go on an editable calendar regardless. Entries leave if done or dropped before they happen.',
     {
       on: S('boolean', 'true to start syncing dated tasks, false to stop'),
       remove_existing: S('boolean', 'Only when on=false: whether entries already on the calendar should be removed too. Default false — leave them.'),
