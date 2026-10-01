@@ -509,7 +509,20 @@ test('an event saved against a view-only Google Calendar says it is NOT on Googl
      VALUES ($1, 'google_calendar', 'connected', 'read_only')`, [u.id]);
   const viewOnly = await withTx(db.pool, (c) => add.handler(c, u, { title: 'יום הולדת לליאם', kind: 'event', due_at: at(22), ends_at: at(23) }));
   assert.match(viewOnly.data.hints.googleCalendar, /VIEW-ONLY/);
-  assert.match(viewOnly.data.hints.googleCalendar, /Never say it was added/);
+  assert.match(viewOnly.data.hints.googleCalendar, /no permission to write there/);
+  assert.match(viewOnly.data.hints.googleCalendar, /Never say it is on their calendar/);
+
+  // The other two doors that can put an event on the calendar say the same.
+  const bulk = BY_NAME.get('add_tasks_bulk');
+  const many = await withTx(db.pool, (c) => bulk.handler(c, u, { items: [
+    { title: 'חתונה של דנה', kind: 'event', due_at: at(26), ends_at: at(27) }, { title: 'לקנות כרטיס' }] }));
+  assert.match(many.data.hints.googleCalendar, /VIEW-ONLY/);
+  const edit = BY_NAME.get('edit_task');
+  const plan = await withTx(db.pool, (c) => add.handler(c, u, { title: 'ארוחה עם אבא', kind: 'todo' }));
+  const made = await withTx(db.pool, (c) => edit.handler(c, u, { task_id: plan.data.task.id, kind: 'event', due_at: at(28) }));
+  assert.match(made.data.hints.googleCalendar, /VIEW-ONLY/, 'turning it into an event is the same claim');
+  const renamed = await withTx(db.pool, (c) => edit.handler(c, u, { task_id: plan.data.task.id, title: 'ארוחת ערב עם אבא' }));
+  assert.equal(renamed.data.hints, undefined, 'a rename says nothing about the calendar');
   const todo = await withTx(db.pool, (c) => add.handler(c, u, { title: 'לקנות מתנה', kind: 'todo' }));
   assert.equal(todo.data.hints && todo.data.hints.googleCalendar, undefined, 'a to-do never claimed Google');
 
