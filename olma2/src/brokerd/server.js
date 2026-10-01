@@ -19,6 +19,7 @@ const turnDomain = require('../domain/turn');
 const reactions = require('../domain/reactions');
 const reminders = require('../domain/reminders');
 const chaseDeadline = require('../domain/chase-deadline');
+const meetingExit = require('../domain/meeting-exit');
 const selfInitiated = require('../domain/self-initiated');
 const { captureDisplayName } = require('../adapters/mcp/tools/_shared');
 const groupContext = require('../domain/group-context');
@@ -329,8 +330,18 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
         : null;
       const stoppedReminders = stopped ? stopped.stopped.length : 0;
       if (stopped) lap('stop');
+      // "בחוץ" is a WRITE when it answers a general question about a
+      // coordination, and a question back when it answers one time
+      // (domain/meeting-exit.js; owner, 2026-10-01). Which, the outbox says.
+      // Not on a WhatsApp reply: the quoted message may be an older one, and
+      // only the model can read it.
+      const meetingExitNow = !rec.skipped && params.out === true && !params.replyToId
+        ? await meetingExit.onOut(client, user.id)
+        : null;
+      if (meetingExitNow) lap('exit');
       const byCode = Boolean(messageId && answeredByCode.has(messageId));
-      const state = stoppedReminders || byCode ? 'done'
+      const left = Boolean(meetingExitNow && meetingExitNow.outcome === 'left');
+      const state = stoppedReminders || left || byCode ? 'done'
         : thanksOnly ? 'thanks' : (kind === 'voice' ? 'listening' : 'working');
       const entry = {
         messageId, kind, lastInboundAt: clock(), openedAt: clock(),
@@ -346,6 +357,7 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
         replyToId: reactions.cleanMessageId(params.replyToId) || null,
         counted: rec.counted, quota: rec.quota, firstTurn: Boolean(rec.firstTurn),
         thanksOnly, thanksAfterQuestion, stoppedReminders,
+        meetingExit: meetingExitNow,
         // "help me until next week": the hook's verdict, resolved here against
         // THEIR clock at the moment the message arrived, and armed by add_task
         // or set_task_reminder on this turn (domain/chase-deadline). Nothing is
@@ -1161,6 +1173,7 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
         thanksOnly: Boolean(pre && pre.thanksOnly),
         thanksAfterQuestion: Boolean(pre && pre.thanksAfterQuestion),
         stoppedReminders: (pre && pre.stoppedReminders) || 0,
+        meetingExit: (pre && pre.meetingExit) || null,
         chaseUntil: pre && pre.chase ? pre.chase.day : null,
         chaseNamedHour: Boolean(pre && pre.chase && pre.chase.namedHour),
         openList: Boolean(pre && pre.openList),
@@ -1300,6 +1313,7 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
           turn.thanksOnly = pre.thanksOnly;
           turn.thanksAfterQuestion = Boolean(pre.thanksAfterQuestion);
           turn.stoppedReminders = pre.stoppedReminders || 0;
+          turn.meetingExit = pre.meetingExit || null;
           turn.chase = pre.chase || null; turn.chaseUsed = false;
           turn.openList = Boolean(pre.openList);
           turn.remindAsk = pre.remindAsk || null; turn.remindAskUsed = false;
