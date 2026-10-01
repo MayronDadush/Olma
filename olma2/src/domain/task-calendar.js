@@ -1,9 +1,19 @@
 'use strict';
 // Dated tasks, on the person's own Google Calendar.
 //
-// Opt-in, per person, off by default. Writing to somebody's calendar is an
-// outward-facing act they will see every day, so it is never inferred from
-// "they have a calendar connected" — they ask for it, and they can stop it.
+// A TO-DO goes on the calendar only when they ask: per person, off by default.
+// Writing to somebody's calendar is an outward-facing act they will see every
+// day, so for a job to be done it is never inferred from "they have a calendar
+// connected" — they ask for it, and they can stop it.
+//
+// An EVENT is different, since 2026-10-01, on the owner's word. "תזכיר לי
+// לקראת התור שלי לספר בשעה 15" is an appointment; the person already said it
+// happens at 15:00, and a calendar they connected WITH write access is where
+// they keep those. So an event with no answer of its own goes to Google
+// whenever such a calendar is connected, whatever the standing switch says —
+// the switch is about to-dos. A task that said no (`calendar_opt_in = false`,
+// the sheet's own switch) still wins, and a read-only or broken connection
+// asks nothing, because creating an event there fails every tick for ever.
 //
 // ---- why this is a sweep and not part of add_task ----
 //
@@ -56,6 +66,30 @@ function windowFor(dueAt, endsAt) {
 // standing and add a second.
 function expectedIdFor(userId, task) {
   return calendar.eventIdFor(userId, task.title, windowFor(task.due_at, task.ends_at).start);
+}
+
+// Whether this row belongs on its owner's calendar, as ONE SQL expression over
+// `t` (tasks) and `u` (users), so the add, remove and re-check arms and the
+// page's own switch all ask the identical question. See the header for why an
+// event answers it differently from a to-do.
+const WRITABLE_SQL = `EXISTS (SELECT 1 FROM integrations i
+    WHERE i.user_id = u.id AND i.provider = 'google_calendar'
+      AND i.status = 'connected' AND i.access_level = 'read_write')`;
+const WANTED_SQL = `COALESCE(t.calendar_opt_in,
+    u.calendar_sync_tasks OR (t.kind IS NOT DISTINCT FROM 'event' AND ${WRITABLE_SQL}))`;
+
+// The page's switch shows the same answer the sweep acts on. `writable` is
+// whether they have a calendar Olma may write to (calendar.getStatus's
+// `canEdit`), read once per page rather than per row.
+function wantedFor(task, { syncTasks, writable }) {
+  if (task.calendar_opt_in != null) return task.calendar_opt_in;
+  return Boolean(syncTasks) || (task.kind === 'event' && Boolean(writable));
+}
+
+async function canWrite(client, userId) {
+  const { rows } = await client.query(
+    `SELECT ${WRITABLE_SQL} AS w FROM users u WHERE u.id = $1`, [userId]);
+  return Boolean(rows[0] && rows[0].w);
 }
 
 // Turning it ON requires edit access, and says so plainly rather than letting
@@ -171,8 +205,9 @@ async function removeEventsFor(client, ownerId, taskId, deps = {}) {
 // Everything that is not where it should be: to add, to remove, to redo.
 // One query, so a tick is one round trip before any Google call happens.
 // `sync_wanted` is the one question every branch below asks, and it is
-// answered once, in SQL: the task's own answer when it gave one, the person's
-// standing switch when it did not. Computing it here rather than in three
+// answered once, in SQL (`WANTED_SQL`): the task's own answer when it gave
+// one, the person's standing switch when it did not — or, for an event, a
+// calendar they let Olma write to. Computing it here rather than in three
 // separate WHERE clauses is what stops the add, remove and re-check arms from
 // ever disagreeing about whether a row belongs on somebody's calendar.
 //
@@ -188,23 +223,23 @@ async function pending(client, { limit = MAX_PER_TICK, now = new Date() } = {}) 
   const { rows } = await client.query(
     `SELECT t.id, t.owner_id, t.title, t.due_at, t.ends_at, t.location, t.calendar_event_id,
             u.calendar_sync_tasks, t.calendar_opt_in, t.status, t.archived_at,
-            COALESCE(t.calendar_opt_in, u.calendar_sync_tasks) AS sync_wanted
+            ${WANTED_SQL} AS sync_wanted
        FROM tasks t
        JOIN users u ON u.id = t.owner_id
       WHERE u.status = 'active' AND u.paused_at IS NULL AND NOT u.is_eval
         AND (
           -- to add: they want it, it is dated, still open, still ahead
-          (COALESCE(t.calendar_opt_in, u.calendar_sync_tasks) AND t.calendar_event_id IS NULL
+          (${WANTED_SQL} AND t.calendar_event_id IS NULL
              AND t.due_at IS NOT NULL AND t.due_at > $2
              AND t.status = 'open' AND t.archived_at IS NULL)
           -- to remove: it is on the calendar and no longer earns its place
           OR (t.calendar_event_id IS NOT NULL
              AND (t.due_at IS NULL OR COALESCE(t.ends_at, t.due_at) > $2)
-             AND (NOT COALESCE(t.calendar_opt_in, u.calendar_sync_tasks) OR t.status <> 'open'
+             AND (NOT ${WANTED_SQL} OR t.status <> 'open'
                   OR t.archived_at IS NOT NULL OR t.due_at IS NULL))
           -- to re-check: on the calendar and still wanted — the fingerprint
           -- comparison below decides whether it actually moved
-          OR (COALESCE(t.calendar_opt_in, u.calendar_sync_tasks) AND t.calendar_event_id IS NOT NULL
+          OR (${WANTED_SQL} AND t.calendar_event_id IS NOT NULL
              AND t.status = 'open' AND t.archived_at IS NULL AND t.due_at IS NOT NULL
              AND COALESCE(t.ends_at, t.due_at) > $2)
         )
@@ -276,5 +311,5 @@ async function sweepTaskCalendar(client, deps = {}) {
 
 module.exports = {
   setSync, setTaskSync, removeEventsFor, pending, syncOne, sweepTaskCalendar,
-  expectedIdFor, windowFor, MAX_PER_TICK, EVENT_MINUTES,
+  expectedIdFor, windowFor, wantedFor, canWrite, MAX_PER_TICK, EVENT_MINUTES,
 };

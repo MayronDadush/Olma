@@ -495,15 +495,23 @@ async function sweepNameConfirm(client, nowIso) {
 //    but rows finished before that, or by any path that did not go through it,
 //    need somebody to come round.
 //
-// Both end the same way: completed, archived, and SAID OUT LOUD. Something
+// Both end completed and archived. Only the LIST is said out loud: something
 // that leaves a person's list on its own without telling them is indis-
-// tinguishable from something we lost, and the person is the only one who
-// knows whether we got it right — so the message names what went and the agent
-// can put any of it back.
+// tinguishable from something we lost, and they are the only one who knows
+// whether every box really was ticked — so the message names what went and the
+// agent can put any of it back.
+//
+// An appointment that passed is NOT said, since 2026-10-01, on the owner's
+// word. "תור לספר" at 15:00 was reminded about, it happened, and it stays on
+// their Google Calendar (task-calendar leaves a moment that is over where it
+// is); a WhatsApp message three hours later saying it left the list told them
+// nothing they did not know. It also goes at its END now rather than three
+// hours after it (`task_auto_archive_grace_hours` defaults to 0), the same
+// line the tasks page draws — the page stopped showing it then anyway.
 async function sweepFinishedTasks(client, nowIso) {
   const now = nowIso ? new Date(nowIso) : new Date();
   const graceHours = Number(await flags.getFlag(client, 'task_auto_archive_grace_hours'));
-  const grace = Number.isFinite(graceHours) && graceHours >= 0 ? graceHours : 3;
+  const grace = Number.isFinite(graceHours) && graceHours >= 0 ? graceHours : 0;
   const cutoff = new Date(now.getTime() - grace * 3600_000).toISOString();
 
   // A repeating reminder with NO END makes a task standing — doing it once
@@ -521,9 +529,19 @@ async function sweepFinishedTasks(client, nowIso) {
                          WHERE r.task_id = t.id AND r.repeat_rule IS NOT NULL
                            AND r.repeat_until IS NULL
                            AND r.sent_at IS NULL AND r.cancelled_at IS NULL)
+        -- A reminder that is due and has not gone out yet goes out FIRST:
+        -- completeTask cancels every unsent row, and with no grace left an
+        -- appointment at the minute its reminder names could lose it. Two
+        -- hours back only, the life of rung 1: a row older than that is not
+        -- going out (a paused person), and must not pin the event for ever.
+        AND NOT EXISTS (SELECT 1 FROM task_reminders r
+                         WHERE r.task_id = t.id AND r.attempts = 0
+                           AND r.remind_at <= $2
+                           AND r.remind_at > $2::timestamptz - interval '2 hours'
+                           AND r.sent_at IS NULL AND r.cancelled_at IS NULL)
       ORDER BY t.owner_id, t.id
       LIMIT 200`,
-    [cutoff]
+    [cutoff, now.toISOString()]
   );
 
   const { rows: drained } = await client.query(
@@ -549,6 +567,7 @@ async function sweepFinishedTasks(client, nowIso) {
   for (const t of drained) add(t, 'finished');
 
   const out = [];
+  const passed = [];
   for (const [userId, items] of byUser) {
     const done = [];
     for (const item of items) {
@@ -560,20 +579,24 @@ async function sweepFinishedTasks(client, nowIso) {
       const arch = await tasks.archiveTask(client, userId, item.id);
       if (!arch.ok) continue;
       done.push(item);
+      if (item.why === 'passed') passed.push(item.id);
     }
-    if (!done.length) continue;
+    // Only a finished list is news (see the header); an appointment that
+    // passed leaves quietly.
+    const said = done.filter((item) => item.why === 'finished');
+    if (!said.length) continue;
     const res = await enqueue(client, {
       userId,
       kind: 'tasks_auto_archived',
       // Olma's own housekeeping, not a moment they chose — it queues like
       // everything else Olma decided to say rather than skipping the budget.
       urgency: 'normal',
-      payload: { tasks: done },
-      idempotencyKey: `autoarc:${userId}:${done[0].id}`,
+      payload: { tasks: said },
+      idempotencyKey: `autoarc:${userId}:${said[0].id}`,
     });
-    if (res.data.enqueued) out.push({ userId, count: done.length });
+    if (res.data.enqueued) out.push({ userId, count: said.length });
   }
-  return { users: out.length, tasks: out.reduce((n, r) => n + r.count, 0) };
+  return { users: out.length, tasks: out.reduce((n, r) => n + r.count, 0), passed: passed.length };
 }
 
 module.exports = {

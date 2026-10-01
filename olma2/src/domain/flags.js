@@ -109,10 +109,11 @@ const DEFAULTS = {
   // jobs/sweeps.sweepFinishedTasks: how long after an appointment ENDS before
   // it leaves the open list. A flag rather than a constant because the right
   // number is a judgement about how people use the list, and finding it out
-  // should not need a deploy. Three hours: long enough that a doctor's
-  // appointment at 09:00 is not swept while somebody is still in the waiting
-  // room, short enough that it is gone before they next look.
-  task_auto_archive_grace_hours: 3,
+  // should not need a deploy. Zero since 2026-10-01 (it was three): the
+  // tasks page drops an appointment the moment it is over, it stays on their
+  // Google Calendar, and nothing is said about it leaving, so holding it on
+  // the list for three more hours only kept it in the counts and the digest.
+  task_auto_archive_grace_hours: 0,
   // domain/google-connect-gate.js: who may mint a NEW Google consent link
   // (calendar, contacts, or the combined one). '' = nobody but an admin,
   // 'all' = everybody, or a comma-separated E.164 list. Default CLOSED: the

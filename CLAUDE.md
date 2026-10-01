@@ -238,6 +238,8 @@ Loads when you **Read** a file under `src/domain/reminders.js`, `src/domain/task
 - **`due_at` is when the THING is; `remind_at` is the hour THEY named.**
 - **A calendar event reminds NOBODY, and `create_calendar_event`'s result says so rather than leaving it to be guessed** — `add_task kind:'event'` is what arms one, and `eventIdFor` hashes the instant so the same moment saved both ways is one entry.
 - **Leaving the LIST is not leaving the CALENDAR: a moment that is over stays on Google** — `task-calendar.pending` removes only what is still ahead
+- **An EVENT goes to Google on its own when the calendar is writable; a TO-DO still waits for "משימות ליומן"** — `task-calendar.WANTED_SQL`, and the page's switch reads the same rule (`task-calendar.wantedFor`)
+- **An appointment leaves the list at its END, and nothing is SAID about it** — grace 0; `tasks_auto_archived` carries a drained list only
 - **Everyone on a shared task is equal, and a write on it is made AS its owner** — "delete" with others on it is leaving, and only the last one left can archive.
 - **A reminder belongs to the PERSON, not to the task** — every reader asks `COALESCE(r.user_id, t.owner_id)`.
 - **A task with no date can still nudge, and a nudge must NEVER date it** — the dateless kind carries an hour of its own.

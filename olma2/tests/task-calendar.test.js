@@ -124,7 +124,8 @@ test('nobody gets their calendar written to without asking', async () => {
     `INSERT INTO integrations (user_id, provider, status, access_level)
      VALUES ($1, 'google_calendar', 'connected', 'read_write')`, [u.id]);
   await withClient(async (c) => {
-    await tasksDomain.addTask(c, u.id, { title: 'לא לסנכרן', dueAt: SOON });
+    // A to-do. An EVENT is the one exception, below.
+    await tasksDomain.addTask(c, u.id, { title: 'לא לסנכרן', dueAt: SOON, kind: 'todo' });
     const g = fakeGoogle();
     const out = await tc.sweepTaskCalendar(c, { ...g, now: '2026-09-04T00:00:00Z' });
     assert.equal(out.added.length, 0);
@@ -253,6 +254,97 @@ test('a task opted out stays off the calendar with the standing switch on', asyn
   const out = await withClient((c) => tc.sweepTaskCalendar(c, { ...g, now: '2027-01-01T00:00:00Z' }));
   assert.equal(out.added.map(String).includes(String(t.data.task.id)), false,
     'a task turned off individually came back on the next tick');
+});
+
+// ---- an event follows a calendar they let Olma write to (owner, 2026-10-01)
+
+async function writableUser(phone, access = 'read_write', status = 'connected') {
+  const u = await makeUser(db.pool, phone, { timezone: 'Asia/Jerusalem' });
+  await db.pool.query(
+    `INSERT INTO integrations (user_id, provider, status, access_level)
+     VALUES ($1, 'google_calendar', $2, $3)`, [u.id, status, access]);
+  return u;
+}
+
+test('an event reaches Google with the to-do switch off, when the calendar is writable', async () => {
+  const u = await writableUser('+972539000201');
+  const { ev, todo } = await withClient(async (c) => ({
+    ev: (await tasksDomain.addTask(c, u.id, { title: 'תור לספר', dueAt: SOON, kind: 'event' })).data.task,
+    todo: (await tasksDomain.addTask(c, u.id, { title: 'להתקשר לספר', dueAt: SOON, kind: 'todo' })).data.task,
+  }));
+  const g = fakeGoogle();
+  const out = await withClient((c) => tc.sweepTaskCalendar(c, { ...g, now: '2027-01-01T00:00:00Z' }));
+  const added = out.added.map(String);
+  assert.equal(added.includes(String(ev.id)), true, 'the appointment goes to Google');
+  assert.equal(added.includes(String(todo.id)), false, 'the to-do still waits for the switch');
+
+  // A steady state: the next tick neither adds it again nor takes it off.
+  const g2 = fakeGoogle();
+  await withClient((c) => tc.sweepTaskCalendar(c, { ...g2, now: '2027-01-01T00:00:00Z' }));
+  assert.equal(g2.calls.length, 0);
+});
+
+test('an event the person switched off stays off, calendar or no calendar', async () => {
+  const u = await writableUser('+972539000202');
+  const ev = await withClient(async (c) =>
+    (await tasksDomain.addTask(c, u.id, { title: 'תור לרופא', dueAt: SOON, kind: 'event' })).data.task);
+  await withClient((c) => tc.sweepTaskCalendar(c, { ...fakeGoogle(), now: '2027-01-01T00:00:00Z' }));
+  const off = await withClient((c) => tc.setTaskSync(c, u.id, ev.id, false, fakeGoogle()));
+  assert.equal(off.data.removed, true);
+  const g = fakeGoogle();
+  const out = await withClient((c) => tc.sweepTaskCalendar(c, { ...g, now: '2027-01-01T00:00:00Z' }));
+  assert.equal(out.added.map(String).includes(String(ev.id)), false, 'it came back on the next tick');
+});
+
+test('a read-only or broken calendar is never tried, so an event does not fail every tick', async () => {
+  const ro = await writableUser('+972539000203', 'read_only');
+  const broken = await writableUser('+972539000204', 'read_write', 'needs_reauth');
+  const ids = await withClient(async (c) => [
+    (await tasksDomain.addTask(c, ro.id, { title: 'תור לספר', dueAt: SOON, kind: 'event' })).data.task.id,
+    (await tasksDomain.addTask(c, broken.id, { title: 'תור לספר', dueAt: SOON, kind: 'event' })).data.task.id,
+  ]);
+  const g = fakeGoogle();
+  await withClient((c) => tc.sweepTaskCalendar(c, { ...g, now: '2027-01-01T00:00:00Z' }));
+  assert.equal(ids.length, 2);
+  const theirs = [ro.id, broken.id].map(String);
+  assert.equal(g.calls.filter((x) => theirs.includes(String(x.userId))).length, 0);
+});
+
+test("the page's switch reads the same rule the sweep acts on", async () => {
+  const w = await writableUser('+972539000205');
+  const ro = await writableUser('+972539000206', 'read_only');
+  const none = await makeUser(db.pool, '+972539000207', { timezone: 'Asia/Jerusalem' });
+  await withClient(async (c) => {
+    assert.equal(await tc.canWrite(c, w.id), true);
+    assert.equal(await tc.canWrite(c, ro.id), false);
+    assert.equal(await tc.canWrite(c, none.id), false);
+  });
+  const ev = { kind: 'event', calendar_opt_in: null };
+  const todo = { kind: 'todo', calendar_opt_in: null };
+  assert.equal(tc.wantedFor(ev, { syncTasks: false, writable: true }), true);
+  assert.equal(tc.wantedFor(ev, { syncTasks: false, writable: false }), false);
+  assert.equal(tc.wantedFor(todo, { syncTasks: false, writable: true }), false);
+  assert.equal(tc.wantedFor(todo, { syncTasks: true, writable: false }), true);
+  assert.equal(tc.wantedFor({ ...ev, calendar_opt_in: false }, { syncTasks: true, writable: true }), false);
+  assert.equal(tc.wantedFor({ ...todo, calendar_opt_in: true }, { syncTasks: false, writable: false }), true);
+  // A row nothing has judged is a job, as everywhere else.
+  assert.equal(tc.wantedFor({ kind: null, calendar_opt_in: null }, { syncTasks: false, writable: true }), false);
+});
+
+test('a to-do with no kind, switched off, is still taken off the calendar', async () => {
+  // The NULL-kind trap: `NULL = 'event'` would make the wanted question NULL,
+  // and `NOT NULL` would never reach the remove arm.
+  const u = await syncingUser('+972539000208');
+  const t = await withClient(async (c) =>
+    (await tasksDomain.addTask(c, u.id, { title: 'בלי סוג', dueAt: SOON })).data.task);
+  await db.pool.query(`UPDATE tasks SET kind = NULL WHERE id = $1`, [t.id]);
+  await withClient((c) => tc.sweepTaskCalendar(c, { ...fakeGoogle(), now: '2027-01-01T00:00:00Z' }));
+  // The task says nothing; the standing switch goes off; the calendar is
+  // still writable. Only the event clause could keep it, and it is not one.
+  await db.pool.query(`UPDATE users SET calendar_sync_tasks = FALSE WHERE id = $1`, [u.id]);
+  const g = fakeGoogle();
+  const out = await withClient((c) => tc.sweepTaskCalendar(c, { ...g, now: '2027-01-01T00:00:00Z' }));
+  assert.equal(out.removed.map(String).includes(String(t.id)), true);
 });
 
 test('turning one task off removes the event it already had', async () => {

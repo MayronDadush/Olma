@@ -8644,6 +8644,41 @@ Google are not re-created — nothing recorded which ones they were beyond the
 archived rows, and re-writing past events onto somebody's calendar unasked
 is its own surprise.
 
+### The appointment that waited for a switch about to-dos (changed 2026-10-01)
+
+Not a failure anybody reported: the owner's own description of
+"תזכיר לי לקראת התור שלי לספר בשעה 15" — it goes to Google Calendar, a
+WhatsApp reminder comes, it sits on the tasks page until it is over, then it
+leaves the page and stays on Google. Three parts of that were not true.
+
+1. **It went to Google only if "משימות ליומן" was on.** That switch was built
+   for to-dos (writing "לקנות חלב" onto somebody's calendar is an imposition)
+   and an appointment rode the same switch. For somebody who connected a
+   calendar with edit access and never touched it, their haircut was never
+   on it. Now an event with no answer of its own follows a WRITABLE
+   calendar; the switch keeps governing to-dos, and the sheet's per-task
+   switch still wins. Only `connected` + `read_write` counts — the sweep
+   would otherwise try, fail and retry a view-only calendar every tick.
+   The trap found while writing it: `t.kind = 'event'` is NULL for a row
+   nothing has judged, `false OR NULL` is NULL, and `NOT NULL` is NULL — so
+   the remove arm would have stopped removing an unjudged to-do after the
+   switch went off. `IS NOT DISTINCT FROM`, and a test for exactly that.
+2. **It stayed on the list three hours after it ended**
+   (`task_auto_archive_grace_hours = 3`, "somebody may still be in the
+   waiting room"). The tasks page now draws its own line at the end, so the
+   grace only kept it in counts and the digest. Default 0. That surfaced a
+   real race: `completeTask` cancels every unsent reminder, so an event swept
+   in the same minute as its own reminder could lose it. An event whose
+   reminder is due within two hours and not yet attempted is held one tick.
+3. **Three hours later a WhatsApp message said it had left the list.** The
+   owner: no message about a passed event. `tasks_auto_archived` now carries
+   only drained lists; a person whose only swept row is an appointment hears
+   nothing.
+
+Depends on "The haircut that left the calendar the evening it happened": with
+no grace, archiving at the end would otherwise have deleted it from Google at
+the end, too.
+
 ### The city was asked four times, because two routes each asked it once (fixed 2026-09-06)
 
 Sarah was asked which city she lives in on her first contact, and then again,
