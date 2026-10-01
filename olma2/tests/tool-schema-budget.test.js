@@ -144,7 +144,15 @@ const { IDENTITY_PARAM } = require('../src/adapters/mcp/identity-param');
 // then main's `windows` on record_meeting_constraint (+89) landed first, and
 // the new tool was cut to fit rather than raising past what was approved —
 // its "not for stop" line moved onto the preview result. Measured 60,899.
-const JSON_CEILING = 60_900;
+//
+// Raised the ninth time, 2026-10-01: 60,900 -> 61,050, for coming BACK into a
+// coordination you left, in both places (`rejoin_meeting`,
+// `rejoin_group_coordination`) — Eden left the poker room's coordination,
+// asked to come back, and nothing but the page could do it. +610 between them
+// with one-line descriptions (the guidance rides the results); the margin was
+// 464. Per turn a person pays ~365 and a room ~290 (agent-tool-policy).
+// Put to the owner with its cost and approved ("מאשר את התקרה"). Measured 61,046.
+const JSON_CEILING = 61_050;
 const DESCRIPTION_CEILING = 700;
 const IDENTITY_DESCRIPTION_CEILING = 40;
 

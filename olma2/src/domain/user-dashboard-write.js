@@ -497,8 +497,9 @@ const ACTIONS = {
   // The way back out of the archive. Leaving was one tap and reversing it was
   // nothing at all, which is a bad trade for an action whose commonest cause
   // is a mis-tap. `meetings.rejoin` refuses everything it should — a
-  // coordination that closed when you left cannot be reopened by you alone —
-  // and the others are told, because they were told when you went.
+  // coordination that closed when you left cannot be reopened by you alone, nor
+  // an exit you did not choose — and nobody else is messaged, exactly as
+  // nobody was when you went (owner, 2026-10-01).
   async rejoinMeeting(client, userId, p) {
     const res = await meetings.rejoin(client, userId, p.meetingId);
     if (!res.ok) return res;

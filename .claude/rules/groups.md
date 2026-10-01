@@ -294,6 +294,20 @@ have already had to be argued for.
   carry hints about the person's own calendar and dashboard, and an answer
   given in the room returns that one answer and never the table's — the room
   still hears nobody else's (`tests/group-room-actions.test.js`).
+  **…and the way BACK in is the one door `participantFor` cannot guard**,
+  because it refuses exactly the person it is for (owner, 2026-10-01; Eden
+  left the poker room's coordination, meeting 66, and asked to come back).
+  `rejoin_group_coordination` checks the room with
+  `groupMeetings.roomMeetingFor`, and `rejoin_meeting` is its private twin;
+  both, and the page's archive button, go through `meetings.rejoin` →
+  `meetingFanout.afterRejoin`, which is QUIET like the exit it undoes —
+  nobody else gets a message, the table and the counts say who is in
+  (owner: "חזרה שתהיה שקטה כמו יציאה"). **Only an exit they CHOSE is undone**
+  (`meetings.LEFT_BY_CHOICE_SQL`: the latest `meeting.opted_out` with cause
+  `user_choice`, or `meeting.withdrew`). A pause, leaving the WhatsApp group
+  and revoking a connection are not, an `opted_out` row with no exit on
+  record is not, and nobody without a participant row is ever added this way
+  (`incidents.md`, "Eden could not come back").
 
 - **Somebody a room sent to the greeter hears about that room in the FIRST
   reply, and its coordination follows that same night if they are awake**
