@@ -238,6 +238,7 @@ never trust a dated narrative for something you are about to act on.
 - [Sixty-four holidays, eight of them quiet (2026-09-11)](#sixty-four-holidays-eight-of-them-quiet-2026-09-11)
 - [The reminder that kept arriving on Shabbat (2026-09-22)](#the-reminder-that-kept-arriving-on-shabbat-2026-09-22)
 - [The hint the dedup swallowed (fixed 2026-09-10)](#the-hint-the-dedup-swallowed-fixed-2026-09-10)
+- [The hint that arrived alone and still lost (fixed 2026-09-30)](#the-hint-that-arrived-alone-and-still-lost-fixed-2026-09-30)
 - [The rung nobody asked for, at half past one (2026-09-07)](#the-rung-nobody-asked-for-at-half-past-one-2026-09-07)
 - [Two ladders for one phone call (fixed 2026-09-08)](#two-ladders-for-one-phone-call-fixed-2026-09-08)
 - [The message id the model made up (2026-09-07)](#the-message-id-the-model-made-up-2026-09-07)
@@ -10359,6 +10360,56 @@ exactly like the model misbehaving and none of them is: the mark **absent**
 (the preference tools, the entry above), the mark **outvoted** (an
 unconditional instruction beside a conditional one), and now the mark
 **present and unannounced**.
+
+### The hint that arrived alone and still lost (fixed 2026-09-30)
+
+Miron, 23:36: "תוסיף לי משימה לעשות את הסרטון לגוגל בשביל היומן". One
+`add_task`, a 👍 on his message at 20:36:40 UTC, and four seconds later
+"רשמתי: לעשות את הסרטון לגוגל בשביל היומן 👍" under it — his own words back,
+with a thumbs-up typed into the text for good measure. His note: "זו תקלה
+שאנחנו כל הזמן חוזרים עליה".
+
+Every earlier entry in this family had a cause in front of the model: the mark
+was absent (the preference tools), outvoted (an unconditional hint beside it),
+or present and unannounced (the dedup). This one had none. The transcript
+shows the result the model read last, and `hints` held `markPlaced` and
+NOTHING else. The hint arrived, alone, on the release deployed that evening,
+and DeepSeek wrote the sentence anyway. That is the end of the prompt route:
+there was nothing left to reword or remove, so the rule moved to the boundary,
+where every other rule this model would not keep already lives.
+
+`domain/mark-echo.echoOnly`, ported into the reply gate. brokerd remembers
+what the tool behind the 👍 wrote (`vocabOf`: its title, name or fact, never
+a hint or a category Olma chose). It forgets that on a new message, on any
+tool that earned no 👍, and after five minutes. The gate asks brokerd
+`mark_echo` about a short reply only, and cancels the reply when every word in
+it is a save word off a closed list or a word of that title. A question mark,
+a link, a digit the title did not hold, or one new word ("מחר", "עבודה", a
+caveat) and the reply goes out whole. A dead socket is "not an echo". The
+cancel is filed as `reply.gated` with kind `echo`, and `unanswered` case (b)
+reads that row before re-sending anything. Otherwise the repair sweep would
+have put the echo back on the phone from the raw pipe, since the gate's cancel
+leaves exactly the fingerprint of a lost reply.
+
+**The first version was rejected by the owner the same night** as patch on
+patch: it decided off a list of save phrasings, and every new phrasing would
+have meant another word on it. The rule that replaced it measures redundancy
+against what both sides already KNOW — the person's own message (held by the
+plugin, five minutes, never sent to brokerd), the title the tool wrote, and a
+closed grammatical class. "רשמתי לקנות חלב מחר" under a 👍 is an echo when
+they said "מחר", and news when Olma inferred it. The two structural fixes that
+would have stopped the model writing at all were checked on the box first and
+are not available: an MCP result cannot end the turn (`projectMcpCallToolResult`
+keeps only content, structuredContent and isError, so `terminate` never reaches
+the loop), and `before_agent_finalize` refuses to revise after a tool with a
+side effect — which a save is.
+
+**Not measured first**, which every other drop tier was. The bulk read of all
+users' transcripts for this was refused by the session's permission layer.
+So the tier was built to be safe without a corpus: a miss costs one redundant
+line, the state before the fix, and a false drop needs a reply made only of
+the title and a save word. Read `reply.gated` rows with kind `echo` after a
+week, and widen it only from what they show.
 
 ### The rung nobody asked for, at half past one (2026-09-07)
 

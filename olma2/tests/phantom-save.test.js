@@ -181,8 +181,9 @@ test('the gate tells brokerd the word, sends the reply untouched, and never asks
   const handler = plugin.buildReplyGateHandler({ connect, log: () => {} });
   const payload = { text: 'רשמתי לך הכל 👍' };
   // `turn_progress` rides every reply a person gets (the held 👀,
-  // tests/eyes-delay.test.js); this test is about the claim.
-  const claims = () => sent.filter((m) => m.method !== 'turn_progress');
+  // tests/eyes-delay.test.js), and `mark_echo` asks about every short one
+  // (tests/mark-echo.test.js); this test is about the claim.
+  const claims = () => sent.filter((m) => m.method !== 'turn_progress' && m.method !== 'mark_echo');
   assert.equal(await handler({ payload, sessionKey: 'agent:u-3:whatsapp:direct:+972500000000' }, {}), undefined);
   await settle();
   assert.equal(claims().length, 1);
@@ -195,8 +196,8 @@ test('the gate tells brokerd the word, sends the reply untouched, and never asks
   await handler({ payload: { text: 'אוסיף את זה מחר' }, sessionKey: 'agent:u-3:whatsapp:direct:+972500000000' }, {});
   await settle();
   assert.equal(claims().length, 0);
-  // and a room has no held 👀 to drop
-  assert.deepEqual(sent.map((m) => m.params.agentId), ['u-3']);
+  // and a room has no held 👀 to drop, nor a 👍 of ours to echo
+  assert.deepEqual([...new Set(sent.map((m) => m.params.agentId))], ['u-3']);
   sent.length = 0;
   // A claim inside working-out the gate cancels reaches nobody, so it is not asked about.
   const out = await handler({ payload: { text: 'remind_at שמרתי ל-2026-09-10T10:00:00Z' }, sessionKey: 'agent:u-3:whatsapp:direct:+972500000000' }, {});
