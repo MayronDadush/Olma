@@ -60,6 +60,7 @@ node brand/studio/render.js <scene.html[?query]> <out.mp4|.png> [--fps 30] [--si
 |---|---|---|
 | `intro.html` | The intro video: "הראש מלא בדברים?", a full message, then she sorts it | `?lang=he\|en` |
 | `group.html` | Groups: tagged in the group, asks privately, closes in the group | `?tr=carousel\|cube\|finger\|push\|sheet\|zoom` |
+| `ads.html` | The short ads: reminders ("שוב שכחת?"), coffee with Dana (1:1 coordination), the morning picture | `?ad=reminder\|coffee\|morning&lang=he\|en` |
 | `closing.html` | The closing card of every video | |
 | `template.html` | Post / story / carousel from a content file | `?c=<content>&fmt=…` |
 
@@ -75,6 +76,8 @@ in which the lines rise in and the second line is mustard.
   can be rebuilt):
   `~/Olma-brand/videos/<topic>/<name>-<variant>-<lang>.mp4`, with older versions in
   `old-design/` next to it.
+- A **GIF** of a video (for sending as a gif): `ffmpeg -i x.mp4 -vf "fps=15,scale=540:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=128[p];[b][p]paletteuse=dither=bayer:bayer_scale=4" x.gif`
+  (540px, 15fps — the 26.9 library's size).
 - `brand/studio/out/` is a temporary output folder and is gitignored.
 - Send a finished file to the owner with SendUserFile, and say where it is stored.
 
