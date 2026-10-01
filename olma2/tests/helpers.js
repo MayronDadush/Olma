@@ -98,6 +98,25 @@ function testDbName() {
 // so this must never become a storm — the first file drops what is stale and
 // the rest find nothing. Names from before the timestamp carry no age
 // and are left alone — those were cleared by hand.
+// Drops one throwaway database. WITH (FORCE) is for the file's own sockets —
+// a leaked client, already forced shut — but it must also be allowed to
+// terminate every OTHER backend in the database, and on the box one of those
+// is often an AUTOVACUUM worker: a copy of the migrated template arrives with
+// tables worth analysing. A worker belongs to no role, so a role without
+// pg_signal_backend is refused ("permission denied to terminate process") and
+// the database stays. It did, 5-6 per deploy, on the first run after #658
+// (measured 2026-09-30). A plain DROP handles exactly that case itself: it
+// signals autovacuum to exit and waits for it, and it still refuses a real
+// connection, which is the right answer for one.
+async function dropTestDb(admin, name) {
+  try {
+    await admin.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`);
+  } catch (e) {
+    if (e.code !== '42501') throw e;
+    await admin.query(`DROP DATABASE IF EXISTS ${name}`);
+  }
+}
+
 const STALE_TEST_DB_MS = 6 * 3600_000;
 let staleSwept = false;
 async function sweepStaleTestDbs(admin) {
@@ -111,7 +130,7 @@ async function sweepStaleTestDbs(admin) {
       const born = parseInt(datname.split('_')[2], 36) * 1000;
       if (!(Date.now() - born > STALE_TEST_DB_MS)) continue;
       try {
-        await admin.query(`DROP DATABASE IF EXISTS ${datname} WITH (FORCE)`);
+        await dropTestDb(admin, datname);
       } catch (e) {
         console.warn(`[test] could not drop stale ${datname}: ${e.message}`);
       }
@@ -359,10 +378,9 @@ async function freshDb() {
     const admin2 = new Client({ connectionString: ADMIN_URL });
     await admin2.connect();
     try {
-      await admin2.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`);
+      await dropTestDb(admin2, name);
     } catch (e) {
-      // WITH (FORCE) has to terminate any backend still attached, which needs
-      // pg_signal_backend. Failing to clean up a throwaway database must never
+      // Failing to clean up a throwaway database must never
       // turn a passing suite red — a leftover olma2_t_* database is inert, and
       // the next run's CREATE uses a fresh random name anyway.
       console.warn(`[test] could not drop ${name}: ${e.message}`);
@@ -466,4 +484,4 @@ function daytime(date = new Date()) {
   return d;
 }
 
-module.exports = { freshDb, makeUser, slotStart, daytime, templateName };
+module.exports = { freshDb, makeUser, slotStart, daytime, templateName, dropTestDb };
