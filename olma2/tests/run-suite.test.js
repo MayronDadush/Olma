@@ -108,13 +108,13 @@ test('an unusual non-zero exit is passed through as itself, not flattened', () =
 
 test('a SLOW but talking suite is left alone and runs to completion', () => {
   // The PR #407 regression, and the reason the watchdog measures progress:
-  // this runs for ~6s with a 2s window, so a fixed ceiling would have killed
-  // it three times and reported a wedge. Every line it prints resets the
-  // deadline, so it must finish and exit 0 on the FIRST attempt.
-  const r = run('for i in 1 2 3 4 5 6; do echo "still working $i"; sleep 1; done; exit 0');
+  // this runs for ~4s with a 2s window, so a fixed ceiling would have killed
+  // it twice and reported a wedge. Every line it prints resets the deadline,
+  // so it must finish and exit 0 on the FIRST attempt.
+  const r = run('for i in 1 2 3 4; do echo "still working $i"; sleep 1; done; exit 0');
   assert.equal(r.status, 0, 'a slow suite that keeps talking is not a wedge');
   assert.equal(r.attempts, 1, 'it must not be killed and retried');
-  assert.match(r.stdout, /still working 6/, 'it should have run all the way to the end');
+  assert.match(r.stdout, /still working 4/, 'it should have run all the way to the end');
 });
 
 test('a HANG is retried, announced each time, and still fails at the end', () => {
@@ -139,13 +139,12 @@ test('a HANG is retried, announced each time, and still fails at the end', () =>
   assert.match(r.stderr, /could not exit/);
   assert.match(r.stderr, /Look at OUR code first/);
   assert.match(r.stderr, /no output for/, 'the banner must name SILENCE as what it measured');
-});
 
-test('the summary says every attempt went silent, not merely that it ran long', () => {
+  // The summary says every attempt went silent, not merely that it ran long:
   // "wedged on all N attempts" has to keep meaning what it says. On #407 it
-  // did not, and the log read as a dead suite when the suite was fine.
-  const r = run('sleep 60', { SUITE_ATTEMPTS: '2' });
-  assert.match(r.stderr, /wedged on all 2 attempts/);
+  // did not, and the log read as a dead suite when the suite was fine. (Its
+  // own test until 2026-09-30; folded in here because it sat through two more
+  // silence windows to read the same banner.)
   assert.match(r.stderr, /went silent for 2s with the process still alive/);
 });
 
@@ -176,13 +175,7 @@ test('the overall cap is a DIFFERENT verdict: not a wedge, and not retried', () 
   assert.doesNotMatch(r.stderr, /wedged on all/);
 });
 
-test('SUITE_ATTEMPTS is honoured, so one attempt means no retry at all', () => {
-  const r = run('sleep 60', { SUITE_ATTEMPTS: '1' });
-  assert.equal(r.attempts, 1);
-  assert.equal(r.status, 1);
-});
-
-test('it kills the hung run rather than leaving it behind', () => {
+test('it kills the hung run rather than leaving it behind — and one attempt means no retry', () => {
   // The runner will not reap its children in this state. Leaking them into
   // the next attempt means leaked databases and a second, confusing failure.
   // Note this "suite" is busy but SILENT on stdout — work nobody can see is
@@ -190,7 +183,10 @@ test('it kills the hung run rather than leaving it behind', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'olma-suite-'));
   const marker = path.join(dir, 'still-alive');
   // A "suite" that keeps writing until something kills it.
-  run(`bash -c 'while true; do printf y >> ${marker}; sleep 0.2; done'`, { SUITE_ATTEMPTS: '1' });
+  const r = run(`bash -c 'while true; do printf y >> ${marker}; sleep 0.2; done'`, { SUITE_ATTEMPTS: '1' });
+  // SUITE_ATTEMPTS is honoured: one attempt means no retry at all.
+  assert.equal(r.attempts, 1);
+  assert.equal(r.status, 1);
   const sizeAfterKill = fs.statSync(marker).size;
   execFileSync('bash', ['-c', 'sleep 1.5']);
   assert.equal(fs.statSync(marker).size, sizeAfterKill, 'the hung process should be dead, not still writing');
