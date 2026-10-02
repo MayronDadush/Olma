@@ -104,6 +104,17 @@ function checkOpenclawConfig(cfg, { packs = new Map() } = {}) {
   if (queueMode !== 'followup') {
     violations.push(`messages.queue.mode is ${queueMode === undefined ? 'unset (gateway default "steer")' : JSON.stringify(queueMode)} — a second message mid-turn cancels the first one's tool calls instead of waiting for its own turn (fix: scripts/set-queue-mode.js --apply)`);
   }
+  // The other half of "a message gets its own turn": messages sent in a row
+  // BEFORE a turn opens are held and answered as one (owner, 2026-10-02).
+  // Unset is the gateway default, 0 — every message its own turn and its own
+  // reply. Dashboard row. The WhatsApp listener reads it when it connects, so
+  // a new value needs a gateway restart to be live, and the file says nothing
+  // about whether that happened. (fix: scripts/set-inbound-debounce.js --apply,
+  // then restart the gateway)
+  const debounceMs = occ.whatsappInboundDebounceMs(cfg);
+  if (debounceMs !== occ.WHATSAPP_INBOUND_DEBOUNCE_MS) {
+    violations.push(`WhatsApp inbound debounce is ${debounceMs}ms, not ${occ.WHATSAPP_INBOUND_DEBOUNCE_MS}ms — ${debounceMs === 0 ? 'several messages sent in a row each get a reply of their own' : 'messages sent in a row are held for a window nobody chose'} (fix: scripts/set-inbound-debounce.js --apply, then restart the gateway)`);
+  }
   // Two systems marking one message, neither able to see the other. The
   // gateway places `messages.ackReaction` from its own config the instant a
   // message is accepted; brokerd places its own ~15s later

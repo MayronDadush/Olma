@@ -19,6 +19,7 @@ never trust a dated narrative for something you are about to act on.
 
 **Gateway, config and upgrades**
 
+- [Three messages in a row got three replies (2026-10-02)](#three-messages-in-a-row-got-three-replies-2026-10-02)
 - [Six hours with nobody to talk to (detector added 2026-09-11)](#six-hours-with-nobody-to-talk-to-detector-added-2026-09-11)
 - [The socket that was never closed (fixed 2026-09-11)](#the-socket-that-was-never-closed-fixed-2026-09-11)
 - [A message reached the box and stopped there, and nothing could tell (detector added 2026-09-06)](#a-message-reached-the-box-and-stopped-there-and-nothing-could-tell-detector-added-2026-09-06)
@@ -300,6 +301,52 @@ never trust a dated narrative for something you are about to act on.
 - [Merged is not deployed — the drift row (2026-09-04)](#merged-is-not-deployed-the-drift-row-2026-09-04)
 
 ## Gateway, config and upgrades
+
+### Three messages in a row got three replies (2026-10-02)
+
+The owner's ask: when somebody writes several messages one after the other,
+Olma should answer all of them together instead of once per message.
+
+Since 2026-09-06 `messages.queue.mode` is `followup` (the entry on the reply
+that was cancelled mid-turn, under "Turns"), which is right for what it
+decides — a message that arrives while a turn is RUNNING waits and gets a
+turn of its own — and it is exactly why a burst got a reply per message. The
+first message opened a turn the instant it arrived, the second queued behind
+it, and each turn answered its own message. "collect" was rejected then and
+is still not the answer: it only merges what arrives mid-turn, so the first
+message would still be answered alone.
+
+**The gateway already had the missing half, and it was off.**
+`messages.inbound` (2026.8.1) holds a text before any turn opens; every new
+message from the same chat restarts the timer, capped at five windows from
+the first; when it closes, the WhatsApp plugin joins the texts with a line
+break into ONE dispatch carrying the last message's id (`combinedBody`,
+`isBatched: true`). Media, a location and a WhatsApp reply are never held,
+and flush whatever is waiting ahead of them as its own turn. Unset is 0.
+
+**Measured before choosing the window**, from the WhatsApp time on every
+inbound DM in the last 30 days (32 people, 619 gaps between one person's
+consecutive messages): 19 within 5s, 32 within 8s, 44 within 10s, 61 within
+15s — and Olma had answered in between in 0, 2, 5 and 15 of them. Every
+message now waits the window before its turn opens, so the window is paid on
+every reply. 8 seconds was recommended as the knee; the owner first chose 5,
+then 8 the same day, once a real burst (Shimon, 2026-10-02) turned out to
+have gaps of 8s and 9s — 5s would have caught neither.
+
+**Everything that reads the text reads the joined text, once.** The
+turn-open hook's verdicts were checked on joined bursts before shipping: an
+"only" reading (thanks, stop, out) needs every line, so "תודה" followed by a
+request is no longer silenced with a 🙏; and a request split across messages
+reads whole — "תזכיר לי לשלם חשבון" then "עד יום חמישי" used to arm a weekly
+nudge off the first message alone, and joined it is a chase to Thursday
+(`tests/turn-open.test.js`). The link and game shortcuts match a whole short
+message, so a burst falls through to the model, which is the old path.
+`message.received` now counts a burst once.
+
+The WhatsApp listener reads the value when it connects, so
+`scripts/set-inbound-debounce.js --apply` needs a gateway restart, and
+`config_guard` compares the effective value against
+`openclaw-config.WHATSAPP_INBOUND_DEBOUNCE_MS`.
 
 ### Six hours with nobody to talk to (detector added 2026-09-11)
 
