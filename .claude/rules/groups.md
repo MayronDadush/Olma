@@ -764,6 +764,18 @@ have already had to be argued for.
   a fixture or an older payload still says its line — being over-careful here
   costs a line that is true (`incidents.md`, "The room chased three people, two
   of whom had never been asked").
+  **…and since 2026-10-02 a member who has never written RIDES the chase, on a
+  ration** (owner, the poker room: three of thirteen never wrote and nothing
+  reminded them). `cold-tags.allowed`: a tag at most once every three days
+  across every room, and none after three with no word back — writing makes
+  them connected and takes them out of the rule. The OPENING line of every new
+  room tags them all and is never counted (owner, same day); every later line
+  that tags them (base/moved, almost, chase) asks it, and the sweep records each tag
+  in `room_cold_tags` (migration 107, keyed by phone because a LID has no user
+  row). They never decide that a chase is said, only who it reminds, and a tag
+  held back is still counted ("ועוד N"). The chase's "who was reached" filter
+  above is unchanged for participants (`incidents.md`, "Four out of five, and
+  the room heard nothing").
 
 - **A room's coordination counts everybody in the room, and closes on its own
   only when all of them said yes** (owner, 2026-09-26: "שתיאום תמיד יספור את

@@ -30,6 +30,7 @@ const audit = require('../domain/audit');
 const groupContext = require('../domain/group-context');
 const groupMeetings = require('../domain/group-meetings');
 const groupVoice = require('../domain/group-voice');
+const coldTags = require('../domain/cold-tags');
 const coordinationMoves = require('./coordination-moves');
 const groupOutbox = require('../domain/group-outbox');
 const groupTurn = require('../domain/group-turn');
@@ -670,7 +671,13 @@ async function sweepGroupVoice(client, deps) {
     const relay = row.status === 'negotiating'
       ? await groupMeetings.pendingRelay(client, Number(row.meeting_id))
       : null;
+    // Members who have never written to her, and which of them a line may tag
+    // today (domain/cold-tags.js). The same people `outsidePhones` already
+    // names, so there is one answer to "has not written".
+    const nonWriters = new Set((st.coordination && st.coordination.outsidePhones) || []);
+    const cold = { nonWriters, allowed: await coldTags.allowed(client, [...nonWriters], now) };
     const line = groupVoice.decideGroupLine(st.coordination, {
+      coldTags: cold,
       pendingRelay: relay,
       saidStarted: Boolean(row.group_started_at),
       saidBase: Boolean(row.group_base_at),
@@ -774,6 +781,14 @@ async function sweepGroupVoice(client, deps) {
         await client.query('UPDATE meetings SET group_calendar_at = $2 WHERE id = $1', [row.meeting_id, now]);
       }
     }
+    // Every never-written member this line tagged, so the next line counts it.
+    // The opening line is not counted (owner, 2026-10-02): every new room says
+    // who is in it.
+    const tagged = (line.kind === 'started' ? [] : line.missing) || [];
+    await coldTags.record(client, {
+      phones: tagged.filter((p) => nonWriters.has(p)),
+      groupId: row.id, meetingId: Number(row.meeting_id), lineKind: line.kind, now,
+    });
     await audit.record(client, row.registered_by_user_id, 'group.coordination_said', {
       groupId: row.id, meetingId: Number(row.meeting_id), kind: line.kind,
     });

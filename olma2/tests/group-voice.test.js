@@ -1325,3 +1325,91 @@ test('the sweep says one-short once, and stamps it', async () => {
   await pass(sent, DAY_AT(30), group.external_id);
   assert.deepEqual(sent, [], 'said once');
 });
+
+// ── Members who have never written to her (owner, 2026-10-02) ──────────────
+// The poker room: three of thirteen had never written, the chase named only
+// people she had written to, and nothing reminded the three who could have
+// made it five. A room may tag them — once every three days across every room,
+// and never after three tags with no word back (domain/cold-tags.js).
+test('a member who never wrote is tagged only when it is their turn, and rides the chase', () => {
+  const X = '+972609990061', Y = '+972609990062';
+  const p = (n) => ({ phone: `+97250000000${n}`, asked: true });
+  const NOW = DAY.getTime();
+  const cold = (allowed) => ({ nonWriters: new Set([X, Y]), allowed: new Set(allowed) });
+
+  const started = groupVoice.decideGroupLine({
+    status: 'negotiating', title: 'פוקר', participants: 3, roomTotal: 5, outside: 2, outsidePhones: [X, Y], options: [],
+  }, { nowMs: NOW, coldTags: cold([Y]) });
+  assert.equal(started.kind, 'started');
+  assert.deepEqual(started.outsidePhones, [X, Y], 'every new room tags them all, whatever their ration says');
+
+  const co = {
+    status: 'negotiating', title: 'פוקר', participants: 3, roomTotal: 5, settleDueAt: null,
+    outsidePhones: [X, Y], silent: [p(3)],
+    notInIt: [{ phone: X, asked: false }, { phone: Y, asked: false }],
+    options: [{ optionId: 1, slot: 'שבת בערב', startsAt: new Date(NOW + 30 * 3600_000).toISOString(),
+      yes: [p(1), p(2)], no: [], missing: [p(3)] }],
+  };
+  const base = groupVoice.decideGroupLine(co, { saidStarted: true, nowMs: NOW, coldTags: cold([Y]) });
+  assert.equal(base.kind, 'base');
+  assert.deepEqual(base.missing, [p(3).phone, Y], 'somebody who has written is always tagged');
+  assert.equal(base.more, 1, 'X is "ועוד 1", never dropped from the count');
+  assert.deepEqual(groupVoice.decideGroupLine(co, { saidStarted: true, nowMs: NOW }).missing, [p(3).phone, X, Y],
+    'a caller with no allowance tags as before');
+
+  const chaseOpts = { saidStarted: true, saidBase: true, startedAtMs: NOW - 3 * 3600_000, tableSaidAtMs: NOW - 3 * 3600_000, nowMs: NOW };
+  const chase = groupVoice.decideGroupLine(co, { ...chaseOpts, coldTags: cold([X]) });
+  assert.equal(chase.kind, 'chase');
+  assert.deepEqual(chase.missing, [p(3).phone, X], 'the chase carries whoever of them it is the turn of');
+  assert.deepEqual(groupVoice.decideGroupLine(co, chaseOpts).missing, [p(3).phone], 'and nobody else');
+  assert.notEqual(groupVoice.decideGroupLine({ ...co, silent: [] }, { ...chaseOpts, coldTags: cold([X, Y]) }).kind, 'chase',
+    'they never decide that there IS a chase');
+});
+
+test('the allowance: once every three days, and three times in all', async () => {
+  const coldTags = require('../src/domain/cold-tags');
+  const P = '+972609990071', Q = '+972609990072';
+  const at = (days) => new Date(DAY.getTime() + days * 24 * 3600_000);
+  const may = async (when) => [...await coldTags.allowed(db.pool, [P, Q], when)].sort();
+  assert.deepEqual(await may(at(0)), [P, Q], 'never tagged');
+  await coldTags.record(db.pool, { phones: [P], groupId: 1, lineKind: 'started', now: at(0) });
+  assert.deepEqual(await may(at(2.9)), [Q], 'not inside three days');
+  assert.deepEqual(await may(at(3)), [P, Q]);
+  await coldTags.record(db.pool, { phones: [P], groupId: 2, lineKind: 'base', now: at(3) });
+  await coldTags.record(db.pool, { phones: [P], groupId: 1, lineKind: 'chase', now: at(6) });
+  assert.deepEqual(await may(at(30)), [Q], 'three with no word back, and no more');
+  assert.equal((await coldTags.allowed(db.pool, [], at(0))).size, 0);
+});
+
+test('the sweep records who a line tagged, and never the opening line', async () => {
+  const { group, people } = await room(62);
+  const [a, b] = people;
+  const X = '+972609990081';
+  await withTx(db.pool, (c) => groups.syncRoster(c, group.id, [
+    ...people.map((u) => ({ phone: u.phone })), { phone: X, displayName: 'חדש' },
+  ]));
+  const started = await withTx(db.pool, (c) => groupMeetings.startCoordination(c, group, a, 'פוקר'));
+  const meetingId = Number(started.data.meeting.id);
+
+  let sent = [];
+  await pass(sent, null, group.external_id);
+  assert.equal(sent.length, 1);
+  assert.ok(sent[0].body.includes(`@${X}`), 'the opening line tags them');
+  const tags = async () => (await db.pool.query(
+    'SELECT line_kind FROM room_cold_tags WHERE phone = $1 ORDER BY id', [X])).rows.map((r) => r.line_kind);
+  assert.deepEqual(await tags(), [], 'and does not count against them');
+
+  const when = slotStart('רביעי', { hours: 72 });
+  const optionId = await withTx(db.pool, async (c) =>
+    (await options.add(c, a.id, meetingId, 'רביעי 20:00', when)).data.option.id);
+  await withTx(db.pool, (c) => options.answer(c, b.id, meetingId, optionId, 'y'));
+  await deliverInvites(meetingId);
+  sent = [];
+  await pass(sent, DAY_AT(30), group.external_id);
+  assert.equal(sent.length, 1);
+  assert.match(sent[0].body, /2 מתוך 4/, 'counted');
+  assert.ok(sent[0].body.includes(`@${X}`), 'the first rationed tag');
+  assert.deepEqual(await tags(), ['base']);
+  const allowed = await require('../src/domain/cold-tags').allowed(db.pool, [X], DAY_AT(60));
+  assert.equal(allowed.size, 0, 'and the next line inside three days leaves them be');
+});
