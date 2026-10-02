@@ -76,7 +76,8 @@ in which the lines rise in and the second line is mustard.
   can be rebuilt):
   `~/Olma-brand/videos/<topic>/<name>-<variant>-<lang>.mp4`, with older versions in
   `old-design/` next to it.
-- A **GIF** of a video (for sending as a gif): `ffmpeg -i x.mp4 -vf "fps=15,scale=540:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=128[p];[b][p]paletteuse=dither=bayer:bayer_scale=4" x.gif`
+- **Sending "as a gif" on WhatsApp = the mp4 with `--gif-playback`** (owner's pick 2.10, of 4 options tried on his phone). It autoplays and loops, and it is half the size of a real .gif. The real .gif below is only for places other than WhatsApp.
+- A **GIF** of a video (for anywhere but WhatsApp): `ffmpeg -i x.mp4 -vf "fps=15,scale=540:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=128[p];[b][p]paletteuse=dither=bayer:bayer_scale=4" x.gif`
   (540px, 15fps — the 26.9 library's size).
 - `brand/studio/out/` is a temporary output folder and is gitignored.
 - Send a finished file to the owner with SendUserFile, and say where it is stored.
