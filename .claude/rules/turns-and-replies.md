@@ -152,7 +152,7 @@ title means this file. Grep the title, not the filename.
   `scripts/set-queue-mode.js --apply` sets it.
 
 - **Messages sent in a row are held and answered as ONE: WhatsApp inbound
-  debounce `openclaw-config.WHATSAPP_INBOUND_DEBOUNCE_MS` (5s).** The queue
+  debounce `openclaw-config.WHATSAPP_INBOUND_DEBOUNCE_MS` (8s).** The queue
   mode only decides what happens to a message that arrives while a turn is
   RUNNING; `messages.inbound.byChannel.whatsapp` decides how long a text
   waits before a turn opens at all, restarting on each new message (capped

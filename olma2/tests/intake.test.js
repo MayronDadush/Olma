@@ -37,7 +37,7 @@ function baseConfig() {
       'olma-turn': { enabled: true, hooks: { allowConversationAccess: true }, config: { agents: [] } },
       'memory-core': { config: { dreaming: { enabled: false } } },
     } },
-    messages: { queue: { mode: 'followup' }, inbound: { byChannel: { whatsapp: 5000 } } },
+    messages: { queue: { mode: 'followup' }, inbound: { byChannel: { whatsapp: 8000 } } },
     session: { reset: { mode: 'daily', atHour: 2 } },
     bindings: [],
     tools: { fs: { workspaceOnly: true }, alsoAllow: ['read', 'write'] },
@@ -1043,7 +1043,7 @@ test('config guard: a message that arrives mid-turn must wait for its own turn (
   assert.equal(v.length, 1);
   assert.match(v[0], /messages\.queue\.mode is unset \(gateway default "steer"\)/);
   assert.match(v[0], /set-queue-mode/, 'says how to fix it');
-  const inbound = { byChannel: { whatsapp: 5000 } };
+  const inbound = { byChannel: { whatsapp: 8000 } };
   cfg.messages = { queue: { mode: 'steer' }, inbound };
   assert.match(guard.checkOpenclawConfig(cfg)[0], /messages\.queue\.mode is "steer"/);
   cfg.messages = { queue: { mode: 'collect' }, inbound };

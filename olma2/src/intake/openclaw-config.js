@@ -525,10 +525,10 @@ function removeGroupBinding(cfg, jid) {
 // the box over 30 days, 619 gaps between one person's consecutive messages:
 // 19 within 5s, 32 within 8s and 44 within 10s, and in nearly none of them
 // had Olma answered in between. Every message waits this long before a turn
-// opens, so it is a cost paid on every reply; the owner chose 5s over the
-// recommended 8s for that reason. Applied by scripts/set-inbound-debounce.js;
+// opens, so it is a cost paid on every reply. The owner first chose 5s and
+// moved to 8s after a real burst that day had gaps of 8s and 9s. Applied by scripts/set-inbound-debounce.js;
 // config_guard compares the effective value against this one.
-const WHATSAPP_INBOUND_DEBOUNCE_MS = 5000;
+const WHATSAPP_INBOUND_DEBOUNCE_MS = 8000;
 
 // The value the gateway will actually use for WhatsApp: the per-channel entry
 // wins over the global one (resolveInboundDebounceMs on 2026.8.1).

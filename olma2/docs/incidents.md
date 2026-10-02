@@ -329,8 +329,9 @@ inbound DM in the last 30 days (32 people, 619 gaps between one person's
 consecutive messages): 19 within 5s, 32 within 8s, 44 within 10s, 61 within
 15s — and Olma had answered in between in 0, 2, 5 and 15 of them. Every
 message now waits the window before its turn opens, so the window is paid on
-every reply. 8 seconds was recommended as the knee; the owner chose 5, for
-the delay every single message pays.
+every reply. 8 seconds was recommended as the knee; the owner first chose 5,
+then 8 the same day, once a real burst (Shimon, 2026-10-02) turned out to
+have gaps of 8s and 9s — 5s would have caught neither.
 
 **Everything that reads the text reads the joined text, once.** The
 turn-open hook's verdicts were checked on joined bursts before shipping: an
