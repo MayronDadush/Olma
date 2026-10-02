@@ -43,8 +43,9 @@ const newTurn = () => ({ userId: null, opened: false, counted: false, quota: nul
 const call = (user, name, args, turn) => broker.dispatch(
   { id: 1, method: 'tool_call', params: { name, args: { olma_identity: user.identity_token, ...args } } }, turn);
 const open = (params) => broker.dispatch({ id: 1, method: 'turn_open', params });
-// The time follows the words: a slot that names a day is refused unless the
-// moment falls on it, so a bare now+50h was a Saturday only on a Thursday run.
+// The slot's own words go to slotStart: `add` refuses a time whose weekday
+// disagrees with the one the words name (when_said), so a bare "now + 50h"
+// passed only on the days of the week where it happened to land on Saturday.
 const at = (slot, h) => slotStart(slot, { hours: h });
 
 // Three people who may coordinate; `yuval` is the one who answers, on an agent.

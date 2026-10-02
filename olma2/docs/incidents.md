@@ -59,6 +59,7 @@ never trust a dated narrative for something you are about to act on.
 - [Four messages in sixty-two seconds (fixed 2026-09-20)](#four-messages-in-sixty-two-seconds-fixed-2026-09-20)
 - [Today at five is not Monday (fixed 2026-09-24)](#today-at-five-is-not-monday-fixed-2026-09-24)
 - [The constraint that was an answer (fixed 2026-09-20)](#the-constraint-that-was-an-answer-fixed-2026-09-20)
+- [After 21 is not a no (fixed 2026-10-02)](#after-21-is-not-a-no-fixed-2026-10-02)
 - [Two paragraphs where two sentences would do (fixed 2026-09-20)](#two-paragraphs-where-two-sentences-would-do-fixed-2026-09-20)
 - [The link came back on every coordination message (2026-09-24)](#the-link-came-back-on-every-coordination-message-2026-09-24)
 - [The slot that was already closed (fixed 2026-09-20)](#the-slot-that-was-already-closed-fixed-2026-09-20)
@@ -2187,6 +2188,44 @@ nothing. And the tool is out of `TOOL_MARKS`, into the negotiation family that
 `tests/reactions.test.js` guards: it can only be called while a meeting is
 negotiating, so every call is a negotiation step, and the negotiation family
 has no 👍 by rule.
+
+### After 21 is not a no (fixed 2026-10-02)
+
+Coordination 66, the poker room, 2026-10-02. Three times were on the table:
+Saturday noon, Saturday evening, Monday evening — the two evenings stored as
+the `evening` daypart, so 19:00 is a stand-in hour, not something anybody
+said. Olma asked שמעון (u-54) "בשבת או שני?" and he wrote "גם וגם", then,
+twenty seconds later, "אחרי 21". The first message was read as BOTH
+SATURDAYS (noon and evening, a yes on each), not Saturday and Monday. The
+second went to `record_meeting_constraint` with "זמין רק אחרי 21:00" and
+`declines_option_ids` naming all three times, and she told him she had taken
+him off every one of them and offered to propose a new time. He had said he
+could come to both evenings from nine.
+
+The model had two shapes for a note: alone (answers nothing — the 2026-09-20
+fix's own hint then says "a constraint that rules a time out is an ANSWER,
+call accept=false") or beside a decline. A condition the time still FITS had
+no write at all, so the nearest one was taken. Same family as the entry above,
+mirrored: there the answer had nowhere to go, here the yes did.
+
+**Repair.** One-off, owner-approved: yes on both evenings through
+`meetings.respondToSlot` + `afterSlotResponse`, Saturday noon left at no, his
+note left as it was, and one fixed sentence to him through the outbox the way
+the admin page's proactive message goes (logged in `owner_messages`). מאור's
+"אולי על מוצ״ש" — said earlier only as a relayed line in the room — was
+recorded as his note on the same coordination, with no answer, at the owner's
+request.
+
+**Fix.** `record_meeting_constraint` takes `accepts_option_ids`: checked
+against the live table with the declines before anything is written, refused
+if one id is in both lists, then each gets a `y` on the road
+`respond_to_meeting_slot accept=true` takes, AFTER any decline so a yes that
+completes an option keeps the settling hint. No new column: the per-person
+note already existed — `meeting_participants.constraints`, drawn beside the
+name on the page (`mtSaid`), read by the other participants' agents through
+`getStatus`, and never said in the room, by the rule in
+`group-meetings.js`. Paid for inside the tool-schema ceiling by trimming
+three sentences the parameters already carried.
 
 ### The request that was dropped as Olma's own idea (fixed 2026-09-30)
 
