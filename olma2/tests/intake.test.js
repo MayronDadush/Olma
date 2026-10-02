@@ -37,7 +37,7 @@ function baseConfig() {
       'olma-turn': { enabled: true, hooks: { allowConversationAccess: true }, config: { agents: [] } },
       'memory-core': { config: { dreaming: { enabled: false } } },
     } },
-    messages: { queue: { mode: 'followup' }, inbound: { byChannel: { whatsapp: 8000 } } },
+    messages: { queue: { mode: 'followup' } },
     session: { reset: { mode: 'daily', atHour: 2 } },
     bindings: [],
     tools: { fs: { workspaceOnly: true }, alsoAllow: ['read', 'write'] },
@@ -1038,42 +1038,15 @@ test('config guard: dreaming must be explicitly off', () => {
 test('config guard: a message that arrives mid-turn must wait for its own turn (queue mode followup)', () => {
   const cfg = baseConfig();
   assert.deepEqual(guard.checkOpenclawConfig(cfg), []);
-  delete cfg.messages.queue;
+  delete cfg.messages;
   let v = guard.checkOpenclawConfig(cfg);
   assert.equal(v.length, 1);
   assert.match(v[0], /messages\.queue\.mode is unset \(gateway default "steer"\)/);
   assert.match(v[0], /set-queue-mode/, 'says how to fix it');
-  const inbound = { byChannel: { whatsapp: 8000 } };
-  cfg.messages = { queue: { mode: 'steer' }, inbound };
+  cfg.messages = { queue: { mode: 'steer' } };
   assert.match(guard.checkOpenclawConfig(cfg)[0], /messages\.queue\.mode is "steer"/);
-  cfg.messages = { queue: { mode: 'collect' }, inbound };
+  cfg.messages = { queue: { mode: 'collect' } };
   assert.equal(guard.checkOpenclawConfig(cfg).length, 1, 'collect merges the two into one prompt: one count, one reply target — not what we want either');
-});
-
-// Owner, 2026-10-02: several messages sent in a row get ONE reply. The
-// gateway's inbound debounce does it, and unset is 0 — one reply each.
-test('config guard: messages sent in a row are held and answered as one (WhatsApp inbound debounce)', () => {
-  const occ = require('../src/intake/openclaw-config');
-  const cfg = baseConfig();
-  assert.equal(occ.whatsappInboundDebounceMs(cfg), occ.WHATSAPP_INBOUND_DEBOUNCE_MS);
-  assert.deepEqual(guard.checkOpenclawConfig(cfg), []);
-
-  delete cfg.messages.inbound;
-  let v = guard.checkOpenclawConfig(cfg);
-  assert.equal(v.length, 1);
-  assert.match(v[0], /debounce is 0ms/);
-  assert.match(v[0], /reply of their own/, 'says what the person sees');
-  assert.match(v[0], /set-inbound-debounce.*restart the gateway/, 'says how to fix it, restart included');
-
-  // The global value counts when no WhatsApp entry overrides it — and the
-  // per-channel entry wins over it, exactly as the gateway resolves it.
-  cfg.messages.inbound = { debounceMs: occ.WHATSAPP_INBOUND_DEBOUNCE_MS };
-  assert.deepEqual(guard.checkOpenclawConfig(cfg), [], 'a global value of the right size is the same thing');
-  cfg.messages.inbound = { debounceMs: occ.WHATSAPP_INBOUND_DEBOUNCE_MS, byChannel: { whatsapp: 30000 } };
-  v = guard.checkOpenclawConfig(cfg);
-  assert.equal(v.length, 1);
-  assert.match(v[0], /30000ms/);
-  assert.match(v[0], /nobody chose/);
 });
 
 // Miron, 2026-09-14: 👀, 👀, then 👍 on one message. Two systems were marking
@@ -1101,7 +1074,7 @@ test('config guard: the gateway must not acknowledge a message that brokerd alre
   // The companion key alone is inert — it modifies an ack that is not placed —
   // so it must NOT trip the guard, or removing the emoji would leave the board
   // permanently red with nothing left to fix.
-  cfg.messages = { queue: { mode: 'followup' }, inbound: cfg.messages.inbound, ackReactionScope: 'direct' };
+  cfg.messages = { queue: { mode: 'followup' }, ackReactionScope: 'direct' };
   assert.deepEqual(guard.checkOpenclawConfig(cfg), [], 'scope without the emoji does nothing and is not a violation');
 });
 

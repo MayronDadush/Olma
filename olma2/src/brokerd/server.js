@@ -16,6 +16,7 @@ const { readIdentity, stripIdentity } = require('../adapters/mcp/identity-param'
 const { FloodCounter } = require('./flood');
 const { refreshUserCard, CARD_TOOLS } = require('../intake/user-card');
 const turnDomain = require('../domain/turn');
+const BURST_FLAG = 'burst_reply_phones';
 const reactions = require('../domain/reactions');
 const reminders = require('../domain/reminders');
 const chaseDeadline = require('../domain/chase-deadline');
@@ -1014,6 +1015,31 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
     return out;
   }
 
+  // The reply gate has a reply in hand while a newer message from the same
+  // person is already waiting for its own turn, and asks whether to hold it
+  // so that turn answers both (gateway-plugin/olma-turn, "a burst is answered
+  // once"). This is the switch, read on every held reply: `burst_reply_phones`
+  // off means "send it", exactly as before. The reply itself never comes here.
+  async function handleBurstHold(params = {}) {
+    const agentId = String(params.agentId || '').trim();
+    if (!/^u-\d+$/.test(agentId)) return { ok: false, error: 'bad agentId' };
+    let out = { ok: true, hold: false };
+    await withTx(pool, async (client) => {
+      const { rows } = await client.query(
+        `SELECT id, phone FROM users WHERE agent_id = $1 AND status = 'active'`, [agentId]);
+      if (!rows[0]) return;
+      const flag = await require('../domain/flags').getFlag(client, BURST_FLAG);
+      if (!turnDomain.coveredBy(flag, rows[0].phone)) return;
+      await require('../domain/audit').record(client, Number(rows[0].id), 'reply.burst_held', {
+        agentId,
+        waiting: Number.isInteger(params.waiting) ? params.waiting : null,
+        chars: Number.isFinite(params.chars) ? params.chars : null,
+      });
+      out = { ok: true, hold: true };
+    });
+    return out;
+  }
+
   // The reply gate holds a short reply and asks whether a 👍 is standing on
   // this turn's message, and if so, what the tool behind it wrote. Only the
   // WORDS of what was written go back — the gateway already carried that tool
@@ -1482,6 +1508,8 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
         return handleReplyClaim(msg.params || {});
       case 'mark_echo':
         return handleMarkEcho(msg.params || {});
+      case 'burst_hold':
+        return handleBurstHold(msg.params || {});
       case 'turn_progress':
         return handleTurnProgress(msg.params || {});
       case 'identity_resolve':
