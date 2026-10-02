@@ -43,7 +43,9 @@ const newTurn = () => ({ userId: null, opened: false, counted: false, quota: nul
 const call = (user, name, args, turn) => broker.dispatch(
   { id: 1, method: 'tool_call', params: { name, args: { olma_identity: user.identity_token, ...args } } }, turn);
 const open = (params) => broker.dispatch({ id: 1, method: 'turn_open', params });
-const at = (h) => slotStart('', { hours: h });
+// The time follows the words: a slot that names a day is refused unless the
+// moment falls on it, so a bare now+50h was a Saturday only on a Thursday run.
+const at = (slot, h) => slotStart(slot, { hours: h });
 
 // Three people who may coordinate; `yuval` is the one who answers, on an agent.
 async function cast() {
@@ -75,7 +77,7 @@ async function poker({ miron, yuval, bar }) {
 
 async function addTime(actor, meetingId, slot, hours) {
   return withTx(db.pool, async (c) => {
-    const add = await meetings.options.add(c, actor.id, meetingId, slot, at(hours));
+    const add = await meetings.options.add(c, actor.id, meetingId, slot, at(slot, hours));
     await fanout.afterOptionAdded(c, actor, meetingId, add);
     return add;
   });
