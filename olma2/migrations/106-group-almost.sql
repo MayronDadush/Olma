@@ -7,3 +7,13 @@
 --
 -- Additive: one nullable column, read only by the sweep.
 ALTER TABLE meetings ADD COLUMN IF NOT EXISTS group_almost_at TIMESTAMPTZ;
+
+-- A room already told this by hand (the poker room, 2026-10-02, audited as
+-- `manual_almost`) has heard it: without this the first pass after the deploy
+-- would say it a second time.
+UPDATE meetings m SET group_almost_at = a.created_at
+  FROM audit_log a
+ WHERE a.event = 'group.coordination_said'
+   AND a.detail->>'kind' = 'manual_almost'
+   AND (a.detail->>'meetingId')::bigint = m.id
+   AND m.group_almost_at IS NULL;
