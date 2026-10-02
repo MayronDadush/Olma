@@ -19,7 +19,7 @@ never trust a dated narrative for something you are about to act on.
 
 **Gateway, config and upgrades**
 
-- [Three messages in a row got three replies (2026-10-02)](#three-messages-in-a-row-got-three-replies-2026-10-02)
+- [Three messages in a row got three replies (2026-10-02, the debounce replaced the same day)](#three-messages-in-a-row-got-three-replies-2026-10-02-the-debounce-replaced-the-same-day)
 - [Six hours with nobody to talk to (detector added 2026-09-11)](#six-hours-with-nobody-to-talk-to-detector-added-2026-09-11)
 - [The socket that was never closed (fixed 2026-09-11)](#the-socket-that-was-never-closed-fixed-2026-09-11)
 - [A message reached the box and stopped there, and nothing could tell (detector added 2026-09-06)](#a-message-reached-the-box-and-stopped-there-and-nothing-could-tell-detector-added-2026-09-06)
@@ -305,7 +305,7 @@ never trust a dated narrative for something you are about to act on.
 
 ## Gateway, config and upgrades
 
-### Three messages in a row got three replies (2026-10-02)
+### Three messages in a row got three replies (2026-10-02, the debounce replaced the same day)
 
 The owner's ask: when somebody writes several messages one after the other,
 Olma should answer all of them together instead of once per message.
@@ -350,6 +350,42 @@ The WhatsApp listener reads the value when it connects, so
 `scripts/set-inbound-debounce.js --apply` needs a gateway restart, and
 `config_guard` compares the effective value against
 `openclaw-config.WHATSAPP_INBOUND_DEBOUNCE_MS`.
+
+**It never joined anything.** Applied on the box at 14:29 UTC with a
+gateway restart; the owner sent three messages a few seconds apart and got
+three replies. The gateway log had them dispatched about ten seconds apart,
+one per turn. The WhatsApp plugin on 2026.8.1 reads messages through a
+durable ingress monitor with per-conversation lanes, and a lane hands over
+a chat's next message only once the previous one has been dispatched — so
+the debounce timer, which sits after the lane, never held two messages of
+one chat at the same time. The newest `@openclaw/whatsapp` (2026.9.7) has
+the same design. The config was removed and the gateway restarted the same
+afternoon (backup in `/root/backups/`), and the constant, the guard check,
+the script and the tests above came out with it. **A gateway option that
+reads right in the source is not one that runs in this deployment; it was
+proven only by the one test that could fail, a real burst.**
+
+**What replaced it lives at the reply gate, not the inbox**
+(`gateway-plugin/olma-turn`, "a burst is answered once"). Each message
+still gets its own turn. But `before_dispatch` fires for the next message
+while the previous turn is still running (Shimon's second message reached
+the hooks at 13:31:21.9; his first turn's replies went out from 13:31:28),
+so the plugin can count, per agent, the messages already dispatched and not
+yet taken by a turn. A person's reply that is about to go out while one of
+those is waiting is held, and the turn that picks the waiting message up is
+told that its earlier replies never arrived and to answer everything at
+once. Nothing waits: a single message is answered exactly as fast as before,
+and only the earlier turns' WORDS are dropped — their tool calls have
+already run. The switch is brokerd's `burst_reply_phones` flag (admin →
+controls), read on every held reply; empty is the old behaviour from the next
+message on. And it fails toward sending: a count that never gets a turn
+expires after three minutes, and a held reply with no turn behind it is the
+last thing in the transcript, which `unanswered` re-sends verbatim.
+
+Found on the way and left for its own fix: every message Shimon sent in that
+minute was opened as `self_initiated`, because a delivery to him had just
+ended and `self-initiated.js` keeps its mark for 60 seconds afterwards. None
+of those messages were counted or woke anything.
 
 ### Six hours with nobody to talk to (detector added 2026-09-11)
 

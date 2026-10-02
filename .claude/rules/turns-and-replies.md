@@ -151,19 +151,21 @@ title means this file. Grep the title, not the filename.
   `followup` gives it a turn of its own. `config_guard` goes red otherwise;
   `scripts/set-queue-mode.js --apply` sets it.
 
-- **Messages sent in a row are held and answered as ONE: WhatsApp inbound
-  debounce `openclaw-config.WHATSAPP_INBOUND_DEBOUNCE_MS` (8s).** The queue
-  mode only decides what happens to a message that arrives while a turn is
-  RUNNING; `messages.inbound.byChannel.whatsapp` decides how long a text
-  waits before a turn opens at all, restarting on each new message (capped
-  at five windows), and the gateway joins the texts with a line break into
-  one dispatch with the LAST message's id. Media, a location and a quote are
-  never held. So every hook verdict reads a joined text: an "only X" reading
-  must need every line, and a count of `message.received` counts a burst
-  once. The listener reads it on connect — `scripts/set-inbound-debounce.js
-  --apply`, then restart the gateway; `config_guard` goes red otherwise.
-  The window is paid on EVERY reply, so it was chosen off the measured gaps,
-  not guessed (`incidents.md`, "Three messages in a row got three replies").
+- **Messages sent in a row are answered ONCE, at the reply gate — never by
+  holding the inbox** (`gateway-plugin/olma-turn`, "a burst is answered
+  once"; owner, 2026-10-02). Each message still gets its own turn. The
+  plugin counts, per agent, the messages `before_dispatch` has seen and no
+  turn's `before_prompt_build` has taken yet (matched by their words); a
+  PERSON's reply about to go out while one is waiting is cancelled
+  (`olma_burst`), and the next person's turn is told its earlier replies did
+  not arrive. Nothing ever waits, tool calls are never undone, and a delivery
+  turn Olma started is never held. **`messages.inbound` debounce does NOT do
+  this on WhatsApp** — the durable ingress lanes hand over one message at a
+  time, so it never had two to join; applied and measured, then removed the
+  same day. The switch is brokerd's `burst_reply_phones` (admin → controls,
+  read per held reply, `''` = off from the next message); everything fails
+  toward sending, and a held reply with no turn behind it is re-sent by
+  `unanswered` (`incidents.md`, "Three messages in a row got three replies").
 
 - **A turn Olma started is not a message from the person.** `--deliver` reaches
   the agent on the person's own agent and session key, so nothing in the MCP

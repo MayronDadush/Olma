@@ -108,6 +108,124 @@ export function inboundOf(agentId, now = Date.now()) {
 }
 export function _resetInbound() { INBOUND.clear(); }
 
+// ---- a burst is answered once -----------------------------------------------
+// Owner, 2026-10-02: somebody who writes three messages in a row should get
+// ONE answer, not three. The gateway's own inbound debounce cannot do it on
+// WhatsApp — the durable ingress monitor hands a chat's next message over only
+// once the previous one has been dispatched, so the debounce timer never has
+// two messages to join (`docs/incidents.md`, "Three messages in a row got
+// three replies"). With `queue.mode: followup` each message still gets its own
+// turn, one after the other; what changes here is what reaches the phone.
+//
+// A reply that is about to go out while a NEWER message of theirs is already
+// waiting for its own turn is held back at the gate, and that next turn is
+// told its earlier replies never arrived, so it answers everything at once.
+// The tool calls of the earlier turn have already run and stay; only its words
+// are dropped. A single message is never delayed: nothing is ever waited for.
+//
+// What "waiting" means is counted here, in the process that sees both ends:
+// `before_dispatch` fires when a message is dispatched — while the previous
+// turn is still running (Shimon, 2026-10-02: his second message reached the
+// hooks at 13:31:21.9, the first turn's replies went out at 13:31:28 and
+// after) — and `before_prompt_build` fires when a turn starts, which takes
+// that message off the list. Only a turn that took one off the list is a
+// PERSON's turn; a delivery turn Olma started is never held.
+//
+// Fails toward sending, everywhere. A message counted that never gets a turn
+// (a dropped event, a turn that read two at once) expires after
+// BURST_ARRIVAL_MS, and a held reply with no turn behind it is the exact
+// fingerprint `unanswered` re-sends verbatim three minutes later. Whether to
+// hold at all is brokerd's flag (`burst_reply_phones`, read per held reply),
+// so turning it off takes effect on the next message, with no restart.
+const ARRIVALS = new Map();
+const BURST_ARRIVAL_MS = 3 * 60 * 1000;
+const BURST_HELD_MS = 5 * 60 * 1000;
+const TURNS = new Map();
+const HELD = new Map();
+const squash = (s) => String(s == null ? "" : s).replace(/\s+/g, " ").trim();
+function liveArrivals(agentId, now) {
+  const list = (ARRIVALS.get(agentId) || []).filter((a) => now - a.at <= BURST_ARRIVAL_MS);
+  if (list.length) ARRIVALS.set(agentId, list); else ARRIVALS.delete(agentId);
+  return list;
+}
+export function rememberArrival(agentId, { messageId, body } = {}, now = Date.now()) {
+  if (!agentId || !messageId) return;
+  const list = liveArrivals(agentId, now);
+  if (list.some((a) => a.id === messageId)) return;
+  list.push({ id: String(messageId), body: squash(body).slice(0, INBOUND_MAX), at: now });
+  ARRIVALS.set(agentId, list);
+}
+export function forgetArrival(agentId, messageId) {
+  const list = ARRIVALS.get(agentId);
+  if (!list) return;
+  const rest = list.filter((a) => a.id !== String(messageId));
+  if (rest.length) ARRIVALS.set(agentId, rest); else ARRIVALS.delete(agentId);
+}
+// A turn starts: take off the list every waiting message its prompt carries.
+// The prompt is their bare text (measured: `promptChars` equals the hook's
+// `chars`), so a message is matched by its words; one with no words (a photo,
+// a voice note) is taken only when nothing matched and it is the oldest.
+// Returns whether this turn answers a message of theirs.
+export function startTurn(agentId, prompt, now = Date.now()) {
+  const list = liveArrivals(agentId, now);
+  const text = squash(prompt);
+  const taken = list.filter((a) => a.body && text.includes(a.body));
+  if (!taken.length && list.length && !list[0].body) taken.push(list[0]);
+  if (taken.length) {
+    // Turns run in the order messages were dispatched, so anything that came
+    // BEFORE a message this turn answers has had its turn already, matched or
+    // not — a prompt the gateway dressed differently must not leave a ghost
+    // that holds some later reply.
+    const last = list.indexOf(taken[taken.length - 1]);
+    const rest = list.filter((a, i) => i > last && !taken.includes(a));
+    if (rest.length) ARRIVALS.set(agentId, rest); else ARRIVALS.delete(agentId);
+  }
+  TURNS.set(agentId, { person: taken.length > 0, at: now });
+  return taken.length > 0;
+}
+export function waitingBehind(agentId, now = Date.now()) {
+  const turn = TURNS.get(agentId);
+  if (!turn || !turn.person) return 0;
+  return liveArrivals(agentId, now).length;
+}
+function noteHeld(agentId, now) {
+  const h = HELD.get(agentId);
+  HELD.set(agentId, { count: (h && now - h.at <= BURST_HELD_MS ? h.count : 0) + 1, at: now });
+}
+// What the next person's turn is told, once. English like the rest of the
+// opening, and only the shape of what happened: their messages and the held
+// replies are both already in the session history.
+export function heldNote(agentId, now = Date.now()) {
+  const h = HELD.get(agentId);
+  HELD.delete(agentId);
+  if (!h || now - h.at > BURST_HELD_MS) return "";
+  return `[Burst] They wrote several messages in a row. Your ${h.count === 1 ? "reply" : `last ${h.count} replies`} `
+    + "to the earlier ones in this conversation did NOT reach them — they have not read "
+    + (h.count === 1 ? "it" : "them")
+    + ". Answer everything they wrote since your last delivered reply together, in ONE message, "
+    + "as if for the first time. Whatever your tools already did stays done; do not do it again.";
+}
+export function _resetBurst() { ARRIVALS.clear(); TURNS.clear(); HELD.clear(); }
+
+// Records every message dispatched to a person's own agent. Claims nothing,
+// so the link shortcut after it still runs; never waits on a socket.
+export function buildArrivalHandler({ log = trace } = {}) {
+  return async (event, ctx) => {
+    try {
+      const key = String((event && event.sessionKey) || (ctx && ctx.sessionKey) || "");
+      const agentId = agentIdOf(key);
+      if (!agentId || (event && event.isGroup === true)) return undefined;
+      const messageId = String((event && event.messageId) || (ctx && ctx.messageId) || "").slice(0, 200);
+      const body = typeof (event && event.body) === "string" ? event.body
+        : (typeof (event && event.content) === "string" ? event.content : "");
+      rememberArrival(agentId, { messageId, body });
+    } catch (e) {
+      log({ burst: "error", error: String((e && e.message) || e).slice(0, 200) });
+    }
+    return undefined;
+  };
+}
+
 export function agentIdOf(sessionKey) {
   const m = /^agent:(u-\d+):/.exec(String(sessionKey || ""));
   return m ? m[1] : null;
@@ -169,7 +287,16 @@ export function buildHandler({ agents, connect, sock, timeoutMs, log = trace } =
     const prompt = event && typeof event.prompt === "string" ? event.prompt : "";
     // Before the `agents` narrowing: the gate watches every person.
     rememberInbound(agentId, prompt);
-    if (only && !only.has(agentId)) return undefined;
+    const waitingBefore = (ARRIVALS.get(agentId) || []).length;
+    const person = startTurn(agentId, prompt);
+    const burst = person ? heldNote(agentId) : "";
+    if (burst) log({ agentId, burst: "told", promptChars: prompt.length });
+    // A turn that took nothing while something was waiting is either one Olma
+    // started or a prompt the matching missed. Said, never the words, so the
+    // trace can tell which of the two it keeps being.
+    else if (!person && waitingBefore) log({ agentId, burst: "unmatched", waiting: waitingBefore, promptChars: prompt.length });
+    const withBurst = (context) => (burst ? { prependContext: context ? `${burst}\n\n${context}` : burst } : (context ? { prependContext: context } : undefined));
+    if (only && !only.has(agentId)) return withBurst("");
     const params = {
       agentId,
       sessionKey: ctx && ctx.sessionKey ? String(ctx.sessionKey).slice(0, 120) : null,
@@ -189,9 +316,9 @@ export function buildHandler({ agents, connect, sock, timeoutMs, log = trace } =
     const t0 = Date.now();
     const reply = await askBroker("turn_context", params, { connect, sock, timeoutMs });
     const ms = Date.now() - t0;
-    if (!reply || reply.ok !== true) { log({ agentId, outcome: reply ? "refused" : "unreachable", ms }); return undefined; }
-    if (!reply.enabled) { log({ agentId, outcome: "not-enabled", ms }); return undefined; }
-    if (typeof reply.context !== "string" || !reply.context) { log({ agentId, outcome: "no-open", trigger: params.trigger, ms }); return undefined; }
+    if (!reply || reply.ok !== true) { log({ agentId, outcome: reply ? "refused" : "unreachable", ms }); return withBurst(""); }
+    if (!reply.enabled) { log({ agentId, outcome: "not-enabled", ms }); return withBurst(""); }
+    if (typeof reply.context !== "string" || !reply.context) { log({ agentId, outcome: "no-open", trigger: params.trigger, ms }); return withBurst(""); }
     // The reader's language, for the gate below. Same turn, same agent, no
     // second socket — which is the only way `reply_payload_sending` can have
     // it at all, since it decides locally by design. Remembered rather than
@@ -200,7 +327,7 @@ export function buildHandler({ agents, connect, sock, timeoutMs, log = trace } =
     // last known answer standing.
     rememberReader(agentId, reply.readerWritesHebrew);
     log({ agentId, outcome: "prepended", directive: reply.directive || null, chars: reply.context.length, promptChars: prompt.length, replyInPrompt: params.replyTarget, ms });
-    return { prependContext: reply.context };
+    return withBurst(reply.context);
   };
 }
 
@@ -502,6 +629,8 @@ export function buildLinkShortcutHandler({ connect, sock, timeoutMs = 800, log =
       // Only a claim is worth a line: every short DM passes through here, and
       // a trace line per "תודה" would bury the ones that matter. Never the body.
       if (claim || !reply || reply.ok !== true) {
+        // Answered here, so no turn will ever take it off the waiting list.
+        if (claim) forgetArrival(agentId, String((event && event.messageId) || (ctx && ctx.messageId) || "").slice(0, 200));
         log({
           linkShortcut: agentId,
           ...(claim ? { claim: true, lang: reply.lang || null } : { outcome: reply ? "refused" : "unreachable" }),
@@ -814,6 +943,22 @@ export function buildReplyGateHandler({ connect, sock, timeoutMs = 1500, log = t
         if (person && hasMedia) turnProgress(agentId, "reply", { connect, sock, timeoutMs, asked: false });
         return undefined;
       }
+      // A newer message of theirs is already waiting for its own turn: this
+      // reply is held and that turn answers both (see "a burst is answered
+      // once" above). brokerd is asked only then — an ordinary reply never
+      // waits on a socket — and anything but an explicit yes sends it.
+      const waiting = person ? waitingBehind(agentId) : 0;
+      if (waiting > 0) {
+        const t0 = Date.now();
+        const hold = await askBroker("burst_hold", { agentId, waiting, chars: text.length }, { connect, sock, timeoutMs: Math.min(timeoutMs, 800) });
+        const held = Boolean(hold && hold.ok === true && hold.hold === true);
+        log({ burst: agentId, waiting, held, ...(hold ? {} : { outcome: "unreachable" }), ms: Date.now() - t0 });
+        if (held) {
+          noteHeld(agentId, Date.now());
+          if (hasMedia) return { payload: { ...payload, text: "" } };
+          return { cancel: true, reason: "olma_burst" };
+        }
+      }
       let verdict = gateReply(text, { readerWritesHebrew: readerOf(agentId) });
       // A 👍 is already on their message and this reply only says it again
       // (domain/mark-echo.js). Asked of brokerd only for a reply short enough
@@ -920,7 +1065,7 @@ export default {
     // `agent_end` is also what brokerd reads off the stamp to know the 👀 may
     // wait (domain/reactions.endSignalsLive): a gateway on a build without it
     // would never cancel a held mark.
-    const hooks = ["before_prompt_build", "llm_input", "before_dispatch", "before_dispatch:link", "reply_payload_sending", "agent_end"];
+    const hooks = ["before_prompt_build", "llm_input", "before_dispatch", "before_dispatch:arrival", "before_dispatch:link", "reply_payload_sending", "agent_end"];
     trace({ registered: true, agents, hooks });
     stampRegistration({ agents, hooks });
     api.on("before_prompt_build", buildHandler({ agents: cfg.agents }));
@@ -928,6 +1073,8 @@ export default {
     // Same argument as the reply gate for not narrowing by `cfg.agents`: this
     // is about what a ROOM may do to her, not about rolling a person out.
     api.on("before_dispatch", buildRoomWriteHandler());
+    // Ahead of the link shortcut, which takes back what it answers itself.
+    api.on("before_dispatch", buildArrivalHandler());
     // A second claiming handler on the same hook: the gateway runs them in
     // order and the first `{handled: true}` wins. The room handler answers
     // only for `g-N` sessions and this one only for `u-N`, so they never both
