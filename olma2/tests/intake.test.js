@@ -1886,16 +1886,37 @@ test('two people who each said hello are not a leak — the greeter session sett
   assert.match(v[0], /user 13's card quotes an intake message they never sent/);
   assert.match(v[0], /user 10's card/);
 
-  // A session nobody can read any more is not innocence — the pair is reported.
-  const gone = await guard.checkCarryovers(fake, { readPeerText: () => null });
+  // Unverifiable, but a bare greeting: nothing about two people saying hello
+  // is evidence, and with a session gone nothing could ever clear the pair.
+  // Live issue 159 (2026-09-22): 35's session holds "הי", 13's no longer exists.
+  assert.deepEqual(await guard.checkCarryovers(fake, { readPeerText: () => null }), []);
+  assert.deepEqual(await guard.checkCarryovers(fake, { readPeerText: (p) => (p === '+13' ? 'הי' : null) }), []);
+
+  // A session nobody can read any more is not innocence for anything ELSE —
+  // words with content in them are still reported as a pair.
+  const real = [
+    { id: 10, phone: '+10', workspace_path: mk('u-10b', 'הי, אפשר לקבוע תור לציפורניים?') },
+    { id: 13, phone: '+13', workspace_path: mk('u-13b', 'הי, אפשר לקבוע תור לציפורניים?') },
+  ];
+  const content = { query: async () => ({ rows: real }) };
+  const gone = await guard.checkCarryovers(content, { readPeerText: () => null });
   assert.equal(gone.length, 1);
   assert.match(gone[0], /users 10 and 13 carry the SAME/);
 
   // A reader that throws must not take the sweep down with it.
-  const threw = await guard.checkCarryovers(fake, { readPeerText: () => { throw new Error('sqlite gone'); } });
+  const threw = await guard.checkCarryovers(content, { readPeerText: () => { throw new Error('sqlite gone'); } });
   assert.equal(threw.length, 1);
 
+  // And a greeting excuses only the pair nobody can check: a card shown not to
+  // quote its own owner is a leak whatever it says (the 'leak' case above).
   fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('isBareGreeting is a closed list matched whole, not a word search', () => {
+  const yes = ['הי', 'היי', 'הייי!', 'שלום', 'שלום 🙂', 'אהלן', 'היוש', 'הלו', 'Hi', 'hey!', 'Hello', 'hiii'];
+  const no = ['הי, אפשר לקבוע תור?', 'שלום עולמה תזכירי לי', 'היי מה נשמע', 'hi can you help', 'shalom', 'מה קורה', ''];
+  for (const t of yes) assert.equal(guard._isBareGreeting(t), true, `greeting: ${JSON.stringify(t)}`);
+  for (const t of no) assert.equal(guard._isBareGreeting(t), false, `not a greeting: ${JSON.stringify(t)}`);
 });
 
 // A leak does not need an accomplice, and requiring one is what kept the only
