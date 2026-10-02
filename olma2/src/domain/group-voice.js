@@ -263,7 +263,9 @@ function decideLine(co, {
       later: Boolean(roomAsleep),
       // Who of them the line can TAG (owner, 2026-09-25). The count stays: it
       // is what a room whose missing members are all LIDs still hears.
-      outsidePhones: (co.outsidePhones || []).filter(taggable),
+      // Never rationed (owner, 2026-10-02): the first line in every new room
+      // tags everybody who has not written, and is not counted against them.
+      outsidePhones: co.outsidePhones || [],
     };
   }
 

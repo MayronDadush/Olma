@@ -768,8 +768,9 @@ have already had to be argued for.
   ration** (owner, the poker room: three of thirteen never wrote and nothing
   reminded them). `cold-tags.allowed`: a tag at most once every three days
   across every room, and none after three with no word back — writing makes
-  them connected and takes them out of the rule. Every line that tags them
-  (started, base/moved, almost, chase) asks it, and the sweep records each tag
+  them connected and takes them out of the rule. The OPENING line of every new
+  room tags them all and is never counted (owner, same day); every later line
+  that tags them (base/moved, almost, chase) asks it, and the sweep records each tag
   in `room_cold_tags` (migration 107, keyed by phone because a LID has no user
   row). They never decide that a chase is said, only who it reminds, and a tag
   held back is still counted ("ועוד N"). The chase's "who was reached" filter

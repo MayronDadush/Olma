@@ -1341,8 +1341,7 @@ test('a member who never wrote is tagged only when it is their turn, and rides t
     status: 'negotiating', title: 'פוקר', participants: 3, roomTotal: 5, outside: 2, outsidePhones: [X, Y], options: [],
   }, { nowMs: NOW, coldTags: cold([Y]) });
   assert.equal(started.kind, 'started');
-  assert.deepEqual(started.outsidePhones, [Y], 'X was tagged two days ago');
-  assert.equal(started.outside, 2, 'and is still counted');
+  assert.deepEqual(started.outsidePhones, [X, Y], 'every new room tags them all, whatever their ration says');
 
   const co = {
     status: 'negotiating', title: 'פוקר', participants: 3, roomTotal: 5, settleDueAt: null,
@@ -1382,7 +1381,7 @@ test('the allowance: once every three days, and three times in all', async () =>
   assert.equal((await coldTags.allowed(db.pool, [], at(0))).size, 0);
 });
 
-test('the sweep records who it tagged, and the next line leaves them be', async () => {
+test('the sweep records who a line tagged, and never the opening line', async () => {
   const { group, people } = await room(62);
   const [a, b] = people;
   const X = '+972609990081';
@@ -1398,7 +1397,7 @@ test('the sweep records who it tagged, and the next line leaves them be', async 
   assert.ok(sent[0].body.includes(`@${X}`), 'the opening line tags them');
   const tags = async () => (await db.pool.query(
     'SELECT line_kind FROM room_cold_tags WHERE phone = $1 ORDER BY id', [X])).rows.map((r) => r.line_kind);
-  assert.deepEqual(await tags(), ['started']);
+  assert.deepEqual(await tags(), [], 'and does not count against them');
 
   const when = slotStart('רביעי', { hours: 72 });
   const optionId = await withTx(db.pool, async (c) =>
@@ -1409,6 +1408,8 @@ test('the sweep records who it tagged, and the next line leaves them be', async 
   await pass(sent, DAY_AT(30), group.external_id);
   assert.equal(sent.length, 1);
   assert.match(sent[0].body, /2 מתוך 4/, 'counted');
-  assert.equal(sent[0].body.includes(`@${X}`), false, 'but not tagged again half an hour later');
-  assert.deepEqual(await tags(), ['started']);
+  assert.ok(sent[0].body.includes(`@${X}`), 'the first rationed tag');
+  assert.deepEqual(await tags(), ['base']);
+  const allowed = await require('../src/domain/cold-tags').allowed(db.pool, [X], DAY_AT(60));
+  assert.equal(allowed.size, 0, 'and the next line inside three days leaves them be');
 });

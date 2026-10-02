@@ -2529,9 +2529,10 @@ three out. The trade-off was a friend's "are you coming?" against spam to people
 who never asked for her. The owner picked a ration over both extremes: a tag at
 most once every three days across every room, none after three with no word
 back, and only on lines that go out anyway (`cold-tags.allowed`,
-`room_cold_tags`, migration 107). The migration backfills the tags already said
-from `group_outbox`, so the three are next due on the 4th rather than on the
-first pass after the deploy.
+`room_cold_tags`, migration 107). The opening line of a new room is not counted
+against anybody: the owner wants each new room to say who in it has not
+written. The migration backfills from `group_outbox` and found nothing to
+count. Every tag of a non-writer so far was an opening line.
 
 ### The chase that beat its own invites (fixed 2026-09-28)
 

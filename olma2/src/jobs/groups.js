@@ -781,8 +781,10 @@ async function sweepGroupVoice(client, deps) {
         await client.query('UPDATE meetings SET group_calendar_at = $2 WHERE id = $1', [row.meeting_id, now]);
       }
     }
-    // Every never-written member this line tagged, so the next room counts it.
-    const tagged = (line.kind === 'started' ? line.outsidePhones : line.missing) || [];
+    // Every never-written member this line tagged, so the next line counts it.
+    // The opening line is not counted (owner, 2026-10-02): every new room says
+    // who is in it.
+    const tagged = (line.kind === 'started' ? [] : line.missing) || [];
     await coldTags.record(client, {
       phones: tagged.filter((p) => nonWriters.has(p)),
       groupId: row.id, meetingId: Number(row.meeting_id), lineKind: line.kind, now,

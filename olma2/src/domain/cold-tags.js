@@ -17,6 +17,9 @@
 // (groups.isConnected), drop out of `outsidePhones`, and this rule no longer
 // reads them. Keyed by the phone, because a LID never becomes a `users` row.
 //
+// The opening line of every new room is outside this altogether (owner, same
+// day): it tags them all and records nothing.
+//
 // A tag the rule holds back is never a line held back: the line still goes
 // out, and still COUNTS them ("ועוד N"); it only does not notify them.
 
