@@ -1074,6 +1074,48 @@ test('a constraint that rules out a time on the table is that time declined', as
   assert.ok(theirs.constraints.includes('לא בערב'));
 });
 
+// שמעון answered two evenings "גם וגם — אחרי 21", and with only a decline to
+// put beside the note the model declined every time on the table
+// (coordination 66, 2026-10-02). A condition the time still fits is a yes
+// carrying the note.
+test('a condition a time still fits is a yes with the note, beside a decline', async () => {
+  const started = await call(miron, 'start_meeting_coordination', { title: 'poker after 21', phones: [kapish.phone], separate: true });
+  const meetingId = Number(/"id":"?(\d+)/.exec(started)[1]);
+  await drain(kapish.id);
+  for (const [text, hours] of [['בערב', 48], ['בערב אצל דני', 96], ['בצהריים', 44]]) {
+    await call(miron, 'propose_meeting_slot', { meeting_id: meetingId, slot_description: text, starts_at: slotStart(text, { hours }) });
+  }
+  const table = (await meetings.options.list(db.pool, meetingId)).filter((o) => o.status === 'active');
+  const id = (text) => table.find((o) => o.slotText === text).id;
+  const [sat, mon, noon] = [id('בערב'), id('בערב אצל דני'), id('בצהריים')];
+  const theirAnswers = async () => Object.fromEntries((await db.pool.query(
+    `SELECT option_id, answer FROM meeting_option_answers WHERE user_id = $1 AND option_id = ANY($2::bigint[])`,
+    [kapish.id, [sat, mon, noon]])).rows.map((r) => [Number(r.option_id), r.answer]));
+  const notes = async () => (await db.pool.query(
+    `SELECT constraints FROM meeting_participants WHERE meeting_id = $1 AND user_id = $2`, [meetingId, kapish.id])).rows[0].constraints;
+
+  // One option both ways, or an id that is not up, writes nothing at all.
+  const before = await notes();
+  const conflict = await call(kapish, 'record_meeting_constraint', {
+    meeting_id: meetingId, constraint: 'רק אחרי 21', accepts_option_ids: [sat], declines_option_ids: [sat] });
+  assert.match(conflict, /answer_conflict/);
+  const gone = await call(kapish, 'record_meeting_constraint', {
+    meeting_id: meetingId, constraint: 'רק אחרי 21', accepts_option_ids: [999999] });
+  assert.match(gone, /not on the table/);
+  assert.deepEqual(await notes(), before, 'nothing half done');
+  assert.deepEqual(await theirAnswers(), {});
+
+  const res = await call(kapish, 'record_meeting_constraint', {
+    meeting_id: meetingId, constraint: 'רק אחרי 21', accepts_option_ids: [sat, mon], declines_option_ids: [noon] });
+  assert.match(res, /"constraintRecorded":true/);
+  assert.match(res, /2 option\(s\) accepted with this note, 1 declined; 0 still stand/);
+  assert.deepEqual(await theirAnswers(), { [sat]: 'y', [mon]: 'y', [noon]: 'n' });
+  // The note is the person's, and the others read it beside the yes.
+  const st = await meetings.getStatus(db.pool, miron.id, meetingId);
+  const theirs = st.data.participants.find((p) => Number(p.user_id) === Number(kapish.id));
+  assert.ok(theirs.constraints.includes('רק אחרי 21'));
+});
+
 test('the details of the errand come back with the approval, dated', async () => {
   // Miron → עידן, 2026-09-30: the days he offered lived only in a session that
   // resets every night; the reason alone came back.

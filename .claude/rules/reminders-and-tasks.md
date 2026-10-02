@@ -213,6 +213,13 @@ title means this file. Grep the title, not the filename.
   can only ever be called while a meeting is negotiating, which makes it a
   negotiation step, and the negotiation family has no 👍 by rule
   (`rules/doctrine.md`) — a 👍 there says "done" about something that is not.
+  **…and a condition the time still FITS is a YES carrying the note, never a
+  no** (2026-10-02): "אחרי 21" against an `evening` option, which names no
+  hour, is `accepts_option_ids` on the same tool — checked with the declines
+  before any write, one id in both lists refused, accepted after the declines.
+  The note is the constraint itself, already per person: drawn on the page,
+  read by the other participants' agents, never said in the room
+  (`incidents.md`, "After 21 is not a no").
 
 - **…and an answer given BEFORE the time existed answers it when it arrives,
   in both directions, and the person is TOLD** (owner, 2026-09-28,

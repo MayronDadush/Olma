@@ -114,10 +114,11 @@ module.exports = [
       }
       return withStartLink(client, user, res);
     }),
-  tool('record_meeting_constraint', 'Save a constraint ("not Fridays") so nobody re-asks. A time ON THE TABLE it rules out is an ANSWER: put its option id in declines_option_ids; alone it declines nothing. An answer about times not yet up ("not this week") goes in windows. Record the REASON when given. Never ask them to justify a day.',
+  tool('record_meeting_constraint', 'Save a constraint ("not Fridays") so nobody re-asks. A time ON THE TABLE it rules out is an ANSWER: put its option id in declines_option_ids; alone it declines nothing. One it still fits ("after 21" vs an evening) is a yes: accepts_option_ids. An answer about times not yet up ("not this week") goes in windows. Never ask them to justify a day.',
     { meeting_id: S('number', 'Meeting id'), constraint: S('string', 'The constraint, verbatim, including the reason if they gave one'),
-      private: S('boolean', 'true = do not repeat this to the other participants. Default false.'),
-      declines_option_ids: S('array', 'Option ids this rules out; each is declined.', { items: { type: 'number' } }),
+      private: S('boolean', 'true = hidden from the other participants.'),
+      declines_option_ids: S('array', 'Ids it rules out; each declined.', { items: { type: 'number' } }),
+      accepts_option_ids: S('array', 'Ids it still fits; each a yes, with this note.', { items: { type: 'number' } }),
       windows: S('array', 'Answer for times added LATER: {answer:y|n,from,to,after?:HH:MM,days?:[0-6]}, offsets, ≤21d.', { items: { type: 'object' } }) },
     ['meeting_id', 'constraint'],
     async (client, user, a) => {
@@ -129,12 +130,42 @@ module.exports = [
       // constraint that was an answer"). The ids are checked against the live
       // table BEFORE anything is written, so a wrong id leaves nothing half
       // done; each decline then takes the same road as respond_to_meeting_slot.
+      //
+      // And the other half: a condition is not always a no. שמעון answered the
+      // poker's two evenings "גם וגם — אחרי 21", and with only a decline to put
+      // beside a note the model declined all three times (coordination 66,
+      // 2026-10-02; `incidents.md`, "After 21 is not a no"). An evening names
+      // no hour, so "after 21" fits it: that is a YES carrying the note, and
+      // `accepts_option_ids` writes it on the road respond_to_meeting_slot
+      // accept=true takes. The note itself needs no column of its own — the
+      // constraint IS the per-person note, already drawn beside their name on
+      // the page and read by the other participants' agents, never the room.
       const table = (await meetings.options.list(client, a.meeting_id)).filter((o) => o.status === 'active');
-      const ids = Array.isArray(a.declines_option_ids) ? [...new Set(a.declines_option_ids.map(Number))] : [];
-      const unknown = ids.filter((id) => !table.some((o) => o.id === id));
+      const idsOf = (v) => (Array.isArray(v) ? [...new Set(v.map(Number))] : []);
+      const ids = idsOf(a.declines_option_ids);
+      const yes = idsOf(a.accepts_option_ids);
+      const unknown = [...ids, ...yes].filter((id) => !table.some((o) => o.id === id));
       if (unknown.length) {
         return err('not_found', `option ${unknown.join(', ')} is not on the table; get_meeting_status lists what is`, { reason: 'option_not_active' });
       }
+      const both = yes.filter((id) => ids.includes(id));
+      if (both.length) {
+        return err('invalid', `option ${both.join(', ')} is both accepted and declined; ask them which`, { reason: 'answer_conflict' });
+      }
+      // Accepted LAST, after any decline, so a yes that completes an option
+      // keeps the settling hint on the result the model reads.
+      const acceptAll = async () => {
+        let last = null;
+        for (const id of yes) {
+          const r = await meetings.options.answer(client, user.id, a.meeting_id, id, 'y');
+          if (!r.ok) return r;
+          last = await meetingFanout.afterSlotResponse(client, user, a.meeting_id,
+            ok({ meetingId: a.meeting_id, meetingStatus: r.data.meetingStatus, yourState: 'confirmed_current', optionId: id,
+              ...(r.data.meetingStatus === 'settling' ? { slot: r.data.slot, settleDueAt: r.data.settleDueAt } : {}) }),
+            { accept: true });
+        }
+        return last;
+      };
       const res = await meetings.recordConstraint(client, user.id, a.meeting_id, a.constraint, a.private === true,
         { windows: a.windows });
       if (!res.ok) return res;
@@ -143,6 +174,10 @@ module.exports = [
       // conversation, so it is said in the reply, not queued as a message.
       if (res.data.windows) {
         for (const id of ids) await meetings.options.answer(client, user.id, a.meeting_id, id, 'n');
+        const took = await acceptAll();
+        if (took && !took.ok) return took;
+        if (yes.length) res.data.accepted = yes;
+        if (took && took.data.hint) res.data.hint = took.data.hint;
         const auto = await require('../../../domain/standing-answers').applyToTable(client, a.meeting_id, user.id);
         res.data.declined = ids;
         if (auto.length) {
@@ -153,7 +188,7 @@ module.exports = [
         return res;
       }
       if (!table.length) return res;
-      if (!ids.length) {
+      if (!ids.length && !yes.length) {
         // Recorded, and nothing on the table answered. The table rides the
         // result so the model can see what it may have just ruled out — a
         // hint here costs tokens only on the turns it applies to.
@@ -173,9 +208,16 @@ module.exports = [
           ok({ meetingId: a.meeting_id, meetingStatus: 'negotiating', yourState: 'declined_current', optionId: id }),
           { accept: false });
       }
+      const took = await acceptAll();
+      if (took && !took.ok) return took;
+      if (took) out = took;
       out.data.constraintRecorded = true;
       out.data.declined = ids;
-      out.data.hints = { ...(out.data.hints || {}), table: `${ids.length} option(s) declined with the constraint; ${table.length - ids.length} still stand for them to answer.` };
+      const left = table.length - ids.length - yes.length;
+      out.data.hints = { ...(out.data.hints || {}), table: yes.length
+        ? `${yes.length} option(s) accepted with this note, ${ids.length} declined; ${left} still stand for them to answer.`
+        : `${ids.length} option(s) declined with the constraint; ${left} still stand for them to answer.` };
+      if (yes.length) out.data.accepted = yes;
       return offerDashboardOnce(client, user, a.meeting_id, out);
     }),
   // Somebody in a room asked, in a private chat, that the ROOM hear something
@@ -208,7 +250,7 @@ module.exports = [
       };
       return res;
     }),
-  tool('propose_meeting_slot', 'Add ONE candidate time to the table (up to 5; at five it is refused with the five listed — ask which to drop, remove_meeting_option, propose again). Proposing means your user agrees to it, every part from what they said; a time without a day: say the full slot back and get their yes first. starts_at is the same moment as slot_description, ISO-8601 with offset; past times, or a weekday the text does not name, are refused. Calendar connected? Check my_calendar_events for that day first. Settled on a whole day/part of one: this sets its hour.',
+  tool('propose_meeting_slot', 'Add ONE candidate time to the table (up to 5; at five it is refused with the five listed — ask which to drop, remove_meeting_option, propose again). Proposing means your user agrees to it, every part from what they said; a time without a day: say the full slot back and get their yes first. Past times, or a weekday the text does not name, are refused. Calendar connected? Check my_calendar_events for that day first. Settled on a whole day/part of one: this sets its hour.',
     { meeting_id: S('number', 'Meeting id'), slot_description: S('string', 'e.g. "Tuesday 17:00 at the office"'),
       starts_at: S('string', 'The same moment — same DAY — as slot_description, ISO-8601 with offset, e.g. 2026-08-25T17:00:00+03:00'),
       all_day: S('boolean', 'The whole day'), daypart: S('string', 'morning|noon|evening|night, when no hour') },
@@ -235,7 +277,7 @@ module.exports = [
       }
       return offerDashboardOnce(client, user, a.meeting_id, out);
     }),
-  tool('respond_to_meeting_slot', 'Answer ONE option on the table. accept=true only after the user saw that exact option (day included) and agreed — with accepted_starts_at, its startsAt, so the yes lands on THAT option; a yes naming none is refused with the table. accept=false declines it; the others stay. A decline may carry counter_proposal + counter_starts_at (same rules as propose), one more option.',
+  tool('respond_to_meeting_slot', 'Answer ONE option on the table. accept=true only after the user saw that exact option (day included) and agreed, with accepted_starts_at. accept=false declines it; the others stay. A decline may carry counter_proposal + counter_starts_at (same rules as propose), one more option.',
     { meeting_id: S('number', 'Meeting id'), accept: S('boolean', 'true = user agrees to that exact option'),
       accepted_starts_at: S('string', 'The startsAt of the option they answered, as received. Required with accept=true; with accept=false names the declined option.'),
       counter_proposal: S('string', 'Optional new option when declining'),
