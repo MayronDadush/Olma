@@ -177,6 +177,21 @@ title means this file. Grep the title, not the filename.
   `--deliver` returns, and its late `turn_start` was counted as the person
   writing — five times for one silent user (`incidents.md`, "Four good
   mornings to a man who had stopped answering").
+  **…but a WhatsApp message id is never ours, and the mark does not swallow
+  it** (2026-10-02). `message:preprocessed` comes only from the gateway's
+  inbound pipeline (get-reply's `emitPreAgentMessageHooks`, read on the box
+  for 2026.8.1). A `--deliver` turn runs `agentCommandFromGatewayIngress` →
+  `runAgentAttempt` and never fires it. So `turn.openFromGateway` with a
+  `messageId` writes the record under the mark: it counts, sets
+  `last_inbound_at` and `last_woke_at`, releases night holds and ends a pause.
+  The duplicate guard still runs first. It returns `duringOurTurn`, and
+  brokerd queues nothing, marks nothing and acts on none of the words,
+  because `turn_context` reads no open while the mark holds, and a queued
+  open would be adopted one message late. The grace had swallowed 60 real
+  messages from 21 people in a month (`incidents.md`, "The minute after a
+  delivery belonged to nobody"). Re-check the emitter after any gateway
+  bump; the plugin's `trigger` cannot replace it, because the CLI says
+  `"user"` too.
 
 - **A WhatsApp reply names ONE message, and only the MODEL is ever told which.**
   The gateway carries it end to end — `reply_to_id` in `Conversation info`, the

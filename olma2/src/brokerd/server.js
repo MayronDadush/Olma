@@ -306,6 +306,11 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
       if (!user) { out = { ok: false, error: 'no active user for agent' }; return; }
       const rec = await turnDomain.openFromGateway(client, user, { messageId, kind, now: clock() });
       lap('open');
+      // A real message inside a delivery's mark is RECORDED (counted, woken)
+      // but nothing below acts on it: no 👀, no write off its words, nothing
+      // queued — `turn_context` reads no open while the mark holds, so a
+      // queued one would be adopted by the next message's turn instead.
+      const adopt = !rec.skipped && !rec.duringOurTurn;
       // The hook classified the text and sent us the verdict, never the words
       // (gateway-hooks/olma-turn-open). A message that is only thanks gets 🙏
       // instead of 👀: 👀 promises a reply and this one is not getting one.
@@ -313,7 +318,7 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
       // thanks is their answer (most likely a yes), it gets the ordinary 👀,
       // and the model is told to read it as one. Spent on use.
       const saidThanks = params.thanks === true;
-      const thanksAfterQuestion = saidThanks && !rec.skipped && askedRecently(agentId);
+      const thanksAfterQuestion = saidThanks && adopt && askedRecently(agentId);
       const thanksOnly = saidThanks && !thanksAfterQuestion;
       if (thanksAfterQuestion) {
         askedAt.delete(agentId);
@@ -325,7 +330,7 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
       // message becomes 👍: 👀 promises a reply, and the fact is already
       // carried. Nothing is stopped when nothing was chasing, and then this is
       // an ordinary turn about the word "תזכורות".
-      const stopped = !rec.skipped && params.stopReminders === true
+      const stopped = adopt && params.stopReminders === true
         ? await reminders.stopRecentLadders(client, user.id, { now: new Date(clock()) })
         : null;
       const stoppedReminders = stopped ? stopped.stopped.length : 0;
@@ -335,7 +340,7 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
       // (domain/meeting-exit.js; owner, 2026-10-01). Which, the outbox says.
       // Not on a WhatsApp reply: the quoted message may be an older one, and
       // only the model can read it.
-      const meetingExitNow = !rec.skipped && params.out === true && !params.replyToId
+      const meetingExitNow = adopt && params.out === true && !params.replyToId
         ? await meetingExit.onOut(client, user.id)
         : null;
       if (meetingExitNow) lap('exit');
@@ -362,18 +367,18 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
         // THEIR clock at the moment the message arrived, and armed by add_task
         // or set_task_reminder on this turn (domain/chase-deadline). Nothing is
         // written now — there is no task yet to chase.
-        chase: rec.skipped ? null : chaseDeadline.forTurn(params.chase, { now: new Date(clock()), timezone: user.timezone }),
+        chase: adopt ? chaseDeadline.forTurn(params.chase, { now: new Date(clock()), timezone: user.timezone }) : null,
         // "מה פתוח לי?": the turn is told about their list, not their day —
         // domain/turn.advise leaves the today block out (see the hook).
-        openList: !rec.skipped && params.openList === true,
+        openList: adopt && params.openList === true,
         // "תזכיר לי X" with no when at all: the moment it was HEARD, so the
         // add_task this turn makes arms a weekly nudge on it
         // (reminders.startWeeklyNudge) — and only inside the same window a
         // chase gets, never on a turn that runs on long after the message.
-        remindAsk: !rec.skipped && params.remindAsk === true ? clock() : null,
+        remindAsk: adopt && params.remindAsk === true ? clock() : null,
         marked: new Set(), contextSent: false,
       };
-      if (!rec.skipped && messageId) {
+      if (adopt && messageId) {
         // The 👀 (or 👂) is decided here, before any model latency — and held
         // for `eyes_delay_seconds` when the plugin can tell us the answer went
         // out first (domain/reactions.openingDelayMs): a message answered
@@ -387,8 +392,8 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
         entry.marked.add(`${messageId}:${state}`);
         entry.reactionVocab = vocab;
       }
-      if (!rec.skipped && !byCode) { pushPending(Number(user.id), entry); noteOpen(Number(user.id)); }
-      out = { ok: true, opened: !rec.skipped, skipped: rec.skipped || null, userId: Number(user.id), counted: rec.counted };
+      if (adopt && !byCode) { pushPending(Number(user.id), entry); noteOpen(Number(user.id)); }
+      out = { ok: true, opened: !rec.skipped, skipped: rec.skipped || null, duringOurTurn: Boolean(rec.duringOurTurn), userId: Number(user.id), counted: rec.counted };
     });
     lap('commit');
     if (mark && delayMs > 0) holdEyes(agentId, mark, delayMs);

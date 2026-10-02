@@ -37,9 +37,13 @@ const depth = new Map();
 // our own delivery's sent_at — the agent's turn outlived the CLI and its late
 // turn_start was counted as a message from the person, resetting the check-in
 // backoff and moving last_inbound_at. So a release is deferred: for GRACE_MS
-// after the last delivery to this user ends, the turn is still ours. The
-// cost is one real reply inside that minute losing its bookkeeping (not its
-// answer — the agent still responds), and the next real message repairs it.
+// after the last delivery to this user ends, the turn is still ours.
+// That used to cost a real reply inside the minute its bookkeeping, and "the
+// next real message repairs it" was not true of a person whose next message
+// never came. Since 2026-10-02 the gateway's turn-open hook is exempt when it
+// carries a WhatsApp message id — only an inbound message fires it (see
+// turn.openFromGateway) — so the record is written; the mark still keeps the
+// turn's own doors (turn_start, the implicit open, turn_context) shut.
 const GRACE_MS = Number(process.env.OLMA_SELF_INITIATED_GRACE_MS || 60_000);
 let graceMs = Number.isFinite(GRACE_MS) && GRACE_MS >= 0 ? GRACE_MS : 60_000;
 const pending = new Set();

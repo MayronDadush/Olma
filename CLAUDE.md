@@ -193,7 +193,7 @@ Loads when you **Read** a file under `src/brokerd/**`, `src/domain/turn.js`, `sr
 - **A block written to REPLACE a tool call has to say what it does not hold, or its silence is read as the answer** — `today` counts `undated` to-dos, and a question about the whole list (`asksOpenList`, read by the hook) gets no `today` block at all
 - **`messages.queue.mode` stays `followup`.**
 - **Messages sent in a row are answered as ONE — WhatsApp inbound debounce, 8s** (`openclaw-config.WHATSAPP_INBOUND_DEBOUNCE_MS`); the joined text reaches every hook once, and a new value needs a gateway restart
-- **A turn Olma started is not a message from the person.**
+- **A turn Olma started is not a message from the person.** — but a gateway open carrying a WhatsApp message id is never ours, and the delivery's grace minute records it (`duringOurTurn`)
 - **A WhatsApp reply names ONE message, and only the MODEL is ever told which.**
 - **A turn is told where every coordination it heard about in the last day stands NOW** — the session remembers the question, not the answer
 - **A DECISION to stay quiet is not a reply that got lost.**

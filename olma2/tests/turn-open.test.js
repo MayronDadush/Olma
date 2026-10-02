@@ -248,14 +248,68 @@ test('a message id the model made up is refused when we already know better', as
   assert.equal(relayed.messageId, '3EB0RELAY0001');
 });
 
-test('a turn Olma started is not a message from the person — the hook path honours the mark too', async () => {
+test('a turn Olma started is not a message from the person — an open with no message id under the mark is skipped', async () => {
   const u = await agentUser('+972641100005', 'u-905');
-  const r = await selfInitiated.around(u.id, () => open({ agentId: 'u-905', messageId: '3EB0GATE0006', kind: 'text' }));
+  const r = await selfInitiated.around(u.id, () => open({ agentId: 'u-905', kind: 'text' }));
   assert.equal(r.ok, true);
   assert.equal(r.opened, false);
   assert.equal(r.skipped, 'self_initiated');
   assert.equal(await received(u.id), 0);
+  assert.equal((await state(u.id)).checkin_misses, 2, 'the backoff is untouched');
   assert.deepEqual(marks, [], 'no 👀 on our own delivery');
+});
+
+// `message:preprocessed` comes only from the gateway's inbound pipeline;
+// `openclaw agent --deliver` never fires it, so a WhatsApp message id under
+// the mark is the person writing inside the minute after a delivery. Shimon,
+// 2026-10-02: three real answers there were never counted and never woke him.
+test('a real message inside a delivery\'s mark is still recorded, and only recorded', async () => {
+  const u = await agentUser('+972641100015', 'u-915');
+  await db.pool.query(`UPDATE users SET last_woke_at = NULL WHERE id = $1`, [u.id]);
+  const pendingBefore = broker.pendingCount();
+  const r = await selfInitiated.around(u.id, () => open({ agentId: 'u-915', messageId: '3EB0GATE0015', kind: 'text', thanks: true }));
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.equal(r.skipped, null);
+  assert.equal(r.duringOurTurn, true);
+  assert.equal(await received(u.id), 1, 'counted');
+  const st = await state(u.id);
+  assert.ok(st.last_inbound_at, 'their message moved last_inbound_at');
+  assert.equal(st.checkin_misses, 0, 'and reset the check-in backoff');
+  const { rows: [w] } = await db.pool.query(`SELECT last_woke_at FROM users WHERE id = $1`, [u.id]);
+  assert.ok(w.last_woke_at, 'and woke them');
+  // …and nothing is queued for a turn that cannot read it, and no mark
+  // promises a reply from inside our own turn.
+  assert.equal(broker.pendingCount(), pendingBefore);
+  assert.deepEqual(marks, []);
+  const { rows } = await db.pool.query(
+    `SELECT detail FROM audit_log WHERE actor_id = $1 AND event = 'turn.opened_by_gateway'`, [u.id]);
+  assert.deepEqual(rows.map((x) => x.detail.duringOurTurn), [true]);
+
+  // The duplicate guard still holds under the mark and after it. Its window
+  // is read against the audit row's real timestamp, and earlier tests here
+  // have moved the suite's clock, so it is brought back for this half.
+  const was = now;
+  now = Date.now();
+  try {
+    const again = await selfInitiated.around(u.id, () => open({ agentId: 'u-915', messageId: '3EB0GATE0015', kind: 'text' }));
+    assert.equal(again.skipped, 'duplicate_message');
+    const after = await open({ agentId: 'u-915', messageId: '3EB0GATE0015', kind: 'text' });
+    assert.equal(after.skipped, 'duplicate_message');
+  } finally { now = was; }
+  assert.equal(await received(u.id), 1, 'still one message');
+});
+
+test('a real message inside the mark releases a night-held row and ends a ladder pause', async () => {
+  const u = await agentUser('+972641100016', 'u-916');
+  await db.pool.query(`UPDATE users SET paused_at = now(), paused_reason = 'quiet_ladder' WHERE id = $1`, [u.id]);
+  const { rows: [held] } = await db.pool.query(
+    `INSERT INTO outbox (user_id, kind, hold_reason, release_after)
+     VALUES ($1, 'checkin', 'night', now() + interval '8 hours') RETURNING id`, [u.id]);
+  await selfInitiated.around(u.id, () => open({ agentId: 'u-916', messageId: '3EB0GATE0016', kind: 'text' }));
+  const { rows: [o] } = await db.pool.query(`SELECT release_after <= now() AS due FROM outbox WHERE id = $1`, [held.id]);
+  assert.equal(o.due, true, 'the night-held row is re-heard');
+  const { rows: [p] } = await db.pool.query(`SELECT paused_at FROM users WHERE id = $1`, [u.id]);
+  assert.equal(p.paused_at, null, 'the pause the ladder made is over');
 });
 
 test('an agent with no active user, or a malformed agent id, is refused and touches nothing', async () => {

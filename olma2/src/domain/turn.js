@@ -160,10 +160,22 @@ async function alreadyOpenedRecently(client, userId, messageId, now) {
 // Opened by the gateway's own message:preprocessed hook (gateway-hooks/
 // olma-turn-open), BEFORE the model's first call — so the person is counted,
 // marked awake and shown a 👀 while the model is still reading the prompt.
-// A turn Olma started is not a message from the person, here as everywhere.
+// A turn Olma started is not a message from the person, here as everywhere —
+// but a WhatsApp message id IS one. The hook fires on `message:preprocessed`,
+// which OpenClaw 2026.8.1 emits only from the inbound reply pipeline
+// (get-reply's emitPreAgentMessageHooks); `openclaw agent --deliver` runs
+// agentCommandFromGatewayIngress → runAgentAttempt and never reaches it. So
+// the self-initiated mark, which outlives every delivery by a minute, may not
+// swallow a message carrying one: Shimon's three answers at 13:31-13:32 on
+// 2026-10-02 were never counted, never woke him and never ended anything
+// (`incidents.md`, "The minute after a delivery belonged to nobody").
+// `duringOurTurn` tells the caller the record was written but the open must
+// not be queued for adoption — `turn_context` reads no open while the mark
+// holds, so a queued one would be read by the NEXT message's prompt instead.
 async function openFromGateway(client, user, { messageId, kind, now } = {}) {
-  if (selfInitiated.isActive(user.id)) {
-    await audit.record(client, user.id, 'turn.opened_by_gateway', { selfInitiated: true, messageId: messageId || null });
+  const ours = selfInitiated.isActive(user.id);
+  if (ours && !messageId) {
+    await audit.record(client, user.id, 'turn.opened_by_gateway', { selfInitiated: true, messageId: null });
     return { counted: false, quota: null, firstTurn: false, skipped: 'self_initiated' };
   }
   // Checked before anything else changes: a duplicate must count for
@@ -175,8 +187,9 @@ async function openFromGateway(client, user, { messageId, kind, now } = {}) {
   // The gateway hook fires on `message:preprocessed` — an accepted inbound
   // message and nothing else — so this opener, alone, may wake the queue.
   const rec = await openRecord(client, user, { wake: true });
-  await audit.record(client, user.id, 'turn.opened_by_gateway', { messageId: messageId || null, kind: kind || 'text' });
-  return rec;
+  await audit.record(client, user.id, 'turn.opened_by_gateway',
+    { messageId: messageId || null, kind: kind || 'text', ...(ours ? { duringOurTurn: true } : {}) });
+  return ours ? { ...rec, duringOurTurn: true } : rec;
 }
 
 async function openTurnImplicitly(client, user, { firstTool } = {}) {
