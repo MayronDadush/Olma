@@ -785,6 +785,59 @@ async function setKind(client, groupId, { kind, min = null, max = null, closeAtT
   return ok({ group: rows[0] });
 }
 
+// Rooms she may have been REMOVED from — a question for a person, never a
+// verdict. Nothing tells us she was taken out of a group: the roster arrives
+// only on a tag, and the gateway drops WhatsApp's participants event after
+// clearing its own cache (measured 2026-10-02). What is left is the send: a
+// room she is not in answers `forbidden`. One refusal is not enough to go on.
+// Room 3 got one on 2026-09-08 and took the next line normally. So a suspect is
+// a room refused on two different days of its own clock, with no clean send
+// since the first of those refusals. A clean send is `sent_at` with no
+// `hold_reason`: an `unconfirmed` one proves nothing either way. Anything sent
+// after the refusals clears it, since she cannot write to a room she is not in.
+//
+// Never acts. `retired` is sticky and hides the room from everyone's page,
+// so it stays a person's call (`retire`).
+const REMOVAL_MIN_DAYS = 2;
+
+async function removalSuspects(client) {
+  const { rows } = await client.query(
+    `WITH last_ok AS (
+       SELECT group_id, max(sent_at) AS at FROM group_outbox
+        WHERE sent_at IS NOT NULL AND hold_reason IS NULL GROUP BY group_id)
+     SELECT g.id, g.subject, g.external_id,
+            count(*)::int AS refusals,
+            count(DISTINCT (o.created_at AT TIME ZONE g.timezone)::date)::int AS days,
+            max(o.created_at) AS last_at
+       FROM group_outbox o
+       JOIN chat_groups g ON g.id = o.group_id AND g.state <> 'retired'
+       LEFT JOIN last_ok l ON l.group_id = g.id
+      WHERE o.last_error ~* '\\mforbidden\\M'
+        AND (l.at IS NULL OR o.created_at > l.at)
+      GROUP BY g.id
+     HAVING count(DISTINCT (o.created_at AT TIME ZONE g.timezone)::date) >= $1
+      ORDER BY max(o.created_at) DESC`, [REMOVAL_MIN_DAYS]);
+  return rows.map((r) => ({
+    id: Number(r.id), subject: r.subject, externalId: r.external_id,
+    refusals: r.refusals, days: r.days, lastAt: r.last_at,
+  }));
+}
+
+// She is no longer in this room. Sticky (`applyState` never moves a retired
+// room), and every reader that lists rooms skips it: the person's page, the
+// private turn's `roomsOf`, the metrics. `group.retired` is the event the owner's
+// hand-written UPDATE recorded for room 11 (2026-09-25), so the trail reads the
+// same whichever way it was done.
+async function retire(client, groupId, { reason = 'removed_from_group', by = 'owner' } = {}, actorId = null) {
+  const group = await getById(client, groupId);
+  if (!group) return err('not_found', 'no such group');
+  if (group.state === 'retired') return ok({ group, changed: false });
+  const { rows } = await client.query(
+    `UPDATE chat_groups SET state = 'retired' WHERE id = $1 RETURNING *`, [groupId]);
+  await audit.record(client, actorId, 'group.retired', { by, reason, groupId: Number(groupId), from: group.state });
+  return ok({ group: rows[0], changed: true });
+}
+
 // Asked once, ever — stamped whether or not anybody answers. A room that let
 // the question go by is not asked it again on the next coordination; the
 // dashboard is where it gets filled in after that.
@@ -826,5 +879,6 @@ module.exports = {
   decideState, evaluate, applyState, isConnected, MIN_CONNECTED_TO_OPEN,
   decideNotice, noteNoticeSent, seenAt, noteSeen, lastMemberWriteAt,
   GROUP_KINDS, validKind, setKind, noteKindAsked, quorumFor,
+  removalSuspects, retire, REMOVAL_MIN_DAYS,
   GROUP_TOKEN_RE, looksLikeGroupToken, resolveByToken, actingMember, roomStatus,
 };

@@ -278,7 +278,8 @@ const deployDrift = require('./deploy-drift');
       // row is closed rather than retried — see channels/openclaw.js.
       send: async (jid, body, opts) => {
         const r = await rawSend(jid, body, opts);
-        return r.ok ? 'sent' : (r.timedOut ? 'unknown' : 'failed');
+        if (r.ok) return 'sent';
+        return r.timedOut ? 'unknown' : { result: 'failed', error: r.error };
       },
     }) },
     { name: 'intake_template_sync', run: async () => {

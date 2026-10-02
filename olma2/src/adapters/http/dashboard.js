@@ -525,6 +525,12 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
               max: body.maximum === '' ? null : body.maximum,
               closeAtTarget: body.close_at_target === 'on',
             }, null);
+          } else if (url.pathname === '/group-retire') {
+            // A person confirming what the groups section only suspects: she
+            // was removed from this room. Sticky, so it is never offered by
+            // the sweep — see `groups.removalSuspects`.
+            await groupsDomain.retire(client, Number(body.id), { by: 'owner', reason: 'removed_from_group' }, null);
+            await auditDomain.record(client, null, 'admin.group_retired', { groupId: Number(body.id) });
           } else if (url.pathname === '/brand/ads/settings') {
             const prev = await brandAds.getSettings(client);
             const next = await brandAds.saveSettings(client, {
