@@ -195,3 +195,17 @@ test('the room reaches the personal dashboard by its WhatsApp name, with its peo
   assert.equal(/identity_token|identityToken/.test(json), false);
   assert.equal(/\+9726/.test(json), false, 'and no phone numbers');
 });
+
+test('a room she was removed from leaves the personal dashboard', async () => {
+  const { group, people } = await room({ users: 2, subject: 'חדר שעזבה' });
+  await withTx(db.pool, (cl) => groupConnections.connectRoom(cl, group.id));
+
+  const before = await withTx(db.pool, (cl) => userDashboard.load(cl, people[0].id));
+  assert.ok(before.data.groups.some((g) => g.id === Number(group.id)), 'drawn while she is in it');
+
+  await db.pool.query(`UPDATE chat_groups SET state = 'retired' WHERE id = $1`, [group.id]);
+  const after = await withTx(db.pool, (cl) => userDashboard.load(cl, people[0].id));
+  assert.ok(after.ok);
+  assert.equal(after.data.groups.some((g) => g.id === Number(group.id)), false,
+    'a retired room is not one she shares with them');
+});

@@ -348,12 +348,17 @@ async function loadFriends(client, userId) {
 // shows, flagged `onOlma: false`, because a room drawn with half its people
 // missing reads as the wrong room. They cannot be put in a coordination — the
 // page shows them and cannot select them.
+//
+// A `retired` room is one she was removed from, so it is not a room she
+// shares with them any more and is not drawn — the same line `groups.roomsOf`
+// draws for the chat side. Nothing could be coordinated through it anyway:
+// every group action refuses a room that is not open.
 async function loadGroups(client, userId) {
   const { rows } = await client.query(
     `SELECT g.id, g.subject, g.state, g.kind, g.timezone,
             m2.user_id, m2.display_name, u.first_name
        FROM chat_group_members me
-       JOIN chat_groups g ON g.id = me.group_id
+       JOIN chat_groups g ON g.id = me.group_id AND g.state <> 'retired'
        JOIN chat_group_members m2 ON m2.group_id = g.id AND m2.left_at IS NULL
        LEFT JOIN users u ON u.id = m2.user_id
       WHERE me.user_id = $1 AND me.left_at IS NULL
