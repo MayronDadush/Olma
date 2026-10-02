@@ -129,6 +129,7 @@ never trust a dated narrative for something you are about to act on.
 - [The probe that was read as him writing (fixed 2026-09-30)](#the-probe-that-was-read-as-him-writing-fixed-2026-09-30)
 - [The morning digest asked the same question four mornings running (fixed 2026-09-06)](#the-morning-digest-asked-the-same-question-four-mornings-running-fixed-2026-09-06)
 - [Four good mornings to a man who had stopped answering (fixed 2026-09-05)](#four-good-mornings-to-a-man-who-had-stopped-answering-fixed-2026-09-05)
+- [The minute after a delivery belonged to nobody (fixed 2026-10-02)](#the-minute-after-a-delivery-belonged-to-nobody-fixed-2026-10-02)
 - [Vered's first evening: five tasks, three that would not have arrived (fixed 2026-09-06)](#vereds-first-evening-five-tasks-three-that-would-not-have-arrived-fixed-2026-09-06)
 - [The reminder that could not climb, because its first rung died on the wire (fixed 2026-09-05)](#the-reminder-that-could-not-climb-because-its-first-rung-died-on-the-wire-fixed-2026-09-05)
 
@@ -5846,6 +5847,49 @@ three days and sends one line with no question mark and no pitch; two misses
 someone with a miss on record. The timezone ask carries the exact Hebrew
 sentence, gender forms aside. User 13 was set to three misses by hand so the
 next thing he hears from עולמה is his own reply.
+
+### The minute after a delivery belonged to nobody (fixed 2026-10-02)
+
+Shimon (user 54) joined from a room at 13:29 UTC, wrote once at 13:31:12 and
+was counted. At 13:31:17 his `meeting_invite` went out on the model path, and
+he answered it three times: 13:31:21, 13:32:21, 13:32:22. Every one reached
+the gateway's turn-open hook with a real WhatsApp message id, and every one
+came back `skipped: "self_initiated"` — audit rows `turn.opened_by_gateway`
+with `{"selfInitiated": true}`. His turn then ran (it accepted and declined
+slots on his behalf at 13:32:36 and 13:32:54) with no message counted, no
+`last_inbound_at`, no `last_woke_at`, no night-held row released and no pause
+ended.
+
+The cause was the grace minute added for "Four good mornings to a man who had
+stopped answering": the self-initiated mark outlives every delivery by
+`GRACE_MS` because the agent's own turn outlives the CLI. That entry priced it
+as "a real reply inside that minute loses only its bookkeeping, and the next
+one repairs it". On the box that was 60 real messages from 21 people in the
+30 days before the fix, and a person who answers the thing we just sent is
+exactly the person most likely to write inside that minute.
+
+**The hook could always tell the difference, and nobody asked it.** Read on
+the box (OpenClaw 2026.8.1): `message:preprocessed` is emitted in one place,
+`emitPreAgentMessageHooks` in the get-reply bundle, which is the inbound
+auto-reply pipeline. `openclaw agent --deliver` goes through the gateway's
+`agent` method to `agentCommandFromGatewayIngress` and on to
+`runAgentAttempt`. It never enters get-reply, so it never fires the hook. A
+turn-open carrying a message id is therefore always a person. (The plugin's
+`trigger` is NOT a discriminator: the CLI path hard-codes `trigger: "user"`
+too.)
+
+Fix: `turn.openFromGateway` ignores the mark when a message id is present,
+and the duplicate-message guard still runs first. The open writes the record
+only. It is flagged `duringOurTurn`, and brokerd neither queues it nor puts a
+👀 on it, nor acts on its words (a stop, a "בחוץ", a chase). That is because
+`turn_context` reads no pending open while the mark holds. A queued entry
+nobody contexted would be read by the NEXT message's prompt as its own, and
+that turn's marks would land one message behind (the bug "two quick
+messages" fixed). An open with no message id under the mark is still skipped.
+Two things are left open on purpose: the turn's own conversation side
+(context, adoption, marks) inside the minute behaves exactly as before, and a
+person's very first message landing there spends the first-turn signal on
+the record with no prompt to carry it.
 
 ### Vered's first evening: five tasks, three that would not have arrived (fixed 2026-09-06)
 
