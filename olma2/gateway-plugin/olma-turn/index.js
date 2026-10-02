@@ -188,22 +188,39 @@ export function waitingBehind(agentId, now = Date.now()) {
   if (!turn || !turn.person) return 0;
   return liveArrivals(agentId, now).length;
 }
-function noteHeld(agentId, now) {
+// The held replies themselves, kept here and nowhere else: they are about to be
+// handed back to the same agent that wrote them, and never cross the socket.
+// Kept until a reply of theirs actually goes out, not until the next turn is
+// told: in a burst of three, the third turn has to see what the FIRST turn
+// said too, since the second turn's merged reply was held as well.
+const BURST_HELD_MAX = 4;
+const BURST_HELD_CHARS = 1500;
+function noteHeld(agentId, text, now) {
   const h = HELD.get(agentId);
-  HELD.set(agentId, { count: (h && now - h.at <= BURST_HELD_MS ? h.count : 0) + 1, at: now });
+  const texts = h && now - h.at <= BURST_HELD_MS ? h.texts : [];
+  const t = String(text || "").trim().slice(0, BURST_HELD_CHARS);
+  if (t) texts.push(t);
+  HELD.set(agentId, { texts: texts.slice(-BURST_HELD_MAX), at: now });
 }
-// What the next person's turn is told, once. English like the rest of the
-// opening, and only the shape of what happened: their messages and the held
-// replies are both already in the session history.
+export function clearHeld(agentId) { HELD.delete(agentId); }
+// What the next person's turn is told. The replies are QUOTED, not described:
+// told only that "your earlier replies did not reach them", the model saw its
+// own reply in the session history, took it as delivered and answered the
+// newest message alone — Miron asked three things on 2026-10-02 and the
+// answer to the middle one, his open coordinations, never reached him.
 export function heldNote(agentId, now = Date.now()) {
   const h = HELD.get(agentId);
-  HELD.delete(agentId);
-  if (!h || now - h.at > BURST_HELD_MS) return "";
-  return `[Burst] They wrote several messages in a row. Your ${h.count === 1 ? "reply" : `last ${h.count} replies`} `
-    + "to the earlier ones in this conversation did NOT reach them — they have not read "
-    + (h.count === 1 ? "it" : "them")
-    + ". Answer everything they wrote since your last delivered reply together, in ONE message, "
-    + "as if for the first time. Whatever your tools already did stays done; do not do it again.";
+  if (!h || now - h.at > BURST_HELD_MS) { HELD.delete(agentId); return ""; }
+  const quoted = h.texts.length
+    ? h.texts.map((t) => `<<<\n${t}\n>>>`).join("\n")
+    : "(the text was not kept)";
+  return "[Burst] They wrote several messages in a row, and NONE of these replies of yours "
+    + "reached them — they never saw them, even though they are in your history:\n"
+    + quoted + "\n"
+    + "The reply you write now is the ONLY message they will get for all of their messages. "
+    + "It MUST carry everything in those undelivered replies that is still true and relevant, "
+    + "and answer their newest message too — one message, merged, nothing said twice. "
+    + "Whatever your tools already did stays done; do not do it again.";
 }
 export function _resetBurst() { ARRIVALS.clear(); TURNS.clear(); HELD.clear(); }
 
@@ -954,7 +971,8 @@ export function buildReplyGateHandler({ connect, sock, timeoutMs = 1500, log = t
         const held = Boolean(hold && hold.ok === true && hold.hold === true);
         log({ burst: agentId, waiting, held, ...(hold ? {} : { outcome: "unreachable" }), ms: Date.now() - t0 });
         if (held) {
-          noteHeld(agentId, Date.now());
+          const kept = gateReply(text, { readerWritesHebrew: readerOf(agentId) });
+          noteHeld(agentId, kept.action === "cancel" ? "" : kept.text, Date.now());
           if (hasMedia) return { payload: { ...payload, text: "" } };
           return { cancel: true, reason: "olma_burst" };
         }
@@ -971,6 +989,8 @@ export function buildReplyGateHandler({ connect, sock, timeoutMs = 1500, log = t
           verdict = { action: "cancel", text: "", leaks: [{ kind: "echo", at: "" }], reported: [...verdict.reported, { kind: "echo", at: "", line: 0 }] };
         }
       }
+      // A reply of theirs is going out: the burst, if there was one, is answered.
+      if (person && (verdict.action !== "cancel" || hasMedia)) clearHeld(agentId);
       // Something is about to reach them, so the 👀 brokerd is holding for this
       // turn's message is no longer needed (`turnProgress` below). Not for a
       // reply the gate is about to stop entirely: nothing reached anybody, and

@@ -65,12 +65,18 @@ test('three messages in a row: the first two replies are held, the third turn is
   // Turn 2 starts on M2 while M3 has already arrived.
   await arrive('M3', 'אחרי 21');
   const t2 = await turnStarts('גם וגם');
-  assert.match(t2.prependContext, /\[Burst\].*did NOT reach them/s, 'turn 2 hears about turn 1');
+  assert.match(t2.prependContext, /\[Burst\].*NONE of these replies/s, 'turn 2 hears about turn 1');
+  assert.ok(t2.prependContext.includes('רשמתי שאתה יכול בשבת'), 'and is handed what turn 1 said, word for word');
   assert.deepEqual(await gate('הבנתי, גם וגם', holding()), { cancel: true, reason: 'olma_burst' }, 'M3 is still waiting');
 
   // Turn 3 has nothing behind it: it is told about one held reply, and goes out.
   const t3 = await turnStarts('אחרי 21');
-  assert.match(t3.prependContext, /Your reply to the earlier ones/);
+  // Miron, 2026-10-02: the third turn was told only that "earlier replies did
+  // not arrive", saw the second turn's answer in its history, took it as sent
+  // and answered the newest message alone. It is handed BOTH held replies now.
+  assert.ok(t3.prependContext.includes('רשמתי שאתה יכול בשבת'), 'turn 1\'s reply reaches turn 3');
+  assert.ok(t3.prependContext.includes('הבנתי, גם וגם'), 'turn 2\'s reply reaches turn 3');
+  assert.match(t3.prependContext, /ONLY message they will get/);
   assert.equal(await gate('רשמתי: שבת, שתי האפשרויות, אחרי 21', holding()), undefined);
   // …and the note is said once.
   assert.equal(await turnStarts('תודה'), undefined);
@@ -203,4 +209,28 @@ test('a message dispatched before the one a turn answers has had its turn, match
   await turnStarts('מה נשמע');
   assert.equal(plugin.waitingBehind('u-54'), 0);
   assert.equal(await gate('הכל טוב', holding()), undefined);
+});
+
+test('the model\'s own working-out in a held reply is not handed back; a reply cut whole is noted without text', async () => {
+  await arrive('M1', 'א');
+  await turnStarts('א');
+  await arrive('M2', 'ב');
+  // A reply the leak gate would drop whole carries nothing worth repeating.
+  await gate('NO_REPLY is the right answer here because the turn context says so', holding());
+  const t2 = await turnStarts('ב');
+  assert.ok(!/turn context says so/.test(t2.prependContext || ''), 'working-out stays out');
+});
+
+test('the held replies stay until a reply actually reaches them, and expire after five minutes', async () => {
+  await arrive('M1', 'א');
+  await turnStarts('א');
+  await arrive('M2', 'ב');
+  await gate('תשובה ראשונה', holding());
+  // Turn 2 is told, says nothing (no payload at all), and turn 3 must still be told.
+  await turnStarts('ב');
+  await arrive('M3', 'ג');
+  const t3 = await turnStarts('ג');
+  assert.ok(t3.prependContext.includes('תשובה ראשונה'));
+  assert.equal(await gate('הכל ביחד', holding()), undefined);
+  assert.equal(plugin.heldNote('u-54'), '', 'answered: nothing is carried any more');
 });
