@@ -20,6 +20,8 @@
 // `groups.removalSuspects` names. The sweep cannot learn that she was removed
 // from a room (nothing tells it), so a person confirms it here, through
 // `groups.retire`, the way room 11 was confirmed by hand on 2026-09-25.
+// Undoing it needs no button: `groups.restoreReturned` does it on the first
+// message from the room once she is back in it.
 const { esc } = require('../../html');
 const { ago } = require('../html');
 const occ = require('../../../../intake/openclaw-config');
@@ -79,7 +81,7 @@ function suspectsBlock(suspects, csrf) {
       <button>כן, היא כבר לא שם — סמן כעזבה</button>
     </form></li>`).join('');
   return `<div class="warn"><p><b>ייתכן שהוציאו את עולמה מהקבוצות האלה:</b></p><ul>${rows}</ul>
-    <p class="dim">קבוצה שמסומנת כעזבה נעלמת מהדאשבורד האישי של כל החברים. אין כפתור שמחזיר אותה.</p></div>`;
+    <p class="dim">קבוצה שמסומנת כעזבה נעלמת מהדאשבורד האישי של כל החברים. אם מחזירים את עולמה לקבוצה, היא חוזרת לבד בפעם הראשונה שמישהו מתייג אותה שם.</p></div>`;
 }
 
 async function renderGroups(client, csrf, _probe, ctx = {}) {

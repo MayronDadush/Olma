@@ -148,3 +148,65 @@ test('the admin page names the suspect with the button, and the alert strip poin
   const after = await withTx(db.pool, (c) => renderGroups(c, 'tok', null, { configPath: '/nonexistent' }));
   assert.doesNotMatch(after, /group-retire/, 'no suspects, no block');
 });
+
+// She was put back (owner, 2026-10-03). WhatsApp delivers a group's messages
+// only to members, so a turn heard there after the retirement is proof.
+async function heard(hoursAgo, { gid = groupId } = {}) {
+  const { rows } = await db.pool.query(`SELECT external_id FROM chat_groups WHERE id = $1`, [gid]);
+  const jid = rows[0].external_id;
+  await db.pool.query(
+    `INSERT INTO group_inbound_context (session_key, agent_id, chat_id, at)
+          VALUES ($1, $2, $3, now() - make_interval(hours => $4))
+     ON CONFLICT (session_key) DO UPDATE SET at = EXCLUDED.at`,
+    [`agent:g-${gid}:whatsapp:group:${jid}`, `g-${gid}`, jid, hoursAgo]);
+}
+
+async function retiredAgo(hoursAgo, reason = 'removed_from_group') {
+  await withTx(db.pool, (c) => groups.retire(c, groupId, { reason }));
+  await db.pool.query(
+    `UPDATE audit_log SET created_at = now() - make_interval(hours => $2)
+      WHERE event = 'group.retired' AND (detail->>'groupId')::bigint = $1`, [groupId, hoursAgo]);
+}
+
+const restore = () => withTx(db.pool, (c) => groups.restoreReturned(c));
+const stateOf = async () => (await db.pool.query(`SELECT state FROM chat_groups WHERE id = $1`, [groupId])).rows[0].state;
+
+test('a room heard from only BEFORE it was retired stays retired', async () => {
+  await heard(72);
+  await retiredAgo(48);
+  assert.deepEqual(await restore(), []);
+  assert.equal(await stateOf(), 'retired');
+});
+
+test('a room heard from AFTER it was retired comes back, locked, once, on the record', async () => {
+  await retiredAgo(48);
+  await heard(1);
+  assert.deepEqual(await restore(), [groupId]);
+  assert.equal(await stateOf(), 'locked', 'locked, and the same pass judges it on the fresh roster');
+  assert.deepEqual(await restore(), [], 'a second pass restores nothing');
+  const { rows } = await db.pool.query(
+    `SELECT detail FROM audit_log WHERE event = 'group.returned' AND (detail->>'groupId')::bigint = $1`, [groupId]);
+  assert.equal(rows.length, 1);
+  assert.ok(rows[0].detail.heardAt && rows[0].detail.retiredAt);
+});
+
+test('a room retired for any other reason is not brought back by a message', async () => {
+  await retiredAgo(48, 'owner_closed');
+  await heard(1);
+  assert.deepEqual(await restore(), []);
+  assert.equal(await stateOf(), 'retired');
+});
+
+test('after she is back, the refusals from before her removal do not flag the room again', async () => {
+  await row({ hoursAgo: 24 * 5 });
+  await row({ hoursAgo: 24 * 4 });
+  assert.equal((await suspects()).length, 1);
+  await retiredAgo(72);
+  await heard(1);
+  assert.deepEqual(await restore(), [groupId]);
+  assert.deepEqual(await suspects(), [], 'the old refusals are history');
+
+  // ...and if she is removed again, new refusals count from scratch.
+  await row({ hoursAgo: 0 });
+  assert.deepEqual(await suspects(), [], 'one new day is still one day');
+});

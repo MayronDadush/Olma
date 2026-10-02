@@ -796,15 +796,20 @@ async function setKind(client, groupId, { kind, min = null, max = null, closeAtT
 // `hold_reason`: an `unconfirmed` one proves nothing either way. Anything sent
 // after the refusals clears it, since she cannot write to a room she is not in.
 //
-// Never acts. `retired` is sticky and hides the room from everyone's page,
-// so it stays a person's call (`retire`).
+// Never acts. `retired` hides the room from everyone's page, so it stays a
+// person's call (`retire`). Refusals from before she was brought back
+// (`restoreReturned`) belong to the removal that is over and are not counted
+// again.
 const REMOVAL_MIN_DAYS = 2;
 
 async function removalSuspects(client) {
   const { rows } = await client.query(
     `WITH last_ok AS (
        SELECT group_id, max(sent_at) AS at FROM group_outbox
-        WHERE sent_at IS NOT NULL AND hold_reason IS NULL GROUP BY group_id)
+        WHERE sent_at IS NOT NULL AND hold_reason IS NULL GROUP BY group_id),
+     returned AS (
+       SELECT (detail->>'groupId')::bigint AS group_id, max(created_at) AS at FROM audit_log
+        WHERE event = 'group.returned' GROUP BY 1)
      SELECT g.id, g.subject, g.external_id,
             count(*)::int AS refusals,
             count(DISTINCT (o.created_at AT TIME ZONE g.timezone)::date)::int AS days,
@@ -812,8 +817,10 @@ async function removalSuspects(client) {
        FROM group_outbox o
        JOIN chat_groups g ON g.id = o.group_id AND g.state <> 'retired'
        LEFT JOIN last_ok l ON l.group_id = g.id
+       LEFT JOIN returned rt ON rt.group_id = g.id
       WHERE o.last_error ~* '\\mforbidden\\M'
         AND (l.at IS NULL OR o.created_at > l.at)
+        AND (rt.at IS NULL OR o.created_at > rt.at)
       GROUP BY g.id
      HAVING count(DISTINCT (o.created_at AT TIME ZONE g.timezone)::date) >= $1
       ORDER BY max(o.created_at) DESC`, [REMOVAL_MIN_DAYS]);
@@ -823,11 +830,16 @@ async function removalSuspects(client) {
   }));
 }
 
-// She is no longer in this room. Sticky (`applyState` never moves a retired
-// room), and every reader that lists rooms skips it: the person's page, the
-// private turn's `roomsOf`, the metrics. `group.retired` is the event the owner's
-// hand-written UPDATE recorded for room 11 (2026-09-25), so the trail reads the
-// same whichever way it was done.
+// She is no longer in this room. Sticky against the sweep (`applyState` never
+// moves a retired room), and every reader that lists rooms skips it: the
+// person's page, the private turn's `roomsOf`, the metrics. `group.retired` is
+// the event the owner's hand-written UPDATE recorded for room 11 (2026-09-25),
+// so the trail reads the same whichever way it was done. Only
+// `restoreReturned` undoes it.
+//
+// The gateway's route and the room's agent are deliberately left alone. If
+// she is added back, the first tag still reaches a session we can read, and
+// that is the evidence `restoreReturned` waits for.
 async function retire(client, groupId, { reason = 'removed_from_group', by = 'owner' } = {}, actorId = null) {
   const group = await getById(client, groupId);
   if (!group) return err('not_found', 'no such group');
@@ -836,6 +848,46 @@ async function retire(client, groupId, { reason = 'removed_from_group', by = 'ow
     `UPDATE chat_groups SET state = 'retired' WHERE id = $1 RETURNING *`, [groupId]);
   await audit.record(client, actorId, 'group.retired', { by, reason, groupId: Number(groupId), from: group.state });
   return ok({ group: rows[0], changed: true });
+}
+
+// She was added back. WhatsApp delivers a group's messages only to its
+// members, so a message from a retired room that reached her AFTER it was
+// retired proves she is in it again. Unlike a removal, that is not a guess,
+// and it is undone without asking anybody (owner, 2026-10-03). The evidence is
+// the plugin's row for every group turn (`group_inbound_context`), matched on
+// the jid whichever agent took it.
+//
+// Only a room retired because she was REMOVED (`group.retired`, reason
+// `removed_from_group`, the newest such row). A room retired for another
+// reason, or with no record of why, is left as it is. It goes back to `locked`,
+// not to whatever it was: the sweep's pass that follows evaluates it on the
+// roster that message carried, and opens it if it should. `opened_at` and
+// `opened_announced_at` are still stamped, so the room is not greeted again.
+async function restoreReturned(client) {
+  const { rows } = await client.query(
+    `WITH retired AS (
+       SELECT DISTINCT ON (g.id) g.id, g.external_id, a.created_at AS retired_at,
+              a.detail->>'reason' AS reason
+         FROM chat_groups g
+         JOIN audit_log a ON a.event = 'group.retired' AND (a.detail->>'groupId')::bigint = g.id
+        WHERE g.state = 'retired'
+        ORDER BY g.id, a.created_at DESC)
+     SELECT r.id, r.retired_at, max(c.at) AS heard_at
+       FROM retired r
+       JOIN group_inbound_context c ON c.session_key LIKE '%:group:' || r.external_id
+      WHERE r.reason = 'removed_from_group' AND c.at > r.retired_at
+      GROUP BY r.id, r.retired_at`);
+  const restored = [];
+  for (const r of rows) {
+    const { rows: updated } = await client.query(
+      `UPDATE chat_groups SET state = 'locked' WHERE id = $1 AND state = 'retired' RETURNING id`, [r.id]);
+    if (!updated.length) continue;
+    await audit.record(client, null, 'group.returned', {
+      groupId: Number(r.id), retiredAt: r.retired_at, heardAt: r.heard_at,
+    });
+    restored.push(Number(r.id));
+  }
+  return restored;
 }
 
 // Asked once, ever — stamped whether or not anybody answers. A room that let
@@ -879,6 +931,6 @@ module.exports = {
   decideState, evaluate, applyState, isConnected, MIN_CONNECTED_TO_OPEN,
   decideNotice, noteNoticeSent, seenAt, noteSeen, lastMemberWriteAt,
   GROUP_KINDS, validKind, setKind, noteKindAsked, quorumFor,
-  removalSuspects, retire, REMOVAL_MIN_DAYS,
+  removalSuspects, retire, restoreReturned, REMOVAL_MIN_DAYS,
   GROUP_TOKEN_RE, looksLikeGroupToken, resolveByToken, actingMember, roomStatus,
 };
