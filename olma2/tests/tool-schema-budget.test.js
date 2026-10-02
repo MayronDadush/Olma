@@ -152,6 +152,13 @@ const { IDENTITY_PARAM } = require('../src/adapters/mcp/identity-param');
 // with one-line descriptions (the guidance rides the results); the margin was
 // 464. Per turn a person pays ~365 and a room ~290 (agent-tool-policy).
 // Put to the owner with its cost and approved ("מאשר את התקרה"). Measured 61,046.
+//
+// Not raised, 2026-10-02: `accepts_option_ids` on record_meeting_constraint
+// (a condition a time still fits is a yes with the note — שמעון's "אחרי 21")
+// cost ~230 and was paid by trimming sentences the parameters already say:
+// propose_meeting_slot's starts_at line, respond_to_meeting_slot's
+// accepted_starts_at clause, and the constraint tool's "Record the REASON"
+// (its `constraint` parameter carries it). Measured 61,018.
 const JSON_CEILING = 61_050;
 const DESCRIPTION_CEILING = 700;
 const IDENTITY_DESCRIPTION_CEILING = 40;
