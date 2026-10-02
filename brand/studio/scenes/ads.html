@@ -56,6 +56,11 @@
   #night { position: absolute; inset: 0; z-index: 2; display: grid; place-items: center; background: rgba(11,20,26,.62); opacity: 0;
     font-family: "IBM Plex Sans", sans-serif; font-weight: 700; font-size: 20vmin; color: #F0EDE5; direction: ltr; letter-spacing: -.02em }
   #night .y { font-size: inherit }
+  /* the end card says how to keep her: save the number (owner, 2.10.2026) */
+  .save { display: grid; gap: 1.2vmin }
+  .save .lbl { font-weight: 500; font-size: 3.8vmin; color: #F0EDE5 }
+  .save .num { justify-self: start; font-family: "IBM Plex Sans", sans-serif; font-weight: 700; font-size: 7.4vmin; line-height: 1;
+    color: #F9C23C; direction: ltr; unicode-bidi: isolate; letter-spacing: .01em }
 </style>
 <div class="v">
   <div id="stage"></div>
@@ -64,6 +69,7 @@
     <div class="by"><span class="m" id="om"></span><span id="ob"></span></div>
     <svg class="grain" aria-hidden="true"><filter id="g1f" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency=".8" numOctaves="3" stitchTiles="stitch" seed="7"/><feColorMatrix values="0 0 0 0 .94  0 0 0 0 .93  0 0 0 0 .9  .5 0 0 0 -.26"/></filter><rect width="100%" height="100%" filter="url(#g1f)"/></svg></div>
   <div class="card" id="closer"><div class="big" id="cm"></div><h1 class="h" id="ch"></h1><div class="sub" id="cs"></div>
+    <div class="save" id="cn"><div class="lbl" id="cnl"></div><div class="num" id="cnn"></div></div>
     <div class="by" id="cb"></div>
     <svg class="grain" aria-hidden="true"><rect width="100%" height="100%" filter="url(#g1f)"/></svg></div>
 </div>
@@ -153,6 +159,9 @@
   $('ch').innerHTML = S.close.map((l) => `<span>${l}</span>`).join('');
   $('cs').textContent = S.sub; if (!S.sub) $('cs').remove();
   $('ob').textContent = C.by; $('cb').textContent = C.by;
+  // WA_NUMBER in olma2/src/adapters/http/public-pages.js
+  const SAVE = { he: ['שמרו אותי כאיש קשר בוואטסאפ', '055-934-7282'], en: ['Save me as a WhatsApp contact', '+972 55-934-7282'] }[LANG];
+  $('cnl').textContent = SAVE[0]; $('cnn').textContent = SAVE[1];
   $('om').innerHTML = frame('meet', 1e9, ON_CYPRESS, 'om');
   const CHATS = A.chats(S);
   for (const c of CHATS) {
@@ -205,7 +214,7 @@
   }
 
   // The timeline, in ms. Opener and closer are the same in every ad.
-  const OPEN_OUT = 2500, CHAT_IN = 2900, CHAT_OUT = A.out, MARK = CHAT_OUT + 400, LINES = MARK + 800, END = LINES + 2700;
+  const OPEN_OUT = 2500, CHAT_IN = 2900, CHAT_OUT = A.out, MARK = CHAT_OUT + 400, LINES = MARK + 800, END = LINES + 3500;
   window.__ms = END;
   let measured = false;
   window.__seek = (ms) => {
@@ -255,7 +264,8 @@
     const cl = $('ch').children;
     rise(cl[0], k(ms, LINES, LINES + 450)); rise(cl[1], k(ms, LINES + 300, LINES + 750));
     if ($('cs')) rise($('cs'), k(ms, LINES + 650, LINES + 1100));
-    rise($('cb'), k(ms, LINES + 900, LINES + 1400));
+    rise($('cn'), k(ms, LINES + 1000, LINES + 1500));
+    rise($('cb'), k(ms, LINES + 1400, LINES + 1900));
   };
   __seek(0); __seek(0);
 </script>
