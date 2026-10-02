@@ -2,7 +2,7 @@
 // The lines a room hears about its own coordination without being asked.
 //
 // (The header below is the history: it began as three. Today `decideGroupLine`
-// returns started, relay, laid, base/moved, chase, table, reopened and, once
+// returns started, relay, laid, base/moved, chase, almost, table, reopened and, once
 // settled, done/time/calendar/dayof/soon — `agents-group-template.md`, "מה יוצא
 // לקבוצה בלעדייך", is the list the room's agent reads.)
 //
@@ -69,6 +69,9 @@ const CHASE_AFTER_MS = 3600_000;
 // coordination — only the two lines about the table MOVING can arrive in a
 // burst, and they are the two this gates.
 const TABLE_SETTLE_MS = 15 * 60_000;
+// How long after the chase the "one short" line waits: both tag the people who
+// have not answered, and an hour is the same gap the chase keeps from invites.
+const ALMOST_AFTER_CHASE_MS = 3600_000;
 
 // The moment the room may speak about a table that has moved since it was last
 // told, or null when it has not moved at all. `co.tableChangedAts` is every
@@ -166,7 +169,7 @@ function withClocks(line, co, { timezone, nowMs } = {}) {
 }
 
 function decideLine(co, {
-  saidStarted, saidBase, saidBaseSlot, saidBaseStartAt, saidChase, saidDone, saidCalendar, saidDayOf, saidHour,
+  saidStarted, saidBase, saidBaseSlot, saidBaseStartAt, saidChase, chaseSaidAtMs, saidAlmost, saidDone, saidCalendar, saidDayOf, saidHour,
   saidTime, pendingRelay, startedAtMs, nowMs, timezone, tableSaidAtMs, reopenedAt, reopenedFrom, saidReopened,
   roomAsleep,
 } = {}) {
@@ -403,6 +406,33 @@ function decideLine(co, {
   // it has been laid, and the base line is what speaks when that becomes a
   // direction (`tests/group-voice.test.js` asserted exactly this and caught
   // the first cut of this branch saying "השולחן זז — עכשיו מועד אחד").
+  // One yes short of the room's number (owner, 2026-10-02, the poker room: four
+  // yes and a maybe on מוצ״ש, five needed, and the room heard nothing for a
+  // day). The base line waits for the number itself, so "almost" had no line
+  // at all, and the one chase had already gone. Said ONCE per coordination,
+  // only where the room SAID its number — NULL is the honest third state, and
+  // a guess never acts (`rules/groups.md`) — and only for a number of three or
+  // more, because at two the one yes is whoever proposed it, agreeing with
+  // themselves. Never in front of a chase still to come, and never within an
+  // hour of one: both tag the same people, and two lines tagging them in a row
+  // is the room being nagged.
+  const short = lead && lead.quorum && lead.quorum.known && lead.quorum.min !== null
+    && Number(lead.quorum.min) >= 3 && !lead.quorum.met ? Number(lead.quorum.short) : null;
+  // With no chase said, it waits for the moment the chase would have been due
+  // — a coordination one yes short ten minutes after it opened is people still
+  // reading their invites, not a room that needs telling.
+  const chaseWaits = !saidChase && (silent.length > 0 || nowMs < chaseDueAt(askedFromMs, earliestStart(co)));
+  const chaseFresh = saidChase && Number.isFinite(chaseSaidAtMs) && nowMs < chaseSaidAtMs + ALMOST_AFTER_CHASE_MS;
+  if (!saidAlmost && short === 1 && !co.settleDueAt && !chaseWaits && !chaseFresh) {
+    const unansweredPeople = [...lead.missing, ...(co.notInIt || [])];
+    const unanswered = unansweredPeople.map((p) => p.phone).filter(isTaggableNumber);
+    return {
+      kind: 'almost', title: co.title, slot: lead.slot, startsAt: lead.startsAt || null,
+      yes: lead.yes.length, min: Number(lead.quorum.min),
+      missing: unanswered.slice(0, MAX_TAGS),
+    };
+  }
+
   const onTable = (co.options || []).length;
   if (onTable && tableSaidAtMs && settled) {
     return { kind: 'table', count: onTable, lead: lead ? lead.slot : null };
@@ -441,5 +471,5 @@ function earliestStart(co) {
 module.exports = {
   decideGroupLine, leadingOption, enoughOn, chaseDueAt, localDay, whoIsIn, roomTotal,
   tableSettledAt,
-  CHASE_FALLBACK_MS, CHASE_AFTER_MS, HOUR_BEFORE_MS, DAY_OF_MIN_LEAD_MS, TABLE_SETTLE_MS,
+  CHASE_FALLBACK_MS, CHASE_AFTER_MS, HOUR_BEFORE_MS, DAY_OF_MIN_LEAD_MS, TABLE_SETTLE_MS, ALMOST_AFTER_CHASE_MS,
 };

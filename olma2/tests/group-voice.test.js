@@ -193,6 +193,10 @@ test('the base of a game is its own minimum, not two people', async () => {
   const started = await withTx(db.pool, (c) => groupMeetings.startCoordination(c, group, a, 'פאדל'));
   const meetingId = Number(started.data.meeting.id);
   await withTx(db.pool, (c) => groups.setKind(c, group.id, { kind: 'game', min: 3 }, a.id));
+  // Started on this file's clock: two of three is one short, and the "one
+  // short" line waits for the chase's hour — measured from the database's own
+  // stamp, this test would pass or fail by the hour the suite runs at.
+  await startedAt(meetingId, 0);
   const when = slotStart('רביעי', { hours: 72 });
   const optionId = await withTx(db.pool, async (c) =>
     (await options.add(c, a.id, meetingId, 'רביעי 20:00', when)).data.option.id);
@@ -1015,7 +1019,7 @@ test('the three shapes of that line, exactly', () => {
 // reversed that off פנתרה (a count pings nobody, and an open room says no gate
 // notice), so it now TAGS them — still never by name.
 test('a room with members who never wrote hears them tagged, never named', async () => {
-  const { group, people } = await room(41);
+  const { group, people } = await room(77);
   const [a] = people;
   // Somebody joins who has never written to her — the Padel Gang shape.
   await withTx(db.pool, (c) => groups.syncRoster(c, group.id, [
@@ -1236,4 +1240,88 @@ test('the base line counts the whole room and offers to close without whoever ha
   // …and the "סגור" line says "כולם" only when the whole room is in.
   assert.equal(groupVoice.whoIsIn({ ...co, confirmedOption: co.options[0] }).all, false);
   assert.equal(groupVoice.whoIsIn({ ...co, roomTotal: 2, confirmedOption: co.options[0] }).all, true);
+});
+
+
+// The poker room (group 13, meeting 66, 2026-10-02): five needed, four yes on
+// מוצ״ש, and the room heard nothing for a day — the base line waits for the
+// number itself and the one chase had gone that morning. Pure first.
+test('one yes short of the room\'s number is said once, after the chase has had its hour', () => {
+  const p = (n) => ({ phone: `+97250000000${n}` });
+  const NOW = DAY.getTime();
+  const co = (over = {}) => ({
+    status: 'negotiating', title: 'פוקר', participants: 7, roomTotal: 7, settleDueAt: null, silent: [],
+    options: [{ optionId: 1, slot: 'יום שבת 3.10 בערב', startsAt: new Date(NOW + 30 * 3600_000).toISOString(),
+      yes: [p(1), p(2), p(3), p(4)], no: [p(5)], missing: [p(6), p(7)],
+      quorum: { known: true, min: 5, met: false, short: 1 } }],
+    ...over,
+  });
+  const base = { saidStarted: true, saidBase: true, saidChase: true, chaseSaidAtMs: NOW - 8 * 3600_000,
+    startedAtMs: NOW - 20 * 3600_000, tableSaidAtMs: NOW - 19 * 3600_000, nowMs: NOW };
+
+  const line = groupVoice.decideGroupLine(co(), base);
+  assert.equal(line.kind, 'almost');
+  assert.deepEqual({ yes: line.yes, min: line.min, slot: line.slot, missing: line.missing },
+    { yes: 4, min: 5, slot: 'יום שבת 3.10 בערב', missing: ['+972500000006', '+972500000007'] },
+    'who has not answered THIS time — never who said no');
+  assert.equal(groupVoice.decideGroupLine(co(), { ...base, saidAlmost: true }).kind, 'none', 'once');
+
+  // Within the chase's hour, or with a chase still to come, it waits.
+  assert.equal(groupVoice.decideGroupLine(co(), { ...base, chaseSaidAtMs: NOW - 30 * 60_000 }).kind, 'none',
+    'two lines tagging the same people inside an hour');
+  assert.equal(groupVoice.decideGroupLine(co({ silent: [p(6)] }), { ...base, saidChase: false }).kind, 'chase',
+    'the chase comes first');
+  assert.equal(groupVoice.decideGroupLine(co(), { ...base, saidChase: false, startedAtMs: NOW - 10 * 60_000 }).kind,
+    'none', 'nobody to chase, but ten minutes in is people still reading');
+  assert.equal(groupVoice.decideGroupLine(co(), { ...base, saidChase: false }).kind, 'almost',
+    'nobody to chase, and the chase\'s hour has passed');
+
+  // Only where the room SAID its number, and never at two (one yes is whoever proposed it).
+  const q = (quorum) => co({ options: [{ ...co().options[0], quorum }] });
+  assert.equal(groupVoice.decideGroupLine(q({ known: false }), base).kind, 'none', 'no number: NULL never acts');
+  assert.equal(groupVoice.decideGroupLine(q({ known: true, min: null, met: true, short: 0 }), base).kind, 'none');
+  assert.equal(groupVoice.decideGroupLine(q({ known: true, min: 2, met: false, short: 1 }), base).kind, 'none');
+  assert.equal(groupVoice.decideGroupLine(q({ known: true, min: 5, met: false, short: 2 }), base).kind, 'none',
+    'two short is not "one short"');
+  assert.equal(groupVoice.decideGroupLine(co({ settleDueAt: new Date(NOW).toISOString() }), base).kind, 'none');
+});
+
+test('the one-short line reads as the line the owner approved for the poker room', () => {
+  const body = proactiveText.renderGroupCoordination({
+    kind: 'almost', title: 'פוקר', slot: 'יום שבת 3.10 בערב', yes: 4, min: 5,
+    missing: ['+972526343227', '+972542613404'],
+  });
+  assert.equal(body, '*פוקר* ב*יום שבת 3.10 בערב*: 4 מתוך 5 בפנים, חסר רק אחד 🙌\n@+972526343227 @+972542613404 מה איתכם?');
+  const nobody = proactiveText.renderGroupCoordination({ kind: 'almost', title: null, slot: 'שישי', yes: 2, min: 3, missing: [] });
+  assert.equal(nobody, '*התיאום* ב*שישי*: 2 מתוך 3 בפנים, חסר רק אחד 🙌', 'nobody to tag: no dangling question');
+});
+
+test('the sweep says one-short once, and stamps it', async () => {
+  const { group, people } = await room(61);
+  const [a, b, c3] = people;
+  const started = await withTx(db.pool, (c) => groupMeetings.startCoordination(c, group, a, 'פוקר'));
+  const meetingId = Number(started.data.meeting.id);
+  await withTx(db.pool, (c) => groups.setKind(c, group.id, { kind: 'game', min: 3 }, a.id));
+  await startedAt(meetingId, -180);
+  const when = slotStart('רביעי', { hours: 72 });
+  const optionId = await withTx(db.pool, async (c) =>
+    (await options.add(c, a.id, meetingId, 'רביעי 20:00', when)).data.option.id);
+  await optionMovedAt(optionId, -170);
+  await withTx(db.pool, (c) => options.answer(c, b.id, meetingId, optionId, 'y'));
+  await deliverInvites(meetingId);
+  // The opening line, and the chase for c3 — spent, an hour and more ago.
+  await db.pool.query(`UPDATE meetings SET group_started_at = $2, group_chase_at = $2 WHERE id = $1`,
+    [meetingId, DAY_AT(-120)]);
+
+  let sent = [];
+  await pass(sent, null, group.external_id);
+  assert.equal(sent.length, 1);
+  assert.match(sent[0].body, /^\*פוקר\* ב\*רביעי 20:00\*: 2 מתוך 3 בפנים, חסר רק אחד 🙌\n/);
+  assert.ok(sent[0].body.includes(c3.phone.replace(/^\+?/, '@+')), 'tags who has not answered');
+  const { rows } = await db.pool.query('SELECT group_almost_at FROM meetings WHERE id = $1', [meetingId]);
+  assert.equal(new Date(rows[0].group_almost_at).getTime(), DAY.getTime(), 'stamped on the decision clock');
+
+  sent = [];
+  await pass(sent, DAY_AT(30), group.external_id);
+  assert.deepEqual(sent, [], 'said once');
 });
