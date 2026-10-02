@@ -115,6 +115,13 @@ function chaseDueAt(startedAtMs, earliestStartMs) {
 // because the failure of being over-careful here is a line that is not said.
 const said = (p) => p && p.asked !== false;
 
+// Whether a line may TAG this number, for somebody who has never written to
+// her (domain/cold-tags.js: once every three days across every room, and
+// never after three with no answer). `coldTags` is `{ nonWriters, allowed }`,
+// two Sets the sweep reads; a caller without it (a fixture, a group turn) tags
+// as before. Anybody who HAS written is not this rule's business.
+const mayTag = (coldTags) => (phone) => !coldTags || !coldTags.nonWriters.has(phone) || coldTags.allowed.has(phone);
+
 // The option the room is closest to agreeing on: most yeses, and the earliest
 // of those when two are level. Null when nothing has a yes on it yet — the
 // adder's own yes counts, so that is a table nobody has answered at all.
@@ -171,8 +178,9 @@ function withClocks(line, co, { timezone, nowMs } = {}) {
 function decideLine(co, {
   saidStarted, saidBase, saidBaseSlot, saidBaseStartAt, saidChase, chaseSaidAtMs, saidAlmost, saidDone, saidCalendar, saidDayOf, saidHour,
   saidTime, pendingRelay, startedAtMs, nowMs, timezone, tableSaidAtMs, reopenedAt, reopenedFrom, saidReopened,
-  roomAsleep,
+  roomAsleep, coldTags,
 } = {}) {
+  const taggable = mayTag(coldTags);
   if (!co) return { kind: 'none', reason: 'nothing being coordinated' };
   if (co.status === 'confirmed') {
     // `placeAsk`: nobody has said where, so the done line asks — only then
@@ -255,7 +263,7 @@ function decideLine(co, {
       later: Boolean(roomAsleep),
       // Who of them the line can TAG (owner, 2026-09-25). The count stays: it
       // is what a room whose missing members are all LIDs still hears.
-      outsidePhones: co.outsidePhones || [],
+      outsidePhones: (co.outsidePhones || []).filter(taggable),
     };
   }
 
@@ -325,7 +333,7 @@ function decideLine(co, {
     // Never fewer than the people this option already accounts for, so a
     // caller with no counts on it (a fixture, an older payload) still works.
     const total = Math.max(roomTotal(co), lead.yes.length + lead.no.length + unansweredPeople.length);
-    const unanswered = unansweredPeople.map((p) => p.phone).filter(isTaggableNumber);
+    const unanswered = unansweredPeople.map((p) => p.phone).filter(isTaggableNumber).filter(taggable);
     // "מחכה ל 🤞" went out to nobody: Yuval's yes made it unanimous, the
     // settle minute was running, and twelve seconds later the base line
     // named an empty list (coordination 37, 2026-09-20). A base is a thing
@@ -381,7 +389,14 @@ function decideLine(co, {
   // just been asked.
   const askedFromMs = Math.max(startedAtMs || 0, co.lastAskedAt ? new Date(co.lastAskedAt).getTime() : 0);
   if (!saidChase && silent.length && nowMs >= chaseDueAt(askedFromMs, earliestStart(co))) {
-    return { kind: 'chase', missing: silent.slice(0, MAX_TAGS) };
+    // …and, riding it, the members who have never written to her and whose
+    // turn it is (owner, 2026-10-02). They never decide whether the chase is
+    // said — only who it reminds — and "תגידו לי בפרטי" is exactly the step
+    // that lets them in (`admitLateMembers`).
+    const cold = coldTags
+      ? (co.outsidePhones || []).filter((p) => coldTags.nonWriters.has(p) && coldTags.allowed.has(p) && !silent.includes(p))
+      : [];
+    return { kind: 'chase', missing: [...silent, ...cold].slice(0, MAX_TAGS) };
   }
 
   // …and the table itself moving is news, however many times it moves. Every
@@ -425,7 +440,7 @@ function decideLine(co, {
   const chaseFresh = saidChase && Number.isFinite(chaseSaidAtMs) && nowMs < chaseSaidAtMs + ALMOST_AFTER_CHASE_MS;
   if (!saidAlmost && short === 1 && !co.settleDueAt && !chaseWaits && !chaseFresh) {
     const unansweredPeople = [...lead.missing, ...(co.notInIt || [])];
-    const unanswered = unansweredPeople.map((p) => p.phone).filter(isTaggableNumber);
+    const unanswered = unansweredPeople.map((p) => p.phone).filter(isTaggableNumber).filter(taggable);
     return {
       kind: 'almost', title: co.title, slot: lead.slot, startsAt: lead.startsAt || null,
       yes: lead.yes.length, min: Number(lead.quorum.min),

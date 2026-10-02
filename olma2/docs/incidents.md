@@ -2520,6 +2520,19 @@ line of the family: `almost`, stamped on `meetings.group_almost_at`
 three or more, never in front of a chase still to come, and never within an hour
 of one, because both tag the same people.
 
+The owner then asked about the three of the thirteen who had never written to
+her. They had been tagged in the opening line on 2026-10-01, and each had one
+private invite, which none answered. After that nothing could reach them: the
+chase names only people she has written to (2026-09-22). The hand line followed
+the same rule, so it tagged the maybe and the two participants and left the
+three out. The trade-off was a friend's "are you coming?" against spam to people
+who never asked for her. The owner picked a ration over both extremes: a tag at
+most once every three days across every room, none after three with no word
+back, and only on lines that go out anyway (`cold-tags.allowed`,
+`room_cold_tags`, migration 107). The migration backfills the tags already said
+from `group_outbox`, so the three are next due on the 4th rather than on the
+first pass after the deploy.
+
 ### The chase that beat its own invites (fixed 2026-09-28)
 
 Padel Gang's second coordination (meeting 57) was opened by מירון at 21:00 on a
