@@ -76,9 +76,14 @@ async function poker({ miron, yuval, bar }) {
   });
 }
 
+// A refused add is asserted HERE, by name. `afterOptionAdded` returns quietly on
+// a failed result, so before this the weekday mismatch above surfaced three
+// assertions later as "a question about the new time is waiting for him",
+// 0 !== 1 — which reads like an outbox bug and is not one.
 async function addTime(actor, meetingId, slot, hours) {
   return withTx(db.pool, async (c) => {
     const add = await meetings.options.add(c, actor.id, meetingId, slot, at(slot, hours));
+    assert.equal(add.ok, true, `options.add refused ${JSON.stringify(slot)}: ${JSON.stringify(add.error)}`);
     await fanout.afterOptionAdded(c, actor, meetingId, add);
     return add;
   });
