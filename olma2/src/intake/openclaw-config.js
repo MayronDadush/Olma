@@ -517,6 +517,27 @@ function removeGroupBinding(cfg, jid) {
   return cfg.bindings.length !== before;
 }
 
+// How long the gateway holds a WhatsApp text before starting a turn, so that
+// several messages sent in a row are answered as ONE (owner, 2026-10-02: one
+// reply to all of them, not one per message). A trailing timer: every new
+// message restarts it, capped by the gateway at five windows from the first.
+// Media, a location and a WhatsApp reply (quote) are never held. Measured on
+// the box over 30 days, 619 gaps between one person's consecutive messages:
+// 19 within 5s, 32 within 8s and 44 within 10s, and in nearly none of them
+// had Olma answered in between. Every message waits this long before a turn
+// opens, so it is a cost paid on every reply; the owner chose 5s over the
+// recommended 8s for that reason. Applied by scripts/set-inbound-debounce.js;
+// config_guard compares the effective value against this one.
+const WHATSAPP_INBOUND_DEBOUNCE_MS = 5000;
+
+// The value the gateway will actually use for WhatsApp: the per-channel entry
+// wins over the global one (resolveInboundDebounceMs on 2026.8.1).
+function whatsappInboundDebounceMs(cfg) {
+  const inbound = ((cfg || {}).messages || {}).inbound || {};
+  const ms = (v) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.trunc(v) : undefined);
+  return ms((inbound.byChannel || {}).whatsapp) ?? ms(inbound.debounceMs) ?? 0;
+}
+
 module.exports = {
   defaultPath, loadConfig, saveConfig, channelWrittenAt,
   addAgent, removeAgent, addBinding, addCatchAllBinding, addAllowFrom,
@@ -525,6 +546,7 @@ module.exports = {
   admitGroup, unadmitGroup, isGroupAdmitted, addGroupBinding, removeGroupBinding,
   groupAllowFrom, syncGroupAllowFrom, isGroupSenderGateOpen, SELF_PHONE,
   usesEntries, listAgentIds, hasAgent, agentEntry, setAgentTools,
+  WHATSAPP_INBOUND_DEBOUNCE_MS, whatsappInboundDebounceMs,
 };
 
 // A getter, not a value: `occ.DEFAULT_PATH` now answers with whatever the

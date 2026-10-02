@@ -801,3 +801,25 @@ test('a turn with no deadline heard arms nothing it was not asked to', async () 
   const ts2 = await call(u, 'turn_start', { message_id: '3EB0CHASE04' }, newTurn());
   assert.doesNotMatch(ts2.text, /is a CHASE/);
 });
+
+// Owner, 2026-10-02: messages sent in a row are answered as one. The gateway's
+// inbound debounce joins their texts with a line break into ONE dispatch (the
+// WhatsApp plugin's flush, `combinedBody`), so every classifier here reads the
+// joined text exactly once. An "only X" reading must not survive a second line
+// that asks for something, and a request split across two messages is read
+// whole — the second message of a split ask is what makes it a chase.
+test('a burst joined by the gateway is read as one message: "only" verdicts need every line, a split ask reads whole', () => {
+  const joined = (...lines) => lines.join('\n');
+  assert.equal(hook.thanksOnly(joined('תודה', 'תודה רבה')), true, 'two thanks are still only thanks');
+  assert.equal(hook.thanksOnly(joined('תודה', 'תזכירי לי מחר בעשר להתקשר לאמא')), false);
+  assert.equal(hook.thanksOnly(joined('תזכירי לי מחר בעשר להתקשר לאמא', 'תודה')), false);
+  assert.equal(hook.stopRemindersOnly(joined('תפסיקי להזכיר לי', 'ותזכירי לי מחר לקנות חלב')), false);
+  assert.equal(hook.outOnly(joined('בחוץ', 'אבל תעדכני אותי אם משתנה משהו')), false);
+
+  // Alone, the first line is a reminder with no time (a weekly nudge); with
+  // the deadline that followed it a few seconds later, it is a chase to Thursday.
+  assert.equal(hook.remindWithoutTime('תזכיר לי לשלם חשבון'), true);
+  const chase = hook.chaseDeadline(joined('תזכיר לי לשלם חשבון', 'עד יום חמישי'));
+  assert.equal(chase && chase.kind, 'weekday');
+  assert.equal(chase.weekday, 4);
+});
