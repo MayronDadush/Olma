@@ -52,6 +52,11 @@
   /* the fingertip of ?tr=finger */
   #finger { position: absolute; z-index: 2; top: 55%; left: 0; width: 11vmin; height: 11vmin; margin: -5.5vmin; border-radius: 50%;
     background: rgba(255,255,255,.55); border: .5vmin solid rgba(255,255,255,.9); box-shadow: 0 1vmin 3vmin rgba(0,0,0,.25); opacity: 0 }
+  /* the end card says how to keep her: save the number (owner, 2.10.2026) */
+  .save { display: grid; gap: 1.2vmin }
+  .save .lbl { font-weight: 500; font-size: 3.8vmin; color: #F0EDE5 }
+  .save .num { justify-self: start; font-family: "IBM Plex Sans", sans-serif; font-weight: 700; font-size: 7.4vmin; line-height: 1;
+    color: #F9C23C; direction: ltr; unicode-bidi: isolate; letter-spacing: .01em }
 </style>
 <div class="v">
   <div id="stage">
@@ -81,6 +86,7 @@
     <svg class="grain" aria-hidden="true"><filter id="g1f" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency=".8" numOctaves="3" stitchTiles="stitch" seed="7"/><feColorMatrix values="0 0 0 0 .94  0 0 0 0 .93  0 0 0 0 .9  .5 0 0 0 -.26"/></filter><rect width="100%" height="100%" filter="url(#g1f)"/></svg></div>
   <div class="card" id="closer"><div class="big" id="cm"></div>
     <h1 class="h" id="ch"><span>מתייגים אותי.</span><span class="y">אני סוגרת עם כולם.</span></h1>
+    <div class="save" id="cn"><div class="lbl">שמרו אותי כאיש קשר בוואטסאפ</div><div class="num">055-934-7282</div></div>
     <div class="by" id="cb">עולמה · בוואטסאפ שלך</div>
     <svg class="grain" aria-hidden="true"><rect width="100%" height="100%" filter="url(#g1f)"/></svg></div>
 </div>
@@ -133,7 +139,7 @@
   // The timeline, in ms — the old cut's beats, plus the brand's ending.
   const OPEN_OUT = 2500, CHAT_IN = 2900, G1 = 3100, GTYPE = 3800, G2 = 4600,
         SLIDE1 = 6300, P1 = 6450, P2 = 8500, SLIDE2 = 9600, G3 = 10500, G4 = 11800, SCROLL = 12100,
-        CHAT_OUT = 13700, MARK = 14100, LINES = 14900, END = 17600;
+        CHAT_OUT = 13700, MARK = 14100, LINES = 14900, END = 18400;
   window.__ms = END;
   window.__seek = (ms) => {
     const ol = $('oh').children;
@@ -163,7 +169,8 @@
     $('cm').innerHTML = frame('meet', Math.max(0, ms - MARK), ON_CYPRESS, 'cm');
     const cl = $('ch').children;
     rise(cl[0], k(ms, LINES, LINES + 450)); rise(cl[1], k(ms, LINES + 300, LINES + 750));
-    rise($('cb'), k(ms, LINES + 900, LINES + 1400));
+    rise($('cn'), k(ms, LINES + 1000, LINES + 1500));
+    rise($('cb'), k(ms, LINES + 1400, LINES + 1900));
   };
   __seek(0); __seek(0);
 </script>

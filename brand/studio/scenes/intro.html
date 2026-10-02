@@ -43,6 +43,11 @@
   .typing i { width: 1.4vmin; height: 1.4vmin; border-radius: 50%; background: #8696A0 }
   .list b { font-weight: 600 }
   .list div { white-space: nowrap }
+  /* the end card says how to keep her: save the number (owner, 2.10.2026) */
+  .save { display: grid; gap: 1.2vmin }
+  .save .lbl { font-weight: 500; font-size: 3.8vmin; color: #F0EDE5 }
+  .save .num { justify-self: start; font-family: "IBM Plex Sans", sans-serif; font-weight: 700; font-size: 7.4vmin; line-height: 1;
+    color: #F9C23C; direction: ltr; unicode-bidi: isolate; letter-spacing: .01em }
 </style>
 <div class="v">
   <div id="chat">
@@ -55,7 +60,7 @@
   </div>
   <div class="card" id="opener"><h1 class="h" id="oh"></h1><div class="by"><span class="m" id="om"></span><span id="ob"></span></div>
     <svg class="grain" aria-hidden="true"><filter id="g1" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency=".8" numOctaves="3" stitchTiles="stitch" seed="7"/><feColorMatrix values="0 0 0 0 .94  0 0 0 0 .93  0 0 0 0 .9  .5 0 0 0 -.26"/></filter><rect width="100%" height="100%" filter="url(#g1)"/></svg></div>
-  <div class="card" id="closer"><div class="big" id="cm"></div><h1 class="h" id="ch"></h1><div class="by" id="cb"></div>
+  <div class="card" id="closer"><div class="big" id="cm"></div><h1 class="h" id="ch"></h1><div class="save" id="cn"><div class="lbl" id="cnl"></div><div class="num" id="cnn"></div></div><div class="by" id="cb"></div>
     <svg class="grain" aria-hidden="true"><rect width="100%" height="100%" filter="url(#g1)"/></svg></div>
 </div>
 <script src="../motion.js"></script>
@@ -80,6 +85,9 @@
   $('oh').innerHTML = T.open.map((l) => `<span>${l}</span>`).join('');
   $('ch').innerHTML = T.close.map((l) => `<span>${l}</span>`).join('');
   $('ob').textContent = T.by; $('cb').textContent = T.by;
+  // WA_NUMBER in olma2/src/adapters/http/public-pages.js
+  const SAVE = { he: ['שמרו אותי כאיש קשר בוואטסאפ', '055-934-7282'], en: ['Save me as a WhatsApp contact', '+972 55-934-7282'] }[LANG];
+  $('cnl').textContent = SAVE[0]; $('cnn').textContent = SAVE[1];
 
   const { frame, EASE } = AllmaMotion;
   const ON_CYPRESS = { d: '#0E1F1E', l: '#F0EDE5', a: '#F9C23C', ring: '#F0EDE5' };  // the mark on the brand band
@@ -92,7 +100,7 @@
 
   // The timeline, in ms. Same beats as the live clip, plus the brand's ending.
   const OPEN_OUT = 2700, CHAT_IN = 3100, M1 = 3300, TYPE = 4100, M2 = 5700, SCROLL = 6300, CHAT_OUT = 10200,
-        MARK = 10700, LINES = 11700, END = 14600;
+        MARK = 10700, LINES = 11700, END = 15400;
   window.__ms = END;
   window.__seek = (ms) => {
     // opener: the question rises in, then the byline; it slides away to the chat
@@ -111,7 +119,8 @@
     $('cm').innerHTML = frame('meet', Math.max(0, ms - MARK), ON_CYPRESS, 'cm');
     const cl = $('ch').children;
     rise(cl[0], k(ms, LINES, LINES + 450)); rise(cl[1], k(ms, LINES + 250, LINES + 700)); rise(cl[2], k(ms, LINES + 400, LINES + 850));
-    rise($('cb'), k(ms, LINES + 900, LINES + 1400));
+    rise($('cn'), k(ms, LINES + 1000, LINES + 1500));
+    rise($('cb'), k(ms, LINES + 1400, LINES + 1900));
   };
   __seek(0);
 </script>
