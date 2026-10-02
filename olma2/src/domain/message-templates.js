@@ -680,6 +680,19 @@ const TEMPLATES = [
     sample: { missing: '@+972501234567' },
     text: 'עוד לא שמעתי מ{{missing}} — תגידו לי בפרטי מתי אתם יכולים ואני סוגרת את זה.',
   },
+  // One yes short of the room's number (owner, 2026-10-02): the wording is
+  // the line he approved for the poker room by hand, with the poker taken out.
+  {
+    key: 'group_coord_almost', audience: 'group', label: 'תיאום — חסר רק אחד',
+    help: 'פעם אחת בכל תיאום, כשלזמן שמוביל חסר רק כן אחד כדי להגיע למינימום שהקבוצה ביקשה (רק כשיש מינימום, ורק מ-3 ומעלה). לא לפני הזירוז, ולא בשעה שאחריו. מתייגת את מי שעוד לא ענה על הזמן הזה.',
+    vars: {
+      title: 'שם התיאום', slot: 'הזמן שמוביל', yes: 'כמה אמרו לו כן', min: 'המינימום שהקבוצה ביקשה',
+      who_note: 'התיוגים של מי שעוד לא ענה ו״מה איתכם?״, או ריק',
+    },
+    required: ['slot', 'yes', 'min'],
+    sample: { title: 'פוקר', slot: 'יום שבת 3.10 בערב', yes: '4', min: '5', who_note: '@+972501234567 @+972521234567 מה איתכם?' },
+    text: '*{{title}}* ב*{{slot}}*: {{yes}} מתוך {{min}} בפנים, חסר רק אחד 🙌\n{{who_note}}',
+  },
   // The offer to drop a coordination the room has gone quiet on (owner,
   // 2026-09-28), said once, only after the chase, and only behind the
   // `coordination_policy` flag. No clock time in it — a number of hours —
@@ -842,6 +855,20 @@ const TEMPLATES = [
       lead: 'יש כיוון: *יום שבת 26.9* — 2 מתוך 3 בפנים.\n20:00 ישראל\n13:00 ניו יורק\n03:00 סידני (יום ראשון 27.9)\nעוד לא ענו: @+972501234567\nרוצים לסגור בלי מי שלא ענה? תכתבו לי ״סגור״ 👍',
     },
     text: '*{{was}}* כבר לא על השולחן 🔄\n{{lead}}',
+  },
+  {
+    key: 'group_coord_almost_zones', audience: 'group', label: 'תיאום — חסר רק אחד',
+    help: '',
+    vars: {
+      title: 'שם התיאום', slot: 'הזמן שמוביל, בכל אזורי הזמן', yes: 'כמה אמרו לו כן', min: 'המינימום שהקבוצה ביקשה',
+      who_note: 'התיוגים של מי שעוד לא ענה ו״מה איתכם?״, או ריק',
+    },
+    required: ['slot', 'yes', 'min'],
+    sample: {
+      title: 'פוקר', slot: 'יום שבת 26.9 · 20:00 ישראל · 13:00 ניו יורק', yes: '4', min: '5',
+      who_note: '@+972501234567 מה איתכם?',
+    },
+    text: '*{{title}}* ב*{{slot}}*: {{yes}} מתוך {{min}} בפנים, חסר רק אחד 🙌\n{{who_note}}',
   },
   {
     key: 'group_coord_table_zones', audience: 'group', label: 'תיאום — השולחן זז',

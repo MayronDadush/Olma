@@ -589,7 +589,7 @@ async function sweepGroupVoice(client, deps) {
     // would date every coordination from the day the ROOM was registered.
     `SELECT m.id AS meeting_id, m.status, m.created_at AS meeting_created_at,
             m.group_started_at, m.group_base_at, m.group_base_slot, m.group_base_start_at,
-            m.group_chase_at,
+            m.group_chase_at, m.group_almost_at,
             m.group_done_at, m.group_table_at,
             m.group_dayof_at, m.group_hour_at, m.group_calendar_at, m.group_time_at,
             m.reopened_at, m.reopened_from, m.group_reopened_at, m.group_drop_offer_at, m.group_drop_close_at, g.*,
@@ -677,6 +677,8 @@ async function sweepGroupVoice(client, deps) {
       saidBaseSlot: row.group_base_slot,
       saidBaseStartAt: row.group_base_start_at,
       saidChase: Boolean(row.group_chase_at),
+      chaseSaidAtMs: row.group_chase_at ? new Date(row.group_chase_at).getTime() : NaN,
+      saidAlmost: Boolean(row.group_almost_at),
       saidDone: Boolean(row.group_done_at),
       saidCalendar: Boolean(row.group_calendar_at),
       saidDayOf: Boolean(row.group_dayof_at),
@@ -736,7 +738,7 @@ async function sweepGroupVoice(client, deps) {
     } else {
       const column = {
         started: 'group_started_at',
-        base: 'group_base_at', moved: 'group_base_at', chase: 'group_chase_at',
+        base: 'group_base_at', moved: 'group_base_at', chase: 'group_chase_at', almost: 'group_almost_at',
         done: 'group_done_at', table: 'group_table_at', laid: 'group_table_at',
         calendar: 'group_calendar_at', dayof: 'group_dayof_at', soon: 'group_hour_at', time: 'group_time_at',
         reopened: 'group_reopened_at',

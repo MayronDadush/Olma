@@ -378,6 +378,7 @@ Loads when you **Read** a file under `src/domain/group-connections.js`, `src/dom
 - **…and it waits a quarter of an hour, so a burst of changes is ONE sentence** — the same fifteen minutes as the private side, measured from the FIRST change the room has not heard about, and it gates both lines about the table.
 - **A table of two or more times with no direction is LAID once — the room hears which times are on it** — one time with its proposer's yes is still not news.
 - **The room is chased an HOUR after the last invite REACHED anybody, not half way to the thing** — half the distance put one room at 05:11 the next morning, and counting from the start chased one before its own invites landed; who may be NAMED is unchanged.
+- **A room one yes short of its number hears it ONCE** — `almost`, only where the room said its number (3+), an hour clear of the chase
 - **The "סגור" line names who can make it, a calendar line is said only for a SHARED event, and a base line is never said to nobody**
 - **A time the room was TOLD about and that has since left the table is said again; a time merely overtaken is not**
 - **The place is the room's own words, asked for only when nobody said one, and it rides the confirmation onto the calendar event** — and a name that says it happens on Zoom has said one (`online-place.onlinePlace`, a closed list, code only)

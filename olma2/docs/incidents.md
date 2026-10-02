@@ -64,6 +64,7 @@ never trust a dated narrative for something you are about to act on.
 - [The slot that was already closed (fixed 2026-09-20)](#the-slot-that-was-already-closed-fixed-2026-09-20)
 - [Introduced twice, by the invite and the greeter (fixed 2026-10-01)](#introduced-twice-by-the-invite-and-the-greeter-fixed-2026-10-01)
 - [The poker count was the people asked (fixed 2026-10-01)](#the-poker-count-was-the-people-asked-fixed-2026-10-01)
+- [Four out of five, and the room heard nothing (fixed 2026-10-02)](#four-out-of-five-and-the-room-heard-nothing-fixed-2026-10-02)
 - [The chase that beat its own invites (fixed 2026-09-28)](#the-chase-that-beat-its-own-invites-fixed-2026-09-28)
 - [The room never heard the times (fixed 2026-09-28)](#the-room-never-heard-the-times-fixed-2026-09-28)
 - [Answered before the question existed (fixed 2026-09-28)](#answered-before-the-question-existed-fixed-2026-09-28)
@@ -2461,6 +2462,24 @@ nobody has told its kind gets no `headcount`, because NULL is the honest
 third state, and a private coordination never had a minimum.
 `tests/meeting-headcount.test.js` holds the founding case: four people
 asked, one yes, and the answer is one.
+
+### Four out of five, and the room heard nothing (fixed 2026-10-02)
+
+The poker room (חייב קבוצה לפוקר, group 13, meeting 66) is a `game` room with
+a minimum of five. By Friday afternoon מוצ״ש had four yeses and one member had
+asked her to tell the room he was a maybe. The room had heard the opening, six
+"joined" lines, the table and one chase at 09:01, and then nothing. The base line
+waits for the minimum itself (`group-voice.enoughOn`), the table line waits for
+a base, and the chase is said once, so a room one yes short had no line at all.
+It would have stayed silent until somebody happened to answer.
+
+At 17:3x IL the owner approved a hand line in the room ("4 מתוך 5 בפנים, חסר
+אחד", tagging the maybe and the two who had not answered that time), audited as
+`group.coordination_said` kind `manual_almost`. The same afternoon it became a
+line of the family: `almost`, stamped on `meetings.group_almost_at`
+(migration 106), said once, only where the room said its number and it is
+three or more, never in front of a chase still to come, and never within an hour
+of one, because both tag the same people.
 
 ### The chase that beat its own invites (fixed 2026-09-28)
 

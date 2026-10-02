@@ -411,6 +411,14 @@ function renderGroupCoordination(line, overrides) {
   if (line.kind === 'chase') {
     return templates.render('group_coord_chase', { missing: mentionTokens(line.missing || []) }, overrides);
   }
+  if (line.kind === 'almost') {
+    const tags = mentionTokens(line.missing || []);
+    return templates.render(keyFor('group_coord_almost', line), {
+      title: slotText(line.title || '') || ALMOST_NO_TITLE, slot: roomInline(line, 'slot'),
+      yes: String(line.yes), min: String(line.min),
+      who_note: tags ? `${tags} ${ALMOST_ASK}` : '',
+    }, overrides).trim();
+  }
   if (line.kind === 'table') {
     // `lead` is a whole phrase, so an owner's rewording can move or drop it,
     // and a table nobody has said yes to yet draws nothing rather than an
@@ -517,6 +525,10 @@ const WHO_ALL = 'כולם בפנים';
 const WHO_IN = 'בפנים:';
 // The drop offer's tags, as the chase says them: "עוד לא שמעתי מ@…".
 const DROP_MISSING = 'עוד לא שמעתי מ';
+// The "one short" line's question to whoever it tags, and its name for a
+// coordination nobody titled.
+const ALMOST_ASK = 'מה איתכם?';
+const ALMOST_NO_TITLE = 'התיאום';
 
 // The single decision point the deliverer consults: a non-null return means
 // "send this text on the raw pipe, no agent turn". Deliberately narrow —

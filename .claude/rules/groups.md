@@ -633,6 +633,16 @@ have already had to be argued for.
   `meeting_*` row among the people still in it (sent, and not held); a row the
   gate dropped reached nobody and does not count. Nobody reached at all falls
   back to the start (`incidents.md`, "The chase that beat its own invites").
+- **A room one yes short of its number hears it ONCE** (owner, 2026-10-02;
+  `group-voice.decideGroupLine` kind `almost`, `meetings.group_almost_at`,
+  migration 106, template `group_coord_almost`). The base line waits for the
+  minimum itself, so four of five in the poker room was a day of silence. Only
+  where the room SAID its number (NULL never acts) and only from three up (at
+  two the one yes is the proposer's). It waits for the chase's hour when there is
+  no chase, and an hour after the chase when there was one: both tag the same
+  people. It tags who has not answered THAT time, never who said no
+  (`incidents.md`, "Four out of five, and the room heard nothing").
+
 - **The "סגור" line names who can make it, a calendar line is said only for
   a SHARED event, and a base line is never said to nobody** (owner,
   2026-09-20, off coordinations 35–37). `group-meetings.statusOf` exposes
