@@ -192,7 +192,7 @@ Loads when you **Read** a file under `src/brokerd/**`, `src/domain/turn.js`, `sr
 - **A repeat of the same message must never be read as a new one.**
 - **A block written to REPLACE a tool call has to say what it does not hold, or its silence is read as the answer** — `today` counts `undated` to-dos, and a question about the whole list (`asksOpenList`, read by the hook) gets no `today` block at all
 - **`messages.queue.mode` stays `followup`.**
-- **Messages sent in a row are answered as ONE — WhatsApp inbound debounce, 8s** (`openclaw-config.WHATSAPP_INBOUND_DEBOUNCE_MS`); the joined text reaches every hook once, and a new value needs a gateway restart
+- **Messages sent in a row are answered ONCE, at the reply gate, never by holding the inbox** — `messages.inbound` debounce cannot batch on WhatsApp; flag `burst_reply_phones`, `''` = off
 - **A turn Olma started is not a message from the person.**
 - **A WhatsApp reply names ONE message, and only the MODEL is ever told which.**
 - **A turn is told where every coordination it heard about in the last day stands NOW** — the session remembers the question, not the answer

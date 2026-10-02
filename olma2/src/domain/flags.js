@@ -148,6 +148,13 @@ const DEFAULTS = {
   // the open list beside them to OpenRouter, which the owner allowed for this
   // on 2026-09-24, and turning it off stops that on the next tick.
   jev_shadow_twins: false,
+  // gateway-plugin/olma-turn, "a burst is answered once" (owner, 2026-10-02):
+  // a reply about to go out while a newer message of theirs is already waiting
+  // for its own turn is held, and that turn answers both. '' = off for
+  // everybody (every reply goes out, as before), 'all', or a comma-separated
+  // E.164 list. Read by brokerd's `burst_hold` on every held reply, so turning
+  // it off takes effect on the next message, with no gateway restart.
+  burst_reply_phones: 'all',
   // domain/experiments.js: the A/B tests the owner has ENDED, as
   // { key: 'a' | 'b' }. Empty means every experiment in the code is running.
   // Written only by the admin page's "לקבע" button.
