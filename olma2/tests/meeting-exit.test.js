@@ -43,7 +43,10 @@ const newTurn = () => ({ userId: null, opened: false, counted: false, quota: nul
 const call = (user, name, args, turn) => broker.dispatch(
   { id: 1, method: 'tool_call', params: { name, args: { olma_identity: user.identity_token, ...args } } }, turn);
 const open = (params) => broker.dispatch({ id: 1, method: 'turn_open', params });
-const at = (h) => slotStart('', { hours: h });
+// The slot's own words go to slotStart: `add` refuses a time whose weekday
+// disagrees with the one the words name (when_said), so a bare "now + 50h"
+// passed only on the days of the week where it happened to land on Saturday.
+const at = (slot, h) => slotStart(slot, { hours: h });
 
 // Three people who may coordinate; `yuval` is the one who answers, on an agent.
 async function cast() {
@@ -75,7 +78,7 @@ async function poker({ miron, yuval, bar }) {
 
 async function addTime(actor, meetingId, slot, hours) {
   return withTx(db.pool, async (c) => {
-    const add = await meetings.options.add(c, actor.id, meetingId, slot, at(hours));
+    const add = await meetings.options.add(c, actor.id, meetingId, slot, at(slot, hours));
     await fanout.afterOptionAdded(c, actor, meetingId, add);
     return add;
   });
