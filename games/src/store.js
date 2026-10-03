@@ -68,7 +68,7 @@ async function stateOf(db, n) {
   // One after another: inside a write this is a single transaction's client,
   // and pg will not run two queries on one client at once.
   const q = sql => db.query(sql, [n.id]).then(r => r.rows);
-  const players = await q('SELECT id, name, ord, user_id FROM players WHERE night_id = $1');
+  const players = await q('SELECT id, name, ord, user_id, device FROM players WHERE night_id = $1');
   const buyins = await q('SELECT id, player_id, n, via, at FROM buyins WHERE night_id = $1');
   const cashouts = await q('SELECT player_id, chips, via, at FROM cashouts WHERE night_id = $1');
   const food = await q('SELECT id, data, at FROM food WHERE night_id = $1');
@@ -80,7 +80,7 @@ async function stateOf(db, n) {
       code: n.code, createdAt: new Date(n.created_at).getTime(), closedAt: n.closed_at ? new Date(n.closed_at).getTime() : null,
       cancelledAt: n.cancelled_at ? new Date(n.cancelled_at).getTime() : null,
     },
-    players: by(players, 'id', r => ({ name: r.name, order: r.ord, ...(r.user_id ? { linked: true } : {}) })),
+    players: by(players, 'id', r => ({ name: r.name, order: r.ord, ...(r.user_id ? { linked: true } : {}), ...(r.device ? { held: r.device } : {}) })),
     buyins: by(buyins, 'id', r => ({ pid: r.player_id, n: r.n, via: r.via, at: r.at })),
     cashouts: by(cashouts, 'player_id', r => ({ chips: r.chips, via: r.via, at: r.at })),
     food: by(food, 'id', r => ({ ...r.data, at: r.at })),
@@ -171,6 +171,20 @@ async function write(pool, token, w) {
       if (!await playerExists(c, n.id, pid)) refuse('not_found');
       if (await hasMoney(c, n.id, pid)) refuse('has_money');
       await c.query('DELETE FROM players WHERE night_id = $1 AND id = $2', [n.id, pid]);
+    } else if (col === 'players' && op === 'hold') {
+      // "This is me" from a phone (migration 002). A seat another phone holds
+      // is refused unless the page asked twice (`take`), and a phone sits in
+      // one seat: whatever else it held in this night is let go.
+      const pid = v.id(w.id), d = v.hold(w.data);
+      const { rows: [seat] } = await c.query('SELECT device FROM players WHERE night_id = $1 AND id = $2', [n.id, pid]);
+      if (!seat) refuse('not_found');
+      if (seat.device && seat.device !== d.device && !d.take) refuse('held');
+      await c.query('UPDATE players SET device = NULL WHERE night_id = $1 AND device = $2 AND id <> $3', [n.id, d.device, pid]);
+      await c.query('UPDATE players SET device = $3 WHERE night_id = $1 AND id = $2', [n.id, pid, d.device]);
+    } else if (col === 'players' && op === 'release') {
+      // "להחליף": only this phone's own hold comes off, never somebody else's.
+      const pid = v.id(w.id), d = v.hold(w.data);
+      await c.query('UPDATE players SET device = NULL WHERE night_id = $1 AND id = $2 AND device = $3', [n.id, pid, d.device]);
     } else if (col === 'players') {
       if (op !== 'set') refuse('bad_op');
       const pid = v.id(w.id), d = v.player(w.data);

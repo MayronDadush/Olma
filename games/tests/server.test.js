@@ -185,6 +185,43 @@ test('a seat added by mistake comes off, but never with money on it, and never o
   assert.equal((await del('cnt001')).error, 'closed');
 });
 
+test('one seat, one phone: a held seat is refused unless taken on purpose, and a phone sits in one seat', async t => {
+  const { post } = await boot(t);
+  const token = await openNight(post, { players: ['מירון', 'מיכל'] });
+  const w = async body => { const r = await post(`/night/${token}/api/write`, body); return { status: r.status, ...(await r.json()) }; };
+  const st0 = await (await w({ op: 'add', col: 'log', data: { t: 'x' } })).state;
+  const [mir, mic] = Object.entries(st0.players).sort((a, b) => a[1].order - b[1].order).map(([id]) => id);
+  const A = 'phoneAAAA01', B = 'phoneBBBB02';
+  const hold = (id, device, take) => w({ op: 'hold', col: 'players', id, data: { device, ...(take ? { take: true } : {}) } });
+
+  // the incident: Miron is held by phone A, and phone B taps Miron too
+  let r = await hold(mir, A);
+  assert.equal(r.status, 200);
+  assert.equal(r.state.players[mir].held, A);
+  assert.equal((await hold(mir, B)).error, 'held', 'a second phone is refused the first time');
+  assert.equal((await hold(mir, A)).status, 200, 'the same phone again is no conflict');
+
+  // a phone sits in one seat: B in Michal, then B in Miron on purpose, lets Michal go
+  assert.equal((await hold(mic, B)).state.players[mic].held, B);
+  r = await hold(mir, B, true);
+  assert.equal(r.state.players[mir].held, B, 'a confirmed second tap takes the seat');
+  assert.equal(r.state.players[mic].held, undefined, 'and the seat it held before is free');
+
+  // release: only the phone's own hold comes off
+  r = await w({ op: 'release', col: 'players', id: mir, data: { device: A } });
+  assert.equal(r.state.players[mir].held, B, 'A cannot release a seat B holds');
+  r = await w({ op: 'release', col: 'players', id: mir, data: { device: B } });
+  assert.equal(r.state.players[mir].held, undefined);
+
+  // renaming a seat keeps its phone; nonsense is refused whole
+  await hold(mic, A);
+  r = await w({ op: 'set', col: 'players', id: mic, data: { name: 'מיכלי', order: 1 } });
+  assert.equal(r.state.players[mic].held, A);
+  assert.equal((await hold(mic, 'short')).error, 'bad_doc');
+  assert.equal((await hold(mic, '../etc/passwd')).error, 'bad_doc');
+  assert.equal((await hold('nobody01', A)).error, 'not_found');
+});
+
 test('a player cap stops a link in the wrong hands from filling the table', async t => {
   const { post } = await boot(t);
   const token = await openNight(post, { players: [] });
