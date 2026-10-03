@@ -12,7 +12,6 @@ const assert = require('node:assert/strict');
 const { freshDb, makeUser } = require('./helpers');
 const { withTx } = require('../src/db/pool');
 const { createBrokerServer } = require('../src/brokerd/server');
-const turnDomain = require('../src/domain/turn');
 const flagsDomain = require('../src/domain/flags');
 const onboarding = require('../src/domain/onboarding');
 
@@ -58,7 +57,6 @@ test('a returning user never gets it, however long they have been away', async (
 
 test('when another tool opens the turn first, the verdict survives into turn_start', async () => {
   const u = await makeUser(db.pool, '+972611003003', { firstName: null });
-  await withTx(db.pool, (c) => flagsDomain.setFlag(c, turnDomain.FLAG, 'all'));
 
   // The model skipped turn_start and reached for a tool. brokerd's recovery
   // opens the turn — and in doing so overwrites the very NULL that proves this
@@ -84,7 +82,6 @@ test('when another tool opens the turn first, the verdict survives into turn_sta
 
 test('the recovery path still reports a returning user correctly', async () => {
   const u = await makeUser(db.pool, '+972611003004', { firstName: 'Chozeret' });
-  await withTx(db.pool, (c) => flagsDomain.setFlag(c, turnDomain.FLAG, 'all'));
   await db.pool.query(`UPDATE users SET last_inbound_at = now() - interval '2 days' WHERE id=$1`, [u.id]);
 
   const turn = { opened: false, counted: false };
@@ -115,7 +112,6 @@ test('a connection that outlives its turn does not hand the next message a stale
   // and "this person is brand new" leaking into their second message is this
   // fix causing the bug it exists to prevent.
   const u = await makeUser(db.pool, '+972611003006', { firstName: null });
-  await withTx(db.pool, (c) => flagsDomain.setFlag(c, turnDomain.FLAG, 'all'));
 
   const turn = { opened: false, counted: false };
   await broker.dispatch(
@@ -430,7 +426,6 @@ test('...and still not when the model reached for the tool before turn_start', a
   // the first-turn verdict, but only turn_start stamps first_turn_at — so the
   // timestamps alone read "not the opening turn" on the one turn that most is.
   const u = await makeUser(db.pool, '+972611003015', { firstName: null, locale: 'he' });
-  await withTx(db.pool, (c) => flagsDomain.setFlag(c, turnDomain.FLAG, 'all'));
 
   const turn = { opened: false, counted: false };
   const out = await call(u, 'set_my_name', { first_name: 'עידן', confirmed: true }, turn);

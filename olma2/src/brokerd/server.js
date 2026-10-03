@@ -1360,7 +1360,7 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
           // nothing that can tell one turn from the next on this socket, so a
           // per-call recovery would count a single message once per tool.
           turn.opened = true;
-          if (name !== 'turn_start' && await turnDomain.isEnabledFor(client, auth.data.user)) {
+          if (name !== 'turn_start') {
             const recovered = await turnDomain.openTurnImplicitly(client, auth.data.user, { firstTool: name });
             turn.counted = recovered.counted;
             turn.quota = recovered.quota;
