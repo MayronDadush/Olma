@@ -85,6 +85,18 @@ test('retention: routine audit ages out, permanent survives', async () => {
   assert.equal(perm.rows[0].n, 1); // the permanent row survived
 });
 
+// purgeExpired existed from 2026-09-04 and said it was called from here; it
+// was not, and 119 of 144 sign-in links on the box were waiting for it.
+test('retention: the daily sweep purges dashboard sign-in links nobody can use', async () => {
+  await db.pool.query(
+    `INSERT INTO magic_links (token_hash, user_id, expires_at)
+     VALUES ('retention-dead-link', $1, now() - interval '30 days')`, [user.id]);
+  const out = await withTx(db.pool, (c) => retention.sweepRetention(c));
+  assert.ok(out.magicLinksPurged >= 1);
+  const { rows } = await db.pool.query(`SELECT 1 FROM magic_links WHERE token_hash = 'retention-dead-link'`);
+  assert.equal(rows.length, 0);
+});
+
 // ---- HTTP surface -----------------------------------------------------------
 
 test('/health is unauthenticated, leaks nothing, and does not cry wolf', async () => {
