@@ -15,10 +15,7 @@
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
 const { freshDb, makeUser } = require('./helpers');
-const { withTx } = require('../src/db/pool');
 const { createBrokerServer } = require('../src/brokerd/server');
-const turnDomain = require('../src/domain/turn');
-const flagsDomain = require('../src/domain/flags');
 const selfInitiated = require('../src/domain/self-initiated');
 
 let db, broker;
@@ -100,7 +97,6 @@ test('the recovery path is guarded through the other door too', async () => {
   // turn_start. On a delivery turn that path would write the same inbound
   // record turn_start no longer writes.
   const u = await makeUser(db.pool, '+972611004004', { firstName: null });
-  await withTx(db.pool, (c) => flagsDomain.setFlag(c, turnDomain.FLAG, 'all'));
 
   const turn = { opened: false, counted: false };
   await selfInitiated.around(u.id, () => broker.dispatch(
