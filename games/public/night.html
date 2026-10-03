@@ -230,6 +230,8 @@ html.is-dark #themeBtn .moon{opacity:0;transform:rotate(90deg) scale(.6)}
   transition:background .2s var(--ease),color .2s var(--ease),transform .2s var(--spring);
 }
 .chip[aria-pressed="true"]{background:var(--accent);color:var(--on-accent)}
+.chip.held{opacity:.55}
+.chip.held.armed{opacity:1;box-shadow:0 0 0 2px var(--accent)}
 .chip:active{transform:scale(.95)}
 .field{display:flex;align-items:center;gap:12px;padding:10px 14px;min-height:52px;position:relative}
 .field + .field::before{content:"";position:absolute;top:0;height:1px;background:var(--sep);inset-inline:14px 0}
@@ -584,6 +586,9 @@ body[data-tab="night"] #tNight,body[data-tab="food"] #tFood,body[data-tab="settl
 .wname{position:absolute;inset:0;display:grid;place-items:center;padding:0 48px;color:#F0EDE5;font-weight:700;font-size:14.5px;line-height:1.25;text-align:center}
 button.seat{background:none;padding:0;cursor:pointer;animation:sit .5s var(--squash) both;animation-delay:calc(var(--i) * 80ms)}
 button.seat .av{transition:transform .25s var(--spring),box-shadow .2s var(--ease)}
+button.seat.held .av{opacity:.45}
+button.seat.held .snm::after{content:"בטלפון אחר";display:block;font-size:10px;font-weight:500;color:var(--text-2)}
+button.seat.held.armed .av{opacity:1;box-shadow:0 0 0 3px var(--surface),0 0 0 5px var(--accent)}
 button.seat:hover .av,button.seat:focus-visible .av{transform:translateY(-3px);box-shadow:0 0 0 3px var(--surface),0 0 0 5px var(--action)}
 button.seat:active .av{transform:scale(.9)}
 @keyframes sit{from{opacity:0;transform:translate(-50%,-18px) scale(.3)}}
@@ -905,7 +910,11 @@ function makeRemote(token){
   }
   listen(); poll(); setInterval(poll, 15000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) { lastPush = 0; poll(); } });
-  return { doc, collection, next: body => call('next', body) };
+  return {
+    doc, collection, next: body => call('next', body),
+    hold: (pid, data) => write({ op: 'hold', col: 'players', id: pid, data }),
+    release: (pid, data) => write({ op: 'release', col: 'players', id: pid, data }),
+  };
 }
 const NIGHT_TOKEN = (location.pathname.match(/^\/night\/([A-Za-z0-9]{22})\/?$/) || [])[1] || null;
 
@@ -1149,6 +1158,7 @@ function render(){
   keepFocus($('#tSettle'), () => renderSettle(D));
   keepFocus($('#setBody'), () => renderSettings(D));
   renderWelcome(D);
+  syncHold();
   renderQR(D);
   maybeSummary(D);
   maybeRecord(D);
@@ -1591,7 +1601,8 @@ function seatPicker(D){
   const seats = D.players.map((p, i) => {
     const a = (90 + i * 360 / n) * Math.PI / 180;
     const x = (50 + 50 * Math.cos(a)).toFixed(1), y = (50 + 50 * Math.sin(a)).toFixed(1), d = (0.8 + 0.2 * (1 + Math.sin(a)) / 2).toFixed(2);
-    return '<button type="button" class="seat" data-pick="' + p.id + '" style="left:' + x + '%;top:' + y + '%;--d:' + d + ';--i:' + i + '"><span class="av">' + esc(initial(p.name)) + '</span><span class="snm">' + esc(p.name) + '</span></button>';
+    const h = heldElsewhere(p);
+    return '<button type="button" class="seat' + (h ? ' held' : '') + '" data-pick="' + p.id + '"' + (h ? ' data-held="1"' : '') + ' style="left:' + x + '%;top:' + y + '%;--d:' + d + ';--i:' + i + '"><span class="av">' + esc(initial(p.name)) + '</span><span class="snm">' + esc(p.name) + '</span></button>';
   }).join('');
   return '<div class="tablewrap wtable"><div class="felt"><div class="wname">איפה יושבים?</div>' + seats + '</div></div>';
 }
@@ -1611,14 +1622,14 @@ function renderWelcome(D){
   w.hidden = !show;
   if (!show) { w.dataset.k = ''; return; }
   // prefixed, so an evening with nobody in it is not the same key as "not shown"
-  const k = 'p:' + D.players.map(p => p.id).join();
+  const k = 'p:' + D.players.map(p => p.id + (heldElsewhere(p) ? '*' : '')).join();
   if (w.dataset.k === k) return;
   w.dataset.k = k;
   w.innerHTML = `<div class="wcard">
     <svg class="mark" viewBox="0 0 120 120" aria-hidden="true"><use href="#logo"/></svg>
     <h1>${esc(D.g.name)}</h1>
     <p>אני רושמת את הערב: כניסות, אוכל, ובסוף מי מעביר למי. ${D.players.length && D.players.length <= 9 ? 'לוחצים על הכיסא שלך.' : 'מה השם שלך?'}</p>
-    ${D.players.length && D.players.length <= 9 ? seatPicker(D) : `<div class="chips">${D.players.map(p => `<button type="button" class="chip" data-pick="${p.id}">${esc(p.name)}</button>`).join('')}</div>`}
+    ${D.players.length && D.players.length <= 9 ? seatPicker(D) : `<div class="chips">${D.players.map(p => `<button type="button" class="chip${heldElsewhere(p) ? ' held' : ''}" data-pick="${p.id}"${heldElsewhere(p) ? ' data-held="1"' : ''}>${esc(p.name)}</button>`).join('')}</div>`}
     <form id="wNew"><input id="wNewIn" placeholder="אני לא ברשימה, השם שלי…" aria-label="השם שלי"><button class="btn primary small" type="submit">זה אני</button></form>
     <button type="button" class="linkish" id="wSkip">רק להסתכל</button>
   </div>`;
@@ -1651,7 +1662,16 @@ document.addEventListener('click', e => {
     removePlayer(t.dataset.rm); return;
   }
   if (t.id === 'rmUndo') { restorePlayer(); return; }
-  if (t.dataset.pick) { pickMe(t.dataset.pick); return; }
+  if (t.dataset.pick) {
+    // a seat another phone already sits in: the first tap only says so
+    if (t.dataset.held && !t.classList.contains('armed')) {
+      t.classList.add('armed');
+      toast(`${S.players[t.dataset.pick]?.name || ''} כבר נבחר בטלפון אחר. אם זה באמת השם שלך, לוחצים שוב`);
+      setTimeout(() => { if (t.isConnected) t.classList.remove('armed'); }, 8000);
+      return;
+    }
+    pickMe(t.dataset.pick, null, !!t.dataset.held); return;
+  }
   if (t.id === 'wSkip') { ls.set('pk-skip-' + S.gid, '1'); schedule(); return; }
   if (t.dataset.paid) { setPaid(t.dataset.paid, t.getAttribute('aria-pressed') !== 'true'); return; }
   if (t.dataset.foodMode) { setGame({ foodMode: t.dataset.foodMode }); return; }
@@ -1683,7 +1703,7 @@ document.addEventListener('click', e => {
   if (t.id === 'chatBtn') { openSheet('#chatSheet'); scrollChat(); return; }
   if (t.id === 'setBtn') { openSheet('#setSheet'); return; }
   if (t.hasAttribute('data-close')) { closeSheets(); return; }
-  if (t.id === 'switchMe' || t.id === 'pickMe') { ls.set('pk-me-' + S.gid, ''); memMe = null; ls.set('pk-skip-' + S.gid, ''); prev.pickedNow = false; closeSheets(); schedule(); return; }
+  if (t.id === 'switchMe' || t.id === 'pickMe') { releaseSeat(); ls.set('pk-me-' + S.gid, ''); memMe = null; ls.set('pk-skip-' + S.gid, ''); prev.pickedNow = false; closeSheets(); schedule(); return; }
   if (t.id === 'newAsk') {
     $('#newBox').innerHTML = `<p class="row-sub">הערב הזה יישאר שמור. לפתוח ערב חדש עם אותו מחיר ואותם ז'יטונים?</p>
       <div class="btns"><button class="btn primary small" type="button" id="newYes">פתיחה</button><button class="btn ghost small" type="button" id="newNo">ביטול</button></div>`;
@@ -1817,19 +1837,69 @@ let chat = [], typingOn = false;
 let hashMe = (location.hash.match(/^#me-([A-Za-z0-9_-]{2,32})$/) || [])[1] || null, memMe = null;
 if (hashMe) try { history.replaceState(null, '', location.pathname + location.search); } catch {}
 const myId = () => {
-  if (hashMe && S.gid && S.players[hashMe]) { ls.set('pk-me-' + S.gid, hashMe); memMe = hashMe; hashMe = null; }
+  if (hashMe && S.gid && S.players[hashMe]) { ls.set('pk-me-' + S.gid, hashMe); memMe = hashMe; takeNext = hashMe; hashMe = null; }
   const v = S.gid && (ls.get('pk-me-' + S.gid) ?? memMe);
   return v && S.players[v] ? v : null;
 };
-function pickMe(pid, name){
+/* One seat, one phone (migrations/002_seat_device.sql). Which seat is "me"
+   used to live only on this phone, so a second phone could pick a seat
+   somebody was already playing from (2026-10-03) and record on their name.
+   The server now keeps which phone holds each seat; a held seat asks twice. */
+const DEV = (() => {
+  let d = ls.get('pk-dev');
+  if (!d || !/^[A-Za-z0-9_-]{8,32}$/.test(d)) { d = (uid() + uid()).replace(/[^A-Za-z0-9]/g, '').slice(0, 24); ls.set('pk-dev', d); }
+  return d;
+})();
+const heldElsewhere = p => !!(p && p.held && p.held !== DEV);
+let takeNext = null, holding = null, holdTried = null, chatTake = null;
+async function holdSeat(pid, take){
+  if (!db?.hold) return;
+  holding = pid;
+  try { await db.hold(pid, { device: DEV, take: !!take }); }
+  finally { holding = null; }
+}
+function releaseSeat(){
+  const me = myId();
+  if (me && db?.release && S.players[me]?.held === DEV) db.release(me, { device: DEV }).catch(() => {});
+}
+// After every render: a seat chosen before the server kept holds is held now,
+// and a phone whose seat another phone took on purpose goes back to choosing.
+function syncHold(){
+  if (!db?.hold || !loaded || !S.gid || holding) return;
+  const me = myId(); if (!me) return;
+  const h = S.players[me].held;
+  if (h === DEV) return;
+  if (h && takeNext !== me) {
+    ls.set('pk-me-' + S.gid, ''); memMe = null; ls.set('pk-skip-' + S.gid, ''); prev.pickedNow = false; prev.sawMe = null;
+    toast('השם שלך נבחר בטלפון אחר. בוחרים שוב');
+    schedule(); return;
+  }
+  if (holdTried === me) return;
+  holdTried = me;
+  const take = takeNext === me; takeNext = null;
+  holdSeat(me, take).catch(() => {});
+}
+async function pickMe(pid, name, take){
+  try { await holdSeat(pid, take); }
+  catch (e) {
+    if (e && e.code === 'held') { toast(`${S.players[pid]?.name || name || ''} כבר נבחר בטלפון אחר`); schedule(); return; }
+    // anything else: the seat is still this phone's here, and syncHold asks again
+  }
+  holdTried = pid;
   ls.set('pk-me-' + S.gid, pid); prev.pickedNow = true;
   $('#welcome').hidden = true;
   toast(`שלום ${S.players[pid]?.name || name || ''}`);
   schedule();
 }
-function setMe(pid, name){
+async function setMe(pid, name){
+  const nm = (S.players[pid] || { name }).name;
+  try { await holdSeat(pid, chatTake === pid); }
+  catch (e) {
+    if (e && e.code === 'held') { chatTake = pid; reply(`${nm} כבר נבחר בטלפון אחר. אם זה באמת השם שלך, כתבו שוב "אני ${nm}".`); return; }
+  }
+  chatTake = null; holdTried = pid;
   ls.set('pk-me-' + S.gid, pid); prev.pickedNow = true;
-  reply(`נעים, ${(S.players[pid] || { name }).name}. מעכשיו מה שנכתב כאן נרשם עליך.`);
+  reply(`נעים, ${nm}. מעכשיו מה שנכתב כאן נרשם עליך.`);
   schedule();
 }
 function loadChat(){

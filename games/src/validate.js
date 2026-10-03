@@ -35,6 +35,12 @@ function player(data) {
   return { name: text(data.name, 24), order: num(data.order ?? Date.now(), -1e15, 1e15) };
 }
 
+// A phone's own tag for "this seat is me" (store.js, op hold/release).
+function hold(data) {
+  if (!isObj(data) || typeof data.device !== 'string' || !/^[A-Za-z0-9_-]{8,32}$/.test(data.device)) refuse('bad_doc');
+  return { device: data.device, take: data.take === true };
+}
+
 function buyin(data, now) {
   if (!isObj(data)) refuse('bad_doc');
   const n = num(data.n, 0.5, 1);
@@ -99,4 +105,4 @@ function gamePatch(data) {
   return out;
 }
 
-module.exports = { Refused, refuse, id, player, buyin, cashout, food, logLine, gamePatch };
+module.exports = { Refused, refuse, id, player, hold, buyin, cashout, food, logLine, gamePatch };

@@ -1,0 +1,11 @@
+-- Which phone sits in a seat (2026-10-03). Choosing "this is me" on the page
+-- used to live only in that phone's localStorage, so a second phone could
+-- pick a seat somebody was already playing from, and everything it recorded
+-- went on the wrong name. The page now tells the server, and the seat picker
+-- shows a held seat as taken.
+--
+-- `device` is a random tag the page makes for itself. It is not a secret and
+-- grants nothing: the link is still the only permission, and a confirmed
+-- second tap takes a held seat anyway (a new phone mid-night is real). It
+-- only turns an accident into a choice.
+ALTER TABLE players ADD COLUMN device text CHECK (device ~ '^[A-Za-z0-9_-]{8,32}$');
