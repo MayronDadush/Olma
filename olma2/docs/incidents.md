@@ -19,6 +19,7 @@ never trust a dated narrative for something you are about to act on.
 
 **Gateway, config and upgrades**
 
+- [The silence the gateway asked again (fixed 2026-10-03)](#the-silence-the-gateway-asked-again-fixed-2026-10-03)
 - [Three messages in a row got three replies (2026-10-02, the debounce replaced the same day)](#three-messages-in-a-row-got-three-replies-2026-10-02-the-debounce-replaced-the-same-day)
 - [Six hours with nobody to talk to (detector added 2026-09-11)](#six-hours-with-nobody-to-talk-to-detector-added-2026-09-11)
 - [The socket that was never closed (fixed 2026-09-11)](#the-socket-that-was-never-closed-fixed-2026-09-11)
@@ -309,6 +310,49 @@ never trust a dated narrative for something you are about to act on.
 
 ## Gateway, config and upgrades
 
+### The silence the gateway asked again (fixed 2026-10-03)
+
+Padel Gang, 10:40 Israel time. A member wrote "פשוט תשני את התיאום הקיים
+ל17"; the room's agent recorded his yes and settled the coordination by hand
+with one member still out (`withoutYes: [32]`). The settle result said the
+room would hear a fixed line within a minute and to answer `NO_REPLY`, and the
+model did. Four seconds later the room read "סגרנו את התיאום להיום ב-17:00,
+כל המשתתפים בתוך, והיומן עודכן. 🗓️" — wrong on the people, early on the
+calendar (the event was created 18 seconds later), and a duplicate of the
+"סגור" line that followed a minute after it.
+
+Nothing of ours wrote it. The gateway log had one line between the two:
+`settled post-tool turn lacked a final answer … running isolated
+finalization`. OpenClaw 2026.8.1, when a user-triggered turn ends on tool
+calls with no visible payload, asks the model once more in an isolated call
+and delivers what comes back. An explicit `NO_REPLY` counts as no payload, and
+the only setting that treats it as silent (`allowEmptyAssistantReplyAsSilent`)
+is on only for an untagged group message.
+
+Measured on the box: 12 finalizations from 2026-09-26 to 10-03. Seven said
+`NO_REPLY` again and sent nothing; one rescued a genuinely EMPTY answer (u-3's
+list, which he had asked for); four overruled a `NO_REPLY` and reached a
+phone — this one, "אשאל כל אחד בפרטי" to another room after "כולם", "הוספתי ✅
+שמנת…" under a 👍 already on the message, and "מחקתי את 'לארגן ציוד…'" after a
+turn that had edited two other tasks and deleted nothing.
+
+The fix is at the reply gate, in `gateway-plugin/olma-turn`. `llm_output`
+fires for the turn's own call and is skipped for the finalization, and it
+carries the same `runId` that `reply_payload_sending` does. A run whose every
+assistant text was the sentinel is remembered; text in that run is cancelled
+(`olma_after_silence`, filed as `reply.gated` kind `after_silence`). An empty
+answer is not remembered, so its retry still goes out. The run is forgotten
+after two minutes and never at `agent_end`, whose order against delivery we
+did not verify. `unanswered` needed no change: its lost reply must follow the
+person's message, and here the `NO_REPLY` sits between them.
+
+Inert until the gateway restarts, like every plugin change. **Unverified
+until then**: that the `runId` on the delivery path is the agent run's id. If
+it is not, nothing matches and replies go out as before — fails toward
+sending. The plugin trace logs `silence` on every remembered run, so the first
+`after_silence` cancel (or its absence beside a `silence` line and a send) is
+the proof.
+
 ### Three messages in a row got three replies (2026-10-02, the debounce replaced the same day)
 
 The owner's ask: when somebody writes several messages one after the other,
@@ -390,6 +434,17 @@ Found on the way and left for its own fix: every message Shimon sent in that
 minute was opened as `self_initiated`, because a delivery to him had just
 ended and `self-initiated.js` keeps its mark for 60 seconds afterwards. None
 of those messages were counted or woke anything.
+
+The hold worked on the first live test — three messages, one reply — and the
+reply was wrong: Miron asked to add a task, for his open coordinations, and
+when he gets quiet, and the answer that reached him covered the first and the
+third. The model saw its held coordinations answer in its own history and
+took it as sent. Handing it the held replies word for word, with "it MUST
+carry everything in them", was live the next morning and failed the same
+way: the last question needed four rounds of tools, and the note at the top
+of the turn was forgotten by the end of it. Since 2026-10-03 the gate sends
+the held replies itself, in order, above the last one, and the model is told
+only that they will go — it is never asked to merge anything.
 
 ### Six hours with nobody to talk to (detector added 2026-09-11)
 
@@ -3600,6 +3655,18 @@ given, and stays in the narration-faults column.
 
 **That last sentence caused the next incident three days later** — see "The
 room that did not know its own member".
+
+**2026-10-03, the poker room: three messages for one close, two minutes
+apart.** The owner wrote "כן תסגרי ותוסיפי שהמשחק אצל שמר" under the base line.
+Her turn called `settle_group_coordination` (hint: NO_REPLY) and then
+`set_group_coordination_place`, whose hint said "Say ONE short line: noted" —
+the last result won, as it always does, and she wrote "סגרו על שבת בערב —
+המשחק אצל שמר 👍" at 13:07. The fixed "סגור" line followed at 13:08 and the
+day-of reminder ("מזכירה — היום") at 13:09, because nothing in `decideLine`
+asked when the room had last been told. Fixed three ways: the done line
+carries the place, the place tool answers NO_REPLY while that line is still
+to come, and neither reminder follows a close said the same day (day-of) or
+inside the hour (soon).
 
 ### The room that did not know its own member (fixed 2026-09-23)
 

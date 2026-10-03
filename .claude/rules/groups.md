@@ -670,6 +670,15 @@ have already had to be argued for.
   `@<digits>` in the message she received is the sender tagging HER — she
   echoed her own LID as if it were Yuval's (`incidents.md`, "The room waited
   for nobody").
+  **Since 2026-10-03 the place rides it too, and no reminder repeats it**
+  (owner, the poker room: "כן תסגרי ותוסיפי שהמשחק אצל שמר" was heard as her
+  "noted", then "סגור", then "מזכירה — היום" a minute later). The done line
+  carries `place` (`co.location`, `{{place}}` in `group_coord_done`, appended
+  when a rewording lacks it), and `set_group_coordination_place` answers
+  NO_REPLY when the meeting is confirmed and `group_done_at` is still empty
+  (`closeLineCarriesIt`). `decideLine` reads `doneSaidAtMs`: no day-of line on
+  the local day the close was said, no hour-before when the close was said
+  inside that hour.
 
 - **A time the room was TOLD about and that has since left the table is said
   again; a time merely overtaken is not** (owner, 2026-09-22: "יש אנשים

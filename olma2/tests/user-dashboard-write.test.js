@@ -222,20 +222,22 @@ test('the daily-until chip arms a chase to the task\'s own date, and the page re
   assert.ok(row.reminder.until, 'the sheet needs `until` to tell a chase from "every day" for ever');
 });
 
-test('a chase too close to its date is refused, and the reminder that was there stays', async () => {
-  // Two hours, not ten: +10h crosses local midnight after 14:00 Jerusalem, and
-  // 19:00 today plus the morning after then both fit. +2h fits one at any hour.
-  const t = await mkTask({ dueAt: iso(2 * 3600e3) });
-  const before = (await db.pool.query(
-    `SELECT id FROM task_reminders WHERE task_id = $1 AND sent_at IS NULL AND cancelled_at IS NULL`, [t.id])).rows;
-  const r = await act('setTaskReminder', { taskId: t.id, on: true, chase: true });
-  assert.equal(r.ok, false, 'a one-off under a chip that says "every day" is the promise run 79 broke');
-  const after = (await db.pool.query(
-    `SELECT id FROM task_reminders WHERE task_id = $1 AND sent_at IS NULL AND cancelled_at IS NULL`, [t.id])).rows;
-  assert.deepEqual(after.map((x) => String(x.id)), before.map((x) => String(x.id)),
-    'the refusal cancelled nothing');
+// The page's nudge button (2026-10-03) arms whichever shape the task's date
+// calls for — the chip used to refuse all but once a day, under a label that
+// said "every day". Rungs is the shape: 3 near a deadline or with none, 1 far.
+test('the nudge button arms the loud shape near a date and the capped one with none', async () => {
+  const near = await mkTask({ dueAt: iso(2 * 86400e3) });
+  const r1 = await act('setTaskReminder', { taskId: near.id, on: true, nudge: true });
+  assert.equal(r1.ok, true, r1.ok ? '' : JSON.stringify(r1.error));
+  assert.equal(Number(r1.data.reminder.rungs), 3, 'within three days: up to three a day');
+  assert.equal(r1.data.reminder.nudge_capped, false, 'the end is their date');
   const undated = await mkTask();
-  assert.equal((await act('setTaskReminder', { taskId: undated.id, on: true, chase: true })).ok, false);
+  const r2 = await act('setTaskReminder', { taskId: undated.id, on: true, nudge: true });
+  assert.equal(r2.ok, true, r2.ok ? '' : JSON.stringify(r2.error));
+  assert.equal(r2.data.reminder.nudge_capped, true, 'no date: three days, then a question');
+  const { rows } = await db.pool.query(
+    `SELECT due_at FROM tasks WHERE id = $1`, [undated.id]);
+  assert.equal(rows[0].due_at, null, 'a nudge must not date the task');
 });
 
 test('turning the reminder off cancels it', async () => {
@@ -341,7 +343,7 @@ test('the page builds a moment for a dateless nudge instead of dropping the call
   // it are not offered — the hour takes their place.
   // A chase asks neither: its hour is the owner's rule, so the chips go too.
   assert.match(page, /\$\("#sOffset"\)\.hidden = !dated \|\| chasing;/);
-  assert.match(page, /\$\("#sRemindAtSeg"\)\.hidden = dated;/);
+  assert.match(page, /\$\("#sRemindAtSeg"\)\.hidden = dated \|\| chasing;/);
   // A changed hour has to reach the server, or the picker is a decoration.
   assert.match(page, /editing\.remAt !== wasRemAt/);
 });
@@ -349,14 +351,23 @@ test('the page builds a moment for a dateless nudge instead of dropping the call
 // The chip the owner asked for, read off the page because the sheet is only
 // ever exercised in a browser: it is offered on a dated task only, it sends a
 // chase and NO hour, and the page tells a chase from "every day" by `until`.
-test('the page offers "daily until the date" on a dated task and sends it as a chase', () => {
+test('the page offers the nudge on every task and sends it with no hour', () => {
   const page = require('node:fs').readFileSync(
     require('node:path').join(__dirname, '..', 'docs', 'design', 'user-dashboard.html'), 'utf8');
-  assert.match(page, /data-rep="until" data-i18n="rep\.until"/);
-  assert.match(page, /untilChip\.hidden = !dated;/);
-  assert.match(page, /if\(x\.rep === "until"\)\{ API\.send\("setTaskReminder", \{taskId:id, on:true, chase:true\}\); return; \}/);
-  assert.match(page, /rep:\(x\.reminder && x\.reminder\.until\) \? "until" : repShape/);
-  for (const key of ['rep.until', 'rep.untilVal', 'sheet.chaseSub']) {
+  // A KIND of reminder, two cards under its row — not a chip among the
+  // repeats, where it read as one more rhythm (owner, 2026-10-03, option ב).
+  assert.match(page, /data-kind="plain"/);
+  assert.match(page, /data-kind="nag"/);
+  assert.doesNotMatch(page, /data-rep="until"/, 'the nudge left the repeat chips');
+  assert.match(page, /editing\.rep = nagging \? "until"/);
+  assert.match(page, /\$\("#sKindWrap"\)\.hidden = !x\.rem;/);
+  assert.doesNotMatch(page, /untilChip\.hidden/, 'an undated task gets the three-day nudge');
+  assert.match(page, /if\(x\.rep === "until"\)\{ API\.send\("setTaskReminder", \{taskId:id, on:true, nudge:true\}\); return; \}/);
+  // A weekly chase ("תזכיר לי X" with no when) also carries `until`, and it is
+  // not a nudge.
+  assert.match(page, /rep:\(x\.reminder && x\.reminder\.until && x\.reminder\.repeat === "daily"\) \? "until" : repShape/);
+  for (const key of ['kind.plain', 'kind.plainSub', 'kind.nag', 'kind.nagSub', 'rep.untilVal', 'rep.untilCap', 'rep.nagTag',
+    'sheet.nagNear', 'sheet.nagFar', 'sheet.nagCap']) {
     assert.equal(page.split(`"${key}":`).length - 1, 2, `${key} in both languages`);
   }
 });
@@ -816,4 +827,18 @@ test('a share refused because the friend switched sharing off says so, and sends
   const { rows: [n] } = await db.pool.query(
     `SELECT count(*)::int AS n FROM shares WHERE viewer_id = $1`, [friend.id]);
   assert.equal(n.n, 0);
+});
+
+// A long checklist GROWS the sheet until the sheet's own ceiling, and only
+// then scrolls (owner, 2026-10-03) — it used to scroll at five items with half
+// the phone free. The cap is measured off the sheet, never an item count.
+test('the sheet\'s checklist is capped by the room the sheet has left, not by five items', () => {
+  const page = require('node:fs').readFileSync(
+    require('node:path').join(__dirname, '..', 'docs', 'design', 'user-dashboard.html'), 'utf8');
+  assert.match(page, /var room = ceil - \(sh\.scrollHeight - el\.clientHeight\);/);
+  assert.match(page, /el\.style\.maxHeight = Math\.max\(LIST_FLOOR, Math\.floor\(room\)\) \+ "px";/);
+  assert.match(page, /paintCue\(\$\("#sList"\), \$\("#listCue"\)\);\n {4}fitList\(\);/, 'every repaint of the list refits it');
+  // …and with the details open it is five items again, so they stay in reach.
+  assert.match(page, /if\(sh\.classList\.contains\("details"\)\)\{\n {6}el\.style\.maxHeight = LIST_FLOOR \+ "px";/);
+  assert.match(page, /\$\("#sheet"\)\.classList\.toggle\("details", on\);\n.*\n {4}fitListSoon\(\);/);
 });

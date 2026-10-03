@@ -110,6 +110,60 @@ export function inboundOf(agentId, now = Date.now()) {
 }
 export function _resetInbound() { INBOUND.clear(); }
 
+// ---- a NO_REPLY the gateway asked again -------------------------------------
+// When a turn ends on tool calls and then only "NO_REPLY", the gateway logs
+// "settled post-tool turn lacked a final answer", asks the model ONCE more in
+// an isolated call, and delivers whatever comes back — the decision to stay
+// quiet is overruled by a second model that never saw it was a decision. 12
+// such retries from 2026-09-26 to 10-03: seven said NO_REPLY again, one
+// rescued a genuinely EMPTY answer, and four put text on a phone that the turn
+// had decided not to send — "כל המשתתפים בתוך" to Padel Gang with one of them
+// out, a "הוספתי ✅" under a 👍, a deletion that turn never made
+// (`docs/incidents.md`, "The silence the gateway asked again").
+//
+// `llm_output` fires for the turn's own call and NOT for the finalization
+// (the gateway skips it for `settled-tool-finalization`), and it carries the
+// runId that `reply_payload_sending` carries too. So a run whose every
+// assistant text was the sentinel is remembered here, and the gate cancels
+// text in that run. An EMPTY answer is not a decision and is never
+// remembered: its retry is the gateway doing its job. Keyed by runId, which
+// is a fresh uuid per run, so the next turn is never caught by it; dead after
+// two minutes, and deliberately NOT cleared at `agent_end`, whose order
+// against delivery this code does not get to rely on.
+const SILENT_RUNS = new Map();
+const SILENT_RUN_MS = 2 * 60 * 1000;
+export function decidedSilence(texts) {
+  const said = (Array.isArray(texts) ? texts : []).map((t) => String(t == null ? "" : t).trim()).filter(Boolean);
+  return said.length > 0 && said.every((t) => t === "NO_REPLY");
+}
+export function rememberSilentRun(runId, now = Date.now()) {
+  if (!runId) return;
+  for (const [id, at] of SILENT_RUNS) if (now - at > SILENT_RUN_MS) SILENT_RUNS.delete(id);
+  SILENT_RUNS.set(String(runId), now);
+}
+export function silentRun(runId, now = Date.now()) {
+  if (!runId) return false;
+  const at = SILENT_RUNS.get(String(runId));
+  return at != null && now - at <= SILENT_RUN_MS;
+}
+export function _resetSilentRuns() { SILENT_RUNS.clear(); }
+
+export function buildSilenceHandler({ log = trace } = {}) {
+  return async (event, ctx) => {
+    try {
+      const sessionKey = String((ctx && ctx.sessionKey) || "");
+      const m = GATED_AGENT_RE.exec(sessionKey);
+      if (!m) return undefined;
+      const runId = (ctx && ctx.runId) || (event && event.runId) || null;
+      if (runId && decidedSilence(event && event.assistantTexts)) {
+        rememberSilentRun(runId);
+        log({ silence: m[1], run: String(runId).slice(0, 8) });
+      }
+    } catch { /* observe-only: a throw here must never touch the turn */ }
+    return undefined;
+  };
+}
+
 // ---- a burst is answered once -----------------------------------------------
 // Owner, 2026-10-02: somebody who writes three messages in a row should get
 // ONE answer, not three. The gateway's own inbound debounce cannot do it on
@@ -205,23 +259,29 @@ function noteHeld(agentId, text, now) {
   HELD.set(agentId, { texts: texts.slice(-BURST_HELD_MAX), at: now });
 }
 export function clearHeld(agentId) { HELD.delete(agentId); }
-// What the next person's turn is told. The replies are QUOTED, not described:
-// told only that "your earlier replies did not reach them", the model saw its
-// own reply in the session history, took it as delivered and answered the
-// newest message alone — Miron asked three things on 2026-10-02 and the
-// answer to the middle one, his open coordinations, never reached him.
+export function heldTexts(agentId, now = Date.now()) {
+  const h = HELD.get(agentId);
+  return h && now - h.at <= BURST_HELD_MS ? h.texts.slice() : [];
+}
+// What the next person's turn is told. The held replies are SENT by the gate,
+// in code, above whatever this turn writes — the model is no longer asked to
+// carry them. It was asked twice and dropped them twice: told only that
+// "earlier replies did not arrive" (2026-10-02), and then handed them word
+// for word and told it MUST merge them (2026-10-03). Both times Miron asked
+// three things and got the answer to the last one alone; the second time the
+// final turn ran four rounds of tools and the note at the top was forgotten.
+// So the model is told the truth about what will happen, and asked only not
+// to say it again.
 export function heldNote(agentId, now = Date.now()) {
   const h = HELD.get(agentId);
   if (!h || now - h.at > BURST_HELD_MS) { HELD.delete(agentId); return ""; }
   const quoted = h.texts.length
     ? h.texts.map((t) => `<<<\n${t}\n>>>`).join("\n")
     : "(the text was not kept)";
-  return "[Burst] They wrote several messages in a row, and NONE of these replies of yours "
-    + "reached them — they never saw them, even though they are in your history:\n"
+  return "[Burst] They wrote several messages in a row. These replies of yours have NOT been sent yet:\n"
     + quoted + "\n"
-    + "The reply you write now is the ONLY message they will get for all of their messages. "
-    + "It MUST carry everything in those undelivered replies that is still true and relevant, "
-    + "and answer their newest message too — one message, merged, nothing said twice. "
+    + "They will be sent automatically, in this order, as the opening of the reply you write now. "
+    + "So write ONLY the answer to their newest message, and do not repeat anything those replies already say. "
     + "Whatever your tools already did stays done; do not do it again.";
 }
 export function _resetBurst() { ARRIVALS.clear(); TURNS.clear(); HELD.clear(); }
@@ -980,7 +1040,27 @@ export function buildReplyGateHandler({ connect, sock, timeoutMs = 1500, log = t
       const hasMedia = Boolean(payload && (payload.mediaUrl || (Array.isArray(payload.mediaUrls) && payload.mediaUrls.length) || payload.presentation || payload.location));
       if (!text.trim()) {
         if (person && hasMedia) turnProgress(agentId, "reply", { connect, sock, timeoutMs, asked: false });
+        // A card with no words still carries what the burst held.
+        const carried = person && hasMedia && !waitingBehind(agentId) ? heldTexts(agentId) : [];
+        if (carried.length) { clearHeld(agentId); return { payload: { ...payload, text: carried.join("\n\n") } }; }
         return undefined;
+      }
+      // This run already answered NO_REPLY and the text is the gateway's
+      // second ask (see "a NO_REPLY the gateway asked again" above). Filed as
+      // `reply.gated`, so the rate is readable on the box. `unanswered` will
+      // not re-send it: the turn before it in the transcript is the NO_REPLY,
+      // not the person's message.
+      const runId = (event && event.runId) || (ctx && ctx.runId) || null;
+      if (silentRun(runId)) {
+        const report = {
+          agentId, sessionKey: sessionKey.slice(0, 200), action: "cancel",
+          channel: (event && event.channel) || (ctx && ctx.channel) || null,
+          leaks: [{ kind: "after_silence", at: "", line: 0 }], chars: text.length, kept: 0,
+        };
+        const filed = await askBroker("reply_gate", report, { connect, sock, timeoutMs });
+        log({ gate: agentId, action: "cancel", kinds: "after_silence", chars: text.length, kept: 0, filed: Boolean(filed && filed.ok) });
+        if (hasMedia) return { payload: { ...payload, text: "" } };
+        return { cancel: true, reason: "olma_after_silence" };
       }
       // A newer message of theirs is already waiting for its own turn: this
       // reply is held and that turn answers both (see "a burst is answered
@@ -1011,8 +1091,16 @@ export function buildReplyGateHandler({ connect, sock, timeoutMs = 1500, log = t
           verdict = { action: "cancel", text: "", leaks: [{ kind: "echo", at: "" }], reported: [...verdict.reported, { kind: "echo", at: "", line: 0 }] };
         }
       }
-      // A reply of theirs is going out: the burst, if there was one, is answered.
-      if (person && (verdict.action !== "cancel" || hasMedia)) clearHeld(agentId);
+      // A reply of theirs is going out: the replies this burst held go out WITH
+      // it, joined above it by code (see `heldNote` for why not by the model).
+      // Each was leak-gated when it was held. Even a reply the gate is about to
+      // stop carries them — the held answers are still owed.
+      const carried = person ? heldTexts(agentId) : [];
+      const own = verdict.action !== "cancel" ? verdict.text : "";
+      const sent = carried.length ? [...carried, own].filter((t) => t.trim()).join("\n\n") : null;
+      if (sent !== null) log({ burst: agentId, carried: carried.length, chars: sent.length });
+      if (person && (verdict.action !== "cancel" || hasMedia || sent)) clearHeld(agentId);
+      const out = () => (sent ? { payload: { ...payload, text: sent } } : null);
       // Something is about to reach them, so the 👀 brokerd is holding for this
       // turn's message is no longer needed (`turnProgress` below). Not for a
       // reply the gate is about to stop entirely: nothing reached anybody, and
@@ -1020,15 +1108,15 @@ export function buildReplyGateHandler({ connect, sock, timeoutMs = 1500, log = t
       // And whether it ENDS on a question, read off what will actually be sent:
       // a bare "תודה" after "להוסיף לך את זה ליומן?" is their answer, not a
       // closed exchange (brokerd, `thanks_after_question`).
-      if (person && (verdict.action !== "cancel" || hasMedia)) {
-        turnProgress(agentId, "reply", { connect, sock, timeoutMs, asked: verdict.action !== "cancel" && endsWithQuestion(verdict.text) });
+      if (person && (verdict.action !== "cancel" || hasMedia || sent)) {
+        turnProgress(agentId, "reply", { connect, sock, timeoutMs, asked: sent ? endsWithQuestion(sent) : verdict.action !== "cancel" && endsWithQuestion(verdict.text) });
       }
       // Read off what will actually be SENT — a claim inside notes the gate
       // just cut never reaches anybody. Only a person's own agent: a room has
       // no turn brokerd can speak for.
       const claim = /^u-\d+$/.test(agentId) && verdict.action !== "cancel" ? claimedWrite(verdict.text) : null;
       if (claim) askBroker("reply_claim", { agentId, word: claim }, { connect, sock, timeoutMs }).catch(() => {});
-      if (verdict.action === "pass" && !verdict.reported.length) return undefined;
+      if (verdict.action === "pass" && !verdict.reported.length) return out() || undefined;
       // brokerd is asked only when something was found, so the ordinary reply
       // never waits on a socket. It is asked BEFORE the text goes (or does
       // not), because after a cancel there is nothing left to prove it
@@ -1042,6 +1130,7 @@ export function buildReplyGateHandler({ connect, sock, timeoutMs = 1500, log = t
       };
       const reply = await askBroker("reply_gate", report, { connect, sock, timeoutMs });
       log({ gate: agentId, action: verdict.action, kinds: report.leaks.map((l) => l.kind).join(","), chars: report.chars, kept: report.kept, filed: Boolean(reply && reply.ok) });
+      if (out()) return out();
       if (verdict.action === "pass") return undefined;
       if (verdict.action === "trim") return { payload: { ...payload, text: verdict.text } };
       // A cancel takes the media with it, and a schedule card is not the thing
@@ -1107,7 +1196,7 @@ export default {
     // `agent_end` is also what brokerd reads off the stamp to know the 👀 may
     // wait (domain/reactions.endSignalsLive): a gateway on a build without it
     // would never cancel a held mark.
-    const hooks = ["before_prompt_build", "llm_input", "before_dispatch", "before_dispatch:arrival", "before_dispatch:link", "reply_payload_sending", "agent_end"];
+    const hooks = ["before_prompt_build", "llm_input", "before_dispatch", "before_dispatch:arrival", "before_dispatch:link", "llm_output", "reply_payload_sending", "agent_end"];
     trace({ registered: true, agents, hooks });
     stampRegistration({ agents, hooks });
     api.on("before_prompt_build", buildHandler({ agents: cfg.agents }));
@@ -1122,6 +1211,8 @@ export default {
     // only for `g-N` sessions and this one only for `u-N`, so they never both
     // claim one message.
     api.on("before_dispatch", buildLinkShortcutHandler());
+    // Remembers a run that answered NO_REPLY, for the gate below.
+    api.on("llm_output", buildSilenceHandler());
     // Deliberately NOT narrowed by `cfg.agents`: that list is which people get
     // their turn context in the prompt, and a reply reaching the wrong person
     // is not a thing to roll out per person.

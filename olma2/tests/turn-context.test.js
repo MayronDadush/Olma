@@ -430,7 +430,7 @@ test('the plugin module registers its hooks under its own id and reads the agent
   // agent_end tells brokerd a turn is over, so a held 👀 is dropped
   // (tests/eyes-delay.test.js).
   assert.deepEqual(on.map(([name]) => name),
-    ['before_prompt_build', 'llm_input', 'before_dispatch', 'before_dispatch', 'before_dispatch', 'reply_payload_sending', 'agent_end']);
+    ['before_prompt_build', 'llm_input', 'before_dispatch', 'before_dispatch', 'before_dispatch', 'llm_output', 'reply_payload_sending', 'agent_end']);
   for (const [, fn] of on) assert.equal(typeof fn, 'function');
   // Registering STAMPS, and on the box this suite runs inside deploy.sh: the
   // stamp must land in the temp home tests/helpers.js chose, never in

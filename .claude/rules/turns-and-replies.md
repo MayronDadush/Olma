@@ -157,8 +157,12 @@ title means this file. Grep the title, not the filename.
   plugin counts, per agent, the messages `before_dispatch` has seen and no
   turn's `before_prompt_build` has taken yet (matched by their words); a
   PERSON's reply about to go out while one is waiting is cancelled
-  (`olma_burst`), and the next person's turn is told its earlier replies did
-  not arrive. Nothing ever waits, tool calls are never undone, and a delivery
+  (`olma_burst`) and its text kept. **The GATE sends the kept replies, in
+  order, above the next reply that goes out — never the model**: twice the
+  model was asked to carry them (once told, once handed them verbatim with a
+  MUST) and twice it answered the newest message alone, so the next turn is
+  now told they WILL go out and to write only what is new. A last reply the
+  leak gate stops still delivers what was held. Nothing ever waits, tool calls are never undone, and a delivery
   turn Olma started is never held. **`messages.inbound` debounce does NOT do
   this on WhatsApp** — the durable ingress lanes hand over one message at a
   time, so it never had two to join; applied and measured, then removed the
@@ -442,6 +446,19 @@ title means this file. Grep the title, not the filename.
   phone. Not measured on traffic before shipping (the read was refused). Read
   its rows before widening the list. Inert until the gateway restarts, like
   every plugin change.
+
+- **A NO_REPLY the gateway asks again is not overruled by the answer**
+  (2026-10-03; `incidents.md`, "The silence the gateway asked again"). A turn
+  that ends on tool calls and then only the sentinel gets a second, isolated
+  model call from the gateway ("settled post-tool turn lacked a final
+  answer"), and its text used to go out. 4 of 12 did in a week, one of them a
+  false "כל המשתתפים בתוך" in a room. The plugin remembers a run whose every
+  assistant text was `NO_REPLY` (`llm_output`, which the finalization never
+  fires) and the gate cancels text carrying that `runId`, filed as
+  `reply.gated` kind `after_silence`. **An EMPTY answer is not a decision**
+  and its retry still goes out. Keyed by run, two minutes, never cleared at
+  `agent_end`. Inert until the gateway restarts, and the trace's `silence`
+  lines are how to check the `runId` really matches on delivery.
 
 - **The last tier's missing input was not a pattern, it was the READER**
   (2026-09-22; `incidents.md`, "The gate had no idea who was reading"). The
