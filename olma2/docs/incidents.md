@@ -387,6 +387,17 @@ minute was opened as `self_initiated`, because a delivery to him had just
 ended and `self-initiated.js` keeps its mark for 60 seconds afterwards. None
 of those messages were counted or woke anything.
 
+The hold worked on the first live test — three messages, one reply — and the
+reply was wrong: Miron asked to add a task, for his open coordinations, and
+when he gets quiet, and the answer that reached him covered the first and the
+third. The model saw its held coordinations answer in its own history and
+took it as sent. Handing it the held replies word for word, with "it MUST
+carry everything in them", was live the next morning and failed the same
+way: the last question needed four rounds of tools, and the note at the top
+of the turn was forgotten by the end of it. Since 2026-10-03 the gate sends
+the held replies itself, in order, above the last one, and the model is told
+only that they will go — it is never asked to merge anything.
+
 ### Six hours with nobody to talk to (detector added 2026-09-11)
 
 At 06:07 the WhatsApp channel exited with `WhatsApp credential persistence did
