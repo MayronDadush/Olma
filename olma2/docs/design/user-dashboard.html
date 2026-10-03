@@ -1550,8 +1550,12 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 .tcount.pop{animation:chipPop .26s var(--squash)}
 
 /* the checklist inside the editor. It scrolls on its own so a long list can
-   never make the sheet itself scroll — the one rule this editor has. Five
-   items fit; past that the scroll line at its foot says so. */
+   never make the sheet itself scroll — the one rule this editor has. It GROWS
+   with its items until the sheet reaches its own ceiling (92vh), and only then
+   scrolls (owner, 2026-10-03: a shopping list scrolled inside a sheet with
+   half the phone still free). fitList sets the real cap; 232px — five items —
+   is the floor it never goes under, what a page without it shows, and the
+   cap again while the details are open. */
 .listbox{max-height:232px;overflow-y:auto;-webkit-overflow-scrolling:touch}
 .litem{display:flex;align-items:center;gap:11px;padding:9px 14px;position:relative}
 .litem + .litem::before{
@@ -8849,7 +8853,30 @@ button.srow:active{background:var(--bg-tint)}
   }
   $("#sheet").addEventListener("scroll", function(){ paintCue($("#sheet"), $("#sheetCue")); });
   $("#sList").addEventListener("scroll", function(){ paintCue($("#sList"), $("#listCue")); });
+  /* The list's ceiling is whatever the sheet has left under its own: the
+     sheet's max-height less everything in it that is not the list. Measured,
+     like the cue, and again once a fold has finished moving. */
+  var LIST_FLOOR = 232;
+  function fitList(){
+    var el = $("#sList"), sh = $("#sheet");
+    if(!el || !sh || !$("#sListFold").classList.contains("open")) return;
+    /* With the details open the sheet is a form again, and the list goes back
+       to five items and its own scroll, so the details stay in reach (owner,
+       2026-10-03). */
+    if(sh.classList.contains("details")){
+      el.style.maxHeight = LIST_FLOOR + "px";
+      paintCue(el, $("#listCue"));
+      return;
+    }
+    var ceil = parseFloat(getComputedStyle(sh).maxHeight);
+    if(!isFinite(ceil)) return;
+    var room = ceil - (sh.scrollHeight - el.clientHeight);
+    el.style.maxHeight = Math.max(LIST_FLOOR, Math.floor(room)) + "px";
+    paintCue(el, $("#listCue"));
+  }
+  function fitListSoon(){ fitList(); setTimeout(fitList, 290); }
   window.addEventListener("resize", updateSheetCue);
+  window.addEventListener("resize", function(){ fitList(); });
   document.addEventListener("keydown", function(e){
     if(e.key !== "Escape") return;
     if(!$("#calPop").hidden){ closeCal(); return; }
@@ -9248,6 +9275,7 @@ button.srow:active{background:var(--bg-tint)}
     }).join("") +
       '<div class="scuehold"><div class="scue" id="listCue"><i></i></div></div>';
     paintCue($("#sList"), $("#listCue"));
+    fitList();
     paintListMeta();
   }
   /* The subtitle and the little progress pill, separately from the rows —
@@ -9520,13 +9548,14 @@ button.srow:active{background:var(--bg-tint)}
     $("#sListFold").classList.toggle("open", on);
     this.setAttribute("aria-expanded", on ? "true" : "false");
     updateSheetCue();
-    if(on) paintCue($("#sList"), $("#listCue"));
+    if(on){ paintCue($("#sList"), $("#listCue")); fitListSoon(); }
     if(on) setTimeout(function(){ $("#sAddItem").focus(); }, 130);
   });
   $("#sDetailsRow").addEventListener("click", function(){
     var on = !$("#sheet").classList.contains("details");
     $("#sheet").classList.toggle("details", on);
     this.setAttribute("aria-expanded", on ? "true" : "false");
+    fitListSoon();
     updateSheetCue();
   });
   $("#sShareRow").addEventListener("click", function(){
@@ -9637,7 +9666,7 @@ button.srow:active{background:var(--bg-tint)}
     if(isNew){ commit(SKIP_SAVE); untouchedSig = sheetSig(); }
     showSheet($("#sheet"));
     /* the list's own scroll line is measured against a list that is showing */
-    if(listy) paintCue($("#sList"), $("#listCue"));
+    if(listy){ paintCue($("#sList"), $("#listCue")); fitListSoon(); }
     setTimeout(function(){ if(isNew) $("#sTitle").focus(); }, 190);
   }
 
