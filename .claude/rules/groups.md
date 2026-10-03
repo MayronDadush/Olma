@@ -1061,6 +1061,16 @@ have already had to be argued for.
   which with pending rows live counts people who can never be reached
   (`incidents.md`, "The invite that would have counted people it could not
   reach").
+  **…except that since 2026-10-03 their own ANSWER in the room counts them in**
+  (owner, the poker room): `answer_group_coordination_option` calls
+  `group-meetings.admitInRoom` on a `not_in_it` refusal — a pending member on
+  the roster, not paused by request or out of invites, never one who left,
+  only while it negotiates, only for a time on the table — and the result's
+  `admittedFromRoom` hint has her confirm in one line and say the owner's
+  sentence asking them to write privately too. For the tag to reach the model
+  at all, `group_room_write` no longer claims a pending sender while the room
+  negotiates (`incidents.md`, "The yes nobody counted, because he had never
+  written").
 
 - **A room coordination that has gone quiet is offered a way out ONCE, and
   closes quietly if nobody takes it. Somebody who answered nothing is nudged

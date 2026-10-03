@@ -14,6 +14,10 @@
 // never by the model.
 const { groups, groupMeetings, meetings, meetingFanout, users, ok, err, groupTool, S } = require('./_shared');
 
+// The owner's words (2026-10-03) to somebody let in from the room: nothing
+// else asks them to open a private chat, and two doors keep answers straight.
+const ADMITTED_ASK = 'אשמח לשמוע ממך גם בפרטי, כדי שלא יהיו טעויות 🙂';
+
 module.exports = [
   groupTool('group_status',
     'GROUP AGENTS ONLY. Who is in this group, and who has not written to Olma privately yet. Nothing here comes from anybody\'s private chat.',
@@ -341,7 +345,19 @@ module.exports = [
     { option_id: S('number', 'The time they answered'), accept: S('boolean', 'true = yes, false = no') },
     ['option_id', 'accept'],
     async (client, ctx, a) => {
-      const who = await groupMeetings.participantFor(client, ctx.group, ctx.actingUser);
+      let who = await groupMeetings.participantFor(client, ctx.group, ctx.actingUser);
+      // Somebody who never wrote to her answers in front of the room: their
+      // answer lets them in (owner, 2026-10-03). Checked before admitting, so
+      // a time that is not on the table admits nobody.
+      let admitted = false;
+      if (!who.ok && who.error.reason === 'not_in_it' && ctx.actingUser && ctx.actingUser.status === 'pending') {
+        const meeting = await groupMeetings.currentMeeting(client, ctx.group.id);
+        const onTable = meeting && (await meetings.options.list(client, Number(meeting.id)))
+          .some((o) => o.status === 'active' && Number(o.id) === Number(a.option_id));
+        if (!onTable) return err('not_found', 'no such time on the table', { reason: 'option_not_active' });
+        const admit = await groupMeetings.admitInRoom(client, ctx.group, ctx.actingUser);
+        if (admit.ok) { admitted = true; who = await groupMeetings.participantFor(client, ctx.group, ctx.actingUser); }
+      }
       if (!who.ok) return who;
       const { meetingId, user } = who.data;
       const option = (await meetings.options.list(client, meetingId))
@@ -358,7 +374,12 @@ module.exports = [
       return ok({
         meetingId, optionId: Number(option.id), slot: option.slotText, answer: a.accept === true ? 'yes' : 'no',
         meetingStatus: res.data.meetingStatus,
-        hints: { room: res.data.meetingStatus === 'settling'
+        ...(admitted ? { admittedFromRoom: true } : {}),
+        hints: { room: admitted
+          // The owner's sentence, word for word and gender-neutral: they have
+          // no private chat yet, so nothing else will ask them to start one.
+          ? `They had never written to you and are now counted in. ONE short line confirming their answer is in, then exactly: "${ADMITTED_ASK}"${res.data.meetingStatus === 'settling' ? ' Do not announce it closed.' : ''}`
+          : res.data.meetingStatus === 'settling'
           ? 'Their yes made it unanimous: it closes on its own shortly and everyone is told. Say ONE short line, and do not announce it closed.'
           : 'Noted. If words are needed, ONE short line — never anybody else\'s answer.' },
       });

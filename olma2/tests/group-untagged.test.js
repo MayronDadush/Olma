@@ -207,8 +207,8 @@ test('a locked room, another room\'s agent, a stranger, a LID — none of them c
 // (jobs/groups.syncSenderGate), so their tags reach this handler for the first
 // time. The first is answered once with fixed text and claimed; the second is
 // them coming back.
-test('a tag from somebody who never wrote is claimed and answered EVERY time, with no turn', async () => {
-  const { group } = await roomWithAHeldInvite(5);
+test('a tag from somebody who never wrote is claimed and answered EVERY time, with no turn, unless the room is negotiating', async () => {
+  const { group, meetingId } = await roomWithAHeldInvite(5);
   const stranger = await makeUser(db.pool, '+972607050099');
   await db.pool.query(`UPDATE users SET status = 'pending' WHERE id = $1`, [stranger.id]);
   await db.pool.query(
@@ -218,6 +218,13 @@ test('a tag from somebody who never wrote is claimed and answered EVERY time, wi
     agentId: group.agent_id, externalId: group.external_id, messageId,
     senderId: `${stranger.phone.replace('+', '')}@s.whatsapp.net`, addressed: true, at: Date.now(),
   });
+
+  // While the room negotiates, their tag is most likely an answer, and the
+  // room's answer tool lets them in on it (owner, 2026-10-03): the turn runs.
+  const answering = await tag('MSG-0');
+  assert.equal(answering.claim, false, 'a tag while it negotiates reaches the model');
+  assert.equal(answering.reason, undefined);
+  await db.pool.query(`UPDATE meetings SET status = 'cancelled' WHERE id = $1`, [meetingId]);
 
   const first = await tag('MSG-A');
   assert.deepEqual(first, {

@@ -64,6 +64,7 @@ never trust a dated narrative for something you are about to act on.
 - [The link came back on every coordination message (2026-09-24)](#the-link-came-back-on-every-coordination-message-2026-09-24)
 - [The slot that was already closed (fixed 2026-09-20)](#the-slot-that-was-already-closed-fixed-2026-09-20)
 - [Introduced twice, by the invite and the greeter (fixed 2026-10-01)](#introduced-twice-by-the-invite-and-the-greeter-fixed-2026-10-01)
+- [The yes nobody counted, because he had never written (fixed 2026-10-03)](#the-yes-nobody-counted-because-he-had-never-written-fixed-2026-10-03)
 - [The poker count was the people asked (fixed 2026-10-01)](#the-poker-count-was-the-people-asked-fixed-2026-10-01)
 - [Four out of five, and the room heard nothing (fixed 2026-10-02)](#four-out-of-five-and-the-room-heard-nothing-fixed-2026-10-02)
 - [The chase that beat its own invites (fixed 2026-09-28)](#the-chase-that-beat-its-own-invites-fixed-2026-09-28)
@@ -2516,6 +2517,28 @@ the privacy link, which the invite never carried, and drops the hello. An
 invite the gate dropped reached nobody, so that person still gets the hello.
 `saidRoomOpening` recognises the new text too, so `opening_sent_at` is still
 stamped and the welcome follow-up still waits behind the coordination.
+### The yes nobody counted, because he had never written (fixed 2026-10-03)
+
+The poker room again, coordination 66. A member who had never written to
+Olma privately answered in the room that he was in for Saturday night. He
+had no `meeting_participants` row (a pending roster row is never made one,
+`coldInvite`'s rule), so `answer_group_coordination_option` refused him with
+`not_in_it` and the yes went nowhere; the owner registered him by hand. Two
+more things stood in the way. His tag was added by an EDIT, and the WhatsApp
+plugin drops edits as having no content (still true in 2026.9.8), so that
+message never reached her at all. And when a tag of his did reach brokerd,
+`group_room_write` claimed it as `pending_sender` and answered with the fixed
+line, so no model turn could have counted him even with the tool fixed.
+
+The owner's call: an answer said in the room lets the person in, and she asks
+them in the same line to write to her privately too, "כדי שלא יהיו טעויות".
+`group-meetings.admitInRoom` makes the row only for a pending member still on
+the roster, never one who paused her or who chose to leave, only while the
+coordination negotiates, and only after the time they named is checked to be
+on the table. `group_room_write` no longer claims a pending sender's tag while
+the room is negotiating, so that turn runs. The edit is still unseen: that
+fix lives in the gateway's plugin and is the owner's decision.
+
 ### The poker count was the people asked (fixed 2026-10-01)
 
 "חייב קבוצה לפוקר": thirteen people in the room, a game, a minimum of
