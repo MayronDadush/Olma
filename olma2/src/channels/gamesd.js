@@ -1,6 +1,6 @@
 'use strict';
 // brokerd → gamesd (games/src/join.js): open a night for somebody, seat
-// somebody by a code. gamesd listens on the box only and refuses anything a
+// somebody by a code, and where their nights stand (domain/turn.advise). gamesd listens on the box only and refuses anything a
 // proxy forwarded, so this is plain HTTP to 127.0.0.1.
 //
 // Short on purpose. The whole shortcut runs inside the plugin's 800ms wait
@@ -32,4 +32,5 @@ async function call(route, body, { timeoutMs = TIMEOUT_MS } = {}) {
 module.exports = {
   open: (body, opts) => call('/api/open', body, opts),
   join: (body, opts) => call('/api/join', body, opts),
+  mine: (body, opts) => call('/api/mine', body, opts),
 };

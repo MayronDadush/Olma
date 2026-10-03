@@ -111,6 +111,7 @@ test('a night that closed with a settlement is not closed a second time', async 
   assert.equal((await okOf(TOK(1), 'report_chips', { chips: 1000 })).closed, true);
   const r = await okOf(TOK(1), 'close_game_night', { confirm: true });
   assert.deepEqual([r.closed, r.already], [false, 'closed with a settlement']);
+  assert.match(r.next, /ask whether to open a new night; start_game_night/);
 });
 
 test('the route is the box\'s alone, and only for somebody brokerd says holds the pack', async t => {

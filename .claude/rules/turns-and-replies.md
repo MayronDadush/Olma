@@ -223,6 +223,11 @@ title means this file. Grep the title, not the filename.
   gate dropped do not count as heard (`hold_reason IS NULL`), on the same
   argument as `unheardRemovals` (`incidents.md`, "The slot that was already
   closed").
+  **…and so is every game night of theirs** (`turn.gameNightsOf`, 2026-10-03):
+  a settlement goes out on the raw pipe and the session never sees it, so a
+  settled night was refused as unclosable from memory (`incidents.md`, "The
+  night that had already settled"). Pack holders only; unreadable gamesd is
+  no block.
 
 - **A DECISION to stay quiet is not a reply that got lost.** `NO_REPLY` is the
   silence sentinel and, since the reaction doctrine, it is the CORRECT answer to

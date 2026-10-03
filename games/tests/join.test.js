@@ -171,3 +171,32 @@ test('the short link opens a chat with Olma holding the code, and reads nothing'
   const post = await fetch(base + '/g/K7M2Q', { method: 'POST', redirect: 'manual' });
   assert.equal(post.status, 405);
 });
+
+// Olma's turn context reads this (olma2 domain/turn.advise): on 2026-10-03 the
+// settlement went out by code and her session never saw the night close.
+test('their nights, as they stand now: open, settled, closed without one; nobody else\'s', async t => {
+  const { pool, post } = await boot(t);
+  assert.deepEqual((await post('/api/mine', { userId: HOST })).body, { ok: true, nights: [] });
+  assert.equal((await post('/api/mine', { userId: HOST }, { 'X-Forwarded-For': '203.0.113.9' })).status, 404);
+  assert.equal((await post('/api/mine', { userId: 'x' })).body.error, 'bad_user');
+
+  const store = require('../src/store');
+  const first = (await open(post)).body;
+  const tok = tokenOf(first.url);
+  const { rows: [me] } = await pool.query('SELECT id FROM players WHERE user_id = $1', [HOST]);
+  await store.write(pool, tok, { op: 'add', col: 'buyins', data: { pid: me.id, n: 1 } });
+  let mine = (await post('/api/mine', { userId: HOST })).body.nights;
+  assert.deepEqual(mine.map(n => [n.code, n.status, n.buyins, n.players, n.reported]), [[first.night.code, 'open', 1, 1, 0]]);
+  assert.ok(!('closedAt' in mine[0]));
+
+  await store.write(pool, tok, { op: 'set', col: 'cashouts', id: me.id, data: { chips: 1000 } });
+  mine = (await post('/api/mine', { userId: HOST })).body.nights;
+  assert.equal(mine[0].status, 'settled');
+  assert.ok(mine[0].closedAt);
+
+  const second = (await open(post)).body;
+  await store.cancelNight(pool, tokenOf(second.url));
+  mine = (await post('/api/mine', { userId: HOST })).body.nights;
+  assert.deepEqual(mine.map(n => [n.code, n.status]), [[second.night.code, 'closed_without_settlement'], [first.night.code, 'settled']]);
+  assert.deepEqual((await post('/api/mine', { userId: DANA })).body.nights, []);
+});
