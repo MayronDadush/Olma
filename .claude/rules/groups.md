@@ -337,6 +337,11 @@ have already had to be argued for.
   behind an introduction nobody will send. A coordination that closed while
   the greeter spoke sends the follow-up at once (`incidents.md`, "Three
   messages before the one they came for").
+  **"Waiting" is `admitLateMembers`' own question** — negotiating, or settled
+  with its start still ahead (`intake-room.roomFor`, 2026-10-03). Reading
+  negotiating alone gave הוד the long opening, the follow-up and the settled
+  poker inside one minute (`incidents.md`, "Three messages in a minute, to
+  somebody a settled room sent").
 
 - **The person who asked the ROOM for a coordination is asked privately too.**
   `startMeeting` inserts every participant at `awaiting`, the initiator

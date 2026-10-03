@@ -89,6 +89,7 @@ never trust a dated narrative for something you are about to act on.
 - [She said there was no group (fixed 2026-09-25)](#she-said-there-was-no-group-fixed-2026-09-25)
 - [The room coordinated without the person who opened it (fixed 2026-09-19)](#the-room-coordinated-without-the-person-who-opened-it-fixed-2026-09-19)
 - [Twice 'היי' before a word about the room (fixed 2026-09-25)](#twice-היי-before-a-word-about-the-room-fixed-2026-09-25)
+- [Three messages in a minute, to somebody a settled room sent (fixed 2026-10-03)](#three-messages-in-a-minute-to-somebody-a-settled-room-sent-fixed-2026-10-03)
 - [Three messages before the one they came for (changed 2026-09-29)](#three-messages-before-the-one-they-came-for-changed-2026-09-29)
 - [היא שבורה: the room waited for somebody who had already written (fixed 2026-09-09)](#היא-שבורה-the-room-waited-for-somebody-who-had-already-written-fixed-2026-09-09)
 - [The room was told about a meeting at 01:12 (fixed 2026-09-09)](#the-room-was-told-about-a-meeting-at-0112-fixed-2026-09-09)
@@ -3273,6 +3274,24 @@ still negotiating and not inside its settle minute — exactly the conditions
 `admitLateMembers` lets a newly connected member in on. Anywhere else the line
 promises nothing. A roster row that is a LID matches no phone and gets no line
 at all.
+
+### Three messages in a minute, to somebody a settled room sent (fixed 2026-10-03)
+
+הוד (u-57) came to Olma from "חייב קבוצה לפוקר" at 17:15 on 2026-10-03,
+with the room's poker night already SET for 20:00 that evening. Inside one
+minute he read the greeter's long opening, the welcome follow-up with his
+page, and — 35 seconds behind it — the poker confirmation written for a late
+joiner.
+
+The room design (2026-09-29) says otherwise: with a coordination waiting the
+greeter gives the SHORT opening ("שולחת לך עכשיו את התיאום"), the
+coordination goes first, and what Olma is waits for the next morning. All of
+it hangs on `intake-room.roomFor`, which looked for a coordination still
+NEGOTIATING. `group-meetings.admitLateMembers` lets a newcomer into a settled
+one still ahead too (פנתרה, 2026-09-25), so the two disagreed exactly on this
+case: the system decided "no coordination waiting" and then sent one.
+`roomFor` now asks admitLateMembers' own question. The short opening's words
+are unchanged.
 
 ### Three messages before the one they came for (changed 2026-09-29)
 

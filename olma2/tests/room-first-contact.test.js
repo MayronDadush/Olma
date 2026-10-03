@@ -118,6 +118,33 @@ test('a locked room, a coordination in its settle minute, a room they left: no p
   assert.equal((await ask(intakeKey(gone))).context, null);
 });
 
+// הוד, 2026-10-03: the room's poker night was already SET for that evening.
+// admitLateMembers lets a newcomer into a settled coordination still ahead, so
+// the greeter has to promise it too — otherwise the welcome follow-up goes at
+// once and the confirmation lands 35 seconds behind it. One that has already
+// started is nothing to join.
+test('a coordination already settled but still ahead is one to join; one already over is not', async () => {
+  const ahead = '+972501770021';
+  const over = '+972501770022';
+  const a = await room('חייב קבוצה לפוקר', { members: [ahead] });
+  const am = await start(a.group, a.people[0]);
+  await db.pool.query(
+    `UPDATE meetings SET status = 'confirmed', confirmed_slot = 'הערב ב-20:00',
+            confirmed_start_at = now() + interval '3 hours' WHERE id = $1`, [am]);
+  const got = await ask(intakeKey(ahead));
+  assert.equal(got.meetingId, am);
+  assert.ok(got.context.includes('שולחת לך עכשיו את התיאום'), 'the short opening, the coordination first');
+
+  const o = await room('היה כבר', { members: [over] });
+  const om = await start(o.group, o.people[0]);
+  await db.pool.query(
+    `UPDATE meetings SET status = 'confirmed', confirmed_slot = 'אתמול',
+            confirmed_start_at = now() - interval '1 hour' WHERE id = $1`, [om]);
+  const past = await ask(intakeKey(over));
+  assert.equal(past.meetingId, null);
+  assert.ok(!past.context.includes('שולחת לך'), 'over: nothing to promise');
+});
+
 // The privacy link reaches each person ONCE, ever (owner, 2026-10-01). The
 // greeter's session resets daily and it has no database, so somebody it
 // opened for yesterday is told so by brokerd, off the stamps on their row.
