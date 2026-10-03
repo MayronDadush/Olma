@@ -1,5 +1,5 @@
 'use strict';
-// Olma's six tools, end to end: a real gamesd on a random port, a real
+// Olma's seven tools, end to end: a real gamesd on a random port, a real
 // database, the box-only POST /api/tool, and — last — the MCP shim itself
 // spawned the way the gateway spawns it. brokerd is replaced by `identify`
 // and by the `send` under the real close announcement: the two seams
@@ -49,14 +49,54 @@ async function boot(t, { send = queueAll, ...opts } = {}) {
   return { pool, port, raw, call, okOf, sent };
 }
 
-test('every definition fits Olma\'s limits: identity first and required, under 700 characters, six unique names', () => {
-  assert.equal(TOOL_DEFS.length, 6);
-  assert.equal(new Set(TOOL_DEFS.map(d => d.name)).size, 6);
+test('every definition fits Olma\'s limits: identity first and required, under 700 characters, seven unique names', () => {
+  assert.equal(TOOL_DEFS.length, 7);
+  assert.equal(new Set(TOOL_DEFS.map(d => d.name)).size, 7);
   for (const d of TOOL_DEFS) {
     assert.ok(d.description.length <= 700, d.name);
     assert.equal(Object.keys(d.inputSchema.properties)[0], IDENTITY_PARAM, d.name);
     assert.equal(d.inputSchema.required[0], IDENTITY_PARAM, d.name);
   }
+});
+
+// The owner, 2026-10-03: a night opened, they changed their minds, and "close
+// it and open a new one" could not be done — a night closed only when the
+// chips added up, and start_game_night refused while it was open.
+test('a night nobody counted closes without a settlement, and a new one opens', async t => {
+  const { pool, call, okOf, sent } = await boot(t);
+  const first = await okOf(TOK(1), 'start_game_night', { price: 50, chips: 1000, players: ['יוסי'] });
+  await okOf(TOK(1), 'add_buyin', {});
+  await okOf(TOK(1), 'add_buyin', { player: 'יוסי' });
+  await okOf(TOK(1), 'report_chips', { chips: 700 });
+  assert.match(await call(TOK(1), 'start_game_night', { price: 50, chips: 1000 }), /^ERROR already_open: .*close_game_night/);
+
+  const r = await okOf(TOK(1), 'close_game_night', {});
+  assert.deepEqual([r.night_code, r.closed, r.buyins_on_table], [first.night_code, true, 2]);
+  assert.equal(sent.length, 0, 'nothing is calculated or announced');
+  const { rows: [n] } = await pool.query('SELECT * FROM nights WHERE code = $1', [first.night_code]);
+  assert.ok(n.closed_at && n.cancelled_at);
+  assert.equal((await pool.query('SELECT count(*)::int c FROM game_results')).rows[0].c, 0);
+
+  // Final: no write reopens it, from Olma or from the page.
+  assert.match(await call(TOK(1), 'report_chips', { chips: 1300 }), /^ERROR cancelled: /);
+  const store = require('../src/store');
+  await assert.rejects(store.write(pool, n.token, { op: 'add', col: 'log', data: { t: 'x' } }), e => e.code === 'cancelled');
+  const st = await store.stateOf(pool, n);
+  assert.ok(st.game.cancelledAt && st.game.closedAt);
+  assert.equal((await okOf(TOK(1), 'close_game_night', { night_code: first.night_code })).already, 'already closed without a settlement');
+
+  const second = await okOf(TOK(1), 'start_game_night', { price: 20, chips: 500 });
+  assert.notEqual(second.night_code, first.night_code);
+  assert.equal((await okOf(TOK(1), 'my_game_status', {})).night_code, second.night_code, 'the new night is the one every tool now picks');
+});
+
+test('a night that closed with a settlement is not closed a second time', async t => {
+  const { okOf } = await boot(t);
+  await okOf(TOK(1), 'start_game_night', { price: 50, chips: 1000 });
+  await okOf(TOK(1), 'add_buyin', {});
+  assert.equal((await okOf(TOK(1), 'report_chips', { chips: 1000 })).closed, true);
+  const r = await okOf(TOK(1), 'close_game_night', {});
+  assert.deepEqual([r.closed, r.already], [false, 'closed with a settlement']);
 });
 
 test('the route is the box\'s alone, and only for somebody brokerd says holds the pack', async t => {

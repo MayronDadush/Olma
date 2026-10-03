@@ -1,5 +1,5 @@
 'use strict';
-// The six game-night tools as the model sees them. No requires on purpose:
+// The seven game-night tools as the model sees them. No requires on purpose:
 // the gateway spawns bin/games-mcp.js on every turn of every agent that is
 // shown them, and tools/list must not pay for pg or the store.
 //
@@ -59,6 +59,9 @@ const TOOL_DEFS = [
       payer: S('string', 'Who paid, if not the person.'),
       night_code: CODE,
     }, ['what', 'amount']),
+  def('close_game_night',
+    'Close the person\'s open night WITHOUT a settlement, when they ask to close or cancel it and the chips will not be counted: they changed their minds, stopped early, or opened it by mistake. Nothing is calculated or sent, and the night stops taking changes. If they want the settlement instead, that comes from report_chips once everyone has counted. To open a new night after this, call start_game_night.',
+    { night_code: CODE }),
   def('game_night_summary',
     'The night\'s settlement as a ready text to paste in the group: who transfers to whom, fewest transfers. Relay its `text` exactly as given.',
     { night_code: CODE }),

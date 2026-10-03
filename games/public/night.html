@@ -922,6 +922,7 @@ function fail(e){
   else if (e && e.code === 'offline') toast('אין חיבור. השינוי לא נשמר');
   else if (e && e.code === 'has_money') toast('יש עליו כניסות, ספירה או אוכל. קודם מבטלים אותם');
   else if (e && e.code === 'closed') toast('הערב כבר נסגר, אי אפשר להסיר');
+  else if (e && e.code === 'cancelled') toast('הערב נסגר בלי חישוב, ואי אפשר לשנות אותו');
   else toast('השינוי לא נשמר. נסו שוב');
 }
 const W = p => p.catch(fail);
@@ -1160,7 +1161,8 @@ function renderOlline(D){
   if (!S.gid || !D.g) { el.className = ''; el.innerHTML = ''; return; }
   let t, cls = '';
   const names = ps => ps.map(p => `<b>${esc(p.name)}</b>`).join(', ');
-  switch (D.phase) {
+  if (D.g.cancelledAt) t = '<b>הערב נסגר בלי חישוב.</b> מה שנרשם נשאר כאן, ואף אחד לא חייב כלום דרכי.';
+  else switch (D.phase) {
     case 'start': t = 'הערב פתוח. כל אחד רושם כניסה כשהוא נכנס, כאן או בהודעה אליי.'; break;
     case 'playing': t = `${buyWord(D.totalBuy)}, ${fmtAg(Math.round(D.totalBuy * D.price))} בקופה. בסוף כל אחד רושם כמה ז'יטונים נשארו לו.`; break;
     case 'counting': t = D.missing.length === 1 ? `מחכה רק ל${names(D.missing)} שיספור ז'יטונים.` : `מחכה ל${D.missing.length} שיספרו ז'יטונים: ${names(D.missing)}.`; break;

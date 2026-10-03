@@ -78,6 +78,7 @@ async function stateOf(db, n) {
     game: {
       name: n.name, price: n.price_ag / 100, chips: n.chips_per_buyin, foodMode: n.food_mode,
       code: n.code, createdAt: new Date(n.created_at).getTime(), closedAt: n.closed_at ? new Date(n.closed_at).getTime() : null,
+      cancelledAt: n.cancelled_at ? new Date(n.cancelled_at).getTime() : null,
     },
     players: by(players, 'id', r => ({ name: r.name, order: r.ord, ...(r.user_id ? { linked: true } : {}) })),
     buyins: by(buyins, 'id', r => ({ pid: r.player_id, n: r.n, via: r.via, at: r.at })),
@@ -150,6 +151,9 @@ async function write(pool, token, w) {
   const now = Date.now();
   return withTx(pool, async c => {
     const n = await lockNight(c, token);
+    // Closed without a settlement is final: a later write would run
+    // recompute, which reopens any night whose count does not add up.
+    if (n.cancelled_at) refuse('cancelled');
     const { op, col } = w;
     let outId = w.id;
     if (col === 'game') {
@@ -227,6 +231,28 @@ async function write(pool, token, w) {
   });
 }
 
+// "תסגרי את הערב" when nobody is going to count the chips: they changed their
+// minds, or simply went home (owner, 2026-10-03). Until then the only way a
+// night closed was the count adding up, so one nobody finished stayed open
+// and every "ערב חדש" was answered with it. Nothing is calculated and nothing
+// is sent; the page keeps what was written and stops taking writes.
+// → { already: 'cancelled' | 'settled' } when there was nothing to close,
+//   else { cancelled: true, buyins } — buyins being what was on the table.
+async function cancelNight(pool, token, { via = 'tap' } = {}) {
+  return withTx(pool, async c => {
+    const n = await lockNight(c, token);
+    if (n.cancelled_at) return { already: 'cancelled', night: n };
+    if (n.closed_at) return { already: 'settled', night: n };
+    const { rows: [{ b }] } = await c.query('SELECT coalesce(sum(n), 0)::float AS b FROM buyins WHERE night_id = $1', [n.id]);
+    await c.query('UPDATE nights SET closed_at = now(), cancelled_at = now() WHERE id = $1', [n.id]);
+    await c.query('DELETE FROM game_results WHERE night_id = $1', [n.id]);
+    const line = v.logLine({ t: 'הערב נסגר בלי חישוב', via }, Date.now());
+    await c.query('INSERT INTO log (night_id, id, t, via, at) VALUES ($1, $2, $3, $4, $5)', [n.id, newId(), line.t, line.via, line.at]);
+    const after = (await c.query('SELECT * FROM nights WHERE id = $1', [n.id])).rows[0];
+    return { cancelled: true, buyins: Number(b), night: after, state: await stateOf(c, after) };
+  });
+}
+
 // "פתיחת ערב חדש" on a night you hold: same table, same price and chips
 // unless changed, a fresh link. Capped so one link cannot mint nights for ever.
 async function nextNight(pool, token, opts = {}) {
@@ -245,4 +271,4 @@ async function nextNight(pool, token, opts = {}) {
   });
 }
 
-module.exports = { createNight, findNight, stateOf, write, nextNight, LIMITS, makeToken, TOKEN };
+module.exports = { createNight, findNight, stateOf, write, cancelNight, nextNight, LIMITS, makeToken, TOKEN };

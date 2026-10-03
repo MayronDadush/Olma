@@ -165,18 +165,18 @@ const TEMPLATES = [
   },
   {
     key: 'game_already_open', audience: 'private', label: 'ערב משחק: כבר פתוח',
-    help: 'כשמי שכותב "ערב משחק חדש" כבר מחזיק ערב פתוח. לא נפתח ערב שני.',
+    help: 'כשמי שכותב "ערב משחק חדש" כבר מחזיק ערב פתוח. לא נפתח ערב שני; הם יכולים לבקש לסגור אותו בלי חישוב (close_game_night).',
     vars: { night: 'שם הערב', code: 'קוד הערב', url: 'הדף של הערב, על הכיסא שלו' },
     required: ['url'],
     sample: { night: 'ערב משחק', code: 'K7M2Q', url: 'https://allma.world/night/AbCdEfGhIjKlMnOpQrStUv#me-o1' },
-    text: '🃏 יש לך כבר ערב פתוח: {{night}}, קוד {{code}}.\nהדף של הערב:\n{{url}}',
+    text: '🃏 יש לך כבר ערב פתוח: {{night}}, קוד {{code}}.\nאפשר גם לבקש ממני לסגור אותו בלי חישוב ולפתוח חדש.\nהדף של הערב:\n{{url}}',
   },
   {
     key: 'game_already_open_en', audience: 'private', label: 'ערב משחק: כבר פתוח', help: '',
     vars: { night: 'night name', code: 'night code', url: 'the night page, on their seat' },
     required: ['url'],
     sample: { night: 'Game night', code: 'K7M2Q', url: 'https://allma.world/night/AbCdEfGhIjKlMnOpQrStUv#me-o1' },
-    text: '🃏 You already have an open game: {{night}}, code {{code}}.\nThe game page:\n{{url}}',
+    text: '🃏 You already have an open game: {{night}}, code {{code}}.\nYou can also ask me to close it without settling and open a new one.\nThe game page:\n{{url}}',
   },
   // Somebody NEW, who reached her by the invite's short link: code answers
   // them, so nothing else says who she is. The hello goes above whatever

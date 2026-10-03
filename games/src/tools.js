@@ -1,5 +1,5 @@
 'use strict';
-// The six game-night tools, behind gamesd's box-only POST /api/tool. The
+// The seven game-night tools, behind gamesd's box-only POST /api/tool. The
 // caller has already been resolved by brokerd (src/identity.js) and holds the
 // 'games' pack; this file is only what each tool does to a night.
 //
@@ -136,7 +136,8 @@ const closing = async (env, w, st, s) => {
 const TOOLS = {
   async start_game_night({ pool, user, publicBase }, a) {
     const open = (await nightsOf(pool, user.id)).filter(n => !n.closed_at);
-    if (open.length) fail('already_open', `they already have an open night, code ${open[0].code}: ${publicBase}/night/${open[0].token}`);
+    if (open.length) fail('already_open', `they already have an open night, code ${open[0].code}: ${publicBase}/night/${open[0].token}. `
+      + 'If they asked for a new one in its place, close_game_night closes it without a settlement, then call this again.');
     const host = (user.name || (user.locale === 'en' ? 'Me' : 'אני')).slice(0, 24);
     const others = Array.isArray(a.players) ? a.players.filter(p => typeof p === 'string') : [];
     const n = await store.createNight(pool, { name: a.name || (user.locale === 'en' ? 'Poker night' : 'ערב פוקר'), price: a.price, chips: a.chips, players: [host, ...others] });
@@ -223,6 +224,17 @@ const TOOLS = {
     };
   },
 
+  // Closing with no count (owner, 2026-10-03): the night they asked to close
+  // and open again could not close, because only a count that adds up closed
+  // a night. Only an OPEN one is closed here; a settled night is left alone.
+  async close_game_night({ pool, user, onState }, a) {
+    const n = await pickNight(pool, user, a.night_code);
+    const r = await store.cancelNight(pool, n.token, { via: 'olma' });
+    if (r.already) return { night_code: n.code, closed: false, already: r.already === 'settled' ? 'closed with a settlement' : 'already closed without a settlement' };
+    if (onState) onState(n.token, r.state);
+    return { night_code: n.code, name: n.name, closed: true, settlement: 'none — nothing was calculated or sent', buyins_on_table: r.buyins };
+  },
+
   async game_night_summary({ pool, user, publicBase }, a) {
     const { st, n } = await ctx(pool, user, a.night_code);
     const D = settlementOf(st);
@@ -236,6 +248,7 @@ const TOOLS = {
 const REFUSED = {
   bad_number: 'a number is out of range', bad_text: 'a name or text is empty or too long', too_many: 'the night is full',
   not_found: 'not found', bad_doc: 'malformed input',
+  cancelled: 'that night was closed without a settlement and takes no more changes; start_game_night opens a new one',
 };
 
 async function runTool(name, args, env) {
