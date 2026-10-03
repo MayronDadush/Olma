@@ -56,6 +56,21 @@ test('the addressing rule, on one corpus, in both implementations', () => {
   }
 });
 
+// The poker room, 2026-10-03: the tag arrived as `@<her LID>` and her number
+// was nowhere in the text, so both tags read as "not addressed".
+test('a tag by her LID is addressed to her, in both implementations, and only with a LID to compare', () => {
+  const LID = '184736251029384';
+  for (const [name, event, expected] of [
+    ['a tag by her LID', { body: `מה הדיבור על מוצאש? @${LID}` }, true],
+    ['a reply to her, by LID', { body: 'כן', replyToSender: `${LID}@lid` }, true],
+    ['a tag of somebody else\'s LID', { body: '@123456789012345 אתה בא?' }, false],
+  ]) {
+    assert.equal(groupContext.addressedToHer(event, SELF, LID), expected, `domain: ${name}`);
+    assert.equal(plugin.addressedToHer(event, SELF, `${LID}:3@lid`), expected, `plugin port: ${name}`);
+  }
+  assert.equal(plugin.addressedToHer({ body: `@${LID}` }, SELF, ''), false, 'no LID known is the old reading');
+});
+
 test('not knowing her own number means never claiming anything', () => {
   for (const [, event] of CORPUS) {
     assert.equal(groupContext.addressedToHer(event, ''), true, 'domain');
@@ -224,6 +239,12 @@ test('a tag from somebody who never wrote is claimed and answered EVERY time, wi
   const answering = await tag('MSG-0');
   assert.equal(answering.claim, false, 'a tag while it negotiates reaches the model');
   assert.equal(answering.reason, undefined);
+  const asking = await write({
+    agentId: group.agent_id, externalId: group.external_id, messageId: 'MSG-Q', asks: true,
+    senderId: `${stranger.phone.replace('+', '')}@s.whatsapp.net`, addressed: true, at: Date.now(),
+  });
+  assert.equal(asking.reason, 'pending_sender', 'a QUESTION from them still gets the fixed line, with no turn');
+  assert.equal(asking.claim, true);
   await db.pool.query(`UPDATE meetings SET status = 'cancelled' WHERE id = $1`, [meetingId]);
 
   const first = await tag('MSG-A');
@@ -239,8 +260,8 @@ test('a tag from somebody who never wrote is claimed and answered EVERY time, wi
   const { rows } = await db.pool.query(
     `SELECT kind, payload, reply_to FROM group_outbox WHERE group_id = $1 AND kind = 'sender_hint' ORDER BY id`,
     [group.id]);
-  assert.equal(rows.length, 2);
-  assert.deepEqual(rows.map((r) => r.reply_to), ['MSG-A', 'MSG-B'], 'each line quotes the tag it answers');
+  assert.equal(rows.length, 3);
+  assert.deepEqual(rows.map((r) => r.reply_to), ['MSG-Q', 'MSG-A', 'MSG-B'], 'each line quotes the tag it answers');
   const body = require('../src/domain/group-outbox').renderRow(rows[0], {});
   assert.ok(body.includes(`@${stranger.phone}`), 'it tags them, so it reaches the one person it is for');
   assert.ok(body.includes('בפרטי'));
@@ -330,6 +351,10 @@ test('the plugin claims only on an explicit claim, and the room\'s words never l
   const tagged = await handler({ sessionKey: KEY, body: `@${SELF} מה קורה`, senderId: '972526269826@s.whatsapp.net' }, {});
   assert.equal(tagged, undefined, 'two independent refusals, so a brokerd bug cannot silence a real question');
   assert.equal(sent[1].params.addressed, true);
+  assert.equal(sent[1].params.asks, undefined, 'no question mark, no question');
+  await handler({ sessionKey: KEY, body: `מה הדיבור על מוצאש? @${SELF}`, senderId: '972526269826@s.whatsapp.net' }, {});
+  assert.equal(sent.at(-1).params.asks, true, 'a question travels as one boolean');
+  assert.ok(!JSON.stringify(sent.at(-1)).includes('מוצאש'), 'and never as its words');
 });
 
 test('an ADDRESSED message is claimed only on the named reason, never on a bare claim', async () => {

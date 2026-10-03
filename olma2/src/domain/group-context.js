@@ -223,18 +223,26 @@ async function rehearHeldCoordinationRows(client, { group_id: groupId, user_id: 
 // failure of a false "not addressed" is her going silent on somebody who really
 // did ask her something.
 const SELF_DIGITS = () => String(process.env.OLMA_WA_NUMBER || '972559347282').replace(/\D/g, '');
+// …and her LID, because a tag now arrives as `@<her LID>` with her number
+// nowhere in the text (the poker room, 2026-10-03: two tags read as "not
+// addressed", so the fixed line never went and the model answered). The
+// plugin reads it off the channel's own creds; here it is only ever handed in.
+const SELF_LID = () => String(process.env.OLMA_WA_LID || '').split(/[:@]/)[0].replace(/\D/g, '');
 
-// A WhatsApp tag puts her own number in the body text, and a REPLY to one of
+// A WhatsApp tag puts her own number — or, since WhatsApp moved to LIDs, her
+// LID — in the body text, and a REPLY to one of
 // her messages is a second way of addressing her the owner tested and asked to
 // keep (`memory`, "Group reply addresses her"). Digits only on both sides: the
 // body may carry the tag as `@972559347282`, with or without punctuation, and a
 // number written out in words of the message is a false "addressed", which is
 // the safe side.
-function addressedToHer({ body, replyToSender } = {}, selfDigits = SELF_DIGITS()) {
+function addressedToHer({ body, replyToSender } = {}, selfDigits = SELF_DIGITS(), selfLid = SELF_LID()) {
   const self = String(selfDigits || '').replace(/\D/g, '');
   if (self.length < 7) return true;  // we do not know who we are → never claim
   const digits = (v) => String(v == null ? '' : v).replace(/\D/g, '');
-  return digits(replyToSender).includes(self) || digits(body).includes(self);
+  const lid = digits(String(selfLid == null ? '' : selfLid).split(/[:@]/)[0]);
+  const ids = lid.length >= 7 ? [self, lid] : [self];
+  return ids.some((id) => digits(replyToSender).includes(id) || digits(body).includes(id));
 }
 
 // The sender of a group message, as a phone, or null. A WhatsApp `senderId` is
@@ -265,5 +273,5 @@ function roomClaimEnabled(flagValue, jid) {
 
 module.exports = {
   SESSION_KEY_RE, parseConversationInfo, fromConversationInfo, store, read, noteMemberWrote,
-  addressedToHer, senderPhone, roomClaimEnabled, UNTAGGED_FLAG, SELF_DIGITS,
+  addressedToHer, senderPhone, roomClaimEnabled, UNTAGGED_FLAG, SELF_DIGITS, SELF_LID,
 };

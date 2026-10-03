@@ -1069,8 +1069,12 @@ have already had to be argued for.
   `admittedFromRoom` hint has her confirm in one line and say the owner's
   sentence asking them to write privately too. For the tag to reach the model
   at all, `group_room_write` no longer claims a pending sender while the room
-  negotiates (`incidents.md`, "The yes nobody counted, because he had never
-  written").
+  negotiates — unless the plugin says the message is a QUESTION (`asks`, a
+  question mark, one boolean and never the words), which still gets the fixed
+  line. And a tag by her LID (`@<lid>`, her number nowhere in the text) is
+  addressed to her: `addressedToHer` compares her LID too, which the plugin
+  reads off the channel's `creds.json` (`incidents.md`, "The yes nobody
+  counted, because he had never written").
 
 - **A room coordination that has gone quiet is offered a way out ONCE, and
   closes quietly if nobody takes it. Somebody who answered nothing is nudged

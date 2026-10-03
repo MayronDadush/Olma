@@ -2539,6 +2539,16 @@ on the table. `group_room_write` no longer claims a pending sender's tag while
 the room is negotiating, so that turn runs. The edit is still unseen: that
 fix lives in the gateway's plugin and is the owner's decision.
 
+The same morning he asked "מה הדיבור על מוצאש?" with a tag, and the model
+answered him in the room instead of the fixed "שלח לי היי בפרטי" line. The
+trace had `addressed:false` on both his tags: WhatsApp put her LID in the
+text (`@<15 digits>`, equal to `me.lid` in the channel's creds) and our
+addressing rule only looked for her phone number, so the claim never fired
+and the gateway, which did see the mention, ran the turn. `addressedToHer`
+now compares her LID too. And so that a question from such a person is not
+handed to the model by the change above, the plugin sends `asks` (a question
+mark) and a question keeps the fixed line.
+
 ### The poker count was the people asked (fixed 2026-10-01)
 
 "חייב קבוצה לפוקר": thirteen people in the room, a game, a minimum of
