@@ -1,0 +1,169 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>עולמה בקבוצה</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Hebrew:wght@500;700&family=Noto+Sans+Hebrew:wght@400;600&display=swap">
+<!-- The groups video, in the Cypress + Mustard brand. Same story and words as the
+     old carousel cut (tr-carousel-he): somebody tags her in the group, she asks each
+     person privately, the carousel slides to Maya's private chat and back, and the
+     group closes. The chats are WhatsApp's own interface: WhatsApp's colours, no grain. -->
+<style>
+  html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #004643 }
+  .v { position: relative; width: 100vw; height: 100vh; overflow: hidden }
+  .card { position: absolute; inset: 0; z-index: 3; display: grid; align-content: center; gap: 5vmin; padding: 0 10vmin;
+    background: #004643; color: #F0EDE5; font-family: "IBM Plex Sans Hebrew", sans-serif }
+  .h { font-weight: 700; font-size: 10.5vmin; line-height: 1.08; letter-spacing: -.02em; margin: 0 }
+  .h > span { display: block }
+  .y { color: #F9C23C }
+  .by { display: flex; align-items: center; gap: 2.4vmin; font-weight: 500; font-size: 3.6vmin; color: #D9DDD6 }
+  .by .m { width: 6.4vmin; height: 6.4vmin; flex: none }
+  #closer .big { width: 18vmin; height: 18vmin }
+  #closer .h { font-size: 8.6vmin }
+  .h > span { white-space: nowrap }
+  .grain { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0 }
+  .card > :not(.grain) { position: relative; z-index: 1 }
+  /* two WhatsApp chats, one over the other; ?tr= picks how we move between them */
+  #stage { position: absolute; inset: 0; z-index: 0; perspective: 160vmin }
+  .chat { position: absolute; inset: 0; overflow: hidden; background: #EFEAE2; backface-visibility: hidden;
+    font-family: "Noto Sans Hebrew", Roboto, Arial, sans-serif; color: #111B21 }
+  .top { position: absolute; inset: 0 0 auto 0; height: 13vmin; background: #F0F2F5; display: flex; align-items: center; gap: 2.6vmin; padding: 0 3.4vmin; z-index: 2; border-bottom: 1px solid #E2E4E7 }
+  .top .av { width: 8.6vmin; height: 8.6vmin; flex: none }
+  .top .gav { border-radius: 50%; background: #DFE5E7; display: grid; place-items: center; font-size: 4.6vmin }
+  .top b { display: block; font-weight: 600; font-size: 4vmin; line-height: 1.2 }
+  .top small { font-size: 2.9vmin; color: #667781 }
+  .body { position: absolute; inset: 13vmin 0 0 0; overflow: hidden }
+  .msgs { display: grid; gap: 2.6vmin; padding: 11vmin 4vmin 3.4vmin }
+  .b { max-width: 76%; border-radius: 2.2vmin; padding: 2.2vmin 2.8vmin 1.4vmin; font-size: 3.7vmin; line-height: 1.45;
+    box-shadow: 0 .2vmin .3vmin rgba(11,20,26,.13); transform-origin: bottom }
+  .b b { font-weight: 600 }
+  .out { justify-self: end; background: #D9FDD3 }
+  .in { justify-self: start; background: #FFFFFF }
+  .who { font-weight: 600; font-size: 3.2vmin; margin-bottom: .4vmin }
+  .noa { color: #C2185B } .allma { color: #004643 }
+  .at, .lnk { color: #027EB5 }
+  .lnk { direction: ltr; unicode-bidi: isolate; display: inline-block }
+  .t { display: flex; justify-content: flex-end; gap: 1vmin; font-size: 2.5vmin; color: #667781; margin-top: .6vmin; direction: ltr }
+  .ticks { color: #53BDEB }
+  .typing { justify-self: start; background: #fff; border-radius: 2.2vmin; padding: 2.4vmin 3vmin; display: flex; gap: 1.1vmin }
+  .typing i { width: 1.4vmin; height: 1.4vmin; border-radius: 50%; background: #8696A0 }
+  /* the caption that says where we are now; it rides above both chats */
+  .pill { position: absolute; z-index: 2; top: 16.5vmin; left: 50%; transform: translateX(-50%); white-space: nowrap;
+    background: #111B21; color: #fff; font-family: "Noto Sans Hebrew", sans-serif; font-weight: 600; font-size: 3.3vmin;
+    padding: 1.6vmin 4vmin; border-radius: 99vmin; box-shadow: 0 .6vmin 2vmin rgba(0,0,0,.25) }
+  /* the fingertip of ?tr=finger */
+  #finger { position: absolute; z-index: 2; top: 55%; left: 0; width: 11vmin; height: 11vmin; margin: -5.5vmin; border-radius: 50%;
+    background: rgba(255,255,255,.55); border: .5vmin solid rgba(255,255,255,.9); box-shadow: 0 1vmin 3vmin rgba(0,0,0,.25); opacity: 0 }
+</style>
+<div class="v">
+  <div id="stage">
+    <div class="chat" id="group">
+      <div class="top"><div class="av gav">🍝</div><div><b>ארוחה 🍝</b><small>נועה, יואב, רוני, את/ה</small></div></div>
+      <div class="body"><div class="msgs" id="gmsgs">
+        <div class="b in" id="g1"><div class="who noa">נועה</div><span class="at">@עולמה</span> תמצאי לנו ערב לארוחה השבוע?<div class="t"><span>19:02</span></div></div>
+        <div class="typing" id="gtyping"><i></i><i></i><i></i></div>
+        <div class="b in" id="g2"><div class="who allma">עולמה</div>מתחילה לתאם <b>ארוחה השבוע</b> 🎯<br>שאלתי בפרטי 4 מכם שכתבו לי, ואחזור לכאן עם מה שמסתדר.<div class="t"><span>19:02</span></div></div>
+        <div class="b in" id="g3"><div class="who allma">עולמה</div>יש כיוון: <b>חמישי 20:00</b> — 3 כבר בפנים.<br>מחכה ל<span class="at">@יואב</span> 🤞<div class="t"><span>19:40</span></div></div>
+        <div class="b in" id="g4"><div class="who allma">עולמה</div>סגור: <b>חמישי 20:00</b> 🎉 כולם בפנים<br>איפה נפגשים? תכתבו לי ואני אוסיף ליומן 📍<div class="t"><span>20:15</span></div></div>
+      </div></div>
+    </div>
+    <div class="chat" id="private">
+      <div class="top"><div class="av" id="av"></div><div><b>עולמה</b><small>מחוברת</small></div></div>
+      <div class="body"><div class="msgs">
+        <div class="b in" id="p1">היי מאיה 🙂 נועה פתחה בקבוצה <b>ארוחה השבוע</b>.<br>חמישי 20:00 או שישי 13:00?<br>אפשר לענות לי כאן בצ'אט או דרך הקישור:<br><span class="lnk">allma.world/m/…</span><div class="t"><span>19:03</span></div></div>
+        <div class="b out" id="p2">חמישי!<div class="t"><span>19:10</span><span class="ticks">✓✓</span></div></div>
+      </div></div>
+    </div>
+  </div>
+  <div id="finger"></div>
+  <div class="pill" id="pill1">בינתיים, בפרטי אצל מאיה</div>
+  <div class="pill" id="pill2">ובחזרה בקבוצה</div>
+  <div class="card" id="opener"><h1 class="h" id="oh"><span>40 הודעות</span><span>בקבוצה על <span class="y">"מתי"</span>?</span></h1>
+    <div class="by"><span class="m" id="om"></span><span>עולמה · בוואטסאפ שלך</span></div>
+    <svg class="grain" aria-hidden="true"><filter id="g1f" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency=".8" numOctaves="3" stitchTiles="stitch" seed="7"/><feColorMatrix values="0 0 0 0 .94  0 0 0 0 .93  0 0 0 0 .9  .5 0 0 0 -.26"/></filter><rect width="100%" height="100%" filter="url(#g1f)"/></svg></div>
+  <div class="card" id="closer"><div class="big" id="cm"></div>
+    <h1 class="h" id="ch"><span>מתייגים אותי.</span><span class="y">אני סוגרת עם כולם.</span></h1>
+    <div class="by" id="cb">עולמה · בוואטסאפ שלך</div>
+    <svg class="grain" aria-hidden="true"><rect width="100%" height="100%" filter="url(#g1f)"/></svg></div>
+</div>
+<script src="../motion.js"></script>
+<script>
+  document.documentElement.dir = 'rtl'; document.documentElement.lang = 'he';
+  const $ = (id) => document.getElementById(id);
+  const { frame, EASE } = AllmaMotion;
+  const ON_CYPRESS = { d: '#0E1F1E', l: '#F0EDE5', a: '#F9C23C', ring: '#F0EDE5' };
+  const AVATAR = { d: '#004643', l: '#F0EDE5', a: '#F9C23C' };
+  $('av').innerHTML = frame('meet', 1e9, AVATAR, 'av');
+  $('om').innerHTML = frame('meet', 1e9, ON_CYPRESS, 'om');
+  const k = (ms, a, b) => EASE(Math.max(0, Math.min(1, (ms - a) / (b - a))));
+  const rise = (el, t, d = 3) => { el.style.opacity = t; el.style.transform = `translateY(${(1 - t) * d}vmin)`; };
+  const pop = (el, t) => { el.style.opacity = t; el.style.transform = `scale(${0.96 + 0.04 * t})`; el.style.display = t > 0 ? '' : 'none'; };
+  const pill = (el, ms, a) => { const t = k(ms, a, a + 300) * (1 - k(ms, a + 1900, a + 2200));
+    el.style.opacity = t; el.style.transform = `translate(-50%, ${(1 - t) * -2}vmin)`; };
+  const dots = (el, on, ms) => { el.style.display = on ? '' : 'none';
+    [...el.children].forEach((d, i) => { d.style.opacity = 0.45 + 0.55 * (Math.floor(ms / 200 - i) % 3 === 0); }); };
+
+  // How one chat gives way to the other. a leaves, b arrives, p is 0→1, s is +1 going
+  // into the private chat and -1 coming back, t is ms since the move began.
+  const TR = new URLSearchParams(location.search).get('tr') || 'carousel';
+  const DUR = TR === 'cube' ? 800 : 650;
+  const set = (el, z, tf, o = 1, f = 1) => { el.style.zIndex = z; el.style.transform = tf; el.style.opacity = o;
+    el.style.filter = f < 1 ? `brightness(${f})` : ''; el.style.visibility = o > 0 ? '' : 'hidden'; };
+  function move(a, b, p, s, t) {
+    const fg = $('finger'); fg.style.opacity = 0;
+    if (p <= 0) { set(a, 1, 'none'); set(b, 0, 'none', 0); return; }
+    if (p >= 1) { set(a, 0, 'none', 0); set(b, 1, 'none'); return; }
+    if (TR === 'cube') {          // the two chats are two faces of a turning box
+      const ang = s * 90 * p, face = (d) => `translateZ(-50vw) rotateY(${d}deg) translateZ(50vw)`;
+      set(a, 1, face(ang), 1, 1 - .35 * p); set(b, 1, face(ang - s * 90), 1, .65 + .35 * p);
+    } else if (TR === 'push') {   // the new one slides over, the old one drifts a third and dims
+      set(a, 0, `translateX(${s * 30 * p}%)`, 1, 1 - .3 * p); set(b, 1, `translateX(${-s * 100 * (1 - p)}%)`);
+    } else if (TR === 'sheet') {  // the private chat rises like a sheet, and is dismissed downward
+      if (s > 0) { set(a, 0, `scale(${1 - .06 * p})`, 1, 1 - .3 * p); set(b, 1, `translateY(${100 * (1 - p)}%)`); }
+      else { set(a, 1, `translateY(${100 * p}%)`); set(b, 0, `scale(${.94 + .06 * p})`, 1, .7 + .3 * p); }
+    } else if (TR === 'zoom') {   // the old one grows away, the new one settles in
+      set(a, 1, `scale(${1 + .08 * p})`, 1 - p); set(b, 0, `scale(${.92 + .08 * p})`, p);
+    } else {                      // carousel, and finger: a carousel somebody swipes
+      set(a, 1, `translateX(${s * 100 * p}%)`); set(b, 1, `translateX(${-s * 100 * (1 - p)}%)`);
+    }
+    if (TR === 'finger') {        // the fingertip lands, drags the chat across, lifts
+      const x = s > 0 ? 18 + 64 * p : 82 - 64 * p;
+      fg.style.left = x + '%'; fg.style.opacity = Math.min(1, t / 120) * (1 - k(t, DUR - 150, DUR));
+    }
+  }
+
+  // The timeline, in ms — the old cut's beats, plus the brand's ending.
+  const OPEN_OUT = 2500, CHAT_IN = 2900, G1 = 3100, GTYPE = 3800, G2 = 4600,
+        SLIDE1 = 6300, P1 = 6450, P2 = 8500, SLIDE2 = 9600, G3 = 10500, G4 = 11800, SCROLL = 12100,
+        CHAT_OUT = 13700, MARK = 14100, LINES = 14900, END = 17600;
+  window.__ms = END;
+  window.__seek = (ms) => {
+    const ol = $('oh').children;
+    rise(ol[0], k(ms, 150, 650)); rise(ol[1], k(ms, 350, 850)); rise($('om').parentNode, k(ms, 900, 1400));
+    $('opener').style.transform = `translateY(${-100 * k(ms, OPEN_OUT, CHAT_IN)}%)`;
+    // group: the tag, her typing, her answer
+    pop($('g1'), k(ms, G1, G1 + 300));
+    dots($('gtyping'), ms >= GTYPE && ms < G2, ms);
+    pop($('g2'), k(ms, G2, G2 + 300));
+    // group → private, then back; in RTL the next chat comes in from the left
+    if (ms < SLIDE2) move($('group'), $('private'), k(ms, SLIDE1, SLIDE1 + DUR), +1, ms - SLIDE1);
+    else move($('private'), $('group'), k(ms, SLIDE2, SLIDE2 + DUR), -1, ms - SLIDE2);
+    pill($('pill1'), ms, SLIDE1 + 300);
+    pop($('p1'), k(ms, P1, P1 + 300));
+    pop($('p2'), k(ms, P2, P2 + 300));
+    pill($('pill2'), ms, SLIDE2 + 300);
+    pop($('g3'), k(ms, G3, G3 + 300));
+    pop($('g4'), k(ms, G4, G4 + 300));
+    // how far the group has to scroll once g3, then g4, is in it — measured with both shown
+    if (!window.__over) { const body = $('gmsgs').parentNode, over = () => Math.max(0, $('gmsgs').scrollHeight - body.clientHeight);
+      ['g1','g2','g3','g4'].forEach((id) => $(id).style.display = ''); $('gtyping').style.display = 'none';
+      const all = over(); $('g4').style.display = 'none'; window.__over = [over(), all]; }
+    const [o3, o4] = window.__over;
+    $('gmsgs').style.transform = `translateY(${-(o3 * k(ms, G3, G3 + 500) + (o4 - o3) * k(ms, SCROLL, SCROLL + 700))}px)`;
+    // closer
+    $('closer').style.transform = `translateY(${100 * (1 - k(ms, CHAT_OUT, CHAT_OUT + 450))}%)`;
+    $('cm').innerHTML = frame('meet', Math.max(0, ms - MARK), ON_CYPRESS, 'cm');
+    const cl = $('ch').children;
+    rise(cl[0], k(ms, LINES, LINES + 450)); rise(cl[1], k(ms, LINES + 300, LINES + 750));
+    rise($('cb'), k(ms, LINES + 900, LINES + 1400));
+  };
+  __seek(0); __seek(0);
+</script>
