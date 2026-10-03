@@ -70,7 +70,21 @@ test('a night nobody counted closes without a settlement, and a new one opens', 
   await okOf(TOK(1), 'report_chips', { chips: 700 });
   assert.match(await call(TOK(1), 'start_game_night', { price: 50, chips: 1000 }), /^ERROR already_open: .*close_game_night/);
 
-  const r = await okOf(TOK(1), 'close_game_night', {});
+  // Final, so she asks first, and the server holds her to it: a confirm with
+  // no question before it is only the question.
+  let q = await okOf(TOK(1), 'close_game_night', { confirm: true });
+  assert.deepEqual([q.closed, q.needs_confirmation, q.buyins_on_table, q.chips_reported, q.players], [false, true, 2, 1, 2]);
+  assert.match(q.ask, /only after they say yes/);
+  assert.equal((await pool.query('SELECT closed_at FROM nights WHERE code = $1', [first.night_code])).rows[0].closed_at, null, 'asking closes nothing');
+  q = await okOf(TOK(1), 'close_game_night', {});
+  assert.equal(q.needs_confirmation, true, 'without confirm it only asks again');
+  // Somebody else's yes is not theirs.
+  await okOf(TOK(1), 'add_buyin', { player: 'Sam' });
+  await pool.query("UPDATE players SET user_id = 102 WHERE name = 'Sam'");
+  assert.equal((await okOf(TOK(2), 'close_game_night', { night_code: first.night_code, confirm: true })).needs_confirmation, true);
+  await okOf(TOK(1), 'add_buyin', { player: 'Sam', cancel: true });
+
+  const r = await okOf(TOK(1), 'close_game_night', { confirm: true });
   assert.deepEqual([r.night_code, r.closed, r.buyins_on_table], [first.night_code, true, 2]);
   assert.equal(sent.length, 0, 'nothing is calculated or announced');
   const { rows: [n] } = await pool.query('SELECT * FROM nights WHERE code = $1', [first.night_code]);
@@ -95,7 +109,7 @@ test('a night that closed with a settlement is not closed a second time', async 
   await okOf(TOK(1), 'start_game_night', { price: 50, chips: 1000 });
   await okOf(TOK(1), 'add_buyin', {});
   assert.equal((await okOf(TOK(1), 'report_chips', { chips: 1000 })).closed, true);
-  const r = await okOf(TOK(1), 'close_game_night', {});
+  const r = await okOf(TOK(1), 'close_game_night', { confirm: true });
   assert.deepEqual([r.closed, r.already], [false, 'closed with a settlement']);
 });
 

@@ -60,8 +60,11 @@ const TOOL_DEFS = [
       night_code: CODE,
     }, ['what', 'amount']),
   def('close_game_night',
-    'Close the person\'s open night WITHOUT a settlement, when they ask to close or cancel it and the chips will not be counted: they changed their minds, stopped early, or opened it by mistake. Nothing is calculated or sent, and the night stops taking changes. If they want the settlement instead, that comes from report_chips once everyone has counted. To open a new night after this, call start_game_night.',
-    { night_code: CODE }),
+    'Close the person\'s open night WITHOUT a settlement, when they ask to close or cancel it and the chips will not be counted: they changed their minds, stopped early, or opened it by mistake. It is final, so it takes two calls: the first only returns what is on the table and a question to ask them; call again with confirm:true only after they say yes. Nothing is calculated or sent. If they want the settlement instead, use report_chips. To open a new night after this, call start_game_night.',
+    {
+      confirm: S('boolean', 'true only on the second call, after they said yes to closing it.'),
+      night_code: CODE,
+    }),
   def('game_night_summary',
     'The night\'s settlement as a ready text to paste in the group: who transfers to whom, fewest transfers. Relay its `text` exactly as given.',
     { night_code: CODE }),
