@@ -169,7 +169,11 @@ function said(result) {
   return result === true || result === 'sent' ? 'sent' : 'failed';
 }
 
-// The sender. `send(jid, body, opts) -> 'sent' | 'unknown' | 'failed' | bool`.
+// The sender. `send(jid, body, opts) -> 'sent' | 'unknown' | 'failed' | bool`,
+// or `{ result, error }` when it has the gateway's own words for a refusal.
+// Those words are kept on the row: `forbidden` is the only trace a room she
+// was removed from leaves (`groups.removalSuspects`), and "send refused" says
+// nothing.
 async function drainOnce(pool, deps = {}) {
   const now = deps.now || new Date();
   // `channelHeld`, never `held`: the voice sweep's own result already carries a
@@ -213,8 +217,11 @@ async function drainOnce(pool, deps = {}) {
     let delivery = 'failed';
     let error = null;
     try {
-      delivery = said(await deps.send(row.external_id, body,
-        row.reply_to ? { replyTo: row.reply_to } : undefined));
+      const r = await deps.send(row.external_id, body,
+        row.reply_to ? { replyTo: row.reply_to } : undefined);
+      const answered = r && typeof r === 'object' ? r : { result: r };
+      delivery = said(answered.result);
+      if (answered.error) error = String(answered.error);
     } catch (e) {
       error = e.message;
     }

@@ -497,6 +497,30 @@ test('POST without matching CSRF cookie is rejected; with it, flags persist', as
   await withTx(db.pool, (c) => flags.setFlag(c, 'registration_open', true));
 });
 
+test('"she is no longer there" retires the room from the groups section, back on that section', async () => {
+  const { rows } = await db.pool.query(
+    `INSERT INTO chat_groups (channel, external_id, subject, state)
+          VALUES ('whatsapp', 'g-retire-' || gen_random_uuid()::text || '@g.us', 'הוציאו אותה', 'open')
+       RETURNING id`);
+  const gid = Number(rows[0].id);
+  const page = await fetch(base + '/', { headers: { Authorization: AUTH } });
+  const csrf = /csrf=([0-9a-f]+)/.exec(page.headers.get('set-cookie'))[1];
+  const res = await fetch(base + '/group-retire', {
+    method: 'POST', redirect: 'manual',
+    headers: { Authorization: AUTH, Cookie: `csrf=${csrf}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: `id=${gid}&back=${encodeURIComponent('/#groups')}&csrf=${csrf}`,
+  });
+  assert.equal(res.status, 303);
+  assert.match(res.headers.get('location'), /#groups$/);
+  const { rows: after } = await db.pool.query(`SELECT state FROM chat_groups WHERE id = $1`, [gid]);
+  assert.equal(after[0].state, 'retired');
+  const { rows: trail } = await db.pool.query(
+    `SELECT event FROM audit_log WHERE (detail->>'groupId')::bigint = $1 ORDER BY id`, [gid]);
+  assert.deepEqual(trail.map((r) => r.event), ['group.retired', 'admin.group_retired']);
+  // The groups section later in this file counts its own table's cells.
+  await db.pool.query(`DELETE FROM chat_groups WHERE id = $1`, [gid]);
+});
+
 test('per-user page shows their tasks, reminders and learned facts', async () => {
   const tasks = require('../src/domain/tasks');
   const reminders = require('../src/domain/reminders');

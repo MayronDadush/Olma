@@ -203,6 +203,10 @@ async function sweepGroups(client, deps) {
   // failure here that is invisible from the outside — she keeps working, she
   // is just answerable by people who never signed up.
   const senderGate = await syncSenderGate(client, configPath);
+  // A room she was removed from and then added back. Before the agent list
+  // below, which skips retired rooms, so the room is read by this same pass
+  // and evaluated on the roster its returning message carried.
+  const returned = await groups.restoreReturned(client);
   // Scoped to the agents that can actually own a group, never a full scan.
   // `listSessions()` opens every agent's sqlite store, and on a one-core box a
   // sweep that does that every ten seconds is the polling cost this project
@@ -225,7 +229,7 @@ async function sweepGroups(client, deps) {
     // went out. Splitting the two is the point — the deciding is transactional
     // and the sending is not, and pretending otherwise is what said a line
     // twice (migration 055).
-    registered: [], intros: 0, notices: 0, opened: [], relocked: [], announced: 0,
+    registered: [], intros: 0, notices: 0, opened: [], relocked: [], announced: 0, returned,
     unreadable: 0, strangers: 0, skipped: 0,
     // Roster rows the reverse map turned from a LID into a phone this pass.
     lidsResolved: 0,
