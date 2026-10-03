@@ -27,7 +27,9 @@
 // importing it makes the module untestable outside the gateway's jiti
 // loader. The manifest (openclaw.plugin.json) carries the config schema.
 import net from "node:net";
-import { appendFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, writeFileSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { homedir } from "node:os";
 
 // Every path under /opt/olma2/run is read PER CALL, never captured at load:
 // the suite runs on the box inside deploy.sh, tests/helpers.js points these
@@ -596,12 +598,32 @@ export function buildGroupContextHandler({ connect, sock, timeoutMs, log = trace
 // this handler only writes a line to the trace — which is what the verdict is
 // measured against, beside the gateway's own `was_mentioned` on the line after.
 const SELF_DIGITS = () => String(process.env.OLMA_WA_NUMBER || "972559347282").replace(/\D/g, "");
+// Her LID too: a tag now arrives as `@<her LID>`, with her number nowhere in
+// the text (the poker room, 2026-10-03 — two tags read as "not addressed", so
+// the fixed line never went and the model answered). Read off the channel's
+// own creds, per call through a memo keyed on the path, so a test's home is
+// never production's; an unreadable file is no LID, which is today's reading.
+const lidMemo = new Map();
+const SELF_LID = () => {
+  if (process.env.OLMA_WA_LID) return String(process.env.OLMA_WA_LID).split(/[:@]/)[0].replace(/\D/g, "");
+  const home = process.env.OLMA_OPENCLAW_HOME || join(homedir(), ".openclaw");
+  const file = join(home, "credentials", "whatsapp", "default", "creds.json");
+  if (lidMemo.has(file)) return lidMemo.get(file);
+  try {
+    const me = JSON.parse(readFileSync(file, "utf8")).me || {};
+    const lid = String(me.lid || "").split(/[:@]/)[0].replace(/\D/g, "");
+    if (lid) lidMemo.set(file, lid);
+    return lid;
+  } catch { return ""; }
+};
 
-export function addressedToHer({ body, replyToSender } = {}, selfDigits = SELF_DIGITS()) {
+export function addressedToHer({ body, replyToSender } = {}, selfDigits = SELF_DIGITS(), selfLid = SELF_LID()) {
   const self = String(selfDigits || "").replace(/\D/g, "");
   if (self.length < 7) return true;
   const digits = (v) => String(v == null ? "" : v).replace(/\D/g, "");
-  return digits(replyToSender).includes(self) || digits(body).includes(self);
+  const lid = digits(String(selfLid == null ? "" : selfLid).split(/[:@]/)[0]);
+  const ids = lid.length >= 7 ? [self, lid] : [self];
+  return ids.some((id) => digits(replyToSender).includes(id) || digits(body).includes(id));
 }
 
 export function buildRoomWriteHandler({ connect, sock, timeoutMs = 1500, log = trace } = {}) {

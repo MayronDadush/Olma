@@ -1070,6 +1070,12 @@ have already had to be argued for.
   which with pending rows live counts people who can never be reached
   (`incidents.md`, "The invite that would have counted people it could not
   reach").
+  **And since 2026-10-03 the fixed line goes to EVERY tag of theirs, an answer
+  included, until they write privately** (owner, the poker room: an answer in
+  the room is not counted from there). What had stopped it was the addressing
+  rule: a tag now arrives as `@<her LID>` with her number nowhere in the text,
+  so `addressedToHer` compares her LID too — the plugin reads it off the
+  channel's `creds.json` (`incidents.md`, "The fixed line that never went").
 
 - **A room coordination that has gone quiet is offered a way out ONCE, and
   closes quietly if nobody takes it. Somebody who answered nothing is nudged

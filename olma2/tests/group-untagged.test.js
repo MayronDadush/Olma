@@ -56,6 +56,21 @@ test('the addressing rule, on one corpus, in both implementations', () => {
   }
 });
 
+// The poker room, 2026-10-03: the tag arrived as `@<her LID>` and her number
+// was nowhere in the text, so both tags read as "not addressed".
+test('a tag by her LID is addressed to her, in both implementations, and only with a LID to compare', () => {
+  const LID = '184736251029384';
+  for (const [name, event, expected] of [
+    ['a tag by her LID', { body: `מה הדיבור על מוצאש? @${LID}` }, true],
+    ['a reply to her, by LID', { body: 'כן', replyToSender: `${LID}@lid` }, true],
+    ['a tag of somebody else\'s LID', { body: '@123456789012345 אתה בא?' }, false],
+  ]) {
+    assert.equal(groupContext.addressedToHer(event, SELF, LID), expected, `domain: ${name}`);
+    assert.equal(plugin.addressedToHer(event, SELF, `${LID}:3@lid`), expected, `plugin port: ${name}`);
+  }
+  assert.equal(plugin.addressedToHer({ body: `@${LID}` }, SELF, ''), false, 'no LID known is the old reading');
+});
+
 test('not knowing her own number means never claiming anything', () => {
   for (const [, event] of CORPUS) {
     assert.equal(groupContext.addressedToHer(event, ''), true, 'domain');
@@ -219,6 +234,8 @@ test('a tag from somebody who never wrote is claimed and answered EVERY time, wi
     senderId: `${stranger.phone.replace('+', '')}@s.whatsapp.net`, addressed: true, at: Date.now(),
   });
 
+  // Even while the room negotiates: until they write to her privately, every
+  // tag of theirs gets the fixed line (owner, 2026-10-03).
   const first = await tag('MSG-A');
   assert.deepEqual(first, {
     ok: true, addressed: true, stamped: true, sender: true, claim: true, reason: 'pending_sender', hinted: true,

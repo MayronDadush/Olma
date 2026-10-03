@@ -65,6 +65,7 @@ never trust a dated narrative for something you are about to act on.
 - [The link came back on every coordination message (2026-09-24)](#the-link-came-back-on-every-coordination-message-2026-09-24)
 - [The slot that was already closed (fixed 2026-09-20)](#the-slot-that-was-already-closed-fixed-2026-09-20)
 - [Introduced twice, by the invite and the greeter (fixed 2026-10-01)](#introduced-twice-by-the-invite-and-the-greeter-fixed-2026-10-01)
+- [The fixed line that never went (fixed 2026-10-03)](#the-fixed-line-that-never-went-fixed-2026-10-03)
 - [The poker count was the people asked (fixed 2026-10-01)](#the-poker-count-was-the-people-asked-fixed-2026-10-01)
 - [Four out of five, and the room heard nothing (fixed 2026-10-02)](#four-out-of-five-and-the-room-heard-nothing-fixed-2026-10-02)
 - [The chase that beat its own invites (fixed 2026-09-28)](#the-chase-that-beat-its-own-invites-fixed-2026-09-28)
@@ -2571,6 +2572,24 @@ the privacy link, which the invite never carried, and drops the hello. An
 invite the gate dropped reached nobody, so that person still gets the hello.
 `saidRoomOpening` recognises the new text too, so `opening_sent_at` is still
 stamped and the welcome follow-up still waits behind the coordination.
+### The fixed line that never went (fixed 2026-10-03)
+
+The poker room, coordination 66. A member who had never written to Olma
+privately tagged her twice that morning — once answering, once asking "מה
+הדיבור על מוצאש?" — and the model answered him in the room both times,
+instead of the fixed "שלח לי היי בפרטי" line that exists for exactly him.
+The plugin trace had `addressed:false` on both tags: WhatsApp put her LID in
+the text (`@<15 digits>`, equal to `me.lid` in the channel's creds), and our
+addressing rule looked only for her phone number. So the `pending_sender`
+claim never fired, and the gateway, which did see the mention, ran the turn.
+`addressedToHer` now compares her LID too, in both implementations.
+
+A version that let his ANSWER count him in from the room (and let the model
+see a pending sender's tag while the room negotiates) was built and dropped
+the same day: the owner wants the fixed line on every tag until they write
+privately. One of his tags arrived as an EDIT, which the gateway's
+WhatsApp plugin drops as having no content; that is still unseen.
+
 ### The poker count was the people asked (fixed 2026-10-01)
 
 "חייב קבוצה לפוקר": thirteen people in the room, a game, a minimum of
