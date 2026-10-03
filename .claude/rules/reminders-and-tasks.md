@@ -65,8 +65,9 @@ title means this file. Grep the title, not the filename.
   `{explicit: 1, auto: 2, nudging: 3}` — an hour they NAMED is said once, an
   hour Olma INFERRED from a due date gets one follow-up the same day (nobody
   was promised 08:00), and the full three rungs belong to whoever asks for
-  them: `users.reminder_nudge` (the switch on their own page) or
-  `task_reminders.nudge` (`set_task_reminder(nudge:true)`, migration 072).
+  them: `task_reminders.nudge` (`set_task_reminder(nudge:true)`, migration
+  072). The standing switch `users.reminder_nudge` left the page on
+  2026-10-02 with nobody on it, and nothing reads it since 2026-10-03.
   **The cap is computed in `dueForSending` and returned on the row as
   `rung_cap`** — the sweep says "זו התזכורת האחרונה" off the same number the
   WHERE clause stopped on, because a cap the caller re-derives is the second
