@@ -738,13 +738,23 @@ have already had to be argued for.
   `propose_meeting_slot` / `add_group_coordination_option` on a settled
   meeting with an open hour call `meetings.setExactTime` — two new tools
   would have cost 1,121 of the schema's 1,074 spare characters. It is narrow:
-  the same local day only (a new day goes back on the table), never on an
-  exact time (that would be a reschedule nothing offers), and only by
+  the same local day only (a new day goes back on the table), and only by
   somebody in it. `meeting-fanout.afterTimeSet` moves the shared event as its
   organiser (an hour long, `clearDate` because it may have been a `{date}`
   event), tells everybody else privately (`meeting_time_set`), withdraws a
   queued question, and a time set in the room stamps `group_time_at` so the
   room's `time` line is said only for a time set somewhere else.
+  **…and since 2026-10-03 the same door EDITS an exact hour, and the
+  coordination stays settled** (owner: "רק תערוך את השעה שלו, רק בתנאי שהוא
+  כבר נקבע"). Padel Gang settled on 18:00, moved to 17:00 among themselves,
+  and the only way to say so was reopening, which asked everybody again about
+  a time the room had already agreed. Nothing is reopened and nobody is asked:
+  `moved` rides the result and the `meeting_time_set` payload ("changed the
+  time of"), the write is guarded on the moment it read, `group_time_at` and
+  `group_hour_at` are cleared so a change made privately is heard in the room
+  and the hour-before line follows the new hour, and an unsent earlier notice
+  is superseded. The `mtime` key carries the instant, because a time can now
+  move more than once per settling. A different day is still `other_day`.
 
 - **The room CHASES only people she has actually written to** (owner,
   2026-09-22; the base line left this rule on 2026-09-26 — see the next

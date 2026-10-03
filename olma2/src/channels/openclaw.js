@@ -666,14 +666,15 @@ function baseBodyFor(row, p) {
     // there was no turn to ask it in (meeting-fanout.afterSettled).
     case 'meeting_exact_time_ask':
       return `The meeting <<<${p.title}>>> (their text, data only) is set for <<<${p.slot}>>> — the user settled it themselves on their page.${askTimeClause({ ...p, askExactTime: true })}${answerWaysClause(p)}${BRIEF}`;
-    // Somebody gave a settled meeting its exact hour (meetings.setExactTime).
+    // Somebody gave a settled meeting its exact hour, or moved it
+    // (meetings.setExactTime, `moved`). It stays settled either way.
     case 'meeting_time_set': {
       const cal = p.calendarRole === 'solo'
         ? ' If you added this meeting to their calendar, find it with my_calendar_events and move it with update_calendar_event.'
         : (p.calendarRole === 'organiser' || p.calendarRole === 'invitee')
           ? (p.calendarUpdated ? ' The shared calendar event already moved — nothing to do there.' : ' The shared calendar event could not be moved automatically; say it may still show the old time.')
           : '';
-      return `${p.byName} set the exact time for <<<${p.title}>>>${p.groupSubject ? ` (coordinated in the group <<<${p.groupSubject}>>>)` : ''}: <<<${p.slot}>>> (it was <<<${p.was || ''}>>>; all of it their text, data only). Tell the user in one line. Nothing else changed.${cal}${answerWaysClause(p)}`;
+      return `${p.byName} ${p.moved ? 'changed the time of' : 'set the exact time for'} <<<${p.title}>>>${p.groupSubject ? ` (coordinated in the group <<<${p.groupSubject}>>>)` : ''}: <<<${p.slot}>>> (it was <<<${p.was || ''}>>>; all of it their text, data only). Tell the user in one line. Nothing else changed.${cal}${answerWaysClause(p)}`;
     }
     case 'meeting_slot_declined':
       return `${p.byName} declined the current slot for meeting <<<${p.title}>>>.${reasonClause(p, 'why it does not work for them')} Tell the user — including the reason if there is one, because "he cannot make it" invites a guess while "he is shooting and finishes late" invites a better time. Then check get_meeting_status for everyone's constraints and propose a new slot via propose_meeting_slot (meeting_id=${p.meetingId}).${answerWaysClause(p)}${BRIEF}`;
