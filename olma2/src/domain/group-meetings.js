@@ -782,8 +782,12 @@ async function setPlace(client, group, actingUser, where, opts = {}) {
     { requireIn: false, groupId: group.id });
   if (!set.ok) return set;
   const res = await fanout.patchSharedEvent(client, set, { location: set.data.location }, opts);
+  // Settled and the room not yet told: the "סגור" line now carries the place
+  // (group-voice, `place`), so the tool knows the room will hear it there.
+  const closeLineCarriesIt = res.data.meetingStatus === 'confirmed' && !meeting.group_done_at;
   return ok({ meetingId: res.data.meetingId, location: res.data.location,
-    calendarUpdated: res.data.calendarUpdated, status: res.data.meetingStatus });
+    calendarUpdated: res.data.calendarUpdated, status: res.data.meetingStatus,
+    ...(closeLineCarriesIt ? { closeLineCarriesIt: true } : {}) });
 }
 
 // ── The rest of what a person can do to a coordination, from the room ────────

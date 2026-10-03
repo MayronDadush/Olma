@@ -687,6 +687,7 @@ async function sweepGroupVoice(client, deps) {
       chaseSaidAtMs: row.group_chase_at ? new Date(row.group_chase_at).getTime() : NaN,
       saidAlmost: Boolean(row.group_almost_at),
       saidDone: Boolean(row.group_done_at),
+      doneSaidAtMs: row.group_done_at ? new Date(row.group_done_at).getTime() : NaN,
       saidCalendar: Boolean(row.group_calendar_at),
       saidDayOf: Boolean(row.group_dayof_at),
       saidHour: Boolean(row.group_hour_at),

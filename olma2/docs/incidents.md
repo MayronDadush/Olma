@@ -3637,6 +3637,18 @@ given, and stays in the narration-faults column.
 **That last sentence caused the next incident three days later** — see "The
 room that did not know its own member".
 
+**2026-10-03, the poker room: three messages for one close, two minutes
+apart.** The owner wrote "כן תסגרי ותוסיפי שהמשחק אצל שמר" under the base line.
+Her turn called `settle_group_coordination` (hint: NO_REPLY) and then
+`set_group_coordination_place`, whose hint said "Say ONE short line: noted" —
+the last result won, as it always does, and she wrote "סגרו על שבת בערב —
+המשחק אצל שמר 👍" at 13:07. The fixed "סגור" line followed at 13:08 and the
+day-of reminder ("מזכירה — היום") at 13:09, because nothing in `decideLine`
+asked when the room had last been told. Fixed three ways: the done line
+carries the place, the place tool answers NO_REPLY while that line is still
+to come, and neither reminder follows a close said the same day (day-of) or
+inside the hour (soon).
+
 ### The room that did not know its own member (fixed 2026-09-23)
 
 At 07:53 the room heard the closing line for the padel coordination, and it
