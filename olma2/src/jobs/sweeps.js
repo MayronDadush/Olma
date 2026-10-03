@@ -77,15 +77,25 @@ async function armNextOccurrence(client, r, precomputed) {
   const kept = precomputed === undefined ? await nextOccurrenceMoment(client, r) : precomputed;
   if (!kept) return;
   const until = r.repeat_until ? new Date(r.repeat_until) : null;
+  // Day zero (0) and the first occurrence (1) are both the FIRST message
+  // somebody reads, and nothing may be the first thing twice — so the
+  // successor of day zero is 2, not 1. The number is the position in what
+  // they hear, which is the only thing anything downstream reads it for.
+  const seq = (Number(r.repeat_seq) === 0 ? 1 : (Number(r.repeat_seq) || 1)) + 1;
+  // A nudge carries its day's shape forward (migration 108). A loud series
+  // stays loud; a long one stays once a day until its LAST day, which is
+  // loud — the owner's table, and the only place that knows it is the last.
+  let rungs = null;
+  if (r.rungs !== null && r.rungs !== undefined) {
+    const after = Number(r.rungs) >= reminders.NUDGE_PER_DAY ? null
+      : await nextOccurrenceMoment(client, { ...r, remind_at: kept.at, repeat_seq: seq });
+    rungs = Number(r.rungs) >= reminders.NUDGE_PER_DAY || !after ? reminders.NUDGE_PER_DAY : Number(r.rungs);
+  }
   const ins = await client.query(
-    `INSERT INTO task_reminders (task_id, remind_at, repeat_rule, user_id, repeat_until, repeat_seq)
-     VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+    `INSERT INTO task_reminders (task_id, remind_at, repeat_rule, user_id, repeat_until, repeat_seq, rungs, nudge_capped)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
     [r.task_id, kept.at, reminders.normalizeRepeatRule(r.repeat_rule), r.user_id,
-      // Day zero (0) and the first occurrence (1) are both the FIRST message
-      // somebody reads, and nothing may be the first thing twice — so the
-      // successor of day zero is 2, not 1. The number is the position in what
-      // they hear, which is the only thing anything downstream reads it for.
-      until, (Number(r.repeat_seq) === 0 ? 1 : (Number(r.repeat_seq) || 1)) + 1]
+      until, seq, rungs, r.nudge_capped === true]
   );
   // The move is the only thing about a repeating reminder somebody could
   // notice and not be able to explain, so it is on the record — and the row
@@ -121,7 +131,16 @@ async function sweepReminders(client, nowIso) {
     // back on the row rather than being re-derived here, where a second copy
     // would drift and say "זו התזכורת האחרונה" a rung early or late.
     const rungCap = Number(r.rung_cap) || maxAttempts;
-    const finalAttempt = repeats || attempt >= rungCap;
+    // A nudge occurrence climbs within its own day (migration 108), and its
+    // last rung is whichever one leaves no room for the next before midnight
+    // or the end of their hours — not only the cap. Any other repeat is
+    // capped at one by the query, so `repeats` needs no branch of its own.
+    const climbs = r.rungs !== null && r.rungs !== undefined && rungCap > 1;
+    const lastToday = climbs && attempt < rungCap && reminders.lastRungToday({
+      remindAt: r.remind_at, timezone: r.timezone, now,
+      windowEnd: ((await preferences.availabilityWindow(client, r.user_id)).data.window || {}).end,
+    });
+    const finalAttempt = (repeats && !climbs) || attempt >= rungCap || lastToday;
     // A CHASE says a different sentence on each of its three positions, and
     // they are the three rung templates it already has: the first is a plain
     // reminder, the ones in the middle ask "בוצע?" and say how to stop it —
@@ -139,9 +158,16 @@ async function sweepReminders(client, nowIso) {
     // first occurrence is a moment the person chose by asking — every one after
     // it is an hour Olma picked on a day Olma picked, which is the same line
     // the escalation ladder draws between rung 1 and the rungs above it.
-    const chaseRung = chase && chaseSeq > 1 ? 2 : 1;
-    const chaseWording = chase && chaseSeq > 1
-      ? { attempt: 2, finalAttempt: !chaseNext } : {};
+    const chaseRung = chase && chaseSeq > 1 ? Math.max(2, attempt) : attempt;
+    // The very first message of a series is plain; every other one asks
+    // "בוצע?", and the last of the whole series says so. "Last of today" is
+    // not that: a nudge with days to go says "בוצע?" again tomorrow. A series
+    // that ends at the three-day cap rather than a deadline asks instead
+    // whether to go on (`nudgeEnd`, template reminder_nudge_end).
+    const lastOfSeries = chase && finalAttempt && !chaseNext;
+    const chaseWording = chase && !(attempt === 1 && chaseSeq <= 1)
+      ? { attempt: 2, finalAttempt: lastOfSeries, ...(lastOfSeries && r.nudge_capped === true ? { nudgeEnd: true } : {}) }
+      : {};
     // The previous rung never left our side (dueForSending: expired after failed
     // delivery attempts). This rung REPLACES it rather than following it up:
     // the plain reminder text, since nothing was delivered to follow up on,
@@ -161,6 +187,7 @@ async function sweepReminders(client, nowIso) {
     if (attempt === 1 && reminders.ridesDigest({
       dueAt: r.due_at, repeatRule: r.repeat_rule, remindAt: r.remind_at,
       timezone: r.timezone, digestTimes: r.digest_times, repeatUntil: r.repeat_until,
+      rungs: r.rungs,
     })) {
       const { rows: waiting } = await client.query(
         `SELECT id FROM outbox
@@ -202,7 +229,7 @@ async function sweepReminders(client, nowIso) {
         // reads it: once somebody has stopped answering, only rung 1 of a
         // reminder they asked for still goes out.
         auto: Boolean(r.auto),
-        ...(redo ? { redo: true } : attempt > 1 ? { attempt, finalAttempt } : chaseWording),
+        ...(redo ? { redo: true } : chase ? chaseWording : attempt > 1 ? { attempt, finalAttempt } : {}),
       },
       // Rung 1 keeps the original 2h-past-the-moment window. A later rung is
       // measured from now: remind_at is hours or a day behind and would make
@@ -225,7 +252,9 @@ async function sweepReminders(client, nowIso) {
       // this used to compare against the literals 'daily'/'weekly' while the
       // model was storing 'FREQ=DAILY', so every repeating reminder silently
       // fired exactly once. See reminders.normalizeRepeatRule.
-      await armNextOccurrence(client, r, chaseNext);
+      // On the FIRST rung only: a nudge's later rungs are the same day's, and
+      // tomorrow was armed when today began.
+      if (attempt === 1) await armNextOccurrence(client, r, chaseNext);
       out.push(r.reminder_id);
     }
   }

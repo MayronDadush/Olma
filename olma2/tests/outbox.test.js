@@ -968,7 +968,7 @@ test('worker: reminders that come due together go out as ONE message', async () 
 
   const solo = proactiveText.rawPipeTextFor(sent[1]);
   assert.match(solo, /מסמכים/);
-  assert.match(solo, /להפסיק להזכיר/, 'the follow-up still says how to stop it');
+  assert.match(solo, /די להזכיר/, 'the follow-up still says how to stop it');
 
   const { rows } = await db.pool.query(
     `SELECT idempotency_key k, sent_at, hold_reason FROM outbox

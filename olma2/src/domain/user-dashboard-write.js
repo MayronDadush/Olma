@@ -282,7 +282,7 @@ const ACTIONS = {
     // sends no hour for it on purpose, because the owner's rule picks the hour
     // and an hour the page computed would be taken as one they named.
     //
-    // A deadline too close to chase across (less than two days of it) is
+    // A deadline too close to chase across once a day (under NUDGE_DAYS) is
     // refused rather than quietly turned into a one-off: the chip said "every
     // day", and a one-off under it is the promise run 79 broke. The cancel and
     // the attempt share a savepoint, so a refusal leaves the old reminder
@@ -294,9 +294,14 @@ const ACTIONS = {
         if (!res.ok) { await client.query('ROLLBACK TO SAVEPOINT dashboard_chase'); return res; }
       }
       const chase = await reminders.startChase(client, userId, p.taskId);
-      if (chase && chase.ok) return chase;
+      // Since the nudge (2026-10-03) startChase also arms the LOUD shapes — up
+      // to three a day near a deadline, or three days with none. The chip still
+      // says "every day until the date", so only the once-a-day shape is its to
+      // arm; the page's own nudge button is the next step.
+      if (chase && chase.ok && Number(chase.data.reminder.rungs) === 1) return chase;
       await client.query('ROLLBACK TO SAVEPOINT dashboard_chase');
-      return chase || err('invalid', 'a daily chase needs the task dated at least two days ahead');
+      return (chase && !chase.ok) ? chase
+        : err('invalid', `a daily chase needs the task dated at least ${reminders.NUDGE_DAYS} days ahead`);
     }
     for (const r of pending) {
       const res = await reminders.cancelReminder(client, userId, r.id);

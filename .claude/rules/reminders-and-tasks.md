@@ -880,3 +880,31 @@ title means this file. Grep the title, not the filename.
   rejected rows are the negatives in `tests/remind-without-time.test.js`. The
   verdict is spent once and dies after fifteen minutes, like a chase. **The
   hook is read at gateway STARTUP**, so this is inert until a restart.
+
+- **A nudge ("נודניק") is ONE arrangement with three shapes, and the deadline
+  picks the shape** (owner, 2026-10-03: "תקרה של 3 ימים"). Every
+  `nudge:true` goes through `reminders.startChase`:
+  - a deadline within `NUDGE_DAYS` (3, today counting) → up to
+    `NUDGE_PER_DAY` (3) messages a day until it;
+  - a deadline further away → once a day at their hour, and up to 3 on the
+    last day;
+  - no deadline (or one already past) → up to 3 a day for 3 days, and the last
+    message ASKS whether to go on (`reminder_nudge_end`). A yes is a fresh
+    nudge: `turn.advise` marks that reminder `askedToContinue` and hands the
+    model `continueAt` (`reminders.nextNudgeMoment`), so it never invents an
+    hour that would read as theirs.
+  - **The messages of one day are rungs of ONE occurrence row**
+    (`task_reminders.rungs`, migration 108), `NUDGE_GAP_HOURS` (5) apart and
+    never past that local day or the end of their window
+    (`reminders.lastRungToday`). The sweep copies `rungs` onto the next
+    occurrence and raises it to 3 on the last day of a long series.
+    `nudge_capped` says the end is the cap and not a deadline — only the last
+    message reads it.
+  - **`rungs` NULL is every row written before**, and it means exactly what it
+    meant: a chase occurrence says one sentence, a one-off climbs by
+    `reminders.RUNGS`. A nudge occurrence never rides the morning digest
+    (`ridesDigest` refuses `rungs > 1`). A one-off nudge ladder is left only
+    for a moment named past the task's own deadline (`NOT_A_CHASE`).
+  - **The stop is the words every follow-up now carries, "די להזכיר"**, which
+    the gateway hook's `stopRemindersOnly` already reads; "סיימתי" completes
+    the task and ends the series with it.

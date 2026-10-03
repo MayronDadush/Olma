@@ -440,6 +440,11 @@ function turnHints({ offerResume, languageNudge, recentReminders, recentMeetings
         + 'For "the next one only on Monday", cancel it and then set_task_reminder '
         + 'on its taskId for the moment they named. Cancelling a DIFFERENT reminder does not stop this one.';
     }
+    if (recentReminders.some((r) => r.askedToContinue)) {
+      hints.askedToContinue = 'A reminder marked askedToContinue ended a three-day nudge by asking whether '
+        + 'to go on. A yes is set_task_reminder(taskId, remind_at: its continueAt, nudge: true), which '
+        + 'starts three more days. A no needs no call, since nothing is left running.';
+    }
   }
   if (recentMeetings && recentMeetings.length) {
     hints.recentMeetings = 'Coordinations they heard about in the last day, with where each stands NOW — '
@@ -600,9 +605,26 @@ async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, 
         ...(r.still_chasing
           ? { reminderId: Number(r.reminder_id), taskId: Number(r.task_id), stillChasing: true }
           : {}),
+        // The last message of a three-day nudge with no deadline asked "go on
+        // for three more days, or stop?" (template reminder_nudge_end). The
+        // series is over by then, so a yes has nothing to extend: it is a new
+        // nudge, and the task id is what the model needs to start one.
+        ...(p.nudgeEnd === true && p.taskId
+          ? { taskId: Number(p.taskId), askedToContinue: true }
+          : {}),
       };
     })
     .filter(Boolean);
+  // A yes to "go on for three more days?" is a fresh nudge, and the tool
+  // takes a moment. The one a nudge would pick on its own is computed here,
+  // so the model is never left to invent an hour that then reads as theirs.
+  const continuing = recentReminders.find((r) => r.askedToContinue);
+  if (continuing) {
+    const reminders = require('./reminders');
+    const { isoWithOffset } = require('./meeting-option-moment');
+    const at = await reminders.nextNudgeMoment(client, user.id);
+    if (at) continuing.continueAt = isoWithOffset(at, user.timezone || 'Asia/Jerusalem');
+  }
 
   // The intro video (domain/intro-video.js) went out on the raw pipe, which
   // never enters their session — so a "מה זה?" or a brain dump right after it

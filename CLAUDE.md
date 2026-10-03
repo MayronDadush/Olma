@@ -255,6 +255,7 @@ Loads when you **Read** a file under `src/domain/reminders.js`, `src/domain/task
 - **The second call echoes the moment already armed, and that is not an hour anybody named** — a chase replaces every automatic row in its span, and its result says which branch it took
 - **Whether a message ASKED for a chase is read by code, and the model is only told what the server will do** — the gateway hook sends a deadline KIND, `add_task` on that turn is due that day with `nudge` on, and it needs a gateway restart to go live
 - **"תזכיר לי X" with no when at all is a WEEKLY chase, armed by code** — the hook's `remindWithoutTime`, `reminders.startWeeklyNudge`: their morning hour, a week out, eight weeks, closed by "done"
+- **A nudge ("נודניק") has three shapes and the deadline picks one** — up to 3 a day inside three days, once a day plus 3 on the last day beyond, and 3 a day for 3 days then ONE question with no deadline; one day's messages are rungs of one row (`task_reminders.rungs`, migration 108), and NULL keeps the old rules
 
 ### People, silence, and data you must not get wrong
 

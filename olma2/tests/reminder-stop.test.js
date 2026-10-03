@@ -217,3 +217,31 @@ test('the turn that answers a reminder carries the id needed to stop it', async 
   assert.equal(d2.recentReminders[0].stillChasing, undefined);
   assert.equal(d2.hints.stillChasing, undefined);
 });
+
+test('the turn after a three-day nudge asked "go on?" carries what a yes needs', async (t) => {
+  // The series is over by then — its last row retired on the send — so there
+  // is nothing to cancel and nothing still chasing. What a yes needs is the
+  // task and a moment the SERVER picked, never an hour the model invents.
+  const { pool, teardown } = await freshDb();
+  t.after(teardown);
+  const user = await makeUser(pool, '+972505600019', { timezone: 'Asia/Jerusalem' });
+  const added = await withTx(pool, (c) => tasks.addTask(c, user.id, { title: 'לסדר את המחסן' }));
+  const taskId = Number(added.data.task.id);
+  await pool.query(
+    `INSERT INTO outbox (user_id, kind, payload, urgency, sent_at, idempotency_key)
+     VALUES ($1, 'reminder', $2, 'normal', now() - interval '10 minutes', 'reminder:999999:3')`,
+    [user.id, JSON.stringify({ title: 'לסדר את המחסן', taskId, attempt: 2, finalAttempt: true, nudgeEnd: true })]);
+  const broker = createBrokerServer({ pool });
+  const res = await broker.dispatch(
+    { id: 1, method: 'tool_call', params: { name: 'turn_start', args: { olma_identity: user.identity_token } } },
+    { opened: false, counted: false });
+  assert.equal(res.ok, true, res.text);
+  const data = JSON.parse(res.text.replace(/^OK /, ''));
+  const [recent] = data.recentReminders;
+  assert.equal(recent.askedToContinue, true);
+  assert.equal(recent.taskId, taskId);
+  assert.equal(recent.stillChasing, undefined, 'the series is over');
+  assert.match(recent.continueAt, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:00[+-]\d{2}:\d{2}$/, 'an offset the tool accepts');
+  assert.ok(new Date(recent.continueAt).getTime() > Date.now(), 'and a moment still ahead');
+  assert.match(data.hints.askedToContinue, /set_task_reminder\(taskId, remind_at: its continueAt, nudge: true\)/);
+});

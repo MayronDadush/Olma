@@ -82,6 +82,7 @@ const REPEAT = {
     monthlyLast: 'בסוף כל חודש',
     monthlyDay: (d) => `כל ${d} בחודש`,
     until: (every, day) => `${every} עד ${day}`,
+    loud: 'עד 3 פעמים ביום',
   },
   en: {
     daily: 'every day',
@@ -91,6 +92,7 @@ const REPEAT = {
     monthlyLast: 'the last day of every month',
     monthlyDay: (d) => `the ${ordinal(d)} of every month`,
     until: (every, day) => `${every} until ${day}`,
+    loud: 'up to 3 times a day',
   },
 };
 
@@ -166,7 +168,9 @@ function renderReminderListBlock(data, opts = {}) {
     // promise to keep going for ever — the opposite of what they asked for
     // (reminders.isChase). Drawn here rather than left to a sentence for the
     // same reason every other line in this file is drawn.
-    const every = repeatLabel(r.repeat_rule, k);
+    // A loud nudge (rungs, migration 108) is up to three a day, not one.
+    const loud = r.repeat_until && Number(r.rungs) >= 3 && normalizeRepeatRule(r.repeat_rule) === 'daily';
+    const every = loud ? REPEAT[k].loud : repeatLabel(r.repeat_rule, k);
     const repeat = every && r.repeat_until
       ? REPEAT[k].until(every, dayLabel(dt.partsInZone(ctx.tz, new Date(r.repeat_until)), ctx))
       : every;

@@ -57,7 +57,11 @@ function cleanTitle(title) {
 function reminderTemplateKey(payload) {
   const p = typeof payload === 'string' ? JSON.parse(payload) : (payload || {});
   const attempt = Number(p.attempt) || 1;
-  return attempt <= 1 ? 'reminder' : (p.finalAttempt ? 'reminder_last' : 'reminder_followup');
+  if (attempt <= 1) return 'reminder';
+  if (!p.finalAttempt) return 'reminder_followup';
+  // A nudge that ran out at the three-day cap, not at a deadline, ends on a
+  // question rather than on "the last one" (reminders.startChase).
+  return p.nudgeEnd ? 'reminder_nudge_end' : 'reminder_last';
 }
 
 // The list form of each rung. One key per rung, for the reason above.
@@ -65,6 +69,7 @@ const LIST_TEMPLATE = {
   reminder: 'reminder_list',
   reminder_followup: 'reminder_list_followup',
   reminder_last: 'reminder_list_last',
+  reminder_nudge_end: 'reminder_list_nudge_end',
 };
 
 // The language a rung is said in. There is no model on this pipe to read
