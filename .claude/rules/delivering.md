@@ -407,6 +407,15 @@ title means this file. Grep the title, not the filename.
   Saturday, released 09:00 Sunday, not 19:00 Sunday) so this cannot regress
   silently again.
 
+- **Nothing about a meeting goes out once the meeting has happened** (owner,
+  2026-10-03). A hold (a quiet day, the night) can outlast the thing a row is
+  about, and no `meeting_*` enqueue sets `expires_at`. The worker's
+  `meetingOver` fact (confirmed or cancelled, `confirmed_start_at` passed, plus
+  a day for an all-day or daypart time) makes the gate DROP the row as
+  `meeting_over`, which is terminal. Worker-scoped like `answeredCoordination`,
+  so it is false for every sibling (`incidents.md`, "The game moved, and
+  Shabbat would have told him after it").
+
 - **A chag is QUIET only for somebody who asked for it, and "quiet-able" means
   yom tov and nothing else** (owner, 2026-09-11: "רק ימי טוב"). `holidays.js`
   sorts every day into two tiers — `quiet` is `flags.CHAG` alone, which is

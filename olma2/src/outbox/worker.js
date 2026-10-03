@@ -320,6 +320,24 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
             `SELECT 1 FROM meetings WHERE id = $1 AND group_id IS NULL AND status = 'negotiating'`, [meetingId]);
           privateInvite = mt.length > 0;
         }
+        // Has the meeting this row is about already HAPPENED? A confirmed (or
+        // cancelled) coordination whose start is behind us makes every
+        // `meeting_*` row about it pointless — the gate drops them
+        // (`meeting_over`). A time with no exact hour (all day, a daypart)
+        // stores the day's start, so it counts as over only once that day is.
+        // Worker-scoped like the facts above, and false for every sibling.
+        let meetingOver = false;
+        if (meetingId && String(row.kind).startsWith('meeting_')) {
+          const { rows: over } = await client.query(
+            `SELECT 1 FROM meetings
+              WHERE id = $1 AND status IN ('confirmed', 'cancelled')
+                AND confirmed_start_at IS NOT NULL
+                AND confirmed_start_at
+                    + CASE WHEN confirmed_all_day OR confirmed_daypart IS NOT NULL
+                           THEN interval '1 day' ELSE interval '0' END <= $2`,
+            [meetingId, now]);
+          meetingOver = over.length > 0;
+        }
         // An introduction still waiting to go out. Bounded to two days on
         // purpose: a repair that was queued and somehow never delivered must
         // not silence everything else for this person for ever, and past that
@@ -392,7 +410,7 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
           window: win.data.window, quietDays, quietDates, shabbatWindow, tz: row.timezone,
           lastInboundAt: row.last_inbound_at, wokeAt: row.last_woke_at, dashboardWroteAt: row.last_dashboard_at, groupWroteAt,
           greetedAt: row.opening_sent_at,
-          pausedRoomInvite, quietRoomInvite, answeredCoordination, privateInvite,
+          pausedRoomInvite, quietRoomInvite, answeredCoordination, privateInvite, meetingOver,
           hasDigest: Boolean(row.digest_times),
           introductionPending: introRows.length > 0,
           introductionSentAt: introSent[0] ? introSent[0].sent_at : null,
@@ -467,7 +485,7 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
             // empty for every sibling — said out loud rather than relied upon.
             if (decide({
               ...facts, groupWroteAt: null, pausedRoomInvite: false, quietRoomInvite: false,
-              answeredCoordination: false, privateInvite: false, row: sib,
+              answeredCoordination: false, privateInvite: false, meetingOver: false, row: sib,
             }).action !== 'deliver') continue;
             ids.push(sib.id);
             titles.push(payloadOf(sib).title);
@@ -511,7 +529,7 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
           // the thing that lets a sibling through.
           const deliverable = others.filter((sib) => decide({
             ...facts, pausedRoomInvite: false, quietRoomInvite: false, answeredCoordination: false,
-            privateInvite: false, row: sib,
+            privateInvite: false, meetingOver: false, row: sib,
           }).action === 'deliver');
           const parts = planMerge(row, deliverable);
           if (parts) {

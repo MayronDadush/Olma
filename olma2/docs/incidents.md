@@ -147,6 +147,7 @@ never trust a dated narrative for something you are about to act on.
 - [Proactive delivery needs --to as well (fixed 2026-08-18)](#proactive-delivery-needs---to-as-well-fixed-2026-08-18)
 - [Repeating reminders were silently one-shot (fixed 2026-08-18)](#repeating-reminders-were-silently-one-shot-fixed-2026-08-18)
 - [A confirmed meeting sat quiet a full extra day (fixed 2026-09-12)](#a-confirmed-meeting-sat-quiet-a-full-extra-day-fixed-2026-09-12)
+- [The game moved, and Shabbat would have told him after it (fixed 2026-10-03)](#the-game-moved-and-shabbat-would-have-told-him-after-it-fixed-2026-10-03)
 
 **Stopping, pausing and doctrine**
 
@@ -6471,6 +6472,24 @@ values and revived the dropped occurrences. **Superseded in part 2026-08-29**
 and `monthly:last`, and `nextOccurrence` takes the user's timezone — the
 vocabulary listed here as `daily | weekly | weekly:MO,TH | NULL` is no longer
 the whole of it.
+
+### The game moved, and Shabbat would have told him after it (fixed 2026-10-03)
+
+Padel Gang (room 9, meeting 57) was settled on Saturday 18:00. The room
+changed it among themselves, to tennis at 17:00, without tagging her, so the
+09:00 day-of line still said 18:00. Miron then tagged her: she reopened, and he
+settled on 17:00 at 10:40. Sharon keeps Shabbat quiet, so the reopening
+(15554) and the new confirmation (15562) were both held as `quiet_day`, to be
+released at havdalah, about 18:35, an hour and a half after the game started.
+Nothing in the gate knew that a row about a meeting can go stale. `expires_at`
+exists, and no `meeting_*` enqueue sets it.
+
+The owner: nothing about a meeting is sent once it has happened. The worker
+now reads `meetingOver` for the row's own meeting (confirmed or cancelled,
+`confirmed_start_at` passed; a day later for all-day and daypart times, which
+store the day's start), and the gate drops any `meeting_*` row with
+`hold_reason = 'meeting_over'`. Both held rows were cancelled by hand the same
+morning, before the fix deployed. `tests/meeting-over.test.js`.
 
 ### A confirmed meeting sat quiet a full extra day (fixed 2026-09-12)
 
