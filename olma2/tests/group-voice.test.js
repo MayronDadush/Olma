@@ -704,6 +704,51 @@ test('an all-day or part-of-day meeting gets the day-of line and never the hour-
     'an hour before a part of a day is still worth the day-of line');
 });
 
+// The poker room, 2026-10-03: "סגור" at 13:08 for that evening, then
+// "מזכירה — היום" at 13:09. A reminder repeats the close line, so it never
+// follows it on the day it closed (day-of) or within the hour it closed (soon).
+test('a room that closed today is not reminded that it is today', () => {
+  const tz = 'Asia/Jerusalem';
+  const nine = new Date(); nine.setUTCHours(6, 0, 0, 0); // 09:00 Israel, today
+  const evening = new Date(nine.getTime() + 10 * 3600_000); // 19:00 stand-in
+  const part = { status: 'confirmed', confirmedSlot: 'היום בערב', confirmedStartAt: evening.toISOString(),
+    confirmedDaypart: 'evening', options: [], silent: [] };
+  const base = { saidBase: true, saidChase: true, saidDone: true, startedAtMs: 0, timezone: tz };
+  const noon = nine.getTime() + 3 * 3600_000;
+  assert.equal(groupVoice.decideGroupLine(part, { ...base, doneSaidAtMs: noon - 60_000, nowMs: noon }).kind, 'none',
+    'closed a minute ago, today: the close line already said it');
+  assert.equal(groupVoice.decideGroupLine(part, { ...base, doneSaidAtMs: noon - 24 * 3600_000, nowMs: noon }).kind, 'dayof',
+    'closed yesterday: today is news');
+  assert.equal(groupVoice.decideGroupLine(part, { ...base, nowMs: noon }).kind, 'dayof',
+    'no stamp to read is the old behaviour');
+
+  const exact = { ...part, confirmedDaypart: null, confirmedSlot: 'היום 19:00' };
+  assert.equal(groupVoice.decideGroupLine(exact, { ...base, saidDayOf: true, doneSaidAtMs: evening.getTime() - 40 * 60_000,
+    nowMs: evening.getTime() - 39 * 60_000 }).kind, 'none', 'closed inside the hour: "in an hour" is not news');
+  assert.equal(groupVoice.decideGroupLine(exact, { ...base, saidDayOf: true, doneSaidAtMs: noon,
+    nowMs: evening.getTime() - 50 * 60_000 }).kind, 'soon', 'closed this morning: the hour-before still comes');
+});
+
+test('the "סגור" line says the place the room already gave, so nothing else has to', () => {
+  const co = { status: 'confirmed', confirmedSlot: 'שבת בערב', confirmedDaypart: 'evening', location: 'אצל שמר',
+    options: [], silent: [] };
+  const line = groupVoice.decideGroupLine(co, { saidBase: true, saidDone: false, startedAtMs: 0, nowMs: Date.now() });
+  assert.equal(line.kind, 'done');
+  assert.equal(line.place, 'אצל שמר');
+  assert.equal(line.placeAsk, false);
+  const text = proactiveText.renderGroupCoordination({ ...line, who: { all: true } });
+  assert.match(text, /📍 אצל שמר\n/, 'the place on its own line, before the time question');
+  assert.match(text, /רוצים לקבוע שעה מדויקת/);
+  const exact = proactiveText.renderGroupCoordination({ ...line, timeAsk: false, who: { all: true } });
+  assert.ok(exact.trim().endsWith('📍 אצל שמר'), exact);
+  const old = proactiveText.renderGroupCoordination({ ...line, timeAsk: false, who: { all: true } },
+    { group_coord_done: 'סגור: *{{slot}}* {{who}}' });
+  assert.ok(old.includes('📍 אצל שמר'), 'a rewording without {{place}} still carries it');
+  const none = groupVoice.decideGroupLine({ ...co, location: null }, { saidBase: true, saidDone: false, startedAtMs: 0, nowMs: Date.now() });
+  assert.equal(none.place, undefined);
+  assert.ok(!proactiveText.renderGroupCoordination({ ...none, who: { all: true } }).includes('📍 אצל'));
+});
+
 test('a coordination that is already set is never chased', () => {
   const line = groupVoice.decideGroupLine(
     { status: 'confirmed', confirmedSlot: 'שלישי 20:00', options: [], silent: [{ phone: '+972500000009' }] },
@@ -773,7 +818,9 @@ test('the reminders ride the same pass, once each, and only for this coordinatio
   // the next morning, on bytes nobody had touched.
   const sent = [];
   const mine = JID(5);
-  await pass(sent, new Date(at.getTime() - 8 * 3600_000), mine);
+  // Set the day before: a room that closed TODAY already heard that it is
+  // today, and is not told again (owner, 2026-10-03).
+  await pass(sent, new Date(at.getTime() - 26 * 3600_000), mine);
   assert.match(sent[0].body, /סגור/, 'first it is set');
   await pass(sent, new Date(at.getTime() - 7 * 3600_000), mine);
   assert.match(sent[1].body, /היום/, 'then, on the day');
@@ -804,6 +851,18 @@ test('the place can be said later, and a closed room has nothing to put it on', 
   const audit = await db.pool.query(
     `SELECT count(*)::int AS n FROM audit_log WHERE actor_id = $1 AND event = 'meeting.place_set'`, [b.id]);
   assert.equal(audit.rows[0].n, 1);
+  assert.equal(set.data.closeLineCarriesIt, undefined, 'still negotiating: nothing will say it for her');
+
+  // Settled and the room not yet told (the poker room, 2026-10-03): the "סגור"
+  // line will carry the place, so she is told not to say it as well. Once that
+  // line went out, a place said later is hers to acknowledge again.
+  await db.pool.query(`UPDATE meetings SET status = 'confirmed' WHERE id = $1`, [meetingId]);
+  const atClose = await withTx(db.pool, (c) => groupMeetings.setPlace(c, group, b, 'אצל שמר'));
+  assert.equal(atClose.data.closeLineCarriesIt, true);
+  await db.pool.query(`UPDATE meetings SET group_done_at = now() WHERE id = $1`, [meetingId]);
+  const after = await withTx(db.pool, (c) => groupMeetings.setPlace(c, group, b, 'אצל יוסי'));
+  assert.equal(after.data.closeLineCarriesIt, undefined);
+  await db.pool.query(`UPDATE meetings SET status = 'negotiating', group_done_at = NULL WHERE id = $1`, [meetingId]);
 
   // A stranger to the room cannot set it.
   const outsider = await makeUser(db.pool, '+972607120099', { firstName: 'זר' });

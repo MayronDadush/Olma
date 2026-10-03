@@ -470,11 +470,17 @@ function renderGroupCoordination(line, overrides) {
     }, overrides)).trim();
     return withCalendar(timeAsk && !zoned.includes(timeAsk) ? `${zoned}\n${timeAsk}` : zoned, line, overrides);
   }
-  const done = templates.render('group_coord_done', {
-    slot: slotText(line.slot), who, place_ask: line.placeAsk && !line.timeAsk ? PLACE_ASK : '', time_ask: timeAsk,
+  // The place the room already said rides the "סגור" line, so the agent's own
+  // "noted" in the same minute has nothing left to say (owner, 2026-10-03:
+  // the poker room heard "המשחק אצל שמר" and then "סגור" as two messages).
+  const placeLine = line.place ? `📍 ${format.stripUserMarkup(String(line.place).replace(/\s+/g, ' ').trim())}` : '';
+  let done = templates.render('group_coord_done', {
+    slot: slotText(line.slot), who, place: placeLine && timeAsk ? `${placeLine}\n` : placeLine,
+    place_ask: line.placeAsk && !line.timeAsk ? PLACE_ASK : '', time_ask: timeAsk,
   }, overrides).trim();
-  // An owner's rewording saved before {{time_ask}} existed has nowhere to put
-  // it, and the question is the point of the line — so it goes on the end.
+  // An owner's rewording saved before {{place}} or {{time_ask}} existed has
+  // nowhere to put them, so they go on the end.
+  if (placeLine && !done.includes(placeLine)) done = `${done}\n${placeLine}`;
   return withCalendar(timeAsk && !done.includes(timeAsk) ? `${done}\n${timeAsk}` : done, line, overrides);
 }
 

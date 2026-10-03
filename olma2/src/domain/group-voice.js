@@ -176,7 +176,7 @@ function withClocks(line, co, { timezone, nowMs } = {}) {
 }
 
 function decideLine(co, {
-  saidStarted, saidBase, saidBaseSlot, saidBaseStartAt, saidChase, chaseSaidAtMs, saidAlmost, saidDone, saidCalendar, saidDayOf, saidHour,
+  saidStarted, saidBase, saidBaseSlot, saidBaseStartAt, saidChase, chaseSaidAtMs, saidAlmost, saidDone, doneSaidAtMs, saidCalendar, saidDayOf, saidHour,
   saidTime, pendingRelay, startedAtMs, nowMs, timezone, tableSaidAtMs, reopenedAt, reopenedFrom, saidReopened,
   roomAsleep, coldTags,
 } = {}) {
@@ -200,6 +200,7 @@ function decideLine(co, {
       // still gets the separate line below.
       return {
         kind: 'done', slot: co.confirmedSlot, who: whoIsIn(co), placeAsk: !co.location && !saidOnline,
+        ...(co.location ? { place: co.location } : {}),
         timeAsk: Boolean(co.confirmedAllDay || co.confirmedDaypart),
         calendar: Boolean(co.calendarEventId && !saidCalendar),
       };
@@ -229,8 +230,15 @@ function decideLine(co, {
     // leave a morning one with no line at all. Those get the day-of line,
     // any time that day before it is over.
     const exact = !co.confirmedAllDay && !co.confirmedDaypart;
-    if (exact && !saidHour && nowMs >= at - HOUR_BEFORE_MS) return { kind: 'soon', slot: co.confirmedSlot };
-    if (!saidDayOf && sameDay && (!exact || at - nowMs > DAY_OF_MIN_LEAD_MS)) {
+    // A reminder repeats what the "סגור" line just said, so neither follows it
+    // on the same footing (owner, 2026-10-03: the poker room closed at 13:08
+    // and heard "מזכירה — היום" at 13:09). "Today" is not news on the day it
+    // closed; "in an hour" is not news within the hour it closed.
+    const doneAt = Number.isFinite(doneSaidAtMs) ? doneSaidAtMs : NaN;
+    const closedToday = Number.isFinite(doneAt) && localDay(doneAt, timezone) === localDay(nowMs, timezone);
+    const closedInTheHour = Number.isFinite(doneAt) && doneAt >= at - HOUR_BEFORE_MS;
+    if (exact && !saidHour && !closedInTheHour && nowMs >= at - HOUR_BEFORE_MS) return { kind: 'soon', slot: co.confirmedSlot };
+    if (!saidDayOf && !closedToday && sameDay && (!exact || at - nowMs > DAY_OF_MIN_LEAD_MS)) {
       return { kind: 'dayof', slot: co.confirmedSlot };
     }
     return { kind: 'none', reason: 'already reminded, or not yet due' };

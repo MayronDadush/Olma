@@ -193,7 +193,11 @@ module.exports = [
       return ok({
         ...res.data,
         hints: {
-          room: res.data.calendarUpdated
+          // Settled in this same moment: the closing line says the place, so
+          // a "noted" of her own would be a second message for one fact.
+          room: res.data.closeLineCarriesIt
+            ? 'The room\'s closing line, within a minute, says the place. Answer NO_REPLY.'
+            : res.data.calendarUpdated
             ? 'Say ONE short line: noted, and the calendar event now carries the place.'
             : 'Say ONE short line: noted. It goes on the calendar with the event — do not claim it is there yet.',
         },

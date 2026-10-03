@@ -766,11 +766,11 @@ const TEMPLATES = [
   {
     key: 'group_coord_done', audience: 'group', label: 'תיאום — נסגר',
     help: 'פעם אחת, כשהתיאום נסגר על זמן. כל אחד מקבל את זה גם בפרטי; זאת השורה בקבוצה.',
-    vars: { slot: 'הזמן שנסגר', who: '"כולם בפנים", או "בפנים:" ותיוגים של מי שאמר כן', place_ask: 'שאלה איפה נפגשים — רק כשאף אחד לא אמר מקום', time_ask: 'שאלה אם לקבוע שעה מדויקת — רק כשנסגר על יום שלם או חלק מיום (כולל המקום, כשגם הוא חסר)' }, required: ['slot'],
+    vars: { slot: 'הזמן שנסגר', who: '"כולם בפנים", או "בפנים:" ותיוגים של מי שאמר כן', place: 'המקום, כשמישהו כבר אמר אותו (📍 אצל שמר)', place_ask: 'שאלה איפה נפגשים — רק כשאף אחד לא אמר מקום', time_ask: 'שאלה אם לקבוע שעה מדויקת — רק כשנסגר על יום שלם או חלק מיום (כולל המקום, כשגם הוא חסר)' }, required: ['slot'],
     // The sample shows the place question; the time question takes its
     // place (and asks both) only when it settled without an exact hour.
-    sample: { slot: 'יום שלישי 20:00', who: 'כולם בפנים', place_ask: 'איפה נפגשים? תכתבו לי ואני אוסיף ליומן 📍', time_ask: '' },
-    text: 'סגור: *{{slot}}* 🎉 {{who}}\n{{place_ask}}{{time_ask}}',
+    sample: { slot: 'יום שלישי 20:00', who: 'כולם בפנים', place: '', place_ask: 'איפה נפגשים? תכתבו לי ואני אוסיף ליומן 📍', time_ask: '' },
+    text: 'סגור: *{{slot}}* 🎉 {{who}}\n{{place}}{{place_ask}}{{time_ask}}',
   },
   {
     key: 'group_coord_time', audience: 'group', label: 'תיאום — נקבעה שעה',
