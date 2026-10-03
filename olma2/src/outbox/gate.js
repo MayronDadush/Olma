@@ -283,6 +283,18 @@ function decide(facts) {
     return { action: 'expire' };
   }
 
+  // ── A coordination whose time has already come ─────────────────────────────
+  // Nothing about a meeting is news once it has happened (owner, 2026-10-03).
+  // Padel Gang moved its game to 17:00 on a Saturday; the confirmation and the
+  // reopening reached Sharon's queue held for her Shabbat, and havdalah would
+  // have released both an hour and a half after the game. `meetingOver` is the
+  // worker's fact about THIS row's meeting (confirmed or cancelled, start in
+  // the past), so the gate still does not have to know what a meeting is. A
+  // drop, not a hold: there is no later moment at which it becomes true again.
+  if (facts.meetingOver === true && row.kind.startsWith('meeting_')) {
+    return { action: 'drop', holdReason: 'meeting_over' };
+  }
+
   // ── The welcome follow-up (jobs/intake.js, 2026-09-25) ─────────────────────
   // It exists to answer what they wrote to the greeter and hand over their
   // page. If they have written to their OWN agent since, that turn is their
