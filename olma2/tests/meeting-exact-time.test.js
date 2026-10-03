@@ -53,7 +53,7 @@ async function openWith(precision) {
 }
 const rows = async (kind, meetingId) => (await db.pool.query(
   `SELECT user_id, payload, hold_reason FROM outbox WHERE kind = $1
-     AND (payload->>'meetingId')::bigint = $2 ORDER BY user_id`, [kind, meetingId])).rows;
+     AND (payload->>'meetingId')::bigint = $2 ORDER BY user_id, id`, [kind, meetingId])).rows;
 
 before(async () => {
   db = await freshDb();
@@ -135,9 +135,58 @@ test('setting the hour is narrow: the same day, once, and only by somebody in it
   const once = await call('propose_meeting_slot', ben, {
     meeting_id: id, slot_description: 'מחר ב־18:00', starts_at: tomorrowAt('18') });
   assert.ok(once.ok, JSON.stringify(once));
-  const again = await call('propose_meeting_slot', cal, {
-    meeting_id: id, slot_description: 'מחר ב־20:00', starts_at: tomorrowAt('20') });
-  assert.equal(again.ok, false, 'an exact time is not rescheduled through this');
+  const same = await call('propose_meeting_slot', cal, {
+    meeting_id: id, slot_description: 'מחר ב־18:00', starts_at: tomorrowAt('18') });
+  assert.equal(same.ok, false);
+  assert.equal(same.error.reason, 'same_time');
+});
+
+// Padel Gang, 2026-10-03: settled on 18:00, the room moved it to 17:00, and the
+// only door was reopening — which asked everybody again. The owner wanted the
+// middle: edit the hour of a settled coordination and nothing else.
+test('an exact time is MOVED, the coordination stays settled, and a second move is heard too', async () => {
+  const { id, opt } = await openWith({ allDay: true });
+  await call('settle_meeting', ann, { meeting_id: id, option_id: opt.id });
+  assert.ok((await call('propose_meeting_slot', ben, {
+    meeting_id: id, slot_description: 'מחר ב־18:00', starts_at: tomorrowAt('18') })).ok);
+  await db.pool.query(`UPDATE outbox SET sent_at = now() WHERE kind = 'meeting_time_set'
+                         AND (payload->>'meetingId')::bigint = $1`, [id]);
+  await db.pool.query('UPDATE meetings SET group_time_at = now(), group_hour_at = now() WHERE id = $1', [id]);
+
+  const moved = await call('propose_meeting_slot', cal, {
+    meeting_id: id, slot_description: 'מחר ב־17:00', starts_at: tomorrowAt('17') });
+  assert.ok(moved.ok, JSON.stringify(moved));
+  assert.equal(moved.data.moved, true);
+  assert.match(moved.data.hints.said, /changed/);
+
+  const { rows: [m] } = await db.pool.query(
+    `SELECT status, confirmed_slot, confirmed_start_at, reopened_at, group_time_at, group_hour_at
+       FROM meetings WHERE id = $1`, [id]);
+  assert.equal(m.status, 'confirmed', 'never reopened');
+  assert.equal(m.reopened_at, null);
+  assert.equal(m.confirmed_slot, 'מחר ב־17:00');
+  assert.equal(new Date(m.confirmed_start_at).toISOString(), new Date(tomorrowAt('17')).toISOString());
+  assert.equal(m.group_time_at, null, 'the room hears the new hour');
+  assert.equal(m.group_hour_at, null, 'the hour-before line is owed for the new hour');
+
+  const heard = (await rows('meeting_time_set', id)).filter((r) => r.payload.moved);
+  assert.deepEqual(heard.map((r) => Number(r.user_id)).sort(), [Number(ann.id), Number(ben.id)].sort(),
+    'everybody but the one who moved it, despite the earlier notice under the same settling');
+  assert.equal(heard[0].payload.was, 'מחר ב־18:00');
+  assert.match(instructionFor({ kind: 'meeting_time_set', payload: heard[0].payload }), /changed the time of/);
+  assert.equal((await rows('meeting_reopened', id)).length, 0, 'nobody is asked again');
+
+  // A move nobody has heard yet is replaced by the next one, not said first.
+  assert.ok((await call('propose_meeting_slot', ann, {
+    meeting_id: id, slot_description: 'מחר ב־16:00', starts_at: tomorrowAt('16') })).ok);
+  const toBen = (await rows('meeting_time_set', id)).filter((r) => Number(r.user_id) === Number(ben.id));
+  assert.deepEqual(toBen.map((r) => [r.payload.slot, r.hold_reason]),
+    [['מחר ב־17:00', 'superseded'], ['מחר ב־16:00', null]]);
+
+  // A different day is still a different meeting.
+  const otherDay = await call('propose_meeting_slot', ben, {
+    meeting_id: id, slot_description: 'מחרתיים ב־17:00', starts_at: tomorrowAt('17', 2) });
+  assert.equal(otherDay.error.reason, 'other_day');
 });
 
 test('a coordination a room started asks nobody privately — the room is asked', async () => {

@@ -101,6 +101,7 @@ never trust a dated narrative for something you are about to act on.
 - [Where do we meet, on Zoom (fixed 2026-09-23)](#where-do-we-meet-on-zoom-fixed-2026-09-23)
 - [פנתרה: one time, four clocks (fixed 2026-09-25)](#פנתרה-one-time-four-clocks-fixed-2026-09-25)
 - [A settled time could not be changed, only cancelled (fixed 2026-09-25)](#a-settled-time-could-not-be-changed-only-cancelled-fixed-2026-09-25)
+- [Changing the hour meant asking everybody again (fixed 2026-10-03)](#changing-the-hour-meant-asking-everybody-again-fixed-2026-10-03)
 - [The room's joke got a lecture (2026-09-23)](#the-rooms-joke-got-a-lecture-2026-09-23)
 - [She called Bar את (fixed 2026-09-23)](#she-called-bar-את-fixed-2026-09-23)
 - [The poker, seven times (fixed 2026-09-23)](#the-poker-seven-times-fixed-2026-09-23)
@@ -3755,6 +3756,24 @@ clocks are in the room, and from `group_coordination_status` with the
 widened to 07:00–23:00 only on a day with nothing and said as such; a guessed
 clock is shown beside the answer and never counted; and "I'll ask privately"
 is never the answer to this question.
+
+### Changing the hour meant asking everybody again (fixed 2026-10-03)
+
+Padel Gang (meeting 57) was settled on Saturday 18:00. The room moved the
+game to 17:00 among themselves, without tagging her, and the 09:00 day-of line
+still said 18:00. Miron tagged her with "זה היום ב 17:00". The only door to a
+new time on a settled coordination was reopening, so she reopened it, put
+17:00 on the table, said she had asked everybody privately, and queued a
+`meeting_reopened` for three people. It took a second message ("פשוט תשני
+את התיאום הקיים ל17") to settle it.
+
+The owner kept tagging as the rule: if the room wants her to know, it tags
+her. What he asked for was that the fix be easy once it does: edit the hour
+of a settled coordination and nothing else. `meetings.setExactTime` already
+did exactly that for a coordination settled on a whole day or a part of one,
+through `add_group_coordination_option` and `propose_meeting_slot`; it now
+does it for an exact hour too, same day only, and the coordination stays
+settled (`rules/groups.md`).
 
 ### A settled time could not be changed, only cancelled (fixed 2026-09-25)
 

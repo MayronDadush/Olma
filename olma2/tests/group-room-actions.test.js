@@ -192,6 +192,40 @@ test('a rename in the room is the coordination\'s new name', async () => {
   assert.equal(rows[0].title, 'פוקר שישי');
 });
 
+// Padel Gang, 2026-10-03: "זה היום ב 17:00" about a game settled for 18:00
+// reopened it and asked everybody again. A new hour on the same day is now an
+// EDIT of the settled time, from the room as from the chat.
+test('a new hour said in the room moves a settled coordination, and it stays settled', async () => {
+  const { group, people, meetingId } = await started(15);
+  const startsAt = slotStart('', { hours: 50 });
+  const optionId = (await inRoom('add_group_coordination_option', group, people[0],
+    { slot_description: 'בעוד 50 שעות', starts_at: startsAt })).data.optionId;
+  assert.equal((await inRoom('settle_group_coordination', group, people[0], { option_id: optionId })).ok, true);
+
+  // An hour earlier or later, whichever keeps it on the same day in their zone.
+  const { rows: [u] } = await db.pool.query('SELECT timezone FROM users WHERE id = $1', [people[1].id]);
+  const localHour = Number(new Intl.DateTimeFormat('en-GB', {
+    timeZone: u.timezone || 'UTC', hour: '2-digit', hour12: false }).format(new Date(startsAt)));
+  const moved = new Date(new Date(startsAt).getTime() + (localHour >= 12 ? -1 : 1) * 3600_000).toISOString();
+
+  const res = await inRoom('add_group_coordination_option', group, people[1],
+    { slot_description: 'שעה אחרת', starts_at: moved });
+  assert.equal(res.ok, true, res.ok ? '' : JSON.stringify(res.error));
+  assert.equal(res.data.moved, true);
+  assert.match(res.data.hints.room, /changed/);
+
+  const { rows: [m] } = await db.pool.query(
+    'SELECT status, confirmed_slot, confirmed_start_at, reopened_at, group_time_at FROM meetings WHERE id = $1', [meetingId]);
+  assert.equal(m.status, 'confirmed');
+  assert.equal(m.reopened_at, null, 'never reopened');
+  assert.equal(new Date(m.confirmed_start_at).toISOString(), moved);
+  assert.ok(m.group_time_at, 'said in the room, so the room has heard it');
+  const { rows: told } = await db.pool.query(
+    `SELECT user_id FROM outbox WHERE kind = 'meeting_time_set' AND (payload->>'meetingId')::bigint = $1
+       AND (payload->>'moved')::boolean ORDER BY user_id`, [meetingId]);
+  assert.deepEqual(told.map((r) => Number(r.user_id)), [people[0].id, people[2].id].map(Number).sort((a, b) => a - b));
+});
+
 test('the place and the minimum can be set from the private chat too', async () => {
   const { people, meetingId } = await started(9);
   const [amit] = people;

@@ -384,7 +384,7 @@ Loads when you **Read** a file under `src/domain/group-connections.js`, `src/dom
 - **The "סגור" line names who can make it, a calendar line is said only for a SHARED event, and a base line is never said to nobody**
 - **A time the room was TOLD about and that has since left the table is said again; a time merely overtaken is not**
 - **The place is the room's own words, asked for only when nobody said one, and it rides the confirmation onto the calendar event** — and a name that says it happens on Zoom has said one (`online-place.onlinePlace`, a closed list, code only)
-- **A coordination that settles with no exact hour asks for one ONCE — the room on its "סגור" line, a private one only ONE person — and anybody in it may fill it in**, the same day only, through the tool that already means "this time"
+- **A coordination that settles with no exact hour asks for one ONCE — the room on its "סגור" line, a private one only ONE person — and anybody in it may fill it in**, the same day only, through the tool that already means "this time" — and since 2026-10-03 the same door EDITS an exact hour without reopening (`moved`)
 - **A tag is a NUMBER, and the roster hands us LIDs in the same column** — REVERSED 2026-09-27: a LID up to 15 digits IS a tag (the owner saw them arrive as names); `isRealPhone`, not `isTaggableNumber`, says whether we can write to it
 - **A number on the roster becomes a `users` row, and a row is not a person who has met her** — `status = 'pending'` is the question six readers now ask, and a LID never becomes one
 - **…and since 2026-09-24 the SHAPE is asked too, which halves what the length alone could reach** (`phone-timezone.phoneShape`) — three answers, never two, and `unknown` keeps the old behaviour so no real member is silenced

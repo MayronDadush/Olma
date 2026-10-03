@@ -312,10 +312,15 @@ function timeIsOpen(m) {
 
 // Anybody still in it gives a settled meeting its exact hour (owner,
 // 2026-09-24: asked once, "ואם הם רשמו שהוא יוכל לשנות את זה", and any
-// participant may). Deliberately narrow: only while the time is still open,
-// and only on the day it settled on. A different day is a different meeting
-// and goes back through the table; an hour on an exact time is a reschedule,
-// which nothing here offers.
+// participant may). Only on the day it settled on: a different day is a
+// different meeting and goes back through the table.
+//
+// Since 2026-10-03 it also EDITS an exact time (owner: "רק תערוך את השעה שלו,
+// רק בתנאי שהוא כבר נקבע"). Padel Gang moved its game from 18:00 to 17:00 and
+// the only door was reopening, which asks everybody again about a time the
+// room had already agreed among themselves. The meeting stays settled; only
+// its hour moves, the calendar event moves with it, and everybody else is told
+// (`moved` on the result, meeting-fanout.afterTimeSet).
 async function setExactTime(client, userId, meetingId, slotText, startsAt, now = Date.now()) {
   if (!slotText || !String(slotText).trim()) return err('invalid', 'slot description required');
   if (!hasOffset(startsAt)) return badTime('starts_at', startsAt);
@@ -328,9 +333,10 @@ async function setExactTime(client, userId, meetingId, slotText, startsAt, now =
     return err('invalid', 'the meeting is not settled yet — put the time on the table instead',
       { reason: 'not_confirmed' });
   }
-  if (!timeIsOpen(m)) {
-    return err('invalid', `the meeting already has an exact time (${m.confirmed_slot}) — this only fills in an open one`,
-      { reason: 'time_already_exact', slot: m.confirmed_slot });
+  const moved = !timeIsOpen(m);
+  if (moved && new Date(startsAt).getTime() === new Date(m.confirmed_start_at).getTime()) {
+    return err('invalid', `it is already set for that time (${m.confirmed_slot})`,
+      { reason: 'same_time', slot: m.confirmed_slot });
   }
   if (new Date(startsAt).getTime() < now) {
     return err('invalid', 'that time has already passed', { reason: 'slot_in_past' });
@@ -345,22 +351,25 @@ async function setExactTime(client, userId, meetingId, slotText, startsAt, now =
   const clash = weekdayClash('slot_description', slotText, startsAt, tz);
   if (clash) return clash;
   const text = String(slotText).trim();
-  // The hour-before stamp is cleared: it was skipped about a stand-in hour and
-  // is owed now. The day-of line stands — "today" was true either way.
+  // The hour-before stamp is cleared: it was about a stand-in hour, or about
+  // the old one, and is owed for this one. So is the room's line about the
+  // time, so a second change is heard too. The day-of line stands — "today"
+  // was true either way. Guarded on the moment it was read at, so two people
+  // changing it at once cannot both win.
   const upd = await client.query(
     `UPDATE meetings SET confirmed_slot = $2, confirmed_start_at = $3, proposed_slot = $2, proposed_start_at = $3,
             confirmed_all_day = false, confirmed_daypart = NULL, time_set_at = now(),
-            group_hour_at = NULL, updated_at = now()
-      WHERE id = $1 AND status = 'confirmed' AND (confirmed_all_day OR confirmed_daypart IS NOT NULL)`,
-    [meetingId, text, startsAt]);
+            group_hour_at = NULL, group_time_at = NULL, updated_at = now()
+      WHERE id = $1 AND status = 'confirmed' AND confirmed_start_at = $4`,
+    [meetingId, text, startsAt, m.confirmed_start_at]);
   if (upd.rowCount === 0) {
-    return err('invalid', 'somebody set the time a moment ago', { reason: 'time_already_exact' });
+    return err('invalid', 'somebody changed the time a moment ago', { reason: 'time_changed' });
   }
   await audit.record(client, userId, 'meeting.time_set', {
-    meetingId: Number(meetingId), was: m.confirmed_slot, slot: text,
+    meetingId: Number(meetingId), was: m.confirmed_slot, slot: text, moved,
   });
   return ok({
-    meetingId: Number(meetingId), slot: text, startsAt, was: m.confirmed_slot,
+    meetingId: Number(meetingId), slot: text, startsAt, was: m.confirmed_slot, moved,
     groupId: m.group_id === null ? null : Number(m.group_id),
   });
 }

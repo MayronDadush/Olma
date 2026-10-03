@@ -460,9 +460,9 @@ function askedAboutTime(brief, everyone, actor) {
   return everyone.length ? Math.min(...everyone) : null;
 }
 
-// Somebody gave a settled meeting its exact hour (meetings.setExactTime).
-// The shared calendar event is moved as its organiser — the same door
-// groupMeetings.setPlace uses — and everybody else hears it privately, with
+// Somebody gave a settled meeting its exact hour, or moved the one it had
+// (meetings.setExactTime). The shared calendar event is moved as its
+// organiser — the same door groupMeetings.setPlace uses — and everybody else hears it privately, with
 // their own calendar role, since a solo event is theirs to move. `fromRoom`:
 // said in the room, so the room has heard it and its line is stamped now.
 async function afterTimeSet(client, actor, res, { fromRoom = false, opts = {} } = {}) {
@@ -485,8 +485,9 @@ async function afterTimeSet(client, actor, res, { fromRoom = false, opts = {} } 
   if (fromRoom) {
     await client.query('UPDATE meetings SET group_time_at = now() WHERE id = $1', [meetingId]);
   }
-  // The question is answered, whoever answered it.
-  await supersedeQueuedMeetingRows(client, meetingId, ['meeting_exact_time_ask']);
+  // The question is answered, whoever answered it. An earlier change nobody
+  // has heard yet is replaced by this one rather than said before it.
+  await supersedeQueuedMeetingRows(client, meetingId, ['meeting_exact_time_ask', 'meeting_time_set']);
   const roles = await calendar.meetingCalendarRoles(client, meetingId);
   const others = await activeParticipantsExcept(client, meetingId, actor.id);
   for (const uid of others) {
@@ -495,10 +496,12 @@ async function afterTimeSet(client, actor, res, { fromRoom = false, opts = {} } 
       payload: await withRemovals(client, {
         meetingId: Number(meetingId), title: brief.title || 'meeting',
         slot: res.data.slot, was: res.data.was, byName: actorName(actor),
+        ...(res.data.moved ? { moved: true } : {}),
         calendarRole: calendarRoleFor(roles, uid), calendarUpdated,
         ...(brief.group_subject ? { groupSubject: brief.group_subject } : {}),
       }, uid),
-      idempotencyKey: `mtime:${meetingId}${roundOf(brief)}:${uid}`,
+      // The moment is in the key: a time can move more than once per settling.
+      idempotencyKey: `mtime:${meetingId}${roundOf(brief)}:${Date.parse(res.data.startsAt)}:${uid}`,
     });
   }
   res.data.calendarUpdated = calendarUpdated;
