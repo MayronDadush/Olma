@@ -454,6 +454,19 @@ const CARRYOVER_HEADING = require('../domain/carryover-heading').MATCH;
 const QUOTED_RE = /<<<([\s\S]*?)>>>/;
 const norm = (s) => String(s).replace(/\s+/g, ' ').trim();
 
+// A bare greeting is what most people send a stranger first, so two cards
+// quoting one say nothing about a leak — and once one of the two greeter
+// sessions is gone, nothing could ever clear the pair either. Live 2026-09-22
+// to 2026-10-03: issue 159, users 13 and 35 both quoting "הי"; 35's own
+// session holds it, 13's (six weeks old) no longer exists, and the row was
+// re-filed every tick. A closed list, matched whole after punctuation and
+// emoji are dropped: "הי, אפשר לקבוע תור?" is not a greeting and still pairs.
+// It excuses only the UNVERIFIABLE pair — a card shown not to quote its own
+// owner is reported whatever it says.
+const GREETING_RE = /^(?:הי+|הלו|שלום|אהלן|היוש|hi+|hey+|hello|hiya)$/;
+const isBareGreeting = (q) => GREETING_RE.test(
+  String(q).toLowerCase().replace(/[^\p{L}\s]/gu, '').replace(/\s+/g, ' ').trim());
+
 // Two cards holding identical text is SUSPICION, not proof, and on 2026-09-02
 // this fired on a pair who had each independently typed "היי" to the greeter.
 // A detector that files a leak against two people saying hello is the
@@ -468,7 +481,8 @@ const norm = (s) => String(s).replace(/\s+/g, ' ').trim();
 // pair and leaving an operator to work out which half to act on.
 //
 // null (no session left to read) is not innocence: an unverifiable pair falls
-// back to reporting the collision, exactly as before.
+// back to reporting the collision, exactly as before — unless all it quotes is
+// a bare greeting (`isBareGreeting`, above).
 async function quotesOwnWords(read, phone, quoted, cache) {
   if (!cache.has(phone)) {
     let own = null;
@@ -542,6 +556,8 @@ async function checkCarryovers(client, deps = {}) {
       reported.add(suspect.id);
     } else if (theirs === false) {
       continue; // already named on its own pass
+    } else if (quoted && isBareGreeting(quoted)) {
+      continue; // two people who said hello, and nothing left to prove otherwise
     } else {
       // The unverifiable pair, and here the order IS arbitrary — which of the
       // two the loop reaches first is not a fact about anything.
@@ -1249,7 +1265,7 @@ module.exports = {
   checkTurnContextCoverage,
   run, checkOpenclawConfig, checkModelPermissions, checkConfigApplied, makeConfigValidator,
   checkIdentityFiles, checkAgentsTokens,
-  checkCarryovers, checkOrphanAgents, checkStuckOutbox, checkUnreachableJoiners, checkInfraAgentSessions,
+  checkCarryovers, _isBareGreeting: isBareGreeting, checkOrphanAgents, checkStuckOutbox, checkUnreachableJoiners, checkInfraAgentSessions,
   checkUnansweredStrangers, STRANGER_GRACE_MS,
   UNREACHABLE_GRACE_HOURS,
   checkLegacyWorkspaceState, LEGACY_WORKSPACE_STATE,
