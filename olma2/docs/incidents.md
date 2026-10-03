@@ -434,7 +434,8 @@ last thing in the transcript, which `unanswered` re-sends verbatim.
 Found on the way and left for its own fix: every message Shimon sent in that
 minute was opened as `self_initiated`, because a delivery to him had just
 ended and `self-initiated.js` keeps its mark for 60 seconds afterwards. None
-of those messages were counted or woke anything.
+of those messages were counted or woke anything. Fixed in #702 — see "The
+minute after a delivery belonged to nobody".
 
 The hold worked on the first live test — three messages, one reply — and the
 reply was wrong: Miron asked to add a task, for his open coordinations, and
