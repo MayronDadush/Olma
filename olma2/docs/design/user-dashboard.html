@@ -1554,7 +1554,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
    with its items until the sheet reaches its own ceiling (92vh), and only then
    scrolls (owner, 2026-10-03: a shopping list scrolled inside a sheet with
    half the phone still free). fitList sets the real cap; 232px — five items —
-   is the floor it never goes under, and what a page without it shows. */
+   is the floor it never goes under, what a page without it shows, and the
+   cap again while the details are open. */
 .listbox{max-height:232px;overflow-y:auto;-webkit-overflow-scrolling:touch}
 .litem{display:flex;align-items:center;gap:11px;padding:9px 14px;position:relative}
 .litem + .litem::before{
@@ -8859,6 +8860,14 @@ button.srow:active{background:var(--bg-tint)}
   function fitList(){
     var el = $("#sList"), sh = $("#sheet");
     if(!el || !sh || !$("#sListFold").classList.contains("open")) return;
+    /* With the details open the sheet is a form again, and the list goes back
+       to five items and its own scroll, so the details stay in reach (owner,
+       2026-10-03). */
+    if(sh.classList.contains("details")){
+      el.style.maxHeight = LIST_FLOOR + "px";
+      paintCue(el, $("#listCue"));
+      return;
+    }
     var ceil = parseFloat(getComputedStyle(sh).maxHeight);
     if(!isFinite(ceil)) return;
     var room = ceil - (sh.scrollHeight - el.clientHeight);
@@ -9546,6 +9555,7 @@ button.srow:active{background:var(--bg-tint)}
     var on = !$("#sheet").classList.contains("details");
     $("#sheet").classList.toggle("details", on);
     this.setAttribute("aria-expanded", on ? "true" : "false");
+    fitListSoon();
     updateSheetCue();
   });
   $("#sShareRow").addEventListener("click", function(){

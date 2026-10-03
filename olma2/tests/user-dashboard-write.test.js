@@ -838,4 +838,7 @@ test('the sheet\'s checklist is capped by the room the sheet has left, not by fi
   assert.match(page, /var room = ceil - \(sh\.scrollHeight - el\.clientHeight\);/);
   assert.match(page, /el\.style\.maxHeight = Math\.max\(LIST_FLOOR, Math\.floor\(room\)\) \+ "px";/);
   assert.match(page, /paintCue\(\$\("#sList"\), \$\("#listCue"\)\);\n {4}fitList\(\);/, 'every repaint of the list refits it');
+  // …and with the details open it is five items again, so they stay in reach.
+  assert.match(page, /if\(sh\.classList\.contains\("details"\)\)\{\n {6}el\.style\.maxHeight = LIST_FLOOR \+ "px";/);
+  assert.match(page, /\$\("#sheet"\)\.classList\.toggle\("details", on\);\n.*\n {4}fitListSoon\(\);/);
 });
