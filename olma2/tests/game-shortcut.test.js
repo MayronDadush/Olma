@@ -183,7 +183,7 @@ test('a night already open is handed back, and the phrase asks nothing', async (
   const u = await person();
   fake.open = () => ({ ok: true, already: true, night: NIGHT, url: `${URL}#me-p1` });
   const out = await ask({ agentId: u.agent, body: 'ערב פוקר חדש' });
-  assert.equal(out.text, `🃏 יש לך כבר ערב פתוח: ערב משחק, קוד K7M2Q.\nהדף של הערב:\n${URL}#me-p1`);
+  assert.equal(out.text, `🃏 יש לך כבר ערב פתוח: ערב משחק, קוד K7M2Q.\nאפשר גם לבקש ממני לסגור אותו בלי חישוב ולפתוח חדש.\nהדף של הערב:\n${URL}#me-p1`);
   // The next message is not read as a price.
   assert.deepEqual(await ask({ agentId: u.agent, body: '50 1000' }), { ok: true, claim: false });
 });
