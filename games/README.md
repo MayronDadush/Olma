@@ -67,7 +67,7 @@ Olma can run a night from the chat: `start_game_night`, `add_buyin`,
 `my_game_status`, `report_chips`, `add_food_order`, `close_game_night`,
 `game_night_summary`. `close_game_night` (2026-10-03) closes a night with NO
 settlement, for a table that changed its mind or never counted: `closed_at`
-and `cancelled_at` both set (migration 002), no `game_results`, and every
+and `cancelled_at` both set (migration 003), no `game_results`, and every
 later write refused as `cancelled` so nothing can reopen it.
 Two locks, each enough on its own:
 
