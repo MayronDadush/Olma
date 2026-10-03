@@ -844,16 +844,7 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
       // redelivery of one tag is still one line; a message with no id falls
       // back to its moment. The plugin claims an ADDRESSED message only on
       // this reason.
-      //
-      // …except while the room is negotiating a coordination (owner,
-      // 2026-10-03): a tag that is not a QUESTION (`asks`, decided by the
-      // plugin from the body, which never comes here) may be an answer, and
-      // `answer_group_coordination_option` lets them in on it — so that turn
-      // runs, and asks them to write privately. A question still gets the
-      // fixed line: "מה הדיבור על מוצאש?" was answered by the model.
-      const negotiating = sender && sender.status === 'pending' && params.asks !== true
-        && (await require('../domain/group-meetings').currentMeeting(client, group.id))?.status === 'negotiating';
-      if (sender && sender.status === 'pending' && !negotiating) {
+      if (sender && sender.status === 'pending') {
         const wrote = await groupContext.noteMemberWrote(client, { chatId: externalId, senderE164: phone, at });
         const messageId = typeof params.messageId === 'string' && params.messageId.trim()
           ? params.messageId.trim().slice(0, 120) : null;

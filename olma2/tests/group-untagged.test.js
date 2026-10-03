@@ -222,8 +222,8 @@ test('a locked room, another room\'s agent, a stranger, a LID — none of them c
 // (jobs/groups.syncSenderGate), so their tags reach this handler for the first
 // time. The first is answered once with fixed text and claimed; the second is
 // them coming back.
-test('a tag from somebody who never wrote is claimed and answered EVERY time, with no turn, unless the room is negotiating', async () => {
-  const { group, meetingId } = await roomWithAHeldInvite(5);
+test('a tag from somebody who never wrote is claimed and answered EVERY time, with no turn', async () => {
+  const { group } = await roomWithAHeldInvite(5);
   const stranger = await makeUser(db.pool, '+972607050099');
   await db.pool.query(`UPDATE users SET status = 'pending' WHERE id = $1`, [stranger.id]);
   await db.pool.query(
@@ -234,19 +234,8 @@ test('a tag from somebody who never wrote is claimed and answered EVERY time, wi
     senderId: `${stranger.phone.replace('+', '')}@s.whatsapp.net`, addressed: true, at: Date.now(),
   });
 
-  // While the room negotiates, their tag is most likely an answer, and the
-  // room's answer tool lets them in on it (owner, 2026-10-03): the turn runs.
-  const answering = await tag('MSG-0');
-  assert.equal(answering.claim, false, 'a tag while it negotiates reaches the model');
-  assert.equal(answering.reason, undefined);
-  const asking = await write({
-    agentId: group.agent_id, externalId: group.external_id, messageId: 'MSG-Q', asks: true,
-    senderId: `${stranger.phone.replace('+', '')}@s.whatsapp.net`, addressed: true, at: Date.now(),
-  });
-  assert.equal(asking.reason, 'pending_sender', 'a QUESTION from them still gets the fixed line, with no turn');
-  assert.equal(asking.claim, true);
-  await db.pool.query(`UPDATE meetings SET status = 'cancelled' WHERE id = $1`, [meetingId]);
-
+  // Even while the room negotiates: until they write to her privately, every
+  // tag of theirs gets the fixed line (owner, 2026-10-03).
   const first = await tag('MSG-A');
   assert.deepEqual(first, {
     ok: true, addressed: true, stamped: true, sender: true, claim: true, reason: 'pending_sender', hinted: true,
@@ -260,8 +249,8 @@ test('a tag from somebody who never wrote is claimed and answered EVERY time, wi
   const { rows } = await db.pool.query(
     `SELECT kind, payload, reply_to FROM group_outbox WHERE group_id = $1 AND kind = 'sender_hint' ORDER BY id`,
     [group.id]);
-  assert.equal(rows.length, 3);
-  assert.deepEqual(rows.map((r) => r.reply_to), ['MSG-Q', 'MSG-A', 'MSG-B'], 'each line quotes the tag it answers');
+  assert.equal(rows.length, 2);
+  assert.deepEqual(rows.map((r) => r.reply_to), ['MSG-A', 'MSG-B'], 'each line quotes the tag it answers');
   const body = require('../src/domain/group-outbox').renderRow(rows[0], {});
   assert.ok(body.includes(`@${stranger.phone}`), 'it tags them, so it reaches the one person it is for');
   assert.ok(body.includes('בפרטי'));
@@ -351,10 +340,6 @@ test('the plugin claims only on an explicit claim, and the room\'s words never l
   const tagged = await handler({ sessionKey: KEY, body: `@${SELF} מה קורה`, senderId: '972526269826@s.whatsapp.net' }, {});
   assert.equal(tagged, undefined, 'two independent refusals, so a brokerd bug cannot silence a real question');
   assert.equal(sent[1].params.addressed, true);
-  assert.equal(sent[1].params.asks, undefined, 'no question mark, no question');
-  await handler({ sessionKey: KEY, body: `מה הדיבור על מוצאש? @${SELF}`, senderId: '972526269826@s.whatsapp.net' }, {});
-  assert.equal(sent.at(-1).params.asks, true, 'a question travels as one boolean');
-  assert.ok(!JSON.stringify(sent.at(-1)).includes('מוצאש'), 'and never as its words');
 });
 
 test('an ADDRESSED message is claimed only on the named reason, never on a bare claim', async () => {

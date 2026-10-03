@@ -583,11 +583,6 @@ export function buildRoomWriteHandler({ connect, sock, timeoutMs = 1500, log = t
         // tag with fixed text, and keys that answer on it.
         ...(event && typeof event.messageId === "string" && event.messageId
           ? { messageId: event.messageId.slice(0, 120) } : {}),
-        // A QUESTION, as one boolean and never the words (owner, 2026-10-03):
-        // somebody who never wrote gets the fixed "write to me privately"
-        // line for a question even while the room negotiates, and only a
-        // message that may be an ANSWER reaches the model, which counts it.
-        ...(addressed && /[?\uFF1F\u061F]/.test(body) ? { asks: true } : {}),
         addressed, at: Date.now(),
       }, { connect, sock, timeoutMs });
       // `senderShape` and `addressed` are the measurement: the llm_input line

@@ -821,36 +821,6 @@ async function participantFor(client, group, actingUser, { statuses = ['negotiat
   return ok({ meeting, meetingId: Number(meeting.id), user: actingUser });
 }
 
-// A member who never wrote to her answers in the room (owner, 2026-10-03, the
-// poker room: "תרשמי אותי למוצש" from somebody with no private chat at all).
-// Until now they were never counted in — `admitLateMembers` waits for them to
-// write — so the yes they gave in front of everybody went nowhere. Their own
-// tag on their own answer is enough: they are let in HERE, as the answer is
-// recorded, and nowhere else. Never somebody who left the coordination (that
-// is `rejoin_group_coordination`), never somebody who paused her themselves,
-// and only while it is still being negotiated. A private invite is not sent:
-// they have no agent until they write, and the room's reply asks them to.
-async function admitInRoom(client, group, actingUser) {
-  if (!group || group.state !== 'open' || !actingUser) return err('forbidden', 'not here');
-  if (actingUser.status !== 'pending' || pause.keptOutOfRooms(actingUser)) {
-    return err('forbidden', 'only somebody who has never written is let in from the room', { reason: 'not_in_it' });
-  }
-  // The same meeting `participantFor` will then look at, and only a member
-  // still on the roster.
-  const found = await roomMeetingFor(client, group, actingUser);
-  if (!found.ok) return found;
-  const meeting = found.data;
-  if (meeting.status !== 'negotiating') return err('not_found', 'nothing is being coordinated in this group right now');
-  const { rowCount } = await client.query(
-    `INSERT INTO meeting_participants (meeting_id, user_id) VALUES ($1, $2)
-     ON CONFLICT (meeting_id, user_id) DO NOTHING`, [meeting.id, actingUser.id]);
-  if (!rowCount) return err('forbidden', 'already has a row in this coordination', { reason: 'not_in_it' });
-  await audit.record(client, Number(actingUser.id), 'group.member_admitted_in_room', {
-    groupId: group.id, meetingId: Number(meeting.id),
-  });
-  return ok({ meetingId: Number(meeting.id) });
-}
-
 
 // ── One sentence a member asked the ROOM to hear ─────────────────────────────
 // Owner, 2026-09-22. Sharon wrote to Olma privately that four o'clock was a bit
@@ -1035,6 +1005,6 @@ module.exports = {
   coldInvite, COLD_INVITE_FLAG,
   roomMeetingFor,
   startCoordination, admitLateMembers, quietJoinersToAnnounce, coordinationStatus, commonHoursFor, statusOf, roomView, settle, setPlace,
-  sweepSilentPausedMembers, sweepRoomLeavers, currentMeeting, coordinatingMembers, memberLabel, participantFor, admitInRoom,
+  sweepSilentPausedMembers, sweepRoomLeavers, currentMeeting, coordinatingMembers, memberLabel, participantFor,
   relayToRoom, pendingRelay, markRelaySaid, cleanRelay, relayRoomEnabled, RELAY_MAX_CHARS, RELAY_FLAG,
 };

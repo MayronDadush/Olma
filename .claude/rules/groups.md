@@ -1061,20 +1061,12 @@ have already had to be argued for.
   which with pending rows live counts people who can never be reached
   (`incidents.md`, "The invite that would have counted people it could not
   reach").
-  **…except that since 2026-10-03 their own ANSWER in the room counts them in**
-  (owner, the poker room): `answer_group_coordination_option` calls
-  `group-meetings.admitInRoom` on a `not_in_it` refusal — a pending member on
-  the roster, not paused by request or out of invites, never one who left,
-  only while it negotiates, only for a time on the table — and the result's
-  `admittedFromRoom` hint has her confirm in one line and say the owner's
-  sentence asking them to write privately too. For the tag to reach the model
-  at all, `group_room_write` no longer claims a pending sender while the room
-  negotiates — unless the plugin says the message is a QUESTION (`asks`, a
-  question mark, one boolean and never the words), which still gets the fixed
-  line. And a tag by her LID (`@<lid>`, her number nowhere in the text) is
-  addressed to her: `addressedToHer` compares her LID too, which the plugin
-  reads off the channel's `creds.json` (`incidents.md`, "The yes nobody
-  counted, because he had never written").
+  **And since 2026-10-03 the fixed line goes to EVERY tag of theirs, an answer
+  included, until they write privately** (owner, the poker room: an answer in
+  the room is not counted from there). What had stopped it was the addressing
+  rule: a tag now arrives as `@<her LID>` with her number nowhere in the text,
+  so `addressedToHer` compares her LID too — the plugin reads it off the
+  channel's `creds.json` (`incidents.md`, "The fixed line that never went").
 
 - **A room coordination that has gone quiet is offered a way out ONCE, and
   closes quietly if nobody takes it. Somebody who answered nothing is nudged
