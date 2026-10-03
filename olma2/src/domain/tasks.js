@@ -909,11 +909,22 @@ async function deleteTask(client, ownerId, taskId) {
 // not come back empty, and the sweep that archives a task on its own is only
 // honest if the way back is complete. There is no caller for whom
 // "un-archived but still done" is a state worth having.
+//
+// An EVENT whose moment has passed comes back as a to-do. Put back as it was,
+// `sweepFinishedTasks` archives it again on the next minute's tick: the way
+// back the sweep's own message offers would be undone before anybody looked.
+// Somebody asking for a passed moment back is saying there is still something
+// to do about it (Miron, 2026-09-30: "תחזיר את זה לרשימה … אני חייב לסיים את
+// זה"), which is what a to-do is. `due_at` is kept, so it reads as overdue.
 async function unarchiveTask(client, ownerId, taskId) {
   const { rows } = await client.query(
-    `UPDATE tasks SET archived_at = NULL, status = 'open', completed_at = NULL
+    `WITH before AS (SELECT kind FROM tasks WHERE id = $1 AND owner_id = $2)
+     UPDATE tasks SET archived_at = NULL, status = 'open', completed_at = NULL,
+            kind = CASE WHEN kind = 'event' AND COALESCE(ends_at, due_at) < now()
+                        THEN 'todo' ELSE kind END
      WHERE id = $1 AND owner_id = $2
-       AND (archived_at IS NOT NULL OR status = 'done') RETURNING id, title`,
+       AND (archived_at IS NOT NULL OR status = 'done')
+     RETURNING id, title, kind, (SELECT kind FROM before) AS was`,
     [taskId, ownerId]
   );
   // `status = 'done'` is in that guard because a completed task is not
@@ -926,8 +937,9 @@ async function unarchiveTask(client, ownerId, taskId) {
   // sentence that follows it must say so — the tool result is where the
   // model reads that, at the moment it decides what to write.
   if (!rows[0]) return err('not_found', 'finished task not found', { hint: 'Nothing was restored — do not tell them it was. Say what you could not find.' });
-  await audit.record(client, ownerId, 'task.unarchived', { taskId });
-  return ok({ taskId, title: rows[0].title });
+  const becameTodo = rows[0].was === 'event' && rows[0].kind === 'todo';
+  await audit.record(client, ownerId, 'task.unarchived', { taskId, ...(becameTodo ? { becameTodo } : {}) });
+  return ok({ taskId, title: rows[0].title, ...(becameTodo ? { becameTodo } : {}) });
 }
 
 async function projectOverview(client, ownerId, projectId) {
