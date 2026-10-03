@@ -3900,6 +3900,18 @@ because a room that heard "סגור" and then "מתחילה לתאם" has been t
 wrong story. Reopened from the room itself, the member's own turn says it and
 the sweep's line is stamped as heard.
 
+**The reopen news outlived the reopening (fixed 2026-10-03).** Padel Gang:
+Yuval reopened the coordination from the room at 07:39:57 UTC, Miron settled
+it from the room at 07:40:47, and Miron's queued `meeting_reopened` row was
+picked up 1.7s later and went out — "Yuval reopened it, 17:00 or 18:00?" —
+a second ahead of the confirmation of the 17:00 he had just chosen himself.
+Reopening already withdrew a queued `meeting_confirmed`; settling did not
+withdraw a queued `meeting_reopened`, only invites, proposals and nudges.
+`meeting-fanout.supersedeQueuedMeetingRows` now adds it wherever it adds the
+nudge, i.e. on every call that means the coordination ended. What is left is
+a row the worker had already locked before the settle committed, and the
+seconds a model spends composing it; no queue check reaches either.
+
 ### The room's joke got a lecture (2026-09-23)
 
 Meeting 42 had just been confirmed in פחם הסעות. At 12:13 UTC Bar tagged
