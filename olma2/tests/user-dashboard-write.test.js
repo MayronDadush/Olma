@@ -828,3 +828,14 @@ test('a share refused because the friend switched sharing off says so, and sends
     `SELECT count(*)::int AS n FROM shares WHERE viewer_id = $1`, [friend.id]);
   assert.equal(n.n, 0);
 });
+
+// A long checklist GROWS the sheet until the sheet's own ceiling, and only
+// then scrolls (owner, 2026-10-03) — it used to scroll at five items with half
+// the phone free. The cap is measured off the sheet, never an item count.
+test('the sheet\'s checklist is capped by the room the sheet has left, not by five items', () => {
+  const page = require('node:fs').readFileSync(
+    require('node:path').join(__dirname, '..', 'docs', 'design', 'user-dashboard.html'), 'utf8');
+  assert.match(page, /var room = ceil - \(sh\.scrollHeight - el\.clientHeight\);/);
+  assert.match(page, /el\.style\.maxHeight = Math\.max\(LIST_FLOOR, Math\.floor\(room\)\) \+ "px";/);
+  assert.match(page, /paintCue\(\$\("#sList"\), \$\("#listCue"\)\);\n {4}fitList\(\);/, 'every repaint of the list refits it');
+});
