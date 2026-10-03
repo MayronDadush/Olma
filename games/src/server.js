@@ -3,7 +3,7 @@
 //   GET  /night/<token>                the page
 //   *    /night/<token>/api/<action>   its API (state, events, write, next)
 //   GET  /g/<code>                     the invite's short link, into a chat with Olma
-// Everything else (/health, POST /api/nights, /api/tool, /api/open, /api/join) is for the box itself: Caddy
+// Everything else (/health, POST /api/nights, /api/tool, /api/open, /api/join, /api/mine) is for the box itself: Caddy
 // never routes it, and the handler also refuses anything that arrived through
 // a proxy, so a Caddyfile mistake cannot open night creation to the world.
 const http = require('http');
@@ -14,7 +14,7 @@ const { Refused } = require('./validate');
 const { runTool } = require('./tools');
 const { resolveIdentity } = require('./identity');
 const { announceClose } = require('./announce');
-const { openFor, joinByCode, CODE_RE } = require('./join');
+const { openFor, joinByCode, nightsFor, CODE_RE } = require('./join');
 
 const PAGE_FILE = path.join(__dirname, '..', 'public', 'night.html');
 const MAX_BODY = 32 * 1024;
@@ -151,6 +151,12 @@ function createServer({ pool, publicBase = '', page, identify = resolveIdentity,
       // no model in between (olma2 src/domain/game-shortcut.js). brokerd has
       // already resolved the sender, so the user id is its word — which is
       // why, like the two routes above, nothing but the box may call these.
+      // Where their nights stand, for Olma's turn context. Same door, same
+      // reason: brokerd has resolved the person and nothing else may ask.
+      if (p === '/api/mine' && req.method === 'POST') {
+        if (!isLocal(req)) return send(res, 404, { error: 'not_found' });
+        return send(res, 200, await nightsFor(pool, await readBody(req)));
+      }
       if ((p === '/api/open' || p === '/api/join') && req.method === 'POST') {
         if (!isLocal(req)) return send(res, 404, { error: 'not_found' });
         const body = await readBody(req);

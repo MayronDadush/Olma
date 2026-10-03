@@ -241,7 +241,7 @@ async function openTurnImplicitly(client, user, { firstTool } = {}) {
 // turn by every user, for fields that appear on a handful of turns in a
 // person's life. The budget rule (CLAUDE.md, "Doctrine"): guidance about a
 // RESULT rides the result.
-function turnHints({ offerResume, languageNudge, recentReminders, recentMeetings, rooms, planHeadline, replyTarget, genderForms, thanksOnly, thanksAfterQuestion, stoppedReminders, meetingExit, chaseUntil, chaseNamedHour, openList, remindAsk, today }) {
+function turnHints({ offerResume, languageNudge, recentReminders, recentMeetings, rooms, gameNights, planHeadline, replyTarget, genderForms, thanksOnly, thanksAfterQuestion, stoppedReminders, meetingExit, chaseUntil, chaseNamedHour, openList, remindAsk, today }) {
   const hints = {};
   if (today) {
     // Rides beside the block on every turn it is on, because a block the
@@ -459,6 +459,12 @@ function turnHints({ offerResume, languageNudge, recentReminders, recentMeetings
       + 'cannot coordinate yet. `coordination` is what a room is arranging now: with `inIt`, '
       + 'get_meeting_status on its meetingId is the truth; without it they are not part of that '
       + 'one — say so plainly, never that there is no group.';
+  }
+  if (gameNights) {
+    hints.gameNights = 'Their game nights from the last 3 days, where each stands NOW — the COMPLETE list, newer than '
+      + 'anything this conversation says about them. `settled`: closed with a settlement already sent to them, '
+      + 'so asked to close it, say it is already closed and offer a new one (start_game_night). `open`: '
+      + 'close_game_night can close it without a settlement. Never say a night cannot be closed.';
   }
   if (planHeadline) {
     hints.planHeadline = 'The headline of today\'s overnight plan; the full plan is in your USER.md '
@@ -708,6 +714,13 @@ async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, 
     } : {}),
   }));
 
+  // Their game nights, where each stands NOW (games/, `gameNightsOf`). Same
+  // shape as recentMeetings: a settlement goes out on the raw pipe, so the
+  // session never sees a night close, and on 2026-10-03 Miron was told twice,
+  // from her own earlier words, that a night closed half an hour before could
+  // not be closed. Only for somebody holding the pack.
+  const gameNights = await gameNightsOf(client, user.id);
+
   // The overnight plan's headline, through the same every-turn channel as
   // recentReminders — and for the same reason: USER.md is injected on
   // session START only (contextInjection: continuation-skip), so a plan
@@ -914,11 +927,12 @@ async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, 
       ...(policyNotice ? { policyNotice } : {}),
       ...(recentMeetings.length ? { recentMeetings } : {}),
       ...(rooms.length ? { rooms } : {}),
+      ...(gameNights ? { gameNights } : {}),
       ...(planHeadline ? { planHeadline } : {}),
       ...(replyTarget ? { replyTarget: true } : {}),
       ...(genderForms ? { genderForms } : {}),
       ...(today ? { today } : {}),
-      ...turnHints({ offerResume, languageNudge, recentReminders, recentMeetings, rooms, planHeadline, replyTarget, genderForms, thanksOnly, thanksAfterQuestion, stoppedReminders, meetingExit, chaseUntil, chaseNamedHour, openList, remindAsk, today }),
+      ...turnHints({ offerResume, languageNudge, recentReminders, recentMeetings, rooms, gameNights, planHeadline, replyTarget, genderForms, thanksOnly, thanksAfterQuestion, stoppedReminders, meetingExit, chaseUntil, chaseNamedHour, openList, remindAsk, today }),
     };
   }
   const shouldNotice = await quota.shouldSendBlockNotice(client, user.id);
@@ -1034,6 +1048,31 @@ async function todayBlock(client, userId, now = null) {
   };
 }
 
+// → the person's nights from gamesd, or null: no pack, none in the last
+// three days, or gamesd unreadable. Unreadable is null and never an empty
+// list — "no night" would be a claim the block cannot back. Short, because
+// it sits inside the plugin's wait for the turn context.
+const GAMES_TIMEOUT_MS = 300;
+async function gameNightsOf(client, userId) {
+  const { rowCount } = await client.query(
+    `SELECT 1 FROM user_packs WHERE user_id = $1 AND pack = 'games'`, [userId]);
+  if (!rowCount) return null;
+  let r;
+  try {
+    r = await require('../channels/gamesd').mine({ userId }, { timeoutMs: GAMES_TIMEOUT_MS });
+  } catch {
+    return null;
+  }
+  if (!r || !r.ok || !Array.isArray(r.nights) || !r.nights.length) return null;
+  return r.nights.slice(0, 3).map((n) => ({
+    code: n.code,
+    name: `<<<${String(n.name || '').slice(0, 60)}>>>`,
+    status: n.status,
+    ...(n.closedAt ? { closedAt: n.closedAt } : {}),
+    buyins: Number(n.buyins) || 0, players: Number(n.players) || 0, reported: Number(n.reported) || 0,
+  }));
+}
+
 // The opening as prompt text, for the people whose turn is opened by the
 // gateway plugin instead of by a tool call. The JSON is rendered exactly as
 // a tool result would be (compact, `OK ` prefix) so the model reads the
@@ -1047,6 +1086,6 @@ function renderContext(data) {
 
 module.exports = {
   openTurnImplicitly, openFromGateway, openRecord, isEnabledFor, coveredBy, FLAG,
-  contextEnabledFor, CONTEXT_FLAG, advise, turnHints, renderContext, CONTEXT_HEADER,
+  contextEnabledFor, CONTEXT_FLAG, advise, turnHints, renderContext, CONTEXT_HEADER, gameNightsOf,
   ADVISE_COLUMNS,
 };

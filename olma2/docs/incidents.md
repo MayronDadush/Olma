@@ -64,6 +64,7 @@ never trust a dated narrative for something you are about to act on.
 - [Two paragraphs where two sentences would do (fixed 2026-09-20)](#two-paragraphs-where-two-sentences-would-do-fixed-2026-09-20)
 - [The link came back on every coordination message (2026-09-24)](#the-link-came-back-on-every-coordination-message-2026-09-24)
 - [The slot that was already closed (fixed 2026-09-20)](#the-slot-that-was-already-closed-fixed-2026-09-20)
+- [The night that had already settled (fixed 2026-10-03)](#the-night-that-had-already-settled-fixed-2026-10-03)
 - [Introduced twice, by the invite and the greeter (fixed 2026-10-01)](#introduced-twice-by-the-invite-and-the-greeter-fixed-2026-10-01)
 - [The fixed line that never went (fixed 2026-10-03)](#the-fixed-line-that-never-went-fixed-2026-10-03)
 - [The poker count was the people asked (fixed 2026-10-01)](#the-poker-count-was-the-people-asked-fixed-2026-10-01)
@@ -2454,6 +2455,26 @@ while it is still being negotiated**, not only on the invite it shipped with
 on 2026-09-15 — by the time a time is added or declined, that first link is
 far above whatever the person is reading. A confirmation and a no-match still
 carry none, because there is nothing left on the page to mark.
+
+
+
+### The night that had already settled (fixed 2026-10-03)
+
+Miron, night 8CACT. Earlier that morning he asked her to close the night and
+open a new one, and she refused because not everybody had reported chips
+(fixed the same day: `close_game_night`, which asks first). By 11:29:54 UTC
+everybody had reported, the night settled, and the summary went out at
+11:30:18 as outbox `game_summary` on the RAW pipe. At 12:02 he asked again.
+She made no tool call and repeated her own earlier refusal from the
+session's memory: the session had never seen the night close, because a raw
+send does not enter it. Same shape as "The slot that was already closed".
+
+Fix: gamesd answers `/api/mine` (a person's nights from the last three days,
+each `open`, `settled` or `closed_without_settlement`), and `turn.advise`
+carries it as `gameNights` on every turn of a pack holder, with a hint that a
+settled night is already closed and a new one is `start_game_night`.
+Unreadable gamesd is no block, never an empty list. `close_game_night` on a
+closed night now says the same in its own `next`.
 
 
 

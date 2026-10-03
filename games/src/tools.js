@@ -240,7 +240,12 @@ const TOOLS = {
   // `confirm: true` with no question before it is answered as a first call.
   async close_game_night({ pool, user, onState }, a) {
     const n = await pickNight(pool, user, a.night_code);
-    if (n.closed_at) return { night_code: n.code, closed: false, already: n.cancelled_at ? 'already closed without a settlement' : 'closed with a settlement' };
+    if (n.closed_at) {
+      return {
+        night_code: n.code, closed: false, already: n.cancelled_at ? 'already closed without a settlement' : 'closed with a settlement',
+        next: 'Tell them it is already closed and ask whether to open a new night; start_game_night opens one. The old night stays on its page.',
+      };
+    }
     const key = `${user.id}:${n.id}`;
     const askedAt = closeAsks.get(key);
     if (a.confirm !== true || !askedAt || Date.now() - askedAt > CONFIRM_TTL_MS) {

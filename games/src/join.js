@@ -123,4 +123,33 @@ async function joinByCode(pool, body = {}, { publicBase = '', onState } = {}) {
   return { ok: false, error: 'name_taken', name: names[0], night: describe(n) };
 }
 
-module.exports = { openFor, joinByCode, personalUrl, CODE_RE };
+// → { ok, nights: [...] }: where each of their nights from the last three
+// days stands NOW, newest first, for Olma's turn context (olma2
+// domain/turn.advise). A settlement goes out on the raw pipe, so the model's
+// session never sees a night close; on 2026-10-03 Miron's had closed half an
+// hour earlier and she told him twice, from her own earlier words, that she
+// could not close it. Facts only: no names, no amounts, no link.
+async function nightsFor(pool, body = {}) {
+  const userId = userIdOf(body.userId);
+  if (!userId) return { ok: false, error: 'bad_user' };
+  const { rows } = await pool.query(
+    `SELECT n.code, n.name, n.created_at, n.closed_at, n.cancelled_at,
+            (SELECT coalesce(sum(b.n), 0)::float FROM buyins b WHERE b.night_id = n.id) AS buyins,
+            (SELECT count(*)::int FROM players q WHERE q.night_id = n.id) AS players,
+            (SELECT count(*)::int FROM cashouts c WHERE c.night_id = n.id) AS reported
+       FROM nights n
+      WHERE n.created_at > now() - ${RECENT}
+        AND EXISTS (SELECT 1 FROM players p WHERE p.night_id = n.id AND p.user_id = $1)
+      ORDER BY n.created_at DESC LIMIT 3`, [userId]);
+  return {
+    ok: true,
+    nights: rows.map(n => ({
+      code: n.code, name: n.name,
+      status: n.cancelled_at ? 'closed_without_settlement' : n.closed_at ? 'settled' : 'open',
+      openedAt: n.created_at, ...(n.closed_at ? { closedAt: n.closed_at } : {}),
+      buyins: Number(n.buyins), players: n.players, reported: n.reported,
+    })),
+  };
+}
+
+module.exports = { openFor, joinByCode, nightsFor, personalUrl, CODE_RE };
