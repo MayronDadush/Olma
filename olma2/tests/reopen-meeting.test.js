@@ -128,6 +128,38 @@ test('it can settle a second time, and that confirmation is not taken for the fi
   assert.deepEqual(rows.map((r) => r.slot), ['שבת 12:00', 'ראשון 15:00']);
 });
 
+// Padel Gang, 2026-10-03: Yuval reopened it from the room at 07:39:57, Miron
+// settled it from the room at 07:40:47, and Miron's queued "Yuval reopened it —
+// 17:00 or 18:00?" went out 1.7s after the settle, ahead of the confirmation.
+test('settling again withdraws the reopen news still on its way, and nothing else', async () => {
+  const people = await trio();
+  const [a, b, c] = people;
+  const { id, sun } = await settled(people);
+  const other = await settled(await trio());
+  await tx((cl) => meetingFanout.reopenAndTell(cl, c, id));
+  const [opener] = (await db.pool.query(
+    'SELECT * FROM users WHERE id = (SELECT initiator_id FROM meetings WHERE id = $1)', [other.id])).rows;
+  await tx((cl) => meetingFanout.reopenAndTell(cl, opener, other.id));
+
+  for (const u of [a, b]) await tx((cl) => options.answer(cl, u.id, id, sun.id, 'y'));
+  const opt = (await tx((cl) => options.list(cl, id))).find((o) => o.id === sun.id);
+  const res = await tx((cl) => options.confirmOn(cl, id, { ...opt, slot_text: opt.slotText, starts_at: opt.startsAt }, a.id));
+  assert.ok(res.confirmed);
+  await tx((cl) => meetingFanout.afterSettled(cl, id, { ok: true, data: res }, { byName: 'Ann', groupSubject: 'Padel' }));
+
+  const { rows } = await db.pool.query(
+    `SELECT (payload->>'meetingId')::bigint AS m, kind, sent_at IS NOT NULL AS done, hold_reason
+       FROM outbox WHERE kind IN ('meeting_reopened', 'meeting_confirmed')
+        AND (payload->>'meetingId')::bigint IN ($1, $2) ORDER BY id`, [id, other.id]);
+  const reopened = rows.filter((r) => Number(r.m) === id && r.kind === 'meeting_reopened');
+  assert.equal(reopened.length, 2);
+  assert.ok(reopened.every((r) => r.done && r.hold_reason === 'superseded'), JSON.stringify(reopened));
+  assert.ok(rows.filter((r) => Number(r.m) === id && r.kind === 'meeting_confirmed').every((r) => !r.done),
+    'the confirmation is what they hear');
+  assert.ok(rows.filter((r) => Number(r.m) === other.id && r.kind === 'meeting_reopened').every((r) => !r.done),
+    'another coordination\'s reopening is untouched');
+});
+
 test('only a settled one that has not started, and only by somebody still in it', async () => {
   const people = await trio();
   const [a, b, c] = people;

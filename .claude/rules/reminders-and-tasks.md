@@ -349,6 +349,9 @@ title means this file. Grep the title, not the filename.
     room's once-per-coordination lines go through `jobs/groups.idempotencyKeyFor`.
     A key naming only the meeting swallows the second "סגור" in silence.
     Any new once-per-settle message has to take the same suffix.
+  - **Settling again withdraws the reopen news still queued**
+    (`meeting-fanout.supersedeQueuedMeetingRows`), as reopening withdraws a
+    queued confirmation — "17:00 or 18:00?" a second after 17:00 was chosen.
   - `incidents.md`, "A settled time could not be changed, only cancelled".
 
 - **A time ADDED to it rides the same thing, as long as that thing has not gone
