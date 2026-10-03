@@ -443,6 +443,19 @@ title means this file. Grep the title, not the filename.
   its rows before widening the list. Inert until the gateway restarts, like
   every plugin change.
 
+- **A NO_REPLY the gateway asks again is not overruled by the answer**
+  (2026-10-03; `incidents.md`, "The silence the gateway asked again"). A turn
+  that ends on tool calls and then only the sentinel gets a second, isolated
+  model call from the gateway ("settled post-tool turn lacked a final
+  answer"), and its text used to go out. 4 of 12 did in a week, one of them a
+  false "כל המשתתפים בתוך" in a room. The plugin remembers a run whose every
+  assistant text was `NO_REPLY` (`llm_output`, which the finalization never
+  fires) and the gate cancels text carrying that `runId`, filed as
+  `reply.gated` kind `after_silence`. **An EMPTY answer is not a decision**
+  and its retry still goes out. Keyed by run, two minutes, never cleared at
+  `agent_end`. Inert until the gateway restarts, and the trace's `silence`
+  lines are how to check the `runId` really matches on delivery.
+
 - **The last tier's missing input was not a pattern, it was the READER**
   (2026-09-22; `incidents.md`, "The gate had no idea who was reading"). The
   residue the measurement above left behind was English prose with no tell of
