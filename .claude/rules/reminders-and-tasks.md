@@ -908,7 +908,7 @@ title means this file. Grep the title, not the filename.
   - **The stop is the words every follow-up now carries, "די להזכיר"**, which
     the gateway hook's `stopRemindersOnly` already reads; "סיימתי" completes
     the task and ends the series with it.
-  - **The page's "🔁 נודניק" chip is the same request** (`setTaskReminder`
+  - **The page's "נודניק" card (beside "רגילה", under the reminder row) is the same request** (`setTaskReminder`
     with `nudge: true`; `chase: true` is its old name) and accepts every
     shape, on every task, dated or not. It sends no hour and no shape; the
     page only WORDS the shape from the same date (`nagShape`), and a daily

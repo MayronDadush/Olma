@@ -354,13 +354,19 @@ test('the page builds a moment for a dateless nudge instead of dropping the call
 test('the page offers the nudge on every task and sends it with no hour', () => {
   const page = require('node:fs').readFileSync(
     require('node:path').join(__dirname, '..', 'docs', 'design', 'user-dashboard.html'), 'utf8');
-  assert.match(page, /data-rep="until" data-i18n="rep\.until"/);
+  // A KIND of reminder, two cards under its row — not a chip among the
+  // repeats, where it read as one more rhythm (owner, 2026-10-03, option ב).
+  assert.match(page, /data-kind="plain"/);
+  assert.match(page, /data-kind="nag"/);
+  assert.doesNotMatch(page, /data-rep="until"/, 'the nudge left the repeat chips');
+  assert.match(page, /editing\.rep = nagging \? "until"/);
+  assert.match(page, /\$\("#sKindWrap"\)\.hidden = !x\.rem;/);
   assert.doesNotMatch(page, /untilChip\.hidden/, 'an undated task gets the three-day nudge');
   assert.match(page, /if\(x\.rep === "until"\)\{ API\.send\("setTaskReminder", \{taskId:id, on:true, nudge:true\}\); return; \}/);
   // A weekly chase ("תזכיר לי X" with no when) also carries `until`, and it is
   // not a nudge.
   assert.match(page, /rep:\(x\.reminder && x\.reminder\.until && x\.reminder\.repeat === "daily"\) \? "until" : repShape/);
-  for (const key of ['rep.until', 'rep.untilVal', 'rep.untilCap', 'rep.nagTag',
+  for (const key of ['kind.plain', 'kind.plainSub', 'kind.nag', 'kind.nagSub', 'rep.untilVal', 'rep.untilCap', 'rep.nagTag',
     'sheet.nagNear', 'sheet.nagFar', 'sheet.nagCap']) {
     assert.equal(page.split(`"${key}":`).length - 1, 2, `${key} in both languages`);
   }

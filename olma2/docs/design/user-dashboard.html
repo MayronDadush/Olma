@@ -853,6 +853,15 @@ button.row:active{background:var(--bg-tint)}
 .chip[aria-pressed="true"]{background:var(--accent);color:var(--on-accent)}
 .chip:active{transform:scale(.95)}
 .chip.mini{font-size:12.5px;padding:5px 11px}
+/* The reminder's KIND, two cards under its row (#sKindWrap). */
+.nagkind{padding:0 14px 12px;padding-inline-start:62px;display:grid;gap:8px}
+.nagk-row{flex-wrap:nowrap}
+.chip.nagk{flex:1 1 0;min-width:0;border-radius:14px;padding:9px 10px;display:grid;
+  grid-template-columns:auto 1fr;column-gap:6px;align-items:center;text-align:start}
+.chip.nagk svg{width:16px;height:16px;grid-row:1 / span 2}
+.nagk-t{font-size:13.5px;font-weight:700}
+.nagk-s{font-size:11.5px;font-weight:500;opacity:.8}
+.nagk-say{line-height:1.45}
 /* "שעה מדויקת" says the hour once there is one — the chip IS the value, so
    there is no second pill on a line below carrying a bare number nobody can
    tell is a button (the owner, 2026-09-22). The clock is the part that says
@@ -4249,6 +4258,23 @@ button.srow:active{background:var(--bg-tint)}
         <span class="sval slock"><svg><use href="#i-lock"/></svg><span data-i18n="sheet.afterName"></span></span></span>
       <button class="switch" role="switch" aria-checked="false" id="sRemind" data-i18n-label="sheet.remind"></button>
     </div>
+    <!-- Which KIND of reminder (owner, 2026-10-03, option ב): a regular one,
+         once at its time, or a nudge until it is done. Two cards rather than a
+         chip among the repeats, because a nudge is a kind of reminder, not a
+         kind of repeat — under "חזרה" it read as one more rhythm. Shown only
+         while the reminder is on; the line under it says what will happen,
+         worded off the same date the server reads (nagShape). -->
+    <div class="nagkind" id="sKindWrap" hidden>
+      <div class="chips nagk-row" id="sKind">
+        <button class="chip nagk" aria-pressed="true" data-kind="plain">
+          <svg><use href="#i-bell"/></svg><span class="nagk-t" data-i18n="kind.plain"></span>
+          <span class="nagk-s" data-i18n="kind.plainSub"></span></button>
+        <button class="chip nagk" aria-pressed="false" data-kind="nag">
+          <svg><use href="#i-repeat"/></svg><span class="nagk-t" data-i18n="kind.nag"></span>
+          <span class="nagk-s" data-i18n="kind.nagSub"></span></button>
+      </div>
+      <div class="row-sub nagk-say" id="sChaseSub" hidden></div>
+    </div>
     <div class="fold" id="sRemindFold"><div><div class="spad">
       <div class="chips" id="sOffset">
         <!-- data-remoff, not data-off: #sSharePeople already uses data-off for
@@ -4263,7 +4289,6 @@ button.srow:active{background:var(--bg-tint)}
            date has no before. The same fold then asks the only thing a
            standing nudge actually needs: which hour. Same clock wheel as
            everywhere else on the page. -->
-      <div class="row-sub" id="sChaseSub" hidden></div>
       <span class="vseg" id="sRemindAtSeg" hidden>
         <button class="vseg-b set" id="sRemindAtChip" data-i18n-label="sheet.remindAt">
           <svg class="vic"><use href="#i-clock"/></svg><span id="sRemindAtVal"></span></button>
@@ -4280,13 +4305,6 @@ button.srow:active{background:var(--bg-tint)}
         <button class="chip mini" aria-pressed="false" data-rep="day" data-i18n="rep.day"></button>
         <button class="chip mini" aria-pressed="false" data-rep="week" data-i18n="rep.week"></button>
         <button class="chip mini" aria-pressed="false" data-rep="month" data-i18n="rep.month"></button>
-        <!-- The NUDGE ("נודניק", 2026-10-03): reminders.startChase, the same
-             one a person gets in chat, stopping the moment it is done. Its
-             SHAPE comes from the task's date — up to three a day within three
-             days of it, once a day before that and three on the last day, and
-             with no date (or a passed one) three a day for three days and then
-             one question whether to go on. So it is offered on every task. -->
-        <button class="chip mini" aria-pressed="false" data-rep="until" data-i18n="rep.until"></button>
       </div>
     </div></div></div>
     <!-- "Add to calendar" is a promise about a specific calendar, and with
@@ -5677,7 +5695,8 @@ button.srow:active{background:var(--bg-tint)}
       "cal.showIn":"להצגה ביומן",
       "off.at":"בזמן","off.m10":"10 דק׳ לפני","off.h1":"שעה לפני","off.d1":"יום לפני",
       "sheet.remindAt":"שעת התזכורת","sheet.remindAtVal":"להזכיר ב־{time}",
-      "rep.once":"ללא","rep.day":"כל יום","rep.week":"כל שבוע","rep.month":"כל חודש","rep.until":"🔁 נודניק",
+      "rep.once":"ללא","rep.day":"כל יום","rep.week":"כל שבוע","rep.month":"כל חודש",
+      "kind.plain":"רגילה","kind.plainSub":"פעם אחת, בזמן","kind.nag":"נודניק","kind.nagSub":"עד שזה בוצע",
       "rep.untilVal":"נודניק עד {date}","rep.untilCap":"נודניק ל־3 ימים","rep.nagTag":"נודניק",
       "sheet.nagNear":"עד 3 פעמים ביום עד התאריך. נעצר ברגע שזה בוצע",
       "sheet.nagFar":"פעם ביום, ועד 3 פעמים ביום האחרון. נעצר ברגע שזה בוצע",
@@ -6061,7 +6080,8 @@ button.srow:active{background:var(--bg-tint)}
       "cal.showIn":"Show in calendar",
       "off.at":"On time","off.m10":"10 min before","off.h1":"1 hour before","off.d1":"1 day before",
       "sheet.remindAt":"Reminder time","sheet.remindAtVal":"Remind at {time}",
-      "rep.once":"Never","rep.day":"Every day","rep.week":"Every week","rep.month":"Every month","rep.until":"🔁 Nudge",
+      "rep.once":"Never","rep.day":"Every day","rep.week":"Every week","rep.month":"Every month",
+      "kind.plain":"Regular","kind.plainSub":"Once, on time","kind.nag":"Nudge","kind.nagSub":"Until it is done",
       "rep.untilVal":"Nudge until {date}","rep.untilCap":"Nudge for 3 days","rep.nagTag":"Nudge",
       "sheet.nagNear":"Up to 3 times a day until the date. Stops the moment it is done",
       "sheet.nagFar":"Once a day, and up to 3 times on the last day. Stops the moment it is done",
@@ -8933,7 +8953,10 @@ button.srow:active{background:var(--bg-tint)}
     var off = $$("#sOffset .chip").filter(function(c){ return c.getAttribute("aria-pressed") === "true"; })[0];
     editing.remOff = off ? +off.dataset.remoff : 0;
     var chosen = $$("#sRepeat .chip").filter(function(c){ return c.getAttribute("aria-pressed") === "true"; })[0];
-    editing.rep = chosen ? chosen.dataset.rep : "none";
+    /* A nudge is the KIND card, not a repeat chip; inside, it is still the
+       "until" shape every reader of `rep` already knows. */
+    var nagging = $('#sKind [data-kind="nag"]').getAttribute("aria-pressed") === "true";
+    editing.rep = nagging ? "until" : (chosen ? chosen.dataset.rep : "none");
     syncSheetRows();
     var firstSave = false;
     if(isNew){
@@ -9113,8 +9136,9 @@ button.srow:active{background:var(--bg-tint)}
        kind, so it no longer goes with the date (it did while it was "every
        day until the date"). */
     var chosen = $$("#sRepeat .chip").filter(function(c){ return c.getAttribute("aria-pressed") === "true"; })[0];
-    var chosenRep = chosen ? chosen.dataset.rep : "none";
-    $("#sRepeatRow").hidden = !(chosenRep !== "none" || shown.rep);
+    var chosenRep = x.rep === "until" ? "until" : (chosen ? chosen.dataset.rep : "none");
+    /* A nudge has its own rhythm, so the repeat row goes while it is chosen. */
+    $("#sRepeatRow").hidden = chosenRep === "until" || !(chosenRep !== "none" || shown.rep);
     sayText($("#sRepeatVal"), chosenRep === "until" ? nagText(x)
       : t("rep." + ({none:"once", day:"day", week:"week", month:"month"}[chosenRep] || "once")));
     /* ── reminder ── one sentence: who writes, where, and the part that is a
@@ -9131,6 +9155,11 @@ button.srow:active{background:var(--bg-tint)}
       : t("sheet.remAtShort", {time:x.remAt || remDefaultAt()});
     $("#sRemInl").setAttribute("aria-expanded", String($("#sRemindFold").classList.contains("open")));
     $("#sOffset").hidden = !dated || chasing;
+    $("#sKindWrap").hidden = !x.rem;
+    $$("#sKind .chip").forEach(function(c){ c.setAttribute("aria-pressed", (c.dataset.kind === "nag") === chasing ? "true" : "false"); });
+    /* The kind card already says "נודניק": the inline choice after the
+       channel would only say it again. */
+    $("#sRemInl").hidden = chasing;
     $("#sChaseSub").hidden = !chasing;
     if(chasing) $("#sChaseSub").textContent = t({Cap:"sheet.nagCap", Near:"sheet.nagNear", Far:"sheet.nagFar"}[nagShape(x)]);
     /* A nudge's hour is the server's, like its shape — offering a clock under
