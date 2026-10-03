@@ -294,10 +294,17 @@ async function endAllSessions(client, userId) {
 }
 
 // Rows nobody can use any more. Called from the retention sweep, not on a
-// timer of its own — an expired row is inert, this is hygiene.
+// timer of its own — an expired row is inert, this is hygiene. It was written
+// on 2026-09-04 and only wired in on 2026-10-03, so for a month nothing ran it.
+//
+// A spent or expired link is kept a WEEK, not a day, because it is still read:
+// the day-one 22h check-in (jobs/checkin.js) asks "has this person ever had a
+// link?" between their 22nd and 26th hour. A link they opened in their first
+// hour would be gone by then under a one-day grace, and the person who already
+// has their page would be pitched it again.
 async function purgeExpired(client) {
   const links = await client.query(
-    `DELETE FROM magic_links WHERE expires_at < now() - interval '1 day' OR used_at < now() - interval '1 day'`);
+    `DELETE FROM magic_links WHERE expires_at < now() - interval '7 days' OR used_at < now() - interval '7 days'`);
   const sessions = await client.query(
     `DELETE FROM dashboard_sessions
       WHERE last_seen_at < now() - ($1 || ' days')::interval
