@@ -3991,13 +3991,10 @@ button.srow:active{background:var(--bg-tint)}
             </div>
             <button class="switch" role="switch" aria-checked="false" id="taskCalSwitch" data-i18n-label="me.taskCal"></button>
           </div>
-          <div class="row no-icon">
-            <div class="row-txt">
-              <div class="row-title" data-i18n="me.nudge"></div>
-              <div class="row-sub" data-i18n="me.nudgeSub"></div>
-            </div>
-            <button class="switch" role="switch" aria-checked="false" id="nudgeSwitch" data-i18n-label="me.nudge"></button>
-          </div>
+          <!-- "לנדנד לי", the standing switch, is gone (owner, 2026-10-03): the
+               nudge is chosen per task now ("🔁 נודניק" in the sheet), and two
+               things called nudging on one page read as one. Nobody had it on;
+               users.reminder_nudge and its write stay for the chat. -->
         </div></div></div>
 
         <!-- What she knows. Closed by default like every row here: it is a list
@@ -5626,9 +5623,9 @@ button.srow:active{background:var(--bg-tint)}
       "me.scope.summary":"תקציר","me.scope.today":"רק היום","me.scope.full":"הכול",
       "me.language":"השפה שלך בשיחה",
       "me.taskCal":"משימות ליומן","me.taskCalSub":"משימות חדשות דרך עולמה שיש להן תאריך ושעה מתווספות ליומן אוטומטית",
-      "me.nudge":"לנדנד לי","me.nudgeSub":"תזכורת שלא סימנת שבוצעה תחזור שוב באותו יום ולמחרת. כבוי — פעם אחת, בשעה שביקשת",
+      
       "me.knows":"מה עולמה זוכרת","me.tasksRow":"משימות",
-      "me.sum.quiet":"{days} בשקט","me.sum.cal.on":"ליומן","me.sum.cal.off":"לא ליומן","me.sum.nudge.on":"עם נדנוד","me.sum.nudge.off":"בלי נדנוד",
+      "me.sum.quiet":"{days} בשקט","me.sum.cal.on":"ליומן","me.sum.cal.off":"לא ליומן",
       "me.facts.n0":"עוד לא נשמר כלום","me.facts.n1":"דבר אחד","me.facts.nN":"{n} דברים",
       "me.fqTitle":"לספר לה עוד","me.fqHint":"שאלות קצרות, ואפשר לדלג על כל אחת",
       "me.fqSave":"שמירה","me.fqSkip":"דילוג","me.fqTo":"עד",
@@ -6010,9 +6007,9 @@ button.srow:active{background:var(--bg-tint)}
       "me.scope.summary":"Short","me.scope.today":"Today only","me.scope.full":"Everything",
       "me.language":"Your language together",
       "me.taskCal":"Tasks on your calendar","me.taskCalSub":"New tasks Allma gives a date and time land on your calendar automatically",
-      "me.nudge":"Nudge me","me.nudgeSub":"A reminder you have not marked done comes back later that day and again the next. Off — once, at the hour you asked for",
+      
       "me.knows":"What Allma remembers","me.tasksRow":"Tasks",
-      "me.sum.quiet":"quiet on {days}","me.sum.cal.on":"to your calendar","me.sum.cal.off":"not to your calendar","me.sum.nudge.on":"with nudges","me.sum.nudge.off":"no nudges",
+      "me.sum.quiet":"quiet on {days}","me.sum.cal.on":"to your calendar","me.sum.cal.off":"not to your calendar",
       "me.facts.n0":"Nothing saved yet","me.facts.n1":"One thing","me.facts.nN":"{n} things",
       "me.fqTitle":"Tell her more","me.fqHint":"Short questions, and any can be skipped",
       "me.fqSave":"Save","me.fqSkip":"Skip","me.fqTo":"to",
@@ -7621,7 +7618,7 @@ button.srow:active{background:var(--bg-tint)}
         var pact = PERMACT[sw.dataset.p];
         if(pact) refreshPermAction(pact.attr, f.id, on);
       }
-      if(sw.id === "holidaySwitch" || sw.id === "digestSwitch" || sw.id === "taskCalSwitch" || sw.id === "nudgeSwitch"){ meSwitch(sw, on); return; }
+      if(sw.id === "holidaySwitch" || sw.id === "digestSwitch" || sw.id === "taskCalSwitch"){ meSwitch(sw, on); return; }
       if(sw.id === "sRemind"){ $("#sRemindFold").classList.toggle("open", on); commit(); }
       if(sw.id === "sAllDay" || sw.id === "sCal") commit();
       return;
@@ -12970,7 +12967,7 @@ button.srow:active{background:var(--bg-tint)}
      In design mode (nothing served) these are seeds, chosen to show every
      state a real person can be in: a default window, a stated quiet day,
      chagim off, a summary on, and a few questions already answered. */
-  var ME = {gender:null, locale:"he", taskCal:false, nudge:false};
+  var ME = {gender:null, locale:"he", taskCal:false};
   var SCHED = {start:"09:00", end:"21:00", source:"default", def:{start:"09:00", end:"21:00"},
                days:[6], daysSource:"default", holidays:false, calendar:"jewish", shabbat:true};
   var DIGEST = {times:["08:00"], scope:"summary"}, lastDigestTimes = [];
@@ -13281,7 +13278,6 @@ button.srow:active{background:var(--bg-tint)}
       return '<button class="chip" data-lang="' + l.v + '" aria-pressed="' + (l.v === cur) + '" lang="' + l.v + '">' + esc(l.n) + "</button>";
     }).join("");
     $("#taskCalSwitch").setAttribute("aria-checked", ME.taskCal ? "true" : "false");
-    $("#nudgeSwitch").setAttribute("aria-checked", ME.nudge ? "true" : "false");
     renderSummary();
   }
 
@@ -13318,8 +13314,7 @@ button.srow:active{background:var(--bg-tint)}
     var lang = LANGS.filter(function(l){ return l.v === cur; })[0];
     pv("#pvSetup", [olmaName(), cityLabel(), lang ? lang.n : ""].filter(Boolean).join(" · "));
 
-    pv("#pvTasks", t(ME.taskCal ? "me.sum.cal.on" : "me.sum.cal.off") + " · " + t(ME.nudge ? "me.sum.nudge.on" : "me.sum.nudge.off"),
-      !ME.taskCal && !ME.nudge);
+    pv("#pvTasks", t(ME.taskCal ? "me.sum.cal.on" : "me.sum.cal.off"), !ME.taskCal);
   }
   /* One handler for all six: a row opens and closes its own fold, and any
      number of them may be open at once. */
@@ -13369,14 +13364,6 @@ button.srow:active{background:var(--bg-tint)}
         toast(t(on ? "toast.on" : "toast.off"));
       });
       return;
-    }
-    if(sw.id === "nudgeSwitch"){
-      ME.nudge = on;
-      renderSummary();
-      API.setReminderNudge(on, function(ok2){
-        if(!ok2){ ME.nudge = !on; renderOlmaRows(); return; }
-        toast(t(on ? "toast.on" : "toast.off"));
-      });
     }
   }
 
@@ -14295,7 +14282,6 @@ button.srow:active{background:var(--bg-tint)}
       ME.gender = d.user.gender || null;
       ME.locale = d.user.locale || "he";
       ME.taskCal = !!d.user.calendarSyncTasks;
-      ME.nudge = !!d.user.reminderNudge;
       $("#bday").dataset.val = d.user.birthDate || "";
       DIGEST = {times:d.user.digestTimes || [], scope:d.user.digestScope || "summary"};
       if(DIGEST.times.length) lastDigestTimes = DIGEST.times.slice();
