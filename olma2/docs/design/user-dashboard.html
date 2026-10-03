@@ -853,6 +853,15 @@ button.row:active{background:var(--bg-tint)}
 .chip[aria-pressed="true"]{background:var(--accent);color:var(--on-accent)}
 .chip:active{transform:scale(.95)}
 .chip.mini{font-size:12.5px;padding:5px 11px}
+/* The reminder's KIND, two cards under its row (#sKindWrap). */
+.nagkind{padding:0 14px 12px;padding-inline-start:62px;display:grid;gap:8px}
+.nagk-row{flex-wrap:nowrap}
+.chip.nagk{flex:1 1 0;min-width:0;border-radius:14px;padding:9px 10px;display:grid;
+  grid-template-columns:auto 1fr;column-gap:6px;align-items:center;text-align:start}
+.chip.nagk svg{width:16px;height:16px;grid-row:1 / span 2}
+.nagk-t{font-size:13.5px;font-weight:700}
+.nagk-s{font-size:11.5px;font-weight:500;opacity:.8}
+.nagk-say{line-height:1.45}
 /* "שעה מדויקת" says the hour once there is one — the chip IS the value, so
    there is no second pill on a line below carrying a bare number nobody can
    tell is a button (the owner, 2026-09-22). The clock is the part that says
@@ -1500,6 +1509,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   direction:ltr;unicode-bidi:isolate;
 }
 .ttime.late{color:var(--danger)}
+/* "נודניק" on the row: a word, because the glyph beside it meant "repeats". */
+.tnag{font-size:12px;font-weight:600;color:var(--warn);white-space:nowrap}
 .tsec + .tsec{margin-top:19px}
 .glabel .late{color:var(--danger)}
 /* ── a task shared with people ──
@@ -3989,13 +4000,10 @@ button.srow:active{background:var(--bg-tint)}
             </div>
             <button class="switch" role="switch" aria-checked="false" id="taskCalSwitch" data-i18n-label="me.taskCal"></button>
           </div>
-          <div class="row no-icon">
-            <div class="row-txt">
-              <div class="row-title" data-i18n="me.nudge"></div>
-              <div class="row-sub" data-i18n="me.nudgeSub"></div>
-            </div>
-            <button class="switch" role="switch" aria-checked="false" id="nudgeSwitch" data-i18n-label="me.nudge"></button>
-          </div>
+          <!-- "לנדנד לי", the standing switch, is gone (owner, 2026-10-03): the
+               nudge is chosen per task now ("🔁 נודניק" in the sheet), and two
+               things called nudging on one page read as one. Nobody had it on;
+               users.reminder_nudge and its write stay for the chat. -->
         </div></div></div>
 
         <!-- What she knows. Closed by default like every row here: it is a list
@@ -4250,6 +4258,23 @@ button.srow:active{background:var(--bg-tint)}
         <span class="sval slock"><svg><use href="#i-lock"/></svg><span data-i18n="sheet.afterName"></span></span></span>
       <button class="switch" role="switch" aria-checked="false" id="sRemind" data-i18n-label="sheet.remind"></button>
     </div>
+    <!-- Which KIND of reminder (owner, 2026-10-03, option ב): a regular one,
+         once at its time, or a nudge until it is done. Two cards rather than a
+         chip among the repeats, because a nudge is a kind of reminder, not a
+         kind of repeat — under "חזרה" it read as one more rhythm. Shown only
+         while the reminder is on; the line under it says what will happen,
+         worded off the same date the server reads (nagShape). -->
+    <div class="nagkind" id="sKindWrap" hidden>
+      <div class="chips nagk-row" id="sKind">
+        <button class="chip nagk" aria-pressed="true" data-kind="plain">
+          <svg><use href="#i-bell"/></svg><span class="nagk-t" data-i18n="kind.plain"></span>
+          <span class="nagk-s" data-i18n="kind.plainSub"></span></button>
+        <button class="chip nagk" aria-pressed="false" data-kind="nag">
+          <svg><use href="#i-repeat"/></svg><span class="nagk-t" data-i18n="kind.nag"></span>
+          <span class="nagk-s" data-i18n="kind.nagSub"></span></button>
+      </div>
+      <div class="row-sub nagk-say" id="sChaseSub" hidden></div>
+    </div>
     <div class="fold" id="sRemindFold"><div><div class="spad">
       <div class="chips" id="sOffset">
         <!-- data-remoff, not data-off: #sSharePeople already uses data-off for
@@ -4264,7 +4289,6 @@ button.srow:active{background:var(--bg-tint)}
            date has no before. The same fold then asks the only thing a
            standing nudge actually needs: which hour. Same clock wheel as
            everywhere else on the page. -->
-      <div class="row-sub" id="sChaseSub" hidden data-i18n="sheet.chaseSub"></div>
       <span class="vseg" id="sRemindAtSeg" hidden>
         <button class="vseg-b set" id="sRemindAtChip" data-i18n-label="sheet.remindAt">
           <svg class="vic"><use href="#i-clock"/></svg><span id="sRemindAtVal"></span></button>
@@ -4281,11 +4305,6 @@ button.srow:active{background:var(--bg-tint)}
         <button class="chip mini" aria-pressed="false" data-rep="day" data-i18n="rep.day"></button>
         <button class="chip mini" aria-pressed="false" data-rep="week" data-i18n="rep.week"></button>
         <button class="chip mini" aria-pressed="false" data-rep="month" data-i18n="rep.month"></button>
-        <!-- A CHASE: one a day until the task's own date, stopping when it is
-             done (domain/reminders.startChase — the same one חיים gets in
-             chat). Offered only on a dated task; the date IS the deadline, so
-             there is no second date to pick. -->
-        <button class="chip mini" aria-pressed="false" data-rep="until" data-i18n="rep.until"></button>
       </div>
     </div></div></div>
     <!-- "Add to calendar" is a promise about a specific calendar, and with
@@ -5112,10 +5131,10 @@ button.srow:active{background:var(--bg-tint)}
         if(x.rem){
           payload.remindAt = remindIso(x);
           payload.repeatRule = REPEAT_RULE[x.rep || "none"] || null;
-          /* A chase carries no hour and no rule: the server's rule picks both
+          /* A nudge carries no hour and no rule: the server's rule picks both
              (user-dashboard-write.setTaskReminder), and an hour computed here
              would be read as one they named. */
-          if(x.rep === "until"){ API.send("setTaskReminder", {taskId:id, on:true, chase:true}); return; }
+          if(x.rep === "until"){ API.send("setTaskReminder", {taskId:id, on:true, nudge:true}); return; }
           /* A backstop, not the dateless case — that one now builds its own
              moment above. `setTaskReminder` refuses `on` without a `remindAt`
              and would cancel nothing, so there is no call worth making. */
@@ -5622,9 +5641,9 @@ button.srow:active{background:var(--bg-tint)}
       "me.scope.summary":"תקציר","me.scope.today":"רק היום","me.scope.full":"הכול",
       "me.language":"השפה שלך בשיחה",
       "me.taskCal":"משימות ליומן","me.taskCalSub":"משימות חדשות דרך עולמה שיש להן תאריך ושעה מתווספות ליומן אוטומטית",
-      "me.nudge":"לנדנד לי","me.nudgeSub":"תזכורת שלא סימנת שבוצעה תחזור שוב באותו יום ולמחרת. כבוי — פעם אחת, בשעה שביקשת",
+      
       "me.knows":"מה עולמה זוכרת","me.tasksRow":"משימות",
-      "me.sum.quiet":"{days} בשקט","me.sum.cal.on":"ליומן","me.sum.cal.off":"לא ליומן","me.sum.nudge.on":"עם נדנוד","me.sum.nudge.off":"בלי נדנוד",
+      "me.sum.quiet":"{days} בשקט","me.sum.cal.on":"ליומן","me.sum.cal.off":"לא ליומן",
       "me.facts.n0":"עוד לא נשמר כלום","me.facts.n1":"דבר אחד","me.facts.nN":"{n} דברים",
       "me.fqTitle":"לספר לה עוד","me.fqHint":"שאלות קצרות, ואפשר לדלג על כל אחת",
       "me.fqSave":"שמירה","me.fqSkip":"דילוג","me.fqTo":"עד",
@@ -5676,8 +5695,12 @@ button.srow:active{background:var(--bg-tint)}
       "cal.showIn":"להצגה ביומן",
       "off.at":"בזמן","off.m10":"10 דק׳ לפני","off.h1":"שעה לפני","off.d1":"יום לפני",
       "sheet.remindAt":"שעת התזכורת","sheet.remindAtVal":"להזכיר ב־{time}",
-      "rep.once":"ללא","rep.day":"כל יום","rep.week":"כל שבוע","rep.month":"כל חודש","rep.until":"כל יום עד התאריך",
-      "rep.untilVal":"כל יום עד {date}","sheet.chaseSub":"פעם ביום, בשעה שבה עולמה כבר כותבת לך, עד שזה בוצע",
+      "rep.once":"ללא","rep.day":"כל יום","rep.week":"כל שבוע","rep.month":"כל חודש",
+      "kind.plain":"רגילה","kind.plainSub":"פעם אחת, בזמן","kind.nag":"נודניק","kind.nagSub":"עד שזה בוצע",
+      "rep.untilVal":"נודניק עד {date}","rep.untilCap":"נודניק ל־3 ימים","rep.nagTag":"נודניק",
+      "sheet.nagNear":"עד 3 פעמים ביום עד התאריך. נעצר ברגע שזה בוצע",
+      "sheet.nagFar":"פעם ביום, ועד 3 פעמים ביום האחרון. נעצר ברגע שזה בוצע",
+      "sheet.nagCap":"עד 3 פעמים ביום, 3 ימים, ואז אשאל אם להמשיך. נעצר ברגע שזה בוצע",
       "sheet.repeatNeedsRemind":"החזרה נשמרת על התזכורת — צריך להדליק תזכורת קודם",
 
       "toast.on":"השירות הופעל","toast.off":"השירות כובה",
@@ -6003,9 +6026,9 @@ button.srow:active{background:var(--bg-tint)}
       "me.scope.summary":"Short","me.scope.today":"Today only","me.scope.full":"Everything",
       "me.language":"Your language together",
       "me.taskCal":"Tasks on your calendar","me.taskCalSub":"New tasks Allma gives a date and time land on your calendar automatically",
-      "me.nudge":"Nudge me","me.nudgeSub":"A reminder you have not marked done comes back later that day and again the next. Off — once, at the hour you asked for",
+      
       "me.knows":"What Allma remembers","me.tasksRow":"Tasks",
-      "me.sum.quiet":"quiet on {days}","me.sum.cal.on":"to your calendar","me.sum.cal.off":"not to your calendar","me.sum.nudge.on":"with nudges","me.sum.nudge.off":"no nudges",
+      "me.sum.quiet":"quiet on {days}","me.sum.cal.on":"to your calendar","me.sum.cal.off":"not to your calendar",
       "me.facts.n0":"Nothing saved yet","me.facts.n1":"One thing","me.facts.nN":"{n} things",
       "me.fqTitle":"Tell her more","me.fqHint":"Short questions, and any can be skipped",
       "me.fqSave":"Save","me.fqSkip":"Skip","me.fqTo":"to",
@@ -6057,8 +6080,12 @@ button.srow:active{background:var(--bg-tint)}
       "cal.showIn":"Show in calendar",
       "off.at":"On time","off.m10":"10 min before","off.h1":"1 hour before","off.d1":"1 day before",
       "sheet.remindAt":"Reminder time","sheet.remindAtVal":"Remind at {time}",
-      "rep.once":"Never","rep.day":"Every day","rep.week":"Every week","rep.month":"Every month","rep.until":"Daily until the date",
-      "rep.untilVal":"Daily until {date}","sheet.chaseSub":"Once a day, at the hour Allma already writes to you, until it is done",
+      "rep.once":"Never","rep.day":"Every day","rep.week":"Every week","rep.month":"Every month",
+      "kind.plain":"Regular","kind.plainSub":"Once, on time","kind.nag":"Nudge","kind.nagSub":"Until it is done",
+      "rep.untilVal":"Nudge until {date}","rep.untilCap":"Nudge for 3 days","rep.nagTag":"Nudge",
+      "sheet.nagNear":"Up to 3 times a day until the date. Stops the moment it is done",
+      "sheet.nagFar":"Once a day, and up to 3 times on the last day. Stops the moment it is done",
+      "sheet.nagCap":"Up to 3 times a day for 3 days, then I ask whether to go on. Stops the moment it is done",
       "sheet.repeatNeedsRemind":"A repeat lives on the reminder — switch one on first",
 
       "toast.on":"Service turned on","toast.off":"Service turned off",
@@ -7611,7 +7638,7 @@ button.srow:active{background:var(--bg-tint)}
         var pact = PERMACT[sw.dataset.p];
         if(pact) refreshPermAction(pact.attr, f.id, on);
       }
-      if(sw.id === "holidaySwitch" || sw.id === "digestSwitch" || sw.id === "taskCalSwitch" || sw.id === "nudgeSwitch"){ meSwitch(sw, on); return; }
+      if(sw.id === "holidaySwitch" || sw.id === "digestSwitch" || sw.id === "taskCalSwitch"){ meSwitch(sw, on); return; }
       if(sw.id === "sRemind"){ $("#sRemindFold").classList.toggle("open", on); commit(); }
       if(sw.id === "sAllDay" || sw.id === "sCal") commit();
       return;
@@ -7883,7 +7910,10 @@ button.srow:active{background:var(--bg-tint)}
       end += '<span class="tcount' + (dn === x.items.length ? " full" : "") + '" style="--p:' + pc + '%">' +
         dn + "/" + x.items.length + "</span>";
     }
-    if(x.rep && x.rep !== "none") end += '<svg class="tglyph"><use href="#i-repeat"/></svg>';
+    /* A nudge SAYS so on the row: a repeat glyph alone reads as a rhythm,
+       and this one ends — at the date, or after three days. */
+    if(x.rep === "until") end += '<span class="tnag">' + esc(t("rep.nagTag")) + "</span>";
+    else if(x.rep && x.rep !== "none") end += '<svg class="tglyph"><use href="#i-repeat"/></svg>';
     if(x.rem) end += '<svg class="tglyph bell"><use href="#i-bell"/></svg>';
     if(x.kind === "event") end += '<svg class="tglyph kindmark" role="img" aria-label="' + esc(t("cal.eventTag")) +
       '"><use href="#i-cal"/></svg>';
@@ -8852,6 +8882,20 @@ button.srow:active{background:var(--bg-tint)}
     if(days === 1) return "tomorrow";
     return "later";
   }
+  /* Which of the nudge's three shapes the server will arm, read off the same
+     date it reads (reminders.startChase): none or a passed one is the capped
+     three days, under three days away is the loud one, further is once a day
+     and loud on the last. Only the WORDS come from here — the server decides. */
+  function nagShape(x){
+    if(!x.d) return "Cap";
+    var n = new Date(), t0 = new Date(n.getFullYear(), n.getMonth(), n.getDate());
+    var days = Math.round((new Date(x.d + "T00:00:00") - t0) / 86400000);
+    if(days < 0) return "Cap";
+    return days >= 3 ? "Far" : "Near";
+  }
+  function nagText(x){
+    return nagShape(x) === "Cap" ? t("rep.untilCap") : t("rep.untilVal", {date:longDate(x.d)});
+  }
   /* The row shows the smallest thing that still locates the task: inside
      the section it already sits under, the clock alone says everything. */
   function labelFor(x){
@@ -8909,7 +8953,10 @@ button.srow:active{background:var(--bg-tint)}
     var off = $$("#sOffset .chip").filter(function(c){ return c.getAttribute("aria-pressed") === "true"; })[0];
     editing.remOff = off ? +off.dataset.remoff : 0;
     var chosen = $$("#sRepeat .chip").filter(function(c){ return c.getAttribute("aria-pressed") === "true"; })[0];
-    editing.rep = chosen ? chosen.dataset.rep : "none";
+    /* A nudge is the KIND card, not a repeat chip; inside, it is still the
+       "until" shape every reader of `rep` already knows. */
+    var nagging = $('#sKind [data-kind="nag"]').getAttribute("aria-pressed") === "true";
+    editing.rep = nagging ? "until" : (chosen ? chosen.dataset.rep : "none");
     syncSheetRows();
     var firstSave = false;
     if(isNew){
@@ -9085,19 +9132,14 @@ button.srow:active{background:var(--bg-tint)}
        That lock is applied in syncSheetSource below, together with the
        source's own limit on the same row, because two lockRow calls on one
        row leave only the last. */
-    /* "Daily until the date" has no date to run to on an undated task, so the
-       chip goes with the date — and if the date goes while it is chosen, the
-       choice falls back to none rather than sending a chase with no end. */
-    var untilChip = $('#sRepeat [data-rep="until"]');
-    untilChip.hidden = !dated;
-    if(!dated && untilChip.getAttribute("aria-pressed") === "true"){
-      $$("#sRepeat .chip").forEach(function(c){ c.setAttribute("aria-pressed", c.dataset.rep === "none" ? "true" : "false"); });
-      x.rep = "none";
-    }
+    /* The nudge is offered on every task: with no date it is the three-day
+       kind, so it no longer goes with the date (it did while it was "every
+       day until the date"). */
     var chosen = $$("#sRepeat .chip").filter(function(c){ return c.getAttribute("aria-pressed") === "true"; })[0];
-    var chosenRep = chosen ? chosen.dataset.rep : "none";
-    $("#sRepeatRow").hidden = !(chosenRep !== "none" || shown.rep);
-    sayText($("#sRepeatVal"), chosenRep === "until" ? t("rep.untilVal", {date:longDate(x.d)})
+    var chosenRep = x.rep === "until" ? "until" : (chosen ? chosen.dataset.rep : "none");
+    /* A nudge has its own rhythm, so the repeat row goes while it is chosen. */
+    $("#sRepeatRow").hidden = chosenRep === "until" || !(chosenRep !== "none" || shown.rep);
+    sayText($("#sRepeatVal"), chosenRep === "until" ? nagText(x)
       : t("rep." + ({none:"once", day:"day", week:"week", month:"month"}[chosenRep] || "once")));
     /* ── reminder ── one sentence: who writes, where, and the part that is a
        choice. The fold under it asks one question or the other, never both:
@@ -9108,13 +9150,21 @@ button.srow:active{background:var(--bg-tint)}
     var chasing = chosenRep === "until";
     $("#sRemSay").hidden = !x.rem;
     $("#sRemOff").hidden = !!x.rem;
-    $("#sRemInlVal").textContent = chasing ? t("rep.untilVal", {date:longDate(x.d)})
+    $("#sRemInlVal").textContent = chasing ? nagText(x)
       : dated ? t(OFFSET_KEY[x.remOff || 0] || "off.at")
       : t("sheet.remAtShort", {time:x.remAt || remDefaultAt()});
     $("#sRemInl").setAttribute("aria-expanded", String($("#sRemindFold").classList.contains("open")));
     $("#sOffset").hidden = !dated || chasing;
+    $("#sKindWrap").hidden = !x.rem;
+    $$("#sKind .chip").forEach(function(c){ c.setAttribute("aria-pressed", (c.dataset.kind === "nag") === chasing ? "true" : "false"); });
+    /* The kind card already says "נודניק": the inline choice after the
+       channel would only say it again. */
+    $("#sRemInl").hidden = chasing;
     $("#sChaseSub").hidden = !chasing;
-    $("#sRemindAtSeg").hidden = dated;
+    if(chasing) $("#sChaseSub").textContent = t({Cap:"sheet.nagCap", Near:"sheet.nagNear", Far:"sheet.nagFar"}[nagShape(x)]);
+    /* A nudge's hour is the server's, like its shape — offering a clock under
+       it would be offering a choice that is thrown away. */
+    $("#sRemindAtSeg").hidden = dated || chasing;
     $("#sRemindAtVal").textContent = t("sheet.remindAtVal", {time:x.remAt || remDefaultAt()});
     /* ── category ── Olma's guess says so until the person overrules it — an
        automatic choice that looks hand-made is one nobody thinks to correct. */
@@ -12946,7 +12996,7 @@ button.srow:active{background:var(--bg-tint)}
      In design mode (nothing served) these are seeds, chosen to show every
      state a real person can be in: a default window, a stated quiet day,
      chagim off, a summary on, and a few questions already answered. */
-  var ME = {gender:null, locale:"he", taskCal:false, nudge:false};
+  var ME = {gender:null, locale:"he", taskCal:false};
   var SCHED = {start:"09:00", end:"21:00", source:"default", def:{start:"09:00", end:"21:00"},
                days:[6], daysSource:"default", holidays:false, calendar:"jewish", shabbat:true};
   var DIGEST = {times:["08:00"], scope:"summary"}, lastDigestTimes = [];
@@ -13257,7 +13307,6 @@ button.srow:active{background:var(--bg-tint)}
       return '<button class="chip" data-lang="' + l.v + '" aria-pressed="' + (l.v === cur) + '" lang="' + l.v + '">' + esc(l.n) + "</button>";
     }).join("");
     $("#taskCalSwitch").setAttribute("aria-checked", ME.taskCal ? "true" : "false");
-    $("#nudgeSwitch").setAttribute("aria-checked", ME.nudge ? "true" : "false");
     renderSummary();
   }
 
@@ -13294,8 +13343,7 @@ button.srow:active{background:var(--bg-tint)}
     var lang = LANGS.filter(function(l){ return l.v === cur; })[0];
     pv("#pvSetup", [olmaName(), cityLabel(), lang ? lang.n : ""].filter(Boolean).join(" · "));
 
-    pv("#pvTasks", t(ME.taskCal ? "me.sum.cal.on" : "me.sum.cal.off") + " · " + t(ME.nudge ? "me.sum.nudge.on" : "me.sum.nudge.off"),
-      !ME.taskCal && !ME.nudge);
+    pv("#pvTasks", t(ME.taskCal ? "me.sum.cal.on" : "me.sum.cal.off"), !ME.taskCal);
   }
   /* One handler for all six: a row opens and closes its own fold, and any
      number of them may be open at once. */
@@ -13345,14 +13393,6 @@ button.srow:active{background:var(--bg-tint)}
         toast(t(on ? "toast.on" : "toast.off"));
       });
       return;
-    }
-    if(sw.id === "nudgeSwitch"){
-      ME.nudge = on;
-      renderSummary();
-      API.setReminderNudge(on, function(ok2){
-        if(!ok2){ ME.nudge = !on; renderOlmaRows(); return; }
-        toast(t(on ? "toast.on" : "toast.off"));
-      });
     }
   }
 
@@ -13951,7 +13991,9 @@ button.srow:active{background:var(--bg-tint)}
       rem:!!x.reminder,
       /* A daily rule WITH an end is a chase, and only `until` says so — read
          as "every day" it would be a promise to go on for ever. */
-      rep:(x.reminder && x.reminder.until) ? "until" : repShape(x.reminder && x.reminder.repeat),
+      /* …and only a DAILY one: "תזכיר לי X" with no when is a weekly chase
+         (reminders.startWeeklyNudge), which this page shows as every week. */
+      rep:(x.reminder && x.reminder.until && x.reminder.repeat === "daily") ? "until" : repShape(x.reminder && x.reminder.repeat),
       /* Minutes before the task's own moment, recovered from the two the
          server actually stores. Anything that is not one of the four offered
          offsets lands on the nearest one below it rather than inventing a
@@ -14269,7 +14311,6 @@ button.srow:active{background:var(--bg-tint)}
       ME.gender = d.user.gender || null;
       ME.locale = d.user.locale || "he";
       ME.taskCal = !!d.user.calendarSyncTasks;
-      ME.nudge = !!d.user.reminderNudge;
       $("#bday").dataset.val = d.user.birthDate || "";
       DIGEST = {times:d.user.digestTimes || [], scope:d.user.digestScope || "summary"};
       if(DIGEST.times.length) lastDigestTimes = DIGEST.times.slice();

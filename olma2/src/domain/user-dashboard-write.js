@@ -276,32 +276,29 @@ const ACTIONS = {
     if (probe.rows[0].status !== 'open') {
       return err('invalid', 'cannot set a reminder on a completed task');
     }
-    // "כל יום עד התאריך" — the same chase חיים gets in chat
-    // (reminders.startChase): one a day until the task's own date, at the hour
-    // they already hear from Olma, stopping the moment it is done. The page
-    // sends no hour for it on purpose, because the owner's rule picks the hour
-    // and an hour the page computed would be taken as one they named.
+    // "🔁 נודניק" — the same nudge a person gets in chat (reminders.startChase),
+    // stopping the moment it is done. The page sends no hour and no shape on
+    // purpose: the owner's rule picks the hour, and the task's date picks the
+    // shape — up to three a day near it, once a day before that, three days
+    // and a question with none. An hour the page computed would be taken as
+    // one they named. (`chase` is the old name of the same request: until
+    // 2026-10-03 the chip was "every day until the date", and accepted only
+    // the once-a-day shape.)
     //
-    // A deadline too close to chase across once a day (under NUDGE_DAYS) is
-    // refused rather than quietly turned into a one-off: the chip said "every
-    // day", and a one-off under it is the promise run 79 broke. The cancel and
-    // the attempt share a savepoint, so a refusal leaves the old reminder
+    // Nothing left to nudge in — today's window already shut on a deadline of
+    // today — is refused rather than quietly turned into a one-off. The cancel
+    // and the attempt share a savepoint, so a refusal leaves the old reminder
     // exactly where it was — /me/act commits whatever came back.
-    if (p.chase === true) {
+    if (p.nudge === true || p.chase === true) {
       await client.query('SAVEPOINT dashboard_chase');
       for (const r of pending) {
         const res = await reminders.cancelReminder(client, userId, r.id);
         if (!res.ok) { await client.query('ROLLBACK TO SAVEPOINT dashboard_chase'); return res; }
       }
       const chase = await reminders.startChase(client, userId, p.taskId);
-      // Since the nudge (2026-10-03) startChase also arms the LOUD shapes — up
-      // to three a day near a deadline, or three days with none. The chip still
-      // says "every day until the date", so only the once-a-day shape is its to
-      // arm; the page's own nudge button is the next step.
-      if (chase && chase.ok && Number(chase.data.reminder.rungs) === 1) return chase;
+      if (chase && chase.ok) return chase;
       await client.query('ROLLBACK TO SAVEPOINT dashboard_chase');
-      return (chase && !chase.ok) ? chase
-        : err('invalid', `a daily chase needs the task dated at least ${reminders.NUDGE_DAYS} days ahead`);
+      return chase || err('invalid', 'no time is left to nudge before the task\'s own date');
     }
     for (const r of pending) {
       const res = await reminders.cancelReminder(client, userId, r.id);
