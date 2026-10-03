@@ -446,7 +446,7 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
     const code = phrase ? null : gameShortcut.findCode(body);
     const ask = takeGameAsk(agentId) || (!phrase && !code ? await phoneAsk(agentId) : null);
     const setup = !phrase && !code && ask && ask.kind === 'setup' ? gameShortcut.parseSetup(body) : null;
-    const name = !phrase && !code && ask && ask.kind === 'name' ? gameShortcut.parseName(body) : null;
+    const name = !phrase && !code && ask && ask.kind === 'name' ? gameShortcut.withSurname(gameShortcut.parseName(body), ask.taken) : null;
     if (!phrase && !code && !setup && !name) return null;
 
     const { rows } = await pool.query(
@@ -526,8 +526,10 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
           askGame(agentId, { kind: 'name', code: joinCode });
           text = say('game_ask_name', nightVars(r.night));
         } else if (r.error === 'name_taken') {
-          askGame(agentId, { kind: 'name', code: joinCode });
+          askGame(agentId, { kind: 'name', code: joinCode, taken: r.name });
           text = say('game_name_taken', { name: r.name });
+        } else if (r.error === 'closed' && r.night) {
+          text = say('game_closed', { ...nightVars(r.night), url: r.url });
         } else if (r.error === 'full') {
           text = say('game_full', nightVars(r.night || {}));
         } else if (r.error === 'no_night' && code && code.withWord) {
@@ -602,7 +604,7 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
       return (await handleGameShortcut(existing.agent_id, params)) || NOT_OURS;
     }
     const ask = takeGameAsk(askKey);
-    const name = !code && ask && ask.kind === 'name' ? gameShortcut.parseName(body) : null;
+    const name = !code && ask && ask.kind === 'name' ? gameShortcut.withSurname(gameShortcut.parseName(body), ask.taken) : null;
     if (!code && !name) return NOT_OURS;
     if (existing && (existing.status !== 'pending' || existing.is_eval)) return NOT_OURS;
 
@@ -666,8 +668,10 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
           askGame(askKey, { kind: 'name', code: joinCode, lang });
           text = say('game_ask_name', nightVars(r.night));
         } else if (r.error === 'name_taken') {
-          askGame(askKey, { kind: 'name', code: joinCode, lang });
+          askGame(askKey, { kind: 'name', code: joinCode, lang, taken: r.name });
           text = say('game_name_taken', { name: r.name });
+        } else if (r.error === 'closed' && r.night) {
+          text = say('game_closed', { ...nightVars(r.night), url: r.url });
         } else if (r.error === 'full') {
           text = say('game_full', nightVars(r.night || {}));
         } else if (r.error === 'no_night' && code && code.withWord) {
