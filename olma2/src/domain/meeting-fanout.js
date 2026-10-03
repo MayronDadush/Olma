@@ -608,18 +608,19 @@ async function afterOptOut(client, actor, meetingId, res) {
   const brief = await meetingBrief(client, meetingId);
   const others = await activeParticipantsExcept(client, meetingId, actor.id);
 
-  // "I can't come" from a confirmed meeting: everyone still going hears it,
-  // framed as the meeting continuing — one exit is not a cancellation.
+  // "I can't come" from a confirmed meeting is QUIET, like every other exit
+  // (owner, 2026-10-03: "ביטול של משתתף לא צריך להודיע בפרטי לאף אחד"). It
+  // was the last exit still pushed: סער read "הוד לא יכול להגיע" at 19:10 and
+  // "בר לא יכול להגיע" at 19:27, each a message of its own, on the evening he
+  // had asked for one message a day. Who is coming is on the coordination's
+  // page; the kind stays rendered in channels/openclaw.js for any row already
+  // queued.
   if (res.data.withdrew) {
-    await fanout(client, others, 'meeting_withdrawn', {
-      meetingId: Number(meetingId), title: brief.title || 'meeting',
-      byName: actorName(actor), slot: brief.confirmed_slot,
-    }, { key: `mwithdraw:${meetingId}:${actor.id}` });
     // Off THEIR calendar, and only theirs (owner, 2026-09-24) — never the
     // event, never anybody else's copy (calendar.removeMeetingAttendee).
     const cal = (await calendar.removeMeetingAttendee(client, meetingId, actor.id)).data;
     res.data.calendar = cal;
-    res.data.hint = `The meeting is still on for the others — say so. ${withdrawCalendarHint(cal)}`;
+    res.data.hint = `The meeting is still on for the others — say so. Nobody is messaged about it, so never say they will be told. ${withdrawCalendarHint(cal)}`;
     return res;
   }
 
