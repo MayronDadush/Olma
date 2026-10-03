@@ -161,7 +161,11 @@ const READS_HOLDINGS = new Set(['15m', '2h', '5h']);
 
 const ONBOARDING_STEPS = [
   {
-    slot: '15m', afterMs: 15 * MIN_MS, expiresAfterMs: 2 * HOUR_MS,
+    // An hour past its moment, not until the next step: it says "they joined
+    // ~15 minutes ago", and held for Shabbat it reached Hod at 19:08 having
+    // joined at 17:15 (2026-10-03). Of every 15m step ever delivered, his was
+    // the only one past 75 minutes (the next was 74).
+    slot: '15m', afterMs: 15 * MIN_MS, expiresAfterMs: 75 * MIN_MS,
     instruction: firstContactInstruction,
   },
   {
@@ -239,6 +243,38 @@ function onboardingStepDue(ageMs, deaf) {
   if (!step) return null;
   if (deaf && DEAF_SILENT_SLOTS.has(step.slot)) return null;
   return step;
+}
+
+// Two day-one steps are never closer than STEP_GAP_MS, measured from when the
+// earlier one REACHED them, and none starts while they are talking. The
+// schedule spaces them by ONBOARDING time; a hold moves only the earlier one,
+// so the next arrived on its own clock right behind it. Hod, 2026-10-03: the
+// 15m step held for Shabbat to 19:08, the 2h step at 19:20. Measured on the
+// box over every delivered pair: 1, 4, 12 and 49 minutes are the held ones,
+// and the closest ordinary pair is 84 — so 75 separates them. A step that
+// waits is re-asked on the next run and stays inside its own expiry; one
+// overtaken meanwhile is replaced by the later step, as ever.
+const STEP_GAP_MS = 75 * MIN_MS;
+const TALKING_MS = 20 * MIN_MS;
+
+// Whether this step should wait, or never go. Not the 15m step's conversation
+// check: they joined by writing, so somebody fifteen minutes in has almost
+// always "just written", and that step is the first contact.
+async function dayOneStepWaits(client, u, step, now) {
+  if (now >= new Date(u.onboarded_at).getTime() + step.expiresAfterMs) return true;
+  const { rows } = await client.query(
+    `SELECT max(o.sent_at) AS last_step, u.last_inbound_at
+       FROM users u
+       LEFT JOIN outbox o ON o.user_id = u.id AND o.kind = 'checkin'
+        AND o.payload->>'rung' LIKE 'onboarding%'
+        AND o.sent_at IS NOT NULL AND o.hold_reason IS NULL
+      WHERE u.id = $1
+      GROUP BY u.last_inbound_at`, [u.id]);
+  const r = rows[0] || {};
+  if (r.last_step && now - new Date(r.last_step).getTime() < STEP_GAP_MS) return true;
+  if (step.slot !== '15m' && r.last_inbound_at
+      && now - new Date(r.last_inbound_at).getTime() < TALKING_MS) return true;
+  return false;
 }
 
 // Delivered at least two day-one messages and heard nothing back — only then
@@ -811,6 +847,9 @@ async function run(client, now = Date.now()) {
     // the product feel present, not to react to a backlog.
     let step = u.onboardingStep;
     let rung, instruction, topic = null, meetingId = null, key, expiresAt = null;
+    // `continue`, never `step = null`: a waiting step must not hand its slot
+    // to the ordinary ladder, which would send the second message anyway.
+    if (step && await dayOneStepWaits(client, u, step, now)) continue;
     if (step && DEAF_SILENT_SLOTS.has(step.slot)
         && await isDeafOnDayOne(client, u.id, u.onboarded_at)) continue;
     // A step whose reason has already been met (calendar connected, dashboard
@@ -920,4 +959,5 @@ async function run(client, now = Date.now()) {
 module.exports = {
   run, eligibleUsers, pickRung, discoveryGaps, requiredGapMs, idleHoursFor, GIVE_UP_MISSES, MISS_ONE_GAP_MS,
   onboardingStepDue, ONBOARDING_STEPS, DEAF_SILENT_SLOTS, stalledGoals, holdsNothing,
+  STEP_GAP_MS, TALKING_MS,
 };

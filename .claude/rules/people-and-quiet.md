@@ -59,6 +59,15 @@ title means this file. Grep the title, not the filename.
   day-one step that DECLINED and fell through to an ordinary rung put the two
   side by side again — which is what the closed Google door produced the same
   night. The ladder has ONE live rung at a time.
+  **…and a step that HAS gone out spaces the next one, measured from when it
+  reached them** (2026-10-03). The schedule counts from onboarding, so a hold
+  on one step moves only that step. Hod got the Shabbat-held 15m step at
+  19:08 and the 2h step at 19:20. Now `checkin.STEP_GAP_MS` (75 min, from
+  measured pairs) separates any two delivered steps. No step after the first
+  starts within `checkin.TALKING_MS` of their last message. The 15m step
+  expires 75 minutes after joining, because its words say "a quarter of an hour
+  ago". A waiting step `continue`s; it never falls through to an ordinary rung
+  (`incidents.md`, "Two day-one steps twelve minutes apart").
 
 - **Somebody who has stopped answering hears nothing Olma decided to say, and
   nothing on their record is cancelled.** The check-in ladder's one miss

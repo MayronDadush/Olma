@@ -266,7 +266,7 @@ Loads when you **Read** a file under `src/jobs/checkin.js`, `src/jobs/onboarding
 - **`users.timezone` must never be NULL**
 - **Every time crossing a tool boundary needs an explicit offset.**
 - **Nobody is asked a question they have already not answered once.** — and a miss is a check-in that REACHED them, counted at delivery, never when it was queued
-- **A day-one step that has not gone out is REPLACED by the NEXT CHECK-IN of any kind, never joined by it.**
+- **A day-one step that has not gone out is REPLACED by the NEXT CHECK-IN of any kind, never joined by it.** — and one that has gone out spaces the next by `STEP_GAP_MS`, counted from when it reached them; none after the first starts while they are talking
 - **Somebody who has stopped answering hears nothing Olma decided to say, and nothing on their record is cancelled.** — but a coordination they ANSWERED is not her idea, and an answer is what earns that, never membership; and another PERSON reaching them (a connection request, a private invite, a share, a relayed message) is not her idea either (`gate.PEER_KINDS`)
 - **A stop is acted on the moment it is HEARD, not when it is confirmed** — `paused_reason = 'said_stop'` is a full pause, and their next message about anything else ends it.
 - **A write from their own page IS the person answering** — `last_dashboard_at`, never `last_inbound_at`
