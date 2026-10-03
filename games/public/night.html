@@ -578,6 +578,10 @@ body[data-tab="night"] #tNight,body[data-tab="food"] #tFood,body[data-tab="settl
 .payapp{display:inline-flex;align-items:center;gap:4px;padding:6px 12px;border-radius:999px;background:var(--fill);color:var(--text);font-weight:600;font-size:13.5px;text-decoration:none;transition:transform .2s var(--spring)}
 .payapp:active{transform:scale(.94)}
 .whoami .row{gap:12px}
+/* "רק להסתכל": everything stays readable, nothing on the page offers a change
+   (and makeRemote refuses one anyway). The way out is the whoami row. */
+.viewer .step,.viewer .addrow,.viewer #foodAdd,.viewer .side,.viewer .myshare,.viewer .tick,
+.viewer .seg:has([data-food-mode]),.viewer #setBtn,.viewer #chatBtn{display:none}
 .whoami .mark{width:34px;height:34px}
 
 /* first visit: take your seat */
@@ -880,7 +884,10 @@ function makeRemote(token){
     if (!res.ok) throw { code: out.error || 'http_' + res.status };
     return out;
   }
-  async function write(w){ const out = await call('write', w); if (out.state) feed(out.state); return out; }
+  async function write(w){
+    if (viewing() && w.op !== 'hold' && w.op !== 'release') throw { code: 'viewing' };
+    const out = await call('write', w); if (out.state) feed(out.state); return out;
+  }
   const target = p => { const a = p.split('/'); return a[0] === 'games' && a[1] === token ? { col: a.length === 2 ? 'game' : a[2], id: a[3] } : null; };
   const on = (m, k, f, now) => { if (!m.has(k)) m.set(k, new Set()); m.get(k).add(f); if (state || k === 'meta/current') setTimeout(() => f(now()), 0); return () => m.get(k).delete(f); };
   const doc = p => ({
@@ -911,7 +918,7 @@ function makeRemote(token){
   listen(); poll(); setInterval(poll, 15000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) { lastPush = 0; poll(); } });
   return {
-    doc, collection, next: body => call('next', body),
+    doc, collection, next: body => viewing() ? Promise.reject({ code: 'viewing' }) : call('next', body),
     hold: (pid, data) => write({ op: 'hold', col: 'players', id: pid, data }),
     release: (pid, data) => write({ op: 'release', col: 'players', id: pid, data }),
   };
@@ -925,7 +932,8 @@ let S = fresh(null);
 let unsubs = [];
 
 function fail(e){
-  if (e && e.code === 'invalid_argument' && !isLocal) toast('אין לך הרשאה לשנות את הערב הזה');
+  if (e && e.code === 'viewing') toast('במצב צפייה לא משנים כלום. "להצטרף כשחקן" בראש הדף');
+  else if (e && e.code === 'invalid_argument' && !isLocal) toast('אין לך הרשאה לשנות את הערב הזה');
   else if (e && (e.code === 'quota_exceeded' || e.code === 'too_many')) toast('הערב הזה מלא. פתחו ערב חדש');
   else if (e && e.code === 'rate_limited') toast('יותר מדי שינויים בדקה. חכו רגע ונסו שוב');
   else if (e && e.code === 'offline') toast('אין חיבור. השינוי לא נשמר');
@@ -1137,6 +1145,8 @@ const nameOf = id => S.players[id]?.name || '?';
 
 /* ───────────── render ───────────── */
 let prev = {}, raf = 0, playedClose = false;
+// Chose "רק להסתכל" on this phone and has no seat: a viewer, not a player.
+function viewing(){ return !!(S.gid && !myId() && ls.get('pk-skip-' + S.gid)); }
 function schedule(){ if (!raf) raf = requestAnimationFrame(() => { raf = 0; render(); }); }
 function keepFocus(root, fn){
   const a = document.activeElement, inside = a && root.contains(a) && a.id;
@@ -1153,6 +1163,7 @@ function render(){
   $('#shareBtn').hidden = !D.g;
   if (D.g) $('#shareBtn').href = 'https://wa.me/?text=' + encodeURIComponent(inviteText(D));
   $('#foot').textContent = isLocal ? 'תצוגה מקומית עם ערב לדוגמה' : 'ערבי משחק של עולמה';
+  document.body.classList.toggle('viewer', viewing());
   renderOlline(D);
   keepFocus($('#tNight'), () => renderNight(D));
   keepFocus($('#tFood'), () => renderFood(D));
@@ -1273,7 +1284,12 @@ function renderNight(D){
     </div></div>`;
   }
 
-  if (!me && D.players.length && !D.closed) mine = `<div class="sec"><div class="group whoami"><div class="row plain">
+  if (!me && D.players.length && !D.closed) mine = viewing()
+    ? `<div class="sec"><div class="group whoami"><div class="row plain">
+      <svg class="mark" viewBox="0 0 120 120" aria-hidden="true"><use href="#logo"/></svg>
+      <div class="row-txt"><div class="row-title">מצב צפייה</div><div class="row-sub">רואים הכל, ולא משנים כלום מהטלפון הזה.</div></div>
+      <button class="btn soft small" type="button" id="pickMe">להצטרף כשחקן</button></div></div></div>`
+    : `<div class="sec"><div class="group whoami"><div class="row plain">
       <svg class="mark" viewBox="0 0 120 120" aria-hidden="true"><use href="#logo"/></svg>
       <div class="row-txt"><div class="row-title">מי משחק בטלפון הזה?</div><div class="row-sub">בוחרים שם פעם אחת, ואז כניסה היא לחיצה אחת.</div></div>
       <button class="btn soft small" type="button" id="pickMe">בחירה</button></div></div></div>`;
