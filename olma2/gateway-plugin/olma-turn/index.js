@@ -108,6 +108,60 @@ export function inboundOf(agentId, now = Date.now()) {
 }
 export function _resetInbound() { INBOUND.clear(); }
 
+// ---- a NO_REPLY the gateway asked again -------------------------------------
+// When a turn ends on tool calls and then only "NO_REPLY", the gateway logs
+// "settled post-tool turn lacked a final answer", asks the model ONCE more in
+// an isolated call, and delivers whatever comes back — the decision to stay
+// quiet is overruled by a second model that never saw it was a decision. 12
+// such retries from 2026-09-26 to 10-03: seven said NO_REPLY again, one
+// rescued a genuinely EMPTY answer, and four put text on a phone that the turn
+// had decided not to send — "כל המשתתפים בתוך" to Padel Gang with one of them
+// out, a "הוספתי ✅" under a 👍, a deletion that turn never made
+// (`docs/incidents.md`, "The silence the gateway asked again").
+//
+// `llm_output` fires for the turn's own call and NOT for the finalization
+// (the gateway skips it for `settled-tool-finalization`), and it carries the
+// runId that `reply_payload_sending` carries too. So a run whose every
+// assistant text was the sentinel is remembered here, and the gate cancels
+// text in that run. An EMPTY answer is not a decision and is never
+// remembered: its retry is the gateway doing its job. Keyed by runId, which
+// is a fresh uuid per run, so the next turn is never caught by it; dead after
+// two minutes, and deliberately NOT cleared at `agent_end`, whose order
+// against delivery this code does not get to rely on.
+const SILENT_RUNS = new Map();
+const SILENT_RUN_MS = 2 * 60 * 1000;
+export function decidedSilence(texts) {
+  const said = (Array.isArray(texts) ? texts : []).map((t) => String(t == null ? "" : t).trim()).filter(Boolean);
+  return said.length > 0 && said.every((t) => t === "NO_REPLY");
+}
+export function rememberSilentRun(runId, now = Date.now()) {
+  if (!runId) return;
+  for (const [id, at] of SILENT_RUNS) if (now - at > SILENT_RUN_MS) SILENT_RUNS.delete(id);
+  SILENT_RUNS.set(String(runId), now);
+}
+export function silentRun(runId, now = Date.now()) {
+  if (!runId) return false;
+  const at = SILENT_RUNS.get(String(runId));
+  return at != null && now - at <= SILENT_RUN_MS;
+}
+export function _resetSilentRuns() { SILENT_RUNS.clear(); }
+
+export function buildSilenceHandler({ log = trace } = {}) {
+  return async (event, ctx) => {
+    try {
+      const sessionKey = String((ctx && ctx.sessionKey) || "");
+      const m = GATED_AGENT_RE.exec(sessionKey);
+      if (!m) return undefined;
+      const runId = (ctx && ctx.runId) || (event && event.runId) || null;
+      if (runId && decidedSilence(event && event.assistantTexts)) {
+        rememberSilentRun(runId);
+        log({ silence: m[1], run: String(runId).slice(0, 8) });
+      }
+    } catch { /* observe-only: a throw here must never touch the turn */ }
+    return undefined;
+  };
+}
+
 // ---- a burst is answered once -----------------------------------------------
 // Owner, 2026-10-02: somebody who writes three messages in a row should get
 // ONE answer, not three. The gateway's own inbound debounce cannot do it on
@@ -969,6 +1023,23 @@ export function buildReplyGateHandler({ connect, sock, timeoutMs = 1500, log = t
         if (carried.length) { clearHeld(agentId); return { payload: { ...payload, text: carried.join("\n\n") } }; }
         return undefined;
       }
+      // This run already answered NO_REPLY and the text is the gateway's
+      // second ask (see "a NO_REPLY the gateway asked again" above). Filed as
+      // `reply.gated`, so the rate is readable on the box. `unanswered` will
+      // not re-send it: the turn before it in the transcript is the NO_REPLY,
+      // not the person's message.
+      const runId = (event && event.runId) || (ctx && ctx.runId) || null;
+      if (silentRun(runId)) {
+        const report = {
+          agentId, sessionKey: sessionKey.slice(0, 200), action: "cancel",
+          channel: (event && event.channel) || (ctx && ctx.channel) || null,
+          leaks: [{ kind: "after_silence", at: "", line: 0 }], chars: text.length, kept: 0,
+        };
+        const filed = await askBroker("reply_gate", report, { connect, sock, timeoutMs });
+        log({ gate: agentId, action: "cancel", kinds: "after_silence", chars: text.length, kept: 0, filed: Boolean(filed && filed.ok) });
+        if (hasMedia) return { payload: { ...payload, text: "" } };
+        return { cancel: true, reason: "olma_after_silence" };
+      }
       // A newer message of theirs is already waiting for its own turn: this
       // reply is held and that turn answers both (see "a burst is answered
       // once" above). brokerd is asked only then — an ordinary reply never
@@ -1103,7 +1174,7 @@ export default {
     // `agent_end` is also what brokerd reads off the stamp to know the 👀 may
     // wait (domain/reactions.endSignalsLive): a gateway on a build without it
     // would never cancel a held mark.
-    const hooks = ["before_prompt_build", "llm_input", "before_dispatch", "before_dispatch:arrival", "before_dispatch:link", "reply_payload_sending", "agent_end"];
+    const hooks = ["before_prompt_build", "llm_input", "before_dispatch", "before_dispatch:arrival", "before_dispatch:link", "llm_output", "reply_payload_sending", "agent_end"];
     trace({ registered: true, agents, hooks });
     stampRegistration({ agents, hooks });
     api.on("before_prompt_build", buildHandler({ agents: cfg.agents }));
@@ -1118,6 +1189,8 @@ export default {
     // only for `g-N` sessions and this one only for `u-N`, so they never both
     // claim one message.
     api.on("before_dispatch", buildLinkShortcutHandler());
+    // Remembers a run that answered NO_REPLY, for the gate below.
+    api.on("llm_output", buildSilenceHandler());
     // Deliberately NOT narrowed by `cfg.agents`: that list is which people get
     // their turn context in the prompt, and a reply reaching the wrong person
     // is not a thing to roll out per person.
