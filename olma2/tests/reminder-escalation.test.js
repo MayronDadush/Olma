@@ -558,22 +558,6 @@ test('an hour OLMA inferred gets one follow-up, the same day and no further', as
   assert.equal((await outboxKeys(pool)).length, 2, 'never the morning after');
 });
 
-// "תזכיר לי עד שאעשה את זה" — and then the full three rungs, exactly as before.
-test('somebody who asks to be nudged gets the whole ladder back', async (t) => {
-  const { pool, teardown, user } = await setup('+972505500033', { nudge: false });
-  t.after(teardown);
-  // The standing preference, the other half of the same switch.
-  await pool.query(`UPDATE users SET reminder_nudge = true WHERE id = $1`, [user.id]);
-  const r = await reminderRow(pool);
-
-  await withTx(pool, (c) => sweeps.sweepReminders(c, TICK1));
-  await deliver(pool, r.id, 1, AT);
-  await withTx(pool, (c) => sweeps.sweepReminders(c, PLUS_3H));
-  await deliver(pool, r.id, 2, PLUS_3H);
-  await withTx(pool, (c) => sweeps.sweepReminders(c, NEXT_DAY));
-  assert.equal((await outboxKeys(pool)).length, 3, 'three, because they asked for three');
-});
-
 // The bag was for the hospital on Wednesday morning. "הספקת לארוז?" on Thursday
 // is a message about nothing, and the task is in the digest either way.
 test('no follow-up once the day the THING is on has ended', async (t) => {

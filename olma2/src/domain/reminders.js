@@ -1006,7 +1006,7 @@ const RUNGS = { explicit: 1, auto: 2, nudging: 3 };
 // a one-off is decided by who chose the hour (rule 5).
 const RUNG_CAP_SQL = `least($2::int, CASE WHEN r.rungs IS NOT NULL THEN r.rungs::int
                                      WHEN r.repeat_rule IS NOT NULL THEN 1
-                                     WHEN r.nudge OR u.reminder_nudge THEN $6::int
+                                     WHEN r.nudge THEN $6::int
                                      WHEN r.auto THEN $4::int ELSE $5::int END)`;
 
 async function dueForSending(client, now, opts = {}) {
