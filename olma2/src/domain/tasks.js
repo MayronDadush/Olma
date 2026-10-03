@@ -316,16 +316,16 @@ async function addTask(client, ownerId, { title, category, dueAt, endsAt, kind, 
   const similarTo = twin
     ? { id: Number(twin.task.id), title: twin.task.title, silent: twin.silent }
     : null;
-  // They asked to be CHASED, and the task carries a deadline to chase toward:
-  // one a day from today until that day, decided in reminders.startChase
-  // (חיים, 2026-09-22). A null answer means there was nothing to chase across —
-  // no deadline, or only one day of it — and the ordinary arming below is then
-  // exactly right, `nudge` buying its three rungs on the day.
+  // They asked to be CHASED — a nudge ("נודניק"), whose shape follows the
+  // deadline and is decided in reminders.startChase (חיים 2026-09-22; owner
+  // 2026-10-03). A null answer means the task could not be chased at all, and
+  // the ordinary arming below is then exactly right.
   if (nudge === true) {
     const chase = await reminders.startChase(client, ownerId, rows[0].id,
       { now, at: remindAt || null });
     if (chase && !chase.ok) return chase;
     if (chase) {
+      const { rows: tzRow } = await client.query('SELECT timezone FROM users WHERE id = $1', [ownerId]);
       return ok({
         task: rows[0],
         reminders: [chase.data.reminder],
@@ -333,7 +333,8 @@ async function addTask(client, ownerId, { title, category, dueAt, endsAt, kind, 
         // The hour is Olma's unless they named one, and either way the SHAPE —
         // every day until the deadline — is news they have not heard yet.
         remindersAsked: Boolean(remindAt),
-        chase: { until: chase.data.reminder.repeat_until, every: 'daily' },
+        chase: { until: chase.data.reminder.repeat_until, every: 'daily',
+          shape: reminders.describeNudge(chase.data.reminder, (tzRow[0] && tzRow[0].timezone) || 'UTC') },
         ...(similarTo ? { similarTo } : {}),
       });
     }

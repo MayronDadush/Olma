@@ -594,6 +594,8 @@ test('the hook reads a stop request and sends the verdict, never the words', () 
   const yes = [
     'להפסיק להזכיר', 'תפסיקי עם התזכורות', 'די עם התזכורות', 'בלי תזכורות',
     'מספיק תזכורות', 'תפסיק להזכיר לי', 'stop reminding me', 'תפסיקי לנדנד',
+    // the words every nudge follow-up now hands them (message-templates)
+    'די להזכיר',
   ];
   const no = [
     // A new time is a RESCHEDULE and only the model can do it — this is the
@@ -763,12 +765,12 @@ test('a deadline heard by the hook becomes a daily chase on the task the turn sa
     'the task is due on the day they said, not the day the model guessed');
   assert.ok(require('../src/domain/chase-deadline').onDay(rows[0].repeat_until, day, u.timezone),
     'and the chase ends with it');
-  assert.match(res.text, /daily chase is armed/);
+  assert.match(res.text, /נודניק.{0,4}\) is armed|daily chase is armed/);
 
   // Spent once: a second task in the same turn is an ordinary one.
   const other = await call(u, 'add_task', { title: 'לקנות סוללה', due_at: tomorrow }, turn);
   assert.equal(other.ok, true, other.text);
-  assert.doesNotMatch(other.text, /daily chase is armed/);
+  assert.doesNotMatch(other.text, /נודניק.{0,4}\) is armed|daily chase is armed/);
 });
 
 test('a task already on their list is chased to the heard deadline through set_task_reminder', async () => {
@@ -781,7 +783,7 @@ test('a task already on their list is chased to the heard deadline through set_t
   const turn = newTurn();
   const res = await call(u, 'set_task_reminder', { task_id: taskId, remind_at: tomorrow }, turn);
   assert.equal(res.ok, true, res.text);
-  assert.match(res.text, /daily chase is armed/);
+  assert.match(res.text, /נודניק.{0,4}\) is armed|daily chase is armed/);
   const { rows } = await db.pool.query(
     `SELECT repeat_rule, repeat_until FROM task_reminders WHERE task_id = $1 AND sent_at IS NULL AND cancelled_at IS NULL`, [taskId]);
   assert.equal(rows.length, 1);
@@ -849,7 +851,7 @@ test('a turn with no deadline heard arms nothing it was not asked to', async () 
   assert.doesNotMatch(ts.text, /is a CHASE/);
   const res = await call(u, 'add_task', { title: 'לקנות חלב', due_at: new Date(now + 3 * 86400_000).toISOString().replace('Z', '+00:00') }, turn);
   assert.equal(res.ok, true, res.text);
-  assert.doesNotMatch(res.text, /daily chase is armed/);
+  assert.doesNotMatch(res.text, /נודניק.{0,4}\) is armed|daily chase is armed/);
   // and a verdict that is not one is dropped at the door
   await open({ agentId: 'u-963', messageId: '3EB0CHASE04', kind: 'text', chase: { kind: 'forever' } });
   const ts2 = await call(u, 'turn_start', { message_id: '3EB0CHASE04' }, newTurn());

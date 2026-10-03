@@ -215,7 +215,7 @@ async function resumeUser(client, userId, { now = new Date(), reason = null } = 
   // back twice.
   const frozen = (await client.query(
     `SELECT DISTINCT ON (r.task_id) r.task_id, r.remind_at, r.repeat_rule, r.repeat_until,
-            r.repeat_seq, u.timezone
+            r.repeat_seq, r.nudge, r.rungs, r.nudge_capped, u.timezone
        FROM task_reminders r JOIN tasks t ON t.id = r.task_id
        JOIN users u ON u.id = $1
       WHERE COALESCE(r.user_id, t.owner_id) = $1 AND r.cancelled_at >= $2
@@ -231,7 +231,11 @@ async function resumeUser(client, userId, { now = new Date(), reason = null } = 
     // one path that re-derives the hour, the first moment and the end together
     // — and it declines outright if the deadline went by while they were away.
     if (Number(f.repeat_seq) === 0 && f.repeat_until) {
-      const again = await reminders.startChase(client, userId, f.task_id, { now });
+      // Its end passed while they were away: the day it was about is gone, and
+      // startChase would read the past deadline as none and start a new nudge.
+      if (new Date(f.repeat_until).getTime() <= new Date(now).getTime()) continue;
+      const again = await reminders.startChase(client, userId, f.task_id,
+        { now, until: f.nudge_capped ? null : f.repeat_until });
       if (again && again.ok) {
         rearmed.push({ taskId: Number(f.task_id), remindAt: new Date(again.data.reminder.remind_at).toISOString() });
       }
@@ -247,7 +251,8 @@ async function resumeUser(client, userId, { now = new Date(), reason = null } = 
     const until = f.repeat_until ? new Date(f.repeat_until) : null;
     if (until && next.getTime() > until.getTime()) continue;
     const res = await reminders.setReminder(client, userId, f.task_id, next, f.repeat_rule,
-      { until, seq: Number(f.repeat_seq) || 1 });
+      { until, seq: Number(f.repeat_seq) || 1, nudge: f.nudge === true && Boolean(until),
+        rungs: f.rungs === null || f.rungs === undefined ? null : Number(f.rungs), capped: f.nudge_capped === true });
     if (res.ok) rearmed.push({ taskId: Number(f.task_id), remindAt: next.toISOString() });
   }
 

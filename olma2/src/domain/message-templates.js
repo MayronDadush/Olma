@@ -295,10 +295,13 @@ const TEMPLATES = [
   },
   {
     key: 'reminder_followup', audience: 'private', label: 'תזכורת חוזרת',
-    help: 'השלב השני והשלישי של אותה תזכורת, אם לא ענו. חייבת להגיד איך מפסיקים אותה.',
+    help: 'השלב השני והשלישי של אותה תזכורת, אם לא ענו, וכל הודעה של נודניק אחרי הראשונה. חייבת להגיד איך מפסיקים אותה — "די להזכיר" נעצר בקוד, בלי מודל.',
     vars: { title: 'מה שביקשו להזכיר' }, required: ['title'],
     sample: { title: 'לקחת את הרכב לטסט' },
-    text: '⏰ תזכורת חוזרת: *{{title}}*\nבוצע? אפשר לכתוב לי, או להגיד לי להפסיק להזכיר על זה.',
+    // "די להזכיר" is quoted because it is the shortest stop the gateway hook
+    // acts on by itself (stopRemindersOnly: a stop word AND a reminding word);
+    // a bare "די" goes to the model. Owner's table, 2026-10-03.
+    text: '⏰ תזכורת חוזרת: *{{title}}*\nבוצע? אפשר לכתוב לי, או "די להזכיר" ואפסיק.',
   },
   {
     key: 'reminder_last', audience: 'private', label: 'תזכורת אחרונה',
@@ -326,7 +329,7 @@ const TEMPLATES = [
     help: 'אותו דבר לשלב השני והשלישי. חייבת להגיד איך מפסיקים, בדיוק כמו תזכורת חוזרת בודדת.',
     vars: { items: 'התזכורות, שורה לכל אחת' }, required: ['items'],
     sample: { items: '- לקחת את הרכב לטסט\n- להתקשר לרואה החשבון' },
-    text: '⏰ *תזכורות חוזרות*\n{{items}}\nמשהו מהן בוצע? אפשר לכתוב לי, או להגיד לי להפסיק להזכיר.',
+    text: '⏰ *תזכורות חוזרות*\n{{items}}\nמשהו מהן בוצע? אפשר לכתוב לי, או "די להזכיר" ואפסיק.',
   },
   {
     key: 'reminder_list_last', audience: 'private', label: 'כמה תזכורות אחרונות יחד',
@@ -334,6 +337,24 @@ const TEMPLATES = [
     vars: { items: 'התזכורות, שורה לכל אחת' }, required: ['items'],
     sample: { items: '- לקחת את הרכב לטסט\n- להתקשר לרואה החשבון' },
     text: '⏰ *תזכורות חוזרות*\n{{items}}\nאלו התזכורות האחרונות עליהן — לא אזכיר שוב מיוזמתי. אם משהו עדיין רלוונטי, אפשר להגיד לי מתי להזכיר.',
+  },
+  // The end of a nudge that had no deadline (owner, 2026-10-03): three days of
+  // up to three a day, and then ONE question instead of "the last one". Their
+  // yes is set_task_reminder(nudge) again — turn.js tells the model so, off
+  // the payload's `nudgeEnd`, on the turn that answers it.
+  {
+    key: 'reminder_nudge_end', audience: 'private', label: 'נודניק: סוף שלושה ימים',
+    help: 'ההודעה האחרונה של נודניק בלי דדליין, אחרי שלושה ימים. שאלה אחת: להמשיך או להפסיק. בלי לחץ, בלי אשמה.',
+    vars: { title: 'מה שביקשו להזכיר' }, required: ['title'],
+    sample: { title: 'להזמין תור לרופא שיניים' },
+    text: '⏰ *{{title}}*\nאני מזכירה על זה כבר 3 ימים. להמשיך עוד 3 ימים, או להפסיק?',
+  },
+  {
+    key: 'reminder_list_nudge_end', audience: 'private', label: 'נודניק: סוף שלושה ימים, כמה יחד',
+    help: 'אותה שאלה, כשכמה נודניקים נגמרים באותו רגע.',
+    vars: { items: 'התזכורות, שורה לכל אחת' }, required: ['items'],
+    sample: { items: '- להזמין תור לרופא שיניים\n- לשלם ארנונה' },
+    text: '⏰ *תזכורות*\n{{items}}\nאני מזכירה על אלה כבר 3 ימים. להמשיך עוד 3 ימים, או להפסיק?',
   },
   // ---- the same six, for somebody whose language is English ---------------
   // A reminder goes out with no model between the code and the phone, so the
@@ -356,7 +377,7 @@ const TEMPLATES = [
     help: '',
     vars: { title: 'what they asked to be reminded of' }, required: ['title'],
     sample: { title: 'take the car for its test' },
-    text: '⏰ Reminder again: *{{title}}*\nDone? Just tell me — or tell me to stop reminding you about this.',
+    text: '⏰ Reminder again: *{{title}}*\nDone? Tell me "done" — or "stop reminding me" and I will.',
   },
   {
     key: 'reminder_last_en', audience: 'private', label: 'תזכורת אחרונה',
@@ -377,7 +398,7 @@ const TEMPLATES = [
     help: '',
     vars: { items: 'the reminders, one per line' }, required: ['items'],
     sample: { items: '- take the car for its test\n- call the accountant' },
-    text: '⏰ *Reminders again*\n{{items}}\nAny of these done? Just tell me — or tell me to stop reminding you.',
+    text: '⏰ *Reminders again*\n{{items}}\nAny of these done? Just tell me — or "stop reminding me" and I will.',
   },
   {
     key: 'reminder_list_last_en', audience: 'private', label: 'כמה תזכורות אחרונות יחד',
@@ -385,6 +406,20 @@ const TEMPLATES = [
     vars: { items: 'the reminders, one per line' }, required: ['items'],
     sample: { items: '- take the car for its test\n- call the accountant' },
     text: '⏰ *Reminders again*\n{{items}}\nThese are the last reminders about them — I won\'t bring them up again on my own. If any still matter, tell me when to remind you.',
+  },
+  {
+    key: 'reminder_nudge_end_en', audience: 'private', label: 'נודניק: סוף שלושה ימים',
+    help: '',
+    vars: { title: 'what they asked to be reminded of' }, required: ['title'],
+    sample: { title: 'book the dentist' },
+    text: '⏰ *{{title}}*\nI\'ve been reminding you about this for 3 days. Keep going for 3 more, or stop?',
+  },
+  {
+    key: 'reminder_list_nudge_end_en', audience: 'private', label: 'נודניק: סוף שלושה ימים, כמה יחד',
+    help: '',
+    vars: { items: 'the reminders, one per line' }, required: ['items'],
+    sample: { items: '- book the dentist\n- pay the council tax' },
+    text: '⏰ *Reminders*\n{{items}}\nI\'ve been reminding you about these for 3 days. Keep going for 3 more, or stop?',
   },
   {
     key: 'stranger_intro_he', audience: 'private', label: 'פנייה ראשונה לאדם חדש',

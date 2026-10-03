@@ -327,7 +327,7 @@ const TASK_THEY_ARE_ON = `(t.owner_id = $2 OR EXISTS (
   SELECT 1 FROM shares s WHERE s.viewer_id = $2 AND s.status = 'active'
     AND (s.task_id = t.id OR s.task_id = t.parent_id)))`;
 
-async function setReminder(client, userId, taskId, remindAt, repeatRule, { nudge = false, until = null, seq = 1 } = {}) {
+async function setReminder(client, userId, taskId, remindAt, repeatRule, { nudge = false, until = null, seq = 1, rungs = null, capped = false } = {}) {
   if (!remindAt) return err('invalid', 'remind_at required');
   if (!hasOffset(remindAt)) return badTime('remind_at', remindAt);
   // The zone is the PERSON's, not the task owner's: "every month on the 16th"
@@ -434,15 +434,21 @@ async function setReminder(client, userId, taskId, remindAt, repeatRule, { nudge
   if (endsAt && new Date(at).getTime() > endsAt.getTime()) {
     return err('invalid', 'the chase would end before its first reminder');
   }
+  // `rungs` and `capped` belong to a nudge series and mean nothing without
+  // one (migration 108), so a one-off never carries them whatever was passed.
+  const perDay = endsAt && Number.isFinite(Number(rungs)) && Number(rungs) >= 1 ? Math.floor(Number(rungs)) : null;
   const ins = await client.query(
-    `INSERT INTO task_reminders (task_id, remind_at, repeat_rule, auto, nudge, user_id, repeat_until, repeat_seq)
-     VALUES ($1, $2, $3, false, $4, $5, $6, $7) RETURNING *`,
-    [taskId, at, rule, nudge === true, userId, endsAt, Number.isFinite(Number(seq)) ? Math.max(0, Number(seq)) : 1]
+    `INSERT INTO task_reminders (task_id, remind_at, repeat_rule, auto, nudge, user_id, repeat_until, repeat_seq, rungs, nudge_capped)
+     VALUES ($1, $2, $3, false, $4, $5, $6, $7, $8, $9) RETURNING *`,
+    [taskId, at, rule, nudge === true, userId, endsAt, Number.isFinite(Number(seq)) ? Math.max(0, Number(seq)) : 1,
+      perDay, Boolean(endsAt && capped === true)]
   );
   await audit.record(client, userId, 'reminder.created', {
     taskId, reminderId: ins.rows[0].id,
     ...(nudge === true ? { nudge: true } : {}),
     ...(endsAt ? { chaseUntil: endsAt.toISOString() } : {}),
+    ...(perDay ? { rungs: perDay } : {}),
+    ...(endsAt && capped === true ? { capped: true } : {}),
     ...(movedOff ? { movedOffQuietDay: movedOff, askedFor: remindAt } : {}),
     ...(superseded.rowCount ? { supersededAuto: superseded.rows.map((r) => Number(r.id)) } : {}),
     ...(sameMoment.rowCount ? { supersededOneOff: sameMoment.rows.map((r) => Number(r.id)) } : {}),
@@ -505,9 +511,84 @@ async function echoesAutoReminder(client, userId, taskId, at) {
   return rows.length > 0;
 }
 
+// ---- the nudge ("נודניק") ---------------------------------------------------
+//
+// One arrangement since 2026-10-03, by the owner's table, for everything that
+// used to be three: the one-day ladder `nudge` bought, the daily chase toward a
+// deadline, and the "three times a day until I do it" nobody could ask for.
+//
+//   deadline within NUDGE_DAYS (today counts) → up to NUDGE_PER_DAY a day,
+//                                               every day until it
+//   deadline further away                     → once a day at their hour, and
+//                                               NUDGE_PER_DAY on the last day
+//   no deadline                               → up to NUDGE_PER_DAY a day for
+//                                               NUDGE_DAYS days, then ONE
+//                                               question: go on, or stop
+//
+// "Three a day for three days" is the ceiling on the loud shape whichever way
+// it is reached, which is the owner's cap. The messages of one day are rungs
+// of one occurrence row (`rungs`, migration 108), NUDGE_GAP_HOURS apart, and
+// never past the local day they started on — so the gate's night window is a
+// backstop, not the thing that ends a day.
+const NUDGE_DAYS = 3;
+const NUDGE_PER_DAY = 3;
+const NUDGE_GAP_HOURS = 5;
+
+// Calendar days from a's local day to b's, in one zone. 0 is the same day.
+function localDaysBetween(a, b, tz) {
+  const pa = dt.partsInZone(tz, new Date(a));
+  const pb = dt.partsInZone(tz, new Date(b));
+  return Math.round((Date.UTC(pb.y, pb.m - 1, pb.d) - Date.UTC(pa.y, pa.m - 1, pa.d)) / 86400_000);
+}
+
+// The first message of a loud nudge. Today's slots are their hour and the two
+// after it, a gap apart; the first one still ahead (and inside their window)
+// starts it, so somebody who asks at 11:00 hears it at 14:00 rather than at the
+// evening slot a chase would wait for. A slot that is not their hour is day
+// zero, exactly as in firstChaseMoment: the series re-anchors to their hour the
+// next morning. Nothing left today is tomorrow at their hour.
+function firstNudgeMoment({ hour, timezone, windowEnd, now = new Date(), gapHours = NUDGE_GAP_HOURS }) {
+  const tz = timezone || 'UTC';
+  const at = new Date(now);
+  const p = dt.partsInZone(tz, at);
+  const [hh, mi] = String(hour).split(':').map(Number);
+  const end = /^\d{2}:\d{2}$/.test(String(windowEnd || '')) ? String(windowEnd) : null;
+  for (let i = 0; i < NUDGE_PER_DAY; i++) {
+    const mins = hh * 60 + mi + Math.round(i * gapHours * 60);
+    if (mins >= 24 * 60) break;
+    const slot = { hh: Math.floor(mins / 60), mi: mins % 60 };
+    if (end && `${pad(slot.hh)}:${pad(slot.mi)}` > end) break;
+    const when = dt.instantInZone(tz, { y: p.y, m: p.m, d: p.d, hh: slot.hh, mi: slot.mi, ss: 0 });
+    if (when.getTime() > at.getTime() + PAST_GRACE_MS) return when;
+  }
+  return dt.instantInZone(tz, { y: p.y, m: p.m, d: p.d + 1, hh, mi, ss: 0 });
+}
+
+// Is the rung going out now the last one that fits on this occurrence's day?
+// The next would land a gap from now; past local midnight, or past the end of
+// the hours they agreed to be written in, there is no next — the gate would
+// hold it and it would expire unseen. Asked BEFORE the send, because "last one
+// today" and "last one of all" are different sentences and the second needs
+// the first.
+function lastRungToday({ remindAt, timezone, windowEnd, now = new Date(), gapHours = NUDGE_GAP_HOURS }) {
+  const tz = timezone || 'UTC';
+  const next = new Date(new Date(now).getTime() + gapHours * 3600_000);
+  if (localDayKey(next, tz) !== localDayKey(remindAt, tz)) return true;
+  if (/^\d{2}:\d{2}$/.test(String(windowEnd || ''))) {
+    const p = dt.partsInZone(tz, next);
+    if (`${pad(p.hh)}:${pad(p.mi)}` > String(windowEnd)) return true;
+  }
+  return false;
+}
+
 // `until` is a deadline the SERVER heard (domain/chase-deadline, on a turn the
 // gateway classified) and wins over the task's own due_at: that is set_task_
 // reminder on a task already on their list, whose date was never this one.
+//
+// Returns null only when nothing can be armed — the task is gone or closed, or
+// the moment they named lies past their own deadline — and the caller then
+// falls back to the one-off ladder. A deadline already behind them is no
+// deadline: an overdue task is nudged like a dateless one.
 async function startChase(client, userId, taskId, { now = new Date(), at = null, until: deadline = null } = {}) {
   if (at && await echoesAutoReminder(client, userId, taskId, at)) at = null;
   const { rows } = await client.query(
@@ -516,32 +597,79 @@ async function startChase(client, userId, taskId, { now = new Date(), at = null,
       WHERE t.id = $1 AND t.archived_at IS NULL AND t.status = 'open' AND ${TASK_THEY_ARE_ON}`,
     [taskId, userId]
   );
-  const endsOn = deadline || (rows[0] && rows[0].due_at);
-  if (!rows[0] || !endsOn) return null;
+  if (!rows[0]) return null;
   const tz = rows[0].timezone || 'Asia/Jerusalem';
-  const until = chaseUntil(endsOn, tz);
-  if (!until || until.getTime() <= new Date(now).getTime()) return null;
+  let until = chaseUntil(deadline || rows[0].due_at, tz);
+  if (until && until.getTime() <= new Date(now).getTime()) until = null;
+  // The long shape — once a day — only for a deadline past the loud ceiling.
+  const long = Boolean(until) && localDaysBetween(now, until, tz) >= NUDGE_DAYS;
   let first;
   let seq = 1;
-  let hour = null;
   if (at) {
     first = new Date(at);
     if (Number.isNaN(first.getTime())) return null;
   } else {
     const { data } = await preferences.availabilityWindow(client, userId);
     const window = (data && data.window) || preferences.DEFAULT_WINDOW;
-    hour = chaseHour({ digestTimes: rows[0].digest_times, windowStart: window.start });
-    first = firstChaseMoment({ hour, timezone: tz, windowEnd: window.end, now });
+    const hour = chaseHour({ digestTimes: rows[0].digest_times, windowStart: window.start });
+    first = long
+      ? firstChaseMoment({ hour, timezone: tz, windowEnd: window.end, now })
+      : firstNudgeMoment({ hour, timezone: tz, windowEnd: window.end, now });
     // Their hour, today, is the series starting today. Anything else is the
-    // evening exception: day zero, and the series proper starts tomorrow.
+    // exception: day zero, and the series proper starts tomorrow.
     const p = dt.partsInZone(tz, first);
-    seq = `${String(p.hh).padStart(2, '0')}:${String(p.mi).padStart(2, '0')}` === hour ? 1 : 0;
+    seq = `${pad(p.hh)}:${pad(p.mi)}` === hour ? 1 : 0;
+  }
+  // No deadline: the cap is the end, counted from the day the first one lands.
+  const capped = !until;
+  if (capped) {
+    const p = dt.partsInZone(tz, first);
+    until = dt.instantInZone(tz, { y: p.y, m: p.m, d: p.d + NUDGE_DAYS - 1, hh: 23, mi: 59, ss: 59 });
   }
   if (first.getTime() > until.getTime()) return null;
-  // One occurrence is not a chase. The ladder says the same thing better.
-  const second = seq === 0 ? chaseReanchor(first, hour, tz) : nextOccurrence(first, 'daily', tz);
-  if (!second || second.getTime() > until.getTime()) return null;
-  return setReminder(client, userId, taskId, first, 'daily', { nudge: true, until, seq });
+  // A long series is quiet until its last day, which the sweep raises to the
+  // loud shape when it arms it — or this first row, when it is that day.
+  const rungs = !long || localDaysBetween(first, until, tz) === 0 ? NUDGE_PER_DAY : 1;
+  return setReminder(client, userId, taskId, first, 'daily', { nudge: true, until, seq, rungs, capped });
+}
+
+// The shape a nudge was armed in, as the one sentence the tool results hand
+// the model. The SHAPE is the news a 👍 cannot carry (rules/reminders-and-
+// tasks.md, "A chase is the one arming whose SHAPE is news"), and there are
+// three of them now, so the words come off the row and never off a guess.
+function describeNudge(reminder, timezone) {
+  const tz = timezone || 'UTC';
+  const stamp = (v) => {
+    const p = dt.partsInZone(tz, new Date(v));
+    return `${p.y}-${pad(p.m)}-${pad(p.d)} ${pad(p.hh)}:${pad(p.mi)}`;
+  };
+  const first = stamp(reminder.remind_at);
+  const last = stamp(reminder.repeat_until).slice(0, 10);
+  const rungs = reminder.rungs === null || reminder.rungs === undefined ? null : Number(reminder.rungs);
+  if (rungs === null) return `A daily chase is armed: first ${first} (their time), then every day until ${last}`;
+  if (reminder.nudge_capped === true) {
+    return `A nudge ("נודניק") is armed: first ${first} (their time), then up to ${NUDGE_PER_DAY} messages a day `
+      + `for ${NUDGE_DAYS} days, the last on ${last}, and then ONE question whether to go on`;
+  }
+  if (rungs >= NUDGE_PER_DAY) {
+    return `A nudge ("נודניק") is armed: first ${first} (their time), then up to ${NUDGE_PER_DAY} messages a day `
+      + `until ${last}`;
+  }
+  return `A nudge ("נודניק") is armed: first ${first} (their time), then once a day until ${last}, `
+    + `and up to ${NUDGE_PER_DAY} times on that last day`;
+}
+
+// Where a fresh loud nudge would start for this person now — what startChase
+// picks when no hour was named. Handed to the model on the turn that answers
+// "go on for three more days?" (turn.js, askedToContinue), because the tool
+// takes a moment and a guessed one would be read as an hour they named.
+async function nextNudgeMoment(client, userId, now = new Date()) {
+  const { rows } = await client.query('SELECT timezone, digest_times FROM users WHERE id = $1', [userId]);
+  if (!rows[0]) return null;
+  const { data } = await preferences.availabilityWindow(client, userId);
+  const window = (data && data.window) || preferences.DEFAULT_WINDOW;
+  const hour = chaseHour({ digestTimes: rows[0].digest_times, windowStart: window.start });
+  return firstNudgeMoment({ hour, timezone: rows[0].timezone || 'Asia/Jerusalem', windowEnd: window.end, now });
 }
 
 // "תזכיר לי לקבוע תור" — a reminder asked for with no WHEN at all (the
@@ -830,7 +958,9 @@ async function listReminders(client, userId, taskId) {
 //    all night and expired must not burn a rung the person never saw.
 // 2. Repeating reminders never escalate. A repeat rule IS the person's own
 //    chosen cadence; chasing it as well would be two drums on one task, and the
-//    successor row already brings it back tomorrow.
+//    successor row already brings it back tomorrow. The one exception is a
+//    NUDGE occurrence (`rungs`, migration 108): climbing within its own day is
+//    the cadence they asked for, and it never crosses into the next.
 // 3. The ladder dies the moment the task is completed or the reminder is
 //    cancelled — both already write to the columns this query filters on, so
 //    "done" and "stop reminding me" need no new plumbing at all.
@@ -870,6 +1000,15 @@ const ESCALATION_GAP_HOURS = 3;
 // from above, so one number can still turn every ladder off in an incident.
 const RUNGS = { explicit: 1, auto: 2, nudging: 3 };
 
+// The cap in SQL, said ONCE because the WHERE clause and the returned
+// `rung_cap` must stop on the same number. A nudge occurrence carries its own
+// (`rungs`, migration 108); any other repeating row says one sentence (rule 2);
+// a one-off is decided by who chose the hour (rule 5).
+const RUNG_CAP_SQL = `least($2::int, CASE WHEN r.rungs IS NOT NULL THEN r.rungs::int
+                                     WHEN r.repeat_rule IS NOT NULL THEN 1
+                                     WHEN r.nudge OR u.reminder_nudge THEN $6::int
+                                     WHEN r.auto THEN $4::int ELSE $5::int END)`;
+
 async function dueForSending(client, now, opts = {}) {
   const maxAttempts = Number.isFinite(Number(opts.maxAttempts)) && Number(opts.maxAttempts) > 0
     ? Math.floor(Number(opts.maxAttempts)) : ESCALATION_MAX_ATTEMPTS;
@@ -882,11 +1021,16 @@ async function dueForSending(client, now, opts = {}) {
   const autoRungs = cap(opts.autoRungs, RUNGS.auto);
   const explicitRungs = cap(opts.explicitRungs, RUNGS.explicit);
   const nudgingRungs = cap(opts.nudgingRungs, RUNGS.nudging);
+  const nudgeGapHours = Number.isFinite(Number(opts.nudgeGapHours)) && Number(opts.nudgeGapHours) > 0
+    ? Number(opts.nudgeGapHours) : NUDGE_GAP_HOURS;
   const { rows } = await client.query(
     `SELECT r.id AS reminder_id, r.task_id, r.remind_at, r.repeat_rule, r.attempts, r.auto,
             -- a chase and its place in one: which occurrence this is, and the
             -- instant past which there are no more (migration 081)
             r.repeat_until, r.repeat_seq,
+            -- a nudge's messages for the day, and whether its end is the cap
+            -- rather than a deadline (migration 108)
+            r.rungs, r.nudge_capped,
             -- who it reaches — the person who set it, and only for rows older
             -- than migration 073 the task's owner
             ${RECIPIENT} AS user_id, t.title, t.due_at, u.timezone, u.digest_times, u.locale,
@@ -894,8 +1038,7 @@ async function dueForSending(client, now, opts = {}) {
             -- the flag allows. Returned so the sweep can say "last one" off the
             -- same number the WHERE clause stopped on: a cap the caller derives
             -- for itself is the second copy that drifts.
-            least($2::int, CASE WHEN r.nudge OR u.reminder_nudge THEN $6::int
-                                WHEN r.auto THEN $4::int ELSE $5::int END) AS rung_cap,
+            ${RUNG_CAP_SQL} AS rung_cap,
             -- true when the previous rung was OURS to lose: the pipe failed on
             -- every try and the row expired with nothing delivered.
             (prev.hold_reason = 'expired' AND prev.attempts > 0 AND prev.last_error IS NOT NULL) AS prev_failed
@@ -922,16 +1065,20 @@ async function dueForSending(client, now, opts = {}) {
          -- Rung 1: the moment they picked. Unchanged.
          (r.attempts = 0 AND r.remind_at <= $1::timestamptz)
          OR
-         (r.attempts BETWEEN 1 AND least($2::int, CASE WHEN r.nudge OR u.reminder_nudge THEN $6::int
-                                                       WHEN r.auto THEN $4::int ELSE $5::int END) - 1
-          AND r.repeat_rule IS NULL
-          -- Never a follow-up once the day the THING is on has ended. A rung
-          -- chases an action whose moment is still ahead; the morning after
-          -- the hospital, "did you pack the bag?" is a message about nothing,
-          -- and the task is in the digest either way.
-          AND (t.due_at IS NULL
+         (r.attempts BETWEEN 1 AND ${RUNG_CAP_SQL} - 1
+          AND (r.repeat_rule IS NULL OR r.rungs IS NOT NULL)
+          AND (CASE WHEN r.rungs IS NOT NULL
+            -- A nudge's day is the day its occurrence is on, and it ends
+            -- there: tomorrow belongs to the next occurrence, already armed.
+            THEN ($1::timestamptz AT TIME ZONE COALESCE(u.timezone, 'UTC'))::date
+                 = (r.remind_at AT TIME ZONE COALESCE(u.timezone, 'UTC'))::date
+            -- Never a follow-up once the day the THING is on has ended. A rung
+            -- chases an action whose moment is still ahead; the morning after
+            -- the hospital, "did you pack the bag?" is a message about nothing,
+            -- and the task is in the digest either way.
+            ELSE (t.due_at IS NULL
                OR ($1::timestamptz AT TIME ZONE COALESCE(u.timezone, 'UTC'))::date
-                  <= (t.due_at AT TIME ZONE COALESCE(u.timezone, 'UTC'))::date)
+                  <= (t.due_at AT TIME ZONE COALESCE(u.timezone, 'UTC'))::date) END)
           AND (
             -- The previous rung died on OUR side: the worker tried, every try
             -- failed (attempts > 0, an error recorded) and the row expired.
@@ -945,11 +1092,13 @@ async function dueForSending(client, now, opts = {}) {
             -- delivered from dropped/expired/cancelled — a row the gate stamped
             -- on the way to the bin carries a reason and does not count.
             (prev.sent_at IS NOT NULL AND prev.hold_reason IS NULL
-             AND prev.sent_at <= $1::timestamptz - ($3::double precision * interval '1 hour')
+             AND prev.sent_at <= $1::timestamptz - ((CASE WHEN r.rungs IS NOT NULL THEN $7 ELSE $3 END)::double precision
+                                                    * interval '1 hour')
              -- Rung 3 is "next day at the hour they chose", not "gap hours after
              -- rung 2" — computed through their own timezone so the wall-clock
-             -- hour survives a DST boundary instead of drifting by one.
-             AND (r.attempts <> 2
+             -- hour survives a DST boundary instead of drifting by one. Not for
+             -- a nudge, whose three rungs are all one day's.
+             AND (r.rungs IS NOT NULL OR r.attempts <> 2
                   OR (r.remind_at AT TIME ZONE COALESCE(u.timezone, 'UTC') + interval '1 day')
                        AT TIME ZONE COALESCE(u.timezone, 'UTC') <= $1::timestamptz))
           )
@@ -958,7 +1107,7 @@ async function dueForSending(client, now, opts = {}) {
      -- Then by id: two reminders at the SAME moment are rung 1 in the same tick,
      -- and the later one must be the one that retires the other's ladder.
      ORDER BY r.remind_at, r.id`,
-    [now, maxAttempts, gapHours, autoRungs, explicitRungs, nudgingRungs]
+    [now, maxAttempts, gapHours, autoRungs, explicitRungs, nudgingRungs, nudgeGapHours]
   );
   return ok({ due: rows });
 }
@@ -1172,8 +1321,11 @@ async function markSent(client, reminderId) {
 // built this path. What still may not ride is a dated task's ONE reminder,
 // chase or no chase: `repeat_until` without `repeat_rule` is not a thing
 // setReminder will store.
-function ridesDigest({ dueAt, repeatRule, remindAt, timezone, digestTimes, repeatUntil = null }) {
+function ridesDigest({ dueAt, repeatRule, remindAt, timezone, digestTimes, repeatUntil = null, rungs = null }) {
   if (dueAt && !repeatUntil) return false;
+  // A day of a loud nudge is several messages, and carrying the first would
+  // retire the row and the rest of the day with it. They asked to be nagged.
+  if (Number(rungs) > 1) return false;
   if (!normalizeRepeatRule(repeatRule)) return false;
   const times = Array.isArray(digestTimes)
     ? digestTimes
@@ -1228,6 +1380,7 @@ module.exports = {
   retireForMovedTask, stopRecentLadders, STOP_WINDOW_HOURS, momentIsPast, PAST_GRACE_MS,
   normalizeRepeatRule, nextOccurrence, resolveMonthlyAnchor, movesOffQuietDay,
   isChase, chaseHour, firstChaseMoment, chaseUntil, chaseReanchor, startChase, startWeeklyNudge, WEEKLY_NUDGE_WEEKS,
+  firstNudgeMoment, nextNudgeMoment, describeNudge, lastRungToday, localDaysBetween, NUDGE_DAYS, NUDGE_PER_DAY, NUDGE_GAP_HOURS,
   CHASE_MORNING_BEFORE, CHASE_FALLBACK_AT, CHASE_EVENING_AT,
   recordAttempt, attemptKey, ESCALATION_MAX_ATTEMPTS, ESCALATION_GAP_HOURS, RUNGS,
   ridesDigest, carriedForDigest, markCarried,

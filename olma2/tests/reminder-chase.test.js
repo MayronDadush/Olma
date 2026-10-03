@@ -82,6 +82,12 @@ const sent = async (pool) => (await pool.query(
 
 // The worker delivers; nothing in a test does, so a rung that has to look
 // delivered is stamped the way the gate would stamp it.
+async function deliverAll(pool, atIso) {
+  await pool.query(
+    `UPDATE outbox SET sent_at = $1::timestamptz, hold_reason = NULL
+      WHERE kind = 'reminder' AND sent_at IS NULL`, [atIso]);
+}
+
 async function deliver(pool, key, atIso) {
   const { rowCount } = await pool.query(
     `UPDATE outbox SET sent_at = $2::timestamptz, hold_reason = NULL WHERE idempotency_key = $1`,
@@ -115,10 +121,14 @@ test('חיים asks on Tuesday afternoon and is chased daily until Monday, Satur
 
   // Now the week, one sweep per occurrence. Each message is delivered the way
   // the worker would deliver it, because the successor is armed on the send.
+  // Monday is the last day, and a nudge says it up to three times that day
+  // (owner, 2026-10-03): 09:00, then a gap of NUDGE_GAP_HOURS each.
+  const MON_2 = '2026-09-28T11:00:00.000Z'; // 14:00 local
+  const MON_3 = '2026-09-28T16:00:00.000Z'; // 19:00 local
   const days = [];
-  for (const at of [EVENING_1, MORNING(23), MORNING(24), MORNING(25), MORNING(26), MORNING(27), MORNING(28), MORNING(29)]) {
+  for (const at of [EVENING_1, MORNING(23), MORNING(24), MORNING(25), MORNING(26), MORNING(27), MORNING(28), MON_2, MON_3, MORNING(29)]) {
     const fired = await withTx(pool, (c) => sweeps.sweepReminders(c, at));
-    for (const id of fired) await deliver(pool, `reminder:${id}`, at);
+    await deliverAll(pool, at);
     if (fired.length) days.push(local(at));
   }
   assert.deepEqual(days, [
@@ -130,7 +140,9 @@ test('חיים asks on Tuesday afternoon and is chased daily until Monday, Satur
     // pushed a day either — Sunday's own occurrence is what arrives.
     'Sun 27-09 09:00',
     'Mon 28-09 09:00',
-  ], 'one a day, from the day he asked, to the day it is due, minus Shabbat');
+    'Mon 28-09 14:00',
+    'Mon 28-09 19:00',
+  ], 'one a day, from the day he asked, three on the day it is due, minus Shabbat');
 
   // Nothing survives the deadline: no pending row, and the sweep the next
   // morning has nothing to send.
@@ -145,14 +157,14 @@ test('חיים asks on Tuesday afternoon and is chased daily until Monday, Satur
   assert.deepEqual(keys, [
     'reminder',
     'reminder_followup', 'reminder_followup', 'reminder_followup', 'reminder_followup',
-    'reminder_last',
+    'reminder_followup', 'reminder_followup', 'reminder_last',
   ]);
   // Only the first is a moment HE chose. Every one after it is an hour Olma
   // picked on a day Olma picked, which is the line the escalation ladder draws
   // between rung 1 and everything above it — and the gate reads `rung` for the
   // night window and `urgency` for the daily budget.
-  assert.deepEqual(rows.map((r) => r.payload.rung), [1, 2, 2, 2, 2, 2]);
-  assert.deepEqual(rows.map((r) => r.urgency), ['urgent', 'normal', 'normal', 'normal', 'normal', 'normal']);
+  assert.deepEqual(rows.map((r) => r.payload.rung), [1, 2, 2, 2, 2, 2, 2, 3]);
+  assert.deepEqual(rows.map((r) => r.urgency), ['urgent', 'normal', 'normal', 'normal', 'normal', 'normal', 'normal', 'normal']);
 });
 
 test('"עשיתי" closes it — the task AND the chase, which is the half that would have been worse', async (t) => {
@@ -229,30 +241,50 @@ test('the first moment: their hour if it is still ahead, the evening if it is no
   }).toISOString()), 'Wed 23-09 09:00');
 });
 
-// ---- what is NOT a chase -----------------------------------------------------
+// ---- the two short shapes ----------------------------------------------------
 
-test('one day is not a chase — that is the ladder, and nudge already buys it', async (t) => {
+test('a deadline tonight is a nudge that lives one day, from the next slot still ahead', async (t) => {
   const { pool, teardown } = await freshDb();
   t.after(teardown);
   const u = await person(pool);
-  // "תעזור לי לזכור, זה לסוף היום" — a deadline tonight. A daily series across
-  // it would be one message, said worse.
+  // "תעזור לי לזכור, זה לסוף היום", asked at 14:40 — the 09:00 and 14:00 slots
+  // are gone, so 19:00, and the series ends tonight.
   const res = await camera(pool, u, { dueAt: '2026-09-22T20:00:00.000Z' });
   const [row] = await pending(pool, res.data.task.id);
-  assert.equal(row.repeat_rule, null, 'no cadence');
-  assert.equal(row.repeat_until, null);
-  assert.equal(row.nudge, true, 'but they still asked to be chased, and get the three rungs');
-  assert.equal(res.data.chase, undefined);
+  assert.equal(row.repeat_rule, 'daily');
+  assert.equal(local(row.remind_at), 'Tue 22-09 19:00');
+  assert.equal(local(row.repeat_until), 'Tue 22-09 23:59');
+  assert.equal(Number(row.rungs), reminders.NUDGE_PER_DAY, 'loud: a deadline inside three days');
+  assert.equal(row.nudge_capped, false, 'it ends at a deadline they named');
+  assert.match(res.data.chase.shape, /up to 3 messages a day until 2026-09-22/);
 });
 
-test('no deadline, no chase: there is nothing to chase toward', async (t) => {
+test('no deadline: three a day for three days, and then ONE question', async (t) => {
   const { pool, teardown } = await freshDb();
   t.after(teardown);
-  const u = await person(pool);
+  const u = await person(pool, { quiet: 'none' });
   const res = await camera(pool, u, { dueAt: null });
-  const rows = await pending(pool, res.data.task.id);
-  assert.deepEqual(rows.map((r) => r.repeat_until), [], 'a dateless task arms nothing automatic');
-  assert.equal(res.data.chase, undefined);
+  const [row] = await pending(pool, res.data.task.id);
+  assert.equal(row.repeat_rule, 'daily');
+  assert.equal(local(row.remind_at), 'Tue 22-09 19:00', 'the next slot still ahead today');
+  assert.equal(local(row.repeat_until), 'Thu 24-09 23:59', 'three days, today counting');
+  assert.equal(Number(row.rungs), reminders.NUDGE_PER_DAY);
+  assert.equal(row.nudge_capped, true);
+  assert.match(res.data.chase.shape, /for 3 days/);
+
+  // Run the whole series and read what was said.
+  const slots = [];
+  for (const d of [23, 24]) for (const h of ['06', '11', '16']) slots.push(`2026-09-${d}T${h}:00:00.000Z`);
+  for (const at of [EVENING_1, ...slots, MORNING(25)]) {
+    await withTx(pool, (c) => sweeps.sweepReminders(c, at));
+    await deliverAll(pool, at);
+  }
+  const rows = await sent(pool);
+  assert.equal(rows.length, 7, 'Tuesday evening, then three on Wednesday and three on Thursday');
+  const keys = rows.map((r) => proactive.reminderTemplateKey(r.payload));
+  assert.equal(keys[keys.length - 1], 'reminder_nudge_end', 'the last one asks whether to go on');
+  assert.deepEqual(keys.slice(1, -1), Array(5).fill('reminder_followup'));
+  assert.deepEqual(await pending(pool, res.data.task.id), [], 'and nothing after it');
 });
 
 test('a task that is not chased is exactly what it was before any of this', async (t) => {
@@ -402,13 +434,13 @@ test('through the tool: an echoed moment arms the chase and the result says its 
   assert.ok(res.data.reminder.repeat_until, 'a chase, not a cadence');
   assert.ok(new Date(res.data.reminder.remind_at).getTime() < NOW + 86400_000,
     'the first one is inside a day — the eval asserts exactly this');
-  assert.match(res.data.hints.chase, /daily chase is armed/);
+  assert.match(res.data.hints.chase, /nudge \("נודניק"\) is armed: .* once a day until/);
   const live = await pending(pool, added.data.task.id);
   assert.deepEqual(live.map((r) => Number(r.id)), [Number(res.data.reminder.id)],
     'the automatic row on the deadline day went: the chase already speaks that morning');
 });
 
-test('through the tool: when no chase fits, the result says it is ONE reminder', async (t) => {
+test('through the tool: a task with no date is a three-day nudge, and the result says so', async (t) => {
   const { pool, teardown } = await freshDb();
   t.after(teardown);
   const u = await person(pool, { quiet: 'none' });
@@ -419,8 +451,43 @@ test('through the tool: when no chase fits, the result says it is ONE reminder',
     nudge: true,
   }));
   assert.equal(res.ok, true, JSON.stringify(res.error || {}));
+  assert.equal(res.data.reminder.repeat_rule, 'daily');
+  assert.equal(res.data.reminder.nudge_capped, true);
+  assert.match(res.data.hints.chase, /for 3 days/);
+  assert.match(res.data.hints.chase, /ONE question whether to go on/);
+});
+
+test('through the tool: a moment past the deadline is still ONE reminder, and says so', async (t) => {
+  const { pool, teardown } = await freshDb();
+  t.after(teardown);
+  const u = await person(pool, { quiet: 'none' });
+  const NOW = Date.now();
+  const added = await withTx(pool, (c) => tasks.addTask(c, u.id, {
+    title: 'לקחת את המצלמה לתיקון', dueAt: new Date(NOW + 2 * 86400_000).toISOString(),
+  }));
+  const res = await withTx(pool, (c) => BY_NAME.get('set_task_reminder').handler(c, { id: u.id, timezone: TZ }, {
+    task_id: added.data.task.id,
+    remind_at: new Date(NOW + 6 * 86400_000).toISOString().replace('Z', '+00:00'),
+    nudge: true,
+  }));
+  assert.equal(res.ok, true, JSON.stringify(res.error || {}));
   assert.equal(res.data.reminder.repeat_rule, null);
   assert.equal(res.data.reminder.nudge, true, 'they still get the ladder they asked for');
-  assert.match(res.data.hints.chase, /No daily chase was armed/);
+  assert.match(res.data.hints.chase, /No nudge was armed/);
   assert.match(res.data.hints.chase, /Never say "every day"/);
+});
+
+test('the list says a loud nudge is up to three a day, and a nudge never rides the digest', async (t) => {
+  const { pool, teardown } = await freshDb();
+  t.after(teardown);
+  const u = await person(pool);
+  await camera(pool, u, { title: 'לשלוח את הטופס', dueAt: '2026-09-23T21:00:00.000Z' });
+  await camera(pool, u, { title: 'להתקשר לבנק', dueAt: '2026-09-23T21:00:00.000Z' });
+  const list = await withTx(pool, (c) => reminders.listReminders(c, u.id));
+  const block = listBlock.renderReminderListBlock(list.data, {
+    locale: 'he', timezone: TZ, channelType: 'whatsapp', now: new Date(ASKED_AT),
+  });
+  assert.match(block, /עד 3 פעמים ביום עד /);
+  assert.equal(reminders.ridesDigest({ remindAt: MORNING(23), repeatRule: 'daily', dueAt: null,
+    digestTimes: ['09:00'], timezone: TZ, rungs: 3 }), false);
 });

@@ -11,16 +11,11 @@ const chaseDeadline = require('../../../domain/chase-deadline');
 // What set_task_reminder(nudge:true) actually armed, said on the result —
 // the same two sentences tools/tasks.js gives add_task, because a chase is
 // the one arming whose SHAPE is news and a 👍 cannot carry a cadence.
-const NOT_A_CHASE = 'No daily chase was armed: there is no deadline, or not two days of it left. This is ONE '
-  + 'reminder at this moment, followed up the same day if they do not answer. Never say "every day".';
+const NOT_A_CHASE = 'No nudge was armed: the moment they named is past the task\'s own deadline. This is ONE '
+  + 'reminder at this moment, followed up if they do not answer. Never say "every day".';
 
 function chaseArmedHint(reminder, timezone) {
-  const tz = timezone || 'UTC';
-  const pad = (n) => String(n).padStart(2, '0');
-  const p = partsInZone(tz, new Date(reminder.remind_at));
-  const u = partsInZone(tz, new Date(reminder.repeat_until));
-  return `A daily chase is armed: first ${p.y}-${pad(p.m)}-${pad(p.d)} ${pad(p.hh)}:${pad(p.mi)} (their time), `
-    + `then every day until ${u.y}-${pad(u.m)}-${pad(u.d)}, and it stops the moment they say it is done. `
+  return `${reminders.describeNudge(reminder, timezone)}. It stops the moment they say it is done. `
     + 'Say that shape back in ONE short line and never list the days.';
 }
 
@@ -46,7 +41,7 @@ module.exports = [
   // costs tokens only on the turns that arm one.
   tool('set_task_reminder', 'Attach a reminder to a task, for a moment they ASKED for. A task with a due_at already has one; this is a different time or a repeat, and it cancels the automatic one, never two. remind_at MUST carry a UTC offset (2026-08-20T09:00:00+03:00), their local time (USER.md); never bare digits with a Z.',
     { task_id: S('number', 'Task id'), remind_at: S('string', 'ISO-8601 datetime WITH UTC offset'),
-      nudge: S('boolean', 'Chase until done, if they ask'),
+      nudge: S('boolean', 'Nudge (נודניק) until done, if they ask'),
       repeat_rule: S('string', 'Optional repeat, these exact forms or it stores a ONE-OFF: "daily"; "weekly"; "weekly:MO,TH" (SU MO TU WE TH FR SA) — a weekday they NAMED goes HERE, not only in remind_at; "monthly:16"; "monthly:last" (whatever the last day is; a short month clamps).'),
       when_said: WHEN_SAID }, ['task_id', 'remind_at'],
     async (client, user, a, ctx) => {

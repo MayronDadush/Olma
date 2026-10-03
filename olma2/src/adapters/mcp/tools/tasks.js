@@ -209,8 +209,7 @@ function taskHints(res, user = {}) {
         + 'morning, until done — never "every day" and never a list of dates. If they would rather a '
         + 'specific time, set_task_reminder changes it.'
       : d.chase
-      ? `A daily chase is armed: first${at}, then every day until ${String(d.chase.until).slice(0, 10)}, `
-        + 'and it stops the moment they say it is done. Say that shape back in ONE short line — it is '
+      ? `${d.chase.shape}, and it stops the moment they say it is done. Say that shape back in ONE short line — it is `
         + 'what they asked for and the 👍 cannot carry it — and never list the days. Each message after '
         + 'the first says how to stop it, so do not add that here.'
       : d.remindersAsked
@@ -239,8 +238,8 @@ function taskHints(res, user = {}) {
       && d.task && d.task.due_at && chaseWorthAsking(d.task.due_at, d.reminders[0])) {
     hints.chaseAvailable = 'Their deadline is days away and this reminder goes out ONCE, close to it. '
       + 'If their words asked for help until it is done — "עד ש...", "תעזור לי", "תמשיך להזכיר" — that '
-      + 'is a chase, not a reminder: call set_task_reminder(task_id, remind_at, nudge:true) and it '
-      + 'becomes one a day until the deadline. If they simply named a moment, do nothing and say nothing.';
+      + 'is a nudge, not a reminder: call set_task_reminder(task_id, remind_at, nudge:true) and it '
+      + 'becomes one a day until the deadline, up to three on its last day. If they simply named a moment, do nothing and say nothing.';
   }
   if (d.autoRemindersSkipped) {
     hints.autoRemindersSkipped = `${d.autoRemindersSkipped} timed item(s) went past the per-call reminder cap and `
@@ -315,7 +314,7 @@ module.exports = [
       due_at: S('string', 'Optional, ISO-8601 with offset as above'),
       ends_at: S('string', 'Optional end of a range, same format: a shift is title \'משמרת\', due_at 12:00, ends_at 19:00 — never hours in the title.'),
       remind_at: S('string', 'The hour THEY named to be reminded, same format. Replaces the automatic one.'),
-      nudge: S('boolean', 'They asked to be chased until it is done ("עד שאעשה"): one a day up to due_at'),
+      nudge: S('boolean', 'A nudge they asked for ("נודניק", "עד שאעשה", "תציק לי"): repeats until done'),
       when_said: WHEN_SAID,
       parent_task_id: S('number', 'Optional parent (project) id') }, ['title'],
     async (client, user, a, ctx) => {

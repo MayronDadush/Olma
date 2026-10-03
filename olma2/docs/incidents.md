@@ -120,6 +120,7 @@ never trust a dated narrative for something you are about to act on.
 - [Her reminders arrived in Hebrew (fixed 2026-09-07)](#her-reminders-arrived-in-hebrew-fixed-2026-09-07)
 - [A hundred and five pending reminders, thirteen of them pending (fixed 2026-09-07)](#a-hundred-and-five-pending-reminders-thirteen-of-them-pending-fixed-2026-09-07)
 - [The reminder that would not stop (fixed 2026-09-09)](#the-reminder-that-would-not-stop-fixed-2026-09-09)
+- [Three a day, and the third was tomorrow (decided 2026-10-03)](#three-a-day-and-the-third-was-tomorrow-decided-2026-10-03)
 - [A week of help, delivered as one reminder the night before (fixed 2026-09-22)](#a-week-of-help-delivered-as-one-reminder-the-night-before-fixed-2026-09-22)
 - [The first day coming up (fixed 2026-09-23)](#the-first-day-coming-up-fixed-2026-09-23)
 - [The reminder that was only a sentence (fixed 2026-09-22)](#the-reminder-that-was-only-a-sentence-fixed-2026-09-22)
@@ -5119,6 +5120,38 @@ still fire", and the two only look alike.
 
 Nothing about what is ARMED changed. Rung 2 and rung 3 still go out. This is
 only about what a person is told.
+
+### Three a day, and the third was tomorrow (decided 2026-10-03)
+
+The owner asked for two kinds of reminder: a regular one, at the hour or an
+hour before, and a "נודניק" that comes back up to three times a day until the
+thing is done. The answer at first was that the second already existed —
+`nudge:true` bought three rungs. Reading the code said otherwise: rung 2 came
+three hours after rung 1, and rung 3 came the NEXT day at the original hour
+(`dueForSending`, rule 3). Three messages over two days is not three a day,
+and a chase (one a day until a deadline) could not climb at all, because every
+repeating row retired on its first send. No row could hold what he asked for.
+
+Measured on the box first: 0 of 42 people had the page's nudge switch on, 1 of
+379 reminders in thirty days carried `nudge`, and 15 rows were chases. So the
+old nudge was safe to redefine and nobody's live arrangement moves.
+
+He drew the table and set the ceiling himself ("תקרה של 3 ימים"): inside three
+days of a deadline, up to three a day; further out, once a day and three on
+the last day; with no deadline, three a day for three days and then one
+question, never a fourth day nobody agreed to. The design that fits the code
+already there is one occurrence row per day whose rungs climb inside that day
+(`task_reminders.rungs`, migration 108), so the stop, the "done", the quiet
+day, the pause and the gate all keep working on the shape they already know.
+`rungs` NULL is every older row and reads exactly as before.
+
+Two things the build found. The follow-up text said "להגיד לי להפסיק להזכיר",
+which the gateway hook's `stopRemindersOnly` matches only when the person
+writes the infinitive back; it now hands them the exact words, "די להזכיר",
+which the hook reads. And `pause.resumeUser` re-derives a chase caught on day
+zero through `startChase`, which now reads a past deadline as no deadline — a
+deadline that passed during the pause would have come back as a new
+three-day nudge. It is checked before the call.
 
 ### A week of help, delivered as one reminder the night before (fixed 2026-09-22)
 

@@ -32,7 +32,7 @@ test('a follow-up rung does not repeat the first message', () => {
   for (const t of [first, second, last]) assert.match(t, /לקחת תרופה/);
 
   // the exits, in the person's own language, on the rungs that have them
-  assert.match(second, /להפסיק להזכיר/);
+  assert.match(second, /די להזכיר/);
   assert.match(last, /האחרונה/);
   assert.match(last, /לא אזכיר שוב/);
 
