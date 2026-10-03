@@ -203,23 +203,29 @@ function noteHeld(agentId, text, now) {
   HELD.set(agentId, { texts: texts.slice(-BURST_HELD_MAX), at: now });
 }
 export function clearHeld(agentId) { HELD.delete(agentId); }
-// What the next person's turn is told. The replies are QUOTED, not described:
-// told only that "your earlier replies did not reach them", the model saw its
-// own reply in the session history, took it as delivered and answered the
-// newest message alone — Miron asked three things on 2026-10-02 and the
-// answer to the middle one, his open coordinations, never reached him.
+export function heldTexts(agentId, now = Date.now()) {
+  const h = HELD.get(agentId);
+  return h && now - h.at <= BURST_HELD_MS ? h.texts.slice() : [];
+}
+// What the next person's turn is told. The held replies are SENT by the gate,
+// in code, above whatever this turn writes — the model is no longer asked to
+// carry them. It was asked twice and dropped them twice: told only that
+// "earlier replies did not arrive" (2026-10-02), and then handed them word
+// for word and told it MUST merge them (2026-10-03). Both times Miron asked
+// three things and got the answer to the last one alone; the second time the
+// final turn ran four rounds of tools and the note at the top was forgotten.
+// So the model is told the truth about what will happen, and asked only not
+// to say it again.
 export function heldNote(agentId, now = Date.now()) {
   const h = HELD.get(agentId);
   if (!h || now - h.at > BURST_HELD_MS) { HELD.delete(agentId); return ""; }
   const quoted = h.texts.length
     ? h.texts.map((t) => `<<<\n${t}\n>>>`).join("\n")
     : "(the text was not kept)";
-  return "[Burst] They wrote several messages in a row, and NONE of these replies of yours "
-    + "reached them — they never saw them, even though they are in your history:\n"
+  return "[Burst] They wrote several messages in a row. These replies of yours have NOT been sent yet:\n"
     + quoted + "\n"
-    + "The reply you write now is the ONLY message they will get for all of their messages. "
-    + "It MUST carry everything in those undelivered replies that is still true and relevant, "
-    + "and answer their newest message too — one message, merged, nothing said twice. "
+    + "They will be sent automatically, in this order, as the opening of the reply you write now. "
+    + "So write ONLY the answer to their newest message, and do not repeat anything those replies already say. "
     + "Whatever your tools already did stays done; do not do it again.";
 }
 export function _resetBurst() { ARRIVALS.clear(); TURNS.clear(); HELD.clear(); }
@@ -958,6 +964,9 @@ export function buildReplyGateHandler({ connect, sock, timeoutMs = 1500, log = t
       const hasMedia = Boolean(payload && (payload.mediaUrl || (Array.isArray(payload.mediaUrls) && payload.mediaUrls.length) || payload.presentation || payload.location));
       if (!text.trim()) {
         if (person && hasMedia) turnProgress(agentId, "reply", { connect, sock, timeoutMs, asked: false });
+        // A card with no words still carries what the burst held.
+        const carried = person && hasMedia && !waitingBehind(agentId) ? heldTexts(agentId) : [];
+        if (carried.length) { clearHeld(agentId); return { payload: { ...payload, text: carried.join("\n\n") } }; }
         return undefined;
       }
       // A newer message of theirs is already waiting for its own turn: this
@@ -989,8 +998,16 @@ export function buildReplyGateHandler({ connect, sock, timeoutMs = 1500, log = t
           verdict = { action: "cancel", text: "", leaks: [{ kind: "echo", at: "" }], reported: [...verdict.reported, { kind: "echo", at: "", line: 0 }] };
         }
       }
-      // A reply of theirs is going out: the burst, if there was one, is answered.
-      if (person && (verdict.action !== "cancel" || hasMedia)) clearHeld(agentId);
+      // A reply of theirs is going out: the replies this burst held go out WITH
+      // it, joined above it by code (see `heldNote` for why not by the model).
+      // Each was leak-gated when it was held. Even a reply the gate is about to
+      // stop carries them — the held answers are still owed.
+      const carried = person ? heldTexts(agentId) : [];
+      const own = verdict.action !== "cancel" ? verdict.text : "";
+      const sent = carried.length ? [...carried, own].filter((t) => t.trim()).join("\n\n") : null;
+      if (sent !== null) log({ burst: agentId, carried: carried.length, chars: sent.length });
+      if (person && (verdict.action !== "cancel" || hasMedia || sent)) clearHeld(agentId);
+      const out = () => (sent ? { payload: { ...payload, text: sent } } : null);
       // Something is about to reach them, so the 👀 brokerd is holding for this
       // turn's message is no longer needed (`turnProgress` below). Not for a
       // reply the gate is about to stop entirely: nothing reached anybody, and
@@ -998,15 +1015,15 @@ export function buildReplyGateHandler({ connect, sock, timeoutMs = 1500, log = t
       // And whether it ENDS on a question, read off what will actually be sent:
       // a bare "תודה" after "להוסיף לך את זה ליומן?" is their answer, not a
       // closed exchange (brokerd, `thanks_after_question`).
-      if (person && (verdict.action !== "cancel" || hasMedia)) {
-        turnProgress(agentId, "reply", { connect, sock, timeoutMs, asked: verdict.action !== "cancel" && endsWithQuestion(verdict.text) });
+      if (person && (verdict.action !== "cancel" || hasMedia || sent)) {
+        turnProgress(agentId, "reply", { connect, sock, timeoutMs, asked: sent ? endsWithQuestion(sent) : verdict.action !== "cancel" && endsWithQuestion(verdict.text) });
       }
       // Read off what will actually be SENT — a claim inside notes the gate
       // just cut never reaches anybody. Only a person's own agent: a room has
       // no turn brokerd can speak for.
       const claim = /^u-\d+$/.test(agentId) && verdict.action !== "cancel" ? claimedWrite(verdict.text) : null;
       if (claim) askBroker("reply_claim", { agentId, word: claim }, { connect, sock, timeoutMs }).catch(() => {});
-      if (verdict.action === "pass" && !verdict.reported.length) return undefined;
+      if (verdict.action === "pass" && !verdict.reported.length) return out() || undefined;
       // brokerd is asked only when something was found, so the ordinary reply
       // never waits on a socket. It is asked BEFORE the text goes (or does
       // not), because after a cancel there is nothing left to prove it
@@ -1020,6 +1037,7 @@ export function buildReplyGateHandler({ connect, sock, timeoutMs = 1500, log = t
       };
       const reply = await askBroker("reply_gate", report, { connect, sock, timeoutMs });
       log({ gate: agentId, action: verdict.action, kinds: report.leaks.map((l) => l.kind).join(","), chars: report.chars, kept: report.kept, filed: Boolean(reply && reply.ok) });
+      if (out()) return out();
       if (verdict.action === "pass") return undefined;
       if (verdict.action === "trim") return { payload: { ...payload, text: verdict.text } };
       // A cancel takes the media with it, and a schedule card is not the thing

@@ -157,8 +157,12 @@ title means this file. Grep the title, not the filename.
   plugin counts, per agent, the messages `before_dispatch` has seen and no
   turn's `before_prompt_build` has taken yet (matched by their words); a
   PERSON's reply about to go out while one is waiting is cancelled
-  (`olma_burst`), and the next person's turn is told its earlier replies did
-  not arrive. Nothing ever waits, tool calls are never undone, and a delivery
+  (`olma_burst`) and its text kept. **The GATE sends the kept replies, in
+  order, above the next reply that goes out — never the model**: twice the
+  model was asked to carry them (once told, once handed them verbatim with a
+  MUST) and twice it answered the newest message alone, so the next turn is
+  now told they WILL go out and to write only what is new. A last reply the
+  leak gate stops still delivers what was held. Nothing ever waits, tool calls are never undone, and a delivery
   turn Olma started is never held. **`messages.inbound` debounce does NOT do
   this on WhatsApp** — the durable ingress lanes hand over one message at a
   time, so it never had two to join; applied and measured, then removed the

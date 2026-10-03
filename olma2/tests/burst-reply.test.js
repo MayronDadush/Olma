@@ -65,7 +65,7 @@ test('three messages in a row: the first two replies are held, the third turn is
   // Turn 2 starts on M2 while M3 has already arrived.
   await arrive('M3', 'אחרי 21');
   const t2 = await turnStarts('גם וגם');
-  assert.match(t2.prependContext, /\[Burst\].*NONE of these replies/s, 'turn 2 hears about turn 1');
+  assert.match(t2.prependContext, /\[Burst\].*NOT been sent yet/s, 'turn 2 hears about turn 1');
   assert.ok(t2.prependContext.includes('רשמתי שאתה יכול בשבת'), 'and is handed what turn 1 said, word for word');
   assert.deepEqual(await gate('הבנתי, גם וגם', holding()), { cancel: true, reason: 'olma_burst' }, 'M3 is still waiting');
 
@@ -76,8 +76,12 @@ test('three messages in a row: the first two replies are held, the third turn is
   // and answered the newest message alone. It is handed BOTH held replies now.
   assert.ok(t3.prependContext.includes('רשמתי שאתה יכול בשבת'), 'turn 1\'s reply reaches turn 3');
   assert.ok(t3.prependContext.includes('הבנתי, גם וגם'), 'turn 2\'s reply reaches turn 3');
-  assert.match(t3.prependContext, /ONLY message they will get/);
-  assert.equal(await gate('רשמתי: שבת, שתי האפשרויות, אחרי 21', holding()), undefined);
+  assert.match(t3.prependContext, /sent automatically/);
+  // Miron again, 2026-10-03: handed both replies word for word and told it
+  // MUST merge them, the model answered the newest message alone anyway. So the
+  // gate sends the held replies itself, in order, above the last one.
+  assert.deepEqual(await gate('ואחרי 21 רשמתי', holding()),
+    { payload: { text: 'רשמתי שאתה יכול בשבת\n\nהבנתי, גם וגם\n\nואחרי 21 רשמתי' } });
   // …and the note is said once.
   assert.equal(await turnStarts('תודה'), undefined);
 });
@@ -231,6 +235,29 @@ test('the held replies stay until a reply actually reaches them, and expire afte
   await arrive('M3', 'ג');
   const t3 = await turnStarts('ג');
   assert.ok(t3.prependContext.includes('תשובה ראשונה'));
-  assert.equal(await gate('הכל ביחד', holding()), undefined);
+  assert.deepEqual(await gate('הכל ביחד', holding()), { payload: { text: 'תשובה ראשונה\n\nהכל ביחד' } });
   assert.equal(plugin.heldNote('u-54'), '', 'answered: nothing is carried any more');
+  assert.equal(await gate('ועוד משהו', holding()), undefined, 'and carried once');
+});
+
+test('a last reply the gate stops still delivers what the burst held', async () => {
+  await arrive('M1', 'א');
+  await turnStarts('א');
+  await arrive('M2', 'ב');
+  await gate('התיאומים שלך: פוקר בשבת', holding());
+  await turnStarts('ב');
+  // The last turn's own words are working-out and are cut whole…
+  const out = await gate('NO_REPLY is the right answer here because the turn context says so', holding());
+  // …but the answer that was held is still owed, and goes out alone.
+  assert.deepEqual(out, { payload: { text: 'התיאומים שלך: פוקר בשבת' } });
+});
+
+test('a card with no words carries the held replies as its text', async () => {
+  await arrive('M1', 'א');
+  await turnStarts('א');
+  await arrive('M2', 'ב');
+  await gate('תשובה ראשונה', holding());
+  await turnStarts('ב');
+  const out = await plugin.buildReplyGateHandler({ connect: holding().connect, ...quiet })({ payload: { text: '', mediaUrl: '/x.png' }, sessionKey: KEY }, {});
+  assert.deepEqual(out, { payload: { text: 'תשובה ראשונה', mediaUrl: '/x.png' } });
 });
