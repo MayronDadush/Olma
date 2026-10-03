@@ -196,3 +196,15 @@ test('"this month" does not depend on the timezone the Node process runs in', as
     await db.pool.query('DELETE FROM usage_system_ledger WHERE agent_id = $1', [agent]);
   }
 });
+
+test('the days table is labelled by the date, not by a JS Date turned into a string', async () => {
+  // The row's DATE reached the template as a JS Date, and String(date).slice(0, 10)
+  // printed "Thu Oct 01" — the weekday and the month name, never the year.
+  // It is read as text in SQL now, and that text is the key, the sort and the label.
+  const u = await makeUser(db.pool, '+972500003002', { firstName: 'תווית-יום' });
+  await ledger(u.id, 'deepseek/deepseek-v4-flash', { i: 100000, o: 1000, cr: 0, cw: 0, stored: 0.01, estimated: false });
+  const today = (await db.pool.query('SELECT CURRENT_DATE::text AS d')).rows[0].d;
+  const html = await render();
+  assert.ok(html.includes(`<td class="nowrap">${today}</td>`), `the day ${today} is not a row label`);
+  assert.doesNotMatch(html, /<td class="nowrap">(Sun|Mon|Tue|Wed|Thu|Fri|Sat) /, 'a row is labelled by a stringified Date');
+});

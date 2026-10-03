@@ -124,20 +124,26 @@ function fixedCosts(bounds, infra, overrides = {}) {
 async function usageCosts(client, bounds) {
   const params = [bounds.today, bounds.monthDay, bounds.weekDay];
   const ledger = await client.query(
-    `SELECT date, model, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_usd
+    `SELECT date::text AS day, model, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_usd
        FROM usage_ledger WHERE date <= $1::date
      UNION ALL
-     SELECT date, model, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_usd
+     SELECT date::text, model, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_usd
        FROM usage_system_ledger WHERE date <= $1::date`, [bounds.today]);
   const blended = await pricing.blendedRate(client);
   const model = { total: 0, month: 0, week: 0, day: 0 };
+  // The day comes out of SQL as text. A bare DATE reaches node as LOCAL
+  // midnight, and isoDay's toISOString() moved every row a day back on any
+  // machine east of UTC — today's spend read 0 on a dev Mac. And the day is
+  // passed to priceUsage, so a row is priced at the rate it was billed at, as
+  // on the cost page: without it the project total ignored PAST_RATES and read
+  // $1.58 under the cost page's (measured on the box 2026-10-01).
   for (const r of ledger.rows) {
     const p = pricing.priceUsage({
       input: r.input_tokens, output: r.output_tokens,
       cacheRead: r.cache_read_tokens, cacheWrite: r.cache_write_tokens,
-    }, r.model, blended);
+    }, r.model, blended, r.day);
     const cost = p.estimated ? Number(r.cost_usd) : p.cost;
-    const day = isoDay(r.date);
+    const day = r.day;
     model.total += cost;
     if (day >= params[1]) model.month += cost;
     if (day >= params[2]) model.week += cost;

@@ -221,13 +221,13 @@ async function renderCost(client) {
   // no history, and makes the ≈ mean what it says: no known rate, rather
   // than a rate known to be wrong.
   const ledgerRows = await client.query(
-    `SELECT l.date, l.model, l.input_tokens, l.output_tokens, l.cache_read_tokens,
+    `SELECT l.date::text AS date, l.model, l.input_tokens, l.output_tokens, l.cache_read_tokens,
             l.cache_write_tokens, l.cost_usd, l.user_id, u.first_name, u.phone, NULL AS agent_id,
             l.date >= date_trunc('month', CURRENT_DATE)::date AS this_month
        FROM usage_ledger l JOIN users u ON u.id = l.user_id
       WHERE l.date >= LEAST(date_trunc('month', CURRENT_DATE)::date, CURRENT_DATE - 30)
      UNION ALL
-     SELECT s.date, s.model, s.input_tokens, s.output_tokens, s.cache_read_tokens,
+     SELECT s.date::text, s.model, s.input_tokens, s.output_tokens, s.cache_read_tokens,
             s.cache_write_tokens, s.cost_usd, NULL, NULL, NULL, s.agent_id,
             s.date >= date_trunc('month', CURRENT_DATE)::date
        FROM usage_system_ledger s
@@ -243,7 +243,9 @@ async function renderCost(client) {
     // saying so with the ≈.
     return { ...r, cost: p.estimated ? Number(r.cost_usd) : p.cost, estimated: p.estimated };
   });
-  const days = { rows: rollup(priced, (r) => String(r.date), (k, rows) => ({ date: rows[0].date }))
+  // `date` is YYYY-MM-DD text from SQL, so it is the key, sorts as a string,
+  // and is the label: as a pg Date it rendered as "Thu Oct 01".
+  const days = { rows: rollup(priced, (r) => r.date, (k, rows) => ({ date: rows[0].date }))
     .sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, 14) };
   // "This month" is decided in SQL, beside the WHERE that fetched the rows,
   // never by comparing `r.date` to a month start built in Node. pg parses a
@@ -378,7 +380,7 @@ async function renderCost(client) {
     </div>
     ${reconcile}
     <div class="cols"><div><h4>לפי יום</h4><table><tr><th>תאריך</th><th>עלות</th></tr>
-    ${days.rows.map((r) => `<tr><td class="nowrap">${esc(String(r.date).slice(0, 10))}</td><td>${money(Number(r.cost), 3)}${r.estimated ? ' <span class="dim">≈</span>' : ''}</td></tr>`).join('')}</table></div>
+    ${days.rows.map((r) => `<tr><td class="nowrap">${esc(r.date)}</td><td>${money(Number(r.cost), 3)}${r.estimated ? ' <span class="dim">≈</span>' : ''}</td></tr>`).join('')}</table></div>
     <div><h4>לפי משתמש (החודש)</h4><table><tr><th>מי</th><th>עלות</th></tr>
     ${top.rows.map((r) => `<tr><td>${esc(r.first_name || r.phone)}</td><td>${money(Number(r.cost), 3)}</td></tr>`).join('')}
     ${system.rows.map((r) => `<tr><td class="dim">${roomByAgent.has(r.agent_id)
