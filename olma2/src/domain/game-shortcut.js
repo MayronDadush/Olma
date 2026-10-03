@@ -126,17 +126,28 @@ function parseName(text) {
   return raw;
 }
 
-// The names a person is seated under, in order: their first name, then with
-// their surname's initial when somebody at the table already has it
-// ("מירון ד׳", "Miron D."). No first name on file → none, and she asks.
+// The names a person is seated under, in order: their first name, then their
+// full name when somebody at the table already has the first ("מירון דדוש";
+// the page draws him as מ.ד). gamesd also tries the last word alone against
+// a seat nobody has claimed, because some friends are called by surname. No
+// first name on file → none, and she asks.
 function namesFor(user) {
   const first = String((user && user.first_name) || '').trim().split(/\s+/)[0] || '';
   if (!first || first.length > 20) return [];
-  const last = String((user && user.last_name) || '').trim();
-  const initial = last ? last[0] : '';
-  if (!initial) return [first];
-  const hebrew = /[֐-׿]/.test(initial);
-  return [first, hebrew ? `${first} ${initial}׳` : `${first} ${initial.toUpperCase()}.`];
+  const last = String((user && user.last_name) || '').trim().replace(/\s+/g, ' ');
+  if (!last || last.length > 20) return [first];
+  return [first, `${first} ${last}`];
+}
+
+// The answer to "כבר יש מירון בערב. מה שם המשפחה שלך?" — the surname, put
+// after the name that was taken ("דדוש" → "מירון דדוש"). An answer that
+// already starts with that name is the whole name and stays as it is.
+function withSurname(answer, taken) {
+  if (!answer || !taken) return answer || null;
+  const first = String(taken).trim().split(/\s+/)[0];
+  if (!first || answer.split(/\s+/)[0].toLowerCase() === first.toLowerCase()) return answer;
+  const whole = `${first} ${answer}`;
+  return whole.length <= 30 ? whole : answer;
 }
 
 // "3 כניסות", said the way the table says it.
@@ -156,5 +167,5 @@ const fmtNumber = (v) => Number(v).toLocaleString('en-US', { maximumFractionDigi
 
 module.exports = {
   OPEN_PHRASES, GAME_WORDS, CODE_RE,
-  matchOpenPhrase, findCode, parseSetup, parseName, namesFor, buyinsText, fmtNumber,
+  matchOpenPhrase, findCode, parseSetup, parseName, namesFor, withSurname, buyinsText, fmtNumber,
 };

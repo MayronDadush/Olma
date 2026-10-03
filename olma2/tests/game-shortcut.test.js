@@ -69,11 +69,20 @@ test('a name is a short line of letters, and "לא" or a question is not one', (
   }
 });
 
-test('the names offered are the first name, then with the surname\'s initial', () => {
-  assert.deepEqual(gs.namesFor({ first_name: 'מירון', last_name: 'דדוש' }), ['מירון', 'מירון ד׳']);
-  assert.deepEqual(gs.namesFor({ first_name: 'Miron', last_name: 'dadush' }), ['Miron', 'Miron D.']);
+test('the names offered are the first name, then the full name', () => {
+  assert.deepEqual(gs.namesFor({ first_name: 'מירון', last_name: 'דדוש' }), ['מירון', 'מירון דדוש']);
+  assert.deepEqual(gs.namesFor({ first_name: 'Miron', last_name: 'Dadush' }), ['Miron', 'Miron Dadush']);
+  assert.deepEqual(gs.namesFor({ first_name: 'דני', last_name: 'א'.repeat(25) }), ['דני']);
   assert.deepEqual(gs.namesFor({ first_name: 'דני בן', last_name: null }), ['דני']);
   assert.deepEqual(gs.namesFor({ first_name: null }), []);
+});
+
+test('the answer to "what is your last name" goes after the name that was taken', () => {
+  assert.equal(gs.withSurname('דדוש', 'מירון'), 'מירון דדוש');
+  assert.equal(gs.withSurname('מירון דדוש', 'מירון'), 'מירון דדוש', 'the whole name stays as it is');
+  assert.equal(gs.withSurname('Dadush', 'miron'), 'miron Dadush');
+  assert.equal(gs.withSurname('דדוש', null), 'דדוש', 'nothing was taken: the answer is the name');
+  assert.equal(gs.withSurname(null, 'מירון'), null, 'no name read: nothing');
 });
 
 test('buy-ins are said the way the table says them', () => {
@@ -89,7 +98,7 @@ test('every game sentence passes the reply gate, whoever is reading', () => {
   const vars = { night: 'ערב משחק', price: '50', chips: '1,000', code: 'K7M2Q', name: 'דני',
     count: 'כניסה אחת', url: 'https://allma.world/night/AbCdEfGhIjKlMnOpQrStUv', join: 'https://allma.world/g/K7M2Q' };
   for (const base of ['game_open', 'game_opened', 'game_invite', 'game_already_open', 'game_ask_name',
-    'game_joined', 'game_name_taken', 'game_already', 'game_no_night', 'game_full', 'game_hello', 'game_privacy']) {
+    'game_joined', 'game_name_taken', 'game_already', 'game_no_night', 'game_closed', 'game_full', 'game_hello', 'game_privacy']) {
     for (const lang of ['he', 'en']) {
       const text = templates.render(templates.keyFor(base, lang, { fallback: 'he' }), vars, {});
       // An English sentence reaches only somebody on English, so it is judged
@@ -155,7 +164,7 @@ test('"ערב משחק חדש" turns the pack on, asks the price, and the answer
   assert.equal(second.claim, true);
   assert.deepEqual(calls[1], ['open', { userId: Number(u.id), name: 'מירון', locale: 'he', price: 50, chips: 1000, nightName: 'ערב משחק' }]);
   assert.equal(second.text,
-    `🃏 פתחתי את ערב משחק. כניסה 50 ₪, 1,000 ז'יטונים לכניסה.\nהדף של הערב:\n${URL}#me-p1\nאת ההודעה הבאה אפשר להעביר לקבוצת הוואטסאפ 👇`);
+    `🃏 פתחתי את ערב משחק. כניסה 50 ₪, 1,000 ז'יטונים לכניסה.\nזה הקישור האישי שלך, רק בשבילך:\n${URL}#me-p1\nעוד רגע שולחת לך את ההודעה עם הקישור שאפשר להעביר לשאר השחקנים, בקבוצה או לכל אחד בפרטי 👇`);
 
   const { rows: [inv] } = await db.pool.query(
     'SELECT kind, urgency, payload, idempotency_key FROM outbox WHERE user_id = $1', [u.id]);
@@ -163,9 +172,9 @@ test('"ערב משחק חדש" turns the pack on, asks the price, and the answer
   assert.equal(inv.urgency, 'urgent');
   assert.equal(inv.idempotency_key, `game_invite:K7M2Q:${u.id}`);
   assert.equal(inv.payload.texts.he,
-    `🃏 ערב משחק · כניסה 50 ₪\nנכנסים לקישור, בוחרים כיסא ורושמים כניסות:\n${URL}\n\nלרשום כניסות מהוואטסאפ: https://allma.world/g/K7M2Q`);
-  assert.ok(!inv.payload.texts.he.includes('#me-'), 'the host\'s own seat never goes to the group');
-  assert.match(inv.payload.texts.en, /Log buy-ins from WhatsApp: https:\/\/allma\.world\/g\/K7M2Q$/);
+    '🃏 ערב משחק · כניסה 50 ₪\nלהצטרפות לוחצים על הקישור ושולחים לעולמה את ההודעה שנפתחת:\nhttps://allma.world/g/K7M2Q');
+  assert.ok(!inv.payload.texts.he.includes('/night/'), 'the invite carries no page at all: everybody comes in through Olma');
+  assert.match(inv.payload.texts.en, /send Allma the message that opens:\nhttps:\/\/allma\.world\/g\/K7M2Q$/);
   // And the raw pipe says the Hebrew to a Hebrew host.
   assert.equal(proactiveText.rawPipeTextFor({ kind: inv.kind, payload: inv.payload, locale: 'he' }, {}), inv.payload.texts.he);
   assert.equal(proactiveText.rawPipeTextFor({ kind: inv.kind, payload: inv.payload, locale: 'en' }, {}), inv.payload.texts.en);
@@ -221,7 +230,7 @@ test('a code seats them under their first name, turns the pack on, and says what
   const u = await person({ firstName: 'דני', lastName: 'לוי' });
   fake.join = (b) => ({ ok: true, joined: true, night: NIGHT, name: b.names[0], buyins: 0, url: `${URL}#me-p7` });
   const out = await ask({ agentId: u.agent, body: 'משחק K7M2Q', messageId: '3EB0GAME0100' });
-  assert.deepEqual(calls, [['join', { userId: Number(u.id), code: 'K7M2Q', names: ['דני', 'דני ל׳'] }]]);
+  assert.deepEqual(calls, [['join', { userId: Number(u.id), code: 'K7M2Q', names: ['דני', 'דני לוי'] }]]);
   assert.equal(out.text,
     `👍 דני, נכנסת לערב משחק.\nבמהלך הערב אפשר לכתוב לי:\n• עוד כניסה / חצי כניסה\n• מה המצב?\n• בסוף: נשארו לי 1,850\nהדף של הערב:\n${URL}#me-p7`);
   assert.deepEqual(await packsOf(u.id), [{ pack: 'games', via: 'code' }]);
@@ -253,14 +262,27 @@ test('no name on file: she asks, and the answer seats them', async () => {
   assert.match(a.text, /^👍 יוסי, נכנסת לערב משחק\./);
 });
 
-test('a name already at the table asks for another', async () => {
+test('a name already at the table asks for the last name, and seats them under both', async () => {
   reset();
   const u = await person({ firstName: 'דני', lastName: null });
   fake.join = (b) => (b.names[0] === 'דני'
     ? { ok: false, error: 'name_taken', name: 'דני', night: NIGHT }
     : { ok: true, joined: true, night: NIGHT, name: b.names[0], buyins: 0, url: `${URL}#me-p9` });
-  assert.equal((await ask({ agentId: u.agent, body: 'משחק K7M2Q' })).text, 'כבר יש דני בערב. איזה שם לכתוב לך?');
-  assert.match((await ask({ agentId: u.agent, body: 'דני הגדול' })).text, /^👍 דני הגדול, נכנסת/);
+  assert.equal((await ask({ agentId: u.agent, body: 'משחק K7M2Q' })).text, 'כבר יש דני בערב. מה שם המשפחה שלך?');
+  assert.match((await ask({ agentId: u.agent, body: 'לוי' })).text, /^👍 דני לוי, נכנסת/);
+  assert.deepEqual(calls.at(-1)[1].names, ['דני לוי']);
+  // and the surname is now theirs on file
+  const { rows: [row] } = await db.pool.query('SELECT first_name, last_name FROM users WHERE id = $1', [u.id]);
+  assert.deepEqual(row, { first_name: 'דני', last_name: 'לוי' });
+});
+
+test('a night that closed in the last day is answered with the page to look at', async () => {
+  reset();
+  const u = await person();
+  fake.join = () => ({ ok: false, error: 'closed', night: NIGHT, url: `${URL}#view` });
+  assert.equal((await ask({ agentId: u.agent, body: 'משחק K7M2Q' })).text,
+    `🃏 ערב משחק כבר נסגר. אפשר לראות את הסיכום כאן:\n${URL}#view`);
+  assert.deepEqual(await packsOf(u.id), [], 'looking is not sitting: no pack');
 });
 
 test('an unknown code is answered only when a game word came with it', async () => {

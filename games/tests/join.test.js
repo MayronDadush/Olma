@@ -117,13 +117,46 @@ test('sending the code again says where they stand, and counts their buy-ins', a
   assert.equal((await pool.query('SELECT count(*)::int n FROM players WHERE user_id = $1', [DANI])).rows[0].n, 1);
 });
 
-test('a code that is closed, unknown or malformed is no_night', async t => {
+test('a code that is unknown or malformed is no_night, and so is one closed more than a day ago', async t => {
   const { pool, post } = await boot(t);
   const { night } = (await open(post)).body;
   assert.equal((await post('/api/join', { userId: DANI, code: 'ZZZZZ', names: ['דני'] })).body.error, 'no_night');
   assert.equal((await post('/api/join', { userId: DANI, code: 'AB1', names: ['דני'] })).body.error, 'no_night');
-  await pool.query('UPDATE nights SET closed_at = now()');
+  await pool.query("UPDATE nights SET closed_at = now() - interval '25 hours'");
   assert.equal((await post('/api/join', { userId: DANI, code: night.code, names: ['דני'] })).body.error, 'no_night');
+});
+
+test('a night closed in the last day answers its code with the page to look at, and seats nobody', async t => {
+  const { pool, post } = await boot(t);
+  const opened = (await open(post)).body;
+  const token = tokenOf(opened.url);
+  await pool.query("UPDATE nights SET closed_at = now() - interval '23 hours'");
+  const stranger = (await post('/api/join', { userId: DANI, code: opened.night.code, names: ['דני'] })).body;
+  assert.equal(stranger.error, 'closed');
+  assert.equal(stranger.night.code, opened.night.code);
+  assert.equal(stranger.url, `https://allma.test/night/${token}#view`);
+  assert.equal((await pool.query('SELECT count(*)::int n FROM players WHERE user_id = $1', [DANI])).rows[0].n, 0);
+  // somebody who sat in it gets their own seat back, not the look-only page
+  const host = (await post('/api/join', { userId: HOST, code: opened.night.code, names: ['מירון'] })).body;
+  assert.equal(host.error, 'closed');
+  assert.equal(host.url, opened.url);
+});
+
+test('a seat the host typed under the first or the LAST name is theirs, under the host\'s name', async t => {
+  const { pool, post } = await boot(t);
+  const { night } = (await open(post)).body;
+  // friends call him by his surname
+  await pool.query("INSERT INTO players (night_id, id, name, ord) SELECT id, 'pdadush', 'דדוש', 5 FROM nights");
+  const { body } = await post('/api/join', { userId: DANI, code: night.code, names: ['דני', 'דני דדוש'] });
+  assert.equal(body.joined, true);
+  assert.equal(body.name, 'דדוש');
+  assert.ok(body.url.endsWith('#me-pdadush'));
+  assert.equal((await pool.query('SELECT count(*)::int n FROM players')).rows[0].n, 2, 'no second seat for him');
+  // an answer to "what's your name?" with two words finds the seat under the first
+  await pool.query("INSERT INTO players (night_id, id, name, ord) SELECT id, 'pdana', 'דנה', 6 FROM nights");
+  const dana = (await post('/api/join', { userId: DANA, code: night.code, names: ['דנה לוי'] })).body;
+  assert.ok(dana.url.endsWith('#me-pdana'));
+  assert.equal(dana.name, 'דנה');
 });
 
 test('no name to offer: the night is named, so the question can say which one', async t => {
