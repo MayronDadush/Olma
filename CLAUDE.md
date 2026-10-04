@@ -277,6 +277,7 @@ Loads when you **Read** a file under `src/jobs/checkin.js`, `src/jobs/onboarding
 - **…and the zone question in a room on several clocks is its fourth (`room_zone_asked_at`, migration 092)** — only for an unconfirmed zone, riding the room invite, stamped after the send confirms
 - **Deleting a user is not deleting a person until the GATEWAY's intake session goes too.**
 - **The ledgers are append-only.**
+- **`availability` is refused at the write unless it is one `HH:MM-HH:MM` window** — "once a day" was saved, 👍'd, and read as the default
 - **The assistant is עולמה / Allma; the system is still olma2.**
 
 ### Writing detectors and alarms

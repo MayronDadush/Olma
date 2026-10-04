@@ -61,6 +61,7 @@ never trust a dated narrative for something you are about to act on.
 - [Four messages in sixty-two seconds (fixed 2026-09-20)](#four-messages-in-sixty-two-seconds-fixed-2026-09-20)
 - [Two day-one steps twelve minutes apart, the first two hours late (fixed 2026-10-03)](#two-day-one-steps-twelve-minutes-apart-the-first-two-hours-late-fixed-2026-10-03)
 - [Once a day, said and not kept (built 2026-10-03)](#once-a-day-said-and-not-kept-built-2026-10-03)
+- [Saved, marked done, and read as nothing (fixed 2026-10-04)](#saved-marked-done-and-read-as-nothing-fixed-2026-10-04)
 - [Today at five is not Monday (fixed 2026-09-24)](#today-at-five-is-not-monday-fixed-2026-09-24)
 - [The constraint that was an answer (fixed 2026-09-20)](#the-constraint-that-was-an-answer-fixed-2026-09-20)
 - [After 21 is not a no (fixed 2026-10-02)](#after-21-is-not-a-no-fixed-2026-10-02)
@@ -2312,6 +2313,40 @@ are ignored while he is on it, because two digests are not once a day.
 The test is `tests/daily-once.test.js`, a replay of his morning. On the old
 code three of its six cases fail. The other three assert that nothing is
 written, and they guard the new branch.
+
+### Saved, marked done, and read as nothing (fixed 2026-10-04)
+
+Saar (u-55) told Olma on 2026-10-02 that he wanted to hear from her once a
+day. The model called `remember_preference` with key `availability` and value
+`once a day`; the write succeeded, `reactions.TOOL_MARKS` put a 👍 on his
+message, and `preferences.availabilityWindow` — the only reader of that key —
+failed its `HH:MM-HH:MM` match and answered `DEFAULT_WINDOW`, exactly as it
+would have with no row at all. So the mark was a promise the system had
+already broken when it went on, and nothing anywhere said so: the read side's
+fallback is deliberate ("never crash the gate"), and it was the only side that
+looked.
+
+He was not alone. On the box that day, four of the seven `availability` rows
+could not be read: `once a day`; `07:30-16:00, א-ה` (a window with weekdays on
+the end — the hours were dropped too, because the whole value failed); and two
+lists of dates that suited ONE meeting (`שלישי 8.9 שישי 11.9 - פנוי`,
+`שבת אחרי 16:00, ראשון ורביעי`), which belonged in
+`record_meeting_constraint`.
+
+The fix is at the write, because that is where the model is still standing
+and can be told: `preferences.remember` refuses an `availability` value that
+`canonicalWindow` cannot turn into one window, writes nothing, and its error
+says where each shape belongs — days to `quiet_days`, one meeting's times to
+`record_meeting_constraint`, and a frequency to nowhere, because no tool sets
+how often Olma writes (Saar's cap is an owner's flag, `daily_once_phones`). A
+failed call earns no 👍, so the person is no longer told it was saved. Only
+spelling is forgiven — `9:00-17:30`, an en-dash, spaces — and stored
+canonical; content never is, which is why the weekday tail is refused rather
+than trimmed.
+
+The four existing rows were left on the box: the read side still falls back
+for them, and what each person meant is a question for the owner, not a
+migration.
 
 ### Today at five is not Monday (fixed 2026-09-24)
 
