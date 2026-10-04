@@ -273,7 +273,7 @@ test('a category picked by somebody in it beats the guess, from the page and fro
     return [m.category, m.catAuto, m.catChosen];
   };
   await actAs(ann, 'setMeetingTitle', { meetingId: id, title: 'ערב פוקר' });
-  assert.deepEqual(await shown(), ['social', true, false], '"חברים" is guessed for a game night');
+  assert.deepEqual(await shown(), ['games', true, false], 'a poker night is games');
 
   assert.ok((await actAs(ben, 'setMeetingCategory', { meetingId: id, category: 'work' })).ok);
   assert.deepEqual(await shown(cal), ['work', false, true], 'everybody sees the choice');
@@ -284,7 +284,9 @@ test('a category picked by somebody in it beats the guess, from the page and fro
   assert.ok((await actAs(ben, 'setMeetingCategory', { meetingId: id, category: 'none' })).ok);
   assert.deepEqual(await shown(), ['none', false, true], 'no category is a choice too');
   assert.ok((await actAs(ben, 'setMeetingCategory', { meetingId: id, category: null })).ok);
-  assert.deepEqual(await shown(), ['social', true, false], 'and null hands it back to the guess');
+  assert.deepEqual(await shown(), ['games', true, false], 'and null hands it back to the guess');
+  assert.equal((await actAs(ben, 'setMeetingCategory', { meetingId: id, category: 'money' })).error.reason,
+    'bad_category', 'the tasks\' categories are not a coordination\'s');
 
   // The chat: the same column through set_meeting_title's optional category,
   // and list_my_meetings says what the page says.
@@ -298,4 +300,18 @@ test('a category picked by somebody in it beats the guess, from the page and fro
   const listed = (await call('list_my_meetings', ann)).data.meetings.find((m) => Number(m.id) === id);
   assert.equal(listed.category, 'family');
   assert.equal((await call('set_meeting_title', cal, { meeting_id: id })).ok, false, 'one of the two is required');
+});
+
+test('a coordination\'s own topics, and the words that must NOT sort one', () => {
+  const { classify, CATEGORIES } = require('../src/domain/meeting-category');
+  assert.deepEqual(CATEGORIES, ['work', 'family', 'social', 'sport', 'games']);
+  const cases = {
+    'ערב פוקר': 'games', 'פאדל ביום שישי': 'sport', 'כדורגל ובירה': 'sport', 'משחק כדורגל': 'sport',
+    'ארוחת שישי אצל אמא': 'family', 'יום ההולדת של שרה': 'family', 'ישיבת צוות': 'work',
+    'ארוחת צהריים עם לקוח': 'work', 'קפה עם גלי': 'social', 'dinner with friends': 'social',
+    'Game night': 'games',
+    // Each of these once matched something it should not have.
+    'חברה חדשה': null, 'רמי לוי': null, 'סקירת רבעון': null, 'skills review': null, 'ים': null,
+  };
+  for (const [title, want] of Object.entries(cases)) assert.equal(classify(title), want, title);
 });

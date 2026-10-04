@@ -163,7 +163,7 @@ const { IDENTITY_PARAM } = require('../src/adapters/mcp/identity-param');
 // Not raised, 2026-10-04: a coordination's category from the chat (the owner:
 // whatever the page can do, the chat can) rides `set_meeting_title` as an
 // optional `category` rather than a tool of its own, and that tool's
-// description lost its Hebrew example to pay for it. Measured 61,037.
+// description lost its Hebrew example to pay for it. Measured 61,023.
 const JSON_CEILING = 61_050;
 const DESCRIPTION_CEILING = 700;
 const IDENTITY_DESCRIPTION_CEILING = 40;

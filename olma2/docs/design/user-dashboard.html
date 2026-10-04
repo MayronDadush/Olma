@@ -4457,8 +4457,8 @@ button.srow:active{background:var(--bg-tint)}
     <input class="stitle" id="mtTitleIn" type="text" maxlength="120" enterkeyhint="done" data-i18n-label="mt.name" autocomplete="off">
     <span class="stedit" aria-hidden="true"><svg><use href="#i-pencil"/></svg></span>
   </div>
-  <!-- Its category: the tasks' six plus "חברים", which only coordinations
-       have. Read off the name by the server unless somebody in it picked one;
+  <!-- Its category, from a list of its own — work, family, friends, sport,
+       games (owner, 2026-10-05), not the tasks'. Read off the name by the server unless somebody in it picked one;
        the line says which, and pressing it opens the choice (owner,
        2026-10-04). -->
   <button type="button" class="mtcatline" id="mtCat" aria-expanded="false"></button>
@@ -5597,7 +5597,7 @@ button.srow:active{background:var(--bg-tint)}
       "mt.leaveAsk":"לצאת מ{name}? התשובות שלך יורדות מהספירה והתיאום יימחק מהרשימה שלך.",
       "mt.del":"מחיקת התיאום","mt.delAsk":"למחוק את {name}? נשלח ל{who} הודעה שהתיאום בוטל.",
       "toast.mtDeleted":"{name} נמחק","toast.mtDeleteFailed":"לא הצלחתי למחוק את {name}",
-      "tcat.social":"חברים","mt.catAuto":"אוטומטי","mt.catAdd":"הוספת קטגוריה",
+      "tcat.social":"חברים","tcat.sport":"ספורט","tcat.games":"משחקים","mt.catAuto":"אוטומטי","mt.catAdd":"הוספת קטגוריה",
       "toast.mtCatFailed":"לא הצלחתי לשנות את הקטגוריה",
       "toast.mtRenamed":"השם עודכן","toast.mtRenameFailed":"לא הצלחתי לשנות את השם",
       "mt.placeLbl":"מקום","mt.placePh":"איפה נפגשים?","mt.exactLbl":"שעה מדויקת","mt.exactAdd":"הוספת שעה",
@@ -5988,7 +5988,7 @@ button.srow:active{background:var(--bg-tint)}
       "mt.leaveAsk":"Leave {name}? Your answers stop counting and it goes off your list.",
       "mt.del":"Delete the coordination","mt.delAsk":"Delete {name}? {who} will get a message that it is off.",
       "toast.mtDeleted":"{name} deleted","toast.mtDeleteFailed":"Could not delete {name}",
-      "tcat.social":"Friends","mt.catAuto":"Automatic","mt.catAdd":"Add a category",
+      "tcat.social":"Friends","tcat.sport":"Sport","tcat.games":"Games","mt.catAuto":"Automatic","mt.catAdd":"Add a category",
       "toast.mtCatFailed":"Couldn't change the category",
       "toast.mtRenamed":"Name updated","toast.mtRenameFailed":"Couldn't rename it",
       "mt.placeLbl":"Place","mt.placePh":"Where are you meeting?","mt.exactLbl":"Exact time","mt.exactAdd":"Add a time",
@@ -10538,10 +10538,17 @@ button.srow:active{background:var(--bg-tint)}
   /* A coordination's category is a dot before its name, in the same colour
      the task list uses — and nothing at all when there is none, because a
      grey dot on most cards would say only "we could not tell". */
-  /* The tasks' colours, plus one for "חברים", which only a coordination can
-     be. Kept apart from TASKCATS so the task list never grows a heading for
-     it (owner, 2026-10-04: "רק בתיאומים"). */
-  var MEETCATS = TASKCATS.slice(0, -1).concat([{k:"social", c:"#2F6FDB"}], TASKCATS.slice(-1));
+  /* A coordination's own topics (owner, 2026-10-05: only subjects people
+     meet about), never the tasks' list. Work and family keep the task
+     colours, so the same word is the same colour on both screens. */
+  var MEETCATS = [
+    {k:"work",   c:"#0E7C86"},
+    {k:"family", c:"#C2410C"},
+    {k:"social", c:"#2F6FDB"},
+    {k:"sport",  c:"#1B9B6B"},
+    {k:"games",  c:"#5B2FD6"},
+    {k:"none",   c:"#A29FB5"}
+  ];
   function mtCatOf(k){
     return MEETCATS.filter(function(c){ return c.k === k; })[0] || MEETCATS[MEETCATS.length - 1];
   }

@@ -637,7 +637,7 @@ async function loadMeetings(client, userId, zone, locale) {
     // chat's question uses) — the page offers both (owner, 2026-10-04).
     location: m.location || null,
     timeOpen: meetingsDomain.timeIsOpen(m),
-    // The task categories plus 'social' — what somebody in it chose, else
+    // Its own five topics (meeting-category.js) — what somebody in it chose, else
     // read off the name and then the place (meeting-category.js), so an
     // automatic one re-sorts on a rename. `catAuto`: we guessed it;
     // `catChosen`: somebody in it picked it.
