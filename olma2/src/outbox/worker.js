@@ -326,6 +326,27 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
             `SELECT 1 FROM meetings WHERE id = $1 AND group_id IS NULL AND status = 'negotiating'`, [meetingId]);
           privateInvite = mt.length > 0;
         }
+        // A room's cold invite is about a ROSTER, and a roster moves (Padel
+        // Gang, 2026-10-04): the number it was written to can have left the
+        // room, been replaced by the phone the gateway maps a LID back to, or
+        // the coordination it offers can have closed while the gate held it
+        // for their night. Checked at delivery for the same reason the
+        // meeting below is: the queue is not the world. Worker-scoped and
+        // null for every sibling.
+        let coldInviteGone = null;
+        if (row.kind === 'room_cold_invite') {
+          const groupId = Number(payloadOf(row).groupId) || null;
+          const { rows: here } = await client.query(
+            `SELECT 1 FROM chat_group_members gm JOIN chat_groups g ON g.id = gm.group_id
+              WHERE gm.group_id = $1 AND gm.user_id = $2 AND gm.left_at IS NULL AND g.state = 'open'`,
+            [groupId, row.user_id]);
+          if (!here.length) coldInviteGone = 'left_room';
+          else if (meetingId) {
+            const { rows: mt } = await client.query(
+              `SELECT 1 FROM meetings WHERE id = $1 AND status IN ('negotiating', 'confirmed')`, [meetingId]);
+            if (!mt.length) coldInviteGone = 'coordination_closed';
+          }
+        }
         // Has the meeting this row is about already HAPPENED? A confirmed (or
         // cancelled) coordination whose start is behind us makes every
         // `meeting_*` row about it pointless — the gate drops them
@@ -416,7 +437,7 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
           window: win.data.window, quietDays, quietDates, shabbatWindow, tz: row.timezone,
           lastInboundAt: row.last_inbound_at, wokeAt: row.last_woke_at, dashboardWroteAt: row.last_dashboard_at, groupWroteAt,
           greetedAt: row.opening_sent_at,
-          pausedRoomInvite, quietRoomInvite, answeredCoordination, privateInvite, meetingOver,
+          pausedRoomInvite, quietRoomInvite, answeredCoordination, privateInvite, meetingOver, coldInviteGone,
           hasDigest: Boolean(row.digest_times),
           introductionPending: introRows.length > 0,
           introductionSentAt: introSent[0] ? introSent[0].sent_at : null,
@@ -491,7 +512,7 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
             // empty for every sibling — said out loud rather than relied upon.
             if (decide({
               ...facts, groupWroteAt: null, pausedRoomInvite: false, quietRoomInvite: false,
-              answeredCoordination: false, privateInvite: false, meetingOver: false, row: sib,
+              answeredCoordination: false, privateInvite: false, meetingOver: false, coldInviteGone: null, row: sib,
             }).action !== 'deliver') continue;
             ids.push(sib.id);
             titles.push(payloadOf(sib).title);
@@ -535,7 +556,7 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
           // the thing that lets a sibling through.
           const deliverable = others.filter((sib) => decide({
             ...facts, pausedRoomInvite: false, quietRoomInvite: false, answeredCoordination: false,
-            privateInvite: false, meetingOver: false, row: sib,
+            privateInvite: false, meetingOver: false, coldInviteGone: null, row: sib,
           }).action === 'deliver');
           const parts = planMerge(row, deliverable);
           if (parts) {

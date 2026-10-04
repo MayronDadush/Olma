@@ -283,6 +283,14 @@ function decide(facts) {
     return { action: 'expire' };
   }
 
+  // A room's cold invite to somebody no longer on that room's roster, or about
+  // a coordination that has closed (worker's `coldInviteGone`, 2026-10-05). A
+  // drop: there is no later moment at which it becomes true again, and the
+  // reason is the dashboard's count of how often the roster moved under one.
+  if (row.kind === 'room_cold_invite' && facts.coldInviteGone) {
+    return { action: 'drop', holdReason: facts.coldInviteGone };
+  }
+
   // ── A coordination whose time has already come ─────────────────────────────
   // Nothing about a meeting is news once it has happened (owner, 2026-10-03).
   // Padel Gang moved its game to 17:00 on a Saturday; the confirmation and the
