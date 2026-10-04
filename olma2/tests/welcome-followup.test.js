@@ -195,3 +195,35 @@ test('the morning after the game, the follow-up says what she does and leaves th
   assert.match(text, /do not mention the game night/);
   assert.ok(text.includes(url));
 });
+
+test('the morning welcome as a clip: the flag names it, the line is fixed, and no page means no line', () => {
+  const introVideo = require('../src/domain/intro-video');
+  assert.equal(introVideo.welcomeClipFor('v2'), 'v2');
+  assert.equal(introVideo.welcomeClipFor(''), null, 'off: the text, as before');
+  assert.equal(introVideo.welcomeClipFor('v9'), null, 'a clip we do not ship is no clip');
+  assert.equal(introVideo.welcomeClipFor(true), null);
+  const url = 'https://allma.world/me/abc';
+  const he = introVideo.welcomeCaption('he-IL', url);
+  assert.equal(he, `${introVideo.WELCOME_CAPTION.he}\n${url}`);
+  assert.ok(he.endsWith(`\n${url}`), 'the url on a line of its own, bare');
+  assert.ok(introVideo.welcomeCaption('en', url).startsWith('This is Olma'));
+  assert.equal(introVideo.welcomeCaption('he', null), null);
+});
+
+test('a turn after the welcome clip knows it was sent, and that the page went with it', async () => {
+  const u = await makeUser(db.pool, '+972641000401');
+  const { rows: [r] } = await db.pool.query(
+    `INSERT INTO outbox (user_id, kind, payload, urgency, sent_at)
+     VALUES ($1, 'welcome_followup', $2, 'normal', now()) RETURNING id`,
+    [u.id, JSON.stringify({ hasNote: false, gameOpening: true, clip: 'v2' })]);
+  assert.ok(r.id);
+  const out = await adviseFirstTurn(u);
+  assert.ok(out.introVideo, JSON.stringify(Object.keys(out)));
+  assert.match(out.introVideo.what, /personal page/);
+  // The composed welcome is not a clip, and says nothing of the kind.
+  const v = await makeUser(db.pool, '+972641000402');
+  await db.pool.query(
+    `INSERT INTO outbox (user_id, kind, payload, urgency, sent_at) VALUES ($1, 'welcome_followup', $2, 'normal', now())`,
+    [v.id, JSON.stringify({ hasNote: false, gameOpening: true })]);
+  assert.equal((await adviseFirstTurn(v)).introVideo, undefined);
+});

@@ -377,6 +377,11 @@ test('intake sweep: the room\'s short opening is an introduction, and the follow
   assert.ok(live.release_after.getTime() > before, 'later, not now');
   assert.ok(live.expires_at > live.release_after, 'and still alive when it is released');
   assert.equal(by[closed].release_after, null, 'nothing left to go first: it goes now');
+  // Their words to the greeter are waiting on it, and a clip answers nothing:
+  // the morning welcome stays a composed message (owner, 2026-10-04).
+  assert.equal(live.payload.hasNote, true);
+  assert.equal(live.payload.clip, undefined, 'words to answer: no clip');
+  assert.equal(by[closed].payload.clip, undefined, 'the immediate one is never the clip');
 });
 
 test('nextMorning: the next window opening on a later day, or today\'s if it has not opened yet', () => {
@@ -2557,6 +2562,7 @@ test('intake sweep: a game night\'s new player gets an agent at once, with the p
     const { rows: [f] } = await db.pool.query(
       `SELECT payload, release_after FROM outbox WHERE user_id = $1 AND kind = 'welcome_followup'`, [u.id]);
     assert.equal(f.payload.gameOpening, true);
+    assert.equal(f.payload.clip, 'v2', 'what she does, said by the clip and not a paragraph');
     assert.ok(f.release_after && f.release_after.getTime() > before, 'not in the middle of the game');
     const hhmm = new Intl.DateTimeFormat('en-GB', {
       timeZone: u.timezone, hour: '2-digit', minute: '2-digit', hour12: false }).format(f.release_after);

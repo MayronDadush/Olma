@@ -635,14 +635,20 @@ async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, 
   // The intro video (domain/intro-video.js) went out on the raw pipe, which
   // never enters their session — so a "מה זה?" or a brain dump right after it
   // would reach a model that never saw it. Same channel as recentReminders.
+  // The welcome after a game night or a room goes the same way when it is the
+  // clip (jobs/intake.js, `clip`), with one line and their page under it.
   const { rows: introRows } = await client.query(
-    `SELECT max(sent_at) AS sent_at FROM outbox
-      WHERE user_id = $1 AND kind = 'intro_video' AND hold_reason IS NULL
-        AND sent_at > now() - interval '24 hours'`, [user.id]);
+    `SELECT sent_at, kind = 'welcome_followup' AS welcome FROM outbox
+      WHERE user_id = $1 AND hold_reason IS NULL
+        AND (kind = 'intro_video' OR (kind = 'welcome_followup' AND payload ? 'clip'))
+        AND sent_at > now() - interval '24 hours'
+      ORDER BY sent_at DESC LIMIT 1`, [user.id]);
   const introVideo = introRows[0] && introRows[0].sent_at
     ? { sentAt: introRows[0].sent_at,
       what: 'Olma sent them a short looping video (no text) introducing herself: send her everything, '
-        + 'messy is fine, she sorts it into a list and reminds on time. A reply now may be about it.' }
+        + 'messy is fine, she sorts it into a list and reminds on time. '
+        + (introRows[0].welcome ? 'Under it, one line and the link to their personal page. ' : '')
+        + 'A reply now may be about it.' }
     : null;
   // Same channel for an ad from the library (domain/brand-ads.js).
   const brandAd = await brandAds.recentForTurn(client, user.id);
