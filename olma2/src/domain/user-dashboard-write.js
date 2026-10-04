@@ -509,6 +509,15 @@ const ACTIONS = {
     return meetingFanout.afterRejoin(client, me, p.meetingId, res);
   },
 
+  // A new name, from the page (owner, 2026-10-04) — the chat's
+  // `set_meeting_title`: anybody in it, nobody messaged, and a shared calendar
+  // event takes the new name.
+  async setMeetingTitle(client, userId, p) {
+    const res = await meetings.setTitle(client, userId, p.meetingId, typeof p.title === 'string' ? p.title : '');
+    if (!res.ok) return res;
+    return meetingFanout.patchSharedEvent(client, res, { title: res.data.title });
+  },
+
   // Where it happens, from the page (owner, 2026-10-04). The same writer and
   // the same calendar follow-through as the chat's `set_meeting_place`: the
   // shared event takes the words, and nobody is messaged — a place said in

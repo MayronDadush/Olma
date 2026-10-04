@@ -24,6 +24,7 @@ const { ok, err } = require('./results');
 // `meetings` for its own rows, and a module-level shadow of that name is a
 // TDZ ReferenceError inside the one function that needs this.
 const meetingsDomain = require('./meetings');
+const taskCategory = require('./task-category');
 const optionMoment = require('./meeting-option-moment');
 const meetingTime = require('./meeting-time');
 const voice = require('./voice');
@@ -479,6 +480,10 @@ async function slotReaderLabel(client, meetingId, slot, startsAt, zone, locale) 
 // somebody MARKED is availability and nothing more — the page must be able to
 // tell "has not answered" from "answered, nothing suits", so an unanswered
 // participant is `answered: false` rather than an empty option list.
+function meetingCategory(title, location) {
+  return taskCategory.classifyText(title) || taskCategory.classifyText(location) || 'none';
+}
+
 async function loadMeetings(client, userId, zone, locale) {
   const { rows: meetings } = await client.query(
     `SELECT m.id, m.title, m.initiator_id, m.status, m.quorum_min,
@@ -636,6 +641,11 @@ async function loadMeetings(client, userId, zone, locale) {
     // chat's question uses) — the page offers both (owner, 2026-10-04).
     location: m.location || null,
     timeOpen: meetingsDomain.timeIsOpen(m),
+    // The task categories, read off the name — and the place when the name
+    // says nothing — by the same keyword classifier (task-category.js), so a
+    // rename re-sorts it with no stored column to go stale. Always automatic:
+    // there is nothing a person chose for it to argue with.
+    category: meetingCategory(m.title, m.location),
     confirmedTime: m.confirmed_time,
     confirmedDay: m.confirmed_day === null ? null : Number(m.confirmed_day),
     // The minute between the last yes and the meeting being over. `settleIn`

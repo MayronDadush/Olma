@@ -242,3 +242,25 @@ test('the page sets a place in their words, tells nobody, and refuses an empty o
     `SELECT 1 FROM outbox WHERE (payload->>'meetingId')::bigint = $1 AND payload::text LIKE '%יוסי%'`, [id]);
   assert.equal(told.length, 0);
 });
+
+test('the page renames it, and its category is read off the name — then the place — every time it is loaded', async () => {
+  const dash = require('../src/domain/user-dashboard');
+  const { id } = await openWith({ daypart: 'evening' });
+  const catOf = async () => (await tx((c) => dash.load(c, ann.id))).data.meetings
+    .find((m) => Number(m.id) === id).category;
+  assert.equal(await catOf(), 'none', '"ים" is nothing the classifier will claim');
+
+  const res = await actAs(ben, 'setMeetingTitle', { meetingId: id, title: '  ישיבת   צוות ' });
+  assert.ok(res.ok, JSON.stringify(res));
+  const { rows: [m] } = await db.pool.query('SELECT title FROM meetings WHERE id = $1', [id]);
+  assert.equal(m.title, 'ישיבת   צוות'.trim());
+  assert.equal(await catOf(), 'work', 'a rename re-sorts it');
+
+  assert.equal((await actAs(ben, 'setMeetingTitle', { meetingId: id, title: '   ' })).ok, false);
+  assert.equal((await actAs(dan, 'setMeetingTitle', { meetingId: id, title: 'שלי' })).ok, false, 'not in it');
+
+  await actAs(ben, 'setMeetingTitle', { meetingId: id, title: 'נפגשים' });
+  assert.equal(await catOf(), 'none');
+  await actAs(ben, 'setMeetingPlace', { meetingId: id, where: 'אצל סבתא' });
+  assert.equal(await catOf(), 'family', 'a name that says nothing falls back to the place');
+});

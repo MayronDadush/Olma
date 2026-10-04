@@ -2256,6 +2256,8 @@ button.srow:active{background:var(--bg-tint)}
 .whenecho.miss{background:var(--bg-tint);color:var(--text-3);font-weight:500}
 .whenecho .mobtn{margin-inline-start:auto}
 #mtNewTime,#mtOptTime{margin-top:9px}
+.mtcatline{text-align:center;font-size:12.5px;color:var(--text-3);margin:-6px 0 12px}
+.mtcard .mtname .cdot{margin-inline-end:6px;vertical-align:1px}
 .mtexactbtn{flex:1;min-width:0;text-align:start;font-size:16.5px;font-weight:500;color:var(--accent);padding:4px 0}
 /* A little more air than the chips above it, and a chevron that flips
    open — the same disclosure language as every fold trigger elsewhere
@@ -4444,7 +4446,17 @@ button.srow:active{background:var(--bg-tint)}
 <div class="sheet" id="mtSheet" role="dialog" aria-modal="true" aria-labelledby="mtTitle">
   <div class="sgrab"><i class="grabber"></i></div>
   <div class="sxhold"><button class="sx" type="button" data-sx data-i18n-label="sheet.close"><svg><use href="#i-x"/></svg></button></div>
-  <h2 id="mtTitle"></h2>
+  <!-- The name is editable in place, the same way a task's is (owner,
+       2026-10-04): anybody in it may rename it, as in the chat. The h2 stays
+       as the dialog's accessible name. -->
+  <h2 id="mtTitle" hidden></h2>
+  <div class="stitlewrap">
+    <input class="stitle" id="mtTitleIn" type="text" maxlength="120" enterkeyhint="done" data-i18n-label="mt.name" autocomplete="off">
+    <span class="stedit" aria-hidden="true"><svg><use href="#i-pencil"/></svg></span>
+  </div>
+  <!-- Its category, read off the name by the tasks' classifier on the server;
+       automatic only, so it says who chose it. -->
+  <p class="mtcatline" id="mtCat"></p>
   <div class="mtfaces" id="mtFaces"></div>
 
   <div class="glabel" style="margin-top:14px"><span id="mtAskLbl"></span></div>
@@ -4842,6 +4854,7 @@ button.srow:active{background:var(--bg-tint)}
     rejoinMeeting:       "rejoin_meeting",             /* NO TOOL YET — dashboard only */
     reopenMeeting:       "reopen_meeting",             /* a settled time back on the table */
     setMeetingPlace:     "set_meeting_place",
+    setMeetingTitle:     "set_meeting_title",
     setMeetingTime:      "propose_meeting_slot",       /* on a settled one it sets the hour */
     pause:               "pause_olma",
     resume:              "resume_olma",
@@ -4875,7 +4888,7 @@ button.srow:active{background:var(--bg-tint)}
     inviteContact:"inviteContact", inviteShared:"inviteShared",
     respondToMeeting:"respondToMeeting", leaveMeeting:"leaveMeeting", cancelMeeting:"cancelMeeting",
     rejoinMeeting:"rejoinMeeting", reopenMeeting:"reopenMeeting",
-    setMeetingPlace:"setMeetingPlace", setMeetingTime:"setMeetingTime",
+    setMeetingPlace:"setMeetingPlace", setMeetingTime:"setMeetingTime", setMeetingTitle:"setMeetingTitle",
     startMeeting:"startMeeting", addOption:"addOption", answerOption:"answerOption",
     settleMeeting:"settleMeeting",
     removeOption:"removeOption", swapOption:"swapOption", setQuorum:"setQuorum",
@@ -5576,6 +5589,7 @@ button.srow:active{background:var(--bg-tint)}
       "mt.leaveAsk":"לצאת מ{name}? התשובות שלך יורדות מהספירה והתיאום יימחק מהרשימה שלך.",
       "mt.del":"מחיקת התיאום","mt.delAsk":"למחוק את {name}? נשלח ל{who} הודעה שהתיאום בוטל.",
       "toast.mtDeleted":"{name} נמחק","toast.mtDeleteFailed":"לא הצלחתי למחוק את {name}",
+      "toast.mtRenamed":"השם עודכן","toast.mtRenameFailed":"לא הצלחתי לשנות את השם",
       "mt.placeLbl":"מקום","mt.placePh":"איפה נפגשים?","mt.exactLbl":"שעה מדויקת","mt.exactAdd":"הוספת שעה",
       "toast.mtPlaceSet":"המקום נשמר","toast.mtPlaceFailed":"לא הצלחתי לשמור את המקום",
       "toast.mtTimeSet":"השעה נקבעה — כולם יקבלו הודעה","toast.mtTimeFailed":"לא הצלחתי לקבוע את השעה",
@@ -5964,6 +5978,7 @@ button.srow:active{background:var(--bg-tint)}
       "mt.leaveAsk":"Leave {name}? Your answers stop counting and it goes off your list.",
       "mt.del":"Delete the coordination","mt.delAsk":"Delete {name}? {who} will get a message that it is off.",
       "toast.mtDeleted":"{name} deleted","toast.mtDeleteFailed":"Could not delete {name}",
+      "toast.mtRenamed":"Name updated","toast.mtRenameFailed":"Couldn't rename it",
       "mt.placeLbl":"Place","mt.placePh":"Where are you meeting?","mt.exactLbl":"Exact time","mt.exactAdd":"Add a time",
       "toast.mtPlaceSet":"Place saved","toast.mtPlaceFailed":"Couldn't save the place",
       "toast.mtTimeSet":"Time set — everyone will be told","toast.mtTimeFailed":"Couldn't set the time",
@@ -10508,6 +10523,17 @@ button.srow:active{background:var(--bg-tint)}
     if(wait) return pl("mtW", wait);
     return t("mt.stateBlocked", {n:y, of:total, no:pl("mtN", no)});
   }
+  /* A coordination's category is a dot before its name, in the same colour
+     the task list uses — and nothing at all when there is none, because a
+     grey dot on most cards would say only "we could not tell". */
+  function mtCatDot(m){
+    if(!m.cat || m.cat === "none") return "";
+    return '<i class="cdot" style="background:' + catOf(m.cat).c + '" title="' + esc(t("tcat." + m.cat)) + '"></i>';
+  }
+  function mtCatLine(m){
+    if(!m.cat || m.cat === "none") return "";
+    return mtCatDot(m) + esc(t("tcat." + m.cat)) + " · " + esc(t("cat.auto"));
+  }
   function mtCardHTML(m){
     var st = mtStatus(m);
     var mine = mtMine(m);
@@ -10538,7 +10564,7 @@ button.srow:active{background:var(--bg-tint)}
       (verb ? swBack(verb) : "") + '<div class="swfront"><div class="mtrow">' +
       '<button class="mtcard" data-mt="' + m.id + '">' +
       faceStack(m.who) +
-      '<span class="mtbody"><span class="mtname">' + esc(L(m.t)) +
+      '<span class="mtbody"><span class="mtname">' + mtCatDot(m) + esc(L(m.t)) +
       /* An unanswered coordination is the one thing on this page that is
          waiting on YOU, so it says so on the card and not two taps in. */
       "</span>" +
@@ -10912,6 +10938,11 @@ button.srow:active{background:var(--bg-tint)}
        language switch with the sheet up would leave a Hebrew subtitle under an
        English list. Anything a re-render must fix belongs in the re-render. */
     $("#mtTitle").textContent = L(m.t);
+    /* Not rewritten under a finger, for the same reason as the place. */
+    var ti = $("#mtTitleIn");
+    if(document.activeElement !== ti) ti.value = L(m.t);
+    $("#mtCat").innerHTML = mtCatLine(m);
+    $("#mtCat").hidden = !$("#mtCat").innerHTML;
     $("#mtAskLbl").textContent = t(m.settled ? "mt.settledLbl"
       : m.opts.length === 1 ? "mt.askOne" : "mt.ask");
 
@@ -11298,6 +11329,26 @@ button.srow:active{background:var(--bg-tint)}
     Object.keys(m.ans || {}).forEach(function(k){ if(m.ans[k] && typeof m.ans[k] === "object") delete m.ans[k][was]; });
     renderMeet(); renderMeets(); renderStrip(selDay);
     toast(t("toast.mtReopened", {name:L(m.t)}));
+  });
+  /* A rename is saved the way the place is: on leaving the field or Enter,
+     only when it changed, and never to nothing — an empty name goes back. */
+  function mtSaveTitle(){
+    var m = mtOpen;
+    if(!m) return;
+    var v = $("#mtTitleIn").value.replace(/\s+/g, " ").trim();
+    if(!v || v === L(m.t)){ $("#mtTitleIn").value = L(m.t); return; }
+    m.t = v;
+    API.call("setMeetingTitle", {meeting_id:m.id, title:v});
+    if(LIVE) API.send("setMeetingTitle", {meetingId:m.id, title:v}, function(data){
+      if(!data) toast(t("toast.mtRenameFailed"), null, true);
+      API.reload();
+    });
+    renderMeet(); renderMeets();
+    toast(t("toast.mtRenamed"));
+  }
+  $("#mtTitleIn").addEventListener("change", mtSaveTitle);
+  $("#mtTitleIn").addEventListener("keydown", function(e){
+    if(e.key === "Enter"){ e.preventDefault(); this.blur(); }
   });
   /* Saved when the field is left or Enter is pressed, and only when it says
      something new — the server refuses an empty place, so clearing it is
@@ -14291,6 +14342,8 @@ button.srow:active{background:var(--bg-tint)}
       /* where, in somebody's words; and whether it settled with no exact hour */
       place:m.location || "",
       timeOpen:!!m.timeOpen,
+      /* the task categories, chosen by the server off the name */
+      cat:m.category || "none",
       by:m.mine ? 0 : m.initiatorId,
       who:who, allDay:allDay, opts:opts, ans:ans, left:left,
       /* Answered, in the server's own words: a yes, a no, OR a sentence that
