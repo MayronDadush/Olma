@@ -1193,3 +1193,99 @@ test('worker: somebody quiet still hears another person reaching them, and nothi
     [['peer-conn', null], ['peer-invite', null], ['peer-olma', 'quiet']]);
   await flushOutbox();
 });
+
+// The same-tick batch above cannot see a reminder whose moment has not come,
+// so 12:00 and 12:02 were two messages two minutes apart (owner, 2026-10-04).
+// Driven through the real sweep and the real worker on a pinned clock, in the
+// order a production minute can actually take: the worker reaching the held
+// row before the sweep has turned 12:02 into an outbox row at all.
+test('worker: reminders a couple of minutes apart wait for each other and go out as ONE message', async () => {
+  const proactiveText = require('../src/domain/proactive-text');
+  const flags = require('../src/domain/flags');
+  await flushOutbox();
+  const noa = await makeUser(db.pool, '+972581000031', { firstName: 'נועה', timezone: 'UTC' });
+  const at = (hms) => new Date(`2026-08-16T${hms}Z`);
+  for (const [title, hms] of [['לקנות חלב', '12:00:00'], ['להתקשר לסבתא', '12:02:00'], ['לאסוף כביסה', '12:10:00']]) {
+    const { rows: [t] } = await db.pool.query(
+      `INSERT INTO tasks (owner_id, title, status) VALUES ($1, $2, 'open') RETURNING id`, [noa.id, title]);
+    await db.pool.query(
+      `INSERT INTO task_reminders (task_id, remind_at, auto, user_id) VALUES ($1, $2, false, $3)`,
+      [t.id, at(hms), noa.id]);
+  }
+  const sweep = (hms) => withTx(db.pool, (c) => sweeps.sweepReminders(c, at(hms).toISOString()));
+  const sent = [];
+  const drain = (hms) => drainOnce(db.pool, async (r) => { sent.push(r); return { ok: true }; }, at(hms));
+  const milk = async () => (await db.pool.query(
+    `SELECT hold_reason, release_after, sent_at FROM outbox
+      WHERE user_id = $1 AND payload->>'title' = 'לקנות חלב'`, [noa.id])).rows[0];
+
+  await sweep('12:00:20');
+  const first = await drain('12:00:30');
+  assert.equal(first.delivered, 0, '12:00 waits, because 12:02 is two minutes away');
+  assert.equal((await milk()).hold_reason, 'coalesce');
+  assert.equal((await milk()).release_after.toISOString(), at('12:02:00').toISOString(),
+    'held until the next one is due, not for a fixed three minutes');
+
+  // Released, but the sweep has not reached 12:02 yet: a short second wait,
+  // never a send on its own.
+  const early = await drain('12:02:05');
+  assert.equal(early.delivered, 0);
+  assert.equal((await milk()).release_after.toISOString(), at('12:02:25').toISOString());
+
+  // 12:02 arrives and leads the send before 12:00's release time — the row
+  // waiting for exactly this send rides along with it.
+  await sweep('12:02:10');
+  const together = await drain('12:02:15');
+  assert.equal(together.delivered, 1, 'one message');
+  assert.equal(together.batched, 1);
+  const text = proactiveText.rawPipeTextFor(sent[0]);
+  assert.match(text, /חלב/);
+  assert.match(text, /סבתא/);
+  assert.doesNotMatch(text, /כביסה/, 'eight minutes later is a separate moment');
+  assert.equal((await milk()).hold_reason, null, 'delivered, which is what the next rung reads');
+
+  // 12:10 has nothing within three minutes after it, and goes at once.
+  await sweep('12:10:10');
+  const alone = await drain('12:10:20');
+  assert.equal(alone.delivered, 1);
+  assert.match(proactiveText.rawPipeTextFor(sent[1]), /כביסה/);
+
+  // 0 turns it off: the same two minutes are two messages again.
+  await withTx(db.pool, (c) => flags.setFlag(c, 'reminder_coalesce_seconds', 0));
+  try {
+    for (const [title, hms] of [['א', '13:00:00'], ['ב', '13:02:00']]) {
+      const { rows: [t] } = await db.pool.query(
+        `INSERT INTO tasks (owner_id, title, status) VALUES ($1, $2, 'open') RETURNING id`, [noa.id, title]);
+      await db.pool.query(
+        `INSERT INTO task_reminders (task_id, remind_at, auto, user_id) VALUES ($1, $2, false, $3)`,
+        [t.id, at(hms), noa.id]);
+    }
+    await sweep('13:00:20');
+    assert.equal((await drain('13:00:30')).delivered, 1, 'off means no wait');
+  } finally {
+    await withTx(db.pool, (c) => flags.setFlag(c, 'reminder_coalesce_seconds', 180));
+  }
+  await flushOutbox();
+});
+
+test('worker: a reminder released hours after its hour waits for nothing', async () => {
+  // A quiet day or a failed pipe carries a first rung past its hour; what is
+  // due by then goes in the same-tick batch, and a later reminder three
+  // minutes after the RELEASE is not a reason to hold the morning's back.
+  await flushOutbox();
+  const tal = await makeUser(db.pool, '+972581000032', { firstName: 'טל', timezone: 'UTC' });
+  const now = new Date('2026-08-16T12:00:30Z');
+  const { rows: [t] } = await db.pool.query(
+    `INSERT INTO tasks (owner_id, title, status) VALUES ($1, 'אחר כך', 'open') RETURNING id`, [tal.id]);
+  await db.pool.query(
+    `INSERT INTO task_reminders (task_id, remind_at, auto, user_id) VALUES ($1, $2, false, $3)`,
+    [t.id, new Date('2026-08-16T12:02:00Z'), tal.id]);
+  await withTx(db.pool, (c) => enqueue(c, {
+    userId: tal.id, kind: 'reminder', urgency: 'urgent',
+    payload: { title: 'מהבוקר', rung: 1, auto: false, remindAt: '2026-08-16T08:00:00Z' },
+    idempotencyKey: 'reminder:coalesce:late',
+  }));
+  const out = await drainOnce(db.pool, async () => ({ ok: true }), now);
+  assert.equal(out.delivered, 1);
+  await flushOutbox();
+});

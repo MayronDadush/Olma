@@ -111,6 +111,60 @@ function batchKeyFor(row) {
   return proactiveText.reminderTemplateKey(p);
 }
 
+// ── Reminders a couple of minutes apart wait for each other ─────────────────
+// The batch below only sees rows that are due in the SAME tick, and a reminder
+// becomes an outbox row only once its moment has come (jobs/sweeps.js,
+// sweepReminders, on a 60s tick). So 09:00 and 09:02 were two messages two
+// minutes apart, which is the nine-in-ninety-seconds shape stretched just far
+// enough to get past the batch (owner, 2026-10-04: one message for reminders
+// one to three minutes apart).
+//
+// A first-rung reminder that is ready to go therefore looks for this person's
+// next first rung inside `reminder_coalesce_seconds` of its own hour, and if there is
+// one it is held (`hold_reason = 'coalesce'`) until that one is due. The
+// anchor is the hour they named (`payload.remindAt`), never the moment the row
+// was last looked at, so a chain of 09:00, 09:02, 09:04 cannot walk the first
+// one forward for ever: it waits at most that window plus a sweep's lag, and
+// whatever has not arrived by then goes out on its own exactly as it does
+// today. A row with no `remindAt`, or one a hold already carried past its
+// hour (a quiet day releasing in the morning), waits for nothing — the
+// same-tick batch below already gathers a release. Late, never
+// early — the alternative was to say 09:03's reminder at 09:00, and a
+// reminder that arrives before the hour they named is a promise broken in the
+// other direction.
+//
+// Only a rung-1 row waits, and only for a rung 1, because the batch groups by
+// rung template: a "בוצע?" never joins a plain reminder, so a follow-up
+// waiting for one would be late for nothing. The pending question is the
+// sweep's own (`attempts = 0`, not sent, not cancelled, task open), and the
+// row it finds already enqueued has `attempts >= 1` and is a sibling instead.
+const COALESCE_SWEEP_LAG_MS = 90_000;
+const COALESCE_RECHECK_MS = 20_000;
+
+async function coalesceWait(client, row, key, now) {
+  if (key !== 'reminder') return null;
+  const seconds = Number(await flagsDomain.getFlag(client, 'reminder_coalesce_seconds'));
+  if (!Number.isFinite(seconds) || seconds <= 0) return null;
+  const anchor = new Date(payloadOf(row).remindAt || NaN).getTime();
+  if (!Number.isFinite(anchor)) return null;
+  const horizon = anchor + seconds * 1000;
+  // Past the horizon plus one sweep's lag nothing more is waited for.
+  if (now.getTime() >= horizon + COALESCE_SWEEP_LAG_MS) return null;
+  const { rows } = await client.query(
+    `SELECT min(r.remind_at) AS next_at
+       FROM task_reminders r JOIN tasks t ON t.id = r.task_id
+      WHERE COALESCE(r.user_id, t.owner_id) = $1
+        AND r.attempts = 0 AND r.sent_at IS NULL AND r.cancelled_at IS NULL
+        AND t.status = 'open' AND t.archived_at IS NULL
+        AND r.remind_at <= $2::timestamptz`,
+    [row.user_id, new Date(horizon)]
+  );
+  if (!rows[0] || !rows[0].next_at) return null;
+  const nextAt = new Date(rows[0].next_at).getTime();
+  // Due already and the sweep has not reached it yet: look again shortly.
+  return new Date(Math.max(nextAt, now.getTime() + COALESCE_RECHECK_MS));
+}
+
 // Coordinations that ended with no time and that this person has not heard
 // about, for a row a MODEL is about to compose (owner, 2026-09-24: "כדרך
 // אגב"). Not on the raw pipe — a reminder is the person's own words and a
@@ -465,11 +519,22 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
         const ids = [row.id];
         const titles = [payloadOf(row).title];
         const key = batchKeyFor(row);
+        const waitUntil = key ? await coalesceWait(client, row, key, now) : null;
+        if (waitUntil) {
+          await client.query(
+            `UPDATE outbox SET hold_reason = 'coalesce', release_after = $2 WHERE id = $1`,
+            [row.id, waitUntil]
+          );
+          outcomes.held++;
+          return;
+        }
         if (key) {
+          // A row waiting under 'coalesce' is waiting for exactly this send,
+          // so it rides along before its own release time.
           const { rows: siblings } = await client.query(
             `SELECT * FROM outbox
               WHERE user_id = $1 AND id <> $2 AND kind = 'reminder' AND sent_at IS NULL
-                AND (release_after IS NULL OR release_after <= $3)
+                AND (release_after IS NULL OR release_after <= $3 OR hold_reason = 'coalesce')
                 AND (hold_reason IS DISTINCT FROM 'budget' OR release_after IS NOT NULL)
               ORDER BY created_at, id
               FOR UPDATE SKIP LOCKED`,

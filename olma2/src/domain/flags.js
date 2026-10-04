@@ -24,6 +24,10 @@ const DEFAULTS = {
   // come back, and how long after a DELIVERED rung the next one is due.
   reminder_escalation_max: 3,
   reminder_escalation_gap_hours: 3,
+  // outbox/worker.js, coalesceWait: how long a first-rung reminder may wait
+  // for this person's NEXT one, so 09:00 and 09:02 are one message rather
+  // than two a couple of minutes apart (owner, 2026-10-04). 0 turns it off.
+  reminder_coalesce_seconds: 180,
   live_subscriptions_per_user: 5,   // cap on active live-update subscriptions
   // outbox/worker.js: how many times a day Olma may interrupt somebody with
   // something she DECIDED to say. Urgent rows and the three kinds a person
