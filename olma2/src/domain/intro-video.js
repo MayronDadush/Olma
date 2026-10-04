@@ -43,6 +43,29 @@ function langFor(locale) {
   return String(locale || '').trim().toLowerCase().startsWith('he') ? 'he' : 'en';
 }
 
+// The welcome of somebody who came in through a game night or a room
+// (jobs/intake.js, `clip` on the payload): the same clip, and ONE fixed line
+// handing over their page. Fixed rather than composed — a model asked for "one
+// short line" wrote 210-245 characters about what Olma does, which is exactly
+// what the clip already says (owner, 2026-10-04). The flag names the clip;
+// anything that is not one of ours is "no clip", and the text goes as before.
+function welcomeClipFor(flagValue) {
+  const id = typeof flagValue === 'string' ? flagValue.trim() : '';
+  return id && VIDEOS[id] ? id : null;
+}
+
+const WELCOME_CAPTION = {
+  he: 'זו עולמה, ב־15 שניות 🙂\nוזה הדף האישי שלך:',
+  en: 'This is Olma, in 15 seconds 🙂\nAnd this is your own page:',
+};
+
+// No url, no caption: a line promising a page that is not there is worse than
+// the clip alone.
+function welcomeCaption(locale, url) {
+  if (!url) return null;
+  return `${WELCOME_CAPTION[langFor(locale)]}\n${url}`;
+}
+
 function fileFor(videoId, locale) {
   const v = VIDEOS[videoId];
   if (!v) return null;
@@ -150,5 +173,6 @@ async function stats(client, videoId, now = new Date()) {
 
 module.exports = {
   KIND, VIDEOS, DROPPED, REPLY_WINDOW_MIN, IGNORE_WINDOW_HOURS,
-  langFor, fileFor, stageMedia, audience, enqueueAll, stats,
+  WELCOME_CAPTION,
+  langFor, fileFor, stageMedia, welcomeClipFor, welcomeCaption, audience, enqueueAll, stats,
 };

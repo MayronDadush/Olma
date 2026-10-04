@@ -161,6 +161,11 @@ const DEFAULTS = {
   // sent when nothing is open. Replies to their own messages are untouched.
   // '' = nobody, 'all', or a comma-separated E.164 list.
   daily_once_phones: '',
+  // jobs/intake.js (owner, 2026-10-04, new people said she "חופרת"): the
+  // morning-after welcome of somebody who came in through a game night or a
+  // room is the intro clip with one fixed line and their page, instead of a
+  // paragraph about what Olma does. Decided at enqueue; '' = the text, as before.
+  welcome_clip: 'v2',
   // domain/experiments.js: the A/B tests the owner has ENDED, as
   // { key: 'a' | 'b' }. Empty means every experiment in the code is running.
   // Written only by the admin page's "לקבע" button.
