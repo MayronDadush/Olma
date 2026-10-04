@@ -2256,6 +2256,7 @@ button.srow:active{background:var(--bg-tint)}
 .whenecho.miss{background:var(--bg-tint);color:var(--text-3);font-weight:500}
 .whenecho .mobtn{margin-inline-start:auto}
 #mtNewTime,#mtOptTime{margin-top:9px}
+.mtexactbtn{flex:1;min-width:0;text-align:start;font-size:16.5px;font-weight:500;color:var(--accent);padding:4px 0}
 /* A little more air than the chips above it, and a chevron that flips
    open — the same disclosure language as every fold trigger elsewhere
    (.row[aria-expanded] .chev), just on a text link instead of a full row. */
@@ -4464,6 +4465,19 @@ button.srow:active{background:var(--bg-tint)}
   </div>
   <p class="note" id="mtAddNote" style="padding:10px 14px 0" hidden></p>
 
+  <!-- Where, and — once it settled on a whole day or a part of one — the exact
+       hour (owner, 2026-10-04). Both are the chat's own doors: anybody in it
+       may say either, a place tells nobody, and an hour moves the calendar
+       event and is told to everybody else. -->
+  <div class="group" id="mtDetails" style="margin-top:14px">
+    <div class="field"><label for="mtPlace" data-i18n="mt.placeLbl"></label>
+      <input id="mtPlace" type="text" maxlength="120" enterkeyhint="done" data-i18n-ph="mt.placePh" autocomplete="off"></div>
+    <div class="field" id="mtExactWrap" hidden><label data-i18n="mt.exactLbl"></label>
+      <button type="button" class="mtexactbtn" id="mtExactBtn"></button>
+      <input id="mtExactTime" type="time" tabindex="-1" aria-hidden="true"
+             style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px"></div>
+  </div>
+
   <!-- Two exits that must never read alike. One clears your own calendar and
        nobody else notices; the other tells four people you are not coming. -->
   <div class="sheetbtns wrap">
@@ -4827,6 +4841,8 @@ button.srow:active{background:var(--bg-tint)}
     cancelMeeting:       "cancel_meeting",             /* the page offers it only between two people */
     rejoinMeeting:       "rejoin_meeting",             /* NO TOOL YET — dashboard only */
     reopenMeeting:       "reopen_meeting",             /* a settled time back on the table */
+    setMeetingPlace:     "set_meeting_place",
+    setMeetingTime:      "propose_meeting_slot",       /* on a settled one it sets the hour */
     pause:               "pause_olma",
     resume:              "resume_olma",
     setName:             "set_my_name",
@@ -4859,6 +4875,7 @@ button.srow:active{background:var(--bg-tint)}
     inviteContact:"inviteContact", inviteShared:"inviteShared",
     respondToMeeting:"respondToMeeting", leaveMeeting:"leaveMeeting", cancelMeeting:"cancelMeeting",
     rejoinMeeting:"rejoinMeeting", reopenMeeting:"reopenMeeting",
+    setMeetingPlace:"setMeetingPlace", setMeetingTime:"setMeetingTime",
     startMeeting:"startMeeting", addOption:"addOption", answerOption:"answerOption",
     settleMeeting:"settleMeeting",
     removeOption:"removeOption", swapOption:"swapOption", setQuorum:"setQuorum",
@@ -5559,6 +5576,9 @@ button.srow:active{background:var(--bg-tint)}
       "mt.leaveAsk":"לצאת מ{name}? התשובות שלך יורדות מהספירה והתיאום יימחק מהרשימה שלך.",
       "mt.del":"מחיקת התיאום","mt.delAsk":"למחוק את {name}? נשלח ל{who} הודעה שהתיאום בוטל.",
       "toast.mtDeleted":"{name} נמחק","toast.mtDeleteFailed":"לא הצלחתי למחוק את {name}",
+      "mt.placeLbl":"מקום","mt.placePh":"איפה נפגשים?","mt.exactLbl":"שעה מדויקת","mt.exactAdd":"הוספת שעה",
+      "toast.mtPlaceSet":"המקום נשמר","toast.mtPlaceFailed":"לא הצלחתי לשמור את המקום",
+      "toast.mtTimeSet":"השעה נקבעה — כולם יקבלו הודעה","toast.mtTimeFailed":"לא הצלחתי לקבוע את השעה",
       "mt.reopen":"פתיחה מחדש של הזמן","mt.reopenAgain":"עוד לחיצה — כולם יקבלו הודעה",
       "toast.mtReopened":"{name} נפתח מחדש — שאלתי את כולם","toast.mtReopenFailed":"לא הצלחתי לפתוח מחדש את {name}",
       "sw.delete":"מחיקה","sw.leave":"יציאה","sw.again":"עוד לחיצה כדי למחוק","sw.againLeave":"עוד לחיצה כדי לצאת",
@@ -5944,6 +5964,9 @@ button.srow:active{background:var(--bg-tint)}
       "mt.leaveAsk":"Leave {name}? Your answers stop counting and it goes off your list.",
       "mt.del":"Delete the coordination","mt.delAsk":"Delete {name}? {who} will get a message that it is off.",
       "toast.mtDeleted":"{name} deleted","toast.mtDeleteFailed":"Could not delete {name}",
+      "mt.placeLbl":"Place","mt.placePh":"Where are you meeting?","mt.exactLbl":"Exact time","mt.exactAdd":"Add a time",
+      "toast.mtPlaceSet":"Place saved","toast.mtPlaceFailed":"Couldn't save the place",
+      "toast.mtTimeSet":"Time set — everyone will be told","toast.mtTimeFailed":"Couldn't set the time",
       "mt.reopen":"Reopen the time","mt.reopenAgain":"Press again — everyone will be told",
       "toast.mtReopened":"{name} is open again — everyone was asked","toast.mtReopenFailed":"Could not reopen {name}",
       "sw.delete":"Delete","sw.leave":"Leave","sw.again":"Press again to delete","sw.againLeave":"Press again to leave",
@@ -10941,6 +10964,15 @@ button.srow:active{background:var(--bg-tint)}
       : t("mt.capNote", {n:MEET_CAP});
     $("#mtAddNote").hidden = !$("#mtAddNote").textContent;
 
+    /* Where, and the exact hour while there is none. The place field is not
+       rewritten while somebody is typing in it — a reload landing mid-word
+       would take the word away. */
+    var pl = $("#mtPlace");
+    if(document.activeElement !== pl) pl.value = m.place || "";
+    var ahead = !m.startsAt || new Date(m.startsAt).getTime() > Date.now();
+    $("#mtExactWrap").hidden = !(m.settled && m.timeOpen && ahead);
+    $("#mtExactBtn").textContent = t("mt.exactAdd");
+
     /* Two different exits, and they must never read alike: one clears your
        own calendar, the other tells four people you are not coming.
        Whether a settled meeting sits on THIS person's calendar is not recorded
@@ -11266,6 +11298,44 @@ button.srow:active{background:var(--bg-tint)}
     Object.keys(m.ans || {}).forEach(function(k){ if(m.ans[k] && typeof m.ans[k] === "object") delete m.ans[k][was]; });
     renderMeet(); renderMeets(); renderStrip(selDay);
     toast(t("toast.mtReopened", {name:L(m.t)}));
+  });
+  /* Saved when the field is left or Enter is pressed, and only when it says
+     something new — the server refuses an empty place, so clearing it is
+     not offered. */
+  function mtSavePlace(){
+    var m = mtOpen;
+    if(!m) return;
+    var v = $("#mtPlace").value.replace(/\s+/g, " ").trim();
+    if(!v){ $("#mtPlace").value = m.place || ""; return; }
+    if(v === m.place) return;
+    m.place = v;
+    API.call("setMeetingPlace", {meeting_id:m.id, where:v});
+    if(LIVE) API.send("setMeetingPlace", {meetingId:m.id, where:v}, function(data){
+      if(!data) toast(t("toast.mtPlaceFailed"), null, true);
+      API.reload();
+    });
+    toast(t("toast.mtPlaceSet"));
+  }
+  $("#mtPlace").addEventListener("change", mtSavePlace);
+  $("#mtPlace").addEventListener("keydown", function(e){
+    if(e.key === "Enter"){ e.preventDefault(); this.blur(); }
+  });
+  $("#mtExactBtn").addEventListener("click", function(){
+    if(!mtOpen) return;
+    syncTimeField($("#mtExactTime"), "");
+    openTimeSheet($("#mtExactTime"));
+  });
+  $("#mtExactTime").addEventListener("input", function(){
+    var m = mtOpen, v = this.value;
+    if(!m || !v || !m.settled || !m.timeOpen) return;
+    m.timeOpen = false;
+    API.call("setMeetingTime", {meeting_id:m.id, time:v});
+    if(LIVE) API.send("setMeetingTime", {meetingId:m.id, time:v}, function(data){
+      if(!data) toast(t("toast.mtTimeFailed"), null, true);
+      API.reload();
+    });
+    renderMeet(); renderMeets();
+    toast(t("toast.mtTimeSet"));
   });
   $("#mtLeave").addEventListener("click", function(){
     if(!mtOpen) return;
@@ -14218,6 +14288,9 @@ button.srow:active{background:var(--bg-tint)}
       /* the Google id a settled one was written under — see agendaFor */
       gid:m.calendarEventId || "",
       t:m.title || "",
+      /* where, in somebody's words; and whether it settled with no exact hour */
+      place:m.location || "",
+      timeOpen:!!m.timeOpen,
       by:m.mine ? 0 : m.initiatorId,
       who:who, allDay:allDay, opts:opts, ans:ans, left:left,
       /* Answered, in the server's own words: a yes, a no, OR a sentence that

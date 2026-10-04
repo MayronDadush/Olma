@@ -198,3 +198,47 @@ test('a coordination a room started asks nobody privately — the room is asked'
   assert.doesNotMatch(res.data.hint, /exact time/);
   assert.ok((await rows('meeting_confirmed', id)).every((r) => !r.payload.askExactTime));
 });
+
+// The page's own two doors (owner, 2026-10-04): a place on any live
+// coordination, and the exact hour once it settled without one. Same writers
+// and fan-out as the chat, so the page and the chat cannot disagree.
+test('the page offers the hour only while it is open, and setting it there is the chat\'s own door', async () => {
+  const dash = require('../src/domain/user-dashboard');
+  const meetingOf = async (u, id) => {
+    const page = await tx((c) => dash.load(c, u.id));
+    return page.data.meetings.find((m) => Number(m.id) === id);
+  };
+  const { id, opt } = await openWith({ allDay: true });
+  assert.equal((await meetingOf(ben, id)).timeOpen, false, 'still negotiating: the table is the door');
+  await call('settle_meeting', ann, { meeting_id: id, option_id: opt.id });
+  assert.equal((await meetingOf(ben, id)).timeOpen, true);
+
+  const bad = await actAs(ben, 'setMeetingTime', { meetingId: id, time: '25:00' });
+  assert.equal(bad.ok, false);
+  const res = await actAs(ben, 'setMeetingTime', { meetingId: id, time: '18:00' });
+  assert.ok(res.ok, JSON.stringify(res));
+  const { rows: [m] } = await db.pool.query(
+    'SELECT status, confirmed_all_day, confirmed_start_at FROM meetings WHERE id = $1', [id]);
+  assert.equal(m.status, 'confirmed');
+  assert.equal(m.confirmed_all_day, false);
+  assert.equal(new Date(m.confirmed_start_at).toISOString(), new Date(tomorrowAt('18')).toISOString(),
+    'the day it settled on, in the setter\'s zone');
+  assert.deepEqual((await rows('meeting_time_set', id)).map((r) => Number(r.user_id)).sort(),
+    [Number(ann.id), Number(cal.id)].sort(), 'everybody but the one who set it');
+  assert.equal((await meetingOf(ben, id)).timeOpen, false);
+  assert.equal((await actAs(dan, 'setMeetingTime', { meetingId: id, time: '19:00' })).ok, false, 'not in it');
+});
+
+test('the page sets a place in their words, tells nobody, and refuses an empty one', async () => {
+  const dash = require('../src/domain/user-dashboard');
+  const { id } = await openWith({ daypart: 'evening' });
+  const res = await actAs(cal, 'setMeetingPlace', { meetingId: id, where: '  אצל   יוסי ' });
+  assert.ok(res.ok, JSON.stringify(res));
+  const page = await tx((c) => dash.load(c, ann.id));
+  assert.equal(page.data.meetings.find((m) => Number(m.id) === id).location, 'אצל יוסי');
+  assert.equal((await actAs(cal, 'setMeetingPlace', { meetingId: id, where: '  ' })).ok, false);
+  assert.equal((await actAs(dan, 'setMeetingPlace', { meetingId: id, where: 'בים' })).ok, false, 'not in it');
+  const { rows: told } = await db.pool.query(
+    `SELECT 1 FROM outbox WHERE (payload->>'meetingId')::bigint = $1 AND payload::text LIKE '%יוסי%'`, [id]);
+  assert.equal(told.length, 0);
+});

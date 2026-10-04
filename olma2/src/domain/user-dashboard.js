@@ -484,7 +484,7 @@ async function loadMeetings(client, userId, zone, locale) {
     `SELECT m.id, m.title, m.initiator_id, m.status, m.quorum_min,
             m.proposed_slot, m.proposed_start_at, m.confirmed_start_at,
             m.confirmed_slot, m.settling_option_id, m.settled_by,
-            m.calendar_event_id,
+            m.calendar_event_id, m.location, m.confirmed_all_day, m.confirmed_daypart,
             -- Seconds left of the settle grace, not the instant it ends: the
             -- page counts down, and a clock on a phone that is four minutes
             -- fast would otherwise count down to the wrong thing. Negative or
@@ -631,6 +631,11 @@ async function loadMeetings(client, userId, zone, locale) {
     // back from /me/events under this id — on the organiser's calendar and on
     // every attendee's, since an invite keeps the organiser's event id.
     calendarEventId: m.calendar_event_id || null,
+    // Where it happens, in the words somebody said, and whether a settled
+    // one still has no exact hour (`meetings.timeIsOpen`, the same reader the
+    // chat's question uses) — the page offers both (owner, 2026-10-04).
+    location: m.location || null,
+    timeOpen: meetingsDomain.timeIsOpen(m),
     confirmedTime: m.confirmed_time,
     confirmedDay: m.confirmed_day === null ? null : Number(m.confirmed_day),
     // The minute between the last yes and the meeting being over. `settleIn`
