@@ -282,6 +282,13 @@ title means this file. Grep the title, not the filename.
   for one more day and went on 2026-09-23 with the rule below. `afterSlotResponse`
   keeps an unread `accept` on purpose: a yes and a no produce the same fan-out
   now, and the parameter says that reading it again is a decision.
+  **…and since 2026-10-03 an exit from a CONFIRMED meeting is quiet too**
+  (owner: "ביטול של משתתף לא צריך להודיע בפרטי לאף אחד"). It was the last
+  exit still pushed — `meeting_withdrawn` to everybody still going — and סער
+  read two of them in seventeen minutes (`incidents.md`, "Two exits, two
+  messages, to a man who asked for one a day"). The result now says nobody
+  is messaged, because a hint saying "the others are told" is what the model
+  repeats back to the person leaving.
 
 - **Nobody MANAGES a coordination** (owner, 2026-09-23: "אין יותר מנהל של
   התיאום — כולם מנהלים של התיאום"). `meetings.initiator_id` is who OPENED it —

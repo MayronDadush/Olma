@@ -1131,3 +1131,93 @@ test('day one: a step held past its moment is dropped, and the next waits for th
   out = await withTx(db.pool, (c) => checkin.run(c, t0 + 2 * H + checkin.TALKING_MS + MIN));
   assert.deepEqual(out.filter((r) => r.userId === v.id).map((r) => r.rung), ['onboarding_2h']);
 });
+
+// New people said she "חופרת" (2026-10-04): about four unasked messages in
+// their first day, and a room joiner had heard the room's invite and its
+// coordination before the first step came due. Two is the ceiling, and a
+// step past it is silent rather than handed to the ordinary ladder.
+test('day one stops at two unasked messages, and what they chose does not count', async () => {
+  const flags = require('../src/domain/flags');
+  const H = 3600_000;
+  const u = await makeUser(db.pool, '+972615000301', { firstName: 'Lior' });
+  const t0 = Date.now() - 3 * H;
+  await db.pool.query(
+    `UPDATE users SET onboarded_at = $2, created_at = $2, timezone = 'Asia/Jerusalem',
+            timezone_confirmed = TRUE, last_inbound_at = $2 WHERE id = $1`, [u.id, new Date(t0)]);
+  const sent = (kind, key) => db.pool.query(
+    `INSERT INTO outbox (user_id, kind, payload, idempotency_key, sent_at, created_at)
+     VALUES ($1, $2, '{}'::jsonb, $3, now(), now())`, [u.id, kind, key]);
+  const me = { id: u.id, onboarded_at: new Date(t0) };
+  const c = await db.pool.connect();
+  try {
+    // A reminder and a digest they asked for, and one message she decided to
+    // send: still under the ceiling, so the 2h step goes out.
+    await sent('reminder', `cap-r-${u.id}`);
+    await sent('digest', `cap-d-${u.id}`);
+    await sent('welcome_followup', `cap-w-${u.id}`);
+    assert.equal(await checkin.dayOneSpent(c, me), false);
+    let out = await checkin.run(c, t0 + 2 * H + 60_000);
+    assert.equal(out.find((r) => r.userId === u.id).rung, 'onboarding_2h');
+
+    // The room's invite reaches them too: now two, and the 5h step is silent.
+    await c.query(`UPDATE outbox SET sent_at = now() WHERE user_id = $1 AND kind = 'checkin'`, [u.id]);
+    await sent('room_cold_invite', `cap-i-${u.id}`);
+    await c.query(`INSERT INTO tasks (owner_id, title) VALUES ($1, 'לקנות חלב')`, [u.id]);
+    assert.equal(await checkin.dayOneSpent(c, me), true);
+    out = await checkin.run(c, t0 + 5 * H + 60_000);
+    assert.equal(out.find((r) => r.userId === u.id), undefined, 'the step is silent');
+    // ...and silent means nothing at all, not the ordinary ladder instead.
+    out = await checkin.run(c, t0 + 8 * H + 60_000);
+    assert.equal(out.find((r) => r.userId === u.id), undefined, 'no rung falls through either');
+
+    // Off, it is exactly the old ladder.
+    await flags.setFlag(c, 'day_one_proactive_cap', 0);
+    out = await checkin.run(c, t0 + 8 * H + 120_000);
+    assert.ok(out.find((r) => r.userId === u.id), 'with the cap off the slot is spent again');
+    await flags.setFlag(c, 'day_one_proactive_cap', 2);
+  } finally { c.release(); }
+});
+
+// "אני מניחה שאתה בישראל" and then "באיזו מדינה אתה נמצא?" (owner,
+// 2026-10-04): a one-clock country whose zone is still the one the dialling
+// code gave is already answered. A several-clock country still asks.
+test('the country question is not asked when the number already answered it', async () => {
+  const c = await db.pool.connect();
+  try {
+    const il = await makeUser(db.pool, '+972641000301', { firstName: 'Yael' });
+    await c.query(`UPDATE users SET timezone = 'Asia/Jerusalem', timezone_confirmed = FALSE WHERE id = $1`, [il.id]);
+    const ilGaps = await checkin.discoveryGaps(c, il.id);
+    assert.ok(!ilGaps.some((g) => g.topic === 'timezone'), 'one clock, the code\'s own zone: no question');
+
+    const us = await makeUser(db.pool, '+12125550301', { firstName: 'Sam' });
+    await c.query(`UPDATE users SET timezone = 'America/New_York', timezone_confirmed = FALSE WHERE id = $1`, [us.id]);
+    const usGaps = await checkin.discoveryGaps(c, us.id);
+    assert.equal(usGaps[0].topic, 'timezone', 'several clocks: still asked, first');
+  } finally { c.release(); }
+});
+
+// A game night's or a room's welcome follow-up waits for the morning, and
+// until it has said what she is the day-one ladder says nothing (2026-10-04:
+// 63 and 64 heard the 2h step in the middle of the game).
+test('no day-one step goes out ahead of the welcome follow-up still owed', async () => {
+  const H = 3600_000;
+  const u = await makeUser(db.pool, '+972615000302', { firstName: 'Omer' });
+  const t0 = Date.now() - 3 * H;
+  await db.pool.query(
+    `UPDATE users SET onboarded_at = $2, created_at = $2, timezone = 'Asia/Jerusalem',
+            timezone_confirmed = TRUE, last_inbound_at = $2 WHERE id = $1`, [u.id, new Date(t0)]);
+  await db.pool.query(
+    `INSERT INTO outbox (user_id, kind, payload, idempotency_key, release_after)
+     VALUES ($1, 'welcome_followup', '{"gameOpening": true}'::jsonb, $2, now() + interval '10 hours')`,
+    [u.id, `welcome_followup:${u.id}`]);
+  const c = await db.pool.connect();
+  try {
+    let out = await checkin.run(c, t0 + 2 * H + 60_000);
+    assert.equal(out.find((r) => r.userId === u.id), undefined, 'the 2h step waits behind it');
+    await c.query(`UPDATE outbox SET sent_at = now() WHERE user_id = $1 AND kind = 'welcome_followup'`, [u.id]);
+    await require('../src/domain/flags').setFlag(c, 'day_one_proactive_cap', 0);
+    out = await checkin.run(c, t0 + 2 * H + 120_000);
+    assert.equal(out.find((r) => r.userId === u.id).rung, 'onboarding_2h', 'and goes once it is said');
+    await require('../src/domain/flags').setFlag(c, 'day_one_proactive_cap', 2);
+  } finally { c.release(); }
+});

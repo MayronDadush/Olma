@@ -24,6 +24,11 @@ const DEFAULTS = {
   // come back, and how long after a DELIVERED rung the next one is due.
   reminder_escalation_max: 3,
   reminder_escalation_gap_hours: 3,
+  // jobs/checkin.js, dayOneSpent: how many unasked messages somebody may hear
+  // in their first 24 hours before the day-one ladder goes quiet (owner,
+  // 2026-10-04, after new people said she "חופרת"). Reminders and the digest
+  // they chose are not counted. 0 turns it off.
+  day_one_proactive_cap: 2,
   live_subscriptions_per_user: 5,   // cap on active live-update subscriptions
   // outbox/worker.js: how many times a day Olma may interrupt somebody with
   // something she DECIDED to say. Urgent rows and the three kinds a person
@@ -155,6 +160,12 @@ const DEFAULTS = {
   // E.164 list. Read by brokerd's `burst_hold` on every held reply, so turning
   // it off takes effect on the next message, with no gateway restart.
   burst_reply_phones: 'all',
+  // outbox/gate.js + jobs/sweeps.sweepDigests, "once a day" (owner,
+  // 2026-10-03, for Saar first): everything Olma decides to say to these
+  // people waits for ONE message at 20:00 their time, and that message is not
+  // sent when nothing is open. Replies to their own messages are untouched.
+  // '' = nobody, 'all', or a comma-separated E.164 list.
+  daily_once_phones: '',
   // domain/experiments.js: the A/B tests the owner has ENDED, as
   // { key: 'a' | 'b' }. Empty means every experiment in the code is running.
   // Written only by the admin page's "לקבע" button.

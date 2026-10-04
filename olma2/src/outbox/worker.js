@@ -17,6 +17,7 @@ const audit = require('../domain/audit');
 const { mergeRoleFor, planMerge, MERGEABLE_KINDS } = require('../domain/message-merge');
 const { checkChannels } = require('../adapters/gateway-health');
 const gameSummary = require('../domain/game-summary');
+const { coveredBy } = require('../domain/turn');
 
 // A delivery is a full model turn — 30-90s of wall time and most of the box's
 // one core. An unbounded tick over a backlog (observed live 2026-08-27: ~20
@@ -144,7 +145,7 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
   const { rows: candidates } = await pool.query(
     `SELECT o.*, u.timezone, u.agent_id, u.quota_blocked_until, u.first_name, u.last_inbound_at, u.last_woke_at, u.last_dashboard_at,
             u.digest_times, u.paused_at, u.paused_reason, u.room_invite_sent_at, u.is_eval, u.checkin_misses, u.locale, u.opening_sent_at,
-            u.timezone_confirmed, u.room_zone_asked_at,
+            u.timezone_confirmed, u.room_zone_asked_at, u.phone AS user_phone,
             -- Aliased, because the select above is o.* : an outbox.status column
             -- added one day would shadow this silently and the gate below would
             -- read a row's state as a person's.
@@ -155,8 +156,9 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
        -- carry it (collectHeld), so it must not be retried on a clock. One
        -- WITH a release time is the no-digest case: the gate scheduled it for
        -- the next day, and skipping it here is what left those rows unsent
-       -- forever despite the release time the gate had set.
-       AND (o.hold_reason IS DISTINCT FROM 'budget' OR o.release_after IS NOT NULL)
+       -- forever despite the release time the gate had set. A 'daily_once'
+       -- hold is the same shape: it waits for the evening digest alone.
+       AND (o.hold_reason IS NULL OR o.hold_reason NOT IN ('budget', 'daily_once') OR o.release_after IS NOT NULL)
      ORDER BY (o.kind IN ('intro_video', 'brand_ad')), o.created_at LIMIT 50`,
     [now]
   );
@@ -195,6 +197,10 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
             id: row.user_id, timezone: row.timezone, locale: row.locale,
           }, now);
         const budget = Number(await flagsDomain.getFlag(client, 'proactive_daily_budget') ?? 4);
+        // Once a day, for the people the owner named (flag
+        // `daily_once_phones`, 2026-10-03): everything Olma decided to say
+        // waits for one evening message. See gate.js, "once a day".
+        const dailyOnce = coveredBy(await flagsDomain.getFlag(client, 'daily_once_phones'), row.user_phone);
         // Count only what the budget actually governs. Urgent rows and the two
         // user-chosen kinds are exempt in decide() — counting them here let a day
         // with three reminders exhaust a budget those reminders ignored, and then
@@ -415,7 +421,7 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
           introductionPending: introRows.length > 0,
           introductionSentAt: introSent[0] ? introSent[0].sent_at : null,
           lastSentByKind,
-          sentToday: sentRows[0].n, budget, now,
+          sentToday: sentRows[0].n, budget, dailyOnce, now,
         };
         const verdict = decide(facts);
 
@@ -470,7 +476,7 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
             `SELECT * FROM outbox
               WHERE user_id = $1 AND id <> $2 AND kind = 'reminder' AND sent_at IS NULL
                 AND (release_after IS NULL OR release_after <= $3)
-                AND (hold_reason IS DISTINCT FROM 'budget' OR release_after IS NOT NULL)
+                AND (hold_reason IS NULL OR hold_reason NOT IN ('budget', 'daily_once') OR release_after IS NOT NULL)
               ORDER BY created_at, id
               FOR UPDATE SKIP LOCKED`,
             [row.user_id, row.id, now]
@@ -510,7 +516,7 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
               WHERE user_id = $1 AND id <> $2 AND sent_at IS NULL
                 AND kind = ANY($4)
                 AND (release_after IS NULL OR release_after <= $3)
-                AND (hold_reason IS DISTINCT FROM 'budget' OR release_after IS NOT NULL)
+                AND (hold_reason IS NULL OR hold_reason NOT IN ('budget', 'daily_once') OR release_after IS NOT NULL)
               ORDER BY created_at, id
               FOR UPDATE SKIP LOCKED`,
             [row.user_id, row.id, now, MERGEABLE_KINDS]
