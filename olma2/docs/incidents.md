@@ -57,6 +57,7 @@ never trust a dated narrative for something you are about to act on.
 - [The stop that waited for a yes (fixed 2026-09-22)](#the-stop-that-waited-for-a-yes-fixed-2026-09-22)
 - [The table that did not say where she stood (2026-09-20)](#the-table-that-did-not-say-where-she-stood-2026-09-20)
 - [Five messages in twelve minutes, about one coordination (fixed 2026-09-22)](#five-messages-in-twelve-minutes-about-one-coordination-fixed-2026-09-22)
+- [Two exits, two messages, to a man who asked for one a day (fixed 2026-10-03)](#two-exits-two-messages-to-a-man-who-asked-for-one-a-day-fixed-2026-10-03)
 - [Four messages in sixty-two seconds (fixed 2026-09-20)](#four-messages-in-sixty-two-seconds-fixed-2026-09-20)
 - [Once a day, said and not kept (built 2026-10-03)](#once-a-day-said-and-not-kept-built-2026-10-03)
 - [Today at five is not Monday (fixed 2026-09-24)](#today-at-five-is-not-monday-fixed-2026-09-24)
@@ -2122,6 +2123,27 @@ chased three people, two of whom had never been asked"). It also leaves a real
 gap open: a member of a room can be invited to its coordination, receive
 nothing, and nobody — not him, not the room, not the person who opened it —
 can tell.
+
+### Two exits, two messages, to a man who asked for one a day (fixed 2026-10-03)
+
+סער (u-55) had asked on 2026-10-02 to be written to once a day. On the
+evening of 2026-10-03, after havdalah, he read five messages in twenty-six
+minutes about one poker night, and two of them were nothing but somebody
+else's exit from it: "הוד לא יכול להגיע" at 19:10 and "בר לא יכול להגיע" at
+19:27, each a `meeting_withdrawn` row of its own. He answered "חשבתי שסיכמנו
+הודעה אחת ביום".
+
+Every other exit had stopped being a message on 2026-09-22 (the entry above);
+`meeting-fanout.afterOptOut` still pushed one for a CONFIRMED meeting, framed
+as "it is still on". The owner: "ביטול של משתתף לא צריך להודיע בפרטי לאף
+אחד". It is quiet now, and the result says nobody is messaged, because the
+model had told הוד "נגיד להם שלא תבוא" off a hint and a doctrine line that
+both said the others are told. Who is coming is on the coordination's page.
+
+The rest of that evening — the "once a day" preference that was saved as an
+unreadable `availability` value, the held rows released one by one, and הוד's
+two day-one check-ins twelve minutes apart — is separate work.
+
 
 ### Four messages in sixty-two seconds (fixed 2026-09-20)
 

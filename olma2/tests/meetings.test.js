@@ -756,6 +756,27 @@ test('a participant withdrawing from a confirmed trio leaves the meeting ON', as
   });
 });
 
+// סער, 2026-10-03: "הוד לא יכול להגיע" at 19:10 and "בר לא יכול להגיע" at
+// 19:27, each its own private message. Owner: a participant's exit tells
+// nobody privately — the same as every other exit since 2026-09-22.
+test('withdrawing from a confirmed meeting messages nobody, and the result says so', async () => {
+  await withClient(async (c) => {
+    const fanout = require('../src/domain/meeting-fanout');
+    const id = await confirmedMeeting(c, alice, [bob, carol]);
+    const before = await c.query(`SELECT COALESCE(max(id), 0) AS m FROM outbox`);
+
+    const res = await fanout.afterOptOut(c, bob, id, await meetings.optOut(c, bob.id, id));
+    assert.equal(res.data.withdrew, true);
+    assert.equal(res.data.meetingStatus, 'confirmed');
+
+    const rows = await c.query(
+      `SELECT user_id, kind FROM outbox WHERE id > $1 AND (payload->>'meetingId')::bigint = $2`,
+      [before.rows[0].m, id]);
+    assert.deepEqual(rows.rows, [], 'not alice, not carol — nobody');
+    assert.match(res.data.hint, /Nobody is messaged/, 'or the model promises "they will be told"');
+  });
+});
+
 test('withdrawing that leaves one person cascades into cancellation', async () => {
   await withClient(async (c) => {
     const id = await confirmedMeeting(c, alice, [bob]);
