@@ -58,6 +58,7 @@ never trust a dated narrative for something you are about to act on.
 - [The table that did not say where she stood (2026-09-20)](#the-table-that-did-not-say-where-she-stood-2026-09-20)
 - [Five messages in twelve minutes, about one coordination (fixed 2026-09-22)](#five-messages-in-twelve-minutes-about-one-coordination-fixed-2026-09-22)
 - [Four messages in sixty-two seconds (fixed 2026-09-20)](#four-messages-in-sixty-two-seconds-fixed-2026-09-20)
+- [Once a day, said and not kept (built 2026-10-03)](#once-a-day-said-and-not-kept-built-2026-10-03)
 - [Today at five is not Monday (fixed 2026-09-24)](#today-at-five-is-not-monday-fixed-2026-09-24)
 - [The constraint that was an answer (fixed 2026-09-20)](#the-constraint-that-was-an-answer-fixed-2026-09-20)
 - [After 21 is not a no (fixed 2026-10-02)](#after-21-is-not-a-no-fixed-2026-10-02)
@@ -2198,6 +2199,53 @@ correctly (what counts is what REACHED them); the fold now does too, through
 `unheardInvite`: when every invite row for that person and coordination is a
 dropped one, the next time goes out as the invite it should have been, with
 `tableChanged` on it.
+
+### Once a day, said and not kept (built 2026-10-03)
+
+Saar's preferences said `availability = 'once a day'`, and in the seven days
+to 2026-10-03 Olma started eleven conversations with him: four check-ins, two
+withdrawals, and one each of a coordination invite, a time set, a cold room
+invite, a proposed slot and a confirmation. No single rule was broken. Every
+coordination row is `urgent`, so the daily budget (15 on the box) never looked
+at them. Another person's request is a peer kind, so the silence rule passes
+it. The check-in ladder spaces its own steps and nobody else's. The
+preference was a sentence that nothing read: `remember_preference` stored it
+and the gate has no word for "once".
+
+His replies were never the problem. In his transcript each of his 8 turns got
+exactly one text reply. So the owner's second half ("one message back for each
+message he sends") already held, and nothing was built for it.
+
+The owner asked for a hard cap, built for Saar alone first:
+
+- **Everything Olma decides to say waits for ONE message at 20:00 his time**
+  (`sweeps.DAILY_ONCE_AT`). The gate holds it as `daily_once` with no release
+  time, and the worker never retries it on a clock. Only `collectHeld` in the
+  evening message picks it up.
+- **When nothing is open, nothing is sent.** "Open" is read literally: an open
+  task, an event today, a coordination waiting on him or on somebody else, one
+  that just ended, a request from another person, a nudge, or a held row.
+- **Three things pass**, by the owner's choice. The evening message itself. The
+  introduction. Rung 1 of a reminder he asked for in words
+  (`gate.askedForInWords`), because a reminder he set is a moment he chose.
+  Every later rung and every automatic reminder waits. So do urgent rows and
+  other people's requests ("הכל לערב").
+- **A check-in is dropped, not carried.** It asks how things are, and the
+  evening message answers that.
+- **A held row about a coordination that has since happened is dropped before
+  the fold** (`meeting_over`). The worker would have dropped it, but it never
+  looks at a row held for the evening.
+- **One message a day is checked against what REACHED him.** A Friday 20:00
+  message held for Shabbat goes out at havdalah. The Saturday 20:00 slot then
+  finds a digest delivered inside 20 hours, and writes nothing.
+
+The scope is the flag `daily_once_phones` (`''` by default; `all` or an E.164
+list). It ships off, and the owner sets Saar's number. His own `digest_times`
+are ignored while he is on it, because two digests are not once a day.
+
+The test is `tests/daily-once.test.js`, a replay of his morning. On the old
+code three of its six cases fail. The other three assert that nothing is
+written, and they guard the new branch.
 
 ### Today at five is not Monday (fixed 2026-09-24)
 
