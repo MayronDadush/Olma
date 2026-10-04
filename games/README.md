@@ -69,6 +69,11 @@ Olma can run a night from the chat: `start_game_night`, `add_buyin`,
 settlement, for a table that changed its mind or never counted: `closed_at`
 and `cancelled_at` both set (migration 003), no `game_results`, and every
 later write refused as `cancelled` so nothing can reopen it.
+`start_game_night` (2026-10-05) sends the host the same two messages as the
+"ערב משחק חדש" shortcut, both by code: brokerd's `game_invite` queues their
+own-seat link and, a beat later, the forwardable invite (only `/g/<code>`),
+and the model is told to say nothing; with brokerd unreachable the result
+carries both links for the model to give.
 Two locks, each enough on its own:
 
 - **The gateway never shows them.** Every agent carries `games__*` in its
