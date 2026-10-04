@@ -24,6 +24,11 @@ const DEFAULTS = {
   // come back, and how long after a DELIVERED rung the next one is due.
   reminder_escalation_max: 3,
   reminder_escalation_gap_hours: 3,
+  // jobs/checkin.js, dayOneSpent: how many unasked messages somebody may hear
+  // in their first 24 hours before the day-one ladder goes quiet (owner,
+  // 2026-10-04, after new people said she "חופרת"). Reminders and the digest
+  // they chose are not counted. 0 turns it off.
+  day_one_proactive_cap: 2,
   live_subscriptions_per_user: 5,   // cap on active live-update subscriptions
   // outbox/worker.js: how many times a day Olma may interrupt somebody with
   // something she DECIDED to say. Urgent rows and the three kinds a person

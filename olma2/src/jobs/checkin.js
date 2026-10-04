@@ -14,6 +14,7 @@
 const connectGate = require('../domain/google-connect-gate');
 const holidays = require('../domain/holidays');
 const experiments = require('../domain/experiments');
+const flags = require('../domain/flags');
 const meetings = require('../domain/meetings');
 const meetingFanout = require('../domain/meeting-fanout');
 const meetingTime = require('../domain/meeting-time');
@@ -256,6 +257,36 @@ async function isDeafOnDayOne(client, userId, onboardedAt) {
   );
   const last = heard[0].last_inbound_at;
   return !last || new Date(last) <= new Date(onboardedAt);
+}
+
+// Day one has a ceiling as well as a ladder (owner, 2026-10-04: new people
+// said she "חופרת"). Measured over the fifteen who joined in the week before:
+// about four unasked messages each in the first 24 hours, seven in three days,
+// against one to three words back — and a room joiner had heard the room's
+// invite and its coordination before the first step ever came due. So the
+// ladder asks what they have ALREADY heard since they arrived, and once it is
+// `day_one_proactive_cap` (a flag; 0 is off) a day-one check-in says nothing.
+// Silent, not skipped, for the same reason as `silentWhenEmpty`: a slot handed
+// to the ordinary ladder is another message, not a quieter afternoon.
+//
+// Counted: every row that reached them or is still going to, except the two
+// kinds they chose themselves — a reminder and the morning picture. Not
+// counted: a check-in still waiting, because the one about to be queued
+// replaces it. What is THEIRS (a meeting waiting on them, a deadline
+// tomorrow) is never held back by this; see THEIRS below.
+const DAY_MS = 24 * HOUR_MS;
+const THEIRS = new Set(['stuck_meeting', 'deadline_risk']);
+async function dayOneSpent(client, u) {
+  const cap = Number(await flags.getFlag(client, 'day_one_proactive_cap'));
+  if (!Number.isFinite(cap) || cap <= 0) return false;
+  const { rows } = await client.query(
+    `SELECT count(*)::int AS n FROM outbox
+      WHERE user_id = $1 AND kind NOT IN ('reminder', 'digest')
+        AND created_at >= $2
+        AND ((sent_at IS NOT NULL AND hold_reason IS NULL)
+             OR (sent_at IS NULL AND kind <> 'checkin'))`,
+    [u.id, u.onboarded_at]);
+  return rows[0].n >= cap;
 }
 
 // How long someone may go quiet before Olma reaches out, by age of account.
@@ -831,6 +862,8 @@ async function run(client, now = Date.now()) {
       ({ rung, instruction, topic, meetingId } = await pickRung(client, u.id, Number(u.checkin_misses) || 0));
       key = `checkin:${u.id}:${new Date(now).toISOString().slice(0, 10)}`;
     }
+    if (now - new Date(u.onboarded_at).getTime() < DAY_MS && !THEIRS.has(rung)
+        && await dayOneSpent(client, u)) continue;
     const res = await enqueue(client, {
       userId: u.id, kind: 'checkin',
       payload: { checkinInstruction: instruction, rung, ...(topic ? { topic } : {}), ...(meetingId ? { meetingId } : {}) },
@@ -919,5 +952,5 @@ async function run(client, now = Date.now()) {
 
 module.exports = {
   run, eligibleUsers, pickRung, discoveryGaps, requiredGapMs, idleHoursFor, GIVE_UP_MISSES, MISS_ONE_GAP_MS,
-  onboardingStepDue, ONBOARDING_STEPS, DEAF_SILENT_SLOTS, stalledGoals, holdsNothing,
+  onboardingStepDue, ONBOARDING_STEPS, DEAF_SILENT_SLOTS, dayOneSpent, stalledGoals, holdsNothing,
 };
