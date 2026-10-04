@@ -337,3 +337,38 @@ test('the shim lists the tools without a database and relays a call, repairing a
   assert.match(await text({ [IDENTITY_PARAM]: TOK(1), price: 50, chips: 1000 }), /^OK /);
   assert.match(await text({ [IDENTITY_PARAM]: 'olma_tok_abc', price: 50, chips: 1000 }), /^ERROR already_open/, 'repaired to the proven token');
 });
+
+// The owner, 2026-10-05: a locked night holds in the chat too. The host is
+// the person Olma opened it for, recognised by their user id.
+test('a locked night in the chat: the host adds buy-ins and anybody\'s chips, a player only their own, and the host can get back in on a new phone', async t => {
+  const { pool, call, okOf } = await boot(t);
+  const night = await okOf(TOK(1), 'start_game_night', { price: 20, chips: 100, players: ['יוסי'] });
+  await pool.query(
+    `INSERT INTO players (night_id, id, name, ord, user_id, linked_at, linked_via)
+     SELECT id, 'psam', 'Sam', 1e12, 102, now(), 'invite' FROM nights WHERE code = $1`, [night.night_code]);
+  const { rows: [n] } = await pool.query('SELECT id, token, host_player FROM nights WHERE code = $1', [night.night_code]);
+  assert.ok(n.host_player, 'start_game_night names the host seat');
+  assert.equal((await okOf(TOK(1), 'my_game_status')).locked, false);
+  await pool.query('UPDATE nights SET locked_at = now() WHERE id = $1', [n.id]);
+
+  const refused = await call(TOK(2), 'add_buyin');
+  assert.match(refused, /^ERROR locked: .*\(מיכל\)/, refused);
+  assert.match(await call(TOK(2), 'report_chips', { player: 'יוסי', chips: 50 }), /^ERROR locked/);
+  assert.equal((await pool.query('SELECT count(*)::int n FROM buyins')).rows[0].n, 0, 'nothing half done');
+  assert.equal((await okOf(TOK(2), 'report_chips', { chips: 40 })).chips, 40, 'Sam reports his own');
+
+  assert.equal((await okOf(TOK(1), 'add_buyin', { player: 'Sam' })).buyins, 1);
+  assert.equal((await okOf(TOK(1), 'report_chips', { player: "יוסי", chips: 30 })).chips, 30);
+
+  // the host's way back in: a one-time link, to the host alone
+  // (40 + 30 of 100 chips: the night is still open)
+  const sam = await okOf(TOK(2), 'my_game_status');
+  assert.equal(sam.host, 'מיכל');
+  assert.equal(sam.host_link, undefined, 'never to anybody else');
+  const host = await okOf(TOK(1), 'my_game_status');
+  const m = host.host_link.match(/\/night\/([A-Za-z0-9]{22})#me-([A-Za-z0-9_-]+)~([A-Za-z0-9]{22})$/);
+  assert.ok(m, host.host_link);
+  assert.equal(m[2], n.host_player);
+  const { rows: [k] } = await pool.query('SELECT host_key FROM nights WHERE id = $1', [n.id]);
+  assert.equal(k.host_key, m[3]);
+});
