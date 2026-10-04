@@ -1013,7 +1013,10 @@ test('day one: a step still held when the next comes due is superseded, not stac
     [v.id, t0]);
   await db.pool.query(`INSERT INTO tasks (owner_id, title) VALUES ($1, 'לקנות חלב')`, [v.id]);
   await withTx(db.pool, (c) => checkin.run(c, t0 + 5 * H + 60_000));
-  await db.pool.query(`UPDATE outbox SET sent_at = now(), hold_reason = NULL WHERE user_id = $1`, [v.id]);
+  // Delivered at its own moment, on the run's clock: the gap between steps is
+  // measured from here (checkin.STEP_GAP_MS).
+  await db.pool.query(`UPDATE outbox SET sent_at = to_timestamp($2/1000.0), hold_reason = NULL WHERE user_id = $1`,
+    [v.id, t0 + 5 * H + 60_000]);
   out = await withTx(db.pool, (c) => checkin.run(c, t0 + 8 * H + 60_000));
   assert.deepEqual(out.filter((r) => r.userId === v.id).map((r) => r.rung), ['onboarding_8h']);
   const { rows: theirs } = await db.pool.query(
@@ -1084,6 +1087,49 @@ test('day one: the 5h step says nothing to somebody who has given her nothing', 
   await db.pool.query(`INSERT INTO tasks (owner_id, title) VALUES ($1, 'לקנות חלב')`, [u.id]);
   const again = await withTx(db.pool, (c) => checkin.run(c, t0 + 5 * H + 120_000));
   assert.deepEqual(again.filter((r) => r.userId === u.id).map((r) => r.rung), ['onboarding_5h']);
+});
+
+// Hod, 2026-10-03: joined at 17:15 on a Saturday. The 15m step was held for
+// Shabbat and went out at 19:08 saying he had joined a quarter of an hour ago;
+// the 2h step, on its own clock, followed twelve minutes later.
+test('day one: a step held past its moment is dropped, and the next waits for the gap', async () => {
+  const H = 3600_000;
+  const MIN = 60_000;
+  const t0 = Date.now() - 4 * H;
+  const at = (ms) => new Date(t0 + ms).toISOString();
+  const u = await makeUser(db.pool, '+972615000095', { firstName: 'Hod' });
+  await db.pool.query(
+    `UPDATE users SET agent_id = 'u-' || id, onboarded_at = $2 WHERE id = $1`, [u.id, at(0)]);
+
+  let out = await withTx(db.pool, (c) => checkin.run(c, t0 + 20 * MIN));
+  assert.deepEqual(out.filter((r) => r.userId === u.id).map((r) => r.rung), ['onboarding_15m']);
+  const { rows: [first] } = await db.pool.query(
+    `SELECT id, expires_at FROM outbox WHERE user_id = $1`, [u.id]);
+  assert.ok(new Date(first.expires_at).getTime() <= t0 + 75 * MIN,
+    'released at havdalah, 113 minutes in, it is past its moment and expires');
+
+  // Had it gone out anyway (it did, under the old expiry): the 2h step, due
+  // twelve minutes later, waits out the gap from the moment it REACHED him.
+  await db.pool.query(`UPDATE outbox SET sent_at = $2 WHERE id = $1`, [first.id, at(113 * MIN)]);
+  out = await withTx(db.pool, (c) => checkin.run(c, t0 + 125 * MIN));
+  assert.deepEqual(out.filter((r) => r.userId === u.id), [], 'twelve minutes after the last step: nothing');
+  out = await withTx(db.pool, (c) => checkin.run(c, t0 + 113 * MIN + checkin.STEP_GAP_MS + MIN));
+  assert.deepEqual(out.filter((r) => r.userId === u.id).map((r) => r.rung), ['onboarding_2h']);
+
+  // Nor does a step start while they are talking; the first contact does.
+  const v = await makeUser(db.pool, '+972615000096', { firstName: 'Noa' });
+  await db.pool.query(
+    `UPDATE users SET agent_id = 'u-' || id, onboarded_at = $2, last_inbound_at = $3 WHERE id = $1`,
+    [v.id, at(0), at(10 * MIN)]);
+  out = await withTx(db.pool, (c) => checkin.run(c, t0 + 16 * MIN));
+  assert.deepEqual(out.filter((r) => r.userId === v.id).map((r) => r.rung), ['onboarding_15m'],
+    'the first contact goes although they wrote six minutes ago');
+  await db.pool.query(`UPDATE outbox SET sent_at = $2 WHERE user_id = $1`, [v.id, at(16 * MIN)]);
+  await db.pool.query(`UPDATE users SET last_inbound_at = $2 WHERE id = $1`, [v.id, at(2 * H)]);
+  out = await withTx(db.pool, (c) => checkin.run(c, t0 + 2 * H + 5 * MIN));
+  assert.deepEqual(out.filter((r) => r.userId === v.id), [], 'they wrote five minutes ago');
+  out = await withTx(db.pool, (c) => checkin.run(c, t0 + 2 * H + checkin.TALKING_MS + MIN));
+  assert.deepEqual(out.filter((r) => r.userId === v.id).map((r) => r.rung), ['onboarding_2h']);
 });
 
 // New people said she "חופרת" (2026-10-04): about four unasked messages in

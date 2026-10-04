@@ -59,6 +59,7 @@ never trust a dated narrative for something you are about to act on.
 - [Five messages in twelve minutes, about one coordination (fixed 2026-09-22)](#five-messages-in-twelve-minutes-about-one-coordination-fixed-2026-09-22)
 - [Two exits, two messages, to a man who asked for one a day (fixed 2026-10-03)](#two-exits-two-messages-to-a-man-who-asked-for-one-a-day-fixed-2026-10-03)
 - [Four messages in sixty-two seconds (fixed 2026-09-20)](#four-messages-in-sixty-two-seconds-fixed-2026-09-20)
+- [Two day-one steps twelve minutes apart, the first two hours late (fixed 2026-10-03)](#two-day-one-steps-twelve-minutes-apart-the-first-two-hours-late-fixed-2026-10-03)
 - [Once a day, said and not kept (built 2026-10-03)](#once-a-day-said-and-not-kept-built-2026-10-03)
 - [Today at five is not Monday (fixed 2026-09-24)](#today-at-five-is-not-monday-fixed-2026-09-24)
 - [The constraint that was an answer (fixed 2026-09-20)](#the-constraint-that-was-an-answer-fixed-2026-09-20)
@@ -2222,6 +2223,48 @@ correctly (what counts is what REACHED them); the fold now does too, through
 `unheardInvite`: when every invite row for that person and coordination is a
 dropped one, the next time goes out as the invite it should have been, with
 `tableChanged` on it.
+
+### Two day-one steps twelve minutes apart, the first two hours late (fixed 2026-10-03)
+
+Hod (u-57) reached Olma from a room on Saturday 2026-10-03 at 17:15, Israel
+time. The welcome follow-up and the room's confirmation went at 17:16 (the
+second of those is its own fix, "Three messages in a minute, to somebody a
+settled room sent"). The day-one 15m step was queued at 17:35 and held for
+Shabbat, and havdalah released it at 19:08. It is the first-contact message,
+written for somebody who "joined ~15 minutes ago", and it reached him 113
+minutes after he joined. The 2h step runs on its own clock, measured from
+onboarding, so at 19:20 it went too: two day-one questions twelve minutes
+apart, the first one stale.
+
+Two faults, and the existing supersede could catch neither. Supersede
+withdraws a step that is still UNSENT when the next one is queued, and here
+the first step had already gone. Expiry ran to the next step's moment (2h),
+not to the moment the step was about, so a hold that ended before then
+delivered it late.
+
+Measured on the box before choosing numbers. Of every 15m step ever
+delivered, Hod's was the only one sent more than 75 minutes after joining; the
+next latest was 74. For every delivered pair of day-one steps less than 100
+minutes apart, the gaps were 1, 4, 12 and 49 minutes for the held ones (u-18
+and u-24 on the 5h→8h pair at 08:00, Hod, u-53), and 84, 93 and 98 for the
+ordinary 15m→2h pairs.
+
+Fix (`jobs/checkin.js`):
+- The 15m step now expires 75 minutes after joining.
+- No day-one step is queued less than `STEP_GAP_MS` (75 minutes) after the
+  previous one REACHED them (`sent_at`, no `hold_reason`).
+- No day-one step after the first is queued within `TALKING_MS` (20 minutes)
+  of their last message. The 15m step is exempt from that check: they joined
+  by writing, so it would almost always wait.
+
+A step that waits does not hand its slot to the ordinary ladder. It is asked
+again on the next run, inside its own expiry, and a later step overtakes it as
+before. Replayed in `tests/checkin.test.js`; both halves fail on the old code.
+
+Left alone on purpose: the welcome follow-up does not count toward the gap. It
+goes out seconds after the greeter for nearly everybody who arrives through
+it, so counting it would cancel the 15m step for all of them. That is a change
+to the ladder's design, and it is the owner's call.
 
 ### Once a day, said and not kept (built 2026-10-03)
 
