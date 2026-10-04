@@ -316,6 +316,7 @@ async function listMembers(client, groupId, { includeLeft = false } = {}) {
   const { rows } = await client.query(
     `SELECT m.*, u.last_inbound_at, u.opening_sent_at, u.timezone, u.timezone_confirmed, u.paused_at,
             u.paused_reason, u.room_invite_sent_at, u.first_name, u.name_confirmed, u.gender,
+            u.status AS user_status,
             (SELECT p.value FROM user_preferences p
               WHERE p.user_id = u.id AND p.key = 'gender_forms') AS gender_forms
        FROM chat_group_members m
