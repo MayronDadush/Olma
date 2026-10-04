@@ -12,7 +12,24 @@ const KEY_RE = /^[a-z0-9_.-]{1,64}$/;
 async function remember(client, userId, key, value) {
   if (!KEY_RE.test(key || '')) return err('invalid', 'key must be short lowercase [a-z0-9_.-]');
   if (!value || !String(value).trim()) return err('invalid', 'value required');
-  const text = String(value).trim();
+  let text = String(value).trim();
+  // The one key the delivery gate parses is refused at the write when the gate
+  // could not read it. It used to be saved, 👍'd, and then read as the default
+  // window by `availabilityWindow` — so "once a day" (u-55, 2026-10-02) was a
+  // promise the system had already broken when the mark went on, and four of
+  // the seven rows on the box were like it: a frequency, two meetings' dates,
+  // a window with weekdays on the end (incidents.md, "Saved, marked done, and
+  // read as nothing").
+  if (key === 'availability') {
+    const window = canonicalWindow(text);
+    if (!window) {
+      return err('invalid', 'NOT saved. availability holds ONE daily window, "HH:MM-HH:MM", and nothing else —'
+        + ' the delivery gate cannot read anything other than that, so nothing was changed and they must not be told it was.'
+        + ' Days they want nothing on are quiet_days ("fri,sat"). Times that suit ONE meeting are record_meeting_constraint.'
+        + ' How OFTEN Olma writes is not something any tool sets.', { reason: 'format' });
+    }
+    text = window;
+  }
   // Same structural rule as facts (see phoneLike there): phone numbers live in
   // contacts/connections, never in prose a model might mis-recall.
   if (phoneLike(text)) {
@@ -114,6 +131,21 @@ async function list(client, userId) {
 // it is a sentence somebody read, and changing it without changing that
 // sentence makes the first message we ever sent them a lie.
 const DEFAULT_WINDOW = { start: '09:00', end: '21:00' };
+const WINDOW_RE = /^([01]\d|2[0-3]):([0-5]\d)-([01]\d|2[0-3]):([0-5]\d)$/;
+
+// The canonical "HH:MM-HH:MM" for a value that says one window and nothing
+// more, or null. Only spelling is forgiven — a one-digit hour, a dash that is
+// not a hyphen, spaces around it — never content: "07:30-16:00, א-ה" is null,
+// because saving the hours would silently drop the days.
+function canonicalWindow(value) {
+  const m = /^(\d{1,2}):([0-5]\d)\s*[-–—]\s*(\d{1,2}):([0-5]\d)$/.exec(String(value || '').trim());
+  if (!m) return null;
+  const s = `${m[1].padStart(2, '0')}:${m[2]}`;
+  const e = `${m[3].padStart(2, '0')}:${m[4]}`;
+  const text = `${s}-${e}`;
+  if (!WINDOW_RE.test(text) || s === e) return null;
+  return text;
+}
 
 async function availabilityWindow(client, userId) {
   const { rows } = await client.query(
@@ -121,7 +153,7 @@ async function availabilityWindow(client, userId) {
     [userId]
   );
   if (!rows[0]) return ok({ window: DEFAULT_WINDOW, source: 'default' });
-  const m = /^([01]\d|2[0-3]):([0-5]\d)-([01]\d|2[0-3]):([0-5]\d)$/.exec(rows[0].value.trim());
+  const m = WINDOW_RE.exec(rows[0].value.trim());
   if (!m) return ok({ window: DEFAULT_WINDOW, source: 'default' }); // unparseable → fallback, never crash the gate
   return ok({ window: { start: `${m[1]}:${m[2]}`, end: `${m[3]}:${m[4]}` }, source: 'stated' });
 }

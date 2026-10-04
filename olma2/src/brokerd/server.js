@@ -489,25 +489,11 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
         if (!r || !r.ok || !(r.opened || r.already) || !r.night) return null;
         packVia = 'phrase';
         outcome = r.opened ? 'opened' : 'already_open';
-        const vars = { ...nightVars(r.night), url: r.url };
-        text = say(r.opened ? 'game_opened' : 'game_already_open', vars);
         if (r.opened) {
-          // Both languages now, the reader's chosen at delivery — the host may
-          // forward it anywhere, but it goes out in the host's language.
-          // The short link is the same host's /g/<code>, which gamesd answers
-          // with a wa.me redirect holding "משחק <code>" — somebody who has
-          // never written to her opens a chat that already says it.
-          const page = String(r.url).split('#')[0];
-          const join = `${new URL(page).origin}/g/${r.night.code}`;
-          const inv = { ...vars, url: page, join };
-          invite = {
-            code: r.night.code,
-            texts: {
-              he: templates.render('game_invite', inv, overrides),
-              en: templates.render('game_invite_en', inv, overrides),
-            },
-          };
-        }
+          const host = gameShortcut.hostMessages(r.night, r.url, { lang, overrides });
+          text = host.text;
+          invite = host.invite;
+        } else text = say('game_already_open', { ...nightVars(r.night), url: r.url });
       } else {
         const joinCode = code ? code.code : ask.code;
         const names = name ? [name] : gameShortcut.namesFor(user);
@@ -548,7 +534,10 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
     await withTx(pool, async (client) => {
       if (packVia) packs = (await packsDomain.enable(client, userId, 'games', packVia)).packs;
       await saveGivenName(client, user, givenName);
-      if (invite) await gameSummary.queueInvite(client, { userId, ...invite }, { now: new Date(clock()) });
+      if (invite) {
+        const now = new Date(clock());
+        await gameSummary.queueInvite(client, { userId, ...invite }, { now, releaseAfter: new Date(now.getTime() + gameSummary.INVITE_AFTER_MS) });
+      }
       await audit.record(client, userId, phrase || setup ? 'games.phrase_shortcut' : 'games.join_shortcut', { outcome, lang });
       if (messageId) {
         const vocab = reactions.vocabulary(await require('../domain/flags').getFlag(client, reactions.VOCAB_FLAG));
@@ -1135,6 +1124,53 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
     return out;
   }
 
+  // gamesd telling us the MODEL just opened a night for this person
+  // (games/src/tools.js start_game_night): the same two messages the shortcut
+  // sends, both sent by code — their personal link now, the invite a beat
+  // after it — and the model is told they went. Only a person who holds the
+  // pack. On 2026-10-03 the model wrote the host's message itself and handed
+  // out the shared page; a relayed text could drift the same way.
+  // The ways of saying "it's open, I sent it" that are not already in the two
+  // messages — for this turn's echo check only, never the general FILLER.
+  const GAME_OPEN_WORDS = 'נפתח נפתחה פתוח פתוחה פתחנו פותחת שלחתי שלחנו נשלח נשלחו ההזמנה הזמנה הקישור קישורים '
+    + 'ההודעות הודעות שתי לשחקנים שחקנים opened open sent invite link links messages players';
+  async function handleGameInvite(params = {}) {
+    const userId = Number(params.userId);
+    const n = params.night || {};
+    const url = typeof params.url === 'string' ? params.url : '';
+    if (!Number.isSafeInteger(userId) || userId <= 0) return { ok: false, error: 'bad userId' };
+    if (!gameShortcut.CODE_RE.test(String(n.code || '')) || typeof n.name !== 'string' || !n.name.trim()
+      || !Number.isFinite(Number(n.price)) || !Number.isFinite(Number(n.chips))) return { ok: false, error: 'bad night' };
+    if (!/^https?:\/\/[^\s#/]+\/night\/[A-Za-z0-9]{22}#me-[A-Za-z0-9]{1,40}$/.test(url)) return { ok: false, error: 'bad url' };
+    const { rows } = await pool.query(
+      `SELECT u.locale FROM users u JOIN user_packs p ON p.user_id = u.id AND p.pack = 'games'
+        WHERE u.id = $1 AND u.status = 'active'`, [userId]);
+    if (!rows.length) return { ok: false, error: 'not a games user' };
+    const lang = String(rows[0].locale || 'he').toLowerCase().startsWith('en') ? 'en' : 'he';
+    const host = gameShortcut.hostMessages({ name: n.name.trim().slice(0, 60), price: Number(n.price), chips: Number(n.chips), code: n.code },
+      url, { lang, overrides: await templates.load(pool) });
+    let out;
+    await withTx(pool, async (client) => {
+      const now = new Date(clock());
+      out = await gameSummary.queueHost(client, { userId, ...host.host }, { now });
+      if (!out.ok) return;
+      out = await gameSummary.queueInvite(client, { userId, ...host.invite },
+        { now, releaseAfter: new Date(now.getTime() + gameSummary.INVITE_AFTER_HOST_MS) });
+      if (out.ok) await audit.record(client, userId, 'games.invite_queued', { caller: 'games', via: 'tool', lang });
+    });
+    if (!out.ok) return out;
+    // What she just said, by code, is what a reply of the model's may not say
+    // again: the reply gate cancels a short one made only of these words and
+    // theirs (domain/mark-echo.js, the gateway's `mark_echo` check) — the
+    // same door as a reply under a standing 👍. A reply carrying anything new
+    // (an answer to a second request in the same message) still goes out.
+    markEchoes.set(userId, {
+      at: clock(),
+      words: [host.host.texts.he, host.host.texts.en, host.invite.texts.he, host.invite.texts.en, n.name, GAME_OPEN_WORDS],
+    });
+    return { ok: true, queued: true };
+  }
+
   // The plugin telling us a person's turn has put something in front of them
   // (`reply`, from reply_payload_sending) or has ended (`end`, from agent_end —
   // the only signal for a turn that ends in silence). Either way the 👀 held
@@ -1525,6 +1561,8 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
         return handleIdentityResolve(msg.params || {});
       case 'game_summary':
         return handleGameSummary(msg.params || {});
+      case 'game_invite':
+        return handleGameInvite(msg.params || {});
       default:
         return { ok: false, error: `unknown method ${msg.method}` };
     }

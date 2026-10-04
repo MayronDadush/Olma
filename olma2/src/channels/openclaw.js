@@ -956,6 +956,27 @@ function makeDeliverer(pool) {
         '--gif-playback',
       ]);
     }
+    // The welcome after a game night or a room, as the clip and one fixed
+    // line (jobs/intake.js puts `clip` on the payload). The page is minted
+    // here, at delivery, like the composed welcome's; turn.js tells the next
+    // turn what was sent, since the raw pipe never enters their session.
+    const welcomeP = row.kind === 'welcome_followup'
+      ? (typeof row.payload === 'string' ? JSON.parse(row.payload) : (row.payload || {})) : null;
+    if (welcomeP && welcomeP.clip) {
+      const file = introVideo.fileFor(welcomeP.clip, row.locale);
+      if (!file) return { ok: false, error: `unknown intro video: ${welcomeP.clip}` };
+      let media;
+      try { media = introVideo.stageMedia(file); } catch (e) { return { ok: false, error: `stage media: ${e.message}` }; }
+      const caption = introVideo.welcomeCaption(row.locale, await homeLinkFor(pool, row));
+      return runOpenclaw([
+        'message', 'send',
+        '--channel', channel.channel_type,
+        '--target', channel.channel_identifier,
+        '--media', media,
+        '--gif-playback',
+        ...(caption ? ['--message', caption] : []),
+      ]);
+    }
     // An ad from the library (domain/brand-ads.js): the same clip-and-no-words
     // send, with the clip and the format read NOW off the admin page's rows —
     // 'gif' loops silently like the intro, 'mp4' is an ordinary video.
