@@ -1131,3 +1131,47 @@ test('day one stops at two unasked messages, and what they chose does not count'
     await flags.setFlag(c, 'day_one_proactive_cap', 2);
   } finally { c.release(); }
 });
+
+// "אני מניחה שאתה בישראל" and then "באיזו מדינה אתה נמצא?" (owner,
+// 2026-10-04): a one-clock country whose zone is still the one the dialling
+// code gave is already answered. A several-clock country still asks.
+test('the country question is not asked when the number already answered it', async () => {
+  const c = await db.pool.connect();
+  try {
+    const il = await makeUser(db.pool, '+972641000301', { firstName: 'Yael' });
+    await c.query(`UPDATE users SET timezone = 'Asia/Jerusalem', timezone_confirmed = FALSE WHERE id = $1`, [il.id]);
+    const ilGaps = await checkin.discoveryGaps(c, il.id);
+    assert.ok(!ilGaps.some((g) => g.topic === 'timezone'), 'one clock, the code\'s own zone: no question');
+
+    const us = await makeUser(db.pool, '+12125550301', { firstName: 'Sam' });
+    await c.query(`UPDATE users SET timezone = 'America/New_York', timezone_confirmed = FALSE WHERE id = $1`, [us.id]);
+    const usGaps = await checkin.discoveryGaps(c, us.id);
+    assert.equal(usGaps[0].topic, 'timezone', 'several clocks: still asked, first');
+  } finally { c.release(); }
+});
+
+// A game night's or a room's welcome follow-up waits for the morning, and
+// until it has said what she is the day-one ladder says nothing (2026-10-04:
+// 63 and 64 heard the 2h step in the middle of the game).
+test('no day-one step goes out ahead of the welcome follow-up still owed', async () => {
+  const H = 3600_000;
+  const u = await makeUser(db.pool, '+972615000302', { firstName: 'Omer' });
+  const t0 = Date.now() - 3 * H;
+  await db.pool.query(
+    `UPDATE users SET onboarded_at = $2, created_at = $2, timezone = 'Asia/Jerusalem',
+            timezone_confirmed = TRUE, last_inbound_at = $2 WHERE id = $1`, [u.id, new Date(t0)]);
+  await db.pool.query(
+    `INSERT INTO outbox (user_id, kind, payload, idempotency_key, release_after)
+     VALUES ($1, 'welcome_followup', '{"gameOpening": true}'::jsonb, $2, now() + interval '10 hours')`,
+    [u.id, `welcome_followup:${u.id}`]);
+  const c = await db.pool.connect();
+  try {
+    let out = await checkin.run(c, t0 + 2 * H + 60_000);
+    assert.equal(out.find((r) => r.userId === u.id), undefined, 'the 2h step waits behind it');
+    await c.query(`UPDATE outbox SET sent_at = now() WHERE user_id = $1 AND kind = 'welcome_followup'`, [u.id]);
+    await require('../src/domain/flags').setFlag(c, 'day_one_proactive_cap', 0);
+    out = await checkin.run(c, t0 + 2 * H + 120_000);
+    assert.equal(out.find((r) => r.userId === u.id).rung, 'onboarding_2h', 'and goes once it is said');
+    await require('../src/domain/flags').setFlag(c, 'day_one_proactive_cap', 2);
+  } finally { c.release(); }
+});

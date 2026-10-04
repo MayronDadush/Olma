@@ -289,6 +289,21 @@ async function dayOneSpent(client, u) {
   return rows[0].n >= cap;
 }
 
+// The welcome follow-up still owed — what she is, and their page, held for
+// the morning after a game night or a room's coordination (jobs/intake.js).
+// Until it goes out the day-one ladder says nothing: a question at 2h about
+// somebody's day, from an assistant that has not yet said what she does, is
+// how the game nights of 2026-10-03 read (63 and 64 heard the 2h step in the
+// middle of the game, and what she is the next morning). Same line the gate
+// draws for an `introduction` it still owes, one layer up.
+async function welcomeStillOwed(client, userId) {
+  const { rows } = await client.query(
+    `SELECT 1 FROM outbox
+      WHERE user_id = $1 AND kind = 'welcome_followup' AND sent_at IS NULL
+        AND (expires_at IS NULL OR expires_at > now()) LIMIT 1`, [userId]);
+  return rows.length > 0;
+}
+
 // How long someone may go quiet before Olma reaches out, by age of account.
 // A new user has nothing invested yet and every unanswered day is a user who
 // never comes back; someone three weeks in has a working habit and does not
@@ -660,7 +675,7 @@ function daysAgo(ts) {
 async function discoveryGaps(client, userId, now = new Date()) {
   const gaps = [];
   const { rows: u } = await client.query(
-    `SELECT digest_times, timezone, timezone_confirmed, timezone_asked_at, locale,
+    `SELECT digest_times, timezone, timezone_confirmed, timezone_asked_at, locale, phone,
             holiday_quiet_asked_at,
             (SELECT value FROM user_preferences p
               WHERE p.user_id = users.id AND p.key = 'holiday_calendar') AS holiday_calendar,
@@ -705,7 +720,15 @@ async function discoveryGaps(client, userId, now = new Date()) {
   // second chance, it is the reason the third one goes unread too; if they
   // never say, the guess stays and the travel line has already told them how
   // to change it (migration 045).
-  if (!u[0].timezone_confirmed && !u[0].timezone_asked_at) {
+  // Not asked at all when the dialling code already answered it: a country
+  // with one clock, and the zone on file is the one that code gave (owner,
+  // 2026-10-04 — new people said she "חופרת", and "באיזו מדינה אתה נמצא?"
+  // came right after "אני מניחה שאתה בישראל"). A country that spans several
+  // clocks still asks, which is the case Sarah's +1 was; so does a zone
+  // somebody changed by hand, which the code no longer vouches for.
+  const dialled = lookupTimezone(u[0].phone);
+  const answeredByNumber = Boolean(dialled && !dialled.ambiguous && dialled.timezone === u[0].timezone);
+  if (!u[0].timezone_confirmed && !u[0].timezone_asked_at && !answeredByNumber) {
     const guessed = u[0].timezone
       ? `We are currently guessing ${u[0].timezone}, which came from their phone number and is not a location.`
       : 'We have no timezone for them at all, so everything falls back to UTC.';
@@ -863,7 +886,7 @@ async function run(client, now = Date.now()) {
       key = `checkin:${u.id}:${new Date(now).toISOString().slice(0, 10)}`;
     }
     if (now - new Date(u.onboarded_at).getTime() < DAY_MS && !THEIRS.has(rung)
-        && await dayOneSpent(client, u)) continue;
+        && (await welcomeStillOwed(client, u.id) || await dayOneSpent(client, u))) continue;
     const res = await enqueue(client, {
       userId: u.id, kind: 'checkin',
       payload: { checkinInstruction: instruction, rung, ...(topic ? { topic } : {}), ...(meetingId ? { meetingId } : {}) },
