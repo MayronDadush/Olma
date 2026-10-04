@@ -24,12 +24,14 @@ const identify = async token => PEOPLE[token] || { ok: false, error: { code: 'fo
 // brokerd's `game_summary`, as far as gamesd can see it: every call recorded,
 // every linked id queued. A test that wants it down passes its own `send`.
 const queueAll = async x => ({ ok: true, queued: x.userIds, skipped: [] });
+// brokerd's `game_invite`: queues both of the host's messages.
+const inviteOk = async () => ({ ok: true, queued: true });
 
-async function boot(t, { send = queueAll, ...opts } = {}) {
+async function boot(t, { send = queueAll, invite = inviteOk, ...opts } = {}) {
   const pool = await freshDb(t);
-  const sent = [];
+  const sent = [], invites = [];
   const announce = (p, nightId, state) => announceClose(p, nightId, state, { send: async x => { sent.push(x); return send(x); } });
-  const server = createServer({ pool, publicBase: 'https://allma.test', page: '<!doctype html>', identify, announce, ...opts });
+  const server = createServer({ pool, publicBase: 'https://allma.test', page: '<!doctype html>', identify, announce, invite: async x => { invites.push(x); return invite(x); }, ...opts });
   await new Promise(r => server.listen(0, '127.0.0.1', r));
   t.after(() => new Promise(r => { server.closeListeners(); server.close(r); }));
   const port = server.address().port;
@@ -46,7 +48,7 @@ async function boot(t, { send = queueAll, ...opts } = {}) {
     assert.match(text, /^OK /, text);
     return JSON.parse(text.slice(3));
   };
-  return { pool, port, raw, call, okOf, sent };
+  return { pool, port, raw, call, okOf, sent, invites };
 }
 
 test('every definition fits Olma\'s limits: identity first and required, under 700 characters, seven unique names', () => {
@@ -124,15 +126,35 @@ test('the route is the box\'s alone, and only for somebody brokerd says holds th
   assert.match(await call(TOK(1), 'my_game_status'), /^ERROR no_night: /);
 });
 
+// On 2026-10-03 the model opened Miron's night and handed him the shared
+// page. With brokerd down there is no invite message, so the result gives the
+// host their own seat and the /g/ link, and says which is which.
+test('an invite brokerd could not queue leaves the model both links, the host\'s own seat first', async t => {
+  const { okOf } = await boot(t, { invite: async () => { throw new Error('connect ENOENT'); } });
+  const night = await okOf(TOK(1), 'start_game_night', { price: 50, chips: 1000 });
+  assert.match(night.url, /^https:\/\/allma\.test\/night\/[A-Za-z0-9]{22}#me-\w+$/);
+  assert.equal(night.join_link, `https://allma.test/g/${night.night_code}`);
+  assert.match(night.note, /own seat.*join_link/s);
+  assert.equal(night.text, undefined);
+});
+
 test('brokerd unreachable is said, never read as a refusal or a pass', async t => {
   const { call } = await boot(t, { identify: async () => { throw new Error('connect ENOENT'); } });
   assert.match(await call(TOK(1), 'my_game_status'), /^ERROR unavailable: .*ENOENT/);
 });
 
 test('a whole night through the tools: buy-ins, a cancel, food, a count that is off, then closes', async t => {
-  const { pool, call, okOf, sent } = await boot(t);
+  const { pool, call, okOf, sent, invites } = await boot(t);
   const night = await okOf(TOK(1), 'start_game_night', { price: 50, chips: 1000, players: ['יוסי'] });
-  assert.match(night.url, /^https:\/\/allma\.test\/night\/[A-Za-z0-9]{22}$/);
+  // The host's own seat goes to brokerd, which sends both messages; the
+  // model is told to stay quiet, and no link is in the result at all.
+  assert.equal(invites.length, 1);
+  assert.equal(invites[0].userId, 101);
+  assert.deepEqual(invites[0].night, { name: 'ערב פוקר', price: 50, chips: 1000, code: night.night_code });
+  assert.match(invites[0].url, /^https:\/\/allma\.test\/night\/[A-Za-z0-9]{22}#me-\w+$/);
+  assert.equal(night.sent, true);
+  assert.match(night.note, /both messages just went.*Reply NO_REPLY/s);
+  assert.ok(!JSON.stringify(night).includes('/night/'), 'no link for the model to hand out');
   assert.deepEqual(night.players, ['מיכל', 'יוסי'], 'the host sits first, under their own name');
   const linked = (await pool.query(`SELECT name, user_id, linked_via FROM players WHERE user_id IS NOT NULL`)).rows;
   assert.deepEqual(linked, [{ name: 'מיכל', user_id: 101, linked_via: 'host' }]);

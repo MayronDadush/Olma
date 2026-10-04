@@ -25,7 +25,7 @@ const def = (name, description, props, required = []) => ({
 
 const TOOL_DEFS = [
   def('start_game_night',
-    'Open a poker night with the person as host and get its shared page link and join code. Only when they ask to start one. Ask the buy-in price and chips per buy-in if they did not say. Players can be added now or later.',
+    'Open a poker night with the person as host. Only when they ask to start one. Olma sends the host their own link and the invite for the other players by herself; the result says what, if anything, to add. Ask the buy-in price and chips per buy-in if they did not say. Players can be added now or later.',
     {
       price: S('number', 'Buy-in price in shekels.'),
       chips: S('integer', 'Chips per buy-in.'),
