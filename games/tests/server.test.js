@@ -5,6 +5,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { freshDb } = require('./helpers');
 const { createServer } = require('../src/server');
+const { seatTag } = require('../src/store');
 
 async function boot(t) {
   const pool = await freshDb(t);
@@ -192,31 +193,33 @@ test('one seat, one phone: a held seat is refused unless taken on purpose, and a
   const st0 = await (await w({ op: 'add', col: 'log', data: { t: 'x' } })).state;
   const [mir, mic] = Object.entries(st0.players).sort((a, b) => a[1].order - b[1].order).map(([id]) => id);
   const A = 'phoneAAAA01', B = 'phoneBBBB02';
+  // the state carries a hash of the phone's tag, never the tag (migration 004)
+  const hA = seatTag(A), hB = seatTag(B);
   const hold = (id, device, take) => w({ op: 'hold', col: 'players', id, data: { device, ...(take ? { take: true } : {}) } });
 
   // the incident: Miron is held by phone A, and phone B taps Miron too
   let r = await hold(mir, A);
   assert.equal(r.status, 200);
-  assert.equal(r.state.players[mir].held, A);
+  assert.equal(r.state.players[mir].held, hA);
   assert.equal((await hold(mir, B)).error, 'held', 'a second phone is refused the first time');
   assert.equal((await hold(mir, A)).status, 200, 'the same phone again is no conflict');
 
   // a phone sits in one seat: B in Michal, then B in Miron on purpose, lets Michal go
-  assert.equal((await hold(mic, B)).state.players[mic].held, B);
+  assert.equal((await hold(mic, B)).state.players[mic].held, hB);
   r = await hold(mir, B, true);
-  assert.equal(r.state.players[mir].held, B, 'a confirmed second tap takes the seat');
+  assert.equal(r.state.players[mir].held, hB, 'a confirmed second tap takes the seat');
   assert.equal(r.state.players[mic].held, undefined, 'and the seat it held before is free');
 
   // release: only the phone's own hold comes off
   r = await w({ op: 'release', col: 'players', id: mir, data: { device: A } });
-  assert.equal(r.state.players[mir].held, B, 'A cannot release a seat B holds');
+  assert.equal(r.state.players[mir].held, hB, 'A cannot release a seat B holds');
   r = await w({ op: 'release', col: 'players', id: mir, data: { device: B } });
   assert.equal(r.state.players[mir].held, undefined);
 
   // renaming a seat keeps its phone; nonsense is refused whole
   await hold(mic, A);
   r = await w({ op: 'set', col: 'players', id: mic, data: { name: 'מיכלי', order: 1 } });
-  assert.equal(r.state.players[mic].held, A);
+  assert.equal(r.state.players[mic].held, hA);
   assert.equal((await hold(mic, 'short')).error, 'bad_doc');
   assert.equal((await hold(mic, '../etc/passwd')).error, 'bad_doc');
   assert.equal((await hold('nobody01', A)).error, 'not_found');
@@ -283,4 +286,87 @@ test('the event stream pushes the new state to another phone after a write', asy
   await post(`/night/${token}/api/write`, { op: 'add', col: 'buyins', data: { pid, n: 1 } });
   const second = await nextState();
   assert.equal(Object.keys(second.buyins).length, 1);
+});
+
+// The owner, 2026-10-05: a locked night's buy-ins and other players' chips
+// are the host's; everybody still writes their own chips, names and food.
+test('a locked night: buy-ins and others\' chips are the host\'s phone alone, and the host seat cannot be walked off with', async t => {
+  const { pool, post } = await boot(t);
+  const token = await openNight(post, { players: ['מירון', 'מיכל', 'יוסי'] });
+  const w = async body => { const r = await post(`/night/${token}/api/write`, body); return { status: r.status, ...(await r.json()) }; };
+  const st0 = (await w({ op: 'add', col: 'log', data: { t: 'x' } })).state;
+  const [mir, mic, yos] = Object.entries(st0.players).sort((a, b) => a[1].order - b[1].order).map(([id]) => id);
+  const H = 'hostPhone01', M = 'michalPhone2', X = 'strangerPh3';
+  const hold = (id, device, extra = {}) => w({ op: 'hold', col: 'players', id, data: { device, ...extra } });
+  const lock = (on, device) => w({ op: 'update', col: 'game', data: { locked: on }, device });
+  const buy = (pid, device) => w({ op: 'add', col: 'buyins', data: { pid, n: 1 }, device });
+  const chips = (pid, n, device) => w({ op: 'set', col: 'cashouts', id: pid, data: { chips: n }, device });
+
+  // a night from the box has no host and cannot be locked
+  assert.equal(st0.game.host, null);
+  assert.equal((await lock(true, H)).error, 'no_host');
+  const { rows: [n] } = await pool.query('SELECT id FROM nights WHERE token = $1', [token]);
+  await pool.query('UPDATE nights SET host_player = $2 WHERE id = $1', [n.id, mir]);
+
+  await hold(mir, H); await hold(mic, M);
+  assert.equal((await lock(true, M)).error, 'not_host', 'only the host locks');
+  assert.equal((await lock(true)).error, 'not_host', 'a write with no phone is nobody');
+  let r = await lock(true, H);
+  assert.equal(r.status, 200);
+  assert.equal(r.state.game.locked, true);
+  assert.equal(JSON.stringify(r.state).includes(H), false, 'the host\'s tag never reaches the state');
+
+  // buy-ins: host only, either way
+  assert.equal((await buy(mic, M)).error, 'locked');
+  assert.equal((await buy(mic, M)).status, 403);
+  const b = await buy(mic, H);
+  assert.equal(b.status, 200);
+  assert.equal((await w({ op: 'delete', col: 'buyins', id: b.id, device: M })).error, 'locked');
+
+  // chips: your own seat, or the host
+  assert.equal((await chips(mic, 800, M)).status, 200, 'Michal writes her own');
+  assert.equal((await chips(yos, 800, M)).error, 'locked', 'not Yossi\'s');
+  assert.equal((await chips(yos, 900, H)).status, 200, 'the host writes anybody\'s');
+  // and the rest stays open to everyone
+  assert.equal((await w({ op: 'set', col: 'players', id: mic, data: { name: 'מיכלי', order: 1 }, device: M })).status, 200);
+  assert.equal((await w({ op: 'add', col: 'food', data: { what: 'פיצה', amount: 90, payer: mic, eaters: [mic, yos] }, device: M })).status, 200);
+
+  // the host seat: not taken, not let go, not deleted while locked
+  assert.equal((await hold(mir, X, { take: true })).error, 'host_seat');
+  assert.equal((await w({ op: 'release', col: 'players', id: mir, data: { device: H } })).error, 'host_seat');
+  assert.equal((await w({ op: 'delete', col: 'players', id: mir })).error, 'host_seat');
+
+  // a new phone with the one-time key Olma sends: once, and only once
+  const key = await require('../src/store').hostKey(pool, n.id);
+  assert.equal((await hold(mir, X, { key: 'wrongKeyWrongKey99' })).error, 'host_seat');
+  r = await hold(mir, X, { key });
+  assert.equal(r.status, 200);
+  assert.equal(r.state.players[mir].held, seatTag(X));
+  assert.equal((await buy(yos, X)).status, 200, 'the new phone is the host now');
+  assert.equal((await buy(yos, H)).error, 'locked', 'and the old one is not');
+  assert.equal((await hold(mir, H, { key, take: true })).error, 'host_seat', 'a used key is spent');
+
+  // unlocked, everybody writes again
+  assert.equal((await lock(false, X)).status, 200);
+  assert.equal((await buy(yos, M)).status, 200);
+});
+
+test('whoever presses "ערב חדש" is the new night\'s host, in the same seat on the same phone', async t => {
+  const { base, post } = await boot(t);
+  const token = await openNight(post, { players: ['מירון', 'מיכל'] });
+  const w = body => post(`/night/${token}/api/write`, body).then(r => r.json());
+  const st0 = (await w({ op: 'add', col: 'log', data: { t: 'x' } })).state;
+  const mic = Object.keys(st0.players).find(id => st0.players[id].name === 'מיכל');
+  await w({ op: 'hold', col: 'players', id: mic, data: { device: 'michalPhone2' } });
+  const res = await post(`/night/${token}/api/next`, { device: 'michalPhone2' });
+  assert.equal(res.status, 201);
+  const next = (await res.json()).token;
+  const st = await (await post(`/night/${next}/api/write`, { op: 'update', col: 'game', data: { locked: true }, device: 'michalPhone2' })).json();
+  assert.equal(st.state.game.locked, true);
+  assert.equal(st.state.players[st.state.game.host].name, 'מיכל');
+  assert.equal(st.state.players[st.state.game.host].held, seatTag('michalPhone2'));
+  // a phone with no seat opens one with no host
+  const other = await (await post(`/night/${token}/api/next`, {})).json();
+  const st2 = await (await fetch(`${base}/night/${other.token}/api/state`)).json();
+  assert.equal(st2.game.host, null);
 });
