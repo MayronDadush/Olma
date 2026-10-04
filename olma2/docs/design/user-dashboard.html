@@ -2256,6 +2256,12 @@ button.srow:active{background:var(--bg-tint)}
 .whenecho.miss{background:var(--bg-tint);color:var(--text-3);font-weight:500}
 .whenecho .mobtn{margin-inline-start:auto}
 #mtNewTime,#mtOptTime{margin-top:9px}
+.mtcatline{display:block;margin:-6px auto 12px;text-align:center;font-size:12.5px;color:var(--text-3);padding:2px 8px;border-radius:999px}
+.mtcatline .cdot{margin-inline-end:5px;vertical-align:0}
+.mtcatline:active{background:var(--bg-tint)}
+.mtcatpick{justify-content:center;margin:0 0 14px}
+.mtcard .mtname .cdot{margin-inline-end:6px;vertical-align:1px}
+.mtexactbtn{flex:1;min-width:0;text-align:start;font-size:16.5px;font-weight:500;color:var(--accent);padding:4px 0}
 /* A little more air than the chips above it, and a chevron that flips
    open — the same disclosure language as every fold trigger elsewhere
    (.row[aria-expanded] .chev), just on a text link instead of a full row. */
@@ -4443,7 +4449,20 @@ button.srow:active{background:var(--bg-tint)}
 <div class="sheet" id="mtSheet" role="dialog" aria-modal="true" aria-labelledby="mtTitle">
   <div class="sgrab"><i class="grabber"></i></div>
   <div class="sxhold"><button class="sx" type="button" data-sx data-i18n-label="sheet.close"><svg><use href="#i-x"/></svg></button></div>
-  <h2 id="mtTitle"></h2>
+  <!-- The name is editable in place, the same way a task's is (owner,
+       2026-10-04): anybody in it may rename it, as in the chat. The h2 stays
+       as the dialog's accessible name. -->
+  <h2 id="mtTitle" hidden></h2>
+  <div class="stitlewrap">
+    <input class="stitle" id="mtTitleIn" type="text" maxlength="120" enterkeyhint="done" data-i18n-label="mt.name" autocomplete="off">
+    <span class="stedit" aria-hidden="true"><svg><use href="#i-pencil"/></svg></span>
+  </div>
+  <!-- Its category, from a list of its own — work, family, friends, sport,
+       games (owner, 2026-10-05), not the tasks'. Read off the name by the server unless somebody in it picked one;
+       the line says which, and pressing it opens the choice (owner,
+       2026-10-04). -->
+  <button type="button" class="mtcatline" id="mtCat" aria-expanded="false"></button>
+  <div class="chips mtcatpick" id="mtCatPick" hidden></div>
   <div class="mtfaces" id="mtFaces"></div>
 
   <div class="glabel" style="margin-top:14px"><span id="mtAskLbl"></span></div>
@@ -4463,6 +4482,19 @@ button.srow:active{background:var(--bg-tint)}
     </div>
   </div>
   <p class="note" id="mtAddNote" style="padding:10px 14px 0" hidden></p>
+
+  <!-- Where, and — once it settled on a whole day or a part of one — the exact
+       hour (owner, 2026-10-04). Both are the chat's own doors: anybody in it
+       may say either, a place tells nobody, and an hour moves the calendar
+       event and is told to everybody else. -->
+  <div class="group" id="mtDetails" style="margin-top:14px">
+    <div class="field"><label for="mtPlace" data-i18n="mt.placeLbl"></label>
+      <input id="mtPlace" type="text" maxlength="120" enterkeyhint="done" data-i18n-ph="mt.placePh" autocomplete="off"></div>
+    <div class="field" id="mtExactWrap" hidden><label data-i18n="mt.exactLbl"></label>
+      <button type="button" class="mtexactbtn" id="mtExactBtn"></button>
+      <input id="mtExactTime" type="time" tabindex="-1" aria-hidden="true"
+             style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px"></div>
+  </div>
 
   <!-- Two exits that must never read alike. One clears your own calendar and
        nobody else notices; the other tells four people you are not coming. -->
@@ -4827,6 +4859,10 @@ button.srow:active{background:var(--bg-tint)}
     cancelMeeting:       "cancel_meeting",             /* the page offers it only between two people */
     rejoinMeeting:       "rejoin_meeting",             /* NO TOOL YET — dashboard only */
     reopenMeeting:       "reopen_meeting",             /* a settled time back on the table */
+    setMeetingPlace:     "set_meeting_place",
+    setMeetingTitle:     "set_meeting_title",
+    setMeetingCategory:  "set_meeting_title",         /* its optional `category` */
+    setMeetingTime:      "propose_meeting_slot",       /* on a settled one it sets the hour */
     pause:               "pause_olma",
     resume:              "resume_olma",
     setName:             "set_my_name",
@@ -4859,6 +4895,8 @@ button.srow:active{background:var(--bg-tint)}
     inviteContact:"inviteContact", inviteShared:"inviteShared",
     respondToMeeting:"respondToMeeting", leaveMeeting:"leaveMeeting", cancelMeeting:"cancelMeeting",
     rejoinMeeting:"rejoinMeeting", reopenMeeting:"reopenMeeting",
+    setMeetingPlace:"setMeetingPlace", setMeetingTime:"setMeetingTime", setMeetingTitle:"setMeetingTitle",
+    setMeetingCategory:"setMeetingCategory",
     startMeeting:"startMeeting", addOption:"addOption", answerOption:"answerOption",
     settleMeeting:"settleMeeting",
     removeOption:"removeOption", swapOption:"swapOption", setQuorum:"setQuorum",
@@ -5559,6 +5597,12 @@ button.srow:active{background:var(--bg-tint)}
       "mt.leaveAsk":"לצאת מ{name}? התשובות שלך יורדות מהספירה והתיאום יימחק מהרשימה שלך.",
       "mt.del":"מחיקת התיאום","mt.delAsk":"למחוק את {name}? נשלח ל{who} הודעה שהתיאום בוטל.",
       "toast.mtDeleted":"{name} נמחק","toast.mtDeleteFailed":"לא הצלחתי למחוק את {name}",
+      "tcat.social":"חברים","tcat.sport":"ספורט","tcat.games":"משחקים","mt.catAuto":"אוטומטי","mt.catAdd":"הוספת קטגוריה",
+      "toast.mtCatFailed":"לא הצלחתי לשנות את הקטגוריה",
+      "toast.mtRenamed":"השם עודכן","toast.mtRenameFailed":"לא הצלחתי לשנות את השם",
+      "mt.placeLbl":"מקום","mt.placePh":"איפה נפגשים?","mt.exactLbl":"שעה מדויקת","mt.exactAdd":"הוספת שעה",
+      "toast.mtPlaceSet":"המקום נשמר","toast.mtPlaceFailed":"לא הצלחתי לשמור את המקום",
+      "toast.mtTimeSet":"השעה נקבעה — כולם יקבלו הודעה","toast.mtTimeFailed":"לא הצלחתי לקבוע את השעה",
       "mt.reopen":"פתיחה מחדש של הזמן","mt.reopenAgain":"עוד לחיצה — כולם יקבלו הודעה",
       "toast.mtReopened":"{name} נפתח מחדש — שאלתי את כולם","toast.mtReopenFailed":"לא הצלחתי לפתוח מחדש את {name}",
       "sw.delete":"מחיקה","sw.leave":"יציאה","sw.again":"עוד לחיצה כדי למחוק","sw.againLeave":"עוד לחיצה כדי לצאת",
@@ -5944,6 +5988,12 @@ button.srow:active{background:var(--bg-tint)}
       "mt.leaveAsk":"Leave {name}? Your answers stop counting and it goes off your list.",
       "mt.del":"Delete the coordination","mt.delAsk":"Delete {name}? {who} will get a message that it is off.",
       "toast.mtDeleted":"{name} deleted","toast.mtDeleteFailed":"Could not delete {name}",
+      "tcat.social":"Friends","tcat.sport":"Sport","tcat.games":"Games","mt.catAuto":"Automatic","mt.catAdd":"Add a category",
+      "toast.mtCatFailed":"Couldn't change the category",
+      "toast.mtRenamed":"Name updated","toast.mtRenameFailed":"Couldn't rename it",
+      "mt.placeLbl":"Place","mt.placePh":"Where are you meeting?","mt.exactLbl":"Exact time","mt.exactAdd":"Add a time",
+      "toast.mtPlaceSet":"Place saved","toast.mtPlaceFailed":"Couldn't save the place",
+      "toast.mtTimeSet":"Time set — everyone will be told","toast.mtTimeFailed":"Couldn't set the time",
       "mt.reopen":"Reopen the time","mt.reopenAgain":"Press again — everyone will be told",
       "toast.mtReopened":"{name} is open again — everyone was asked","toast.mtReopenFailed":"Could not reopen {name}",
       "sw.delete":"Delete","sw.leave":"Leave","sw.again":"Press again to delete","sw.againLeave":"Press again to leave",
@@ -10485,6 +10535,34 @@ button.srow:active{background:var(--bg-tint)}
     if(wait) return pl("mtW", wait);
     return t("mt.stateBlocked", {n:y, of:total, no:pl("mtN", no)});
   }
+  /* A coordination's category is a dot before its name, in the same colour
+     the task list uses — and nothing at all when there is none, because a
+     grey dot on most cards would say only "we could not tell". */
+  /* A coordination's own topics (owner, 2026-10-05: only subjects people
+     meet about), never the tasks' list. Work and family keep the task
+     colours, so the same word is the same colour on both screens. */
+  var MEETCATS = [
+    {k:"work",   c:"#0E7C86"},
+    {k:"family", c:"#C2410C"},
+    {k:"social", c:"#2F6FDB"},
+    {k:"sport",  c:"#1B9B6B"},
+    {k:"games",  c:"#5B2FD6"},
+    {k:"none",   c:"#A29FB5"}
+  ];
+  function mtCatOf(k){
+    return MEETCATS.filter(function(c){ return c.k === k; })[0] || MEETCATS[MEETCATS.length - 1];
+  }
+  function mtCatDot(m){
+    if(!m.cat || m.cat === "none") return "";
+    return '<i class="cdot" style="background:' + mtCatOf(m.cat).c + '" title="' + esc(t("tcat." + m.cat)) + '"></i>';
+  }
+  /* "none" that nobody chose is an offer; "none" somebody chose is a choice
+     and says so, like any other. */
+  function mtCatLine(m){
+    if((!m.cat || m.cat === "none") && !m.catChosen) return esc(t("mt.catAdd"));
+    return mtCatDot(m) + esc(t("tcat." + m.cat)) + (m.catAuto ? " · " + esc(t("cat.auto")) : "");
+  }
+  var mtCatOpen = false;
   function mtCardHTML(m){
     var st = mtStatus(m);
     var mine = mtMine(m);
@@ -10515,7 +10593,7 @@ button.srow:active{background:var(--bg-tint)}
       (verb ? swBack(verb) : "") + '<div class="swfront"><div class="mtrow">' +
       '<button class="mtcard" data-mt="' + m.id + '">' +
       faceStack(m.who) +
-      '<span class="mtbody"><span class="mtname">' + esc(L(m.t)) +
+      '<span class="mtbody"><span class="mtname">' + mtCatDot(m) + esc(L(m.t)) +
       /* An unanswered coordination is the one thing on this page that is
          waiting on YOU, so it says so on the card and not two taps in. */
       "</span>" +
@@ -10889,6 +10967,17 @@ button.srow:active{background:var(--bg-tint)}
        language switch with the sheet up would leave a Hebrew subtitle under an
        English list. Anything a re-render must fix belongs in the re-render. */
     $("#mtTitle").textContent = L(m.t);
+    /* Not rewritten under a finger, for the same reason as the place. */
+    var ti = $("#mtTitleIn");
+    if(document.activeElement !== ti) ti.value = L(m.t);
+    $("#mtCat").innerHTML = mtCatLine(m);
+    $("#mtCat").setAttribute("aria-expanded", mtCatOpen ? "true" : "false");
+    $("#mtCatPick").hidden = !mtCatOpen;
+    $("#mtCatPick").innerHTML = mtCatOpen ? MEETCATS.map(function(c){
+      return '<button class="chip mini cat" aria-pressed="' + (!!m.catChosen && m.cat === c.k) + '" data-mtcat="' + c.k + '">' +
+        '<i class="cdot" style="background:' + c.c + '"></i>' + esc(t("tcat." + c.k)) + "</button>";
+    }).join("") + '<button class="chip mini" aria-pressed="' + !m.catChosen + '" data-mtcat="auto">' +
+      esc(t("mt.catAuto")) + "</button>" : "";
     $("#mtAskLbl").textContent = t(m.settled ? "mt.settledLbl"
       : m.opts.length === 1 ? "mt.askOne" : "mt.ask");
 
@@ -10941,6 +11030,15 @@ button.srow:active{background:var(--bg-tint)}
       : t("mt.capNote", {n:MEET_CAP});
     $("#mtAddNote").hidden = !$("#mtAddNote").textContent;
 
+    /* Where, and the exact hour while there is none. The place field is not
+       rewritten while somebody is typing in it — a reload landing mid-word
+       would take the word away. */
+    var pl = $("#mtPlace");
+    if(document.activeElement !== pl) pl.value = m.place || "";
+    var ahead = !m.startsAt || new Date(m.startsAt).getTime() > Date.now();
+    $("#mtExactWrap").hidden = !(m.settled && m.timeOpen && ahead);
+    $("#mtExactBtn").textContent = t("mt.exactAdd");
+
     /* Two different exits, and they must never read alike: one clears your
        own calendar, the other tells four people you are not coming.
        Whether a settled meeting sits on THIS person's calendar is not recorded
@@ -10963,6 +11061,7 @@ button.srow:active{background:var(--bg-tint)}
   function openMeet(id){
     mtOpen = mtById(id);
     if(!mtOpen) return;
+    mtCatOpen = false;
     mtSettling = null; mtPickMode = false;
     renderMeet();
     showSheet($("#mtSheet"));
@@ -11266,6 +11365,85 @@ button.srow:active{background:var(--bg-tint)}
     Object.keys(m.ans || {}).forEach(function(k){ if(m.ans[k] && typeof m.ans[k] === "object") delete m.ans[k][was]; });
     renderMeet(); renderMeets(); renderStrip(selDay);
     toast(t("toast.mtReopened", {name:L(m.t)}));
+  });
+  /* A rename is saved the way the place is: on leaving the field or Enter,
+     only when it changed, and never to nothing — an empty name goes back. */
+  function mtSaveTitle(){
+    var m = mtOpen;
+    if(!m) return;
+    var v = $("#mtTitleIn").value.replace(/\s+/g, " ").trim();
+    if(!v || v === L(m.t)){ $("#mtTitleIn").value = L(m.t); return; }
+    m.t = v;
+    API.call("setMeetingTitle", {meeting_id:m.id, title:v});
+    if(LIVE) API.send("setMeetingTitle", {meetingId:m.id, title:v}, function(data){
+      if(!data) toast(t("toast.mtRenameFailed"), null, true);
+      API.reload();
+    });
+    renderMeet(); renderMeets();
+    toast(t("toast.mtRenamed"));
+  }
+  $("#mtTitleIn").addEventListener("change", mtSaveTitle);
+  $("#mtCat").addEventListener("click", function(){
+    if(!mtOpen) return;
+    mtCatOpen = !mtCatOpen;
+    renderMeet();
+  });
+  /* "אוטומטי" hands it back to the server's guess, which the page cannot
+     make itself — so the line waits for the reload to say what it became. */
+  $("#mtCatPick").addEventListener("click", function(e){
+    var b = e.target.closest("[data-mtcat]"), m = mtOpen;
+    if(!b || !m) return;
+    var k = b.dataset.mtcat;
+    if(k === "auto"){ if(!m.catChosen){ mtCatOpen = false; renderMeet(); return; } m.catChosen = false; }
+    else { m.cat = k; m.catAuto = false; m.catChosen = true; }
+    mtCatOpen = false;
+    API.call("setMeetingCategory", {meeting_id:m.id, category:k});
+    if(LIVE) API.send("setMeetingCategory", {meetingId:m.id, category:k === "auto" ? null : k}, function(data){
+      if(!data) toast(t("toast.mtCatFailed"), null, true);
+      API.reload();
+    });
+    renderMeet(); renderMeets();
+  });
+  $("#mtTitleIn").addEventListener("keydown", function(e){
+    if(e.key === "Enter"){ e.preventDefault(); this.blur(); }
+  });
+  /* Saved when the field is left or Enter is pressed, and only when it says
+     something new — the server refuses an empty place, so clearing it is
+     not offered. */
+  function mtSavePlace(){
+    var m = mtOpen;
+    if(!m) return;
+    var v = $("#mtPlace").value.replace(/\s+/g, " ").trim();
+    if(!v){ $("#mtPlace").value = m.place || ""; return; }
+    if(v === m.place) return;
+    m.place = v;
+    API.call("setMeetingPlace", {meeting_id:m.id, where:v});
+    if(LIVE) API.send("setMeetingPlace", {meetingId:m.id, where:v}, function(data){
+      if(!data) toast(t("toast.mtPlaceFailed"), null, true);
+      API.reload();
+    });
+    toast(t("toast.mtPlaceSet"));
+  }
+  $("#mtPlace").addEventListener("change", mtSavePlace);
+  $("#mtPlace").addEventListener("keydown", function(e){
+    if(e.key === "Enter"){ e.preventDefault(); this.blur(); }
+  });
+  $("#mtExactBtn").addEventListener("click", function(){
+    if(!mtOpen) return;
+    syncTimeField($("#mtExactTime"), "");
+    openTimeSheet($("#mtExactTime"));
+  });
+  $("#mtExactTime").addEventListener("input", function(){
+    var m = mtOpen, v = this.value;
+    if(!m || !v || !m.settled || !m.timeOpen) return;
+    m.timeOpen = false;
+    API.call("setMeetingTime", {meeting_id:m.id, time:v});
+    if(LIVE) API.send("setMeetingTime", {meetingId:m.id, time:v}, function(data){
+      if(!data) toast(t("toast.mtTimeFailed"), null, true);
+      API.reload();
+    });
+    renderMeet(); renderMeets();
+    toast(t("toast.mtTimeSet"));
   });
   $("#mtLeave").addEventListener("click", function(){
     if(!mtOpen) return;
@@ -14218,6 +14396,13 @@ button.srow:active{background:var(--bg-tint)}
       /* the Google id a settled one was written under — see agendaFor */
       gid:m.calendarEventId || "",
       t:m.title || "",
+      /* where, in somebody's words; and whether it settled with no exact hour */
+      place:m.location || "",
+      timeOpen:!!m.timeOpen,
+      /* the task categories, chosen by the server off the name */
+      cat:m.category || "none",
+      catAuto:!!m.catAuto,
+      catChosen:!!m.catChosen,
       by:m.mine ? 0 : m.initiatorId,
       who:who, allDay:allDay, opts:opts, ans:ans, left:left,
       /* Answered, in the server's own words: a yes, a no, OR a sentence that

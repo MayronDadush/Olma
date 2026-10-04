@@ -509,6 +509,52 @@ const ACTIONS = {
     return meetingFanout.afterRejoin(client, me, p.meetingId, res);
   },
 
+  // A new name, from the page (owner, 2026-10-04) — the chat's
+  // `set_meeting_title`: anybody in it, nobody messaged, and a shared calendar
+  // event takes the new name.
+  async setMeetingTitle(client, userId, p) {
+    const res = await meetings.setTitle(client, userId, p.meetingId, typeof p.title === 'string' ? p.title : '');
+    if (!res.ok) return res;
+    return meetingFanout.patchSharedEvent(client, res, { title: res.data.title });
+  },
+
+  // Its category, picked by a person — or `null` back to the automatic one.
+  async setMeetingCategory(client, userId, p) {
+    return meetings.setCategory(client, userId, p.meetingId, p.category === undefined ? null : p.category);
+  },
+
+  // Where it happens, from the page (owner, 2026-10-04). The same writer and
+  // the same calendar follow-through as the chat's `set_meeting_place`: the
+  // shared event takes the words, and nobody is messaged — a place said in
+  // the chat tells nobody either.
+  async setMeetingPlace(client, userId, p) {
+    const res = await meetings.setPlace(client, userId, p.meetingId, p.where);
+    if (!res.ok) return res;
+    return meetingFanout.patchSharedEvent(client, res, { location: res.data.location });
+  },
+
+  // The exact hour of a coordination that settled on a whole day or a part of
+  // one (owner, 2026-10-04) — the page's answer to the question the chat asks
+  // once (`meeting_exact_time_ask`). Only a clock time arrives: the DAY is the
+  // one it settled on, read here in this person's zone, because
+  // `meetings.setExactTime` refuses any other day anyway. Everything after the
+  // write is the chat's own door (meeting-fanout.afterTimeSet): the calendar
+  // event moves and everybody else is told.
+  async setMeetingTime(client, userId, p) {
+    const me = await users.getById(client, userId);
+    const { rows: [m] } = await client.query(
+      'SELECT confirmed_start_at FROM meetings WHERE id = $1 AND status = \'confirmed\'', [p.meetingId]);
+    if (!m || !m.confirmed_start_at) {
+      return err('invalid', 'the meeting is not settled yet — put the time on the table instead',
+        { reason: 'not_confirmed' });
+    }
+    const { day } = optionMoment.pickFor(me.timezone, m.confirmed_start_at);
+    const mom = optionMoment.momentFor(me.timezone, { day, time: p.time });
+    if (!mom.ok) return mom;
+    return meetingFanout.afterTimeSet(client, me,
+      await meetings.setExactTime(client, userId, p.meetingId, mom.data.slotText, mom.data.startsAt));
+  },
+
   // ---- meetings: several candidate times ----------------------------------
   // The same domain functions the chat tools call (domain/meeting-options.js),
   // so a time added here and a time proposed in conversation are the same

@@ -5,6 +5,7 @@ const {
 } = require('./_shared');
 const format = require('../../../domain/message-format');
 const listBlock = require('../../../domain/list-block');
+const meetingCategory = require('../../../domain/meeting-category');
 const meetingTime = require('../../../domain/meeting-time');
 
 // After the person has put real substance on the table from chat — two or more
@@ -417,7 +418,10 @@ module.exports = [
     async (client, user) => {
       const res = await meetings.listMine(client, user.id);
       if (!res.ok) return res;
-      return ok({ ...res.data, rooms: await groups.roomsOf(client, user.id) });
+      // The category the page shows — chosen, or read off the name — rather
+      // than the raw override column, which is NULL for an automatic one.
+      const shown = res.data.meetings.map((m) => ({ ...m, category: meetingCategory.categoryOf(m).category }));
+      return ok({ ...res.data, meetings: shown, rooms: await groups.roomsOf(client, user.id) });
     }),
   tool('cancel_meeting', 'Cancel a meeting you are in, for EVERYONE — anyone in it may; nobody manages one. Negotiating or confirmed (until it starts). Every participant is told and the shared calendar event is removed. When the user only means THEY cannot come, that is opt_out_of_meeting — ask which they mean if unclear. Confirm with the user first.',
     { meeting_id: S('number', 'Meeting id') }, ['meeting_id'],
@@ -430,15 +434,29 @@ module.exports = [
   tool('reopen_meeting', 'Reopen a CONFIRMED meeting you are in (before it starts) so its time can change — anyone in it may. Other times and answers stay; the set time is asked again. Everyone is told; the calendar event is removed.',
     { meeting_id: S('number', 'Meeting id') }, ['meeting_id'],
     (client, user, a) => meetingFanout.reopenAndTell(client, user, a.meeting_id)),
-  tool('set_meeting_title', 'Rename a meeting you are in ("שיחה על הפרויקט") — anyone in it may. The name is what everyone\'s invites and calendars show, so keep it in the user\'s words. Works while negotiating or after confirmation.',
-    { meeting_id: S('number', 'Meeting id'), title: S('string', 'The new name, in the user\'s language') },
-    ['meeting_id', 'title'],
+  // The name, and since 2026-10-04 the category too — everything the page can
+  // change, the chat can (owner). One tool for both because the schema
+  // ceiling has no room for a second (tests/tool-schema-budget.test.js).
+  tool('set_meeting_title', 'Rename a meeting you are in and/or set its category; anyone in it may. Keep the name in the user\'s words (calendars show it).',
+    { meeting_id: S('number', 'Meeting id'), title: S('string', 'The new name'),
+      category: S('string', `${meetingCategory.CATEGORIES.join('|')}|none|auto`) },
+    ['meeting_id'],
     async (client, user, a) => {
-      const res = await meetings.setTitle(client, user.id, a.meeting_id, a.title);
-      if (!res.ok) return res;
-      // The calendar copy follows the rename (best-effort, as the organiser,
-      // server-side) so the event does not keep the stale name forever.
-      return meetingFanout.patchSharedEvent(client, res, { title: res.data.title });
+      if (!a.title && a.category === undefined) return err('invalid', 'title or category required');
+      let res = null;
+      if (a.title) {
+        res = await meetings.setTitle(client, user.id, a.meeting_id, a.title);
+        if (!res.ok) return res;
+        // The calendar copy follows the rename (best-effort, as the organiser,
+        // server-side) so the event does not keep the stale name forever.
+        res = await meetingFanout.patchSharedEvent(client, res, { title: res.data.title });
+      }
+      if (a.category !== undefined) {
+        const cat = await meetings.setCategory(client, user.id, a.meeting_id, a.category);
+        if (!cat.ok) return cat;
+        res = res ? (res.data.category = cat.data.category, res) : cat;
+      }
+      return res;
     }),
   // The two the room had and the chat did not (owner, 2026-09-25: every
   // action on a coordination, in both places). The place is the same writer

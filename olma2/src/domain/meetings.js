@@ -20,6 +20,7 @@ const { hasOffset, badTime, weekdayClash, partsInZone } = require('./datetime');
 const options = require('./meeting-options');
 const optionMoment = require('./meeting-option-moment');
 const { onlinePlace } = require('./online-place');
+const meetingCategory = require('./meeting-category');
 
 // How long a slot stays "live" after its start before the negotiation is
 // closed as expired. Generous on purpose: the thing itself may still be
@@ -762,6 +763,27 @@ async function setPlace(client, userId, meetingId, where, { requireIn = true, gr
   });
 }
 
+// Which category it sits in, chosen by a person (owner, 2026-10-04) —
+// anybody still in it, while it is alive, the same door as the rename and the
+// place. `null` (or 'auto') hands it back to the automatic guess
+// (meeting-category.js). Nobody is told: it changes how a list is sorted.
+async function setCategory(client, userId, meetingId, category) {
+  const choice = meetingCategory.normaliseChoice(category);
+  if (!choice.ok) {
+    return err('invalid', `category must be one of ${meetingCategory.CATEGORIES.join(', ')}, none, or auto`,
+      { reason: 'bad_category' });
+  }
+  const { rows } = await client.query(
+    `UPDATE meetings m SET category = $3, updated_at = now()
+     WHERE id = $1 AND status IN ('negotiating', 'confirmed') AND ${IN_IT}
+     RETURNING id, title, location, category`,
+    [meetingId, userId, choice.value]
+  );
+  if (!rows[0]) return err('not_found', 'open meeting you are in not found');
+  await audit.record(client, userId, 'meeting.category_set', { meetingId: Number(meetingId), category: choice.value });
+  return ok({ meetingId: Number(meetingId), ...meetingCategory.categoryOf(rows[0]) });
+}
+
 // How many yeses make this coordination worth settling. `null` clears it.
 //
 // Anybody IN the coordination may set it, on the same argument that lets
@@ -1068,7 +1090,7 @@ async function listNegotiating(client, userId = null) {
 module.exports = {
   cleanLocation,
   startMeeting, openWithSamePeople, recordConstraint, proposeSlot, respondToSlot,
-  optOut, rejoin, leftByChoice, LEFT_BY_CHOICE_SQL, applyExit, withdrawConfirmed, cancelMeeting, reopenMeeting, setTitle, setPlace, setQuorum,
+  optOut, rejoin, leftByChoice, LEFT_BY_CHOICE_SQL, applyExit, withdrawConfirmed, cancelMeeting, reopenMeeting, setTitle, setPlace, setCategory, setQuorum,
   getStatus, listMine, pendingMeetingFor, tryConfirm, settleNow, timeIsOpen, setExactTime,
   expireStaleMeetings, dropPassedOptions, expireOne, listNegotiating,
   EXPIRE_AFTER_START_MS, LEGACY_STALE_DAYS, ALL_DAY_EXTRA_MS,

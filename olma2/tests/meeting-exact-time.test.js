@@ -198,3 +198,120 @@ test('a coordination a room started asks nobody privately — the room is asked'
   assert.doesNotMatch(res.data.hint, /exact time/);
   assert.ok((await rows('meeting_confirmed', id)).every((r) => !r.payload.askExactTime));
 });
+
+// The page's own two doors (owner, 2026-10-04): a place on any live
+// coordination, and the exact hour once it settled without one. Same writers
+// and fan-out as the chat, so the page and the chat cannot disagree.
+test('the page offers the hour only while it is open, and setting it there is the chat\'s own door', async () => {
+  const dash = require('../src/domain/user-dashboard');
+  const meetingOf = async (u, id) => {
+    const page = await tx((c) => dash.load(c, u.id));
+    return page.data.meetings.find((m) => Number(m.id) === id);
+  };
+  const { id, opt } = await openWith({ allDay: true });
+  assert.equal((await meetingOf(ben, id)).timeOpen, false, 'still negotiating: the table is the door');
+  await call('settle_meeting', ann, { meeting_id: id, option_id: opt.id });
+  assert.equal((await meetingOf(ben, id)).timeOpen, true);
+
+  const bad = await actAs(ben, 'setMeetingTime', { meetingId: id, time: '25:00' });
+  assert.equal(bad.ok, false);
+  const res = await actAs(ben, 'setMeetingTime', { meetingId: id, time: '18:00' });
+  assert.ok(res.ok, JSON.stringify(res));
+  const { rows: [m] } = await db.pool.query(
+    'SELECT status, confirmed_all_day, confirmed_start_at FROM meetings WHERE id = $1', [id]);
+  assert.equal(m.status, 'confirmed');
+  assert.equal(m.confirmed_all_day, false);
+  assert.equal(new Date(m.confirmed_start_at).toISOString(), new Date(tomorrowAt('18')).toISOString(),
+    'the day it settled on, in the setter\'s zone');
+  assert.deepEqual((await rows('meeting_time_set', id)).map((r) => Number(r.user_id)).sort(),
+    [Number(ann.id), Number(cal.id)].sort(), 'everybody but the one who set it');
+  assert.equal((await meetingOf(ben, id)).timeOpen, false);
+  assert.equal((await actAs(dan, 'setMeetingTime', { meetingId: id, time: '19:00' })).ok, false, 'not in it');
+});
+
+test('the page sets a place in their words, tells nobody, and refuses an empty one', async () => {
+  const dash = require('../src/domain/user-dashboard');
+  const { id } = await openWith({ daypart: 'evening' });
+  const res = await actAs(cal, 'setMeetingPlace', { meetingId: id, where: '  אצל   יוסי ' });
+  assert.ok(res.ok, JSON.stringify(res));
+  const page = await tx((c) => dash.load(c, ann.id));
+  assert.equal(page.data.meetings.find((m) => Number(m.id) === id).location, 'אצל יוסי');
+  assert.equal((await actAs(cal, 'setMeetingPlace', { meetingId: id, where: '  ' })).ok, false);
+  assert.equal((await actAs(dan, 'setMeetingPlace', { meetingId: id, where: 'בים' })).ok, false, 'not in it');
+  const { rows: told } = await db.pool.query(
+    `SELECT 1 FROM outbox WHERE (payload->>'meetingId')::bigint = $1 AND payload::text LIKE '%יוסי%'`, [id]);
+  assert.equal(told.length, 0);
+});
+
+test('the page renames it, and its category is read off the name — then the place — every time it is loaded', async () => {
+  const dash = require('../src/domain/user-dashboard');
+  const { id } = await openWith({ daypart: 'evening' });
+  const catOf = async () => (await tx((c) => dash.load(c, ann.id))).data.meetings
+    .find((m) => Number(m.id) === id).category;
+  assert.equal(await catOf(), 'none', '"ים" is nothing the classifier will claim');
+
+  const res = await actAs(ben, 'setMeetingTitle', { meetingId: id, title: '  ישיבת   צוות ' });
+  assert.ok(res.ok, JSON.stringify(res));
+  const { rows: [m] } = await db.pool.query('SELECT title FROM meetings WHERE id = $1', [id]);
+  assert.equal(m.title, 'ישיבת   צוות'.trim());
+  assert.equal(await catOf(), 'work', 'a rename re-sorts it');
+
+  assert.equal((await actAs(ben, 'setMeetingTitle', { meetingId: id, title: '   ' })).ok, false);
+  assert.equal((await actAs(dan, 'setMeetingTitle', { meetingId: id, title: 'שלי' })).ok, false, 'not in it');
+
+  await actAs(ben, 'setMeetingTitle', { meetingId: id, title: 'נפגשים' });
+  assert.equal(await catOf(), 'none');
+  await actAs(ben, 'setMeetingPlace', { meetingId: id, where: 'אצל סבתא' });
+  assert.equal(await catOf(), 'family', 'a name that says nothing falls back to the place');
+});
+
+test('a category picked by somebody in it beats the guess, from the page and from the chat alike', async () => {
+  const dash = require('../src/domain/user-dashboard');
+  const { id } = await openWith({ daypart: 'evening' });
+  const shown = async (u = ann) => {
+    const m = (await tx((c) => dash.load(c, u.id))).data.meetings.find((x) => Number(x.id) === id);
+    return [m.category, m.catAuto, m.catChosen];
+  };
+  await actAs(ann, 'setMeetingTitle', { meetingId: id, title: 'ערב פוקר' });
+  assert.deepEqual(await shown(), ['games', true, false], 'a poker night is games');
+
+  assert.ok((await actAs(ben, 'setMeetingCategory', { meetingId: id, category: 'work' })).ok);
+  assert.deepEqual(await shown(cal), ['work', false, true], 'everybody sees the choice');
+  assert.equal((await actAs(ben, 'setMeetingCategory', { meetingId: id, category: 'עבודה' })).error.reason,
+    'bad_category', 'a key, never free text');
+  assert.equal((await actAs(dan, 'setMeetingCategory', { meetingId: id, category: 'home' })).ok, false, 'not in it');
+
+  assert.ok((await actAs(ben, 'setMeetingCategory', { meetingId: id, category: 'none' })).ok);
+  assert.deepEqual(await shown(), ['none', false, true], 'no category is a choice too');
+  assert.ok((await actAs(ben, 'setMeetingCategory', { meetingId: id, category: null })).ok);
+  assert.deepEqual(await shown(), ['games', true, false], 'and null hands it back to the guess');
+  assert.equal((await actAs(ben, 'setMeetingCategory', { meetingId: id, category: 'money' })).error.reason,
+    'bad_category', 'the tasks\' categories are not a coordination\'s');
+
+  // The chat: the same column through set_meeting_title's optional category,
+  // and list_my_meetings says what the page says.
+  const viaChat = await call('set_meeting_title', cal, { meeting_id: id, category: 'family' });
+  assert.ok(viaChat.ok, JSON.stringify(viaChat));
+  assert.deepEqual(await shown(), ['family', false, true]);
+  const both = await call('set_meeting_title', cal, { meeting_id: id, title: 'ארוחה אצל אמא', category: 'auto' });
+  assert.ok(both.ok, JSON.stringify(both));
+  assert.equal(both.data.title, 'ארוחה אצל אמא');
+  assert.equal(both.data.category, 'family');
+  const listed = (await call('list_my_meetings', ann)).data.meetings.find((m) => Number(m.id) === id);
+  assert.equal(listed.category, 'family');
+  assert.equal((await call('set_meeting_title', cal, { meeting_id: id })).ok, false, 'one of the two is required');
+});
+
+test('a coordination\'s own topics, and the words that must NOT sort one', () => {
+  const { classify, CATEGORIES } = require('../src/domain/meeting-category');
+  assert.deepEqual(CATEGORIES, ['work', 'family', 'social', 'sport', 'games']);
+  const cases = {
+    'ערב פוקר': 'games', 'פאדל ביום שישי': 'sport', 'כדורגל ובירה': 'sport', 'משחק כדורגל': 'sport',
+    'ארוחת שישי אצל אמא': 'family', 'יום ההולדת של שרה': 'family', 'ישיבת צוות': 'work',
+    'ארוחת צהריים עם לקוח': 'work', 'קפה עם גלי': 'social', 'dinner with friends': 'social',
+    'Game night': 'games',
+    // Each of these once matched something it should not have.
+    'חברה חדשה': null, 'רמי לוי': null, 'סקירת רבעון': null, 'skills review': null, 'ים': null,
+  };
+  for (const [title, want] of Object.entries(cases)) assert.equal(classify(title), want, title);
+});
