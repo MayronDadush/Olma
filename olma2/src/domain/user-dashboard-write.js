@@ -518,6 +518,11 @@ const ACTIONS = {
     return meetingFanout.patchSharedEvent(client, res, { title: res.data.title });
   },
 
+  // Its category, picked by a person — or `null` back to the automatic one.
+  async setMeetingCategory(client, userId, p) {
+    return meetings.setCategory(client, userId, p.meetingId, p.category === undefined ? null : p.category);
+  },
+
   // Where it happens, from the page (owner, 2026-10-04). The same writer and
   // the same calendar follow-through as the chat's `set_meeting_place`: the
   // shared event takes the words, and nobody is messaged — a place said in

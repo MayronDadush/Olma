@@ -264,3 +264,38 @@ test('the page renames it, and its category is read off the name — then the pl
   await actAs(ben, 'setMeetingPlace', { meetingId: id, where: 'אצל סבתא' });
   assert.equal(await catOf(), 'family', 'a name that says nothing falls back to the place');
 });
+
+test('a category picked by somebody in it beats the guess, from the page and from the chat alike', async () => {
+  const dash = require('../src/domain/user-dashboard');
+  const { id } = await openWith({ daypart: 'evening' });
+  const shown = async (u = ann) => {
+    const m = (await tx((c) => dash.load(c, u.id))).data.meetings.find((x) => Number(x.id) === id);
+    return [m.category, m.catAuto, m.catChosen];
+  };
+  await actAs(ann, 'setMeetingTitle', { meetingId: id, title: 'ערב פוקר' });
+  assert.deepEqual(await shown(), ['social', true, false], '"חברים" is guessed for a game night');
+
+  assert.ok((await actAs(ben, 'setMeetingCategory', { meetingId: id, category: 'work' })).ok);
+  assert.deepEqual(await shown(cal), ['work', false, true], 'everybody sees the choice');
+  assert.equal((await actAs(ben, 'setMeetingCategory', { meetingId: id, category: 'עבודה' })).error.reason,
+    'bad_category', 'a key, never free text');
+  assert.equal((await actAs(dan, 'setMeetingCategory', { meetingId: id, category: 'home' })).ok, false, 'not in it');
+
+  assert.ok((await actAs(ben, 'setMeetingCategory', { meetingId: id, category: 'none' })).ok);
+  assert.deepEqual(await shown(), ['none', false, true], 'no category is a choice too');
+  assert.ok((await actAs(ben, 'setMeetingCategory', { meetingId: id, category: null })).ok);
+  assert.deepEqual(await shown(), ['social', true, false], 'and null hands it back to the guess');
+
+  // The chat: the same column through set_meeting_title's optional category,
+  // and list_my_meetings says what the page says.
+  const viaChat = await call('set_meeting_title', cal, { meeting_id: id, category: 'family' });
+  assert.ok(viaChat.ok, JSON.stringify(viaChat));
+  assert.deepEqual(await shown(), ['family', false, true]);
+  const both = await call('set_meeting_title', cal, { meeting_id: id, title: 'ארוחה אצל אמא', category: 'auto' });
+  assert.ok(both.ok, JSON.stringify(both));
+  assert.equal(both.data.title, 'ארוחה אצל אמא');
+  assert.equal(both.data.category, 'family');
+  const listed = (await call('list_my_meetings', ann)).data.meetings.find((m) => Number(m.id) === id);
+  assert.equal(listed.category, 'family');
+  assert.equal((await call('set_meeting_title', cal, { meeting_id: id })).ok, false, 'one of the two is required');
+});
