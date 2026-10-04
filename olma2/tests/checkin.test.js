@@ -1085,3 +1085,49 @@ test('day one: the 5h step says nothing to somebody who has given her nothing', 
   const again = await withTx(db.pool, (c) => checkin.run(c, t0 + 5 * H + 120_000));
   assert.deepEqual(again.filter((r) => r.userId === u.id).map((r) => r.rung), ['onboarding_5h']);
 });
+
+// New people said she "חופרת" (2026-10-04): about four unasked messages in
+// their first day, and a room joiner had heard the room's invite and its
+// coordination before the first step came due. Two is the ceiling, and a
+// step past it is silent rather than handed to the ordinary ladder.
+test('day one stops at two unasked messages, and what they chose does not count', async () => {
+  const flags = require('../src/domain/flags');
+  const H = 3600_000;
+  const u = await makeUser(db.pool, '+972615000301', { firstName: 'Lior' });
+  const t0 = Date.now() - 3 * H;
+  await db.pool.query(
+    `UPDATE users SET onboarded_at = $2, created_at = $2, timezone = 'Asia/Jerusalem',
+            timezone_confirmed = TRUE, last_inbound_at = $2 WHERE id = $1`, [u.id, new Date(t0)]);
+  const sent = (kind, key) => db.pool.query(
+    `INSERT INTO outbox (user_id, kind, payload, idempotency_key, sent_at, created_at)
+     VALUES ($1, $2, '{}'::jsonb, $3, now(), now())`, [u.id, kind, key]);
+  const me = { id: u.id, onboarded_at: new Date(t0) };
+  const c = await db.pool.connect();
+  try {
+    // A reminder and a digest they asked for, and one message she decided to
+    // send: still under the ceiling, so the 2h step goes out.
+    await sent('reminder', `cap-r-${u.id}`);
+    await sent('digest', `cap-d-${u.id}`);
+    await sent('welcome_followup', `cap-w-${u.id}`);
+    assert.equal(await checkin.dayOneSpent(c, me), false);
+    let out = await checkin.run(c, t0 + 2 * H + 60_000);
+    assert.equal(out.find((r) => r.userId === u.id).rung, 'onboarding_2h');
+
+    // The room's invite reaches them too: now two, and the 5h step is silent.
+    await c.query(`UPDATE outbox SET sent_at = now() WHERE user_id = $1 AND kind = 'checkin'`, [u.id]);
+    await sent('room_cold_invite', `cap-i-${u.id}`);
+    await c.query(`INSERT INTO tasks (owner_id, title) VALUES ($1, 'לקנות חלב')`, [u.id]);
+    assert.equal(await checkin.dayOneSpent(c, me), true);
+    out = await checkin.run(c, t0 + 5 * H + 60_000);
+    assert.equal(out.find((r) => r.userId === u.id), undefined, 'the step is silent');
+    // ...and silent means nothing at all, not the ordinary ladder instead.
+    out = await checkin.run(c, t0 + 8 * H + 60_000);
+    assert.equal(out.find((r) => r.userId === u.id), undefined, 'no rung falls through either');
+
+    // Off, it is exactly the old ladder.
+    await flags.setFlag(c, 'day_one_proactive_cap', 0);
+    out = await checkin.run(c, t0 + 8 * H + 120_000);
+    assert.ok(out.find((r) => r.userId === u.id), 'with the cap off the slot is spent again');
+    await flags.setFlag(c, 'day_one_proactive_cap', 2);
+  } finally { c.release(); }
+});
