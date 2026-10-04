@@ -47,18 +47,22 @@ const depth = new Map();
 const GRACE_MS = Number(process.env.OLMA_SELF_INITIATED_GRACE_MS || 60_000);
 let graceMs = Number.isFinite(GRACE_MS) && GRACE_MS >= 0 ? GRACE_MS : 60_000;
 const pending = new Set();
+// When the current mark began — the first delivery of an overlapping run. A
+// person who wrote AFTER it (users.last_woke_at, the gateway opener's stamp)
+// is in a conversation inside our grace minute, and their answer is theirs.
+const startedAt = new Map();
 
 function begin(userId) {
   const id = Number(userId);
   if (!Number.isFinite(id)) return;
+  if (!depth.get(id)) startedAt.set(id, Date.now());
   depth.set(id, (depth.get(id) || 0) + 1);
 }
 
 function release(id) {
   const n = depth.get(id);
   if (!n) return;
-  if (n <= 1) depth.delete(id);
-  else depth.set(id, n - 1);
+  if (n <= 1) { depth.delete(id); startedAt.delete(id); } else depth.set(id, n - 1);
 }
 
 function end(userId) {
@@ -75,6 +79,10 @@ function isActive(userId) {
   return (depth.get(Number(userId)) || 0) > 0;
 }
 
+function since(userId) {
+  return isActive(userId) ? startedAt.get(Number(userId)) || null : null;
+}
+
 // Run `fn` with the mark held, and release it however fn ends. Callers must
 // use this rather than begin/end by hand: a delivery that threw and left the
 // mark set would make every later message from that person invisible to the
@@ -87,10 +95,11 @@ async function around(userId, fn) {
 // Tests only — a leaked mark is a cross-test ghost.
 function _reset() {
   depth.clear();
+  startedAt.clear();
   for (const t of pending) clearTimeout(t);
   pending.clear();
 }
 // Tests only: the default minute would make every assertion wait a minute.
 function _setGraceMs(ms) { graceMs = Number(ms) || 0; }
 
-module.exports = { begin, end, isActive, around, _reset, _setGraceMs, GRACE_MS: graceMs };
+module.exports = { begin, end, isActive, since, around, _reset, _setGraceMs, GRACE_MS: graceMs };

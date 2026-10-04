@@ -139,6 +139,7 @@ never trust a dated narrative for something you are about to act on.
 - [The probe that was read as him writing (fixed 2026-09-30)](#the-probe-that-was-read-as-him-writing-fixed-2026-09-30)
 - [The morning digest asked the same question four mornings running (fixed 2026-09-06)](#the-morning-digest-asked-the-same-question-four-mornings-running-fixed-2026-09-06)
 - [Four good mornings to a man who had stopped answering (fixed 2026-09-05)](#four-good-mornings-to-a-man-who-had-stopped-answering-fixed-2026-09-05)
+- [The check-in that answered for him (fixed 2026-10-05)](#the-check-in-that-answered-for-him-fixed-2026-10-05)
 - [The minute after a delivery belonged to nobody (fixed 2026-10-02)](#the-minute-after-a-delivery-belonged-to-nobody-fixed-2026-10-02)
 - [Vered's first evening: five tasks, three that would not have arrived (fixed 2026-09-06)](#vereds-first-evening-five-tasks-three-that-would-not-have-arrived-fixed-2026-09-06)
 - [The reminder that could not climb, because its first rung died on the wire (fixed 2026-09-05)](#the-reminder-that-could-not-climb-because-its-first-rung-died-on-the-wire-fixed-2026-09-05)
@@ -6201,6 +6202,34 @@ three days and sends one line with no question mark and no pitch; two misses
 someone with a miss on record. The timezone ask carries the exact Hebrew
 sentence, gender forms aside. User 13 was set to three misses by hand so the
 next thing he hears from עולמה is his own reply.
+
+### The check-in that answered for him (fixed 2026-10-05)
+
+Padel Gang, 2026-10-04. A quarter of an hour after Arik joined, Olma sent
+him an introduction he had not asked for. While composing it, the model
+also did three things in his name, within 23 seconds and with not a word
+from him:
+- wrote a yes on the padel game;
+- took him out of the coordination;
+- put him back in.
+
+He ended up "unanswered", although he had already said yes through the link.
+He then answered yes again himself.
+
+The self-initiated mark (`domain/self-initiated.js`) existed exactly so that
+such a turn is never read as the person. It was honoured by `turn_start`, the
+implicit open and `turn_context`, and by none of the tools that write what a
+person SAID. Now `respond_to_meeting_slot`, `opt_out_of_meeting` and
+`rejoin_meeting` refuse with `not_their_turn` while the mark holds, unless
+`users.last_woke_at` is no more than two minutes older than the mark. Two
+things qualify:
+
+- a real reply inside the grace minute, which "The minute after a delivery
+  belonged to nobody" made countable;
+- somebody whose own turn was already running when ours began.
+
+Open: `record_meeting_constraint` with `declines_option_ids` /
+`accepts_option_ids` writes answers too, and is not guarded yet.
 
 ### The minute after a delivery belonged to nobody (fixed 2026-10-02)
 
