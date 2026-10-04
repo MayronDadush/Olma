@@ -241,3 +241,11 @@ title means this file. Grep the title, not the filename.
   correcting them would falsify the record. Two readers must answer to BOTH
   spellings and say so — `facts.SYSTEM_NOUN_RE` (old facts are still in the
   table) and the voice bridge's name check and Deepgram keyterms.
+
+- **A preference the gate PARSES is refused at the write when the gate could
+  not read it** — `preferences.remember` on key `availability` accepts one
+  `HH:MM-HH:MM` window (spelling forgiven, stored canonical) and nothing else;
+  the error names `quiet_days` and `record_meeting_constraint`, and says no
+  tool sets a frequency. A refused call earns no 👍. The read side keeps its
+  fallback for rows written before. `incidents.md`, "Saved, marked done, and
+  read as nothing".

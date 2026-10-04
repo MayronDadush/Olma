@@ -77,9 +77,43 @@ test('availabilityWindow: stated beats default, garbage falls back safely', asyn
     assert.equal(stated.data.source, 'stated');
     assert.deepEqual(stated.data.window, { start: '10:30', end: '23:00' });
 
-    await prefs.remember(c, user.id, 'availability', 'whenever I feel like it');
+    // A row written before the write was checked is still on the box, so the
+    // read side keeps its fallback. Planted by hand: `remember` refuses it now.
+    await c.query(`UPDATE user_preferences SET value = 'whenever I feel like it'
+                    WHERE user_id = $1 AND key = 'availability'`, [user.id]);
     const garbage = await prefs.availabilityWindow(c, user.id);
     assert.equal(garbage.data.source, 'default'); // gate never crashes on bad data
+  });
+});
+
+// u-55 said he wanted one message a day; the model saved "once a day" under
+// availability, the tool marked it 👍, and the gate read it as the default
+// window. Three more rows on the box were the same shape. Each is refused,
+// nothing is written, and the result says where the thing they said belongs.
+test('availability: a value the gate cannot read is refused, and the old window stands', async () => {
+  const other = await makeUser(db.pool, '+972509000088', { quietDays: null });
+  await withClient(async (c) => {
+    assert.equal((await prefs.remember(c, other.id, 'availability', '08:00-20:00')).ok, true);
+    for (const said of ['once a day', '07:30-16:00, א-ה', 'שלישי 8.9 שישי 11.9 - פנוי',
+      'שבת אחרי 16:00, ראשון ורביעי', '25:00-26:00', '10:00-10:00']) {
+      const res = await prefs.remember(c, other.id, 'availability', said);
+      assert.equal(res.ok, false, said);
+      assert.match(res.error.message, /NOT saved/);
+      assert.match(res.error.message, /quiet_days/);
+      assert.match(res.error.message, /record_meeting_constraint/);
+    }
+    const win = await prefs.availabilityWindow(c, other.id);
+    assert.deepEqual(win.data.window, { start: '08:00', end: '20:00' }, 'nothing overwrote the stated window');
+
+    // Spelling is forgiven and stored canonical, so the gate reads it.
+    for (const [said, want] of [['9:00-17:30', '09:00-17:30'], ['10:00 – 22:00', '10:00-22:00']]) {
+      assert.equal((await prefs.remember(c, other.id, 'availability', said)).ok, true, said);
+      const { rows } = await c.query(
+        `SELECT value FROM user_preferences WHERE user_id = $1 AND key = 'availability'`, [other.id]);
+      assert.equal(rows[0].value, want);
+    }
+    // Every other key stays free-form.
+    assert.equal((await prefs.remember(c, other.id, 'tone', 'once a day is plenty')).ok, true);
   });
 });
 
