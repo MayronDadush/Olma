@@ -346,6 +346,18 @@ test('a locked night: buy-ins and others\' chips are the host\'s phone alone, an
   assert.equal((await buy(yos, H)).error, 'locked', 'and the old one is not');
   assert.equal((await hold(mir, H, { key, take: true })).error, 'host_seat', 'a used key is spent');
 
+  // the host hands the role on: only the host, only to a seat a phone holds
+  const pass = (to, device) => w({ op: 'update', col: 'game', data: { host: to }, device });
+  assert.equal((await pass(mic, M)).error, 'not_host');
+  assert.equal((await pass(yos, X)).error, 'host_absent', 'nobody sits in Yossi\'s seat');
+  r = await pass(mic, X);
+  assert.equal(r.status, 200);
+  assert.equal(r.state.game.host, mic);
+  assert.equal(r.state.game.locked, true, 'the lock stays');
+  assert.equal((await buy(yos, X)).error, 'locked', 'the old host is a player now');
+  assert.equal((await buy(yos, M)).status, 200, 'and Michal is the host');
+  assert.equal((await pass(mir, M)).status, 200, 'and can hand it back');
+
   // unlocked, everybody writes again
   assert.equal((await lock(false, X)).status, 200);
   assert.equal((await buy(yos, M)).status, 200);

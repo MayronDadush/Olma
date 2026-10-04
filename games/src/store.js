@@ -186,11 +186,20 @@ async function write(pool, token, w, actor = {}) {
     const hostOnly = async () => { if (locked && !await isHost(c, n, who)) refuse('locked'); };
     if (col === 'game') {
       if (op !== 'update') refuse('bad_op');
-      const { locked: lock, ...p } = v.gamePatch(w.data);
-      if (lock !== undefined) {
+      const { locked: lock, host, ...p } = v.gamePatch(w.data);
+      if (lock !== undefined || host !== undefined) {
         if (!n.host_player) refuse('no_host');
         if (!await isHost(c, n, who)) refuse('not_host');
-        p.locked_at = lock ? new Date(now) : null;
+      }
+      if (lock !== undefined) p.locked_at = lock ? new Date(now) : null;
+      // Handing the role on: only to a seat somebody can prove is theirs — a
+      // phone sits in it, or Olma knows whose it is — or a locked night would
+      // be left with a host nobody can be. Any key for the old seat dies.
+      if (host !== undefined && host !== n.host_player) {
+        const { rows: [to] } = await c.query('SELECT device, user_id FROM players WHERE night_id = $1 AND id = $2', [n.id, host]);
+        if (!to) refuse('not_found');
+        if (!to.device && !to.user_id) refuse('host_absent');
+        Object.assign(p, { host_player: host, host_key: null, host_key_until: null });
       }
       if (!Object.keys(p).length) refuse('bad_doc');
       const sets = Object.keys(p).map((k, i) => `${k} = $${i + 2}`);

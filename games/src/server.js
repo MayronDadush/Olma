@@ -22,7 +22,7 @@ const WRITES_PER_MIN = 120;          // per night and, separately, per client
 const MAX_LISTENERS_PER_NIGHT = 60;
 const MAX_LISTENERS = 600;
 
-const STATUS = { not_found: 404, too_many: 429, rate_limited: 429, locked: 403, not_host: 403, host_seat: 403 };
+const STATUS = { not_found: 404, too_many: 429, rate_limited: 429, locked: 403, not_host: 403, host_seat: 403, host_absent: 409 };
 
 // Olma's WhatsApp number, the same default as olma2's referral.WA_NUMBER.
 const waNumber = () => String(process.env.OLMA_WA_NUMBER || '972559347282').replace(/\D/g, '');

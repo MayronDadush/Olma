@@ -97,14 +97,15 @@ function logLine(data, now) {
   return { t: text(data.t, 200), via: via(data.via), at: when(data.at, now) };
 }
 
-// A patch to the night itself: only these five fields, each checked.
-// `locked` is the host's alone, which store.write checks.
+// A patch to the night itself: only these six fields, each checked.
+// `locked` and `host` are the host's alone, which store.write checks.
 function gamePatch(data) {
   if (!isObj(data)) refuse('bad_doc');
   const out = {};
   for (const [k, v] of Object.entries(data)) {
     if (k === 'name') out.name = text(v, 60);
     else if (k === 'locked') out.locked = v === true ? true : v === false ? false : refuse('bad_doc');
+    else if (k === 'host') out.host = id(v);
     else if (k === 'price') out.price_ag = Math.round(num(v, 0.01, 100000) * 100);
     else if (k === 'chips') { const c = num(v, 1, 1e7); if (!Number.isInteger(c)) refuse('bad_number'); out.chips_per_buyin = c; }
     else if (k === 'foodMode') out.food_mode = v === 'split' ? 'split' : v === 'merge' ? 'merge' : refuse('bad_doc');

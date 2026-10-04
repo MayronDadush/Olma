@@ -154,7 +154,23 @@ html.is-dark #themeBtn .moon{opacity:0;transform:rotate(90deg) scale(.6)}
 .lockrow .row-title{display:flex;align-items:center;gap:6px}
 .lockbar{display:flex;align-items:center;gap:8px;padding:10px 14px;font-size:13px;color:var(--text-2)}
 .lockbar svg{width:16px;height:16px;flex:none}
-button.seat.host .snm::before{content:"מארח";display:block;font-size:10px;font-weight:700;color:var(--accent)}
+/* the host's apron, on their seat at the table */
+.apron{position:absolute;bottom:-7px;inset-inline-start:-9px;width:24px;height:24px;border-radius:50%;display:grid;place-items:center;
+  background:var(--gold-arc);box-shadow:0 0 0 2px var(--surface);z-index:2}
+.apron svg{width:19px;height:19px}
+.hostbar{display:grid;gap:10px;padding:12px 14px;border-radius:14px;background:var(--fill)}
+.hostbar .hb-top{display:flex;align-items:center;gap:10px}
+.hostbar .hb-txt{flex:1;min-width:0}
+.hostbar .hb-txt b{display:block;font-size:15px}
+.hostbar .hb-txt span{font-size:13px;color:var(--text-2)}
+.hostbar .apron{position:static;box-shadow:none;width:34px;height:34px}
+.hostbar .apron svg{width:27px;height:27px}
+.sw{position:relative;width:52px;height:31px;border-radius:999px;background:var(--sep-2);flex:none;transition:background .2s var(--ease)}
+.sw::after{content:"";position:absolute;top:3px;inset-inline-start:3px;width:25px;height:25px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:transform .25s var(--spring)}
+.sw[aria-pressed="true"]{background:var(--accent)}
+.sw[aria-pressed="true"]::after{transform:translateX(-21px)}
+.hand{display:flex;flex-wrap:wrap;gap:6px}
+.hand .chip.armed{box-shadow:0 0 0 2px var(--accent);color:var(--accent)}
 .me-tag{font-size:11.5px;font-weight:700;padding:1px 7px;border-radius:6px;background:var(--accent-soft);color:var(--accent);margin-inline-start:6px;vertical-align:2px}
 
 /* the buy-in counter is drawn as a poker chip: dashed edge, solid face */
@@ -951,9 +967,10 @@ function fail(e){
   else if (e && e.code === 'closed') toast('הערב כבר נסגר, אי אפשר להסיר');
   else if (e && e.code === 'cancelled') toast('הערב נסגר בלי חישוב, ואי אפשר לשנות אותו');
   else if (e && e.code === 'locked') toast(lockedLine());
-  else if (e && e.code === 'not_host') toast('רק המארח נועל ופותח את הערב');
+  else if (e && e.code === 'not_host') toast(`רק ה${HOST_WORD} נועל את הכניסות ומעביר את התפקיד`);
   else if (e && e.code === 'no_host') toast('לערב הזה אין מארח, אז אי אפשר לנעול אותו');
-  else if (e && e.code === 'host_seat') toast('הערב נעול, והכיסא של המארח נשאר שלו. מארח בטלפון חדש? לבקש מעולמה קישור');
+  else if (e && e.code === 'host_absent') toast('אפשר להעביר רק למי שכבר בחר את השם שלו בטלפון');
+  else if (e && e.code === 'host_seat') toast(`הערב נעול, והכיסא של ה${HOST_WORD} נשאר שלו. ${HOST_WORD} בטלפון חדש? לבקש מעולמה קישור`);
   else toast('השינוי לא נשמר. נסו שוב');
 }
 const W = p => p.catch(fail);
@@ -992,7 +1009,7 @@ const hostOf = () => (S.game?.host && S.players[S.game.host] ? S.game.host : nul
 const amHost = () => { const h = hostOf(); return !!h && myId() === h && (isLocal || (!!DEVH && S.players[h].held === DEVH)); };
 const canBuy = () => !isLocked() || amHost();
 const canCash = pid => !isLocked() || amHost() || pid === myId();
-const lockedLine = () => `הערב נעול. רק ${hostOf() ? nameOf(hostOf()) : 'המארח'} מוסיף ומוריד כניסות`;
+const lockedLine = () => `הערב נעול. רק ${hostOf() ? nameOf(hostOf()) : 'ה' + HOST_WORD} מוסיף ומוריד כניסות`;
 function addBuyin(pid, n, via, name){
   if (!canBuy()) { toast(lockedLine()); return; }
   const p = S.players[pid] || (name && { name }); if (!p) return;
@@ -1030,7 +1047,7 @@ function undoBuyin(pid, via){
 }
 function setCash(pid, chips, via){
   const p = S.players[pid]; if (!p) return;
-  if (!canCash(pid)) { toast(`הערב נעול. כל אחד רושם רק את הז'יטונים שלו, או ${hostOf() ? nameOf(hostOf()) : 'המארח'}`); schedule(); return; }
+  if (!canCash(pid)) { toast(`הערב נעול. כל אחד רושם רק את הז'יטונים שלו, או ${hostOf() ? nameOf(hostOf()) : 'ה' + HOST_WORD}`); schedule(); return; }
   if (chips == null) { W(db.doc(gp('cashouts/' + pid)).delete()); return; }
   W(db.doc(gp('cashouts/' + pid)).set({ chips, at: Date.now(), via }));
   logIt(`${p.name}: נשארו ${fmtChips(chips)} ז'יטונים`, via);
@@ -1268,7 +1285,7 @@ function feltTable(D, me){
     const x = (50 + 50 * Math.cos(a)).toFixed(1), y = (50 + 50 * Math.sin(a)).toFixed(1), d = (0.8 + 0.2 * (1 + Math.sin(a)) / 2).toFixed(2);
     const b = D.bi[p.id] || 0, was = prev['t' + p.id], grew = was !== undefined && b > was; prev['t' + p.id] = b;
     seats += '<div class="seat' + (p.id === me ? ' me' : '') + (b ? '' : ' out') + (grew ? ' bump' : '') + '" style="left:' + x + '%;top:' + y + '%;--d:' + d + '">'
-      + '<span class="av">' + esc(initial(p.name)) + (b ? '<span class="cnt num">' + fmtN(b) + '</span>' : '') + '</span><span class="snm">' + esc(p.name) + '</span></div>';
+      + '<span class="av">' + esc(initial(p.name)) + (b ? '<span class="cnt num">' + fmtN(b) + '</span>' : '') + (p.id === hostOf() ? apronBadge() : '') + '</span><span class="snm">' + esc(p.name) + '</span></div>';
     if (grew) flies += '<i class="fly" style="left:' + x + '%;top:' + y + '%"></i>';
   });
   return '<div class="tablewrap"><div class="felt">'
@@ -1301,6 +1318,7 @@ function renderNight(D){
           <b class="num">${n ? fmtAg(Math.round(n * D.price)) : 'עוד לא נכנסת'}</b>
           <span class="num">${n ? buyWord(n) : 'לוחצים כשנכנסים'}${net != null ? ` · <span class="net ${net > 0 ? 'pos' : net < 0 ? 'neg' : ''}">${fmtNet(net)}</span>` : ''}</span></div>
       </div>
+      ${!D.closed && amHost() ? hostBar() : ''}
       ${D.closed ? '' : !canBuy() ? `<div class="lockbar">${LOCK_SVG}<span>${esc(lockedLine())}</span></div>` : `<div class="acts">
         <button class="btn primary" type="button" data-my="buy">+ כניסה</button>
         <button class="btn ghost" type="button" data-my="half" aria-label="חצי כניסה">⁦+½⁩</button>
@@ -1325,7 +1343,7 @@ function renderNight(D){
     const c = S.cashouts[p.id]?.chips;
     return `<div class="row${changed ? ' flash' : ''}" data-pid="${p.id}">
       <div class="pchip num${n ? '' : ' zero'}${changed ? ' bump' : ''}" aria-hidden="true">${fmtN(n)}</div>
-      <div class="row-txt"><div class="row-title">${esc(p.name)}${p.id === me ? '<span class="me-tag">אני</span>' : ''}${p.id === hostOf() ? '<span class="host-tag">מארח</span>' : ''}</div>
+      <div class="row-txt"><div class="row-title">${esc(p.name)}${p.id === me ? '<span class="me-tag">אני</span>' : ''}${p.id === hostOf() ? '<span class="host-tag">' + HOST_WORD + '</span>' : ''}</div>
         <div class="row-sub num">${n ? `${fmtAg(Math.round(n * D.price))}${c != null ? ` · נשארו ${fmtChips(c)}` : ''}` : 'בלי כניסות עדיין'}</div></div>
       ${D.closed ? '' : `<div class="step">
         ${seatFree(p.id) ? `<button class="sbtn del" data-rm="${p.id}" aria-label="הסרת ${esc(p.name)} מהשולחן">×</button>` : ''}
@@ -1606,18 +1624,32 @@ function renderSettings(D){
       <div class="btns"><a class="btn primary small" href="https://wa.me/?text=${encodeURIComponent(inviteText(D))}" target="_blank" rel="noopener">שליחה בוואטסאפ</a><button class="btn ghost small" type="button" data-copylink>העתקת הקישור</button></div></div>
     <div class="group"><div class="row plain"><div class="row-txt setme">${me ? '<span class="av">' + esc(initial(nameOf(me))) + '</span>' : ''}<div><div class="row-title">${me ? esc(nameOf(me)) : 'עוד לא נבחר שם'}</div><div class="row-sub">מה שנרשם מהטלפון הזה נרשם על השם הזה</div></div></div>
       <button class="btn ghost small" type="button" id="switchMe">להחליף</button></div></div>
-    ${lockGroup()}
     <div id="newBox" style="display:grid;gap:8px"><button class="btn ghost wide" type="button" id="newAsk">פתיחת ערב חדש</button></div>`;
 }
-/* The lock is the host's to turn; everybody else sees whether it is on. */
-function lockGroup(){
-  const h = hostOf(); if (!h) return '';
-  const on = isLocked(), mine = amHost();
-  const sub = on ? `רק ${esc(nameOf(h))} מוסיף ומוריד כניסות ורושם ז'יטונים של אחרים. כל אחד עדיין רושם את הז'יטונים שלו, משנה את השם שלו ומוסיף אוכל.`
-    : mine ? 'כשנעול, רק את/ה מוסיף ומוריד כניסות ורושם ז\'יטונים של אחרים.' : `${esc(nameOf(h))} יכול לנעול את הכניסות.`;
-  return `<div class="group lockrow"><div class="row plain"><div class="row-txt"><div class="row-title">${LOCK_SVG}${on ? 'הערב נעול' : 'נעילת כניסות'}${mine ? '' : `<span class="host-tag">מארח: ${esc(nameOf(h))}</span>`}</div><div class="row-sub">${sub}</div></div>
-    ${mine ? `<button class="btn ${on ? 'ghost' : 'soft'} small" type="button" id="lockBtn">${on ? 'לפתוח' : 'לנעול'}</button>` : ''}</div></div>`;
+/* The host's own bar on the main page: the lock, and handing the role on.
+   Everybody else sees only what it means for them (the lockbar). */
+function hostBar(){
+  const on = isLocked(), me = myId();
+  let hand = '';
+  if (prev.handOpen) {
+    // only a seat somebody sits in: the server refuses the rest (host_absent)
+    const xs = Object.entries(S.players).filter(([id, p]) => id !== me && (isLocal || p.held || p.linked)).sort((a, b) => a[1].order - b[1].order);
+    hand = xs.length ? `<div class="hand">${xs.map(([id, p]) => `<button type="button" class="chip" data-hand="${id}">${esc(p.name)}</button>`).join('')}</div>`
+      : `<span class="row-sub">אפשר להעביר רק למי שכבר בחר את השם שלו בטלפון.</span>`;
+  }
+  return `<div class="hostbar">
+    <div class="hb-top">${apronBadge()}
+      <div class="hb-txt"><b>${on ? 'הכניסות נעולות' : 'הכניסות פתוחות'}</b><span>${on ? 'רק את/ה מוסיף ומוריד כניסות' : 'כל אחד רושם כניסות'}</span></div>
+      <button class="sw" type="button" id="lockBtn" aria-pressed="${on}" aria-label="נעילת כניסות"></button></div>
+    <button type="button" class="linkish" id="handAsk" style="justify-self:start">${prev.handOpen ? 'ביטול' : `להעביר את תפקיד ה${HOST_WORD} למישהו אחר`}</button>
+    ${hand}
+  </div>`;
 }
+/* What the role is called: one word, so changing it is one line. */
+const HOST_WORD = 'מארח';
+/* an old-fashioned maid's apron: bib, straps, a bow at the waist, a frilled hem */
+const APRON_SVG = '<svg viewBox="0 0 32 32" fill="#fff" stroke="#0E1F1E" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true"><path d="M11.5 4.5C12 1.5 20 1.5 20.5 4.5" fill="none"/><path d="M7 14.2C4.5 14.6 3 16.5 2.5 19M25 14.2c2.5.4 4 2.3 4.5 4.8" fill="none"/><path d="M10.3 4.5c.9-.9 1.8.9 2.7 0s1.8.9 2.7 0 1.8.9 2.7 0 1.8.9 2.7 0l-.6 8.3H10.9z"/><path d="M8 14.5h16l3 9.5H5z"/><path d="M4 24a2.4 2.4 0 0 0 4.8 0a2.4 2.4 0 0 0 4.8 0a2.4 2.4 0 0 0 4.8 0a2.4 2.4 0 0 0 4.8 0a2.4 2.4 0 0 0 4.8 0z"/><path d="M13 17h6v3a3 3 0 0 1-6 0z" fill="none"/><rect x="7" y="12.4" width="18" height="2.4" rx=".6" fill="#0E1F1E"/></svg>';
+const apronBadge = () => '<span class="apron" title="' + HOST_WORD + '">' + APRON_SVG + '</span>';
 const LOCK_SVG = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
 
 /* what one chip is worth, said the way people say it at the table */
@@ -1660,7 +1692,7 @@ function seatPicker(D){
     const a = (90 + i * 360 / n) * Math.PI / 180;
     const x = (50 + 50 * Math.cos(a)).toFixed(1), y = (50 + 50 * Math.sin(a)).toFixed(1), d = (0.8 + 0.2 * (1 + Math.sin(a)) / 2).toFixed(2);
     const h = heldElsewhere(p), host = p.id === hostOf();
-    return '<button type="button" class="seat' + (h ? ' held' : '') + (host ? ' host' : '') + '" data-pick="' + p.id + '"' + (h ? ' data-held="1"' : '') + (host ? ' data-host="1"' : '') + ' style="left:' + x + '%;top:' + y + '%;--d:' + d + ';--i:' + i + '"><span class="av">' + esc(initial(p.name)) + '</span><span class="snm">' + esc(p.name) + '</span></button>';
+    return '<button type="button" class="seat' + (h ? ' held' : '') + (host ? ' host' : '') + '" data-pick="' + p.id + '"' + (h ? ' data-held="1"' : '') + (host ? ' data-host="1"' : '') + ' style="left:' + x + '%;top:' + y + '%;--d:' + d + ';--i:' + i + '"><span class="av">' + esc(initial(p.name)) + (host ? apronBadge() : '') + '</span><span class="snm">' + esc(p.name) + '</span></button>';
   }).join('');
   return '<div class="tablewrap wtable"><div class="felt"><div class="wname">איפה יושבים?</div>' + seats + '</div></div>';
 }
@@ -1687,7 +1719,7 @@ function renderWelcome(D){
     <svg class="mark" viewBox="0 0 120 120" aria-hidden="true"><use href="#logo"/></svg>
     <h1>${esc(D.g.name)}</h1>
     <p>אני רושמת את הערב: כניסות, אוכל, ובסוף מי מעביר למי. ${D.players.length && D.players.length <= 9 ? 'לוחצים על הכיסא שלך.' : 'מה השם שלך?'}</p>
-    ${D.players.length && D.players.length <= 9 ? seatPicker(D) : `<div class="chips">${D.players.map(p => `<button type="button" class="chip${heldElsewhere(p) ? ' held' : ''}" data-pick="${p.id}"${heldElsewhere(p) ? ' data-held="1"' : ''}${p.id === hostOf() ? ' data-host="1"' : ''}>${esc(p.name)}${p.id === hostOf() ? ' · מארח' : ''}</button>`).join('')}</div>`}
+    ${D.players.length && D.players.length <= 9 ? seatPicker(D) : `<div class="chips">${D.players.map(p => `<button type="button" class="chip${heldElsewhere(p) ? ' held' : ''}" data-pick="${p.id}"${heldElsewhere(p) ? ' data-held="1"' : ''}${p.id === hostOf() ? ' data-host="1"' : ''}>${esc(p.name)}${p.id === hostOf() ? ' · ' + HOST_WORD : ''}</button>`).join('')}</div>`}
     <form id="wNew"><input id="wNewIn" placeholder="אני לא ברשימה, השם שלי…" aria-label="השם שלי"><button class="btn primary small" type="submit">זה אני</button></form>
     <button type="button" class="linkish" id="wSkip">רק להסתכל</button>
   </div>`;
@@ -1726,7 +1758,7 @@ document.addEventListener('click', e => {
       t.classList.add('armed');
       const nm = S.players[t.dataset.pick]?.name || '';
       toast(isLocked() && t.dataset.held ? `הערב נעול, והכיסא של ${nm} נשאר שלו`
-        : `${nm} הוא המארח של הערב. מי שיושב בכיסא הזה יכול לנעול את הכניסות. אם זה באמת את/ה, לוחצים שוב`);
+        : `${nm} ה${HOST_WORD} של הערב. מי שיושב בכיסא הזה יכול לנעול את הכניסות. אם זה באמת את/ה, לוחצים שוב`);
       setTimeout(() => { if (t.isConnected) t.classList.remove('armed'); }, 8000);
       return;
     }
@@ -1770,12 +1802,25 @@ document.addEventListener('click', e => {
   if (t.id === 'chatBtn') { openSheet('#chatSheet'); scrollChat(); return; }
   if (t.id === 'setBtn') { openSheet('#setSheet'); return; }
   if (t.hasAttribute('data-close')) { closeSheets(); return; }
-  if (t.id === 'lockBtn') { setGame({ locked: !isLocked() }); return; }
+  if (t.id === 'lockBtn') { const on = !isLocked(); setGame({ locked: on }); toast(on ? 'נעול. רק את/ה מוסיף ומוריד כניסות' : 'פתוח. כל אחד רושם כניסות'); return; }
+  if (t.id === 'handAsk') { prev.handOpen = !prev.handOpen; schedule(); return; }
+  if (t.dataset.hand) {
+    // two taps, like every other thing that cannot be taken back from here
+    const nm = nameOf(t.dataset.hand);
+    if (!t.classList.contains('armed')) {
+      t.classList.add('armed'); t.textContent = `להעביר ל${nm}?`;
+      setTimeout(() => { if (t.isConnected) { t.classList.remove('armed'); t.textContent = nm; } }, 4000);
+      return;
+    }
+    prev.handOpen = false;
+    db.doc('games/' + S.gid).update({ host: t.dataset.hand }).then(() => toast(`${nm} ${HOST_WORD} עכשיו`), fail);
+    return;
+  }
   if ((t.id === 'switchMe' || t.id === 'pickMe') && isLocked() && amHost()) { toast('קודם פותחים את הנעילה, אחרת אף אחד לא יוכל לנהל את הכניסות'); return; }
   if (t.id === 'switchMe' || t.id === 'pickMe') { releaseSeat(); ls.set('pk-me-' + S.gid, ''); memMe = null; ls.set('pk-skip-' + S.gid, ''); prev.pickedNow = false; closeSheets(); schedule(); return; }
   if (t.id === 'newAsk') {
     const me = myId();
-    $('#newBox').innerHTML = `<p class="row-sub">הערב הזה יישאר שמור. לפתוח ערב חדש עם אותו מחיר ואותם ז'יטונים?${me ? ` <b>${esc(nameOf(me))} יהיה המארח של הערב החדש</b>, ויוכל לנעול את הכניסות.` : ' לערב החדש לא יהיה מארח, כי לא נבחר שם בטלפון הזה.'}</p>
+    $('#newBox').innerHTML = `<p class="row-sub">הערב הזה יישאר שמור. לפתוח ערב חדש עם אותו מחיר ואותם ז'יטונים?${me ? ` <b>${esc(nameOf(me))} יהיה ה${HOST_WORD} של הערב החדש</b>, ויוכל לנעול את הכניסות.` : ` לערב החדש לא יהיה ${HOST_WORD}, כי לא נבחר שם בטלפון הזה.`}</p>
       <div class="btns"><button class="btn primary small" type="button" id="newYes">פתיחה</button><button class="btn ghost small" type="button" id="newNo">ביטול</button></div>`;
     return;
   }
@@ -1985,7 +2030,7 @@ async function setMe(pid, name){
   const nm = (S.players[pid] || { name }).name;
   try { await holdSeat(pid, chatTake === pid); }
   catch (e) {
-    if (e && e.code === 'host_seat') { reply('הערב נעול, והכיסא של המארח נשאר שלו.'); return; }
+    if (e && e.code === 'host_seat') { reply(`הערב נעול, והכיסא של ה${HOST_WORD} נשאר שלו.`); return; }
     if (e && e.code === 'held') { chatTake = pid; reply(`${nm} כבר נבחר בטלפון אחר. אם זה באמת השם שלך, כתבו שוב "אני ${nm}".`); return; }
   }
   chatTake = null; holdTried = pid;
