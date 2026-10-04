@@ -158,7 +158,11 @@ html.is-dark #themeBtn .moon{opacity:0;transform:rotate(90deg) scale(.6)}
 .seat.host .av{box-shadow:0 0 0 3px var(--surface),0 0 0 6px var(--gold-arc)}
 .seat.me.host .av{box-shadow:0 0 0 3px var(--surface),0 0 0 6px var(--gold-arc),0 0 0 8px var(--accent)}
 .hostbar{display:grid;gap:8px;padding:12px 14px;border-radius:14px;background:var(--fill)}
-.hostbar .hb-q{font-size:13px;font-weight:600;color:var(--text-2)}
+.hostbar .hb-q{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:13px;font-weight:600;color:var(--text-2);text-align:start;width:100%}
+.hostbar .hb-q b{color:var(--accent);font-weight:700;margin-inline-start:4px}
+.hostbar .chev{flex:none;transform:rotate(180deg);transition:transform .25s var(--spring)}
+.hostbar.folded{padding:10px 14px}
+.hostbar.folded .chev{transform:none}
 .hostbar .hint{font-size:13px;color:var(--text-2)}
 .hostbar .seg{display:flex;background:var(--surface);border-radius:12px;padding:3px;gap:3px}
 .hostbar .seg button{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:9px 6px;border-radius:10px;font-size:14px;font-weight:600;color:var(--text-2);transition:background .2s var(--ease),color .2s var(--ease)}
@@ -1632,8 +1636,12 @@ function hostBar(){
     hand = xs.length ? `<div class="hand">${xs.map(([id, p]) => `<button type="button" class="chip" data-hand="${id}">${esc(p.name)}</button>`).join('')}</div>`
       : `<span class="row-sub">אפשר להעביר רק למי שכבר בחר את השם שלו בטלפון.</span>`;
   }
+  // folds away once the manager has set it; open until they fold it, remembered per night on this phone
+  const folded = ls.get('pk-hb-' + S.gid) === '1';
+  const head = `<button type="button" class="hb-q" id="hbFold" aria-expanded="${!folded}"><span>מי רושם כניסות?${folded ? ` <b>${on ? 'רק אני' : 'פתוח לכולם'}</b>` : ''}</span>${CHEV_SVG}</button>`;
+  if (folded) return `<div class="hostbar folded">${head}</div>`;
   return `<div class="hostbar">
-    <span class="hb-q">מי רושם כניסות?</span>
+    ${head}
     <div class="seg" role="group" aria-label="מי רושם כניסות">
       <button type="button" data-lock="0" aria-pressed="${!on}">${UNLOCK_SVG}פתוח לכולם</button>
       <button type="button" data-lock="1" aria-pressed="${on}">${LOCK_SVG}רק אני</button>
@@ -1645,6 +1653,7 @@ function hostBar(){
 }
 /* What the role is called: one word, so changing it is one line. */
 const HOST_WORD = 'מנהל';
+const CHEV_SVG = '<svg class="chev" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
 const UNLOCK_SVG = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.6-1.8"/></svg>';
 const LOCK_SVG = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
 
@@ -1799,6 +1808,7 @@ document.addEventListener('click', e => {
   if (t.id === 'setBtn') { openSheet('#setSheet'); return; }
   if (t.hasAttribute('data-close')) { closeSheets(); return; }
   if (t.dataset.lock) { const on = t.dataset.lock === '1'; if (on === isLocked()) return; setGame({ locked: on }); toast(on ? 'נעול. רק את/ה מוסיף ומוריד כניסות' : 'פתוח. כל אחד רושם כניסות'); return; }
+  if (t.id === 'hbFold') { ls.set('pk-hb-' + S.gid, t.getAttribute('aria-expanded') === 'true' ? '1' : ''); prev.handOpen = false; schedule(); return; }
   if (t.id === 'handAsk') { prev.handOpen = !prev.handOpen; schedule(); return; }
   if (t.dataset.hand) {
     // two taps, like every other thing that cannot be taken back from here
