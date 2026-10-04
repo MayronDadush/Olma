@@ -415,9 +415,10 @@ function decide(facts) {
   // The invite a host forwards (game-summary.INVITE_KIND) is queued by code
   // in the same moment as the reply to their own message — the one that came
   // through `before_dispatch`, which opens no turn and stamps no wokeAt — so
-  // its own creation is the evidence they are right there.
+  // its own creation is the evidence they are right there. The same for the
+  // host's own message when the model opened the night (HOST_KIND).
   const createdMs = row.created_at ? new Date(row.created_at).getTime() : 0;
-  const inviteGrace = row.kind === gameSummary.INVITE_KIND
+  const inviteGrace = gameSummary.HOST_KINDS.has(row.kind)
     && createdMs > 0 && (now.getTime() - createdMs) < CONVERSATION_GRACE_MS;
   const gameGrace = inviteGrace || (row.kind === gameSummary.KIND
     && wokeAtMs > 0 && (now.getTime() - wokeAtMs) < CONVERSATION_GRACE_MS);
