@@ -165,7 +165,30 @@ function buyinsText(n, lang) {
 
 const fmtNumber = (v) => Number(v).toLocaleString('en-US', { maximumFractionDigits: 2 });
 
+// The host's two messages once a night opens, whichever door opened it — the
+// shortcut ("ערב משחק חדש", then the price) or the model's own
+// start_game_night: `text` is their personal link, in their language, and
+// `invite` the separate message they forward, with only the night's /g/<code>
+// (gamesd answers it with a wa.me link holding "משחק <code>"). On 2026-10-03
+// Miron asked in his own words, the model opened the night, and he got one
+// message carrying the shared page — the thing the two messages replaced.
+function hostMessages(night, url, { lang = 'he', overrides } = {}) {
+  const templates = require('./message-templates');
+  const vars = { night: night.name, price: fmtNumber(night.price), chips: fmtNumber(night.chips), code: night.code };
+  const page = String(url).split('#')[0];
+  const inv = { ...vars, url: page, join: `${new URL(page).origin}/g/${night.code}` };
+  const host = { he: templates.render('game_opened', { ...vars, url }, overrides), en: templates.render('game_opened_en', { ...vars, url }, overrides) };
+  return {
+    text: lang === 'en' ? host.en : host.he,
+    host: { code: night.code, texts: host },
+    invite: {
+      code: night.code,
+      texts: { he: templates.render('game_invite', inv, overrides), en: templates.render('game_invite_en', inv, overrides) },
+    },
+  };
+}
+
 module.exports = {
   OPEN_PHRASES, GAME_WORDS, CODE_RE,
-  matchOpenPhrase, findCode, parseSetup, parseName, namesFor, withSurname, buyinsText, fmtNumber,
+  matchOpenPhrase, findCode, parseSetup, parseName, namesFor, withSurname, buyinsText, fmtNumber, hostMessages,
 };
