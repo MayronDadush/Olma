@@ -14,6 +14,8 @@ const flags = require('../domain/flags');
 const quietFacts = require('../domain/quiet-facts');
 const preferences = require('../domain/preferences');
 const { minutesInTz, parseHHMM } = require('../outbox/gate');
+const digestDomain = require('../domain/digest');
+const { coveredBy } = require('../domain/turn');
 
 // ---- reminders --------------------------------------------------------------
 // A reminder gets up to three rungs (domain/reminders.dueForSending owns which
@@ -275,6 +277,61 @@ async function sweepReminders(client, nowIso) {
   return out;
 }
 
+// ---- once a day ---------------------------------------------------------------
+// The owner's hard cap, for Saar first (2026-10-03): a person on
+// `daily_once_phones` hears ONE message a day from Olma that she started, at
+// DAILY_ONCE_AT their time, carrying everything still open — and nothing at
+// all when nothing is. The gate holds everything else she decided to say as
+// `daily_once` (outbox/gate.js), and this message is what folds it in. Their
+// own digest_times are ignored: two digests a day is not once a day.
+const DAILY_ONCE_AT = '20:00';
+
+// Whether today's evening message should be written at all. Not when one is
+// still waiting (a digest the quiet day held on Friday evening goes out at
+// havdalah, and a second at 20:00 that Saturday would be the same evening
+// twice), not when one REACHED them inside the last 20 hours, and not when
+// there is nothing to say. "Open" is read literally, as the owner said it:
+// any open task, an event today, a coordination waiting on them or on
+// somebody else, one that just ended, a request from another person, a
+// nudge handed to the digest, or anything the gate held for this message.
+async function dailyOnceIsDue(client, u, now) {
+  const { rows: [recent] } = await client.query(
+    `SELECT count(*)::int AS n FROM outbox
+      WHERE user_id = $1 AND kind = 'digest'
+        AND (sent_at IS NULL
+             OR (hold_reason IS NULL AND sent_at > $2::timestamptz - interval '20 hours'))`,
+    [u.id, now]
+  );
+  if (recent.n > 0) return false;
+  // A held row about a coordination that has since HAPPENED is news about
+  // nothing; the worker would have dropped it as `meeting_over`, but it never
+  // looks at a row held for this message, so the same drop is made here.
+  await client.query(
+    `UPDATE outbox o SET hold_reason = 'meeting_over', sent_at = now()
+       FROM meetings m
+      WHERE o.user_id = $1 AND o.sent_at IS NULL AND o.hold_reason = 'daily_once'
+        AND o.kind LIKE 'meeting\\_%'
+        AND m.id::text = o.payload->>'meetingId'
+        AND m.status IN ('confirmed', 'cancelled') AND m.confirmed_start_at IS NOT NULL
+        AND m.confirmed_start_at
+            + CASE WHEN m.confirmed_all_day OR m.confirmed_daypart IS NOT NULL
+                   THEN interval '1 day' ELSE interval '0' END <= $2`,
+    [u.id, now]
+  );
+  const { rows: [held] } = await client.query(
+    `SELECT count(*)::int AS n FROM outbox
+      WHERE user_id = $1 AND sent_at IS NULL AND hold_reason IN ('budget', 'daily_once')`,
+    [u.id]
+  );
+  if (held.n > 0) return true;
+  const res = await digestDomain.assemble(client, u.id, 'summary');
+  if (!res.ok) return false;
+  const { counts, crossUser, nudges } = res.data;
+  return counts.openTasks > 0 || counts.dueOrOverdue > 0 || counts.eventsToday > 0
+    || Object.values(crossUser).some((list) => list.length > 0)
+    || (nudges || []).length > 0;
+}
+
 // ---- digests ----------------------------------------------------------------
 // Fires when a user's local HH:MM matches one of their digest_times (±2min
 // tolerance so a slow tick can't skip a slot). Budget-held rows fold in here.
@@ -284,14 +341,20 @@ async function sweepDigests(client, now = new Date()) {
   // carries sent_at too (that is how cancelling stops its producer), and
   // treating one as a digest the person ignored would silence the next
   // morning over a message they never saw.
+  // Somebody on `daily_once_phones` gets ONE evening message instead,
+  // whatever digest_times says, so they are visited even with none set.
+  const dailyOnceFlag = await flags.getFlag(client, 'daily_once_phones');
+  const anyDailyOnce = String(dailyOnceFlag == null ? '' : dailyOnceFlag).trim() !== '';
   const { rows } = await client.query(
-    `SELECT u.id, u.digest_times, u.digest_scope, u.timezone, u.last_inbound_at,
+    `SELECT u.id, u.phone, u.digest_times, u.digest_scope, u.timezone, u.last_inbound_at,
             (SELECT max(o.sent_at) FROM outbox o
               WHERE o.user_id = u.id AND o.kind = 'digest'
                 AND o.sent_at IS NOT NULL AND o.hold_reason IS NULL) AS last_digest_at
        FROM users u
-      WHERE u.status = 'active' AND u.onboarded_at IS NOT NULL AND u.digest_times IS NOT NULL
-        AND u.paused_at IS NULL AND NOT u.is_eval`
+      WHERE u.status = 'active' AND u.onboarded_at IS NOT NULL
+        AND (u.digest_times IS NOT NULL OR $1::boolean)
+        AND u.paused_at IS NULL AND NOT u.is_eval`,
+    [anyDailyOnce]
   );
   // `digest_card_min_items` used to be read here and stamped onto every row,
   // so that an in-flight digest could not change threshold underneath itself.
@@ -305,13 +368,17 @@ async function sweepDigests(client, now = new Date()) {
   // rediscovered.
   const out = [];
   for (const u of rows) {
+    const dailyOnce = coveredBy(dailyOnceFlag, u.phone);
+    if (!dailyOnce && !u.digest_times) continue;
     const localMin = minutesInTz(u.timezone, now);
-    const times = String(u.digest_times).split(',').map((s) => s.trim()).filter(Boolean);
+    const times = dailyOnce ? [DAILY_ONCE_AT]
+      : String(u.digest_times).split(',').map((s) => s.trim()).filter(Boolean);
     const slot = times.find((t) => {
       const d = localMin - parseHHMM(t);
       return d >= 0 && d <= 2;
     });
     if (!slot) continue;
+    if (dailyOnce && !(await dailyOnceIsDue(client, u, now))) continue;
     const day = now.toISOString().slice(0, 10);
     // Enqueue FIRST, fold second. collectHeld marks the rows it returns as
     // sent, so collecting before the insert threw them away whenever the
@@ -337,7 +404,7 @@ async function sweepDigests(client, now = new Date()) {
       idempotencyKey: `digest:${u.id}:${day}:${slot}`,
     });
     if (!res.data.enqueued) continue;
-    const folded = await collectHeld(client, u.id, ['budget']);
+    const folded = await collectHeld(client, u.id, ['budget', 'daily_once']);
     if (folded.length) {
       await client.query(
         `UPDATE outbox SET payload = jsonb_set(payload, '{folded}', $2::jsonb) WHERE id = $1`,
@@ -639,7 +706,7 @@ async function sweepFinishedTasks(client, nowIso) {
 }
 
 module.exports = {
-  sweepReminders, sweepDigests, sweepUnblocks, sweepStaleMeetings, sweepSettlingMeetings,
+  sweepReminders, sweepDigests, DAILY_ONCE_AT, sweepUnblocks, sweepStaleMeetings, sweepSettlingMeetings,
   sweepSilentPausedMembers,
   sweepRoomLeavers,
   sweepMediaJobs, sweepNameConfirm, sweepFinishedTasks,
