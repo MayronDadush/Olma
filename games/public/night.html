@@ -154,21 +154,16 @@ html.is-dark #themeBtn .moon{opacity:0;transform:rotate(90deg) scale(.6)}
 .lockrow .row-title{display:flex;align-items:center;gap:6px}
 .lockbar{display:flex;align-items:center;gap:8px;padding:10px 14px;font-size:13px;color:var(--text-2)}
 .lockbar svg{width:16px;height:16px;flex:none}
-/* the host's apron, on their seat at the table */
-.apron{position:absolute;bottom:-7px;inset-inline-start:-9px;width:24px;height:24px;border-radius:50%;display:grid;place-items:center;
-  background:var(--gold-arc);box-shadow:0 0 0 2px var(--surface);z-index:2}
-.apron svg{width:19px;height:19px}
-.hostbar{display:grid;gap:10px;padding:12px 14px;border-radius:14px;background:var(--fill)}
-.hostbar .hb-top{display:flex;align-items:center;gap:10px}
-.hostbar .hb-txt{flex:1;min-width:0}
-.hostbar .hb-txt b{display:block;font-size:15px}
-.hostbar .hb-txt span{font-size:13px;color:var(--text-2)}
-.hostbar .apron{position:static;box-shadow:none;width:34px;height:34px}
-.hostbar .apron svg{width:27px;height:27px}
-.sw{position:relative;width:52px;height:31px;border-radius:999px;background:var(--sep-2);flex:none;transition:background .2s var(--ease)}
-.sw::after{content:"";position:absolute;top:3px;inset-inline-start:3px;width:25px;height:25px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:transform .25s var(--spring)}
-.sw[aria-pressed="true"]{background:var(--accent)}
-.sw[aria-pressed="true"]::after{transform:translateX(-21px)}
+/* the manager: a gold ring around their seat, on the table and in the seat picker */
+.seat.host .av{box-shadow:0 0 0 3px var(--surface),0 0 0 6px var(--gold-arc)}
+.seat.me.host .av{box-shadow:0 0 0 3px var(--surface),0 0 0 6px var(--gold-arc),0 0 0 8px var(--accent)}
+.hostbar{display:grid;gap:8px;padding:12px 14px;border-radius:14px;background:var(--fill)}
+.hostbar .hb-q{font-size:13px;font-weight:600;color:var(--text-2)}
+.hostbar .hint{font-size:13px;color:var(--text-2)}
+.hostbar .seg{display:flex;background:var(--surface);border-radius:12px;padding:3px;gap:3px}
+.hostbar .seg button{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:9px 6px;border-radius:10px;font-size:14px;font-weight:600;color:var(--text-2);transition:background .2s var(--ease),color .2s var(--ease)}
+.hostbar .seg button svg{width:16px;height:16px;flex:none}
+.hostbar .seg button[aria-pressed="true"]{background:var(--accent);color:var(--on-accent);box-shadow:none}
 .hand{display:flex;flex-wrap:wrap;gap:6px}
 .hand .chip.armed{box-shadow:0 0 0 2px var(--accent);color:var(--accent)}
 .me-tag{font-size:11.5px;font-weight:700;padding:1px 7px;border-radius:6px;background:var(--accent-soft);color:var(--accent);margin-inline-start:6px;vertical-align:2px}
@@ -1284,8 +1279,8 @@ function feltTable(D, me){
     const a = (90 + i * 360 / n) * Math.PI / 180;
     const x = (50 + 50 * Math.cos(a)).toFixed(1), y = (50 + 50 * Math.sin(a)).toFixed(1), d = (0.8 + 0.2 * (1 + Math.sin(a)) / 2).toFixed(2);
     const b = D.bi[p.id] || 0, was = prev['t' + p.id], grew = was !== undefined && b > was; prev['t' + p.id] = b;
-    seats += '<div class="seat' + (p.id === me ? ' me' : '') + (b ? '' : ' out') + (grew ? ' bump' : '') + '" style="left:' + x + '%;top:' + y + '%;--d:' + d + '">'
-      + '<span class="av">' + esc(initial(p.name)) + (b ? '<span class="cnt num">' + fmtN(b) + '</span>' : '') + (p.id === hostOf() ? apronBadge() : '') + '</span><span class="snm">' + esc(p.name) + '</span></div>';
+    seats += '<div class="seat' + (p.id === me ? ' me' : '') + (p.id === hostOf() ? ' host' : '') + (b ? '' : ' out') + (grew ? ' bump' : '') + '" style="left:' + x + '%;top:' + y + '%;--d:' + d + '">'
+      + '<span class="av">' + esc(initial(p.name)) + (b ? '<span class="cnt num">' + fmtN(b) + '</span>' : '') + '</span><span class="snm">' + esc(p.name) + '</span></div>';
     if (grew) flies += '<i class="fly" style="left:' + x + '%;top:' + y + '%"></i>';
   });
   return '<div class="tablewrap"><div class="felt">'
@@ -1638,18 +1633,19 @@ function hostBar(){
       : `<span class="row-sub">אפשר להעביר רק למי שכבר בחר את השם שלו בטלפון.</span>`;
   }
   return `<div class="hostbar">
-    <div class="hb-top">${apronBadge()}
-      <div class="hb-txt"><b>${on ? 'הכניסות נעולות' : 'הכניסות פתוחות'}</b><span>${on ? 'רק את/ה מוסיף ומוריד כניסות' : 'כל אחד רושם כניסות'}</span></div>
-      <button class="sw" type="button" id="lockBtn" aria-pressed="${on}" aria-label="נעילת כניסות"></button></div>
+    <span class="hb-q">מי רושם כניסות?</span>
+    <div class="seg" role="group" aria-label="מי רושם כניסות">
+      <button type="button" data-lock="0" aria-pressed="${!on}">${UNLOCK_SVG}פתוח לכולם</button>
+      <button type="button" data-lock="1" aria-pressed="${on}">${LOCK_SVG}רק אני</button>
+    </div>
+    <span class="hint">${on ? 'רק את/ה מוסיף ומוריד כניסות ורושם ז\'יטונים של אחרים' : 'כל אחד מוסיף ומוריד כניסות'}</span>
     <button type="button" class="linkish" id="handAsk" style="justify-self:start">${prev.handOpen ? 'ביטול' : `להעביר את תפקיד ה${HOST_WORD} למישהו אחר`}</button>
     ${hand}
   </div>`;
 }
 /* What the role is called: one word, so changing it is one line. */
 const HOST_WORD = 'מנהל';
-/* an old-fashioned maid's apron: bib, straps, a bow at the waist, a frilled hem */
-const APRON_SVG = '<svg viewBox="0 0 32 32" fill="#fff" stroke="#0E1F1E" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true"><path d="M11.5 4.5C12 1.5 20 1.5 20.5 4.5" fill="none"/><path d="M7 14.2C4.5 14.6 3 16.5 2.5 19M25 14.2c2.5.4 4 2.3 4.5 4.8" fill="none"/><path d="M10.3 4.5c.9-.9 1.8.9 2.7 0s1.8.9 2.7 0 1.8.9 2.7 0 1.8.9 2.7 0l-.6 8.3H10.9z"/><path d="M8 14.5h16l3 9.5H5z"/><path d="M4 24a2.4 2.4 0 0 0 4.8 0a2.4 2.4 0 0 0 4.8 0a2.4 2.4 0 0 0 4.8 0a2.4 2.4 0 0 0 4.8 0a2.4 2.4 0 0 0 4.8 0z"/><path d="M13 17h6v3a3 3 0 0 1-6 0z" fill="none"/><rect x="7" y="12.4" width="18" height="2.4" rx=".6" fill="#0E1F1E"/></svg>';
-const apronBadge = () => '<span class="apron" title="' + HOST_WORD + '">' + APRON_SVG + '</span>';
+const UNLOCK_SVG = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.6-1.8"/></svg>';
 const LOCK_SVG = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
 
 /* what one chip is worth, said the way people say it at the table */
@@ -1692,7 +1688,7 @@ function seatPicker(D){
     const a = (90 + i * 360 / n) * Math.PI / 180;
     const x = (50 + 50 * Math.cos(a)).toFixed(1), y = (50 + 50 * Math.sin(a)).toFixed(1), d = (0.8 + 0.2 * (1 + Math.sin(a)) / 2).toFixed(2);
     const h = heldElsewhere(p), host = p.id === hostOf();
-    return '<button type="button" class="seat' + (h ? ' held' : '') + (host ? ' host' : '') + '" data-pick="' + p.id + '"' + (h ? ' data-held="1"' : '') + (host ? ' data-host="1"' : '') + ' style="left:' + x + '%;top:' + y + '%;--d:' + d + ';--i:' + i + '"><span class="av">' + esc(initial(p.name)) + (host ? apronBadge() : '') + '</span><span class="snm">' + esc(p.name) + '</span></button>';
+    return '<button type="button" class="seat' + (h ? ' held' : '') + (host ? ' host' : '') + '" data-pick="' + p.id + '"' + (h ? ' data-held="1"' : '') + (host ? ' data-host="1"' : '') + ' style="left:' + x + '%;top:' + y + '%;--d:' + d + ';--i:' + i + '"><span class="av">' + esc(initial(p.name)) + '</span><span class="snm">' + esc(p.name) + '</span></button>';
   }).join('');
   return '<div class="tablewrap wtable"><div class="felt"><div class="wname">איפה יושבים?</div>' + seats + '</div></div>';
 }
@@ -1802,7 +1798,7 @@ document.addEventListener('click', e => {
   if (t.id === 'chatBtn') { openSheet('#chatSheet'); scrollChat(); return; }
   if (t.id === 'setBtn') { openSheet('#setSheet'); return; }
   if (t.hasAttribute('data-close')) { closeSheets(); return; }
-  if (t.id === 'lockBtn') { const on = !isLocked(); setGame({ locked: on }); toast(on ? 'נעול. רק את/ה מוסיף ומוריד כניסות' : 'פתוח. כל אחד רושם כניסות'); return; }
+  if (t.dataset.lock) { const on = t.dataset.lock === '1'; if (on === isLocked()) return; setGame({ locked: on }); toast(on ? 'נעול. רק את/ה מוסיף ומוריד כניסות' : 'פתוח. כל אחד רושם כניסות'); return; }
   if (t.id === 'handAsk') { prev.handOpen = !prev.handOpen; schedule(); return; }
   if (t.dataset.hand) {
     // two taps, like every other thing that cannot be taken back from here
