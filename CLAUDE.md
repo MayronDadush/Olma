@@ -164,6 +164,7 @@ Loads when you **Read** a file under `src/outbox/**`, `src/domain/message-format
 - **A private message about a coordination is one sentence of context and one question** — two options are a sentence, a game room counts heads, and the length is measured
 - **The same thing does not go out twice inside a few minutes unless the person ASKED**
 - **The delivery gate is the chokepoint and a paused user has no exceptions** — save one room-coordination invite per pause, and one per run of silence
+- **Somebody on `daily_once_phones` hears ONE message a day that Olma started, at 20:00, and none when nothing is open** — held as `daily_once`, folded by `sweepDigests`; only a reminder they asked for and an introduction pass
 - **An unstated quiet day is not "none" — it is Saturday or Sunday, and which one is a fact about the PERSON.**
 - **Quiet HOURS and a quiet DAY draw different lines, and the digest is where they differ.**
 - **For an Israeli zone, Saturday's quiet day is candle-lighting to havdalah, not midnight to midnight.**
@@ -228,7 +229,7 @@ Loads when you **Read** a file under `src/domain/reminders.js`, `src/domain/task
 - **A time taken OFF that table is never a message of its own — it rides the next thing each person hears about that coordination.**
 - **A time ADDED to it rides the same thing, as long as that thing has not gone out yet** — four messages in sixty-two seconds is what queueing beside it looks like
 - **A negotiation message WAITS a quarter of an hour behind the last one that reached that person, and everything meanwhile folds into it** — the fold already existed and `urgent` never let it run; a RESULT never waits.
-- **Opening a coordination is not a subscription to every answer in it** — a decline and an exit stop being messages of their own; the reason moves from a push to a pull.
+- **Opening a coordination is not a subscription to every answer in it** — a decline and an exit (a confirmed one too, since 2026-10-03) stop being messages of their own; the reason moves from a push to a pull.
 - **"בחוץ" to a GENERAL question about a coordination is LEAVING it, and to ONE time it is a question back** — `outOnly` in the hook, `meeting-exit.onOut` reads the last row that reached them; opted out with a 👍, or one question and nothing written
 - **A settled coordination can be REOPENED and carries on from where it stopped** — `meetings.reopenMeeting`, anybody in it, before the start; only the settled option's answers are cleared; every once-per-settle key carries the reopening (`meeting-fanout.roundOf`, `jobs/groups.idempotencyKeyFor`) or the second "סגור" is swallowed.
 - **Nobody manages a coordination** — `initiator_id` is who opened it and grants nothing: anybody still in it settles, renames, cancels (in the chat or the room) or leaves; its ending rides the next digest (`crossUser.closedMeetings`) or, in passing, whatever she says first (`digest.unheardClosedMeetings`, said once between them), never a message of its own; and leaving a confirmed one takes it off THEIR calendar only (`calendar.removeMeetingAttendee`) — the event is never deleted from under the others.

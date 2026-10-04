@@ -59,6 +59,19 @@ title means this file. Grep the title, not the filename.
   day-one step that DECLINED and fell through to an ordinary rung put the two
   side by side again — which is what the closed Google door produced the same
   night. The ladder has ONE live rung at a time.
+  **And day one has a ceiling** (owner, 2026-10-04, new people said she
+  "חופרת"): `checkin.dayOneSpent` counts what already reached them since
+  `onboarded_at` — every kind but `reminder` and `digest` — and at
+  `day_one_proactive_cap` (2; 0 = off) a day-one check-in is SILENT, never
+  handed to the ordinary ladder. `stuck_meeting` and `deadline_risk` are
+  theirs and pass. **And no day-one step goes out while their
+  `welcome_followup` is still owed** (`checkin.welcomeStillOwed`): a room or
+  game joiner's introduction waits for the next morning, and a "how did it
+  go" ahead of the introduction is the order backwards. **The country
+  question is not asked of somebody whose number already answered it**
+  (`discoveryGaps`): a prefix `lookupTimezone` calls unambiguous that agrees
+  with `users.timezone` is the answer; US, Canada, Russia, Australia, Brazil
+  and Mexico still get asked.
 
 - **Somebody who has stopped answering hears nothing Olma decided to say, and
   nothing on their record is cancelled.** The check-in ladder's one miss

@@ -318,6 +318,21 @@ title means this file. Grep the title, not the filename.
   and a silence are different rules on one column (`incidents.md`, "The room
   asked five and reached four").
 
+- **For somebody on `daily_once_phones`, everything Olma decides to say waits
+  for ONE message at 20:00 their time, and nothing goes out when nothing is
+  open** (owner, 2026-10-03, built for Saar first). `gate.decide` holds a row
+  as `daily_once` with no release time. Three things pass: the digest itself,
+  an introduction, and `askedForInWords`. Urgent rows and `PEER_KINDS` wait
+  too. A check-in is dropped. The worker's three "not on a clock" predicates
+  skip `daily_once` as they skip a budget hold, and only
+  `sweeps.sweepDigests` folds it in. That happens at `DAILY_ONCE_AT`,
+  regardless of `digest_times`, and only when `dailyOnceIsDue` finds something
+  open and no digest that reached them inside 20 hours. A held `meeting_*` row
+  whose meeting is over is dropped first, because the worker never re-decides
+  a row held for the evening. **Their replies are not this rule's**: a turn
+  they opened is answered as always (`incidents.md`, "Once a day, said and not
+  kept").
+
 - **An unstated quiet day is not "none" — it is Saturday or Sunday, and which
   one is a fact about the PERSON.** `domain/holidays.calendarFor` reads a
   `jewish` calendar off a `he` locale OR an Israeli zone, `christian`
