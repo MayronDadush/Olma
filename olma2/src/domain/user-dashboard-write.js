@@ -24,6 +24,7 @@
 const { ok, err } = require('./results');
 const tasks = require('./tasks');
 const reminders = require('./reminders');
+const { hasOffset } = require('./datetime');
 const shares = require('./shares');
 const suggestions = require('./task-suggestions');
 const taskPins = require('./task-pins');
@@ -120,6 +121,25 @@ const GOOGLE_STOP = {
 // sharing layer is what answers whether this person may stand in for them.
 // Falls back to the person themselves, so a task that is neither theirs nor
 // shared with them is refused by the domain function exactly as before.
+// The set of moments the sheet asked for, checked before anything is
+// cancelled: one to four (the four offset chips), each with an offset, the
+// same instant once. Past moments go unless every one has passed.
+const MAX_REMINDER_MOMENTS = 4;
+function remindSet(list, now = new Date()) {
+  if (!list.length || list.length > MAX_REMINDER_MOMENTS) {
+    return { error: err('invalid', `remindAts takes 1 to ${MAX_REMINDER_MOMENTS} moments`) };
+  }
+  const seen = new Map();
+  for (const at of list) {
+    const ms = typeof at === 'string' && hasOffset(at) ? Date.parse(at) : NaN;
+    if (!Number.isFinite(ms)) return { error: err('invalid', 'every remindAts entry needs an explicit offset') };
+    if (!seen.has(ms)) seen.set(ms, at);
+  }
+  const all = [...seen.entries()].sort((a, b) => a[0] - b[0]).map(([, at]) => at);
+  const ahead = all.filter((at) => !reminders.momentIsPast(at, now));
+  return { moments: ahead.length ? ahead : all.slice(-1) };
+}
+
 async function asOwner(client, userId, taskId) {
   const acting = await shares.actingOwner(client, userId, taskId);
   return acting ? acting.ownerId : userId;
@@ -300,11 +320,30 @@ const ACTIONS = {
       await client.query('ROLLBACK TO SAVEPOINT dashboard_chase');
       return chase || err('invalid', 'no time is left to nudge before the task\'s own date');
     }
+    // Several moments at once ("בזמן" AND "10 דק׳ לפני" — owner, 2026-10-05):
+    // the sheet's offset chips are a set, and the switch is still ONE control,
+    // so the whole set replaces whatever was there. Each moment is a reminder
+    // of its own, said once (`RUNGS.explicit`); with the standing nudge on,
+    // `retireSiblingLadders` already keeps them to one ladder. A moment that
+    // has already gone ("a day before" a task tomorrow morning) is dropped
+    // rather than fired at once — unless it is all there is, which is what a
+    // single `remindAt` has always done.
+    const wanted = Array.isArray(p.remindAts) ? remindSet(p.remindAts) : null;
+    if (wanted && wanted.error) return wanted.error;
+    const moments = wanted ? wanted.moments : [p.remindAt];
+    await client.query('SAVEPOINT dashboard_reminders');
     for (const r of pending) {
       const res = await reminders.cancelReminder(client, userId, r.id);
-      if (!res.ok) return res;
+      if (!res.ok) { await client.query('ROLLBACK TO SAVEPOINT dashboard_reminders'); return res; }
     }
-    return reminders.setReminder(client, userId, p.taskId, p.remindAt, p.repeatRule ?? null);
+    const made = [];
+    for (const at of moments) {
+      const res = await reminders.setReminder(client, userId, p.taskId, at, p.repeatRule ?? null);
+      if (!res.ok) { await client.query('ROLLBACK TO SAVEPOINT dashboard_reminders'); return res; }
+      if (!wanted) return res;
+      made.push(res.data.reminder);
+    }
+    return ok({ reminder: made[0], reminders: made });
   },
 
   // ---- suggestions ---------------------------------------------------------
