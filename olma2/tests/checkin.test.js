@@ -1013,7 +1013,10 @@ test('day one: a step still held when the next comes due is superseded, not stac
     [v.id, t0]);
   await db.pool.query(`INSERT INTO tasks (owner_id, title) VALUES ($1, 'לקנות חלב')`, [v.id]);
   await withTx(db.pool, (c) => checkin.run(c, t0 + 5 * H + 60_000));
-  await db.pool.query(`UPDATE outbox SET sent_at = now(), hold_reason = NULL WHERE user_id = $1`, [v.id]);
+  // Delivered at its own moment, on the run's clock: the gap between steps is
+  // measured from here (checkin.STEP_GAP_MS).
+  await db.pool.query(`UPDATE outbox SET sent_at = to_timestamp($2/1000.0), hold_reason = NULL WHERE user_id = $1`,
+    [v.id, t0 + 5 * H + 60_000]);
   out = await withTx(db.pool, (c) => checkin.run(c, t0 + 8 * H + 60_000));
   assert.deepEqual(out.filter((r) => r.userId === v.id).map((r) => r.rung), ['onboarding_8h']);
   const { rows: theirs } = await db.pool.query(
@@ -1084,4 +1087,137 @@ test('day one: the 5h step says nothing to somebody who has given her nothing', 
   await db.pool.query(`INSERT INTO tasks (owner_id, title) VALUES ($1, 'לקנות חלב')`, [u.id]);
   const again = await withTx(db.pool, (c) => checkin.run(c, t0 + 5 * H + 120_000));
   assert.deepEqual(again.filter((r) => r.userId === u.id).map((r) => r.rung), ['onboarding_5h']);
+});
+
+// Hod, 2026-10-03: joined at 17:15 on a Saturday. The 15m step was held for
+// Shabbat and went out at 19:08 saying he had joined a quarter of an hour ago;
+// the 2h step, on its own clock, followed twelve minutes later.
+test('day one: a step held past its moment is dropped, and the next waits for the gap', async () => {
+  const H = 3600_000;
+  const MIN = 60_000;
+  const t0 = Date.now() - 4 * H;
+  const at = (ms) => new Date(t0 + ms).toISOString();
+  const u = await makeUser(db.pool, '+972615000095', { firstName: 'Hod' });
+  await db.pool.query(
+    `UPDATE users SET agent_id = 'u-' || id, onboarded_at = $2 WHERE id = $1`, [u.id, at(0)]);
+
+  let out = await withTx(db.pool, (c) => checkin.run(c, t0 + 20 * MIN));
+  assert.deepEqual(out.filter((r) => r.userId === u.id).map((r) => r.rung), ['onboarding_15m']);
+  const { rows: [first] } = await db.pool.query(
+    `SELECT id, expires_at FROM outbox WHERE user_id = $1`, [u.id]);
+  assert.ok(new Date(first.expires_at).getTime() <= t0 + 75 * MIN,
+    'released at havdalah, 113 minutes in, it is past its moment and expires');
+
+  // Had it gone out anyway (it did, under the old expiry): the 2h step, due
+  // twelve minutes later, waits out the gap from the moment it REACHED him.
+  await db.pool.query(`UPDATE outbox SET sent_at = $2 WHERE id = $1`, [first.id, at(113 * MIN)]);
+  out = await withTx(db.pool, (c) => checkin.run(c, t0 + 125 * MIN));
+  assert.deepEqual(out.filter((r) => r.userId === u.id), [], 'twelve minutes after the last step: nothing');
+  out = await withTx(db.pool, (c) => checkin.run(c, t0 + 113 * MIN + checkin.STEP_GAP_MS + MIN));
+  assert.deepEqual(out.filter((r) => r.userId === u.id).map((r) => r.rung), ['onboarding_2h']);
+
+  // Nor does a step start while they are talking; the first contact does.
+  const v = await makeUser(db.pool, '+972615000096', { firstName: 'Noa' });
+  await db.pool.query(
+    `UPDATE users SET agent_id = 'u-' || id, onboarded_at = $2, last_inbound_at = $3 WHERE id = $1`,
+    [v.id, at(0), at(10 * MIN)]);
+  out = await withTx(db.pool, (c) => checkin.run(c, t0 + 16 * MIN));
+  assert.deepEqual(out.filter((r) => r.userId === v.id).map((r) => r.rung), ['onboarding_15m'],
+    'the first contact goes although they wrote six minutes ago');
+  await db.pool.query(`UPDATE outbox SET sent_at = $2 WHERE user_id = $1`, [v.id, at(16 * MIN)]);
+  await db.pool.query(`UPDATE users SET last_inbound_at = $2 WHERE id = $1`, [v.id, at(2 * H)]);
+  out = await withTx(db.pool, (c) => checkin.run(c, t0 + 2 * H + 5 * MIN));
+  assert.deepEqual(out.filter((r) => r.userId === v.id), [], 'they wrote five minutes ago');
+  out = await withTx(db.pool, (c) => checkin.run(c, t0 + 2 * H + checkin.TALKING_MS + MIN));
+  assert.deepEqual(out.filter((r) => r.userId === v.id).map((r) => r.rung), ['onboarding_2h']);
+});
+
+// New people said she "חופרת" (2026-10-04): about four unasked messages in
+// their first day, and a room joiner had heard the room's invite and its
+// coordination before the first step came due. Two is the ceiling, and a
+// step past it is silent rather than handed to the ordinary ladder.
+test('day one stops at two unasked messages, and what they chose does not count', async () => {
+  const flags = require('../src/domain/flags');
+  const H = 3600_000;
+  const u = await makeUser(db.pool, '+972615000301', { firstName: 'Lior' });
+  const t0 = Date.now() - 3 * H;
+  await db.pool.query(
+    `UPDATE users SET onboarded_at = $2, created_at = $2, timezone = 'Asia/Jerusalem',
+            timezone_confirmed = TRUE, last_inbound_at = $2 WHERE id = $1`, [u.id, new Date(t0)]);
+  const sent = (kind, key) => db.pool.query(
+    `INSERT INTO outbox (user_id, kind, payload, idempotency_key, sent_at, created_at)
+     VALUES ($1, $2, '{}'::jsonb, $3, now(), now())`, [u.id, kind, key]);
+  const me = { id: u.id, onboarded_at: new Date(t0) };
+  const c = await db.pool.connect();
+  try {
+    // A reminder and a digest they asked for, and one message she decided to
+    // send: still under the ceiling, so the 2h step goes out.
+    await sent('reminder', `cap-r-${u.id}`);
+    await sent('digest', `cap-d-${u.id}`);
+    await sent('welcome_followup', `cap-w-${u.id}`);
+    assert.equal(await checkin.dayOneSpent(c, me), false);
+    let out = await checkin.run(c, t0 + 2 * H + 60_000);
+    assert.equal(out.find((r) => r.userId === u.id).rung, 'onboarding_2h');
+
+    // The room's invite reaches them too: now two, and the 5h step is silent.
+    await c.query(`UPDATE outbox SET sent_at = now() WHERE user_id = $1 AND kind = 'checkin'`, [u.id]);
+    await sent('room_cold_invite', `cap-i-${u.id}`);
+    await c.query(`INSERT INTO tasks (owner_id, title) VALUES ($1, 'לקנות חלב')`, [u.id]);
+    assert.equal(await checkin.dayOneSpent(c, me), true);
+    out = await checkin.run(c, t0 + 5 * H + 60_000);
+    assert.equal(out.find((r) => r.userId === u.id), undefined, 'the step is silent');
+    // ...and silent means nothing at all, not the ordinary ladder instead.
+    out = await checkin.run(c, t0 + 8 * H + 60_000);
+    assert.equal(out.find((r) => r.userId === u.id), undefined, 'no rung falls through either');
+
+    // Off, it is exactly the old ladder.
+    await flags.setFlag(c, 'day_one_proactive_cap', 0);
+    out = await checkin.run(c, t0 + 8 * H + 120_000);
+    assert.ok(out.find((r) => r.userId === u.id), 'with the cap off the slot is spent again');
+    await flags.setFlag(c, 'day_one_proactive_cap', 2);
+  } finally { c.release(); }
+});
+
+// "אני מניחה שאתה בישראל" and then "באיזו מדינה אתה נמצא?" (owner,
+// 2026-10-04): a one-clock country whose zone is still the one the dialling
+// code gave is already answered. A several-clock country still asks.
+test('the country question is not asked when the number already answered it', async () => {
+  const c = await db.pool.connect();
+  try {
+    const il = await makeUser(db.pool, '+972641000301', { firstName: 'Yael' });
+    await c.query(`UPDATE users SET timezone = 'Asia/Jerusalem', timezone_confirmed = FALSE WHERE id = $1`, [il.id]);
+    const ilGaps = await checkin.discoveryGaps(c, il.id);
+    assert.ok(!ilGaps.some((g) => g.topic === 'timezone'), 'one clock, the code\'s own zone: no question');
+
+    const us = await makeUser(db.pool, '+12125550301', { firstName: 'Sam' });
+    await c.query(`UPDATE users SET timezone = 'America/New_York', timezone_confirmed = FALSE WHERE id = $1`, [us.id]);
+    const usGaps = await checkin.discoveryGaps(c, us.id);
+    assert.equal(usGaps[0].topic, 'timezone', 'several clocks: still asked, first');
+  } finally { c.release(); }
+});
+
+// A game night's or a room's welcome follow-up waits for the morning, and
+// until it has said what she is the day-one ladder says nothing (2026-10-04:
+// 63 and 64 heard the 2h step in the middle of the game).
+test('no day-one step goes out ahead of the welcome follow-up still owed', async () => {
+  const H = 3600_000;
+  const u = await makeUser(db.pool, '+972615000302', { firstName: 'Omer' });
+  const t0 = Date.now() - 3 * H;
+  await db.pool.query(
+    `UPDATE users SET onboarded_at = $2, created_at = $2, timezone = 'Asia/Jerusalem',
+            timezone_confirmed = TRUE, last_inbound_at = $2 WHERE id = $1`, [u.id, new Date(t0)]);
+  await db.pool.query(
+    `INSERT INTO outbox (user_id, kind, payload, idempotency_key, release_after)
+     VALUES ($1, 'welcome_followup', '{"gameOpening": true}'::jsonb, $2, now() + interval '10 hours')`,
+    [u.id, `welcome_followup:${u.id}`]);
+  const c = await db.pool.connect();
+  try {
+    let out = await checkin.run(c, t0 + 2 * H + 60_000);
+    assert.equal(out.find((r) => r.userId === u.id), undefined, 'the 2h step waits behind it');
+    await c.query(`UPDATE outbox SET sent_at = now() WHERE user_id = $1 AND kind = 'welcome_followup'`, [u.id]);
+    await require('../src/domain/flags').setFlag(c, 'day_one_proactive_cap', 0);
+    out = await checkin.run(c, t0 + 2 * H + 120_000);
+    assert.equal(out.find((r) => r.userId === u.id).rung, 'onboarding_2h', 'and goes once it is said');
+    await require('../src/domain/flags').setFlag(c, 'day_one_proactive_cap', 2);
+  } finally { c.release(); }
 });

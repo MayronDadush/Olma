@@ -523,6 +523,7 @@ body[data-tab="night"] #tNight,body[data-tab="food"] #tFood,body[data-tab="settl
 /* first visit: who are you */
 .welcome{position:fixed;inset:0;z-index:100;background:var(--bg);display:grid;place-items:center;padding:24px 16px;overflow-y:auto}
 .wcard{width:100%;max-width:420px;display:grid;gap:18px;justify-items:center;text-align:center;animation:bin .5s var(--spring)}
+.wcard .btns.ask{display:grid;gap:10px;width:100%}
 .wcard .mark{width:64px;height:64px}
 .wcard h1{font-family:var(--font-display);font-size:25px;font-weight:700;text-wrap:balance}
 .wcard p{color:var(--text-2);font-size:15.5px;max-width:34ch}
@@ -1056,7 +1057,12 @@ const FOOD = Object.fromEntries(FOODS.map(([k, i, n]) => [k, { icon: i, name: n 
 const kindOf = t => /פיצ/.test(t) ? 'pizza' : /סושי/.test(t) ? 'sushi' : /בורגר|המבורג/.test(t) ? 'burger'
   : /שו?ו?ארמה|פלאפל|שיפוד|לאפה|פיתה/.test(t) ? 'shawarma' : /בירה|שתי|יין|וודקה|וויסקי|אלכוהול|קולה/.test(t) ? 'drinks' : '';
 const iconOf = f => FOOD[f.kind || kindOf(f.what || '')]?.icon || '🍽️';
-const initial = n => (String(n || '?').trim()[0] || '?').toUpperCase();
+// Two words, two letters: "מירון דדוש" is מ.ד, so two Mirons are told apart at a glance.
+const initial = n => {
+  const w = String(n || '').trim().split(/\s+/).filter(Boolean);
+  if (!w.length) return '?';
+  return w.length > 1 ? (w[0][0] + '.' + w[w.length - 1][0]).toUpperCase() : w[0][0].toUpperCase();
+};
 const payersOf = f => { const ids = Object.keys(f.paid || {}); return ids.length ? ids : [f.payer]; };
 const joinNames = ids => { const n = ids.map(nameOf); return n.length > 1 ? n.slice(0, -1).join(', ') + ' ו' + n[n.length - 1] : n[0] || ''; };
 function addFood(f, via){
@@ -1596,18 +1602,20 @@ function renderSettle(D){
     + '</div>';
 }
 
-/* The invitation. Until Olma answers join codes (stage 3, JOIN_VIA_OLMA) it is this
-   night's own link; after, it is a chat with Olma holding "משחק <code>". wa.me with no
-   number opens WhatsApp's own "send to…" picker with the text in it. */
-const JOIN_VIA_OLMA = false;
-const OLMA_WA = '972559347282';
+/* The invitation: a chat with Olma holding "משחק <code>", through the night's short
+   link /g/<code> (gamesd answers it with the wa.me redirect). It is word for word the
+   invite Olma sends the host to forward (olma2 message-templates.js, game_invite), so
+   the page and the chat hand out ONE way in, and everybody who joins is somebody Olma
+   knows (owner, 2026-10-03). The page's own link is only the fallback for a page served
+   without a night code. wa.me with no number opens WhatsApp's "send to…" picker. */
 const CODE_ABC = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
 const nightCode = gid => { let h = [...String(gid)].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 17), out = ''; for (let i = 0; i < 5; i++) { out += CODE_ABC[h % CODE_ABC.length]; h = Math.floor(h / CODE_ABC.length) || (h * 7 + i + 3); } return out; };
 const codeOf = () => S.game?.code || nightCode(S.gid);
 const pageLink = () => NIGHT_TOKEN ? location.origin + '/night/' + NIGHT_TOKEN : location.href.split('#')[0];
-const joinLink = () => JOIN_VIA_OLMA ? 'https://wa.me/' + OLMA_WA + '?text=' + encodeURIComponent('משחק ' + codeOf()) : pageLink();
-const inviteText = D => '🃏 ' + D.g.name + ' · כניסה ' + D.g.price + ' ₪\n'
-  + (JOIN_VIA_OLMA ? 'להצטרפות שולחים לעולמה את ההודעה המוכנה:\n' : 'נכנסים לקישור, בוחרים כיסא ורושמים כניסות:\n') + joinLink();
+const JOIN_VIA_OLMA = () => !!(NIGHT_TOKEN && S.game?.code);
+const joinLink = () => JOIN_VIA_OLMA() ? location.origin + '/g/' + S.game.code : pageLink();
+const inviteText = D => '🃏 ' + D.g.name + ' · כניסה ' + Number(D.g.price).toLocaleString('en-US', { maximumFractionDigits: 2 }) + ' ₪\n'
+  + (JOIN_VIA_OLMA() ? 'להצטרפות לוחצים על הקישור ושולחים לעולמה את ההודעה שנפתחת:\n' : 'נכנסים לקישור, בוחרים כיסא ורושמים כניסות:\n') + joinLink();
 function renderSettings(D){
   const el = $('#setBody');
   if (!S.gid || !D.g) { el.innerHTML = ''; return; }
@@ -1619,7 +1627,7 @@ function renderSettings(D){
       <div class="field"><label for="gChips">ז'יטונים לכניסה</label><input id="gChips" inputmode="numeric" value="${D.g.chips}"></div>
       <div class="cval" id="gVal">${chipWorth(D.g.price, D.g.chips)}</div>
     </div>
-    <div class="group share"><div class="row plain"><div class="row-txt"><div class="row-title">הזמנה לערב</div><div class="row-sub">${JOIN_VIA_OLMA ? `הקישור פותח שיחה עם עולמה עם קוד הערב, <b>משחק ${codeOf()}</b>. מי ששולח אותו נכנס לערב.` : 'מי שמקבל את הקישור בוחר כיסא ורושם כניסות'}</div></div></div>
+    <div class="group share"><div class="row plain"><div class="row-txt"><div class="row-title">הזמנה לערב</div><div class="row-sub">${JOIN_VIA_OLMA() ? `הקישור פותח שיחה עם עולמה עם קוד הערב, <b>משחק ${codeOf()}</b>. מי ששולח אותו נכנס לערב.` : 'מי שמקבל את הקישור בוחר כיסא ורושם כניסות'}</div></div></div>
       <div class="btns"><a class="btn primary small" href="https://wa.me/?text=${encodeURIComponent(inviteText(D))}" target="_blank" rel="noopener">שליחה בוואטסאפ</a><button class="btn ghost small" type="button" data-copylink>העתקת הקישור</button></div></div>
     <div class="group"><div class="row plain"><div class="row-txt setme">${me ? '<span class="av">' + esc(initial(nameOf(me))) + '</span>' : ''}<div><div class="row-title">${me ? esc(nameOf(me)) : 'עוד לא נבחר שם'}</div><div class="row-sub">מה שנרשם מהטלפון הזה נרשם על השם הזה</div></div></div>
       <button class="btn ghost small" type="button" id="switchMe">להחליף</button></div></div>
@@ -1713,9 +1721,23 @@ function renderWelcome(D){
     ls.set('pk-me-' + S.gid, ''); memMe = null; ls.set('pk-skip-' + S.gid, ''); prev.pickedNow = false;
     if (removed?.id !== mine) toast('השם שלך הוסר מהערב. בוחרים שוב');
   }
-  const show = loaded && S.gid && D.g && !myId() && !ls.get('pk-skip-' + S.gid) && !prev.pickedNow;
+  myId();   // reads a #me- link, which may set askSeat
+  const ask = loaded && S.gid && D.g && askSeat && S.players[askSeat] ? S.players[askSeat] : null;
+  if (!ask) askSeat = null;
+  const show = ask || (loaded && S.gid && D.g && !myId() && !ls.get('pk-skip-' + S.gid) && !prev.pickedNow);
   w.hidden = !show;
   if (!show) { w.dataset.k = ''; return; }
+  if (ask) {
+    if (w.dataset.k === 'ask:' + askSeat) return;
+    w.dataset.k = 'ask:' + askSeat;
+    w.innerHTML = `<div class="wcard">
+      <svg class="mark" viewBox="0 0 120 120" aria-hidden="true"><use href="#logo"/></svg>
+      <h1>${esc(D.g.name)}</h1>
+      <p>הקישור הזה נשלח ל${esc(ask.name)}, והוא כבר פתוח בטלפון אחר.</p>
+      <div class="btns ask"><button type="button" class="btn primary" id="askMine">אני ${esc(ask.name)}</button><button type="button" class="btn ghost" id="askOther">אני מישהו אחר</button></div>
+    </div>`;
+    return;
+  }
   // prefixed, so an evening with nobody in it is not the same key as "not shown"
   const k = 'p:' + (hostOf() || '') + ':' + D.players.map(p => p.id + (heldElsewhere(p) ? '*' : '')).join();
   if (w.dataset.k === k) return;
@@ -1777,6 +1799,8 @@ document.addEventListener('click', e => {
     pickMe(t.dataset.pick, null, !!t.dataset.held); return;
   }
   if (t.id === 'wSkip') { ls.set('pk-skip-' + S.gid, '1'); schedule(); return; }
+  if (t.id === 'askMine' && askSeat) { const pid = askSeat; askSeat = null; $('#welcome').dataset.k = ''; pickMe(pid, null, true); return; }
+  if (t.id === 'askOther') { askSeat = null; $('#welcome').dataset.k = ''; schedule(); return; }
   if (t.dataset.paid) { setPaid(t.dataset.paid, t.getAttribute('aria-pressed') !== 'true'); return; }
   if (t.dataset.foodMode) { setGame({ foodMode: t.dataset.foodMode }); return; }
   if (t.dataset.foodDel) {
@@ -1957,16 +1981,29 @@ function copySummary(){
 /* ───────────── the chat, same conversation as WhatsApp ───────────── */
 let chat = [], typingOn = false;
 // A link Olma hands a person carries their seat: /night/<token>#me-<player>.
-// Read once and dropped from the address bar, so a forwarded copy of the
-// page's link never seats somebody else; kept in memory too, for a phone
-// whose storage refuses.
+// Read once and dropped from the address bar, so a copy of the address bar
+// never seats somebody else; kept in memory too, for a phone whose storage
+// refuses. The link ITSELF can still be forwarded, so the first phone to open
+// it sits in that seat quietly, and a phone that opens it while ANOTHER phone
+// holds the seat is asked first (`askSeat`, owner 2026-10-03): "אני מירון" takes
+// the seat over, "אני מישהו אחר" goes to the ordinary choosing.
 // The host's own link from Olma adds a one-time key, #me-<player>~<key>, that
 // seats a new phone in the host's seat of a locked night (store.js, hold).
+// `#view` is the closed night's link from Olma: the page to look at, nothing
+// to change (`viewing()`), unless this phone already sits at the table.
 const hashM = location.hash.match(/^#me-([A-Za-z0-9_-]{2,32})(?:~([A-Za-z0-9]{16,32}))?$/) || [];
-let hashMe = hashM[1] || null, memMe = null, hostKey = hashM[2] ? { pid: hashM[1], key: hashM[2] } : null;
-if (hashMe) try { history.replaceState(null, '', location.pathname + location.search); } catch {}
+let hashMe = hashM[1] || null, memMe = null, askSeat = null, hostKey = hashM[2] ? { pid: hashM[1], key: hashM[2] } : null;
+let hashView = location.hash === '#view';
+if (hashMe || hashView) try { history.replaceState(null, '', location.pathname + location.search); } catch {}
 const myId = () => {
-  if (hashMe && S.gid && S.players[hashMe]) { ls.set('pk-me-' + S.gid, hashMe); memMe = hashMe; takeNext = hashMe; hashMe = null; }
+  // Waits for this phone's hash (DEVH, below): read before it, a seat held
+  // by another phone looks free and would be taken without asking.
+  if (hashMe && devhDone && S.gid && S.players[hashMe]) {
+    if (heldElsewhere(S.players[hashMe])) askSeat = hashMe;
+    else { ls.set('pk-me-' + S.gid, hashMe); memMe = hashMe; takeNext = hashMe; }
+    hashMe = null;
+  }
+  if (hashView && S.gid) { hashView = false; if (!ls.get('pk-me-' + S.gid)) ls.set('pk-skip-' + S.gid, '1'); }
   const v = S.gid && (ls.get('pk-me-' + S.gid) ?? memMe);
   return v && S.players[v] ? v : null;
 };
@@ -1981,12 +2018,13 @@ const DEV = (() => {
 })();
 // The state shows a hash of the phone holding each seat, never the tag the
 // server checks a host against (store.js seatTag): this phone's own hash.
-let DEVH = null;
+let DEVH = null, devhDone = false;
 (async () => {
   try {
     const h = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(DEV));
     DEVH = [...new Uint8Array(h)].map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 16);
   } catch {}
+  devhDone = true;
   schedule();
 })();
 const heldElsewhere = p => !!(p && p.held && DEVH && p.held !== DEVH);

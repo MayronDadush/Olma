@@ -14,6 +14,7 @@
 const connectGate = require('../domain/google-connect-gate');
 const holidays = require('../domain/holidays');
 const experiments = require('../domain/experiments');
+const flags = require('../domain/flags');
 const meetings = require('../domain/meetings');
 const meetingFanout = require('../domain/meeting-fanout');
 const meetingTime = require('../domain/meeting-time');
@@ -161,7 +162,11 @@ const READS_HOLDINGS = new Set(['15m', '2h', '5h']);
 
 const ONBOARDING_STEPS = [
   {
-    slot: '15m', afterMs: 15 * MIN_MS, expiresAfterMs: 2 * HOUR_MS,
+    // An hour past its moment, not until the next step: it says "they joined
+    // ~15 minutes ago", and held for Shabbat it reached Hod at 19:08 having
+    // joined at 17:15 (2026-10-03). Of every 15m step ever delivered, his was
+    // the only one past 75 minutes (the next was 74).
+    slot: '15m', afterMs: 15 * MIN_MS, expiresAfterMs: 75 * MIN_MS,
     instruction: firstContactInstruction,
   },
   {
@@ -241,6 +246,38 @@ function onboardingStepDue(ageMs, deaf) {
   return step;
 }
 
+// Two day-one steps are never closer than STEP_GAP_MS, measured from when the
+// earlier one REACHED them, and none starts while they are talking. The
+// schedule spaces them by ONBOARDING time; a hold moves only the earlier one,
+// so the next arrived on its own clock right behind it. Hod, 2026-10-03: the
+// 15m step held for Shabbat to 19:08, the 2h step at 19:20. Measured on the
+// box over every delivered pair: 1, 4, 12 and 49 minutes are the held ones,
+// and the closest ordinary pair is 84 — so 75 separates them. A step that
+// waits is re-asked on the next run and stays inside its own expiry; one
+// overtaken meanwhile is replaced by the later step, as ever.
+const STEP_GAP_MS = 75 * MIN_MS;
+const TALKING_MS = 20 * MIN_MS;
+
+// Whether this step should wait, or never go. Not the 15m step's conversation
+// check: they joined by writing, so somebody fifteen minutes in has almost
+// always "just written", and that step is the first contact.
+async function dayOneStepWaits(client, u, step, now) {
+  if (now >= new Date(u.onboarded_at).getTime() + step.expiresAfterMs) return true;
+  const { rows } = await client.query(
+    `SELECT max(o.sent_at) AS last_step, u.last_inbound_at
+       FROM users u
+       LEFT JOIN outbox o ON o.user_id = u.id AND o.kind = 'checkin'
+        AND o.payload->>'rung' LIKE 'onboarding%'
+        AND o.sent_at IS NOT NULL AND o.hold_reason IS NULL
+      WHERE u.id = $1
+      GROUP BY u.last_inbound_at`, [u.id]);
+  const r = rows[0] || {};
+  if (r.last_step && now - new Date(r.last_step).getTime() < STEP_GAP_MS) return true;
+  if (step.slot !== '15m' && r.last_inbound_at
+      && now - new Date(r.last_inbound_at).getTime() < TALKING_MS) return true;
+  return false;
+}
+
 // Delivered at least two day-one messages and heard nothing back — only then
 // is silence evidence about the person rather than about our own delivery.
 async function isDeafOnDayOne(client, userId, onboardedAt) {
@@ -256,6 +293,51 @@ async function isDeafOnDayOne(client, userId, onboardedAt) {
   );
   const last = heard[0].last_inbound_at;
   return !last || new Date(last) <= new Date(onboardedAt);
+}
+
+// Day one has a ceiling as well as a ladder (owner, 2026-10-04: new people
+// said she "חופרת"). Measured over the fifteen who joined in the week before:
+// about four unasked messages each in the first 24 hours, seven in three days,
+// against one to three words back — and a room joiner had heard the room's
+// invite and its coordination before the first step ever came due. So the
+// ladder asks what they have ALREADY heard since they arrived, and once it is
+// `day_one_proactive_cap` (a flag; 0 is off) a day-one check-in says nothing.
+// Silent, not skipped, for the same reason as `silentWhenEmpty`: a slot handed
+// to the ordinary ladder is another message, not a quieter afternoon.
+//
+// Counted: every row that reached them or is still going to, except the two
+// kinds they chose themselves — a reminder and the morning picture. Not
+// counted: a check-in still waiting, because the one about to be queued
+// replaces it. What is THEIRS (a meeting waiting on them, a deadline
+// tomorrow) is never held back by this; see THEIRS below.
+const DAY_MS = 24 * HOUR_MS;
+const THEIRS = new Set(['stuck_meeting', 'deadline_risk']);
+async function dayOneSpent(client, u) {
+  const cap = Number(await flags.getFlag(client, 'day_one_proactive_cap'));
+  if (!Number.isFinite(cap) || cap <= 0) return false;
+  const { rows } = await client.query(
+    `SELECT count(*)::int AS n FROM outbox
+      WHERE user_id = $1 AND kind NOT IN ('reminder', 'digest')
+        AND created_at >= $2
+        AND ((sent_at IS NOT NULL AND hold_reason IS NULL)
+             OR (sent_at IS NULL AND kind <> 'checkin'))`,
+    [u.id, u.onboarded_at]);
+  return rows[0].n >= cap;
+}
+
+// The welcome follow-up still owed — what she is, and their page, held for
+// the morning after a game night or a room's coordination (jobs/intake.js).
+// Until it goes out the day-one ladder says nothing: a question at 2h about
+// somebody's day, from an assistant that has not yet said what she does, is
+// how the game nights of 2026-10-03 read (63 and 64 heard the 2h step in the
+// middle of the game, and what she is the next morning). Same line the gate
+// draws for an `introduction` it still owes, one layer up.
+async function welcomeStillOwed(client, userId) {
+  const { rows } = await client.query(
+    `SELECT 1 FROM outbox
+      WHERE user_id = $1 AND kind = 'welcome_followup' AND sent_at IS NULL
+        AND (expires_at IS NULL OR expires_at > now()) LIMIT 1`, [userId]);
+  return rows.length > 0;
 }
 
 // How long someone may go quiet before Olma reaches out, by age of account.
@@ -629,7 +711,7 @@ function daysAgo(ts) {
 async function discoveryGaps(client, userId, now = new Date()) {
   const gaps = [];
   const { rows: u } = await client.query(
-    `SELECT digest_times, timezone, timezone_confirmed, timezone_asked_at, locale,
+    `SELECT digest_times, timezone, timezone_confirmed, timezone_asked_at, locale, phone,
             holiday_quiet_asked_at,
             (SELECT value FROM user_preferences p
               WHERE p.user_id = users.id AND p.key = 'holiday_calendar') AS holiday_calendar,
@@ -674,7 +756,15 @@ async function discoveryGaps(client, userId, now = new Date()) {
   // second chance, it is the reason the third one goes unread too; if they
   // never say, the guess stays and the travel line has already told them how
   // to change it (migration 045).
-  if (!u[0].timezone_confirmed && !u[0].timezone_asked_at) {
+  // Not asked at all when the dialling code already answered it: a country
+  // with one clock, and the zone on file is the one that code gave (owner,
+  // 2026-10-04 — new people said she "חופרת", and "באיזו מדינה אתה נמצא?"
+  // came right after "אני מניחה שאתה בישראל"). A country that spans several
+  // clocks still asks, which is the case Sarah's +1 was; so does a zone
+  // somebody changed by hand, which the code no longer vouches for.
+  const dialled = lookupTimezone(u[0].phone);
+  const answeredByNumber = Boolean(dialled && !dialled.ambiguous && dialled.timezone === u[0].timezone);
+  if (!u[0].timezone_confirmed && !u[0].timezone_asked_at && !answeredByNumber) {
     const guessed = u[0].timezone
       ? `We are currently guessing ${u[0].timezone}, which came from their phone number and is not a location.`
       : 'We have no timezone for them at all, so everything falls back to UTC.';
@@ -811,6 +901,9 @@ async function run(client, now = Date.now()) {
     // the product feel present, not to react to a backlog.
     let step = u.onboardingStep;
     let rung, instruction, topic = null, meetingId = null, key, expiresAt = null;
+    // `continue`, never `step = null`: a waiting step must not hand its slot
+    // to the ordinary ladder, which would send the second message anyway.
+    if (step && await dayOneStepWaits(client, u, step, now)) continue;
     if (step && DEAF_SILENT_SLOTS.has(step.slot)
         && await isDeafOnDayOne(client, u.id, u.onboarded_at)) continue;
     // A step whose reason has already been met (calendar connected, dashboard
@@ -831,6 +924,8 @@ async function run(client, now = Date.now()) {
       ({ rung, instruction, topic, meetingId } = await pickRung(client, u.id, Number(u.checkin_misses) || 0));
       key = `checkin:${u.id}:${new Date(now).toISOString().slice(0, 10)}`;
     }
+    if (now - new Date(u.onboarded_at).getTime() < DAY_MS && !THEIRS.has(rung)
+        && (await welcomeStillOwed(client, u.id) || await dayOneSpent(client, u))) continue;
     const res = await enqueue(client, {
       userId: u.id, kind: 'checkin',
       payload: { checkinInstruction: instruction, rung, ...(topic ? { topic } : {}), ...(meetingId ? { meetingId } : {}) },
@@ -919,5 +1014,6 @@ async function run(client, now = Date.now()) {
 
 module.exports = {
   run, eligibleUsers, pickRung, discoveryGaps, requiredGapMs, idleHoursFor, GIVE_UP_MISSES, MISS_ONE_GAP_MS,
-  onboardingStepDue, ONBOARDING_STEPS, DEAF_SILENT_SLOTS, stalledGoals, holdsNothing,
+  onboardingStepDue, ONBOARDING_STEPS, DEAF_SILENT_SLOTS, dayOneSpent, stalledGoals, holdsNothing,
+  STEP_GAP_MS, TALKING_MS,
 };

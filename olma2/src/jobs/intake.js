@@ -35,6 +35,7 @@ const templates = require('../domain/message-templates');
 const intakeRoom = require('../domain/intake-room');
 const referral = require('../domain/referral');
 const preferences = require('../domain/preferences');
+const introVideo = require('../domain/intro-video');
 const language = require('../domain/language');
 const { minutesInTz, parseHHMM } = require('../outbox/gate');
 const occ = require('../intake/openclaw-config');
@@ -396,11 +397,17 @@ async function sweepIntakeSessions(client, deps) {
       const now = new Date();
       let releaseAfter = null;
       let expiresAt = new Date(now.getTime() + WELCOME_FOLLOWUP_TTL_MS);
+      let clip = null;
       if (gameClaim || (waiting && waiting.meetingId)) {
         const pref = await preferences.availabilityWindow(client, user.id);
         const window = pref.ok ? pref.data.window : preferences.DEFAULT_WINDOW;
         releaseAfter = nextMorning(window, user.timezone, now);
         expiresAt = new Date(releaseAfter.getTime() + ROOM_FOLLOWUP_TTL_MS);
+        // The morning after a short opening its only job is saying what Olma
+        // does, and the clip says it in fifteen seconds (owner, 2026-10-04).
+        // Not when the greeter holds words of theirs to act on: answering
+        // those needs a turn, and a clip answers nothing.
+        if (gameClaim || !user.intake_note_at) clip = introVideo.welcomeClipFor(await flags.getFlag(client, 'welcome_clip'));
       }
       await enqueue(client, {
         userId: user.id, kind: 'welcome_followup',
@@ -409,6 +416,7 @@ async function sweepIntakeSessions(client, deps) {
           greeterReply: typeof greeterReply === 'string' ? greeterReply.slice(0, 600) : null,
           ...(roomOpened ? { roomOpening: true } : {}),
           ...(gameClaim ? { gameOpening: true } : {}),
+          ...(clip ? { clip } : {}),
         },
         idempotencyKey: `welcome_followup:${user.id}`,
         expiresAt, releaseAfter,

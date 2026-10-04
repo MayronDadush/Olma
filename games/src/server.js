@@ -12,7 +12,7 @@ const path = require('path');
 const store = require('./store');
 const { Refused } = require('./validate');
 const { runTool } = require('./tools');
-const { resolveIdentity } = require('./identity');
+const { resolveIdentity, sendInvite } = require('./identity');
 const { announceClose } = require('./announce');
 const { openFor, joinByCode, nightsFor, CODE_RE } = require('./join');
 
@@ -38,7 +38,7 @@ function shortLink(p) {
   return `https://wa.me/${waNumber()}?text=${encodeURIComponent('משחק ' + m[1].toUpperCase())}`;
 }
 
-function createServer({ pool, publicBase = '', page, identify = resolveIdentity, announce = announceClose } = {}) {
+function createServer({ pool, publicBase = '', page, identify = resolveIdentity, announce = announceClose, invite = sendInvite } = {}) {
   const html = page ?? fs.readFileSync(PAGE_FILE, 'utf8');
   const listeners = new Map();        // token -> Set<res>
   let listenerCount = 0;
@@ -143,7 +143,7 @@ function createServer({ pool, publicBase = '', page, identify = resolveIdentity,
           return send(res, 200, { text: 'ERROR forbidden: game nights are not turned on for this person' });
         }
         if (limited('u:' + who.user.id)) return send(res, 200, { text: 'ERROR rate_limited: too many calls this minute' });
-        const text = await runTool(name, a, { pool, user: who.user, publicBase, onState: broadcast, announce });
+        const text = await runTool(name, a, { pool, user: who.user, publicBase, onState: broadcast, announce, invite });
         return send(res, 200, { text });
       }
 

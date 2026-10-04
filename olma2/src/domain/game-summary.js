@@ -86,23 +86,41 @@ async function queue(client, params, { now = new Date() } = {}) {
 // drawn on the raw pipe, the reader's locale choosing — and one list of game
 // kinds is what the gate, the worker and the raw pipe each test.
 const INVITE_KIND = 'game_invite';
-const KINDS = new Set([KIND, INVITE_KIND]);
+// The host's OWN message when the MODEL opened the night (gamesd
+// start_game_night → brokerd game_invite): their personal link, sent by code
+// like the invite after it, so neither the wording nor the link is the
+// model's. The shortcut's own reply goes out on the gateway's reply path.
+const HOST_KIND = 'game_opened';
+const KINDS = new Set([KIND, INVITE_KIND, HOST_KIND]);
+// The two a host gets in the moment they asked; the gate lets both through.
+const HOST_KINDS = new Set([INVITE_KIND, HOST_KIND]);
 // An invite is the answer to a message they sent a moment ago; hours later it
 // is a stale link to a night that may be over.
 const INVITE_EXPIRES_MS = 12 * 3600_000;
 
-async function queueInvite(client, { userId, code, texts }, { now = new Date() } = {}) {
+// Held so it lands AFTER the message that says it is coming ("עוד רגע
+// שולחת…"). Behind the shortcut's reply, which the gateway sends at once, a
+// beat is enough. Behind the host row queued with it, it must miss the tick
+// that sends that row: the worker runs every 30s (jobs/expectations.js), and
+// two rows due in one tick share a created_at.
+const INVITE_AFTER_MS = 5_000;
+const INVITE_AFTER_HOST_MS = 35_000;
+
+function queueHostRow(client, kind, { userId, code, texts }, { now = new Date(), releaseAfter = null } = {}) {
   const he = texts && typeof texts.he === 'string' ? texts.he : '';
   const en = texts && typeof texts.en === 'string' ? texts.en : '';
   if (!he.trim() || !en.trim()) return { ok: false, error: 'texts.he and texts.en are both required' };
   return enqueue(client, {
-    userId, kind: INVITE_KIND,
+    userId, kind,
     payload: { code: String(code || ''), texts: { he, en } },
     urgency: 'urgent',
     expiresAt: new Date(now.getTime() + INVITE_EXPIRES_MS),
-    idempotencyKey: `${INVITE_KIND}:${String(code || '')}:${userId}`,
+    idempotencyKey: `${kind}:${String(code || '')}:${userId}`,
+    releaseAfter,
   });
 }
+const queueInvite = (client, row, opts) => queueHostRow(client, INVITE_KIND, row, opts);
+const queueHost = (client, row, opts) => queueHostRow(client, HOST_KIND, row, opts);
 
 // The raw pipe's text for a row of either kind (proactive-text.rawPipeTextFor).
 function textFor(payload, locale) {
@@ -111,4 +129,5 @@ function textFor(payload, locale) {
   return String((en ? t.en : t.he) || t.he || t.en || '');
 }
 
-module.exports = { KIND, INVITE_KIND, KINDS, queue, queueInvite, validate, keyFor, textFor, EXPIRES_MS, INVITE_EXPIRES_MS };
+module.exports = { KIND, INVITE_KIND, HOST_KIND, KINDS, HOST_KINDS, queue, queueInvite, queueHost, validate, keyFor, textFor,
+  EXPIRES_MS, INVITE_EXPIRES_MS, INVITE_AFTER_MS, INVITE_AFTER_HOST_MS };

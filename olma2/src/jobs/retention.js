@@ -4,6 +4,7 @@
 // stale session snapshots age out too. Days tunable via flag, no deploy.
 const flags = require('../domain/flags');
 const cardStore = require('../domain/card-store');
+const dashboardAuth = require('../domain/dashboard-auth');
 
 async function sweepRetention(client) {
   const days = Number(await flags.getFlag(client, 'audit_retention_days') ?? 180);
@@ -33,6 +34,9 @@ async function sweepRetention(client) {
   const pickerLinks = await client.query(
     `DELETE FROM picker_links WHERE expires_at < now() - interval '7 days'`
   );
+  // Dashboard sign-in links and sessions nobody can use any more
+  // (dashboard-auth.purgeExpired, which owns how long each is kept).
+  const auth = await dashboardAuth.purgeExpired(client);
   // Rendered schedule cards: files, not rows. Once the message that carried one
   // is delivered the file is dead weight, so they age out in hours rather than
   // days. Folded in here rather than given a timer of its own — a second
@@ -43,6 +47,7 @@ async function sweepRetention(client) {
     auditPurged: audit.rowCount, outboxPurged: outbox.rowCount,
     snapshotsPurged: snapshots.rowCount, oauthStatesPurged: states.rowCount,
     pickerLinksPurged: pickerLinks.rowCount,
+    magicLinksPurged: auth.data.links, dashboardSessionsPurged: auth.data.sessions,
     cardsPurged,
   };
 }

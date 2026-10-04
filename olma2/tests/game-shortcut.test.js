@@ -13,6 +13,7 @@ const gameSummary = require('../src/domain/game-summary');
 const proactiveText = require('../src/domain/proactive-text');
 const templates = require('../src/domain/message-templates');
 const replyLeak = require('../src/domain/reply-leak');
+const markEcho = require('../src/domain/mark-echo');
 
 // ---- which messages ---------------------------------------------------------
 test('the opening phrase matches whole, in both languages, and nothing longer does', () => {
@@ -69,11 +70,20 @@ test('a name is a short line of letters, and "לא" or a question is not one', (
   }
 });
 
-test('the names offered are the first name, then with the surname\'s initial', () => {
-  assert.deepEqual(gs.namesFor({ first_name: 'מירון', last_name: 'דדוש' }), ['מירון', 'מירון ד׳']);
-  assert.deepEqual(gs.namesFor({ first_name: 'Miron', last_name: 'dadush' }), ['Miron', 'Miron D.']);
+test('the names offered are the first name, then the full name', () => {
+  assert.deepEqual(gs.namesFor({ first_name: 'מירון', last_name: 'דדוש' }), ['מירון', 'מירון דדוש']);
+  assert.deepEqual(gs.namesFor({ first_name: 'Miron', last_name: 'Dadush' }), ['Miron', 'Miron Dadush']);
+  assert.deepEqual(gs.namesFor({ first_name: 'דני', last_name: 'א'.repeat(25) }), ['דני']);
   assert.deepEqual(gs.namesFor({ first_name: 'דני בן', last_name: null }), ['דני']);
   assert.deepEqual(gs.namesFor({ first_name: null }), []);
+});
+
+test('the answer to "what is your last name" goes after the name that was taken', () => {
+  assert.equal(gs.withSurname('דדוש', 'מירון'), 'מירון דדוש');
+  assert.equal(gs.withSurname('מירון דדוש', 'מירון'), 'מירון דדוש', 'the whole name stays as it is');
+  assert.equal(gs.withSurname('Dadush', 'miron'), 'miron Dadush');
+  assert.equal(gs.withSurname('דדוש', null), 'דדוש', 'nothing was taken: the answer is the name');
+  assert.equal(gs.withSurname(null, 'מירון'), null, 'no name read: nothing');
 });
 
 test('buy-ins are said the way the table says them', () => {
@@ -89,7 +99,7 @@ test('every game sentence passes the reply gate, whoever is reading', () => {
   const vars = { night: 'ערב משחק', price: '50', chips: '1,000', code: 'K7M2Q', name: 'דני',
     count: 'כניסה אחת', url: 'https://allma.world/night/AbCdEfGhIjKlMnOpQrStUv', join: 'https://allma.world/g/K7M2Q' };
   for (const base of ['game_open', 'game_opened', 'game_invite', 'game_already_open', 'game_ask_name',
-    'game_joined', 'game_name_taken', 'game_already', 'game_no_night', 'game_full', 'game_hello', 'game_privacy']) {
+    'game_joined', 'game_name_taken', 'game_already', 'game_no_night', 'game_closed', 'game_full', 'game_hello', 'game_privacy']) {
     for (const lang of ['he', 'en']) {
       const text = templates.render(templates.keyFor(base, lang, { fallback: 'he' }), vars, {});
       // An English sentence reaches only somebody on English, so it is judged
@@ -155,17 +165,18 @@ test('"ערב משחק חדש" turns the pack on, asks the price, and the answer
   assert.equal(second.claim, true);
   assert.deepEqual(calls[1], ['open', { userId: Number(u.id), name: 'מירון', locale: 'he', price: 50, chips: 1000, nightName: 'ערב משחק' }]);
   assert.equal(second.text,
-    `🃏 פתחתי את ערב משחק. כניסה 50 ₪, 1,000 ז'יטונים לכניסה.\nהדף של הערב:\n${URL}#me-p1\nאת ההודעה הבאה אפשר להעביר לקבוצת הוואטסאפ 👇`);
+    `🃏 פתחתי את ערב משחק. כניסה 50 ₪, 1,000 ז'יטונים לכניסה.\nזה הקישור האישי שלך, רק בשבילך:\n${URL}#me-p1\nעוד רגע שולחת לך את ההודעה עם הקישור שאפשר להעביר לשאר השחקנים, בקבוצה או לכל אחד בפרטי 👇`);
 
   const { rows: [inv] } = await db.pool.query(
-    'SELECT kind, urgency, payload, idempotency_key FROM outbox WHERE user_id = $1', [u.id]);
+    'SELECT kind, urgency, payload, idempotency_key, release_after FROM outbox WHERE user_id = $1', [u.id]);
   assert.equal(inv.kind, gameSummary.INVITE_KIND);
+  assert.equal(inv.release_after.getTime(), now + gameSummary.INVITE_AFTER_MS, 'a beat behind the reply that says it is coming');
   assert.equal(inv.urgency, 'urgent');
   assert.equal(inv.idempotency_key, `game_invite:K7M2Q:${u.id}`);
   assert.equal(inv.payload.texts.he,
-    `🃏 ערב משחק · כניסה 50 ₪\nנכנסים לקישור, בוחרים כיסא ורושמים כניסות:\n${URL}\n\nלרשום כניסות מהוואטסאפ: https://allma.world/g/K7M2Q`);
-  assert.ok(!inv.payload.texts.he.includes('#me-'), 'the host\'s own seat never goes to the group');
-  assert.match(inv.payload.texts.en, /Log buy-ins from WhatsApp: https:\/\/allma\.world\/g\/K7M2Q$/);
+    '🃏 ערב משחק · כניסה 50 ₪\nלהצטרפות לוחצים על הקישור ושולחים לעולמה את ההודעה שנפתחת:\nhttps://allma.world/g/K7M2Q');
+  assert.ok(!inv.payload.texts.he.includes('/night/'), 'the invite carries no page at all: everybody comes in through Olma');
+  assert.match(inv.payload.texts.en, /send Allma the message that opens:\nhttps:\/\/allma\.world\/g\/K7M2Q$/);
   // And the raw pipe says the Hebrew to a Hebrew host.
   assert.equal(proactiveText.rawPipeTextFor({ kind: inv.kind, payload: inv.payload, locale: 'he' }, {}), inv.payload.texts.he);
   assert.equal(proactiveText.rawPipeTextFor({ kind: inv.kind, payload: inv.payload, locale: 'en' }, {}), inv.payload.texts.en);
@@ -176,6 +187,56 @@ test('"ערב משחק חדש" turns the pack on, asks the price, and the answer
     { event: 'games.phrase_shortcut', detail: { outcome: 'asked_setup', lang: 'he' } },
     { event: 'games.phrase_shortcut', detail: { outcome: 'opened', lang: 'he' } },
   ]);
+});
+
+// 2026-10-03: Miron asked in his own words ("תפתח לי משחק של פוקר היום…"),
+// the shortcut never matched, the model opened the night, and he got one
+// message with the shared page. gamesd's start_game_night now asks brokerd
+// for the same two messages.
+test('the model opening a night: both of the host\'s messages are sent by code, the invite a beat after', async () => {
+  reset();
+  const u = await person();
+  const call = (params) => broker.dispatch({ id: 1, method: 'game_invite', params });
+  const good = { userId: Number(u.id), night: NIGHT, url: `${URL}#me-p1` };
+  assert.deepEqual(await call(good), { ok: false, error: 'not a games user' }, 'only a person holding the pack');
+  await require('../src/domain/packs').enable(db.pool, u.id, 'games', 'phrase');
+  for (const bad of [
+    { ...good, url: URL },                                  // the shared page, no seat
+    { ...good, url: 'https://evil.example/x#me-p1' },
+    { ...good, night: { ...NIGHT, code: 'nope' } },
+    { ...good, userId: 'x' },
+  ]) assert.equal((await call(bad)).ok, false, JSON.stringify(bad));
+
+  assert.deepEqual(await call(good), { ok: true, queued: true });
+  const { rows } = await db.pool.query(
+    'SELECT kind, urgency, payload, release_after FROM outbox WHERE user_id = $1 ORDER BY id', [u.id]);
+  assert.deepEqual(rows.map((r) => r.kind), [gameSummary.HOST_KIND, gameSummary.INVITE_KIND]);
+  const [host, inv] = rows;
+  assert.equal(host.urgency, 'urgent');
+  assert.equal(host.release_after, null, 'their own link goes at once');
+  assert.equal(host.payload.texts.he,
+    `🃏 פתחתי את ערב משחק. כניסה 50 ₪, 1,000 ז'יטונים לכניסה.\nזה הקישור האישי שלך, רק בשבילך:\n${URL}#me-p1\nעוד רגע שולחת לך את ההודעה עם הקישור שאפשר להעביר לשאר השחקנים, בקבוצה או לכל אחד בפרטי 👇`);
+  assert.match(host.payload.texts.en, /^🃏 Opened ערב משחק\. .*This is your personal link, just for you:\n.*#me-p1\n/s);
+  assert.equal(proactiveText.rawPipeTextFor({ kind: host.kind, payload: host.payload, locale: 'he' }, {}), host.payload.texts.he);
+  assert.equal(inv.payload.texts.he,
+    '🃏 ערב משחק · כניסה 50 ₪\nלהצטרפות לוחצים על הקישור ושולחים לעולמה את ההודעה שנפתחת:\nhttps://allma.world/g/K7M2Q');
+  assert.equal(inv.release_after.getTime(), now + gameSummary.INVITE_AFTER_HOST_MS, 'the invite in a later tick than the message that says it is coming');
+
+  assert.equal((await call(good)).ok, true);
+  assert.equal((await db.pool.query('SELECT count(*)::int n FROM outbox WHERE user_id = $1', [u.id])).rows[0].n, 2, 'once per night');
+
+  // A reply of the model's that only says it again is cancelled at the gate,
+  // the same door as a reply under a standing 👍; anything new still goes out.
+  const held = await broker.dispatch({ id: 1, method: 'mark_echo', params: { agentId: u.agent } });
+  assert.equal(held.standing, true);
+  const asked = 'תפתח לי משחק של פוקר היום 50 שקל כניסה 50 זוטונים';
+  for (const echo of ['פתחתי ערב משחק! 🃏', 'הערב נפתח 🃏 שלחתי לך את הקישור ואת ההזמנה לשחקנים', 'Opened! 👍']) {
+    assert.equal(markEcho.echoOnly(echo, [...held.words, asked]), true, echo);
+  }
+  for (const news of ['פתחתי. ודני כבר אמר שהוא מגיע', 'מתי מתחילים?', 'פתחתי ערב משחק: https://allma.world/night/x']) {
+    assert.equal(markEcho.echoOnly(news, [...held.words, asked]), false, news);
+  }
+
 });
 
 test('a night already open is handed back, and the phrase asks nothing', async () => {
@@ -221,7 +282,7 @@ test('a code seats them under their first name, turns the pack on, and says what
   const u = await person({ firstName: 'דני', lastName: 'לוי' });
   fake.join = (b) => ({ ok: true, joined: true, night: NIGHT, name: b.names[0], buyins: 0, url: `${URL}#me-p7` });
   const out = await ask({ agentId: u.agent, body: 'משחק K7M2Q', messageId: '3EB0GAME0100' });
-  assert.deepEqual(calls, [['join', { userId: Number(u.id), code: 'K7M2Q', names: ['דני', 'דני ל׳'] }]]);
+  assert.deepEqual(calls, [['join', { userId: Number(u.id), code: 'K7M2Q', names: ['דני', 'דני לוי'] }]]);
   assert.equal(out.text,
     `👍 דני, נכנסת לערב משחק.\nבמהלך הערב אפשר לכתוב לי:\n• עוד כניסה / חצי כניסה\n• מה המצב?\n• בסוף: נשארו לי 1,850\nהדף של הערב:\n${URL}#me-p7`);
   assert.deepEqual(await packsOf(u.id), [{ pack: 'games', via: 'code' }]);
@@ -253,14 +314,27 @@ test('no name on file: she asks, and the answer seats them', async () => {
   assert.match(a.text, /^👍 יוסי, נכנסת לערב משחק\./);
 });
 
-test('a name already at the table asks for another', async () => {
+test('a name already at the table asks for the last name, and seats them under both', async () => {
   reset();
   const u = await person({ firstName: 'דני', lastName: null });
   fake.join = (b) => (b.names[0] === 'דני'
     ? { ok: false, error: 'name_taken', name: 'דני', night: NIGHT }
     : { ok: true, joined: true, night: NIGHT, name: b.names[0], buyins: 0, url: `${URL}#me-p9` });
-  assert.equal((await ask({ agentId: u.agent, body: 'משחק K7M2Q' })).text, 'כבר יש דני בערב. איזה שם לכתוב לך?');
-  assert.match((await ask({ agentId: u.agent, body: 'דני הגדול' })).text, /^👍 דני הגדול, נכנסת/);
+  assert.equal((await ask({ agentId: u.agent, body: 'משחק K7M2Q' })).text, 'כבר יש דני בערב. מה שם המשפחה שלך?');
+  assert.match((await ask({ agentId: u.agent, body: 'לוי' })).text, /^👍 דני לוי, נכנסת/);
+  assert.deepEqual(calls.at(-1)[1].names, ['דני לוי']);
+  // and the surname is now theirs on file
+  const { rows: [row] } = await db.pool.query('SELECT first_name, last_name FROM users WHERE id = $1', [u.id]);
+  assert.deepEqual(row, { first_name: 'דני', last_name: 'לוי' });
+});
+
+test('a night that closed in the last day is answered with the page to look at', async () => {
+  reset();
+  const u = await person();
+  fake.join = () => ({ ok: false, error: 'closed', night: NIGHT, url: `${URL}#view` });
+  assert.equal((await ask({ agentId: u.agent, body: 'משחק K7M2Q' })).text,
+    `🃏 ערב משחק כבר נסגר. אפשר לראות את הסיכום כאן:\n${URL}#view`);
+  assert.deepEqual(await packsOf(u.id), [], 'looking is not sitting: no pack');
 });
 
 test('an unknown code is answered only when a game word came with it', async () => {
@@ -528,8 +602,11 @@ test('given an agent between the question and the answer, the answer still seats
 
 // ---- the gate ---------------------------------------------------------------
 const WED_NIGHT = new Date('2026-08-12T23:40:00Z');
-test('the gate: the invite goes out at once for a quarter of an hour after it was made, then waits like anything else', () => {
-  const row = (ageMs) => ({ kind: gameSummary.INVITE_KIND, urgency: 'urgent',
+test('the gate: the host\'s two messages go out at once for a quarter of an hour after they were made, then wait like anything else', () => {
+  for (const kind of [gameSummary.INVITE_KIND, gameSummary.HOST_KIND]) gateCase(kind);
+});
+function gateCase(kind) {
+  const row = (ageMs) => ({ kind, urgency: 'urgent',
     created_at: new Date(WED_NIGHT.getTime() - ageMs), payload: { code: 'K7M2Q', texts: { he: 'א', en: 'a' } } });
   const base = { plan: 'free', window: { start: '09:00', end: '21:00' }, tz: 'UTC', sentToday: 0, budget: 4, now: WED_NIGHT, quietDays: [] };
   assert.equal(decide({ ...base, row: row(10_000) }).action, 'deliver', 'the host is right there, at 23:40');
@@ -539,4 +616,4 @@ test('the gate: the invite goes out at once for a quarter of an hour after it wa
   const sat = new Date('2026-08-15T12:00:00Z');
   assert.equal(decide({ ...base, now: sat, quietDays: [sat.getUTCDay()],
     row: { ...row(0), created_at: new Date(sat.getTime() - 5_000) } }).action, 'deliver');
-});
+}

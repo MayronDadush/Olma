@@ -59,6 +59,28 @@ title means this file. Grep the title, not the filename.
   day-one step that DECLINED and fell through to an ordinary rung put the two
   side by side again — which is what the closed Google door produced the same
   night. The ladder has ONE live rung at a time.
+  **…and a step that HAS gone out spaces the next one, measured from when it
+  reached them** (2026-10-03). The schedule counts from onboarding, so a hold
+  on one step moves only that step. Hod got the Shabbat-held 15m step at
+  19:08 and the 2h step at 19:20. Now `checkin.STEP_GAP_MS` (75 min, from
+  measured pairs) separates any two delivered steps. No step after the first
+  starts within `checkin.TALKING_MS` of their last message. The 15m step
+  expires 75 minutes after joining, because its words say "a quarter of an hour
+  ago". A waiting step `continue`s; it never falls through to an ordinary rung
+  (`incidents.md`, "Two day-one steps twelve minutes apart").
+  **And day one has a ceiling** (owner, 2026-10-04, new people said she
+  "חופרת"): `checkin.dayOneSpent` counts what already reached them since
+  `onboarded_at` — every kind but `reminder` and `digest` — and at
+  `day_one_proactive_cap` (2; 0 = off) a day-one check-in is SILENT, never
+  handed to the ordinary ladder. `stuck_meeting` and `deadline_risk` are
+  theirs and pass. **And no day-one step goes out while their
+  `welcome_followup` is still owed** (`checkin.welcomeStillOwed`): a room or
+  game joiner's introduction waits for the next morning, and a "how did it
+  go" ahead of the introduction is the order backwards. **The country
+  question is not asked of somebody whose number already answered it**
+  (`discoveryGaps`): a prefix `lookupTimezone` calls unambiguous that agrees
+  with `users.timezone` is the answer; US, Canada, Russia, Australia, Brazil
+  and Mexico still get asked.
 
 - **Somebody who has stopped answering hears nothing Olma decided to say, and
   nothing on their record is cancelled.** The check-in ladder's one miss
@@ -228,3 +250,11 @@ title means this file. Grep the title, not the filename.
   correcting them would falsify the record. Two readers must answer to BOTH
   spellings and say so — `facts.SYSTEM_NOUN_RE` (old facts are still in the
   table) and the voice bridge's name check and Deepgram keyterms.
+
+- **A preference the gate PARSES is refused at the write when the gate could
+  not read it** — `preferences.remember` on key `availability` accepts one
+  `HH:MM-HH:MM` window (spelling forgiven, stored canonical) and nothing else;
+  the error names `quiet_days` and `record_meeting_constraint`, and says no
+  tool sets a frequency. A refused call earns no 👍. The read side keeps its
+  fallback for rows written before. `incidents.md`, "Saved, marked done, and
+  read as nothing".

@@ -23,6 +23,12 @@ const newId = () => 'o' + Date.now().toString(36) + crypto.randomBytes(4).toStri
 // hash (public/night.html), so they never pick a chair. Anybody holding the
 // night's link can already sit anywhere; this only saves the tap.
 const personalUrl = (publicBase, n, pid) => `${publicBase}/night/${n.token}#me-${pid}`;
+// The same page with nothing to change: `#view` puts the page in its
+// look-only mode on that phone (public/night.html, `viewing()`).
+const viewUrl = (publicBase, n) => `${publicBase}/night/${n.token}#view`;
+// A closed night still answers its code for a day — with the page to look at,
+// never a seat (owner, 2026-10-03). After that the code is no night.
+const CLOSED_GRACE = "interval '24 hours'";
 const describe = n => ({ name: n.name, price: n.price_ag / 100, chips: n.chips_per_buyin, code: n.code });
 
 const userIdOf = v => { const id = Number(v); return Number.isSafeInteger(id) && id > 0 ? id : null; };
@@ -67,23 +73,37 @@ async function openFor(pool, body = {}, { publicBase = '' } = {}) {
 }
 
 // → { ok, joined|already, night, name, buyins, url } or { ok: false, error }:
-//   no_night    no OPEN night has that code (closed, or never was)
+//   closed      the night with that code closed in the last 24 hours:
+//               `url` is their own seat if they sat in it, else the page to
+//               look at, and nobody is seated
+//   no_night    no open night has that code, nor one closed in the last day
 //   name_taken  every name offered belongs to somebody else already linked
 //   full        the night is at its player cap
 //   need_name   no name was offered (nothing on file); the night is named so
 //               the question can say which one
 //
-// `names` is tried in order — their first name, then with their surname's
-// initial — and a name already at the table that nobody has claimed is TAKEN
-// OVER rather than duplicated: the host typing "דני" in advance and Dani
-// sending the code are one person arriving, not two.
+// `names` is tried in order — their first name, then their full name — and a
+// name already at the table that nobody has claimed is TAKEN OVER rather than
+// duplicated: the host typing "דני" in advance and Dani sending the code are
+// one person arriving, not two. The host may also have typed what the friends
+// CALL him — "דדוש" for מירון דדוש — so an unclaimed seat under the first or
+// the last word of any name offered is his too, under the name the host gave.
 async function joinByCode(pool, body = {}, { publicBase = '', onState } = {}) {
   const userId = userIdOf(body.userId);
   if (!userId) return { ok: false, error: 'bad_user' };
   const code = String(body.code || '').trim().toUpperCase();
   if (!CODE_RE.test(code)) return { ok: false, error: 'no_night' };
   const { rows: [n] } = await pool.query('SELECT * FROM nights WHERE code = $1 AND closed_at IS NULL', [code]);
-  if (!n) return { ok: false, error: 'no_night' };
+  if (!n) {
+    const { rows: [c] } = await pool.query(
+      `SELECT * FROM nights WHERE code = $1 AND closed_at > now() - ${CLOSED_GRACE}
+        ORDER BY closed_at DESC LIMIT 1`, [code]);
+    if (!c) return { ok: false, error: 'no_night' };
+    const { rows: seat } = await pool.query(
+      'SELECT id FROM players WHERE night_id = $1 AND user_id = $2 ORDER BY ord LIMIT 1', [c.id, userId]);
+    return { ok: false, error: 'closed', night: describe(c),
+      url: seat.length ? personalUrl(publicBase, c, seat[0].id) : viewUrl(publicBase, c) };
+  }
 
   const { rows: mine } = await pool.query(
     'SELECT id, name FROM players WHERE night_id = $1 AND user_id = $2 ORDER BY ord LIMIT 1', [n.id, userId]);
@@ -95,8 +115,13 @@ async function joinByCode(pool, body = {}, { publicBase = '', onState } = {}) {
   const names = (Array.isArray(body.names) ? body.names : []).filter(s => typeof s === 'string' && s.trim()).map(s => s.trim());
   // No name to try: they are asked for one, so say which night it is.
   if (!names.length) return { ok: false, error: 'need_name', night: describe(n) };
-  const { rows: players } = await pool.query('SELECT id, name, user_id FROM players WHERE night_id = $1', [n.id]);
-  for (const want of names) {
+  const { rows: players } = await pool.query('SELECT id, name, user_id FROM players WHERE night_id = $1 ORDER BY ord', [n.id]);
+  // Each name as offered first, then the first and last word of each.
+  const forms = [...names];
+  for (const want of names) { const w = want.split(/\s+/); if (w.length > 1) forms.push(w[0], w[w.length - 1]); }
+  const free = forms.map(f => players.find(p => !p.user_id && norm(p.name) === norm(f))).find(Boolean);
+  const tries = free ? [free.name, ...names] : names;
+  for (const want of tries) {
     const hit = players.find(p => norm(p.name) === norm(want));
     if (hit && hit.user_id) continue;
     let pid = hit && hit.id;

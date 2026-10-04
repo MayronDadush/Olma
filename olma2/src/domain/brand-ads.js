@@ -202,6 +202,10 @@ const AUDIENCE = `u.status = 'active' AND u.onboarded_at IS NOT NULL AND u.pause
 // oldest clip in rotation that has a cut in their language and has not reached
 // them (a row the gate DROPPED did not reach them, so that clip stays
 // available — but the spacing below still counts it).
+// The intro clip reached them either on its own or as a game or room
+// joiner's welcome (jobs/intake.js, `clip`): the same clip both ways.
+const INTRO_SEEN = `(o.kind = 'intro_video' OR (o.kind = 'welcome_followup' AND o.payload ? 'clip'))`;
+
 async function due(client, settings, now = new Date()) {
   const { rows } = await client.query(
     `SELECT u.id AS user_id, u.timezone, u.digest_times, u.locale, pick.id AS ad_id
@@ -215,14 +219,14 @@ async function due(client, settings, now = new Date()) {
                              WHERE o.user_id = u.id AND o.kind = $2 AND o.payload->>'ad' = a.id
                                AND (o.sent_at IS NULL OR o.hold_reason IS NULL))
             AND NOT (a.skip_if_intro AND EXISTS (
-                  SELECT 1 FROM outbox o WHERE o.user_id = u.id AND o.kind = 'intro_video'
+                  SELECT 1 FROM outbox o WHERE o.user_id = u.id AND ${INTRO_SEEN}
                      AND o.sent_at IS NOT NULL AND o.hold_reason IS NULL))
           ORDER BY a.created_at, a.id LIMIT 1) pick
       WHERE ${AUDIENCE}
         AND greatest(u.last_inbound_at, u.last_dashboard_at) > $1::timestamptz - make_interval(days => $3)
         AND NOT EXISTS (SELECT 1 FROM outbox o WHERE o.user_id = u.id AND o.kind = $2
                           AND (o.sent_at IS NULL OR o.created_at > $1::timestamptz - make_interval(days => $4)))
-        AND NOT EXISTS (SELECT 1 FROM outbox o WHERE o.user_id = u.id AND o.kind = 'intro_video'
+        AND NOT EXISTS (SELECT 1 FROM outbox o WHERE o.user_id = u.id AND ${INTRO_SEEN}
                           AND o.sent_at IS NOT NULL AND o.hold_reason IS NULL
                           AND o.sent_at > $1::timestamptz - make_interval(days => $5))
       ORDER BY u.id`,

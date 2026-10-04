@@ -2256,6 +2256,12 @@ button.srow:active{background:var(--bg-tint)}
 .whenecho.miss{background:var(--bg-tint);color:var(--text-3);font-weight:500}
 .whenecho .mobtn{margin-inline-start:auto}
 #mtNewTime,#mtOptTime{margin-top:9px}
+.mtcatline{display:block;margin:-6px auto 12px;text-align:center;font-size:12.5px;color:var(--text-3);padding:2px 8px;border-radius:999px}
+.mtcatline .cdot{margin-inline-end:5px;vertical-align:0}
+.mtcatline:active{background:var(--bg-tint)}
+.mtcatpick{justify-content:center;margin:0 0 14px}
+.mtcard .mtname .cdot{margin-inline-end:6px;vertical-align:1px}
+.mtexactbtn{flex:1;min-width:0;text-align:start;font-size:16.5px;font-weight:500;color:var(--accent);padding:4px 0}
 /* A little more air than the chips above it, and a chevron that flips
    open — the same disclosure language as every fold trigger elsewhere
    (.row[aria-expanded] .chev), just on a text link instead of a full row. */
@@ -4443,7 +4449,20 @@ button.srow:active{background:var(--bg-tint)}
 <div class="sheet" id="mtSheet" role="dialog" aria-modal="true" aria-labelledby="mtTitle">
   <div class="sgrab"><i class="grabber"></i></div>
   <div class="sxhold"><button class="sx" type="button" data-sx data-i18n-label="sheet.close"><svg><use href="#i-x"/></svg></button></div>
-  <h2 id="mtTitle"></h2>
+  <!-- The name is editable in place, the same way a task's is (owner,
+       2026-10-04): anybody in it may rename it, as in the chat. The h2 stays
+       as the dialog's accessible name. -->
+  <h2 id="mtTitle" hidden></h2>
+  <div class="stitlewrap">
+    <input class="stitle" id="mtTitleIn" type="text" maxlength="120" enterkeyhint="done" data-i18n-label="mt.name" autocomplete="off">
+    <span class="stedit" aria-hidden="true"><svg><use href="#i-pencil"/></svg></span>
+  </div>
+  <!-- Its category, from a list of its own — work, family, friends, sport,
+       games (owner, 2026-10-05), not the tasks'. Read off the name by the server unless somebody in it picked one;
+       the line says which, and pressing it opens the choice (owner,
+       2026-10-04). -->
+  <button type="button" class="mtcatline" id="mtCat" aria-expanded="false"></button>
+  <div class="chips mtcatpick" id="mtCatPick" hidden></div>
   <div class="mtfaces" id="mtFaces"></div>
 
   <div class="glabel" style="margin-top:14px"><span id="mtAskLbl"></span></div>
@@ -4463,6 +4482,19 @@ button.srow:active{background:var(--bg-tint)}
     </div>
   </div>
   <p class="note" id="mtAddNote" style="padding:10px 14px 0" hidden></p>
+
+  <!-- Where, and — once it settled on a whole day or a part of one — the exact
+       hour (owner, 2026-10-04). Both are the chat's own doors: anybody in it
+       may say either, a place tells nobody, and an hour moves the calendar
+       event and is told to everybody else. -->
+  <div class="group" id="mtDetails" style="margin-top:14px">
+    <div class="field"><label for="mtPlace" data-i18n="mt.placeLbl"></label>
+      <input id="mtPlace" type="text" maxlength="120" enterkeyhint="done" data-i18n-ph="mt.placePh" autocomplete="off"></div>
+    <div class="field" id="mtExactWrap" hidden><label data-i18n="mt.exactLbl"></label>
+      <button type="button" class="mtexactbtn" id="mtExactBtn"></button>
+      <input id="mtExactTime" type="time" tabindex="-1" aria-hidden="true"
+             style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px"></div>
+  </div>
 
   <!-- Two exits that must never read alike. One clears your own calendar and
        nobody else notices; the other tells four people you are not coming. -->
@@ -4827,6 +4859,10 @@ button.srow:active{background:var(--bg-tint)}
     cancelMeeting:       "cancel_meeting",             /* the page offers it only between two people */
     rejoinMeeting:       "rejoin_meeting",             /* NO TOOL YET — dashboard only */
     reopenMeeting:       "reopen_meeting",             /* a settled time back on the table */
+    setMeetingPlace:     "set_meeting_place",
+    setMeetingTitle:     "set_meeting_title",
+    setMeetingCategory:  "set_meeting_title",         /* its optional `category` */
+    setMeetingTime:      "propose_meeting_slot",       /* on a settled one it sets the hour */
     pause:               "pause_olma",
     resume:              "resume_olma",
     setName:             "set_my_name",
@@ -4859,6 +4895,8 @@ button.srow:active{background:var(--bg-tint)}
     inviteContact:"inviteContact", inviteShared:"inviteShared",
     respondToMeeting:"respondToMeeting", leaveMeeting:"leaveMeeting", cancelMeeting:"cancelMeeting",
     rejoinMeeting:"rejoinMeeting", reopenMeeting:"reopenMeeting",
+    setMeetingPlace:"setMeetingPlace", setMeetingTime:"setMeetingTime", setMeetingTitle:"setMeetingTitle",
+    setMeetingCategory:"setMeetingCategory",
     startMeeting:"startMeeting", addOption:"addOption", answerOption:"answerOption",
     settleMeeting:"settleMeeting",
     removeOption:"removeOption", swapOption:"swapOption", setQuorum:"setQuorum",
@@ -5009,8 +5047,22 @@ button.srow:active{background:var(--bg-tint)}
        offset of "two hours before" is two hours of actual time, and on the
        night the clocks move those are not the same thing. Sent as UTC, which
        names the instant and nothing else — the server stores an instant. */
-    var at = new Date(localStamp(myTz(), x.d, time)).getTime() - (x.remOff || 0) * 60000;
+    var at = new Date(localStamp(myTz(), x.d, time)).getTime() - (remOffs(x)[0] || 0) * 60000;
     return new Date(at).toISOString().replace(/\.\d+Z$/, "+00:00");
+  }
+  /* The offsets chosen, largest first — "a day before" AND "on time" is one
+     choice made of several chips (owner, 2026-10-05). Never empty: a reminder
+     that is on is at least on time. */
+  function remOffs(x){
+    var l = (x && x.remOffs && x.remOffs.length) ? x.remOffs.slice() : [0];
+    return l.sort(function(a, b){ return b - a; });
+  }
+  /* Every moment the set means, one per chip. A dateless task has no "before"
+     and stays the single hour of its own. */
+  function remindIsos(x){
+    if(!x) return [];
+    if(!x.d){ var one = remindIso(x); return one ? [one] : []; }
+    return remOffs(x).map(function(off){ return remindIso({d:x.d, tm:x.tm, all:x.all, rem:x.rem, remOffs:[off]}); });
   }
 
   var API = {
@@ -5134,6 +5186,9 @@ button.srow:active{background:var(--bg-tint)}
         var payload = {taskId:id, on:!!x.rem};
         if(x.rem){
           payload.remindAt = remindIso(x);
+          /* The whole set; the server drops any moment already behind them
+             (user-dashboard-write.remindSet). */
+          payload.remindAts = remindIsos(x);
           payload.repeatRule = REPEAT_RULE[x.rep || "none"] || null;
           /* A nudge carries no hour and no rule: the server's rule picks both
              (user-dashboard-write.setTaskReminder), and an hour computed here
@@ -5559,6 +5614,12 @@ button.srow:active{background:var(--bg-tint)}
       "mt.leaveAsk":"לצאת מ{name}? התשובות שלך יורדות מהספירה והתיאום יימחק מהרשימה שלך.",
       "mt.del":"מחיקת התיאום","mt.delAsk":"למחוק את {name}? נשלח ל{who} הודעה שהתיאום בוטל.",
       "toast.mtDeleted":"{name} נמחק","toast.mtDeleteFailed":"לא הצלחתי למחוק את {name}",
+      "tcat.social":"חברים","tcat.sport":"ספורט","tcat.games":"משחקים","mt.catAuto":"אוטומטי","mt.catAdd":"הוספת קטגוריה",
+      "toast.mtCatFailed":"לא הצלחתי לשנות את הקטגוריה",
+      "toast.mtRenamed":"השם עודכן","toast.mtRenameFailed":"לא הצלחתי לשנות את השם",
+      "mt.placeLbl":"מקום","mt.placePh":"איפה נפגשים?","mt.exactLbl":"שעה מדויקת","mt.exactAdd":"הוספת שעה",
+      "toast.mtPlaceSet":"המקום נשמר","toast.mtPlaceFailed":"לא הצלחתי לשמור את המקום",
+      "toast.mtTimeSet":"השעה נקבעה — כולם יקבלו הודעה","toast.mtTimeFailed":"לא הצלחתי לקבוע את השעה",
       "mt.reopen":"פתיחה מחדש של הזמן","mt.reopenAgain":"עוד לחיצה — כולם יקבלו הודעה",
       "toast.mtReopened":"{name} נפתח מחדש — שאלתי את כולם","toast.mtReopenFailed":"לא הצלחתי לפתוח מחדש את {name}",
       "sw.delete":"מחיקה","sw.leave":"יציאה","sw.again":"עוד לחיצה כדי למחוק","sw.againLeave":"עוד לחיצה כדי לצאת",
@@ -5700,7 +5761,7 @@ button.srow:active{background:var(--bg-tint)}
       "off.at":"בזמן","off.m10":"10 דק׳ לפני","off.h1":"שעה לפני","off.d1":"יום לפני",
       "sheet.remindAt":"שעת התזכורת","sheet.remindAtVal":"להזכיר ב־{time}",
       "rep.once":"ללא","rep.day":"כל יום","rep.week":"כל שבוע","rep.month":"כל חודש",
-      "kind.plain":"רגילה","kind.plainSub":"פעם אחת, בזמן","kind.nag":"נודניק","kind.nagSub":"עד שזה בוצע",
+      "kind.plain":"רגילה","kind.plainSub":"פעם 1 בכל זמן שבחרת","kind.nag":"נודניק","kind.nagSub":"עד שזה בוצע",
       "rep.untilVal":"נודניק עד {date}","rep.untilCap":"נודניק ל־3 ימים","rep.nagTag":"נודניק",
       "sheet.nagNear":"עד 3 פעמים ביום עד התאריך. נעצר ברגע שזה בוצע",
       "sheet.nagFar":"פעם ביום, ועד 3 פעמים ביום האחרון. נעצר ברגע שזה בוצע",
@@ -5944,6 +6005,12 @@ button.srow:active{background:var(--bg-tint)}
       "mt.leaveAsk":"Leave {name}? Your answers stop counting and it goes off your list.",
       "mt.del":"Delete the coordination","mt.delAsk":"Delete {name}? {who} will get a message that it is off.",
       "toast.mtDeleted":"{name} deleted","toast.mtDeleteFailed":"Could not delete {name}",
+      "tcat.social":"Friends","tcat.sport":"Sport","tcat.games":"Games","mt.catAuto":"Automatic","mt.catAdd":"Add a category",
+      "toast.mtCatFailed":"Couldn't change the category",
+      "toast.mtRenamed":"Name updated","toast.mtRenameFailed":"Couldn't rename it",
+      "mt.placeLbl":"Place","mt.placePh":"Where are you meeting?","mt.exactLbl":"Exact time","mt.exactAdd":"Add a time",
+      "toast.mtPlaceSet":"Place saved","toast.mtPlaceFailed":"Couldn't save the place",
+      "toast.mtTimeSet":"Time set — everyone will be told","toast.mtTimeFailed":"Couldn't set the time",
       "mt.reopen":"Reopen the time","mt.reopenAgain":"Press again — everyone will be told",
       "toast.mtReopened":"{name} is open again — everyone was asked","toast.mtReopenFailed":"Could not reopen {name}",
       "sw.delete":"Delete","sw.leave":"Leave","sw.again":"Press again to delete","sw.againLeave":"Press again to leave",
@@ -6085,7 +6152,7 @@ button.srow:active{background:var(--bg-tint)}
       "off.at":"On time","off.m10":"10 min before","off.h1":"1 hour before","off.d1":"1 day before",
       "sheet.remindAt":"Reminder time","sheet.remindAtVal":"Remind at {time}",
       "rep.once":"Never","rep.day":"Every day","rep.week":"Every week","rep.month":"Every month",
-      "kind.plain":"Regular","kind.plainSub":"Once, on time","kind.nag":"Nudge","kind.nagSub":"Until it is done",
+      "kind.plain":"Regular","kind.plainSub":"Once at each time you chose","kind.nag":"Nudge","kind.nagSub":"Until it is done",
       "rep.untilVal":"Nudge until {date}","rep.untilCap":"Nudge for 3 days","rep.nagTag":"Nudge",
       "sheet.nagNear":"Up to 3 times a day until the date. Stops the moment it is done",
       "sheet.nagFar":"Once a day, and up to 3 times on the last day. Stops the moment it is done",
@@ -7687,6 +7754,18 @@ button.srow:active{background:var(--bg-tint)}
          silently fall back to the WHOLE document, wiping aria-pressed off
          every chip on the page instead of the handful in this group. */
       if(!chip.isConnected) return;
+      /* The reminder's offsets are a SET (owner, 2026-10-05): each chip
+         toggles, and the last one lit stays lit — a reminder that is on is
+         at least on time, and an empty set would be a switch saying on over
+         nothing. */
+      if(chip.dataset.remoff !== undefined && chip.closest("#sOffset")){
+        var lit = $$("#sOffset .chip").filter(function(c){ return c.getAttribute("aria-pressed") === "true"; });
+        var on = chip.getAttribute("aria-pressed") === "true";
+        if(on && lit.length === 1) return;
+        chip.setAttribute("aria-pressed", on ? "false" : "true");
+        if(chip.closest("#sheet")) commit();
+        return;
+      }
       $$(".chip", chip.parentNode).forEach(function(c){ c.setAttribute("aria-pressed", c === chip ? "true" : "false"); });
       if(chip.closest("#sheet")) commit();
       return;
@@ -8973,12 +9052,13 @@ button.srow:active{background:var(--bg-tint)}
     editing.all = $("#sAllDay").getAttribute("aria-checked") === "true";
     var pick = $$("#sCat .chip").filter(function(c){ return c.getAttribute("aria-pressed") === "true"; })[0];
     if(pick) editing.cat = pick.dataset.cat;
-    var wasRem = editing.rem, wasOff = editing.remOff, wasRep = editing.rep, wasCal = editing.cal;
+    var wasRem = editing.rem, wasOff = remOffs(editing).join(","), wasRep = editing.rep, wasCal = editing.cal;
     var wasRemAt = editing.remAt;
     editing.rem = $("#sRemind").getAttribute("aria-checked") === "true";
     editing.cal = $("#sCal").getAttribute("aria-checked") === "true";
-    var off = $$("#sOffset .chip").filter(function(c){ return c.getAttribute("aria-pressed") === "true"; })[0];
-    editing.remOff = off ? +off.dataset.remoff : 0;
+    editing.remOffs = $$("#sOffset .chip").filter(function(c){ return c.getAttribute("aria-pressed") === "true"; })
+      .map(function(c){ return +c.dataset.remoff; });
+    editing.remOffs = remOffs(editing);
     var chosen = $$("#sRepeat .chip").filter(function(c){ return c.getAttribute("aria-pressed") === "true"; })[0];
     /* A nudge is the KIND card, not a repeat chip; inside, it is still the
        "until" shape every reader of `rep` already knows. */
@@ -9013,7 +9093,7 @@ button.srow:active{background:var(--bg-tint)}
        The date and the time are part of a reminder's identity too: moving a
        task moves what it reminds you about. */
     var whenKey = String(editing.d) + "|" + String(editing.tm) + "|" + String(editing.all);
-    if(save && (editing.rem !== wasRem || editing.remOff !== wasOff || editing.rep !== wasRep
+    if(save && (editing.rem !== wasRem || remOffs(editing).join(",") !== wasOff || editing.rep !== wasRep
        || editing.remAt !== wasRemAt
        || (editing.rem && whenKey !== lastWhenKey))) API.setTaskReminder(editing);
     if(save && (editing.cal !== wasCal || (editing.cal && whenKey !== lastWhenKey))) API.setTaskCalendar(editing);
@@ -9178,7 +9258,7 @@ button.srow:active{background:var(--bg-tint)}
     $("#sRemSay").hidden = !x.rem;
     $("#sRemOff").hidden = !!x.rem;
     $("#sRemInlVal").textContent = chasing ? nagText(x)
-      : dated ? t(OFFSET_KEY[x.remOff || 0] || "off.at")
+      : dated ? remOffs(x).map(function(o){ return t(OFFSET_KEY[o] || "off.at"); }).join(", ")
       : t("sheet.remAtShort", {time:x.remAt || remDefaultAt()});
     $("#sRemInl").setAttribute("aria-expanded", String($("#sRemindFold").classList.contains("open")));
     $("#sOffset").hidden = !dated || chasing;
@@ -9600,7 +9680,7 @@ button.srow:active{background:var(--bg-tint)}
     var x = id ? open.filter(function(o){ return o.id === id; })[0] : null;
     isNew = !x;
     editing = x || {id:++seq, d:"", tm:"", all:false, t:both(""), rem:false, rep:"none",
-                    remOff:0, remAt:"", cal:false, cat:"none"};
+                    remOffs:[0], remAt:"", cal:false, cat:"none"};
     if(!x && preset) Object.keys(preset).forEach(function(k){ editing[k] = preset[k]; });
     /* What "when" was when this sheet opened. commit() compares against it so
        a reminder is only rewritten when the moment it points at actually
@@ -9622,7 +9702,7 @@ button.srow:active{background:var(--bg-tint)}
     $("#sCal").setAttribute("aria-checked", editing.cal ? "true" : "false");
     $("#sRemind").setAttribute("aria-checked", editing.rem ? "true" : "false");
     $$("#sOffset .chip").forEach(function(c){
-      c.setAttribute("aria-pressed", +c.dataset.remoff === (editing.remOff || 0) ? "true" : "false");
+      c.setAttribute("aria-pressed", remOffs(editing).indexOf(+c.dataset.remoff) > -1 ? "true" : "false");
     });
     /* Every fold starts shut: each row already says its value as a sentence,
        and opening one is the question "change it?" */
@@ -9705,7 +9785,7 @@ button.srow:active{background:var(--bg-tint)}
      something, and that is kept. */
   function sheetSig(){
     var e = editing;
-    return JSON.stringify([e.d, e.tm, e.tmEnd, e.all, e.cat, e.rem, e.remOff, e.remAt,
+    return JSON.stringify([e.d, e.tm, e.tmEnd, e.all, e.cat, e.rem, remOffs(e).join(","), e.remAt,
       e.rep, e.cal, (e.items || []).length, (e.who || []).length]);
   }
   /* Names a nameless new task, saves it, and says what it is called — with
@@ -10485,6 +10565,34 @@ button.srow:active{background:var(--bg-tint)}
     if(wait) return pl("mtW", wait);
     return t("mt.stateBlocked", {n:y, of:total, no:pl("mtN", no)});
   }
+  /* A coordination's category is a dot before its name, in the same colour
+     the task list uses — and nothing at all when there is none, because a
+     grey dot on most cards would say only "we could not tell". */
+  /* A coordination's own topics (owner, 2026-10-05: only subjects people
+     meet about), never the tasks' list. Work and family keep the task
+     colours, so the same word is the same colour on both screens. */
+  var MEETCATS = [
+    {k:"work",   c:"#0E7C86"},
+    {k:"family", c:"#C2410C"},
+    {k:"social", c:"#2F6FDB"},
+    {k:"sport",  c:"#1B9B6B"},
+    {k:"games",  c:"#5B2FD6"},
+    {k:"none",   c:"#A29FB5"}
+  ];
+  function mtCatOf(k){
+    return MEETCATS.filter(function(c){ return c.k === k; })[0] || MEETCATS[MEETCATS.length - 1];
+  }
+  function mtCatDot(m){
+    if(!m.cat || m.cat === "none") return "";
+    return '<i class="cdot" style="background:' + mtCatOf(m.cat).c + '" title="' + esc(t("tcat." + m.cat)) + '"></i>';
+  }
+  /* "none" that nobody chose is an offer; "none" somebody chose is a choice
+     and says so, like any other. */
+  function mtCatLine(m){
+    if((!m.cat || m.cat === "none") && !m.catChosen) return esc(t("mt.catAdd"));
+    return mtCatDot(m) + esc(t("tcat." + m.cat)) + (m.catAuto ? " · " + esc(t("cat.auto")) : "");
+  }
+  var mtCatOpen = false;
   function mtCardHTML(m){
     var st = mtStatus(m);
     var mine = mtMine(m);
@@ -10515,7 +10623,7 @@ button.srow:active{background:var(--bg-tint)}
       (verb ? swBack(verb) : "") + '<div class="swfront"><div class="mtrow">' +
       '<button class="mtcard" data-mt="' + m.id + '">' +
       faceStack(m.who) +
-      '<span class="mtbody"><span class="mtname">' + esc(L(m.t)) +
+      '<span class="mtbody"><span class="mtname">' + mtCatDot(m) + esc(L(m.t)) +
       /* An unanswered coordination is the one thing on this page that is
          waiting on YOU, so it says so on the card and not two taps in. */
       "</span>" +
@@ -10889,6 +10997,17 @@ button.srow:active{background:var(--bg-tint)}
        language switch with the sheet up would leave a Hebrew subtitle under an
        English list. Anything a re-render must fix belongs in the re-render. */
     $("#mtTitle").textContent = L(m.t);
+    /* Not rewritten under a finger, for the same reason as the place. */
+    var ti = $("#mtTitleIn");
+    if(document.activeElement !== ti) ti.value = L(m.t);
+    $("#mtCat").innerHTML = mtCatLine(m);
+    $("#mtCat").setAttribute("aria-expanded", mtCatOpen ? "true" : "false");
+    $("#mtCatPick").hidden = !mtCatOpen;
+    $("#mtCatPick").innerHTML = mtCatOpen ? MEETCATS.map(function(c){
+      return '<button class="chip mini cat" aria-pressed="' + (!!m.catChosen && m.cat === c.k) + '" data-mtcat="' + c.k + '">' +
+        '<i class="cdot" style="background:' + c.c + '"></i>' + esc(t("tcat." + c.k)) + "</button>";
+    }).join("") + '<button class="chip mini" aria-pressed="' + !m.catChosen + '" data-mtcat="auto">' +
+      esc(t("mt.catAuto")) + "</button>" : "";
     $("#mtAskLbl").textContent = t(m.settled ? "mt.settledLbl"
       : m.opts.length === 1 ? "mt.askOne" : "mt.ask");
 
@@ -10941,6 +11060,15 @@ button.srow:active{background:var(--bg-tint)}
       : t("mt.capNote", {n:MEET_CAP});
     $("#mtAddNote").hidden = !$("#mtAddNote").textContent;
 
+    /* Where, and the exact hour while there is none. The place field is not
+       rewritten while somebody is typing in it — a reload landing mid-word
+       would take the word away. */
+    var pl = $("#mtPlace");
+    if(document.activeElement !== pl) pl.value = m.place || "";
+    var ahead = !m.startsAt || new Date(m.startsAt).getTime() > Date.now();
+    $("#mtExactWrap").hidden = !(m.settled && m.timeOpen && ahead);
+    $("#mtExactBtn").textContent = t("mt.exactAdd");
+
     /* Two different exits, and they must never read alike: one clears your
        own calendar, the other tells four people you are not coming.
        Whether a settled meeting sits on THIS person's calendar is not recorded
@@ -10963,6 +11091,7 @@ button.srow:active{background:var(--bg-tint)}
   function openMeet(id){
     mtOpen = mtById(id);
     if(!mtOpen) return;
+    mtCatOpen = false;
     mtSettling = null; mtPickMode = false;
     renderMeet();
     showSheet($("#mtSheet"));
@@ -11266,6 +11395,85 @@ button.srow:active{background:var(--bg-tint)}
     Object.keys(m.ans || {}).forEach(function(k){ if(m.ans[k] && typeof m.ans[k] === "object") delete m.ans[k][was]; });
     renderMeet(); renderMeets(); renderStrip(selDay);
     toast(t("toast.mtReopened", {name:L(m.t)}));
+  });
+  /* A rename is saved the way the place is: on leaving the field or Enter,
+     only when it changed, and never to nothing — an empty name goes back. */
+  function mtSaveTitle(){
+    var m = mtOpen;
+    if(!m) return;
+    var v = $("#mtTitleIn").value.replace(/\s+/g, " ").trim();
+    if(!v || v === L(m.t)){ $("#mtTitleIn").value = L(m.t); return; }
+    m.t = v;
+    API.call("setMeetingTitle", {meeting_id:m.id, title:v});
+    if(LIVE) API.send("setMeetingTitle", {meetingId:m.id, title:v}, function(data){
+      if(!data) toast(t("toast.mtRenameFailed"), null, true);
+      API.reload();
+    });
+    renderMeet(); renderMeets();
+    toast(t("toast.mtRenamed"));
+  }
+  $("#mtTitleIn").addEventListener("change", mtSaveTitle);
+  $("#mtCat").addEventListener("click", function(){
+    if(!mtOpen) return;
+    mtCatOpen = !mtCatOpen;
+    renderMeet();
+  });
+  /* "אוטומטי" hands it back to the server's guess, which the page cannot
+     make itself — so the line waits for the reload to say what it became. */
+  $("#mtCatPick").addEventListener("click", function(e){
+    var b = e.target.closest("[data-mtcat]"), m = mtOpen;
+    if(!b || !m) return;
+    var k = b.dataset.mtcat;
+    if(k === "auto"){ if(!m.catChosen){ mtCatOpen = false; renderMeet(); return; } m.catChosen = false; }
+    else { m.cat = k; m.catAuto = false; m.catChosen = true; }
+    mtCatOpen = false;
+    API.call("setMeetingCategory", {meeting_id:m.id, category:k});
+    if(LIVE) API.send("setMeetingCategory", {meetingId:m.id, category:k === "auto" ? null : k}, function(data){
+      if(!data) toast(t("toast.mtCatFailed"), null, true);
+      API.reload();
+    });
+    renderMeet(); renderMeets();
+  });
+  $("#mtTitleIn").addEventListener("keydown", function(e){
+    if(e.key === "Enter"){ e.preventDefault(); this.blur(); }
+  });
+  /* Saved when the field is left or Enter is pressed, and only when it says
+     something new — the server refuses an empty place, so clearing it is
+     not offered. */
+  function mtSavePlace(){
+    var m = mtOpen;
+    if(!m) return;
+    var v = $("#mtPlace").value.replace(/\s+/g, " ").trim();
+    if(!v){ $("#mtPlace").value = m.place || ""; return; }
+    if(v === m.place) return;
+    m.place = v;
+    API.call("setMeetingPlace", {meeting_id:m.id, where:v});
+    if(LIVE) API.send("setMeetingPlace", {meetingId:m.id, where:v}, function(data){
+      if(!data) toast(t("toast.mtPlaceFailed"), null, true);
+      API.reload();
+    });
+    toast(t("toast.mtPlaceSet"));
+  }
+  $("#mtPlace").addEventListener("change", mtSavePlace);
+  $("#mtPlace").addEventListener("keydown", function(e){
+    if(e.key === "Enter"){ e.preventDefault(); this.blur(); }
+  });
+  $("#mtExactBtn").addEventListener("click", function(){
+    if(!mtOpen) return;
+    syncTimeField($("#mtExactTime"), "");
+    openTimeSheet($("#mtExactTime"));
+  });
+  $("#mtExactTime").addEventListener("input", function(){
+    var m = mtOpen, v = this.value;
+    if(!m || !v || !m.settled || !m.timeOpen) return;
+    m.timeOpen = false;
+    API.call("setMeetingTime", {meeting_id:m.id, time:v});
+    if(LIVE) API.send("setMeetingTime", {meetingId:m.id, time:v}, function(data){
+      if(!data) toast(t("toast.mtTimeFailed"), null, true);
+      API.reload();
+    });
+    renderMeet(); renderMeets();
+    toast(t("toast.mtTimeSet"));
   });
   $("#mtLeave").addEventListener("click", function(){
     if(!mtOpen) return;
@@ -13977,9 +14185,9 @@ button.srow:active{background:var(--bg-tint)}
     var m = /^([+-])(\d\d):(\d\d)$/.exec(String(str || ""));
     return m ? (m[1] === "-" ? -1 : 1) * (+m[2] * 60 + +m[3]) : 0;
   }
-  function remOffOf(x){
-    if(!x.reminder || !x.reminder.at || !x.date) return 0;
-    var at = Date.parse(x.reminder.at);
+  function remOffOf(x, rem){
+    if(!rem || !rem.at || !x.date) return 0;
+    var at = Date.parse(rem.at);
     if(!isFinite(at)) return 0;
     var tz = myTz();
     /* The stored instant, re-expressed as the wall clock they would read it
@@ -13991,6 +14199,14 @@ button.srow:active{background:var(--bg-tint)}
     var mins = Math.round((dueWall - atWall) / 60000);
     for(var i = 0; i < OFFSETS.length; i++) if(mins >= OFFSETS[i]) return OFFSETS[i];
     return 0;
+  }
+  /* One chip per pending reminder, the same offset once. `reminders` is the
+     whole set; a payload from before it carried `reminder` alone. */
+  function remOffsOf(x){
+    var list = x.reminders && x.reminders.length ? x.reminders : (x.reminder ? [x.reminder] : []);
+    var out = [];
+    list.forEach(function(r){ var o = remOffOf(x, r); if(out.indexOf(o) < 0) out.push(o); });
+    return out.length ? out.sort(function(a, b){ return b - a; }) : [0];
   }
   /* The hour a dateless task's nudge fires at, read back off the instant the
      server stores. The dated kind recovers an OFFSET instead (above): there
@@ -14028,9 +14244,9 @@ button.srow:active{background:var(--bg-tint)}
          offsets lands on the nearest one below it rather than inventing a
          fifth chip — the reminder is real either way, and the sheet only has
          to be able to show it. */
-      remOff:remOffOf(x),
+      remOffs:remOffsOf(x),
       /* …and the hour itself, for the dateless kind, which has no offset to
-         recover. Empty for a dated task, where remOff carries the answer. */
+         recover. Empty for a dated task, where remOffs carries the answer. */
       remAt:remAtOf(x),
       /* The task's own answer to "put this on my calendar", resolved server-
          side against the standing switch (domain/user-dashboard.js). */
@@ -14218,6 +14434,13 @@ button.srow:active{background:var(--bg-tint)}
       /* the Google id a settled one was written under — see agendaFor */
       gid:m.calendarEventId || "",
       t:m.title || "",
+      /* where, in somebody's words; and whether it settled with no exact hour */
+      place:m.location || "",
+      timeOpen:!!m.timeOpen,
+      /* the task categories, chosen by the server off the name */
+      cat:m.category || "none",
+      catAuto:!!m.catAuto,
+      catChosen:!!m.catChosen,
       by:m.mine ? 0 : m.initiatorId,
       who:who, allDay:allDay, opts:opts, ans:ans, left:left,
       /* Answered, in the server's own words: a yes, a no, OR a sentence that

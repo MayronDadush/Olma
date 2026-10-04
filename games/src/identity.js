@@ -1,7 +1,7 @@
 'use strict';
 // gamesd's one line to brokerd, over its unix socket. Two questions go down
-// it: who is calling (`identity_resolve`, below) and "this night just closed"
-// (`game_summary`).
+// it: who is calling (`identity_resolve`, below), "this night just closed"
+// (`game_summary`) and "the model just opened one" (`game_invite`).
 //
 // Who is calling: brokerd's `identity_resolve`. gamesd
 // holds no copy of Olma's users and never reads its database; the token the
@@ -53,4 +53,11 @@ const resolveIdentity = (token, opts) => call('identity_resolve', { token, calle
 const sendSummary = ({ nightId, userIds, texts }, opts) =>
   call('game_summary', { caller: 'games', nightId, userIds, texts }, opts);
 
-module.exports = { resolveIdentity, sendSummary };
+// The model just opened a night for this person (tools.start_game_night):
+// brokerd sends them the same two messages as the shortcut, by code — their
+// personal link, then the invite they forward to the others (olma2
+// domain/game-shortcut.js hostMessages).
+const sendInvite = ({ userId, night, url }, opts) =>
+  call('game_invite', { caller: 'games', userId, night, url }, opts);
+
+module.exports = { resolveIdentity, sendSummary, sendInvite };

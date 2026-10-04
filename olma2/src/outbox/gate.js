@@ -306,6 +306,25 @@ function decide(facts) {
     return { action: 'drop', holdReason: 'answered_in_turn' };
   }
 
+  // ── Once a day (owner, 2026-10-03, for Saar first) ─────────────────────────
+  // For a person on `daily_once_phones`, nothing Olma decided to say goes out
+  // on its own: it waits for ONE evening message (`sweeps.sweepDigests`,
+  // DAILY_ONCE_AT), which folds it in, and that message is not sent at all
+  // when nothing is open. Urgent rows and another person's request wait too —
+  // the owner chose "everything to the evening". Three things pass: the
+  // evening message itself, an introduction (the sentence that makes the rest
+  // make sense), and rung 1 of a reminder they asked for in words, which is a
+  // moment THEY chose. A check-in is Olma asking how things are, and the
+  // evening message is that question already answered, so it is dropped
+  // rather than carried. A hold here has no release time on purpose: the
+  // worker skips it and only the evening message's `collectHeld` picks it up.
+  // Only an explicit `true` acts, as for `pendingUser`.
+  if (facts.dailyOnce === true && row.kind !== 'digest' && row.kind !== 'introduction'
+    && !askedForInWords(row)) {
+    if (row.kind === 'checkin') return { action: 'drop', holdReason: 'daily_once' };
+    return { action: 'hold', holdReason: 'daily_once', releaseAfter: null };
+  }
+
   // A repeat, per the set above. 'drop', not 'hold': the thing was said, and
   // saying it ten minutes later is the same message arriving late rather than
   // a message that has not arrived. Stamped with its own reason so the
@@ -396,9 +415,10 @@ function decide(facts) {
   // The invite a host forwards (game-summary.INVITE_KIND) is queued by code
   // in the same moment as the reply to their own message — the one that came
   // through `before_dispatch`, which opens no turn and stamps no wokeAt — so
-  // its own creation is the evidence they are right there.
+  // its own creation is the evidence they are right there. The same for the
+  // host's own message when the model opened the night (HOST_KIND).
   const createdMs = row.created_at ? new Date(row.created_at).getTime() : 0;
-  const inviteGrace = row.kind === gameSummary.INVITE_KIND
+  const inviteGrace = gameSummary.HOST_KINDS.has(row.kind)
     && createdMs > 0 && (now.getTime() - createdMs) < CONVERSATION_GRACE_MS;
   const gameGrace = inviteGrace || (row.kind === gameSummary.KIND
     && wokeAtMs > 0 && (now.getTime() - wokeAtMs) < CONVERSATION_GRACE_MS);

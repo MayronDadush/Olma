@@ -142,6 +142,14 @@ const closing = async (env, w, st, s) => {
   return { ...rest, ...a };
 };
 
+// start_game_night's two outcomes. Both messages went by code — their own
+// link, then the invite to forward — so the model says nothing; or brokerd
+// could not be reached, and the model gives both links and says which is which.
+const SENT_OPEN = 'The night is open and both messages just went to them from Olma, drawn by code: their own personal link, then the invite to forward to the other players. '
+  + 'Reply NO_REPLY. Only if their message asked for something this did not do, say that in one short line, with no link, code, price or invite.';
+const INVITE_FALLBACK = '`url` is the host\'s own seat, for them only. `join_link` is for the other players: they tap it and send Olma the message it opens. '
+  + 'Give both and say which is which; never hand out the page without #me- as the way to join.';
+
 // close_game_night's question, per person and night: when it was asked.
 // In memory on purpose — a gamesd restart only means she asks again.
 const CONFIRM_TTL_MS = 30 * 60_000;
@@ -149,7 +157,7 @@ const closeAsks = new Map();
 
 /* ── the tools ── */
 const TOOLS = {
-  async start_game_night({ pool, user, publicBase }, a) {
+  async start_game_night({ pool, user, publicBase, invite }, a) {
     const open = (await nightsOf(pool, user.id)).filter(n => !n.closed_at);
     if (open.length) fail('already_open', `they already have an open night, code ${open[0].code}: ${publicBase}/night/${open[0].token}. `
       + 'If they asked for a new one in its place, close_game_night closes it without a settlement, then call this again.');
@@ -158,14 +166,25 @@ const TOOLS = {
     const n = await store.createNight(pool, { name: a.name || (user.locale === 'en' ? 'Poker night' : 'ערב פוקר'), price: a.price, chips: a.chips, players: [host, ...others] });
     // The host is the first row insertNight wrote; linking it is what makes
     // this night "theirs" to every later tool.
-    await pool.query(
+    const { rows: [seat] } = await pool.query(
       `UPDATE players SET user_id = $2, linked_at = now(), linked_via = 'host'
-        WHERE night_id = $1 AND ord = (SELECT min(ord) FROM players WHERE night_id = $1)`, [n.id, user.id]);
-    // ...and the seat that may lock it (migration 004).
-    await pool.query(
-      `UPDATE nights SET host_player = (SELECT id FROM players WHERE night_id = $1 AND linked_via = 'host' LIMIT 1) WHERE id = $1`, [n.id]);
+        WHERE night_id = $1 AND ord = (SELECT min(ord) FROM players WHERE night_id = $1) RETURNING id`, [n.id, user.id]);
+    // ...and that seat is the one that may lock it (migration 004).
+    await pool.query('UPDATE nights SET host_player = $2 WHERE id = $1', [n.id, seat.id]);
     const st = await store.stateOf(pool, (await store.findNight(pool, n.token)));
-    return { night_code: n.code, url: `${publicBase}/night/${n.token}`, name: st.game.name, price: st.game.price, chips: st.game.chips, players: namesOf(st) };
+    const out = { night_code: n.code, name: st.game.name, price: st.game.price, chips: st.game.chips, players: namesOf(st) };
+    if (!invite) return { ...out, url: `${publicBase}/night/${n.token}` };
+    // The host gets their OWN seat, and the others a separate message to
+    // forward, sent by code (olma2 domain/game-shortcut.js hostMessages). On
+    // 2026-10-03 the model handed the host the shared page instead.
+    const mine = `${publicBase}/night/${n.token}#me-${seat.id}`;
+    let r;
+    try {
+      r = await invite({ userId: user.id, night: { name: out.name, price: out.price, chips: out.chips, code: n.code }, url: mine });
+    } catch (e) { r = { ok: false, error: e.message }; }
+    if (r && r.ok && r.queued) return { ...out, sent: true, note: SENT_OPEN };
+    console.error('[gamesd tool] the invite was not queued:', r && r.error || 'no answer');
+    return { ...out, url: mine, join_link: `${publicBase}/g/${n.code}`, note: INVITE_FALLBACK };
   },
 
   async add_buyin(env, a) {

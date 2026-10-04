@@ -186,7 +186,12 @@ test('purge removes what nobody can use, and leaves live rows alone', async () =
   const liveSid = await openSession((await makeUser(db.pool, '+972531910003')).id);
   await db.pool.query(
     `INSERT INTO magic_links (token_hash, user_id, expires_at)
-     VALUES ('dead', $1, now() - interval '3 days')`, [me.id]);
+     VALUES ('dead', $1, now() - interval '10 days')`, [me.id]);
+  // Spent yesterday: still read by the day-one 22h check-in ("has this person
+  // ever had a link?"), so it stays for a week.
+  await db.pool.query(
+    `INSERT INTO magic_links (token_hash, user_id, expires_at, used_at)
+     VALUES ('spentyesterday', $1, now() - interval '20 hours', now() - interval '30 hours')`, [me.id]);
   await db.pool.query(
     `INSERT INTO dashboard_sessions (id, user_id, created_at, last_seen_at)
      VALUES ('deadsession', $1, now() - interval '400 days', now() - interval '400 days')`, [me.id]);
@@ -195,6 +200,9 @@ test('purge removes what nobody can use, and leaves live rows alone', async () =
   assert.equal(r.data.sessions >= 1, true);
   assert.equal((await tx((c) => auth.peekLink(c, liveToken))).ok, true, 'purge ate a live link');
   assert.equal((await tx((c) => auth.resolveSession(c, liveSid))).ok, true, 'purge ate a live session');
+  const { rows } = await db.pool.query(`SELECT token_hash FROM magic_links WHERE token_hash IN ('dead', 'spentyesterday')`);
+  assert.deepEqual(rows.map((r) => r.token_hash), ['spentyesterday'],
+    'a week past expiry goes; a link spent yesterday stays for the day-one check-in');
 });
 
 test('the tool hands back a real URL on the configured public host', async () => {

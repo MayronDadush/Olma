@@ -202,6 +202,44 @@ test('the reminder switch replaces rather than accumulates', async () => {
   assert.equal(String(rows[0].id), String(second.data.reminder.id));
 });
 
+// "בזמן" AND "10 דק׳ לפני" (owner, 2026-10-05): the offset chips are a set,
+// and the set replaces whatever was there — the page reads every one back.
+test('several reminder moments are written together, replace the old set, and are read back', async () => {
+  const t = await mkTask({ dueAt: iso(3 * 86400e3) });
+  const due = Date.now() + 3 * 86400e3;
+  const at = (minsBefore) => new Date(due - minsBefore * 60e3).toISOString();
+  const first = await act('setTaskReminder', { taskId: t.id, on: true, remindAt: at(60), remindAts: [at(60)] });
+  assert.equal(first.ok, true, first.ok ? '' : JSON.stringify(first.error));
+  const set = [at(0), at(10), at(1440), at(10)];
+  const r = await act('setTaskReminder', { taskId: t.id, on: true, remindAt: at(1440), remindAts: set });
+  assert.equal(r.ok, true, r.ok ? '' : JSON.stringify(r.error));
+  const { rows } = await db.pool.query(
+    `SELECT remind_at FROM task_reminders WHERE task_id = $1 AND sent_at IS NULL AND cancelled_at IS NULL
+      ORDER BY remind_at`, [t.id]);
+  assert.deepEqual(rows.map((x) => new Date(x.remind_at).getTime()),
+    [at(1440), at(10), at(0)].map((x) => Date.parse(x)),
+    'the same moment twice is one reminder, and the old hour-before is gone');
+  const page = await tx((c) => dash.load(c, me.id));
+  const row = page.data.tasks.find((x) => String(x.id) === String(t.id));
+  assert.equal(row.reminders.length, 3);
+  assert.equal(new Date(row.reminder.at).getTime(), Date.parse(at(1440)), '`reminder` stays the earliest');
+});
+
+test('a moment already behind them is dropped from the set, and a bad one refuses before anything is cancelled', async () => {
+  const t = await mkTask({ dueAt: iso(3600e3) });
+  const keep = await act('setTaskReminder', { taskId: t.id, on: true, remindAt: iso(30 * 60e3) });
+  assert.equal(keep.ok, true);
+  const bad = await act('setTaskReminder', { taskId: t.id, on: true, remindAt: iso(3600e3), remindAts: [iso(3600e3), '2026-01-01T10:00'] });
+  assert.equal(bad.ok, false);
+  const r = await act('setTaskReminder', { taskId: t.id, on: true, remindAt: iso(-86400e3 + 3600e3),
+    remindAts: [iso(-86400e3 + 3600e3), iso(3600e3)] });
+  assert.equal(r.ok, true, r.ok ? '' : JSON.stringify(r.error));
+  const { rows } = await db.pool.query(
+    `SELECT id FROM task_reminders WHERE task_id = $1 AND sent_at IS NULL AND cancelled_at IS NULL`, [t.id]);
+  assert.equal(rows.length, 1, '"a day before" a task an hour away would have fired at once');
+  assert.equal(String(rows[0].id), String(r.data.reminder.id));
+});
+
 // "כל יום עד התאריך" — the owner asked for the chase on the page as well as in
 // chat (2026-09-24). The page sends no hour: the owner's rule picks it.
 test('the daily-until chip arms a chase to the task\'s own date, and the page reads it back', async () => {

@@ -24,6 +24,7 @@
 const { ok, err } = require('./results');
 const tasks = require('./tasks');
 const reminders = require('./reminders');
+const { hasOffset } = require('./datetime');
 const shares = require('./shares');
 const suggestions = require('./task-suggestions');
 const taskPins = require('./task-pins');
@@ -120,6 +121,25 @@ const GOOGLE_STOP = {
 // sharing layer is what answers whether this person may stand in for them.
 // Falls back to the person themselves, so a task that is neither theirs nor
 // shared with them is refused by the domain function exactly as before.
+// The set of moments the sheet asked for, checked before anything is
+// cancelled: one to four (the four offset chips), each with an offset, the
+// same instant once. Past moments go unless every one has passed.
+const MAX_REMINDER_MOMENTS = 4;
+function remindSet(list, now = new Date()) {
+  if (!list.length || list.length > MAX_REMINDER_MOMENTS) {
+    return { error: err('invalid', `remindAts takes 1 to ${MAX_REMINDER_MOMENTS} moments`) };
+  }
+  const seen = new Map();
+  for (const at of list) {
+    const ms = typeof at === 'string' && hasOffset(at) ? Date.parse(at) : NaN;
+    if (!Number.isFinite(ms)) return { error: err('invalid', 'every remindAts entry needs an explicit offset') };
+    if (!seen.has(ms)) seen.set(ms, at);
+  }
+  const all = [...seen.entries()].sort((a, b) => a[0] - b[0]).map(([, at]) => at);
+  const ahead = all.filter((at) => !reminders.momentIsPast(at, now));
+  return { moments: ahead.length ? ahead : all.slice(-1) };
+}
+
 async function asOwner(client, userId, taskId) {
   const acting = await shares.actingOwner(client, userId, taskId);
   return acting ? acting.ownerId : userId;
@@ -300,11 +320,30 @@ const ACTIONS = {
       await client.query('ROLLBACK TO SAVEPOINT dashboard_chase');
       return chase || err('invalid', 'no time is left to nudge before the task\'s own date');
     }
+    // Several moments at once ("בזמן" AND "10 דק׳ לפני" — owner, 2026-10-05):
+    // the sheet's offset chips are a set, and the switch is still ONE control,
+    // so the whole set replaces whatever was there. Each moment is a reminder
+    // of its own, said once (`RUNGS.explicit`); with the standing nudge on,
+    // `retireSiblingLadders` already keeps them to one ladder. A moment that
+    // has already gone ("a day before" a task tomorrow morning) is dropped
+    // rather than fired at once — unless it is all there is, which is what a
+    // single `remindAt` has always done.
+    const wanted = Array.isArray(p.remindAts) ? remindSet(p.remindAts) : null;
+    if (wanted && wanted.error) return wanted.error;
+    const moments = wanted ? wanted.moments : [p.remindAt];
+    await client.query('SAVEPOINT dashboard_reminders');
     for (const r of pending) {
       const res = await reminders.cancelReminder(client, userId, r.id);
-      if (!res.ok) return res;
+      if (!res.ok) { await client.query('ROLLBACK TO SAVEPOINT dashboard_reminders'); return res; }
     }
-    return reminders.setReminder(client, userId, p.taskId, p.remindAt, p.repeatRule ?? null);
+    const made = [];
+    for (const at of moments) {
+      const res = await reminders.setReminder(client, userId, p.taskId, at, p.repeatRule ?? null);
+      if (!res.ok) { await client.query('ROLLBACK TO SAVEPOINT dashboard_reminders'); return res; }
+      if (!wanted) return res;
+      made.push(res.data.reminder);
+    }
+    return ok({ reminder: made[0], reminders: made });
   },
 
   // ---- suggestions ---------------------------------------------------------
@@ -507,6 +546,52 @@ const ACTIONS = {
     if (!res.ok) return res;
     const me = await users.getById(client, userId);
     return meetingFanout.afterRejoin(client, me, p.meetingId, res);
+  },
+
+  // A new name, from the page (owner, 2026-10-04) — the chat's
+  // `set_meeting_title`: anybody in it, nobody messaged, and a shared calendar
+  // event takes the new name.
+  async setMeetingTitle(client, userId, p) {
+    const res = await meetings.setTitle(client, userId, p.meetingId, typeof p.title === 'string' ? p.title : '');
+    if (!res.ok) return res;
+    return meetingFanout.patchSharedEvent(client, res, { title: res.data.title });
+  },
+
+  // Its category, picked by a person — or `null` back to the automatic one.
+  async setMeetingCategory(client, userId, p) {
+    return meetings.setCategory(client, userId, p.meetingId, p.category === undefined ? null : p.category);
+  },
+
+  // Where it happens, from the page (owner, 2026-10-04). The same writer and
+  // the same calendar follow-through as the chat's `set_meeting_place`: the
+  // shared event takes the words, and nobody is messaged — a place said in
+  // the chat tells nobody either.
+  async setMeetingPlace(client, userId, p) {
+    const res = await meetings.setPlace(client, userId, p.meetingId, p.where);
+    if (!res.ok) return res;
+    return meetingFanout.patchSharedEvent(client, res, { location: res.data.location });
+  },
+
+  // The exact hour of a coordination that settled on a whole day or a part of
+  // one (owner, 2026-10-04) — the page's answer to the question the chat asks
+  // once (`meeting_exact_time_ask`). Only a clock time arrives: the DAY is the
+  // one it settled on, read here in this person's zone, because
+  // `meetings.setExactTime` refuses any other day anyway. Everything after the
+  // write is the chat's own door (meeting-fanout.afterTimeSet): the calendar
+  // event moves and everybody else is told.
+  async setMeetingTime(client, userId, p) {
+    const me = await users.getById(client, userId);
+    const { rows: [m] } = await client.query(
+      'SELECT confirmed_start_at FROM meetings WHERE id = $1 AND status = \'confirmed\'', [p.meetingId]);
+    if (!m || !m.confirmed_start_at) {
+      return err('invalid', 'the meeting is not settled yet — put the time on the table instead',
+        { reason: 'not_confirmed' });
+    }
+    const { day } = optionMoment.pickFor(me.timezone, m.confirmed_start_at);
+    const mom = optionMoment.momentFor(me.timezone, { day, time: p.time });
+    if (!mom.ok) return mom;
+    return meetingFanout.afterTimeSet(client, me,
+      await meetings.setExactTime(client, userId, p.meetingId, mom.data.slotText, mom.data.startsAt));
   },
 
   // ---- meetings: several candidate times ----------------------------------

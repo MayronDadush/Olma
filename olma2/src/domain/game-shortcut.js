@@ -126,17 +126,28 @@ function parseName(text) {
   return raw;
 }
 
-// The names a person is seated under, in order: their first name, then with
-// their surname's initial when somebody at the table already has it
-// ("מירון ד׳", "Miron D."). No first name on file → none, and she asks.
+// The names a person is seated under, in order: their first name, then their
+// full name when somebody at the table already has the first ("מירון דדוש";
+// the page draws him as מ.ד). gamesd also tries the last word alone against
+// a seat nobody has claimed, because some friends are called by surname. No
+// first name on file → none, and she asks.
 function namesFor(user) {
   const first = String((user && user.first_name) || '').trim().split(/\s+/)[0] || '';
   if (!first || first.length > 20) return [];
-  const last = String((user && user.last_name) || '').trim();
-  const initial = last ? last[0] : '';
-  if (!initial) return [first];
-  const hebrew = /[֐-׿]/.test(initial);
-  return [first, hebrew ? `${first} ${initial}׳` : `${first} ${initial.toUpperCase()}.`];
+  const last = String((user && user.last_name) || '').trim().replace(/\s+/g, ' ');
+  if (!last || last.length > 20) return [first];
+  return [first, `${first} ${last}`];
+}
+
+// The answer to "כבר יש מירון בערב. מה שם המשפחה שלך?" — the surname, put
+// after the name that was taken ("דדוש" → "מירון דדוש"). An answer that
+// already starts with that name is the whole name and stays as it is.
+function withSurname(answer, taken) {
+  if (!answer || !taken) return answer || null;
+  const first = String(taken).trim().split(/\s+/)[0];
+  if (!first || answer.split(/\s+/)[0].toLowerCase() === first.toLowerCase()) return answer;
+  const whole = `${first} ${answer}`;
+  return whole.length <= 30 ? whole : answer;
 }
 
 // "3 כניסות", said the way the table says it.
@@ -154,7 +165,30 @@ function buyinsText(n, lang) {
 
 const fmtNumber = (v) => Number(v).toLocaleString('en-US', { maximumFractionDigits: 2 });
 
+// The host's two messages once a night opens, whichever door opened it — the
+// shortcut ("ערב משחק חדש", then the price) or the model's own
+// start_game_night: `text` is their personal link, in their language, and
+// `invite` the separate message they forward, with only the night's /g/<code>
+// (gamesd answers it with a wa.me link holding "משחק <code>"). On 2026-10-03
+// Miron asked in his own words, the model opened the night, and he got one
+// message carrying the shared page — the thing the two messages replaced.
+function hostMessages(night, url, { lang = 'he', overrides } = {}) {
+  const templates = require('./message-templates');
+  const vars = { night: night.name, price: fmtNumber(night.price), chips: fmtNumber(night.chips), code: night.code };
+  const page = String(url).split('#')[0];
+  const inv = { ...vars, url: page, join: `${new URL(page).origin}/g/${night.code}` };
+  const host = { he: templates.render('game_opened', { ...vars, url }, overrides), en: templates.render('game_opened_en', { ...vars, url }, overrides) };
+  return {
+    text: lang === 'en' ? host.en : host.he,
+    host: { code: night.code, texts: host },
+    invite: {
+      code: night.code,
+      texts: { he: templates.render('game_invite', inv, overrides), en: templates.render('game_invite_en', inv, overrides) },
+    },
+  };
+}
+
 module.exports = {
   OPEN_PHRASES, GAME_WORDS, CODE_RE,
-  matchOpenPhrase, findCode, parseSetup, parseName, namesFor, buyinsText, fmtNumber,
+  matchOpenPhrase, findCode, parseSetup, parseName, namesFor, withSurname, buyinsText, fmtNumber, hostMessages,
 };

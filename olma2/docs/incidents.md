@@ -57,7 +57,11 @@ never trust a dated narrative for something you are about to act on.
 - [The stop that waited for a yes (fixed 2026-09-22)](#the-stop-that-waited-for-a-yes-fixed-2026-09-22)
 - [The table that did not say where she stood (2026-09-20)](#the-table-that-did-not-say-where-she-stood-2026-09-20)
 - [Five messages in twelve minutes, about one coordination (fixed 2026-09-22)](#five-messages-in-twelve-minutes-about-one-coordination-fixed-2026-09-22)
+- [Two exits, two messages, to a man who asked for one a day (fixed 2026-10-03)](#two-exits-two-messages-to-a-man-who-asked-for-one-a-day-fixed-2026-10-03)
 - [Four messages in sixty-two seconds (fixed 2026-09-20)](#four-messages-in-sixty-two-seconds-fixed-2026-09-20)
+- [Two day-one steps twelve minutes apart, the first two hours late (fixed 2026-10-03)](#two-day-one-steps-twelve-minutes-apart-the-first-two-hours-late-fixed-2026-10-03)
+- [Once a day, said and not kept (built 2026-10-03)](#once-a-day-said-and-not-kept-built-2026-10-03)
+- [Saved, marked done, and read as nothing (fixed 2026-10-04)](#saved-marked-done-and-read-as-nothing-fixed-2026-10-04)
 - [Today at five is not Monday (fixed 2026-09-24)](#today-at-five-is-not-monday-fixed-2026-09-24)
 - [The constraint that was an answer (fixed 2026-09-20)](#the-constraint-that-was-an-answer-fixed-2026-09-20)
 - [After 21 is not a no (fixed 2026-10-02)](#after-21-is-not-a-no-fixed-2026-10-02)
@@ -89,6 +93,7 @@ never trust a dated narrative for something you are about to act on.
 - [She said there was no group (fixed 2026-09-25)](#she-said-there-was-no-group-fixed-2026-09-25)
 - [The room coordinated without the person who opened it (fixed 2026-09-19)](#the-room-coordinated-without-the-person-who-opened-it-fixed-2026-09-19)
 - [Twice 'היי' before a word about the room (fixed 2026-09-25)](#twice-היי-before-a-word-about-the-room-fixed-2026-09-25)
+- [Three messages in a minute, to somebody a settled room sent (fixed 2026-10-03)](#three-messages-in-a-minute-to-somebody-a-settled-room-sent-fixed-2026-10-03)
 - [Three messages before the one they came for (changed 2026-09-29)](#three-messages-before-the-one-they-came-for-changed-2026-09-29)
 - [היא שבורה: the room waited for somebody who had already written (fixed 2026-09-09)](#היא-שבורה-the-room-waited-for-somebody-who-had-already-written-fixed-2026-09-09)
 - [The room was told about a meeting at 01:12 (fixed 2026-09-09)](#the-room-was-told-about-a-meeting-at-0112-fixed-2026-09-09)
@@ -2122,6 +2127,27 @@ gap open: a member of a room can be invited to its coordination, receive
 nothing, and nobody — not him, not the room, not the person who opened it —
 can tell.
 
+### Two exits, two messages, to a man who asked for one a day (fixed 2026-10-03)
+
+סער (u-55) had asked on 2026-10-02 to be written to once a day. On the
+evening of 2026-10-03, after havdalah, he read five messages in twenty-six
+minutes about one poker night, and two of them were nothing but somebody
+else's exit from it: "הוד לא יכול להגיע" at 19:10 and "בר לא יכול להגיע" at
+19:27, each a `meeting_withdrawn` row of its own. He answered "חשבתי שסיכמנו
+הודעה אחת ביום".
+
+Every other exit had stopped being a message on 2026-09-22 (the entry above);
+`meeting-fanout.afterOptOut` still pushed one for a CONFIRMED meeting, framed
+as "it is still on". The owner: "ביטול של משתתף לא צריך להודיע בפרטי לאף
+אחד". It is quiet now, and the result says nobody is messaged, because the
+model had told הוד "נגיד להם שלא תבוא" off a hint and a doctrine line that
+both said the others are told. Who is coming is on the coordination's page.
+
+The rest of that evening — the "once a day" preference that was saved as an
+unreadable `availability` value, the held rows released one by one, and הוד's
+two day-one check-ins twelve minutes apart — is separate work.
+
+
 ### Four messages in sixty-two seconds (fixed 2026-09-20)
 
 קאפיש (u-35) joined the test room on 2026-09-19 and had never written to Olma
@@ -2198,6 +2224,129 @@ correctly (what counts is what REACHED them); the fold now does too, through
 `unheardInvite`: when every invite row for that person and coordination is a
 dropped one, the next time goes out as the invite it should have been, with
 `tableChanged` on it.
+
+### Two day-one steps twelve minutes apart, the first two hours late (fixed 2026-10-03)
+
+Hod (u-57) reached Olma from a room on Saturday 2026-10-03 at 17:15, Israel
+time. The welcome follow-up and the room's confirmation went at 17:16 (the
+second of those is its own fix, "Three messages in a minute, to somebody a
+settled room sent"). The day-one 15m step was queued at 17:35 and held for
+Shabbat, and havdalah released it at 19:08. It is the first-contact message,
+written for somebody who "joined ~15 minutes ago", and it reached him 113
+minutes after he joined. The 2h step runs on its own clock, measured from
+onboarding, so at 19:20 it went too: two day-one questions twelve minutes
+apart, the first one stale.
+
+Two faults, and the existing supersede could catch neither. Supersede
+withdraws a step that is still UNSENT when the next one is queued, and here
+the first step had already gone. Expiry ran to the next step's moment (2h),
+not to the moment the step was about, so a hold that ended before then
+delivered it late.
+
+Measured on the box before choosing numbers. Of every 15m step ever
+delivered, Hod's was the only one sent more than 75 minutes after joining; the
+next latest was 74. For every delivered pair of day-one steps less than 100
+minutes apart, the gaps were 1, 4, 12 and 49 minutes for the held ones (u-18
+and u-24 on the 5h→8h pair at 08:00, Hod, u-53), and 84, 93 and 98 for the
+ordinary 15m→2h pairs.
+
+Fix (`jobs/checkin.js`):
+- The 15m step now expires 75 minutes after joining.
+- No day-one step is queued less than `STEP_GAP_MS` (75 minutes) after the
+  previous one REACHED them (`sent_at`, no `hold_reason`).
+- No day-one step after the first is queued within `TALKING_MS` (20 minutes)
+  of their last message. The 15m step is exempt from that check: they joined
+  by writing, so it would almost always wait.
+
+A step that waits does not hand its slot to the ordinary ladder. It is asked
+again on the next run, inside its own expiry, and a later step overtakes it as
+before. Replayed in `tests/checkin.test.js`; both halves fail on the old code.
+
+Left alone on purpose: the welcome follow-up does not count toward the gap. It
+goes out seconds after the greeter for nearly everybody who arrives through
+it, so counting it would cancel the 15m step for all of them. That is a change
+to the ladder's design, and it is the owner's call.
+
+### Once a day, said and not kept (built 2026-10-03)
+
+Saar's preferences said `availability = 'once a day'`, and in the seven days
+to 2026-10-03 Olma started eleven conversations with him: four check-ins, two
+withdrawals, and one each of a coordination invite, a time set, a cold room
+invite, a proposed slot and a confirmation. No single rule was broken. Every
+coordination row is `urgent`, so the daily budget (15 on the box) never looked
+at them. Another person's request is a peer kind, so the silence rule passes
+it. The check-in ladder spaces its own steps and nobody else's. The
+preference was a sentence that nothing read: `remember_preference` stored it
+and the gate has no word for "once".
+
+His replies were never the problem. In his transcript each of his 8 turns got
+exactly one text reply. So the owner's second half ("one message back for each
+message he sends") already held, and nothing was built for it.
+
+The owner asked for a hard cap, built for Saar alone first:
+
+- **Everything Olma decides to say waits for ONE message at 20:00 his time**
+  (`sweeps.DAILY_ONCE_AT`). The gate holds it as `daily_once` with no release
+  time, and the worker never retries it on a clock. Only `collectHeld` in the
+  evening message picks it up.
+- **When nothing is open, nothing is sent.** "Open" is read literally: an open
+  task, an event today, a coordination waiting on him or on somebody else, one
+  that just ended, a request from another person, a nudge, or a held row.
+- **Three things pass**, by the owner's choice. The evening message itself. The
+  introduction. Rung 1 of a reminder he asked for in words
+  (`gate.askedForInWords`), because a reminder he set is a moment he chose.
+  Every later rung and every automatic reminder waits. So do urgent rows and
+  other people's requests ("הכל לערב").
+- **A check-in is dropped, not carried.** It asks how things are, and the
+  evening message answers that.
+- **A held row about a coordination that has since happened is dropped before
+  the fold** (`meeting_over`). The worker would have dropped it, but it never
+  looks at a row held for the evening.
+- **One message a day is checked against what REACHED him.** A Friday 20:00
+  message held for Shabbat goes out at havdalah. The Saturday 20:00 slot then
+  finds a digest delivered inside 20 hours, and writes nothing.
+
+The scope is the flag `daily_once_phones` (`''` by default; `all` or an E.164
+list). It ships off, and the owner sets Saar's number. His own `digest_times`
+are ignored while he is on it, because two digests are not once a day.
+
+The test is `tests/daily-once.test.js`, a replay of his morning. On the old
+code three of its six cases fail. The other three assert that nothing is
+written, and they guard the new branch.
+
+### Saved, marked done, and read as nothing (fixed 2026-10-04)
+
+Saar (u-55) told Olma on 2026-10-02 that he wanted to hear from her once a
+day. The model called `remember_preference` with key `availability` and value
+`once a day`; the write succeeded, `reactions.TOOL_MARKS` put a 👍 on his
+message, and `preferences.availabilityWindow` — the only reader of that key —
+failed its `HH:MM-HH:MM` match and answered `DEFAULT_WINDOW`, exactly as it
+would have with no row at all. So the mark was a promise the system had
+already broken when it went on, and nothing anywhere said so: the read side's
+fallback is deliberate ("never crash the gate"), and it was the only side that
+looked.
+
+He was not alone. On the box that day, four of the seven `availability` rows
+could not be read: `once a day`; `07:30-16:00, א-ה` (a window with weekdays on
+the end — the hours were dropped too, because the whole value failed); and two
+lists of dates that suited ONE meeting (`שלישי 8.9 שישי 11.9 - פנוי`,
+`שבת אחרי 16:00, ראשון ורביעי`), which belonged in
+`record_meeting_constraint`.
+
+The fix is at the write, because that is where the model is still standing
+and can be told: `preferences.remember` refuses an `availability` value that
+`canonicalWindow` cannot turn into one window, writes nothing, and its error
+says where each shape belongs — days to `quiet_days`, one meeting's times to
+`record_meeting_constraint`, and a frequency to nowhere, because no tool sets
+how often Olma writes (Saar's cap is an owner's flag, `daily_once_phones`). A
+failed call earns no 👍, so the person is no longer told it was saved. Only
+spelling is forgiven — `9:00-17:30`, an en-dash, spaces — and stored
+canonical; content never is, which is why the weekday tail is refused rather
+than trimmed.
+
+The four existing rows were left on the box: the read side still falls back
+for them, and what each person meant is a question for the owner, not a
+migration.
 
 ### Today at five is not Monday (fixed 2026-09-24)
 
@@ -3273,6 +3422,24 @@ still negotiating and not inside its settle minute — exactly the conditions
 `admitLateMembers` lets a newly connected member in on. Anywhere else the line
 promises nothing. A roster row that is a LID matches no phone and gets no line
 at all.
+
+### Three messages in a minute, to somebody a settled room sent (fixed 2026-10-03)
+
+הוד (u-57) came to Olma from "חייב קבוצה לפוקר" at 17:15 on 2026-10-03,
+with the room's poker night already SET for 20:00 that evening. Inside one
+minute he read the greeter's long opening, the welcome follow-up with his
+page, and — 35 seconds behind it — the poker confirmation written for a late
+joiner.
+
+The room design (2026-09-29) says otherwise: with a coordination waiting the
+greeter gives the SHORT opening ("שולחת לך עכשיו את התיאום"), the
+coordination goes first, and what Olma is waits for the next morning. All of
+it hangs on `intake-room.roomFor`, which looked for a coordination still
+NEGOTIATING. `group-meetings.admitLateMembers` lets a newcomer into a settled
+one still ahead too (פנתרה, 2026-09-25), so the two disagreed exactly on this
+case: the system decided "no coordination waiting" and then sent one.
+`roomFor` now asks admitLateMembers' own question. The short opening's words
+are unchanged.
 
 ### Three messages before the one they came for (changed 2026-09-29)
 

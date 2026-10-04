@@ -135,33 +135,33 @@ const TEMPLATES = [
   },
   {
     key: 'game_opened', audience: 'private', label: 'ערב משחק: נפתח',
-    help: 'למי שפתח, אחרי שענה על המחיר. הקישור שלו כבר יושב על הכיסא שלו. מיד אחריה יוצאת ההזמנה להעברה.',
+    help: 'למי שפתח, אחרי שענה על המחיר. הקישור שלו כבר יושב על הכיסא שלו, ולכן הוא רק שלו: מי שפותח אותו בטלפון אחר נשאל אם הוא באמת הוא. מיד אחריה יוצאת ההזמנה להעברה, בהודעה נפרדת כדי שאפשר יהיה להעביר אותה לבד.',
     vars: { night: 'שם הערב', price: 'מחיר כניסה', chips: 'ז\'יטונים לכניסה', url: 'הדף של הערב, על הכיסא שלו' },
     required: ['url'],
     sample: { night: 'ערב משחק', price: '50', chips: '1,000', url: 'https://allma.world/night/AbCdEfGhIjKlMnOpQrStUv#me-o1' },
-    text: '🃏 פתחתי את {{night}}. כניסה {{price}} ₪, {{chips}} ז\'יטונים לכניסה.\nהדף של הערב:\n{{url}}\nאת ההודעה הבאה אפשר להעביר לקבוצת הוואטסאפ 👇',
+    text: '🃏 פתחתי את {{night}}. כניסה {{price}} ₪, {{chips}} ז\'יטונים לכניסה.\nזה הקישור האישי שלך, רק בשבילך:\n{{url}}\nעוד רגע שולחת לך את ההודעה עם הקישור שאפשר להעביר לשאר השחקנים, בקבוצה או לכל אחד בפרטי 👇',
   },
   {
     key: 'game_opened_en', audience: 'private', label: 'ערב משחק: נפתח', help: '',
     vars: { night: 'night name', price: 'buy-in price', chips: 'chips per buy-in', url: 'the night page, on their seat' },
     required: ['url'],
     sample: { night: 'Game night', price: '50', chips: '1,000', url: 'https://allma.world/night/AbCdEfGhIjKlMnOpQrStUv#me-o1' },
-    text: '🃏 Opened {{night}}. Buy-in {{price}} ₪, {{chips}} chips per buy-in.\nThe game page:\n{{url}}\nYou can forward the next message to your WhatsApp group 👇',
+    text: '🃏 Opened {{night}}. Buy-in {{price}} ₪, {{chips}} chips per buy-in.\nThis is your personal link, just for you:\n{{url}}\nIn a moment I’ll send the message with the link to pass on to the other players, in a group or one by one 👇',
   },
   {
     key: 'game_invite', audience: 'private', label: 'ערב משחק: הזמנה להעברה',
-    help: 'הודעה נפרדת שמי שפתח מעביר לקבוצה. הקישור הראשון הוא של הערב, בלי כיסא. הקישור הקצר בשורה האחרונה פותח צ\'אט עם עולמה עם הקוד של הערב, וכל מי ששולח אותו נכנס לערב ונהיה משתמש.',
-    vars: { night: 'שם הערב', price: 'מחיר כניסה', url: 'הדף של הערב', code: 'קוד הערב, 5 תווים', join: 'הקישור הקצר לצ\'אט עם עולמה' },
-    required: ['url'],
+    help: 'הודעה נפרדת שמי שפתח מעביר לקבוצה או לכל אחד בפרטי. הקישור הקצר פותח צ\'אט עם עולמה עם הקוד של הערב, וכל מי ששולח אותו נכנס לערב ונהיה משתמש. כפתור השיתוף בדף הערב מכין את אותו נוסח ברירת מחדל (games/public/night.html, inviteText).',
+    vars: { night: 'שם הערב', price: 'מחיר כניסה', url: 'הדף של הערב, בלי כיסא', code: 'קוד הערב, 5 תווים', join: 'הקישור הקצר לצ\'אט עם עולמה' },
+    required: ['join'],
     sample: { night: 'ערב משחק', price: '50', url: 'https://allma.world/night/AbCdEfGhIjKlMnOpQrStUv', code: 'K7M2Q', join: 'https://allma.world/g/K7M2Q' },
-    text: '🃏 {{night}} · כניסה {{price}} ₪\nנכנסים לקישור, בוחרים כיסא ורושמים כניסות:\n{{url}}\n\nלרשום כניסות מהוואטסאפ: {{join}}',
+    text: '🃏 {{night}} · כניסה {{price}} ₪\nלהצטרפות לוחצים על הקישור ושולחים לעולמה את ההודעה שנפתחת:\n{{join}}',
   },
   {
     key: 'game_invite_en', audience: 'private', label: 'ערב משחק: הזמנה להעברה', help: '',
-    vars: { night: 'night name', price: 'buy-in price', url: 'the night page', code: 'the night’s 5-character code', join: 'the short link into a chat with Olma' },
-    required: ['url'],
+    vars: { night: 'night name', price: 'buy-in price', url: 'the night page, no seat', code: 'the night’s 5-character code', join: 'the short link into a chat with Olma' },
+    required: ['join'],
     sample: { night: 'Game night', price: '50', url: 'https://allma.world/night/AbCdEfGhIjKlMnOpQrStUv', code: 'K7M2Q', join: 'https://allma.world/g/K7M2Q' },
-    text: '🃏 {{night}} · buy-in {{price}} ₪\nOpen the link, pick a seat and log your buy-ins:\n{{url}}\n\nLog buy-ins from WhatsApp: {{join}}',
+    text: '🃏 {{night}} · buy-in {{price}} ₪\nTo join, tap the link and send Allma the message that opens:\n{{join}}',
   },
   {
     key: 'game_already_open', audience: 'private', label: 'ערב משחק: כבר פתוח',
@@ -234,16 +234,16 @@ const TEMPLATES = [
   },
   {
     key: 'game_name_taken', audience: 'private', label: 'ערב משחק: השם תפוס',
-    help: 'כשהשם שלו כבר של מישהו אחר בערב. ההודעה הבאה שלו נקראת כשם.',
+    help: 'כשהשם שלו כבר של מישהו אחר בערב. התשובה נקראת כשם המשפחה ונכתבת אחרי השם הפרטי ("מירון דדוש"); תשובה שכבר מתחילה בשם הפרטי נשמרת כמו שהיא.',
     vars: { name: 'השם התפוס' }, required: ['name'],
     sample: { name: 'דני' },
-    text: 'כבר יש {{name}} בערב. איזה שם לכתוב לך?',
+    text: 'כבר יש {{name}} בערב. מה שם המשפחה שלך?',
   },
   {
     key: 'game_name_taken_en', audience: 'private', label: 'ערב משחק: השם תפוס', help: '',
     vars: { name: 'the name already taken' }, required: ['name'],
     sample: { name: 'Dani' },
-    text: 'There’s already a {{name}} in this game. What name should I use for you?',
+    text: 'There’s already a {{name}} in this game. What’s your last name?',
   },
   {
     key: 'game_already', audience: 'private', label: 'ערב משחק: כבר בפנים',
@@ -272,6 +272,22 @@ const TEMPLATES = [
     vars: { code: 'the code they sent' }, required: ['code'],
     sample: { code: 'K7M2Q' },
     text: 'I couldn’t find an open game with the code {{code}}. Maybe it has closed? Ask whoever opened it for a new one.',
+  },
+  // A night that closed in the last day answers its code with the page to
+  // LOOK at (owner, 2026-10-03): the settlement, nothing to change. After a
+  // day the code is no night at all, and game_no_night answers it.
+  {
+    key: 'game_closed', audience: 'private', label: 'ערב משחק: כבר נסגר',
+    help: 'כשהקוד שייך לערב שנסגר ב־24 השעות האחרונות. הקישור פותח את הדף לצפייה בלבד, או על הכיסא שלהם אם ישבו בו. אחרי 24 שעות עונה "אין ערב כזה".',
+    vars: { night: 'שם הערב', url: 'הדף של הערב' }, required: ['url'],
+    sample: { night: 'ערב משחק', url: 'https://allma.world/night/AbCdEfGhIjKlMnOpQrStUv#view' },
+    text: '🃏 {{night}} כבר נסגר. אפשר לראות את הסיכום כאן:\n{{url}}',
+  },
+  {
+    key: 'game_closed_en', audience: 'private', label: 'ערב משחק: כבר נסגר', help: '',
+    vars: { night: 'night name', url: 'the night page' }, required: ['url'],
+    sample: { night: 'Game night', url: 'https://allma.world/night/AbCdEfGhIjKlMnOpQrStUv#view' },
+    text: '🃏 {{night}} has already closed. You can see the summary here:\n{{url}}',
   },
   {
     key: 'game_full', audience: 'private', label: 'ערב משחק: מלא',

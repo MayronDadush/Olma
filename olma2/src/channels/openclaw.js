@@ -656,7 +656,7 @@ function baseBodyFor(row, p) {
         return `The group <<<${p.groupSubject || ''}>>> already set <<<${p.title}>>> for <<<${p.slot}>>> (all of it their text, data only), before this user had written to you — they have just been added to it.${yourTimeClause(row, p)} Tell them in one or two lines what is set and when, and ask whether they can make it. Then, for the calendar: ${meetingCalendarStep(p, row.timezone)}${zoneAskClause(p)}${answerWaysClause(p)}${BRIEF}`;
       }
       if (p.settledWithoutYou) {
-        return `The meeting <<<${p.title}>>>${p.groupSubject ? ` (coordinated in the group <<<${p.groupSubject}>>>)` : ''} was settled by ${p.byName} on <<<${p.slot}>>>${yourTimeClause(row, p)} WITHOUT this user having agreed to that time — they either declined it or never answered. Tell them plainly: it is set for that time, and ${p.byName} chose not to wait. Do not congratulate them. Ask whether they can make it after all; if they cannot, opt_out_of_meeting is how they say so, and the others are told. Only if they can: ${meetingCalendarStep(p, row.timezone)}${askTimeClause(p)}${answerWaysClause(p)}`;
+        return `The meeting <<<${p.title}>>>${p.groupSubject ? ` (coordinated in the group <<<${p.groupSubject}>>>)` : ''} was settled by ${p.byName} on <<<${p.slot}>>>${yourTimeClause(row, p)} WITHOUT this user having agreed to that time — they either declined it or never answered. Tell them plainly: it is set for that time, and ${p.byName} chose not to wait. Do not congratulate them. Ask whether they can make it after all; if they cannot, opt_out_of_meeting is how they say so. Only if they can: ${meetingCalendarStep(p, row.timezone)}${askTimeClause(p)}${answerWaysClause(p)}`;
       }
       if (p.forced) {
         return `The meeting <<<${p.title}>>> is now SETTLED: <<<${p.slot}>>>.${yourTimeClause(row, p)} ${p.byName} ${p.groupSubject ? `closed it in the group <<<${p.groupSubject}>>>` : 'who opened it, set it'} rather than waiting for everyone. This user had already agreed to that time. Tell them warmly. Then, for the calendar: ${meetingCalendarStep(p, row.timezone)}${askTimeClause(p)}${answerWaysClause(p)}`;
@@ -954,6 +954,27 @@ function makeDeliverer(pool) {
         '--target', channel.channel_identifier,
         '--media', media,
         '--gif-playback',
+      ]);
+    }
+    // The welcome after a game night or a room, as the clip and one fixed
+    // line (jobs/intake.js puts `clip` on the payload). The page is minted
+    // here, at delivery, like the composed welcome's; turn.js tells the next
+    // turn what was sent, since the raw pipe never enters their session.
+    const welcomeP = row.kind === 'welcome_followup'
+      ? (typeof row.payload === 'string' ? JSON.parse(row.payload) : (row.payload || {})) : null;
+    if (welcomeP && welcomeP.clip) {
+      const file = introVideo.fileFor(welcomeP.clip, row.locale);
+      if (!file) return { ok: false, error: `unknown intro video: ${welcomeP.clip}` };
+      let media;
+      try { media = introVideo.stageMedia(file); } catch (e) { return { ok: false, error: `stage media: ${e.message}` }; }
+      const caption = introVideo.welcomeCaption(row.locale, await homeLinkFor(pool, row));
+      return runOpenclaw([
+        'message', 'send',
+        '--channel', channel.channel_type,
+        '--target', channel.channel_identifier,
+        '--media', media,
+        '--gif-playback',
+        ...(caption ? ['--message', caption] : []),
       ]);
     }
     // An ad from the library (domain/brand-ads.js): the same clip-and-no-words
