@@ -110,6 +110,15 @@ function cleanSubject(subject) {
 // will be let into. The ROSTER, not a user row: the person writing to the
 // greeter usually has none yet. A LID-only roster row does not match a phone
 // and gets no line — silence is the honest answer to a room we cannot place.
+//
+// "Will be let into" is `group-meetings.admitLateMembers`' own condition: a
+// coordination still negotiating, OR one already settled whose start is still
+// ahead. Until 2026-10-03 this read negotiating only, so הוד, sent by a room
+// whose poker night was set for that evening, got the owner's long opening,
+// the welcome follow-up at once, and the poker 35 seconds behind it — three
+// messages in a minute, where the room design is the coordination first and
+// what Olma is the next morning (`incidents.md`, "Three messages in a minute,
+// to somebody a settled room sent").
 async function roomFor(client, phone) {
   if (!phone) return null;
   const { rows } = await client.query(
@@ -118,7 +127,9 @@ async function roomFor(client, phone) {
        JOIN chat_groups g ON g.id = cm.group_id AND g.state <> 'retired'
        LEFT JOIN LATERAL (
          SELECT id FROM meetings
-          WHERE group_id = g.id AND status = 'negotiating' AND settle_due_at IS NULL
+          WHERE group_id = g.id AND settle_due_at IS NULL
+            AND (status = 'negotiating'
+                 OR (status = 'confirmed' AND confirmed_start_at > now()))
           ORDER BY id DESC LIMIT 1) m ON g.state = 'open'
       WHERE cm.phone = $1 AND cm.left_at IS NULL
       ORDER BY (m.id IS NOT NULL) DESC, g.id DESC
