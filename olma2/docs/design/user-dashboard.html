@@ -5047,8 +5047,22 @@ button.srow:active{background:var(--bg-tint)}
        offset of "two hours before" is two hours of actual time, and on the
        night the clocks move those are not the same thing. Sent as UTC, which
        names the instant and nothing else — the server stores an instant. */
-    var at = new Date(localStamp(myTz(), x.d, time)).getTime() - (x.remOff || 0) * 60000;
+    var at = new Date(localStamp(myTz(), x.d, time)).getTime() - (remOffs(x)[0] || 0) * 60000;
     return new Date(at).toISOString().replace(/\.\d+Z$/, "+00:00");
+  }
+  /* The offsets chosen, largest first — "a day before" AND "on time" is one
+     choice made of several chips (owner, 2026-10-05). Never empty: a reminder
+     that is on is at least on time. */
+  function remOffs(x){
+    var l = (x && x.remOffs && x.remOffs.length) ? x.remOffs.slice() : [0];
+    return l.sort(function(a, b){ return b - a; });
+  }
+  /* Every moment the set means, one per chip. A dateless task has no "before"
+     and stays the single hour of its own. */
+  function remindIsos(x){
+    if(!x) return [];
+    if(!x.d){ var one = remindIso(x); return one ? [one] : []; }
+    return remOffs(x).map(function(off){ return remindIso({d:x.d, tm:x.tm, all:x.all, rem:x.rem, remOffs:[off]}); });
   }
 
   var API = {
@@ -5172,6 +5186,9 @@ button.srow:active{background:var(--bg-tint)}
         var payload = {taskId:id, on:!!x.rem};
         if(x.rem){
           payload.remindAt = remindIso(x);
+          /* The whole set; the server drops any moment already behind them
+             (user-dashboard-write.remindSet). */
+          payload.remindAts = remindIsos(x);
           payload.repeatRule = REPEAT_RULE[x.rep || "none"] || null;
           /* A nudge carries no hour and no rule: the server's rule picks both
              (user-dashboard-write.setTaskReminder), and an hour computed here
@@ -5744,7 +5761,7 @@ button.srow:active{background:var(--bg-tint)}
       "off.at":"בזמן","off.m10":"10 דק׳ לפני","off.h1":"שעה לפני","off.d1":"יום לפני",
       "sheet.remindAt":"שעת התזכורת","sheet.remindAtVal":"להזכיר ב־{time}",
       "rep.once":"ללא","rep.day":"כל יום","rep.week":"כל שבוע","rep.month":"כל חודש",
-      "kind.plain":"רגילה","kind.plainSub":"פעם אחת, בזמן","kind.nag":"נודניק","kind.nagSub":"עד שזה בוצע",
+      "kind.plain":"רגילה","kind.plainSub":"פעם 1 בכל זמן שבחרת","kind.nag":"נודניק","kind.nagSub":"עד שזה בוצע",
       "rep.untilVal":"נודניק עד {date}","rep.untilCap":"נודניק ל־3 ימים","rep.nagTag":"נודניק",
       "sheet.nagNear":"עד 3 פעמים ביום עד התאריך. נעצר ברגע שזה בוצע",
       "sheet.nagFar":"פעם ביום, ועד 3 פעמים ביום האחרון. נעצר ברגע שזה בוצע",
@@ -6135,7 +6152,7 @@ button.srow:active{background:var(--bg-tint)}
       "off.at":"On time","off.m10":"10 min before","off.h1":"1 hour before","off.d1":"1 day before",
       "sheet.remindAt":"Reminder time","sheet.remindAtVal":"Remind at {time}",
       "rep.once":"Never","rep.day":"Every day","rep.week":"Every week","rep.month":"Every month",
-      "kind.plain":"Regular","kind.plainSub":"Once, on time","kind.nag":"Nudge","kind.nagSub":"Until it is done",
+      "kind.plain":"Regular","kind.plainSub":"Once at each time you chose","kind.nag":"Nudge","kind.nagSub":"Until it is done",
       "rep.untilVal":"Nudge until {date}","rep.untilCap":"Nudge for 3 days","rep.nagTag":"Nudge",
       "sheet.nagNear":"Up to 3 times a day until the date. Stops the moment it is done",
       "sheet.nagFar":"Once a day, and up to 3 times on the last day. Stops the moment it is done",
@@ -7737,6 +7754,18 @@ button.srow:active{background:var(--bg-tint)}
          silently fall back to the WHOLE document, wiping aria-pressed off
          every chip on the page instead of the handful in this group. */
       if(!chip.isConnected) return;
+      /* The reminder's offsets are a SET (owner, 2026-10-05): each chip
+         toggles, and the last one lit stays lit — a reminder that is on is
+         at least on time, and an empty set would be a switch saying on over
+         nothing. */
+      if(chip.dataset.remoff !== undefined && chip.closest("#sOffset")){
+        var lit = $$("#sOffset .chip").filter(function(c){ return c.getAttribute("aria-pressed") === "true"; });
+        var on = chip.getAttribute("aria-pressed") === "true";
+        if(on && lit.length === 1) return;
+        chip.setAttribute("aria-pressed", on ? "false" : "true");
+        if(chip.closest("#sheet")) commit();
+        return;
+      }
       $$(".chip", chip.parentNode).forEach(function(c){ c.setAttribute("aria-pressed", c === chip ? "true" : "false"); });
       if(chip.closest("#sheet")) commit();
       return;
@@ -9023,12 +9052,13 @@ button.srow:active{background:var(--bg-tint)}
     editing.all = $("#sAllDay").getAttribute("aria-checked") === "true";
     var pick = $$("#sCat .chip").filter(function(c){ return c.getAttribute("aria-pressed") === "true"; })[0];
     if(pick) editing.cat = pick.dataset.cat;
-    var wasRem = editing.rem, wasOff = editing.remOff, wasRep = editing.rep, wasCal = editing.cal;
+    var wasRem = editing.rem, wasOff = remOffs(editing).join(","), wasRep = editing.rep, wasCal = editing.cal;
     var wasRemAt = editing.remAt;
     editing.rem = $("#sRemind").getAttribute("aria-checked") === "true";
     editing.cal = $("#sCal").getAttribute("aria-checked") === "true";
-    var off = $$("#sOffset .chip").filter(function(c){ return c.getAttribute("aria-pressed") === "true"; })[0];
-    editing.remOff = off ? +off.dataset.remoff : 0;
+    editing.remOffs = $$("#sOffset .chip").filter(function(c){ return c.getAttribute("aria-pressed") === "true"; })
+      .map(function(c){ return +c.dataset.remoff; });
+    editing.remOffs = remOffs(editing);
     var chosen = $$("#sRepeat .chip").filter(function(c){ return c.getAttribute("aria-pressed") === "true"; })[0];
     /* A nudge is the KIND card, not a repeat chip; inside, it is still the
        "until" shape every reader of `rep` already knows. */
@@ -9063,7 +9093,7 @@ button.srow:active{background:var(--bg-tint)}
        The date and the time are part of a reminder's identity too: moving a
        task moves what it reminds you about. */
     var whenKey = String(editing.d) + "|" + String(editing.tm) + "|" + String(editing.all);
-    if(save && (editing.rem !== wasRem || editing.remOff !== wasOff || editing.rep !== wasRep
+    if(save && (editing.rem !== wasRem || remOffs(editing).join(",") !== wasOff || editing.rep !== wasRep
        || editing.remAt !== wasRemAt
        || (editing.rem && whenKey !== lastWhenKey))) API.setTaskReminder(editing);
     if(save && (editing.cal !== wasCal || (editing.cal && whenKey !== lastWhenKey))) API.setTaskCalendar(editing);
@@ -9228,7 +9258,7 @@ button.srow:active{background:var(--bg-tint)}
     $("#sRemSay").hidden = !x.rem;
     $("#sRemOff").hidden = !!x.rem;
     $("#sRemInlVal").textContent = chasing ? nagText(x)
-      : dated ? t(OFFSET_KEY[x.remOff || 0] || "off.at")
+      : dated ? remOffs(x).map(function(o){ return t(OFFSET_KEY[o] || "off.at"); }).join(", ")
       : t("sheet.remAtShort", {time:x.remAt || remDefaultAt()});
     $("#sRemInl").setAttribute("aria-expanded", String($("#sRemindFold").classList.contains("open")));
     $("#sOffset").hidden = !dated || chasing;
@@ -9650,7 +9680,7 @@ button.srow:active{background:var(--bg-tint)}
     var x = id ? open.filter(function(o){ return o.id === id; })[0] : null;
     isNew = !x;
     editing = x || {id:++seq, d:"", tm:"", all:false, t:both(""), rem:false, rep:"none",
-                    remOff:0, remAt:"", cal:false, cat:"none"};
+                    remOffs:[0], remAt:"", cal:false, cat:"none"};
     if(!x && preset) Object.keys(preset).forEach(function(k){ editing[k] = preset[k]; });
     /* What "when" was when this sheet opened. commit() compares against it so
        a reminder is only rewritten when the moment it points at actually
@@ -9672,7 +9702,7 @@ button.srow:active{background:var(--bg-tint)}
     $("#sCal").setAttribute("aria-checked", editing.cal ? "true" : "false");
     $("#sRemind").setAttribute("aria-checked", editing.rem ? "true" : "false");
     $$("#sOffset .chip").forEach(function(c){
-      c.setAttribute("aria-pressed", +c.dataset.remoff === (editing.remOff || 0) ? "true" : "false");
+      c.setAttribute("aria-pressed", remOffs(editing).indexOf(+c.dataset.remoff) > -1 ? "true" : "false");
     });
     /* Every fold starts shut: each row already says its value as a sentence,
        and opening one is the question "change it?" */
@@ -9755,7 +9785,7 @@ button.srow:active{background:var(--bg-tint)}
      something, and that is kept. */
   function sheetSig(){
     var e = editing;
-    return JSON.stringify([e.d, e.tm, e.tmEnd, e.all, e.cat, e.rem, e.remOff, e.remAt,
+    return JSON.stringify([e.d, e.tm, e.tmEnd, e.all, e.cat, e.rem, remOffs(e).join(","), e.remAt,
       e.rep, e.cal, (e.items || []).length, (e.who || []).length]);
   }
   /* Names a nameless new task, saves it, and says what it is called — with
@@ -14155,9 +14185,9 @@ button.srow:active{background:var(--bg-tint)}
     var m = /^([+-])(\d\d):(\d\d)$/.exec(String(str || ""));
     return m ? (m[1] === "-" ? -1 : 1) * (+m[2] * 60 + +m[3]) : 0;
   }
-  function remOffOf(x){
-    if(!x.reminder || !x.reminder.at || !x.date) return 0;
-    var at = Date.parse(x.reminder.at);
+  function remOffOf(x, rem){
+    if(!rem || !rem.at || !x.date) return 0;
+    var at = Date.parse(rem.at);
     if(!isFinite(at)) return 0;
     var tz = myTz();
     /* The stored instant, re-expressed as the wall clock they would read it
@@ -14169,6 +14199,14 @@ button.srow:active{background:var(--bg-tint)}
     var mins = Math.round((dueWall - atWall) / 60000);
     for(var i = 0; i < OFFSETS.length; i++) if(mins >= OFFSETS[i]) return OFFSETS[i];
     return 0;
+  }
+  /* One chip per pending reminder, the same offset once. `reminders` is the
+     whole set; a payload from before it carried `reminder` alone. */
+  function remOffsOf(x){
+    var list = x.reminders && x.reminders.length ? x.reminders : (x.reminder ? [x.reminder] : []);
+    var out = [];
+    list.forEach(function(r){ var o = remOffOf(x, r); if(out.indexOf(o) < 0) out.push(o); });
+    return out.length ? out.sort(function(a, b){ return b - a; }) : [0];
   }
   /* The hour a dateless task's nudge fires at, read back off the instant the
      server stores. The dated kind recovers an OFFSET instead (above): there
@@ -14206,9 +14244,9 @@ button.srow:active{background:var(--bg-tint)}
          offsets lands on the nearest one below it rather than inventing a
          fifth chip — the reminder is real either way, and the sheet only has
          to be able to show it. */
-      remOff:remOffOf(x),
+      remOffs:remOffsOf(x),
       /* …and the hour itself, for the dateless kind, which has no offset to
-         recover. Empty for a dated task, where remOff carries the answer. */
+         recover. Empty for a dated task, where remOffs carries the answer. */
       remAt:remAtOf(x),
       /* The task's own answer to "put this on my calendar", resolved server-
          side against the standing switch (domain/user-dashboard.js). */

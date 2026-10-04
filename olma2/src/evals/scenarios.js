@@ -340,6 +340,28 @@ const SCENARIOS = [
     rubric: 'המשתמש ביקש תזכורת למחר ב-9:30. בדוק: (1) אם נאמרה שעה בכלל, היא 9:30 — לא 8:30 ולא שום שעה אחרת. (2) אין משפט שמודיע שהמשימה נשמרה: זו שעה שהוא עצמו נקב בה, והלייק על ההודעה שלו כבר אמר את זה. תשובה ריקה לגמרי היא תשובה טובה כאן. (3) לא נשאלה רשות ולא נשאלה שאלה על מה שכבר נאמר.',
   },
   {
+    id: 'two-reminder-moments',
+    title: 'בזמן וגם 10 דקות לפני — שתי תזכורות, לא אחת',
+    // Owner, 2026-10-05: the page now takes several offsets at once, and the
+    // same request must work in the chat. set_task_reminder ADDS a row per
+    // call; its description used to end "never two", which reads as a ban.
+    turns: ['תזכיר לי מחר ב-10 להתקשר לרופא, גם בזמן וגם 10 דקות לפני'],
+    hard: async (client, ctx) => {
+      const at = async (hhmi) => count(client,
+        `SELECT count(*)::int AS n FROM task_reminders r JOIN tasks t ON t.id = r.task_id
+          WHERE COALESCE(r.user_id, t.owner_id) = $1 AND r.cancelled_at IS NULL
+            AND to_char(r.remind_at AT TIME ZONE 'Asia/Jerusalem', 'HH24:MI') = $2`,
+        [ctx.userId, hhmi]);
+      return [
+        ...await turnOpening(client, ctx),
+        { name: 'a reminder is armed at 10:00, on time', pass: (await at('10:00')) >= 1 },
+        { name: 'a second one is armed at 09:50, ten minutes before', pass: (await at('09:50')) >= 1 },
+        { name: 'nothing armed at 09:00, the automatic hour-before', pass: (await at('09:00')) === 0 },
+      ];
+    },
+    rubric: 'המשתמש ביקש תזכורת מחר ב-10, גם בזמן וגם 10 דקות לפני. בדוק: (1) אם נאמרו שעות, הן 9:50 ו-10:00 ולא שעה אחרת. (2) לא נאמר שאפשר רק תזכורת אחת. (3) לא נשאלה שאלה על מה שכבר נאמר.',
+  },
+  {
     id: 'chase-until-done',
     title: 'בקשה לעזרה עד הדדליין נדרכת כמרדף יומי, לא כתזכורת אחת',
     // חיים, 2026-09-22: "אני אשמח שתזכיר לי מתי לקחת את המצלמה לתיקון … אני

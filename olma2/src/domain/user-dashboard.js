@@ -192,8 +192,14 @@ async function loadTasks(client, userId, zone, calendarSyncTasks, calendarWritab
     if (!byParent.has(i.parent_id)) byParent.set(i.parent_id, []);
     byParent.get(i.parent_id).push({ id: i.id, title: i.title, done: i.status === 'done' });
   }
-  const remByTask = new Map();
-  for (const r of rems) if (!remByTask.has(r.task_id)) remByTask.set(r.task_id, r);
+  // Every pending one, earliest first: the sheet's offset chips are a set
+  // ("בזמן" and "10 דק׳ לפני" together), and `reminder` stays the earliest
+  // for every reader that only ever needed one.
+  const remsByTask = new Map();
+  for (const r of rems) {
+    if (!remsByTask.has(r.task_id)) remsByTask.set(r.task_id, []);
+    remsByTask.get(r.task_id).push(r);
+  }
   const shareByTask = new Map();
   for (const s of shares) {
     if (!shareByTask.has(s.task_id)) shareByTask.set(s.task_id, []);
@@ -204,9 +210,11 @@ async function loadTasks(client, userId, zone, calendarSyncTasks, calendarWritab
     shareByTask.get(s.task_id).push({ id: s.viewer_id, name: s.first_name, avatar: s.avatar, shareId: s.share_id });
   }
 
+  const remView = (r) => ({ id: r.id, at: r.remind_at, repeat: r.repeat_rule, until: r.repeat_until || null });
   const out = { open: [], archived: [] };
   for (const t of tasks) {
-    const rem = remByTask.get(t.id) || null;
+    const taskRems = remsByTask.get(t.id) || [];
+    const rem = taskRems[0] || null;
     const who = shareByTask.get(t.id) || [];
     const src = importSource(t.source);
     const row = {
@@ -237,7 +245,8 @@ async function loadTasks(client, userId, zone, calendarSyncTasks, calendarWritab
       // more than one pending reminder and the page must not guess which.
       // `until` is what makes a daily rule a CHASE rather than a rhythm —
       // the sheet draws "כל יום עד התאריך" off it, never off the rule alone.
-      reminder: rem ? { id: rem.id, at: rem.remind_at, repeat: rem.repeat_rule, until: rem.repeat_until || null } : null,
+      reminder: rem ? remView(rem) : null,
+      reminders: taskRems.map(remView),
       // The EFFECTIVE answer, resolved here rather than in the browser: the
       // page draws one switch and the precedence rule belongs on the side that
       // enforces it. `inCalendar` is the separate question of whether the
