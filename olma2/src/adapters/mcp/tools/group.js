@@ -345,7 +345,10 @@ module.exports = [
     { option_id: S('number', 'The time they answered'), accept: S('boolean', 'true = yes, false = no') },
     ['option_id', 'accept'],
     async (client, ctx, a) => {
-      const who = await groupMeetings.participantFor(client, ctx.group, ctx.actingUser);
+      // A settled one too: a yes on the time it settled on counts them in
+      // without reopening it (meetings.joinSettled).
+      const who = await groupMeetings.participantFor(client, ctx.group, ctx.actingUser,
+        { statuses: ['negotiating', 'confirmed'] });
       if (!who.ok) return who;
       const { meetingId, user } = who.data;
       const option = (await meetings.options.list(client, meetingId))
@@ -362,7 +365,9 @@ module.exports = [
       return ok({
         meetingId, optionId: Number(option.id), slot: option.slotText, answer: a.accept === true ? 'yes' : 'no',
         meetingStatus: res.data.meetingStatus,
-        hints: { room: res.data.meetingStatus === 'settling'
+        hints: { room: res.data.joinedSettled
+          ? 'It was already set; their yes counts them in and it stays set. ONE short line, nothing about anybody else.'
+          : res.data.meetingStatus === 'settling'
           ? 'Their yes made it unanimous: it closes on its own shortly and everyone is told. Say ONE short line, and do not announce it closed.'
           : 'Noted. If words are needed, ONE short line — never anybody else\'s answer.' },
       });

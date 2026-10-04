@@ -279,7 +279,7 @@ module.exports = [
       }
       return offerDashboardOnce(client, user, a.meeting_id, out);
     }),
-  tool('respond_to_meeting_slot', 'Answer ONE option on the table. accept=true only after the user saw that exact option (day included) and agreed, with accepted_starts_at. accept=false declines it; the others stay. A decline may carry counter_proposal + counter_starts_at (same rules as propose), one more option.',
+  tool('respond_to_meeting_slot', 'Answer ONE option on the table. accept=true only after the user saw that exact option (day included) and agreed, with accepted_starts_at. accept=false declines it; the others stay. A decline may carry counter_proposal + counter_starts_at (same rules as propose), one more option. Settled: yes joins it.',
     { meeting_id: S('number', 'Meeting id'), accept: S('boolean', 'true = user agrees to that exact option'),
       accepted_starts_at: S('string', 'The startsAt of the option they answered, as received. Required with accept=true; with accept=false names the declined option.'),
       counter_proposal: S('string', 'Optional new option when declining'),
@@ -431,7 +431,7 @@ module.exports = [
   // A settled time back on the table, carried on from where it stopped (owner,
   // 2026-09-25): every other answer stands. The room and the page reach the
   // same fan-out.
-  tool('reopen_meeting', 'Reopen a CONFIRMED meeting you are in (before it starts) so its time can change — anyone in it may. Other times and answers stay; the set time is asked again. Everyone is told; the calendar event is removed.',
+  tool('reopen_meeting', 'Reopen a CONFIRMED meeting you are in (before it starts) so its time can change — anyone in it may. Answers stay, except your yes to the set time. Everyone is told; the calendar event is removed.',
     { meeting_id: S('number', 'Meeting id') }, ['meeting_id'],
     (client, user, a) => meetingFanout.reopenAndTell(client, user, a.meeting_id)),
   // The name, and since 2026-10-04 the category too — everything the page can
