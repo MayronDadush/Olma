@@ -116,10 +116,43 @@ test('settled from the page: there is no turn to ask in, so the settler gets the
   assert.equal(new Date(m.confirmed_start_at).toISOString(), new Date(tomorrowAt('18')).toISOString());
   assert.ok(m.time_set_at);
   assert.equal((await rows('meeting_exact_time_ask', id))[0].hold_reason, 'superseded');
+  // Ben settled it and had no confirmation to wait for, so he hears the hour;
+  // Ann's confirmation had not gone out yet, so it says the hour itself.
   const heard = await rows('meeting_time_set', id);
-  assert.deepEqual(heard.map((r) => Number(r.user_id)).sort(), [Number(ann.id), Number(ben.id)].sort(),
-    'everybody but the one who set it');
+  assert.deepEqual(heard.map((r) => Number(r.user_id)), [Number(ben.id)]);
   assert.match(instructionFor({ kind: 'meeting_time_set', payload: heard[0].payload }), /set the exact time/);
+  const annConf = (await rows('meeting_confirmed', id)).find((r) => Number(r.user_id) === Number(ann.id));
+  assert.equal(annConf.payload.slot, 'מחר ב־18:00');
+});
+
+// Saar, 2026-10-03: the confirmation and the hour were both held over Shabbat
+// and went out three minutes apart — two messages about one meeting, to seven
+// people. A confirmation still waiting says the hour itself.
+test('the hour set while the confirmation is still waiting rides the confirmation, not a second message', async () => {
+  const { id, opt } = await openWith({ allDay: true });
+  await call('settle_meeting', ann, { meeting_id: id, option_id: opt.id });
+  // Ben's confirmation went out; Cal's is held for the night.
+  await db.pool.query(`UPDATE outbox SET sent_at = now() WHERE kind = 'meeting_confirmed'
+                         AND (payload->>'meetingId')::bigint = $1 AND user_id = $2`, [id, ben.id]);
+  await db.pool.query(`UPDATE outbox SET hold_reason = 'night', release_after = now() + interval '8 hours'
+                         WHERE kind = 'meeting_confirmed' AND (payload->>'meetingId')::bigint = $1 AND user_id = $2`, [id, cal.id]);
+  const starts = tomorrowAt('18');
+  assert.ok((await call('propose_meeting_slot', ann, {
+    meeting_id: id, slot_description: 'מחר ב־18:00', starts_at: starts })).ok);
+
+  const heard = await rows('meeting_time_set', id);
+  assert.deepEqual(heard.map((r) => Number(r.user_id)), [Number(ben.id)], 'only the one who already heard it settled');
+  const calConf = (await rows('meeting_confirmed', id)).filter((r) => Number(r.user_id) === Number(cal.id));
+  assert.equal(calConf.length, 1, 'still one row');
+  const p = calConf[0].payload;
+  assert.equal(p.slot, 'מחר ב־18:00');
+  assert.equal(new Date(p.startsAtUtc).toISOString(), new Date(starts).toISOString());
+  assert.equal(p.allDay, undefined, 'no longer a whole day');
+  assert.equal(p.askExactTime, undefined);
+  const body = instructionFor({ kind: 'meeting_confirmed', payload: p, timezone: 'Asia/Jerusalem' });
+  assert.match(body, /מחר ב־18:00/);
+  assert.doesNotMatch(body, /WHOLE-DAY|Ask the user ONCE/);
+  assert.match(body, /start at exactly/, "the calendar step gets the hour, not the stand-in");
 });
 
 test('setting the hour is narrow: the same day, once, and only by somebody in it', async () => {
@@ -149,7 +182,7 @@ test('an exact time is MOVED, the coordination stays settled, and a second move 
   await call('settle_meeting', ann, { meeting_id: id, option_id: opt.id });
   assert.ok((await call('propose_meeting_slot', ben, {
     meeting_id: id, slot_description: 'מחר ב־18:00', starts_at: tomorrowAt('18') })).ok);
-  await db.pool.query(`UPDATE outbox SET sent_at = now() WHERE kind = 'meeting_time_set'
+  await db.pool.query(`UPDATE outbox SET sent_at = now() WHERE kind IN ('meeting_time_set', 'meeting_confirmed')
                          AND (payload->>'meetingId')::bigint = $1`, [id]);
   await db.pool.query('UPDATE meetings SET group_time_at = now(), group_hour_at = now() WHERE id = $1', [id]);
 

@@ -57,6 +57,7 @@ never trust a dated narrative for something you are about to act on.
 - [The stop that waited for a yes (fixed 2026-09-22)](#the-stop-that-waited-for-a-yes-fixed-2026-09-22)
 - [The table that did not say where she stood (2026-09-20)](#the-table-that-did-not-say-where-she-stood-2026-09-20)
 - [Five messages in twelve minutes, about one coordination (fixed 2026-09-22)](#five-messages-in-twelve-minutes-about-one-coordination-fixed-2026-09-22)
+- [Settled, then the hour, three minutes apart (fixed 2026-10-05)](#settled-then-the-hour-three-minutes-apart-fixed-2026-10-05)
 - [Two exits, two messages, to a man who asked for one a day (fixed 2026-10-03)](#two-exits-two-messages-to-a-man-who-asked-for-one-a-day-fixed-2026-10-03)
 - [Four messages in sixty-two seconds (fixed 2026-09-20)](#four-messages-in-sixty-two-seconds-fixed-2026-09-20)
 - [Two day-one steps twelve minutes apart, the first two hours late (fixed 2026-10-03)](#two-day-one-steps-twelve-minutes-apart-the-first-two-hours-late-fixed-2026-10-03)
@@ -2126,6 +2127,38 @@ chased three people, two of whom had never been asked"). It also leaves a real
 gap open: a member of a room can be invited to its coordination, receive
 nothing, and nobody — not him, not the room, not the person who opened it —
 can tell.
+
+### Settled, then the hour, three minutes apart (fixed 2026-10-05)
+
+The same evening as the entry below. Meeting 66 settled on Saturday at 13:07
+as a whole day, and at 14:04 somebody gave it an exact hour. Both rows were
+held for the quiet day: a `meeting_confirmed` ("it is settled") and a
+`meeting_time_set` ("the hour is set"). Both released at havdalah, 18:59. סער
+read the first at 19:04 and the second at 19:07, two messages about one
+meeting. Seven people got the same pair between 19:03 and 19:05, and one
+person on 2026-10-04 got it 172 seconds apart with no hold at all. Measured on
+the box over 30 days, it is the only pair of messages about one coordination
+that still lands inside ten minutes. The back-to-back proposals are all from
+before the fifteen-minute pace of 2026-09-22.
+
+Nothing merged them, on purpose. `meeting_*` kinds are outside
+`message-merge.MERGEABLE` because each one carries another person's text
+behind a data fence. Both are RESULTS, and a result never waits behind
+`PACE_MS`. So the fix is not at delivery but at the write, as with the table
+fold. `meeting-fanout.afterTimeSet` first looks for this person's
+`meeting_confirmed` that has not gone out. If it finds one, it writes the
+hour onto it: `slot`, the instant as `startsAtUtc`, and the setter's zone as
+`authorTz`. It also takes `allDay`, `daypart` and `askExactTime` off, and
+enqueues no `meeting_time_set` for them. The confirmation's own calendar step
+reads the instant off that payload, so the event goes on at the hour rather
+than as the whole day it settled on. The lock discipline is the table fold's:
+`FOR UPDATE SKIP LOCKED`, and the UPDATE re-asks `sent_at IS NULL`, so a
+confirmation the worker is sending right now is left alone and the hour goes
+out on its own, as before.
+
+The other two findings from that evening are separate: the unreadable
+availability value (#735) and the holiday-held check-in that does not expire.
+
 
 ### Two exits, two messages, to a man who asked for one a day (fixed 2026-10-03)
 
