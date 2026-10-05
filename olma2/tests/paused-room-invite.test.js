@@ -451,6 +451,50 @@ test('somebody already in it who asks to stop is taken out at once and still COU
   assert.equal(win && Number(win.id), Number(opt.id));
 });
 
+test('somebody who asks to stop AFTER answering stays in with that answer, and is never tagged (Eden, 2026-10-05)', async () => {
+  const { group, people } = await room(30);
+  const [asker, other, stopped] = people;
+  const started = await start(group, asker, 'פוקר');
+  const meetingId = Number(started.meeting.id);
+  const { rows: [fri] } = await db.pool.query(
+    `INSERT INTO meeting_options (meeting_id, slot_text, starts_at) VALUES ($1, 'שישי 11:00', now() + interval '4 days')
+     RETURNING id`, [meetingId]);
+  const { rows: [gone] } = await db.pool.query(
+    `INSERT INTO meeting_options (meeting_id, slot_text, starts_at, status) VALUES ($1, 'חמישי 20:00', now() + interval '3 days', 'deleted')
+     RETURNING id`, [meetingId]);
+  await db.pool.query(`INSERT INTO meeting_option_answers (option_id, user_id, answer) VALUES ($1, $2, 'y')`,
+    [fri.id, stopped.id]);
+  await db.pool.query(`INSERT INTO meeting_option_answers (option_id, user_id, answer) VALUES ($1, $2, 'y')`,
+    [gone.id, other.id]);
+
+  await withTx(db.pool, (c) => pause.pauseUser(c, stopped.id, { confirmed: true }));
+  const res = await withTx(db.pool, (c) => groupMeetings.sweepSilentPausedMembers(c, Date.now()));
+  assert.ok(!res.some((r) => r.meetingId === meetingId && r.userId === Number(stopped.id)),
+    'an answer on the table keeps them in');
+  assert.notEqual(await stateOf(meetingId, stopped.id), 'opted_out');
+
+  const co = (await withTx(db.pool, (c) => groupMeetings.statusOf(c, group, started.meeting))).coordination;
+  assert.equal(co.participants, 3, 'counted');
+  assert.equal(co.options[0].yes.length, 1, 'their yes counts');
+  assert.ok(co.options[0].yes.every((p) => p.phone === null && p.tag === null && p.paused), 'and never tags them');
+  assert.equal(co.notInIt.filter((p) => p.paused).length, 0, 'in it, so not "paused and not in it"');
+
+  // The room waits on them like anybody in it, and their yes is part of "everybody".
+  assert.equal(await withTx(db.pool, (c) => meetingOptions.unanimousOption(c, meetingId)), null);
+  for (const u of [asker, other]) {
+    await db.pool.query(`INSERT INTO meeting_option_answers (option_id, user_id, answer) VALUES ($1, $2, 'y')`,
+      [fri.id, u.id]);
+  }
+  const win = await withTx(db.pool, (c) => meetingOptions.unanimousOption(c, meetingId));
+  assert.equal(win && Number(win.id), Number(fri.id));
+
+  // An answer only on a time that has LEFT the table answers nothing: the pause takes them out.
+  await db.pool.query(`DELETE FROM meeting_option_answers WHERE option_id = $1 AND user_id = $2`, [fri.id, other.id]);
+  await withTx(db.pool, (c) => pause.pauseUser(c, other.id, { confirmed: true }));
+  const res2 = await withTx(db.pool, (c) => groupMeetings.sweepSilentPausedMembers(c, Date.now()));
+  assert.deepEqual(res2.filter((r) => r.meetingId === meetingId).map((r) => r.userId), [Number(other.id)]);
+});
+
 test('a Google invitation is a message too: somebody who asked to stop is not on the event', async () => {
   const { group, people } = await room(15);
   const [asker, , stopped] = people;

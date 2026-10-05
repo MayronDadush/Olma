@@ -103,6 +103,7 @@ never trust a dated narrative for something you are about to act on.
 - [The room could not cancel its own coordination (fixed 2026-09-25)](#the-room-could-not-cancel-its-own-coordination-fixed-2026-09-25)
 - [Eden could not come back (fixed 2026-10-01)](#eden-could-not-come-back-fixed-2026-10-01)
 - [Eden, kept out by a pause that had ended (fixed 2026-10-05)](#eden-kept-out-by-a-pause-that-had-ended-fixed-2026-10-05)
+- [Eden asked not to be taken out (fixed 2026-10-05)](#eden-asked-not-to-be-taken-out-fixed-2026-10-05)
 - [The coordination waited on the man who started it (fixed 2026-09-19)](#the-coordination-waited-on-the-man-who-started-it-fixed-2026-09-19)
 - [The room heard its own state from memory (fixed 2026-09-19)](#the-room-heard-its-own-state-from-memory-fixed-2026-09-19)
 - [The room held a time that no longer existed (fixed 2026-09-22)](#the-room-held-a-time-that-no-longer-existed-fixed-2026-09-22)
@@ -3685,6 +3686,23 @@ private apology the owner approved word for word. The fix:
 - `pausedExitsOf` counts only somebody still `opted_out`.
 
 An exit they chose stays an exit.
+
+### Eden asked not to be taken out (fixed 2026-10-05)
+
+The same evening, an hour after the entry above. Eden had been restored to
+meeting 74 with his yes on Friday and sent an apology. A minute later he
+wrote "אל תדברי איתי יותר ואל תוציאי אותי משום מקום", and she paused him.
+Fifteen seconds after that, `sweepSilentPausedMembers` took him out again
+with cause `paused_by_request`. That was the 2026-09-27 rule working exactly
+as written, and it did what his own sentence asked her not to do.
+
+The owner's call: a pause stops her talking to someone, and it does not undo
+what they already said. A member who paused her themselves and has an answer
+on a time still on the table stays in. Their answer counts, the room waits on
+them for "everybody said yes", and they are never tagged. Somebody with no
+answer, or one only on a time that has since left the table, is taken out as
+before. One question, `group-meetings.answeredLive`, is asked by the sweep,
+`statusOf` and `meeting-options.unanimousOption`.
 
 ### The times the room said went nowhere (fixed 2026-09-23)
 

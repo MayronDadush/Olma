@@ -918,7 +918,11 @@ have already had to be argued for.
   **Only a pause the ladder took gets that invite** (owner, 2026-09-27).
   Somebody who paused her THEMSELVES is never swept in, and one already in is
   taken out on the next minute sweep, cause `paused_by_request`, with no day's
-  wait. `statusOf` leaves them out of `participants`, `silent`, `missing` and
+  wait. **Unless they had already ANSWERED a time still on the table** (owner,
+  2026-10-05; `group-meetings.answeredLive`): then they stay in, their answer
+  counts, `unanimousOption` waits on them, and `statusOf` draws them with no
+  phone, so no line ever tags them. The pause silences her; it does not undo
+  what they said (`incidents.md`, "Eden asked not to be taken out"). `statusOf` leaves them out of `participants`, `silent`, `missing` and
   `optedOut`: never asked, never tagged, never said to have left.
   **But the room's NUMBER still counts them** (owner, 2026-09-28, reversing
   that half of 2026-09-27: "משתמשים מושהים גם נכללים בספירה" — the room can
