@@ -582,9 +582,29 @@ async function meetingBrief(client, meetingId) {
 // table, told to the people the table is still a question for — and a
 // parameter kept in the signature says that reading it again is a decision,
 // not an oversight.
+function joinCalendarHint(cal) {
+  if (!cal) return '';
+  if (cal.added || cal.reason === 'already_on_event' || cal.reason === 'organiser') {
+    return 'It is on their calendar through the shared invitation — say so in a few words.';
+  }
+  if (cal.reason === 'no_event') {
+    return 'If their calendar is connected (USER.md says) and they want it there, add it with create_calendar_event.';
+  }
+  return 'It could not be added to their calendar automatically; if they want it there, offer create_calendar_event.';
+}
+
 async function afterSlotResponse(client, actor, meetingId, res, _opts = {}) {
   const brief = await meetingBrief(client, meetingId);
   const others = await activeParticipantsExcept(client, meetingId, actor.id);
+  if (res.data.joinedSettled) {
+    // A yes to a meeting that has already settled (meetings.joinSettled).
+    // QUIET, like an exit or a rejoin: who is coming is on the page and in the
+    // room's count, and nobody else is messaged. Onto the shared event if
+    // there is one; otherwise the model offers their own calendar.
+    const cal = res.data.alreadyIn ? null : (await calendar.addMeetingAttendee(client, meetingId, actor.id)).data;
+    res.data.hint = `${res.data.alreadyIn ? 'They were already counted in.' : 'They are counted in; it stays settled on that time.'} Nobody else is messaged about it, so never say they will be told. ${joinCalendarHint(cal)}`;
+    return res;
+  }
   if (res.data.meetingStatus === 'settling') {
     // Their yes was the last one. NOBODY is told yet — that is the entire
     // point of the grace: the announcement is what cannot be taken back, so
@@ -878,6 +898,7 @@ async function reopenAndTell(client, actor, meetingId, { fromRoom = false } = {}
         meetingId: Number(meetingId), title: brief.title || 'meeting',
         byName: actorName(actor), was: res.data.was || brief.confirmed_slot || undefined,
         options: res.data.table.map((o) => o.slotText),
+        ...((res.data.yesStands || []).includes(Number(uid)) ? { yesStands: true } : {}),
         calendarCleanup: roles ? cancelCalendarCleanup(roles, removed, uid) : 'none',
         ...(brief.group_subject ? { groupSubject: brief.group_subject } : {}),
         ...(fromRoom ? { fromRoom: true } : {}),

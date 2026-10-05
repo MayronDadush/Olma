@@ -95,6 +95,7 @@ never trust a dated narrative for something you are about to act on.
 - [She said there was no group (fixed 2026-09-25)](#she-said-there-was-no-group-fixed-2026-09-25)
 - [The room coordinated without the person who opened it (fixed 2026-09-19)](#the-room-coordinated-without-the-person-who-opened-it-fixed-2026-09-19)
 - [Twice 'היי' before a word about the room (fixed 2026-09-25)](#twice-היי-before-a-word-about-the-room-fixed-2026-09-25)
+- [A yes had no door, so the game was reopened (fixed 2026-10-05)](#a-yes-had-no-door-so-the-game-was-reopened-fixed-2026-10-05)
 - [Three messages in a minute, to somebody a settled room sent (fixed 2026-10-03)](#three-messages-in-a-minute-to-somebody-a-settled-room-sent-fixed-2026-10-03)
 - [Three messages before the one they came for (changed 2026-09-29)](#three-messages-before-the-one-they-came-for-changed-2026-09-29)
 - [היא שבורה: the room waited for somebody who had already written (fixed 2026-09-09)](#היא-שבורה-the-room-waited-for-somebody-who-had-already-written-fixed-2026-09-09)
@@ -3533,6 +3534,32 @@ still negotiating and not inside its settle minute — exactly the conditions
 `admitLateMembers` lets a newly connected member in on. Anywhere else the line
 promises nothing. A roster row that is a LID matches no phone and gets no line
 at all.
+
+### A yes had no door, so the game was reopened (fixed 2026-10-05)
+
+Padel Gang, 2026-10-04: Saturday 17:00 was settled, and Sharon wanted one more
+person counted in. A settled coordination had exactly one door back to
+answering — `reopen_meeting` — because every yes went through
+`respondToSlot`, which asked for a negotiation. So it was reopened, and the
+reopen DELETED every answer on the time it had settled on, Yuval's included.
+To the gate he was now somebody who had never answered, so the reopen notice
+was dropped in his quiet hours, and the room counted three where there had
+been four. The `joinedLate` invite had been asking "can you make it?" since
+2026-09-25 with nowhere to put a yes.
+
+Two changes. **`meetings.joinSettled`**: a yes to the settled moment, while it
+is still ahead, lands on the option it settled on and leaves the meeting
+settled — from the chat (`respond_to_meeting_slot`) and from the room
+(`answer_group_coordination_option` now reaches a confirmed coordination). It
+is quiet like an exit or a rejoin, and puts them on the shared event when
+there is one (`calendar.addMeetingAttendee`). A yes to any OTHER time on a
+settled one is refused with `settled_elsewhere`: changing the time is a
+person's decision, not a side effect of answering. **`reopenMeeting` clears
+only the REOPENER's answer** on the settled time. That is enough for what the
+wholesale DELETE was for: the reopener is still in it, so without their yes
+the time cannot be unanimous and cannot settle straight back. Everybody
+else's yes stands, and their `meeting_reopened` says so (`yesStands`) instead
+of asking again.
 
 ### Three messages in a minute, to somebody a settled room sent (fixed 2026-10-03)
 
