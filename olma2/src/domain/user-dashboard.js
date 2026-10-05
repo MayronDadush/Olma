@@ -103,7 +103,8 @@ async function loadTasks(client, userId, zone, calendarSyncTasks, calendarWritab
   // shared OUT, i.e. exactly half the feature, silently.
   const { rows: tasks } = await client.query(
     `SELECT t.id, t.title, t.category, t.category_auto, t.source, t.status, t.parent_id, t.ends_at,
-            t.kind, t.location,
+            t.kind, t.location, t.repeat_rule,
+            to_char(t.repeat_until AT TIME ZONE $2, 'YYYY-MM-DD') AS repeat_until_date,
             t.archived_at IS NOT NULL AS archived, t.completed_at,
             t.due_at, t.owner_id,
             -- the wall clock the person actually chose, resolved in THEIR zone
@@ -237,6 +238,11 @@ async function loadTasks(client, userId, zone, calendarSyncTasks, calendarWritab
       // predates the column (NULL) is a job, which is the safe reading.
       kind: t.kind === 'event' ? 'event' : 'todo',
       location: t.location || null,
+      // A repeating EVENT (migration 111): the row is its NEXT occurrence and
+      // the rule is how the calendar tab draws the ones after it. Not the
+      // reminder's repeat, which is `reminder.repeat` and a different thing.
+      repeat: t.kind === 'event' ? (t.repeat_rule || null) : null,
+      repeatUntil: t.repeat_rule ? (t.repeat_until_date || null) : null,
       done: t.status === 'done',
       // The archive lists what was finished and when; nothing else reads it.
       completedAt: t.completed_at,

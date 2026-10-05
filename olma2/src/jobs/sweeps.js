@@ -677,7 +677,7 @@ async function sweepFinishedTasks(client, nowIso) {
   for (const [userId, items] of byUser) {
     const done = [];
     for (const item of items) {
-      const res = await tasks.completeTask(client, userId, item.id);
+      const res = await tasks.completeTask(client, userId, item.id, { now });
       // Not an error worth stopping for: a task completed or archived by the
       // person between the SELECT above and this line is exactly the outcome
       // we wanted, arrived at without us.

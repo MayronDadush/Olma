@@ -170,8 +170,19 @@ function taskHints(res, user = {}) {
   // Conditional like every other hint here: it says what words to use IF
   // there are words, and never asks for a sentence the 👍 already sent.
   const events = [d.task, ...(Array.isArray(d.tasks) ? d.tasks : [])]
-    .filter((t) => t && t.kind === 'event')
+    .filter((t) => t && t.kind === 'event' && !t.repeat_rule)
     .map((t) => `"${t.title}"`);
+  // A REPEATING event does the opposite of "closes by itself" — it moves on to
+  // its next occurrence (migration 111) — and its cadence is the one thing a 👍
+  // cannot carry, so it is the one event line that is news. Drawn from the
+  // stored rule, never re-derived by the model from the request.
+  if (d.task && d.task.kind === 'event' && d.task.repeat_rule) {
+    const every = listBlock.repeatLabel(d.task.repeat_rule, /^he/i.test(user.locale || 'he') ? 'he' : 'en');
+    hints.event = `"${d.task.title}" is a REPEATING calendar entry (${every || d.task.repeat_rule}), first on due_at: `
+      + 'after each occurrence it moves on to the next by itself and never closes. Say the cadence and the first '
+      + 'day in ONE short line, as a calendar entry — never "רשמתי משימה". If another weekday is still unsaved, '
+      + 'that is a separate add_task.';
+  }
   if (events.length) {
     hints.event = `${events.join(', ')} went onto their CALENDAR, not their to-do list: it closes by itself `
       + 'once its time passes and is never chased with "בוצע?". If you say anything about it, say it '
@@ -306,15 +317,16 @@ module.exports = [
       const status = a.status || 'open';
       return listHints(client, user, await tasks.listTasks(client, user.id, { status }), status);
     }),
-  tool('add_task', 'Add one todo (a job until done) or event (a moment they will be AT; closes when it passes) — say which in kind. due_at is when the THING is, and arms a reminder an hour before (08:00 for a whole-day one). remind_at is any hour they name FOR THE REMINDER ("תזכיר לי ב-19:00", "תזכורת ל-19:00"), never due_at. A dictated shopping run is filed as a list. Follow any hints on the reply. Times MUST carry a UTC offset (2026-08-20T09:00:00+03:00), from their own local time (USER.md); never bare digits with a Z.',
-    { title: S('string', 'What it is — never the hours or the place, those have fields'),
+  tool('add_task', 'Add one todo (a job until done) or event (a moment they will be AT; closes when it passes) — say which in kind. due_at is when the THING is, and arms a reminder an hour before (08:00 for a whole-day one). remind_at is any hour they name FOR THE REMINDER ("תזכיר לי ב-19:00", "תזכורת ל-19:00"), never due_at. A dictated shopping run is filed as a list. Times MUST carry a UTC offset (2026-08-20T09:00:00+03:00), from their own local time (USER.md); never bare digits with a Z.',
+    { title: S('string', 'What it is — no hours or place, those have fields'),
       kind: S('string', 'event | todo ("פגישה מחר ב-10" = event, "לקבוע פגישה" = todo); omitted = guessed from the title'),
       location: S('string', 'Where an event is — never in the title'),
       category: S('string', 'home|work|family|health|money|errands; omit unless the person named one (worked out from the title).'),
       due_at: S('string', 'Optional, ISO-8601 with offset as above'),
-      ends_at: S('string', 'Optional end of a range, same format: a shift is title \'משמרת\', due_at 12:00, ends_at 19:00 — never hours in the title.'),
+      ends_at: S('string', 'End of a range, same format: shift \'משמרת\' = due_at 12:00, ends_at 19:00'),
       remind_at: S('string', 'The hour THEY named to be reminded, same format. Replaces the automatic one.'),
       nudge: S('boolean', 'A nudge they asked for ("נודניק", "עד שאעשה", "תציק לי"): repeats until done'),
+      repeat: S('string', 'Repeating EVENT: weekly|daily|monthly; due_at=1st; 2 weekdays=2 calls'),
       when_said: WHEN_SAID,
       parent_task_id: S('number', 'Optional parent (project) id') }, ['title'],
     async (client, user, a, ctx) => {
@@ -384,6 +396,7 @@ module.exports = [
       const res = await tasks.addTask(client, user.id, {
         title: a.title, kind: a.kind, location: a.location, category: a.category, dueAt, endsAt,
         remindAt, nudge: Boolean(chase) || a.nudge === true, weekly, parentId: a.parent_task_id,
+        repeat: a.repeat,
       });
       if (chase && res.ok) ctx.turn.chaseUsed = true;
       if (weekly && res.ok) ctx.turn.remindAskUsed = true;
