@@ -273,7 +273,7 @@ module.exports = [
       // 2026-10-05: Eden's Friday 11:00 beside Miron's Friday noon). The person
       // decides: merge — the new time takes the old one's place and every
       // answer moves with it — or separate, a new time with new votes. The
-      // private chat only; the room and the page add as they always did.
+      // room asks the same (tools/group.js); the page adds as it always did.
       // `merge_with: 0` is "separate" — one parameter, because the schema
       // budget is full.
       const merge = Number(a.merge_with);

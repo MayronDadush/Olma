@@ -197,18 +197,20 @@ title means this file. Grep the title, not the filename.
     tool, on purpose. A tap on "new" has already answered the question.
   - `incidents.md`, "Two coordinations for one meeting".
 
-- **In the private chat, a time CLOSE to one already on the table is a
-  question before it is a second option** (owner, 2026-10-05).
+- **In the private chat AND the room, a time CLOSE to one already on the
+  table is a question before it is a second option** (owner, 2026-10-05).
   - Close means the same local day and at most two hours apart, with a part of
     the day as its window (`meeting-options.isSimilar`). The exact same
     instant is not close: `add` still folds that into a yes.
-  - `propose_meeting_slot` writes nothing and returns `similar_option`. The
-    person who wrote it decides:
+  - `propose_meeting_slot` and `add_group_coordination_option` write nothing
+    and return `similar_option`. The person who wrote it (in a room, the
+    member who tagged her) decides:
     - `merge_with=<id>`: their time REPLACES that one, and every answer on it
       moves across (`meeting-options.merge`). Whoever answered is told, not
       asked again (`meeting_answer_moved`).
     - `merge_with=0`: a separate time with new answers.
-  - Never chosen for them. The room's door and the page do not ask.
+  - Never chosen for them. In a room, `similar` carries the times only, never
+    whose answer is whose. The page does not ask.
   - `incidents.md`, "Two times for one game".
 
 - **A constraint that rules out a time ON the table is an ANSWER, and the tool

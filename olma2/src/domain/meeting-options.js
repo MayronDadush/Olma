@@ -510,7 +510,7 @@ async function swap(client, userId, meetingId, replaceOptionId, slotText, starts
 // local day and at most two hours apart; a part of the day counts as its
 // window and a whole day as all of it, so "11:00" is an hour from "בצהריים".
 // The exact same moment is not "similar" — `add` already folds that one into
-// a yes. Only the private chat asks (owner); the room and the page add as before.
+// a yes. The private chat and the room ask (owner); the page adds as before.
 const SIMILAR_GAP_MIN = 120;
 const PART_WINDOWS = Object.freeze({
   morning: [8 * 60, 12 * 60], noon: [12 * 60, 16 * 60], evening: [17 * 60, 21 * 60], night: [20 * 60, 24 * 60],

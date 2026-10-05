@@ -625,7 +625,8 @@ test('a time is refused with nothing running, with nobody behind it, and at a fu
   for (let i = 0; i < 5; i++) {
     const r = await withTx(db.pool, (c) => addTool().handler(
       c, { group, actingUser: i % 2 ? dana : dani },
-      { slot_description: `בעוד ${50 + i} שעות`, starts_at: slotStart('', { hours: 50 + i }) }, {}));
+      // Three hours apart: two hours or less is a question since 2026-10-05.
+      { slot_description: `בעוד ${50 + 3 * i} שעות`, starts_at: slotStart('', { hours: 50 + 3 * i }) }, {}));
     assert.equal(r.ok, true, r.ok ? '' : JSON.stringify(r.error));
   }
   const sixth = await withTx(db.pool, (c) => addTool().handler(
@@ -686,4 +687,40 @@ test('somebody who LEFT the coordination is not waited for, and not counted', as
   const st = (await withTx(db.pool, (c) => groupMeetings.statusOf(c, group, m[0]))).coordination;
   assert.equal(st.roomTotal, 2);
   assert.deepEqual(st.notInIt, []);
+});
+
+// 2026-10-05, the poker room: a time close to one on the table is the member's
+// question, in the room as in the private chat — merge (the answers move) or
+// apart. The room hears the times and never whose answer is whose.
+test('a close time said in the room is asked about, and a merge moves the answers', async () => {
+  const { group, people } = await room(97, { subject: 'פוקר' });
+  const [miron, eden, bar] = people;
+  await withTx(db.pool, (c) => startTool().handler(c, { group, actingUser: miron }, { what: 'פוקר' }, {}));
+  const noonAt = slotStart('שישי', { hourUtc: 12 });
+  const put = await withTx(db.pool, (c) => addTool().handler(
+    c, { group, actingUser: miron }, { slot_description: 'שישי בצהריים', starts_at: noonAt }, {}));
+  assert.equal(put.ok, true, put.ok ? '' : JSON.stringify(put.error));
+  await withTx(db.pool, (c) => meetings.options.answer(c, bar.id, put.data.meetingId, put.data.optionId, 'y'));
+
+  const elevenAt = slotStart('שישי', { hourUtc: 11 });
+  const asked = await withTx(db.pool, (c) => addTool().handler(
+    c, { group, actingUser: eden }, { slot_description: 'שישי 11:00', starts_at: elevenAt }, {}));
+  assert.equal(asked.ok, false);
+  assert.equal(asked.error.reason, 'similar_option');
+  assert.deepEqual(asked.error.similar, [{ optionId: put.data.optionId, slot: 'שישי בצהריים' }],
+    'the times, and nothing about who answered');
+
+  const merged = await withTx(db.pool, (c) => addTool().handler(
+    c, { group, actingUser: eden }, { slot_description: 'שישי 11:00', starts_at: elevenAt, merge_with: put.data.optionId }, {}));
+  assert.equal(merged.ok, true, merged.ok ? '' : JSON.stringify(merged.error));
+  assert.equal(merged.data.onTable, 1);
+  assert.match(merged.data.hints.room, /replaced <<<שישי בצהריים>>>/);
+  const [only] = await withTx(db.pool, (c) => meetings.options.list(c, merged.data.meetingId));
+  assert.deepEqual(only.answers, { [miron.id]: 'y', [bar.id]: 'y', [eden.id]: 'y' });
+
+  // Apart: a fresh time with only its adder's yes.
+  const apart = await withTx(db.pool, (c) => addTool().handler(
+    c, { group, actingUser: bar }, { slot_description: 'שישי 12:00', starts_at: slotStart('שישי', { hourUtc: 12 }), merge_with: 0 }, {}));
+  assert.equal(apart.ok, true, apart.ok ? '' : JSON.stringify(apart.error));
+  assert.equal(apart.data.onTable, 2);
 });

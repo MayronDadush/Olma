@@ -10189,11 +10189,14 @@ were two options by construction.
 - **What merge means:** the person who wrote it decides between two answers.
   A merge puts the new time in the old one's place, and every answer moves
   with it. A separate time is a new option with new answers.
-- **Where:** the private chat only. The room and the page add as before.
+- **Where:** the private chat and the room (the owner widened it before the
+  merge). The page adds as before.
 
 **The fix:**
 
-- `propose_meeting_slot` asks `meeting-options.similarOnTable` first. When a
+- `propose_meeting_slot` and the room's `add_group_coordination_option` ask
+  `meeting-options.similarOnTable` first. A room's refusal carries the times
+  only, never whose answer is whose. When a
   close time is on the table, it writes nothing and returns
   `reason: 'similar_option'` with the close options and their yes counts.
 - The model asks one question, then calls again with `merge_with=<id>`
@@ -10212,8 +10215,7 @@ were two options by construction.
 
 **Open:**
 
-- The room's own door (`add_group_coordination_option`) and the page still
-  add without asking.
+- The page still adds without asking.
 - A decline carrying a `counter_proposal` goes through `proposeSlot` and is
   not checked either.
 
