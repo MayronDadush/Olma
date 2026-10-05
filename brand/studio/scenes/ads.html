@@ -1,0 +1,261 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>פרסומות עולמה</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Hebrew:wght@500;700&family=IBM+Plex+Sans:wght@500;700&family=Noto+Sans+Hebrew:wght@400;600&family=Noto+Sans:wght@400;600&display=swap">
+<!-- The short ads, in the Cypress + Mustard brand. Same stories, words and beats as the
+     26.9 library (the "opens with a question" cut of the real-WhatsApp style, the only
+     style the owner kept): ?ad=reminder (v3), coffee (v4), morning (v6), &lang=he|en.
+     The sorting ad is intro.html and the group ad is group.html.
+     Every ad is data: an opener, one or two WhatsApp chats, a timeline of beats, and a
+     closer. The chats keep WhatsApp's own colours and face, and carry no grain. -->
+<style>
+  html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #004643 }
+  .v { position: relative; width: 100vw; height: 100vh; overflow: hidden }
+  .card { position: absolute; inset: 0; z-index: 3; display: grid; align-content: center; gap: 5vmin; padding: 0 10vmin;
+    background: #004643; color: #F0EDE5; font-family: "IBM Plex Sans Hebrew", "IBM Plex Sans", sans-serif }
+  .h { font-weight: 700; font-size: 10.5vmin; line-height: 1.08; letter-spacing: -.02em; margin: 0 }
+  .h > span { display: block; white-space: nowrap }
+  .y { color: #F9C23C }
+  .sub { font-weight: 500; font-size: 4vmin; line-height: 1.4; color: #F0EDE5; margin-top: -1.5vmin }
+  .by { display: flex; align-items: center; gap: 2.4vmin; font-weight: 500; font-size: 3.6vmin; color: #D9DDD6 }
+  .by .m { width: 6.4vmin; height: 6.4vmin; flex: none }
+  #closer .big { width: 18vmin; height: 18vmin }
+  #closer .h { font-size: 8.6vmin }
+  .grain { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0 }
+  .card > :not(.grain) { position: relative; z-index: 1 }
+  #stage { position: absolute; inset: 0; z-index: 0 }
+  .chat { position: absolute; inset: 0; overflow: hidden; background: #EFEAE2;
+    font-family: "Noto Sans Hebrew", "Noto Sans", Roboto, Arial, sans-serif; color: #111B21 }
+  .top { position: absolute; inset: 0 0 auto 0; height: 13vmin; background: #F0F2F5; display: flex; align-items: center; gap: 2.6vmin; padding: 0 3.4vmin; z-index: 2; border-bottom: 1px solid #E2E4E7 }
+  .top .av { width: 8.6vmin; height: 8.6vmin; flex: none }
+  .top b { display: block; font-weight: 600; font-size: 4vmin; line-height: 1.2 }
+  .top small { font-size: 2.9vmin; color: #667781 }
+  .body { position: absolute; inset: 13vmin 0 0 0; overflow: hidden }
+  .msgs { display: grid; gap: 2.6vmin; padding: 11vmin 4vmin 5vmin }
+  .b { position: relative; max-width: 76%; border-radius: 2.2vmin; padding: 2.2vmin 2.8vmin 1.4vmin; font-size: 3.7vmin; line-height: 1.45;
+    box-shadow: 0 .2vmin .3vmin rgba(11,20,26,.13); transform-origin: bottom }
+  .b b { font-weight: 600 }
+  .out { justify-self: end; background: #D9FDD3 }
+  .in { justify-self: start; background: #FFFFFF }
+  .lnk { color: #027EB5; direction: ltr; unicode-bidi: isolate; display: inline-block }
+  .li { white-space: nowrap }
+  .t { display: flex; justify-content: flex-end; gap: 1vmin; font-size: 2.5vmin; color: #667781; margin-top: .6vmin; direction: ltr }
+  .ticks { color: #53BDEB }
+  .typing { justify-self: start; background: #fff; border-radius: 2.2vmin; padding: 2.4vmin 3vmin; display: flex; gap: 1.1vmin }
+  .typing i { width: 1.4vmin; height: 1.4vmin; border-radius: 50%; background: #8696A0 }
+  .chip { justify-self: center; background: #FFFFFF; color: #54656F; font-size: 2.8vmin; padding: 1vmin 2.8vmin; border-radius: 1.4vmin;
+    box-shadow: 0 .2vmin .3vmin rgba(11,20,26,.13) }
+  /* a reaction sits on the bubble's lower corner, on the side the bubble starts */
+  .rx { position: absolute; bottom: -3.4vmin; inset-inline-start: 2vmin; background: #fff; border-radius: 99vmin; padding: .5vmin 1.1vmin;
+    font-size: 3.4vmin; line-height: 1; box-shadow: 0 .3vmin .8vmin rgba(11,20,26,.2) }
+  .has-rx { margin-bottom: 2.6vmin }
+  .pill { position: absolute; z-index: 2; top: 16.5vmin; left: 50%; transform: translateX(-50%); white-space: nowrap; opacity: 0;
+    background: #111B21; color: #fff; font-family: "Noto Sans Hebrew", "Noto Sans", sans-serif; font-weight: 600; font-size: 3.3vmin;
+    padding: 1.6vmin 4vmin; border-radius: 99vmin; box-shadow: 0 .6vmin 2vmin rgba(0,0,0,.25) }
+  /* the night passing: the chat dims and the clock runs from when they asked to the morning */
+  #night { position: absolute; inset: 0; z-index: 2; display: grid; place-items: center; background: rgba(11,20,26,.62); opacity: 0;
+    font-family: "IBM Plex Sans", sans-serif; font-weight: 700; font-size: 20vmin; color: #F0EDE5; direction: ltr; letter-spacing: -.02em }
+  #night .y { font-size: inherit }
+</style>
+<div class="v">
+  <div id="stage"></div>
+  <div id="night"><span id="clock"></span></div>
+  <div class="card" id="opener"><h1 class="h" id="oh"></h1>
+    <div class="by"><span class="m" id="om"></span><span id="ob"></span></div>
+    <svg class="grain" aria-hidden="true"><filter id="g1f" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency=".8" numOctaves="3" stitchTiles="stitch" seed="7"/><feColorMatrix values="0 0 0 0 .94  0 0 0 0 .93  0 0 0 0 .9  .5 0 0 0 -.26"/></filter><rect width="100%" height="100%" filter="url(#g1f)"/></svg></div>
+  <div class="card" id="closer"><div class="big" id="cm"></div><h1 class="h" id="ch"></h1><div class="sub" id="cs"></div>
+    <div class="by" id="cb"></div>
+    <svg class="grain" aria-hidden="true"><rect width="100%" height="100%" filter="url(#g1f)"/></svg></div>
+</div>
+<script src="../motion.js"></script>
+<script>
+  const Q = new URLSearchParams(location.search);
+  const LANG = Q.get('lang') === 'en' ? 'en' : 'he';
+  const AD = Q.get('ad') || 'reminder';
+  const LINK = '<span class="lnk">allma.world/m/…</span>';
+  const C = {
+    he: { dir: 'rtl', name: 'עולמה', status: 'מחוברת', by: 'עולמה · בוואטסאפ שלך' },
+    en: { dir: 'ltr', name: 'Allma', status: 'online', by: 'Allma · in your WhatsApp' },
+  }[LANG];
+
+  // One entry per ad. `chats` are drawn in order; `beats` say when each thing appears.
+  // A message's `lines` come in one after another inside the same bubble.
+  const ADS = {
+    reminder: {
+      he: { open: ['שוב', '<span class="y">שכחת?</span>'], close: ['אומרים לי מתי.', '<span class="y">אני מזכירה בדיוק אז.</span>'],
+            sub: '⏰ על ההודעה שלך אומר: רשמתי, אזכיר.',
+            m1: 'תזכירי לי מחר ב־8 לקחת כדור', next: 'למחרת בבוקר', m2: '⏰ תזכורת: <b>לקחת כדור</b>' },
+      en: { open: ['Forgot', '<span class="y">again?</span>'], close: ['Tell me when.', '<span class="y">I\'ll remind you right then.</span>'],
+            sub: '⏰ on your message means: got it, I\'ll remind you.',
+            m1: 'Remind me tomorrow at 8 to take my pill', next: 'Next morning', m2: '⏰ Reminder: <b>Take my pill</b>' },
+      chats: (s) => [{ id: 'a', msgs: [
+        { id: 'm1', out: true, html: s.m1, time: '22:40', rx: '⏰' },
+        { id: 'c1', chip: s.next },
+        { id: 'm2', html: s.m2, time: '08:00' } ] }],
+      beats: [{ t: 3300, show: 'm1' }, { t: 4400, rx: 'm1' }, { t: 5500, night: ['22:40', '08:00'], len: 1500 },
+              { t: 6900, show: 'c1' }, { t: 7700, show: 'm2' }],
+      out: 10000,
+    },
+    coffee: {
+      he: { open: ['"מתי נוח לך?"', '"ולך?"', '<span class="y">"אולי שבוע הבא…"</span>'],
+            close: ['אני מדברת עם כל אחד בפרטי.', '<span class="y">ואתם מקבלים "סגור".</span>'], sub: '',
+            ask: 'תתאמי לי קפה עם דנה השבוע ☕', ack: 'שאלתי את דנה, ואעדכן כשהיא עונה 🙂',
+            cap: 'בינתיים, בטלפון של דנה', inv: 'היי דנה 🙂 מאיה רוצה לקבוע איתך קפה השבוע.<br>חמישי 10:00 או שישי 9:30?<br>אפשר לענות לי כאן בצ\'אט או דרך הקישור:<br>' + LINK,
+            ans: 'חמישי מעולה', cap2: 'ובטלפון של מאיה', done: 'סגור ☕ <b>חמישי 10:00</b> עם דנה<br>📅 הוספתי ליומן' },
+      en: { open: ['"When works for you?"', '"And you?"', '<span class="y">"Maybe next week…"</span>'],
+            close: ['I talk to each person privately.', '<span class="y">You get "done".</span>'], sub: '',
+            ask: 'Set up coffee with Dana this week ☕', ack: 'I asked Dana, and I\'ll let you know when she answers 🙂',
+            cap: 'Meanwhile, on Dana\'s phone', inv: 'Hi Dana 🙂 Maya wants to grab coffee with you this week.<br>Thursday 10:00 or Friday 9:30?<br>You can answer me here in the chat or through the link:<br>' + LINK,
+            ans: 'Thursday works', cap2: 'Back on Maya\'s phone', done: 'Done ☕ <b>Thursday 10:00</b> with Dana<br>📅 Added to your calendar' },
+      chats: (s) => [
+        { id: 'maya', msgs: [
+          { id: 'q', out: true, html: s.ask, time: '12:05' },
+          { id: 'ty1', typing: true },
+          { id: 'a1', html: s.ack, time: '12:05' },
+          { id: 'd', html: s.done, time: '12:20' } ] },
+        { id: 'dana', msgs: [
+          { id: 'i', html: s.inv, time: '12:05' },
+          { id: 'r', out: true, html: s.ans, time: '12:20' } ] } ],
+      beats: [{ t: 3300, show: 'q' }, { t: 4000, typing: 'ty1', until: 4800 }, { t: 4800, show: 'a1' },
+              { t: 6300, slide: ['maya', 'dana'], s: +1 }, { t: 6600, pill: 'cap' }, { t: 6450, show: 'i' }, { t: 8600, show: 'r' },
+              { t: 9700, slide: ['dana', 'maya'], s: -1 }, { t: 10000, pill: 'cap2' }, { t: 10600, show: 'd' }],
+      out: 13000,
+    },
+    morning: {
+      he: { open: ['מה יש לי', '<span class="y">היום?</span>'], close: ['כל בוקר, הודעה אחת.', '<span class="y">כל היום שלך בתוכה.</span>'],
+            sub: 'פעם ביום, בשעה שבחרתם.',
+            today: 'היום', m1: 'בוקר טוב ☀️ היום העיקר זה הטסט לרכב.',
+            lines: ['<b>ביומן</b>', '10:00 קפה עם דנה', '18:30 החוג של נועה', '<b>על הרשימה</b>', '• הטסט לרכב', '• להתקשר לאינסטלטור', '• מתנה לנועה'],
+            thanks: 'תודה!' },
+      en: { open: ['What\'s on', '<span class="y">today?</span>'], close: ['Every morning, one message.', '<span class="y">Your whole day in it.</span>'],
+            sub: 'Once a day, at the hour you pick.',
+            today: 'Today', m1: 'Good morning ☀️ The main thing today is the car\'s inspection.',
+            lines: ['<b>On your calendar</b>', '10:00 Coffee with Dana', '18:30 Noa\'s class', '<b>On your list</b>', '• Car inspection', '• Call the plumber', '• Gift for Noa'],
+            thanks: 'Thanks!' },
+      chats: (s) => [{ id: 'a', msgs: [
+        { id: 'c', chip: s.today },
+        { id: 'm1', html: s.m1, time: '07:30', lines: s.lines },
+        { id: 'm2', out: true, html: s.thanks, time: '07:41', rx: '🙏' } ] }],
+      beats: [{ t: 3100, show: 'c' }, { t: 3500, show: 'm1' }, { t: 3900, lines: 'm1', step: 280 },
+              { t: 7500, show: 'm2' }, { t: 8300, rx: 'm2' }],
+      out: 10200,
+    },
+  };
+  const A = ADS[AD], S = A[LANG];
+  document.documentElement.dir = C.dir; document.documentElement.lang = LANG;
+  const $ = (id) => document.getElementById(id);
+  const { frame, EASE } = AllmaMotion;
+  const ON_CYPRESS = { d: '#0E1F1E', l: '#F0EDE5', a: '#F9C23C', ring: '#F0EDE5' };
+  const AVATAR = { d: '#004643', l: '#F0EDE5', a: '#F9C23C' };
+
+  // ---- build the page from the data
+  $('oh').innerHTML = S.open.map((l) => `<span>${l}</span>`).join('');
+  $('ch').innerHTML = S.close.map((l) => `<span>${l}</span>`).join('');
+  $('cs').textContent = S.sub; if (!S.sub) $('cs').remove();
+  $('ob').textContent = C.by; $('cb').textContent = C.by;
+  $('om').innerHTML = frame('meet', 1e9, ON_CYPRESS, 'om');
+  const CHATS = A.chats(S);
+  for (const c of CHATS) {
+    const el = document.createElement('div'); el.className = 'chat'; el.id = 'chat-' + c.id;
+    el.innerHTML = `<div class="top"><div class="av" id="av-${c.id}"></div><div><b>${C.name}</b><small>${C.status}</small></div></div>
+      <div class="body"><div class="msgs" id="msgs-${c.id}">${c.msgs.map((m) => {
+        if (m.typing) return `<div class="typing" id="${m.id}"><i></i><i></i><i></i></div>`;
+        if (m.chip) return `<div class="chip" id="${m.id}">${m.chip}</div>`;
+        const lines = (m.lines || []).map((l, i) => `<div class="li" id="${m.id}-l${i}">${l}</div>`).join('');
+        return `<div class="b ${m.out ? 'out' : 'in'}${m.rx ? ' has-rx' : ''}" id="${m.id}">${m.html}${lines}`
+          + `<div class="t"><span>${m.time}</span>${m.out ? '<span class="ticks">✓✓</span>' : ''}</div>`
+          + (m.rx ? `<span class="rx" id="${m.id}-rx">${m.rx}</span>` : '') + '</div>';
+      }).join('')}</div></div>`;
+    $('stage').appendChild(el);
+    $('av-' + c.id).innerHTML = frame('meet', 1e9, AVATAR, 'av-' + c.id);
+  }
+  for (const b of A.beats) if (b.pill) { const p = document.createElement('div'); p.className = 'pill'; p.id = 'pill-' + b.pill; p.textContent = S[b.pill]; $('stage').after(p); }
+
+  const k = (ms, a, b) => EASE(Math.max(0, Math.min(1, (ms - a) / (b - a))));
+  const rise = (el, t, d = 3) => { el.style.opacity = t; el.style.transform = `translateY(${(1 - t) * d}vmin)`; };
+  const pop = (el, t) => { el.style.opacity = t; el.style.transform = `scale(${0.96 + 0.04 * t})`; el.style.display = t > 0 ? '' : 'none'; };
+
+  // Every reveal, in time order: a message, or one line inside one. Each pushes the chat up.
+  const reveals = [];
+  for (const b of A.beats) {
+    if (b.show) reveals.push({ t: b.t, el: () => $(b.show), chat: chatOf(b.show) });
+    if (b.lines) CHATS.flatMap((c) => c.msgs).find((m) => m.id === b.lines).lines
+      .forEach((_, i) => reveals.push({ t: b.t + i * b.step, line: true, el: () => $(`${b.lines}-l${i}`), chat: chatOf(b.lines) }));
+  }
+  reveals.sort((a, b) => a.t - b.t);
+  function chatOf(id) { return CHATS.find((c) => c.msgs.some((m) => m.id === id)).id; }
+
+  // A headline is as large as its card allows: the widest line fits the width.
+  function fit(h, max) {
+    h.style.fontSize = ''; const w = Math.max(...[...h.children].map((s) => s.getBoundingClientRect().width));
+    const room = innerWidth * 0.8; if (w > room) h.style.fontSize = (parseFloat(getComputedStyle(h).fontSize) * room / w) + 'px';
+  }
+  // How far each chat has scrolled after each reveal, measured once with the real fonts.
+  function measure() {
+    for (const r of reveals) { const el = r.el(); el.style.display = 'none'; }
+    document.querySelectorAll('.typing').forEach((e) => e.style.display = 'none');
+    const last = {};
+    for (const r of reveals) {
+      const el = r.el(); el.style.display = ''; el.style.opacity = 1; el.style.transform = 'none';
+      if (r.line) $(r.el().id.split('-l')[0]).style.display = '';
+      const m = $('msgs-' + r.chat), over = Math.max(0, m.scrollHeight - m.parentNode.clientHeight);
+      r.dy = over - (last[r.chat] || 0); last[r.chat] = over;
+    }
+    fit($('oh')); fit($('ch'));
+  }
+
+  // The timeline, in ms. Opener and closer are the same in every ad.
+  const OPEN_OUT = 2500, CHAT_IN = 2900, CHAT_OUT = A.out, MARK = CHAT_OUT + 400, LINES = MARK + 800, END = LINES + 2700;
+  window.__ms = END;
+  let measured = false;
+  window.__seek = (ms) => {
+    if (!measured) { measure(); measured = document.fonts.status === 'loaded'; }
+    const ol = $('oh').children;
+    [...ol].forEach((l, i) => rise(l, k(ms, 150 + 200 * i, 650 + 200 * i)));
+    rise($('om').parentNode, k(ms, 900 + 200 * ol.length, 1400 + 200 * ol.length));
+    $('opener').style.transform = `translateY(${-100 * k(ms, OPEN_OUT, CHAT_IN)}%)`;
+    // messages and lines
+    const dy = {};
+    for (const r of reveals) {
+      const t = k(ms, r.t, r.t + 300);
+      if (r.line) { const el = r.el(); el.style.opacity = t; el.style.display = t > 0 ? '' : 'none'; }
+      else pop(r.el(), t);
+      dy[r.chat] = (dy[r.chat] || 0) + r.dy * k(ms, r.t, r.t + 450);
+    }
+    for (const c of CHATS) $('msgs-' + c.id).style.transform = `translateY(${-(dy[c.id] || 0)}px)`;
+    for (const b of A.beats) {
+      if (b.typing) { const el = $(b.typing), on = ms >= b.t && ms < b.until; el.style.display = on ? '' : 'none';
+        [...el.children].forEach((d, i) => { d.style.opacity = 0.45 + 0.55 * (Math.floor(ms / 200 - i) % 3 === 0); }); }
+      if (b.rx) { const t = k(ms, b.t, b.t + 250), el = $(b.rx + '-rx');
+        el.style.opacity = t; el.style.transform = `scale(${t < 1 ? 0.4 + 0.9 * t : 1})`; }
+      if (b.pill) { const t = k(ms, b.t, b.t + 300) * (1 - k(ms, b.t + 1900, b.t + 2200)), el = $('pill-' + b.pill);
+        el.style.opacity = t; el.style.transform = `translate(-50%, ${(1 - t) * -2}vmin)`; }
+      if (b.night) { // dim, run the clock from the evening to the morning, lift
+        const t = k(ms, b.t, b.t + 300) * (1 - k(ms, b.t + b.len - 300, b.t + b.len));
+        $('night').style.opacity = t;
+        const [h0, m0] = b.night[0].split(':').map(Number), [h1, m1] = b.night[1].split(':').map(Number);
+        const a = h0 * 60 + m0, z = h1 * 60 + m1 + (h1 * 60 + m1 < a ? 1440 : 0);
+        const now = Math.round(a + (z - a) * k(ms, b.t + 250, b.t + b.len - 450)) % 1440;
+        const hh = String(Math.floor(now / 60)).padStart(2, '0'), mm = String(now % 60).padStart(2, '0');
+        $('clock').innerHTML = now === z % 1440 ? `<span class="y">${hh}:${mm}</span>` : `${hh}:${mm}`;
+      }
+    }
+    // one chat gives way to the other, as a carousel; in RTL the next one comes in from the left
+    const slides = A.beats.filter((b) => b.slide);
+    CHATS.forEach((c, i) => { const el = $('chat-' + c.id); el.style.transform = i ? 'translateX(-100%)' : 'none'; el.style.visibility = i ? 'hidden' : ''; });
+    for (const b of slides) {
+      const p = k(ms, b.t, b.t + 650); if (ms < b.t) break;
+      const dir = (LANG === 'he' ? 1 : -1) * b.s, a = $('chat-' + b.slide[0]), z = $('chat-' + b.slide[1]);
+      a.style.transform = `translateX(${dir * 100 * p}%)`; a.style.visibility = p < 1 ? '' : 'hidden';
+      z.style.transform = `translateX(${-dir * 100 * (1 - p)}%)`; z.style.visibility = '';
+    }
+    // closer
+    $('closer').style.transform = `translateY(${100 * (1 - k(ms, CHAT_OUT, CHAT_OUT + 450))}%)`;
+    $('cm').innerHTML = frame('meet', Math.max(0, ms - MARK), ON_CYPRESS, 'cm');
+    const cl = $('ch').children;
+    rise(cl[0], k(ms, LINES, LINES + 450)); rise(cl[1], k(ms, LINES + 300, LINES + 750));
+    if ($('cs')) rise($('cs'), k(ms, LINES + 650, LINES + 1100));
+    rise($('cb'), k(ms, LINES + 900, LINES + 1400));
+  };
+  __seek(0); __seek(0);
+</script>
