@@ -243,6 +243,7 @@ never trust a dated narrative for something you are about to act on.
 - [The picker that opened underneath (fixed 2026-09-22)](#the-picker-that-opened-underneath-fixed-2026-09-22)
 - [Saturday's game, filed under "closed" (fixed 2026-09-23)](#saturdays-game-filed-under-closed-fixed-2026-09-23)
 - [Two coordinations for one meeting (fixed 2026-09-30)](#two-coordinations-for-one-meeting-fixed-2026-09-30)
+- [Two invites for one poker night (fixed 2026-10-05)](#two-invites-for-one-poker-night-fixed-2026-10-05)
 - [The coordination that expired on the wrong Tuesday (fixed 2026-09-23)](#the-coordination-that-expired-on-the-wrong-tuesday-fixed-2026-09-23)
 - [The list he could not put his own task into (2026-09-19)](#the-list-he-could-not-put-his-own-task-into-2026-09-19)
 - [An offer to call a number the bridge has never served (fixed 2026-09-06)](#an-offer-to-call-a-number-the-bridge-has-never-served-fixed-2026-09-06)
@@ -10225,6 +10226,76 @@ the same pair from both sides in one `Promise.all` opened two coordinations in
 The approver's hint was left alone. It is not wrong, since עידן had just said
 when he could, and with this check whichever agent comes second is sent to the
 first one.
+
+### Two invites for one poker night (fixed 2026-10-05)
+
+On 2026-10-05 the poker room (group 13) got two coordinations two and a half
+minutes apart, both for the same people:
+
+- At 12:50:01 user 57 opened "פוקר" in his own chat with eleven people
+  (meeting 73, `group_id` NULL) and put two evenings on it.
+- At 12:52:32 user 3 tagged her in the room for "פוקר לשבוע הקרוב" (meeting
+  74, group 13). User 3 was one of the eleven, and had been sent his own
+  invite to 73 a minute earlier.
+
+**The two sets were IDENTICAL when they opened**: twelve people each, the same
+twelve. User 58, a new member, was let into 74 three minutes later by
+`admitLateMembers`, and that is the only difference the rows show today. Every
+one of them was invited twice, and 73 was cancelled by hand.
+
+The check from "Two coordinations for one meeting" did not fire, and could not
+have. `meetings.openWithSamePeople` compares private with private only
+(`group_id IS NULL`), and only `start_meeting_coordination` calls it. The room's
+door, `group-meetings.startCoordination`, asked one question: is THIS ROOM
+already running something? A private coordination among the same people was
+invisible to it, and the private door could not see a room's.
+
+**The fix** asks across the line in both directions. The room door calls
+`meetings.privateOpenLikeRoom`, and the private door calls
+`meetings.roomOpenLikePrivate` beside its existing exact check. Each gives the
+same answer the private door already gave: `reason: 'already_open'`, nothing
+opened, and the model continues in the open one, asks, or calls again with
+`separate: true`. `start_group_coordination` grew that parameter.
+
+**The matching rule, `meetings.nearlySamePeople`.** A room's set is never
+exactly a chat's: the room sweeps in whoever has written to her by now, and
+whoever opened it privately listed the people they had in mind. So across the
+two it is "nearly the same", and nearly means two things:
+
+- everybody in the private coordination is also in the room's set, because
+  somebody from outside the room makes it a different gathering;
+- the room's set is bigger by at most a quarter, and always allows at least one
+  more person (the newcomer). A private pair inside a room of ten is a coffee,
+  not the room's game.
+
+Private against private stays EXACT, as it was. **There is no age window**:
+`negotiating` is already bounded by `expireStaleMeetings`, and a coordination
+with times still on the table is live however old it is.
+
+On the room side, the room's set is everybody connected in it
+(`coordinatingMembers`), not only who this coordination would sweep in. A
+member who paused her is still in the room, and may be in the private one.
+On the private side, it is the room coordination's people still in it.
+
+**What the room may hear is narrower than what the chat may.** The answer is
+said in front of the room, so:
+
+- only a private coordination the ASKER is in counts, because it is theirs to
+  be reminded of;
+- the result carries its title, who opened it (by tag, never by name) and
+  when it opened;
+- it never carries its times or anybody's answers.
+
+Two things are left open on purpose:
+
+- **"Continue" from the room adopts nothing.** The room says the thing is
+  already being arranged privately and starts nothing. Turning the private
+  coordination INTO the room's (setting `group_id`, letting the newcomer in,
+  the room's lines from then on) is the real merge. It changes what the room
+  hears, so it is the owner's call and is not built.
+- **No lock spans the two doors.** The exact-set advisory lock still guards a
+  private race. A room and a chat opening in the same second would each read
+  the other as absent. This incident was two and a half minutes, not a second.
 
 ### The coordination that expired on the wrong Tuesday (fixed 2026-09-23)
 

@@ -149,6 +149,75 @@ async function openWithSamePeople(client, userIds) {
   return rows;
 }
 
+// ── The same people, across the two doors ───────────────────────────────────
+// `openWithSamePeople` compares private with private, exact set to exact set.
+// A ROOM and a private coordination are never the same set: the room sweeps in
+// whoever has written to her by now, and somebody who opened it privately
+// listed the people they had in mind a few minutes earlier. On 2026-10-05 user
+// 57 opened "פוקר" privately with eleven of the poker room's members at 12:50,
+// user 3 asked the room for "פוקר לשבוע הקרוב" at 12:52, and the room's
+// coordination was the same eleven plus 58, who had joined the room that day.
+// Every one of them got two invites (`incidents.md`, "Two invites for one
+// poker night").
+//
+// So between a room and a private coordination the question is "nearly the
+// same", and nearly means: everybody in the private one is also in the room's
+// set (somebody from outside the room makes it a different gathering), and the
+// room's set has at most a quarter more people than the private one — never
+// fewer than one, which is the newcomer the founding case had. A private pair
+// inside a room of ten is a coffee, not the room's game. There is no age limit:
+// `negotiating` is already bounded by `expireStaleMeetings`, and a coordination
+// still on the table is live however old it is.
+function roomSlack(roomSize) {
+  return Math.max(1, Math.floor(roomSize / 4));
+}
+
+function nearlySamePeople(privateIds, roomIds) {
+  const room = new Set(roomIds.map(Number));
+  const priv = new Set(privateIds.map(Number));
+  if (priv.size < 2) return false;
+  for (const id of priv) if (!room.has(id)) return false;
+  return room.size - priv.size <= roomSlack(room.size);
+}
+
+// The negotiating coordinations `userId` is still in, on one side of the line
+// (`rooms` true = a room's, false = private), with who is still in each.
+async function negotiatingWith(client, userId, { rooms }) {
+  const { rows } = await client.query(
+    `SELECT m.id, m.title, m.initiator_id, m.created_at, m.group_id,
+            u.first_name AS initiator_name, g.subject AS room_subject,
+            (SELECT array_agg(o.slot_text ORDER BY o.id) FROM meeting_options o
+              WHERE o.meeting_id = m.id AND o.status = 'active') AS slots,
+            (SELECT array_agg(p.user_id ORDER BY p.user_id) FROM meeting_participants p
+              WHERE p.meeting_id = m.id AND p.state <> 'opted_out') AS people
+       FROM meetings m JOIN users u ON u.id = m.initiator_id
+       LEFT JOIN chat_groups g ON g.id = m.group_id
+      WHERE m.status = 'negotiating'
+        AND (m.group_id IS NOT NULL) = $2
+        AND EXISTS (SELECT 1 FROM meeting_participants ip WHERE ip.meeting_id = m.id
+                     AND ip.user_id = $1 AND ip.state <> 'opted_out')
+      ORDER BY m.id`,
+    [userId, rooms === true]);
+  return rows;
+}
+
+// The room door: private coordinations the person asking the room is in, whose
+// people are nearly the room's (`roomIds`, everybody the room's coordination
+// would ask). The asker must be IN it — the answer is said in front of the
+// room, and a private coordination is only theirs to be reminded of.
+async function privateOpenLikeRoom(client, actorId, roomIds) {
+  const rows = await negotiatingWith(client, actorId, { rooms: false });
+  return rows.filter((m) => nearlySamePeople(m.people || [], roomIds));
+}
+
+// The private door: room coordinations the person opening a private one is in,
+// whose people are nearly the ones they listed (`userIds`, themselves included).
+async function roomOpenLikePrivate(client, userIds) {
+  const [me] = userIds;
+  const rows = await negotiatingWith(client, me, { rooms: true });
+  return rows.filter((m) => nearlySamePeople(userIds, m.people || []));
+}
+
 // Still in it: a participant who has not opted out. The whole of what a
 // person needs to act on a coordination for everybody.
 const IN_IT = `EXISTS (SELECT 1 FROM meeting_participants ip
@@ -1089,7 +1158,7 @@ async function listNegotiating(client, userId = null) {
 
 module.exports = {
   cleanLocation,
-  startMeeting, openWithSamePeople, recordConstraint, proposeSlot, respondToSlot,
+  startMeeting, openWithSamePeople, nearlySamePeople, privateOpenLikeRoom, roomOpenLikePrivate, recordConstraint, proposeSlot, respondToSlot,
   optOut, rejoin, leftByChoice, LEFT_BY_CHOICE_SQL, applyExit, withdrawConfirmed, cancelMeeting, reopenMeeting, setTitle, setPlace, setCategory, setQuorum,
   getStatus, listMine, pendingMeetingFor, tryConfirm, settleNow, timeIsOpen, setExactTime,
   expireStaleMeetings, dropPassedOptions, expireOne, listNegotiating,

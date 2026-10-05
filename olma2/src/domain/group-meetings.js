@@ -92,7 +92,7 @@ function roomZonesFlag(members, group) {
 
 // Start one. `actingUser` is the member whose tag started this turn, chosen by
 // the server (groups.actingMember) — never by the model.
-async function startCoordination(client, group, actingUser, title, { where = null } = {}) {
+async function startCoordination(client, group, actingUser, title, { where = null, separate = false } = {}) {
   if (!group || group.state !== 'open') return err('forbidden', 'this group is not open');
   // Null acting member is a real state, not an error to paper over: the
   // gateway filed no sender for this turn, or the sender is not a user. Olma
@@ -126,6 +126,35 @@ async function startCoordination(client, group, actingUser, title, { where = nul
     // already something being arranged — the answer is that one, not a second
     // table of times nobody can tell apart.
     return ok({ meeting: running, created: false, participants: members.length });
+  }
+
+  // The same people may already be negotiating PRIVATELY — the poker room got
+  // its coordination two minutes after one of its members had opened "פוקר"
+  // with the same twelve people in his own chat, and every one of them was
+  // invited twice (2026-10-05, `incidents.md`, "Two invites for one poker
+  // night"). Same answer as the private door's: a question, never a second
+  // coordination by default, and `separate` is the checked "this is another
+  // one" (`meetings.nearlySamePeople` says what "the same people" means across
+  // a room and a chat). Only one the asker is IN, because this is said in front
+  // of the room; and nothing about it but its title, who opened it (by tag)
+  // and when — never its times or anybody's answers. The room's side is
+  // everybody connected in it, not only who this one would sweep in: a member
+  // who paused her is still in the room, and in the private one too.
+  if (!separate) {
+    const open = await meetings.privateOpenLikeRoom(client, actingUser.id, everyone.map((m) => Number(m.user_id)));
+    if (open.length) {
+      const tagOf = (id) => {
+        const row = everyone.find((m) => Number(m.user_id) === Number(id));
+        return row ? mentionToken(row.phone) : null;
+      };
+      return err('conflict', 'nothing was started: these people are already negotiating this privately',
+        { reason: 'already_open',
+          open: open.map((m) => ({
+            meetingId: Number(m.id), title: m.title, private: true,
+            openedBy: Number(m.initiator_id) === Number(actingUser.id) ? 'you' : tagOf(m.initiator_id),
+            openedAt: m.created_at,
+          })) });
+    }
   }
 
   const finalTitle = (title || '').trim() || group.subject || 'תיאום';

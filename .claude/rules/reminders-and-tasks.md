@@ -193,9 +193,23 @@ title means this file. Grep the title, not the filename.
     connection resumed the errand on BOTH sides. In the same instant, each
     would read the other's row as absent. With the lock line disabled, the race
     test opened two coordinations in 3 of 3 runs.
-  - The page's start button and a room's coordination do not come through the
-    tool, on purpose. A tap on "new" has already answered the question.
-  - `incidents.md`, "Two coordinations for one meeting".
+  - The page's start button does not come through the tool, on purpose. A tap
+    on "new" has already answered the question.
+  - **Since 2026-10-05 the check crosses the line between a room and a chat, in
+    both directions** — the poker room's coordination and a private "פוקר" to
+    the same twelve people opened two and a half minutes apart, and everybody
+    was invited twice. `start_group_coordination` asks
+    `meetings.privateOpenLikeRoom` and `start_meeting_coordination` also asks
+    `meetings.roomOpenLikePrivate`; both answer `already_open` and the room
+    tool takes `separate` too. Across the line the match is NEARLY, never
+    exact (`meetings.nearlySamePeople`): everybody in the private one is in the
+    room's set, and the room's set is at most a quarter bigger, never less
+    than one. Private against private stays exact. No age window:
+    `negotiating` is already the recency. The room only counts a private one
+    the ASKER is in, and hears its title and opener's tag, never its times or
+    answers. No lock spans the two doors.
+  - `incidents.md`, "Two coordinations for one meeting" and "Two invites for one
+    poker night".
 
 - **A constraint that rules out a time ON the table is an ANSWER, and the tool
   that records it is the one that declines it** (2026-09-20). Maya wrote "לא
