@@ -299,6 +299,11 @@ title means this file. Grep the title, not the filename.
   is a second message sitting beside the one the pacing just created.
   **A RESULT never waits** — confirmed, cancelled, nobody matched, expired is
   the message they are actually waiting for.
+  **Since 2026-10-05 the gate stretches this further**: the second message
+  of a person's day about one coordination waits three hours, and past two
+  the rest waits for the morning (`rules/delivering.md`, "Each person hears
+  about ONE coordination at most twice"). The fifteen minutes still applies
+  on a new day.
 
 - **Opening a coordination is not a subscription to every answer in it**
   (owner, 2026-09-22: "אין צורך שמי שפתח את התיאום יקבל הודעות מיוחדות"). A

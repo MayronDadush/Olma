@@ -302,12 +302,26 @@ have already had to be argued for.
   both, and the page's archive button, go through `meetings.rejoin` →
   `meetingFanout.afterRejoin`, which is QUIET like the exit it undoes —
   nobody else gets a message, the table and the counts say who is in
-  (owner: "חזרה שתהיה שקטה כמו יציאה"). **Only an exit they CHOSE is undone**
-  (`meetings.LEFT_BY_CHOICE_SQL`: the latest `meeting.opted_out` with cause
-  `user_choice`, or `meeting.withdrew`). A pause, leaving the WhatsApp group
-  and revoking a connection are not, an `opted_out` row with no exit on
-  record is not, and nobody without a participant row is ever added this way
-  (`incidents.md`, "Eden could not come back").
+  (owner: "חזרה שתהיה שקטה כמו יציאה"). **Only an exit they CHOSE, or one a
+  PAUSE made, is undone** (`meetings.LEFT_BY_CHOICE_SQL`: the latest
+  `meeting.opted_out` with cause `user_choice`, or `meeting.withdrew`;
+  `meetings.leftByPause`: `paused_by_request`/`paused_no_answer`). A pause
+  exit is refused while they are still paused, and **is undone on its own
+  when the pause ends**: `pause.resumeUser`, `quietResume` and
+  `resumeAfterRoomInvite` call `meetings.restorePauseExits`, with the answers
+  they had given. Leaving the WhatsApp group and revoking a connection are
+  not undone, an `opted_out` row with no exit on record is not, and nobody
+  without a participant row is ever added this way. The turn's
+  `recentMeetings` says `out` about a coordination they are not in, so she
+  never tells somebody they are still in one (`incidents.md`, "Eden could
+  not come back", "Eden, kept out by a pause that had ended").
+  **…and "away until a date" is NOT leaving** (owner, 2026-10-05).
+  `leave_group_coordination` with `until` keeps them in: their words become a
+  public constraint with a no-window to that moment (the private side's
+  `standing-answers`), every time inside it is a no, including one they had
+  said yes to, and later times inside it are answered for them. A settled time
+  inside the window is still an exit (`incidents.md`, "Yossi was abroad, and
+  was taken out").
 
 - **A room does not open a coordination its asker is already negotiating
   PRIVATELY with nearly the same people** (2026-10-05, the poker room: 73 and
@@ -921,7 +935,11 @@ have already had to be argued for.
   **Only a pause the ladder took gets that invite** (owner, 2026-09-27).
   Somebody who paused her THEMSELVES is never swept in, and one already in is
   taken out on the next minute sweep, cause `paused_by_request`, with no day's
-  wait. `statusOf` leaves them out of `participants`, `silent`, `missing` and
+  wait. **Unless they had already ANSWERED a time still on the table** (owner,
+  2026-10-05; `group-meetings.answeredLive`): then they stay in, their answer
+  counts, `unanimousOption` waits on them, and `statusOf` draws them with no
+  phone, so no line ever tags them. The pause silences her; it does not undo
+  what they said (`incidents.md`, "Eden asked not to be taken out"). `statusOf` leaves them out of `participants`, `silent`, `missing` and
   `optedOut`: never asked, never tagged, never said to have left.
   **But the room's NUMBER still counts them** (owner, 2026-09-28, reversing
   that half of 2026-09-27: "משתמשים מושהים גם נכללים בספירה" — the room can

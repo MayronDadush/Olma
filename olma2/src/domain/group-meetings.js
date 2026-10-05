@@ -363,13 +363,19 @@ async function commonHoursFor(client, group, places = []) {
 // to leave it: the cause `meetings.applyExit` audited on their latest exit
 // (`paused_by_request`, `paused_no_answer`). The participant row says only
 // `opted_out`, which cannot tell the two apart.
+//
+// Only somebody who is STILL out: a return writes `meeting.rejoined`, not a
+// newer exit, so the latest exit alone kept counting a member back in it with
+// a yes as a paused one who had not answered (Eden, meeting 74, 2026-10-05).
 async function pausedExitsOf(client, meetingId) {
   const { rows } = await client.query(
     `SELECT actor_id FROM (
        SELECT DISTINCT ON (actor_id) actor_id, detail->>'cause' AS cause FROM audit_log
         WHERE event = 'meeting.opted_out' AND (detail->>'meetingId')::bigint = $1 AND actor_id IS NOT NULL
         ORDER BY actor_id, created_at DESC, id DESC) last
-      WHERE cause IN ('paused_by_request', 'paused_no_answer')`, [meetingId]);
+      WHERE cause IN ('paused_by_request', 'paused_no_answer')
+        AND EXISTS (SELECT 1 FROM meeting_participants p
+                     WHERE p.meeting_id = $1 AND p.user_id = last.actor_id AND p.state = 'opted_out')`, [meetingId]);
   return new Set(rows.map((r) => Number(r.actor_id)));
 }
 
@@ -403,6 +409,18 @@ function roomView(co, now = new Date()) {
 // it works from a list of coordinations that owe the room a sentence, and
 // "the room's newest" is not the same meeting once a room has started its
 // next one.
+// Who in this coordination has answered a time still on the table. A pause
+// they asked for keeps them in what they already answered (owner, 2026-10-05)
+// and takes them out of the rest; the sweep, statusOf and
+// meeting-options.unanimousOption all ask this same question.
+async function answeredLive(client, meetingId) {
+  const { rows } = await client.query(
+    `SELECT DISTINCT oa.user_id FROM meeting_option_answers oa
+       JOIN meeting_options o ON o.id = oa.option_id
+      WHERE o.meeting_id = $1 AND o.status = 'active'`, [meetingId]);
+  return new Set(rows.map((r) => Number(r.user_id)));
+}
+
 async function statusOf(client, group, meeting) {
   if (!meeting) return { coordination: null };
   const members = await groups.listMembers(client, group.id);
@@ -436,6 +454,11 @@ async function statusOf(client, group, meeting) {
   // (owner, 2026-09-22), and it is false for anybody whose invite the gate
   // held for the night or dropped as quiet.
   const who = (id) => {
+    // A paused member kept in for their answer is counted and never tagged:
+    // a tag is a notification, and a pause means nothing reaches them.
+    if (pausedKept.has(Number(id))) {
+      return { name: labelByUser.get(Number(id)) || null, phone: null, tag: null, asked: heard.has(Number(id)), paused: true };
+    }
     const phone = phoneByUser.get(Number(id)) || null;
     return {
       name: labelByUser.get(Number(id)) || null, phone, tag: mentionToken(phone),
@@ -451,7 +474,17 @@ async function statusOf(client, group, meeting) {
   // left either, because they said nothing about it. The same answer as the
   // sweep that takes them out (sweepSilentPausedMembers) gives a pass later,
   // so a line decided between the two cannot tag them.
-  const pausedOut = new Set(members.filter((m) => m.user_id && pause.pausedByRequest(m))
+  //
+  // …unless they had ALREADY answered a time on the table (owner, 2026-10-05,
+  // Eden in meeting 74: "אל תדברי איתי יותר ואל תוציאי אותי משום מקום"). Then
+  // the pause stops her talking to them and nothing else: they stay in, their
+  // answer counts, and they are still never tagged (`who` draws no phone).
+  const answeredIds = await answeredLive(client, meeting.id);
+  const pausedOut = new Set(members.filter((m) => m.user_id && pause.pausedByRequest(m)
+    && !answeredIds.has(Number(m.user_id)))
+    .map((m) => Number(m.user_id)));
+  const pausedKept = new Set(members.filter((m) => m.user_id && pause.pausedByRequest(m)
+    && answeredIds.has(Number(m.user_id)))
     .map((m) => Number(m.user_id)));
   const active = parts.filter((p) => p.state !== 'opted_out' && !pausedOut.has(Number(p.user_id)))
     .map((p) => Number(p.user_id));
@@ -697,6 +730,13 @@ async function sweepSilentPausedMembers(client, nowMs = Date.now()) {
       WHERE mt.group_id IS NOT NULL AND mt.status = 'negotiating'
         AND p.state <> 'opted_out'
         AND u.paused_at IS NOT NULL
+        -- An answer already on the table keeps them in (owner, 2026-10-05:
+        -- Eden paused her with "ואל תוציאי אותי משום מקום" and was taken out
+        -- fifteen seconds later). The pause still silences everything to them.
+        AND NOT EXISTS (
+          SELECT 1 FROM meeting_option_answers oa
+            JOIN meeting_options o ON o.id = oa.option_id
+           WHERE o.meeting_id = p.meeting_id AND o.status = 'active' AND oa.user_id = p.user_id)
         AND (
           -- They paused her THEMSELVES (owner, 2026-09-27): out at once, the
           -- person who opened it included — nothing about it reaches them, so
@@ -1038,6 +1078,6 @@ module.exports = {
   coldInvite, COLD_INVITE_FLAG,
   roomMeetingFor,
   startCoordination, admitLateMembers, quietJoinersToAnnounce, coordinationStatus, commonHoursFor, statusOf, roomView, settle, setPlace,
-  sweepSilentPausedMembers, sweepRoomLeavers, currentMeeting, coordinatingMembers, memberLabel, participantFor,
+  sweepSilentPausedMembers, sweepRoomLeavers, answeredLive, currentMeeting, coordinatingMembers, memberLabel, participantFor,
   relayToRoom, pendingRelay, markRelaySaid, cleanRelay, relayRoomEnabled, RELAY_MAX_CHARS, RELAY_FLAG,
 };

@@ -626,7 +626,11 @@ async function afterSlotResponse(client, actor, meetingId, res, _opts = {}) {
 // rendered in channels/openclaw.js for any row already queued.
 async function afterRejoin(client, actor, meetingId, res) {
   if (!res.ok) return res;
-  res.data.hint = 'They are back in and have not answered the times yet. Nobody else is messaged about it.';
+  // Back from a PAUSE exit, the answers they had given stand
+  // (`meetings.restoreFromPause`), so "not answered yet" would be false.
+  res.data.hint = res.data.yourState && res.data.yourState !== 'awaiting'
+    ? 'They are back in, with the answers they had already given. Nobody else is messaged about it.'
+    : 'They are back in and have not answered the times yet. Nobody else is messaged about it.';
   return res;
 }
 
