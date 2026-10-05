@@ -51,7 +51,9 @@ async function renderEvals(client) {
     const hard = (r.hard_failures || []).map((f) => f.name).join('; ');
     const judge = r.judge && r.judge.problems && r.judge.problems.length
       ? r.judge.problems.map((p) => p.rule).join('; ')
-      : (r.judge && r.judge.error ? `שופט: ${r.judge.error}` : '');
+      : (r.judge && r.judge.error ? `שופט: ${r.judge.error}`
+        // Green from the hard checks alone — the judge reads a third a night.
+        : (r.judge && r.judge.rotation ? 'השופט לא קרא הלילה (רוטציה)' : ''));
     // The state that produced a red, captured before the next scenario's
     // reset wiped it — without this a morning-after red says only "failed".
     const snap = r.snapshot ? summariseSnapshot(r.snapshot) : '';

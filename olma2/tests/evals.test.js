@@ -607,7 +607,7 @@ test('yellow alerts only on the second consecutive bad night', async () => {
   // night 2: yellow again → alert
   const n2 = await evalsJob.runEvalSuite(db.pool, { scenarios: scenario, deps: deps(concernReply) });
   assert.equal(n2.alerts.length, 1);
-  assert.match(evalsJob.alertText(n2), /לילה שני ברצף/);
+  assert.match(evalsJob.alertText(n2), /פעם שנייה ברצף/);
 
   // a green night resets the streak
   await evalsJob.runEvalSuite(db.pool, { scenarios: scenario, deps: deps(passReply) });
@@ -621,6 +621,65 @@ test('yellow alerts only on the second consecutive bad night', async () => {
   });
   assert.equal(red.alerts.length, 1);
   assert.match(evalsJob.alertText(red), /🔴 stop-service/);
+});
+
+test('judge rotation: a third a night, every scenario within three nights', () => {
+  const n = 17;
+  const seen = new Set();
+  for (let day = 100; day < 103; day += 1) {
+    const judged = [...Array(n).keys()].filter((i) => evalsJob.judgedTonight(i, { of: 3, day }));
+    assert.ok(judged.length >= 5 && judged.length <= 6, `night ${day}: ${judged.length} judged`);
+    for (const i of judged) { assert.ok(!seen.has(i), 'judged twice in one cycle'); seen.add(i); }
+  }
+  assert.equal(seen.size, n, 'every scenario is judged once in three nights');
+  assert.ok([...Array(n).keys()].every((i) => evalsJob.judgedTonight(i, null)),
+    'no rotation (manual, pilot) judges everything');
+  assert.equal(evalsJob.utcDayNumber(Date.parse('2026-10-05T01:00:00Z')),
+    evalsJob.utcDayNumber(Date.parse('2026-10-05T02:59:00Z')), 'one night is one day number');
+});
+
+test('a rotated-out scenario runs its hard checks, skips the judge, and says so', async () => {
+  const two = [byId['general-knowledge'], byId['stop-service']];
+  let judgeCalls = 0;
+  const concern = async () => { judgeCalls += 1; return { ok: true, text: '{"verdict":"concern","problems":[{"rule":"ניסוח","quote":"x"}]}' }; };
+  // day 1 → index 1 (stop-service) is judged, index 0 is rotated out.
+  const s = await evalsJob.runEvalSuite(db.pool, {
+    scenarios: two, rotation: { of: 3, day: 1 },
+    deps: { runTurn: fakeTurns([{ reply: 'ביי' }, { reply: 'בהצלחה 💙' }]), complete: concern },
+  });
+  const gk = s.results.find((r) => r.scenario === 'general-knowledge');
+  const stop = s.results.find((r) => r.scenario === 'stop-service');
+  assert.equal(gk.status, 'green');
+  assert.deepEqual(gk.judge, { skipped: true, rotation: true });
+  assert.equal(stop.status, 'red', 'the hard checks still ran on the judged one');
+  assert.equal(s.rotatedOut, 1);
+  assert.equal(judgeCalls, 0, 'a red skips the judge anyway; the rotated one never called it');
+  const { rows } = await db.pool.query(
+    `SELECT judge FROM eval_results WHERE run_id = $1 AND scenario = 'general-knowledge'`, [s.runId]);
+  assert.equal(rows[0].judge.rotation, true, 'persisted, so the board can tell it from a pass');
+
+  // A rotated-out scenario that breaks a hard rule is still red the same night.
+  const red = await evalsJob.runEvalSuite(db.pool, {
+    scenarios: [byId['stop-service']], rotation: { of: 3, day: 1 },
+    deps: { runTurn: fakeTurns([{ reply: 'ביי' }, { reply: 'בהצלחה 💙' }]), complete: concern },
+  });
+  assert.equal(red.results[0].status, 'red');
+  assert.equal(red.alerts.length, 1);
+});
+
+test('yellow → rotated out → yellow is still the second time in a row', async () => {
+  const scenario = [byId['general-knowledge']];
+  const deps = (judge) => ({ runTurn: fakeTurns([{ reply: 'קצר.' }]), complete: judge });
+  const concern = async () => ({ ok: true, text: '{"verdict":"concern","problems":[{"rule":"ניסוח","quote":"קצר."}]}' });
+  // A judged pass first, so the earlier tests' history on this scenario is behind us.
+  await evalsJob.runEvalSuite(db.pool, { scenarios: scenario, deps: deps(judgePass) });
+  const n1 = await evalsJob.runEvalSuite(db.pool, { scenarios: scenario, rotation: { of: 3, day: 0 }, deps: deps(concern) });
+  assert.equal(n1.tally.yellow, 1);
+  const n2 = await evalsJob.runEvalSuite(db.pool, { scenarios: scenario, rotation: { of: 3, day: 1 }, deps: deps(concern) });
+  assert.equal(n2.tally.green, 1, 'rotated out: green from the hard checks alone');
+  assert.equal(n2.rotatedOut, 1);
+  const n3 = await evalsJob.runEvalSuite(db.pool, { scenarios: scenario, rotation: { of: 3, day: 3 }, deps: deps(concern) });
+  assert.equal(n3.alerts.length, 1, 'an unjudged green must not break the streak');
 });
 
 test('sweepEvals: window gate, once-per-night watermark, and the alert pipe', async () => {
