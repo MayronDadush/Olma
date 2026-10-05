@@ -569,9 +569,20 @@ async function loadMeetings(client, userId, zone, locale) {
     // them; anybody else's are filtered to what they agreed to share, the same
     // projection meetings.getStatus makes. This page must not be the one place
     // a private note leaks out of.
-    const said = String(p.user_id) === String(userId)
-      ? meetingsDomain.constraintTexts(p.constraints)
-      : meetingsDomain.shareableTexts(p.constraints);
+    //
+    // And only what still STANDS (`meetings.standingNotes`): a note given with
+    // an answer is drawn until that answer is given again, so בר's "I can
+    // Friday" left his name the moment he said no to Friday. `saidOn` is the
+    // same notes by option, for the "who said what" under each time.
+    const mine = {};
+    for (const o of optRows) {
+      if (String(o.meeting_id) !== String(p.meeting_id)) continue;
+      const a = o.answers && o.answers[p.user_id];
+      if (a) mine[o.id] = a;
+    }
+    const notes = meetingsDomain.standingNotes(p.constraints, mine,
+      { shareable: String(p.user_id) !== String(userId) });
+    const said = notes.texts;
     byMeeting.get(p.meeting_id).push({
       id: p.user_id,
       name: p.first_name,
@@ -591,6 +602,7 @@ async function loadMeetings(client, userId, zone, locale) {
       // her as waiting. An empty array is "nothing said", never "not read" —
       // the two are different rows here and must stay different values.
       said,
+      saidOn: notes.byOption,
       answered: p.state === 'confirmed_current' || p.state === 'declined_current'
         || said.length > 0,
     });

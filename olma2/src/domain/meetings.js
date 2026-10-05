@@ -178,21 +178,103 @@ const MAX_SHARED_REASONS = 3;
 // their calendars — bounded for the same reason a constraint is.
 const TITLE_MAX_CHARS = 120;
 
+// `answered` (2026-10-05) is the answer the note was given WITH — `[{id,
+// answer}]`, one per option the same tool call said yes or no to. `null` is a
+// row written before it existed, and `[]` a note given with no answer at all;
+// both are notes about the person rather than about a time, and both stand.
+function answeredOf(raw) {
+  if (!raw || typeof raw !== 'object' || !Array.isArray(raw.answered)) return null;
+  return raw.answered
+    .filter((a) => a && Number.isFinite(Number(a.id)) && (a.answer === 'y' || a.answer === 'n'))
+    .map((a) => ({ id: Number(a.id), answer: a.answer }));
+}
+
 function constraintEntry(raw) {
-  if (typeof raw === 'string') return { text: raw, private: false };
+  if (typeof raw === 'string') return { text: raw, private: false, answered: null };
   if (raw && typeof raw === 'object' && typeof raw.text === 'string') {
-    return { text: raw.text, private: raw.private === true };
+    return { text: raw.text, private: raw.private === true, answered: answeredOf(raw) };
   }
   return null;
 }
 
+// Two lists of answers, the newer one winning on an option both name. `null`
+// on either side is "not known", which the other side's knowledge replaces.
+function mergeAnswered(older, newer) {
+  if (older === null) return newer;
+  if (newer === null) return older;
+  const byId = new Map(older.map((a) => [a.id, a]));
+  for (const a of newer) { byId.delete(a.id); byId.set(a.id, a); }
+  return [...byId.values()];
+}
+
+// The same sentence said twice is one constraint. A person who declines two
+// times "because" of one trip has the reason recorded once per decline, and
+// the poker room read "הוד בקפריסין חמישי עד שבת · הוד בקפריסין חמישי עד שבת"
+// beside his name (2026-10-05). The key is the words with case, spacing and
+// closing punctuation taken out — never a similarity score, because two
+// different sentences about one day are two things they said.
+function constraintKey(text) {
+  return String(text || '').trim().replace(/\s+/g, ' ').replace(/[\s.!,;:…]+$/u, '').toLowerCase();
+}
+
+// One entry per key, at the place it was LAST said (a repeat is the newest
+// thing they said, not the oldest), with its newest words. Private if ANY copy
+// was: the shared copy of a sentence they once asked to keep to themselves
+// must not be the one that survives.
+function distinctEntries(list) {
+  const byKey = new Map();
+  for (const c of (Array.isArray(list) ? list : []).map(constraintEntry)) {
+    if (!c) continue;
+    const key = constraintKey(c.text);
+    const prev = byKey.get(key);
+    byKey.delete(key);
+    byKey.set(key, {
+      ...c,
+      private: c.private || Boolean(prev && prev.private),
+      answered: prev ? mergeAnswered(prev.answered, c.answered) : c.answered,
+    });
+  }
+  return [...byKey.values()];
+}
+
+// The notes that still describe where somebody stands. בר answered the poker
+// four times in four minutes, each answer with a note — "I can Friday at
+// noon", then "flying tomorrow, can't this week" — and all four were drawn
+// beside his name, the first two no longer true (meeting 74, 2026-10-05).
+// Nothing has to READ the words to know that: a note given with an answer
+// speaks for that option until the person answers it again. So a note stands
+// when it is the latest note on at least one option still on the table AND
+// the person's answer there is still the one it was given with (a tap that
+// changed the answer silences it too); a note given with no answer, or written
+// before answers were kept, always stands. Code only — no model judges this.
+//
+// `mine` is this person's answers on the ACTIVE table, `{optionId: 'y'|'n'}`.
+// Returns the standing texts in the order they were said, and `byOption`,
+// the note each option's answer was given with.
+function standingNotes(list, mine, { shareable = false } = {}) {
+  const entries = distinctEntries(list);
+  const owner = new Map();
+  entries.forEach((c, i) => { for (const a of c.answered || []) owner.set(a.id, i); });
+  const answerOf = (id) => (mine && (mine[id] || mine[String(id)])) || null;
+  const texts = [];
+  const byOption = {};
+  entries.forEach((c, i) => {
+    if (shareable && c.private) return;
+    if (!c.answered || !c.answered.length) { texts.push(c.text); return; }
+    const holds = c.answered.filter((a) => owner.get(a.id) === i && answerOf(a.id) === a.answer);
+    if (!holds.length) return;
+    texts.push(c.text);
+    for (const a of holds) byOption[a.id] = c.text;
+  });
+  return { texts, byOption };
+}
+
 function constraintTexts(list) {
-  return (Array.isArray(list) ? list : []).map(constraintEntry).filter(Boolean).map((c) => c.text);
+  return distinctEntries(list).map((c) => c.text);
 }
 
 function shareableTexts(list) {
-  return (Array.isArray(list) ? list : [])
-    .map(constraintEntry).filter((c) => c && !c.private).map((c) => c.text);
+  return distinctEntries(list).filter((c) => !c.private).map((c) => c.text);
 }
 
 // What may be quoted to the OTHER side when this person proposes or declines.
@@ -220,7 +302,7 @@ async function shareableConstraints(client, meetingId, userId) {
 // the words — "no, all of this week", "yes, any evening from 18:00" — kept on
 // the same entry so the words and what was made of them never drift apart. A
 // window that does not validate is dropped and named; the words stay.
-async function recordConstraint(client, userId, meetingId, text, isPrivate = false, { windows = [] } = {}) {
+async function recordConstraint(client, userId, meetingId, text, isPrivate = false, { windows = [], answered = [] } = {}) {
   if (!text || !text.trim()) return err('invalid', 'constraint text required');
   const p = await participantRow(client, meetingId, userId);
   if (!p) return err('not_found', 'not a participant of this meeting');
@@ -234,11 +316,38 @@ async function recordConstraint(client, userId, meetingId, text, isPrivate = fal
     if (v.window) kept.push(v.window); else dropped.push(v.reason);
   }
   if (kept.length) entry.windows = kept;
-  await client.query(
-    `UPDATE meeting_participants SET constraints = constraints || $3::jsonb
-     WHERE meeting_id = $1 AND user_id = $2`,
-    [meetingId, userId, JSON.stringify([entry])]
-  );
+  entry.answered = answeredOf({ answered }) || [];
+  // Said again, it replaces the copy already there and moves to the end — it
+  // is the newest thing they said — keeping the old copy's windows when the
+  // repeat brought none, and its privacy if it had any. The write is
+  // compare-and-set on the array it was computed from, so two answers landing
+  // together cannot drop one another; the loser recomputes.
+  const key = constraintKey(entry.text);
+  const sameKey = (raw) => { const c = constraintEntry(raw); return Boolean(c) && constraintKey(c.text) === key; };
+  let current = p.constraints;
+  for (let attempt = 0; ; attempt++) {
+    const list = Array.isArray(current) ? current : [];
+    const prior = list.filter(sameKey);
+    const written = { ...entry };
+    if (prior.some((raw) => raw.private === true)) written.private = true;
+    if (!written.windows) {
+      const withWindows = prior.filter((raw) => Array.isArray(raw.windows) && raw.windows.length).pop();
+      if (withWindows) written.windows = withWindows.windows;
+    }
+    written.answered = prior.reduce((acc, raw) => mergeAnswered(acc, answeredOf(raw) || []), []);
+    written.answered = mergeAnswered(written.answered, entry.answered);
+    const { rowCount } = await client.query(
+      `UPDATE meeting_participants SET constraints = $4::jsonb
+       WHERE meeting_id = $1 AND user_id = $2 AND constraints = $3::jsonb`,
+      [meetingId, userId, JSON.stringify(current), JSON.stringify([...list.filter((raw) => !sameKey(raw)), written])]
+    );
+    if (rowCount) { entry.private = written.private; break; }
+    if (attempt >= 4) return err('conflict', 'constraints changed while recording — try again');
+    const { rows } = await client.query(
+      `SELECT constraints FROM meeting_participants WHERE meeting_id = $1 AND user_id = $2`, [meetingId, userId]);
+    if (!rows[0]) return err('not_found', 'not a participant of this meeting');
+    current = rows[0].constraints;
+  }
   await audit.record(client, userId, 'meeting.constraint_recorded',
     { meetingId, private: entry.private, windows: kept.length });
   return ok({ meetingId, private: entry.private, windows: kept.length, ...(dropped.length ? { windowsDropped: dropped } : {}) });
@@ -859,13 +968,17 @@ async function getStatus(client, userId, meetingId) {
   // an OFFER — sharing it is its purpose (domain/availability.js).
   const availability = require('./availability');
   const avail = await availability.labelsByUser(client, meetingId);
+  const table = await options.list(client, meetingId);
+  const answersOf = (uid) => Object.fromEntries(table
+    .filter((o) => o.answers && o.answers[uid]).map((o) => [o.id, o.answers[uid]]));
+  // Only the notes that still stand (`standingNotes`): an agent reading "I
+  // can Friday" from somebody who has since said no to Friday repeats it.
   const participants = parts.rows.map((row) => ({
     user_id: row.user_id,
     state: row.state,
     first_name: row.first_name,
-    constraints: row.user_id === userId
-      ? constraintTexts(row.constraints)
-      : shareableTexts(row.constraints),
+    constraints: standingNotes(row.constraints, answersOf(row.user_id),
+      { shareable: String(row.user_id) !== String(userId) }).texts,
     availability: avail.get(Number(row.user_id)) || [],
   }));
   // What came OFF the table travels with what is on it. A removal sends
@@ -878,7 +991,7 @@ async function getStatus(client, userId, meetingId) {
   const room = m.rows[0] && m.rows[0].group_id
     ? (await client.query(`SELECT kind, quorum_min, quorum_max FROM chat_groups WHERE id = $1`, [m.rows[0].group_id])).rows[0]
     : null;
-  const opts = (await options.list(client, meetingId)).map((o) => ({
+  const opts = table.map((o) => ({
     ...o, yes: Object.values(o.answers || {}).filter((v) => v === 'y').length,
   }));
   return ok({
@@ -1119,7 +1232,7 @@ module.exports = {
   getStatus, listMine, pendingMeetingFor, tryConfirm, settleNow, timeIsOpen, setExactTime,
   expireStaleMeetings, dropPassedOptions, expireOne, listNegotiating,
   EXPIRE_AFTER_START_MS, LEGACY_STALE_DAYS, ALL_DAY_EXTRA_MS,
-  shareableConstraints, constraintTexts, shareableTexts,
+  shareableConstraints, constraintTexts, shareableTexts, standingNotes,
   CONSTRAINT_MAX_CHARS, MAX_SHARED_REASONS,
   options,
 };

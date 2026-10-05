@@ -566,6 +566,21 @@ async function merge(client, userId, meetingId, intoOptionId, slotText, startsAt
       WHERE a.option_id = $2 AND a.user_id <> $4
      ON CONFLICT (option_id, user_id) DO NOTHING
      RETURNING user_id, answer`, [target, intoOptionId, meetingId, userId]);
+  // A note given with an answer stands while that answer does
+  // (`meetings.standingNotes`), and the answer just moved to a new id. The note
+  // follows it, or "טס מחר" would vanish from beside a no that was carried.
+  if (carried.length) {
+    await client.query(
+      `UPDATE meeting_participants SET constraints = (
+         SELECT jsonb_agg(CASE WHEN jsonb_typeof(e) = 'object' AND jsonb_typeof(e->'answered') = 'array'
+           THEN jsonb_set(e, '{answered}', (e->'answered') || coalesce((
+             SELECT jsonb_agg(jsonb_build_object('id', $1::bigint, 'answer', a->>'answer'))
+               FROM jsonb_array_elements(e->'answered') a WHERE (a->>'id')::bigint = $2), '[]'::jsonb))
+           ELSE e END ORDER BY ord)
+           FROM jsonb_array_elements(constraints) WITH ORDINALITY x(e, ord))
+        WHERE meeting_id = $3 AND user_id = ANY($4::bigint[]) AND jsonb_array_length(constraints) > 0`,
+      [target, intoOptionId, meetingId, carried.map((r) => r.user_id)]);
+  }
   await audit.record(client, userId, 'meeting.option_merged',
     { meetingId: Number(meetingId), out: Number(intoOptionId), in: target, carried: carried.length });
   await mirrorCurrent(client, meetingId);

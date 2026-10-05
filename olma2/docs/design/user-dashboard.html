@@ -2050,6 +2050,11 @@ button.srow:active{background:var(--bg-tint)}
 .mtvlab{font-size:11px;font-weight:700;color:var(--text-3);margin-inline-end:2px}
 .mtvlab.y{color:var(--accent)} .mtvlab.n{color:var(--danger)}
 .mtvnote{font-size:11px;color:var(--text-3);margin:4px 0 0}
+/* the note an answer was given with: secondary, and a long one wraps rather
+   than pushing the row wider than a phone */
+.mtvgrp .pill{max-width:100%;white-space:normal}
+.mtvsaid{color:var(--text-3);font-weight:400}
+.mtvgrp .mtwords{max-width:16em}
 
 .mtseg{display:flex;background:var(--sep);border-radius:9px;padding:2px;flex:none}
 .mtseg button{border:0;background:transparent;font:inherit;font-size:12px;font-weight:700;
@@ -2150,6 +2155,13 @@ button.srow:active{background:var(--bg-tint)}
    needs to see why the count dropped. They count towards nothing. */
 .mtface.gone{opacity:.5;text-decoration:line-through;text-decoration-thickness:1px}
 .mtface.gone .face{filter:grayscale(1)}
+/* A note is one line, cut with an ellipsis where it runs out of room, and a
+   tap opens it whole (owner, 2026-10-05: long notes made the row ugly). The
+   cut is the browser's, so it lands at the real width in either direction. */
+.mtface{max-width:100%;min-width:0;white-space:nowrap}
+.mtwords{display:inline-block;max-width:14em;min-width:0;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap;vertical-align:bottom;cursor:pointer}
+.mtwords.open{max-width:none;white-space:normal}
 
 /* A card in the list, before you open it. */
 .mtcard{
@@ -10506,10 +10518,18 @@ button.srow:active{background:var(--bg-tint)}
     for(var k in row) if(row[k]) return true;
     return false;
   }
-  /* What somebody wrote that was neither yes nor no, if anything. */
+  /* What somebody wrote that was neither yes nor no, if anything — only the
+     notes that still STAND, which the server decides (meetings.standingNotes:
+     a note given with an answer is dropped once that answer is given again,
+     so בר's "I can Friday" left his name when he said no to Friday). */
   function mtSaid(m, pid){
     var said = m.saidBy && m.saidBy[pid];
     return said && said.length ? said.join(" · ") : "";
+  }
+  /* The note somebody's answer to ONE time was given with, if it stands. */
+  function mtSaidOn(m, pid, optId){
+    var on = m.saidOnBy && m.saidOnBy[pid];
+    return on && on[optId] ? on[optId] : "";
   }
   /* Everybody sees the same options, and there is no longer any state in
      which one exists for one reader and not another (owner, 2026-09-09): the
@@ -10901,11 +10921,16 @@ button.srow:active{background:var(--bg-tint)}
     var yes = [], nos = [], wait = [];
     mtActive(m).forEach(function(pid){
       var a = mtAns(m, pid, o.id);
-      (a === "y" ? yes : a === "n" ? nos : wait).push(mtName(pid));
+      if(a === "y" || a === "n") (a === "y" ? yes : nos).push({n:mtName(pid), w:mtSaidOn(m, pid, o.id)});
+      else wait.push(mtName(pid));
     });
-    var grp = function(cls, label, names){
-      return names.length ? '<div class="mtvgrp"><span class="mtvlab ' + cls + '">' + esc(label) + "</span>" +
-        names.map(function(n){ return '<span class="pill">' + esc(n) + "</span>"; }).join("") + "</div>" : "";
+    /* Each answer with the note it was given with, beside the name — "בר ·
+       טס מחר" says why under the time it is about. */
+    var grp = function(cls, label, people){
+      return people.length ? '<div class="mtvgrp"><span class="mtvlab ' + cls + '">' + esc(label) + "</span>" +
+        people.map(function(x){
+          return '<span class="pill">' + esc(x.n) + (x.w ? ' · <span class="mtvsaid mtwords" title="' + esc(x.w) + '">' + esc(x.w) + "</span>" : "") + "</span>";
+        }).join("") + "</div>" : "";
     };
     return '<div class="mtvotes">' + grp("y", t("mt.canDo"), yes) + grp("n", t("mt.cant"), nos) +
       (wait.length ? '<p class="mtvnote">' + esc(t("mt.gapWait", {list:nameList(wait)})) + "</p>" : "") +
@@ -11019,7 +11044,7 @@ button.srow:active{background:var(--bg-tint)}
         (words ? ' title="' + esc(words) + '"' : "") + ">" +
         '<span class="face">' + avatarSVG(pid === 0 ? myAvatar : f.av, {g:pid === 0 ? myGender() : f.g}) + "</span>" +
         esc(mtName(pid)) +
-        (gone ? " · " + t("mt.gone") : words ? " · " + esc(words) : said ? "" : " · " + t("mt.waiting")) +
+        (gone ? " · " + t("mt.gone") : words ? ' · <span class="mtwords">' + esc(words) + "</span>" : said ? "" : " · " + t("mt.waiting")) +
         "</span>";
     }).join("");
 
@@ -11109,9 +11134,18 @@ button.srow:active{background:var(--bg-tint)}
     renderMeet();
   });
 
+  /* A tap on a cut note opens it whole, and a second one closes it. */
+  function mtWordsTap(e){
+    var w = e.target.closest(".mtwords");
+    if(!w) return false;
+    w.classList.toggle("open");
+    return true;
+  }
+  $("#mtFaces").addEventListener("click", mtWordsTap);
   $("#mtOpts").addEventListener("click", function(e){
     /* The click a finished swipe leaves behind — see the gesture below. */
     if(mtSwallow){ mtSwallow = false; return; }
+    if(mtWordsTap(e)) return;
     var m = mtOpen;
     if(!m) return;
     var row = e.target.closest("[data-opt]");
@@ -14479,6 +14513,10 @@ button.srow:active{background:var(--bg-tint)}
       }, {}),
       saidBy:(m.participants || []).reduce(function(acc, p){
         if((p.said || []).length) acc[String(p.id) === String(MY_ID) ? 0 : p.id] = p.said.slice();
+        return acc;
+      }, {}),
+      saidOnBy:(m.participants || []).reduce(function(acc, p){
+        if(p.saidOn) acc[String(p.id) === String(MY_ID) ? 0 : p.id] = p.saidOn;
         return acc;
       }, {}),
       settled:settled,

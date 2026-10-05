@@ -572,6 +572,44 @@ test('private is honoured on the way OUT, not just on the way in', async () => {
   });
 });
 
+// הוד declined two times in the poker room for one reason, and the reason was
+// recorded once per decline — so every reader of his constraints, the page
+// beside his name included, said it twice (2026-10-05).
+test('the same sentence said twice is ONE constraint, at the place it was last said', async () => {
+  await withClient(async (c) => {
+    const m = (await meetings.startMeeting(c, alice.id, 'repeat', [bob.id])).data.meeting;
+    await meetings.recordConstraint(c, alice.id, m.id, 'הוד בקפריסין חמישי עד שבת');
+    await meetings.recordConstraint(c, alice.id, m.id, 'not Monday');
+    await meetings.recordConstraint(c, alice.id, m.id, '  הוד בקפריסין  חמישי עד שבת. ');
+    const { rows } = await c.query(
+      `SELECT constraints FROM meeting_participants WHERE meeting_id = $1 AND user_id = $2`, [m.id, alice.id]);
+    assert.deepEqual(rows[0].constraints.map((x) => x.text), ['not Monday', 'הוד בקפריסין  חמישי עד שבת.']);
+    assert.deepEqual(await meetings.shareableConstraints(c, m.id, alice.id),
+      ['not Monday', 'הוד בקפריסין  חמישי עד שבת.']);
+  });
+});
+
+test('a repeat keeps the privacy and the windows the first copy had', async () => {
+  await withClient(async (c) => {
+    const m = (await meetings.startMeeting(c, alice.id, 'repeat private', [bob.id])).data.meeting;
+    await meetings.recordConstraint(c, alice.id, m.id, 'therapy that evening', true);
+    const r = await meetings.recordConstraint(c, alice.id, m.id, 'Therapy that evening');
+    assert.equal(r.data.private, true, 'saying it again without "private" does not publish it');
+    assert.deepEqual(await meetings.shareableConstraints(c, m.id, alice.id), []);
+
+    // Rows already on the box carry the duplicate: the readers fold it too,
+    // and a shared copy of a private sentence is not the one that survives.
+    await c.query(
+      `UPDATE meeting_participants SET constraints = $3::jsonb WHERE meeting_id = $1 AND user_id = $2`,
+      [m.id, alice.id, JSON.stringify([{ text: 'away', private: true }, 'away', 'away', { text: 'later', private: false }])]);
+    assert.deepEqual(meetings.constraintTexts([{ text: 'away', private: true }, 'away', { text: 'later' }, 'away']),
+      ['later', 'away']);
+    assert.deepEqual(await meetings.shareableConstraints(c, m.id, alice.id), ['later']);
+    const st = await meetings.getStatus(c, bob.id, m.id);
+    assert.deepEqual(st.data.participants.find((p) => p.user_id === alice.id).constraints, ['later']);
+  });
+});
+
 test('constraints written before reasons could travel still read as shareable', async () => {
   await withClient(async (c) => {
     const m = (await meetings.startMeeting(c, alice.id, 'legacy', [bob.id])).data.meeting;
