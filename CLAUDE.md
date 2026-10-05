@@ -196,7 +196,7 @@ Loads when you **Read** a file under `src/brokerd/**`, `src/domain/turn.js`, `sr
 - **A block written to REPLACE a tool call has to say what it does not hold, or its silence is read as the answer** — `today` counts `undated` to-dos, and a question about the whole list (`asksOpenList`, read by the hook) gets no `today` block at all
 - **`messages.queue.mode` stays `followup`.**
 - **Messages sent in a row are answered ONCE, at the reply gate, never by holding the inbox** — `messages.inbound` debounce cannot batch on WhatsApp; flag `burst_reply_phones`, `''` = off
-- **A turn Olma started is not a message from the person.** — but a gateway open carrying a WhatsApp message id is never ours, and the delivery's grace minute records it (`duringOurTurn`)
+- **A turn Olma started is not a message from the person.** — but a gateway open carrying a WhatsApp message id is never ours, and the delivery's grace minute records it (`duringOurTurn`); and such a turn writes no coordination ANSWER (`not_their_turn`) unless they wrote since it began
 - **A WhatsApp reply names ONE message, and only the MODEL is ever told which.**
 - **A turn is told where every coordination it heard about in the last day stands NOW** — the session remembers the question, not the answer
 - **A DECISION to stay quiet is not a reply that got lost.**
@@ -228,7 +228,7 @@ Loads when you **Read** a file under `src/domain/reminders.js`, `src/domain/task
 - **…and the mirror is a CONVENIENCE, never a clock — a time whose moment has passed leaves the TABLE, and only a coordination that has just lost one is asked whether it is empty.**
 - **In the private chat and the room a time within two hours of one on the table is a QUESTION — merge (the answers move to it) or separate** (`similar_option`, `meeting-options.merge`)
 - **A constraint that rules out a time ON the table is an ANSWER, and the tool that records it is the one that declines it** — and it earns no 👍; one the time still FITS ("אחרי 21" vs an evening) is a yes carrying the note, `accepts_option_ids`
-- **An answer given BEFORE a time existed answers it when it arrives — yes and no — and the person is told privately** (`standing-answers`, windows on a constraint)
+- **An answer given BEFORE a time existed answers it when it arrives — a NO is written and they are told, a YES is only a question since 2026-10-05** (`standing-answers`, windows on a constraint; `fits` on the proposal)
 - **A time taken OFF that table is never a message of its own — it rides the next thing each person hears about that coordination.**
 - **A time ADDED to it rides the same thing, as long as that thing has not gone out yet** — four messages in sixty-two seconds is what queueing beside it looks like
 - **…and so does the HOUR set on a settled one: a confirmation still waiting says it, and no second message is written** (`meeting-fanout.afterTimeSet`)

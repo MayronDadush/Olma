@@ -264,6 +264,15 @@ title means this file. Grep the title, not the filename.
   window said wins. Every answer is audited `meeting.auto_answered`, because a
   yes nobody said out loud is the first thing to measure (`incidents.md`,
   "Answered before the question existed").
+  **Since 2026-10-05 only the NO is written for a time added later** (owner:
+  "שעולמה פשוט תבקש מהבן אדם עצמו לאשר את זה בעצמו"). A window the time FITS
+  writes nothing: `standing-answers.applyToOption` returns it as `fits`, and the
+  person gets the ordinary `meeting_slot_proposed` with `fits` on the payload,
+  so she says it matches what they said and asks. A yes written by code can be
+  the last one a coordination needed and settle it for everybody; a no only
+  repeats their words and closes nothing. Said with times already up, in their
+  own turn, both directions are still answered at once (`applyToTable`)
+  (`incidents.md`, "The check-in that answered for him").
 - **A time taken OFF that table is never a message of its own** (owner,
   2026-09-09) — the commonest removal is somebody taking back a time they typed
   a minute ago. It rides the next thing each person hears about that

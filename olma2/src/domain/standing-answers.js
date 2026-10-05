@@ -128,22 +128,31 @@ async function answerFor(client, userId, meetingId, option, verdict) {
   return { userId: Number(userId), optionId: option.id, slot: option.slotText, answer: verdict.answer, because: verdict.because };
 }
 
-// A time just went on the table: answer it for everybody whose windows cover
-// it, except whoever put it there (their own yes is already on it).
+// A time just went on the table: answer it for everybody whose windows rule
+// it OUT, except whoever put it there (their own yes is already on it).
+//
+// A window that FITS it is not written (owner, 2026-10-05: "שעולמה פשוט תבקש
+// מהבן אדם עצמו לאשר את זה בעצמו"). A yes written by code with no new word
+// from them can be the last yes a coordination needed, and then it settles
+// for everybody on something they never saw. A no only repeats what they
+// said and closes nothing, so it stays automatic. The fit is returned as
+// `fits` instead, and they are asked about the time like everybody else,
+// told it matches what they said.
 async function applyToOption(client, meetingId, optionId, { exceptUserId = null } = {}) {
+  const out = { answered: [], fits: [] };
   const option = await optionRow(client, optionId);
-  if (!option || option.allDay) return [];
+  if (!option || option.allDay) return out;
   const people = await peopleWithWindows(client, meetingId);
-  if (!people.length) return [];
+  if (!people.length) return out;
   const done = await answeredBy(client, optionId);
-  const out = [];
   for (const p of people) {
     const uid = Number(p.user_id);
     if (uid === Number(exceptUserId) || done.has(uid)) continue;
     const verdict = verdictFor(p.constraints, option, p.timezone);
     if (!verdict) continue;
+    if (verdict.answer === 'y') { out.fits.push({ userId: uid, because: verdict.because }); continue; }
     const a = await answerFor(client, uid, meetingId, option, verdict);
-    if (a) out.push(a);
+    if (a) out.answered.push(a);
   }
   return out;
 }
