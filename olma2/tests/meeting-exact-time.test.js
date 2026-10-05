@@ -202,7 +202,7 @@ test('a coordination a room started asks nobody privately — the room is asked'
 // The page's own two doors (owner, 2026-10-04): a place on any live
 // coordination, and the exact hour once it settled without one. Same writers
 // and fan-out as the chat, so the page and the chat cannot disagree.
-test('the page offers the hour only while it is open, and setting it there is the chat\'s own door', async () => {
+test('the page sets the hour once it settled without one, then moves it on that day — the chat\'s own door', async () => {
   const dash = require('../src/domain/user-dashboard');
   const meetingOf = async (u, id) => {
     const page = await tx((c) => dash.load(c, u.id));
@@ -227,6 +227,19 @@ test('the page offers the hour only while it is open, and setting it there is th
     [Number(ann.id), Number(cal.id)].sort(), 'everybody but the one who set it');
   assert.equal((await meetingOf(ben, id)).timeOpen, false);
   assert.equal((await actAs(dan, 'setMeetingTime', { meetingId: id, time: '19:00' })).ok, false, 'not in it');
+
+  // …and once it has an hour, the same button changes it on that day without
+  // reopening (owner, 2026-10-05): still settled, everybody else told it moved.
+  const again = await actAs(ann, 'setMeetingTime', { meetingId: id, time: '17:00' });
+  assert.ok(again.ok, JSON.stringify(again));
+  assert.equal(again.data.moved, true);
+  const { rows: [m2] } = await db.pool.query(
+    'SELECT status, confirmed_start_at FROM meetings WHERE id = $1', [id]);
+  assert.equal(m2.status, 'confirmed', 'not reopened');
+  assert.equal(new Date(m2.confirmed_start_at).toISOString(), new Date(tomorrowAt('17')).toISOString());
+  assert.deepEqual((await rows('meeting_time_set', id)).filter((r) => r.payload.moved)
+    .map((r) => Number(r.user_id)).sort(), [Number(ben.id), Number(cal.id)].sort());
+  assert.equal((await actAs(ann, 'setMeetingTime', { meetingId: id, time: '17:00' })).ok, false, 'the same hour');
 });
 
 test('the page sets a place in their words, tells nobody, and refuses an empty one', async () => {
