@@ -497,6 +497,7 @@ async function afterTimeSet(client, actor, res, { fromRoom = false, opts = {} } 
   const roles = await calendar.meetingCalendarRoles(client, meetingId);
   const others = await activeParticipantsExcept(client, meetingId, actor.id);
   for (const uid of others) {
+    if (await foldIntoQueuedConfirmation(client, meetingId, uid, actor, res.data)) continue;
     await enqueue(client, {
       userId: uid, kind: 'meeting_time_set', urgency: 'urgent',
       payload: await withRemovals(client, {
@@ -512,6 +513,31 @@ async function afterTimeSet(client, actor, res, { fromRoom = false, opts = {} } 
   }
   res.data.calendarUpdated = calendarUpdated;
   return res;
+}
+
+// The hour arrived while this person's "it is settled" is still waiting to go
+// out — held for the night or a quiet day, most often. Saar, 2026-10-03: the
+// confirmation and "the hour is set" were both held over Shabbat and went out
+// at 19:04 and 19:07, two messages about one meeting, to seven people. The
+// waiting confirmation now says the hour itself, and there is no second row.
+// The confirmation's own calendar step reads the instant off this payload, so
+// the event goes on at the hour rather than as the whole day. Same discipline
+// as the table fold in `fanout`: a row the worker holds is in flight, so it is
+// skipped (SKIP LOCKED) and this one goes out on its own, and the UPDATE
+// re-asks `sent_at IS NULL`.
+async function foldIntoQueuedConfirmation(client, meetingId, userId, actor, data) {
+  const { rowCount } = await client.query(
+    `UPDATE outbox
+        SET payload = (payload - 'allDay' - 'daypart' - 'askExactTime' - 'authorTz')
+                      || jsonb_build_object('slot', $3::text, 'startsAtUtc', $4::text)
+                      || CASE WHEN $5::text IS NULL THEN '{}'::jsonb ELSE jsonb_build_object('authorTz', $5::text) END
+      WHERE id = (SELECT id FROM outbox
+                   WHERE sent_at IS NULL AND kind = 'meeting_confirmed' AND user_id = $2
+                     AND (payload->>'meetingId')::bigint = $1
+                   ORDER BY id DESC LIMIT 1 FOR UPDATE SKIP LOCKED)
+        AND sent_at IS NULL`,
+    [meetingId, userId, data.slot, new Date(data.startsAt).toISOString(), (actor && actor.timezone) || null]);
+  return rowCount > 0;
 }
 
 // The end of an event in the same offset the start was written in, so the

@@ -229,6 +229,7 @@ Loads when you **Read** a file under `src/domain/reminders.js`, `src/domain/task
 - **An answer given BEFORE a time existed answers it when it arrives — yes and no — and the person is told privately** (`standing-answers`, windows on a constraint)
 - **A time taken OFF that table is never a message of its own — it rides the next thing each person hears about that coordination.**
 - **A time ADDED to it rides the same thing, as long as that thing has not gone out yet** — four messages in sixty-two seconds is what queueing beside it looks like
+- **…and so does the HOUR set on a settled one: a confirmation still waiting says it, and no second message is written** (`meeting-fanout.afterTimeSet`)
 - **A negotiation message WAITS a quarter of an hour behind the last one that reached that person, and everything meanwhile folds into it** — the fold already existed and `urgent` never let it run; a RESULT never waits.
 - **Opening a coordination is not a subscription to every answer in it** — a decline and an exit (a confirmed one too, since 2026-10-03) stop being messages of their own; the reason moves from a push to a pull.
 - **"בחוץ" to a GENERAL question about a coordination is LEAVING it, and to ONE time it is a question back** — `outOnly` in the hook, `meeting-exit.onOut` reads the last row that reached them; opted out with a 👍, or one question and nothing written

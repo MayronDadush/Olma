@@ -411,6 +411,18 @@ title means this file. Grep the title, not the filename.
   `meeting_invite` carrying that framing plus `tableChanged`. Only dropped:
   a pending one is the fold's, and one in flight is about to reach them.
 
+- **…and the HOUR set on a settled coordination rides its confirmation the
+  same way, as long as the confirmation has not gone out yet**
+  (`meeting-fanout.afterTimeSet` → `foldIntoQueuedConfirmation`, 2026-10-05).
+  A confirmation held for the night or a quiet day, followed by "the hour is
+  set", was two messages about one meeting three minutes apart, to seven people
+  at once after havdalah (`incidents.md`, "Settled, then the hour, three
+  minutes apart"). The waiting `meeting_confirmed` takes the new `slot` and
+  `startsAtUtc` and loses `allDay`/`daypart`/`askExactTime`, so its calendar
+  step puts the event on at the hour. No `meeting_time_set` is written for that
+  person. A confirmation already in flight is skipped (`SKIP LOCKED`), and the
+  hour goes out on its own as before.
+
 - **An explicit reminder replaces the automatic one only on the SAME local
   day; on another day it stands beside it.** Both are otherwise about catching
   one thing at its due date, and two messages for that is the bug the
