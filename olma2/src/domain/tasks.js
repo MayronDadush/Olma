@@ -284,6 +284,20 @@ function eventRepeatRule(raw, dueAt, tz) {
   return ok(norm);
 }
 
+// The rule a repeating event carries once its next occurrence is moved to
+// `dueAt`: a weekly one follows it to the new weekday, a monthly one to the new
+// day of the month ("the last day" only while the new date still is one), and
+// a daily one is unchanged.
+function repinnedRule(rule, dueAt, tz) {
+  const p = partsInZone(tz, new Date(dueAt));
+  if (/^weekly:[A-Z]{2}$/.test(rule)) return `weekly:${DAY_CODES[weekdayOfParts(p)]}`;
+  if (/^monthly:/.test(rule)) {
+    const last = new Date(Date.UTC(p.y, p.m, 0)).getUTCDate() === p.d;
+    return rule === 'monthly:last' && last ? rule : `monthly:${p.d}`;
+  }
+  return rule;
+}
+
 async function timezoneOf(client, ownerId) {
   const { rows } = await client.query(`SELECT timezone FROM users WHERE id = $1`, [ownerId]);
   return (rows[0] && rows[0].timezone) || 'UTC';
@@ -553,10 +567,26 @@ async function editTask(client, ownerId, taskId, patch = {}) {
   // it. Clearing the start clears the end with it: an end alone is not a time.
   if (has('endsAt') || has('dueAt')) {
     const { rows: cur } = await client.query(
-      `SELECT due_at, ends_at FROM tasks WHERE id = $1 AND owner_id = $2 AND archived_at IS NULL`,
+      `SELECT due_at, ends_at, repeat_rule FROM tasks WHERE id = $1 AND owner_id = $2 AND archived_at IS NULL`,
       [taskId, ownerId]
     );
     if (!cur[0]) return err('not_found', 'task not found');
+    // A repeating event's date IS its next occurrence, and moving it moves the
+    // series (owner, 2026-10-05): a Monday course moved to a Tuesday is a
+    // Tuesday course from then on. Left alone, the rule kept saying MO and the
+    // next advance jumped back to Monday. And it cannot lose its date — with
+    // none there is nothing to advance from; ending one is deleting it.
+    if (has('dueAt') && cur[0].repeat_rule) {
+      if (!patch.dueAt) {
+        return err('invalid', 'a repeating event always has a date — its next occurrence. Nothing was changed; to end the series, delete the task.',
+          { reason: 'repeat_needs_date' });
+      }
+      const rule = repinnedRule(cur[0].repeat_rule, patch.dueAt, await timezoneOf(client, ownerId));
+      if (rule !== cur[0].repeat_rule) {
+        sets.push(`repeat_rule = $${vals.push(rule)}`);
+        changed.repeatRule = rule;
+      }
+    }
     const iso = (v) => (v instanceof Date ? v.toISOString() : v);
     const nextDue = has('dueAt') ? patch.dueAt ?? null : iso(cur[0].due_at);
     let nextEnd = has('endsAt') ? patch.endsAt ?? null : iso(cur[0].ends_at);

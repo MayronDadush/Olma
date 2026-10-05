@@ -164,3 +164,44 @@ test('the page is handed the event\'s rule, apart from any reminder\'s', async (
   assert.equal(yoga.repeat, 'daily');
   assert.equal(yoga.repeatUntil, null);
 });
+
+test('moving a repeating event\'s date moves the series, and it cannot lose its date', async () => {
+  const res = await withClient((c) => tasks.addTask(c, dov.id, {
+    title: 'חוג ציור', dueAt: '2030-10-14T18:00:00+03:00', endsAt: '2030-10-14T19:00:00+03:00',
+    repeat: 'weekly', now: NOW,
+  }));
+  assert.equal(res.data.task.repeat_rule, 'weekly:MO');
+  const id = res.data.task.id;
+
+  // Monday → Tuesday: a Tuesday class from now on, not one Tuesday and back.
+  const moved = await withClient((c) => tasks.editTask(c, dov.id, id, { dueAt: '2030-10-15T18:00:00+03:00', endsAt: '2030-10-15T19:00:00+03:00' }));
+  assert.ok(moved.ok, JSON.stringify(moved));
+  assert.equal(moved.data.task.repeat_rule, 'weekly:TU');
+  await withClient((c) => sweeps.sweepFinishedTasks(c, '2030-10-15T17:00:00Z'));
+  const { rows: [row] } = await db.pool.query(`SELECT * FROM tasks WHERE id = $1`, [id]);
+  assert.equal(local(row.due_at), '2030-10-22 18:00');
+
+  // Only the hour: the day and the rule stay.
+  const hour = await withClient((c) => tasks.editTask(c, dov.id, id, { dueAt: '2030-10-22T19:00:00+03:00', endsAt: '2030-10-22T20:00:00+03:00' }));
+  assert.equal(hour.data.task.repeat_rule, 'weekly:TU');
+
+  const cleared = await withClient((c) => tasks.editTask(c, dov.id, id, { dueAt: null }));
+  assert.equal(cleared.ok, false);
+  assert.equal(cleared.error.reason, 'repeat_needs_date');
+  const { rows: [still] } = await db.pool.query(`SELECT due_at, repeat_rule FROM tasks WHERE id = $1`, [id]);
+  assert.equal(local(still.due_at), '2030-10-22 19:00');
+  assert.equal(still.repeat_rule, 'weekly:TU');
+});
+
+test('a monthly series follows its date to the new day of the month', async () => {
+  const res = await withClient((c) => tasks.addTask(c, dov.id, {
+    title: 'ועד בית', dueAt: '2030-10-31T20:00:00+02:00', repeat: 'monthly:last', now: NOW,
+  }));
+  assert.ok(res.ok, JSON.stringify(res));
+  const id = res.data.task.id;
+  // 30.11 is the last day of November, so "the last day" still holds.
+  let ed = await withClient((c) => tasks.editTask(c, dov.id, id, { dueAt: '2030-11-30T20:00:00+02:00' }));
+  assert.equal(ed.data.task.repeat_rule, 'monthly:last');
+  ed = await withClient((c) => tasks.editTask(c, dov.id, id, { dueAt: '2030-11-12T20:00:00+02:00' }));
+  assert.equal(ed.data.task.repeat_rule, 'monthly:12');
+});
