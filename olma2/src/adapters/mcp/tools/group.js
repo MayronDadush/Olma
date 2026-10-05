@@ -13,6 +13,44 @@
 // started this turn — is chosen by the server from what the gateway filed,
 // never by the model.
 const { groups, groupMeetings, meetings, meetingFanout, users, ok, err, groupTool, S } = require('./_shared');
+const standingAnswers = require('../../../domain/standing-answers');
+
+// `leave_group_coordination` with `until`: a no from now until they are back,
+// kept as a window on their constraint. Null means it IS leaving after all — a
+// settled time that falls while they are away is one they cannot make.
+async function awayUntil(client, { meeting, meetingId, user }, a) {
+  const until = new Date(a.until).getTime();
+  const v = standingAnswers.validWindow({ answer: 'n', from: new Date().toISOString(), to: a.until });
+  if (!v.window) {
+    return err('invalid', `until: ${v.reason}. Ask when they are back, or call without until if they are out of it altogether`,
+      { reason: 'bad_until' });
+  }
+  if (meeting.status === 'confirmed') {
+    const at = meeting.confirmed_start_at ? new Date(meeting.confirmed_start_at).getTime() : null;
+    if (at === null || at < until) return null;
+    return ok({ meetingId, meetingStatus: 'confirmed', unchanged: true,
+      hints: { room: 'The settled time is after they are back, so nothing changed for them. ONE short line, if any.' } });
+  }
+  const words = String(a.words || '').trim() || `away until ${a.until}`;
+  const res = await meetings.recordConstraint(client, user.id, meetingId, words, false, { windows: [v.window] });
+  if (!res.ok) return res;
+  const declined = (await standingAnswers.applyToTable(client, meetingId, user.id)).map((d) => d.optionId);
+  // A window never overrules their own word — but this IS their word, said
+  // after the yes, about every date it covers: a yes there is withdrawn too.
+  const { rows: yeses } = await client.query(
+    `SELECT o.id, o.starts_at, o.all_day FROM meeting_options o
+       JOIN meeting_option_answers x ON x.option_id = o.id AND x.user_id = $2 AND x.answer = 'y'
+      WHERE o.meeting_id = $1 AND o.status = 'active'`, [meetingId, user.id]);
+  for (const o of yeses) {
+    if (!standingAnswers.covers(v.window, { startsAt: o.starts_at, allDay: o.all_day }, user.timezone)) continue;
+    const r = await meetings.options.answer(client, user.id, meetingId, Number(o.id), 'n');
+    if (r.ok) declined.push(Number(o.id));
+  }
+  return ok({
+    meetingId, meetingStatus: 'negotiating', stillIn: true, declined,
+    hints: { room: 'Say ONE short line: noted that they are away until then, it is a no on those dates, and they stay in for later ones. Nothing about anybody else.' },
+  });
+}
 
 module.exports = [
   groupTool('group_status',
@@ -183,7 +221,7 @@ module.exports = [
     }),
 
   groupTool('set_group_kind',
-    'GROUP AGENTS ONLY. Record what kind of group this is, from what the room ANSWERED, never a guess. "game" (padel, poker) needs a minimum; "social" (friends, work, family) invites everyone and takes no numbers. The same call corrects it later.',
+    'GROUP AGENTS ONLY. Record what kind of group this is, from what the room ANSWERED, never a guess. "game" (padel, poker) needs a minimum; "social" (friends, work, family) invites everyone and takes no numbers.',
     { kind: S('string', '"game" or "social"'),
       minimum: S('number', 'game only: how many people it needs'),
       maximum: S('number', 'game only, if they said one: how many it can hold'),
@@ -322,12 +360,22 @@ module.exports = [
       });
     }),
 
+  // "Away until" is not leaving (owner, 2026-10-05). Yossi told the poker room
+  // "אני בחול עד ה 17.10", the room had no door but this one, and he was taken
+  // out of a coordination whose later times he could still make. With `until`
+  // he stays in: every time before it is a no now, and every time put up before
+  // it later is a no too (`domain/standing-answers.js`, the private side's
+  // windows), so nobody asks him about a date he already ruled out.
   groupTool('leave_group_coordination',
-    'GROUP AGENTS ONLY. The member who tagged you says THEY cannot make it: they leave, and it carries on for the others.',
-    {}, [],
-    async (client, ctx) => {
+    'GROUP AGENTS ONLY. The member who tagged you says THEY cannot make it: they leave; it carries on. Only away till a date? Pass until: they stay in, a no on every time before it.',
+    { until: S('string', 'ISO+offset: when back') }, [],
+    async (client, ctx, a) => {
       const who = await groupMeetings.participantFor(client, ctx.group, ctx.actingUser, { statuses: ['negotiating', 'confirmed'] });
       if (!who.ok) return who;
+      if (a && a.until) {
+        const away = await awayUntil(client, who.data, a);
+        if (away) return away;
+      }
       const out = await meetings.optOut(client, who.data.user.id, who.data.meetingId);
       if (!out.ok) return out;
       const res = await meetingFanout.afterOptOut(client, who.data.user, who.data.meetingId, out);
@@ -367,7 +415,7 @@ module.exports = [
   // it had not just heard from them. What it never hears is anybody else's:
   // the result carries this one answer and not the table's.
   groupTool('answer_group_coordination_option',
-    'GROUP AGENTS ONLY. The member who tagged you says yes or no to ONE time on the table (option_id from group_coordination_status). Their own answer only.',
+    'GROUP AGENTS ONLY. The member who tagged you says yes or no to ONE time on the table (option_id from group_coordination_status). Theirs only.',
     { option_id: S('number', 'The time they answered'), accept: S('boolean', 'true = yes, false = no') },
     ['option_id', 'accept'],
     async (client, ctx, a) => {
@@ -395,7 +443,7 @@ module.exports = [
     }),
 
   groupTool('group_coordination_status',
-    'GROUP AGENTS ONLY. Where this room\'s coordination stands: the times on the table, who said yes or no to each, who has not answered. Answers only — a REASON somebody gave lives in their private chat and is never read out here. Check it before saying anything about progress.',
+    'GROUP AGENTS ONLY. Where this room\'s coordination stands: the times on the table, who said yes or no to each, who has not answered. Never a REASON. Check it before saying anything about progress.',
     // Asked for hours that suit everyone, with places the room's own clocks do
     // not cover (פנתרה, 2026-09-25): `commonHours` is drawn by code.
     { places: S('array', 'IANA zones of cities members named, for hours that suit all (commonHours)', { items: { type: 'string' } }) }, [],
