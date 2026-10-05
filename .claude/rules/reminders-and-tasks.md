@@ -362,6 +362,12 @@ title means this file. Grep the title, not the filename.
   Yuval's. **A misread is undone the same way any exit is**: the exit is
   `user_choice`, so `rejoin_meeting` (#686) can put them back, and the hint
   names it. Like every hook change, this is inert until the gateway restarts.
+  **The mirror image: a STATUS they quote is not leaving** (2026-10-05,
+  `incidents.md`, "רשום עדן יצא"). The hook's `reportsExit` reads a
+  third-person past exit verb ("יצא", "עזב", "הוצא") with no question and
+  nobody speaking for themselves, and brokerd marks the turn `reportedExit`.
+  On that turn `opt_out_of_meeting` writes nothing and tells the model to
+  ask. It fired on 2 of 6,386 real messages, both Eden's own sentence.
 
 - **A settled coordination can be REOPENED, and it carries on from where it
   stopped** (owner, 2026-09-25). `meetings.reopenMeeting` is the one writer

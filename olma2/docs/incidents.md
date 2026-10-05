@@ -107,6 +107,7 @@ never trust a dated narrative for something you are about to act on.
 - [Eden, kept out by a pause that had ended (fixed 2026-10-05)](#eden-kept-out-by-a-pause-that-had-ended-fixed-2026-10-05)
 - [Eden asked not to be taken out (fixed 2026-10-05)](#eden-asked-not-to-be-taken-out-fixed-2026-10-05)
 - [The stop nobody asked about (fixed 2026-10-05)](#the-stop-nobody-asked-about-fixed-2026-10-05)
+- [רשום עדן יצא (fixed 2026-10-05)](#רשום-עדן-יצא-fixed-2026-10-05)
 - [Yossi was abroad, and was taken out (fixed 2026-10-05)](#yossi-was-abroad-and-was-taken-out-fixed-2026-10-05)
 - [The coordination waited on the man who started it (fixed 2026-09-19)](#the-coordination-waited-on-the-man-who-started-it-fixed-2026-09-19)
 - [The room heard its own state from memory (fixed 2026-09-19)](#the-room-heard-its-own-state-from-memory-fixed-2026-09-19)
@@ -3753,6 +3754,28 @@ private apology the owner approved word for word. The fix:
 - `pausedExitsOf` counts only somebody still `opted_out`.
 
 An exit they chose stays an exit.
+
+### רשום עדן יצא (fixed 2026-10-05)
+
+The same chat, read back afterwards. Eden had been taken out of the poker,
+and he pasted what he saw about himself: "רשום עדן יצא". The model called
+`opt_out_of_meeting` on it. That did nothing only because he was already
+out. Said by anybody still in, it would have taken them out over a sentence
+they were quoting.
+
+The tool says "Confirm with the user first", and the model did not. A
+sentence in a description is a request. So the hook now reads the shape
+(`reportsExit`): a third-person past exit verb, no question mark, and no
+"אני"/"אותי". brokerd puts `reportedExit` on the turn, and on that turn
+`opt_out_of_meeting` refuses with "Nothing was written" and tells the model
+to ask. Their answer is an ordinary turn.
+
+Measured first, on every inbound message in every transcript on the box:
+6,386 messages, four with one of the verbs, and it fires on two. Both are
+Eden's sentence, once in his chat and once in the room. "הוצאה" is left out
+because it also means "an expense", which is one of the four.
+
+Inert until the gateway restarts, like every hook change.
 
 ### Eden asked not to be taken out (fixed 2026-10-05)
 
