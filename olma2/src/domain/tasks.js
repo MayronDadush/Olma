@@ -649,9 +649,32 @@ async function editTask(client, ownerId, taskId, patch = {}) {
 // the very loop the doctrine forbids for a dump — so in practice a big goal
 // got saved as one undoable line, or not at all. Splitting has to be cheaper
 // than not splitting.
-async function addTasksBulk(client, ownerId, items, { parentId, source, now } = {}) {
+async function addTasksBulk(client, ownerId, items, { parentId, source, now, list } = {}) {
   if (!Array.isArray(items) || items.length === 0) return err('invalid', 'items required');
   if (items.length > MAX_BULK) return err('invalid', `max ${MAX_BULK} items per call`);
+  // A LIST — a shopping run, a packing list — is one row with its items under
+  // it, never N rows on the page (Dov, 2026-10-05: ten groceries saved as ten
+  // tasks). Named by the model through `list`, or recognised in code when the
+  // model did not say so (shopping-list.looksLikeShoppingBulk). Top level only,
+  // for the same reason as add_task's split: under a parent it already is one.
+  if (!parentId) {
+    const named = typeof list === 'string' && list.trim() ? list.trim() : null;
+    const listTitle = named || (shopping.looksLikeShoppingBulk(items, taskCategory.classifyText)
+      ? shopping.LIST_TITLE[items.some((i) => /[א-ת]/.test(String(i && i.title))) ? 'he' : 'en']
+      : null);
+    if (listTitle) {
+      if (items.some((i) => !i || !i.title || !String(i.title).trim())) return err('invalid', 'every item needs a title');
+      // A list holds things, not moments. Refused rather than dropped: a time
+      // they gave that silently vanished is the fault this file keeps naming.
+      if (named && items.some((i) => i.dueAt || i.endsAt || i.kind === 'event')) {
+        return err('invalid', 'A list holds things, not appointments — save the dated items in a separate '
+          + 'add_tasks_bulk call without `list`, and the list items with it.');
+      }
+      return shopping.addToList(client, ownerId, {
+        listTitle, items: items.map((i) => String(i.title).trim()), source: source || 'chat',
+      });
+    }
+  }
   let parent = null;
   if (parentId) {
     const check = await checkParent(client, ownerId, parentId);

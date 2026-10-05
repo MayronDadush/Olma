@@ -142,6 +142,64 @@ test('leaving from the room is one person out, and it carries on for the others'
   assert.equal(rows[0].state, 'opted_out');
 });
 
+// Yossi, the poker room, 2026-10-05: "אני בחול עד ה 17.10" took him out of the
+// coordination. Away until a date is a no on the dates, and he stays in.
+test('away until a date is a no on every time before it, now and later, and they stay in', async () => {
+  const { group, people, meetingId } = await started(16);
+  const [amit, , bar] = people;
+  const soon = await addTime(group, amit, 50);
+  const later = await addTime(group, amit, 300);
+  const answerOf = async (optionId) => (await db.pool.query(
+    `SELECT answer FROM meeting_option_answers WHERE option_id = $1 AND user_id = $2`, [optionId, bar.id])).rows[0]?.answer;
+
+  // A yes said before is withdrawn by the newer word about the same dates.
+  assert.equal((await inRoom('answer_group_coordination_option', group, bar, { option_id: soon, accept: true })).ok, true);
+  const until = new Date(Date.now() + 200 * 3600_000).toISOString();
+
+  const tooLong = await inRoom('leave_group_coordination', group, bar,
+    { until: new Date(Date.now() + 30 * 24 * 3600_000).toISOString() });
+  assert.equal(tooLong.ok, false, 'a month away is not a window on one coordination');
+  assert.equal(tooLong.error.reason, 'bad_until');
+
+  const res = await inRoom('leave_group_coordination', group, bar, { until });
+  assert.equal(res.ok, true, res.ok ? '' : JSON.stringify(res.error));
+  assert.equal(res.data.stillIn, true);
+  assert.deepEqual(res.data.declined, [soon]);
+  assert.equal(await answerOf(soon), 'n');
+  assert.equal(await answerOf(later), undefined, 'a time after they are back is still theirs to answer');
+  const { rows: [p] } = await db.pool.query(
+    `SELECT state, constraints FROM meeting_participants WHERE meeting_id = $1 AND user_id = $2`, [meetingId, bar.id]);
+  assert.notEqual(p.state, 'opted_out');
+  assert.equal(p.constraints[0].private, false);
+  assert.equal(p.constraints[0].windows.length, 1);
+
+  // A time put up later, while they are away, is answered for them.
+  const meanwhile = await addTime(group, amit, 100);
+  assert.equal(await answerOf(meanwhile), 'n');
+  assert.equal(await status(meetingId), 'negotiating');
+});
+
+test('away until after a SETTLED time is leaving it; back before it changes nothing', async () => {
+  const { group, people, meetingId } = await started(17);
+  const optionId = await addTime(group, people[0], 50);
+  assert.equal((await inRoom('settle_group_coordination', group, people[0], { option_id: optionId })).ok, true);
+
+  const back = await inRoom('leave_group_coordination', group, people[1],
+    { until: new Date(Date.now() + 20 * 3600_000).toISOString() });
+  assert.equal(back.ok, true, back.ok ? '' : JSON.stringify(back.error));
+  assert.equal(back.data.unchanged, true);
+
+  const away = await inRoom('leave_group_coordination', group, people[2],
+    { until: new Date(Date.now() + 100 * 3600_000).toISOString() });
+  assert.equal(away.ok, true, away.ok ? '' : JSON.stringify(away.error));
+  const { rows } = await db.pool.query(
+    `SELECT user_id, state FROM meeting_participants WHERE meeting_id = $1 AND user_id = ANY($2)`,
+    [meetingId, [people[1].id, people[2].id]]);
+  const stateOf = (u) => rows.find((r) => Number(r.user_id) === u.id).state;
+  assert.notEqual(stateOf(people[1]), 'opted_out');
+  assert.equal(stateOf(people[2]), 'opted_out');
+});
+
 test('an answer said in the room lands on THAT time, and the room hears nobody else\'s', async () => {
   const { group, people, meetingId } = await started(6);
   const [amit, miron, bar] = people;
@@ -201,6 +259,10 @@ test('a new hour said in the room moves a settled coordination, and it stays set
   const optionId = (await inRoom('add_group_coordination_option', group, people[0],
     { slot_description: 'בעוד 50 שעות', starts_at: startsAt })).data.optionId;
   assert.equal((await inRoom('settle_group_coordination', group, people[0], { option_id: optionId })).ok, true);
+  // The confirmations went out; one still waiting would carry the new hour
+  // itself (meeting-exact-time.test.js), and this is about the move being heard.
+  await db.pool.query(`UPDATE outbox SET sent_at = now() WHERE kind = 'meeting_confirmed'
+                         AND (payload->>'meetingId')::bigint = $1`, [meetingId]);
 
   // An hour earlier or later, whichever keeps it on the same day in their zone.
   const { rows: [u] } = await db.pool.query('SELECT timezone FROM users WHERE id = $1', [people[1].id]);
@@ -294,11 +356,12 @@ test('nobody is let in through the way back who did not leave by their own choic
   const [, miron, bar] = people;
   const meetings = require('../src/domain/meetings');
 
-  // A pause took them out — not a choice they made about this coordination.
-  await withTx(db.pool, (c) => meetings.applyExit(c, miron.id, meetingId, 'paused_by_request'));
-  const paused = await inRoom('rejoin_group_coordination', group, miron);
-  assert.equal(paused.ok, false);
-  assert.equal(paused.error.reason, 'not_left_by_choice');
+  // Leaving the WhatsApp group took them out — not a choice they made about
+  // this coordination. (A PAUSE exit comes back since 2026-10-05: Eden.)
+  await withTx(db.pool, (c) => meetings.applyExit(c, miron.id, meetingId, 'left_room'));
+  const left = await inRoom('rejoin_group_coordination', group, miron);
+  assert.equal(left.ok, false);
+  assert.equal(left.error.reason, 'not_left_by_choice');
 
   // A member of the room with no row in the coordination is not added this way.
   await db.pool.query(`DELETE FROM meeting_participants WHERE meeting_id = $1 AND user_id = $2`, [meetingId, bar.id]);

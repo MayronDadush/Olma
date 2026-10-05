@@ -164,6 +164,12 @@ const { IDENTITY_PARAM } = require('../src/adapters/mcp/identity-param');
 // whatever the page can do, the chat can) rides `set_meeting_title` as an
 // optional `category` rather than a tool of its own, and that tool's
 // description lost its Hebrew example to pay for it. Measured 61,023.
+//
+// Not raised, 2026-10-05: "away until a date" rides `leave_group_coordination`
+// as an optional `until` (Yossi, "אני בחול עד ה 17.10", was taken out of the
+// poker instead of declining the dates). Paid for by four group descriptions:
+// the status tool's reason sentence, and a few words each from set_group_kind,
+// leave and answer. Measured 61,044.
 const JSON_CEILING = 61_050;
 const DESCRIPTION_CEILING = 700;
 const IDENTITY_DESCRIPTION_CEILING = 40;

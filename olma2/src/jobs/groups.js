@@ -35,6 +35,7 @@ const coordinationMoves = require('./coordination-moves');
 const groupOutbox = require('../domain/group-outbox');
 const groupTurn = require('../domain/group-turn');
 const groupConnections = require('../domain/group-connections');
+const calendar = require('../domain/calendar');
 const { isTaggableNumber } = require('../domain/proactive-text');
 const gate = require('../outbox/gate');
 const pause = require('../domain/pause');
@@ -577,6 +578,24 @@ function idempotencyKeyFor(row, line, co) {
   return `${base}:${line.kind}${round}`;
 }
 
+// Is a shared calendar event about to exist for a close the room has not
+// heard yet? (owner, 2026-10-05, the padel room: "סגור" and then "📅 ביומן" a
+// minute later.) The event is made by the ORGANISER's agent, in the turn that
+// delivers their `meeting_confirmed` — always seconds after this pass has
+// already decided the done line — so `line.calendar` could only ever ride an
+// event that happened to exist first. While one is expected and the close is
+// younger than `groupVoice.CALENDAR_WAIT_MS`, the done line waits for it; after
+// that it goes without, and the separate calendar line is still there if the
+// event comes later. "Expected" is `meetingCalendarRoles.shared`, the same
+// answer the fan-out gave the organiser — a solo event is never the room's.
+async function calendarPending(client, row, full, now) {
+  if (!full || full.status !== 'confirmed' || row.group_done_at || full.calendar_event_id) return false;
+  if (!full.closed_at) return false;
+  if (now.getTime() - new Date(full.closed_at).getTime() >= groupVoice.CALENDAR_WAIT_MS) return false;
+  const roles = await calendar.meetingCalendarRoles(client, full.id);
+  return roles.shared;
+}
+
 async function sweepGroupVoice(client, deps) {
   const now = deps.now || new Date();
   const out = { said: [], held: 0 };
@@ -621,7 +640,7 @@ async function sweepGroupVoice(client, deps) {
     const { rows: full } = await client.query(
       `SELECT id, title, status, confirmed_slot, confirmed_start_at, initiator_id,
               settle_due_at, calendar_event_id, location, confirmed_all_day, confirmed_daypart, time_set_at,
-              reopened_at
+              reopened_at, closed_at
          FROM meetings WHERE id = $1`, [row.meeting_id]);
     // Somebody who has written to her since it started is let in now, and the
     // room hears it once (`group-meetings.admitLateMembers`, owner 2026-09-25).
@@ -678,6 +697,7 @@ async function sweepGroupVoice(client, deps) {
     const cold = { nonWriters, allowed: await coldTags.allowed(client, [...nonWriters], now) };
     const line = groupVoice.decideGroupLine(st.coordination, {
       coldTags: cold,
+      calendarPending: await calendarPending(client, row, full[0] || null, now),
       pendingRelay: relay,
       saidStarted: Boolean(row.group_started_at),
       saidBase: Boolean(row.group_base_at),
