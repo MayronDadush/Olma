@@ -75,16 +75,25 @@ async function sweepUsage(client, deps = {}) {
 
     const userId = userByAgent.get(t.agentId) ?? null;
     for (const c of newCalls) {
-      const priced = pricing.priceUsage(c, c.model, blended);
+      // The provider's own figure wins whenever the transcript carries one —
+      // the same rule recordUsage applies to direct calls. The table priced
+      // real users ~30% under what OpenRouter billed (2026-09-05..10-05:
+      // $10.01 billed, the ledger said less for every one of 45 people),
+      // mostly cache reads the pinned provider charges above the listing.
+      const table = pricing.priceUsage(c, c.model, blended);
+      const priced = c.costUsd != null
+        ? { cost: c.costUsd, estimated: false, model: table.model }
+        : table;
       const key = `${userId ?? 'agent:' + t.agentId}|${utcDate(c.at)}|${priced.model}`;
       const b = buckets.get(key) || {
         userId, agentId: t.agentId, date: utcDate(c.at), model: priced.model,
-        input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, estimated: false,
+        input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, estimated: false, billed: true,
       };
       b.input += c.input; b.output += c.output;
       b.cacheRead += c.cacheRead; b.cacheWrite += c.cacheWrite;
       b.cost += priced.cost;
       b.estimated = b.estimated || priced.estimated;
+      b.billed = b.billed && c.costUsd != null;
       buckets.set(key, b);
       calls++;
     }
@@ -97,8 +106,8 @@ async function sweepUsage(client, deps = {}) {
       await client.query(
         `INSERT INTO usage_ledger
            (user_id, date, model, input_tokens, output_tokens, cache_read_tokens,
-            cache_write_tokens, total_tokens, cost_usd, estimated)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+            cache_write_tokens, total_tokens, cost_usd, estimated, billed)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
          ON CONFLICT (user_id, date, model) DO UPDATE SET
            input_tokens = usage_ledger.input_tokens + $4,
            output_tokens = usage_ledger.output_tokens + $5,
@@ -106,25 +115,27 @@ async function sweepUsage(client, deps = {}) {
            cache_write_tokens = usage_ledger.cache_write_tokens + $7,
            total_tokens = usage_ledger.total_tokens + $8,
            cost_usd = usage_ledger.cost_usd + $9,
-           estimated = usage_ledger.estimated OR $10`,
+           estimated = usage_ledger.estimated OR $10,
+           billed = usage_ledger.billed AND $11`,
         [b.userId, b.date, b.model, b.input, b.output, b.cacheRead, b.cacheWrite,
-         total, b.cost.toFixed(4), b.estimated]
+         total, b.cost.toFixed(8), b.estimated, b.billed]
       );
     } else {
       await client.query(
         `INSERT INTO usage_system_ledger
            (agent_id, date, model, input_tokens, output_tokens, cache_read_tokens,
-            cache_write_tokens, cost_usd, estimated)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+            cache_write_tokens, cost_usd, estimated, billed)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
          ON CONFLICT (agent_id, date, model) DO UPDATE SET
            input_tokens = usage_system_ledger.input_tokens + $4,
            output_tokens = usage_system_ledger.output_tokens + $5,
            cache_read_tokens = usage_system_ledger.cache_read_tokens + $6,
            cache_write_tokens = usage_system_ledger.cache_write_tokens + $7,
            cost_usd = usage_system_ledger.cost_usd + $8,
-           estimated = usage_system_ledger.estimated OR $9`,
+           estimated = usage_system_ledger.estimated OR $9,
+           billed = usage_system_ledger.billed AND $10`,
         [b.agentId, b.date, b.model, b.input, b.output, b.cacheRead, b.cacheWrite,
-         b.cost.toFixed(4), b.estimated]
+         b.cost.toFixed(8), b.estimated, b.billed]
       );
     }
     recorded++;
