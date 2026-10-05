@@ -5617,9 +5617,9 @@ button.srow:active{background:var(--bg-tint)}
       "tcat.social":"חברים","tcat.sport":"ספורט","tcat.games":"משחקים","mt.catAuto":"אוטומטי","mt.catAdd":"הוספת קטגוריה",
       "toast.mtCatFailed":"לא הצלחתי לשנות את הקטגוריה",
       "toast.mtRenamed":"השם עודכן","toast.mtRenameFailed":"לא הצלחתי לשנות את השם",
-      "mt.placeLbl":"מקום","mt.placePh":"איפה נפגשים?","mt.exactLbl":"שעה מדויקת","mt.exactAdd":"הוספת שעה",
+      "mt.placeLbl":"מקום","mt.placePh":"איפה נפגשים?","mt.exactLbl":"שעה מדויקת","mt.exactAdd":"הוספת שעה","mt.exactChange":"{t} · שינוי",
       "toast.mtPlaceSet":"המקום נשמר","toast.mtPlaceFailed":"לא הצלחתי לשמור את המקום",
-      "toast.mtTimeSet":"השעה נקבעה — כולם יקבלו הודעה","toast.mtTimeFailed":"לא הצלחתי לקבוע את השעה",
+      "toast.mtTimeSet":"השעה נקבעה — כולם יקבלו הודעה","toast.mtTimeMoved":"השעה שונתה — כולם יקבלו הודעה","toast.mtTimeFailed":"לא הצלחתי לקבוע את השעה",
       "mt.reopen":"פתיחה מחדש של הזמן","mt.reopenAgain":"עוד לחיצה — כולם יקבלו הודעה",
       "toast.mtReopened":"{name} נפתח מחדש — שאלתי את כולם","toast.mtReopenFailed":"לא הצלחתי לפתוח מחדש את {name}",
       "sw.delete":"מחיקה","sw.leave":"יציאה","sw.again":"עוד לחיצה כדי למחוק","sw.againLeave":"עוד לחיצה כדי לצאת",
@@ -6008,9 +6008,9 @@ button.srow:active{background:var(--bg-tint)}
       "tcat.social":"Friends","tcat.sport":"Sport","tcat.games":"Games","mt.catAuto":"Automatic","mt.catAdd":"Add a category",
       "toast.mtCatFailed":"Couldn't change the category",
       "toast.mtRenamed":"Name updated","toast.mtRenameFailed":"Couldn't rename it",
-      "mt.placeLbl":"Place","mt.placePh":"Where are you meeting?","mt.exactLbl":"Exact time","mt.exactAdd":"Add a time",
+      "mt.placeLbl":"Place","mt.placePh":"Where are you meeting?","mt.exactLbl":"Exact time","mt.exactAdd":"Add a time","mt.exactChange":"{t} · change",
       "toast.mtPlaceSet":"Place saved","toast.mtPlaceFailed":"Couldn't save the place",
-      "toast.mtTimeSet":"Time set — everyone will be told","toast.mtTimeFailed":"Couldn't set the time",
+      "toast.mtTimeSet":"Time set — everyone will be told","toast.mtTimeMoved":"Time changed — everyone will be told","toast.mtTimeFailed":"Couldn't set the time",
       "mt.reopen":"Reopen the time","mt.reopenAgain":"Press again — everyone will be told",
       "toast.mtReopened":"{name} is open again — everyone was asked","toast.mtReopenFailed":"Could not reopen {name}",
       "sw.delete":"Delete","sw.leave":"Leave","sw.again":"Press again to delete","sw.againLeave":"Press again to leave",
@@ -11060,14 +11060,19 @@ button.srow:active{background:var(--bg-tint)}
       : t("mt.capNote", {n:MEET_CAP});
     $("#mtAddNote").hidden = !$("#mtAddNote").textContent;
 
-    /* Where, and the exact hour while there is none. The place field is not
-       rewritten while somebody is typing in it — a reload landing mid-word
-       would take the word away. */
+    /* Where, and the exact hour: added while there is none, and changed on
+       the same day once there is one — without reopening, which would ask
+       everybody again and take the event off the calendar (the owner's
+       Padel Gang, 2026-10-03). A settled row with no moment at all is a
+       text-only legacy one the server cannot move, so it gets no button.
+       The place field is not rewritten while somebody is typing in it — a
+       reload landing mid-word would take the word away. */
     var pl = $("#mtPlace");
     if(document.activeElement !== pl) pl.value = m.place || "";
     var ahead = !m.startsAt || new Date(m.startsAt).getTime() > Date.now();
-    $("#mtExactWrap").hidden = !(m.settled && m.timeOpen && ahead);
-    $("#mtExactBtn").textContent = t("mt.exactAdd");
+    var hour = mtExactHour(m);
+    $("#mtExactWrap").hidden = !(m.settled && ahead && (m.timeOpen || hour));
+    $("#mtExactBtn").textContent = m.timeOpen || !hour ? t("mt.exactAdd") : t("mt.exactChange", {t:hour});
 
     /* Two different exits, and they must never read alike: one clears your
        own calendar, the other tells four people you are not coming.
@@ -11458,22 +11463,41 @@ button.srow:active{background:var(--bg-tint)}
   $("#mtPlace").addEventListener("keydown", function(e){
     if(e.key === "Enter"){ e.preventDefault(); this.blur(); }
   });
+  /* the settled hour in their own clock, or "" when it is open or unknown */
+  function mtExactHour(m){
+    if(!m || !m.settled || m.timeOpen) return "";
+    if(m.startsAt) return clockIn(myTz(), new Date(m.startsAt));
+    var o = mtSettledOpt(m);
+    return o && o.time || "";
+  }
+  function mtSettledOpt(m){
+    return m.opts.filter(function(o){ return o.id === m.settled; })[0] || null;
+  }
   $("#mtExactBtn").addEventListener("click", function(){
     if(!mtOpen) return;
-    syncTimeField($("#mtExactTime"), "");
+    syncTimeField($("#mtExactTime"), mtExactHour(mtOpen));
     openTimeSheet($("#mtExactTime"));
   });
   $("#mtExactTime").addEventListener("input", function(){
-    var m = mtOpen, v = this.value;
-    if(!m || !v || !m.settled || !m.timeOpen) return;
-    m.timeOpen = false;
+    var m = mtOpen, v = this.value, was = mtExactHour(m);
+    if(!m || !v || !m.settled || v === was) return;
+    if(!m.timeOpen && !was) return;
     API.call("setMeetingTime", {meeting_id:m.id, time:v});
     if(LIVE) API.send("setMeetingTime", {meetingId:m.id, time:v}, function(data){
       if(!data) toast(t("toast.mtTimeFailed"), null, true);
       API.reload();
     });
+    if(m.timeOpen || !was){ m.timeOpen = false; }
+    else if(m.startsAt){
+      /* the same day, the new hour: shift the moment by the difference so
+         the card reads right until the reload brings the server's own */
+      var d = (+v.slice(0,2)*60 + +v.slice(3)) - (+was.slice(0,2)*60 + +was.slice(3));
+      m.startsAt = new Date(new Date(m.startsAt).getTime() + d*60000).toISOString();
+    }
+    var so = mtSettledOpt(m);
+    if(so && so.time) so.time = v;
     renderMeet(); renderMeets();
-    toast(t("toast.mtTimeSet"));
+    toast(t(was ? "toast.mtTimeMoved" : "toast.mtTimeSet"));
   });
   $("#mtLeave").addEventListener("click", function(){
     if(!mtOpen) return;
