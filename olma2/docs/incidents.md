@@ -129,6 +129,7 @@ never trust a dated narrative for something you are about to act on.
 - [The room named him and nobody told him (fixed 2026-09-23)](#the-room-named-him-and-nobody-told-him-fixed-2026-09-23)
 - [Paused for three questions nobody asked (fixed 2026-09-25)](#paused-for-three-questions-nobody-asked-fixed-2026-09-25)
 - [Nine reminders, nine messages (fixed 2026-09-07)](#nine-reminders-nine-messages-fixed-2026-09-07)
+- [Twelve at eight, the same twelve at eleven (fixed 2026-10-05)](#twelve-at-eight-the-same-twelve-at-eleven-fixed-2026-10-05)
 - [Fifty-two seconds behind the introduction (fixed 2026-09-08)](#fifty-two-seconds-behind-the-introduction-fixed-2026-09-08)
 - [Her reminders arrived in Hebrew (fixed 2026-09-07)](#her-reminders-arrived-in-hebrew-fixed-2026-09-07)
 - [A hundred and five pending reminders, thirteen of them pending (fixed 2026-09-07)](#a-hundred-and-five-pending-reminders-thirteen-of-them-pending-fixed-2026-09-07)
@@ -6224,6 +6225,39 @@ Left as a follow-up: sending the schedule card image instead of a text list.
 The owner asked for "בבת אחת או בתמונה", and the text list is the half that
 fixes the flood without a new render path in the delivery loop; Vered was
 asked directly which she would rather have.
+
+### Twelve at eight, the same twelve at eleven (fixed 2026-10-05)
+
+Dov got one message at 08:00 on 2026-10-04 listing twelve reminders,
+every one of them automatic — Olma's own hour off a due date, mostly 09:00
+for something he had said was "מחר" with no hour. At 11:01 the same twelve
+came back under "⏰ *תזכורות חוזרות* … משהו מהן בוצע?". Nothing was wrong
+with either message on its own terms: the batch did what "Nine reminders,
+nine messages" built it to do, and each line's ladder took the one automatic
+follow-up `reminders.RUNGS.auto` gives it. Twelve follow-ups that come due in
+the same tick batch the same way, so the second message was the first one
+again.
+
+**Measured before changing it** (box, last 30 days): an automatic rung-2 list
+of three or more lines was followed by 0 of 12 tasks marked done within three
+hours; a rung 2 that went out alone, by 9 of 24. A list repeated is read as
+the list again, not as a question about any line in it.
+
+So `outbox/worker.js` ends the automatic ladders behind a first-rung list of
+`LIST_NO_FOLLOWUP_MIN` (3) or more once the send confirms or times out
+(`endListLadders`, `task_reminders.sent_at`, audit `reminder.list_not_chased`).
+A reminder they named an hour for has one rung anyway, and a nudge, a repeat
+rule, a chase and somebody with `users.reminder_nudge` keep their ladders —
+the same exclusions `reminders.RUNG_CAP_SQL` draws. One or two together are
+still followed up. The reminder id comes off the outbox row's idempotency key
+(`reminder:<id>` is rung 1's), because the payload does not carry it.
+`tests/outbox.test.js`, "a list of three or more automatic reminders is not
+chased", goes through the real writer, sweep and worker and is red without
+the fix.
+
+What it does NOT fix: the 09:00 itself. Saying "מחר" with no hour still
+dates the thing at 09:00 (09:00 held 40 tasks across 5 people in 30 days), and whether
+that hour is honest is a separate question, still open.
 
 ### Good morning at half past one (fixed 2026-09-06)
 

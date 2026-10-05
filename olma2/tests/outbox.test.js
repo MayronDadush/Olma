@@ -978,6 +978,67 @@ test('worker: reminders that come due together go out as ONE message', async () 
     'every row the one send carried is delivered, not just the one that led it');
 });
 
+// Dov, 2026-10-04: twelve automatic reminders at 08:00, the same twelve again
+// at 11:01 under "משהו מהן בוצע?". Over thirty days that second list was
+// answered by 0 of 12 tasks done, against 9 of 24 for a reminder alone. Run
+// through the real writer, the real sweep and the real worker, because the
+// ladder is decided by dueForSending three hours later and nothing else.
+test('worker: a list of three or more automatic reminders is not chased; one or two still are', async () => {
+  const tasks = require('../src/domain/tasks');
+  await flushOutbox();
+  const before = new Date('2026-08-16T12:00:00Z');
+  const due = '2026-08-17T15:00:00Z'; // a Monday, 18:00 in Jerusalem
+  const arm = async (who, titles, { nudge = false } = {}) => withTx(db.pool, async (c) => {
+    const out = [];
+    for (const title of titles) {
+      const t = (await tasks.addTask(c, who.id, { title, dueAt: due, now: before })).data.task;
+      const { rows } = await c.query(`SELECT * FROM task_reminders WHERE task_id = $1 AND auto`, [t.id]);
+      out.push(rows[0]);
+    }
+    // The flag a nudge carries on an automatic row (attachAutoReminder's
+    // `nudge`), set on the first only: one line of the list was asked for.
+    if (nudge) await c.query(`UPDATE task_reminders SET nudge = true WHERE id = $1`, [out[0].id]);
+    return out;
+  });
+  const dov = await makeUser(db.pool, '+972581000031', { firstName: 'דב', timezone: 'Asia/Jerusalem' });
+  const ruth = await makeUser(db.pool, '+972581000032', { firstName: 'רות', timezone: 'Asia/Jerusalem' });
+  const dovs = await arm(dov, ['לקנות חלב', 'לשלם ארנונה', 'להתקשר לרופא', 'לאסוף חבילה'], { nudge: true });
+  await arm(ruth, ['לשלוח קורות חיים', 'לתקן אופניים']);
+  const at = new Date(dovs[0].remind_at);
+
+  await withTx(db.pool, (c) => sweeps.sweepReminders(c, new Date(at.getTime() + 60_000)));
+  const sent = [];
+  await drainOnce(db.pool, async (r) => { sent.push(r); return { ok: true }; }, new Date(at.getTime() + 60_000));
+  assert.equal(sent.filter((r) => r.user_id === dov.id).length, 1, 'his four are one message');
+  assert.equal(sent.filter((r) => r.user_id === ruth.id).length, 1, 'her two are one message');
+
+  const { rows: ended } = await db.pool.query(
+    `SELECT id, sent_at FROM task_reminders WHERE id = ANY($1::bigint[]) ORDER BY id`,
+    [dovs.map((r) => r.id)]);
+  assert.equal(ended[0].sent_at, null, 'the one he asked to be chased about keeps its ladder');
+  for (const r of ended.slice(1)) assert.ok(r.sent_at, 'an automatic ladder ends with the list');
+
+  // The worker stamps sent_at off the database clock, not off `now`, and the
+  // ladder measures its gap from that stamp — so it is put where the send was.
+  await db.pool.query(`UPDATE outbox SET sent_at = $2 WHERE user_id = ANY($1::bigint[]) AND sent_at IS NOT NULL`,
+    [[dov.id, ruth.id], new Date(at.getTime() + 60_000)]);
+  // Three hours on: the follow-up sweep.
+  const later = new Date(at.getTime() + 3 * 3600_000 + 60_000);
+  await withTx(db.pool, (c) => sweeps.sweepReminders(c, later));
+  const { rows: rung2 } = await db.pool.query(
+    `SELECT user_id, idempotency_key k FROM outbox
+      WHERE kind = 'reminder' AND idempotency_key LIKE 'reminder:%:2' AND user_id = ANY($1::bigint[])`,
+    [[dov.id, ruth.id]]);
+  assert.equal(rung2.filter((r) => r.user_id === ruth.id).length, 2, 'two together are still followed up');
+  assert.deepEqual(rung2.filter((r) => r.user_id === dov.id).map((r) => r.k), [`reminder:${dovs[0].id}:2`],
+    'of his list only the nudge comes back');
+
+  const { rows: trail } = await db.pool.query(
+    `SELECT detail FROM audit_log WHERE event = 'reminder.list_not_chased' AND actor_id = $1`, [dov.id]);
+  assert.equal(trail.length, 1);
+  assert.equal(trail[0].detail.reminderIds.length, 3);
+});
+
 // The language decision is taken at delivery from the joined users row, so
 // the proof has to go through the worker's own query: a row hand-built in a
 // test with `locale: 'en'` on it proves nothing about what the deliverer

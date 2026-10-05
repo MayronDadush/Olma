@@ -50,6 +50,9 @@ const CLIP_KINDS = new Set(['intro_video', 'brand_ad']);
 // The cap is not a limit on what is due — anything past it goes out on the
 // next tick as its own message — it is a limit on how long one message may be.
 const MAX_BATCH = 8;
+// From this many first-rung reminders in one message, the automatic ones are
+// not chased (see endListLadders in the tick).
+const LIST_NO_FOLLOWUP_MIN = 3;
 
 // ── A retry is a new message, so a doomed send must not be attempted ────────
 // A delivery on the model path is `openclaw agent --deliver`: the gateway runs
@@ -658,6 +661,33 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
                            WHERE o.id = ANY($2::bigint[]) AND o.kind = 'checkin'
                              AND COALESCE(o.payload->>'rung', '') NOT LIKE 'onboarding\\_%')`,
           [row.user_id, ids]);
+        // A first-rung LIST of three or more is not chased. Dov got twelve at
+        // 08:00 and the same twelve at 11:01 (2026-10-04); over thirty days an
+        // automatic second rung on a list of 3+ was answered by 0 of 12 tasks
+        // done within three hours, against 9 of 24 for a reminder alone. So
+        // the automatic ladders behind such a list end with the list itself.
+        // A reminder they asked for has one rung already, and a nudge, a
+        // repeating rule and a chase keep the ladder they were armed with —
+        // the same exclusions reminders.RUNG_CAP_SQL draws. Run only once the
+        // send confirmed or timed out (booked as sent), like every stamp here.
+        const endListLadders = async () => {
+          if (!key || key !== 'reminder' || ids.length < LIST_NO_FOLLOWUP_MIN) return;
+          const { rows: ended } = await client.query(
+            `UPDATE task_reminders r SET sent_at = now()
+               FROM outbox o, users u
+              WHERE o.id = ANY($1::bigint[]) AND o.idempotency_key = 'reminder:' || r.id
+                AND u.id = o.user_id
+                AND r.auto AND r.attempts = 1 AND r.sent_at IS NULL
+                AND r.repeat_rule IS NULL AND r.rungs IS NULL
+                AND NOT r.nudge AND NOT u.reminder_nudge
+              RETURNING r.id`,
+            [ids]);
+          if (ended.length) {
+            await audit.record(client, row.user_id, 'reminder.list_not_chased', {
+              outboxIds: ids.map(Number), reminderIds: ended.map((r) => Number(r.id)),
+            });
+          }
+        };
         if (result.ok) {
           await client.query(
             `UPDATE outbox SET sent_at = now(), hold_reason = NULL WHERE id = ANY($1::bigint[])`, [ids]
@@ -665,6 +695,7 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
           await countLadderAsk();
           await spendRoomInvite();
           await recordClosedNews();
+          await endListLadders();
           outcomes.delivered++;
           if (ids.length > 1) outcomes.batched = (outcomes.batched || 0) + ids.length - 1;
         } else if (result.timedOut) {
@@ -693,6 +724,7 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
           await countLadderAsk();
           await spendRoomInvite();
           await recordClosedNews();
+          await endListLadders();
           outcomes.delivered++;
           outcomes.unconfirmed = (outcomes.unconfirmed || 0) + 1;
           if (ids.length > 1) outcomes.batched = (outcomes.batched || 0) + ids.length - 1;

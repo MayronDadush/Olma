@@ -75,6 +75,17 @@ title means this file. Grep the title, not the filename.
   "הספקת לארוז?" the morning after the hospital is a message about nothing,
   and an overdue task is in the digest either way.
 
+- **…and a LIST of three or more is not chased at all.** When a first-rung
+  batch of `LIST_NO_FOLLOWUP_MIN` (3) or more lines confirms, the worker ends
+  every automatic ladder behind it (`outbox/worker.js`, `endListLadders`;
+  audit `reminder.list_not_chased`). Twelve follow-ups due in one tick are one
+  message, and it is the morning's list again: 0 of 12 done after one, 9 of 24
+  after a follow-up that went out alone (`incidents.md`, "Twelve at eight,
+  the same twelve at eleven"). A nudge, a repeat rule, a chase and
+  `users.reminder_nudge` keep their ladders, the same line `RUNG_CAP_SQL`
+  draws; one or two together are still followed up. Stamped only on a sent
+  or timed-out send, never on a failure.
+
 - **"להפסיק להזכיר" is a WRITE, not a question.** מאיה asked twice over — once
   for one reminder at 09:00, and once for it to stop — and got six messages and
   a multiple-choice question ("מה להפסיק? 1. … 2. … 3. …") with nothing

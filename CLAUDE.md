@@ -218,6 +218,7 @@ Loads when you **Read** a file under `src/domain/reminders.js`, `src/domain/task
 - **"What is still pending" must ask `attempts = 0`**
 - **…and "what is still going to REACH them" is a THIRD question, which `attempts = 0` answers wrongly.**
 - **A ladder is something they ASK for, and the question is who chose the HOUR** — measured: one rung for an hour they named, two for one Olma inferred, three for whoever asks
+- **…and a LIST of three or more automatic reminders is not chased** — the ladders end when the list is sent (`endListLadders`); a nudge, a repeat and a chase keep theirs
 - **"להפסיק להזכיר" is a WRITE, not a question**, and it stops everything that has actually reached them
 - **Moving a task's date answers every rung that was chasing the old one.**
 - **A task chases through ONE ladder — the one behind the LATEST reminder they asked for.**
