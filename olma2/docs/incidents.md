@@ -3858,6 +3858,20 @@ carries the place, the place tool answers NO_REPLY while that line is still
 to come, and neither reminder follows a close said the same day (day-of) or
 inside the hour (soon).
 
+**2026-10-05, Padel Gang (group 9, meeting 69): "סגור" and then "📅 ביומן" a
+minute later.** The owner settled it from the page at 13:42:23. The sweep
+decided the done line at 13:42:26 with no event yet, so `line.calendar` was
+false. The organiser's agent (u-12) made the shared event at 13:42:40, in
+the turn delivering its `meeting_confirmed`, and the next pass said the
+separate calendar line at 13:43:26. Fix 7 (2026-09-26) let the calendar
+sentence ride the done line only when the event ALREADY existed, and the
+event is made by a model turn the close itself starts, so it never did. Now
+`jobs/groups.calendarPending` holds the done line while
+`calendar.meetingCalendarRoles` says a shared event is coming and the close
+(`meetings.closed_at`) is younger than `group-voice.CALENDAR_WAIT_MS` (two
+minutes). After that the line goes without it, so a model that never calls
+the tool delays the close and never swallows it.
+
 ### The room that did not know its own member (fixed 2026-09-23)
 
 At 07:53 the room heard the closing line for the padel coordination, and it
