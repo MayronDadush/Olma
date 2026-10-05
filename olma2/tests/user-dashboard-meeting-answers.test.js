@@ -140,3 +140,25 @@ test('a note stands until the answer it came with is given again', async () => {
   assert.deepEqual(after.said, ['טס ולא יכול השבוע', 'בלי קשר: אני מביא צ׳יפים']);
   assert.equal(after.saidOn[evening], undefined);
 });
+
+// A time merged into a close one carries everybody's answer to the new id
+// (`meeting-options.merge`), and the note given with that answer goes too.
+test('a note follows its answer when the time it answered is merged', async () => {
+  const tool = require('../src/adapters/mcp/tools/meetings').find((t) => t.name === 'record_meeting_constraint');
+  const start = new Date(Date.now() + 4 * 24 * 3600_000); start.setUTCHours(9, 0, 0, 0);
+  const iso = (h) => new Date(start.getTime() + h * 3600_000).toISOString();
+  let m, old, merged;
+  await withTx(db.pool, async (c) => {
+    m = Number((await meetings.startMeeting(c, me.id, 'מיזוג', [her.id])).data.meeting.id);
+    old = (await meetings.options.add(c, me.id, m, 'option A 09:00', iso(0))).data.option.id;
+    const r = await tool.handler(c, { ...her }, { meeting_id: m, constraint: 'בבוקר אני בעבודה', declines_option_ids: [old] });
+    assert.ok(r.ok, JSON.stringify(r));
+    const res = await meetings.options.merge(c, me.id, m, old, 'option B 09:30', iso(0.5));
+    assert.ok(res.ok, JSON.stringify(res));
+    merged = res.data.option.id;
+  });
+  const res = await load(me.id);
+  const p = res.data.meetings.find((x) => String(x.id) === String(m)).participants.find((x) => x.name === 'מאיה');
+  assert.deepEqual(p.said, ['בבוקר אני בעבודה']);
+  assert.deepEqual(p.saidOn, { [merged]: 'בבוקר אני בעבודה' });
+});
