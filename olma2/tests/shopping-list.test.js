@@ -64,7 +64,7 @@ test('a dictated list becomes a titled list with items under it', async () => {
   assert.equal(res.ok, true);
   assert.equal(res.data.shoppingList, true);
   assert.equal(res.data.merged, false);
-  assert.equal(res.data.task.title, 'קניות');
+  assert.equal(res.data.task.title, 'קניות סופר');
   // Its own category since 2026-10-05, chosen by us so a person may move it.
   assert.equal(res.data.task.category, 'lists');
   assert.equal(res.data.task.category_auto, true);
@@ -140,7 +140,7 @@ test('Dov\'s ten groceries, saved in bulk exactly as the model did, are ONE list
   const res = await bulkFor(u.id)(DOV.map((title) => ({ title, kind: 'todo', category: 'errands' })));
   assert.equal(res.ok, true);
   assert.equal(res.data.shoppingList, true);
-  assert.deepEqual(await topLevel(u.id), ['קניות'], 'the items landed as separate tasks');
+  assert.deepEqual(await topLevel(u.id), ['קניות סופר'], 'the items landed as separate tasks');
   assert.deepEqual(await childrenOf(res.data.task.id), DOV);
   assert.equal(res.data.task.category, 'lists');
 });
@@ -175,7 +175,7 @@ test('what the extraction job writes back — "קניות - א, ב, …" — mer
   const res = await addFor(u.id)(`קניות - ${DOV.join(', ')}`, { source: 'extracted' });
   assert.equal(String(res.data.task.id), String(list.id));
   assert.equal(res.data.items.length, 0);
-  assert.deepEqual(await topLevel(u.id), ['קניות']);
+  assert.deepEqual(await topLevel(u.id), ['קניות סופר']);
   // A task ABOUT shopping, with no separator, is still a task.
   assert.equal(shopping.parseShoppingList('קניות לשבת'), null);
   assert.equal(shopping.parseShoppingList('סופר מחר'), null);

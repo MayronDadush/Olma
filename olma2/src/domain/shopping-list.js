@@ -42,7 +42,9 @@ const MAX_ITEMS = 30;
 // The list's own name. Miron asked Olma to title it herself; this is the title,
 // and it is fixed rather than generated because it is also the merge key — a
 // name that varied would produce a second list instead of finding the first.
-const LIST_TITLE = { he: 'קניות', en: 'Shopping' };
+// 'קניות סופר' since 2026-10-05, the owner's choice (it was 'קניות'); a list
+// open under the old name is still found, through SHOPPING_TITLES.
+const LIST_TITLE = { he: 'קניות סופר', en: 'Shopping' };
 // A list is its own category (owner, 2026-10-05: "רשימות תהיה קטגוריה נפרדת
 // כברירת מחדל"), chosen by us and therefore `category_auto` — a person who
 // moves it somewhere else has the last word, and nothing below looks the list
@@ -53,8 +55,8 @@ const LIST_CATEGORY = 'lists';
 // stalled goals) have to keep recognising them.
 const LEGACY_LIST_CATEGORIES = ['errands'];
 
-// Every name a shopping run already goes by on the box — 'קניות' (ours),
-// 'סופר', 'קניות בסופר', and Dov's 'קניות סופר', named by the owner. A new
+// Every name a shopping run already goes by on the box — 'קניות' (ours until 2026-10-05),
+// 'סופר', 'קניות בסופר', and 'קניות סופר', ours now. A new
 // item joins whichever of these is open, rather than starting a 'קניות' beside
 // a 'סופר' that is already half bought.
 const SHOPPING_TITLES = ['קניות', 'סופר', 'קניות סופר', 'קניות בסופר', 'קניות לסופר',
