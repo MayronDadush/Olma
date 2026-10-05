@@ -1128,3 +1128,76 @@ test('a task syncing to a calendar event that already exists does not double-boo
     { createEvent: () => { throw new Error('must not create again'); } }));
   assert.equal(again.action, 'unchanged');
 });
+
+// ---- a repeating event is a series Google knows ------------------------------
+// Owner, 2026-10-05: a course every Monday goes up as ONE recurring event, and
+// ending it keeps what already happened.
+
+test('a series is written with its rule and the zone the rule is expanded in', async () => {
+  const u = await makeUser(db.pool, '+972632000041', { firstName: 'Dov' });
+  await connect(u.id);
+  let sent = null;
+  const fetchImpl = fakeFetch({
+    'calendars/primary/events': (url, init) => { sent = JSON.parse(init.body); return { body: { id: sent.id, summary: sent.summary } }; },
+  });
+  const res = await withTx(db.pool, (c) => calendar.createEvent(c, u.id, {
+    title: 'קורס', start: '2030-10-14T14:30:00.000Z', end: '2030-10-14T18:30:00.000Z',
+    recurrence: ['RRULE:FREQ=WEEKLY;BYDAY=MO'], timeZone: 'Asia/Jerusalem', eventId: 'olmaseries1',
+  }, { fetchImpl }));
+  assert.equal(res.ok, true, JSON.stringify(res));
+  assert.equal(sent.id, 'olmaseries1');
+  assert.deepEqual(sent.recurrence, ['RRULE:FREQ=WEEKLY;BYDAY=MO']);
+  assert.equal(sent.start.timeZone, 'Asia/Jerusalem');
+  assert.equal(sent.end.timeZone, 'Asia/Jerusalem');
+
+  const noZone = await withTx(db.pool, (c) => calendar.createEvent(c, u.id, {
+    title: 'קורס', start: '2030-10-14T14:30:00.000Z', end: '2030-10-14T18:30:00.000Z',
+    recurrence: ['RRULE:FREQ=WEEKLY;BYDAY=MO'],
+  }, { fetchImpl: fakeFetch({}) }));
+  assert.equal(noZone.ok, false, 'a timed series with no zone drifts across a clock change');
+});
+
+test('ending a series cuts it at now, deletes one that never started, and tolerates one already gone', async () => {
+  const u = await makeUser(db.pool, '+972632000042', { firstName: 'Dov' });
+  await connect(u.id);
+  const at = new Date('2030-11-01T10:00:00Z');
+  const started = { id: 'olmas', status: 'confirmed', start: { dateTime: '2030-10-14T17:30:00+03:00' },
+    recurrence: ['RRULE:FREQ=WEEKLY;BYDAY=MO;UNTIL=20310101T000000Z'] };
+  let patch = null;
+  const cut = fakeFetch({
+    'events/olmas': (url, init) => {
+      if (init.method === 'PATCH') { patch = JSON.parse(init.body); return { body: {} }; }
+      return { body: started };
+    },
+  });
+  const ended = await withTx(db.pool, (c) => calendar.endSeries(c, u.id, { eventId: 'olmas', at, timezone: 'Asia/Jerusalem' }, { fetchImpl: cut }));
+  assert.equal(ended.ok, true, JSON.stringify(ended));
+  assert.equal(ended.data.deleted, false);
+  assert.deepEqual(patch.recurrence, ['RRULE:FREQ=WEEKLY;BYDAY=MO;UNTIL=20301101T100000Z'],
+    'the old end is replaced, not added beside');
+  assert.equal(deletes(cut).length, 0, 'what already happened stays on the calendar');
+
+  const future = fakeFetch({
+    'events/olmaf': (url, init) => (init.method === 'DELETE' ? { status: 204, body: {} }
+      : { body: { ...started, id: 'olmaf', start: { dateTime: '2030-12-01T17:30:00+02:00' } } }),
+  });
+  const gone = await withTx(db.pool, (c) => calendar.endSeries(c, u.id, { eventId: 'olmaf', at, timezone: 'Asia/Jerusalem' }, { fetchImpl: future }));
+  assert.equal(gone.data.deleted, true);
+  assert.equal(deletes(future).length, 1);
+
+  const allDay = { id: 'olmad', status: 'confirmed', start: { date: '2030-10-14' }, recurrence: ['RRULE:FREQ=WEEKLY;BYDAY=MO'] };
+  let dayPatch = null;
+  await withTx(db.pool, (c) => calendar.endSeries(c, u.id, { eventId: 'olmad', at, timezone: 'Asia/Jerusalem' }, {
+    fetchImpl: fakeFetch({ 'events/olmad': (url, init) => {
+      if (init.method === 'PATCH') { dayPatch = JSON.parse(init.body); return { body: {} }; }
+      return { body: allDay };
+    } }),
+  }));
+  assert.deepEqual(dayPatch.recurrence, ['RRULE:FREQ=WEEKLY;BYDAY=MO;UNTIL=20301101'], 'a whole-day series is cut by date');
+
+  const missing = await withTx(db.pool, (c) => calendar.endSeries(c, u.id, { eventId: 'olmax', at }, {
+    fetchImpl: fakeFetch({ 'events/olmax': { status: 404, body: { error: { message: 'Not Found' } } } }),
+  }));
+  assert.equal(missing.ok, true);
+  assert.equal(missing.data.alreadyGone, true);
+});

@@ -100,7 +100,7 @@ test('when an occurrence ends the sweep moves it on, across a clock change, and 
   assert.equal(row.archived_at, null);
   assert.equal(local(row.due_at), '2030-10-21 17:30');
   assert.equal(local(row.ends_at), '2030-10-21 21:30');
-  assert.equal(row.calendar_event_id, null, 'the next one is created fresh; the past one is left alone');
+  assert.equal(row.calendar_event_id, 'olmaold', 'the series on Google already holds the next one; nothing is re-made per class');
 
   // The automatic reminder followed it to the new occurrence.
   const { rows: rem } = await db.pool.query(

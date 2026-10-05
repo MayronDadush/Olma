@@ -7,6 +7,7 @@ const { ok, err } = require('./results');
 const audit = require('./audit');
 const { hasOffset, badTime, partsInZone, weekdayOfParts } = require('./datetime');
 const reminders = require('./reminders');
+const taskCalendar = require('./task-calendar');
 const autoReminder = require('./auto-reminder');
 const shopping = require('./shopping-list');
 const taskCategory = require('./task-category');
@@ -843,10 +844,11 @@ async function completeTask(client, ownerId, taskId, { now = new Date() } = {}) 
 //   - the next moment is stepped until its END is ahead of `now`, so a sweep
 //     that was down for a fortnight lands on the next real class, never on one
 //     that is already over (and is never asked twice about the same lag);
-//   - `calendar_event_id` is CLEARED, not left to look stale: a stale id is how
-//     task-calendar notices a moved task and DELETES the old Google event, and
-//     an occurrence that happened stays on the calendar (task-calendar.pending,
-//     2026-10-01). The next one is created fresh;
+//   - the Google SERIES is left exactly as it is: it already holds every
+//     occurrence (task-calendar.syncSeries). Only `calendar_series_key` moves
+//     with the row, and only when it described the row as it was — a row
+//     changed since its last sync keeps the old key, so the sweep still sees
+//     the change and splits the series;
 //   - the reminders follow exactly as on a snooze (reminders.retireForMovedTask):
 //     a ladder still chasing the old occurrence is answered, the automatic one
 //     is armed for the new one, and a repeating reminder is left alone.
@@ -874,10 +876,12 @@ async function advanceRecurring(client, ownerId, taskId, { now = new Date() } = 
   // The length is carried as a duration, which is exact for anything that does
   // not straddle a clock change; a course at 17:30-21:30 never does.
   const nextEnd = task.ends_at ? new Date(next.getTime() + lengthMs) : null;
+  const inSync = task.calendar_series_key && task.calendar_series_key === taskCalendar.seriesKey(task);
+  const key = inSync ? taskCalendar.seriesKey({ ...task, due_at: next, ends_at: nextEnd }) : task.calendar_series_key;
   const { rows: moved } = await client.query(
-    `UPDATE tasks SET due_at = $2, ends_at = $3, calendar_event_id = NULL
+    `UPDATE tasks SET due_at = $2, ends_at = $3, calendar_series_key = $4
       WHERE id = $1 RETURNING *`,
-    [taskId, next, nextEnd]
+    [taskId, next, nextEnd, key]
   );
   await audit.record(client, ownerId, 'task.occurrence_advanced', {
     taskId: Number(taskId), fromDueAt: new Date(task.due_at).toISOString(),

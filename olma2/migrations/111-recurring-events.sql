@@ -16,5 +16,10 @@
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS repeat_rule text;
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS repeat_until timestamptz;
 
+-- What the Google series behind a repeating row was written for (task-calendar.seriesKey):
+-- the row moves on every occurrence and the series does not, so a change is
+-- told apart from the row simply moving on by this, not by the event id.
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS calendar_series_key text;
+
 COMMENT ON COLUMN tasks.repeat_rule IS 'cadence of a repeating EVENT (daily | weekly:XX | monthly:N); NULL = one moment. Advanced by tasks.advanceRecurring';
 COMMENT ON COLUMN tasks.repeat_until IS 'last moment a repeating event may occur; NULL = until archived';
