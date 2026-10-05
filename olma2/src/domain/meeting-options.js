@@ -27,7 +27,7 @@
 // it learns options, the chat tools until theirs — keeps reading them.
 const { ok, err } = require('./results');
 const audit = require('./audit');
-const { hasOffset, badTime, weekdayClash } = require('./datetime');
+const { hasOffset, badTime, weekdayClash, partsInZone } = require('./datetime');
 
 const MAX_ACTIVE = 5;
 
@@ -504,7 +504,99 @@ async function swap(client, userId, meetingId, replaceOptionId, slotText, starts
   return ok({ ...added.data, replaced: Number(replaceOptionId), replacedSlot: rep.rows[0].slot_text });
 }
 
+// A time close to one already on the table is a QUESTION before it is a second
+// option (owner, 2026-10-05: Eden added Friday 11:00 beside Miron's Friday
+// noon, and the table split one game into two votes). Close means the same
+// local day and at most two hours apart; a part of the day counts as its
+// window and a whole day as all of it, so "11:00" is an hour from "בצהריים".
+// The exact same moment is not "similar" — `add` already folds that one into
+// a yes. The private chat and the room ask (owner); the page adds as before.
+const SIMILAR_GAP_MIN = 120;
+const PART_WINDOWS = Object.freeze({
+  morning: [8 * 60, 12 * 60], noon: [12 * 60, 16 * 60], evening: [17 * 60, 21 * 60], night: [20 * 60, 24 * 60],
+});
+
+function spanOf(tz, { startsAt, allDay, daypart }) {
+  const p = partsInZone(tz || 'UTC', new Date(startsAt));
+  const day = `${p.y}-${p.m}-${p.d}`;
+  if (allDay) return { day, from: 0, to: 24 * 60 };
+  if (daypart && PART_WINDOWS[daypart]) return { day, from: PART_WINDOWS[daypart][0], to: PART_WINDOWS[daypart][1] };
+  const at = p.hh * 60 + p.mi;
+  return { day, from: at, to: at };
+}
+
+function isSimilar(tz, a, b) {
+  if (new Date(a.startsAt).getTime() === new Date(b.startsAt).getTime()) return false;
+  const x = spanOf(tz, a), y = spanOf(tz, b);
+  if (x.day !== y.day) return false;
+  const gap = Math.max(0, x.from - y.to, y.from - x.to);
+  return gap <= SIMILAR_GAP_MIN;
+}
+
+// The options on the table close to this moment, on the proposer's clock.
+async function similarOnTable(client, meetingId, moment, tz) {
+  if (!hasOffset(moment.startsAt)) return [];
+  return (await list(client, meetingId)).filter((o) => isSimilar(tz, moment, o));
+}
+
+// The other answer to that question: the new time takes the old one's PLACE,
+// and every answer given to the old one moves with it (owner, 2026-10-05:
+// "אם זה לאחד בינהם אז ההצבעות עוברות"). The person merging is a yes, as
+// adding always is; anybody who already answered the new moment keeps their
+// own answer. The old option is `replaced`, the same word `swap` uses.
+async function merge(client, userId, meetingId, intoOptionId, slotText, startsAt, { allDay = false, daypart = null } = {}) {
+  const p = await participant(client, meetingId, userId);
+  if (!p) return err('not_found', 'not a participant of this meeting');
+  if (p.meeting_status !== 'negotiating') return err('invalid', 'meeting is not negotiating');
+  if (p.state === 'opted_out') return err('invalid', 'you opted out of this meeting');
+  const bad = await validSlot(client, userId, 'slot_description', slotText, startsAt);
+  if (bad) return bad;
+  const rep = await client.query(
+    `UPDATE meeting_options SET status = 'replaced', decided_at = now()
+      WHERE id = $1 AND meeting_id = $2 AND status = 'active' RETURNING slot_text`, [intoOptionId, meetingId]);
+  if (rep.rowCount === 0) return err('not_found', 'the option to merge with is not on the table', { reason: 'option_not_active' });
+  const added = await add(client, userId, meetingId, slotText, startsAt, { allDay, daypart });
+  if (!added.ok) return added;
+  const target = added.data.option.id;
+  const { rows: carried } = await client.query(
+    `INSERT INTO meeting_option_answers (option_id, user_id, answer, answered_at)
+     SELECT $1, a.user_id, a.answer, a.answered_at
+       FROM meeting_option_answers a
+       JOIN meeting_participants mp ON mp.meeting_id = $3 AND mp.user_id = a.user_id AND mp.state <> 'opted_out'
+      WHERE a.option_id = $2 AND a.user_id <> $4
+     ON CONFLICT (option_id, user_id) DO NOTHING
+     RETURNING user_id, answer`, [target, intoOptionId, meetingId, userId]);
+  // A note given with an answer stands while that answer does
+  // (`meetings.standingNotes`), and the answer just moved to a new id. The note
+  // follows it, or "טס מחר" would vanish from beside a no that was carried.
+  if (carried.length) {
+    await client.query(
+      `UPDATE meeting_participants SET constraints = (
+         SELECT jsonb_agg(CASE WHEN jsonb_typeof(e) = 'object' AND jsonb_typeof(e->'answered') = 'array'
+           THEN jsonb_set(e, '{answered}', (e->'answered') || coalesce((
+             SELECT jsonb_agg(jsonb_build_object('id', $1::bigint, 'answer', a->>'answer'))
+               FROM jsonb_array_elements(e->'answered') a WHERE (a->>'id')::bigint = $2), '[]'::jsonb))
+           ELSE e END ORDER BY ord)
+           FROM jsonb_array_elements(constraints) WITH ORDINALITY x(e, ord))
+        WHERE meeting_id = $3 AND user_id = ANY($4::bigint[]) AND jsonb_array_length(constraints) > 0`,
+      [target, intoOptionId, meetingId, carried.map((r) => r.user_id)]);
+  }
+  await audit.record(client, userId, 'meeting.option_merged',
+    { meetingId: Number(meetingId), out: Number(intoOptionId), in: target, carried: carried.length });
+  await mirrorCurrent(client, meetingId);
+  // Carried yeses can make the new time everybody's, which arms the minute
+  // like any answer does.
+  const c = await tryConfirm(client, meetingId);
+  return ok({
+    ...added.data, option: (await list(client, meetingId)).find((o) => o.id === target) || added.data.option,
+    merged: Number(intoOptionId), mergedSlot: rep.rows[0].slot_text,
+    carried: carried.map((r) => ({ userId: Number(r.user_id), answer: r.answer })),
+    ...(c.settling ? { meetingStatus: 'settling', settlingSlot: c.slot } : {}),
+  });
+}
+
 module.exports = {
-  MAX_ACTIVE, SETTLE_GRACE_MS, list, add, answer, remove, removed, unheardRemovals, swap,
+  MAX_ACTIVE, SETTLE_GRACE_MS, SIMILAR_GAP_MIN, list, add, answer, remove, removed, unheardRemovals, swap,
+  merge, similarOnTable, isSimilar,
   tryConfirm, unanimousOption, confirmOn, settleDue, settleNow, mirrorCurrent, activeCount,
 };

@@ -201,6 +201,10 @@ test('a new hour said in the room moves a settled coordination, and it stays set
   const optionId = (await inRoom('add_group_coordination_option', group, people[0],
     { slot_description: 'בעוד 50 שעות', starts_at: startsAt })).data.optionId;
   assert.equal((await inRoom('settle_group_coordination', group, people[0], { option_id: optionId })).ok, true);
+  // The confirmations went out; one still waiting would carry the new hour
+  // itself (meeting-exact-time.test.js), and this is about the move being heard.
+  await db.pool.query(`UPDATE outbox SET sent_at = now() WHERE kind = 'meeting_confirmed'
+                         AND (payload->>'meetingId')::bigint = $1`, [meetingId]);
 
   // An hour earlier or later, whichever keeps it on the same day in their zone.
   const { rows: [u] } = await db.pool.query('SELECT timezone FROM users WHERE id = $1', [people[1].id]);
