@@ -153,3 +153,14 @@ test('the list draws the cadence beside the next occurrence', async () => {
   assert.match(block, /קורס, כל יום שני/);
   assert.match(block, /קורס, כל יום חמישי/);
 });
+
+test('the page is handed the event\'s rule, apart from any reminder\'s', async () => {
+  const dash = require('../src/domain/user-dashboard');
+  const page = await withClient((c) => dash.load(c, dov.id));
+  assert.ok(page.ok, JSON.stringify(page));
+  const courses = page.data.tasks.filter((x) => x.title === 'קורס');
+  assert.deepEqual(courses.map((x) => x.repeat).sort(), ['weekly:MO', 'weekly:TH']);
+  const yoga = page.data.tasks.find((x) => x.title === 'יוגה');
+  assert.equal(yoga.repeat, 'daily');
+  assert.equal(yoga.repeatUntil, null);
+});
