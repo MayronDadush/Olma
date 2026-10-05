@@ -276,17 +276,23 @@ test('turn_start drives the block flow: notice once, then silent', async () => {
   // any later test making more than one turn_start call for the same user
   // silently starts hitting 'blocked' instead of 'proceed'. Restore it in a
   // finally so a later test failing does not also poison the ones after it.
+  //
+  // A person of their own, never bob: every earlier tool call in this file
+  // was a turn, and the server counts the message of a turn the model opened
+  // with another tool (domain/turn.openTurnImplicitly), so bob arrives here
+  // with messages already on today's quota.
+  const carol = await makeUser(db.pool, '+972571000099', { firstName: 'Carol' });
   const c = await db.pool.connect();
   try { await flags.setFlag(c, 'quota_daily_free', 1); } finally { c.release(); }
   try {
-    // bob's first message passes, second crosses the limit
-    let r = await callTool('turn_start', { olma_identity: bob.identity_token });
+    // carol's first message passes, second crosses the limit
+    let r = await callTool('turn_start', { olma_identity: carol.identity_token });
     assert.match(r, /"directive":"proceed"/);
-    r = await callTool('turn_start', { olma_identity: bob.identity_token });
+    r = await callTool('turn_start', { olma_identity: carol.identity_token });
     assert.match(r, /"directive":"send_block_notice"/);
     assert.match(r, /"blockView"/);
     assert.match(r, /"openTasks"/); // counts-only personal data present
-    r = await callTool('turn_start', { olma_identity: bob.identity_token });
+    r = await callTool('turn_start', { olma_identity: carol.identity_token });
     assert.match(r, /"directive":"silent"/); // one notice per window, never two
   } finally {
     const c2 = await db.pool.connect();

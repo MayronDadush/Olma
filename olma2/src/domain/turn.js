@@ -32,12 +32,11 @@ const dashboardAuth = require('./dashboard-auth');
 const carryover = require('./carryover-heading');
 const brandAds = require('./brand-ads');
 
-// Rollout control. Absent/empty = off everywhere, so deploying this changes
-// nothing until someone turns it on: a fix for an invisible defect must not
-// arrive at the same moment as its own blast radius. Value is 'all', or a
-// comma-separated E.164 list (the media_gen_phones precedent).
-const FLAG = 'implicit_turn_start';
-
+// Rollout control for a per-phone flag: absent/empty = off everywhere, 'all',
+// or a comma-separated E.164 list (the media_gen_phones precedent). It began
+// as the gate for implicit_turn_start (2026-08-30), which was "all" for five
+// weeks and is no longer a flag (2026-10-03); the server always repairs a
+// turn the model opened with another tool.
 function coveredBy(value, phone) {
   const raw = String(value == null ? '' : value).trim();
   if (!raw) return false;
@@ -45,15 +44,11 @@ function coveredBy(value, phone) {
   return raw.split(',').map((s) => s.trim()).filter(Boolean).includes(String(phone));
 }
 
-async function isEnabledFor(client, user) {
-  return coveredBy(await flags.getFlag(client, FLAG), user.phone);
-}
-
 // Phase B of "the turn opens itself": for the people this flag covers, what
 // `turn_start` would have RETURNED is prepended to the prompt by the
 // gateway plugin (gateway-plugin/olma-turn, `before_prompt_build` → brokerd
 // `turn_context`), and their doctrine says not to call the tool at all. Same
-// value shape as FLAG. Off everywhere until set — the doctrine variant and
+// value shape as coveredBy reads. Off everywhere until set — the doctrine variant and
 // the plugin's answer are both gated on it, so a half-deployed state is the
 // old behaviour, not a broken one.
 const CONTEXT_FLAG = 'turn_context_phones';
@@ -1112,7 +1107,7 @@ function renderContext(data) {
 }
 
 module.exports = {
-  openTurnImplicitly, openFromGateway, openRecord, isEnabledFor, coveredBy, FLAG,
+  openTurnImplicitly, openFromGateway, openRecord, coveredBy,
   contextEnabledFor, CONTEXT_FLAG, advise, turnHints, renderContext, CONTEXT_HEADER, gameNightsOf,
   ADVISE_COLUMNS,
 };
