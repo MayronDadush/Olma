@@ -344,6 +344,29 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
             [meetingId, now]);
           meetingOver = over.length > 0;
         }
+        // How much of THIS coordination has reached this person today, in
+        // their own day — the gate's two-a-day cap (gate.js, "Two messages a
+        // day about one coordination"). DISTINCT sent_at for the reason the
+        // budget uses it; `hold_reason IS NULL` is "reached them", as for the
+        // pacing in meeting-fanout. Bounded above by the tick's own clock with
+        // a minute of slack, like `heard` below. Worker-scoped like the facts
+        // above, and null for every sibling.
+        let coordinationDay = null;
+        if (meetingId && String(row.kind).startsWith('meeting_')) {
+          const { rows: day } = await client.query(
+            `SELECT count(DISTINCT o.sent_at)::int AS n, max(o.sent_at) AS last,
+                    (SELECT confirmed_start_at FROM meetings WHERE id = $5) AS starts_at
+               FROM outbox o
+              WHERE o.user_id = $1 AND o.kind LIKE 'meeting%'
+                AND o.payload->>'meetingId' = $2
+                AND o.sent_at IS NOT NULL AND o.hold_reason IS NULL
+                AND o.sent_at >= (date_trunc('day', $3::timestamptz AT TIME ZONE $4) AT TIME ZONE $4)
+                AND o.sent_at <= $3::timestamptz + interval '1 minute'`,
+            [row.user_id, String(meetingId), now, row.timezone || 'UTC', meetingId]);
+          coordinationDay = {
+            heardToday: day[0].n, lastHeardAt: day[0].last, startsAt: day[0].starts_at,
+          };
+        }
         // An introduction still waiting to go out. Bounded to two days on
         // purpose: a repair that was queued and somehow never delivered must
         // not silence everything else for this person for ever, and past that
@@ -416,7 +439,7 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
           window: win.data.window, quietDays, quietDates, shabbatWindow, tz: row.timezone,
           lastInboundAt: row.last_inbound_at, wokeAt: row.last_woke_at, dashboardWroteAt: row.last_dashboard_at, groupWroteAt,
           greetedAt: row.opening_sent_at,
-          pausedRoomInvite, quietRoomInvite, answeredCoordination, privateInvite, meetingOver,
+          pausedRoomInvite, quietRoomInvite, answeredCoordination, privateInvite, meetingOver, coordinationDay,
           hasDigest: Boolean(row.digest_times),
           introductionPending: introRows.length > 0,
           introductionSentAt: introSent[0] ? introSent[0].sent_at : null,
@@ -491,7 +514,7 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
             // empty for every sibling — said out loud rather than relied upon.
             if (decide({
               ...facts, groupWroteAt: null, pausedRoomInvite: false, quietRoomInvite: false,
-              answeredCoordination: false, privateInvite: false, meetingOver: false, row: sib,
+              answeredCoordination: false, privateInvite: false, meetingOver: false, coordinationDay: null, row: sib,
             }).action !== 'deliver') continue;
             ids.push(sib.id);
             titles.push(payloadOf(sib).title);
@@ -535,7 +558,7 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
           // the thing that lets a sibling through.
           const deliverable = others.filter((sib) => decide({
             ...facts, pausedRoomInvite: false, quietRoomInvite: false, answeredCoordination: false,
-            privateInvite: false, meetingOver: false, row: sib,
+            privateInvite: false, meetingOver: false, coordinationDay: null, row: sib,
           }).action === 'deliver');
           const parts = planMerge(row, deliverable);
           if (parts) {

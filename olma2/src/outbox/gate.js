@@ -205,6 +205,68 @@ const PEER_KINDS = new Set([
   'relayed_message',
 ]);
 
+// ── Two messages a day about one coordination ───────────────────────────────
+// The owner, 2026-10-05, after the poker coordination (meeting 74): three
+// people read the invite, a time added, and another time added inside 35
+// minutes. The quarter-hour pacing in `meeting-fanout.PACE_MS` folds a burst,
+// but a coordination that keeps moving all afternoon still produced one
+// message per move. His rule: each person hears about one coordination at
+// most TWICE in their local day, the invite is the first of the two, and the
+// second waits so it can carry as much of the day as possible.
+//
+// Every `meeting_*` row counts, results included (his choice). Two things
+// bend for a RESULT, both his too:
+//   - it never waits out the gap — there is nothing more to collect after
+//     "סגור", and the gap exists only to collect;
+//   - past the cap it still goes out when the meeting starts before the
+//     morning it would be held for. Otherwise "the poker is on at 21:00"
+//     reaches them after the game, and `meeting_over` then drops it unread.
+// `meeting_exact_time_ask` is in that set though it is a question: it goes
+// only to somebody who just settled from the page, as the answer to their own
+// tap, and it asks about today.
+//
+// Held, never dropped. A negotiation row held here is still unsent, so
+// `meeting-fanout.foldIntoPendingQuestion` keeps folding later additions into
+// it — the hold is what gives the fold an afternoon to work with instead of a
+// quarter of an hour. Past the cap the release is the next local day's window
+// open, where the count is back to zero.
+//
+// `coordinationDay` is the worker's fact about THIS row's coordination
+// (`heardToday`, `lastHeardAt`, `startsAt`); absent, nothing here acts, so a
+// caller that does not compute it is never capped by a gate it told nothing.
+const COORDINATION_DAILY_MAX = 2;
+const COORDINATION_GAP_MS = 3 * 3600_000;
+const COORDINATION_RESULTS = new Set([
+  'meeting_confirmed', 'meeting_time_set', 'meeting_cancelled', 'meeting_no_match', 'meeting_expired',
+  'meeting_exact_time_ask',
+]);
+
+// The next local day's window open: local midnight first, then the window.
+// Approximate across DST like everything else here — `releaseAfter` only says
+// when to look again, and decide() then runs in full.
+function nextMorning(window, tz, now) {
+  const midnight = new Date(now.getTime() + (1440 - minutesInTz(tz, now)) * 60_000);
+  return new Date(midnight.getTime() + msUntilWindowOpen(window, tz, midnight));
+}
+
+function coordinationCap(facts, row, window, tz, now) {
+  const day = facts.coordinationDay;
+  if (!day || !String(row.kind).startsWith('meeting_')) return null;
+  const heard = Number(day.heardToday) || 0;
+  const result = COORDINATION_RESULTS.has(row.kind);
+  if (heard >= COORDINATION_DAILY_MAX) {
+    const morning = nextMorning(window, tz, now);
+    const startsAt = day.startsAt ? new Date(day.startsAt) : null;
+    if (result && startsAt && startsAt < morning) return null;
+    return { action: 'hold', holdReason: 'coordination_daily', releaseAfter: morning };
+  }
+  if (heard >= 1 && !result && day.lastHeardAt) {
+    const readyAt = new Date(new Date(day.lastHeardAt).getTime() + COORDINATION_GAP_MS);
+    if (readyAt > now) return { action: 'hold', holdReason: 'coordination_gap', releaseAfter: readyAt };
+  }
+  return null;
+}
+
 // facts: { row, plan, blocked, paused, pendingUser, window, quietDays, tz, sentToday, budget, now, lastInboundAt, wokeAt, dashboardWroteAt }
 // returns { action: 'deliver' | 'hold' | 'expire' | 'drop', holdReason?, releaseAfter? }
 function decide(facts) {
@@ -588,6 +650,9 @@ function decide(facts) {
     }
   }
 
+  const capped = coordinationCap(facts, row, window, tz, now);
+  if (capped) return capped;
+
   // ── Which moments are THEIRS ─────────────────────────────────────────────
   // A digest runs at an hour they set, and rung 1 of a reminder is the moment
   // they named — quiet hours have never applied to either, because the whole
@@ -661,4 +726,5 @@ module.exports = {
   decide, withinWindow, msUntilWindowOpen, minutesInTz, parseHHMM, nextUtcMidnight,
   weekdayInTz, localDateInTz, msUntilQuietDaysEnd, quietDayReason, askedForInWords,
   CONVERSATION_GRACE_MS, SAYS_IT_ONCE, REPEAT_WINDOW_MS,
+  COORDINATION_DAILY_MAX, COORDINATION_GAP_MS, COORDINATION_RESULTS,
 };
