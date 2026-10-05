@@ -1,0 +1,12 @@
+-- Who wrote each line of a night's log (owner, 2026-10-05). On the first real
+-- night (2026-10-03) two of a player's buy-ins came off the page and went back
+-- on a second later, and nothing could say whether he did it or somebody else
+-- did it to him. The lock (004) stops it on a night the host locks; this says
+-- who, on every night, so an unlocked table can see for itself.
+--
+-- The NAME of the writer's seat when the line was written: the seat their
+-- phone held, or the seat Olma knows is theirs. A snapshot, not a reference,
+-- so the line still says who after that seat is renamed or removed. NULL is
+-- "not known" — every line before this, and a phone that holds no seat —
+-- and is never shown as anybody.
+ALTER TABLE log ADD COLUMN by_name text CHECK (length(by_name) BETWEEN 1 AND 24);

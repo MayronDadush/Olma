@@ -990,6 +990,11 @@ function openGame(gid){
 
 /* writes */
 const gp = c => `games/${S.gid}/${c}`;
+// Where a log line was written, and by whom when it was somebody other than
+// the player it is about (games migration 005): "ליאם − כניסה · מירון בדף".
+// A line about the writer themselves, or one written before 005, names nobody.
+const VIA_WORD = { tap: 'בדף', chat: 'בצ׳אט', olma: 'דרך עולמה' };
+const logBy = l => l.by && !(l.t.startsWith(l.by + ' ') || l.t.startsWith(l.by + ':')) ? esc(l.by) + ' · ' : '';
 function logIt(t, via){ return W(db.collection(gp('log')).add({ t, via: via || 'tap', at: Date.now() })); }
 async function addPlayer(name, via){
   name = name.trim().slice(0, 24);
@@ -1357,7 +1362,7 @@ function renderNight(D){
       </div>`}</div>`;
   }).join('');
   const logs = Object.values(S.log).sort((a, b) => b.at - a.at).slice(0, 12).map(l =>
-    `<div class="logi"><time>${new Date(l.at).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}</time>${logIcon(l.t) ? '<span class="ic" aria-hidden="true">' + logIcon(l.t) + '</span>' : ''}<span>${esc(l.t)}<span class="via${l.via === 'chat' ? ' chat' : ''}">${l.via === 'chat' ? 'בצ׳אט' : 'בדף'}</span></span></div>`).join('');
+    `<div class="logi"><time>${new Date(l.at).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}</time>${logIcon(l.t) ? '<span class="ic" aria-hidden="true">' + logIcon(l.t) + '</span>' : ''}<span>${esc(l.t)}<span class="via${l.via === 'chat' || l.via === 'olma' ? ' chat' : ''}">${logBy(l)}${VIA_WORD[l.via] || VIA_WORD.tap}</span></span></div>`).join('');
 
   const rm = removed && Date.now() - removed.at < UNDO_MS && !S.players[removed.id] && !D.closed
     ? `<div class="row plain rmline"><div class="row-txt"><div class="row-sub">${esc(removed.name)} הוסר מהשולחן</div></div><button class="btn ghost small" type="button" id="rmUndo">החזרה</button></div>` : '';
@@ -1372,7 +1377,7 @@ function renderNight(D){
   </div>
   <div class="sec">
     <details class="group fold"${prev.logOpen ? ' open' : ''} id="logFold"><summary>מה קרה הערב</summary>
-      ${logs || '<div class="empty">כל כניסה תופיע כאן, עם מאיפה היא נרשמה.</div>'}
+      ${logs || '<div class="empty">כל כניסה תופיע כאן, עם מי רשם אותה ומאיפה.</div>'}
     </details>
   </div>`;
 }

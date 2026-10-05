@@ -78,7 +78,7 @@ async function stateOf(db, n) {
   const buyins = await q('SELECT id, player_id, n, via, at FROM buyins WHERE night_id = $1');
   const cashouts = await q('SELECT player_id, chips, via, at FROM cashouts WHERE night_id = $1');
   const food = await q('SELECT id, data, at FROM food WHERE night_id = $1');
-  const log = await q('SELECT id, t, via, at FROM log WHERE night_id = $1 ORDER BY at DESC LIMIT 60');
+  const log = await q('SELECT id, t, via, at, by_name FROM log WHERE night_id = $1 ORDER BY at DESC LIMIT 60');
   const by = (rows, key, fn) => Object.fromEntries(rows.map(r => [r[key], fn(r)]));
   return {
     game: {
@@ -91,7 +91,7 @@ async function stateOf(db, n) {
     buyins: by(buyins, 'id', r => ({ pid: r.player_id, n: r.n, via: r.via, at: r.at })),
     cashouts: by(cashouts, 'player_id', r => ({ chips: r.chips, via: r.via, at: r.at })),
     food: by(food, 'id', r => ({ ...r.data, at: r.at })),
-    log: by(log, 'id', r => ({ t: r.t, via: r.via, at: r.at })),
+    log: by(log, 'id', r => ({ t: r.t, via: r.via, at: r.at, ...(r.by_name ? { by: r.by_name } : {}) })),
   };
 }
 
@@ -161,6 +161,16 @@ async function isSeatOf(c, n, pid, actor) {
   const { rows: [p] } = await c.query('SELECT device, user_id FROM players WHERE night_id = $1 AND id = $2', [n.id, pid]);
   if (!p) return false;
   return !!((actor.device && p.device === actor.device) || (actor.userId && Number(p.user_id) === Number(actor.userId)));
+}
+// Whose seat is writing, by name, for the log (migration 005). Olma's user id
+// first: a tool call carries no phone. null when neither proof names a seat.
+async function writerName(c, n, actor) {
+  const { rows: [p] } = actor.userId
+    ? await c.query('SELECT name FROM players WHERE night_id = $1 AND user_id = $2 ORDER BY ord LIMIT 1', [n.id, actor.userId])
+    : actor.device
+      ? await c.query('SELECT name FROM players WHERE night_id = $1 AND device = $2 LIMIT 1', [n.id, actor.device])
+      : { rows: [] };
+  return p ? p.name : null;
 }
 
 /* One write from the page: { op: set|add|update|delete, col, id?, data?, device? }.
@@ -288,7 +298,8 @@ async function write(pool, token, w, actor = {}) {
       if (op !== 'add') refuse('bad_op');
       const d = v.logLine(w.data, now);
       outId = newId();
-      await c.query('INSERT INTO log (night_id, id, t, via, at) VALUES ($1, $2, $3, $4, $5)', [n.id, outId, d.t, d.via, d.at]);
+      await c.query('INSERT INTO log (night_id, id, t, via, at, by_name) VALUES ($1, $2, $3, $4, $5, $6)',
+        [n.id, outId, d.t, d.via, d.at, await writerName(c, n, who)]);
       await c.query(
         `DELETE FROM log WHERE night_id = $1 AND id IN (
            SELECT id FROM log WHERE night_id = $1 ORDER BY at DESC OFFSET $2)`, [n.id, LIMITS.log]);
