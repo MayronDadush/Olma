@@ -546,6 +546,17 @@ async function editTask(client, ownerId, taskId, patch = {}) {
     // and leaves the row as it was — an edit must not turn a meeting into a
     // job because a caller misspelled a field.
     const k = taskKind.normaliseKind(patch.kind);
+    // Only an event repeats (migration 111). A repeating row turned into a
+    // to-do would keep advancing on "done" and never close, with nothing on
+    // the page saying why — so it is refused, never half-applied.
+    if (k === 'todo') {
+      const { rows: rr } = await client.query(
+        `SELECT repeat_rule FROM tasks WHERE id = $1 AND owner_id = $2`, [taskId, ownerId]);
+      if (rr[0] && rr[0].repeat_rule) {
+        return err('invalid', 'this is a repeating event, and only an event repeats — nothing was changed. A repeating to-do is a task with a repeating reminder (set_task_reminder).',
+          { reason: 'repeat_is_event' });
+      }
+    }
     if (k) { sets.push(`kind = $${vals.push(k)}`); changed.kind = k; }
   }
   if (has('location')) {

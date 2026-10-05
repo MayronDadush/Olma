@@ -205,3 +205,13 @@ test('a monthly series follows its date to the new day of the month', async () =
   ed = await withClient((c) => tasks.editTask(c, dov.id, id, { dueAt: '2030-11-12T20:00:00+02:00' }));
   assert.equal(ed.data.task.repeat_rule, 'monthly:12');
 });
+
+test('a repeating event is not turned into a to-do', async () => {
+  const { rows: [row] } = await db.pool.query(
+    `SELECT id FROM tasks WHERE owner_id = $1 AND repeat_rule = 'weekly:MO' AND title = 'קורס'`, [dov.id]);
+  const res = await withClient((c) => tasks.editTask(c, dov.id, row.id, { kind: 'todo' }));
+  assert.equal(res.ok, false);
+  assert.equal(res.error.reason, 'repeat_is_event');
+  const { rows: [still] } = await db.pool.query(`SELECT kind, repeat_rule FROM tasks WHERE id = $1`, [row.id]);
+  assert.equal(still.kind, 'event');
+});
