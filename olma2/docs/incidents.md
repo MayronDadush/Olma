@@ -73,6 +73,7 @@ never trust a dated narrative for something you are about to act on.
 - [Introduced twice, by the invite and the greeter (fixed 2026-10-01)](#introduced-twice-by-the-invite-and-the-greeter-fixed-2026-10-01)
 - [The fixed line that never went (fixed 2026-10-03)](#the-fixed-line-that-never-went-fixed-2026-10-03)
 - [The poker count was the people asked (fixed 2026-10-01)](#the-poker-count-was-the-people-asked-fixed-2026-10-01)
+- [The room was told it was four (fixed 2026-10-05)](#the-room-was-told-it-was-four-fixed-2026-10-05)
 - [Four out of five, and the room heard nothing (fixed 2026-10-02)](#four-out-of-five-and-the-room-heard-nothing-fixed-2026-10-02)
 - [The chase that beat its own invites (fixed 2026-09-28)](#the-chase-that-beat-its-own-invites-fixed-2026-09-28)
 - [The room never heard the times (fixed 2026-09-28)](#the-room-never-heard-the-times-fixed-2026-09-28)
@@ -2859,6 +2860,43 @@ nobody has told its kind gets no `headcount`, because NULL is the honest
 third state, and a private coordination never had a minimum.
 `tests/meeting-headcount.test.js` holds the founding case: four people
 asked, one yes, and the answer is one.
+
+### The room was told it was four (fixed 2026-10-05)
+
+Padel Gang, 2026-10-04. Sharon reopened a settled Saturday game and somebody
+new was added to the WhatsApp group. A member tagged her: ask him privately
+about the game. She answered "בטח 🙌" and promised to update once somebody
+else was in. Then, about the same newcomer, "he can make Saturday" — and she
+answered "ספור ✅", saying that made it four.
+
+None of it had happened, and none of it could. The room agent has no tool
+that writes to anybody privately (the doctrine forbids approaching somebody
+who never wrote), "he can" from another member is not his yes, and he was in
+nothing: two yeses on the table. The roster had one more surprise — the
+newcomer's number was a 13-digit WhatsApp LID, read by `phoneShape` as a
+German number, minted as a pending user and cold-invited. The owner's answer
+was "לא מכיר משתמש גרמני"; that invite was cancelled by hand.
+
+**The block she speaks from carried each member's tag and nothing about how
+the coordination could reach them**, so every sentence on that subject was a
+guess. Same shape as "The room heard its own state from memory": the model
+did the obvious thing with what it had, and what it had was silent.
+
+Fixed by drawing it (`group-turn.reachOf`): while a coordination can still
+let people in (negotiating, or settled and ahead — `admitLateMembers`' own
+condition), every `room.people` entry carries `reach`: `in`, `joining`
+(written to her, the next pass lets them in), `invited` / `invite_coming`
+(this room's cold invite reached them / will, by `coldInvite`'s own
+conditions), or `must_write_first`. Nothing for somebody who left it or
+paused her themselves, which keeps the paused-member rule. `REACH_RULE` rides
+the block only when some entry carries `reach`: she never writes privately
+herself, someone tagged who is not in `room.people` just joined, and one
+member saying another can is not that person's yes.
+
+Open from the same night, each its own PR: a reopen wiped the yeses on the
+moment it reopened (so the gate read Yuval as unanswered and dropped his
+notice), a cold invite went to a LID minutes after it appeared, and a
+check-in turn Olma started wrote a coordination answer for the person.
 
 ### Four out of five, and the room heard nothing (fixed 2026-10-02)
 
