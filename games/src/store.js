@@ -18,6 +18,12 @@ const makeToken = () => pick(B62, 22);
 const makeCode = () => pick(CODE_ABC, 5);
 const newId = () => Date.now().toString(36) + crypto.randomBytes(4).toString('hex');
 const TOKEN = /^[A-Za-z0-9]{22}$/;
+// What the page sees of the phone holding a seat: enough to tell "this is my
+// phone" from "another phone", never the tag itself. The tag is what the
+// server checks a host's writes against (migration 004), so publishing it
+// would hand the lock to anybody who reads the night's state.
+const seatTag = d => crypto.createHash('sha256').update(d).digest('hex').slice(0, 16);
+const HOST_KEY_MS = 10 * 60_000;
 
 async function freeCode(c, exceptId) {
   for (let i = 0; i < 20; i++) {
@@ -79,8 +85,9 @@ async function stateOf(db, n) {
       name: n.name, price: n.price_ag / 100, chips: n.chips_per_buyin, foodMode: n.food_mode,
       code: n.code, createdAt: new Date(n.created_at).getTime(), closedAt: n.closed_at ? new Date(n.closed_at).getTime() : null,
       cancelledAt: n.cancelled_at ? new Date(n.cancelled_at).getTime() : null,
+      host: n.host_player || null, locked: !!n.locked_at,
     },
-    players: by(players, 'id', r => ({ name: r.name, order: r.ord, ...(r.user_id ? { linked: true } : {}), ...(r.device ? { held: r.device } : {}) })),
+    players: by(players, 'id', r => ({ name: r.name, order: r.ord, ...(r.user_id ? { linked: true } : {}), ...(r.device ? { held: seatTag(r.device) } : {}) })),
     buyins: by(buyins, 'id', r => ({ pid: r.player_id, n: r.n, via: r.via, at: r.at })),
     cashouts: by(cashouts, 'player_id', r => ({ chips: r.chips, via: r.via, at: r.at })),
     food: by(food, 'id', r => ({ ...r.data, at: r.at })),
@@ -141,14 +148,33 @@ async function recompute(c, n) {
   return !n.closed_at;
 }
 
-/* One write from the page: { op: set|add|update|delete, col, id?, data? }.
+// Is this write the host's? The page proves it with the phone that holds the
+// host's seat; Olma's tools with the person's user id, which brokerd vouched for.
+async function isHost(c, n, actor) {
+  if (!n.host_player) return false;
+  const { rows: [h] } = await c.query('SELECT device, user_id FROM players WHERE night_id = $1 AND id = $2', [n.id, n.host_player]);
+  if (!h) return false;
+  return !!((actor.device && h.device === actor.device) || (actor.userId && Number(h.user_id) === Number(actor.userId)));
+}
+// Is this seat the writer's own? Same two proofs, for a player's own chips.
+async function isSeatOf(c, n, pid, actor) {
+  const { rows: [p] } = await c.query('SELECT device, user_id FROM players WHERE night_id = $1 AND id = $2', [n.id, pid]);
+  if (!p) return false;
+  return !!((actor.device && p.device === actor.device) || (actor.userId && Number(p.user_id) === Number(actor.userId)));
+}
+
+/* One write from the page: { op: set|add|update|delete, col, id?, data?, device? }.
    The night row is locked for the length of the write, so two phones pressing
    "+ כניסה" at once are serialized rather than interleaved. Returns the id
    written (for add), the whole state after it, and `closed` — the night's id
-   when this write closed the count, else null. */
-async function write(pool, token, w) {
+   when this write closed the count, else null.
+   `device` is the page's phone tag and `actor.userId` is set by Olma's tools;
+   together they say who is writing, which only a LOCKED night asks
+   (migration 004): there, buy-ins and other players' chips are the host's. */
+async function write(pool, token, w, actor = {}) {
   if (!w || typeof w !== 'object') refuse('bad_doc');
   const now = Date.now();
+  const who = { device: v.device(w.device), userId: actor.userId || null };
   return withTx(pool, async c => {
     const n = await lockNight(c, token);
     // Closed without a settlement is final: a later write would run
@@ -156,9 +182,26 @@ async function write(pool, token, w) {
     if (n.cancelled_at) refuse('cancelled');
     const { op, col } = w;
     let outId = w.id;
+    const locked = !!n.locked_at;
+    const hostOnly = async () => { if (locked && !await isHost(c, n, who)) refuse('locked'); };
     if (col === 'game') {
       if (op !== 'update') refuse('bad_op');
-      const p = v.gamePatch(w.data);
+      const { locked: lock, host, ...p } = v.gamePatch(w.data);
+      if (lock !== undefined || host !== undefined) {
+        if (!n.host_player) refuse('no_host');
+        if (!await isHost(c, n, who)) refuse('not_host');
+      }
+      if (lock !== undefined) p.locked_at = lock ? new Date(now) : null;
+      // Handing the role on: only to a seat somebody can prove is theirs — a
+      // phone sits in it, or Olma knows whose it is — or a locked night would
+      // be left with a host nobody can be. Any key for the old seat dies.
+      if (host !== undefined && host !== n.host_player) {
+        const { rows: [to] } = await c.query('SELECT device, user_id FROM players WHERE night_id = $1 AND id = $2', [n.id, host]);
+        if (!to) refuse('not_found');
+        if (!to.device && !to.user_id) refuse('host_absent');
+        Object.assign(p, { host_player: host, host_key: null, host_key_until: null });
+      }
+      if (!Object.keys(p).length) refuse('bad_doc');
       const sets = Object.keys(p).map((k, i) => `${k} = $${i + 2}`);
       await c.query(`UPDATE nights SET ${sets.join(', ')} WHERE id = $1`, [n.id, ...Object.values(p)]);
     } else if (col === 'players' && op === 'delete') {
@@ -170,7 +213,10 @@ async function write(pool, token, w) {
       if (n.closed_at) refuse('closed');
       if (!await playerExists(c, n.id, pid)) refuse('not_found');
       if (await hasMoney(c, n.id, pid)) refuse('has_money');
+      // A locked night keeps its host: without the seat nobody could unlock it.
+      if (pid === n.host_player && locked) refuse('host_seat');
       await c.query('DELETE FROM players WHERE night_id = $1 AND id = $2', [n.id, pid]);
+      if (pid === n.host_player) await c.query('UPDATE nights SET host_player = NULL WHERE id = $1', [n.id]);
     } else if (col === 'players' && op === 'hold') {
       // "This is me" from a phone (migration 002). A seat another phone holds
       // is refused unless the page asked twice (`take`), and a phone sits in
@@ -178,12 +224,20 @@ async function write(pool, token, w) {
       const pid = v.id(w.id), d = v.hold(w.data);
       const { rows: [seat] } = await c.query('SELECT device FROM players WHERE night_id = $1 AND id = $2', [n.id, pid]);
       if (!seat) refuse('not_found');
-      if (seat.device && seat.device !== d.device && !d.take) refuse('held');
+      // The host's seat on a locked night: only the host's own phone, or a new
+      // phone carrying the one-time key Olma sent them, which it uses up.
+      const keyOk = pid === n.host_player && d.key && n.host_key === d.key && n.host_key_until > new Date(now);
+      if (keyOk) await c.query('UPDATE nights SET host_key = NULL, host_key_until = NULL WHERE id = $1', [n.id]);
+      else if (pid === n.host_player && locked && seat.device !== d.device) refuse('host_seat');
+      else if (seat.device && seat.device !== d.device && !d.take) refuse('held');
       await c.query('UPDATE players SET device = NULL WHERE night_id = $1 AND device = $2 AND id <> $3', [n.id, d.device, pid]);
       await c.query('UPDATE players SET device = $3 WHERE night_id = $1 AND id = $2', [n.id, pid, d.device]);
     } else if (col === 'players' && op === 'release') {
       // "להחליף": only this phone's own hold comes off, never somebody else's.
       const pid = v.id(w.id), d = v.hold(w.data);
+      // Letting go of the host's seat on a locked night would leave it to the
+      // one-time key alone: unlock first.
+      if (pid === n.host_player && locked) refuse('host_seat');
       await c.query('UPDATE players SET device = NULL WHERE night_id = $1 AND id = $2 AND device = $3', [n.id, pid, d.device]);
     } else if (col === 'players') {
       if (op !== 'set') refuse('bad_op');
@@ -194,6 +248,7 @@ async function write(pool, token, w) {
         `INSERT INTO players (night_id, id, name, ord) VALUES ($1, $2, $3, $4)
          ON CONFLICT (night_id, id) DO UPDATE SET name = $3, ord = $4`, [n.id, pid, d.name, d.order]);
     } else if (col === 'buyins') {
+      await hostOnly();
       if (op === 'add') {
         const d = v.buyin(w.data, now);
         if (!await playerExists(c, n.id, d.pid)) refuse('not_found');
@@ -205,6 +260,7 @@ async function write(pool, token, w) {
       } else refuse('bad_op');
     } else if (col === 'cashouts') {
       const pid = v.id(w.id);
+      if (locked && !await isSeatOf(c, n, pid, who)) await hostOnly();
       if (op === 'set') {
         const d = v.cashout(w.data, now);
         if (!await playerExists(c, n.id, pid)) refuse('not_found');
@@ -269,20 +325,42 @@ async function cancelNight(pool, token, { via = 'tap' } = {}) {
 
 // "פתיחת ערב חדש" on a night you hold: same table, same price and chips
 // unless changed, a fresh link. Capped so one link cannot mint nights for ever.
+// Whoever presses it is the new night's host (owner, 2026-10-05; the page
+// says so before they confirm): the seat with their phone's name, held by
+// the same phone. A phone with no seat opens a night with no host.
 async function nextNight(pool, token, opts = {}) {
   return withTx(pool, async c => {
     const n = await lockNight(c, token);
     const kids = (await c.query('SELECT count(*)::int AS k FROM nights WHERE prev_id = $1', [n.id])).rows[0].k;
     if (kids >= LIMITS.successors) refuse('too_many');
     const players = (await c.query('SELECT name FROM players WHERE night_id = $1 ORDER BY ord', [n.id])).rows;
-    return insertNight(c, {
+    const out = await insertNight(c, {
       name: opts.name || 'ערב פוקר',
       price: opts.price ?? n.price_ag / 100,
       chips: opts.chips ?? n.chips_per_buyin,
       players,
       prevId: n.id,
     });
+    const dev = v.device(opts.device);
+    const { rows: [mine] } = dev ? await c.query('SELECT name FROM players WHERE night_id = $1 AND device = $2', [n.id, dev]) : { rows: [] };
+    if (mine) {
+      const { rows: [seat] } = await c.query('SELECT id FROM players WHERE night_id = $1 AND name = $2 ORDER BY ord LIMIT 1', [out.id, mine.name]);
+      if (seat) {
+        await c.query('UPDATE players SET device = $3 WHERE night_id = $1 AND id = $2', [out.id, seat.id, dev]);
+        await c.query('UPDATE nights SET host_player = $2 WHERE id = $1', [out.id, seat.id]);
+        out.host = seat.id;
+      }
+    }
+    return out;
   });
 }
 
-module.exports = { createNight, findNight, stateOf, write, cancelNight, nextNight, LIMITS, makeToken, TOKEN };
+// A one-time key for the host's seat, for Olma to send when the host is on a
+// new phone (migration 004). A new key replaces any older one.
+async function hostKey(pool, nightId) {
+  const key = makeToken();
+  await pool.query('UPDATE nights SET host_key = $2, host_key_until = $3 WHERE id = $1', [nightId, key, new Date(Date.now() + HOST_KEY_MS)]);
+  return key;
+}
+
+module.exports = { createNight, findNight, stateOf, write, cancelNight, nextNight, hostKey, seatTag, LIMITS, makeToken, TOKEN };

@@ -39,7 +39,7 @@ module.exports = [
   // ladder rule governs anyway, and four words of padding. That a reminder is
   // said ONCE rides the RESULT (tools/tasks.js, hints.reminders), where it
   // costs tokens only on the turns that arm one.
-  tool('set_task_reminder', 'Attach a reminder to a task, for a moment they ASKED for. A task with a due_at already has one; this is a different time or a repeat, and it cancels the automatic one, never two. remind_at MUST carry a UTC offset (2026-08-20T09:00:00+03:00), their local time (USER.md); never bare digits with a Z.',
+  tool('set_task_reminder', 'Attach a reminder to a task, for a moment they ASKED for. A task with a due_at already has one; this is another time or a repeat and cancels the automatic one. Each call ADDS one. remind_at MUST carry a UTC offset (2026-08-20T09:00:00+03:00), their local time (USER.md); never bare digits with a Z.',
     { task_id: S('number', 'Task id'), remind_at: S('string', 'ISO-8601 datetime WITH UTC offset'),
       nudge: S('boolean', 'Nudge (נודניק) until done, if they ask'),
       repeat_rule: S('string', 'Optional repeat, these exact forms or it stores a ONE-OFF: "daily"; "weekly"; "weekly:MO,TH" (SU MO TU WE TH FR SA) — a weekday they NAMED goes HERE, not only in remind_at; "monthly:16"; "monthly:last" (whatever the last day is; a short month clamps).'),

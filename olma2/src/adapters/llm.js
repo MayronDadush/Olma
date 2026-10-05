@@ -208,15 +208,16 @@ async function recordUsage(client, userId, model, usage) {
   // blended rate IS passed, overstated four pilot models by 16x to 54x.
   // A stated price cannot do either.
   const stated = Number(usage.costUsd);
-  const priced = Number.isFinite(stated) && stated >= 0
+  const billed = Number.isFinite(stated) && stated >= 0;
+  const priced = billed
     ? { cost: stated, estimated: false, model: model || '' }
     : pricing.priceUsage(usage, model, null);
   const total = usage.input + usage.output + usage.cacheRead + usage.cacheWrite;
   await client.query(
     `INSERT INTO usage_ledger
        (user_id, date, model, input_tokens, output_tokens, cache_read_tokens,
-        cache_write_tokens, total_tokens, cost_usd, estimated)
-     VALUES ($1, (now() at time zone 'utc')::date, $2, $3, $4, $5, $6, $7, $8, $9)
+        cache_write_tokens, total_tokens, cost_usd, estimated, billed)
+     VALUES ($1, (now() at time zone 'utc')::date, $2, $3, $4, $5, $6, $7, $8, $9, $10)
      ON CONFLICT (user_id, date, model) DO UPDATE SET
        input_tokens = usage_ledger.input_tokens + $3,
        output_tokens = usage_ledger.output_tokens + $4,
@@ -224,9 +225,10 @@ async function recordUsage(client, userId, model, usage) {
        cache_write_tokens = usage_ledger.cache_write_tokens + $6,
        total_tokens = usage_ledger.total_tokens + $7,
        cost_usd = usage_ledger.cost_usd + $8,
-       estimated = usage_ledger.estimated OR $9`,
+       estimated = usage_ledger.estimated OR $9,
+       billed = usage_ledger.billed AND $10`,
     [userId, priced.model, usage.input, usage.output, usage.cacheRead,
-      usage.cacheWrite, total, priced.cost.toFixed(8), priced.estimated]
+      usage.cacheWrite, total, priced.cost.toFixed(8), priced.estimated, billed]
   );
 }
 

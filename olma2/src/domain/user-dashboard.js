@@ -24,6 +24,7 @@ const { ok, err } = require('./results');
 // `meetings` for its own rows, and a module-level shadow of that name is a
 // TDZ ReferenceError inside the one function that needs this.
 const meetingsDomain = require('./meetings');
+const meetingCategory = require('./meeting-category');
 const optionMoment = require('./meeting-option-moment');
 const meetingTime = require('./meeting-time');
 const voice = require('./voice');
@@ -191,8 +192,14 @@ async function loadTasks(client, userId, zone, calendarSyncTasks, calendarWritab
     if (!byParent.has(i.parent_id)) byParent.set(i.parent_id, []);
     byParent.get(i.parent_id).push({ id: i.id, title: i.title, done: i.status === 'done' });
   }
-  const remByTask = new Map();
-  for (const r of rems) if (!remByTask.has(r.task_id)) remByTask.set(r.task_id, r);
+  // Every pending one, earliest first: the sheet's offset chips are a set
+  // ("בזמן" and "10 דק׳ לפני" together), and `reminder` stays the earliest
+  // for every reader that only ever needed one.
+  const remsByTask = new Map();
+  for (const r of rems) {
+    if (!remsByTask.has(r.task_id)) remsByTask.set(r.task_id, []);
+    remsByTask.get(r.task_id).push(r);
+  }
   const shareByTask = new Map();
   for (const s of shares) {
     if (!shareByTask.has(s.task_id)) shareByTask.set(s.task_id, []);
@@ -203,9 +210,11 @@ async function loadTasks(client, userId, zone, calendarSyncTasks, calendarWritab
     shareByTask.get(s.task_id).push({ id: s.viewer_id, name: s.first_name, avatar: s.avatar, shareId: s.share_id });
   }
 
+  const remView = (r) => ({ id: r.id, at: r.remind_at, repeat: r.repeat_rule, until: r.repeat_until || null });
   const out = { open: [], archived: [] };
   for (const t of tasks) {
-    const rem = remByTask.get(t.id) || null;
+    const taskRems = remsByTask.get(t.id) || [];
+    const rem = taskRems[0] || null;
     const who = shareByTask.get(t.id) || [];
     const src = importSource(t.source);
     const row = {
@@ -236,7 +245,8 @@ async function loadTasks(client, userId, zone, calendarSyncTasks, calendarWritab
       // more than one pending reminder and the page must not guess which.
       // `until` is what makes a daily rule a CHASE rather than a rhythm —
       // the sheet draws "כל יום עד התאריך" off it, never off the rule alone.
-      reminder: rem ? { id: rem.id, at: rem.remind_at, repeat: rem.repeat_rule, until: rem.repeat_until || null } : null,
+      reminder: rem ? remView(rem) : null,
+      reminders: taskRems.map(remView),
       // The EFFECTIVE answer, resolved here rather than in the browser: the
       // page draws one switch and the precedence rule belongs on the side that
       // enforces it. `inCalendar` is the separate question of whether the
@@ -484,7 +494,7 @@ async function loadMeetings(client, userId, zone, locale) {
     `SELECT m.id, m.title, m.initiator_id, m.status, m.quorum_min,
             m.proposed_slot, m.proposed_start_at, m.confirmed_start_at,
             m.confirmed_slot, m.settling_option_id, m.settled_by,
-            m.calendar_event_id,
+            m.calendar_event_id, m.location, m.category, m.confirmed_all_day, m.confirmed_daypart,
             -- Seconds left of the settle grace, not the instant it ends: the
             -- page counts down, and a clock on a phone that is four minutes
             -- fast would otherwise count down to the wrong thing. Negative or
@@ -631,6 +641,16 @@ async function loadMeetings(client, userId, zone, locale) {
     // back from /me/events under this id — on the organiser's calendar and on
     // every attendee's, since an invite keeps the organiser's event id.
     calendarEventId: m.calendar_event_id || null,
+    // Where it happens, in the words somebody said, and whether a settled
+    // one still has no exact hour (`meetings.timeIsOpen`, the same reader the
+    // chat's question uses) — the page offers both (owner, 2026-10-04).
+    location: m.location || null,
+    timeOpen: meetingsDomain.timeIsOpen(m),
+    // Its own five topics (meeting-category.js) — what somebody in it chose, else
+    // read off the name and then the place (meeting-category.js), so an
+    // automatic one re-sorts on a rename. `catAuto`: we guessed it;
+    // `catChosen`: somebody in it picked it.
+    ...(({ category, auto, chosen }) => ({ category, catAuto: auto, catChosen: chosen }))(meetingCategory.categoryOf(m)),
     confirmedTime: m.confirmed_time,
     confirmedDay: m.confirmed_day === null ? null : Number(m.confirmed_day),
     // The minute between the last yes and the meeting being over. `settleIn`

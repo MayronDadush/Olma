@@ -293,6 +293,60 @@ test('a close whose calendar event already exists is ONE line, and her reply is 
   assert.deepEqual(after2, [], 'and no separate calendar line after it');
 });
 
+// The padel room, 2026-10-05: settled from the page at 13:42:23, "סגור" at
+// :26, the organiser's agent made the shared event at :40, and "📅 ביומן"
+// followed a minute later. The event is ALWAYS made after the done line is
+// decided, so fix 7 above only ever covered a race nobody runs. Now the close
+// waits for an event that two connected calendars say is coming — and only so
+// long.
+test('a close waits for the shared event it is expecting, and goes without it once the wait is out', async () => {
+  async function settledWithCalendars(n) {
+    const { group, people } = await room(n);
+    const [a, b] = people;
+    for (const u of [a, b]) {
+      await db.pool.query(
+        `INSERT INTO integrations (user_id, provider, status, access_level) VALUES ($1, 'google_calendar', 'connected', 'read_write')`,
+        [u.id]);
+    }
+    const started = await withTx(db.pool, (c) => groupMeetings.startCoordination(c, group, a, 'פאדל'));
+    const meetingId = Number(started.data.meeting.id);
+    const optionId = await withTx(db.pool, async (c) =>
+      (await options.add(c, a.id, meetingId, 'שבת 17:00', slotStart('שבת', { hours: 96 }))).data.option.id);
+    await withTx(db.pool, (c) => options.answer(c, b.id, meetingId, optionId, 'y'));
+    const fresh = await withTx(db.pool, (c) => groups.getById(c, group.id));
+    await withTx(db.pool, (c) => groupMeetings.settle(c, fresh, a, optionId));
+    // Spend the opening line, which a real room heard long before the close.
+    await db.pool.query('UPDATE meetings SET group_started_at = $2 WHERE id = $1', [meetingId, DAY_AT(-60)]);
+    return { group, meetingId };
+  }
+  const closedAt = (meetingId, minutes) =>
+    db.pool.query('UPDATE meetings SET closed_at = $2 WHERE id = $1', [meetingId, DAY_AT(minutes)]);
+
+  const { group, meetingId } = await settledWithCalendars(44);
+  await closedAt(meetingId, -0.25);
+  let sent = [];
+  await pass(sent, null, group.external_id);
+  assert.deepEqual(sent, [], 'fifteen seconds after the close, with an event on its way, the room waits');
+
+  await db.pool.query(`UPDATE meetings SET calendar_event_id = 'evt_44' WHERE id = $1`, [meetingId]);
+  sent = [];
+  await pass(sent, DAY_AT(1), group.external_id);
+  assert.equal(sent.length, 1);
+  assert.match(sent[0].body, /^סגור: \*שבת 17:00\* 🎉[\s\S]*\n📅 ביומן/);
+  sent = [];
+  await pass(sent, DAY_AT(2), group.external_id);
+  assert.deepEqual(sent, [], 'one message about the close, not two');
+
+  // The organiser's agent never made it: the close is delayed, never lost.
+  const late = await settledWithCalendars(45);
+  await closedAt(late.meetingId, -groupVoice.CALENDAR_WAIT_MS / 60_000);
+  sent = [];
+  await pass(sent, null, late.group.external_id);
+  assert.equal(sent.length, 1);
+  assert.match(sent[0].body, /^סגור: \*שבת 17:00\*/);
+  assert.doesNotMatch(sent[0].body, /📅/);
+});
+
 test('when everybody said yes the done line says so, and no calendar line without a shared event', async () => {
   const { group, people } = await room(11);
   const [a, b, c] = people;

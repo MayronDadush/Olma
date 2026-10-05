@@ -13,6 +13,7 @@ const gameSummary = require('../src/domain/game-summary');
 const proactiveText = require('../src/domain/proactive-text');
 const templates = require('../src/domain/message-templates');
 const replyLeak = require('../src/domain/reply-leak');
+const markEcho = require('../src/domain/mark-echo');
 
 // ---- which messages ---------------------------------------------------------
 test('the opening phrase matches whole, in both languages, and nothing longer does', () => {
@@ -167,8 +168,9 @@ test('"ערב משחק חדש" turns the pack on, asks the price, and the answer
     `🃏 פתחתי את ערב משחק. כניסה 50 ₪, 1,000 ז'יטונים לכניסה.\nזה הקישור האישי שלך, רק בשבילך:\n${URL}#me-p1\nעוד רגע שולחת לך את ההודעה עם הקישור שאפשר להעביר לשאר השחקנים, בקבוצה או לכל אחד בפרטי 👇`);
 
   const { rows: [inv] } = await db.pool.query(
-    'SELECT kind, urgency, payload, idempotency_key FROM outbox WHERE user_id = $1', [u.id]);
+    'SELECT kind, urgency, payload, idempotency_key, release_after FROM outbox WHERE user_id = $1', [u.id]);
   assert.equal(inv.kind, gameSummary.INVITE_KIND);
+  assert.equal(inv.release_after.getTime(), now + gameSummary.INVITE_AFTER_MS, 'a beat behind the reply that says it is coming');
   assert.equal(inv.urgency, 'urgent');
   assert.equal(inv.idempotency_key, `game_invite:K7M2Q:${u.id}`);
   assert.equal(inv.payload.texts.he,
@@ -185,6 +187,56 @@ test('"ערב משחק חדש" turns the pack on, asks the price, and the answer
     { event: 'games.phrase_shortcut', detail: { outcome: 'asked_setup', lang: 'he' } },
     { event: 'games.phrase_shortcut', detail: { outcome: 'opened', lang: 'he' } },
   ]);
+});
+
+// 2026-10-03: Miron asked in his own words ("תפתח לי משחק של פוקר היום…"),
+// the shortcut never matched, the model opened the night, and he got one
+// message with the shared page. gamesd's start_game_night now asks brokerd
+// for the same two messages.
+test('the model opening a night: both of the host\'s messages are sent by code, the invite a beat after', async () => {
+  reset();
+  const u = await person();
+  const call = (params) => broker.dispatch({ id: 1, method: 'game_invite', params });
+  const good = { userId: Number(u.id), night: NIGHT, url: `${URL}#me-p1` };
+  assert.deepEqual(await call(good), { ok: false, error: 'not a games user' }, 'only a person holding the pack');
+  await require('../src/domain/packs').enable(db.pool, u.id, 'games', 'phrase');
+  for (const bad of [
+    { ...good, url: URL },                                  // the shared page, no seat
+    { ...good, url: 'https://evil.example/x#me-p1' },
+    { ...good, night: { ...NIGHT, code: 'nope' } },
+    { ...good, userId: 'x' },
+  ]) assert.equal((await call(bad)).ok, false, JSON.stringify(bad));
+
+  assert.deepEqual(await call(good), { ok: true, queued: true });
+  const { rows } = await db.pool.query(
+    'SELECT kind, urgency, payload, release_after FROM outbox WHERE user_id = $1 ORDER BY id', [u.id]);
+  assert.deepEqual(rows.map((r) => r.kind), [gameSummary.HOST_KIND, gameSummary.INVITE_KIND]);
+  const [host, inv] = rows;
+  assert.equal(host.urgency, 'urgent');
+  assert.equal(host.release_after, null, 'their own link goes at once');
+  assert.equal(host.payload.texts.he,
+    `🃏 פתחתי את ערב משחק. כניסה 50 ₪, 1,000 ז'יטונים לכניסה.\nזה הקישור האישי שלך, רק בשבילך:\n${URL}#me-p1\nעוד רגע שולחת לך את ההודעה עם הקישור שאפשר להעביר לשאר השחקנים, בקבוצה או לכל אחד בפרטי 👇`);
+  assert.match(host.payload.texts.en, /^🃏 Opened ערב משחק\. .*This is your personal link, just for you:\n.*#me-p1\n/s);
+  assert.equal(proactiveText.rawPipeTextFor({ kind: host.kind, payload: host.payload, locale: 'he' }, {}), host.payload.texts.he);
+  assert.equal(inv.payload.texts.he,
+    '🃏 ערב משחק · כניסה 50 ₪\nלהצטרפות לוחצים על הקישור ושולחים לעולמה את ההודעה שנפתחת:\nhttps://allma.world/g/K7M2Q');
+  assert.equal(inv.release_after.getTime(), now + gameSummary.INVITE_AFTER_HOST_MS, 'the invite in a later tick than the message that says it is coming');
+
+  assert.equal((await call(good)).ok, true);
+  assert.equal((await db.pool.query('SELECT count(*)::int n FROM outbox WHERE user_id = $1', [u.id])).rows[0].n, 2, 'once per night');
+
+  // A reply of the model's that only says it again is cancelled at the gate,
+  // the same door as a reply under a standing 👍; anything new still goes out.
+  const held = await broker.dispatch({ id: 1, method: 'mark_echo', params: { agentId: u.agent } });
+  assert.equal(held.standing, true);
+  const asked = 'תפתח לי משחק של פוקר היום 50 שקל כניסה 50 זוטונים';
+  for (const echo of ['פתחתי ערב משחק! 🃏', 'הערב נפתח 🃏 שלחתי לך את הקישור ואת ההזמנה לשחקנים', 'Opened! 👍']) {
+    assert.equal(markEcho.echoOnly(echo, [...held.words, asked]), true, echo);
+  }
+  for (const news of ['פתחתי. ודני כבר אמר שהוא מגיע', 'מתי מתחילים?', 'פתחתי ערב משחק: https://allma.world/night/x']) {
+    assert.equal(markEcho.echoOnly(news, [...held.words, asked]), false, news);
+  }
+
 });
 
 test('a night already open is handed back, and the phrase asks nothing', async () => {
@@ -550,8 +602,11 @@ test('given an agent between the question and the answer, the answer still seats
 
 // ---- the gate ---------------------------------------------------------------
 const WED_NIGHT = new Date('2026-08-12T23:40:00Z');
-test('the gate: the invite goes out at once for a quarter of an hour after it was made, then waits like anything else', () => {
-  const row = (ageMs) => ({ kind: gameSummary.INVITE_KIND, urgency: 'urgent',
+test('the gate: the host\'s two messages go out at once for a quarter of an hour after they were made, then wait like anything else', () => {
+  for (const kind of [gameSummary.INVITE_KIND, gameSummary.HOST_KIND]) gateCase(kind);
+});
+function gateCase(kind) {
+  const row = (ageMs) => ({ kind, urgency: 'urgent',
     created_at: new Date(WED_NIGHT.getTime() - ageMs), payload: { code: 'K7M2Q', texts: { he: 'א', en: 'a' } } });
   const base = { plan: 'free', window: { start: '09:00', end: '21:00' }, tz: 'UTC', sentToday: 0, budget: 4, now: WED_NIGHT, quietDays: [] };
   assert.equal(decide({ ...base, row: row(10_000) }).action, 'deliver', 'the host is right there, at 23:40');
@@ -561,4 +616,4 @@ test('the gate: the invite goes out at once for a quarter of an hour after it wa
   const sat = new Date('2026-08-15T12:00:00Z');
   assert.equal(decide({ ...base, now: sat, quietDays: [sat.getUTCDay()],
     row: { ...row(0), created_at: new Date(sat.getTime() - 5_000) } }).action, 'deliver');
-});
+}

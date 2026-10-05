@@ -66,10 +66,11 @@ async function ctx(pool, user, code) {
 }
 
 /* ── writes, all through the page's door ── */
-function writer(pool, token, onState) {
+// `userId` is who is asking, for a locked night's host-only writes.
+function writer(pool, token, onState, userId) {
   let last = null;
   const w = async (op, col, id, data) => {
-    const out = await store.write(pool, token, { op, col, id, data });
+    const out = await store.write(pool, token, { op, col, id, data }, { userId });
     last = out.state;
     if (out.closed) w.closed = out.closed;
     return out;
@@ -87,6 +88,15 @@ async function ensurePlayer(w, st, name) {
   const { state } = await w('set', 'players', id, { name: String(name).trim(), order: Date.now() });
   await w.log(`${state.players[id].name} בשולחן`);
   return { id, name: state.players[id].name, added: true };
+}
+
+// A locked night (migration 004): buy-ins and other players' chips are the
+// host's alone. Asked here first so the answer can name the host and nothing
+// is half done; store.write refuses the same writes anyway.
+function hostOnly(st, me, what) {
+  if (!st.game.locked || me === st.game.host) return;
+  const host = st.players[st.game.host]?.name;
+  fail('locked', `the night is locked by its host${host ? ` (${host})` : ''}: only the host ${what}. Tell them to ask the host; nothing was recorded`);
 }
 
 const countOf = (st, pid) => Object.values(st.buyins).filter(b => b.pid === pid).reduce((a, b) => a + Number(b.n), 0);
@@ -132,6 +142,14 @@ const closing = async (env, w, st, s) => {
   return { ...rest, ...a };
 };
 
+// start_game_night's two outcomes. Both messages went by code — their own
+// link, then the invite to forward — so the model says nothing; or brokerd
+// could not be reached, and the model gives both links and says which is which.
+const SENT_OPEN = 'The night is open and both messages just went to them from Olma, drawn by code: their own personal link, then the invite to forward to the other players. '
+  + 'Reply NO_REPLY. Only if their message asked for something this did not do, say that in one short line, with no link, code, price or invite.';
+const INVITE_FALLBACK = '`url` is the host\'s own seat, for them only. `join_link` is for the other players: they tap it and send Olma the message it opens. '
+  + 'Give both and say which is which; never hand out the page without #me- as the way to join.';
+
 // close_game_night's question, per person and night: when it was asked.
 // In memory on purpose — a gamesd restart only means she asks again.
 const CONFIRM_TTL_MS = 30 * 60_000;
@@ -139,7 +157,7 @@ const closeAsks = new Map();
 
 /* ── the tools ── */
 const TOOLS = {
-  async start_game_night({ pool, user, publicBase }, a) {
+  async start_game_night({ pool, user, publicBase, invite }, a) {
     const open = (await nightsOf(pool, user.id)).filter(n => !n.closed_at);
     if (open.length) fail('already_open', `they already have an open night, code ${open[0].code}: ${publicBase}/night/${open[0].token}. `
       + 'If they asked for a new one in its place, close_game_night closes it without a settlement, then call this again.');
@@ -148,17 +166,32 @@ const TOOLS = {
     const n = await store.createNight(pool, { name: a.name || (user.locale === 'en' ? 'Poker night' : 'ערב פוקר'), price: a.price, chips: a.chips, players: [host, ...others] });
     // The host is the first row insertNight wrote; linking it is what makes
     // this night "theirs" to every later tool.
-    await pool.query(
+    const { rows: [seat] } = await pool.query(
       `UPDATE players SET user_id = $2, linked_at = now(), linked_via = 'host'
-        WHERE night_id = $1 AND ord = (SELECT min(ord) FROM players WHERE night_id = $1)`, [n.id, user.id]);
+        WHERE night_id = $1 AND ord = (SELECT min(ord) FROM players WHERE night_id = $1) RETURNING id`, [n.id, user.id]);
+    // ...and that seat is the one that may lock it (migration 004).
+    await pool.query('UPDATE nights SET host_player = $2 WHERE id = $1', [n.id, seat.id]);
     const st = await store.stateOf(pool, (await store.findNight(pool, n.token)));
-    return { night_code: n.code, url: `${publicBase}/night/${n.token}`, name: st.game.name, price: st.game.price, chips: st.game.chips, players: namesOf(st) };
+    const out = { night_code: n.code, name: st.game.name, price: st.game.price, chips: st.game.chips, players: namesOf(st) };
+    if (!invite) return { ...out, url: `${publicBase}/night/${n.token}` };
+    // The host gets their OWN seat, and the others a separate message to
+    // forward, sent by code (olma2 domain/game-shortcut.js hostMessages). On
+    // 2026-10-03 the model handed the host the shared page instead.
+    const mine = `${publicBase}/night/${n.token}#me-${seat.id}`;
+    let r;
+    try {
+      r = await invite({ userId: user.id, night: { name: out.name, price: out.price, chips: out.chips, code: n.code }, url: mine });
+    } catch (e) { r = { ok: false, error: e.message }; }
+    if (r && r.ok && r.queued) return { ...out, sent: true, note: SENT_OPEN };
+    console.error('[gamesd tool] the invite was not queued:', r && r.error || 'no answer');
+    return { ...out, url: mine, join_link: `${publicBase}/g/${n.code}`, note: INVITE_FALLBACK };
   },
 
   async add_buyin(env, a) {
     const { pool, user, onState } = env;
     const { st, token, me, n } = await ctx(pool, user, a.night_code);
-    const w = writer(pool, token, onState);
+    hostOnly(st, me, 'adds or takes back buy-ins');
+    const w = writer(pool, token, onState, user.id);
     const size = a.n == null ? 1 : Number(a.n);
     if (size !== 1 && size !== 0.5) fail('bad_number', 'n is 1 or 0.5');
     const who = a.player ? (a.cancel ? findPlayer(st, a.player) || fail('not_found', `${a.player} is not at the table; players: ${namesOf(st).join(', ')}`) : await ensurePlayer(w, st, a.player))
@@ -183,8 +216,15 @@ const TOOLS = {
     const { st, me, n } = await ctx(pool, user, a.night_code);
     const count = countOf(st, me);
     const P = pokerOf(st);
+    // The host of a locked night on a new phone cannot sit in their own seat
+    // from the shared link; this one can, once, for ten minutes.
+    const hostLink = st.game.locked && me === st.game.host && !n.closed_at
+      ? { host_link: `${publicBase}/night/${n.token}#me-${me}~${await store.hostKey(pool, n.id)}`,
+        host_link_note: 'Only for THEM, only if they changed phone or the page will not let them change buy-ins: it seats their phone as the host, works once within 10 minutes. Never for sharing; for the group, url.' }
+      : {};
     return {
       night_code: n.code, name: st.game.name, url: `${publicBase}/night/${n.token}`, open: !n.closed_at,
+      locked: st.game.locked, host: st.players[st.game.host]?.name || null, ...hostLink,
       buyins: count, paid: shekels(count * P.price), chips_reported: st.cashouts[me]?.chips ?? null,
       chip_value: P.price / P.cpb / 100, players: namesOf(st).length, pot: shekels(P.totalBuy * P.price),
     };
@@ -197,7 +237,8 @@ const TOOLS = {
     if (!Number.isInteger(chips) || chips < 0) fail('bad_number', 'chips is a whole number, 0 or more');
     const who = a.player ? findPlayer(st, a.player) || fail('not_found', `${a.player} is not at the table; players: ${namesOf(st).join(', ')}`)
       : { id: me, name: st.players[me].name };
-    const w = writer(pool, token, onState);
+    if (who.id !== me) hostOnly(st, me, 'records other players\' chips; each player reports their own');
+    const w = writer(pool, token, onState, user.id);
     await w('set', 'cashouts', who.id, { chips, via: 'olma' });
     await w.log(`${who.name}: נשארו ${fmtChips(chips)} ז'יטונים`);
     const after = w.done();
@@ -219,7 +260,7 @@ const TOOLS = {
       if (!ids.includes(p.id)) ids.push(p.id);
     }
     const kind = kindOf(what);
-    const w = writer(pool, token, onState);
+    const w = writer(pool, token, onState, user.id);
     await w('add', 'food', undefined, { kind, what, amount, payer: payer.id, eaters: ids });
     await w.log(`${FOOD[kind] || '🍽️'} ${what}, ${fmtAg(ag(amount))} · 💳 ${payer.name}`);
     const after = w.done();
@@ -281,6 +322,7 @@ const REFUSED = {
   bad_number: 'a number is out of range', bad_text: 'a name or text is empty or too long', too_many: 'the night is full',
   not_found: 'not found', bad_doc: 'malformed input',
   cancelled: 'that night was closed without a settlement and takes no more changes; start_game_night opens a new one',
+  locked: 'the night is locked by its host: only the host adds buy-ins or records other players\' chips; nothing was recorded',
 };
 
 async function runTool(name, args, env) {
