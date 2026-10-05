@@ -245,6 +245,10 @@ test('the page sets the hour once it settled without one, then moves it on that 
   assert.equal((await meetingOf(ben, id)).timeOpen, false, 'still negotiating: the table is the door');
   await call('settle_meeting', ann, { meeting_id: id, option_id: opt.id });
   assert.equal((await meetingOf(ben, id)).timeOpen, true);
+  // The confirmations went out; one still waiting would carry the hour itself
+  // (the test above), and this one is about the page as a door.
+  await db.pool.query(`UPDATE outbox SET sent_at = now() WHERE kind = 'meeting_confirmed'
+                         AND (payload->>'meetingId')::bigint = $1`, [id]);
 
   const bad = await actAs(ben, 'setMeetingTime', { meetingId: id, time: '25:00' });
   assert.equal(bad.ok, false);
