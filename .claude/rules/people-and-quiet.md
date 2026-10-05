@@ -169,10 +169,16 @@ title means this file. Grep the title, not the filename.
   waiting for one to decide Olma may speak again). It goes through
   `pause.resumeUser` rather than the ladder's column-clearing
   `pause.quietResume`, because this pause took reminders down and each has to
-  come back at its own next real occurrence. `confirmed` defaults to the
-  LASTING pause (`a.confirmed !== false`): an omitted flag leaving somebody
-  paused who meant to be is one sentence from undone, and the other way round
-  lifts a stop that was confirmed. The owner's rule (2026-09-22) is that a
+  come back at its own next real occurrence. **Since 2026-10-05 a LASTING
+  pause has to be earned, not defaulted** (`pause.requestPause`): the stop
+  must have been heard (a `said_stop` audit row inside
+  `pause.CONFIRM_WINDOW_MS`) and the person must have written since, or have
+  answered their paused room invite. Anything else is downgraded to the
+  unconfirmed stop, and the result hands the model `askThem`
+  (`pause.CONFIRM_QUESTION`), a drawn question that says what a pause does.
+  An unconfirmed call never lands on a confirmed pause. The old default, `a.confirmed !== false`, let a model skip the
+  question, and Eden was paused for good over a joke (`incidents.md`, "The
+  stop nobody asked about"). The owner's rule (2026-09-22) is that a
   model reading the conversation and refusing turn by turn is not the
   mechanism — "אין צורך שהמודל יצטרך לקרוא את השיחה ולסרב לפי השיקול דעת
   שלו" — a column the gate reads before a turn is ever spawned is.

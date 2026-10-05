@@ -6,8 +6,9 @@
 //
 // What "from where it stopped" has to mean, and what each test pins:
 //   · every other time on the table stays, with every answer to it;
-//   · the time that was set stays on the table with its answers CLEARED, or
-//     the table would settle straight back onto it at the next answer;
+//   · the time that was set stays on the table with the REOPENER's yes
+//     cleared (everybody else's stands since 2026-10-05), or the table would
+//     settle straight back onto it at the next answer;
 //   · the others are told once, privately; the shared calendar event goes;
 //   · the room hears one line, and the next "סגור" is not swallowed as a
 //     duplicate of the first — every key it keyed on was once per meeting.
@@ -95,7 +96,9 @@ test('reopening puts it back to negotiating, keeps the table, and asks only the 
 
   const table = await tx((cl) => options.list(cl, id));
   assert.deepEqual(table.map((o) => o.id).sort(), [sat.id, sun.id].sort(), 'nothing left the table');
-  assert.deepEqual(table.find((o) => o.id === sat.id).answers, {}, 'the set time is asked again');
+  // Only the reopener's yes on the set time is cleared; everybody else's stands.
+  assert.deepEqual(table.find((o) => o.id === sat.id).answers, { [String(people[0].id)]: 'y', [String(b.id)]: 'y' },
+    'the reopener\'s yes is gone, the others stand');
   assert.equal(table.find((o) => o.id === sun.id).answers[String(b.id)], 'y', 'every other answer stands');
 
   // The others are told once; the person who reopened it is not.
@@ -105,6 +108,10 @@ test('reopening puts it back to negotiating, keeps the table, and asks only the 
   assert.deepEqual(told.map((r) => Number(r.user_id)), [people[0].id, b.id]);
   assert.equal(told[0].payload.was, 'שבת 12:00');
   assert.equal(told[0].payload.byName, 'Cal');
+  assert.ok(told.every((r) => r.payload.yesStands === true), 'a yes that stands is not asked again');
+  // Without the reopener's yes the set time cannot be unanimous, so it does
+  // not settle back on its own.
+  assert.equal((await row(id)).settle_due_at, null);
 
   // One answer to something else no longer settles it straight back.
   await tx((cl) => options.answer(cl, people[0].id, id, sun.id, 'y'));
@@ -208,6 +215,17 @@ test('the private message says what was set, asks the table again, and carries t
   assert.ok(body.includes('https://allma.world/me/x'));
 });
 
+test('somebody whose yes to the old time stands is told so and asked nothing', () => {
+  const body = instructionFor({ kind: 'meeting_reopened', payload: {
+    meetingId: 7, title: 'פאדל', byName: 'Sharon', was: 'שבת 17:00', calendarCleanup: 'none', yesStands: true,
+  } }, 'https://allma.world/me/x');
+  assert.match(body, /STILL STANDS/);
+  assert.match(body, /ask them nothing/);
+  assert.doesNotMatch(body, /has to be answered again/);
+  assert.doesNotMatch(body, /get_meeting_status/);
+  assert.ok(body.includes('https://allma.world/me/x'), 'the page still rides it');
+});
+
 // ---- the room -------------------------------------------------------------
 
 const DAY = (() => { const d = new Date(); d.setUTCHours(11, 0, 0, 0); return d; })();
@@ -257,16 +275,21 @@ test('the room hears it once, and then hears the next "סגור" as a new line',
   await pass(group, sent);
   assert.equal(sent.length, before + 1);
   assert.match(sent[before], /התיאום \*שיחה\* נפתח מחדש — \*שבת 12:00\* כבר לא סגור/);
+  // The yeses on the old time stand (all but the reopener's), so the room
+  // next hears where the table points — once, like every table line.
   await pass(group, sent);
-  assert.equal(sent.length, before + 1, 'said once');
+  assert.equal(sent.length, before + 2, sent.slice(before).join(' // '));
+  assert.match(sent[before + 1], /שבת 12:00\* — 2 מתוך 3/);
+  await pass(group, sent);
+  assert.equal(sent.length, before + 2, 'the reopen is said once');
 
   for (const u of [a, c]) await tx((cl) => options.answer(cl, u.id, id, opt2.id, 'y'));
   const o2 = (await tx((cl) => options.list(cl, id))).find((o) => o.id === opt2.id);
   await tx((cl) => options.confirmOn(cl, id, { ...o2, slot_text: o2.slotText, starts_at: o2.startsAt }, a.id));
   await pass(group, sent);
-  assert.equal(sent.length, before + 2);
-  assert.match(sent[before + 1], /סגור/, 'the second settle is said, not swallowed by the first one\'s key');
-  assert.match(sent[before + 1], /ראשון 15:00/);
+  assert.equal(sent.length, before + 3);
+  assert.match(sent[before + 2], /סגור/, 'the second settle is said, not swallowed by the first one\'s key');
+  assert.match(sent[before + 2], /ראשון 15:00/);
 });
 
 test('reopened IN the room is not said to the room a second time by the sweep', async () => {

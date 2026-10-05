@@ -731,6 +731,44 @@ async function removeMeetingEvent(client, meetingId, opts = {}) {
   return ok({ removed: true });
 }
 
+// The other direction: somebody said yes to a meeting that had already
+// settled, and a shared event exists (`meetings.joinSettled`). Their address
+// is added to the organiser's guest list with sendUpdates=all, which is what
+// puts it on their calendar — the same invitation the others got when it was
+// made. Best-effort, never an error: the yes stands whatever Google says.
+async function addMeetingAttendee(client, meetingId, userId, opts = {}) {
+  const { rows: [m] } = await client.query(
+    `SELECT calendar_event_id, calendar_organiser_id FROM meetings WHERE id = $1`, [meetingId]);
+  if (!m || !m.calendar_event_id || !m.calendar_organiser_id) return ok({ added: false, reason: 'no_event' });
+  const organiserId = Number(m.calendar_organiser_id);
+  if (organiserId === Number(userId)) return ok({ added: false, reason: 'organiser' });
+  try {
+    const email = await accountEmail(client, userId, opts);
+    if (!email) return ok({ added: false, reason: 'not_connected' });
+    const res = await withAccessToken(client, organiserId, opts, async (token, _access, o) => {
+      const path = `/calendars/primary/events/${encodeURIComponent(m.calendar_event_id)}`;
+      const ev = await google.calendarFetch(token, path, o);
+      const before = Array.isArray(ev.attendees) ? ev.attendees : [];
+      if (before.some((a) => String(a.email || '').toLowerCase() === email.toLowerCase())) {
+        return ok({ added: false, reason: 'already_on_event' });
+      }
+      await google.calendarFetch(token, `${path}?sendUpdates=all`, {
+        ...o, method: 'PATCH', body: JSON.stringify({ attendees: [...before, { email }] }),
+      });
+      return ok({ added: true });
+    });
+    if (!res.ok) return ok({ added: false, reason: 'patch_failed' });
+    if (res.data.added) {
+      await audit.record(client, organiserId, 'calendar.meeting_attendee_added', {
+        meetingId: Number(meetingId), userId: Number(userId),
+      });
+    }
+    return res;
+  } catch {
+    return ok({ added: false, reason: 'patch_failed' });
+  }
+}
+
 // One person leaving a CONFIRMED meeting that carries on (owner, 2026-09-24):
 // the event comes off THEIR calendar and stays exactly as it was on everybody
 // else's — "רק תוציא אותו מהאירוע ביומן (לא את כולם או תמחק בטעות את
@@ -807,5 +845,5 @@ module.exports = {
   beginConnection, completeOAuth, getStatus, disconnect, loadIntegration,
   listEvents, createEvent, updateEvent, deleteEvent, eventIdFor,
   usableAccessToken,
-  accountEmail, meetingCalendarRoles, createSharedMeetingEvent, removeMeetingEvent, removeMeetingAttendee,
+  accountEmail, meetingCalendarRoles, createSharedMeetingEvent, removeMeetingEvent, removeMeetingAttendee, addMeetingAttendee,
 };

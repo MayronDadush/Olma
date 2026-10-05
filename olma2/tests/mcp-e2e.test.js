@@ -9,6 +9,8 @@ const path = require('node:path');
 const os = require('node:os');
 const crypto = require('node:crypto');
 const { freshDb, makeUser } = require('./helpers');
+const pause = require('../src/domain/pause');
+const turn = require('../src/domain/turn');
 
 let db, brokerd, shim, alice, bob;
 const SOCK = path.join(os.tmpdir(), 'olma2-test-' + crypto.randomBytes(4).toString('hex') + '.sock');
@@ -294,14 +296,73 @@ test('turn_start drives the block flow: notice once, then silent', async () => {
   }
 });
 
+// A lasting pause the way a person reaches one: the stop, the question, their
+// next message, and the yes. A confirmed=true with nothing before it is the
+// model skipping the question, and the server refuses it (Eden, 2026-10-05).
+// `writes` is the gateway opening a turn on a real message — `turn_start`
+// alone is the model's call and wakes nothing.
+async function writes(u) {
+  const c = await db.pool.connect();
+  try {
+    const { rows: [row] } = await c.query('SELECT * FROM users WHERE id = $1', [u.id]);
+    await c.query('BEGIN');
+    await turn.openRecord(c, row, { wake: true });
+    await c.query('COMMIT');
+  } finally { c.release(); }
+}
+
+async function pauseForGood(u) {
+  await callTool('pause_olma', { olma_identity: u.identity_token });
+  await writes(u);
+  return callTool('pause_olma', { olma_identity: u.identity_token, confirmed: true });
+}
+
+test('a stop is asked about, with what a pause means, before it lasts (Eden, 2026-10-05)', async () => {
+  const u = await makeUser(db.pool, '+972571000041', { firstName: 'עדן', locale: 'he' });
+
+  // The model skipped the question and went straight for a lasting pause.
+  const skipped = await callTool('pause_olma', { olma_identity: u.identity_token, confirmed: true });
+  assert.match(skipped, /^OK /);
+  assert.ok(skipped.includes(pause.CONFIRM_QUESTION.he), 'the result hands over the question, drawn');
+  assert.match(skipped, /"confirmed":false/);
+  let { rows } = await db.pool.query('SELECT paused_at, paused_reason FROM users WHERE id = $1', [u.id]);
+  assert.ok(rows[0].paused_at, 'paused the moment it was heard');
+  assert.equal(rows[0].paused_reason, 'said_stop', 'but not for good: nobody asked him yet');
+
+  // His next message ends it, which is what an unanswered stop has always done.
+  await writes(u);
+  ({ rows } = await db.pool.query('SELECT paused_at FROM users WHERE id = $1', [u.id]));
+  assert.equal(rows[0].paused_at, null);
+
+  // The real flow: the stop, the question, his yes — then it lasts.
+  const done = await pauseForGood(u);
+  assert.match(done, /"confirmed":true/);
+  assert.doesNotMatch(done, /askThem/, 'nothing left to ask');
+  await writes(u);
+  ({ rows } = await db.pool.query('SELECT paused_at, paused_reason FROM users WHERE id = $1', [u.id]));
+  assert.ok(rows[0].paused_at, 'a confirmed stop survives his next message');
+  assert.equal(rows[0].paused_reason, null);
+
+  // "stop" again from somebody already paused for good does not undo it.
+  const again = await callTool('pause_olma', { olma_identity: u.identity_token });
+  assert.match(again, /"confirmed":true/);
+  assert.doesNotMatch(again, /askThem/);
+  ({ rows } = await db.pool.query('SELECT paused_reason FROM users WHERE id = $1', [u.id]));
+  assert.equal(rows[0].paused_reason, null);
+});
+
+test('somebody writing in English is asked in English', async () => {
+  const u = await makeUser(db.pool, '+972571000042', { firstName: 'Sam', locale: 'en' });
+  const r = await callTool('pause_olma', { olma_identity: u.identity_token });
+  assert.ok(r.includes(pause.CONFIRM_QUESTION.en));
+});
+
 // The tools that did not exist the night a user asked to stop and Olma, with
 // nothing to call, said goodbye and messaged him again in the morning.
 test('pause_olma stops everything and resume_olma puts it back', async () => {
   const u = await makeUser(db.pool, '+972571000009', { firstName: 'קפיש' });
 
-  const paused = await callTool('pause_olma', {
-    olma_identity: u.identity_token, note: 'זהו',
-  });
+  const paused = await pauseForGood(u);
   assert.match(paused, /^OK /);
   let { rows } = await db.pool.query('SELECT paused_at FROM users WHERE id = $1', [u.id]);
   assert.ok(rows[0].paused_at, 'the goodbye is a tool call, not a sentence');
@@ -322,7 +383,7 @@ test('pause_olma stops everything and resume_olma puts it back', async () => {
 
 test('the first message after pausing offers to resume; nothing after that does', async () => {
   const u = await makeUser(db.pool, '+972571000011', { firstName: 'קפיש' });
-  await callTool('pause_olma', { olma_identity: u.identity_token });
+  await pauseForGood(u);
 
   const first = await callTool('turn_start', { olma_identity: u.identity_token });
   assert.match(first, /"offerResume":true/, 'the first turn after pausing must offer, unprompted');
@@ -387,14 +448,14 @@ test('turn_start carries the overnight plan headline — USER.md alone cannot, m
   // a paused person's turns must not lean forward
   await db.pool.query(
     `UPDATE user_plans SET built_at = now() WHERE user_id = $1`, [u.id]);
-  await callTool('pause_olma', { olma_identity: u.identity_token });
+  await pauseForGood(u);
   assert.doesNotMatch(await callTool('turn_start', { olma_identity: u.identity_token }),
     /planHeadline/);
 });
 
 test('resuming and pausing again offers exactly once more', async () => {
   const u = await makeUser(db.pool, '+972571000012', { firstName: 'קפיש' });
-  await callTool('pause_olma', { olma_identity: u.identity_token });
+  await pauseForGood(u);
   assert.match(await callTool('turn_start', { olma_identity: u.identity_token }), /offerResume":true/);
   assert.doesNotMatch(await callTool('turn_start', { olma_identity: u.identity_token }), /offerResume/);
 
@@ -402,7 +463,7 @@ test('resuming and pausing again offers exactly once more', async () => {
   assert.doesNotMatch(await callTool('turn_start', { olma_identity: u.identity_token }), /offerResume/,
     'not paused — nothing to offer');
 
-  await callTool('pause_olma', { olma_identity: u.identity_token });
+  await pauseForGood(u);
   assert.match(await callTool('turn_start', { olma_identity: u.identity_token }), /offerResume":true/,
     'a new pause period is a fresh chance to offer — the old timestamp must not block it');
   assert.doesNotMatch(await callTool('turn_start', { olma_identity: u.identity_token }), /offerResume/);
