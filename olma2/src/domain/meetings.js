@@ -186,13 +186,38 @@ function constraintEntry(raw) {
   return null;
 }
 
+// The same sentence said twice is one constraint. A person who declines two
+// times "because" of one trip has the reason recorded once per decline, and
+// the poker room read "הוד בקפריסין חמישי עד שבת · הוד בקפריסין חמישי עד שבת"
+// beside his name (2026-10-05). The key is the words with case, spacing and
+// closing punctuation taken out — never a similarity score, because two
+// different sentences about one day are two things they said.
+function constraintKey(text) {
+  return String(text || '').trim().replace(/\s+/g, ' ').replace(/[\s.!,;:…]+$/u, '').toLowerCase();
+}
+
+// One entry per key, at the place it was LAST said (a repeat is the newest
+// thing they said, not the oldest), with its newest words. Private if ANY copy
+// was: the shared copy of a sentence they once asked to keep to themselves
+// must not be the one that survives.
+function distinctEntries(list) {
+  const byKey = new Map();
+  for (const c of (Array.isArray(list) ? list : []).map(constraintEntry)) {
+    if (!c) continue;
+    const key = constraintKey(c.text);
+    const prev = byKey.get(key);
+    byKey.delete(key);
+    byKey.set(key, { ...c, private: c.private || Boolean(prev && prev.private) });
+  }
+  return [...byKey.values()];
+}
+
 function constraintTexts(list) {
-  return (Array.isArray(list) ? list : []).map(constraintEntry).filter(Boolean).map((c) => c.text);
+  return distinctEntries(list).map((c) => c.text);
 }
 
 function shareableTexts(list) {
-  return (Array.isArray(list) ? list : [])
-    .map(constraintEntry).filter((c) => c && !c.private).map((c) => c.text);
+  return distinctEntries(list).filter((c) => !c.private).map((c) => c.text);
 }
 
 // What may be quoted to the OTHER side when this person proposes or declines.
@@ -234,11 +259,35 @@ async function recordConstraint(client, userId, meetingId, text, isPrivate = fal
     if (v.window) kept.push(v.window); else dropped.push(v.reason);
   }
   if (kept.length) entry.windows = kept;
-  await client.query(
-    `UPDATE meeting_participants SET constraints = constraints || $3::jsonb
-     WHERE meeting_id = $1 AND user_id = $2`,
-    [meetingId, userId, JSON.stringify([entry])]
-  );
+  // Said again, it replaces the copy already there and moves to the end — it
+  // is the newest thing they said — keeping the old copy's windows when the
+  // repeat brought none, and its privacy if it had any. The write is
+  // compare-and-set on the array it was computed from, so two answers landing
+  // together cannot drop one another; the loser recomputes.
+  const key = constraintKey(entry.text);
+  const sameKey = (raw) => { const c = constraintEntry(raw); return Boolean(c) && constraintKey(c.text) === key; };
+  let current = p.constraints;
+  for (let attempt = 0; ; attempt++) {
+    const list = Array.isArray(current) ? current : [];
+    const prior = list.filter(sameKey);
+    const written = { ...entry };
+    if (prior.some((raw) => raw.private === true)) written.private = true;
+    if (!written.windows) {
+      const withWindows = prior.filter((raw) => Array.isArray(raw.windows) && raw.windows.length).pop();
+      if (withWindows) written.windows = withWindows.windows;
+    }
+    const { rowCount } = await client.query(
+      `UPDATE meeting_participants SET constraints = $4::jsonb
+       WHERE meeting_id = $1 AND user_id = $2 AND constraints = $3::jsonb`,
+      [meetingId, userId, JSON.stringify(current), JSON.stringify([...list.filter((raw) => !sameKey(raw)), written])]
+    );
+    if (rowCount) { entry.private = written.private; break; }
+    if (attempt >= 4) return err('conflict', 'constraints changed while recording — try again');
+    const { rows } = await client.query(
+      `SELECT constraints FROM meeting_participants WHERE meeting_id = $1 AND user_id = $2`, [meetingId, userId]);
+    if (!rows[0]) return err('not_found', 'not a participant of this meeting');
+    current = rows[0].constraints;
+  }
   await audit.record(client, userId, 'meeting.constraint_recorded',
     { meetingId, private: entry.private, windows: kept.length });
   return ok({ meetingId, private: entry.private, windows: kept.length, ...(dropped.length ? { windowsDropped: dropped } : {}) });

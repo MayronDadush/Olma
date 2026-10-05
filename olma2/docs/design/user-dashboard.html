@@ -5578,7 +5578,7 @@ button.srow:active{background:var(--bg-tint)}
       "mt.ask":"מתי מתאים לך?","mt.askOne":"אתה יכול להגיע?","mt.settledLbl":"המועד שנקבע",
       "mt.done":"תיאומים שנסגרו ושיצאת מהם","mt.youLeft":"יצאת מהתיאום הזה","mt.rejoin":"חזרה לתיאום",
       "toast.mtBack":"חזרת ל„{name}” — השאר עודכנו",
-      "mt.me":"אתה","mt.waiting":"בהמתנה","mt.gone":"יצא",
+      "mt.me":"אתה","mt.waiting":"בהמתנה","mt.gone":"יצא","mt.saidMore":"ועוד {n} קודמות","mt.saidMore1":"ועוד אחת קודמת",
       "mt.part.morning":"בוקר","mt.part.noon":"צהריים","mt.part.evening":"ערב","mt.part.night":"לילה",
       "mt.allFree":"מתאים לכולם","mt.pick":"לקבוע","mt.pickMode":"לקבוע מועד בלי לחכות לכולם",
       "mt.settlingIn":"כולם יכולים — נקבע בעוד {n} שניות, עוד אפשר לשנות",
@@ -5969,7 +5969,7 @@ button.srow:active{background:var(--bg-tint)}
       "mt.ask":"When suits you?","mt.askOne":"Can you make it?","mt.settledLbl":"The time you settled on",
       "mt.done":"Settled and left","mt.youLeft":"You left this one","mt.rejoin":"Put me back in",
       "toast.mtBack":"You're back in \u201c{name}\u201d \u2014 the others were told",
-      "mt.me":"You","mt.waiting":"not yet","mt.gone":"left",
+      "mt.me":"You","mt.waiting":"not yet","mt.gone":"left","mt.saidMore":"+{n} earlier","mt.saidMore1":"+1 earlier",
       "mt.part.morning":"morning","mt.part.noon":"midday","mt.part.evening":"evening","mt.part.night":"night",
       "mt.allFree":"Fits everyone","mt.pick":"Settle","mt.pickMode":"Settle a time without waiting for everyone",
       "mt.settlingIn":"Everyone can — settles in {n}s, you can still change it",
@@ -10505,10 +10505,22 @@ button.srow:active{background:var(--bg-tint)}
     for(var k in row) if(row[k]) return true;
     return false;
   }
-  /* What somebody wrote that was neither yes nor no, if anything. */
+  /* What somebody wrote that was neither yes nor no, if anything. The NEWEST
+     thing they said, beside their name: every answer can carry a note, and בר
+     answered four times in four minutes — "I can Friday at noon", then
+     "flying tomorrow, can't this week" — so the whole list read as a
+     contradiction and its first half was no longer true (2026-10-05). The
+     rest is counted after it and kept, newest first, in `mtSaidAll` for the
+     tooltip. */
   function mtSaid(m, pid){
     var said = m.saidBy && m.saidBy[pid];
-    return said && said.length ? said.join(" · ") : "";
+    if(!said || !said.length) return "";
+    var last = said[said.length - 1];
+    return said.length > 1 ? last + " · " + t(said.length === 2 ? "mt.saidMore1" : "mt.saidMore", {n:said.length - 1}) : last;
+  }
+  function mtSaidAll(m, pid){
+    var said = m.saidBy && m.saidBy[pid];
+    return said && said.length ? said.slice().reverse().join("\n") : "";
   }
   /* Everybody sees the same options, and there is no longer any state in
      which one exists for one reader and not another (owner, 2026-09-09): the
@@ -11015,7 +11027,7 @@ button.srow:active{background:var(--bg-tint)}
       var gone = mtGone(m, pid), said = mtAnswered(m, pid), words = mtSaid(m, pid);
       var f = pid === 0 ? null : friendById(pid);
       return '<span class="mtface' + (gone ? " gone" : said ? " said" : "") + '"' +
-        (words ? ' title="' + esc(words) + '"' : "") + ">" +
+        (words ? ' title="' + esc(mtSaidAll(m, pid)) + '"' : "") + ">" +
         '<span class="face">' + avatarSVG(pid === 0 ? myAvatar : f.av, {g:pid === 0 ? myGender() : f.g}) + "</span>" +
         esc(mtName(pid)) +
         (gone ? " · " + t("mt.gone") : words ? " · " + esc(words) : said ? "" : " · " + t("mt.waiting")) +
