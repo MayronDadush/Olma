@@ -161,4 +161,21 @@ async function blendedRate(client) {
   return Number(await flags.getFlag(client, 'cost_per_mtok_usd') ?? 1.5);
 }
 
-module.exports = { RATES, PAST_RATES, rateFor, priceUsage, blendedRate };
+// One ledger row → the dollars a page shows. Every reader of the ledgers goes
+// through here so they cannot disagree about which figure is the truth:
+//   billed  — the provider's own charge for every call in the row (migration
+//             110): shown as stored. Re-pricing it would replace a measured
+//             number with our estimate of it.
+//   a rate  — re-priced from the tokens at the rate for that day, so a row
+//             written under a wrong rate is corrected on screen.
+//   neither — the stored figure IS the blended fallback; kept, and ≈.
+function ledgerRowCost(r, blendedPerMtok) {
+  if (r.billed) return { cost: Number(r.cost_usd), estimated: false };
+  const p = priceUsage({
+    input: r.input_tokens, output: r.output_tokens,
+    cacheRead: r.cache_read_tokens, cacheWrite: r.cache_write_tokens,
+  }, r.model, blendedPerMtok, r.date);
+  return { cost: p.estimated ? Number(r.cost_usd) : p.cost, estimated: p.estimated };
+}
+
+module.exports = { RATES, PAST_RATES, rateFor, priceUsage, blendedRate, ledgerRowCost };

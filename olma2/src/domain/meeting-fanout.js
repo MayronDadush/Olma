@@ -497,6 +497,7 @@ async function afterTimeSet(client, actor, res, { fromRoom = false, opts = {} } 
   const roles = await calendar.meetingCalendarRoles(client, meetingId);
   const others = await activeParticipantsExcept(client, meetingId, actor.id);
   for (const uid of others) {
+    if (await foldIntoQueuedConfirmation(client, meetingId, uid, actor, res.data)) continue;
     await enqueue(client, {
       userId: uid, kind: 'meeting_time_set', urgency: 'urgent',
       payload: await withRemovals(client, {
@@ -512,6 +513,31 @@ async function afterTimeSet(client, actor, res, { fromRoom = false, opts = {} } 
   }
   res.data.calendarUpdated = calendarUpdated;
   return res;
+}
+
+// The hour arrived while this person's "it is settled" is still waiting to go
+// out — held for the night or a quiet day, most often. Saar, 2026-10-03: the
+// confirmation and "the hour is set" were both held over Shabbat and went out
+// at 19:04 and 19:07, two messages about one meeting, to seven people. The
+// waiting confirmation now says the hour itself, and there is no second row.
+// The confirmation's own calendar step reads the instant off this payload, so
+// the event goes on at the hour rather than as the whole day. Same discipline
+// as the table fold in `fanout`: a row the worker holds is in flight, so it is
+// skipped (SKIP LOCKED) and this one goes out on its own, and the UPDATE
+// re-asks `sent_at IS NULL`.
+async function foldIntoQueuedConfirmation(client, meetingId, userId, actor, data) {
+  const { rowCount } = await client.query(
+    `UPDATE outbox
+        SET payload = (payload - 'allDay' - 'daypart' - 'askExactTime' - 'authorTz')
+                      || jsonb_build_object('slot', $3::text, 'startsAtUtc', $4::text)
+                      || CASE WHEN $5::text IS NULL THEN '{}'::jsonb ELSE jsonb_build_object('authorTz', $5::text) END
+      WHERE id = (SELECT id FROM outbox
+                   WHERE sent_at IS NULL AND kind = 'meeting_confirmed' AND user_id = $2
+                     AND (payload->>'meetingId')::bigint = $1
+                   ORDER BY id DESC LIMIT 1 FOR UPDATE SKIP LOCKED)
+        AND sent_at IS NULL`,
+    [meetingId, userId, data.slot, new Date(data.startsAt).toISOString(), (actor && actor.timezone) || null]);
+  return rowCount > 0;
 }
 
 // The end of an event in the same offset the start was written in, so the
@@ -600,7 +626,11 @@ async function afterSlotResponse(client, actor, meetingId, res, _opts = {}) {
 // rendered in channels/openclaw.js for any row already queued.
 async function afterRejoin(client, actor, meetingId, res) {
   if (!res.ok) return res;
-  res.data.hint = 'They are back in and have not answered the times yet. Nobody else is messaged about it.';
+  // Back from a PAUSE exit, the answers they had given stand
+  // (`meetings.restoreFromPause`), so "not answered yet" would be false.
+  res.data.hint = res.data.yourState && res.data.yourState !== 'awaiting'
+    ? 'They are back in, with the answers they had already given. Nobody else is messaged about it.'
+    : 'They are back in and have not answered the times yet. Nobody else is messaged about it.';
   return res;
 }
 
@@ -671,7 +701,7 @@ async function afterOptOut(client, actor, meetingId, res) {
 
 // After meetings.options.add (or proposeSlot) succeeded. An option on the
 // table is a question for everyone else.
-async function afterOptionAdded(client, actor, meetingId, res) {
+async function afterOptionAdded(client, actor, meetingId, res, { exceptUserIds = [] } = {}) {
   if (!res.ok) return res;
   const brief = await meetingBrief(client, meetingId);
   const o = res.data.option || { slotText: res.data.proposedSlot, startsAt: res.data.startsAt, id: res.data.optionId };
@@ -688,13 +718,45 @@ async function afterOptionAdded(client, actor, meetingId, res) {
   const standing = require('./standing-answers');
   const auto = await standing.applyToOption(client, meetingId, o.id, { exceptUserId: actor.id });
   const autoIds = new Set(auto.map((a) => a.userId));
+  const skip = new Set(exceptUserIds.map(Number));
   const others = (await activeParticipantsExcept(client, meetingId, actor.id))
-    .filter((id) => !autoIds.has(Number(id)));
+    .filter((id) => !autoIds.has(Number(id)) && !skip.has(Number(id)));
   await fanout(client, others, 'meeting_slot_proposed', {
     ...base, ...(await slotMoment(client, meetingId, o.slotText)),
     reasons: await meetings.shareableConstraints(client, meetingId, actor.id),
   }, { key: `mopt:${meetingId}:${o.id}` });
   for (const a of auto) await standing.tell(client, a.userId, meetingId, [a], { title: brief.title });
+  return res;
+}
+
+// After meetings.options.merge: a time took a close one's place on the table,
+// and the answers to the old one moved to it (owner, 2026-10-05). Whoever had
+// answered the old time is not asked again — they are TOLD, privately, that
+// their answer now stands on the new one and that one word changes it, the
+// same shape as an answer made for them by a window (`meeting_auto_answered`).
+// Everybody else is asked about the new time as about any addition, and the
+// queued question about the old one is withdrawn, since nobody can answer it.
+async function afterOptionMerged(client, actor, meetingId, res) {
+  if (!res.ok) return res;
+  await client.query(
+    `UPDATE outbox SET sent_at = now(), hold_reason = 'superseded'
+      WHERE sent_at IS NULL AND kind = 'meeting_slot_proposed'
+        AND (payload->>'meetingId')::bigint = $1 AND (payload->>'optionId')::bigint = $2`,
+    [meetingId, res.data.merged]);
+  const carried = (res.data.carried || []).filter((c) => Number(c.userId) !== Number(actor.id));
+  await afterOptionAdded(client, actor, meetingId, res, { exceptUserIds: carried.map((c) => c.userId) });
+  const brief = await meetingBrief(client, meetingId);
+  const o = res.data.option;
+  for (const answer of ['y', 'n']) {
+    const who = carried.filter((c) => c.answer === answer).map((c) => c.userId);
+    if (!who.length) continue;
+    await fanout(client, who, 'meeting_answer_moved', {
+      meetingId: Number(meetingId), title: brief.title || 'meeting', byName: actorName(actor),
+      from: res.data.mergedSlot, slot: o.slotText, startsAt: o.startsAt, optionId: o.id, answer,
+      ...(brief.group_subject ? { groupSubject: brief.group_subject } : {}),
+    }, { key: `mmerge:${meetingId}:${o.id}` });
+  }
+  if (res.data.meetingStatus === 'settling') res.data.hint = settlingHint(res.data.settlingSlot);
   return res;
 }
 
@@ -832,7 +894,7 @@ async function reopenAndTell(client, actor, meetingId, { fromRoom = false } = {}
 module.exports = {
   afterTimeSet, reopenAndTell,
   afterSettled, cancelAndTell, patchSharedEvent,
-  afterStart, afterOptionAdded, afterOptionRemoved, noteNamedInRoom,
+  afterStart, afterOptionAdded, afterOptionMerged, afterOptionRemoved, noteNamedInRoom,
   afterSlotResponse, afterOptOut, afterRejoin,
   actorName, fanout, supersedeQueuedMeetingRows, activeParticipantsExcept,
   meetingCalendarFanout, calendarRoleFor, cancelCalendarCleanup, calendarHintFor,

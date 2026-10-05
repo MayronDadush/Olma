@@ -36,10 +36,17 @@ function player(data) {
 }
 
 // A phone's own tag for "this seat is me" (store.js, op hold/release).
+// `key` is the host's one-time key (migration 004), from the link Olma sent them.
 function hold(data) {
   if (!isObj(data) || typeof data.device !== 'string' || !/^[A-Za-z0-9_-]{8,32}$/.test(data.device)) refuse('bad_doc');
-  return { device: data.device, take: data.take === true };
+  const key = typeof data.key === 'string' && /^[A-Za-z0-9]{16,32}$/.test(data.key) ? data.key : null;
+  return { device: data.device, take: data.take === true, key };
 }
+
+// Who is writing, as far as the page can say: the phone's own tag. Not a
+// secret anybody else sees (store.stateOf publishes only a hash of it), and
+// absent on the box's own writes, which are not the page's.
+const device = v => (typeof v === 'string' && /^[A-Za-z0-9_-]{8,32}$/.test(v) ? v : null);
 
 function buyin(data, now) {
   if (!isObj(data)) refuse('bad_doc');
@@ -90,12 +97,15 @@ function logLine(data, now) {
   return { t: text(data.t, 200), via: via(data.via), at: when(data.at, now) };
 }
 
-// A patch to the night itself: only these four fields, each checked.
+// A patch to the night itself: only these six fields, each checked.
+// `locked` and `host` are the host's alone, which store.write checks.
 function gamePatch(data) {
   if (!isObj(data)) refuse('bad_doc');
   const out = {};
   for (const [k, v] of Object.entries(data)) {
     if (k === 'name') out.name = text(v, 60);
+    else if (k === 'locked') out.locked = v === true ? true : v === false ? false : refuse('bad_doc');
+    else if (k === 'host') out.host = id(v);
     else if (k === 'price') out.price_ag = Math.round(num(v, 0.01, 100000) * 100);
     else if (k === 'chips') { const c = num(v, 1, 1e7); if (!Number.isInteger(c)) refuse('bad_number'); out.chips_per_buyin = c; }
     else if (k === 'foodMode') out.food_mode = v === 'split' ? 'split' : v === 'merge' ? 'merge' : refuse('bad_doc');
@@ -105,4 +115,4 @@ function gamePatch(data) {
   return out;
 }
 
-module.exports = { Refused, refuse, id, player, hold, buyin, cashout, food, logLine, gamePatch };
+module.exports = { Refused, refuse, id, player, hold, device, buyin, cashout, food, logLine, gamePatch };

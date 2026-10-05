@@ -20,15 +20,20 @@ before(async () => {
 after(async () => { await db.teardown(); fs.rmSync(TMP, { recursive: true, force: true }); });
 
 // One assistant message as the gateway writes it.
-function call({ at, model = 'claude-haiku-4-5-20251001', input = 0, output = 0, cacheRead = 0, cacheWrite = 0 }) {
+function call({ at, model = 'claude-haiku-4-5-20251001', input = 0, output = 0, cacheRead = 0, cacheWrite = 0, billed }) {
   return JSON.stringify({
     type: 'message', timestamp: at,
     message: {
       role: 'assistant', responseModel: model,
       content: [{ type: 'text', text: 'ok' }],
-      // The gateway really does report an all-zero cost block — the reason
-      // this pipeline prices calls itself instead of trusting the field.
-      usage: { input, output, cacheRead, cacheWrite, cost: { total: 0 } },
+      // Two generations, both still on the box. The first era (and every
+      // `delivery-mirror` line today) reports an all-zero cost block, which
+      // is NOT a price — the table prices those. Since late August an
+      // OpenRouter call carries the provider's own charge, and says so.
+      usage: {
+        input, output, cacheRead, cacheWrite,
+        cost: billed == null ? { total: 0 } : { total: billed, totalOrigin: 'provider-billed' },
+      },
     },
   });
 }
@@ -295,4 +300,64 @@ test('a stated provider cost outranks the rate table, and is not rounded away', 
   // must survive that scale. At the old (10,4) a real call rounded to nothing.
   assert.equal(Number((0.00000686).toFixed(8)), 0.00000686, 'a real call price survives');
   assert.equal(Number((0.00000686).toFixed(4)), 0, 'and would have been erased at the old scale');
+});
+
+// ---- the provider's own charge ----------------------------------------------
+
+test('a provider-billed call is recorded at what the provider charged, not the table', async () => {
+  // A real u-3 call from 2026-10-05, tokens and charge as the gateway wrote
+  // them. The table prices it at ~$0.0007; OpenRouter billed $0.00118 — the
+  // ~30% the ledger was short on every real person for a month.
+  const t = writeTranscript('sess-billed.jsonl', [call({
+    at: '2026-08-24T10:00:00Z', model: 'deepseek/deepseek-v4-flash',
+    input: 533, output: 38, cacheRead: 39168, billed: 0.001181964,
+  })]);
+  await sweep([t]);
+  const { rows } = await db.pool.query(
+    `SELECT cost_usd, billed, estimated, model FROM usage_ledger WHERE user_id = $1 AND date = '2026-08-24'`, [user.id]);
+  assert.equal(rows.length, 1);
+  assert.equal(Number(rows[0].cost_usd), 0.00118196, 'the charge, to the column\'s eight places');
+  assert.equal(rows[0].billed, true);
+  assert.equal(rows[0].estimated, false);
+  assert.equal(rows[0].model, 'deepseek/deepseek-v4-flash', 'keyed by the table model, as before');
+  const table = pricing.priceUsage({ input: 533, output: 38, cacheRead: 39168, cacheWrite: 0 },
+    'deepseek/deepseek-v4-flash', 1.5);
+  assert.ok(table.cost < 0.001, `the table really does read low here ($${table.cost})`);
+});
+
+test('a provider charge of ZERO is a price; an all-zero block with no origin is not', () => {
+  const zeroBilled = sessions.readTranscriptUsage(writeTranscript('sess-zero.jsonl', [
+    call({ at: '2026-08-24T10:00:00Z', input: 10, billed: 0 }),
+    call({ at: '2026-08-24T10:00:01Z', input: 10 }),
+  ]).file, 0).calls;
+  assert.equal(zeroBilled[0].costUsd, 0, 'the provider said zero');
+  assert.equal(zeroBilled[1].costUsd, null, 'nobody said anything — the table prices it');
+});
+
+test('one table-priced call makes the whole row re-priceable, for good', async () => {
+  const t = writeTranscript('sess-mixed.jsonl', [
+    call({ at: '2026-08-23T10:00:00Z', model: 'deepseek/deepseek-v4-flash', input: 1000, billed: 0.0002 }),
+    call({ at: '2026-08-23T11:00:00Z', model: 'deepseek/deepseek-v4-flash', input: 1000 }),
+  ]);
+  await sweep([t]);
+  const row = async () => (await db.pool.query(
+    `SELECT billed FROM usage_ledger WHERE user_id = $1 AND date = '2026-08-23'`, [user.id])).rows[0];
+  assert.equal((await row()).billed, false);
+  // A later sweep of billed-only calls on the same row must not flip it back.
+  appendTranscript(t, [call({ at: '2026-08-23T12:00:00Z', model: 'deepseek/deepseek-v4-flash', input: 1000, billed: 0.0002 })]);
+  await sweep([t]);
+  assert.equal((await row()).billed, false);
+});
+
+test('a reader shows a billed row as stored, and still re-prices one that is not', () => {
+  const tokens = { input_tokens: 533, output_tokens: 38, cache_read_tokens: 39168, cache_write_tokens: 0,
+    model: 'deepseek/deepseek-v4-flash', date: '2026-10-05', cost_usd: '0.00118196' };
+  const billed = pricing.ledgerRowCost({ ...tokens, billed: true }, 1.5);
+  assert.equal(billed.cost, 0.00118196);
+  assert.equal(billed.estimated, false);
+  const repriced = pricing.ledgerRowCost({ ...tokens, billed: false }, 1.5);
+  assert.ok(repriced.cost < 0.001 && repriced.estimated === false, 'the old behaviour, unchanged');
+  const unknown = pricing.ledgerRowCost({ ...tokens, model: 'nobody/priced-this', billed: false }, 1.5);
+  assert.equal(unknown.cost, 0.00118196, 'no rate: the stored fallback, as before');
+  assert.equal(unknown.estimated, true);
 });

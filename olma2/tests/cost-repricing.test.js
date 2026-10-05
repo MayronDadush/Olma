@@ -40,10 +40,10 @@ function usdFor(html, label) {
 async function ledger(userId, model, cols) {
   await db.pool.query(
     `INSERT INTO usage_ledger (user_id, date, model, input_tokens, output_tokens,
-       cache_read_tokens, cache_write_tokens, total_tokens, cost_usd, estimated)
-     VALUES ($1, CURRENT_DATE, $2, $3, $4, $5, $6, $7, $8, $9)`,
+       cache_read_tokens, cache_write_tokens, total_tokens, cost_usd, estimated, billed)
+     VALUES ($1, CURRENT_DATE, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
     [userId, model, cols.i, cols.o, cols.cr, cols.cw,
-      cols.i + cols.o + cols.cr + cols.cw, cols.stored, cols.estimated !== false]);
+      cols.i + cols.o + cols.cr + cols.cw, cols.stored, cols.estimated !== false, cols.billed === true]);
 }
 
 test('the pilot row that cost $2.54 on the page and 16 cents in reality', async () => {
@@ -95,6 +95,22 @@ test('a correctly-priced row is left exactly where it was', async () => {
   const usd = usdFor(await render(), 'רגיל');
   assert.ok(Math.abs(usd - 0.1153) < 0.05,
     `a row that was already right moved to $${usd}`);
+});
+
+test('a row the provider billed is shown at the charge, not re-priced under it', async () => {
+  // The reverse of every case above, and the reason for migration 110: a
+  // stored figure that IS the provider's charge is the truth, and re-pricing
+  // it through the table moved real users ~30% under what OpenRouter billed
+  // (2026-09-05..10-05). Same tokens, two rows: only the flag differs.
+  const billed = await makeUser(db.pool, '+972500001007', { firstName: 'חויב' });
+  const table = await makeUser(db.pool, '+972500001008', { firstName: 'טבלה' });
+  const tokens = { i: 533_000, o: 38_000, cr: 39_168_000, cw: 0, stored: 1.1820, estimated: false };
+  await ledger(billed.id, 'deepseek/deepseek-v4-flash', { ...tokens, billed: true });
+  await ledger(table.id, 'deepseek/deepseek-v4-flash', tokens);
+
+  const html = await render();
+  assert.ok(Math.abs(usdFor(html, 'חויב') - 1.182) < 0.001, 'the billed row moved off the charge');
+  assert.ok(usdFor(html, 'טבלה') < 0.8, 'an unflagged row is still re-priced, as before');
 });
 
 test('the totals and the per-user rows tell the same story', async () => {

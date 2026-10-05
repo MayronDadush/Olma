@@ -57,6 +57,7 @@ never trust a dated narrative for something you are about to act on.
 - [The stop that waited for a yes (fixed 2026-09-22)](#the-stop-that-waited-for-a-yes-fixed-2026-09-22)
 - [The table that did not say where she stood (2026-09-20)](#the-table-that-did-not-say-where-she-stood-2026-09-20)
 - [Five messages in twelve minutes, about one coordination (fixed 2026-09-22)](#five-messages-in-twelve-minutes-about-one-coordination-fixed-2026-09-22)
+- [Settled, then the hour, three minutes apart (fixed 2026-10-05)](#settled-then-the-hour-three-minutes-apart-fixed-2026-10-05)
 - [Two exits, two messages, to a man who asked for one a day (fixed 2026-10-03)](#two-exits-two-messages-to-a-man-who-asked-for-one-a-day-fixed-2026-10-03)
 - [Four messages in sixty-two seconds (fixed 2026-09-20)](#four-messages-in-sixty-two-seconds-fixed-2026-09-20)
 - [Two day-one steps twelve minutes apart, the first two hours late (fixed 2026-10-03)](#two-day-one-steps-twelve-minutes-apart-the-first-two-hours-late-fixed-2026-10-03)
@@ -102,6 +103,9 @@ never trust a dated narrative for something you are about to act on.
 - [The times the room said went nowhere (fixed 2026-09-23)](#the-times-the-room-said-went-nowhere-fixed-2026-09-23)
 - [The room could not cancel its own coordination (fixed 2026-09-25)](#the-room-could-not-cancel-its-own-coordination-fixed-2026-09-25)
 - [Eden could not come back (fixed 2026-10-01)](#eden-could-not-come-back-fixed-2026-10-01)
+- [Eden, kept out by a pause that had ended (fixed 2026-10-05)](#eden-kept-out-by-a-pause-that-had-ended-fixed-2026-10-05)
+- [Eden asked not to be taken out (fixed 2026-10-05)](#eden-asked-not-to-be-taken-out-fixed-2026-10-05)
+- [Yossi was abroad, and was taken out (fixed 2026-10-05)](#yossi-was-abroad-and-was-taken-out-fixed-2026-10-05)
 - [The coordination waited on the man who started it (fixed 2026-09-19)](#the-coordination-waited-on-the-man-who-started-it-fixed-2026-09-19)
 - [The room heard its own state from memory (fixed 2026-09-19)](#the-room-heard-its-own-state-from-memory-fixed-2026-09-19)
 - [The room held a time that no longer existed (fixed 2026-09-22)](#the-room-held-a-time-that-no-longer-existed-fixed-2026-09-22)
@@ -243,6 +247,7 @@ never trust a dated narrative for something you are about to act on.
 - [The light that would not go round (2026-09-22)](#the-light-that-would-not-go-round-2026-09-22)
 - [The picker that opened underneath (fixed 2026-09-22)](#the-picker-that-opened-underneath-fixed-2026-09-22)
 - [Saturday's game, filed under "closed" (fixed 2026-09-23)](#saturdays-game-filed-under-closed-fixed-2026-09-23)
+- [Two times for one game (fixed 2026-10-05)](#two-times-for-one-game-fixed-2026-10-05)
 - [Two coordinations for one meeting (fixed 2026-09-30)](#two-coordinations-for-one-meeting-fixed-2026-09-30)
 - [The coordination that expired on the wrong Tuesday (fixed 2026-09-23)](#the-coordination-that-expired-on-the-wrong-tuesday-fixed-2026-09-23)
 - [The list he could not put his own task into (2026-09-19)](#the-list-he-could-not-put-his-own-task-into-2026-09-19)
@@ -263,6 +268,7 @@ never trust a dated narrative for something you are about to act on.
 - [The rung nobody asked for, at half past one (2026-09-07)](#the-rung-nobody-asked-for-at-half-past-one-2026-09-07)
 - [Two ladders for one phone call (fixed 2026-09-08)](#two-ladders-for-one-phone-call-fixed-2026-09-08)
 - [The message id the model made up (2026-09-07)](#the-message-id-the-model-made-up-2026-09-07)
+- [Ten groceries, ten tasks (2026-10-05)](#ten-groceries-ten-tasks-2026-10-05)
 - [Two asks, one task (2026-09-07)](#two-asks-one-task-2026-09-07)
 - [The same thing, saved twice (fixed 2026-09-08)](#the-same-thing-saved-twice-fixed-2026-09-08)
 - [A time in the title and no reminder (fixed 2026-09-09)](#a-time-in-the-title-and-no-reminder-fixed-2026-09-09)
@@ -2128,6 +2134,73 @@ gap open: a member of a room can be invited to its coordination, receive
 nothing, and nobody — not him, not the room, not the person who opened it —
 can tell.
 
+### Three messages in thirty-five minutes, about one poker game (fixed 2026-10-05)
+
+Coordination 74 ("פוקר לשבוע הקרוב") opened from room 13 at 15:52. Users 13,
+57 and 58 each read three private messages by 16:27: the invite, a time
+added at 16:04, another added at 16:17. The fifteen-minute pacing from the
+entry above did exactly what it was built to do: each addition waited a
+quarter of an hour behind the last message and then went out, because
+nothing else arrived inside that quarter of an hour to fold into it.
+
+The owner's rule (2026-10-05): **each person hears about one coordination at
+most twice in their own day, the invite is the first, and the second waits
+so it can carry as much of the day as possible.** Asked as choices, he
+picked: a three-hour gap before the second; past two, the next morning, as
+one message; per coordination, not across all of them; and EVERYTHING counts,
+results too. Two follow-ups bend for a result: it never waits out the gap
+(there is nothing more to collect after "סגור"), and past the cap it still
+goes out when the meeting starts before the morning it would be held for.
+Otherwise "the poker is on tonight" lands after the game, and `meeting_over`
+drops it unread.
+
+It lives in the gate (`gate.coordinationCap`, worker fact
+`coordinationDay`), not in `meeting-fanout`, because coordination rows are
+enqueued from a dozen places and only the gate sees all of them. It HOLDS and
+never drops, and that is what makes it work: a held negotiation row is still
+unsent, so `foldIntoPendingQuestion` keeps folding into it. The hold gives
+the fold an afternoon instead of a quarter of an hour. Replayed on the day's
+real rows, the three people would each have read two messages: the invite at
+15:56, and both times together at about 18:56.
+
+Open: a coordination CANCELLED while still negotiating has no
+`confirmed_start_at`, so past the cap its cancellation waits for the morning
+even if one of its times was tonight. Two non-foldable rows (a reopening and
+an auto-answer, say) released together still go one at a time, and the
+second then meets the cap.
+
+### Settled, then the hour, three minutes apart (fixed 2026-10-05)
+
+The same evening as the entry below. Meeting 66 settled on Saturday at 13:07
+as a whole day, and at 14:04 somebody gave it an exact hour. Both rows were
+held for the quiet day: a `meeting_confirmed` ("it is settled") and a
+`meeting_time_set` ("the hour is set"). Both released at havdalah, 18:59. סער
+read the first at 19:04 and the second at 19:07, two messages about one
+meeting. Seven people got the same pair between 19:03 and 19:05, and one
+person on 2026-10-04 got it 172 seconds apart with no hold at all. Measured on
+the box over 30 days, it is the only pair of messages about one coordination
+that still lands inside ten minutes. The back-to-back proposals are all from
+before the fifteen-minute pace of 2026-09-22.
+
+Nothing merged them, on purpose. `meeting_*` kinds are outside
+`message-merge.MERGEABLE` because each one carries another person's text
+behind a data fence. Both are RESULTS, and a result never waits behind
+`PACE_MS`. So the fix is not at delivery but at the write, as with the table
+fold. `meeting-fanout.afterTimeSet` first looks for this person's
+`meeting_confirmed` that has not gone out. If it finds one, it writes the
+hour onto it: `slot`, the instant as `startsAtUtc`, and the setter's zone as
+`authorTz`. It also takes `allDay`, `daypart` and `askExactTime` off, and
+enqueues no `meeting_time_set` for them. The confirmation's own calendar step
+reads the instant off that payload, so the event goes on at the hour rather
+than as the whole day it settled on. The lock discipline is the table fold's:
+`FOR UPDATE SKIP LOCKED`, and the UPDATE re-asks `sent_at IS NULL`, so a
+confirmation the worker is sending right now is left alone and the hour goes
+out on its own, as before.
+
+The other two findings from that evening are separate: the unreadable
+availability value (#735) and the holiday-held check-in that does not expire.
+
+
 ### Two exits, two messages, to a man who asked for one a day (fixed 2026-10-03)
 
 סער (u-55) had asked on 2026-10-02 to be written to once a day. On the
@@ -3619,6 +3692,84 @@ and not a message. Through the page that was rare; through the room it was
 four private messages in a five-person poker game for one person changing
 their mind. Asked, the owner chose silence ("חזרה שתהיה שקטה כמו יציאה").
 
+### Eden, kept out by a pause that had ended (fixed 2026-10-05)
+
+The poker room again (meeting 74), 5 October. Eden (user 56) had been paused,
+and `group-meetings.sweepSilentPausedMembers` took him out of the
+coordination with a pause cause, as the rule says it should. Then the pause
+ended, and nothing put him back: no path that ends a pause looked at the
+coordinations the pause had taken him out of. Three things were wrong at once.
+
+- **The exit outlived its reason.** He was back, and still `opted_out`.
+  `meetings.rejoin` refused him too, because the 2026-10-01 rule (the entry
+  above) undid only an exit he CHOSE.
+- **She denied it.** He asked why he had been taken out, and she told him
+  she had not removed him. The turn context's `recentMeetings` carried the
+  coordination and his answers, and nothing said he was out of it. His yes
+  on Friday was still on record, so the model read him as in.
+- **The room counted him as a paused non-answerer.** `pausedExitsOf` reads
+  the cause on the latest `meeting.opted_out` audit row, and that row stays
+  latest after somebody comes back, so it would have kept counting him in
+  "ועוד N" next to his own yes.
+
+Restored by hand the same day (yes on Friday, answers intact), with a
+private apology the owner approved word for word. The fix:
+
+- `pause.resumeUser`, `quietResume` and the quiet branch of
+  `resumeAfterRoomInvite` call `meetings.restorePauseExits`. This puts back
+  every negotiating coordination whose latest exit was a pause, with the
+  answers they had given, and audits `meeting.rejoined` with cause
+  `pause_ended`.
+- `rejoin` accepts a pause exit once the pause is over.
+- `recentMeetings` carries `out` (`pause`/`chose`/`other`).
+- `pausedExitsOf` counts only somebody still `opted_out`.
+
+An exit they chose stays an exit.
+
+### Eden asked not to be taken out (fixed 2026-10-05)
+
+The same evening, an hour after the entry above. Eden had been restored to
+meeting 74 with his yes on Friday and sent an apology. A minute later he
+wrote "אל תדברי איתי יותר ואל תוציאי אותי משום מקום", and she paused him.
+Fifteen seconds after that, `sweepSilentPausedMembers` took him out again
+with cause `paused_by_request`. That was the 2026-09-27 rule working exactly
+as written, and it did what his own sentence asked her not to do.
+
+The owner's call: a pause stops her talking to someone, and it does not undo
+what they already said. A member who paused her themselves and has an answer
+on a time still on the table stays in. Their answer counts, the room waits on
+them for "everybody said yes", and they are never tagged. Somebody with no
+answer, or one only on a time that has since left the table, is taken out as
+before. One question, `group-meetings.answeredLive`, is asked by the sweep,
+`statusOf` and `meeting-options.unanimousOption`.
+
+### Yossi was abroad, and was taken out (fixed 2026-10-05)
+
+The poker room, meeting 74, 14:19 UTC. Yossi (u-53) tagged her: "אני בחול עד
+ה 17.10 גבר". Every time on the table was before the 17th. The room's agent
+called `leave_group_coordination`, the only room tool that matched "I can't",
+and answered "נרשם, יוסי. התיאום ממשיך בלעדייך". Nothing recorded a no on the
+dates he named, and anything put up after the 17th would never reach him.
+
+The private side has had the right shape since 2026-09-28: a constraint with a
+`windows` entry that answers today's times and any time added later
+(`domain/standing-answers.js`). The room had no door to it. The model
+understood him and had nowhere to put it.
+
+`leave_group_coordination` now takes an optional `until`. With it the member
+stays in. The words are recorded as a public constraint with a no-window from
+now to `until`, and every time on the table inside it is answered no. A yes
+they gave earlier inside it is withdrawn, because this is their newer word
+about those dates. A settled time inside the window is still leaving, and one
+after it changes nothing. Over 21 days is refused, the same cap as the private
+windows. It rides an existing tool, not a new one, because the schema had 27
+characters to spare.
+
+Repaired on the box the same evening, rehearsed under ROLLBACK first. He was
+rejoined through `meetings.rejoin` (his exit was `user_choice`), the window was
+set to the end of 17.10 Israel time, and Tuesday and Friday 9.10 were answered
+no. Nobody was messaged.
+
 ### The times the room said went nowhere (fixed 2026-09-23)
 
 The poker room ("פחם הסעות 🚌", meeting 42), 23 September, 09:48–09:51 UTC.
@@ -3894,6 +4045,20 @@ asked when the room had last been told. Fixed three ways: the done line
 carries the place, the place tool answers NO_REPLY while that line is still
 to come, and neither reminder follows a close said the same day (day-of) or
 inside the hour (soon).
+
+**2026-10-05, Padel Gang (group 9, meeting 69): "סגור" and then "📅 ביומן" a
+minute later.** The owner settled it from the page at 13:42:23. The sweep
+decided the done line at 13:42:26 with no event yet, so `line.calendar` was
+false. The organiser's agent (u-12) made the shared event at 13:42:40, in
+the turn delivering its `meeting_confirmed`, and the next pass said the
+separate calendar line at 13:43:26. Fix 7 (2026-09-26) let the calendar
+sentence ride the done line only when the event ALREADY existed, and the
+event is made by a model turn the close itself starts, so it never did. Now
+`jobs/groups.calendarPending` holds the done line while
+`calendar.meetingCalendarRoles` says a shared event is coming and the close
+(`meetings.closed_at`) is younger than `group-voice.CALENDAR_WAIT_MS` (two
+minutes). After that the line goes without it, so a model that never calls
+the tool delays the close and never swallows it.
 
 ### The room that did not know its own member (fixed 2026-09-23)
 
@@ -10206,6 +10371,56 @@ quick scan down the list it does not separate. The owner picked the whole card
 instead (2026-09-23): the card is tinted `--accent-soft` and the chip goes
 solid with a ✓ on it, active list only. An archive row is over and is worth
 pointing at with nothing.
+### Two times for one game (fixed 2026-10-05)
+
+In the poker coordination (meeting 74, room 13), Miron put "יום שישי 9.10
+בצהריים" on the table: noon, stored at its 13:00 stand-in. Later Eden added
+"יום שישי 9.10 ב-11:00" from his private chat. One Friday game was now two
+options, each collecting its own yeses, and the owner asked that Olma notice
+and ask whether to merge them.
+
+Nothing could notice. `meeting-options.add` folds only the exact same instant
+into a yes. Two hours apart, or a part of the day beside an hour inside it,
+were two options by construction.
+
+**The owner's three decisions:**
+
+- **What counts as close:** the same local day and at most two hours apart. A
+  part of the day counts as its window (`PART_WINDOWS`: noon is 12–16) and a
+  whole day as all of it, so 11:00 is an hour from noon.
+- **What merge means:** the person who wrote it decides between two answers.
+  A merge puts the new time in the old one's place, and every answer moves
+  with it. A separate time is a new option with new answers.
+- **Where:** the private chat and the room (the owner widened it before the
+  merge). The page adds as before.
+
+**The fix:**
+
+- `propose_meeting_slot` and the room's `add_group_coordination_option` ask
+  `meeting-options.similarOnTable` first. A room's refusal carries the times
+  only, never whose answer is whose. When a
+  close time is on the table, it writes nothing and returns
+  `reason: 'similar_option'` with the close options and their yes counts.
+- The model asks one question, then calls again with `merge_with=<id>`
+  (`meetings.mergeSlot` → `meeting-options.merge`) or `merge_with=0`. Zero
+  means separate: one parameter, because the schema budget is full.
+- `merge` marks the old option `replaced` and adds the new one; the person
+  merging is a yes, as adding always is. It then copies every other answer
+  across with `ON CONFLICT DO NOTHING`, so an answer already given to the new
+  moment stands, and re-runs `tryConfirm`, since carried yeses can make it
+  unanimous.
+- `meeting-fanout.afterOptionMerged` withdraws the queued question about the
+  old time. Whoever had answered it gets `meeting_answer_moved`: one sentence
+  saying their yes or no moved, and that one word changes it. They are not
+  asked again. Everybody else is asked about the new time as about any
+  addition.
+
+**Open:**
+
+- The page still adds without asking.
+- A decline carrying a `counter_proposal` goes through `proposeSlot` and is
+  not checked either.
+
 ### Two coordinations for one meeting (fixed 2026-09-30)
 
 Miron asked for a meeting with עידן before the two were connected. The request
@@ -12364,6 +12579,36 @@ Fixture drift, worth knowing before the next such guard: twenty-three tests in
 four files broke, and every one of them was a test giving the same person two
 open tasks with the same title — two shared helpers (`mkTask`, `taskWithReminder`)
 accounted for all but four. None of them were about titles.
+
+### Ten groceries, ten tasks (2026-10-05)
+
+Dov wrote "הולך לעשות קניות עכשיו רשימה-" and ten lines, one item each. The
+model understood — it filed every item under `errands` and answered "שמרתי את
+כל 10 הפריטים בקניות" — and called `add_tasks_bulk` with ten top-level items.
+The dictated-list split (`shopping-list.js`) only ever ran on `add_task`, and
+only for a verb-led, comma-separated sentence, so ten tasks went onto his page.
+Half an hour later `jobs/fact-extraction.js` read the same conversation and
+wrote an eleventh row, "קניות - נייר טואלט, מגבונים, …": no verb, so the parser
+did not see a list, and one long title against ten short ones is nothing
+`task-similarity` would call a twin.
+
+The agent understood and the outcome had nowhere to go — the missing piece was
+a parameter, not a prompt. Fixed in four places: `list` on `add_tasks_bulk`;
+`looksLikeShoppingBulk` for the turn that does not use it (keyed on the model's
+own `errands` tag, so a dump of short nouns about anything else never
+qualifies); the parser accepting a list's NAME followed by a dash or colon; and
+the open list found by title rather than category. Lists got their own category
+the same day at the owner's request ("רשימות תהיה קטגוריה נפרדת כברירת מחדל"),
+`category_auto` so a person's move wins.
+
+Repaired by hand on the box: a list "קניות סופר" (the owner's name for it) with
+the ten rows moved under it, ids kept; the extraction's row archived, not
+deleted.
+
+The checkin change broke three tests on the first run: `t.category = ANY($4)`
+is NULL for a project with no category, `NOT (NULL AND true)` is NULL, and every
+uncategorised stalled goal vanished from the rung. The old `IS NOT DISTINCT
+FROM` had been null-safe by construction.
 
 ### Two asks, one task (2026-09-07)
 

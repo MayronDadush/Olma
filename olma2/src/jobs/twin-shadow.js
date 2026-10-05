@@ -127,13 +127,14 @@ async function recordUsage(client, res) {
     ? { usd: res.usage.costUsd, estimated: false }
     : { usd: res.usage.input * FALLBACK_USD_PER_INPUT_TOKEN, estimated: true };
   await client.query(
-    `INSERT INTO usage_system_ledger (agent_id, date, model, input_tokens, output_tokens, cost_usd, estimated)
-     VALUES ($1, current_date, $2, $3, $4, $5, $6)
+    `INSERT INTO usage_system_ledger (agent_id, date, model, input_tokens, output_tokens, cost_usd, estimated, billed)
+     VALUES ($1, current_date, $2, $3, $4, $5, $6, NOT $6)
      ON CONFLICT (agent_id, date, model) DO UPDATE SET
        input_tokens = usage_system_ledger.input_tokens + $3,
        output_tokens = usage_system_ledger.output_tokens + $4,
        cost_usd = usage_system_ledger.cost_usd + $5,
-       estimated = usage_system_ledger.estimated OR $6`,
+       estimated = usage_system_ledger.estimated OR $6,
+       billed = usage_system_ledger.billed AND NOT $6`,
     [AGENT_ID, res.model || jev.DEFAULT_MODEL, res.usage.input, res.usage.output,
       Number(cost.usd).toFixed(8), cost.estimated]);
 }

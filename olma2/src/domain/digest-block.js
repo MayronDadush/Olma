@@ -188,11 +188,11 @@ const CATEGORY_GROUP_MIN = 8;
 const CATEGORY_LABELS = {
   he: {
     home: 'בית', work: 'עבודה', family: 'משפחה', health: 'בריאות',
-    money: 'כסף', errands: 'סידורים', other: 'שונות',
+    money: 'כסף', errands: 'סידורים', lists: 'רשימות', other: 'שונות',
   },
   en: {
     home: 'Home', work: 'Work', family: 'Family', health: 'Health',
-    money: 'Money', errands: 'Errands', other: 'Other',
+    money: 'Money', errands: 'Errands', lists: 'Lists', other: 'Other',
   },
 };
 const CATEGORY_ORDER = [...taskCategory.CATEGORIES, 'other'];
