@@ -377,6 +377,9 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
         // (reminders.startWeeklyNudge) — and only inside the same window a
         // chase gets, never on a turn that runs on long after the message.
         remindAsk: adopt && params.remindAsk === true ? clock() : null,
+        // "רשום עדן יצא": a status they quoted. opt_out_of_meeting refuses on
+        // this turn (tools/meetings.js) — the hook's verdict, never the words.
+        reportedExit: adopt && params.reportedExit === true,
         marked: new Set(), contextSent: false,
       };
       if (adopt && messageId) {
@@ -1392,6 +1395,7 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
           turn.chase = pre.chase || null; turn.chaseUsed = false;
           turn.openList = Boolean(pre.openList);
           turn.remindAsk = pre.remindAsk || null; turn.remindAskUsed = false;
+          turn.reportedExit = Boolean(pre.reportedExit);
           turn.openedByGateway = true;
         } else if (!turn.opened) {
           // No gateway open on file and this connection has not served a turn

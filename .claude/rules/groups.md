@@ -302,12 +302,26 @@ have already had to be argued for.
   both, and the page's archive button, go through `meetings.rejoin` →
   `meetingFanout.afterRejoin`, which is QUIET like the exit it undoes —
   nobody else gets a message, the table and the counts say who is in
-  (owner: "חזרה שתהיה שקטה כמו יציאה"). **Only an exit they CHOSE is undone**
-  (`meetings.LEFT_BY_CHOICE_SQL`: the latest `meeting.opted_out` with cause
-  `user_choice`, or `meeting.withdrew`). A pause, leaving the WhatsApp group
-  and revoking a connection are not, an `opted_out` row with no exit on
-  record is not, and nobody without a participant row is ever added this way
-  (`incidents.md`, "Eden could not come back").
+  (owner: "חזרה שתהיה שקטה כמו יציאה"). **Only an exit they CHOSE, or one a
+  PAUSE made, is undone** (`meetings.LEFT_BY_CHOICE_SQL`: the latest
+  `meeting.opted_out` with cause `user_choice`, or `meeting.withdrew`;
+  `meetings.leftByPause`: `paused_by_request`/`paused_no_answer`). A pause
+  exit is refused while they are still paused, and **is undone on its own
+  when the pause ends**: `pause.resumeUser`, `quietResume` and
+  `resumeAfterRoomInvite` call `meetings.restorePauseExits`, with the answers
+  they had given. Leaving the WhatsApp group and revoking a connection are
+  not undone, an `opted_out` row with no exit on record is not, and nobody
+  without a participant row is ever added this way. The turn's
+  `recentMeetings` says `out` about a coordination they are not in, so she
+  never tells somebody they are still in one (`incidents.md`, "Eden could
+  not come back", "Eden, kept out by a pause that had ended").
+  **…and "away until a date" is NOT leaving** (owner, 2026-10-05).
+  `leave_group_coordination` with `until` keeps them in: their words become a
+  public constraint with a no-window to that moment (the private side's
+  `standing-answers`), every time inside it is a no, including one they had
+  said yes to, and later times inside it are answered for them. A settled time
+  inside the window is still an exit (`incidents.md`, "Yossi was abroad, and
+  was taken out").
 
 - **Somebody a room sent to the greeter hears about that room in the FIRST
   reply, and its coordination follows that same night if they are awake**
@@ -668,7 +682,12 @@ have already had to be argued for.
   reply, the done line, the calendar line): an event that already exists as
   the done line is decided rides it (`line.calendar`, both stamps), and
   `group-meetings.settle` hands the model `hints.room` saying the fixed line
-  is the announcement and to answer NO_REPLY. **And no base line when nobody is
+  is the announcement and to answer NO_REPLY. **The event is made AFTER the
+  close, by the organiser's agent, so since 2026-10-05 the done line WAITS for
+  it** (`jobs/groups.calendarPending`): while `meetingCalendarRoles.shared`
+  says one is coming and the close is under `group-voice.CALENDAR_WAIT_MS` old.
+  Past that it goes without, and the separate line is the fallback.
+  **And no base line when nobody is
   missing or `settle_due_at` is armed** — "מחכה ל 🤞" went out with an
   empty list twelve seconds after Yuval's yes made it unanimous; the next
   thing that room should hear is "סגור". `TAG_RULE` also says now that the
@@ -906,7 +925,11 @@ have already had to be argued for.
   **Only a pause the ladder took gets that invite** (owner, 2026-09-27).
   Somebody who paused her THEMSELVES is never swept in, and one already in is
   taken out on the next minute sweep, cause `paused_by_request`, with no day's
-  wait. `statusOf` leaves them out of `participants`, `silent`, `missing` and
+  wait. **Unless they had already ANSWERED a time still on the table** (owner,
+  2026-10-05; `group-meetings.answeredLive`): then they stay in, their answer
+  counts, `unanimousOption` waits on them, and `statusOf` draws them with no
+  phone, so no line ever tags them. The pause silences her; it does not undo
+  what they said (`incidents.md`, "Eden asked not to be taken out"). `statusOf` leaves them out of `participants`, `silent`, `missing` and
   `optedOut`: never asked, never tagged, never said to have left.
   **But the room's NUMBER still counts them** (owner, 2026-09-28, reversing
   that half of 2026-09-27: "משתמשים מושהים גם נכללים בספירה" — the room can
@@ -1048,6 +1071,18 @@ have already had to be argued for.
   model, which is the pre-2026-09-06 behaviour for exactly one class of
   sender (`incidents.md`, "The tags that vanished before any hook ran").
 
+- **A room is told how its coordination reaches each member, and says nothing
+  else about it** (`group-turn.reachOf`, `REACH_RULE`). `room.people[].reach`
+  is `in`, `joining`, `invited`, `invite_coming` or `must_write_first`, drawn
+  from `meeting_participants`, the connected test, the `room_cold_invite`
+  rows and `coldInvite`'s own conditions — present only while the
+  coordination can still let somebody in, and absent for somebody who left it
+  or paused her themselves. She has no way to write to anybody privately, so
+  "I'll ask him" is never hers to promise, and "he can" from another member
+  is never his yes. When `coldInvite`'s or `admitLateMembers`' conditions
+  change, change `reachOf` with them, or the room is told a door is open that
+  is not (`incidents.md`, "The room was told it was four").
+
 - **A room member who has never written to her hears about a coordination
   ONCE (per room until 2026-09-28, per person since), privately, in the owner's fixed words — and is never made a
   participant** (owner, 2026-09-26; `group-meetings.coldInvite`, flag
@@ -1068,7 +1103,11 @@ have already had to be argued for.
   explain away. Their reply reaches the greeter, which already says the room's
   line (`domain/intake-room.js`), and `admitLateMembers` lets them in once they
   are connected — so silence costs the coordination nothing. Only a pending row
-  with a real number (a LID has nothing to write to), and never while
+  with a real number (a LID has nothing to write to), on the roster for half
+  an hour first (`COLD_INVITE_SETTLE_MINUTES`; a LID resolved to its phone
+  in 22 minutes on 2026-10-04) and still on it at delivery (the worker's
+  `coldInviteGone` drops `left_room` / `coordination_closed`; `incidents.md`,
+  "The invite that went to Germany"), and never while
   `registration_open` is false, because the message promises to add them and
   their reply would be waitlisted. PR #448 (`group_invite_unconnected`) is the
   approach this replaces: it widened `coordinatingMembers` to every roster row,

@@ -64,8 +64,10 @@ test('a dictated list becomes a titled list with items under it', async () => {
   assert.equal(res.ok, true);
   assert.equal(res.data.shoppingList, true);
   assert.equal(res.data.merged, false);
-  assert.equal(res.data.task.title, 'קניות');
-  assert.equal(res.data.task.category, 'errands');
+  assert.equal(res.data.task.title, 'קניות סופר');
+  // Its own category since 2026-10-05, chosen by us so a person may move it.
+  assert.equal(res.data.task.category, 'lists');
+  assert.equal(res.data.task.category_auto, true);
   assert.deepEqual(await childrenOf(res.data.task.id), ['חלב', 'קוטג׳', 'גבינה צהובה']);
 });
 
@@ -121,4 +123,79 @@ test('an ordinary task is untouched, and so is an item added into a project', as
   assert.equal(sub.data.shoppingList, undefined);
   assert.equal(sub.data.task.title, 'לקנות מפה, פנס');
   assert.equal(String(sub.data.task.parent_id), String(project.id));
+});
+
+// ── Dov, 2026-10-05 ─────────────────────────────────────────────────────────
+// "הולך לעשות קניות עכשיו רשימה-" and ten lines. The model tagged every item
+// errands and called add_tasks_bulk with ten top-level items: ten tasks.
+const DOV = ['נייר טואלט', 'מגבונים', 'תפוח אדמה', 'גזר', 'פרות', 'כרוב לבן', 'בצל', 'עוף', 'כנפיים', 'קולה דייט'];
+const bulkFor = (uid) => (items, opts = {}) =>
+  withTx(db.pool, (c) => tasks.addTasksBulk(c, uid, items, opts));
+const topLevel = async (uid) => (await db.pool.query(
+  `SELECT title FROM tasks WHERE owner_id = $1 AND parent_id IS NULL AND archived_at IS NULL ORDER BY id`,
+  [uid])).rows.map((r) => r.title);
+
+test('Dov\'s ten groceries, saved in bulk exactly as the model did, are ONE list', async () => {
+  const u = await freshUser();
+  const res = await bulkFor(u.id)(DOV.map((title) => ({ title, kind: 'todo', category: 'errands' })));
+  assert.equal(res.ok, true);
+  assert.equal(res.data.shoppingList, true);
+  assert.deepEqual(await topLevel(u.id), ['קניות סופר'], 'the items landed as separate tasks');
+  assert.deepEqual(await childrenOf(res.data.task.id), DOV);
+  assert.equal(res.data.task.category, 'lists');
+});
+
+test('a list named through `list` is one list, joins its open namesake, and refuses a dated item', async () => {
+  const u = await freshUser();
+  const bulk = bulkFor(u.id);
+  const first = await bulk([{ title: 'מטען' }, { title: 'דרכון' }], { list: 'ציוד לטיול' });
+  assert.equal(first.data.task.title, 'ציוד לטיול');
+  assert.equal(first.data.task.category, 'lists');
+  const again = await bulk([{ title: 'דרכון' }, { title: 'כובע' }], { list: 'ציוד לטיול' });
+  assert.equal(again.data.merged, true);
+  assert.deepEqual(again.data.alreadyOnList, ['דרכון']);
+  assert.deepEqual(await childrenOf(first.data.task.id), ['מטען', 'דרכון', 'כובע']);
+  const when = new Date(Date.now() + 86400_000).toISOString().replace('Z', '+00:00');
+  const dated = await bulk([{ title: 'טיסה', dueAt: when }, { title: 'מגבת' }], { list: 'ציוד לטיול' });
+  assert.equal(dated.ok, false, 'a time they gave would have vanished into a list');
+});
+
+test('a shopping run is found under any of its names, and after the person re-files it', async () => {
+  const u = await freshUser();
+  const { rows } = await db.pool.query(
+    `INSERT INTO tasks (owner_id, title, category) VALUES ($1, 'קניות סופר', 'home') RETURNING id`, [u.id]);
+  const res = await addFor(u.id)('לקנות חלב, לחם');
+  assert.equal(res.data.merged, true, 'started a rival list beside the one they have');
+  assert.equal(String(res.data.task.id), String(rows[0].id));
+});
+
+test('what the extraction job writes back — "קניות - א, ב, …" — merges instead of becoming a row', async () => {
+  const u = await freshUser();
+  const list = (await bulkFor(u.id)(DOV.map((title) => ({ title, category: 'errands' })))).data.task;
+  const res = await addFor(u.id)(`קניות - ${DOV.join(', ')}`, { source: 'extracted' });
+  assert.equal(String(res.data.task.id), String(list.id));
+  assert.equal(res.data.items.length, 0);
+  assert.deepEqual(await topLevel(u.id), ['קניות סופר']);
+  // A task ABOUT shopping, with no separator, is still a task.
+  assert.equal(shopping.parseShoppingList('קניות לשבת'), null);
+  assert.equal(shopping.parseShoppingList('סופר מחר'), null);
+});
+
+test('a bulk dump that is NOT a shopping list is left exactly as it was', async () => {
+  const no = (items) => assert.equal(
+    shopping.looksLikeShoppingBulk(items, require('../src/domain/task-category').classifyText), false,
+    JSON.stringify(items.map((i) => i.title)));
+  const e = (title, extra = {}) => ({ title, category: 'errands', ...extra });
+  // The model did not file them all as errands: not its read of shopping.
+  no([{ title: 'גזר' }, { title: 'בצל' }, { title: 'עוף' }]);
+  no([e('גזר'), e('בצל'), { title: 'עוף', category: 'home' }]);
+  // Errands to DO, not things to buy.
+  no([e('לאסוף חבילה'), e('לשלם ארנונה'), e('לתדלק')]);
+  no([e('דואר'), e('מוסך'), e('תספורת')]);
+  // A dated or placed item, and too few to be a list.
+  const when = new Date(Date.now() + 86400_000).toISOString().replace('Z', '+00:00');
+  no([e('גזר'), e('בצל'), e('עוף', { dueAt: when })]);
+  no([e('גזר'), e('בצל')]);
+  // A sentence among them.
+  no([e('גזר'), e('בצל'), e('עוף טרי מהקצב של יוסי בשוק')]);
 });

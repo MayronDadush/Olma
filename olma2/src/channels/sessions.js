@@ -603,6 +603,13 @@ function usageCallOf(o) {
   const m = o && o.message;
   if (!m || m.role !== 'assistant' || !m.usage) return null;
   const u = m.usage;
+  // The gateway now writes what OpenRouter actually charged, and says so with
+  // `totalOrigin: 'provider-billed'`. Measured on the box 2026-10-05: every
+  // OpenRouter call since late August carries it; the ones that do not
+  // (August's first era, `delivery-mirror`) carry an all-zero block that is
+  // NOT a price and must still be priced by the table. Only the origin tells
+  // the two apart — a zero total is a real answer when the provider said it.
+  const total = u.cost && u.cost.totalOrigin === 'provider-billed' ? Number(u.cost.total) : NaN;
   return {
     model: m.responseModel || m.model || '',
     at: o.timestamp || null,
@@ -610,6 +617,7 @@ function usageCallOf(o) {
     output: Number(u.output) || 0,
     cacheRead: Number(u.cacheRead) || 0,
     cacheWrite: Number(u.cacheWrite) || 0,
+    costUsd: Number.isFinite(total) && total >= 0 ? total : null,
   };
 }
 

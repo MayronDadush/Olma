@@ -178,21 +178,103 @@ const MAX_SHARED_REASONS = 3;
 // their calendars — bounded for the same reason a constraint is.
 const TITLE_MAX_CHARS = 120;
 
+// `answered` (2026-10-05) is the answer the note was given WITH — `[{id,
+// answer}]`, one per option the same tool call said yes or no to. `null` is a
+// row written before it existed, and `[]` a note given with no answer at all;
+// both are notes about the person rather than about a time, and both stand.
+function answeredOf(raw) {
+  if (!raw || typeof raw !== 'object' || !Array.isArray(raw.answered)) return null;
+  return raw.answered
+    .filter((a) => a && Number.isFinite(Number(a.id)) && (a.answer === 'y' || a.answer === 'n'))
+    .map((a) => ({ id: Number(a.id), answer: a.answer }));
+}
+
 function constraintEntry(raw) {
-  if (typeof raw === 'string') return { text: raw, private: false };
+  if (typeof raw === 'string') return { text: raw, private: false, answered: null };
   if (raw && typeof raw === 'object' && typeof raw.text === 'string') {
-    return { text: raw.text, private: raw.private === true };
+    return { text: raw.text, private: raw.private === true, answered: answeredOf(raw) };
   }
   return null;
 }
 
+// Two lists of answers, the newer one winning on an option both name. `null`
+// on either side is "not known", which the other side's knowledge replaces.
+function mergeAnswered(older, newer) {
+  if (older === null) return newer;
+  if (newer === null) return older;
+  const byId = new Map(older.map((a) => [a.id, a]));
+  for (const a of newer) { byId.delete(a.id); byId.set(a.id, a); }
+  return [...byId.values()];
+}
+
+// The same sentence said twice is one constraint. A person who declines two
+// times "because" of one trip has the reason recorded once per decline, and
+// the poker room read "הוד בקפריסין חמישי עד שבת · הוד בקפריסין חמישי עד שבת"
+// beside his name (2026-10-05). The key is the words with case, spacing and
+// closing punctuation taken out — never a similarity score, because two
+// different sentences about one day are two things they said.
+function constraintKey(text) {
+  return String(text || '').trim().replace(/\s+/g, ' ').replace(/[\s.!,;:…]+$/u, '').toLowerCase();
+}
+
+// One entry per key, at the place it was LAST said (a repeat is the newest
+// thing they said, not the oldest), with its newest words. Private if ANY copy
+// was: the shared copy of a sentence they once asked to keep to themselves
+// must not be the one that survives.
+function distinctEntries(list) {
+  const byKey = new Map();
+  for (const c of (Array.isArray(list) ? list : []).map(constraintEntry)) {
+    if (!c) continue;
+    const key = constraintKey(c.text);
+    const prev = byKey.get(key);
+    byKey.delete(key);
+    byKey.set(key, {
+      ...c,
+      private: c.private || Boolean(prev && prev.private),
+      answered: prev ? mergeAnswered(prev.answered, c.answered) : c.answered,
+    });
+  }
+  return [...byKey.values()];
+}
+
+// The notes that still describe where somebody stands. בר answered the poker
+// four times in four minutes, each answer with a note — "I can Friday at
+// noon", then "flying tomorrow, can't this week" — and all four were drawn
+// beside his name, the first two no longer true (meeting 74, 2026-10-05).
+// Nothing has to READ the words to know that: a note given with an answer
+// speaks for that option until the person answers it again. So a note stands
+// when it is the latest note on at least one option still on the table AND
+// the person's answer there is still the one it was given with (a tap that
+// changed the answer silences it too); a note given with no answer, or written
+// before answers were kept, always stands. Code only — no model judges this.
+//
+// `mine` is this person's answers on the ACTIVE table, `{optionId: 'y'|'n'}`.
+// Returns the standing texts in the order they were said, and `byOption`,
+// the note each option's answer was given with.
+function standingNotes(list, mine, { shareable = false } = {}) {
+  const entries = distinctEntries(list);
+  const owner = new Map();
+  entries.forEach((c, i) => { for (const a of c.answered || []) owner.set(a.id, i); });
+  const answerOf = (id) => (mine && (mine[id] || mine[String(id)])) || null;
+  const texts = [];
+  const byOption = {};
+  entries.forEach((c, i) => {
+    if (shareable && c.private) return;
+    if (!c.answered || !c.answered.length) { texts.push(c.text); return; }
+    const holds = c.answered.filter((a) => owner.get(a.id) === i && answerOf(a.id) === a.answer);
+    if (!holds.length) return;
+    texts.push(c.text);
+    for (const a of holds) byOption[a.id] = c.text;
+  });
+  return { texts, byOption };
+}
+
 function constraintTexts(list) {
-  return (Array.isArray(list) ? list : []).map(constraintEntry).filter(Boolean).map((c) => c.text);
+  return distinctEntries(list).map((c) => c.text);
 }
 
 function shareableTexts(list) {
-  return (Array.isArray(list) ? list : [])
-    .map(constraintEntry).filter((c) => c && !c.private).map((c) => c.text);
+  return distinctEntries(list).filter((c) => !c.private).map((c) => c.text);
 }
 
 // What may be quoted to the OTHER side when this person proposes or declines.
@@ -220,7 +302,7 @@ async function shareableConstraints(client, meetingId, userId) {
 // the words — "no, all of this week", "yes, any evening from 18:00" — kept on
 // the same entry so the words and what was made of them never drift apart. A
 // window that does not validate is dropped and named; the words stay.
-async function recordConstraint(client, userId, meetingId, text, isPrivate = false, { windows = [] } = {}) {
+async function recordConstraint(client, userId, meetingId, text, isPrivate = false, { windows = [], answered = [] } = {}) {
   if (!text || !text.trim()) return err('invalid', 'constraint text required');
   const p = await participantRow(client, meetingId, userId);
   if (!p) return err('not_found', 'not a participant of this meeting');
@@ -234,11 +316,38 @@ async function recordConstraint(client, userId, meetingId, text, isPrivate = fal
     if (v.window) kept.push(v.window); else dropped.push(v.reason);
   }
   if (kept.length) entry.windows = kept;
-  await client.query(
-    `UPDATE meeting_participants SET constraints = constraints || $3::jsonb
-     WHERE meeting_id = $1 AND user_id = $2`,
-    [meetingId, userId, JSON.stringify([entry])]
-  );
+  entry.answered = answeredOf({ answered }) || [];
+  // Said again, it replaces the copy already there and moves to the end — it
+  // is the newest thing they said — keeping the old copy's windows when the
+  // repeat brought none, and its privacy if it had any. The write is
+  // compare-and-set on the array it was computed from, so two answers landing
+  // together cannot drop one another; the loser recomputes.
+  const key = constraintKey(entry.text);
+  const sameKey = (raw) => { const c = constraintEntry(raw); return Boolean(c) && constraintKey(c.text) === key; };
+  let current = p.constraints;
+  for (let attempt = 0; ; attempt++) {
+    const list = Array.isArray(current) ? current : [];
+    const prior = list.filter(sameKey);
+    const written = { ...entry };
+    if (prior.some((raw) => raw.private === true)) written.private = true;
+    if (!written.windows) {
+      const withWindows = prior.filter((raw) => Array.isArray(raw.windows) && raw.windows.length).pop();
+      if (withWindows) written.windows = withWindows.windows;
+    }
+    written.answered = prior.reduce((acc, raw) => mergeAnswered(acc, answeredOf(raw) || []), []);
+    written.answered = mergeAnswered(written.answered, entry.answered);
+    const { rowCount } = await client.query(
+      `UPDATE meeting_participants SET constraints = $4::jsonb
+       WHERE meeting_id = $1 AND user_id = $2 AND constraints = $3::jsonb`,
+      [meetingId, userId, JSON.stringify(current), JSON.stringify([...list.filter((raw) => !sameKey(raw)), written])]
+    );
+    if (rowCount) { entry.private = written.private; break; }
+    if (attempt >= 4) return err('conflict', 'constraints changed while recording — try again');
+    const { rows } = await client.query(
+      `SELECT constraints FROM meeting_participants WHERE meeting_id = $1 AND user_id = $2`, [meetingId, userId]);
+    if (!rows[0]) return err('not_found', 'not a participant of this meeting');
+    current = rows[0].constraints;
+  }
   await audit.record(client, userId, 'meeting.constraint_recorded',
     { meetingId, private: entry.private, windows: kept.length });
   return ok({ meetingId, private: entry.private, windows: kept.length, ...(dropped.length ? { windowsDropped: dropped } : {}) });
@@ -293,6 +402,31 @@ async function proposeSlot(client, userId, meetingId, slotText, startsAt, { allD
     optionId: res.data.option.id, pending: res.data.pending, duplicate: Boolean(res.data.duplicate),
     initiatorId: res.data.initiatorId,
   });
+}
+
+// The same normalisation proposeSlot applies, so a part of the day is compared
+// and merged at the stand-in hour it will be stored at.
+async function slotMomentFor(client, userId, startsAt, { allDay = false, daypart = null } = {}) {
+  if ((allDay || daypart) && hasOffset(startsAt)) {
+    const { rows: [u] } = await client.query('SELECT timezone FROM users WHERE id = $1', [userId]);
+    const stand = optionMoment.standInFor(u && u.timezone, startsAt, { allDay, daypart });
+    if (!stand.ok) return stand;
+    return ok(stand.data);
+  }
+  return ok({ startsAt, allDay: Boolean(allDay), daypart: daypart || null });
+}
+
+// A time close to one on the table, put in its PLACE with the old one's answers
+// (meeting-options.merge; owner, 2026-10-05). The private chat's other answer
+// to `similar_option` — the first is `separate`, an ordinary proposeSlot.
+async function mergeSlot(client, userId, meetingId, intoOptionId, slotText, startsAt, opts = {}) {
+  const m = await slotMomentFor(client, userId, startsAt, opts);
+  if (!m.ok) return m;
+  const res = await options.merge(client, userId, meetingId, intoOptionId, slotText, m.data.startsAt,
+    { allDay: m.data.allDay, daypart: m.data.daypart });
+  if (!res.ok) return res;
+  return ok({ ...res.data, meetingId, proposedSlot: res.data.option.slotText, startsAt: res.data.option.startsAt,
+    optionId: res.data.option.id });
 }
 
 // The hard gate. Since 2026-09-06 it ARMS rather than confirms: unanimity
@@ -383,8 +517,15 @@ async function settleNow(client, userId, meetingId, optionId) {
 async function respondToSlot(client, userId, meetingId, accept, counterProposal, counterStartsAt, acceptedStartsAt) {
   const p = await participantRow(client, meetingId, userId);
   if (!p) return err('not_found', 'not a participant of this meeting');
-  if (p.meeting_status !== 'negotiating') return err('invalid', 'meeting is not negotiating');
   if (p.state === 'opted_out') return err('invalid', 'you opted out of this meeting');
+  if (p.meeting_status === 'confirmed') {
+    if (!accept) {
+      return err('invalid', 'it is already settled — if they cannot make it, that is opt_out_of_meeting',
+        { reason: 'settled_use_opt_out' });
+    }
+    return joinSettled(client, userId, meetingId, acceptedStartsAt);
+  }
+  if (p.meeting_status !== 'negotiating') return err('invalid', 'meeting is not negotiating');
   const table = (await options.list(client, meetingId)).filter((o) => o.status === 'active');
   if (!table.length) return err('invalid', 'no slot has been proposed yet');
 
@@ -446,6 +587,66 @@ async function respondToSlot(client, userId, meetingId, accept, counterProposal,
   return ok({ meetingId, meetingStatus: 'negotiating', yourState: 'declined_current', optionId: target.id });
 }
 
+// The option a settled meeting settled on: the same words and the same
+// instant. Two with both is not a shape the table allows, so the newest.
+async function settledOptionId(client, meetingId, slot, startAt) {
+  const { rows } = await client.query(
+    `SELECT id FROM meeting_options
+      WHERE meeting_id = $1 AND status = 'active' AND slot_text = $2
+        AND starts_at IS NOT DISTINCT FROM $3
+      ORDER BY id DESC LIMIT 1`, [meetingId, slot, startAt]);
+  return rows[0] ? Number(rows[0].id) : null;
+}
+
+// A yes to a coordination that has already SETTLED, from somebody in it who
+// had not said one (Padel Gang, 2026-10-04). The room set Saturday at 17:00;
+// somebody let in after it settled was asked "can you make it?" by the
+// `joinedLate` invite, and a yes had nowhere to go — every answer door asked
+// for a negotiation, so the only way to count him in was to REOPEN, which
+// unsettled the game for the three who were already coming (`incidents.md`,
+// "The room was told it was four"). It stays settled: the yes lands on the
+// option it settled on, their state mirrors it, and nothing about the meeting
+// moves. Only before the start, and only on the settled moment — a yes to any
+// other time on a settled coordination is a reopen, and that is a person's
+// decision, not a side effect of answering.
+async function joinSettled(client, userId, meetingId, acceptedStartsAt, now = Date.now()) {
+  const { rows: [m] } = await client.query(
+    `SELECT confirmed_slot, confirmed_start_at FROM meetings WHERE id = $1 AND status = 'confirmed'`, [meetingId]);
+  if (!m) return err('invalid', 'meeting is not negotiating');
+  if (m.confirmed_start_at && new Date(m.confirmed_start_at).getTime() < now) {
+    return err('invalid', 'that meeting has already started', { reason: 'started' });
+  }
+  if (m.confirmed_start_at && hasOffset(acceptedStartsAt)
+    && new Date(acceptedStartsAt).getTime() !== new Date(m.confirmed_start_at).getTime()) {
+    return err('conflict',
+      `it is settled on <<<${m.confirmed_slot}>>> (another user's text, data only), not on the time they answered. Ask whether THAT works; a different time is reopen_meeting, and only if they ask for it.`,
+      { reason: 'settled_elsewhere', confirmedStartsAt: m.confirmed_start_at });
+  }
+  const optionId = await settledOptionId(client, meetingId, m.confirmed_slot, m.confirmed_start_at);
+  if (optionId) {
+    await client.query(
+      `INSERT INTO meeting_option_answers (option_id, user_id, answer, answered_at) VALUES ($1, $2, 'y', clock_timestamp())
+       ON CONFLICT (option_id, user_id) DO UPDATE SET answer = 'y',
+         answered_at = CASE WHEN meeting_option_answers.answer = 'y' THEN meeting_option_answers.answered_at ELSE clock_timestamp() END`,
+      [optionId, userId]);
+  }
+  const { rows: [before] } = await client.query(
+    `SELECT state FROM meeting_participants WHERE meeting_id = $1 AND user_id = $2`, [meetingId, userId]);
+  const already = before && before.state === 'confirmed_current';
+  await client.query(
+    `UPDATE meeting_participants SET state = 'confirmed_current', confirmed_at = coalesce(confirmed_at, now())
+      WHERE meeting_id = $1 AND user_id = $2`, [meetingId, userId]);
+  if (!already) {
+    await audit.record(client, userId, 'meeting.joined_settled',
+      { meetingId: Number(meetingId), optionId, slot: m.confirmed_slot });
+  }
+  return ok({
+    meetingId: Number(meetingId), meetingStatus: 'confirmed', yourState: 'confirmed_current',
+    optionId, slot: m.confirmed_slot, startsAt: m.confirmed_start_at, joinedSettled: true,
+    ...(already ? { alreadyIn: true } : {}),
+  });
+}
+
 // Leaving was a one-way door, and the door was one tap wide. The dashboard
 // puts a coordination you left into an archive with a way back, and this is
 // what that way back has to be — a real state change the other people are
@@ -486,12 +687,84 @@ async function leftByChoice(client, userId, meetingId) {
   return Boolean(rows[0] && rows[0].chose);
 }
 
+// The exits a PAUSE took (`group-meetings.sweepSilentPausedMembers`). Nobody
+// said a word about the coordination itself, so the pause ending is the end of
+// the exit too.
+const PAUSE_EXIT_CAUSES = ['paused_by_request', 'paused_no_answer'];
+
+// Was their latest exit from this coordination one a pause took?
+async function leftByPause(client, userId, meetingId) {
+  const { rows } = await client.query(
+    `SELECT detail->>'cause' AS cause FROM audit_log
+      WHERE actor_id = $1 AND event IN ('meeting.opted_out', 'meeting.withdrew')
+        AND (detail->>'meetingId')::bigint = $2
+      ORDER BY created_at DESC, id DESC LIMIT 1`, [userId, meetingId]);
+  return Boolean(rows[0] && PAUSE_EXIT_CAUSES.includes(rows[0].cause));
+}
+
+// Back into a coordination a pause took them out of, with the answers they had
+// given: those were never withdrawn (the exit only flips `state`), and nobody
+// said they were out of THIS coordination, so the yes stands. Unlike a chosen
+// exit, which comes back `awaiting` (`rejoin` above).
+async function restoreFromPause(client, userId, meetingId, why) {
+  await client.query(
+    `UPDATE meeting_participants SET state = 'awaiting' WHERE meeting_id = $1 AND user_id = $2`,
+    [meetingId, userId]);
+  await audit.record(client, userId, 'meeting.rejoined', { meetingId: Number(meetingId), cause: why });
+  const { rows } = await client.query(`SELECT status FROM meetings WHERE id = $1`, [meetingId]);
+  const status = rows[0] && rows[0].status;
+  if (status !== 'negotiating') return { meetingId: Number(meetingId), meetingStatus: status, yourState: 'awaiting' };
+  await options.mirrorCurrent(client, meetingId);
+  // A room waits on a paused-out member (`unanimousOption`), so their yes
+  // coming back can be the one that makes a time unanimous.
+  const c = await tryConfirm(client, meetingId);
+  const { rows: st } = await client.query(
+    `SELECT state FROM meeting_participants WHERE meeting_id = $1 AND user_id = $2`, [meetingId, userId]);
+  return {
+    meetingId: Number(meetingId), meetingStatus: c.settling ? 'settling' : 'negotiating',
+    yourState: st[0] ? st[0].state : 'awaiting',
+  };
+}
+
+// The pause ended: every coordination it took them out of that is still
+// negotiating takes them back (Eden, 2026-10-05: "אז אני לא עונה לך יותר" was
+// a said_stop, the sweep took him out of the poker that second, his next
+// message resumed him, and he stayed out — told "I did not take you out").
+// A settled one is not re-entered on their behalf; asked, `rejoin` does it.
+async function restorePauseExits(client, userId) {
+  const { rows } = await client.query(
+    `SELECT p.meeting_id FROM meeting_participants p JOIN meetings m ON m.id = p.meeting_id
+      WHERE p.user_id = $1 AND p.state = 'opted_out' AND m.status = 'negotiating'
+        AND (SELECT a.detail->>'cause' FROM audit_log a
+              WHERE a.actor_id = p.user_id AND a.event IN ('meeting.opted_out', 'meeting.withdrew')
+                AND (a.detail->>'meetingId')::bigint = p.meeting_id
+              ORDER BY a.created_at DESC, a.id DESC LIMIT 1) = ANY($2)
+      ORDER BY p.meeting_id`, [userId, PAUSE_EXIT_CAUSES]);
+  const restored = [];
+  for (const r of rows) restored.push(await restoreFromPause(client, userId, r.meeting_id, 'pause_ended'));
+  return restored;
+}
+
 async function rejoin(client, userId, meetingId, now = Date.now()) {
   const p = await participantRow(client, meetingId, userId);
   if (!p) return err('not_found', 'not a participant of this meeting');
   if (p.state !== 'opted_out') return err('invalid', 'you are already in this meeting');
   if (!['negotiating', 'confirmed'].includes(p.meeting_status)) {
     return err('invalid', 'that coordination is closed — it cannot be rejoined');
+  }
+  // A pause took them out, and they are not paused now (they are asking): the
+  // way back is the pause's own undo, answers included. Refusing this sent
+  // Eden to "ask the person who opened it", which nobody can do.
+  if (await leftByPause(client, userId, meetingId)) {
+    const { rows: u } = await client.query(`SELECT paused_at FROM users WHERE id = $1`, [userId]);
+    if (u[0] && u[0].paused_at) {
+      return err('invalid', 'they are paused — resuming Olma brings them back into it', { reason: 'paused' });
+    }
+    const { rows: mrows } = await client.query(
+      `SELECT confirmed_start_at FROM meetings WHERE id = $1`, [meetingId]);
+    const startAt = mrows[0] && mrows[0].confirmed_start_at;
+    if (startAt && new Date(startAt).getTime() < now) return err('invalid', 'that meeting has already started');
+    return ok(await restoreFromPause(client, userId, meetingId, 'asked'));
   }
   if (!(await leftByChoice(client, userId, meetingId))) {
     return err('forbidden', 'only somebody who left this coordination themselves can come back into it',
@@ -654,10 +927,11 @@ async function cancelMeeting(client, userId, meetingId, now = Date.now()) {
 // What "from where it stopped" means, concretely:
 //   * every option still on the table stays there, with every answer to it —
 //     nobody is asked again about a time they already answered;
-//   * EXCEPT the time that was set. Its answers are cleared, because every one
-//     of them is still a yes and the table would settle straight back onto it
-//     at the next answer to anything. It stays on the table, to be answered
-//     again; the reason somebody reopened is usually that it no longer suits;
+//   * the time that was set stays on the table too, and every yes on it
+//     stands EXCEPT the reopener's (since 2026-10-05; until then all of its
+//     answers were cleared). Without the reopener's yes it cannot be
+//     unanimous, so it cannot settle straight back; the reason somebody
+//     reopened is usually that it no longer suits THEM;
 //   * the room's lines about the SETTLED meeting (done, calendar, the two
 //     reminders, the exact hour) are unstamped, so the next settle is told
 //     afresh; the lines about the negotiation keep theirs, and the room hears
@@ -693,25 +967,30 @@ async function reopenMeeting(client, userId, meetingId, now = Date.now()) {
     [meetingId, userId, now, m.confirmed_slot]
   );
   if (!rows[0]) return err('not_found', 'open meeting you are in not found');
-  // The option it settled on: the same words and the same instant. Two with
-  // both is not a shape the table allows, so the newest is taken.
-  const { rows: settledOn } = await client.query(
-    `SELECT id FROM meeting_options
-      WHERE meeting_id = $1 AND status = 'active' AND slot_text = $2
-        AND starts_at IS NOT DISTINCT FROM $3
-      ORDER BY id DESC LIMIT 1`, [meetingId, m.confirmed_slot, m.confirmed_start_at]);
-  if (settledOn[0]) {
-    await client.query('DELETE FROM meeting_option_answers WHERE option_id = $1', [settledOn[0].id]);
+  // Only the REOPENER's answer to the time that was set is cleared. The
+  // reopener is still in it, so without their yes that time cannot be
+  // unanimous, and the next answer cannot settle straight back onto it — which
+  // is all the old wholesale DELETE was for. Everybody else's yes stands
+  // (Padel Gang, 2026-10-04: Sharon reopened to let somebody in, the DELETE
+  // took Yuval's yes with it, and the gate then read him as somebody who had
+  // never answered and dropped the news of the reopen in his quiet hours).
+  const settledOn = await settledOptionId(client, meetingId, m.confirmed_slot, m.confirmed_start_at);
+  let yesStands = [];
+  if (settledOn) {
+    await client.query(
+      'DELETE FROM meeting_option_answers WHERE option_id = $1 AND user_id = $2', [settledOn, userId]);
+    const { rows: kept } = await client.query(
+      `SELECT user_id FROM meeting_option_answers WHERE option_id = $1 AND answer = 'y'`, [settledOn]);
+    yesStands = kept.map((r) => Number(r.user_id));
   }
   await options.mirrorCurrent(client, meetingId);
   await audit.record(client, userId, 'meeting.reopened', {
-    meetingId: Number(meetingId), was: m.confirmed_slot,
-    optionId: settledOn[0] ? Number(settledOn[0].id) : null,
+    meetingId: Number(meetingId), was: m.confirmed_slot, optionId: settledOn,
   });
   return ok({
     meetingId: Number(meetingId), meetingStatus: 'negotiating', reopened: true,
     reopenedAt: new Date(now).toISOString(), was: m.confirmed_slot, hadCalendarEvent: Boolean(m.calendar_event_id),
-    table: await options.list(client, meetingId),
+    table: await options.list(client, meetingId), yesStands,
   });
 }
 
@@ -834,13 +1113,17 @@ async function getStatus(client, userId, meetingId) {
   // an OFFER — sharing it is its purpose (domain/availability.js).
   const availability = require('./availability');
   const avail = await availability.labelsByUser(client, meetingId);
+  const table = await options.list(client, meetingId);
+  const answersOf = (uid) => Object.fromEntries(table
+    .filter((o) => o.answers && o.answers[uid]).map((o) => [o.id, o.answers[uid]]));
+  // Only the notes that still stand (`standingNotes`): an agent reading "I
+  // can Friday" from somebody who has since said no to Friday repeats it.
   const participants = parts.rows.map((row) => ({
     user_id: row.user_id,
     state: row.state,
     first_name: row.first_name,
-    constraints: row.user_id === userId
-      ? constraintTexts(row.constraints)
-      : shareableTexts(row.constraints),
+    constraints: standingNotes(row.constraints, answersOf(row.user_id),
+      { shareable: String(row.user_id) !== String(userId) }).texts,
     availability: avail.get(Number(row.user_id)) || [],
   }));
   // What came OFF the table travels with what is on it. A removal sends
@@ -853,7 +1136,7 @@ async function getStatus(client, userId, meetingId) {
   const room = m.rows[0] && m.rows[0].group_id
     ? (await client.query(`SELECT kind, quorum_min, quorum_max FROM chat_groups WHERE id = $1`, [m.rows[0].group_id])).rows[0]
     : null;
-  const opts = (await options.list(client, meetingId)).map((o) => ({
+  const opts = table.map((o) => ({
     ...o, yes: Object.values(o.answers || {}).filter((v) => v === 'y').length,
   }));
   return ok({
@@ -1088,13 +1371,14 @@ async function listNegotiating(client, userId = null) {
 }
 
 module.exports = {
+  joinSettled,
   cleanLocation,
-  startMeeting, openWithSamePeople, recordConstraint, proposeSlot, respondToSlot,
-  optOut, rejoin, leftByChoice, LEFT_BY_CHOICE_SQL, applyExit, withdrawConfirmed, cancelMeeting, reopenMeeting, setTitle, setPlace, setCategory, setQuorum,
+  startMeeting, openWithSamePeople, recordConstraint, proposeSlot, mergeSlot, slotMomentFor, respondToSlot,
+  optOut, rejoin, leftByChoice, leftByPause, restorePauseExits, PAUSE_EXIT_CAUSES, LEFT_BY_CHOICE_SQL, applyExit, withdrawConfirmed, cancelMeeting, reopenMeeting, setTitle, setPlace, setCategory, setQuorum,
   getStatus, listMine, pendingMeetingFor, tryConfirm, settleNow, timeIsOpen, setExactTime,
   expireStaleMeetings, dropPassedOptions, expireOne, listNegotiating,
   EXPIRE_AFTER_START_MS, LEGACY_STALE_DAYS, ALL_DAY_EXTRA_MS,
-  shareableConstraints, constraintTexts, shareableTexts,
+  shareableConstraints, constraintTexts, shareableTexts, standingNotes,
   CONSTRAINT_MAX_CHARS, MAX_SHARED_REASONS,
   options,
 };

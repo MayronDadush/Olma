@@ -116,10 +116,43 @@ test('settled from the page: there is no turn to ask in, so the settler gets the
   assert.equal(new Date(m.confirmed_start_at).toISOString(), new Date(tomorrowAt('18')).toISOString());
   assert.ok(m.time_set_at);
   assert.equal((await rows('meeting_exact_time_ask', id))[0].hold_reason, 'superseded');
+  // Ben settled it and had no confirmation to wait for, so he hears the hour;
+  // Ann's confirmation had not gone out yet, so it says the hour itself.
   const heard = await rows('meeting_time_set', id);
-  assert.deepEqual(heard.map((r) => Number(r.user_id)).sort(), [Number(ann.id), Number(ben.id)].sort(),
-    'everybody but the one who set it');
+  assert.deepEqual(heard.map((r) => Number(r.user_id)), [Number(ben.id)]);
   assert.match(instructionFor({ kind: 'meeting_time_set', payload: heard[0].payload }), /set the exact time/);
+  const annConf = (await rows('meeting_confirmed', id)).find((r) => Number(r.user_id) === Number(ann.id));
+  assert.equal(annConf.payload.slot, 'מחר ב־18:00');
+});
+
+// Saar, 2026-10-03: the confirmation and the hour were both held over Shabbat
+// and went out three minutes apart — two messages about one meeting, to seven
+// people. A confirmation still waiting says the hour itself.
+test('the hour set while the confirmation is still waiting rides the confirmation, not a second message', async () => {
+  const { id, opt } = await openWith({ allDay: true });
+  await call('settle_meeting', ann, { meeting_id: id, option_id: opt.id });
+  // Ben's confirmation went out; Cal's is held for the night.
+  await db.pool.query(`UPDATE outbox SET sent_at = now() WHERE kind = 'meeting_confirmed'
+                         AND (payload->>'meetingId')::bigint = $1 AND user_id = $2`, [id, ben.id]);
+  await db.pool.query(`UPDATE outbox SET hold_reason = 'night', release_after = now() + interval '8 hours'
+                         WHERE kind = 'meeting_confirmed' AND (payload->>'meetingId')::bigint = $1 AND user_id = $2`, [id, cal.id]);
+  const starts = tomorrowAt('18');
+  assert.ok((await call('propose_meeting_slot', ann, {
+    meeting_id: id, slot_description: 'מחר ב־18:00', starts_at: starts })).ok);
+
+  const heard = await rows('meeting_time_set', id);
+  assert.deepEqual(heard.map((r) => Number(r.user_id)), [Number(ben.id)], 'only the one who already heard it settled');
+  const calConf = (await rows('meeting_confirmed', id)).filter((r) => Number(r.user_id) === Number(cal.id));
+  assert.equal(calConf.length, 1, 'still one row');
+  const p = calConf[0].payload;
+  assert.equal(p.slot, 'מחר ב־18:00');
+  assert.equal(new Date(p.startsAtUtc).toISOString(), new Date(starts).toISOString());
+  assert.equal(p.allDay, undefined, 'no longer a whole day');
+  assert.equal(p.askExactTime, undefined);
+  const body = instructionFor({ kind: 'meeting_confirmed', payload: p, timezone: 'Asia/Jerusalem' });
+  assert.match(body, /מחר ב־18:00/);
+  assert.doesNotMatch(body, /WHOLE-DAY|Ask the user ONCE/);
+  assert.match(body, /start at exactly/, "the calendar step gets the hour, not the stand-in");
 });
 
 test('setting the hour is narrow: the same day, once, and only by somebody in it', async () => {
@@ -149,7 +182,7 @@ test('an exact time is MOVED, the coordination stays settled, and a second move 
   await call('settle_meeting', ann, { meeting_id: id, option_id: opt.id });
   assert.ok((await call('propose_meeting_slot', ben, {
     meeting_id: id, slot_description: 'מחר ב־18:00', starts_at: tomorrowAt('18') })).ok);
-  await db.pool.query(`UPDATE outbox SET sent_at = now() WHERE kind = 'meeting_time_set'
+  await db.pool.query(`UPDATE outbox SET sent_at = now() WHERE kind IN ('meeting_time_set', 'meeting_confirmed')
                          AND (payload->>'meetingId')::bigint = $1`, [id]);
   await db.pool.query('UPDATE meetings SET group_time_at = now(), group_hour_at = now() WHERE id = $1', [id]);
 
@@ -202,7 +235,7 @@ test('a coordination a room started asks nobody privately — the room is asked'
 // The page's own two doors (owner, 2026-10-04): a place on any live
 // coordination, and the exact hour once it settled without one. Same writers
 // and fan-out as the chat, so the page and the chat cannot disagree.
-test('the page offers the hour only while it is open, and setting it there is the chat\'s own door', async () => {
+test('the page sets the hour once it settled without one, then moves it on that day — the chat\'s own door', async () => {
   const dash = require('../src/domain/user-dashboard');
   const meetingOf = async (u, id) => {
     const page = await tx((c) => dash.load(c, u.id));
@@ -212,6 +245,10 @@ test('the page offers the hour only while it is open, and setting it there is th
   assert.equal((await meetingOf(ben, id)).timeOpen, false, 'still negotiating: the table is the door');
   await call('settle_meeting', ann, { meeting_id: id, option_id: opt.id });
   assert.equal((await meetingOf(ben, id)).timeOpen, true);
+  // The confirmations went out; one still waiting would carry the hour itself
+  // (the test above), and this one is about the page as a door.
+  await db.pool.query(`UPDATE outbox SET sent_at = now() WHERE kind = 'meeting_confirmed'
+                         AND (payload->>'meetingId')::bigint = $1`, [id]);
 
   const bad = await actAs(ben, 'setMeetingTime', { meetingId: id, time: '25:00' });
   assert.equal(bad.ok, false);
@@ -227,6 +264,19 @@ test('the page offers the hour only while it is open, and setting it there is th
     [Number(ann.id), Number(cal.id)].sort(), 'everybody but the one who set it');
   assert.equal((await meetingOf(ben, id)).timeOpen, false);
   assert.equal((await actAs(dan, 'setMeetingTime', { meetingId: id, time: '19:00' })).ok, false, 'not in it');
+
+  // …and once it has an hour, the same button changes it on that day without
+  // reopening (owner, 2026-10-05): still settled, everybody else told it moved.
+  const again = await actAs(ann, 'setMeetingTime', { meetingId: id, time: '17:00' });
+  assert.ok(again.ok, JSON.stringify(again));
+  assert.equal(again.data.moved, true);
+  const { rows: [m2] } = await db.pool.query(
+    'SELECT status, confirmed_start_at FROM meetings WHERE id = $1', [id]);
+  assert.equal(m2.status, 'confirmed', 'not reopened');
+  assert.equal(new Date(m2.confirmed_start_at).toISOString(), new Date(tomorrowAt('17')).toISOString());
+  assert.deepEqual((await rows('meeting_time_set', id)).filter((r) => r.payload.moved)
+    .map((r) => Number(r.user_id)).sort(), [Number(ben.id), Number(cal.id)].sort());
+  assert.equal((await actAs(ann, 'setMeetingTime', { meetingId: id, time: '17:00' })).ok, false, 'the same hour');
 });
 
 test('the page sets a place in their words, tells nobody, and refuses an empty one', async () => {

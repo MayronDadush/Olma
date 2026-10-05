@@ -50,6 +50,9 @@ const CLIP_KINDS = new Set(['intro_video', 'brand_ad']);
 // The cap is not a limit on what is due — anything past it goes out on the
 // next tick as its own message — it is a limit on how long one message may be.
 const MAX_BATCH = 8;
+// From this many first-rung reminders in one message, the automatic ones are
+// not chased (see endListLadders in the tick).
+const LIST_NO_FOLLOWUP_MIN = 3;
 
 // ── A retry is a new message, so a doomed send must not be attempted ────────
 // A delivery on the model path is `openclaw agent --deliver`: the gateway runs
@@ -326,6 +329,27 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
             `SELECT 1 FROM meetings WHERE id = $1 AND group_id IS NULL AND status = 'negotiating'`, [meetingId]);
           privateInvite = mt.length > 0;
         }
+        // A room's cold invite is about a ROSTER, and a roster moves (Padel
+        // Gang, 2026-10-04): the number it was written to can have left the
+        // room, been replaced by the phone the gateway maps a LID back to, or
+        // the coordination it offers can have closed while the gate held it
+        // for their night. Checked at delivery for the same reason the
+        // meeting below is: the queue is not the world. Worker-scoped and
+        // null for every sibling.
+        let coldInviteGone = null;
+        if (row.kind === 'room_cold_invite') {
+          const groupId = Number(payloadOf(row).groupId) || null;
+          const { rows: here } = await client.query(
+            `SELECT 1 FROM chat_group_members gm JOIN chat_groups g ON g.id = gm.group_id
+              WHERE gm.group_id = $1 AND gm.user_id = $2 AND gm.left_at IS NULL AND g.state = 'open'`,
+            [groupId, row.user_id]);
+          if (!here.length) coldInviteGone = 'left_room';
+          else if (meetingId) {
+            const { rows: mt } = await client.query(
+              `SELECT 1 FROM meetings WHERE id = $1 AND status IN ('negotiating', 'confirmed')`, [meetingId]);
+            if (!mt.length) coldInviteGone = 'coordination_closed';
+          }
+        }
         // Has the meeting this row is about already HAPPENED? A confirmed (or
         // cancelled) coordination whose start is behind us makes every
         // `meeting_*` row about it pointless — the gate drops them
@@ -343,6 +367,29 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
                            THEN interval '1 day' ELSE interval '0' END <= $2`,
             [meetingId, now]);
           meetingOver = over.length > 0;
+        }
+        // How much of THIS coordination has reached this person today, in
+        // their own day — the gate's two-a-day cap (gate.js, "Two messages a
+        // day about one coordination"). DISTINCT sent_at for the reason the
+        // budget uses it; `hold_reason IS NULL` is "reached them", as for the
+        // pacing in meeting-fanout. Bounded above by the tick's own clock with
+        // a minute of slack, like `heard` below. Worker-scoped like the facts
+        // above, and null for every sibling.
+        let coordinationDay = null;
+        if (meetingId && String(row.kind).startsWith('meeting_')) {
+          const { rows: day } = await client.query(
+            `SELECT count(DISTINCT o.sent_at)::int AS n, max(o.sent_at) AS last,
+                    (SELECT confirmed_start_at FROM meetings WHERE id = $5) AS starts_at
+               FROM outbox o
+              WHERE o.user_id = $1 AND o.kind LIKE 'meeting%'
+                AND o.payload->>'meetingId' = $2
+                AND o.sent_at IS NOT NULL AND o.hold_reason IS NULL
+                AND o.sent_at >= (date_trunc('day', $3::timestamptz AT TIME ZONE $4) AT TIME ZONE $4)
+                AND o.sent_at <= $3::timestamptz + interval '1 minute'`,
+            [row.user_id, String(meetingId), now, row.timezone || 'UTC', meetingId]);
+          coordinationDay = {
+            heardToday: day[0].n, lastHeardAt: day[0].last, startsAt: day[0].starts_at,
+          };
         }
         // An introduction still waiting to go out. Bounded to two days on
         // purpose: a repair that was queued and somehow never delivered must
@@ -416,7 +463,7 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
           window: win.data.window, quietDays, quietDates, shabbatWindow, tz: row.timezone,
           lastInboundAt: row.last_inbound_at, wokeAt: row.last_woke_at, dashboardWroteAt: row.last_dashboard_at, groupWroteAt,
           greetedAt: row.opening_sent_at,
-          pausedRoomInvite, quietRoomInvite, answeredCoordination, privateInvite, meetingOver,
+          pausedRoomInvite, quietRoomInvite, answeredCoordination, privateInvite, meetingOver, coordinationDay, coldInviteGone,
           hasDigest: Boolean(row.digest_times),
           introductionPending: introRows.length > 0,
           introductionSentAt: introSent[0] ? introSent[0].sent_at : null,
@@ -491,7 +538,7 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
             // empty for every sibling — said out loud rather than relied upon.
             if (decide({
               ...facts, groupWroteAt: null, pausedRoomInvite: false, quietRoomInvite: false,
-              answeredCoordination: false, privateInvite: false, meetingOver: false, row: sib,
+              answeredCoordination: false, privateInvite: false, meetingOver: false, coordinationDay: null, coldInviteGone: null, row: sib,
             }).action !== 'deliver') continue;
             ids.push(sib.id);
             titles.push(payloadOf(sib).title);
@@ -535,7 +582,7 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
           // the thing that lets a sibling through.
           const deliverable = others.filter((sib) => decide({
             ...facts, pausedRoomInvite: false, quietRoomInvite: false, answeredCoordination: false,
-            privateInvite: false, meetingOver: false, row: sib,
+            privateInvite: false, meetingOver: false, coordinationDay: null, coldInviteGone: null, row: sib,
           }).action === 'deliver');
           const parts = planMerge(row, deliverable);
           if (parts) {
@@ -635,6 +682,33 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
                            WHERE o.id = ANY($2::bigint[]) AND o.kind = 'checkin'
                              AND COALESCE(o.payload->>'rung', '') NOT LIKE 'onboarding\\_%')`,
           [row.user_id, ids]);
+        // A first-rung LIST of three or more is not chased. Dov got twelve at
+        // 08:00 and the same twelve at 11:01 (2026-10-04); over thirty days an
+        // automatic second rung on a list of 3+ was answered by 0 of 12 tasks
+        // done within three hours, against 9 of 24 for a reminder alone. So
+        // the automatic ladders behind such a list end with the list itself.
+        // A reminder they asked for has one rung already, and a nudge, a
+        // repeating rule and a chase keep the ladder they were armed with —
+        // the same exclusions reminders.RUNG_CAP_SQL draws. Run only once the
+        // send confirmed or timed out (booked as sent), like every stamp here.
+        const endListLadders = async () => {
+          if (!key || key !== 'reminder' || ids.length < LIST_NO_FOLLOWUP_MIN) return;
+          const { rows: ended } = await client.query(
+            `UPDATE task_reminders r SET sent_at = now()
+               FROM outbox o, users u
+              WHERE o.id = ANY($1::bigint[]) AND o.idempotency_key = 'reminder:' || r.id
+                AND u.id = o.user_id
+                AND r.auto AND r.attempts = 1 AND r.sent_at IS NULL
+                AND r.repeat_rule IS NULL AND r.rungs IS NULL
+                AND NOT r.nudge AND NOT u.reminder_nudge
+              RETURNING r.id`,
+            [ids]);
+          if (ended.length) {
+            await audit.record(client, row.user_id, 'reminder.list_not_chased', {
+              outboxIds: ids.map(Number), reminderIds: ended.map((r) => Number(r.id)),
+            });
+          }
+        };
         if (result.ok) {
           await client.query(
             `UPDATE outbox SET sent_at = now(), hold_reason = NULL WHERE id = ANY($1::bigint[])`, [ids]
@@ -642,6 +716,7 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
           await countLadderAsk();
           await spendRoomInvite();
           await recordClosedNews();
+          await endListLadders();
           outcomes.delivered++;
           if (ids.length > 1) outcomes.batched = (outcomes.batched || 0) + ids.length - 1;
         } else if (result.timedOut) {
@@ -670,6 +745,7 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
           await countLadderAsk();
           await spendRoomInvite();
           await recordClosedNews();
+          await endListLadders();
           outcomes.delivered++;
           outcomes.unconfirmed = (outcomes.unconfirmed || 0) + 1;
           if (ids.length > 1) outcomes.batched = (outcomes.batched || 0) + ids.length - 1;

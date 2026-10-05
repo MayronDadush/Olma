@@ -158,15 +158,21 @@ async function pauseUser(client, userId, { note = null, confirmed = true } = {})
   // this the fresh paused_at is a fresh allowance, so the next coordination
   // reaches them again; and answered_at at the same moment is what keeps
   // their NEXT message from ending this pause too.
+  //
+  // …and an unconfirmed call never lands on a CONFIRMED one: somebody already
+  // paused for good who says "stop" again is asked nothing and stays paused,
+  // rather than being turned back into a stop their next message ends.
   const { rows } = await client.query(
-    `UPDATE users SET paused_at = COALESCE(paused_at, now()), paused_reason = $3,
+    `UPDATE users SET paused_at = COALESCE(paused_at, now()),
+            paused_reason = CASE WHEN paused_at IS NOT NULL AND paused_reason IS NULL THEN NULL ELSE $3 END,
             room_invite_sent_at = CASE WHEN room_invite_answered_at > now() - ($2::bigint * interval '1 millisecond')
               THEN now() ELSE room_invite_sent_at END,
             room_invite_answered_at = CASE WHEN room_invite_answered_at > now() - ($2::bigint * interval '1 millisecond')
               THEN now() ELSE room_invite_answered_at END
       WHERE id = $1
-      RETURNING id, paused_at`, [userId, ROOM_INVITE_ANSWER_MS, reason]);
+      RETURNING id, paused_at, paused_reason`, [userId, ROOM_INVITE_ANSWER_MS, reason]);
   if (!rows[0]) return err('not_found', 'no such user');
+  const kept = rows[0].paused_reason;
 
   // Everything already armed against them. Cancelling rather than leaving them
   // to be filtered at send time is deliberate: a pause that shows five pending
@@ -187,16 +193,85 @@ async function pauseUser(client, userId, { note = null, confirmed = true } = {})
 
   await audit.record(client, userId, 'user.paused', {
     note: note ? String(note).slice(0, 500) : null,
-    reason,
+    reason: kept,
     remindersCancelled: pending.map((r) => Number(r.id)),
     outboxCancelled: queued.map((r) => Number(r.id)),
     dataDeleted: false,
   });
   return ok({
     pausedAt: rows[0].paused_at,
+    confirmed: kept === null,
     remindersCancelled: pending.length,
     outboxCancelled: queued.length,
   });
+}
+
+// What the person is asked before a pause lasts, drawn rather than composed
+// (Eden, 2026-10-05). He said "stop" half as a joke, the model skipped the
+// question and paused him for good, told him "one message brings it all
+// back" — which is true only of an unconfirmed stop — and his coordination
+// went on without him while he could not see why. A person who knows what a
+// pause DOES either means it or says so; the model's own "בטוח?" told him
+// nothing. Gender-neutral as written: לך and ענית are spelled the same for
+// both.
+const CONFIRM_QUESTION = {
+  he: 'רק לוודא, השהייה אומרת: אני מפסיקה לכתוב לך — בלי תזכורות, סיכומים או הודעות על תיאומים — '
+    + 'ותיאומים שעוד לא ענית בהם ימשיכו בלי לחכות לך. שום דבר לא נמחק. להשהות?',
+  en: 'Just to check — a pause means I stop writing to you: no reminders, summaries or messages about '
+    + 'coordinations, and coordinations you haven\'t answered go on without waiting for you. Nothing is deleted. Pause?',
+};
+
+// How long the question stays open. The answer is their next message, and
+// stopResume has already ended the unconfirmed pause by the time the model
+// hears it — so the record of having ASKED is the audit row, not the column.
+const CONFIRM_WINDOW_MS = 2 * 3600_000;
+
+// Was the stop heard, and has the person written since? Only then is a
+// confirmed=true their answer to the question rather than the model skipping
+// it. A said_stop and a confirm in the SAME turn has no message between them
+// and is refused, which is the point. The other way in is the paused room
+// invite: a person answering their one coordination message with "leave me
+// paused" has already said yes (channels/openclaw.js, PAUSED_ROOM_INVITE).
+async function stopAskedAndAnswered(client, userId) {
+  const { rows } = await client.query(
+    `SELECT EXISTS (
+       SELECT 1 FROM users WHERE id = $1
+          AND room_invite_answered_at > now() - ($4::bigint * interval '1 millisecond'))
+     OR EXISTS (
+       SELECT 1 FROM audit_log s
+        WHERE s.actor_id = $1 AND s.event = 'user.paused' AND s.detail->>'reason' = $2
+          AND s.created_at > now() - ($3::bigint * interval '1 millisecond')
+          AND EXISTS (SELECT 1 FROM audit_log m
+                       WHERE m.actor_id = $1 AND m.event = 'message.received'
+                         AND m.created_at > s.created_at)) AS answered`,
+    [userId, SAID_STOP, CONFIRM_WINDOW_MS, ROOM_INVITE_ANSWER_MS]);
+  return rows[0].answered;
+}
+
+// pause_olma's door. A lasting pause needs the question to have been asked
+// and answered; otherwise this is the unconfirmed stop, and the result hands
+// the model the question to ask, in their language.
+async function requestPause(client, user, { note = null, confirmed = false } = {}) {
+  const asked = confirmed === true && await stopAskedAndAnswered(client, user.id);
+  const res = await pauseUser(client, user.id, { note, confirmed: asked });
+  if (!res.ok || res.data.confirmed) return res;
+  const he = String(user.locale || '').toLowerCase().startsWith('he');
+  return ok({
+    ...res.data,
+    ...(confirmed === true ? { notConfirmed: 'they have not been asked yet' } : {}),
+    askThem: he ? CONFIRM_QUESTION.he : CONFIRM_QUESTION.en,
+    nextStep: 'Paused until their next message. Ask askThem verbatim'
+      + (he ? '' : ' (in their language)')
+      + ' as the only question in your reply. On their yes, call pause_olma with confirmed=true.',
+  });
+}
+
+// The coordinations the pause took them out of (`group-meetings.
+// sweepSilentPausedMembers`) are part of what it took down, and come back
+// with it, answers included (`meetings.restorePauseExits`). Required here,
+// not at the top: meetings sits above this module in the domain graph.
+async function restoreMeetings(client, userId) {
+  return require('./meetings').restorePauseExits(client, userId);
 }
 
 // Puts back what the pause took down, and nothing else. Reminders return at
@@ -257,11 +332,13 @@ async function resumeUser(client, userId, { now = new Date(), reason = null } = 
   }
 
   await client.query(`UPDATE users SET paused_at = NULL, paused_reason = NULL WHERE id = $1`, [userId]);
+  const meetingsBack = await restoreMeetings(client, userId);
   await audit.record(client, userId, 'user.resumed', {
     pausedAt, remindersRearmed: rearmed.map((r) => r.taskId),
+    ...(meetingsBack.length ? { meetingsRestored: meetingsBack.map((m) => m.meetingId) } : {}),
     ...(reason ? { reason } : {}),
   });
-  return ok({ rearmed });
+  return ok({ rearmed, meetingsRestored: meetingsBack });
 }
 
 // The pause the check-in ladder makes after three unanswered check-ins. It
@@ -291,6 +368,7 @@ async function quietResume(client, userId) {
     `UPDATE users SET paused_at = NULL, paused_reason = NULL
       WHERE id = $1 AND paused_reason = $2 RETURNING id`, [userId, QUIET_LADDER]);
   if (!rows[0]) return ok({ resumed: false });
+  await restoreMeetings(client, userId);
   await audit.record(client, userId, 'user.resumed', { reason: QUIET_LADDER, remindersRearmed: [] });
   return ok({ resumed: true });
 }
@@ -337,6 +415,7 @@ async function resumeAfterRoomInvite(client, userId, { now = new Date() } = {}) 
   await client.query(`UPDATE users SET room_invite_answered_at = now() WHERE id = $1`, [userId]);
   if (u.paused_reason === QUIET_LADDER) {
     await client.query(`UPDATE users SET paused_at = NULL, paused_reason = NULL WHERE id = $1`, [userId]);
+    await restoreMeetings(client, userId);
     await audit.record(client, userId, 'user.resumed', {
       reason: 'room_invite_answered', remindersRearmed: [],
     });
@@ -372,8 +451,9 @@ function endsOnWrite(row) {
 }
 
 module.exports = {
-  pauseUser, resumeUser, quietPause, quietResume, stopResume, resumeAfterRoomInvite,
+  pauseUser, requestPause, resumeUser, quietPause, quietResume, stopResume, resumeAfterRoomInvite,
   resumeOnWrite, endsOnWrite,
   roomInviteSpent, quietRoomInviteSpent, pausedByRequest, keptOutOfRooms,
   isPaused, nextOccurrenceAfter, QUIET_LADDER, SAID_STOP, ROOM_INVITE_ANSWER_MS,
+  CONFIRM_QUESTION, CONFIRM_WINDOW_MS,
 };

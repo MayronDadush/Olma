@@ -349,6 +349,27 @@ function outOnly(text) {
   return OUT_PHRASES.has(words.filter((w) => !OUT_FILLER.has(w)).join(' '));
 }
 
+// "רשום עדן יצא" — a STATUS somebody read somewhere, not a request to leave.
+// Eden (2026-10-05) pasted what the page said about him, in the third person,
+// and the model called opt_out_of_meeting on it. brokerd marks the turn and
+// that tool refuses on it, so the model has to ask (domain: tools/meetings.js).
+// A third-person PAST exit verb, no question, and nobody speaking for
+// themselves: "אני", "אותי" and the like mean they are asking about their own
+// place, which is the model's to hear. "הוצאה" is left out on purpose — it is
+// also "an expense". Measured before it was written: 6,386 real inbound
+// messages on the box, four carry one of these verbs, and it fires on exactly
+// the two that are Eden's sentence (his chat and the room).
+const REPORTED_EXIT_RE = new RegExp(
+  `${B}[ושכ]?(?:יצא|יצאה|יצאו|הוצא|הוצאו|עזב|עזבה|עזבו|פרש|פרשה|פרשו)${E}`, 'u');
+const SPEAKS_FOR_SELF_RE = new RegExp(`${B}(?:אני|אותי|אנחנו|אותנו)${E}`, 'u');
+const MAX_REPORTED_EXIT_CHARS = 160;
+
+function reportsExit(text) {
+  const raw = String(text || '').replace(REPLY_BLOCK_RE, ' ').replace(/[\u200e\u200f\u202a-\u202e]/g, '').trim();
+  if (!raw || raw.length > MAX_REPORTED_EXIT_CHARS || /[?？]/.test(raw)) return false;
+  return REPORTED_EXIT_RE.test(raw) && !SPEAKS_FOR_SELF_RE.test(raw);
+}
+
 // Which inbound events open a turn. Measured on OpenClaw 2026.8.1 (2026-09-06,
 // olma-hook-probe): a WhatsApp DM fires `message:preprocessed` ~300ms after
 // the inbound log line and `agent:bootstrap` a second later — and NEVER
@@ -424,6 +445,9 @@ function handle(event, { connect = net.connect, sock = SOCK } = {}) {
     // general one is leaving it, one time is a question back
     // (domain/meeting-exit.js). The verdict travels; the words do not.
     out: outOnly(said.text),
+    // "רשום עדן יצא" — a status they quote, not a request: opt_out_of_meeting
+    // refuses on this turn, so the model asks instead of acting.
+    reportedExit: reportsExit(said.text),
     at: new Date(event.timestamp || Date.now()).toISOString(),
   };
   return new Promise((resolve) => {
@@ -468,4 +492,5 @@ module.exports.chaseDeadline = chaseDeadline;
 module.exports.asksOpenList = asksOpenList;
 module.exports.remindWithoutTime = remindWithoutTime;
 module.exports.outOnly = outOnly;
+module.exports.reportsExit = reportsExit;
 module.exports._resetSeen = () => seen.clear();

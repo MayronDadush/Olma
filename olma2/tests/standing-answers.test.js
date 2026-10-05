@@ -167,6 +167,18 @@ test('their own word on a time beats a window, and a whole day is never answered
   });
 });
 
+test('the same sentence said again keeps the window the first copy carried', async () => {
+  await withClient(async (c) => {
+    const m = Number((await meetings.startMeeting(c, miron.id, 'חוזר', [guy.id])).data.meeting.id);
+    await meetings.recordConstraint(c, guy.id, m, 'השבוע לא', false, { windows: [{ answer: 'n', ...WEEK }] });
+    await meetings.recordConstraint(c, guy.id, m, 'השבוע לא');
+    const { rows } = await c.query(
+      `SELECT constraints FROM meeting_participants WHERE meeting_id = $1 AND user_id = $2`, [m, guy.id]);
+    assert.equal(rows[0].constraints.length, 1);
+    assert.deepEqual(rows[0].constraints[0].windows, [{ answer: 'n', ...WEEK }]);
+  });
+});
+
 test('said with times already up, the window answers them at once, and the RESULT says so', async () => {
   await withClient(async (c) => {
     const m = Number((await meetings.startMeeting(c, miron.id, 'ריצה', [yuval.id, sharon.id])).data.meeting.id);

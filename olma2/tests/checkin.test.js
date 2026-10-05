@@ -790,6 +790,9 @@ test('a shopping list is not a stalled goal — Dov\'s eggs and cottage cheese',
     });
     await c.query(`UPDATE tasks SET category = 'errands' WHERE id = $1 OR parent_id = $1`, [list]);
     assert.notEqual((await checkin.pickRung(c, dov.id)).rung, 'stalled_goal');
+    // …and the same under 'lists', where every list is filed since 2026-10-05
+    await c.query(`UPDATE tasks SET category = 'lists' WHERE id = $1`, [list]);
+    assert.notEqual((await checkin.pickRung(c, dov.id)).rung, 'stalled_goal');
     // …while a PROJECT with the same shape and no category still is one
     const chaim = await makeUser(db.pool, '+972641000050');
     await goal(c, chaim.id, 'להתפטר משלושה רכבים', { daysOld: 20, parts: [{ title: 'רכב 1' }] });

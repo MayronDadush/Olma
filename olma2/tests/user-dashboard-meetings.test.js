@@ -492,17 +492,27 @@ test('putting yourself back in is a real rejoin, and nobody else is messaged', a
 });
 
 test('the archive offers a way back only from an exit they chose, never from a pause', async () => {
-  // Owner, 2026-10-01: only somebody who left by their own choice comes back.
-  // A pause took them out; the button would be drawn over a refusal.
+  // Owner, 2026-10-01: only somebody who left by their own choice is offered
+  // the button. A pause took them out, and ENDING the pause is what brings
+  // them back (meetings.restorePauseExits, 2026-10-05); while it lasts, the
+  // way back is refused as `paused`.
+  const pause = require('../src/domain/pause');
   const id = await coordination(gali, [me, ron], 'השהיה');
   await tx((c) => meetings.proposeSlot(c, gali.id, id, 'מחר ב־19:00', tomorrowAt('19')));
+  await tx((c) => pause.pauseUser(c, me.id, { confirmed: false }));
   await tx((c) => meetings.applyExit(c, me.id, id, 'paused_by_request'));
 
   const page = await tx((c) => dash.load(c, me.id));
   assert.equal(page.data.meetingsLeft.some((x) => x.id === id), false);
-  const res = await actAs(me, 'rejoinMeeting', { meetingId: id });
+  const res = await tx((c) => meetings.rejoin(c, me.id, id));
   assert.equal(res.ok, false);
-  assert.equal(res.error.reason, 'not_left_by_choice');
+  assert.equal(res.error.reason, 'paused');
+
+  // Ending the pause from their own page puts them back.
+  await tx((c) => pause.resumeUser(c, me.id));
+  const { rows } = await db.pool.query(
+    `SELECT state FROM meeting_participants WHERE meeting_id = $1 AND user_id = $2`, [id, me.id]);
+  assert.notEqual(rows[0].state, 'opted_out');
 });
 
 test('the archive never offers a way back into something already closed', async () => {
