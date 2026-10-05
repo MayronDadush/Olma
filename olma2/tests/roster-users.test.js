@@ -350,7 +350,7 @@ test('the unanswered-strangers check still finds somebody who only has a roster 
 //
 // A coordination opening in a room reaches a member who never wrote, ONCE per
 // person per room, in the owner's fixed words, and makes nobody a participant.
-async function roomWithCoordination(n, strangerPhone) {
+async function roomWithCoordination(n, strangerPhone, { aged = true } = {}) {
   await openFlag(true);
   const a = await connectedUser(`+97250191${n}001`);
   const b = await connectedUser(`+97250191${n}002`);
@@ -359,6 +359,11 @@ async function roomWithCoordination(n, strangerPhone) {
     [{ phone: a.phone }, { phone: b.phone }, { phone: strangerPhone }]));
   await withTx(db.pool, (c) => groups.syncRoster(c, gid,
     [{ phone: a.phone }, { phone: b.phone }, { phone: strangerPhone }]));
+  // Past the half hour a number sits on the roster before it is written to.
+  if (aged) {
+    await db.pool.query(
+      `UPDATE chat_group_members SET first_seen_at = now() - interval '31 minutes' WHERE group_id = $1`, [gid]);
+  }
   const { rows: [group] } = await db.pool.query(
     `UPDATE chat_groups SET state = 'open', agent_id = 'g-' || id WHERE id = $1 RETURNING *`, [gid]);
   const started = await withTx(db.pool, (c) => require('../src/domain/group-meetings')
@@ -455,6 +460,56 @@ test('cold invite: once per PERSON across rooms — unless the first one never r
         WHERE user_id = $1 AND kind = 'room_cold_invite'`, [first.stranger.id]);
     assert.deepEqual(await withTx(db.pool, (c) => gm.coldInvite(c, second.group, second.meeting)),
       [Number(first.stranger.id)]);
+  } finally {
+    await withTx(db.pool, (c) => flags.setFlag(c, gm.COLD_INVITE_FLAG, false));
+  }
+});
+
+// Padel Gang, 2026-10-04: a member added to the room was a 13-digit LID,
+// minted as a pending row and cold-invited within the minute — "a German
+// number" to the owner. The roster settles first, and is read again at
+// delivery (`incidents.md`, "The invite that went to Germany").
+test('cold invite: a number new to the roster waits half an hour, and one that left is not written to', async () => {
+  const gm = require('../src/domain/group-meetings');
+  const { group, meeting, stranger } = await roomWithCoordination(10, '+972501920099', { aged: false });
+  await withTx(db.pool, (c) => flags.setFlag(c, gm.COLD_INVITE_FLAG, true));
+  try {
+    assert.deepEqual(await withTx(db.pool, (c) => gm.coldInvite(c, group, meeting)), [],
+      'on the roster a minute: it may still be a LID the gateway has not mapped');
+    await db.pool.query(
+      `UPDATE chat_group_members SET first_seen_at = now() - make_interval(mins => $2) WHERE group_id = $1`,
+      [group.id, gm.COLD_INVITE_SETTLE_MINUTES + 1]);
+    assert.deepEqual(await withTx(db.pool, (c) => gm.coldInvite(c, group, meeting)), [Number(stranger.id)]);
+
+    const at = new Date();
+    at.setUTCDate(at.getUTCDate() - ((at.getUTCDay() - 3 + 7) % 7));
+    at.setUTCHours(12, 0, 0, 0);
+    const drain = async () => {
+      await db.pool.query(`UPDATE outbox SET sent_at = now() WHERE sent_at IS NULL AND user_id <> $1`, [stranger.id]);
+      const sent = [];
+      await drainOnce(db.pool, async (r) => { sent.push(r.kind); return { ok: true }; }, at);
+      const { rows: [r] } = await db.pool.query(
+        `SELECT sent_at, hold_reason FROM outbox WHERE user_id = $1 AND kind = 'room_cold_invite' ORDER BY id DESC LIMIT 1`,
+        [stranger.id]);
+      return { sent, row: r };
+    };
+
+    // Gone from the roster while the row waited: dropped, never sent.
+    await db.pool.query(
+      `UPDATE chat_group_members SET left_at = now() WHERE group_id = $1 AND user_id = $2`, [group.id, stranger.id]);
+    const left = await drain();
+    assert.deepEqual(left.sent, []);
+    assert.equal(left.row.hold_reason, 'left_room');
+
+    // Back on it, but the coordination closed meanwhile: dropped too.
+    await db.pool.query(
+      `UPDATE chat_group_members SET left_at = NULL WHERE group_id = $1 AND user_id = $2`, [group.id, stranger.id]);
+    await db.pool.query(`DELETE FROM outbox WHERE user_id = $1 AND kind = 'room_cold_invite'`, [stranger.id]);
+    assert.deepEqual(await withTx(db.pool, (c) => gm.coldInvite(c, group, meeting)), [Number(stranger.id)]);
+    await db.pool.query(`UPDATE meetings SET status = 'cancelled' WHERE id = $1`, [meeting.id]);
+    const closed = await drain();
+    assert.deepEqual(closed.sent, []);
+    assert.equal(closed.row.hold_reason, 'coordination_closed');
   } finally {
     await withTx(db.pool, (c) => flags.setFlag(c, gm.COLD_INVITE_FLAG, false));
   }

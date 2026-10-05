@@ -1103,7 +1103,11 @@ have already had to be argued for.
   explain away. Their reply reaches the greeter, which already says the room's
   line (`domain/intake-room.js`), and `admitLateMembers` lets them in once they
   are connected — so silence costs the coordination nothing. Only a pending row
-  with a real number (a LID has nothing to write to), and never while
+  with a real number (a LID has nothing to write to), on the roster for half
+  an hour first (`COLD_INVITE_SETTLE_MINUTES`; a LID resolved to its phone
+  in 22 minutes on 2026-10-04) and still on it at delivery (the worker's
+  `coldInviteGone` drops `left_room` / `coordination_closed`; `incidents.md`,
+  "The invite that went to Germany"), and never while
   `registration_open` is false, because the message promises to add them and
   their reply would be waitlisted. PR #448 (`group_invite_unconnected`) is the
   approach this replaces: it widened `coordinatingMembers` to every roster row,

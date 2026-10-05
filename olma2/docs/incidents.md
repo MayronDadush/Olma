@@ -86,6 +86,7 @@ never trust a dated narrative for something you are about to act on.
 - [The fifth draft was the rude one (fixed 2026-09-11)](#the-fifth-draft-was-the-rude-one-fixed-2026-09-11)
 - [Six good mornings for one timeout (fixed 2026-09-09)](#six-good-mornings-for-one-timeout-fixed-2026-09-09)
 - [The room was told twice (fixed 2026-09-08)](#the-room-was-told-twice-fixed-2026-09-08)
+- [The invite that went to Germany (fixed 2026-10-05)](#the-invite-that-went-to-germany-fixed-2026-10-05)
 - [The room was greeted twice, by its own registration (fixed 2026-09-11)](#the-room-was-greeted-twice-by-its-own-registration-fixed-2026-09-11)
 - [Four channel restarts for one room (fixed 2026-09-30)](#four-channel-restarts-for-one-room-fixed-2026-09-30)
 - [Every open room was judged twice, once on a stale roster (fixed 2026-09-30)](#every-open-room-was-judged-twice-once-on-a-stale-roster-fixed-2026-09-30)
@@ -5185,6 +5186,32 @@ five minutes. The first draft of the signature listed every entry in the root
 and threw on `default.lock`, a FILE that sits beside the account directories on
 the box. The cache would never have been used, and nothing would have said so.
 It lists directories only now, and a test holds that case.
+
+### The invite that went to Germany (fixed 2026-10-05)
+
+Padel Gang (group 9), 2026-10-04. A member was added to the WhatsApp group at
+08:23 UTC, and the roster handed us `+4952130863209`: a 13-digit WhatsApp LID,
+not a phone. `phoneShape` read it as a German number. `ensureRosterUsers`
+minted pending user 65 for it, and the `group_voice` pass queued a
+`room_cold_invite` to it within the minute. At 08:45 the roster sync resolved
+the same member to their real number: the LID row got `left_at`, and
+`+972546268070` (user 66) appeared beside it. The invite to "Germany" was
+still in the queue, held for its own night, when the owner read it in the
+review: "לא מכיר משתמש גרמני". It was cancelled by hand.
+
+**The roster is not settled the moment a number appears on it, and the
+queue is not the roster.** So the fix has two halves:
+
+- `group-meetings.coldInvite` only writes to a number that has been on the
+  roster for `COLD_INVITE_SETTLE_MINUTES` (30). On the box, the resolution
+  took 22 minutes.
+- The worker reads the roster again at delivery (`coldInviteGone`). The row is
+  dropped as `left_room` if that member has left the room, or the room is not
+  open. It is dropped as `coordination_closed` if the coordination is no
+  longer negotiating or confirmed.
+
+`phoneShape` itself is untouched: a LID that never resolves still looks like a
+phone, and that remains open.
 
 ### The room was greeted twice, by its own registration (fixed 2026-09-11)
 

@@ -1009,6 +1009,9 @@ async function markRelaySaid(client, meetingId, userId) {
 // REACHED them or is still on its way — one the gate held until it expired
 // asked nothing, so a later room may still try.
 const COLD_INVITE_FLAG = 'group_cold_invite';
+// How long a number sits on a room's roster before a cold invite may go to it.
+const COLD_INVITE_SETTLE_MINUTES = 30;
+
 async function coldInvite(client, group, meeting) {
   if (!group || !meeting || meeting.status !== 'negotiating') return [];
   const flags = require('./flags');
@@ -1017,11 +1020,15 @@ async function coldInvite(client, group, meeting) {
   const { rows } = await client.query(
     `SELECT u.id, u.phone FROM chat_group_members m JOIN users u ON u.id = m.user_id
       WHERE m.group_id = $1 AND m.left_at IS NULL AND u.status = 'pending' AND NOT u.is_eval
+        -- On the roster for half an hour first (Padel Gang, 2026-10-04): a
+        -- member added a minute ago may still be a LID the gateway has not
+        -- mapped back to a phone, and that one was written to in Germany.
+        AND m.first_seen_at <= now() - make_interval(mins => $2)
         AND NOT EXISTS (
           SELECT 1 FROM outbox o
            WHERE o.user_id = u.id AND o.kind = 'room_cold_invite'
              AND (o.sent_at IS NULL OR o.hold_reason IS NULL))
-      ORDER BY u.id`, [group.id]);
+      ORDER BY u.id`, [group.id, COLD_INVITE_SETTLE_MINUTES]);
   const { isRealPhone } = require('./phone-timezone');
   const { enqueue } = require('../outbox/enqueue');
   const sent = [];
@@ -1046,7 +1053,7 @@ async function coldInvite(client, group, meeting) {
 }
 
 module.exports = {
-  coldInvite, COLD_INVITE_FLAG,
+  coldInvite, COLD_INVITE_FLAG, COLD_INVITE_SETTLE_MINUTES,
   roomMeetingFor,
   startCoordination, admitLateMembers, quietJoinersToAnnounce, coordinationStatus, commonHoursFor, statusOf, roomView, settle, setPlace,
   sweepSilentPausedMembers, sweepRoomLeavers, answeredLive, currentMeeting, coordinatingMembers, memberLabel, participantFor,
