@@ -5694,6 +5694,34 @@ measured FROM — לפני / אחרי / עד, before / after / until, and ערב
 same way it strips ל־. "ערב שישי" is left compared: in ordinary speech that
 is Friday EVENING, not the eve of Friday.
 
+### A course on Mondays and Thursdays, saved as one Monday (fixed 2026-10-05)
+
+Dov wrote "יש לי קורס שעתיד להפתח ב 12.10 ימי שני וחמישי בין השעות
+17:30-21:30 תוסיף שיהיה קבוע". What it should have been is two repeating
+events, one every Monday and one every Thursday, 17:30-21:30, from 12.10.
+What it became (task 1302) was ONE event, "קורס", on Monday 12.10
+17:30-21:30, an hour-before reminder, and a second reminder with
+`repeat_rule = 'weekly:MO,TH'` at 17:30.
+
+The model did the best the tools allowed, and that was the fault: an event
+was one moment, and the only thing in the system that could repeat was a
+reminder. So the cadence went onto the reminder. The course would have been
+on his list once. After the first Monday its row would have stayed open for
+ever (a standing reminder blocks the archive sweep) with a date in the past.
+His calendar view would never have shown a single Thursday. No tool result
+said any of this was missing, so nothing looked wrong.
+
+Fix (migration 111): `tasks.repeat_rule` / `repeat_until` on an EVENT, set
+through `add_task(repeat)`. One row repeats on one weekday. Two weekdays are
+refused and the model is told to make two calls, because a Monday class and a
+Thursday class move and get cancelled separately. When an occurrence ends,
+`sweepFinishedTasks` → `completeTask` → `tasks.advanceRecurring` moves the row
+on to the next occurrence. The same local hour holds across a clock change.
+The reminders follow it as they do on a snooze. `calendar_event_id` is cleared
+so the occurrence that happened stays on Google and the next one is created
+fresh. The list draws "כל יום שני" beside the next date. Dov's rows were
+rewritten by hand to the two-event shape once the migration was live.
+
 ### The reminder that was only a sentence (fixed 2026-09-22)
 
 עמית, 2026-09-15, 16:44 Israel:
