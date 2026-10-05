@@ -2054,6 +2054,7 @@ button.srow:active{background:var(--bg-tint)}
    than pushing the row wider than a phone */
 .mtvgrp .pill{max-width:100%;white-space:normal}
 .mtvsaid{color:var(--text-3);font-weight:400}
+.mtvgrp .mtwords{max-width:16em}
 
 .mtseg{display:flex;background:var(--sep);border-radius:9px;padding:2px;flex:none}
 .mtseg button{border:0;background:transparent;font:inherit;font-size:12px;font-weight:700;
@@ -2154,6 +2155,13 @@ button.srow:active{background:var(--bg-tint)}
    needs to see why the count dropped. They count towards nothing. */
 .mtface.gone{opacity:.5;text-decoration:line-through;text-decoration-thickness:1px}
 .mtface.gone .face{filter:grayscale(1)}
+/* A note is one line, cut with an ellipsis where it runs out of room, and a
+   tap opens it whole (owner, 2026-10-05: long notes made the row ugly). The
+   cut is the browser's, so it lands at the real width in either direction. */
+.mtface{max-width:100%;min-width:0;white-space:nowrap}
+.mtwords{display:inline-block;max-width:14em;min-width:0;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap;vertical-align:bottom;cursor:pointer}
+.mtwords.open{max-width:none;white-space:normal}
 
 /* A card in the list, before you open it. */
 .mtcard{
@@ -10920,7 +10928,7 @@ button.srow:active{background:var(--bg-tint)}
     var grp = function(cls, label, people){
       return people.length ? '<div class="mtvgrp"><span class="mtvlab ' + cls + '">' + esc(label) + "</span>" +
         people.map(function(x){
-          return '<span class="pill">' + esc(x.n) + (x.w ? ' · <span class="mtvsaid">' + esc(x.w) + "</span>" : "") + "</span>";
+          return '<span class="pill">' + esc(x.n) + (x.w ? ' · <span class="mtvsaid mtwords" title="' + esc(x.w) + '">' + esc(x.w) + "</span>" : "") + "</span>";
         }).join("") + "</div>" : "";
     };
     return '<div class="mtvotes">' + grp("y", t("mt.canDo"), yes) + grp("n", t("mt.cant"), nos) +
@@ -11035,7 +11043,7 @@ button.srow:active{background:var(--bg-tint)}
         (words ? ' title="' + esc(words) + '"' : "") + ">" +
         '<span class="face">' + avatarSVG(pid === 0 ? myAvatar : f.av, {g:pid === 0 ? myGender() : f.g}) + "</span>" +
         esc(mtName(pid)) +
-        (gone ? " · " + t("mt.gone") : words ? " · " + esc(words) : said ? "" : " · " + t("mt.waiting")) +
+        (gone ? " · " + t("mt.gone") : words ? ' · <span class="mtwords">' + esc(words) + "</span>" : said ? "" : " · " + t("mt.waiting")) +
         "</span>";
     }).join("");
 
@@ -11125,9 +11133,18 @@ button.srow:active{background:var(--bg-tint)}
     renderMeet();
   });
 
+  /* A tap on a cut note opens it whole, and a second one closes it. */
+  function mtWordsTap(e){
+    var w = e.target.closest(".mtwords");
+    if(!w) return false;
+    w.classList.toggle("open");
+    return true;
+  }
+  $("#mtFaces").addEventListener("click", mtWordsTap);
   $("#mtOpts").addEventListener("click", function(e){
     /* The click a finished swipe leaves behind — see the gesture below. */
     if(mtSwallow){ mtSwallow = false; return; }
+    if(mtWordsTap(e)) return;
     var m = mtOpen;
     if(!m) return;
     var row = e.target.closest("[data-opt]");
