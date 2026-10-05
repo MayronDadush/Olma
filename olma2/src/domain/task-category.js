@@ -26,7 +26,11 @@
 // `אח`, `בן`, `בת` and `גן`, which are substrings of a dozen ordinary words.
 // `none` is a perfectly good answer.
 
-const CATEGORIES = ['home', 'work', 'family', 'health', 'money', 'errands'];
+// `lists` (owner, 2026-10-05): a shopping run or a packing list is not an
+// errand among errands — it is a list, and the page files it on its own.
+// shopping-list.js sets it on every list it writes; the stems below catch only
+// a title that NAMES itself a list.
+const CATEGORIES = ['home', 'work', 'family', 'health', 'money', 'errands', 'lists'];
 const CATEGORY_SET = new Set(CATEGORIES);
 
 // Hebrew glues its prepositions and articles onto the front of a word — לרופא,
@@ -49,6 +53,13 @@ function escapeRe(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
 // sits last. `חשבונית` (an invoice, work) contains `חשבון` (a bill, money),
 // which is why work sits before money.
 const RULES = [
+  // First, because a list's name usually says what it is FOR — "רשימת קניות
+  // לבית", "רשימת ציוד לטיול" — and that word belongs to another category.
+  // Never bare `רשימה`: "לשלוח את הרשימה למנהל" is work that mentions a list.
+  ['lists', [
+    'רשימת קניות', 'רשימת ציוד', 'רשימת אריזה', 'רשימת סופר', 'רשימת מכולת',
+    'shopping list', 'grocery list', 'packing list', 'checklist',
+  ]],
   ['health', [
     'בית חולים', 'בית החולים', 'רופא', 'רופאה', 'דוקטור', 'שיניים', 'מרפאה',
     'קופת חולים', 'בדיקת דם', 'בדיקות דם', 'חיסון', 'תרופה', 'תרופות', 'מרשם',

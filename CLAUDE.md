@@ -224,10 +224,12 @@ Loads when you **Read** a file under `src/domain/reminders.js`, `src/domain/task
 - **A sixth option is refused to EVERYBODY, the initiator included, and the refusal carries the five.**
 - **The same people already negotiating is a QUESTION before a second coordination opens** — `meetings.openWithSamePeople` under an advisory lock on the set, `already_open` → continue, ask, or `separate: true`; exact set between two chats, and since 2026-10-05 NEARLY the same between a room and a chat, from both doors (`meetings.nearlySamePeople`)
 - **…and the mirror is a CONVENIENCE, never a clock — a time whose moment has passed leaves the TABLE, and only a coordination that has just lost one is asked whether it is empty.**
+- **In the private chat and the room a time within two hours of one on the table is a QUESTION — merge (the answers move to it) or separate** (`similar_option`, `meeting-options.merge`)
 - **A constraint that rules out a time ON the table is an ANSWER, and the tool that records it is the one that declines it** — and it earns no 👍; one the time still FITS ("אחרי 21" vs an evening) is a yes carrying the note, `accepts_option_ids`
 - **An answer given BEFORE a time existed answers it when it arrives — yes and no — and the person is told privately** (`standing-answers`, windows on a constraint)
 - **A time taken OFF that table is never a message of its own — it rides the next thing each person hears about that coordination.**
 - **A time ADDED to it rides the same thing, as long as that thing has not gone out yet** — four messages in sixty-two seconds is what queueing beside it looks like
+- **…and so does the HOUR set on a settled one: a confirmation still waiting says it, and no second message is written** (`meeting-fanout.afterTimeSet`)
 - **A negotiation message WAITS a quarter of an hour behind the last one that reached that person, and everything meanwhile folds into it** — the fold already existed and `urgent` never let it run; a RESULT never waits.
 - **Opening a coordination is not a subscription to every answer in it** — a decline and an exit (a confirmed one too, since 2026-10-03) stop being messages of their own; the reason moves from a push to a pull.
 - **"בחוץ" to a GENERAL question about a coordination is LEAVING it, and to ONE time it is a question back** — `outOnly` in the hook, `meeting-exit.onOut` reads the last row that reached them; opted out with a 👍, or one question and nothing written
@@ -235,6 +237,7 @@ Loads when you **Read** a file under `src/domain/reminders.js`, `src/domain/task
 - **Nobody manages a coordination** — `initiator_id` is who opened it and grants nothing: anybody still in it settles, renames, cancels (in the chat or the room) or leaves; its ending rides the next digest (`crossUser.closedMeetings`) or, in passing, whatever she says first (`digest.unheardClosedMeetings`, said once between them), never a message of its own; and leaving a confirmed one takes it off THEIR calendar only (`calendar.removeMeetingAttendee`) — the event is never deleted from under the others.
 - **An explicit reminder replaces the automatic one only on the SAME local day; on another day it stands beside it.**
 - **An event is SAID, never only guessed, and it is never told back as a task.**
+- **A list is ONE row with its items under it, through every door, and is filed under `lists`** — `add_tasks_bulk`'s `list`, `looksLikeShoppingBulk`, "קניות - א, ב"; the open list is found by TITLE, never by category
 - **A task already OPEN on somebody's list is never saved a second time.**
 - **…and the same thing in OTHER words is a judgement, so it was measured before it was written** — and the extraction pass and the live tool take OPPOSITE answers from it
 - **A model asked to date something must first be told what time it is.**

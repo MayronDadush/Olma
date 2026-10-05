@@ -678,7 +678,12 @@ have already had to be argued for.
   reply, the done line, the calendar line): an event that already exists as
   the done line is decided rides it (`line.calendar`, both stamps), and
   `group-meetings.settle` hands the model `hints.room` saying the fixed line
-  is the announcement and to answer NO_REPLY. **And no base line when nobody is
+  is the announcement and to answer NO_REPLY. **The event is made AFTER the
+  close, by the organiser's agent, so since 2026-10-05 the done line WAITS for
+  it** (`jobs/groups.calendarPending`): while `meetingCalendarRoles.shared`
+  says one is coming and the close is under `group-voice.CALENDAR_WAIT_MS` old.
+  Past that it goes without, and the separate line is the fallback.
+  **And no base line when nobody is
   missing or `settle_due_at` is armed** — "מחכה ל 🤞" went out with an
   empty list twelve seconds after Yuval's yes made it unanimous; the next
   thing that room should hear is "סגור". `TAG_RULE` also says now that the
