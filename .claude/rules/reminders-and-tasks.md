@@ -438,6 +438,24 @@ title means this file. Grep the title, not the filename.
   hangs on a task — "להוציא את העוגה בעוד 20 דקות" is still a to-do with a
   reminder, by choice, for now.
 
+- **A list is ONE row with its items under it, through every door — and a list is filed under `lists`.**
+  Dov (2026-10-05) dictated ten groceries one per line; the model tagged every
+  item `errands`, replied "בקניות", and called `add_tasks_bulk` with ten
+  top-level items, because that tool had no way to say "these are one list" —
+  the dictated-list split lived only on `add_task`, and only for "לקנות א, ב".
+  Three doors now reach `shopping-list.addToList`: `add_task`'s parser (which
+  also reads "קניות - א, ב", the shape `jobs/fact-extraction.js` writes back
+  half an hour later), `add_tasks_bulk`'s `list` param, and
+  `shopping-list.looksLikeShoppingBulk` for the turn that forgets the param —
+  every item filed `errands` by the model, 3+, undated, a few words, no
+  infinitive, nothing our keywords place elsewhere. **The open list is found by
+  TITLE, never by category** (a shopping run under any of `SHOPPING_TITLES`):
+  the category is the person's to move, and moving it must not make the next
+  item start a rival list. Readers that skip a list (`checkin.stalledGoals`)
+  ask for `lists` and the legacy `errands`, through a `COALESCE` — a bare
+  `= ANY` is NULL for an uncategorised project and silently dropped every one
+  (`incidents.md`, "Ten groceries, ten tasks").
+
 - **A task already OPEN on somebody's list is never saved a second time.**
   Four writers — the live `add_task`, a brain dump, a breakdown's subtasks and
   the fact-extraction pass — each relied on the model not repeating itself, and

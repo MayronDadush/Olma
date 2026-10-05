@@ -263,6 +263,7 @@ never trust a dated narrative for something you are about to act on.
 - [The rung nobody asked for, at half past one (2026-09-07)](#the-rung-nobody-asked-for-at-half-past-one-2026-09-07)
 - [Two ladders for one phone call (fixed 2026-09-08)](#two-ladders-for-one-phone-call-fixed-2026-09-08)
 - [The message id the model made up (2026-09-07)](#the-message-id-the-model-made-up-2026-09-07)
+- [Ten groceries, ten tasks (2026-10-05)](#ten-groceries-ten-tasks-2026-10-05)
 - [Two asks, one task (2026-09-07)](#two-asks-one-task-2026-09-07)
 - [The same thing, saved twice (fixed 2026-09-08)](#the-same-thing-saved-twice-fixed-2026-09-08)
 - [A time in the title and no reminder (fixed 2026-09-09)](#a-time-in-the-title-and-no-reminder-fixed-2026-09-09)
@@ -12391,6 +12392,36 @@ Fixture drift, worth knowing before the next such guard: twenty-three tests in
 four files broke, and every one of them was a test giving the same person two
 open tasks with the same title — two shared helpers (`mkTask`, `taskWithReminder`)
 accounted for all but four. None of them were about titles.
+
+### Ten groceries, ten tasks (2026-10-05)
+
+Dov wrote "הולך לעשות קניות עכשיו רשימה-" and ten lines, one item each. The
+model understood — it filed every item under `errands` and answered "שמרתי את
+כל 10 הפריטים בקניות" — and called `add_tasks_bulk` with ten top-level items.
+The dictated-list split (`shopping-list.js`) only ever ran on `add_task`, and
+only for a verb-led, comma-separated sentence, so ten tasks went onto his page.
+Half an hour later `jobs/fact-extraction.js` read the same conversation and
+wrote an eleventh row, "קניות - נייר טואלט, מגבונים, …": no verb, so the parser
+did not see a list, and one long title against ten short ones is nothing
+`task-similarity` would call a twin.
+
+The agent understood and the outcome had nowhere to go — the missing piece was
+a parameter, not a prompt. Fixed in four places: `list` on `add_tasks_bulk`;
+`looksLikeShoppingBulk` for the turn that does not use it (keyed on the model's
+own `errands` tag, so a dump of short nouns about anything else never
+qualifies); the parser accepting a list's NAME followed by a dash or colon; and
+the open list found by title rather than category. Lists got their own category
+the same day at the owner's request ("רשימות תהיה קטגוריה נפרדת כברירת מחדל"),
+`category_auto` so a person's move wins.
+
+Repaired by hand on the box: a list "קניות סופר" (the owner's name for it) with
+the ten rows moved under it, ids kept; the extraction's row archived, not
+deleted.
+
+The checkin change broke three tests on the first run: `t.category = ANY($4)`
+is NULL for a project with no category, `NOT (NULL AND true)` is NULL, and every
+uncategorised stalled goal vanished from the rung. The old `IS NOT DISTINCT
+FROM` had been null-safe by construction.
 
 ### Two asks, one task (2026-09-07)
 

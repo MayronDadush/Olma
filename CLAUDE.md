@@ -236,6 +236,7 @@ Loads when you **Read** a file under `src/domain/reminders.js`, `src/domain/task
 - **Nobody manages a coordination** — `initiator_id` is who opened it and grants nothing: anybody still in it settles, renames, cancels (in the chat or the room) or leaves; its ending rides the next digest (`crossUser.closedMeetings`) or, in passing, whatever she says first (`digest.unheardClosedMeetings`, said once between them), never a message of its own; and leaving a confirmed one takes it off THEIR calendar only (`calendar.removeMeetingAttendee`) — the event is never deleted from under the others.
 - **An explicit reminder replaces the automatic one only on the SAME local day; on another day it stands beside it.**
 - **An event is SAID, never only guessed, and it is never told back as a task.**
+- **A list is ONE row with its items under it, through every door, and is filed under `lists`** — `add_tasks_bulk`'s `list`, `looksLikeShoppingBulk`, "קניות - א, ב"; the open list is found by TITLE, never by category
 - **A task already OPEN on somebody's list is never saved a second time.**
 - **…and the same thing in OTHER words is a judgement, so it was measured before it was written** — and the extraction pass and the live tool take OPPOSITE answers from it
 - **A model asked to date something must first be told what time it is.**

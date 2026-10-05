@@ -683,7 +683,9 @@ async function stalledGoals(client, userId) {
         -- eggs and cottage cheese from twenty days before. Every open parent
         -- with open items in this category on the box that day was one (3 of
         -- 3), and the project this rung was built for has no category at all.
-        AND NOT (t.category IS NOT DISTINCT FROM $4 AND EXISTS (
+        -- Since 2026-10-05 a list is filed under 'lists'; one written before
+        -- that is still 'errands', and both are skipped.
+        AND NOT (COALESCE(t.category = ANY($4::text[]), false) AND EXISTS (
               SELECT 1 FROM tasks c WHERE c.parent_id = t.id AND c.status = 'open' AND c.archived_at IS NULL))
       GROUP BY t.id
      HAVING count(s.id) FILTER (WHERE s.status = 'done') = 0
@@ -692,7 +694,7 @@ async function stalledGoals(client, userId) {
           OR (count(s.id) = 0 AND t.created_at < now() - make_interval(days => $3)))
       ORDER BY (count(s.id) FILTER (WHERE s.status = 'open') > 0) DESC, t.created_at
       LIMIT 5`,
-    [userId, STALLED_PROJECT_DAYS, STALLED_SINGLE_DAYS, shopping.LIST_CATEGORY]
+    [userId, STALLED_PROJECT_DAYS, STALLED_SINGLE_DAYS, [shopping.LIST_CATEGORY, ...shopping.LEGACY_LIST_CATEGORIES]]
   );
   return rows;
 }
