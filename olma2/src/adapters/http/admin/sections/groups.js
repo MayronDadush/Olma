@@ -15,7 +15,15 @@
 // and this is where it gets fixed when the room never answered or answered
 // wrongly. It goes through `groups.setKind` — validated and audited exactly
 // like the room's own answer.
+//
+// The one exception on STATE is `retired`, and it is offered only for a room
+// `groups.removalSuspects` names. The sweep cannot learn that she was removed
+// from a room (nothing tells it), so a person confirms it here, through
+// `groups.retire`, the way room 11 was confirmed by hand on 2026-09-25.
+// Undoing it needs no button: `groups.restoreReturned` does it on the first
+// message from the room once she is back in it.
 const { esc } = require('../../html');
+const { ago } = require('../html');
 const occ = require('../../../../intake/openclaw-config');
 const { GREETER_AGENT_ID } = require('../../../../intake/provision-group');
 const groupsDomain = require('../../../../domain/groups');
@@ -60,12 +68,29 @@ function kindForm(g, csrf) {
   </form>`;
 }
 
+// Rooms that keep refusing her, each with the one button that confirms it.
+// Empty when there are none: a "no suspects" line every day is noise.
+function suspectsBlock(suspects, csrf) {
+  if (!suspects.length) return '';
+  const rows = suspects.map((g) => `<li><b>${esc(g.subject || String(g.id))}</b>
+    <span class="dim">— וואטסאפ סירב לשליחה ${g.refusals} פעמים ב-${g.days} ימים שונים, ואף שליחה לא עברה מאז. האחרון ${esc(ago(g.lastAt))}.</span>
+    <form method="post" action="/group-retire" style="display:inline">
+      <input type="hidden" name="csrf" value="${esc(csrf || '')}">
+      <input type="hidden" name="id" value="${g.id}">
+      <input type="hidden" name="back" value="/#groups">
+      <button>כן, היא כבר לא שם — סמן כעזבה</button>
+    </form></li>`).join('');
+  return `<div class="warn"><p><b>ייתכן שהוציאו את עולמה מהקבוצות האלה:</b></p><ul>${rows}</ul>
+    <p class="dim">קבוצה שמסומנת כעזבה נעלמת מהדאשבורד האישי של כל החברים. אם מחזירים את עולמה לקבוצה, היא חוזרת לבד בפעם הראשונה שמישהו מתייג אותה שם.</p></div>`;
+}
+
 async function renderGroups(client, csrf, _probe, ctx = {}) {
   const { rows: groups } = await client.query(
     `SELECT g.*, u.first_name AS registered_by
        FROM chat_groups g LEFT JOIN users u ON u.id = g.registered_by_user_id
       ORDER BY g.state = 'open', g.created_at DESC LIMIT 50`);
-  const head = gateLine(ctx.configPath || occ.DEFAULT_PATH);
+  const head = gateLine(ctx.configPath || occ.DEFAULT_PATH)
+    + suspectsBlock(await groupsDomain.removalSuspects(client), csrf);
   if (!groups.length) return head + '<p class="dim">אין קבוצות עדיין.</p>';
 
   const { rows: members } = await client.query(

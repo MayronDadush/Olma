@@ -1045,3 +1045,39 @@ test('a room whose missing members are all LIDs is nudged, and the LIDs are tagg
   assert.match(notice.body, /@\+259201444126724/);
   assert.match(notice.body, /@\+69320805752936/);
 });
+
+// She was removed, the owner marked the room as left, and then somebody added
+// her back (owner, 2026-10-03). The first tag there is the proof — WhatsApp
+// delivers a room's messages only to its members — and the sweep puts the room
+// back by itself, on the same pass, without greeting it a second time.
+test('a room marked as left comes back on the first tag after she is re-added, and is not greeted again', async () => {
+  const a = await connectedUser('+972603000150');
+  const b = await connectedUser('+972603000151');
+  const roster = `${a.phone}, ${b.phone}`;
+  const jid = JID(43);
+  const at = Date.now();
+  await pass(gatewayWith({ jid, roster, at }).deps);
+  let room = await withTx(db.pool, (c) => groupsDomain.getByExternalId(c, 'whatsapp', jid));
+  assert.equal(room.state, 'open');
+
+  await withTx(db.pool, (c) => groupsDomain.retire(c, room.id, { by: 'owner' }));
+  const quiet = gatewayWith({ jid, roster, at: at + 60_000 });
+  let out = await pass(quiet.deps);
+  assert.deepEqual(out.returned, [], 'nothing heard there since: still left');
+  room = await withTx(db.pool, (c) => groupsDomain.getByExternalId(c, 'whatsapp', jid));
+  assert.equal(room.state, 'retired');
+
+  // A member tags her there; brokerd records the turn as it does for every room.
+  await db.pool.query(
+    `INSERT INTO group_inbound_context (session_key, agent_id, chat_id, at)
+          VALUES ($1, $2, $3, now() + interval '1 second')
+     ON CONFLICT (session_key) DO UPDATE SET at = EXCLUDED.at`,
+    [`agent:${room.agent_id || 'g-x'}:whatsapp:group:${jid}`, room.agent_id || 'g-x', jid]);
+  const back = gatewayWith({ jid, roster, at: at + 120_000, messageId: 'MSG-BACK' });
+  out = await pass(back.deps);
+  assert.deepEqual(out.returned, [room.id]);
+  room = await withTx(db.pool, (c) => groupsDomain.getByExternalId(c, 'whatsapp', jid));
+  assert.equal(room.state, 'open', 'the same pass judged it on its roster and opened it');
+  assert.ok(room.agent_id, 'with an agent to answer');
+  assert.deepEqual(back.sent, [], 'a room she already greeted is not greeted again');
+});

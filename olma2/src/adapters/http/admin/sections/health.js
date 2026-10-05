@@ -8,6 +8,7 @@ const { prepaidLow } = require('./cost');
 const flagsDomain = require('../../../../domain/flags');
 const occ = require('../../../../intake/openclaw-config');
 const boostDomain = require('../../../../domain/boost');
+const groupsDomain = require('../../../../domain/groups');
 const boostJob = require('../../../../jobs/boost');
 const { assessJobs, isStale } = require('../../../../jobs/expectations');
 const evalsJob = require('../../../../jobs/evals');
@@ -220,6 +221,15 @@ async function collectAlerts(client, { hbRows, gateway }) {
     const labels = { openrouter: 'OpenRouter', twilio: 'Twilio', deepgram: 'Deepgram' };
     for (const [k, label] of Object.entries(labels)) if (c[k] && prepaidLow(c[k])) bad(`יתרה נמוכה: ${label}`, '#cost');
   } catch { /* the cost section reports a billing API it cannot read; the strip stays silent about it */ }
+  // A room refusing her on two days is most likely one she was taken out of.
+  // A warn and not a bad: nothing is failing for a person, the room just
+  // stays on their page until somebody confirms it in the groups section.
+  try {
+    const suspects = await groupsDomain.removalSuspects(client);
+    for (const g of suspects) warn(`ייתכן שהוציאו את עולמה מהקבוצה ${g.subject || g.id}`, '#groups');
+  } catch {
+    warn('לא ניתן לבדוק אם הוציאו את עולמה מקבוצה', '#groups');
+  }
   try {
     const state = await flagsDomain.getFlag(client, boostJob.STATE_FLAG);
     if (boostDomain.isEngaged(state) && !boostDomain.expired(state, new Date())) warn('מצב בוסט דלוק — עולה כסף לדקה', '#flags');
