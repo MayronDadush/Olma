@@ -19,6 +19,8 @@ const OUTBOX_STATE = {
   awaiting_introduction: 'ממתינות להיכרות',
   duplicate: 'נחסמו — אותו דבר נשלח זה עתה',
   settling: 'ממתינות לייצוב המערכת',
+  coordination_gap: 'ממתינות — 3 שעות מההודעה הקודמת על התיאום',
+  coordination_daily: 'ממתינות למחר — כבר 2 הודעות היום על התיאום',
   cancelled_by_admin: 'בוטל ע"י מנהל', cancelled: 'התזכורת בוטלה',
 };
 

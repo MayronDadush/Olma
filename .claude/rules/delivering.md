@@ -431,6 +431,24 @@ title means this file. Grep the title, not the filename.
   so it is false for every sibling (`incidents.md`, "The game moved, and
   Shabbat would have told him after it").
 
+- **Each person hears about ONE coordination at most twice in their own day,
+  the invite is the first, and the second waits three hours behind it**
+  (owner, 2026-10-05; `gate.coordinationCap`, worker fact `coordinationDay`).
+  Every `meeting_*` row that REACHED them counts (`sent_at`, `hold_reason`
+  NULL, DISTINCT `sent_at`), from their local midnight. The second waits
+  `COORDINATION_GAP_MS` behind the first as `coordination_gap`; past
+  `COORDINATION_DAILY_MAX` a row waits for the next local day's window open
+  as `coordination_daily`. **Held, never dropped**: a held negotiation row is
+  still unsent, so `meeting-fanout.foldIntoPendingQuestion` keeps folding
+  into it, and the hold is what gives the fold an afternoon to work with.
+  **A RESULT (`COORDINATION_RESULTS`) still counts, but never waits out the
+  gap, and past the cap it goes out anyway when the meeting starts before
+  that morning.** Held overnight, "it's on at 21:00" would arrive after the
+  game and `meeting_over` would drop it. `meeting_exact_time_ask` is in that
+  set because it answers their own tap on the page. Per coordination, never
+  across them (`incidents.md`, "Three messages in thirty-five minutes, about
+  one poker game").
+
 - **A chag is QUIET only for somebody who asked for it, and "quiet-able" means
   yom tov and nothing else** (owner, 2026-09-11: "רק ימי טוב"). `holidays.js`
   sorts every day into two tiers — `quiet` is `flags.CHAG` alone, which is

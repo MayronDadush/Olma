@@ -2127,6 +2127,41 @@ gap open: a member of a room can be invited to its coordination, receive
 nothing, and nobody — not him, not the room, not the person who opened it —
 can tell.
 
+### Three messages in thirty-five minutes, about one poker game (fixed 2026-10-05)
+
+Coordination 74 ("פוקר לשבוע הקרוב") opened from room 13 at 15:52. Users 13,
+57 and 58 each read three private messages by 16:27: the invite, a time
+added at 16:04, another added at 16:17. The fifteen-minute pacing from the
+entry above did exactly what it was built to do: each addition waited a
+quarter of an hour behind the last message and then went out, because
+nothing else arrived inside that quarter of an hour to fold into it.
+
+The owner's rule (2026-10-05): **each person hears about one coordination at
+most twice in their own day, the invite is the first, and the second waits
+so it can carry as much of the day as possible.** Asked as choices, he
+picked: a three-hour gap before the second; past two, the next morning, as
+one message; per coordination, not across all of them; and EVERYTHING counts,
+results too. Two follow-ups bend for a result: it never waits out the gap
+(there is nothing more to collect after "סגור"), and past the cap it still
+goes out when the meeting starts before the morning it would be held for.
+Otherwise "the poker is on tonight" lands after the game, and `meeting_over`
+drops it unread.
+
+It lives in the gate (`gate.coordinationCap`, worker fact
+`coordinationDay`), not in `meeting-fanout`, because coordination rows are
+enqueued from a dozen places and only the gate sees all of them. It HOLDS and
+never drops, and that is what makes it work: a held negotiation row is still
+unsent, so `foldIntoPendingQuestion` keeps folding into it. The hold gives
+the fold an afternoon instead of a quarter of an hour. Replayed on the day's
+real rows, the three people would each have read two messages: the invite at
+15:56, and both times together at about 18:56.
+
+Open: a coordination CANCELLED while still negotiating has no
+`confirmed_start_at`, so past the cap its cancellation waits for the morning
+even if one of its times was tonight. Two non-foldable rows (a reopening and
+an auto-answer, say) released together still go one at a time, and the
+second then meets the cap.
+
 ### Two exits, two messages, to a man who asked for one a day (fixed 2026-10-03)
 
 סער (u-55) had asked on 2026-10-02 to be written to once a day. On the

@@ -170,6 +170,7 @@ Loads when you **Read** a file under `src/outbox/**`, `src/domain/message-format
 - **For an Israeli zone, Saturday's quiet day is candle-lighting to havdalah, not midnight to midnight.**
 - **A quiet day releases at the next kept day's window open, not 24 hours after whenever it was checked.**
 - **Nothing about a meeting goes out once the meeting has happened** — the gate drops a held `meeting_*` row as `meeting_over`
+- **Each person hears about ONE coordination at most twice a day, the invite first and the second three hours later** — everything counts; a result skips the wait, and past the cap still goes if the meeting is before the morning (`gate.coordinationCap`)
 - **A chag is QUIET only for somebody who asked for it, and "quiet-able" means yom tov and nothing else.**
 - **`DEFAULT_WINDOW` (09:00-21:00) is no longer only a fallback — it is a sentence somebody read.**
 - **That rung asks for the COUNTRY, not the city**
