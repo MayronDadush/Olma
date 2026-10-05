@@ -460,7 +460,7 @@ module.exports = [
   // A settled time back on the table, carried on from where it stopped (owner,
   // 2026-09-25): every other answer stands. The room and the page reach the
   // same fan-out.
-  tool('reopen_meeting', 'Reopen a CONFIRMED meeting you are in (before it starts) so its time can change — anyone in it may. Answers stay, except your yes to the set time. Everyone is told; the calendar event is removed.',
+  tool('reopen_meeting', 'Reopen a CONFIRMED meeting you are in (before it starts) so its time can change; anyone in it may. Answers stay, except your yes to the set time. Everyone is told; its calendar event goes.',
     { meeting_id: S('number', 'Meeting id') }, ['meeting_id'],
     (client, user, a) => meetingFanout.reopenAndTell(client, user, a.meeting_id)),
   // The name, and since 2026-10-04 the category too — everything the page can
