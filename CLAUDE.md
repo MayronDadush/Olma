@@ -224,6 +224,7 @@ Loads when you **Read** a file under `src/domain/reminders.js`, `src/domain/task
 - **A sixth option is refused to EVERYBODY, the initiator included, and the refusal carries the five.**
 - **The same people already negotiating is a QUESTION before a second coordination opens** — `meetings.openWithSamePeople` under an advisory lock on the set, `already_open` → continue, ask, or `separate: true`; exact set, private and negotiating only
 - **…and the mirror is a CONVENIENCE, never a clock — a time whose moment has passed leaves the TABLE, and only a coordination that has just lost one is asked whether it is empty.**
+- **In the private chat a time within two hours of one on the table is a QUESTION — merge (the answers move to it) or separate** (`similar_option`, `meeting-options.merge`)
 - **A constraint that rules out a time ON the table is an ANSWER, and the tool that records it is the one that declines it** — and it earns no 👍; one the time still FITS ("אחרי 21" vs an evening) is a yes carrying the note, `accepts_option_ids`
 - **An answer given BEFORE a time existed answers it when it arrives — yes and no — and the person is told privately** (`standing-answers`, windows on a constraint)
 - **A time taken OFF that table is never a message of its own — it rides the next thing each person hears about that coordination.**
