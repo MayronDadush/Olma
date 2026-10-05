@@ -84,3 +84,41 @@ test('a reply they wrote inside the grace minute is theirs, and outside any mark
   const out = await call('opt_out_of_meeting', b, { meeting_id: id });
   assert.equal(out.ok, true, out.ok ? '' : JSON.stringify(out.error));
 });
+
+test('a constraint carrying an answer is refused inside our turn; a bare note is still saved', async () => {
+  const { b, id, opt } = await pair();
+  await db.pool.query(`UPDATE users SET last_woke_at = now() - interval '1 hour' WHERE id = $1`, [b.id]);
+  selfInitiated.begin(b.id);
+
+  for (const extra of [{ declines_option_ids: [opt.id] }, { accepts_option_ids: [opt.id] },
+    { windows: [{ answer: 'y', from: new Date().toISOString(), to: new Date(Date.now() + 86400_000).toISOString() }] }]) {
+    const res = await call('record_meeting_constraint', b, { meeting_id: id, constraint: 'אחרי 18', ...extra });
+    assert.equal(res.ok, false, JSON.stringify(extra));
+    assert.equal(res.error.reason, 'not_their_turn');
+  }
+  const prop = await call('propose_meeting_slot', b,
+    { meeting_id: id, slot_description: 'ראשון 18:00', starts_at: slotStart('ראשון', { hours: 96 }) });
+  assert.equal(prop.error.reason, 'not_their_turn', 'a proposal is their yes too');
+
+  const note = await call('record_meeting_constraint', b, { meeting_id: id, constraint: 'עדיף ערב' });
+  assert.equal(note.ok, true, note.ok ? '' : JSON.stringify(note.error));
+  assert.deepEqual((await tx((c) => options.list(c, id)))[0].answers[String(b.id)], undefined, 'and nothing was answered');
+});
+
+// The guard lives in one place, off a list. A handler here that reaches a
+// function writing an answer, with its tool missing from that list, is the
+// next Arik — this is what stops it being added quietly.
+test('every meeting tool that can write an answer is behind the guard', () => {
+  const tools = require('../src/adapters/mcp/tools/meetings');
+  const WRITES = /respondToSlot|proposeSlot|options\.answer|optOut\(|rejoin\(|setExactTime|windows/;
+  const src = require('node:fs').readFileSync(require.resolve('../src/adapters/mcp/tools/meetings'), 'utf8');
+  for (const t of tools) {
+    const at = src.indexOf(`tool('${t.name}'`);
+    const next = src.indexOf("\n  tool('", at + 1);
+    const body = src.slice(at, next === -1 ? src.indexOf('\n];\n', at) : next);
+    if (WRITES.test(body)) assert.ok(t.writesAnswer, `${t.name} writes an answer and is not in WRITES_ANSWER`);
+  }
+  for (const name of Object.keys(tools.WRITES_ANSWER)) {
+    assert.ok(tools.some((t) => t.name === name && t.writesAnswer), `${name} is listed but no tool carries the guard`);
+  }
+});

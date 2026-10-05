@@ -6228,8 +6228,20 @@ things qualify:
   belonged to nobody" made countable;
 - somebody whose own turn was already running when ours began.
 
-Open: `record_meeting_constraint` with `declines_option_ids` /
-`accepts_option_ids` writes answers too, and is not guarded yet.
+The owner's reading of it, the same day: a yes or a no is only ever the
+person's own, and when Olma is the one talking she asks rather than writes.
+So the guard became one list (`WRITES_ANSWER`) applied in one place, and
+covers `propose_meeting_slot` (a proposal is the proposer's yes) and
+`record_meeting_constraint` whenever it carries declines, accepts or windows,
+which had been left open in the first cut. A test reads every meeting
+handler and fails when one reaches an answer-writing function off the list.
+
+The same principle reached the one place code wrote a YES with no new word:
+a window on an earlier constraint ("from 18 I'm free") used to answer a time
+someone else added later. That yes could have been the last one a
+coordination needed. It now asks instead (`fits` on the proposal); the
+automatic NO stays, because it only repeats what they said and closes
+nothing.
 
 ### The minute after a delivery belonged to nobody (fixed 2026-10-02)
 

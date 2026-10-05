@@ -199,8 +199,13 @@ title means this file. Grep the title, not the filename.
   bump; the plugin's `trigger` cannot replace it, because the CLI says
   `"user"` too.
   **…and a turn Olma started writes nobody's ANSWER** (2026-10-05). In that
-  turn, `respond_to_meeting_slot`, `opt_out_of_meeting` and `rejoin_meeting`
-  refuse with `not_their_turn`, unless the person has written since the mark
+  turn every tool in `WRITES_ANSWER` (`src/adapters/mcp/tools/meetings.js`:
+  `respond_to_meeting_slot`, `opt_out_of_meeting`, `rejoin_meeting`,
+  `propose_meeting_slot`, and `record_meeting_constraint` once it carries ids
+  or windows — a bare note still saves) refuses with `not_their_turn`, and the
+  refusal tells her to ask. The guard is applied ONCE, off that list, never
+  inside a handler, and a test fails when a handler reaches an answer-writing
+  function without being on it. It holds unless the person has written since the mark
   began, less two minutes (`self-initiated.since` against `users.last_woke_at`,
   the gateway opener's stamp). That exception is the reply inside the grace
   minute that the rule above keeps theirs. The page and the room are other
