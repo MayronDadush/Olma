@@ -104,6 +104,7 @@ never trust a dated narrative for something you are about to act on.
 - [Eden could not come back (fixed 2026-10-01)](#eden-could-not-come-back-fixed-2026-10-01)
 - [Eden, kept out by a pause that had ended (fixed 2026-10-05)](#eden-kept-out-by-a-pause-that-had-ended-fixed-2026-10-05)
 - [Eden asked not to be taken out (fixed 2026-10-05)](#eden-asked-not-to-be-taken-out-fixed-2026-10-05)
+- [Yossi was abroad, and was taken out (fixed 2026-10-05)](#yossi-was-abroad-and-was-taken-out-fixed-2026-10-05)
 - [The coordination waited on the man who started it (fixed 2026-09-19)](#the-coordination-waited-on-the-man-who-started-it-fixed-2026-09-19)
 - [The room heard its own state from memory (fixed 2026-09-19)](#the-room-heard-its-own-state-from-memory-fixed-2026-09-19)
 - [The room held a time that no longer existed (fixed 2026-09-22)](#the-room-held-a-time-that-no-longer-existed-fixed-2026-09-22)
@@ -3703,6 +3704,33 @@ them for "everybody said yes", and they are never tagged. Somebody with no
 answer, or one only on a time that has since left the table, is taken out as
 before. One question, `group-meetings.answeredLive`, is asked by the sweep,
 `statusOf` and `meeting-options.unanimousOption`.
+
+### Yossi was abroad, and was taken out (fixed 2026-10-05)
+
+The poker room, meeting 74, 14:19 UTC. Yossi (u-53) tagged her: "אני בחול עד
+ה 17.10 גבר". Every time on the table was before the 17th. The room's agent
+called `leave_group_coordination`, the only room tool that matched "I can't",
+and answered "נרשם, יוסי. התיאום ממשיך בלעדייך". Nothing recorded a no on the
+dates he named, and anything put up after the 17th would never reach him.
+
+The private side has had the right shape since 2026-09-28: a constraint with a
+`windows` entry that answers today's times and any time added later
+(`domain/standing-answers.js`). The room had no door to it. The model
+understood him and had nowhere to put it.
+
+`leave_group_coordination` now takes an optional `until`. With it the member
+stays in. The words are recorded as a public constraint with a no-window from
+now to `until`, and every time on the table inside it is answered no. A yes
+they gave earlier inside it is withdrawn, because this is their newer word
+about those dates. A settled time inside the window is still leaving, and one
+after it changes nothing. Over 21 days is refused, the same cap as the private
+windows. It rides an existing tool, not a new one, because the schema had 27
+characters to spare.
+
+Repaired on the box the same evening, rehearsed under ROLLBACK first. He was
+rejoined through `meetings.rejoin` (his exit was `user_choice`), the window was
+set to the end of 17.10 Israel time, and Tuesday and Friday 9.10 were answered
+no. Nobody was messaged.
 
 ### The times the room said went nowhere (fixed 2026-09-23)
 

@@ -315,6 +315,13 @@ have already had to be argued for.
   `recentMeetings` says `out` about a coordination they are not in, so she
   never tells somebody they are still in one (`incidents.md`, "Eden could
   not come back", "Eden, kept out by a pause that had ended").
+  **…and "away until a date" is NOT leaving** (owner, 2026-10-05).
+  `leave_group_coordination` with `until` keeps them in: their words become a
+  public constraint with a no-window to that moment (the private side's
+  `standing-answers`), every time inside it is a no, including one they had
+  said yes to, and later times inside it are answered for them. A settled time
+  inside the window is still an exit (`incidents.md`, "Yossi was abroad, and
+  was taken out").
 
 - **Somebody a room sent to the greeter hears about that room in the FIRST
   reply, and its coordination follows that same night if they are awake**
