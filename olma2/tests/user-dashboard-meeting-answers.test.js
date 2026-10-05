@@ -96,3 +96,69 @@ test('an explicit yes is answered too, with or without anything said', async () 
   assert.equal(p.answer, 'y');
   assert.equal(p.answered, true, 'a plain yes read as unanswered');
 });
+
+// בר answered the poker four times in four minutes, each answer with a note,
+// and all four were drawn beside his name — the first two ("I can Friday")
+// no longer true once he had said no to Friday (meeting 74, 2026-10-05). A
+// note given with an answer stands only until that answer is given again.
+test('a note stands until the answer it came with is given again', async () => {
+  const tool = require('../src/adapters/mcp/tools/meetings').find((t) => t.name === 'record_meeting_constraint');
+  const DAY = 24 * 3600_000;
+  const base = new Date(Date.now() + 3 * DAY); base.setUTCHours(10, 0, 0, 0);
+  const at = (d, h) => new Date(base.getTime() + d * DAY + h * 3600_000).toISOString();
+  let m, early, late, evening;
+  await withTx(db.pool, async (c) => {
+    m = Number((await meetings.startMeeting(c, me.id, 'פוקר', [her.id])).data.meeting.id);
+    const add = async (slot, startsAt) => (await meetings.options.add(c, me.id, m, slot, startsAt)).data.option.id;
+    early = await add('option A 11:00', at(0, 1));
+    late = await add('option B 13:00', at(0, 3));
+    evening = await add('option C 19:00', at(1, 9));
+  });
+  const say = (constraint, extra) => withTx(db.pool, async (c) => {
+    const r = await tool.handler(c, { ...her }, { meeting_id: m, constraint, ...extra });
+    assert.ok(r.ok, JSON.stringify(r));
+  });
+  await say('אני יכול בצהריים', { accepts_option_ids: [late] });
+  await say('אני יכול באיטליה', { accepts_option_ids: [early, late] });
+  await say('לא בארץ מחר', { declines_option_ids: [evening] });
+  await say('טס ולא יכול השבוע', { declines_option_ids: [early, late] });
+  await say('בלי קשר: אני מביא צ׳יפים');
+
+  const herOf = async (uid) => {
+    const res = await load(uid);
+    return res.data.meetings.find((x) => String(x.id) === String(m)).participants.find((p) => p.name === 'מאיה');
+  };
+  const p = await herOf(me.id);
+  assert.deepEqual(p.said, ['לא בארץ מחר', 'טס ולא יכול השבוע', 'בלי קשר: אני מביא צ׳יפים']);
+  assert.deepEqual(p.saidOn, { [evening]: 'לא בארץ מחר', [early]: 'טס ולא יכול השבוע', [late]: 'טס ולא יכול השבוע' });
+  const st = await withTx(db.pool, (c) => meetings.getStatus(c, me.id, m));
+  assert.deepEqual(st.data.participants.find((x) => x.user_id === her.id).constraints, p.said, 'agents read the same notes');
+
+  // A tap that changes the answer silences the note it was given with.
+  await withTx(db.pool, (c) => meetings.options.answer(c, her.id, m, evening, 'y'));
+  const after = await herOf(me.id);
+  assert.deepEqual(after.said, ['טס ולא יכול השבוע', 'בלי קשר: אני מביא צ׳יפים']);
+  assert.equal(after.saidOn[evening], undefined);
+});
+
+// A time merged into a close one carries everybody's answer to the new id
+// (`meeting-options.merge`), and the note given with that answer goes too.
+test('a note follows its answer when the time it answered is merged', async () => {
+  const tool = require('../src/adapters/mcp/tools/meetings').find((t) => t.name === 'record_meeting_constraint');
+  const start = new Date(Date.now() + 4 * 24 * 3600_000); start.setUTCHours(9, 0, 0, 0);
+  const iso = (h) => new Date(start.getTime() + h * 3600_000).toISOString();
+  let m, old, merged;
+  await withTx(db.pool, async (c) => {
+    m = Number((await meetings.startMeeting(c, me.id, 'מיזוג', [her.id])).data.meeting.id);
+    old = (await meetings.options.add(c, me.id, m, 'option A 09:00', iso(0))).data.option.id;
+    const r = await tool.handler(c, { ...her }, { meeting_id: m, constraint: 'בבוקר אני בעבודה', declines_option_ids: [old] });
+    assert.ok(r.ok, JSON.stringify(r));
+    const res = await meetings.options.merge(c, me.id, m, old, 'option B 09:30', iso(0.5));
+    assert.ok(res.ok, JSON.stringify(res));
+    merged = res.data.option.id;
+  });
+  const res = await load(me.id);
+  const p = res.data.meetings.find((x) => String(x.id) === String(m)).participants.find((x) => x.name === 'מאיה');
+  assert.deepEqual(p.said, ['בבוקר אני בעבודה']);
+  assert.deepEqual(p.saidOn, { [merged]: 'בבוקר אני בעבודה' });
+});

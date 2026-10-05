@@ -180,17 +180,14 @@ async function groupCosts(client, agentIds) {
   if (!ids.length) return new Map();
   const { rows } = await client.query(
     `SELECT agent_id, date, model, input_tokens, output_tokens, cache_read_tokens,
-            cache_write_tokens, cost_usd,
+            cache_write_tokens, cost_usd, billed,
             date >= date_trunc('month', CURRENT_DATE)::date AS this_month
        FROM usage_system_ledger WHERE agent_id = ANY($1)`, [ids]);
   const blended = await pricing.blendedRate(client);
   const out = new Map();
   for (const r of rows) {
-    const p = pricing.priceUsage({
-      input: r.input_tokens, output: r.output_tokens,
-      cacheRead: r.cache_read_tokens, cacheWrite: r.cache_write_tokens,
-    }, r.model, blended, r.date);
-    const cost = p.estimated ? Number(r.cost_usd) : p.cost;
+    const p = pricing.ledgerRowCost(r, blended);
+    const cost = p.cost;
     const g = out.get(r.agent_id) || { month: 0, total: 0, estimated: false };
     g.total += cost;
     if (r.this_month) g.month += cost;
@@ -208,7 +205,9 @@ async function renderCost(client) {
   //
   // Every figure below is priced HERE, from the token columns, through the
   // rate table as it stands today — the stored `cost_usd` is used only for a
-  // model that still has no rate. The ledgers are append-only on purpose, so
+  // model that still has no rate, or for a row the provider itself billed
+  // (`billed`, migration 110: since late August the gateway writes
+  // OpenRouter's own charge, and the table read ~30% under it). The ledgers are append-only on purpose, so
   // a row written under a wrong rate keeps it for ever; that is correct for
   // the record and wrong for the screen. On 2026-09-03 four models were
   // measured against their real published prices and found to have been
@@ -222,26 +221,23 @@ async function renderCost(client) {
   // than a rate known to be wrong.
   const ledgerRows = await client.query(
     `SELECT l.date, l.model, l.input_tokens, l.output_tokens, l.cache_read_tokens,
-            l.cache_write_tokens, l.cost_usd, l.user_id, u.first_name, u.phone, NULL AS agent_id,
+            l.cache_write_tokens, l.cost_usd, l.billed, l.user_id, u.first_name, u.phone, NULL AS agent_id,
             l.date >= date_trunc('month', CURRENT_DATE)::date AS this_month
        FROM usage_ledger l JOIN users u ON u.id = l.user_id
       WHERE l.date >= LEAST(date_trunc('month', CURRENT_DATE)::date, CURRENT_DATE - 30)
      UNION ALL
      SELECT s.date, s.model, s.input_tokens, s.output_tokens, s.cache_read_tokens,
-            s.cache_write_tokens, s.cost_usd, NULL, NULL, NULL, s.agent_id,
+            s.cache_write_tokens, s.cost_usd, s.billed, NULL, NULL, NULL, s.agent_id,
             s.date >= date_trunc('month', CURRENT_DATE)::date
        FROM usage_system_ledger s
       WHERE s.date >= LEAST(date_trunc('month', CURRENT_DATE)::date, CURRENT_DATE - 30)`);
   const blended = await pricing.blendedRate(client);
   const priced = ledgerRows.rows.map((r) => {
-    const p = pricing.priceUsage({
-      input: r.input_tokens, output: r.output_tokens,
-      cacheRead: r.cache_read_tokens, cacheWrite: r.cache_write_tokens,
-    }, r.model, blended, r.date);
-    // No rate today means the fallback is still the best available answer,
-    // and the stored number already IS that fallback — keep it, and keep
-    // saying so with the ≈.
-    return { ...r, cost: p.estimated ? Number(r.cost_usd) : p.cost, estimated: p.estimated };
+    // A row the provider billed is shown as billed; anything else is
+    // re-priced, and with no rate today the stored number already IS the
+    // fallback — kept, and still marked ≈ (model-pricing.ledgerRowCost).
+    const p = pricing.ledgerRowCost(r, blended);
+    return { ...r, cost: p.cost, estimated: p.estimated };
   });
   const days = { rows: rollup(priced, (r) => String(r.date), (k, rows) => ({ date: rows[0].date }))
     .sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, 14) };

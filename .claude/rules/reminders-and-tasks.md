@@ -197,6 +197,22 @@ title means this file. Grep the title, not the filename.
     tool, on purpose. A tap on "new" has already answered the question.
   - `incidents.md`, "Two coordinations for one meeting".
 
+- **In the private chat AND the room, a time CLOSE to one already on the
+  table is a question before it is a second option** (owner, 2026-10-05).
+  - Close means the same local day and at most two hours apart, with a part of
+    the day as its window (`meeting-options.isSimilar`). The exact same
+    instant is not close: `add` still folds that into a yes.
+  - `propose_meeting_slot` and `add_group_coordination_option` write nothing
+    and return `similar_option`. The person who wrote it (in a room, the
+    member who tagged her) decides:
+    - `merge_with=<id>`: their time REPLACES that one, and every answer on it
+      moves across (`meeting-options.merge`). Whoever answered is told, not
+      asked again (`meeting_answer_moved`).
+    - `merge_with=0`: a separate time with new answers.
+  - Never chosen for them. In a room, `similar` carries the times only, never
+    whose answer is whose. The page does not ask.
+  - `incidents.md`, "Two times for one game".
+
 - **A constraint that rules out a time ON the table is an ANSWER, and the tool
   that records it is the one that declines it** (2026-09-20). Maya wrote "לא
   יכולה ביום שני" with Monday on the table; the model called
@@ -269,6 +285,11 @@ title means this file. Grep the title, not the filename.
   is a second message sitting beside the one the pacing just created.
   **A RESULT never waits** — confirmed, cancelled, nobody matched, expired is
   the message they are actually waiting for.
+  **Since 2026-10-05 the gate stretches this further**: the second message
+  of a person's day about one coordination waits three hours, and past two
+  the rest waits for the morning (`rules/delivering.md`, "Each person hears
+  about ONE coordination at most twice"). The fifteen minutes still applies
+  on a new day.
 
 - **Opening a coordination is not a subscription to every answer in it**
   (owner, 2026-09-22: "אין צורך שמי שפתח את התיאום יקבל הודעות מיוחדות"). A
@@ -348,9 +369,18 @@ title means this file. Grep the title, not the filename.
   it, before the start. It is reached through `meeting-fanout.reopenAndTell`
   from `reopen_meeting`, `reopen_group_coordination` and the page's
   `reopenMeeting`.
-  - **Every other option and every answer stays.** Only the option it
-    settled on has its answers cleared, or the next answer to anything would
-    settle straight back onto it.
+  - **Every other option and every answer stays — and on the time it
+    settled on, every yes but the REOPENER's** (since 2026-10-05; until then
+    that option's answers were all cleared). The reopener is still in it, so
+    without their yes it cannot be unanimous and cannot settle straight back;
+    everybody else's yes stands and their `meeting_reopened` says so
+    (`yesStands`) rather than asking again.
+  - **Counting somebody in is NOT a reopen.** A yes to the settled moment,
+    before the start, is `meetings.joinSettled`: it lands on the settled
+    option and the meeting stays settled, from the chat and from the room,
+    quietly, and onto the shared event (`calendar.addMeetingAttendee`). A yes
+    to any other time on a settled one is refused (`settled_elsewhere`).
+    `incidents.md`, "A yes had no door, so the game was reopened".
   - **Anything said once per SETTLING keys on the reopening too.**
     `mconf`/`mexact`/`mtime` go through `meeting-fanout.roundOf`, and the
     room's once-per-coordination lines go through `jobs/groups.idempotencyKeyFor`.
@@ -395,6 +425,18 @@ title means this file. Grep the title, not the filename.
   `meeting_invite` carrying that framing plus `tableChanged`. Only dropped:
   a pending one is the fold's, and one in flight is about to reach them.
 
+- **…and the HOUR set on a settled coordination rides its confirmation the
+  same way, as long as the confirmation has not gone out yet**
+  (`meeting-fanout.afterTimeSet` → `foldIntoQueuedConfirmation`, 2026-10-05).
+  A confirmation held for the night or a quiet day, followed by "the hour is
+  set", was two messages about one meeting three minutes apart, to seven people
+  at once after havdalah (`incidents.md`, "Settled, then the hour, three
+  minutes apart"). The waiting `meeting_confirmed` takes the new `slot` and
+  `startsAtUtc` and loses `allDay`/`daypart`/`askExactTime`, so its calendar
+  step puts the event on at the hour. No `meeting_time_set` is written for that
+  person. A confirmation already in flight is skipped (`SKIP LOCKED`), and the
+  hour goes out on its own as before.
+
 - **An explicit reminder replaces the automatic one only on the SAME local
   day; on another day it stands beside it.** Both are otherwise about catching
   one thing at its due date, and two messages for that is the bug the
@@ -421,6 +463,24 @@ title means this file. Grep the title, not the filename.
   dashboard lists "ביומן" before "לעשות" inside a day. A reminder still
   hangs on a task — "להוציא את העוגה בעוד 20 דקות" is still a to-do with a
   reminder, by choice, for now.
+
+- **A list is ONE row with its items under it, through every door — and a list is filed under `lists`.**
+  Dov (2026-10-05) dictated ten groceries one per line; the model tagged every
+  item `errands`, replied "בקניות", and called `add_tasks_bulk` with ten
+  top-level items, because that tool had no way to say "these are one list" —
+  the dictated-list split lived only on `add_task`, and only for "לקנות א, ב".
+  Three doors now reach `shopping-list.addToList`: `add_task`'s parser (which
+  also reads "קניות - א, ב", the shape `jobs/fact-extraction.js` writes back
+  half an hour later), `add_tasks_bulk`'s `list` param, and
+  `shopping-list.looksLikeShoppingBulk` for the turn that forgets the param —
+  every item filed `errands` by the model, 3+, undated, a few words, no
+  infinitive, nothing our keywords place elsewhere. **The open list is found by
+  TITLE, never by category** (a shopping run under any of `SHOPPING_TITLES`):
+  the category is the person's to move, and moving it must not make the next
+  item start a rival list. Readers that skip a list (`checkin.stalledGoals`)
+  ask for `lists` and the legacy `errands`, through a `COALESCE` — a bare
+  `= ANY` is NULL for an uncategorised project and silently dropped every one
+  (`incidents.md`, "Ten groceries, ten tasks").
 
 - **A task already OPEN on somebody's list is never saved a second time.**
   Four writers — the live `add_task`, a brain dump, a breakdown's subtasks and

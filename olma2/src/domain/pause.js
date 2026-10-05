@@ -199,6 +199,14 @@ async function pauseUser(client, userId, { note = null, confirmed = true } = {})
   });
 }
 
+// The coordinations the pause took them out of (`group-meetings.
+// sweepSilentPausedMembers`) are part of what it took down, and come back
+// with it, answers included (`meetings.restorePauseExits`). Required here,
+// not at the top: meetings sits above this module in the domain graph.
+async function restoreMeetings(client, userId) {
+  return require('./meetings').restorePauseExits(client, userId);
+}
+
 // Puts back what the pause took down, and nothing else. Reminders return at
 // their own next real occurrence; a one-off whose moment passed while they were
 // away is NOT resurrected, because firing it now would be a notification about
@@ -257,11 +265,13 @@ async function resumeUser(client, userId, { now = new Date(), reason = null } = 
   }
 
   await client.query(`UPDATE users SET paused_at = NULL, paused_reason = NULL WHERE id = $1`, [userId]);
+  const meetingsBack = await restoreMeetings(client, userId);
   await audit.record(client, userId, 'user.resumed', {
     pausedAt, remindersRearmed: rearmed.map((r) => r.taskId),
+    ...(meetingsBack.length ? { meetingsRestored: meetingsBack.map((m) => m.meetingId) } : {}),
     ...(reason ? { reason } : {}),
   });
-  return ok({ rearmed });
+  return ok({ rearmed, meetingsRestored: meetingsBack });
 }
 
 // The pause the check-in ladder makes after three unanswered check-ins. It
@@ -291,6 +301,7 @@ async function quietResume(client, userId) {
     `UPDATE users SET paused_at = NULL, paused_reason = NULL
       WHERE id = $1 AND paused_reason = $2 RETURNING id`, [userId, QUIET_LADDER]);
   if (!rows[0]) return ok({ resumed: false });
+  await restoreMeetings(client, userId);
   await audit.record(client, userId, 'user.resumed', { reason: QUIET_LADDER, remindersRearmed: [] });
   return ok({ resumed: true });
 }
@@ -337,6 +348,7 @@ async function resumeAfterRoomInvite(client, userId, { now = new Date() } = {}) 
   await client.query(`UPDATE users SET room_invite_answered_at = now() WHERE id = $1`, [userId]);
   if (u.paused_reason === QUIET_LADDER) {
     await client.query(`UPDATE users SET paused_at = NULL, paused_reason = NULL WHERE id = $1`, [userId]);
+    await restoreMeetings(client, userId);
     await audit.record(client, userId, 'user.resumed', {
       reason: 'room_invite_answered', remindersRearmed: [],
     });

@@ -72,6 +72,12 @@ const TABLE_SETTLE_MS = 15 * 60_000;
 // How long after the chase the "one short" line waits: both tag the people who
 // have not answered, and an hour is the same gap the chase keeps from invites.
 const ALMOST_AFTER_CHASE_MS = 3600_000;
+// How long a "סגור" waits for the shared calendar event its organiser's agent
+// is making, so "📅 ביומן" rides it instead of following it (2026-10-05). The
+// padel room's event came 17 seconds after the close; past this the line goes
+// without it, so a model that never calls the tool delays the close, never
+// swallows it.
+const CALENDAR_WAIT_MS = 2 * 60_000;
 
 // The moment the room may speak about a table that has moved since it was last
 // told, or null when it has not moved at all. `co.tableChangedAts` is every
@@ -178,7 +184,7 @@ function withClocks(line, co, { timezone, nowMs } = {}) {
 function decideLine(co, {
   saidStarted, saidBase, saidBaseSlot, saidBaseStartAt, saidChase, chaseSaidAtMs, saidAlmost, saidDone, doneSaidAtMs, saidCalendar, saidDayOf, saidHour,
   saidTime, pendingRelay, startedAtMs, nowMs, timezone, tableSaidAtMs, reopenedAt, reopenedFrom, saidReopened,
-  roomAsleep, coldTags,
+  roomAsleep, coldTags, calendarPending,
 } = {}) {
   const taggable = mayTag(coldTags);
   if (!co) return { kind: 'none', reason: 'nothing being coordinated' };
@@ -190,6 +196,11 @@ function decideLine(co, {
     // this covers the ones opened before that, and a time like "שישי בזום".
     const saidOnline = onlinePlace(co.title) || onlinePlace(co.confirmedSlot);
     if (!saidDone) {
+      // A shared event is on its way (`jobs/groups.calendarPending`, capped at
+      // CALENDAR_WAIT_MS from the close): wait a pass so it rides this line.
+      if (calendarPending && !co.calendarEventId) {
+        return { kind: 'none', reason: 'waiting for the shared calendar event' };
+      }
       // `timeAsk`: it settled on a whole day or a part of one, so the same
       // line asks ONCE whether they want an exact hour (owner, 2026-09-24).
       // Once because this line is stamped once; an answer goes through
@@ -497,4 +508,5 @@ module.exports = {
   decideGroupLine, leadingOption, enoughOn, chaseDueAt, localDay, whoIsIn, roomTotal,
   tableSettledAt,
   CHASE_FALLBACK_MS, CHASE_AFTER_MS, HOUR_BEFORE_MS, DAY_OF_MIN_LEAD_MS, TABLE_SETTLE_MS, ALMOST_AFTER_CHASE_MS,
+  CALENDAR_WAIT_MS,
 };

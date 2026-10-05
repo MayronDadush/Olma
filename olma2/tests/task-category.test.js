@@ -21,9 +21,17 @@ async function withClient(fn) {
 
 // ---------------------------------------------------------------- the guesser
 
-test('the closed set is the six the page draws, and nothing else', () => {
+test('the closed set is the seven the page draws, and nothing else', () => {
   assert.deepEqual(taskCategory.CATEGORIES,
-    ['home', 'work', 'family', 'health', 'money', 'errands']);
+    ['home', 'work', 'family', 'health', 'money', 'errands', 'lists']);
+});
+
+test('a title that names itself a list is a list; one that only mentions a list is not', () => {
+  assert.equal(taskCategory.classifyText('רשימת קניות לבית'), 'lists');
+  assert.equal(taskCategory.classifyText('רשימת ציוד לטיול'), 'lists');
+  assert.equal(taskCategory.classifyText('packing list for Rome'), 'lists');
+  assert.equal(taskCategory.classifyText('לשלוח את הרשימה למנהל'), 'work');
+  assert.equal(taskCategory.classifyText('סופר'), 'errands', 'a bare errand is still an errand');
 });
 
 test('real production titles land where a person would put them', () => {

@@ -102,7 +102,7 @@ function taskHints(res, user = {}) {
   const d = res.data;
   const hints = {};
   if (d.shoppingList) {
-    hints.shoppingList = 'This went onto their shopping list as items — say what went on the list, '
+    hints.shoppingList = 'This went onto ONE list as items (task = the list) — say what went on the list, '
       + 'not that you created a task. merged:true means it joined the run already open; alreadyOnList '
       + 'names what was there; dueAtIgnored means a date they gave was NOT applied to the existing '
       + 'list — offer it rather than assume it.';
@@ -389,12 +389,13 @@ module.exports = [
       if (weekly && res.ok) ctx.turn.remindAskUsed = true;
       return calendarNote(client, user, taskHints(res, user));
     }),
-  tool('add_tasks_bulk', 'Save a whole dump in ONE call (max 60 items). Never loop add_task. Also the way to SPLIT a goal into its parts: pass parent_task_id and the parts become subtasks in the same call. Timed items get their reminders automatically; when the reply carries hints, follow them. Any due_at MUST carry a UTC offset (2026-08-20T09:00:00+03:00), converted from their own local time (USER.md); never bare digits with a Z.',
+  tool('add_tasks_bulk', 'Save a whole dump in ONE call (max 60 items). Never loop add_task. To SPLIT a goal into parts: parent_task_id. A shopping list: `list`. Timed items get reminders; follow any hints. Any due_at MUST carry a UTC offset (2026-08-20T09:00:00+03:00), from their local time (USER.md); never bare digits with a Z.',
     { items: S('array', 'Array of {title, kind?, location?, category?, due_at?, ends_at?}; kind event|todo, location, category and times as in add_task.', { items: { type: 'object' } }),
-      parent_task_id: S('number', 'Optional: save every item as a subtask of this project (one level)') }, ['items'],
+      parent_task_id: S('number', 'Optional: save every item as a subtask of this project (one level)'),
+      list: S('string', 'List name, e.g. "קניות": items become ONE list, not tasks') }, ['items'],
     async (client, user, a) => withDumpLink(client, user, await calendarNote(client, user, taskHints(await tasks.addTasksBulk(client, user.id, (a.items || []).map((i) => ({
       title: i.title, kind: i.kind, location: i.location, category: i.category, dueAt: i.due_at, endsAt: i.ends_at,
-    })), { parentId: a.parent_task_id }), user)), { parentId: a.parent_task_id })),
+    })), { parentId: a.parent_task_id, list: a.list }), user)), { parentId: a.parent_task_id })),
   tool('complete_task', 'Mark a task done. Pending reminders on it are cancelled automatically. If the task carries a repeating CADENCE it is a standing one — the reply comes back with recurring:true and nextRemindAt, the task stays open and the cadence stays armed, because doing it once does not finish it. Say when it next comes round. To end a standing task for good: cancel_reminder first, then complete_task.',
     { task_id: S('number', 'Task id') }, ['task_id'],
     (client, user, a) => tasks.completeTask(client, user.id, a.task_id)),
