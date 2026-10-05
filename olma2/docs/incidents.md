@@ -9673,6 +9673,19 @@ carryover, 0 unverifiable. Cards backed up to
 the leaked text already existed as task 242 — nothing was lost, only
 mis-attributed on the card.
 
+**The same innocent pair came back on 2026-09-22, and this time it could not
+clear itself.** Issue 159: users 13 and 35 both quoting "הי". 35's own
+greeter session holds it; 13's, six weeks old, no longer exists, so the pair
+fell back to "unverifiable" and was re-filed every tick for eleven days — a
+session that is gone never comes back, and a row closed by hand is filed
+again on the next pass. Fixed 2026-10-03: an unverifiable pair whose quoted
+text is a bare greeting (`isBareGreeting`, a closed list matched whole after
+punctuation and emoji are dropped) is not reported. Only that branch: a card
+shown not to quote its own owner is still a leak whatever it says, and an
+unverifiable pair with any content in it still pairs. Run against the box
+before merging: the old check reported the pair, the new one reports nothing,
+and no other card on the box carries a greeting.
+
 ### One carryover leak filed itself seven times — `config_guard`'s dedup key wasn't deterministic (fixed 2026-09-03)
 
 `checkCarryoverCollisions` queried active users with no `ORDER BY`, then
