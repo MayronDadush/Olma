@@ -438,3 +438,111 @@ test('how a person is addressed is read only from what they said, and a muddle i
     assert.equal(groupTurn.addressOf({ gender_forms: said }), null, String(said));
   }
 });
+
+// 2026-10-04, Padel Gang. "תשאלי את @<new member>" was answered "בטח 🙌 ברגע
+// שיהיה עוד אחד בפנים אני מעדכנת", and "תוסיפו את @<him>, הוא יכול בשבת" was
+// answered "ספור לשבת ✅ זה משלים לנו את ה-4" — with two yeses on the table and
+// him in nothing. The block had his tag and nothing about how, or whether, he
+// could be reached, so every sentence about it was a guess (`incidents.md`,
+// "The room was told it was four"). `reach` is that sentence, drawn.
+test('reach: every member carries how the coordination reaches them privately, and nothing is guessed', async () => {
+  const flags = require('../src/domain/flags');
+  const { enqueue } = require('../src/outbox/enqueue');
+  const { group, people } = await room(20, { subject: 'Padel Gang' });
+  const [danny, dana] = people;
+  const started = await withTx(db.pool, (c) => groupMeetings.startCoordination(c, group, danny, 'פאדל בשבת'));
+  assert.equal(started.ok, true);
+  const meetingId = Number(started.data.meeting.id);
+  // Dana chose to leave it: she is somebody the block says nothing about.
+  await db.pool.query(
+    `UPDATE meeting_participants SET state = 'opted_out' WHERE meeting_id = $1 AND user_id = $2`, [meetingId, dana.id]);
+
+  // Four people who are in the room and not in the coordination.
+  const joiner = await makeUser(db.pool, '+972520000201', { firstName: 'גל' });
+  await db.pool.query(`UPDATE users SET last_inbound_at = now() WHERE id = $1`, [joiner.id]);
+  const stranger = async (phone) => {
+    const u = await makeUser(db.pool, phone);
+    await db.pool.query(
+      `UPDATE users SET status = 'pending', last_inbound_at = NULL, opening_sent_at = NULL WHERE id = $1`, [u.id]);
+    return u;
+  };
+  const invited = await stranger('+972520000202');
+  const coming = await stranger('+972520000203');
+  const spentElsewhere = await stranger('+972520000204');
+  // The member WhatsApp named by a LID that has no row at all.
+  const lid = '+4952130863209';
+  for (const [phone, uid] of [[joiner.phone, joiner.id], [invited.phone, invited.id], [coming.phone, coming.id],
+    [spentElsewhere.phone, spentElsewhere.id], [lid, null]]) {
+    await db.pool.query(
+      `INSERT INTO chat_group_members (group_id, phone, user_id) VALUES ($1, $2, $3)`, [group.id, phone, uid]);
+  }
+  const coldRow = async (u, groupId, sent) => {
+    await withTx(db.pool, (c) => enqueue(c, {
+      userId: u.id, kind: 'room_cold_invite', payload: { groupId, meetingId },
+      idempotencyKey: `coldinvite:g${groupId}:u${u.id}`,
+    }));
+    if (sent) {
+      await db.pool.query(
+        `UPDATE outbox SET sent_at = now(), hold_reason = NULL WHERE kind = 'room_cold_invite' AND user_id = $1`, [u.id]);
+    }
+  };
+  await coldRow(invited, Number(group.id), true);
+  await coldRow(spentElsewhere, 999999, true);
+
+  const reachOf = (data) => Object.fromEntries(data.room.people.map((p) => [p.tag || p.lid, p.reach]));
+  await withTx(db.pool, (c) => flags.setFlag(c, groupMeetings.COLD_INVITE_FLAG, true));
+  try {
+    const ctx = (await ask({ agentId: group.agent_id, externalId: group.external_id })).context;
+    const r = reachOf(parse(ctx));
+    assert.equal(r[`@${danny.phone}`], 'in', 'a participant');
+    assert.equal(r[`@${dana.phone}`], undefined, 'somebody who left is not said to have left');
+    assert.equal(r[`@${joiner.phone}`], 'joining', 'written to her, not in it yet: the next pass lets them in');
+    assert.equal(r[`@${invited.phone}`], 'invited', 'this room\'s cold invite reached them');
+    assert.equal(r[`@${coming.phone}`], 'invite_coming', 'coldInvite will write it on its next pass');
+    assert.equal(r[`@${spentElsewhere.phone}`], 'must_write_first', 'the one cold invite went to another room');
+    assert.equal(r[`@${lid}`], 'must_write_first', 'no row: nothing can be written to it');
+    assert.ok(ctx.includes(groupTurn.REACH_RULE), 'the rule rides the block when an entry carries reach');
+    assert.match(groupTurn.REACH_RULE, /NOT that person's yes/);
+    assert.match(groupTurn.REACH_RULE, /never that they were asked or added/);
+
+    // Queued but held (Berlin's Sunday, 2026-10-04) is still on its way.
+    await coldRow(coming, Number(group.id), false);
+    await db.pool.query(`UPDATE outbox SET hold_reason = 'quiet_day' WHERE kind = 'room_cold_invite' AND user_id = $1`, [coming.id]);
+    let again = reachOf(parse((await ask({ agentId: group.agent_id, externalId: group.external_id })).context));
+    assert.equal(again[`@${coming.phone}`], 'invite_coming');
+    // …and one the gate DROPPED asked nothing, so a fresh one may still go.
+    await db.pool.query(`UPDATE outbox SET sent_at = now() WHERE kind = 'room_cold_invite' AND user_id = $1`, [coming.id]);
+    again = reachOf(parse((await ask({ agentId: group.agent_id, externalId: group.external_id })).context));
+    assert.equal(again[`@${coming.phone}`], 'invite_coming');
+
+    // The flag closed: nothing will be written, so they have to write first.
+    await withTx(db.pool, (c) => flags.setFlag(c, groupMeetings.COLD_INVITE_FLAG, false));
+    again = reachOf(parse((await ask({ agentId: group.agent_id, externalId: group.external_id })).context));
+    assert.equal(again[`@${coming.phone}`], 'must_write_first');
+    assert.equal(again[`@${invited.phone}`], 'invited', 'an invite that already reached them still did');
+  } finally {
+    await withTx(db.pool, (c) => flags.setFlag(c, groupMeetings.COLD_INVITE_FLAG, false));
+  }
+
+  // Nothing anybody could be let into: no reach, and no rule about it.
+  await db.pool.query(`UPDATE meetings SET status = 'cancelled' WHERE id = $1`, [meetingId]);
+  const ctx = (await ask({ agentId: group.agent_id, externalId: group.external_id })).context;
+  assert.ok(parse(ctx).room.people.every((p) => p.reach === undefined));
+  assert.ok(!ctx.includes(groupTurn.REACH_RULE));
+});
+
+test('reach: a coordination settled and still ahead lets people in, one that has happened does not', async () => {
+  const { group, people } = await room(21);
+  const started = await withTx(db.pool, (c) => groupMeetings.startCoordination(c, group, people[0], 'פוקר'));
+  const meetingId = Number(started.data.meeting.id);
+  const ahead = slotStart('רביעי', { hours: 96 });
+  await db.pool.query(
+    `UPDATE meetings SET status = 'confirmed', confirmed_slot = 'רביעי 21:00', confirmed_start_at = $2 WHERE id = $1`,
+    [meetingId, ahead]);
+  let data = parse((await ask({ agentId: group.agent_id, externalId: group.external_id })).context);
+  assert.equal(data.room.people[0].reach, 'in');
+  await db.pool.query(
+    `UPDATE meetings SET confirmed_start_at = now() - interval '1 hour' WHERE id = $1`, [meetingId]);
+  data = parse((await ask({ agentId: group.agent_id, externalId: group.external_id })).context);
+  assert.ok(data.room.people.every((p) => p.reach === undefined), 'over is over');
+});

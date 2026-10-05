@@ -380,9 +380,18 @@ title means this file. Grep the title, not the filename.
   it, before the start. It is reached through `meeting-fanout.reopenAndTell`
   from `reopen_meeting`, `reopen_group_coordination` and the page's
   `reopenMeeting`.
-  - **Every other option and every answer stays.** Only the option it
-    settled on has its answers cleared, or the next answer to anything would
-    settle straight back onto it.
+  - **Every other option and every answer stays — and on the time it
+    settled on, every yes but the REOPENER's** (since 2026-10-05; until then
+    that option's answers were all cleared). The reopener is still in it, so
+    without their yes it cannot be unanimous and cannot settle straight back;
+    everybody else's yes stands and their `meeting_reopened` says so
+    (`yesStands`) rather than asking again.
+  - **Counting somebody in is NOT a reopen.** A yes to the settled moment,
+    before the start, is `meetings.joinSettled`: it lands on the settled
+    option and the meeting stays settled, from the chat and from the room,
+    quietly, and onto the shared event (`calendar.addMeetingAttendee`). A yes
+    to any other time on a settled one is refused (`settled_elsewhere`).
+    `incidents.md`, "A yes had no door, so the game was reopened".
   - **Anything said once per SETTLING keys on the reopening too.**
     `mconf`/`mexact`/`mtime` go through `meeting-fanout.roundOf`, and the
     room's once-per-coordination lines go through `jobs/groups.idempotencyKeyFor`.

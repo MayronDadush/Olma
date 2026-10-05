@@ -73,6 +73,7 @@ never trust a dated narrative for something you are about to act on.
 - [Introduced twice, by the invite and the greeter (fixed 2026-10-01)](#introduced-twice-by-the-invite-and-the-greeter-fixed-2026-10-01)
 - [The fixed line that never went (fixed 2026-10-03)](#the-fixed-line-that-never-went-fixed-2026-10-03)
 - [The poker count was the people asked (fixed 2026-10-01)](#the-poker-count-was-the-people-asked-fixed-2026-10-01)
+- [The room was told it was four (fixed 2026-10-05)](#the-room-was-told-it-was-four-fixed-2026-10-05)
 - [Four out of five, and the room heard nothing (fixed 2026-10-02)](#four-out-of-five-and-the-room-heard-nothing-fixed-2026-10-02)
 - [The chase that beat its own invites (fixed 2026-09-28)](#the-chase-that-beat-its-own-invites-fixed-2026-09-28)
 - [The room never heard the times (fixed 2026-09-28)](#the-room-never-heard-the-times-fixed-2026-09-28)
@@ -94,6 +95,7 @@ never trust a dated narrative for something you are about to act on.
 - [She said there was no group (fixed 2026-09-25)](#she-said-there-was-no-group-fixed-2026-09-25)
 - [The room coordinated without the person who opened it (fixed 2026-09-19)](#the-room-coordinated-without-the-person-who-opened-it-fixed-2026-09-19)
 - [Twice 'היי' before a word about the room (fixed 2026-09-25)](#twice-היי-before-a-word-about-the-room-fixed-2026-09-25)
+- [A yes had no door, so the game was reopened (fixed 2026-10-05)](#a-yes-had-no-door-so-the-game-was-reopened-fixed-2026-10-05)
 - [Three messages in a minute, to somebody a settled room sent (fixed 2026-10-03)](#three-messages-in-a-minute-to-somebody-a-settled-room-sent-fixed-2026-10-03)
 - [Three messages before the one they came for (changed 2026-09-29)](#three-messages-before-the-one-they-came-for-changed-2026-09-29)
 - [היא שבורה: the room waited for somebody who had already written (fixed 2026-09-09)](#היא-שבורה-the-room-waited-for-somebody-who-had-already-written-fixed-2026-09-09)
@@ -104,6 +106,7 @@ never trust a dated narrative for something you are about to act on.
 - [Eden could not come back (fixed 2026-10-01)](#eden-could-not-come-back-fixed-2026-10-01)
 - [Eden, kept out by a pause that had ended (fixed 2026-10-05)](#eden-kept-out-by-a-pause-that-had-ended-fixed-2026-10-05)
 - [Eden asked not to be taken out (fixed 2026-10-05)](#eden-asked-not-to-be-taken-out-fixed-2026-10-05)
+- [The stop nobody asked about (fixed 2026-10-05)](#the-stop-nobody-asked-about-fixed-2026-10-05)
 - [Yossi was abroad, and was taken out (fixed 2026-10-05)](#yossi-was-abroad-and-was-taken-out-fixed-2026-10-05)
 - [The coordination waited on the man who started it (fixed 2026-09-19)](#the-coordination-waited-on-the-man-who-started-it-fixed-2026-09-19)
 - [The room heard its own state from memory (fixed 2026-09-19)](#the-room-heard-its-own-state-from-memory-fixed-2026-09-19)
@@ -2861,6 +2864,43 @@ third state, and a private coordination never had a minimum.
 `tests/meeting-headcount.test.js` holds the founding case: four people
 asked, one yes, and the answer is one.
 
+### The room was told it was four (fixed 2026-10-05)
+
+Padel Gang, 2026-10-04. Sharon reopened a settled Saturday game and somebody
+new was added to the WhatsApp group. A member tagged her: ask him privately
+about the game. She answered "בטח 🙌" and promised to update once somebody
+else was in. Then, about the same newcomer, "he can make Saturday" — and she
+answered "ספור ✅", saying that made it four.
+
+None of it had happened, and none of it could. The room agent has no tool
+that writes to anybody privately (the doctrine forbids approaching somebody
+who never wrote), "he can" from another member is not his yes, and he was in
+nothing: two yeses on the table. The roster had one more surprise — the
+newcomer's number was a 13-digit WhatsApp LID, read by `phoneShape` as a
+German number, minted as a pending user and cold-invited. The owner's answer
+was "לא מכיר משתמש גרמני"; that invite was cancelled by hand.
+
+**The block she speaks from carried each member's tag and nothing about how
+the coordination could reach them**, so every sentence on that subject was a
+guess. Same shape as "The room heard its own state from memory": the model
+did the obvious thing with what it had, and what it had was silent.
+
+Fixed by drawing it (`group-turn.reachOf`): while a coordination can still
+let people in (negotiating, or settled and ahead — `admitLateMembers`' own
+condition), every `room.people` entry carries `reach`: `in`, `joining`
+(written to her, the next pass lets them in), `invited` / `invite_coming`
+(this room's cold invite reached them / will, by `coldInvite`'s own
+conditions), or `must_write_first`. Nothing for somebody who left it or
+paused her themselves, which keeps the paused-member rule. `REACH_RULE` rides
+the block only when some entry carries `reach`: she never writes privately
+herself, someone tagged who is not in `room.people` just joined, and one
+member saying another can is not that person's yes.
+
+Open from the same night, each its own PR: a reopen wiped the yeses on the
+moment it reopened (so the gate read Yuval as unanswered and dropped his
+notice), a cold invite went to a LID minutes after it appeared, and a
+check-in turn Olma started wrote a coordination answer for the person.
+
 ### Four out of five, and the room heard nothing (fixed 2026-10-02)
 
 The poker room (חייב קבוצה לפוקר, group 13, meeting 66) is a `game` room with
@@ -3497,6 +3537,32 @@ still negotiating and not inside its settle minute — exactly the conditions
 promises nothing. A roster row that is a LID matches no phone and gets no line
 at all.
 
+### A yes had no door, so the game was reopened (fixed 2026-10-05)
+
+Padel Gang, 2026-10-04: Saturday 17:00 was settled, and Sharon wanted one more
+person counted in. A settled coordination had exactly one door back to
+answering — `reopen_meeting` — because every yes went through
+`respondToSlot`, which asked for a negotiation. So it was reopened, and the
+reopen DELETED every answer on the time it had settled on, Yuval's included.
+To the gate he was now somebody who had never answered, so the reopen notice
+was dropped in his quiet hours, and the room counted three where there had
+been four. The `joinedLate` invite had been asking "can you make it?" since
+2026-09-25 with nowhere to put a yes.
+
+Two changes. **`meetings.joinSettled`**: a yes to the settled moment, while it
+is still ahead, lands on the option it settled on and leaves the meeting
+settled — from the chat (`respond_to_meeting_slot`) and from the room
+(`answer_group_coordination_option` now reaches a confirmed coordination). It
+is quiet like an exit or a rejoin, and puts them on the shared event when
+there is one (`calendar.addMeetingAttendee`). A yes to any OTHER time on a
+settled one is refused with `settled_elsewhere`: changing the time is a
+person's decision, not a side effect of answering. **`reopenMeeting` clears
+only the REOPENER's answer** on the settled time. That is enough for what the
+wholesale DELETE was for: the reopener is still in it, so without their yes
+the time cannot be unanimous and cannot settle straight back. Everybody
+else's yes stands, and their `meeting_reopened` says so (`yesStands`) instead
+of asking again.
+
 ### Three messages in a minute, to somebody a settled room sent (fixed 2026-10-03)
 
 הוד (u-57) came to Olma from "חייב קבוצה לפוקר" at 17:15 on 2026-10-03,
@@ -3705,6 +3771,31 @@ them for "everybody said yes", and they are never tagged. Somebody with no
 answer, or one only on a time that has since left the table, is taken out as
 before. One question, `group-meetings.answeredLive`, is asked by the sweep,
 `statusOf` and `meeting-options.unanimousOption`.
+
+### The stop nobody asked about (fixed 2026-10-05)
+
+The same chat, read back afterwards. Eden was half joking with her. When he
+said to stop, the model called `pause_olma` with `confirmed` omitted, which
+the tool read as the LASTING pause, and it never asked the question. It then
+told him "one message brings it all back", which is true only of the
+unconfirmed stop. He wrote "אפשר לדבר" and stayed paused. Nothing in the
+chat had told him that a pause also takes him out of the coordinations he
+had not answered, so he could not see why the poker went on without him.
+
+Three changes. `pause.requestPause` is now `pause_olma`'s door: a lasting
+pause needs the stop to have been heard (a `said_stop` audit row in the last
+two hours) and a message from the person after it. A `confirmed=true` with
+nothing before it is downgraded to the unconfirmed stop. The other way in is
+the paused room invite, where "leave me paused" is already the yes. The
+question is drawn, not composed (`pause.CONFIRM_QUESTION`): it says what a
+pause does, in Hebrew or English, so a joke is either taken back or meant.
+An unconfirmed call never lands on a confirmed pause, so "stop" said twice
+does not undo the first. The doctrine's closing line now says the pause lasts
+until they ask her back.
+
+Not touched: an unconfirmed stop still takes them out of the room
+coordinations they have not answered, and their next message restores them
+(`restorePauseExits`).
 
 ### Yossi was abroad, and was taken out (fixed 2026-10-05)
 
