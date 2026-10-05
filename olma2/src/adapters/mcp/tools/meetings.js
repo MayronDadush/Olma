@@ -166,8 +166,10 @@ module.exports = [
         }
         return last;
       };
+      // The note remembers the answers it came with, so it stops being drawn
+      // once they are answered again (`meetings.standingNotes`).
       const res = await meetings.recordConstraint(client, user.id, a.meeting_id, a.constraint, a.private === true,
-        { windows: a.windows });
+        { windows: a.windows, answered: [...ids.map((id) => ({ id, answer: 'n' })), ...yes.map((id) => ({ id, answer: 'y' }))] });
       if (!res.ok) return res;
       // Declines named by id first; then the windows answer whatever else on
       // the table they cover (`domain/standing-answers.js`). They are in the
