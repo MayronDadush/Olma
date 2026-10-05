@@ -451,7 +451,11 @@ function turnHints({ offerResume, languageNudge, recentReminders, recentMeetings
       + 'this session may still hold an older question about one of them. A `confirmed` one is closed: '
       + 'never re-offer a time from it. `answered` of `onTable` is how many of the current options they '
       + 'have already answered (answeredAt is when); "סימנתי"/"עניתי" means that, so say you saw it and '
-      + 'ask nothing they already answered. get_meeting_status is the truth for the rest.';
+      + 'ask nothing they already answered. `out` means they are NOT in it any more, whatever they '
+      + 'answered: `pause` = taken out because they paused Olma, `chose` = they left, `other` = '
+      + 'left the group or a connection ended. Never say they are still in one marked `out`; '
+      + 'rejoin_meeting puts them back after a pause or their own exit. '
+      + 'get_meeting_status is the truth for the rest.';
   }
   if (rooms && rooms.length) {
     hints.rooms = 'The WhatsApp groups this person shares with Olma — the COMPLETE list, so a group '
@@ -544,6 +548,13 @@ async function shortOpeningPending(client, userId) {
       LIMIT 1`, [userId]);
   if (!rows[0]) return null;
   return rows[0].game ? 'game' : 'room';
+}
+
+// How somebody came to be out of a coordination, in the three words the turn
+// hint explains (`meetings.PAUSE_EXIT_CAUSES`, `LEFT_BY_CHOICE_SQL`).
+function exitHow(cause) {
+  if (cause === 'paused_by_request' || cause === 'paused_no_answer') return 'pause';
+  return cause === 'user_choice' ? 'chose' : 'other';
 }
 
 async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, languageNudge, thanksOnly, thanksAfterQuestion, stoppedReminders, meetingExit, chaseUntil, chaseNamedHour, openList, remindAsk, now }) {
@@ -683,6 +694,12 @@ async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, 
             (SELECT count(*)::int FROM meeting_option_answers oa
               JOIN meeting_options mo ON mo.id = oa.option_id
              WHERE mo.meeting_id = m.id AND mo.status = 'active' AND oa.user_id = $1) AS answered,
+            (SELECT mp.state FROM meeting_participants mp WHERE mp.meeting_id = m.id AND mp.user_id = $1) AS my_state,
+            (SELECT COALESCE(a.detail->>'cause', CASE WHEN a.event = 'meeting.withdrew' THEN 'user_choice' END)
+               FROM audit_log a
+              WHERE a.actor_id = $1 AND a.event IN ('meeting.opted_out', 'meeting.withdrew')
+                AND (a.detail->>'meetingId')::bigint = m.id
+              ORDER BY a.created_at DESC, a.id DESC LIMIT 1) AS exit_cause,
             max(o.sent_at) AS heard_at
        FROM outbox o
        JOIN meetings m ON m.id = (o.payload->>'meetingId')::bigint
@@ -700,6 +717,10 @@ async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, 
     onTable: Number(m.on_table) || 0,
     answered: Number(m.answered) || 0,
     ...(m.answered_at ? { answeredAt: m.answered_at } : {}),
+    // Out of it, and how. Their answers outlive an exit, so `answered` alone
+    // read as "still in, with a yes": Eden was told twice "I did not take you
+    // out" about a coordination a pause had taken him out of (2026-10-05).
+    ...(m.my_state === 'opted_out' ? { out: exitHow(m.exit_cause) } : {}),
   }));
 
   // The rooms they share with Olma, on every turn they are in one. Without it

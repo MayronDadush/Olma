@@ -302,12 +302,19 @@ have already had to be argued for.
   both, and the page's archive button, go through `meetings.rejoin` →
   `meetingFanout.afterRejoin`, which is QUIET like the exit it undoes —
   nobody else gets a message, the table and the counts say who is in
-  (owner: "חזרה שתהיה שקטה כמו יציאה"). **Only an exit they CHOSE is undone**
-  (`meetings.LEFT_BY_CHOICE_SQL`: the latest `meeting.opted_out` with cause
-  `user_choice`, or `meeting.withdrew`). A pause, leaving the WhatsApp group
-  and revoking a connection are not, an `opted_out` row with no exit on
-  record is not, and nobody without a participant row is ever added this way
-  (`incidents.md`, "Eden could not come back").
+  (owner: "חזרה שתהיה שקטה כמו יציאה"). **Only an exit they CHOSE, or one a
+  PAUSE made, is undone** (`meetings.LEFT_BY_CHOICE_SQL`: the latest
+  `meeting.opted_out` with cause `user_choice`, or `meeting.withdrew`;
+  `meetings.leftByPause`: `paused_by_request`/`paused_no_answer`). A pause
+  exit is refused while they are still paused, and **is undone on its own
+  when the pause ends**: `pause.resumeUser`, `quietResume` and
+  `resumeAfterRoomInvite` call `meetings.restorePauseExits`, with the answers
+  they had given. Leaving the WhatsApp group and revoking a connection are
+  not undone, an `opted_out` row with no exit on record is not, and nobody
+  without a participant row is ever added this way. The turn's
+  `recentMeetings` says `out` about a coordination they are not in, so she
+  never tells somebody they are still in one (`incidents.md`, "Eden could
+  not come back", "Eden, kept out by a pause that had ended").
 
 - **Somebody a room sent to the greeter hears about that room in the FIRST
   reply, and its coordination follows that same night if they are awake**

@@ -334,13 +334,19 @@ async function commonHoursFor(client, group, places = []) {
 // to leave it: the cause `meetings.applyExit` audited on their latest exit
 // (`paused_by_request`, `paused_no_answer`). The participant row says only
 // `opted_out`, which cannot tell the two apart.
+//
+// Only somebody who is STILL out: a return writes `meeting.rejoined`, not a
+// newer exit, so the latest exit alone kept counting a member back in it with
+// a yes as a paused one who had not answered (Eden, meeting 74, 2026-10-05).
 async function pausedExitsOf(client, meetingId) {
   const { rows } = await client.query(
     `SELECT actor_id FROM (
        SELECT DISTINCT ON (actor_id) actor_id, detail->>'cause' AS cause FROM audit_log
         WHERE event = 'meeting.opted_out' AND (detail->>'meetingId')::bigint = $1 AND actor_id IS NOT NULL
         ORDER BY actor_id, created_at DESC, id DESC) last
-      WHERE cause IN ('paused_by_request', 'paused_no_answer')`, [meetingId]);
+      WHERE cause IN ('paused_by_request', 'paused_no_answer')
+        AND EXISTS (SELECT 1 FROM meeting_participants p
+                     WHERE p.meeting_id = $1 AND p.user_id = last.actor_id AND p.state = 'opted_out')`, [meetingId]);
   return new Set(rows.map((r) => Number(r.actor_id)));
 }
 

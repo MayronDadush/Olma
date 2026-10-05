@@ -620,12 +620,84 @@ async function leftByChoice(client, userId, meetingId) {
   return Boolean(rows[0] && rows[0].chose);
 }
 
+// The exits a PAUSE took (`group-meetings.sweepSilentPausedMembers`). Nobody
+// said a word about the coordination itself, so the pause ending is the end of
+// the exit too.
+const PAUSE_EXIT_CAUSES = ['paused_by_request', 'paused_no_answer'];
+
+// Was their latest exit from this coordination one a pause took?
+async function leftByPause(client, userId, meetingId) {
+  const { rows } = await client.query(
+    `SELECT detail->>'cause' AS cause FROM audit_log
+      WHERE actor_id = $1 AND event IN ('meeting.opted_out', 'meeting.withdrew')
+        AND (detail->>'meetingId')::bigint = $2
+      ORDER BY created_at DESC, id DESC LIMIT 1`, [userId, meetingId]);
+  return Boolean(rows[0] && PAUSE_EXIT_CAUSES.includes(rows[0].cause));
+}
+
+// Back into a coordination a pause took them out of, with the answers they had
+// given: those were never withdrawn (the exit only flips `state`), and nobody
+// said they were out of THIS coordination, so the yes stands. Unlike a chosen
+// exit, which comes back `awaiting` (`rejoin` above).
+async function restoreFromPause(client, userId, meetingId, why) {
+  await client.query(
+    `UPDATE meeting_participants SET state = 'awaiting' WHERE meeting_id = $1 AND user_id = $2`,
+    [meetingId, userId]);
+  await audit.record(client, userId, 'meeting.rejoined', { meetingId: Number(meetingId), cause: why });
+  const { rows } = await client.query(`SELECT status FROM meetings WHERE id = $1`, [meetingId]);
+  const status = rows[0] && rows[0].status;
+  if (status !== 'negotiating') return { meetingId: Number(meetingId), meetingStatus: status, yourState: 'awaiting' };
+  await options.mirrorCurrent(client, meetingId);
+  // A room waits on a paused-out member (`unanimousOption`), so their yes
+  // coming back can be the one that makes a time unanimous.
+  const c = await tryConfirm(client, meetingId);
+  const { rows: st } = await client.query(
+    `SELECT state FROM meeting_participants WHERE meeting_id = $1 AND user_id = $2`, [meetingId, userId]);
+  return {
+    meetingId: Number(meetingId), meetingStatus: c.settling ? 'settling' : 'negotiating',
+    yourState: st[0] ? st[0].state : 'awaiting',
+  };
+}
+
+// The pause ended: every coordination it took them out of that is still
+// negotiating takes them back (Eden, 2026-10-05: "אז אני לא עונה לך יותר" was
+// a said_stop, the sweep took him out of the poker that second, his next
+// message resumed him, and he stayed out — told "I did not take you out").
+// A settled one is not re-entered on their behalf; asked, `rejoin` does it.
+async function restorePauseExits(client, userId) {
+  const { rows } = await client.query(
+    `SELECT p.meeting_id FROM meeting_participants p JOIN meetings m ON m.id = p.meeting_id
+      WHERE p.user_id = $1 AND p.state = 'opted_out' AND m.status = 'negotiating'
+        AND (SELECT a.detail->>'cause' FROM audit_log a
+              WHERE a.actor_id = p.user_id AND a.event IN ('meeting.opted_out', 'meeting.withdrew')
+                AND (a.detail->>'meetingId')::bigint = p.meeting_id
+              ORDER BY a.created_at DESC, a.id DESC LIMIT 1) = ANY($2)
+      ORDER BY p.meeting_id`, [userId, PAUSE_EXIT_CAUSES]);
+  const restored = [];
+  for (const r of rows) restored.push(await restoreFromPause(client, userId, r.meeting_id, 'pause_ended'));
+  return restored;
+}
+
 async function rejoin(client, userId, meetingId, now = Date.now()) {
   const p = await participantRow(client, meetingId, userId);
   if (!p) return err('not_found', 'not a participant of this meeting');
   if (p.state !== 'opted_out') return err('invalid', 'you are already in this meeting');
   if (!['negotiating', 'confirmed'].includes(p.meeting_status)) {
     return err('invalid', 'that coordination is closed — it cannot be rejoined');
+  }
+  // A pause took them out, and they are not paused now (they are asking): the
+  // way back is the pause's own undo, answers included. Refusing this sent
+  // Eden to "ask the person who opened it", which nobody can do.
+  if (await leftByPause(client, userId, meetingId)) {
+    const { rows: u } = await client.query(`SELECT paused_at FROM users WHERE id = $1`, [userId]);
+    if (u[0] && u[0].paused_at) {
+      return err('invalid', 'they are paused — resuming Olma brings them back into it', { reason: 'paused' });
+    }
+    const { rows: mrows } = await client.query(
+      `SELECT confirmed_start_at FROM meetings WHERE id = $1`, [meetingId]);
+    const startAt = mrows[0] && mrows[0].confirmed_start_at;
+    if (startAt && new Date(startAt).getTime() < now) return err('invalid', 'that meeting has already started');
+    return ok(await restoreFromPause(client, userId, meetingId, 'asked'));
   }
   if (!(await leftByChoice(client, userId, meetingId))) {
     return err('forbidden', 'only somebody who left this coordination themselves can come back into it',
@@ -1228,7 +1300,7 @@ async function listNegotiating(client, userId = null) {
 module.exports = {
   cleanLocation,
   startMeeting, openWithSamePeople, recordConstraint, proposeSlot, mergeSlot, slotMomentFor, respondToSlot,
-  optOut, rejoin, leftByChoice, LEFT_BY_CHOICE_SQL, applyExit, withdrawConfirmed, cancelMeeting, reopenMeeting, setTitle, setPlace, setCategory, setQuorum,
+  optOut, rejoin, leftByChoice, leftByPause, restorePauseExits, PAUSE_EXIT_CAUSES, LEFT_BY_CHOICE_SQL, applyExit, withdrawConfirmed, cancelMeeting, reopenMeeting, setTitle, setPlace, setCategory, setQuorum,
   getStatus, listMine, pendingMeetingFor, tryConfirm, settleNow, timeIsOpen, setExactTime,
   expireStaleMeetings, dropPassedOptions, expireOne, listNegotiating,
   EXPIRE_AFTER_START_MS, LEGACY_STALE_DAYS, ALL_DAY_EXTRA_MS,

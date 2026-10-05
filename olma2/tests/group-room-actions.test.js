@@ -298,11 +298,12 @@ test('nobody is let in through the way back who did not leave by their own choic
   const [, miron, bar] = people;
   const meetings = require('../src/domain/meetings');
 
-  // A pause took them out — not a choice they made about this coordination.
-  await withTx(db.pool, (c) => meetings.applyExit(c, miron.id, meetingId, 'paused_by_request'));
-  const paused = await inRoom('rejoin_group_coordination', group, miron);
-  assert.equal(paused.ok, false);
-  assert.equal(paused.error.reason, 'not_left_by_choice');
+  // Leaving the WhatsApp group took them out — not a choice they made about
+  // this coordination. (A PAUSE exit comes back since 2026-10-05: Eden.)
+  await withTx(db.pool, (c) => meetings.applyExit(c, miron.id, meetingId, 'left_room'));
+  const left = await inRoom('rejoin_group_coordination', group, miron);
+  assert.equal(left.ok, false);
+  assert.equal(left.error.reason, 'not_left_by_choice');
 
   // A member of the room with no row in the coordination is not added this way.
   await db.pool.query(`DELETE FROM meeting_participants WHERE meeting_id = $1 AND user_id = $2`, [meetingId, bar.id]);

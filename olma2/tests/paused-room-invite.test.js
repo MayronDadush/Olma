@@ -426,6 +426,19 @@ test('somebody already in it who asks to stop is taken out at once and still COU
   assert.equal(after.notInIt.filter((p) => p.paused).length, 1);
   assert.equal(await withTx(db.pool, (c) => meetingOptions.unanimousOption(c, meetingId)), null);
 
+  // Their next message ends the stop, and with it the exit (Eden, 2026-10-05):
+  // back in the coordination, and no longer counted a second time as a paused
+  // member who has not answered — the latest exit on record is still the pause.
+  const back = await withTx(db.pool, (c) => pause.stopResume(c, stopped.id));
+  assert.deepEqual(back.data.meetingsRestored.map((x) => x.meetingId), [meetingId]);
+  assert.notEqual(await stateOf(meetingId, stopped.id), 'opted_out');
+  const returned = (await withTx(db.pool, (c) => groupMeetings.statusOf(c, group, started.meeting))).coordination;
+  assert.equal(returned.participants, 3);
+  assert.equal(returned.roomTotal, 3);
+  assert.equal(returned.notInIt.filter((p) => p.paused).length, 0, 'in it, so not "paused and not in it"');
+  await withTx(db.pool, (c) => pause.pauseUser(c, stopped.id, { confirmed: false }));
+  await withTx(db.pool, (c) => groupMeetings.sweepSilentPausedMembers(c, Date.now()));
+
   // …whereas somebody who CHOSE to leave it is out of the count, and the rest can be unanimous.
   await db.pool.query(`UPDATE meeting_participants SET state = 'opted_out' WHERE meeting_id = $1 AND user_id = $2`,
     [meetingId, stopped.id]);
