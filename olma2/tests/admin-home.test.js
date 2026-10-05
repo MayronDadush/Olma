@@ -180,3 +180,51 @@ test('the page renders every number in its place and never shows raw internal na
   assert.ok(!html.includes('no_match') && !html.includes('negotiating'), 'statuses are labelled in Hebrew');
   assert.ok(html.includes('₪'), 'shekels when a rate is known');
 });
+
+test('model spend: each row on its own day, at the rate of that day, in any process timezone', async () => {
+  // Two bugs in one sum. The day was read as isoDay(Date): pg hands a DATE over
+  // at LOCAL midnight, so east of UTC every row slid to the day before and
+  // "today" read 0. And priceUsage was not told the day, so PAST_RATES never
+  // applied and the total disagreed with the cost page ($1.58 on the box,
+  // 2026-10-01). The rows straddle each edge of the pinned periods, and
+  // 2026-09-05 is before deepseek-v4-flash's DigitalOcean pin.
+  const pricing = require('../src/domain/model-pricing');
+  const MODEL = 'deepseek/deepseek-v4-flash';
+  const usage = { input: 1000000, output: 1000000, cacheRead: 0, cacheWrite: 0 };
+  const rows = [
+    ['usage_ledger', '2026-08-31'], ['usage_ledger', '2026-09-01'], ['usage_ledger', '2026-09-05'],
+    ['usage_system_ledger', '2026-09-13'], ['usage_ledger', '2026-09-15'],
+  ];
+  for (const [table, day] of rows) {
+    await db.pool.query(
+      `INSERT INTO ${table} (${table === 'usage_ledger' ? 'user_id' : 'agent_id'}, date, model,
+         input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_usd, estimated)
+       VALUES ($1, $2::date, $3, 1000000, 1000000, 0, 0, 0, false)`,
+      [table === 'usage_ledger' ? u.today.id : 'g-home-probe', day, MODEL]);
+  }
+  const blended = await pricing.blendedRate(db.pool);
+  const at = (day) => pricing.priceUsage(usage, MODEL, blended, day).cost;
+  assert.notEqual(at('2026-09-05'), pricing.priceUsage(usage, MODEL, blended).cost,
+    'the fixture needs a day whose past rate differs from today\'s');
+  const want = {
+    total: rows.reduce((s, [, d]) => s + at(d), 0),
+    month: at('2026-09-01') + at('2026-09-05') + at('2026-09-13') + at('2026-09-15'),
+    week: at('2026-09-13') + at('2026-09-15'),
+    day: at('2026-09-15'),
+  };
+
+  const was = process.env.TZ;
+  try {
+    for (const tz of ['Etc/UTC', 'Asia/Jerusalem', 'Pacific/Kiritimati', 'America/Los_Angeles']) {
+      process.env.TZ = tz;
+      const got = (await home.homeMetrics(db.pool, { now: NOW, infra: INFRA })).money.parts.model;
+      for (const k of ['total', 'month', 'week', 'day']) {
+        assert.ok(Math.abs(got[k] - want[k]) < 1e-9, `${tz}, ${k}: ${got[k]} vs ${want[k]}`);
+      }
+    }
+  } finally {
+    if (was === undefined) delete process.env.TZ; else process.env.TZ = was;
+    await db.pool.query(`DELETE FROM usage_ledger WHERE user_id = $1`, [u.today.id]);
+    await db.pool.query(`DELETE FROM usage_system_ledger WHERE agent_id = 'g-home-probe'`);
+  }
+});
