@@ -19,6 +19,8 @@ const OUTBOX_STATE = {
   awaiting_introduction: 'ממתינות להיכרות',
   duplicate: 'נחסמו — אותו דבר נשלח זה עתה',
   settling: 'ממתינות לייצוב המערכת',
+  coordination_gap: 'ממתינות — 3 שעות מההודעה הקודמת על התיאום',
+  coordination_daily: 'ממתינות למחר — כבר 2 הודעות היום על התיאום',
   cancelled_by_admin: 'בוטל ע"י מנהל', cancelled: 'התזכורת בוטלה',
 };
 
@@ -56,6 +58,7 @@ const KIND_LABELS = {
   meeting_rejoined: 'חזרה לתיאום פגישה',
   meeting_withdrawn: 'ביטול הגעה לפגישה',
   meeting_auto_answered: 'סומן אוטומטית לפי מה שאמר',
+  meeting_answer_moved: 'התשובה עברה לזמן שאוחד',
   meeting_nudge: 'תזכורת אחת על תיאום שלא ענה עליו',
   meeting_reopened: 'תיאום שנפתח מחדש',
   meeting_time_set: 'נקבעה שעה מדויקת לפגישה',

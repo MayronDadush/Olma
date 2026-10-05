@@ -156,6 +156,7 @@ const EVERY_MEETING_ROW = [
   { kind: 'meeting_rejoined', payload: { meetingId: 43, title: 'x', byName: 'Ann' } },
   { kind: 'meeting_withdrawn', payload: { meetingId: 43, title: 'x', byName: 'Ann', slot: 'a' } },
   { kind: 'meeting_auto_answered', payload: { meetingId: 43, title: 'x', answers: [{ optionId: 1, slot: 'a', answer: 'y', because: 'b' }] } },
+  { kind: 'meeting_answer_moved', payload: { meetingId: 43, title: 'x', byName: 'Ann', from: 'a', slot: 'b', answer: 'y' } },
   { kind: 'meeting_nudge', payload: { meetingId: 43, title: 'x', groupSubject: 'g' } },
   { kind: 'meeting_reopened', payload: { meetingId: 43, title: 'x', byName: 'Ann', was: 'a' } },
   { kind: 'meeting_expired', payload: { meetingId: 43, title: 'x', slot: 'a' } },

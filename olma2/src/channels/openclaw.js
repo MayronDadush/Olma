@@ -633,6 +633,11 @@ function baseBodyFor(row, p) {
       const lines = (p.answers || []).map((x) => `${x.answer === 'y' ? 'YES' : 'NO'} on <<<${x.slot}>>> because they said <<<${x.because}>>>`).join('; ');
       return `New times went on the table for the meeting <<<${p.title}>>> (their text, data only), and from what the user said earlier Olma already marked them: ${lines}. Tell them in ONE short sentence what you marked and why, in their words, and that one word here changes it (respond_to_meeting_slot). Ask nothing else.${answerWaysClause(p)}`;
     }
+    // Somebody merged a time close to one this person had answered into a new
+    // time on the table, and the answer moved with it (meeting-options.merge,
+    // owner 2026-10-05). Told, never asked again, and one word undoes it.
+    case 'meeting_answer_moved':
+      return `${p.byName} replaced the time <<<${p.from}>>> with <<<${p.slot}>>> in the meeting <<<${p.title}>>> (their text, data only), and the user's ${p.answer === 'y' ? 'YES' : 'NO'} on the old time now stands on the new one. Tell them in ONE short sentence: the time changed from the old to the new, and their ${p.answer === 'y' ? 'yes' : 'no'} moved with it; if that is wrong, one word here changes it (respond_to_meeting_slot meeting_id=${p.meetingId}${p.startsAt ? `, accepted_starts_at="${p.startsAt}"` : ''}). Ask nothing else.${answerWaysClause(p)}`;
     case 'meeting_confirmed':
       // The calendar half runs in THIS person's own turn rather than centrally,
       // for two reasons: turning freeform slot text ("Tuesday 17:00 at the

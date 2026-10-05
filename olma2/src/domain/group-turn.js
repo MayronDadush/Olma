@@ -115,10 +115,84 @@ function selfOf(m) {
   return { ...(name ? { name } : {}), ...(address ? { address } : {}) };
 }
 
+// How the room's coordination reaches each member PRIVATELY, drawn so the model
+// can say it and never has to guess it (owner, 2026-10-05). In Padel Gang the
+// room asked her "תשאלי את @<new member>" and she answered "בטח 🙌 ברגע שיהיה
+// עוד אחד בפנים אני מעדכנת" — no tool can do that, and the one invite on its
+// way had gone to his LID and was held for Berlin's Sunday. Twenty-four minutes
+// later "תוסיפו את @<him>, הוא יכול בשבת" got "ספור לשבת ✅ זה משלים לנו את
+// ה-4" with two yeses on the table and him in nothing (`incidents.md`, "The
+// room was told it was four"). The block had his tag and nothing else, so the
+// sentence she needed was not there to be said.
+//
+// One value per entry, and only while there is a coordination a person could
+// still be let into — negotiating, or settled and still ahead
+// (`admitLateMembers`' own question). Null is NOT a fourth state: it is a
+// member she has nothing to say about — out of it, or paused by their own
+// request (`rules/groups.md`: never asked, never tagged, never said to have
+// left).
+//   in               — a participant: asked privately, their answer is theirs.
+//   joining          — has written to her, not in it yet; `admitLateMembers`
+//                      lets them in and asks them on its next pass.
+//   invited          — this room's cold invite REACHED them; they are in once
+//                      they answer her.
+//   invite_coming    — that invite is queued or held, or `coldInvite` will
+//                      write it on its next pass.
+//   must_write_first — she cannot write to them first (a LID, no row, the one
+//                      cold invite already spent on another room, the flag
+//                      closed): they have to write to her.
+// The cold-invite predicates are `coldInvite`'s own (flag, registration, a
+// pending row with a real number, nothing that reached them or is still
+// queued) — read here rather than imported because that function writes.
+async function reachOf(client, group, c, members) {
+  if (!c || !c.meetingId) return null;
+  const ahead = c.status === 'confirmed' && c.confirmedStartAt
+    && new Date(c.confirmedStartAt).getTime() > Date.now();
+  if (c.status !== 'negotiating' && !ahead) return null;
+  const pause = require('./pause');
+  const flags = require('./flags');
+  const { isRealPhone } = require('./phone-timezone');
+  const { rows: parts } = await client.query(
+    `SELECT user_id, state FROM meeting_participants WHERE meeting_id = $1`, [c.meetingId]);
+  const stateOf = new Map(parts.map((p) => [Number(p.user_id), p.state]));
+  const strangers = members.filter((m) => m.user_id && !groups.isConnected(m)).map((m) => Number(m.user_id));
+  const { rows: invites } = strangers.length ? await client.query(
+    `SELECT user_id, (payload->>'groupId')::bigint AS group_id, sent_at, hold_reason
+       FROM outbox WHERE kind = 'room_cold_invite' AND user_id = ANY($1::bigint[])`, [strangers])
+    : { rows: [] };
+  const coldOpen = c.status === 'negotiating'
+    && (await flags.getFlag(client, groupMeetings.COLD_INVITE_FLAG)) === true
+    && (await flags.getFlag(client, 'registration_open')) !== false;
+  const reach = new Map();
+  for (const m of members) {
+    const uid = m.user_id ? Number(m.user_id) : null;
+    const state = uid ? stateOf.get(uid) : undefined;
+    let r;
+    if (state === 'opted_out') r = null;
+    else if (state) r = 'in';
+    else if (uid && pause.pausedByRequest(m)) r = null;
+    else if (groups.isConnected(m)) r = pause.keptOutOfRooms(m) ? null : 'joining';
+    else {
+      const mine = invites.filter((i) => Number(i.user_id) === uid);
+      // Reached = sent and not held; still coming = not sent yet, whatever it
+      // is held for. A row the gate dropped asked nothing.
+      const here = mine.find((i) => Number(i.group_id) === Number(group.id)
+        && (i.sent_at === null || i.hold_reason === null));
+      const spent = mine.some((i) => i.sent_at === null || i.hold_reason === null);
+      if (here) r = here.sent_at ? 'invited' : 'invite_coming';
+      else if (!spent && coldOpen && m.user_status === 'pending' && isRealPhone(m.phone)) r = 'invite_coming';
+      else r = 'must_write_first';
+    }
+    reach.set(m.phone, r);
+  }
+  return reach;
+}
+
 // `clocks`: the room spans more than one, so each member who holds a zone on
 // their own record says which city's clock they are on (CLOCK_RULE). Off, the
-// entries are exactly what they were.
-function peopleOf(members, lidPhones, { clocks = false } = {}) {
+// entries are exactly what they were. `reach`: a Map from phone to
+// `reachOf`'s value; absent, or null for a member, adds nothing.
+function peopleOf(members, lidPhones, { clocks = false, reach = null } = {}) {
   const { mentionToken } = require('./proactive-text');
   const clockOf = (m) => (clocks && m.timezone && groups.isConnected(m)
     ? { clock: meetingTime.zoneLabel(m.timezone) } : {});
@@ -131,12 +205,16 @@ function peopleOf(members, lidPhones, { clocks = false } = {}) {
     const key = String(phone || '').replace(/\D/g, '');
     if (key && !byPhone.has(key)) byPhone.set(key, lid);
   }
+  const reachOfM = (m) => {
+    const r = reach ? reach.get(m.phone) : null;
+    return r ? { reach: r } : {};
+  };
   return (members || []).map((m) => {
     const tag = mentionToken(m.phone);
     const digits = String(m.phone || '').replace(/\D/g, '');
     if (tag) {
       const lid = byPhone.get(digits) || null;
-      return { ...(lid ? { tag, lid } : { tag }), ...selfOf(m), ...clockOf(m) };
+      return { ...(lid ? { tag, lid } : { tag }), ...selfOf(m), ...clockOf(m), ...reachOfM(m) };
     }
     // No tag means `proactive-text.isTaggableNumber` refused the digits. Since
     // 2026-09-27 a LID of up to 15 digits IS a tag (the owner saw them arrive
@@ -147,7 +225,7 @@ function peopleOf(members, lidPhones, { clocks = false } = {}) {
     // what having no tag means everywhere else in this file. Dropping them
     // instead would put her back where the incident started — an incoming tag
     // matching nothing, about a person who is standing right there.
-    return /^\d+$/.test(digits) ? { lid: digits, ...selfOf(m), ...clockOf(m) } : null;
+    return /^\d+$/.test(digits) ? { lid: digits, ...selfOf(m), ...clockOf(m), ...reachOfM(m) } : null;
   }).filter(Boolean);
 }
 
@@ -160,6 +238,12 @@ function peopleOf(members, lidPhones, { clocks = false } = {}) {
 // is `roomTimes`, drawn beside every time on the block. Only in a room that
 // spans clocks: anywhere else neither field exists and this rule is not said.
 const CLOCK_RULE = 'This room\'s people live on more than one clock (`room.clocks`). Whenever you say a time in the room, say its `roomTimes` exactly as drawn, never the bare `slot` words and never an hour you converted yourself. A time a member names is on THEIR clock (the `clock` of their entry in `room.people`): pass starts_at with that clock\'s offset, unless they named a different city\'s time. People on several clocks are not meeting in one room — never ask where to meet in person; ask how they connect. Asked for hours that suit everyone: answer from `room.commonHours` lines exactly as drawn (an `unconfirmed` clock is shown there, never counted). If they name a place whose clock it lacks, call group_coordination_status with `places` (the city\'s IANA zone; a country with several clocks, ask which city) and answer from its `commonHours`. Never answer that you will ask everyone privately.';
+
+// Said only when some entry carries `reach`, i.e. while there is a coordination
+// somebody could still be let into. The last two sentences are the two false
+// ones Padel Gang heard on 2026-10-04: a member answering for another, and a
+// count nobody had.
+const REACH_RULE = 'You never send anybody a private message yourself: what reaches a person privately is the system\'s, and `reach` on their entry in `room.people` says what it is. Asked to ask somebody privately, to add them, or whether they were asked, answer ONLY from it: `in` — they are in this coordination and were asked privately, and their answer is theirs to give; `joining` — they will be asked privately shortly; `invited` — Olma wrote to them privately and they are in once they answer her; `invite_coming` — a private message from Olma is on its way to them; `must_write_first` — Olma cannot write to them first: they need to send her any private message, and then they are in. Somebody tagged who is not in `room.people` has only just joined: say the system reaches whoever it can, and never that they were asked or added. One member saying another can make it is NOT that person\'s yes — say they need to answer for themselves. Never say somebody is in, counted, or completes a number unless this block shows it.';
 
 // The cities of the members she could coordinate with, when there is more than
 // one — the room's own zone first. Null is "one clock", which says nothing.
@@ -178,6 +262,7 @@ async function draw(client, group, { lidPhones = null } = {}) {
   // (`meeting-time.commonHours`); null when fewer than two are confirmed, and
   // then the model asks the tool with the places the room named.
   const common = clocks ? (await groupMeetings.commonHoursFor(client, group)).commonHours : null;
+  const reach = await reachOf(client, group, c, members);
   const room = {
     members: members.length,
     // Whoever a coordination could ask — the gate's own question, asked by
@@ -190,7 +275,7 @@ async function draw(client, group, { lidPhones = null } = {}) {
     // a settled coordination, which returns early below, so a roster that only
     // existed while something was on the table would have been absent exactly
     // when it was needed.
-    people: peopleOf(members, lidPhones, { clocks: Boolean(clocks) }),
+    people: peopleOf(members, lidPhones, { clocks: Boolean(clocks), reach }),
     // NULL is the honest third state: until somebody in the room has said what
     // kind of room it is there is no true sentence about "enough people", so
     // the minimum is not here to be reasoned from either.
@@ -262,7 +347,8 @@ async function renderContext(client, group, opts = {}) {
   const { renderResult } = require('../adapters/mcp/render');
   const data = await draw(client, group, opts);
   const clockRule = data.room && data.room.clocks ? ` ${CLOCK_RULE}` : '';
-  return `${CONTEXT_HEADER}\n${renderResult({ ok: true, data })}\n${CONTEXT_RULE} ${TAG_RULE}${clockRule}`;
+  const reachRule = data.room && (data.room.people || []).some((p) => p.reach) ? ` ${REACH_RULE}` : '';
+  return `${CONTEXT_HEADER}\n${renderResult({ ok: true, data })}\n${CONTEXT_RULE} ${TAG_RULE}${clockRule}${reachRule}`;
 }
 
-module.exports = { draw, peopleOf, addressOf, renderContext, CONTEXT_HEADER, CONTEXT_RULE, TAG_RULE, CLOCK_RULE };
+module.exports = { draw, peopleOf, addressOf, reachOf, renderContext, CONTEXT_HEADER, CONTEXT_RULE, TAG_RULE, CLOCK_RULE, REACH_RULE };
