@@ -124,19 +124,15 @@ function fixedCosts(bounds, infra, overrides = {}) {
 async function usageCosts(client, bounds) {
   const params = [bounds.today, bounds.monthDay, bounds.weekDay];
   const ledger = await client.query(
-    `SELECT date, model, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_usd
+    `SELECT date, model, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_usd, billed
        FROM usage_ledger WHERE date <= $1::date
      UNION ALL
-     SELECT date, model, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_usd
+     SELECT date, model, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_usd, billed
        FROM usage_system_ledger WHERE date <= $1::date`, [bounds.today]);
   const blended = await pricing.blendedRate(client);
   const model = { total: 0, month: 0, week: 0, day: 0 };
   for (const r of ledger.rows) {
-    const p = pricing.priceUsage({
-      input: r.input_tokens, output: r.output_tokens,
-      cacheRead: r.cache_read_tokens, cacheWrite: r.cache_write_tokens,
-    }, r.model, blended);
-    const cost = p.estimated ? Number(r.cost_usd) : p.cost;
+    const { cost } = pricing.ledgerRowCost(r, blended);
     const day = isoDay(r.date);
     model.total += cost;
     if (day >= params[1]) model.month += cost;

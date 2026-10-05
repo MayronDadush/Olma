@@ -478,23 +478,25 @@ async function recordOwnUsage(client, res) {
   // distinguishable from "not reported" — a truthiness check here throws one
   // away with the other.
   const stated = Number(u.costUsd);
-  const priced = Number.isFinite(stated) && stated >= 0
+  const billed = Number.isFinite(stated) && stated >= 0;
+  const priced = billed
     ? { cost: stated, estimated: false }
     : pricing.priceUsage(u, res.model, null);
   await client.query(
     `INSERT INTO usage_system_ledger
        (agent_id, date, model, input_tokens, output_tokens, cache_read_tokens,
-        cache_write_tokens, cost_usd, estimated)
-     VALUES ($1, current_date, $2, $3, $4, $5, $6, $7, $8)
+        cache_write_tokens, cost_usd, estimated, billed)
+     VALUES ($1, current_date, $2, $3, $4, $5, $6, $7, $8, $9)
      ON CONFLICT (agent_id, date, model) DO UPDATE SET
        input_tokens = usage_system_ledger.input_tokens + $3,
        output_tokens = usage_system_ledger.output_tokens + $4,
        cache_read_tokens = usage_system_ledger.cache_read_tokens + $5,
        cache_write_tokens = usage_system_ledger.cache_write_tokens + $6,
        cost_usd = usage_system_ledger.cost_usd + $7,
-       estimated = usage_system_ledger.estimated OR $8`,
+       estimated = usage_system_ledger.estimated OR $8,
+       billed = usage_system_ledger.billed AND $9`,
     [SELF_AGENT_ID, res.model || '', u.input || 0, u.output || 0,
-     u.cacheRead || 0, u.cacheWrite || 0, Number(priced.cost).toFixed(8), !!priced.estimated]
+     u.cacheRead || 0, u.cacheWrite || 0, Number(priced.cost).toFixed(8), !!priced.estimated, billed]
   );
 }
 
