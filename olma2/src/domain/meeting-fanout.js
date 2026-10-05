@@ -671,7 +671,7 @@ async function afterOptOut(client, actor, meetingId, res) {
 
 // After meetings.options.add (or proposeSlot) succeeded. An option on the
 // table is a question for everyone else.
-async function afterOptionAdded(client, actor, meetingId, res) {
+async function afterOptionAdded(client, actor, meetingId, res, { exceptUserIds = [] } = {}) {
   if (!res.ok) return res;
   const brief = await meetingBrief(client, meetingId);
   const o = res.data.option || { slotText: res.data.proposedSlot, startsAt: res.data.startsAt, id: res.data.optionId };
@@ -688,13 +688,45 @@ async function afterOptionAdded(client, actor, meetingId, res) {
   const standing = require('./standing-answers');
   const auto = await standing.applyToOption(client, meetingId, o.id, { exceptUserId: actor.id });
   const autoIds = new Set(auto.map((a) => a.userId));
+  const skip = new Set(exceptUserIds.map(Number));
   const others = (await activeParticipantsExcept(client, meetingId, actor.id))
-    .filter((id) => !autoIds.has(Number(id)));
+    .filter((id) => !autoIds.has(Number(id)) && !skip.has(Number(id)));
   await fanout(client, others, 'meeting_slot_proposed', {
     ...base, ...(await slotMoment(client, meetingId, o.slotText)),
     reasons: await meetings.shareableConstraints(client, meetingId, actor.id),
   }, { key: `mopt:${meetingId}:${o.id}` });
   for (const a of auto) await standing.tell(client, a.userId, meetingId, [a], { title: brief.title });
+  return res;
+}
+
+// After meetings.options.merge: a time took a close one's place on the table,
+// and the answers to the old one moved to it (owner, 2026-10-05). Whoever had
+// answered the old time is not asked again — they are TOLD, privately, that
+// their answer now stands on the new one and that one word changes it, the
+// same shape as an answer made for them by a window (`meeting_auto_answered`).
+// Everybody else is asked about the new time as about any addition, and the
+// queued question about the old one is withdrawn, since nobody can answer it.
+async function afterOptionMerged(client, actor, meetingId, res) {
+  if (!res.ok) return res;
+  await client.query(
+    `UPDATE outbox SET sent_at = now(), hold_reason = 'superseded'
+      WHERE sent_at IS NULL AND kind = 'meeting_slot_proposed'
+        AND (payload->>'meetingId')::bigint = $1 AND (payload->>'optionId')::bigint = $2`,
+    [meetingId, res.data.merged]);
+  const carried = (res.data.carried || []).filter((c) => Number(c.userId) !== Number(actor.id));
+  await afterOptionAdded(client, actor, meetingId, res, { exceptUserIds: carried.map((c) => c.userId) });
+  const brief = await meetingBrief(client, meetingId);
+  const o = res.data.option;
+  for (const answer of ['y', 'n']) {
+    const who = carried.filter((c) => c.answer === answer).map((c) => c.userId);
+    if (!who.length) continue;
+    await fanout(client, who, 'meeting_answer_moved', {
+      meetingId: Number(meetingId), title: brief.title || 'meeting', byName: actorName(actor),
+      from: res.data.mergedSlot, slot: o.slotText, startsAt: o.startsAt, optionId: o.id, answer,
+      ...(brief.group_subject ? { groupSubject: brief.group_subject } : {}),
+    }, { key: `mmerge:${meetingId}:${o.id}` });
+  }
+  if (res.data.meetingStatus === 'settling') res.data.hint = settlingHint(res.data.settlingSlot);
   return res;
 }
 
@@ -832,7 +864,7 @@ async function reopenAndTell(client, actor, meetingId, { fromRoom = false } = {}
 module.exports = {
   afterTimeSet, reopenAndTell,
   afterSettled, cancelAndTell, patchSharedEvent,
-  afterStart, afterOptionAdded, afterOptionRemoved, noteNamedInRoom,
+  afterStart, afterOptionAdded, afterOptionMerged, afterOptionRemoved, noteNamedInRoom,
   afterSlotResponse, afterOptOut, afterRejoin,
   actorName, fanout, supersedeQueuedMeetingRows, activeParticipantsExcept,
   meetingCalendarFanout, calendarRoleFor, cancelCalendarCleanup, calendarHintFor,

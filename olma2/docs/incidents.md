@@ -242,6 +242,7 @@ never trust a dated narrative for something you are about to act on.
 - [The light that would not go round (2026-09-22)](#the-light-that-would-not-go-round-2026-09-22)
 - [The picker that opened underneath (fixed 2026-09-22)](#the-picker-that-opened-underneath-fixed-2026-09-22)
 - [Saturday's game, filed under "closed" (fixed 2026-09-23)](#saturdays-game-filed-under-closed-fixed-2026-09-23)
+- [Two times for one game (fixed 2026-10-05)](#two-times-for-one-game-fixed-2026-10-05)
 - [Two coordinations for one meeting (fixed 2026-09-30)](#two-coordinations-for-one-meeting-fixed-2026-09-30)
 - [The coordination that expired on the wrong Tuesday (fixed 2026-09-23)](#the-coordination-that-expired-on-the-wrong-tuesday-fixed-2026-09-23)
 - [The list he could not put his own task into (2026-09-19)](#the-list-he-could-not-put-his-own-task-into-2026-09-19)
@@ -3856,6 +3857,20 @@ asked when the room had last been told. Fixed three ways: the done line
 carries the place, the place tool answers NO_REPLY while that line is still
 to come, and neither reminder follows a close said the same day (day-of) or
 inside the hour (soon).
+
+**2026-10-05, Padel Gang (group 9, meeting 69): "סגור" and then "📅 ביומן" a
+minute later.** The owner settled it from the page at 13:42:23. The sweep
+decided the done line at 13:42:26 with no event yet, so `line.calendar` was
+false. The organiser's agent (u-12) made the shared event at 13:42:40, in
+the turn delivering its `meeting_confirmed`, and the next pass said the
+separate calendar line at 13:43:26. Fix 7 (2026-09-26) let the calendar
+sentence ride the done line only when the event ALREADY existed, and the
+event is made by a model turn the close itself starts, so it never did. Now
+`jobs/groups.calendarPending` holds the done line while
+`calendar.meetingCalendarRoles` says a shared event is coming and the close
+(`meetings.closed_at`) is younger than `group-voice.CALENDAR_WAIT_MS` (two
+minutes). After that the line goes without it, so a model that never calls
+the tool delays the close and never swallows it.
 
 ### The room that did not know its own member (fixed 2026-09-23)
 
@@ -10168,6 +10183,56 @@ quick scan down the list it does not separate. The owner picked the whole card
 instead (2026-09-23): the card is tinted `--accent-soft` and the chip goes
 solid with a ✓ on it, active list only. An archive row is over and is worth
 pointing at with nothing.
+### Two times for one game (fixed 2026-10-05)
+
+In the poker coordination (meeting 74, room 13), Miron put "יום שישי 9.10
+בצהריים" on the table: noon, stored at its 13:00 stand-in. Later Eden added
+"יום שישי 9.10 ב-11:00" from his private chat. One Friday game was now two
+options, each collecting its own yeses, and the owner asked that Olma notice
+and ask whether to merge them.
+
+Nothing could notice. `meeting-options.add` folds only the exact same instant
+into a yes. Two hours apart, or a part of the day beside an hour inside it,
+were two options by construction.
+
+**The owner's three decisions:**
+
+- **What counts as close:** the same local day and at most two hours apart. A
+  part of the day counts as its window (`PART_WINDOWS`: noon is 12–16) and a
+  whole day as all of it, so 11:00 is an hour from noon.
+- **What merge means:** the person who wrote it decides between two answers.
+  A merge puts the new time in the old one's place, and every answer moves
+  with it. A separate time is a new option with new answers.
+- **Where:** the private chat and the room (the owner widened it before the
+  merge). The page adds as before.
+
+**The fix:**
+
+- `propose_meeting_slot` and the room's `add_group_coordination_option` ask
+  `meeting-options.similarOnTable` first. A room's refusal carries the times
+  only, never whose answer is whose. When a
+  close time is on the table, it writes nothing and returns
+  `reason: 'similar_option'` with the close options and their yes counts.
+- The model asks one question, then calls again with `merge_with=<id>`
+  (`meetings.mergeSlot` → `meeting-options.merge`) or `merge_with=0`. Zero
+  means separate: one parameter, because the schema budget is full.
+- `merge` marks the old option `replaced` and adds the new one; the person
+  merging is a yes, as adding always is. It then copies every other answer
+  across with `ON CONFLICT DO NOTHING`, so an answer already given to the new
+  moment stands, and re-runs `tryConfirm`, since carried yeses can make it
+  unanimous.
+- `meeting-fanout.afterOptionMerged` withdraws the queued question about the
+  old time. Whoever had answered it gets `meeting_answer_moved`: one sentence
+  saying their yes or no moved, and that one word changes it. They are not
+  asked again. Everybody else is asked about the new time as about any
+  addition.
+
+**Open:**
+
+- The page still adds without asking.
+- A decline carrying a `counter_proposal` goes through `proposeSlot` and is
+  not checked either.
+
 ### Two coordinations for one meeting (fixed 2026-09-30)
 
 Miron asked for a meeting with עידן before the two were connected. The request

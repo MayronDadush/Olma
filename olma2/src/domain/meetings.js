@@ -404,6 +404,31 @@ async function proposeSlot(client, userId, meetingId, slotText, startsAt, { allD
   });
 }
 
+// The same normalisation proposeSlot applies, so a part of the day is compared
+// and merged at the stand-in hour it will be stored at.
+async function slotMomentFor(client, userId, startsAt, { allDay = false, daypart = null } = {}) {
+  if ((allDay || daypart) && hasOffset(startsAt)) {
+    const { rows: [u] } = await client.query('SELECT timezone FROM users WHERE id = $1', [userId]);
+    const stand = optionMoment.standInFor(u && u.timezone, startsAt, { allDay, daypart });
+    if (!stand.ok) return stand;
+    return ok(stand.data);
+  }
+  return ok({ startsAt, allDay: Boolean(allDay), daypart: daypart || null });
+}
+
+// A time close to one on the table, put in its PLACE with the old one's answers
+// (meeting-options.merge; owner, 2026-10-05). The private chat's other answer
+// to `similar_option` — the first is `separate`, an ordinary proposeSlot.
+async function mergeSlot(client, userId, meetingId, intoOptionId, slotText, startsAt, opts = {}) {
+  const m = await slotMomentFor(client, userId, startsAt, opts);
+  if (!m.ok) return m;
+  const res = await options.merge(client, userId, meetingId, intoOptionId, slotText, m.data.startsAt,
+    { allDay: m.data.allDay, daypart: m.data.daypart });
+  if (!res.ok) return res;
+  return ok({ ...res.data, meetingId, proposedSlot: res.data.option.slotText, startsAt: res.data.option.startsAt,
+    optionId: res.data.option.id });
+}
+
 // The hard gate. Since 2026-09-06 it ARMS rather than confirms: unanimity
 // starts a minute, and options.settleDue closes the meeting when the minute is
 // up and the option is still unanimous. Called from respondToSlot and
@@ -1202,7 +1227,7 @@ async function listNegotiating(client, userId = null) {
 
 module.exports = {
   cleanLocation,
-  startMeeting, openWithSamePeople, recordConstraint, proposeSlot, respondToSlot,
+  startMeeting, openWithSamePeople, recordConstraint, proposeSlot, mergeSlot, slotMomentFor, respondToSlot,
   optOut, rejoin, leftByChoice, LEFT_BY_CHOICE_SQL, applyExit, withdrawConfirmed, cancelMeeting, reopenMeeting, setTitle, setPlace, setCategory, setQuorum,
   getStatus, listMine, pendingMeetingFor, tryConfirm, settleNow, timeIsOpen, setExactTime,
   expireStaleMeetings, dropPassedOptions, expireOne, listNegotiating,
