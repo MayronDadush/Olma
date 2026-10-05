@@ -219,8 +219,14 @@ async function unanimousOption(client, meetingId) {
     `WITH paused_out AS (
        -- Somebody who paused her THEMSELVES is waited on by nobody (owner,
        -- 2026-09-27; pause.pausedByRequest): nothing about this reaches them.
-       SELECT id AS user_id FROM users
-        WHERE paused_at IS NOT NULL AND paused_reason IS DISTINCT FROM 'quiet_ladder'),
+       -- …unless they already answered a time on this table: they stay in
+       -- and are waited on (owner, 2026-10-05; group-meetings.answeredLive).
+       SELECT id AS user_id FROM users u
+        WHERE paused_at IS NOT NULL AND paused_reason IS DISTINCT FROM 'quiet_ladder'
+          AND NOT EXISTS (
+            SELECT 1 FROM meeting_option_answers oa
+              JOIN meeting_options mo ON mo.id = oa.option_id
+             WHERE mo.meeting_id = $1 AND mo.status = 'active' AND oa.user_id = u.id)),
      active AS (
        SELECT user_id FROM meeting_participants WHERE meeting_id = $1 AND state <> 'opted_out'
           AND user_id NOT IN (SELECT user_id FROM paused_out)),
