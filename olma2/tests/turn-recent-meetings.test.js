@@ -74,3 +74,32 @@ test('a coordination they heard about carries its status, their answers, and the
   const annTurn = await turnStart(ann);
   assert.equal(annTurn.recentMeetings, undefined);
 });
+
+// Eden, 2026-10-05: a pause took him out of the poker, his yes stayed on
+// record, and the turn was told `answered: 1` and nothing about him being out
+// — so he was told twice "I did not take you out". `out` says it, and how.
+test('a coordination they are out of says so, and how they came to be out', async () => {
+  const m = (await withTx(db.pool, (c) => meetings.startMeeting(c, ann.id, 'שש־בש', [ben.id]))).data.meeting;
+  const optionId = (await withTx(db.pool, (c) => options.add(c, ann.id, m.id, 'שישי ב-11', slotStart('שישי', { hours: 96 })))).data.option.id;
+  await withTx(db.pool, (c) => options.answer(c, ben.id, m.id, optionId, 'y'));
+  await withTx(db.pool, (c) => enqueue(c, { userId: ben.id, kind: 'meeting_invite', payload: { meetingId: Number(m.id) }, urgency: 'urgent' }));
+  await db.pool.query(`UPDATE outbox SET sent_at = now() WHERE user_id = $1 AND sent_at IS NULL`, [ben.id]);
+  const mine = async () => (await turnStart(ben)).recentMeetings.find((x) => x.meetingId === Number(m.id));
+
+  assert.equal((await mine()).out, undefined, 'in it: nothing to say');
+  // A third person keeps it open when Ben leaves.
+  const cal = await makeUser(db.pool, '+972509100003', { firstName: 'Cal' });
+  await db.pool.query(`INSERT INTO meeting_participants (meeting_id, user_id, state) VALUES ($1, $2, 'awaiting')`, [m.id, cal.id]);
+
+  await withTx(db.pool, (c) => meetings.applyExit(c, ben.id, m.id, 'paused_by_request'));
+  const out = await mine();
+  assert.equal(out.out, 'pause');
+  assert.equal(out.answered, 1, 'the yes is still on record — which is why `out` has to be said');
+  const turn = await turnStart(ben);
+  assert.match(turn.hints.recentMeetings, /Never say they are still in one marked `out`/);
+
+  await withTx(db.pool, (c) => meetings.rejoin(c, ben.id, m.id));
+  assert.equal((await mine()).out, undefined);
+  await withTx(db.pool, (c) => meetings.optOut(c, ben.id, m.id));
+  assert.equal((await mine()).out, 'chose');
+});

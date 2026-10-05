@@ -966,9 +966,10 @@ test('a stranger cannot rejoin a coordination they were never in', async () => {
   });
 });
 
-// Owner, 2026-10-01: only somebody who left by their OWN choice comes back.
-// Every exit cause there is, through the function that writes it.
-test('only an exit they chose can be walked back: a pause, the room or a revoke cannot', async () => {
+// Owner, 2026-10-01: only somebody who left by their OWN choice comes back —
+// and, since 2026-10-05, somebody a PAUSE took out, once they are not paused
+// (Eden, meeting 74). Every exit cause there is, through the function that writes it.
+test('an exit they chose or a pause can be walked back; the room or a revoke cannot', async () => {
   await withClient(async (c) => {
     const back = async (cause) => {
       const m = (await meetings.startMeeting(c, alice.id, `by ${cause}`, [bob.id, carol.id])).data.meeting;
@@ -985,11 +986,11 @@ test('only an exit they chose can be walked back: a pause, the room or a revoke 
       if (cause === 'withdrew') assert.equal(out.data.withdrew, true);
       return meetings.rejoin(c, bob.id, m.id);
     };
-    for (const cause of ['user_choice', 'withdrew']) {
+    for (const cause of ['user_choice', 'withdrew', 'paused_by_request', 'paused_no_answer']) {
       const r = await back(cause);
       assert.equal(r.ok, true, `${cause}: ${r.ok ? '' : JSON.stringify(r.error)}`);
     }
-    for (const cause of ['paused_by_request', 'paused_no_answer', 'left_room', 'connection_revoked']) {
+    for (const cause of ['left_room', 'connection_revoked']) {
       const r = await back(cause);
       assert.equal(r.ok, false, `${cause}: not a choice they made about this coordination`);
       assert.equal(r.error.reason, 'not_left_by_choice');
@@ -1001,7 +1002,7 @@ test('the LATEST exit decides, and an opted_out row with no exit on record is no
   await withClient(async (c) => {
     const m = (await meetings.startMeeting(c, alice.id, 'twice out', [bob.id, carol.id])).data.meeting;
     await meetings.proposeSlot(c, alice.id, m.id, 'Friday 18:00', slotStart('Friday 18:00'));
-    await meetings.applyExit(c, bob.id, m.id, 'paused_no_answer');
+    await meetings.applyExit(c, bob.id, m.id, 'left_room');
     assert.equal((await meetings.rejoin(c, bob.id, m.id)).ok, false);
     // They come back and leave in words: that exit is the one that counts.
     await c.query(`UPDATE meeting_participants SET state = 'awaiting' WHERE meeting_id = $1 AND user_id = $2`, [m.id, bob.id]);
@@ -1012,6 +1013,64 @@ test('the LATEST exit decides, and an opted_out row with no exit on record is no
     const unknown = await meetings.rejoin(c, carol.id, m.id);
     assert.equal(unknown.ok, false, 'nothing says they chose to leave');
     assert.equal(unknown.error.reason, 'not_left_by_choice');
+  });
+});
+
+// A yes on the newest option, through the one writer of answers.
+async function yesFrom(c, userId, meetingId) {
+  const { rows } = await c.query(
+    `SELECT id FROM meeting_options WHERE meeting_id = $1 AND status = 'active' ORDER BY id DESC LIMIT 1`, [meetingId]);
+  const r = await require('../src/domain/meeting-options').answer(c, userId, meetingId, rows[0].id, 'y');
+  assert.equal(r.ok, true, r.ok ? '' : JSON.stringify(r.error));
+}
+
+// Eden, 2026-10-05: "אז אני לא עונה לך יותר" paused him, the sweep took him
+// out of the poker that minute, his next message resumed him — and he stayed
+// out, his yes on Friday still on record and counted for nothing.
+test('the pause ending puts them back into what it took them out of, answers and all', async () => {
+  const pause = require('../src/domain/pause');
+  await withClient(async (c) => {
+    const m = (await meetings.startMeeting(c, alice.id, 'poker', [bob.id, carol.id])).data.meeting;
+    await meetings.proposeSlot(c, alice.id, m.id, 'Friday 11:00', slotStart('Friday 11:00'));
+    await yesFrom(c, bob.id, m.id);
+
+    // A second coordination they chose to leave stays left.
+    const chosen = (await meetings.startMeeting(c, alice.id, 'chosen', [bob.id, carol.id])).data.meeting;
+    await meetings.proposeSlot(c, alice.id, chosen.id, 'Thursday 18:00', slotStart('Thursday 18:00'));
+    await meetings.optOut(c, bob.id, chosen.id);
+
+    await pause.pauseUser(c, bob.id, { confirmed: false });
+    await meetings.applyExit(c, bob.id, m.id, 'paused_by_request');
+    const stateOf = async (id) => (await c.query(
+      `SELECT state FROM meeting_participants WHERE meeting_id = $1 AND user_id = $2`, [id, bob.id])).rows[0].state;
+    assert.equal(await stateOf(m.id), 'opted_out');
+
+    // Still paused: asking is told the resume is the way back, and writes nothing.
+    const early = await meetings.rejoin(c, bob.id, m.id);
+    assert.equal(early.ok, false);
+    assert.equal(early.error.reason, 'paused');
+
+    const res = await pause.stopResume(c, bob.id);
+    assert.equal(res.ok, true);
+    assert.deepEqual(res.data.meetingsRestored.map((x) => x.meetingId), [Number(m.id)]);
+    assert.equal(await stateOf(m.id), 'confirmed_current', 'back with the yes they had given');
+    assert.equal(await stateOf(chosen.id), 'opted_out', 'an exit they chose is theirs to undo');
+    const { rows } = await c.query(
+      `SELECT detail->>'cause' AS cause FROM audit_log WHERE actor_id = $1 AND event = 'meeting.rejoined'
+          AND (detail->>'meetingId')::bigint = $2`, [bob.id, m.id]);
+    assert.deepEqual(rows.map((r) => r.cause), ['pause_ended']);
+  });
+});
+
+test('a pause exit asked back by somebody NOT paused comes back with its answers, not awaiting', async () => {
+  await withClient(async (c) => {
+    const m = (await meetings.startMeeting(c, alice.id, 'asked back', [bob.id, carol.id])).data.meeting;
+    await meetings.proposeSlot(c, alice.id, m.id, 'Friday 12:00', slotStart('Friday 12:00'));
+    await yesFrom(c, bob.id, m.id);
+    await meetings.applyExit(c, bob.id, m.id, 'paused_by_request');
+    const r = await meetings.rejoin(c, bob.id, m.id);
+    assert.equal(r.ok, true, r.ok ? '' : JSON.stringify(r.error));
+    assert.equal(r.data.yourState, 'confirmed_current');
   });
 });
 

@@ -102,6 +102,7 @@ never trust a dated narrative for something you are about to act on.
 - [The times the room said went nowhere (fixed 2026-09-23)](#the-times-the-room-said-went-nowhere-fixed-2026-09-23)
 - [The room could not cancel its own coordination (fixed 2026-09-25)](#the-room-could-not-cancel-its-own-coordination-fixed-2026-09-25)
 - [Eden could not come back (fixed 2026-10-01)](#eden-could-not-come-back-fixed-2026-10-01)
+- [Eden, kept out by a pause that had ended (fixed 2026-10-05)](#eden-kept-out-by-a-pause-that-had-ended-fixed-2026-10-05)
 - [The coordination waited on the man who started it (fixed 2026-09-19)](#the-coordination-waited-on-the-man-who-started-it-fixed-2026-09-19)
 - [The room heard its own state from memory (fixed 2026-09-19)](#the-room-heard-its-own-state-from-memory-fixed-2026-09-19)
 - [The room held a time that no longer existed (fixed 2026-09-22)](#the-room-held-a-time-that-no-longer-existed-fixed-2026-09-22)
@@ -3650,6 +3651,40 @@ about the exit — false since 2026-09-22, when stepping out became an update
 and not a message. Through the page that was rare; through the room it was
 four private messages in a five-person poker game for one person changing
 their mind. Asked, the owner chose silence ("חזרה שתהיה שקטה כמו יציאה").
+
+### Eden, kept out by a pause that had ended (fixed 2026-10-05)
+
+The poker room again (meeting 74), 5 October. Eden (user 56) had been paused,
+and `group-meetings.sweepSilentPausedMembers` took him out of the
+coordination with a pause cause, as the rule says it should. Then the pause
+ended, and nothing put him back: no path that ends a pause looked at the
+coordinations the pause had taken him out of. Three things were wrong at once.
+
+- **The exit outlived its reason.** He was back, and still `opted_out`.
+  `meetings.rejoin` refused him too, because the 2026-10-01 rule (the entry
+  above) undid only an exit he CHOSE.
+- **She denied it.** He asked why he had been taken out, and she told him
+  she had not removed him. The turn context's `recentMeetings` carried the
+  coordination and his answers, and nothing said he was out of it. His yes
+  on Friday was still on record, so the model read him as in.
+- **The room counted him as a paused non-answerer.** `pausedExitsOf` reads
+  the cause on the latest `meeting.opted_out` audit row, and that row stays
+  latest after somebody comes back, so it would have kept counting him in
+  "ועוד N" next to his own yes.
+
+Restored by hand the same day (yes on Friday, answers intact), with a
+private apology the owner approved word for word. The fix:
+
+- `pause.resumeUser`, `quietResume` and the quiet branch of
+  `resumeAfterRoomInvite` call `meetings.restorePauseExits`. This puts back
+  every negotiating coordination whose latest exit was a pause, with the
+  answers they had given, and audits `meeting.rejoined` with cause
+  `pause_ended`.
+- `rejoin` accepts a pause exit once the pause is over.
+- `recentMeetings` carries `out` (`pause`/`chose`/`other`).
+- `pausedExitsOf` counts only somebody still `opted_out`.
+
+An exit they chose stays an exit.
 
 ### The times the room said went nowhere (fixed 2026-09-23)
 
