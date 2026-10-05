@@ -723,6 +723,23 @@ title means this file. Grep the title, not the filename.
   message that carried it. It survives `summary` scope for the same reason a
   nudge is not a count: four of the six people with a digest are on it.
 
+- **An EVENT can repeat, and the cadence lives on the EVENT, never on a
+  reminder hung off a one-off** (migration 111, `tasks.repeat_rule`). Dov's
+  Monday-and-Thursday course was saved as one Monday plus a `weekly:MO,TH`
+  reminder (`incidents.md`, "A course on Mondays and Thursdays, saved as one
+  Monday").
+  - `add_task(repeat)` takes one weekday per row. Two days are two calls. A
+    weekday that disagrees with `due_at` is refused (`tasks.eventRepeatRule`).
+  - The same title open twice is allowed only between two repeating events at
+    different moments. A retry is still a duplicate.
+  - An occurrence that ends is ADVANCED, never archived
+    (`tasks.advanceRecurring`, reached through `completeTask`, which the
+    finished-tasks sweep already skips when it answers `recurring`).
+  - The advance clears `calendar_event_id`, because a stale id is how
+    task-calendar decides to DELETE the old Google event. So each occurrence
+    reaches Google as its own event, created once the previous one is over —
+    there is no RRULE series there yet.
+
 - **A calendar event reminds NOBODY, and `create_calendar_event`'s result says
   so rather than leaving it to be guessed.** `calendar.createEvent` sends
   Google no reminders override, and nothing on our side speaks for a calendar

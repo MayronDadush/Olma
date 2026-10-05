@@ -331,7 +331,7 @@ function requireWritable(accessLevel) {
 // which is how an event lands three hours off — the same class of bug that
 // NULL users.timezone caused for quiet hours and digests. The rule itself
 // lives in domain/datetime.js, shared with meeting slots.
-const { OFFSET_RE, badTime } = require('./datetime');
+const { OFFSET_RE, badTime, partsInZone } = require('./datetime');
 
 // ---- tools -----------------------------------------------------------------
 
@@ -454,18 +454,26 @@ function allDayRange(start) {
 const ALL_DAY_EVENT = ' It is a WHOLE-DAY meeting: it goes on the calendar as an all-day event'
   + ' (create_shared_meeting_event does that by itself; create_calendar_event needs all_day=true).';
 
-async function createEvent(client, userId, { title, start, end, description, location, attendees, allDay = false }, opts = {}) {
+// `recurrence` makes it a SERIES Google itself knows ("RRULE:FREQ=WEEKLY;BYDAY=MO"),
+// and Google then needs the zone the rule is expanded in, or a weekly 17:30
+// drifts an hour across a clock change — so a timed series must carry
+// `timeZone`. `eventId` overrides the derived id: a series is re-created
+// under a new one when it is split (task-calendar.syncSeries).
+async function createEvent(client, userId, { title, start, end, description, location, attendees, allDay = false, recurrence, timeZone, eventId: givenId }, opts = {}) {
   if (!title) return err('invalid', 'title is required');
   if (!OFFSET_RE.test(String(start))) return badTime('start', start);
   if (!allDay && !OFFSET_RE.test(String(end))) return badTime('end', end);
   if (!allDay && new Date(end) <= new Date(start)) return err('invalid', 'end must be after start');
-  const range = allDay ? allDayRange(start) : { start: { dateTime: start }, end: { dateTime: end } };
+  if (recurrence && !allDay && !timeZone) return err('invalid', 'a repeating event needs timeZone');
+  const zone = recurrence && !allDay ? { timeZone } : {};
+  const range = allDay ? allDayRange(start)
+    : { start: { dateTime: start, ...zone }, end: { dateTime: end, ...zone } };
 
   // A deterministic id makes creation idempotent. It matters because the MCP
   // shim gives up at 30s while brokerd commits regardless: without this, one
   // slow call plus the agent's retry puts the same meeting on someone's
   // calendar twice. Google's base32hex id alphabet is 0-9a-v, so hex qualifies.
-  const eventId = eventIdFor(userId, title, start);
+  const eventId = givenId || eventIdFor(userId, title, start);
 
   return withAccessToken(client, userId, opts, async (token, accessLevel, o) => {
     const refusal = requireWritable(accessLevel);
@@ -486,6 +494,7 @@ async function createEvent(client, userId, { title, start, end, description, loc
           location: location || undefined,
           start: range.start,
           end: range.end,
+          recurrence: recurrence && recurrence.length ? recurrence : undefined,
           // Only ever set by createSharedMeetingEvent, from addresses this
           // module resolved itself — never from anything the agent typed.
           attendees: attendees && attendees.length
@@ -568,6 +577,82 @@ async function deleteEvent(client, userId, { eventId, notify = true }, opts = {}
     }
     await audit.record(client, userId, 'calendar.event_deleted', { eventId });
     return ok({ deleted: true, eventId });
+  });
+}
+
+// One event as Google holds it now, or null when it is gone (deleted on the
+// phone, or cancelled). Read before a series is ended, because how it ends
+// depends on whether any of it has happened yet.
+async function getEvent(client, userId, { eventId }, opts = {}) {
+  if (!eventId) return err('invalid', 'event_id is required');
+  return withAccessToken(client, userId, opts, async (token, accessLevel, o) => {
+    try {
+      const body = await google.calendarFetch(token, `/calendars/primary/events/${encodeURIComponent(eventId)}`, o);
+      return ok({ event: body && body.status !== 'cancelled' ? body : null });
+    } catch (e) {
+      if (e.code === 'unauthorized') throw e;
+      if (/not found|deleted|410|404/i.test(e.message)) return ok({ event: null });
+      return err('conflict', e.message, { reason: e.code || 'http' });
+    }
+  });
+}
+
+// Ending a SERIES is not deleting it. What already happened is the person's
+// record and stays on their calendar (the same rule task-calendar.pending
+// keeps for a single event), so the rule is cut at `at` with an UNTIL — the
+// way Google's own "this and following events" does it. A series none of
+// whose occurrences has started yet has no record to keep, and is deleted.
+//
+// A whole-day series is cut by DATE in the person's zone, keeping today's.
+function untilStamp(at, { allDay, timezone }) {
+  const d = new Date(at);
+  if (allDay) {
+    const p = partsInZone(timezone || 'UTC', d);
+    return `${p.y}${String(p.m).padStart(2, '0')}${String(p.d).padStart(2, '0')}`;
+  }
+  return d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+}
+function withUntil(recurrence, stamp) {
+  return (recurrence || []).map((line) => (/^RRULE:/.test(line)
+    ? line.replace(/;(UNTIL|COUNT)=[^;]*/g, '') + `;UNTIL=${stamp}`
+    : line));
+}
+
+async function endSeries(client, userId, { eventId, at = new Date(), timezone }, opts = {}) {
+  if (!eventId) return err('invalid', 'event_id is required');
+  return withAccessToken(client, userId, opts, async (token, accessLevel, o) => {
+    const refusal = requireWritable(accessLevel);
+    if (refusal) return refusal;
+    const path = `/calendars/primary/events/${encodeURIComponent(eventId)}`;
+    let ev;
+    try {
+      ev = await google.calendarFetch(token, path, o);
+    } catch (e) {
+      if (e.code === 'unauthorized') throw e;
+      if (/not found|deleted|410|404/i.test(e.message)) return ok({ ended: false, alreadyGone: true, eventId });
+      return err('conflict', e.message, { reason: e.code || 'http' });
+    }
+    if (!ev || ev.status === 'cancelled') return ok({ ended: false, alreadyGone: true, eventId });
+    const allDay = Boolean(ev.start && ev.start.date);
+    const stamp = untilStamp(at, { allDay, timezone });
+    const notStarted = allDay
+      ? ev.start.date.replace(/-/g, '') > stamp
+      : new Date(ev.start.dateTime) > new Date(at);
+    try {
+      if (notStarted) {
+        await google.calendarFetch(token, `${path}?sendUpdates=none`, { ...o, method: 'DELETE' });
+      } else {
+        await google.calendarFetch(token, path, {
+          ...o, method: 'PATCH', body: JSON.stringify({ recurrence: withUntil(ev.recurrence, stamp) }),
+        });
+      }
+    } catch (e) {
+      if (e.code === 'unauthorized') throw e;
+      if (/not found|deleted|410|404/i.test(e.message)) return ok({ ended: false, alreadyGone: true, eventId });
+      return err('conflict', e.message, { reason: e.code || 'http' });
+    }
+    await audit.record(client, userId, notStarted ? 'calendar.event_deleted' : 'calendar.series_ended', { eventId });
+    return ok({ ended: true, deleted: notStarted, eventId });
   });
 }
 
@@ -843,7 +928,7 @@ module.exports = {
   ALL_DAY_EVENT,
   PROVIDER, MAX_EVENTS,
   beginConnection, completeOAuth, getStatus, disconnect, loadIntegration,
-  listEvents, createEvent, updateEvent, deleteEvent, eventIdFor,
+  listEvents, createEvent, updateEvent, deleteEvent, eventIdFor, getEvent, endSeries, untilStamp, withUntil,
   usableAccessToken,
   accountEmail, meetingCalendarRoles, createSharedMeetingEvent, removeMeetingEvent, removeMeetingAttendee, addMeetingAttendee,
 };
