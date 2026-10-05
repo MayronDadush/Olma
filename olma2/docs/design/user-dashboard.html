@@ -4024,8 +4024,8 @@ button.srow:active{background:var(--bg-tint)}
           </div>
           <!-- "לנדנד לי", the standing switch, is gone (owner, 2026-10-03): the
                nudge is chosen per task now ("🔁 נודניק" in the sheet), and two
-               things called nudging on one page read as one. Nobody had it on;
-               users.reminder_nudge and its write stay for the chat. -->
+               things called nudging on one page read as one. Nobody had it on,
+               and its column is no longer read (2026-10-03). -->
         </div></div></div>
 
         <!-- What she knows. Closed by default like every row here: it is a list
@@ -4885,7 +4885,6 @@ button.srow:active{background:var(--bg-tint)}
     setQuietDays:        "remember_preference",       /* keys "quiet_days" + "holiday_calendar" */
     setDigest:           "set_digest_preferences",
     setCalendarSync:     "set_calendar_task_sync",
-    setReminderNudge:    "set_task_reminder",          /* per reminder in chat; this switch is the standing one */
     forgetFact:          "forget_fact",
     answerFactPrompt:    "remember_fact"               /* composed server-side from a question */
   };
@@ -4916,7 +4915,7 @@ button.srow:active{background:var(--bg-tint)}
     stopGoogleService:"stopGoogleService",
     setName:"setName", setPersonal:"setPersonal", setAssistant:"setAssistant", setLocale:"setLocale",
     setAvailability:"setAvailability", setQuietDays:"setQuietDays", setDigest:"setDigest",
-    setCalendarSync:"setCalendarSync", setReminderNudge:"setReminderNudge",
+    setCalendarSync:"setCalendarSync",
     forgetFact:"forgetFact", answerFactPrompt:"answerFactPrompt",
     decideSuggestion:"decideSuggestion", setAvatar:"setAvatar"
   };
@@ -5345,10 +5344,6 @@ button.srow:active{background:var(--bg-tint)}
     setCalendarSync: function(on, done){
       API.call("setCalendarSync", {on:on});
       return API.send("setCalendarSync", {on:on}, function(data){ if(done) done(data !== null || !LIVE); });
-    },
-    setReminderNudge: function(on, done){
-      API.call("setReminderNudge", {on:on});
-      return API.send("setReminderNudge", {on:on}, function(data){ if(done) done(data !== null || !LIVE); });
     },
     forgetFact:      function(id, done){  return API.profile("forgetFact", {factId:id}, done); },
     answerFactPrompt: function(key, answer, done){
