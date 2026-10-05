@@ -237,8 +237,11 @@ test('answering inside a day ends the pause; "stay paused" keeps the allowance s
   await withTx(db.pool, (c) => turn.openRecord(c, paused, { wake: true }));
   assert.equal(await withTx(db.pool, (c) => pause.isPaused(c, paused.id)), false, 'writing back ends the pause');
 
-  // "Leave me paused" — pause_olma. The new pause must not be a new allowance.
-  await withTx(db.pool, (c) => pause.pauseUser(c, paused.id, { note: 'stay paused' }));
+  // "Leave me paused" — pause_olma. That answer is already their yes, so it
+  // lasts without the question, and the new pause must not be a new allowance.
+  const kept = await withTx(db.pool, (c) => pause.requestPause(c, paused, { note: 'stay paused', confirmed: true }));
+  assert.equal(kept.data.confirmed, true, 'their answer to the invite is the yes');
+  assert.equal(kept.data.askThem, undefined);
   const { rows: [u] } = await db.pool.query(
     `SELECT paused_at, room_invite_sent_at FROM users WHERE id = $1`, [paused.id]);
   assert.equal(pause.roomInviteSpent(u), true);
