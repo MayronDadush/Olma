@@ -40,7 +40,7 @@ const taskCalendar = require('./task-calendar');
 // validated as a closed set, not free text), so the page can rely on it —
 // but an UNKNOWN value must render rather than disappear, or a category added
 // on the server silently empties somebody's list on an older page.
-const KNOWN_CATEGORIES = ['home', 'work', 'family', 'health', 'money', 'errands'];
+const KNOWN_CATEGORIES = ['home', 'work', 'family', 'health', 'money', 'errands', 'lists'];
 const category = (c) => (KNOWN_CATEGORIES.includes(c) ? c : 'none');
 
 // What each connected platform can actually express, in OUR field names. The
