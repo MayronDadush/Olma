@@ -147,7 +147,7 @@ async function sendRawMessage({ channel, target, message, replyTo }, deps = {}) 
 const PAUSED_ROOM_INVITE = ' The user has PAUSED your messages. This is the only message about this '
   + 'coordination they will get, sent because they are in that group: say so in one short clause, '
   + 'without apologising at length. If they answer that they want to stay paused, that answer is '
-  + 'already their yes: call pause_olma, no confirming question. If they do not answer, nothing more is sent.';
+  + 'already their yes: call pause_olma with confirmed=true, no confirming question. If they do not answer, nothing more is sent.';
 
 // `dashboardUrl` arrives the same way `mergedParts` does: on the in-memory row
 // at DELIVERY, never on the stored payload — a link minted at enqueue would be

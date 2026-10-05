@@ -104,6 +104,7 @@ never trust a dated narrative for something you are about to act on.
 - [Eden could not come back (fixed 2026-10-01)](#eden-could-not-come-back-fixed-2026-10-01)
 - [Eden, kept out by a pause that had ended (fixed 2026-10-05)](#eden-kept-out-by-a-pause-that-had-ended-fixed-2026-10-05)
 - [Eden asked not to be taken out (fixed 2026-10-05)](#eden-asked-not-to-be-taken-out-fixed-2026-10-05)
+- [The stop nobody asked about (fixed 2026-10-05)](#the-stop-nobody-asked-about-fixed-2026-10-05)
 - [Yossi was abroad, and was taken out (fixed 2026-10-05)](#yossi-was-abroad-and-was-taken-out-fixed-2026-10-05)
 - [The coordination waited on the man who started it (fixed 2026-09-19)](#the-coordination-waited-on-the-man-who-started-it-fixed-2026-09-19)
 - [The room heard its own state from memory (fixed 2026-09-19)](#the-room-heard-its-own-state-from-memory-fixed-2026-09-19)
@@ -3704,6 +3705,31 @@ them for "everybody said yes", and they are never tagged. Somebody with no
 answer, or one only on a time that has since left the table, is taken out as
 before. One question, `group-meetings.answeredLive`, is asked by the sweep,
 `statusOf` and `meeting-options.unanimousOption`.
+
+### The stop nobody asked about (fixed 2026-10-05)
+
+The same chat, read back afterwards. Eden was half joking with her. When he
+said to stop, the model called `pause_olma` with `confirmed` omitted, which
+the tool read as the LASTING pause, and it never asked the question. It then
+told him "one message brings it all back", which is true only of the
+unconfirmed stop. He wrote "אפשר לדבר" and stayed paused. Nothing in the
+chat had told him that a pause also takes him out of the coordinations he
+had not answered, so he could not see why the poker went on without him.
+
+Three changes. `pause.requestPause` is now `pause_olma`'s door: a lasting
+pause needs the stop to have been heard (a `said_stop` audit row in the last
+two hours) and a message from the person after it. A `confirmed=true` with
+nothing before it is downgraded to the unconfirmed stop. The other way in is
+the paused room invite, where "leave me paused" is already the yes. The
+question is drawn, not composed (`pause.CONFIRM_QUESTION`): it says what a
+pause does, in Hebrew or English, so a joke is either taken back or meant.
+An unconfirmed call never lands on a confirmed pause, so "stop" said twice
+does not undo the first. The doctrine's closing line now says the pause lasts
+until they ask her back.
+
+Not touched: an unconfirmed stop still takes them out of the room
+coordinations they have not answered, and their next message restores them
+(`restorePauseExits`).
 
 ### Yossi was abroad, and was taken out (fixed 2026-10-05)
 
