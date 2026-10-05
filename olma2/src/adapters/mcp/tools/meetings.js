@@ -342,7 +342,14 @@ module.exports = [
     }),
   tool('opt_out_of_meeting', 'Leave a meeting — while negotiating, OR "I can\'t come" after it was confirmed (it stays on for the others). One person bowing out, NOT a cancellation — whoever opened it may leave too, and it carries on. "Call the whole thing off" is cancel_meeting. Confirm with the user first.',
     { meeting_id: S('number', 'Meeting id') }, ['meeting_id'],
-    async (client, user, a) => {
+    async (client, user, a, ctx) => {
+      // Eden pasted "רשום עדן יצא" — what the page said about him — and this
+      // ran on it (2026-10-05). The hook reads a quoted status off the
+      // message; on that turn nothing is written and the model asks.
+      if (ctx && ctx.turn && ctx.turn.reportedExit) {
+        return err('invalid', 'Their message REPORTS a status ("X יצא"); it does not ask to leave. '
+          + 'Nothing was written. Ask them, in one line, whether they want out of this coordination.');
+      }
       const res = await meetings.optOut(client, user.id, a.meeting_id);
       if (!res.ok) return res;
       return meetingFanout.afterOptOut(client, user, a.meeting_id, res);
