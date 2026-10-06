@@ -225,6 +225,27 @@ test('one seat, one phone: a held seat is refused unless taken on purpose, and a
   assert.equal((await hold('nobody01', A)).error, 'not_found');
 });
 
+test('a log line names the seat of the phone that wrote it, and a phone with no seat names nobody', async t => {
+  // 2026-10-03: two of ליאם's buy-ins came off from the page and went back,
+  // and nobody could say who had done it (migration 005).
+  const { post } = await boot(t);
+  const token = await openNight(post, { players: ['מירון', 'ליאם'] });
+  const w = async body => { const r = await post(`/night/${token}/api/write`, body); return { status: r.status, ...(await r.json()) }; };
+  const st0 = (await w({ op: 'add', col: 'log', data: { t: 'פתיחה' } })).state;
+  assert.equal(Object.values(st0.log)[0].by, undefined, 'no phone, nobody named');
+  const [mir] = Object.entries(st0.players).sort((a, b) => a[1].order - b[1].order).map(([id]) => id);
+  await w({ op: 'hold', col: 'players', id: mir, data: { device: 'phoneMIRON1' } });
+
+  let st = (await w({ op: 'add', col: 'log', data: { t: 'ליאם − כניסה', via: 'tap' }, device: 'phoneMIRON1' })).state;
+  assert.equal(Object.values(st.log).find(l => l.t === 'ליאם − כניסה').by, 'מירון');
+  st = (await w({ op: 'add', col: 'log', data: { t: 'ליאם + כניסה', via: 'tap' }, device: 'phoneSTRANGE' })).state;
+  assert.equal(Object.values(st.log).find(l => l.t === 'ליאם + כניסה').by, undefined, 'a phone in no seat is not anybody');
+
+  // a snapshot: renaming the seat later does not rewrite who wrote the line
+  st = (await w({ op: 'set', col: 'players', id: mir, data: { name: 'מירון ד', order: 0 } })).state;
+  assert.equal(Object.values(st.log).find(l => l.t === 'ליאם − כניסה').by, 'מירון');
+});
+
 test('a player cap stops a link in the wrong hands from filling the table', async t => {
   const { post } = await boot(t);
   const token = await openNight(post, { players: [] });
