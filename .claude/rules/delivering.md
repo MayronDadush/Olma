@@ -653,13 +653,17 @@ title means this file. Grep the title, not the filename.
   instead of the order to draw, and `render_schedule_card` refuses — and never
   a person who asked. `incidents.md`, "A morning that said "here is the
   picture" and had none".
-  **The card's LAYOUT is code's too, and past 36 items the morning is a
+  **The card's LAYOUT is code's too, and past 25 items the morning is a
   SUMMARY** (owner, 2026-10-06). `digest-card.cardFor` builds the sections:
   - calendar first, then "דחוף" (overdue, or marked in the title), then what
     has a date, then the undated by category;
   - one heading per category, and an overflow continues under "(המשך)".
 
   `get_my_digest` hands them over as `cardArgs`, to be passed through
-  unchanged. `digest-card.summarize` keeps the most pressing items, at most 15
-  and at least 8, and the card and the block both say how many more are open.
+  unchanged. `digest-card.summarize` keeps the most pressing items, filled up to
+  25 (`SUMMARY_MAX`/`SUMMARY_MIN`; the card's own ceiling is
+  `schedule-card.LIMITS.totalItems`, 25), and the card and the block both say how many more are open.
   `incidents.md`, "She wrote twice and stayed paused".
+  New people start on `digest_scope` `full` (migration 113), and
+  `set_digest_preferences` tells the model to leave `scope` out: a model that
+  filled it in wrote `summary` over a `full` the owner had just set (u-30).

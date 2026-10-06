@@ -101,7 +101,7 @@ function renderCard(user, prefs, facts = [], extras = {}) {
   }
   lines.push(`Timezone: ${user.timezone || 'unknown'}${user.timezone_confirmed ? '' : ' (unconfirmed — confirm when natural)'}`);
   lines.push(user.digest_times
-    ? `Daily digest: ${user.digest_times} (${user.digest_scope || 'summary'})`
+    ? `Daily digest: ${user.digest_times} (${user.digest_scope || 'full'})`
     : 'Daily digest: not set up — offer it once their list has real content');
   // State the agent otherwise burns a tool call to discover — or worse,
   // forgets exists. Both failure modes were observed live: calendar_status

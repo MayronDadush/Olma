@@ -145,7 +145,7 @@ test('past the card\'s own ceiling the tool orders a SUMMARY card that the rende
   const data = await digestFor('full');
   assert.equal(data.block, undefined);
   assert.ok(data.omitted > 0, 'the count of what was left out rides the result');
-  assert.ok(data.tasks.length <= 15);
+  assert.ok(data.tasks.length <= LIMITS.totalItems);
   assert.match(data.cardArgs.footer_note, new RegExp(`ועוד ${data.omitted}`));
   assert.match(data.hints.card, /only the most urgent and important/);
   const drawn = renderPng(data.cardArgs);
@@ -173,7 +173,7 @@ test('with cards off, a list past the ceiling is still a summary, and the block 
   assert.ok(data.block);
   assert.ok(data.omitted > 0);
   assert.match(data.block, new RegExp(`ועוד ${data.omitted} משימות פתוחות`));
-  assert.ok((data.block.match(/משימה \d+/g) || []).length <= 15);
+  assert.ok((data.block.match(/משימה \d+/g) || []).length <= LIMITS.totalItems);
 });
 
 test('0 turns cards off: every list comes back as a block', async () => {
