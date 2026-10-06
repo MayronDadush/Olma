@@ -339,6 +339,7 @@ Loads when you **Read** a file under `src/intake/agents-template.md`, `src/intak
 - **The tool schemas have a ceiling too: 55k chars of JSON, 700 per description, the identity line under 40**
 - **When brokerd has put a 👍 on their message, the result says so (`hints.markPlaced`) and the model answers `NO_REPLY` unless words add something**
 - **The owner's rule is that anything which CAN end in a like should**
+- **A 👍 OR a message, never both: the closing mark waits for the turn's end and a reply drops it** (`holdClose` in brokerd, released by `turn_progress`)
 - **The hint follows the MARK, not the spawn.**
 - **A message that is only thanks is answered by a 🙏 and by nothing else** — in any language, and not right after Olma asked a question: then it is their answer, most likely a yes, and the model decides
 - **`markPlaced` is CONDITIONAL, so nothing else on the same result may be an unconditional instruction to write.**
