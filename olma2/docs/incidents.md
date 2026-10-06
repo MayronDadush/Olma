@@ -4289,6 +4289,13 @@ rewritten, and only on a payload that carries the option's instant
 (`meeting-fanout.slotMoment`); `startsAt`, which the model echoes back as
 `accepted_starts_at`, is never touched.
 
+**…and so did `get_meeting_status`** (`meetings.getStatus` →
+`withFreshDays`). Every option's `slotText` is said on its author's clock (the
+reader's when the author is unknown), and the meeting row's
+`proposed_slot`/`confirmed_slot` are said the same way, so the table and the
+row never name one time two ways. The stored words are not rewritten. The page
+and the calendar event remain.
+
 ### פנתרה: one time, four clocks (fixed 2026-09-25)
 
 Room 10, פנתרה, was coordinating a video call for everybody (meeting 46). Two

@@ -21,6 +21,7 @@ const options = require('./meeting-options');
 const optionMoment = require('./meeting-option-moment');
 const { onlinePlace } = require('./online-place');
 const meetingCategory = require('./meeting-category');
+const { freshDayWords } = require('./meeting-time');
 
 // How long a slot stays "live" after its start before the negotiation is
 // closed as expired. Generous on purpose: the thing itself may still be
@@ -1093,6 +1094,34 @@ async function setQuorum(client, userId, meetingId, min) {
   return ok({ meetingId, quorumMin: clean });
 }
 
+// A slot is the proposer's words, stored once, and "מחר" in them is true on the
+// day they were written (2026-10-06: the poker room heard "מחר (שלישי) בערב" on
+// the Tuesday). Whoever reads the table now hears the day as it is now, from
+// the instant behind each time, on its author's clock (the reader's when the
+// author is unknown). The meeting row's two copies of a slot are said the same
+// way, so the table and the row never disagree about one time.
+async function withFreshDays(client, userId, table, meeting) {
+  const ids = [...new Set([userId, ...table.map((o) => o.addedBy)].filter((id) => id !== null && id !== undefined))];
+  const { rows } = await client.query('SELECT id, timezone FROM users WHERE id = ANY($1::bigint[])', [ids]);
+  const tzOf = new Map(rows.map((r) => [Number(r.id), r.timezone]));
+  const readerTz = tzOf.get(Number(userId));
+  const said = new Map();
+  const fresh = table.map((o) => {
+    const slotText = freshDayWords(o.slotText, o, tzOf.get(Number(o.addedBy)) || readerTz);
+    said.set(o.slotText, slotText);
+    return slotText === o.slotText ? o : { ...o, slotText };
+  });
+  if (!meeting) return { table: fresh, meeting };
+  const row = { ...meeting };
+  if (said.has(row.proposed_slot)) row.proposed_slot = said.get(row.proposed_slot);
+  if (row.confirmed_slot) {
+    row.confirmed_slot = said.has(row.confirmed_slot)
+      ? said.get(row.confirmed_slot)
+      : freshDayWords(row.confirmed_slot, { startsAt: row.confirmed_start_at }, readerTz);
+  }
+  return { table: fresh, meeting: row };
+}
+
 async function getStatus(client, userId, meetingId) {
   const p = await participantRow(client, meetingId, userId);
   if (!p) return err('not_found', 'not a participant of this meeting');
@@ -1113,7 +1142,7 @@ async function getStatus(client, userId, meetingId) {
   // an OFFER — sharing it is its purpose (domain/availability.js).
   const availability = require('./availability');
   const avail = await availability.labelsByUser(client, meetingId);
-  const table = await options.list(client, meetingId);
+  const { table, meeting } = await withFreshDays(client, userId, await options.list(client, meetingId), m.rows[0]);
   const answersOf = (uid) => Object.fromEntries(table
     .filter((o) => o.answers && o.answers[uid]).map((o) => [o.id, o.answers[uid]]));
   // Only the notes that still stand (`standingNotes`): an agent reading "I
@@ -1140,7 +1169,7 @@ async function getStatus(client, userId, meetingId) {
     ...o, yes: Object.values(o.answers || {}).filter((v) => v === 'y').length,
   }));
   return ok({
-    meeting: m.rows[0], participants,
+    meeting, participants,
     ...(room ? { room: { kind: room.kind || null, min: room.quorum_min === null ? null : Number(room.quorum_min), max: room.quorum_max === null ? null : Number(room.quorum_max) } } : {}),
     ...(room && room.kind ? { headcount: headcountOf(room, opts, participants) } : {}),
     options: opts,
