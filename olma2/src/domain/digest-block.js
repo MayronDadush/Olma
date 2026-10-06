@@ -48,6 +48,7 @@ const WORDS = {
     // drawn sentence has no grammatical gender to get right (rules,
     // "What is the same every time is DRAWN").
     pageLink: 'כל הרשימה במסך אחד, לעריכה ולסידור:',
+    more: (n) => `ועוד ${n} משימות פתוחות.`,
   },
   en: {
     calendar: 'On your calendar',
@@ -59,6 +60,7 @@ const WORDS = {
     weekdays: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
     date: ({ d, m }) => `${d}/${m}`,
     pageLink: 'The whole list on one screen, to edit and arrange:',
+    more: (n) => `And ${n} more open tasks.`,
   },
 };
 
@@ -237,7 +239,7 @@ function todoBlock(rows, ctx, f, w, locale) {
 // digest's own way to hand over the page under a long list. It is part of the
 // block rather than a sentence for the model to write, so it is relayed with
 // the list and cannot be described instead of sent.
-function renderDigestBlock(data, { locale, timezone, channelType, now, link } = {}) {
+function renderDigestBlock(data, { locale, timezone, channelType, now, link, omitted = 0 } = {}) {
   const f = format.formatterFor(channelType);
   const ctx = contextFor({ locale, timezone, now });
   const w = ctx.w;
@@ -274,6 +276,9 @@ function renderDigestBlock(data, { locale, timezone, channelType, now, link } = 
   // today, and reading it first would put a job with no date above a meeting
   // in an hour.
   if (nudges.length) sections.push(`${f.bold(w.nudges)}\n${f.bullets(nudges)}`);
+  // A list cut to its most pressing items (digest-card.summarize) says so:
+  // a morning that quietly drops forty tasks reads as forty tasks done.
+  if (omitted > 0) sections.push(w.more(omitted));
   if (link) sections.push(`${w.pageLink}\n${link}`);
   return sections.join('\n\n');
 }
