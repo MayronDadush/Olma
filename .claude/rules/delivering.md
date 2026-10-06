@@ -646,7 +646,7 @@ title means this file. Grep the title, not the filename.
   and no card was ever attempted. `jobs/sweeps.scopeForDigest` turns `summary`
   into `full` (`today` stays as the person chose it) and `get_my_digest` still
   decides, in code, between card and block. The ration
-  (`domain/card-budget.js`, ledger `audit_log` `card.drawn`, rolling 24 hours)
+  (`olma2/src/domain/card-budget.js`, ledger `audit_log` `card.drawn`, rolling 24 hours)
   binds only a turn Olma started, at both doors — `get_my_digest` hands a block
   instead of the order to draw, and `render_schedule_card` refuses — and never
   a person who asked. `incidents.md`, "A morning that said "here is the
