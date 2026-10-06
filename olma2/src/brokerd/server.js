@@ -1593,15 +1593,17 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
         // Asked of the hold being ON, not of this mark still pending: a reply
         // earlier in the turn already dropped it, and "already put" would lie.
         const held = Boolean(actorAgentId) && signalsLive();
+        // ⏰ for an add_task that armed a reminder they asked for, 👍 otherwise.
+        const emoji = reactions.stateFor(name, result) === 'scheduled' ? '⏰' : '👍';
         result.data.hints = {
           ...(result.data.hints || {}),
           markPlaced: held
-            ? 'When this turn ends a 👍 goes on their message, telling them this is done — '
+            ? `When this turn ends a ${emoji} goes on their message, telling them this is done — `
               + 'but only if you write nothing: any words you send replace it. If they gave a '
               + 'plain instruction and you have nothing to add — no question worth asking, no '
               + 'caveat, no error, no other hint here — reply with exactly NO_REPLY and nothing '
               + 'else. Write only when the words carry something the mark cannot.'
-            : 'A 👍 has already been put on their message: it tells them this is done. '
+            : `A ${emoji} has already been put on their message: it tells them this is done. `
               + 'If they gave a plain instruction and you have nothing to add — no question worth '
               + 'asking, no caveat, no error, no other hint here — reply with exactly NO_REPLY and '
               + 'nothing else. Write only when the words carry something the mark cannot.',
