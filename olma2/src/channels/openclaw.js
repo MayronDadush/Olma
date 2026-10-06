@@ -988,7 +988,8 @@ function makeDeliverer(pool) {
       if (!file) return { ok: false, error: `unknown intro video: ${welcomeP.clip}` };
       let media;
       try { media = introVideo.stageMedia(file); } catch (e) { return { ok: false, error: `stage media: ${e.message}` }; }
-      const caption = introVideo.welcomeCaption(row.locale, await homeLinkFor(pool, row));
+      const caption = introVideo.welcomeCaption(row.locale, await homeLinkFor(pool, row),
+        { game: Boolean(welcomeP.gameOpening), overrides: wording });
       return runOpenclaw([
         'message', 'send',
         '--channel', channel.channel_type,

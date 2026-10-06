@@ -61,6 +61,7 @@ never trust a dated narrative for something you are about to act on.
 - [Settled, then the hour, three minutes apart (fixed 2026-10-05)](#settled-then-the-hour-three-minutes-apart-fixed-2026-10-05)
 - [Two exits, two messages, to a man who asked for one a day (fixed 2026-10-03)](#two-exits-two-messages-to-a-man-who-asked-for-one-a-day-fixed-2026-10-03)
 - [Four messages in sixty-two seconds (fixed 2026-09-20)](#four-messages-in-sixty-two-seconds-fixed-2026-09-20)
+- [A question about her country in the middle of the game (fixed 2026-10-06)](#a-question-about-her-country-in-the-middle-of-the-game-fixed-2026-10-06)
 - [Two day-one steps twelve minutes apart, the first two hours late (fixed 2026-10-03)](#two-day-one-steps-twelve-minutes-apart-the-first-two-hours-late-fixed-2026-10-03)
 - [Once a day, said and not kept (built 2026-10-03)](#once-a-day-said-and-not-kept-built-2026-10-03)
 - [Saved, marked done, and read as nothing (fixed 2026-10-04)](#saved-marked-done-and-read-as-nothing-fixed-2026-10-04)
@@ -2348,6 +2349,61 @@ correctly (what counts is what REACHED them); the fold now does too, through
 `unheardInvite`: when every invite row for that person and coordination is a
 dropped one, the next time goes out as the invite it should have been, with
 `tableChanged` on it.
+
+### A question about her country in the middle of the game (fixed 2026-10-06)
+
+The first real game night (2026-10-03) brought three new numbers in through
+its code: שמר (u-51), ליאם (u-63) and רפי (u-64). Each sent "משחק <code>", was
+seated by brokerd, and from that moment was an ordinary new person to every
+sweep. The check-in ladder's 15-minute step went out in the middle of the
+game. The next morning the settlement, the welcome clip and the day-one
+country question arrived inside four minutes. None of the three has written
+since.
+
+Nothing was broken. The ladder did exactly what it does for somebody who
+wrote "היי" to the greeter, and that was the fault: these people had not come
+for Olma, they had come for a poker game, and every message about tasks,
+reminders or their country was about something they never asked for.
+
+The owner's decision (2026-10-06), as six points:
+
+1. The welcome clip's caption carries one extra line: "רוצה לארגן ערב משלך?
+   פשוט תכתוב לי: ערב משחק חדש".
+2. Apart from that and the night's own messages, somebody who only plays
+   hears nothing from her.
+3. They leave the track by using her for something else: a tool that does
+   something for them, a question about what she can do, or any other
+   message while no night of theirs is open or just closed.
+4. Leaving starts a whole day one from that moment, without the name check
+   (they gave their name at the table).
+5. The three from 2026-10-03 go on the track too.
+6. Rooms are not on it, for now.
+
+How it is built:
+
+- `users.game_track_at` / `game_track_left_at` (migration 114) hold it.
+  `domain/game-track.js` decides, in code.
+- `checkin.eligibleUsers` drops anybody on the track outright, so no rung is
+  queued, held or counted as a miss. It counts day one from
+  `GREATEST(onboarded_at, game_track_left_at)`, under a new key suffix
+  (`:after_game`), because the night they joined may already have spent the
+  first ladder's keys.
+- `isDeafOnDayOne` now counts only steps created since that start.
+  Otherwise the two steps that reached them during the game, unanswered,
+  would read as deafness on the new day one.
+- The "free message" exit is decided in brokerd's `turn_context`, not at
+  `turn_open`: the hook's open is fire-and-forget and can land before code
+  answers a game command or a link request, so only a model turn really
+  running is proof the message was not one code already handled.
+- gamesd unreadable counts as a night in progress. "Could not tell" is never
+  evidence they have moved on, and `turn.gameNightsOf`'s collapse of `[]` to
+  `null` is exactly the confusion this decision cannot afford, so
+  `gameTrack.nightsOf` keeps them apart.
+- The abilities question is the hook's `asksAbilities`. On its first
+  measurement it took u-56's "למה את יכולה לכתוב רק הודעה אחת ביום ?", because
+  "מה" sits inside "למה". With a Hebrew lookbehind it took 0 of 368 real
+  messages from 46 people. It is inert until the gateway restarts, like every
+  hook.
 
 ### Two day-one steps twelve minutes apart, the first two hours late (fixed 2026-10-03)
 

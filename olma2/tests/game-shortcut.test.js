@@ -468,6 +468,7 @@ test('a new number\'s code: she says she is an AI, asks the name, and the page o
   assert.doesNotMatch(a.text, /privacy|עולמה/);
   const after = await rowOf(phone);
   assert.deepEqual([after.first_name, after.last_name, after.name_confirmed], ['יוסי', 'כהן', true]);
+  assert.ok(after.game_track_at, 'on the game-only track: the ladder says nothing until they use her (domain/game-track.js)');
   assert.deepEqual(await packsOf(u.id), [{ pack: 'games', via: 'code' }]);
   assert.deepEqual(policies, [], 'no agent yet: the pack rides the first config write instead');
   assert.equal((await claimsOf(u.id))[1].outcome, 'joined');

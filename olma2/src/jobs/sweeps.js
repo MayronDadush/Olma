@@ -553,7 +553,10 @@ async function sweepNameConfirm(client, nowIso) {
         AND $1::timestamptz - first_turn_at >= interval '60 seconds'
         AND $1::timestamptz - first_turn_at < interval '10 minutes'
         AND (first_name IS NULL OR name_confirmed = false)
-        AND paused_at IS NULL`,
+        AND paused_at IS NULL
+        -- Not somebody on the game-only track (domain/game-track.js): their
+        -- first turn is "עוד כניסה" in the middle of a night.
+        AND NOT (game_track_at IS NOT NULL AND game_track_left_at IS NULL)`,
     [now]);
   const out = [];
   for (const u of rows) {

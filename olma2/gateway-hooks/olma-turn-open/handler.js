@@ -370,6 +370,35 @@ function reportsExit(text) {
   return REPORTED_EXIT_RE.test(raw) && !SPEAKS_FOR_SELF_RE.test(raw);
 }
 
+// "מה את יודעת לעשות?" — they asked what she does. Somebody on the game-only
+// track (domain/game-track.js) leaves it on this, wherever a night stands:
+// the question is the one thing the track waited to hear. A question about
+// HER, so "את"/"you" (or "עולמה") must be there with a can/do verb, or the
+// whole message is "מה זה עולמה"/"מי את". Short, because a long message that
+// happens to contain the words is about something else.
+// Measured on the box before it shipped (2026-10-06): 368 real inbound
+// messages from 46 people, and the one hit of the first draft was "למה את
+// יכולה לכתוב רק הודעה אחת ביום ?" — מה inside למה, which ${B} now refuses.
+// Zero since.
+const ABILITIES_RE = new RegExp([
+  `${B}מה\\s+(?:עוד\\s+)?(?:את|עולמה)\\s+(?:עוד\\s+)?(?:יודעת|יכולה|מסוגלת)(?:\\s+לעשות)?`,
+  `${B}מה\\s+(?:עוד\\s+)?(?:את|עולמה)\\s+עושה(?:\\s+בדיוק)?\\s*[?？]`,
+  `${B}(?:במה|איך)\\s+(?:עוד\\s+)?(?:את\\s+)?(?:יכולה|תוכלי)\\s+(?:לעזור|לסייע)`,
+  `${B}מה\\s+(?:עוד\\s+)?אפשר\\s+(?:לעשות\\s+)?(?:איתך|אתך|עם\\s+עולמה)`,
+  `^\\s*(?:מה\\s+זה\\s+עולמה|מי\\s+את|מה\\s+את)\\s*[?？!.]*\\s*$`,
+  `\\bwhat\\s+(?:else\\s+)?(?:can|do)\\s+you\\s+do\\b`,
+  `\\bwhat\\s+are\\s+you\\s+(?:able\\s+to\\s+do|for)\\b`,
+  `\\bhow\\s+can\\s+you\\s+help\\b`,
+  `^\\s*who\\s+are\\s+you\\s*[?!.]*\\s*$`,
+].join('|'), 'iu');
+const MAX_ABILITIES_CHARS = 120;
+
+function asksAbilities(text) {
+  const raw = String(text || '').replace(REPLY_BLOCK_RE, ' ').replace(/[‎‏‪-‮]/g, '').trim();
+  if (!raw || raw.length > MAX_ABILITIES_CHARS) return false;
+  return ABILITIES_RE.test(raw);
+}
+
 // Which inbound events open a turn. Measured on OpenClaw 2026.8.1 (2026-09-06,
 // olma-hook-probe): a WhatsApp DM fires `message:preprocessed` ~300ms after
 // the inbound log line and `agent:bootstrap` a second later — and NEVER
@@ -448,6 +477,9 @@ function handle(event, { connect = net.connect, sock = SOCK } = {}) {
     // "רשום עדן יצא" — a status they quote, not a request: opt_out_of_meeting
     // refuses on this turn, so the model asks instead of acting.
     reportedExit: reportsExit(said.text),
+    // "מה את יודעת לעשות?" — somebody on the game-only track leaves it
+    // (domain/game-track.js). The verdict travels; the words do not.
+    abilities: asksAbilities(said.text),
     at: new Date(event.timestamp || Date.now()).toISOString(),
   };
   return new Promise((resolve) => {
@@ -493,4 +525,5 @@ module.exports.asksOpenList = asksOpenList;
 module.exports.remindWithoutTime = remindWithoutTime;
 module.exports.outOnly = outOnly;
 module.exports.reportsExit = reportsExit;
+module.exports.asksAbilities = asksAbilities;
 module.exports._resetSeen = () => seen.clear();
