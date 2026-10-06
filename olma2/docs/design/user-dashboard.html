@@ -15208,7 +15208,9 @@ button.srow:active{background:var(--bg-tint)}
       headers:{"Content-Type":"application/json", Accept:"application/json"},
       body:JSON.stringify({code:c})
     }).then(function(r){
-      if(r.ok){ location.replace("/me"); return; }
+      /* the query kept: `?hl=` is how the server tells an app open from a
+         browser one (domain/dashboard-opens.js), and this is the app */
+      if(r.ok){ location.replace("/me" + location.search); return; }
       codeBusy = false;
       $("#wCodeErr").textContent = t(r.status === 429 ? "code.slow" : "code.bad");
       codeInput();
