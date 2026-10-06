@@ -638,3 +638,16 @@ title means this file. Grep the title, not the filename.
   over the exact start in the reader's offset** (`startPhrase`): telling an
   agent to re-read "20:00" in its own offset put the event at the wrong hour
   for anybody abroad (`incidents.md`, "פנתרה: one time, four clocks").
+
+- **The scheduled digest always fetches the list, and the pictures Olma starts
+  are rationed to two a day, three hours apart** (owner, 2026-10-06).
+  `summary` returns counts only, so a card could never be drawn off it: a
+  morning of five open tasks went out as one sentence beginning "הנה התמונה:",
+  and no card was ever attempted. `jobs/sweeps.scopeForDigest` turns `summary`
+  into `full` (`today` stays as the person chose it) and `get_my_digest` still
+  decides, in code, between card and block. The ration
+  (`domain/card-budget.js`, ledger `audit_log` `card.drawn`, rolling 24 hours)
+  binds only a turn Olma started, at both doors — `get_my_digest` hands a block
+  instead of the order to draw, and `render_schedule_card` refuses — and never
+  a person who asked. `incidents.md`, "A morning that said "here is the
+  picture" and had none".
