@@ -478,7 +478,7 @@ function endingClause(p) {
 // summary scope returns counts only, so a turn told to draw off it has nothing
 // to draw with.
 function cardClause() {
-  return ' Whether this morning is short enough to read or long enough to DRAW is decided by get_my_digest itself, never by you: the result carries EITHER a `block` — the list already laid out, which goes into your reply as it stands — OR `hints.card`, which means draw it: call render_schedule_card off the items in that same result and reply with one short sentence plus "MEDIA: <path>" on its own line. A list too long for one picture comes back as a block as well, with nothing to say about the count or the picture. Exactly one of the two comes back, and you send only the one that did — a list beside the picture of it is the same morning twice.';
+  return ' Whether this morning is short enough to read or long enough to DRAW is decided by get_my_digest itself, never by you: the result carries EITHER a `block` — the list already laid out, which goes into your reply as it stands — OR `hints.card`, which means draw it: call render_schedule_card with exactly the `cardArgs` in that same result and reply with one short sentence plus "MEDIA: <path>" on its own line. Exactly one of the two comes back, and you send only the one that did — a list beside the picture of it is the same morning twice.';
 }
 
 // A time that came off the table never gets a message of its own (owner,
