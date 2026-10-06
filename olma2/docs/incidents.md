@@ -14884,3 +14884,21 @@ Fix: `textOf(ctx)` — transcript, else `bodyForAgent`, else the body with the
 envelope header and its sender label cut. The trace line now carries `src`
 and `chars`, so the next zero says which string it was read from. Needs a
 gateway restart; hooks load at startup.
+
+
+### A morning that said "here is the picture" and had none (2026-10-06)
+
+User 8, 09:01: `get_my_digest` was called with `scope="summary"`, which returns
+five open tasks as a COUNT, and the model wrote "הנה התמונה: 5 משימות פתוחות…" —
+"picture" as in snapshot, with no image behind it. Nothing was broken in the
+renderer (resvg present, another user drew a card the day before): the decision
+to draw lives in `get_my_digest`'s `full` branch, and the delivery instruction
+leaves `summary` to the model's own judgement of whether the counts read like a
+wall of text. It judged they did not. The threshold (`digest_card_min_items`,
+3) never even ran for anybody on `summary`.
+
+Fix: the scheduled digest fetches `full` (`sweeps.scopeForDigest`), and because
+that would turn every long morning into an image, Olma's own cards are limited
+to two a day at least three hours apart (`card-budget.js`). A person asking is
+never limited. Not done: a per-user opt-out; rolling 24h rather than a local
+calendar day, on purpose, to need no timezone.
