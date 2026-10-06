@@ -360,6 +360,19 @@ digest had not reached her since 26 September. Two faults stacked:
 She was unpaused by hand (`admin.pause_lifted`) and sent her whole list as a
 picture with one question: every morning, and at what hour.
 
+**The picture she got had two faults, both layout, and both the model's.**
+Her 16 tasks were all filed under work. A section holds at most 15 lines, so
+the model split the category into two sections and headed both "עבודה". The
+one task she had marked "(בעדיפות עליונה)" sat second from the bottom. The
+card's layout is now code's (`domain/digest-card.js`). Calendar comes first,
+then what is overdue or marked urgent under "דחוף", then what has a date, then
+the undated grouped by category. A category that overflows continues under
+"(המשך)". The model passes `cardArgs` to `render_schedule_card` unchanged.
+Past the card's ceiling of 36, the owner chose a summary over a wall of text
+(u-3 had 63 open). The summary keeps what is overdue, marked or due within a
+week, up to 15 items. When that is thin it fills to 8 from the newest. It
+closes with "ועוד N משימות פתוחות", on the card and in the text block alike.
+
 ### The silence the gateway asked again (fixed 2026-10-03)
 
 Padel Gang, 10:40 Israel time. A member wrote "פשוט תשני את התיאום הקיים
