@@ -60,8 +60,41 @@ function inWindow(now) {
 // headline. Both exclusions key on this one label.
 const PILOT_TRIGGER = 'pilot';
 
+// The judge reads a THIRD of the scenarios a night, in rotation, so each one
+// is judged every JUDGE_ROTATION nights; the hard checks still run on every
+// scenario every night (owner's call, 2026-10-05). The judge is the only part
+// of the suite that costs money per scenario — kimi-k2.6, ~$0.12 a night
+// against ~$0.04 rotated — and its verdicts on 9/24..10/5 were the same
+// chronic yellows night after night, so judging each one nightly was paying
+// to be told the same thing. A new regression in tone surfaces within three
+// nights; a broken rule (red) still surfaces the same night.
+//
+// By position in the list, not by a hash of the id: positions split the list
+// into thirds that differ by at most one, where a hash of 17 ids can land 3/7/7.
+// Adding a scenario shifts the ones after it once, which at worst stretches a
+// single gap — the cost of the even split.
+const JUDGE_ROTATION = 3;
+
+function utcDayNumber(now) {
+  return Math.floor(new Date(now).getTime() / 86_400_000);
+}
+
+// Does scenario `index` get the judge tonight? `rotation` is null for every
+// run but the nightly one: a manual or pilot run is asked a question and
+// judges everything it runs.
+function judgedTonight(index, rotation) {
+  if (!rotation) return true;
+  return index % rotation.of === rotation.day % rotation.of;
+}
+
 // The previous persisted result for a scenario, EXCLUDING the given run —
 // what the two-consecutive-nights rule compares against.
+//
+// A row the judge never read (rotated out, or a --no-judge run) is skipped
+// too, unless it is red: it is green because nobody looked, and counting it
+// would let rotation break every streak — a chronic yellow judged every third
+// night would never be "twice in a row". A red stands, because the hard checks
+// that made it ran in full.
 //
 // Pilot runs are skipped: a candidate model going yellow says nothing about
 // the model users are actually on, and counting it would let an afternoon
@@ -72,6 +105,7 @@ async function previousStatus(client, scenario, beforeRunId) {
     `SELECT r.status FROM eval_results r
        JOIN eval_runs u ON u.id = r.run_id
       WHERE r.scenario = $1 AND r.run_id < $2 AND u.trigger <> $3
+        AND NOT (r.status = 'green' AND COALESCE(r.judge->>'skipped', '') = 'true')
       ORDER BY r.id DESC LIMIT 1`,
     [scenario, beforeRunId, PILOT_TRIGGER]
   );
@@ -102,7 +136,7 @@ function alertText(summary) {
       lines.push(`⚠️ ${r.scenario}: הבדיקה עצמה נשברה (${r.error || (r.judge && r.judge.error) || 'unknown'})`);
     } else {
       const why = (r.judge && r.judge.problems && r.judge.problems[0] && r.judge.problems[0].rule) || 'איכות טקסט';
-      lines.push(`🟡 ${r.scenario}: לילה שני ברצף — ${why}`);
+      lines.push(`🟡 ${r.scenario}: פעם שנייה ברצף שהשופט מסתייג — ${why}`);
     }
   }
   lines.push('הפירוט המלא בדשבורד, בקטע Evals.');
@@ -146,7 +180,7 @@ async function runScenarioTrials(pool, user, scenario, deps, trials) {
   };
 }
 
-async function runEvalSuite(pool, { trigger = 'nightly', deps = {}, scenarios = SCENARIOS, trials = 1 } = {}) {
+async function runEvalSuite(pool, { trigger = 'nightly', deps = {}, scenarios = SCENARIOS, trials = 1, rotation = null } = {}) {
   const user = await withTx(pool, (c) => harness.getEvalUser(c));
   if (!user) return { skipped: 'no eval user — run scripts/setup-eval-user.js on the server' };
 
@@ -157,8 +191,14 @@ async function runEvalSuite(pool, { trigger = 'nightly', deps = {}, scenarios = 
   const runId = Number(runRows[0].id);
 
   const results = [];
-  for (const scenario of scenarios) {
-    const r = await runScenarioTrials(pool, user, scenario, deps, trials);
+  let rotatedOut = 0;
+  for (const [index, scenario] of scenarios.entries()) {
+    const judged = judgedTonight(index, rotation);
+    const r = await runScenarioTrials(pool, user, scenario,
+      judged ? deps : { ...deps, skipJudge: true }, trials);
+    // Said on the row, so the board can tell "not judged tonight" from "the
+    // judge passed it" — a green that nobody read must not look like one.
+    if (!judged && r.judge && r.judge.skipped) { r.judge = { ...r.judge, rotation: true }; rotatedOut += 1; }
     results.push(r);
     // Persisted per scenario, not at the end — a crash mid-run leaves what DID
     // run visible instead of a night that looks like it never happened.
@@ -196,7 +236,7 @@ async function runEvalSuite(pool, { trigger = 'nightly', deps = {}, scenarios = 
   // board, the alert and the admin strip already showed for twelve nights
   // running, and every one of them read like an ordinary bad night.
   const noneRan = results.length > 0 && tally.error === results.length;
-  return { runId, trigger, tally, alerts, results, trials, noneRan };
+  return { runId, trigger, tally, alerts, results, trials, noneRan, rotatedOut };
 }
 
 // The brokerd job. deps.send(phone, text) is the raw pipe (same as the credit
@@ -254,7 +294,9 @@ async function sweepEvals(pool, deps = {}) {
   // loop every hourly tick all night — the ERR heartbeat is the signal there.
   await withTx(pool, (c) => flagsDomain.setFlag(c, LAST_RUN_FLAG, today));
 
-  const summary = await runEvalSuite(pool, { trigger: 'nightly', deps });
+  const summary = await runEvalSuite(pool, {
+    trigger: 'nightly', deps, rotation: { of: JUDGE_ROTATION, day: utcDayNumber(now) },
+  });
   if (summary.skipped) return summary;
 
   if (summary.alerts.length && deps.send) {
@@ -276,6 +318,8 @@ async function sweepEvals(pool, deps = {}) {
   return {
     runId: summary.runId, ...summary.tally,
     ...(summary.noneRan ? { noneRan: true } : {}),
+    // Declining to judge is said on the heartbeat, never left to look like a pass.
+    judgeRotatedOut: summary.rotatedOut,
     alerted: summary.alerted || false, alerts: summary.alerts.length,
     // Distinguishes "nothing to say" from "said, but not until morning" —
     // without it the heartbeat reads a queued alert as no alert at all.
@@ -287,5 +331,5 @@ module.exports = {
   sweepEvals, runEvalSuite, alertText, previousStatus, inWindow,
   runScenarioTrials, worstOf, SEVERITY,
   flushPendingAlert, alertHoursOpen,
-  LAST_RUN_FLAG, WINDOW_UTC_HOURS, PILOT_TRIGGER, PENDING_ALERT_FLAG, ALERT_TZ,
+  LAST_RUN_FLAG, JUDGE_ROTATION, judgedTonight, utcDayNumber, WINDOW_UTC_HOURS, PILOT_TRIGGER, PENDING_ALERT_FLAG, ALERT_TZ,
 };
