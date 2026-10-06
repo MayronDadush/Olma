@@ -340,8 +340,9 @@ async function dailyOnceIsDue(client, u, now) {
 // of 5 open tasks went out as a sentence that said "הנה התמונה:" and nothing
 // else). The scheduled digest therefore always fetches the list; get_my_digest
 // decides in code whether it is drawn, laid out as a block, or — for a short
-// morning — a block of a line or two. `today` is a narrower question the person
-// chose and stays as asked.
+// morning — a block of a line or two. Since the same day `digest.assemble`
+// returns every open task on every scope but `block_view`, so this mapping is
+// belt and braces for old rows, not the thing that carries the list.
 function scopeForDigest(scope) {
   return !scope || scope === 'summary' ? 'full' : scope;
 }

@@ -644,8 +644,10 @@ title means this file. Grep the title, not the filename.
   `summary` returns counts only, so a card could never be drawn off it: a
   morning of five open tasks went out as one sentence beginning "הנה התמונה:",
   and no card was ever attempted. `jobs/sweeps.scopeForDigest` turns `summary`
-  into `full` (`today` stays as the person chose it) and `get_my_digest` still
-  decides, in code, between card and block. The ration
+  into `full`, and since the same day `digest.assemble` returns every open
+  task on `summary`, `today` and `full` alike (owner: "כל המשימות שיש לאותו
+  אדם" — ברית's sixteen undated tasks never reached a `today` morning).
+  `get_my_digest` still decides, in code, between card and block. The ration
   (`olma2/src/domain/card-budget.js`, ledger `audit_log` `card.drawn`, rolling 24 hours)
   binds only a turn Olma started, at both doors — `get_my_digest` hands a block
   instead of the order to draw, and `render_schedule_card` refuses — and never
