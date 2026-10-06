@@ -273,6 +273,9 @@ test('day one: the dashboard rung is skipped if they already have a link', async
   const client = await db.pool.connect();
   try {
     assert.equal(await step.skipIf(client, u), false);
+    // The owner opening their page from the admin is not them having a link.
+    await dashboardAuth.createLinkUrl(client, u.id, { byAdmin: true });
+    assert.equal(await step.skipIf(client, u), false, 'the owner looking took their introduction away');
     await dashboardAuth.createLinkUrl(client, u.id);
     assert.equal(await step.skipIf(client, u), true, 'a second link is noise, not news');
   } finally { client.release(); }
