@@ -4310,6 +4310,13 @@ reader's when the author is unknown), and the meeting row's
 row never name one time two ways. The stored words are not rewritten. The page
 and the calendar event remain.
 
+**…and so did the page** (`user-dashboard.freshSlotWords`). The page draws
+words in two places, `slot`/`confirmedSlot` on an active coordination and the
+archive's "settled as". Options are drawn from their instant, so they never
+showed the words. A settled time with no option behind it, such as an exact
+hour set later, is judged on its own instant and the reader's clock. In the
+archive a past "מחר" becomes its date. The calendar event remains.
+
 ### פנתרה: one time, four clocks (fixed 2026-09-25)
 
 Room 10, פנתרה, was coordinating a video call for everybody (meeting 46). Two

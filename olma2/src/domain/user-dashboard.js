@@ -491,6 +491,20 @@ async function slotReaderLabel(client, meetingId, slot, startsAt, zone, locale) 
     { startsAt: at, allDay: mo.allDay, daypart: mo.daypart, slot }, zone, mo.authorTz, locale);
 }
 
+// The proposer's words with a moving day in them ("מחר", "היום בערב") said as
+// the day it is NOW — "מחר (שלישי)" read on the Tuesday is the wrong day
+// (`incidents.md`, "Tomorrow, said on the day itself"). Judged on the
+// AUTHOR's clock, since it was their "tomorrow"; a settled time with no option
+// behind it (an exact hour set later) falls back to its own instant and the
+// reader's clock. The stored words are never rewritten.
+async function freshSlotWords(client, meetingId, slot, startsAt, zone) {
+  if (!slot) return slot;
+  const { slotMoment } = require('./meeting-fanout');
+  const mo = await slotMoment(client, meetingId, slot);
+  const at = mo.startsAtUtc || (startsAt ? new Date(startsAt).toISOString() : null);
+  return meetingTime.freshDayWords(slot, { startsAt: at }, mo.authorTz || zone);
+}
+
 // Meetings still being negotiated, with each participant's answer state. What
 // somebody MARKED is availability and nothing more — the page must be able to
 // tell "has not answered" from "answered, nothing suits", so an unanswered
@@ -629,6 +643,8 @@ async function loadMeetings(client, userId, zone, locale) {
   const locals = new Map();
   for (const m of meetings) {
     locals.set(m.id, {
+      words: await freshSlotWords(client, m.id, m.proposed_slot, m.proposed_start_at, zone),
+      confirmedWords: await freshSlotWords(client, m.id, m.confirmed_slot, m.confirmed_start_at, zone),
       slot: await localOf(m.id, m.proposed_slot),
       confirmed: await localOf(m.id, m.confirmed_slot),
       slotReader: await slotReaderLabel(client, m.id, m.proposed_slot, m.proposed_start_at, zone, locale),
@@ -643,11 +659,11 @@ async function loadMeetings(client, userId, zone, locale) {
     // first participant in the list would eventually name the wrong person.
     initiatorId: Number(m.initiator_id),
     status: m.status,
-    slot: m.proposed_slot,
+    slot: locals.get(m.id).words,
     proposedStartAt: m.proposed_start_at,
     proposedTime: m.proposed_time,
     proposedDay: m.proposed_day === null ? null : Number(m.proposed_day),
-    confirmedSlot: m.confirmed_slot,
+    confirmedSlot: locals.get(m.id).confirmedWords,
     slotLocal: locals.get(m.id).slot,
     confirmedLocal: locals.get(m.id).confirmed,
     // The same two moments in the words of an ENGLISH page (null for Hebrew,
@@ -740,8 +756,9 @@ async function loadLeftMeetings(client, userId, zone, locale) {
   for (const m of done) {
     // Only when there is one — a Hebrew page's row is exactly what it was.
     const slotReader = await slotReaderLabel(client, m.id, m.confirmed_slot, m.confirmed_start_at, zone, locale);
+    const words = await freshSlotWords(client, m.id, m.confirmed_slot, m.confirmed_start_at, zone);
     out.push({
-      id: Number(m.id), title: m.title, youLeft: false, settled: true, slot: m.confirmed_slot || '',
+      id: Number(m.id), title: m.title, youLeft: false, settled: true, slot: words || '',
       ...(slotReader ? { slotReader } : {}),
     });
   }
