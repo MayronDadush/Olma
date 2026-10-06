@@ -1,10 +1,11 @@
 'use strict';
 // digest — one slice of the tool registry (see ../registry.js).
 const {
-  digest, users, flags, scheduleCard, dashboardAuth, S, tool, ok,
+  digest, users, flags, scheduleCard, dashboardAuth, selfInitiated, S, tool, ok,
 } = require('./_shared');
 const digestBlock = require('../../../domain/digest-block');
 const format = require('../../../domain/message-format');
+const cardBudget = require('../../../domain/card-budget');
 
 // The block and a drawn card are two renderings of the SAME list, and a turn
 // that holds both sends both — the same evening twice, once as characters and
@@ -65,7 +66,12 @@ module.exports = [
       const items = digestBlock.blockItemCount(res.data);
       const min = await flags.getFlag(client, 'digest_card_min_items');
       const link = listWorthAPage(res.data) ? await dashboardAuth.tasksLinkUnlessRecent(client, user.id) : null;
-      if (digestBlock.drawInsteadOfBlock(items, min, { hasNudges: nudges.length > 0 })) {
+      // A card is Olma's own idea only on a turn she started, and only those are
+      // rationed (domain/card-budget.js); a person who asked gets the picture.
+      const wantsCard = digestBlock.drawInsteadOfBlock(items, min, { hasNudges: nudges.length > 0 });
+      const budget = wantsCard && selfInitiated.isActive(user.id)
+        ? await cardBudget.check(client, user.id) : { ok: true };
+      if (wantsCard && budget.ok) {
         return ok({
           ...res.data,
           // On the card path there is no block to draw the link into, so it
@@ -94,7 +100,9 @@ module.exports = [
           // Said out loud on the short mornings too, because the doctrine also
           // tells the agent to draw a long list and this is the one place that
           // knows this list is not one.
-          card: items > scheduleCard.LIMITS.totalItems
+          card: !budget.ok
+            ? 'They have already been sent pictures today, so this one goes out as text: do NOT call render_schedule_card this turn — the block below IS the message, and say nothing about pictures.'
+            : items > scheduleCard.LIMITS.totalItems
             ? 'This list is too long for ONE picture — render_schedule_card would refuse it — so do NOT call it this turn: the block below IS the message, and say nothing about the count or the picture.'
             : 'This list is short enough to read: do NOT draw a card this turn — the block below IS the message.',
           // The contract itself is `format.HINTS.relayBlock`, said once for all

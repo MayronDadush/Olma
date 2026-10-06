@@ -164,20 +164,27 @@ function decideGroupLine(co, opts = {}) {
 // 2026-09-25, פנתרה). What the time IS rides the line — `at[field]` for each
 // slot text it names, `zones` and `roomTz` — and the RENDERER draws the words
 // at delivery, like every other room line. Only when the people this
-// coordination is asking actually span zones at this moment: anywhere else the
-// line is exactly what it was, field for field.
+// coordination is asking actually span zones at this moment is the line marked
+// `multiZone` and handed the `zones`.
+//
+// On one clock it still carries `at` and `roomTz` (2026-10-06), because a slot
+// said in its author's words can hold a word that was true only the day it was
+// written — "מחר" — and the renderer needs the instant to say the day again
+// (`meeting-time.freshDayWords`). Nothing else on the line changes.
 const SLOT_FIELDS = ['slot', 'was', 'added', 'lead'];
 function withClocks(line, co, { timezone, nowMs } = {}) {
   if (!line || line.kind === 'none' || line.kind === 'calendar' || line.kind === 'chase') return line;
   const zones = (co && co.zones) || [];
   const roomTz = (co && co.roomTz) || timezone || null;
-  if (!meetingTime.spansZones(zones, roomTz, new Date(nowMs || Date.now()))) return line;
   const at = {};
   for (const f of SLOT_FIELDS) {
     if (line[f] && co.moments && co.moments[line[f]]) at[f] = co.moments[line[f]];
   }
   // A line that names several times (`laid`) carries each one's moment, in order.
   if (Array.isArray(line.slots)) at.slots = line.slots.map((t) => (co.moments && co.moments[t]) || null);
+  if (!meetingTime.spansZones(zones, roomTz, new Date(nowMs || Date.now()))) {
+    return Object.keys(at).length ? { ...line, roomTz, at } : line;
+  }
   return { ...line, multiZone: true, zones, roomTz, at };
 }
 
