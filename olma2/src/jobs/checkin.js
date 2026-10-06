@@ -93,16 +93,25 @@ async function holdsNothing(client, userId) {
 // answer to. The zone is announced, not asked: they can correct it, and the
 // discovery ladder will ask which country later only if `timezone_asked_at` is
 // still NULL.
+// "They joined N ago" is untrue for somebody whose day one began when they
+// left the game-only track (domain/game-track.js): they met her at a game
+// night days before, and started using her for more ~N ago.
+function sinceWords(u, ago) {
+  return u.after_game
+    ? `About ${ago} ago they started using you for more than their game nights — you already know them from the table`
+    : `They joined ${ago} ago`;
+}
+
 function firstContactInstruction(client, u) {
   const guess = lookupTimezone(u.phone);
   // `holdsNothing` is put on the row by `run` — this stays a pure function of
   // the person, which is what lets it be read without a database.
   const lines = [u.holdsNothing
-    ? 'They joined ~15 minutes ago and have not given you anything yet. Do not ask them for anything —'
+    ? `${sinceWords(u, '~15 minutes')} and have not given you anything yet. Do not ask them for anything —`
       + ' give them ONE concrete example of something they could send you right now, in their language'
       + ' and in the shape a person would type it ("תזכירי לי מחר ב־9 להתקשר לרופא"). It is an example,'
       + ' not a question and not a list of options. One short line.' + NEVER_SAY_EMPTY + NO_SECOND_HELLO
-    : 'They joined ~15 minutes ago. Do not ask them for anything yet — SHOW them something.'
+    : `${sinceWords(u, '~15 minutes')}. Do not ask them for anything yet — SHOW them something.`
       + ' Look at what they already gave you and do one concretely useful thing with it: offer a reminder'
       + ' on a task that clearly has a time, point out something due soon, or group what they dumped.'
       + ' One short message, one offer, easy to say yes to.' + NO_SECOND_HELLO];
@@ -146,7 +155,10 @@ function firstContactInstruction(client, u) {
         + ' and do not ask which city.');
     }
   }
-  // The one question the message is allowed to carry.
+  // The one question the message is allowed to carry. Not after a game
+  // night: they gave their name at the table, and checking it again days
+  // later reads as not having listened (owner, 2026-10-06).
+  if (u.after_game) return lines.join(' ');
   if (u.first_name && !u.name_confirmed) {
     lines.push(`End by checking the name you have: you were given "${u.first_name}" by WhatsApp, not by them.`
       + ' Ask it as one short warm question ("נעים להכיר! שחר, נכון?"), using only the first name.'
@@ -171,7 +183,7 @@ const ONBOARDING_STEPS = [
   },
   {
     slot: '2h', afterMs: 2 * HOUR_MS, expiresAfterMs: 5 * HOUR_MS,
-    instruction: (client, u) => 'They joined a couple of hours ago. Pick the single most useful thing you can still learn about them — how to reach them, when they want to be contacted, or who a person they mentioned is — and ask exactly ONE question about it. Warm, short, no list of questions.'
+    instruction: (client, u) => `${sinceWords(u, 'a couple of hours')}.` + ' Pick the single most useful thing you can still learn about them — how to reach them, when they want to be contacted, or who a person they mentioned is — and ask exactly ONE question about it. Warm, short, no list of questions.'
       + (u.holdsNothing ? NEVER_SAY_EMPTY : '') + NO_SECOND_HELLO,
   },
   {
@@ -280,12 +292,16 @@ async function dayOneStepWaits(client, u, step, now) {
 
 // Delivered at least two day-one messages and heard nothing back — only then
 // is silence evidence about the person rather than about our own delivery.
+// Only steps of THIS day one: somebody whose day one restarted when they left
+// the game-only track may have heard two steps on the night they joined, and
+// those say nothing about whether they answer now.
 async function isDeafOnDayOne(client, userId, onboardedAt) {
   const { rows } = await client.query(
     `SELECT count(*)::int AS delivered FROM outbox
      WHERE user_id = $1 AND kind = 'checkin' AND payload->>'rung' LIKE 'onboarding%'
+       AND created_at >= $2
        AND sent_at IS NOT NULL AND (hold_reason IS NULL OR hold_reason NOT IN ('expired', 'cancelled_by_admin'))`,
-    [userId]
+    [userId, onboardedAt]
   );
   if (rows[0].delivered < 2) return false;
   const { rows: heard } = await client.query(
@@ -377,13 +393,24 @@ function requiredGapMs(ageDays, misses) {
 async function eligibleUsers(client, now) {
   const { rows } = await client.query(
     `SELECT u.id, u.first_name, u.phone, u.name_confirmed, u.timezone, u.timezone_confirmed,
-            u.timezone_asked_at, u.checkin_misses, u.last_checkin_at, u.onboarded_at,
+            u.timezone_asked_at, u.checkin_misses, u.last_checkin_at,
+            -- Day one starts when they left the game-only track, for somebody
+            -- who was on it (domain/game-track.js): the ladder they skipped
+            -- is the one they get, once there is something for it to be about.
+            GREATEST(u.onboarded_at, u.game_track_left_at) AS onboarded_at,
+            u.game_track_left_at IS NOT NULL AS after_game,
             GREATEST(coalesce(u.onboarded_at, u.created_at),
                      coalesce((SELECT max(a.created_at) FROM audit_log a WHERE a.actor_id = u.id), u.created_at)
             ) AS last_activity
      FROM users u
      WHERE u.status = 'active' AND u.checkin_enabled AND u.onboarded_at IS NOT NULL
-       AND u.quota_blocked_until IS NULL AND u.paused_at IS NULL AND NOT u.is_eval`,
+       AND u.quota_blocked_until IS NULL AND u.paused_at IS NULL AND NOT u.is_eval
+       -- The game-only track: somebody who came for a game night hears the
+       -- night's own messages and the welcome, and nothing the ladder decides
+       -- to say — no day-one step, no question, no "מה איתך" (owner,
+       -- 2026-10-06). Out of the list entirely, so no rung of theirs is ever
+       -- queued, held or counted as a miss.
+       AND NOT (u.game_track_at IS NOT NULL AND u.game_track_left_at IS NULL)`,
     []
   );
   return rows.filter((u) => {
@@ -920,7 +947,9 @@ async function run(client, now = Date.now()) {
       rung = `onboarding_${step.slot}`;
       instruction = typeof step.instruction === 'function'
         ? await step.instruction(client, u) : step.instruction;
-      key = `onboarding:${u.id}:${step.slot}`;
+      // A day one restarted after the game-only track is a second ladder, and
+      // the night they joined may already have spent the first one's keys.
+      key = `onboarding:${u.id}:${step.slot}${u.after_game ? ':after_game' : ''}`;
       expiresAt = new Date(new Date(u.onboarded_at).getTime() + step.expiresAfterMs).toISOString();
     } else {
       ({ rung, instruction, topic, meetingId } = await pickRung(client, u.id, Number(u.checkin_misses) || 0));
@@ -1017,5 +1046,5 @@ async function run(client, now = Date.now()) {
 module.exports = {
   run, eligibleUsers, pickRung, discoveryGaps, requiredGapMs, idleHoursFor, GIVE_UP_MISSES, MISS_ONE_GAP_MS,
   onboardingStepDue, ONBOARDING_STEPS, DEAF_SILENT_SLOTS, dayOneSpent, stalledGoals, holdsNothing,
-  STEP_GAP_MS, TALKING_MS,
+  STEP_GAP_MS, TALKING_MS, isDeafOnDayOne,
 };

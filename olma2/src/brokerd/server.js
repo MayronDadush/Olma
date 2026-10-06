@@ -20,6 +20,7 @@ const BURST_FLAG = 'burst_reply_phones';
 const reactions = require('../domain/reactions');
 const reminders = require('../domain/reminders');
 const chaseDeadline = require('../domain/chase-deadline');
+const gameTrack = require('../domain/game-track');
 const meetingExit = require('../domain/meeting-exit');
 const selfInitiated = require('../domain/self-initiated');
 const { captureDisplayName } = require('../adapters/mcp/tools/_shared');
@@ -99,6 +100,7 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
   games = {
     open: (b) => require('../channels/gamesd').open(b),
     join: (b) => require('../channels/gamesd').join(b),
+    mine: (b, o) => require('../channels/gamesd').mine(b, o),
     applyPolicy: (agentId, packs) => packsDomain.applyPolicy(agentId, packs),
     ...(games || {}),
   };
@@ -436,6 +438,10 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
         // (reminders.startWeeklyNudge) — and only inside the same window a
         // chase gets, never on a turn that runs on long after the message.
         remindAsk: adopt && params.remindAsk === true ? clock() : null,
+        // "מה את יודעת לעשות?" — takes somebody off the game-only track
+        // (domain/game-track.js), decided in turn_context once a model turn
+        // is really running for this message.
+        abilities: adopt && params.abilities === true,
         // "רשום עדן יצא": a status they quoted. opt_out_of_meeting refuses on
         // this turn (tools/meetings.js) — the hook's verdict, never the words.
         reportedExit: adopt && params.reportedExit === true,
@@ -714,6 +720,9 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
             ? say('game_joined', vars)
             : say('game_already', { ...vars, count: gameShortcut.buyinsText(r.buyins, lang) });
           await packsDomain.enable(client, userId, 'games', 'code');
+          // They came for the night: the ladder says nothing to them until
+          // they use her for something else (domain/game-track.js).
+          await gameTrack.enter(client, userId);
           await saveGivenName(client, user, r.joined ? r.name : null);
         } else if (r.error === 'need_name') {
           askGame(askKey, { kind: 'name', code: joinCode, lang });
@@ -1310,6 +1319,17 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
         out = { ok: true, enabled: true, context: null };
         return;
       }
+      // Somebody on the game-only track who wrote something that is not the
+      // game leaves it here — once a MODEL turn is running for the message,
+      // which a game code or a link request answered by code never gets
+      // (the turn-open hook can land before that answer, so turn_open
+      // could not tell). Once per message: a rebuilt prompt is the same one.
+      if (pre && !pre.contextSent && gameTrack.onTrack(user)) {
+        const reason = await gameTrack.leavesOnTurn(
+          { abilities: pre.abilities, thanks: pre.thanksOnly || pre.thanksAfterQuestion },
+          () => gameTrack.nightsOf(user.id, games.mine), clock());
+        if (reason) await gameTrack.leave(client, user.id, reason);
+      }
       if (pre && !user.first_name && pre.senderName) {
         cardStale = (await captureDisplayName(client, user, pre.senderName)).ok;
       }
@@ -1499,6 +1519,12 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
         }
 
         const out = await tool.handler(client, auth.data.user, stripIdentity(args), { flood, turn, now: clock });
+        // Using her for something that is not the game takes them off the
+        // game-only track (domain/game-track.js); a no-op UPDATE for anybody
+        // not on it. Not a turn Olma started: that is not them using her.
+        if (out && out.ok && gameTrack.leavesOnTool(name) && !selfInitiated.isActive(auth.data.user.id)) {
+          await gameTrack.leave(client, auth.data.user.id, 'tool', { tool: name });
+        }
         // The recovery's count is worth exactly one `turn_start`. Clearing it
         // here means a connection that outlives its turn cannot make the NEXT
         // turn's turn_start believe its message was already counted — which

@@ -204,10 +204,26 @@ test('the morning welcome as a clip: the flag names it, the line is fixed, and n
   assert.equal(introVideo.welcomeClipFor(true), null);
   const url = 'https://allma.world/me/abc';
   const he = introVideo.welcomeCaption('he-IL', url);
-  assert.equal(he, `${introVideo.WELCOME_CAPTION.he}\n${url}`);
+  assert.equal(he, `זו עולמה, ב־15 שניות 🙂\nוזה הדף האישי שלך:\n${url}`);
   assert.ok(he.endsWith(`\n${url}`), 'the url on a line of its own, bare');
   assert.ok(introVideo.welcomeCaption('en', url).startsWith('This is Olma'));
   assert.equal(introVideo.welcomeCaption('he', null), null);
+});
+
+test('after a game night the caption carries the one door that is theirs, and the owner can reword it', () => {
+  const introVideo = require('../src/domain/intro-video');
+  const url = 'https://allma.world/me/abc';
+  const he = introVideo.welcomeCaption('he', url, { game: true });
+  assert.ok(he.includes('רוצה לארגן ערב משלך? פשוט תכתוב לי: ערב משחק חדש'));
+  assert.ok(he.endsWith(`\n${url}`));
+  assert.ok(!introVideo.welcomeCaption('he', url).includes('ערב משחק'), 'a room joiner is not offered a game');
+  assert.ok(introVideo.welcomeCaption('en', url, { game: true }).includes('new game night'));
+  const reworded = introVideo.welcomeCaption('he', url,
+    { game: true, overrides: { welcome_clip_game: 'שלום!\n{{url}}' } });
+  assert.equal(reworded, `שלום!\n${url}`);
+  const broken = introVideo.welcomeCaption('he', url,
+    { game: true, overrides: { welcome_clip_game: 'בלי קישור' } });
+  assert.ok(broken.endsWith(url), 'an override that dropped the url is refused, the default goes out');
 });
 
 test('a turn after the welcome clip knows it was sent, and that the page went with it', async () => {

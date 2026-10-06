@@ -97,6 +97,40 @@ const TEMPLATES = [
     sample: { url: 'https://allma.world/d/AbCdEfGhIjKlMnOpQrStUv' },
     text: 'Here’s your page 👇\n{{url}}',
   },
+  // The caption under the welcome clip (domain/intro-video.welcomeCaption),
+  // the next morning, for somebody a game night or a room brought in. Raw
+  // pipe, no model. The url is minted at delivery and goes last, on its own
+  // line.
+  {
+    key: 'welcome_clip', audience: 'private', label: 'הסרטון של הבוקר — כיתוב',
+    help: 'הכיתוב מתחת לסרטון ההיכרות, בבוקר שאחרי שמישהו הצטרף דרך קבוצה. יוצא בלי מודל.',
+    vars: { url: 'הקישור לדף האישי' }, required: ['url'],
+    sample: { url: 'https://allma.world/d/AbCdEfGhIjKlMnOpQrStUv' },
+    text: 'זו עולמה, ב־15 שניות 🙂\nוזה הדף האישי שלך:\n{{url}}',
+  },
+  {
+    key: 'welcome_clip_en', audience: 'private', label: 'הסרטון של הבוקר — כיתוב', help: '',
+    vars: { url: 'their personal page' }, required: ['url'],
+    sample: { url: 'https://allma.world/d/AbCdEfGhIjKlMnOpQrStUv' },
+    text: 'This is Olma, in 15 seconds 🙂\nAnd this is your own page:\n{{url}}',
+  },
+  // The same caption for somebody who came in through a GAME NIGHT's code
+  // (owner, 2026-10-06). They are on the game-only track (domain/game-track.js)
+  // and this is the one thing Olma says to them that the night did not, so it
+  // carries the one door that is theirs: organising a night of their own.
+  {
+    key: 'welcome_clip_game', audience: 'private', label: 'הסרטון של הבוקר — אחרי ערב משחק',
+    help: 'הכיתוב מתחת לסרטון, למי שהצטרף עם קוד של ערב משחק. אחרי זה היא לא כותבת לו כלום עד שהוא משתמש בה למשהו אחר.',
+    vars: { url: 'הקישור לדף האישי' }, required: ['url'],
+    sample: { url: 'https://allma.world/d/AbCdEfGhIjKlMnOpQrStUv' },
+    text: 'זו עולמה, ב־15 שניות 🙂\nרוצה לארגן ערב משלך? פשוט תכתוב לי: ערב משחק חדש\n\nוזה הדף האישי שלך:\n{{url}}',
+  },
+  {
+    key: 'welcome_clip_game_en', audience: 'private', label: 'הסרטון של הבוקר — אחרי ערב משחק', help: '',
+    vars: { url: 'their personal page' }, required: ['url'],
+    sample: { url: 'https://allma.world/d/AbCdEfGhIjKlMnOpQrStUv' },
+    text: 'This is Olma, in 15 seconds 🙂\nWant to run a night of your own? Just write: new game night\n\nAnd this is your own page:\n{{url}}',
+  },
   // The whole answer to "קוד כניסה" (domain/link-request.js, the code kind):
   // the way into the home-screen app on an iPhone, which no link can sign in
   // because its cookies are its own. Eight digits, ten minutes, one use. The

@@ -269,7 +269,7 @@ Loads when you **Read** a file under `src/domain/reminders.js`, `src/domain/task
 ### People, silence, and data you must not get wrong
 
 **`.claude/rules/people-and-quiet.md`** — the timezone that must never be NULL, the check-in ladder, the once-ever question, deleting a person, and the rename.
-Loads when you **Read** a file under `src/jobs/checkin.js`, `src/jobs/onboarding-review.js`, `src/domain/users.js` and 5 more.
+Loads when you **Read** a file under `src/jobs/checkin.js`, `src/jobs/onboarding-review.js`, `src/domain/users.js` and 6 more.
 
 - **`users.timezone` must never be NULL**
 - **Every time crossing a tool boundary needs an explicit offset.**
@@ -282,6 +282,7 @@ Loads when you **Read** a file under `src/jobs/checkin.js`, `src/jobs/onboarding
 - **The chag offer is that shape's second column (`holiday_quiet_asked_at`, migration 062), with two routes from the start.**
 - **…and the offer to add her to more groups is its third (`more_groups_offered_at`, migration 086)** — earned by a yes on the time a ROOM locked (or a private coordination of 3+, since 2026-09-30), and it rides the next check-in — at once or after the meeting, an A/B test
 - **…and the zone question in a room on several clocks is its fourth (`room_zone_asked_at`, migration 092)** — only for an unconfirmed zone, riding the room invite, stamped after the send confirms
+- **Somebody a game night's code brought in hears the night and the welcome, and no check-in, until they USE her** — `domain/game-track.js`; leaving starts a whole day one then, without the name check
 - **Deleting a user is not deleting a person until the GATEWAY's intake session goes too.**
 - **The ledgers are append-only.**
 - **`availability` is refused at the write unless it is one `HH:MM-HH:MM` window** — "once a day" was saved, 👍'd, and read as the default

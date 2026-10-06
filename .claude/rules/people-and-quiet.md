@@ -8,6 +8,7 @@ paths:
   - "olma2/src/domain/onboarding.js"
   - "olma2/src/intake/**"
   - "olma2/src/jobs/sweeps.js"
+  - "olma2/src/domain/game-track.js"
 ---
 
 # People, silence and data you must not get wrong
@@ -233,6 +234,22 @@ title means this file. Grep the title, not the filename.
   only once that send confirmed, like `room_invite_sent_at` beside it. The
   city comes from the server (`meeting-time.zoneLabel`), and an answer goes
   through `set_my_timezone confirmed:true`, which runs `timezone-repair`.
+
+- **Somebody a game night's code brought in is on the GAME-ONLY TRACK: the
+  night and the welcome reach them, and nothing the check-in ladder decides
+  to say does** (owner, 2026-10-06; `domain/game-track.js`, migration 114).
+  `checkin.eligibleUsers` drops them, and `sweepNameConfirm` too. They leave
+  by USING her, decided in code: a tool on `gameTrack.LEAVING_TOOLS` that ran
+  ok on their own turn, the hook's `abilities` verdict, or any other message
+  in a model turn while no night of theirs is open or closed inside 12 hours.
+  A thanks, a game code and a link request never count, and an unreadable
+  gamesd keeps them on. **Leaving starts a whole day one at that moment**:
+  `onboarded_at` is read as `GREATEST(onboarded_at, game_track_left_at)`, the
+  step keys get `:after_game`, `isDeafOnDayOne` counts only steps since that
+  start, and the first step drops the name check. The allowlist is closed on
+  purpose: a tool nobody classified keeps them quiet a week longer, never
+  starts a ladder. Rooms are not on it (`incidents.md`, "A question about her
+  country in the middle of the game").
 
 - **Deleting a user is not deleting a person until the GATEWAY's intake
   session goes too.** `deprovisionUser` removes everything olma2 owns — row,

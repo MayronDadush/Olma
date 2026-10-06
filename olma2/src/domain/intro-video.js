@@ -54,16 +54,15 @@ function welcomeClipFor(flagValue) {
   return id && VIDEOS[id] ? id : null;
 }
 
-const WELCOME_CAPTION = {
-  he: 'זו עולמה, ב־15 שניות 🙂\nוזה הדף האישי שלך:',
-  en: 'This is Olma, in 15 seconds 🙂\nAnd this is your own page:',
-};
-
-// No url, no caption: a line promising a page that is not there is worse than
-// the clip alone.
-function welcomeCaption(locale, url) {
+// The caption is a template family (domain/message-templates: `welcome_clip`,
+// and `welcome_clip_game` for somebody a game night's code brought in), so the
+// owner rewords it on the admin page. No url, no caption: a line promising a
+// page that is not there is worse than the clip alone.
+function welcomeCaption(locale, url, { game = false, overrides = {} } = {}) {
   if (!url) return null;
-  return `${WELCOME_CAPTION[langFor(locale)]}\n${url}`;
+  const templates = require('./message-templates');
+  const key = templates.keyFor(game ? 'welcome_clip_game' : 'welcome_clip', langFor(locale));
+  return templates.render(key, { url }, overrides);
 }
 
 function fileFor(videoId, locale) {
@@ -173,6 +172,5 @@ async function stats(client, videoId, now = new Date()) {
 
 module.exports = {
   KIND, VIDEOS, DROPPED, REPLY_WINDOW_MIN, IGNORE_WINDOW_HOURS,
-  WELCOME_CAPTION,
   langFor, fileFor, stageMedia, welcomeClipFor, welcomeCaption, audience, enqueueAll, stats,
 };
