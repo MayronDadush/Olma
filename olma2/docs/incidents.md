@@ -4282,6 +4282,13 @@ What this does not cover yet: the same frozen text reaches the private
 messages, `get_meeting_status`, the page and the calendar event. Those are
 the next PRs, through the same function.
 
+**The private messages followed the same day** (`channels/openclaw.bodyFor` →
+`withFreshSlot`). The instruction is built at delivery, so a row the gate held
+overnight is handed the day as it is when it goes out. Only `slot` is
+rewritten, and only on a payload that carries the option's instant
+(`meeting-fanout.slotMoment`); `startsAt`, which the model echoes back as
+`accepted_starts_at`, is never touched.
+
 ### פנתרה: one time, four clocks (fixed 2026-09-25)
 
 Room 10, פנתרה, was coordinating a video call for everybody (meeting 46). Two

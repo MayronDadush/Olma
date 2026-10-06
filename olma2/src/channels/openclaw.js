@@ -518,7 +518,20 @@ function closedClause(p) {
 }
 
 function bodyFor(row, p) {
-  return baseBodyFor(row, p) + removedClause(p) + closedClause(p);
+  const q = withFreshSlot(p, row && row.timezone);
+  return baseBodyFor(row, q) + removedClause(q) + closedClause(q);
+}
+
+// A slot is the proposer's words, and "מחר" in them was true on the day they
+// were written (2026-10-06, the poker room; `meeting-time.freshDayWords`). This
+// runs at DELIVERY, so a row the gate held overnight says the day as it is when
+// it goes out. Only a payload that carries the option's instant is touched —
+// the author's clock first, the reader's when the row has none — and every
+// other field, `startsAt` above all, stays what was stored.
+function withFreshSlot(p, readerTz) {
+  if (!p || typeof p.slot !== 'string') return p;
+  const slot = meetingTime.freshDayWords(p.slot, momentOf(p), p.authorTz || readerTz);
+  return slot === p.slot ? p : { ...p, slot };
 }
 
 function baseBodyFor(row, p) {
