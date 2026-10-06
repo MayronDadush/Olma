@@ -88,6 +88,19 @@ title means this file. Grep the title, not the filename.
   the row was already saved (2026-09-10) — from the outside, indistinguishable
   from "The hint that outvoted the mark".
 
+- **A 👍 OR a message, never both: the closing mark waits for the turn's end
+  and a reply drops it** (owner, 2026-10-06; `incidents.md`, "The 👍 and the
+  sentence, again"). brokerd's `holdClose` holds the 👍/⏰ a tool earned. The
+  plugin's `turn_progress end` places it (after a 1.5s grace) unless a
+  `reply` reached them since that message's turn began, and `reply` drops it.
+  A reply the gate cancelled sends no `reply`, so its mark lands. Gated on
+  `signalsLive` like the 👀 hold: without `agent_end` the mark goes on at
+  once, as before. A lost `end` is capped at 120s. `markPlaced` says "only if
+  you write nothing" when held. **Never move a closing mark back to tool time
+  to make it "feel faster"**: that is exactly what put a sentence under a 👍
+  in up to 60 of 90 marks in a week. Not covered: 🙏 and the stop-reminders
+  👍 (turn open), and a burst-held reply.
+
 - **The owner's rule is that anything which CAN end in a like should**
   (2026-09-10), so the table covers every capture, every undo, everything Olma
   HOLDS (facts, contacts), every SETTING — preferences, timezone, name,

@@ -273,6 +273,7 @@ never trust a dated narrative for something you are about to act on.
 - [The reminder that kept arriving on Shabbat (2026-09-22)](#the-reminder-that-kept-arriving-on-shabbat-2026-09-22)
 - [The hint the dedup swallowed (fixed 2026-09-10)](#the-hint-the-dedup-swallowed-fixed-2026-09-10)
 - [The hint that arrived alone and still lost (fixed 2026-09-30)](#the-hint-that-arrived-alone-and-still-lost-fixed-2026-09-30)
+- [The 👍 and the sentence, again — so the mark follows the reply (fixed 2026-10-06)](#the--and-the-sentence-again--so-the-mark-follows-the-reply-fixed-2026-10-06)
 - [The rung nobody asked for, at half past one (2026-09-07)](#the-rung-nobody-asked-for-at-half-past-one-2026-09-07)
 - [Two ladders for one phone call (fixed 2026-09-08)](#two-ladders-for-one-phone-call-fixed-2026-09-08)
 - [The message id the model made up (2026-09-07)](#the-message-id-the-model-made-up-2026-09-07)
@@ -11761,6 +11762,33 @@ So the tier was built to be safe without a corpus: a miss costs one redundant
 line, the state before the fix, and a false drop needs a reply made only of
 the title and a save word. Read `reply.gated` rows with kind `echo` after a
 week, and widen it only from what they show.
+
+### The 👍 and the sentence, again — so the mark follows the reply (fixed 2026-10-06)
+
+Miron, 01:08 Israel: "תזכןרת 8:40 להןריד זבל היום". `add_task` with the
+hour he named, a 👍 at 22:08:49 UTC, and at 22:08:54 "רשמתי, תזכורת להוריד
+זבל תגיע היום ב-08:40 🗑️". The result carried `markPlaced` and a reminders
+hint that also said not to write. Neither was obeyed, and the echo gate above
+let it through on three words: "תזכורת" (he typed "תזכןרת", so it was not
+his word), "תגיע" (nobody's word), and "08" (he wrote "8"). The owner: "it
+should be one or the other". A rough count off the gateway journal for the
+week before: 90 👍, and 60 of them followed by an outgoing message inside 15s
+(an upper bound, since the journal hashes the recipient).
+
+Every fix in this family so far tried to stop the model writing. This one
+stops the MARK instead. brokerd holds the 👍/⏰ a tool earned (`holdClose`),
+and releases it on the plugin's `turn_progress`. On `end`, after a 1.5s grace
+for a `reply` racing it on another socket, it places the mark unless a reply
+reached them since that message's turn began. On `reply`, it drops the mark.
+A reply the gate cancelled (echo, leak, after_silence) sends no `reply`, so
+its mark still lands. There is no plugin change: both signals were already
+live for the 👀 hold, and `signalsLive` gates this the same way. With no
+`end` hook the mark goes on at once, as before. A lost `end` is bounded at
+120s. `markPlaced` says "goes on only if you write nothing" when held.
+
+What is still not covered: 🙏 and the stop-reminders 👍, placed at turn
+open on another path, and a burst-held reply, which sends no `reply` and so
+gets a 👍 on the first message while its text rides the next turn's answer.
 
 ### The rung nobody asked for, at half past one (2026-09-07)
 
