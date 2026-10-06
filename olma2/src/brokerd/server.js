@@ -1233,8 +1233,19 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
       // gateway that changes that).
       const replyTarget = params.replyTarget === true || Boolean(pre && pre.replyToId);
       if (!pre && !ourTurn) {
+        // The gateway's open never arrived, but a prompt built for a WhatsApp
+        // message from the person IS them writing — and their writing is what
+        // ends a pause (pause.resumeOnWrite, the owner's rule). Without this a
+        // missed open left ברית paused through two days of her own messages
+        // (2026-10-05/06). `webchat` is our own --deliver turns and CLI probes
+        // (660 of 702 such rows in thirty days), so it never counts as them;
+        // the `whatsapp` rows were checked one by one and every one was a
+        // real person writing.
+        const wrote = params.trigger === 'user' && params.messageProvider === 'whatsapp';
+        if (wrote) await require('../domain/pause').resumeOnWrite(client, user.id);
         await require('../domain/audit').record(client, user.id, 'turn.context_without_open', {
           trigger: params.trigger || null, messageProvider: params.messageProvider || null,
+          ...(wrote ? { wrote: true } : {}),
         });
         out = { ok: true, enabled: true, context: null };
         return;
