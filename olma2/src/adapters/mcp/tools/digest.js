@@ -55,7 +55,7 @@ module.exports = [
   tool('get_my_digest', 'Assemble the current picture: every open task and event, plus counts. scope is kept for old callers and changes nothing.',
     { scope: S('string', 'summary | full | today') }, [],
     async (client, user, a) => {
-      const full = await digest.assemble(client, user.id, a.scope || user.digest_scope || 'summary');
+      const full = await digest.assemble(client, user.id, a.scope || user.digest_scope || 'full');
       // Past what one card holds, the morning is the most pressing items and
       // a count of the rest (owner, 2026-10-06) — on the card AND in the block.
       const sum = full.ok && full.data ? digestCard.summarize(full.data) : { omitted: 0, summarized: false };
@@ -132,6 +132,6 @@ module.exports = [
     }),
   tool('set_digest_preferences', 'Set when the user gets their daily digest, and how much detail. times are LOCAL "HH:MM" (max 4); an empty array turns the digest off. Ask them, never guess.',
     { times: S('array', 'Local times, e.g. ["09:00","20:00"]. [] turns it off.', { items: { type: 'string' } }),
-      scope: S('string', 'summary | full | today') }, [],
+      scope: S('string', 'Leave out: every digest carries the full list.') }, [],
     (client, user, a) => digest.setPreferences(client, user.id, a.times, a.scope)),
 ];

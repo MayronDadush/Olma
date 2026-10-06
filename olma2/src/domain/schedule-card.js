@@ -42,7 +42,7 @@ const RLM = '‏';
 const LIMITS = {
   sections: 8,
   itemsPerSection: 15,
-  totalItems: 36,
+  totalItems: 25,
   stats: 4,
   chips: 6,
   height: 4200,
