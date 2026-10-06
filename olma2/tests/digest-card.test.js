@@ -69,10 +69,10 @@ test('the instruction names no threshold of its own, whatever the flag says', as
 });
 
 test('the instruction orders the ITEMS fetched and relays whichever half came back', async () => {
-  // scope=summary returns counts only, so an agent told to draw off it has
-  // nothing to put on the card — the tool is still named by scope.
+  // Since 2026-10-06 every scope returns the items, so there is no second
+  // fetch "with scope=full" to order any more — the first result decides.
   const text = instructionFor({ kind: 'digest', payload: { scope: 'summary' } });
-  assert.match(text, /scope="full"/);
+  assert.doesNotMatch(text, /again with scope="full"/);
   assert.match(text, /get_my_digest/);
   assert.match(text, /render_schedule_card/);
   assert.match(text, /MEDIA: <path>/);
@@ -177,13 +177,16 @@ test('a corrupt flag value falls back rather than disabling the card', async () 
   assert.match(data.hints.card, /render_schedule_card/);
 });
 
-test('summary scope has neither: counts are what that person asked for', async () => {
+// Owner, 2026-10-06: every digest carries every open task, whatever the
+// scope says — `summary` used to be counts only, and a person on it never saw
+// one task in their morning.
+test('summary scope carries the list too, so a long one is drawn', async () => {
   await flags.setFlag(db.pool, 'digest_card_min_items', 3);
   await giveTasks(9);
   const data = await digestFor('summary');
   assert.equal(data.block, undefined);
-  assert.equal(data.hints && data.hints.card, undefined);
-  assert.ok(data.counts.openTasks >= 9);
+  assert.match(data.hints.card, /render_schedule_card/);
+  assert.ok(data.tasks.length >= 9);
 });
 
 test('the delivery preamble still rides along', async () => {

@@ -335,6 +335,18 @@ async function dailyOnceIsDue(client, u, now) {
 // ---- digests ----------------------------------------------------------------
 // Fires when a user's local HH:MM matches one of their digest_times (±2min
 // tolerance so a slow tick can't skip a slot). Budget-held rows fold in here.
+// `summary` is counts only, and a card can only be drawn off items, so the
+// choice to draw never even came up for anybody on it (2026-10-06: a morning
+// of 5 open tasks went out as a sentence that said "הנה התמונה:" and nothing
+// else). The scheduled digest therefore always fetches the list; get_my_digest
+// decides in code whether it is drawn, laid out as a block, or — for a short
+// morning — a block of a line or two. Since the same day `digest.assemble`
+// returns every open task on every scope but `block_view`, so this mapping is
+// belt and braces for old rows, not the thing that carries the list.
+function scopeForDigest(scope) {
+  return !scope || scope === 'summary' ? 'full' : scope;
+}
+
 async function sweepDigests(client, now = new Date()) {
   // `last_digest_at` is what decides whether this morning may ask anything.
   // Only rows that were really delivered count: a cancelled or expired row
@@ -400,7 +412,7 @@ async function sweepDigests(client, now = new Date()) {
       || (u.last_inbound_at && new Date(u.last_inbound_at) > new Date(u.last_digest_at));
     const res = await enqueue(client, {
       userId: u.id, kind: 'digest',
-      payload: { scope: u.digest_scope || 'summary', folded: [], mayAsk: Boolean(mayAsk) },
+      payload: { scope: scopeForDigest(u.digest_scope), folded: [], mayAsk: Boolean(mayAsk) },
       idempotencyKey: `digest:${u.id}:${day}:${slot}`,
     });
     if (!res.data.enqueued) continue;

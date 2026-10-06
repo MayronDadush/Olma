@@ -273,6 +273,45 @@ test('no open on file (a lane, a cron, a hook that misfired): context is null, t
   assert.equal(rows[0].detail.trigger, 'cron');
 });
 
+// ברית, 2026-10-05/06: the ladder had paused her, she wrote twice, and both
+// times the gateway's open never arrived — so nothing ran resumeOnWrite and she
+// stayed paused through her own messages.
+test('no open on file but a WhatsApp prompt from the person: their writing still ends a ladder pause', async () => {
+  const u = await agentUser();
+  await enable(u.phone);
+  await db.pool.query(
+    `UPDATE users SET paused_at = now(), paused_reason = 'quiet_ladder' WHERE id = $1`, [u.id]);
+  const r = await context({ agentId: u.agentId, trigger: 'user', messageProvider: 'whatsapp' });
+  assert.deepEqual(r, { ok: true, enabled: true, context: null });
+  const { rows } = await db.pool.query(`SELECT paused_at, paused_reason FROM users WHERE id = $1`, [u.id]);
+  assert.equal(rows[0].paused_at, null, 'the pause ended');
+  assert.equal(rows[0].paused_reason, null);
+  const audit = await db.pool.query(
+    `SELECT detail FROM audit_log WHERE actor_id = $1 AND event = 'turn.context_without_open'`, [u.id]);
+  assert.equal(audit.rows[0].detail.wrote, true);
+});
+
+test('…but a webchat prompt (our own delivery, a CLI probe) or a turn Olma started ends nothing', async () => {
+  const u = await agentUser();
+  await enable(u.phone);
+  await db.pool.query(
+    `UPDATE users SET paused_at = now(), paused_reason = 'quiet_ladder' WHERE id = $1`, [u.id]);
+  await context({ agentId: u.agentId, trigger: 'user', messageProvider: 'webchat' });
+  await context({ agentId: u.agentId, trigger: 'cron', messageProvider: 'whatsapp' });
+  await selfInitiated.around(u.id, () => context({ agentId: u.agentId, trigger: 'user', messageProvider: 'whatsapp' }));
+  const { rows } = await db.pool.query(`SELECT paused_reason FROM users WHERE id = $1`, [u.id]);
+  assert.equal(rows[0].paused_reason, 'quiet_ladder');
+});
+
+test('a pause they CONFIRMED is not ended by the fallback either — only by them or an admin', async () => {
+  const u = await agentUser();
+  await enable(u.phone);
+  await db.pool.query(`UPDATE users SET paused_at = now(), paused_reason = NULL WHERE id = $1`, [u.id]);
+  await context({ agentId: u.agentId, trigger: 'user', messageProvider: 'whatsapp' });
+  const { rows } = await db.pool.query(`SELECT paused_at FROM users WHERE id = $1`, [u.id]);
+  assert.notEqual(rows[0].paused_at, null);
+});
+
 test('a turn Olma started gets a plain proceed with the locale, and is not a message from the person', async () => {
   const u = await agentUser();
   await enable(u.phone);

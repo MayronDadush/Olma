@@ -174,6 +174,78 @@ function readerLabel(moment, readerTz, authorTz, lang) {
   return `${day} · ${pad(p.hh)}:${pad(p.mi)}`;
 }
 
+// ---- a day word that has gone stale --------------------------------------------
+//
+// `slot_text` is the proposer's words, stored once, and a word like "מחר" in it
+// is true only on the day it was written. The poker room proposed "מחר (שלישי)
+// בערב" on a Monday and heard "הכי מתקדם: מחר (שלישי) בערב" at 09:00 on the
+// Tuesday (owner, 2026-10-06; `incidents.md`, "Tomorrow, said on the day
+// itself"). This puts the day back, drawn from the instant the row already
+// carries, at the moment the line is said — and only the DAY: the rest of the
+// words stay theirs, and a word that is still true is left exactly as written.
+//
+// Conservative on purpose, because it rewrites somebody's sentence: exactly
+// one moving word, a usable instant and a usable zone, or the text comes back
+// untouched. `tz` is the clock the words were written on (the option author's,
+// else the room's). A prefix of ו or ל is kept ("למחר בערב"); a weekday straight
+// after the word, bracketed or not ("מחר (שלישי)", "היום שלישי"), is the
+// author's own gloss on it and goes with it, said again for the new day.
+const MOVING_DAY = [
+  // [word, days from when it was said, the part of the day it also names]
+  ['מחרתיים', 2, ''],
+  ['מחר', 1, ''],
+  ['היום', 0, ''],
+  ['הבוקר', 0, 'בבוקר'],
+  ['הערב', 0, 'בערב'],
+  ['הלילה', 0, 'בלילה'],
+];
+const WEEKDAY_HE = `(?:יום\\s+)?(?:${DAYS_HE.join('|')})(?![\\u0590-\\u05FF])`;
+const MOVING_DAY_RE = new RegExp(
+  `(^|[^\\u0590-\\u05FF])([ול]?)(${MOVING_DAY.map(([w]) => w).join('|')})(?![\\u0590-\\u05FF])`
+  + `(\\s*\\(${WEEKDAY_HE}\\)|\\s+${WEEKDAY_HE})?`,
+  'gu');
+// "הלילה" said at 23:00 about 01:00 is still tonight: the small hours belong
+// to the evening before them.
+const NIGHT_ENDS_HOUR = 6;
+
+function calendarDaysBetween(a, b) {
+  return Math.round((Date.UTC(b.y, b.m - 1, b.d) - Date.UTC(a.y, a.m - 1, a.d)) / 86400e3);
+}
+
+// "היום" and "הבוקר" are also "the day" and "the morning": "כל היום" is a
+// duration and "היום הראשון של החג" is a noun — the same two neighbours
+// `datetime.js` reads for a fact. Neither is a day that can go stale.
+const NOUN_PREV_RE = /(?:^|\s)(?:כל|במשך|לאורך|באמצע|על)\s*$/u;
+const NOUN_NEXT_RE = /^\s+[הש][\u0590-\u05FF]/u;
+function movingAt(text, match) {
+  const [whole, lead, , word] = match;
+  if (word !== 'היום' && word !== 'הבוקר') return true;
+  const start = match.index + lead.length;
+  return !NOUN_PREV_RE.test(text.slice(0, start)) && !NOUN_NEXT_RE.test(text.slice(match.index + whole.length));
+}
+
+function freshDayWords(text, moment, tz, now = new Date()) {
+  if (typeof text !== 'string' || !text) return text;
+  const found = [...text.matchAll(MOVING_DAY_RE)].filter((m) => movingAt(text, m));
+  if (found.length !== 1) return text;
+  if (!moment || !moment.startsAt || !validZone(tz)) return text;
+  const at = new Date(moment.startsAt);
+  if (Number.isNaN(at.getTime())) return text;
+  const [, , , word] = found[0];
+  const [, claimed, part] = MOVING_DAY.find(([w]) => w === word);
+  let day = partsInZone(tz, at);
+  if (part === 'בלילה' && day.hh < NIGHT_ENDS_HOUR) {
+    day = partsInZone(tz, new Date(Date.UTC(day.y, day.m - 1, day.d - 1, 12)));
+  }
+  const away = calendarDaysBetween(partsInZone(tz, new Date(now)), day);
+  if (away === claimed) return text;
+  const weekday = `(${DAYS_HE[weekdayOfParts(day)]})`;
+  const label = away === 0 ? `היום ${weekday}` : away === 1 ? `מחר ${weekday}` : dayOf(day);
+  const [whole, lead, prefix] = found[0];
+  const said = `${lead}${prefix}${part ? `${label} ${part}` : label}`;
+  return text.slice(0, found[0].index) + said + text.slice(found[0].index + whole.length);
+}
+
 // Whether the people hearing a moment are on more than one clock right now —
 // what decides which template a room line is drawn from.
 function spansZones(tzs, roomTz, at = new Date()) {
@@ -290,5 +362,5 @@ function commonHours(zones, roomTz, { from = new Date(), days = 7 } = {}) {
 
 module.exports = {
   zoneLabel, localSlot, distinctZones, roomTimes, readerSlot, readerLabel, spansZones, citiesPhrase,
-  convertible, commonHours, validZone, DAYS_HE, COMMON_WINDOW, COMMON_WIDE,
+  convertible, commonHours, validZone, freshDayWords, DAYS_HE, COMMON_WINDOW, COMMON_WIDE,
 };

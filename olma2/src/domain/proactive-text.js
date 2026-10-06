@@ -294,6 +294,16 @@ function keyFor(base, line) {
   return line && line.multiZone ? `${base}_zones` : base;
 }
 
+// A slot's words as they are true NOW: "מחר" written yesterday is today
+// (`meeting-time.freshDayWords`). Every room line that says a slot in its
+// author's words goes through this, on one clock or several — `at[field]` is
+// the instant behind it, and its author's clock is the one the word was said on.
+function slotSaid(line, field) {
+  const text = line[field];
+  const m = line.at && line.at[field];
+  return slotText(m ? meetingTime.freshDayWords(text, m, m.authorTz || line.roomTz) : text);
+}
+
 function timesOf(line, field) {
   const m = line.at && line.at[field];
   if (!m) return null;
@@ -306,13 +316,13 @@ function timesOf(line, field) {
 function authored(line, field) {
   const m = (line.at && line.at[field]) || {};
   const city = meetingTime.zoneLabel(m.authorTz || line.roomTz);
-  const text = slotText(line[field]);
+  const text = slotSaid(line, field);
   return city ? `${text} (${city})` : text;
 }
 
 // The slot on ONE line: every zone joined with " · ", or its author's words.
 function roomInline(line, field) {
-  if (!line.multiZone) return slotText(line[field]);
+  if (!line.multiZone) return slotSaid(line, field);
   const t = timesOf(line, field);
   return t ? t.inline : authored(line, field);
 }
@@ -376,7 +386,7 @@ function renderGroupCoordination(line, overrides) {
     };
     const lead = line.multiZone
       ? tidy(templates.render('group_coord_base_zones', { ...vars, ...roomBlock(line, 'slot') }, overrides))
-      : templates.render('group_coord_base', { ...vars, slot: slotText(line.slot) }, overrides);
+      : templates.render('group_coord_base', { ...vars, slot: slotSaid(line, 'slot') }, overrides);
     if (line.kind === 'base') return lead;
     // The new direction is the base line itself, carried whole as one var — so
     // a rewording of "יש כיוון" is said the same way in both places, and the
@@ -475,7 +485,7 @@ function renderGroupCoordination(line, overrides) {
   // the poker room heard "המשחק אצל שמר" and then "סגור" as two messages).
   const placeLine = line.place ? `📍 ${format.stripUserMarkup(String(line.place).replace(/\s+/g, ' ').trim())}` : '';
   let done = templates.render('group_coord_done', {
-    slot: slotText(line.slot), who, place: placeLine && timeAsk ? `${placeLine}\n` : placeLine,
+    slot: slotSaid(line, 'slot'), who, place: placeLine && timeAsk ? `${placeLine}\n` : placeLine,
     place_ask: line.placeAsk && !line.timeAsk ? PLACE_ASK : '', time_ask: timeAsk,
   }, overrides).trim();
   // An owner's rewording saved before {{place}} or {{time_ask}} existed has

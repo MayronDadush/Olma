@@ -19,6 +19,7 @@ never trust a dated narrative for something you are about to act on.
 
 **Gateway, config and upgrades**
 
+- [She wrote twice and stayed paused, and her list never reached her morning (fixed 2026-10-06)](#she-wrote-twice-and-stayed-paused-and-her-list-never-reached-her-morning-fixed-2026-10-06)
 - [The silence the gateway asked again (fixed 2026-10-03)](#the-silence-the-gateway-asked-again-fixed-2026-10-03)
 - [Three messages in a row got three replies (2026-10-02, the debounce replaced the same day)](#three-messages-in-a-row-got-three-replies-2026-10-02-the-debounce-replaced-the-same-day)
 - [Six hours with nobody to talk to (detector added 2026-09-11)](#six-hours-with-nobody-to-talk-to-detector-added-2026-09-11)
@@ -116,6 +117,7 @@ never trust a dated narrative for something you are about to act on.
 - [The room waited for nobody (fixed 2026-09-20)](#the-room-waited-for-nobody-fixed-2026-09-20)
 - [The room that did not know its own member (fixed 2026-09-23)](#the-room-that-did-not-know-its-own-member-fixed-2026-09-23)
 - [Where do we meet, on Zoom (fixed 2026-09-23)](#where-do-we-meet-on-zoom-fixed-2026-09-23)
+- [Tomorrow, said on the day itself (fixed 2026-10-06)](#tomorrow-said-on-the-day-itself-fixed-2026-10-06)
 - [פנתרה: one time, four clocks (fixed 2026-09-25)](#פנתרה-one-time-four-clocks-fixed-2026-09-25)
 - [A settled time could not be changed, only cancelled (fixed 2026-09-25)](#a-settled-time-could-not-be-changed-only-cancelled-fixed-2026-09-25)
 - [Changing the hour meant asking everybody again (fixed 2026-10-03)](#changing-the-hour-meant-asking-everybody-again-fixed-2026-10-03)
@@ -329,6 +331,34 @@ never trust a dated narrative for something you are about to act on.
 - [Merged is not deployed — the drift row (2026-09-04)](#merged-is-not-deployed-the-drift-row-2026-09-04)
 
 ## Gateway, config and upgrades
+
+### She wrote twice and stayed paused, and her list never reached her morning (fixed 2026-10-06)
+
+ברית (u-33) went quiet and the check-in ladder paused her on 2026-10-04. On
+the 5th she sent fourteen work tasks and on the 6th two more, both saved
+correctly. She was still paused on the morning of the 6th, and her 08:00
+digest had not reached her since 26 September. Two faults stacked:
+
+1. **Her writing never reached `pause.resumeOnWrite`.** That runs only from
+   `turn.openRecord` with `wake: true`, i.e. from the gateway's turn-open hook.
+   For both of her messages the hook's open never arrived. The audit shows
+   `turn.context_without_open` with `trigger: user, messageProvider: whatsapp`,
+   then `turn_start`/an implicit open, and both pass `wake: false`. That
+   happened 39 times in thirty days, every one a real person writing (read one
+   by one), against 660 `webchat` rows, which are our own deliveries and CLI
+   probes. brokerd's `turn_context` now runs `resumeOnWrite` on exactly that
+   pair, so writing ends the pause even when the open is missed. A pause they
+   confirmed is still theirs, because `resumeOnWrite` never matches it.
+2. **Her scope was `today`, which meant "dated today or overdue".** None of
+   her 16 tasks had a date, so even an unpaused digest could not show her one.
+   `summary`, which 42 of 46 people hold (3 of the 7 with a digest time), was
+   counts only. The owner decided every digest carries every open task, and
+   `digest.assemble` now ignores the scope for the list. Only `block_view`
+   stays counts-only. Above `digest_card_min_items` the list is drawn as a
+   card, and past the card's ceiling of 36 it goes out as text.
+
+She was unpaused by hand (`admin.pause_lifted`) and sent her whole list as a
+picture with one question: every morning, and at what hour.
 
 ### The silence the gateway asked again (fixed 2026-10-03)
 
@@ -4214,6 +4244,51 @@ title and the confirmed slot for the coordinations opened before this. The
 list leaves out "וידאו" alone ("צילום וידאו" is a shoot), a bare "meet" and
 "teams", because a miss costs one question and a false hit costs a room its
 real place.
+
+### Tomorrow, said on the day itself (fixed 2026-10-06)
+
+Reported by the owner: the poker room heard on Tuesday morning that the
+leading time was "tomorrow (Tuesday)", on the Tuesday itself.
+
+Coordination 74 ("פוקר לשבוע הקרוב") opened on Monday 5.10 at 12:52 UTC, and
+its proposer's two evenings went onto the table as he said them: option 126
+"היום (שני) בערב" and option 127 "מחר (שלישי) בערב", `starts_at`
+2026-10-06T16:00Z, `daypart` evening. The instant was right. The words were
+true for one day. Group outbox 94 and 98 said "הכי מתקדם: *מחר (שלישי)
+בערב*" on the Monday, correctly; outbox 99 said the same words at 06:00 UTC
+on the Tuesday, when they were false.
+
+**`slot_text` is the proposer's words, stored once, and every room line says
+it verbatim.** A room on several clocks re-draws a time from `starts_at` at
+delivery (`meeting-time.roomTimes`), but only a time that names an hour; an
+evening is "precision nobody said", so it falls to `authored()` and the words
+as written. This room was on two clocks (Israel, Rome) and still took that
+path. A one-clock room never re-drew anything. Nothing at the write looks for
+"היום"/"מחר" in a slot either: `weekdayClash` checks a weekday NAME against
+the instant, and `HE_MOVING_WORDS` in `datetime.js` exists only for facts.
+
+**The fix draws the DAY at the moment the line is said, and only the day**
+(`meeting-time.freshDayWords`, called through `proactive-text.slotSaid`). If a
+slot holds exactly one moving word ("היום", "מחר", "מחרתיים", "הבוקר",
+"הערב", "הלילה") and the instant now sits on a different day from the one
+that word claims, read on the author's clock, the word and any weekday gloss
+after it become "היום (שלישי)", "מחר (רביעי)" or "יום שלישי 6.10". The rest
+of the sentence stays theirs. A word that is still true is left untouched,
+and anything uncertain (two moving words, no instant, no zone, "כל היום",
+"היום הראשון") comes back as it was. `group-voice.withClocks` now hands a
+one-clock line its `at` and `roomTz` too, the only change to a line's shape.
+A row queued before this carries no instant and says what it always said.
+
+What this does not cover yet: the same frozen text reaches the private
+messages, `get_meeting_status`, the page and the calendar event. Those are
+the next PRs, through the same function.
+
+**The private messages followed the same day** (`channels/openclaw.bodyFor` →
+`withFreshSlot`). The instruction is built at delivery, so a row the gate held
+overnight is handed the day as it is when it goes out. Only `slot` is
+rewritten, and only on a payload that carries the option's instant
+(`meeting-fanout.slotMoment`); `startsAt`, which the model echoes back as
+`accepted_starts_at`, is never touched.
 
 ### פנתרה: one time, four clocks (fixed 2026-09-25)
 
@@ -14912,3 +14987,21 @@ Fix: `textOf(ctx)` — transcript, else `bodyForAgent`, else the body with the
 envelope header and its sender label cut. The trace line now carries `src`
 and `chars`, so the next zero says which string it was read from. Needs a
 gateway restart; hooks load at startup.
+
+
+### A morning that said "here is the picture" and had none (2026-10-06)
+
+User 8, 09:01: `get_my_digest` was called with `scope="summary"`, which returns
+five open tasks as a COUNT, and the model wrote "הנה התמונה: 5 משימות פתוחות…" —
+"picture" as in snapshot, with no image behind it. Nothing was broken in the
+renderer (resvg present, another user drew a card the day before): the decision
+to draw lives in `get_my_digest`'s `full` branch, and the delivery instruction
+leaves `summary` to the model's own judgement of whether the counts read like a
+wall of text. It judged they did not. The threshold (`digest_card_min_items`,
+3) never even ran for anybody on `summary`.
+
+Fix: the scheduled digest fetches `full` (`sweeps.scopeForDigest`), and because
+that would turn every long morning into an image, Olma's own cards are limited
+to two a day at least three hours apart (`card-budget.js`). A person asking is
+never limited. Not done: a per-user opt-out; rolling 24h rather than a local
+calendar day, on purpose, to need no timezone.
