@@ -578,7 +578,9 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
             }
           } else if (url.pathname === '/users/dashboard') {
             const uid = Number(body.id);
-            const made = await dashboardAuth.createLinkUrl(client, uid);
+            // Marked, so the session it opens in the owner's browser is never
+            // counted as the person opening their page (dashboard-opens.js).
+            const made = await dashboardAuth.createLinkUrl(client, uid, { byAdmin: true });
             if (made.ok) {
               await auditDomain.record(client, uid, 'admin.dashboard_opened', {});
               // The only redirect on this page that leaves the host, so it is
