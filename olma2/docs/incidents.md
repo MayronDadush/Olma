@@ -19,6 +19,7 @@ never trust a dated narrative for something you are about to act on.
 
 **Gateway, config and upgrades**
 
+- [She wrote twice and stayed paused, and her list never reached her morning (fixed 2026-10-06)](#she-wrote-twice-and-stayed-paused-and-her-list-never-reached-her-morning-fixed-2026-10-06)
 - [The silence the gateway asked again (fixed 2026-10-03)](#the-silence-the-gateway-asked-again-fixed-2026-10-03)
 - [Three messages in a row got three replies (2026-10-02, the debounce replaced the same day)](#three-messages-in-a-row-got-three-replies-2026-10-02-the-debounce-replaced-the-same-day)
 - [Six hours with nobody to talk to (detector added 2026-09-11)](#six-hours-with-nobody-to-talk-to-detector-added-2026-09-11)
@@ -328,6 +329,34 @@ never trust a dated narrative for something you are about to act on.
 - [Merged is not deployed — the drift row (2026-09-04)](#merged-is-not-deployed-the-drift-row-2026-09-04)
 
 ## Gateway, config and upgrades
+
+### She wrote twice and stayed paused, and her list never reached her morning (fixed 2026-10-06)
+
+ברית (u-33) went quiet and the check-in ladder paused her on 2026-10-04. On
+the 5th she sent fourteen work tasks and on the 6th two more, both saved
+correctly. She was still paused on the morning of the 6th, and her 08:00
+digest had not reached her since 26 September. Two faults stacked:
+
+1. **Her writing never reached `pause.resumeOnWrite`.** That runs only from
+   `turn.openRecord` with `wake: true`, i.e. from the gateway's turn-open hook.
+   For both of her messages the hook's open never arrived. The audit shows
+   `turn.context_without_open` with `trigger: user, messageProvider: whatsapp`,
+   then `turn_start`/an implicit open, and both pass `wake: false`. That
+   happened 39 times in thirty days, every one a real person writing (read one
+   by one), against 660 `webchat` rows, which are our own deliveries and CLI
+   probes. brokerd's `turn_context` now runs `resumeOnWrite` on exactly that
+   pair, so writing ends the pause even when the open is missed. A pause they
+   confirmed is still theirs, because `resumeOnWrite` never matches it.
+2. **Her scope was `today`, which meant "dated today or overdue".** None of
+   her 16 tasks had a date, so even an unpaused digest could not show her one.
+   `summary`, which 42 of 46 people hold (3 of the 7 with a digest time), was
+   counts only. The owner decided every digest carries every open task, and
+   `digest.assemble` now ignores the scope for the list. Only `block_view`
+   stays counts-only. Above `digest_card_min_items` the list is drawn as a
+   card, and past the card's ceiling of 36 it goes out as text.
+
+She was unpaused by hand (`admin.pause_lifted`) and sent her whole list as a
+picture with one question: every morning, and at what hour.
 
 ### The silence the gateway asked again (fixed 2026-10-03)
 

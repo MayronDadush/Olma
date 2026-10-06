@@ -45,7 +45,7 @@ function listWorthAPage(data, now = Date.now()) {
 }
 
 module.exports = [
-  tool('get_my_digest', 'Assemble the current picture. scope: summary (counts) | full (every open task) | today (due/overdue today).',
+  tool('get_my_digest', 'Assemble the current picture: every open task and event, plus counts. scope is kept for old callers and changes nothing.',
     { scope: S('string', 'summary | full | today') }, [],
     async (client, user, a) => {
       const res = await digest.assemble(client, user.id, a.scope || user.digest_scope || 'summary');
