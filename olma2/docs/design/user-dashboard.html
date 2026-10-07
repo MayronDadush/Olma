@@ -12728,10 +12728,16 @@ button.srow:active{background:var(--bg-tint)}
      coordination sheet is open and the tab is on screen, the page re-reads
      every MT_POLL_MS — one small GET, and hydrate already keeps the open sheet
      and redraws it. An armed "לקבוע" (mtSettling) survives the re-read; an option
-     somebody removed is simply not drawn. Sheet closed or tab hidden: nothing. */
+     somebody removed is simply not drawn. Sheet closed or tab hidden: nothing.
+     That last sentence was not true until 2026-10-08: nothing clears `mtOpen`
+     when the sheet closes, so one coordination looked at once kept the whole
+     page re-reading every 8 seconds, on every tab, for as long as it stayed
+     open. The sheet's own class is asked as well now; with it closed, the 60s
+     news check (checkForNews) is the only re-read. */
   var MT_POLL_MS = 8000;
   function tickMeetPoll(){
     if(!LIVE || !mtOpen || document.hidden) return;
+    if(!$("#mtSheet").classList.contains("show")) return;
     API.reload();
   }
   setInterval(tickMeetPoll, MT_POLL_MS);
