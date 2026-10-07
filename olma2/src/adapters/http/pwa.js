@@ -41,6 +41,14 @@ const ICONS = Object.freeze({
 const SW_PATH = '/sw.js';
 const PATHS = new Set([MANIFEST_PATH, SW_PATH, ...Object.keys(ICONS)]);
 
+// What a page's <head> says so the phone knows the icon. A page without it is
+// not "installable" and Chrome on Android, asked to save it to the home screen,
+// draws a tile with the first letter of the title instead — "ע" (2026-10-08,
+// a sign-in page saved from a link). Every page a person can land on carries it.
+const HEAD_TAGS = '<link rel="manifest" href="/manifest.webmanifest">'
+  + '<link rel="icon" href="/icons/icon-192.png" sizes="192x192" type="image/png">'
+  + '<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">';
+
 function matches(pathname) {
   return PATHS.has(pathname);
 }
@@ -164,7 +172,7 @@ function offlineHtml(lang) {
   const c = OFFLINE_COPY[lang === 'en' ? 'en' : 'he'];
   return '<!doctype html><html lang="' + (lang === 'en' ? 'en' : 'he') + '" dir="' + c.dir + '"><head>' +
     '<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">' +
-    '<meta name="theme-color" content="' + BACKGROUND + '"><title>' + c.title + '</title><style>' +
+    '<meta name="theme-color" content="' + BACKGROUND + '">' + HEAD_TAGS + '<title>' + c.title + '</title><style>' +
     // The page's own tokens (Cypress + Mustard, 2026-09-28): the one button
     // is the ACTION colour, as it is on the page.
     ':root{--bg:#F0EDE5;--text:#0E1F1E;--text-2:#44504E;--action:#F9C23C;--on-action:#004643;color-scheme:light dark}' +
@@ -274,5 +282,5 @@ function handle(req, res, pathname, { lang } = {}) {
 
 module.exports = {
   matches, handle, manifestFor, iconBytes, offlineHtml,
-  PATHS, ICONS, MANIFEST_PATH, SW_PATH, SW_SOURCE, BACKGROUND,
+  PATHS, ICONS, HEAD_TAGS, MANIFEST_PATH, SW_PATH, SW_SOURCE, BACKGROUND,
 };
