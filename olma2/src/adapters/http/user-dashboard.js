@@ -496,6 +496,14 @@ async function handle(req, res, pool, pathname) {
 
   if (pathname === '/me/data') {
     if (req.method !== 'GET') return sendJson(res, 405, { ok: false, error: { code: 'invalid' } }, { Allow: 'GET' });
+    // The address book on its own, asked for by the one sheet that shows it
+    // (domain/user-dashboard.contactsPage). A query on the same path rather
+    // than a route of its own, so Caddy's allowlist — which matches /me/data
+    // by path — needs nothing new to pass it.
+    if (new URL(String(req.url || ''), 'http://x').searchParams.get('part') === 'contacts') {
+      const book = await withTx(pool, (c) => dash.contactsPage(c, userId));
+      return sendJson(res, book.ok ? 200 : 404, book);
+    }
     const page = await withTx(pool, async (c) => {
       const loaded = await dash.load(c, userId);
       // Opening the page IS the exposure, in both arms — including the arm
