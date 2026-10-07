@@ -220,8 +220,14 @@ title means this file. Grep the title, not the filename.
       moves across (`meeting-options.merge`). Whoever answered is told, not
       asked again (`meeting_answer_moved`).
     - `merge_with=0`: a separate time with new answers.
+  - A decline's COUNTER is a new time too, and asks the same question
+    (`respond_to_meeting_slot` `merge_with`, 2026-10-07) before the decline is
+    written. Merged, the no lands on the time they declined, resolved before
+    the merge — after it, a bare decline would fall on the counter itself
+    (`meetings.declineAndMerge`).
   - Never chosen for them. In a room, `similar` carries the times only, never
-    whose answer is whose. The page does not ask.
+    whose answer is whose. The page does not ask (the owner's call, confirmed
+    2026-10-07).
   - `incidents.md`, "Two times for one game".
 
 - **A constraint that rules out a time ON the table is an ANSWER, and the tool
