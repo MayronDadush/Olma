@@ -207,6 +207,25 @@ async function sweepReminders(client, nowIso) {
         continue;
       }
     }
+    // A second moment they asked for on the same task ("גם ב-8 וגם ב-8:30")
+    // is rung 1 of its own reminder, and read exactly like the first: Bar got
+    // "⏰ תזכורת" twice, thirty minutes apart. When a reminder about this task
+    // already REACHED them in the last day, this one says "תזכורת חוזרת" —
+    // still plain, still asking nothing, because it is a moment they chose.
+    // Reached means sent and not held: a row the gate dropped told nobody.
+    let again = false;
+    if (attempt === 1 && !repeats && !chase && !redo) {
+      const { rows: before } = await client.query(
+        `SELECT 1 FROM outbox
+          WHERE user_id = $1 AND kind = 'reminder'
+            AND payload->>'taskId' = $2::text
+            AND sent_at IS NOT NULL AND hold_reason IS NULL
+            AND sent_at > $3::timestamptz - interval '24 hours'
+          LIMIT 1`,
+        [r.user_id, String(r.task_id), now]
+      );
+      again = before.length > 0;
+    }
     const res = await enqueue(client, {
       // the person the reminder is FOR — on a shared task not necessarily the
       // task's owner (reminders.dueForSending resolves it)
@@ -232,6 +251,7 @@ async function sweepReminders(client, nowIso) {
         // reminder they asked for still goes out.
         auto: Boolean(r.auto),
         ...(redo ? { redo: true } : chase ? chaseWording : attempt > 1 ? { attempt, finalAttempt } : {}),
+        ...(again ? { again: true } : {}),
       },
       // Rung 1 keeps the original 2h-past-the-moment window. A later rung is
       // measured from now: remind_at is hours or a day behind and would make

@@ -888,3 +888,19 @@ test('the chosen emoji reaches the command line, and a bad one falls back', () =
   // An override cannot conjure a state that does not exist.
   assert.equal(r.buildReactArgs({ ...base, state: 'invented', emoji: '🎉' }), null);
 });
+
+test('reactions: add_task earns ⏰ only for a reminder THEY asked for', () => {
+  const now = Date.UTC(2026, 9, 6, 12, 0, 0);
+  const fresh = () => ({ messageId: '3EB0ALRM', lastInboundAt: new Date(now - 60_000).toISOString() });
+  const asked = { ok: true, data: { task: { id: 1 }, reminders: [{ id: 9, auto: false }] } };
+  const autoOnly = { ok: true, data: { task: { id: 1 }, reminders: [{ id: 9, auto: true }] } };
+  assert.equal(r.markFor('add_task', asked, fresh(), now), 'scheduled', '"תזכורת 8:40 להוריד זבל" is a reminder request');
+  assert.equal(r.markFor('add_task', autoOnly, fresh(), now), 'done', 'a date alone arms one nobody asked for');
+  assert.equal(r.markFor('add_task', { ok: true, data: { task: { id: 1 } } }, fresh(), now), 'done');
+  // …and the "say nothing" hint still follows it, while set_task_reminder's ⏰ stays out.
+  const t = fresh();
+  r.noteMarkAttempted(t, 'scheduled');
+  assert.equal(r.doneMarkStands('add_task', asked, t, now), true);
+  assert.equal(r.doneMarkStands('set_task_reminder', { ok: true, data: {} }, t, now), false);
+  assert.equal(r.doneMarkStands('add_task', autoOnly, t, now), false, 'a 👍 tool cannot claim a standing ⏰');
+});

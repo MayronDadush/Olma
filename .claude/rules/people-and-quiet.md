@@ -85,7 +85,7 @@ title means this file. Grep the title, not the filename.
 
 - **Somebody who has stopped answering hears nothing Olma decided to say, and
   nothing on their record is cancelled.** The check-in ladder's one miss
-  (`checkin_misses >= 1`) is the signal and the delivery gate is where it
+  (`checkin_misses >= 1`) is the signal — counted only for the ladder's own rungs (`worker.countLadderAsk`); an owner's hand-sent `admin` message and a repair of our own fault (`unanswered_repair`, `missed_goal_repair`) are not a question they failed to answer and the delivery gate is where it
   acts: every row is dropped as `hold_reason = 'quiet'` — reminder rungs,
   digests, another user's fan-out — except the ladder's own check-in (the
   three-day and the weekly "מה איתך") and rung 1 of a reminder they asked for

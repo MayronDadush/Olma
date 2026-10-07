@@ -57,7 +57,10 @@ function cleanTitle(title) {
 function reminderTemplateKey(payload) {
   const p = typeof payload === 'string' ? JSON.parse(payload) : (payload || {});
   const attempt = Number(p.attempt) || 1;
-  if (attempt <= 1) return 'reminder';
+  // A second reminder they asked for on the same task, after one already
+  // reached them, is not the first word about it and must not read like one
+  // (sweeps.sweepReminders sets `again`; owner, 2026-10-05).
+  if (attempt <= 1) return p.again ? 'reminder_again' : 'reminder';
   if (!p.finalAttempt) return 'reminder_followup';
   // A nudge that ran out at the three-day cap, not at a deadline, ends on a
   // question rather than on "the last one" (reminders.startChase).
@@ -67,6 +70,8 @@ function reminderTemplateKey(payload) {
 // The list form of each rung. One key per rung, for the reason above.
 const LIST_TEMPLATE = {
   reminder: 'reminder_list',
+  // Plain, like rung 1: it asks nothing, so the plain list makes its promise.
+  reminder_again: 'reminder_list',
   reminder_followup: 'reminder_list_followup',
   reminder_last: 'reminder_list_last',
   reminder_nudge_end: 'reminder_list_nudge_end',
