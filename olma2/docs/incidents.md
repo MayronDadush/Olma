@@ -14884,3 +14884,19 @@ Fix: `textOf(ctx)` — transcript, else `bodyForAgent`, else the body with the
 envelope header and its sender label cut. The trace line now carries `src`
 and `chars`, so the next zero says which string it was read from. Needs a
 gateway restart; hooks load at startup.
+
+### The follow-up a minute behind the digest that already said it (fixed 2026-10-06)
+
+Yahav's task "לבטל את האשראי" (due 08:00 Israel, automatic reminder) had rung 1
+at 07:00 local. At 10:00:36 the morning digest (`scope: today`) listed it, and
+at 10:01:35 rung 2 — the same-day follow-up an inferred hour earns — went out
+saying it again. Nothing was wrong with either by itself: the ladder waits
+three hours after a delivered rung, and the digest runs on its own clock. The
+gap was that a follow-up chases an action and the digest had just put the task
+in front of him.
+
+Fix: `sweepReminders` retires an automatic one-off ladder instead of sending a
+follow-up when a digest that reached them after rung 1 names the task
+(`reminders.coveredByDigest`; `full`, or `today` for a task due that day or
+earlier; never `summary`). A nudge, an explicit reminder and a repeating one
+are untouched. Audited as `reminder.covered_by_digest`.

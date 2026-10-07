@@ -207,6 +207,19 @@ async function sweepReminders(client, nowIso) {
         continue;
       }
     }
+    // A follow-up behind a digest that already listed the task is the same
+    // thing said twice a minute apart. The ladder is retired, not skipped: the
+    // morning picture was the chase.
+    if (attempt > 1 && !redo && r.auto && !r.nudge && (r.rungs === null || r.rungs === undefined)
+        && !repeats && await reminders.coveredByDigest(client, {
+      userId: r.user_id, dueAt: r.due_at, timezone: r.timezone, since: r.remind_at, now,
+    })) {
+      await reminders.recordAttempt(client, r.reminder_id, { retire: true });
+      await audit.record(client, r.user_id, 'reminder.covered_by_digest', {
+        taskId: Number(r.task_id), reminderId: Number(r.reminder_id), attempt,
+      });
+      continue;
+    }
     const res = await enqueue(client, {
       // the person the reminder is FOR — on a shared task not necessarily the
       // task's owner (reminders.dueForSending resolves it)
