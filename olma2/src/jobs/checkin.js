@@ -212,8 +212,12 @@ const ONBOARDING_STEPS = [
     slot: '22h', afterMs: 22 * HOUR_MS, expiresAfterMs: 26 * HOUR_MS,
     skipIf: async (client, u) => {
       // They already have a link, so a fresh one is noise rather than news.
+      // Not one the owner minted from the admin user page to look at their
+      // page himself (migration 112): that link was never sent to them, and
+      // counting it meant opening a newcomer's page on their first day took
+      // their introduction to it away.
       const { rows } = await client.query(
-        `SELECT 1 FROM magic_links WHERE user_id = $1 LIMIT 1`, [u.id]);
+        `SELECT 1 FROM magic_links WHERE user_id = $1 AND NOT by_admin LIMIT 1`, [u.id]);
       return rows.length > 0;
     },
     instruction: 'Their first day is nearly done. Send them their own dashboard once: call open_my_dashboard and put the URL in your reply. One short line on what it is for — seeing and rearranging several things at once, their tasks, who they are connected to, what is connected. Say it opens once and stays open afterwards, and that everything on it can still be done right here in chat. Do not ask a question after it.',
