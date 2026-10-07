@@ -4932,6 +4932,9 @@ button.srow:active{background:var(--bg-tint)}
      creates one or edits one — the page numbers its own new rows from a local
      counter, and asking "is this id one of ours" is the only honest test. */
   var SERVER_IDS = {};
+  /* Browsers cap the bodies of all in-flight keepalive requests together at
+     64KB; a write is a few hundred bytes, and this leaves room for several. */
+  var KEEPALIVE_MAX = 8 * 1024;
   /* Which /me/data read is the current one — see API.reload. */
   var dataSeq = 0;
   /* This person's own user id, once the server has said what it is. Needed for
@@ -5097,23 +5100,58 @@ button.srow:active{background:var(--bg-tint)}
        the row under somebody's finger if the server disagreed — is worse than
        being briefly out of date. A refusal is surfaced, not swallowed: the
        page reloads its data, so the next paint is the truth rather than the
-       optimistic guess. */
+       optimistic guess.
+
+       And so is a write that never landed. Until 2026-10-06 only an answer
+       carrying `ok:false` counted as a failure: a 500 (the router answers
+       one in plain text, which does not parse), a dropped connection, a
+       request the phone killed when the app went to the background — every
+       one of them reached onOk as an ordinary success. The row stayed drawn
+       the way it was typed, "נשמר" had already flashed, and the change was
+       gone at the next reload. Success is now exactly a 2xx whose body says
+       `ok:true`; anything else is said out loud and re-read.
+
+       `onOk(data, ok)` — `ok` is the one honest answer to "did it land",
+       because a write that succeeded may still carry no `data`.
+
+       `keepalive` on every write that fits under the browser's 64KB budget
+       for them: an installed app is put in the background the moment
+       somebody goes back to WhatsApp, and a plain fetch dies with it. */
     send: function(action, payload, onOk, keepalive){
-      if(!LIVE || !ACT[action]){ if(onOk) onOk(null); return true; }
+      if(!LIVE || !ACT[action]){ if(onOk) onOk(null, false); return true; }
       lastWriteAt = Date.now();
+      var body = JSON.stringify({action:ACT[action], payload:payload || {}});
       fetch("/me/act", {
-        method:"POST", credentials:"same-origin", keepalive:!!keepalive,
+        method:"POST", credentials:"same-origin",
+        keepalive:!!keepalive || body.length < KEEPALIVE_MAX,
         headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({action:ACT[action], payload:payload || {}})
-      }).then(function(r){ return r.json().catch(function(){ return null; }); })
-        .then(function(body){
-          if(body && body.ok === false){ API.refused(body.error); if(onOk) onOk(null); }
-          else if(onOk) onOk(body && body.data ? body.data : null);
+        body:body
+      }).then(function(r){
+          return r.json().then(function(b){ return {status:r.status, body:b}; },
+                               function(){ return {status:r.status, body:null}; });
         })
-        .catch(function(){ if(onOk) onOk(null); /* offline: the page keeps what it shows */ });
+        .then(function(res){
+          var b = res.body;
+          if(b && b.ok === false){ API.refused(b.error); if(onOk) onOk(null, false); }
+          else if(res.status >= 200 && res.status < 300 && b && b.ok){ if(onOk) onOk(b.data || null, true); }
+          else { API.lost(); if(onOk) onOk(null, false); }
+        })
+        .catch(function(){ API.lost(); if(onOk) onOk(null, false); });
       return true;
     },
+    /* A write that did not land, for no reason the server gave. Said before
+       the caller's own onOk runs, so a caller with a more specific line of its
+       own (a call that did not ring) still has the last word. */
+    lost: function(){
+      toast(t("toast.notSaved"), null, true);
+      API.reload();
+    },
     refused: function(error){
+      /* The session is gone (thirty idle days, or "sign out everywhere"). The
+         page itself knows how to sign back in, so it asks for itself again —
+         the same answer bootFetch gives a 401. Nothing written from here on
+         could land, and saying "not saved" on every tap would only repeat it. */
+      if(error && error.code === "unauthorized"){ location.reload(); return; }
       /* Two of these the person can act on, so they are said out loud; the
          rest are ours to fix and saying "invalid" to somebody helps nobody.
          Said as errors, which is what keeps them on screen long enough to be
@@ -5169,8 +5207,14 @@ button.srow:active{background:var(--bg-tint)}
           patch[k] = payload[k]; moved = true;
         });
         if(!moved) return true;
-        lastSent[String(x.id)] = payload;
-        return API.send("editTask", patch);
+        var key = String(x.id);
+        lastSent[key] = payload;
+        /* Put back if it did not land. Otherwise a failed edit is remembered
+           as sent, and typing the same value again sends nothing — "nothing
+           moved". Only if no later edit has replaced it since. */
+        return API.send("editTask", patch, function(data, ok){
+          if(!ok && lastSent[key] === payload) lastSent[key] = was;
+        });
       }
       if(adding[String(x.id)]){
         /* An add is already on the wire for this row. Sending a second one
@@ -5796,6 +5840,7 @@ button.srow:active{background:var(--bg-tint)}
       "toast.provSoon":"החיבור ל{name} עוד לא מוכן — בינתיים רק גוגל",
       "toast.notOpenYet":"זה עוד לא פתוח — יגיע בהמשך",
       "toast.duplicate":"זה כבר ברשימה שלך",
+      "toast.notSaved":"השינוי לא נשמר. אפשר לנסות שוב",
       "toast.sharingOff":"אצל {name} שיתוף המשימות כבוי, אז לא שיתפתי. שלחתי לך בוואטסאפ משפט להעביר הלאה",
       "soon":"בקרוב",
       "toast.provFailed":"לא הצלחתי לפתוח את מסך ההרשאות של גוגל",
@@ -6188,6 +6233,7 @@ button.srow:active{background:var(--bg-tint)}
       "toast.provSoon":"{name} cannot be connected yet — Google only, for now",
       "toast.notOpenYet":"Not open yet — it is coming",
       "toast.duplicate":"That is already on your list",
+      "toast.notSaved":"That change wasn't saved. Please try again",
       "toast.sharingOff":"{name} has task sharing switched off, so nothing was shared. I sent you a WhatsApp line to pass on",
       "soon":"Soon",
       "toast.provFailed":"Google's permission screen would not open",
@@ -9973,6 +10019,12 @@ button.srow:active{background:var(--bg-tint)}
   function flushTitle(){ if(titleTimer){ clearTimeout(titleTimer); titleTimer = null; commit(); } }
   $("#sTitle").addEventListener("input", commitTitleSoon);
   $("#sTitle").addEventListener("blur", flushTitle);
+  /* …and so does leaving the app. Going back to WhatsApp does not blur the
+     field, and a phone freezes a page in the background before a 400ms timer
+     comes due — so the last word typed waited on a timer that might never
+     run. The write that goes now is a keepalive one (API.send). */
+  window.addEventListener("pagehide", flushTitle);
+  document.addEventListener("visibilitychange", function(){ if(document.hidden) flushTitle(); });
   /* the visible chip is the target; the real <input type=time> holds the
      value and fires "change" into commit() same as it always did — only
      what RAISES it changed, from the platform's own popup to this page's
