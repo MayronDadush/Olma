@@ -499,6 +499,13 @@ async function sweepStaleMeetings(client, nowMs) {
 // ---- paused room members who never answered -------------------------------
 // The day-later half of a paused person's one coordination message; the rule
 // and the reasons live in domain/group-meetings.js, where the exit is.
+// ---- somebody silent for days ---------------------------------------------
+// Paused on a clock rather than on unanswered questions (owner, 2026-10-07);
+// the rule and the reasons live in domain/silence-pause.js.
+async function sweepSilencePause(client, now) {
+  return require('../domain/silence-pause').sweep(client, now || new Date());
+}
+
 async function sweepSilentPausedMembers(client, nowMs) {
   return groupMeetings.sweepSilentPausedMembers(client, nowMs || Date.now());
 }
@@ -739,7 +746,7 @@ async function sweepFinishedTasks(client, nowIso) {
 
 module.exports = {
   sweepReminders, sweepDigests, DAILY_ONCE_AT, sweepUnblocks, sweepStaleMeetings, sweepSettlingMeetings,
-  sweepSilentPausedMembers,
+  sweepSilentPausedMembers, sweepSilencePause,
   sweepRoomLeavers,
   sweepMediaJobs, sweepNameConfirm, sweepFinishedTasks,
 };

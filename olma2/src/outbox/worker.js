@@ -294,14 +294,33 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
           && (row.paused_at
             ? !pauseDomain.keptOutOfRooms(row)
             : (Number(row.checkin_misses) || 0) >= 1 && !pauseDomain.quietRoomInviteSpent(row));
-        if (roomInviteCandidate) {
+        //
+        // Since 2026-10-07 a quiet pause's allowance is one invite per
+        // COORDINATION, not one per pause, and a private coordination earns it
+        // too (owner: "חוץ מהודעה אחת על כל תיאום שנפתח איתם"). One per
+        // coordination is read off the outbox: an invite about this meeting
+        // that already REACHED them spends it — sent on its own, or folded
+        // into a digest that went out (a `budget`/`daily_once` row that
+        // `collectHeld` stamped) — so the re-invite a changed table writes
+        // ("tableChanged") is not a second one. The ladder-silence allowance
+        // below is unchanged.
+        if (roomInviteCandidate && row.paused_at) {
+          const { rows: g } = await client.query(
+            `SELECT 1 FROM meetings mt
+              WHERE mt.id = $1 AND mt.status = 'negotiating'
+                AND NOT EXISTS (
+                  SELECT 1 FROM outbox o
+                   WHERE o.user_id = $2 AND o.kind = 'meeting_invite' AND o.id <> $3
+                     AND o.sent_at IS NOT NULL
+                     AND (o.hold_reason IS NULL OR o.hold_reason IN ('budget', 'daily_once'))
+                     AND (o.payload->>'meetingId')::bigint = mt.id)`,
+            [meetingId, row.user_id, row.id]);
+          pausedRoomInvite = g.length > 0;
+        } else if (roomInviteCandidate) {
           const { rows: g } = await client.query(
             `SELECT 1 FROM meetings WHERE id = $1 AND group_id IS NOT NULL AND status = 'negotiating'`,
             [meetingId]);
-          if (g.length > 0) {
-            if (row.paused_at) pausedRoomInvite = true;
-            else quietRoomInvite = true;
-          }
+          quietRoomInvite = g.length > 0;
         }
         // Have they ANSWERED in this coordination? The gate's silence branch
         // treats a yes or a no on record as proof this row is news about
