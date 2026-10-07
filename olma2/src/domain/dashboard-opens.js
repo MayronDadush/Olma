@@ -9,7 +9,7 @@
 // Folded to one row per person per half hour: a pull-to-refresh, a tab
 // reopened, a sign-in followed by its own redirect are the same visit.
 //
-// Each open says where it came from (migration 113): `app` is the installed
+// Each open says where it came from (migration 116): `app` is the installed
 // app's start address, `link` a /d/ link from WhatsApp, `browser` a bare
 // /me. A `browser` load folds into anything recent — it is what the /me
 // right after a link IS — while `app` and `link` fold only into their own
@@ -106,10 +106,9 @@ async function summary(client, { days = 30, tz = 'Asia/Jerusalem' } = {}) {
         AND NOT o.by_admin AND ${real}
       GROUP BY 1`,
     [String(days)]);
-  // The other half of "who has the app": an iPhone's installed app can only
-  // be signed into with a code (dashboard-auth.createCode), and every code
-  // sent writes this row — so it is the whole history of that door, from
-  // before anything here counted.
+  // Codes sent (dashboard-auth.createCode writes this row on each). Codes,
+  // not app users: an iPhone that adds the page to its home screen can take
+  // Safari's session with it and never need one.
   const { rows: [codes] } = await client.query(
     `SELECT count(*)::int AS sent, count(DISTINCT a.actor_id)::int AS people, max(a.created_at) AS last_at
        FROM audit_log a JOIN users u ON u.id = a.actor_id

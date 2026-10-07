@@ -35,7 +35,7 @@ function hourStrip(byHour) {
       <span class="dim">${v || ''}</span></td>`).join('')}</tr></table>`;
 }
 
-// Where an open came from (migration 113, dashboard-opens.js).
+// Where an open came from (migration 116, dashboard-opens.js).
 const SOURCE = { app: 'אפליקציה בטלפון', link: 'קישור מוואטסאפ', browser: 'דפדפן בלי קישור', unknown: 'לא ידוע' };
 const SOURCE_SHORT = { app: 'אפליקציה', link: 'קישור', browser: 'דפדפן' };
 
@@ -43,14 +43,17 @@ function sourceBlock(s) {
   const by = Object.fromEntries((s.bySource || []).map((r) => [r.source, r]));
   const order = ['app', 'link', 'browser', 'unknown'].filter((k) => by[k]);
   const c = s.codes;
-  const codeLine = c ? (c.sent
-    ? `קודי כניסה לאפליקציה באייפון נשלחו ${c.sent} פעמים ל־${c.people} אנשים, האחרון ${esc(ago(c.last_at))}.`
-    : 'אף אחד עוד לא ביקש קוד כניסה — כלומר אף אחד לא נכנס לאפליקציה באייפון. (באנדרואיד אין צורך בקוד, ולכן אין לזה עקבות לפני שהתחלנו לספור.)') : '';
+  // A code is ONE way into the iPhone app, not the only one: adding the page
+  // to the home screen can carry Safari's session along, so the owner's own
+  // app runs with no code ever sent. The count is codes, never app users.
+  const codeLine = c && c.sent
+    ? `קודי כניסה נשלחו ${c.sent} פעמים ל־${c.people} אנשים, האחרון ${esc(ago(c.last_at))}.`
+    : '';
   return `<h4>מאיפה פתחו</h4>
     ${order.length ? `<table><tr><th></th><th>פתיחות 7 ימים</th><th>אנשים 7 ימים</th><th>פתיחות ${s.days} יום</th><th>אנשים ${s.days} יום</th></tr>
     ${order.map((k) => `<tr><td>${SOURCE[k]}</td><td>${by[k].opens7}</td><td>${by[k].people7}</td><td>${by[k].opens}</td><td>${by[k].people}</td></tr>`).join('')}</table>` : ''}
     <p class="small dim">אפליקציה = נפתח מהאייקון במסך הבית. קישור = לחיצה על קישור שעולמה שלחה. דפדפן = כתובת שמורה או לשונית פתוחה.
-    ${s.totals.source_since ? `נספר מאז ${esc(localTime(s.totals.source_since, OWNER_TZ))}. ` : ''}${c && !c.sent ? 'הכניסות מלפני כן נספרו כקישור, כי בלי קוד זו הייתה הדרך היחידה להיכנס.' : ''}
+    ${s.totals.source_since ? `נספר מאז ${esc(localTime(s.totals.source_since, OWNER_TZ))}. ` : ''}${c && !c.sent ? 'כניסות מלפני כן נספרו כקישור, כי אף קוד לא נשלח. מי פתח מהאפליקציה לפני כן — לא ידוע: אייפון שמוסיף למסך הבית יכול לקחת איתו את החיבור מספארי, בלי קוד.' : ''}
     ${codeLine}</p>`;
 }
 

@@ -167,7 +167,7 @@ test('partOf: morning before noon, evening from five, and the gap is its own wor
   assert.equal(digestStats.partOf(''), null);
 });
 
-// ---- where an open came from (migration 113) ------------------------------
+// ---- where an open came from (migration 116) ------------------------------
 
 test('an open says whether it came from the app, a link, or a bare browser', async () => {
   const u = await makeUser(db.pool, '+972531960031', { firstName: 'Noa' });
@@ -202,12 +202,16 @@ test('an open says whether it came from the app, a link, or a bare browser', asy
   assert.ok(html.includes('אפליקציה בטלפון') && html.includes('קישור מוואטסאפ'));
 });
 
-test('the code line tells "nobody ever asked" apart from codes having been sent', async () => {
+test('no code sent is never read as nobody using the app', async () => {
+  // The owner's iPhone app runs full screen with no code ever sent: adding
+  // the page to the home screen carried Safari's session along (2026-10-08).
   const empty = { days: 30, people: [], byHour: [], byDay: [], bySource: [],
-    totals: { opens: 0, people: 0, opens7: 0, people7: 0, admin_opens: 0, test_opens: 0 } };
-  assert.ok(reach.renderOpensView({ ...empty, codes: { sent: 0, people: 0 } }).includes('אף אחד עוד לא ביקש קוד'));
+    totals: { opens: 0, people: 0, opens7: 0, people7: 0, admin_opens: 0, test_opens: 0, source_since: new Date() } };
+  const none = reach.renderOpensView({ ...empty, codes: { sent: 0, people: 0 } });
+  assert.ok(!/אף אחד (עוד )?לא (נכנס|ביקש)/.test(none), 'no claim about who never used the app');
+  assert.ok(none.includes('לא ידוע'), 'app use before counting is said to be unknown');
   const sent = reach.renderOpensView({ ...empty, codes: { sent: 3, people: 2, last_at: new Date() } });
-  assert.ok(sent.includes('נשלחו 3 פעמים') && !sent.includes('אף אחד עוד לא ביקש'));
+  assert.ok(sent.includes('נשלחו 3 פעמים'));
 });
 
 test('sourceOf reads the app off ?hl= and nothing else', () => {
