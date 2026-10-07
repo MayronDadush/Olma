@@ -7312,6 +7312,19 @@ unnoticed in the first place. `tests/outbox.test.js` now pins the hour too:
 checked at 19:00 Saturday, released 09:00 Sunday, not 19:00 Sunday.
 
 
+### The owner's own message counted as a question nobody answered (2026-10-08)
+
+Gali's and Dov's 09:00 digests of 2026-10-07 were dropped as `quiet` and
+stamped as sent. Cause: `outbox/worker.js`, `countLadderAsk`, counted every
+`checkin` row except `onboarding_*` as the ladder asking "את פה?". The owner's
+hand-sent cards of 10-06 (`rung: admin`) and a repair of our own fault
+(`unanswered_repair`, sent to Gali three minutes after she wrote) each raised
+`checkin_misses` to 1, and the gate's silence rule (`checkin_misses >= 1`)
+then dropped everything Olma decides to say. Gali had answered; the repair
+landed after her answer and counted again. Rule: only the ladder's own rungs
+count; `admin`, `unanswered_repair` and `missed_goal_repair` do not
+(`tests/checkin-misses.test.js`). Gali's counter was reset by hand.
+
 ## Stopping, pausing and doctrine
 
 ### Not connected, read as not on Olma (fixed 2026-09-30)
