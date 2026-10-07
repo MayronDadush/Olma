@@ -1,0 +1,22 @@
+[Unit]
+Description=Olma food tracking (foodd, 127.0.0.1:8795)
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/node /opt/olma-food/bin/foodd.js
+WorkingDirectory=/opt/olma-food
+# FOOD_DB_URL, FOOD_PORT, FOOD_PUBLIC_BASE. Written once by
+# scripts/setup-box.sh, 0600, never synced by deploy.sh.
+EnvironmentFile=/opt/olma-food/.env
+Restart=on-failure
+RestartSec=5
+# The box is 2 GB and the gateway already swaps; a runaway here must not
+# take Olma with it.
+MemoryMax=192M
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

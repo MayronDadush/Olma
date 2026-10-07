@@ -1,0 +1,3330 @@
+{
+ "sweet potato, roasted": {
+  "id": 168483,
+  "description": "Sweet potato, cooked, baked in skin, flesh, without salt",
+  "kcal": 90,
+  "protein": 2.01,
+  "carbs": 20.71,
+  "fat": 0.15
+ },
+ "egg, scrambled": {
+  "id": 172187,
+  "description": "Egg, whole, cooked, scrambled",
+  "kcal": 149,
+  "protein": 9.99,
+  "carbs": 1.61,
+  "fat": 10.98
+ },
+ "pork sausage, cooked, grilled": {
+  "id": 174578,
+  "description": "Pork sausage, link/patty, cooked, pan-fried",
+  "kcal": 325,
+  "protein": 18.53,
+  "carbs": 1.42,
+  "fat": 27.25
+ },
+ "butter, salted": {
+  "id": 173410,
+  "description": "Butter, salted",
+  "kcal": 717,
+  "protein": 0.85,
+  "carbs": 0.06,
+  "fat": 81.11
+ },
+ "spinach, raw": {
+  "id": 168462,
+  "description": "Spinach, raw",
+  "kcal": 23,
+  "protein": 2.86,
+  "carbs": 3.63,
+  "fat": 0.39
+ },
+ "broccoli, cooked": {
+  "id": 168510,
+  "description": "Broccoli, cooked, boiled, drained, with salt",
+  "kcal": 35,
+  "protein": 2.38,
+  "carbs": 7.18,
+  "fat": 0.41
+ },
+ "chicken breast, roasted": {
+  "id": 171477,
+  "description": "Chicken, broilers or fryers, breast, meat only, cooked, roasted",
+  "kcal": 165,
+  "protein": 31.02,
+  "carbs": 0,
+  "fat": 3.57
+ },
+ "avocado, raw": {
+  "id": 171705,
+  "description": "Avocados, raw, all commercial varieties",
+  "kcal": 160,
+  "protein": 2,
+  "carbs": 8.53,
+  "fat": 14.66
+ },
+ "olives, black, pickled": {
+  "id": 169094,
+  "description": "Olives, ripe, canned (small-extra large)",
+  "kcal": 116,
+  "protein": 0.84,
+  "carbs": 6.04,
+  "fat": 10.9
+ },
+ "pork breakfast sausage, cooked": {
+  "id": 174578,
+  "description": "Pork sausage, link/patty, cooked, pan-fried",
+  "kcal": 325,
+  "protein": 18.53,
+  "carbs": 1.42,
+  "fat": 27.25
+ },
+ "kalamata olives": {
+  "id": 169094,
+  "description": "Olives, ripe, canned (small-extra large)",
+  "kcal": 116,
+  "protein": 0.84,
+  "carbs": 6.04,
+  "fat": 10.9
+ },
+ "bacon, fried": {
+  "id": 168322,
+  "description": "Pork, cured, bacon, pre-sliced, cooked, pan-fried",
+  "kcal": 468,
+  "protein": 33.92,
+  "carbs": 1.7,
+  "fat": 35.09
+ },
+ "potato, fried": {
+  "id": 170698,
+  "description": "Fast foods, potato, french fried in vegetable oil",
+  "kcal": 312,
+  "protein": 3.43,
+  "carbs": 41.44,
+  "fat": 14.73
+ },
+ "pineapple, raw": {
+  "id": 169124,
+  "description": "Pineapple, raw, all varieties",
+  "kcal": 50,
+  "protein": 0.54,
+  "carbs": 13.12,
+  "fat": 0.12
+ },
+ "pork sausage, cooked": {
+  "id": 174578,
+  "description": "Pork sausage, link/patty, cooked, pan-fried",
+  "kcal": 325,
+  "protein": 18.53,
+  "carbs": 1.42,
+  "fat": 27.25
+ },
+ "mushrooms, cooked": {
+  "id": 168537,
+  "description": "Mushrooms, white, cooked, boiled, drained, with salt",
+  "kcal": 28,
+  "protein": 2.17,
+  "carbs": 5.29,
+  "fat": 0.47
+ },
+ "cheddar cheese": {
+  "id": 173414,
+  "description": "Cheese, cheddar (Includes foods for USDA's Food Distribution Program)",
+  "kcal": 403,
+  "protein": 22.87,
+  "carbs": 3.37,
+  "fat": 33.31
+ },
+ "egg, whole, cooked, scrambled": {
+  "id": 172187,
+  "description": "Egg, whole, cooked, scrambled",
+  "kcal": 149,
+  "protein": 9.99,
+  "carbs": 1.61,
+  "fat": 10.98
+ },
+ "eggs, scrambled": {
+  "id": 172187,
+  "description": "Egg, whole, cooked, scrambled",
+  "kcal": 149,
+  "protein": 9.99,
+  "carbs": 1.61,
+  "fat": 10.98
+ },
+ "chicken sausage, cooked": {
+  "id": 173880,
+  "description": "Sausage, chicken or turkey, Italian style,  lower sodium",
+  "kcal": 183,
+  "protein": 21.43,
+  "carbs": 14.25,
+  "fat": 4.46
+ },
+ "sausage, roasted": {
+  "id": 174579,
+  "description": "Sausage, pork and beef, fresh, cooked",
+  "kcal": 396,
+  "protein": 13.8,
+  "carbs": 2.7,
+  "fat": 36.25
+ },
+ "sausage, cooked": {
+  "id": 174579,
+  "description": "Sausage, pork and beef, fresh, cooked",
+  "kcal": 396,
+  "protein": 13.8,
+  "carbs": 2.7,
+  "fat": 36.25
+ },
+ "almonds, raw": {
+  "id": 170567,
+  "description": "Nuts, almonds",
+  "kcal": 579,
+  "protein": 21.15,
+  "carbs": 21.55,
+  "fat": 49.93
+ },
+ "cantaloupe, raw": {
+  "id": 169092,
+  "description": "Melons, cantaloupe, raw",
+  "kcal": 34,
+  "protein": 0.84,
+  "carbs": 8.16,
+  "fat": 0.19
+ },
+ "grapes, raw": {
+  "id": 174683,
+  "description": "Grapes, red or green (European type, such as Thompson seedless), raw",
+  "kcal": 69,
+  "protein": 0.72,
+  "carbs": 18.1,
+  "fat": 0.16
+ },
+ "broccoli, cooked, boiled": {
+  "id": 168510,
+  "description": "Broccoli, cooked, boiled, drained, with salt",
+  "kcal": 35,
+  "protein": 2.38,
+  "carbs": 7.18,
+  "fat": 0.41
+ },
+ "olives, ripe, canned": {
+  "id": 169094,
+  "description": "Olives, ripe, canned (small-extra large)",
+  "kcal": 116,
+  "protein": 0.84,
+  "carbs": 6.04,
+  "fat": 10.9
+ },
+ "chicken breast, cooked": {
+  "id": 171478,
+  "description": "Chicken, broilers or fryers, breast, meat only, cooked, stewed",
+  "kcal": 151,
+  "protein": 28.98,
+  "carbs": 0,
+  "fat": 3.03
+ },
+ "berries, mixed (blackberries, raspberries)": {
+  "id": 173946,
+  "description": "Blackberries, raw",
+  "kcal": 43,
+  "protein": 1.39,
+  "carbs": 9.61,
+  "fat": 0.49
+ },
+ "egg, scrambled, cooked": {
+  "id": 172187,
+  "description": "Egg, whole, cooked, scrambled",
+  "kcal": 149,
+  "protein": 9.99,
+  "carbs": 1.61,
+  "fat": 10.98
+ },
+ "sausage, pan-fried": {
+  "id": 174578,
+  "description": "Pork sausage, link/patty, cooked, pan-fried",
+  "kcal": 325,
+  "protein": 18.53,
+  "carbs": 1.42,
+  "fat": 27.25
+ },
+ "chicken breast, cooked, roasted": {
+  "id": 171477,
+  "description": "Chicken, broilers or fryers, breast, meat only, cooked, roasted",
+  "kcal": 165,
+  "protein": 31.02,
+  "carbs": 0,
+  "fat": 3.57
+ },
+ "bacon, pan-fried": {
+  "id": 168322,
+  "description": "Pork, cured, bacon, pre-sliced, cooked, pan-fried",
+  "kcal": 468,
+  "protein": 33.92,
+  "carbs": 1.7,
+  "fat": 35.09
+ },
+ "potatoes, home-fried, with onion": {
+  "id": 170498,
+  "description": "Potatoes, o'brien, home-prepared",
+  "kcal": 81,
+  "protein": 2.35,
+  "carbs": 15.47,
+  "fat": 1.28
+ },
+ "chicken breast, cooked, diced": {
+  "id": 171477,
+  "description": "Chicken, broilers or fryers, breast, meat only, cooked, roasted",
+  "kcal": 165,
+  "protein": 31.02,
+  "carbs": 0,
+  "fat": 3.57
+ },
+ "cherry tomatoes, raw": {
+  "id": 170457,
+  "description": "Tomatoes, red, ripe, raw, year round average",
+  "kcal": 18,
+  "protein": 0.88,
+  "carbs": 3.89,
+  "fat": 0.2
+ },
+ "green bell pepper, raw": {
+  "id": 170427,
+  "description": "Peppers, sweet, green, raw",
+  "kcal": 20,
+  "protein": 0.86,
+  "carbs": 4.64,
+  "fat": 0.17
+ },
+ "carrot, grated, raw": {
+  "id": 170393,
+  "description": "Carrots, raw",
+  "kcal": 41,
+  "protein": 0.93,
+  "carbs": 9.58,
+  "fat": 0.24
+ },
+ "baby spinach, raw": {
+  "id": 168462,
+  "description": "Spinach, raw",
+  "kcal": 23,
+  "protein": 2.86,
+  "carbs": 3.63,
+  "fat": 0.39
+ },
+ "parmesan cheese": {
+  "id": 170848,
+  "description": "Cheese, parmesan, hard",
+  "kcal": 392,
+  "protein": 35.75,
+  "carbs": 3.22,
+  "fat": 25
+ },
+ "olives, pickled, black": {
+  "id": 169094,
+  "description": "Olives, ripe, canned (small-extra large)",
+  "kcal": 116,
+  "protein": 0.84,
+  "carbs": 6.04,
+  "fat": 10.9
+ },
+ "cucumber, raw": {
+  "id": 168409,
+  "description": "Cucumber, with peel, raw",
+  "kcal": 15,
+  "protein": 0.65,
+  "carbs": 3.63,
+  "fat": 0.11
+ },
+ "vinaigrette dressing": {
+  "id": 171019,
+  "description": "Salad dressing, italian dressing, commercial, regular",
+  "kcal": 240,
+  "protein": 0.41,
+  "carbs": 12.12,
+  "fat": 21.12
+ },
+ "onion, red, raw": {
+  "id": 170000,
+  "description": "Onions, raw",
+  "kcal": 40,
+  "protein": 1.1,
+  "carbs": 9.34,
+  "fat": 0.1
+ },
+ "sausage, pork or chicken, sliced, pan-fried": {
+  "id": 174578,
+  "description": "Pork sausage, link/patty, cooked, pan-fried",
+  "kcal": 325,
+  "protein": 18.53,
+  "carbs": 1.42,
+  "fat": 27.25
+ },
+ "almonds, raw, whole": {
+  "id": 170567,
+  "description": "Nuts, almonds",
+  "kcal": 579,
+  "protein": 21.15,
+  "carbs": 21.55,
+  "fat": 49.93
+ },
+ "grapes, red or green, raw": {
+  "id": 174683,
+  "description": "Grapes, red or green (European type, such as Thompson seedless), raw",
+  "kcal": 69,
+  "protein": 0.72,
+  "carbs": 18.1,
+  "fat": 0.16
+ },
+ "cantaloupe melon, raw": {
+  "id": 169092,
+  "description": "Melons, cantaloupe, raw",
+  "kcal": 34,
+  "protein": 0.84,
+  "carbs": 8.16,
+  "fat": 0.19
+ },
+ "hash browns, fried": {
+  "id": 170036,
+  "description": "Potatoes, hash brown, home-prepared",
+  "kcal": 265,
+  "protein": 3,
+  "carbs": 35.11,
+  "fat": 12.52
+ },
+ "eggs, scrambled, cooked": {
+  "id": 172187,
+  "description": "Egg, whole, cooked, scrambled",
+  "kcal": 149,
+  "protein": 9.99,
+  "carbs": 1.61,
+  "fat": 10.98
+ },
+ "mixed salad greens with raspberries": {
+  "id": 167755,
+  "description": "Raspberries, raw",
+  "kcal": 52,
+  "protein": 1.2,
+  "carbs": 11.94,
+  "fat": 0.65
+ },
+ "broccoli, cooked, steamed": {
+  "id": 168510,
+  "description": "Broccoli, cooked, boiled, drained, with salt",
+  "kcal": 35,
+  "protein": 2.38,
+  "carbs": 7.18,
+  "fat": 0.41
+ },
+ "lettuce, raw": {
+  "id": 169248,
+  "description": "Lettuce, iceberg (includes crisphead types), raw",
+  "kcal": 14,
+  "protein": 0.9,
+  "carbs": 2.97,
+  "fat": 0.14
+ },
+ "artichoke hearts, cooked": {
+  "id": 169311,
+  "description": "Artichokes, (globe or french), cooked, boiled, drained, with salt",
+  "kcal": 51,
+  "protein": 2.89,
+  "carbs": 11.39,
+  "fat": 0.34
+ },
+ "broccoli, raw": {
+  "id": 170379,
+  "description": "Broccoli, raw",
+  "kcal": 34,
+  "protein": 2.82,
+  "carbs": 6.64,
+  "fat": 0.37
+ },
+ "kidney beans, cooked": {
+  "id": 175242,
+  "description": "Beans, kidney, red, mature seeds, cooked, boiled, with salt",
+  "kcal": 127,
+  "protein": 8.67,
+  "carbs": 22.8,
+  "fat": 0.5
+ },
+ "beet greens, raw": {
+  "id": 170375,
+  "description": "Beet greens, raw",
+  "kcal": 22,
+  "protein": 2.2,
+  "carbs": 4.33,
+  "fat": 0.13
+ },
+ "broccoli, steamed": {
+  "id": 169967,
+  "description": "Broccoli, cooked, boiled, drained, without salt",
+  "kcal": 35,
+  "protein": 2.38,
+  "carbs": 7.18,
+  "fat": 0.41
+ },
+ "olives, black": {
+  "id": 169094,
+  "description": "Olives, ripe, canned (small-extra large)",
+  "kcal": 116,
+  "protein": 0.84,
+  "carbs": 6.04,
+  "fat": 10.9
+ },
+ "pork bacon, cooked": {
+  "id": 168322,
+  "description": "Pork, cured, bacon, pre-sliced, cooked, pan-fried",
+  "kcal": 468,
+  "protein": 33.92,
+  "carbs": 1.7,
+  "fat": 35.09
+ },
+ "pizza with ham and onion, baked": {
+  "id": 172095,
+  "description": "Pizza, meat topping, thick crust, frozen, cooked",
+  "kcal": 274,
+  "protein": 11.76,
+  "carbs": 30.76,
+  "fat": 11.52
+ },
+ "pizza, with cheese and meat": {
+  "id": 170759,
+  "description": "DIGIORNO Pizza, pepperoni topping, cheese stuffed crust, frozen, baked",
+  "kcal": 279,
+  "protein": 13.92,
+  "carbs": 29.46,
+  "fat": 11.71
+ },
+ "olives, black, raw": {
+  "id": 169094,
+  "description": "Olives, ripe, canned (small-extra large)",
+  "kcal": 116,
+  "protein": 0.84,
+  "carbs": 6.04,
+  "fat": 10.9
+ },
+ "sausages, fried": {
+  "id": 174578,
+  "description": "Pork sausage, link/patty, cooked, pan-fried",
+  "kcal": 325,
+  "protein": 18.53,
+  "carbs": 1.42,
+  "fat": 27.25
+ },
+ "fried rice with onion": {
+  "id": 167668,
+  "description": "Restaurant, Chinese, fried rice, without meat",
+  "kcal": 174,
+  "protein": 4.05,
+  "carbs": 32.79,
+  "fat": 2.96
+ },
+ "cheese, soft, white": {
+  "id": 172224,
+  "description": "Cheese, white, queso blanco",
+  "kcal": 310,
+  "protein": 20.38,
+  "carbs": 2.53,
+  "fat": 24.31
+ },
+ "rice, cooked": {
+  "id": 168878,
+  "description": "Rice, white, long-grain, regular, enriched, cooked",
+  "kcal": 130,
+  "protein": 2.69,
+  "carbs": 28.17,
+  "fat": 0.28
+ },
+ "cottage cheese": {
+  "id": 172179,
+  "description": "Cheese, cottage, creamed, large or small curd",
+  "kcal": 98,
+  "protein": 11.12,
+  "carbs": 3.38,
+  "fat": 4.3
+ },
+ "watermelon, raw": {
+  "id": 167765,
+  "description": "Watermelon, raw",
+  "kcal": 30,
+  "protein": 0.61,
+  "carbs": 7.55,
+  "fat": 0.15
+ },
+ "melon, raw": {
+  "id": 169092,
+  "description": "Melons, cantaloupe, raw",
+  "kcal": 34,
+  "protein": 0.84,
+  "carbs": 8.16,
+  "fat": 0.19
+ },
+ "bacon, cooked, fried": {
+  "id": 168322,
+  "description": "Pork, cured, bacon, pre-sliced, cooked, pan-fried",
+  "kcal": 468,
+  "protein": 33.92,
+  "carbs": 1.7,
+  "fat": 35.09
+ },
+ "carrot, raw, grated": {
+  "id": 170393,
+  "description": "Carrots, raw",
+  "kcal": 41,
+  "protein": 0.93,
+  "carbs": 9.58,
+  "fat": 0.24
+ },
+ "red bell pepper, raw": {
+  "id": 170108,
+  "description": "Peppers, sweet, red, raw",
+  "kcal": 26,
+  "protein": 0.99,
+  "carbs": 6.03,
+  "fat": 0.3
+ },
+ "smoked sausage, cooked": {
+  "id": 170606,
+  "description": "Sausage, beef, cured, cooked, smoked",
+  "kcal": 312,
+  "protein": 14.11,
+  "carbs": 2.42,
+  "fat": 26.91
+ },
+ "sausages, cooked": {
+  "id": 174579,
+  "description": "Sausage, pork and beef, fresh, cooked",
+  "kcal": 396,
+  "protein": 13.8,
+  "carbs": 2.7,
+  "fat": 36.25
+ },
+ "sausages, pork, beef or poultry, fried": {
+  "id": 174578,
+  "description": "Pork sausage, link/patty, cooked, pan-fried",
+  "kcal": 325,
+  "protein": 18.53,
+  "carbs": 1.42,
+  "fat": 27.25
+ },
+ "red onion, raw": {
+  "id": 170000,
+  "description": "Onions, raw",
+  "kcal": 40,
+  "protein": 1.1,
+  "carbs": 9.34,
+  "fat": 0.1
+ },
+ "bell pepper, green, raw": {
+  "id": 170427,
+  "description": "Peppers, sweet, green, raw",
+  "kcal": 20,
+  "protein": 0.86,
+  "carbs": 4.64,
+  "fat": 0.17
+ },
+ "bell pepper, red, raw": {
+  "id": 170108,
+  "description": "Peppers, sweet, red, raw",
+  "kcal": 26,
+  "protein": 0.99,
+  "carbs": 6.03,
+  "fat": 0.3
+ },
+ "carrot, raw": {
+  "id": 170393,
+  "description": "Carrots, raw",
+  "kcal": 41,
+  "protein": 0.93,
+  "carbs": 9.58,
+  "fat": 0.24
+ },
+ "banana, raw": {
+  "id": 173944,
+  "description": "Bananas, raw",
+  "kcal": 89,
+  "protein": 1.09,
+  "carbs": 22.84,
+  "fat": 0.33
+ },
+ "tahini with date syrup": {
+  "id": 170189,
+  "description": "Seeds, sesame butter, tahini, from roasted and toasted kernels (most common type)",
+  "kcal": 595,
+  "protein": 17,
+  "carbs": 21.19,
+  "fat": 53.76
+ },
+ "date syrup": {
+  "id": 167953,
+  "description": "Fruit syrup",
+  "kcal": 341,
+  "protein": 0,
+  "carbs": 85.13,
+  "fat": 0
+ },
+ "salmon, cooked, baked": {
+  "id": 175168,
+  "description": "Fish, salmon, Atlantic, farmed, cooked, dry heat",
+  "kcal": 206,
+  "protein": 22.1,
+  "carbs": 0,
+  "fat": 12.35
+ },
+ "quinoa, cooked": {
+  "id": 168917,
+  "description": "Quinoa, cooked",
+  "kcal": 120,
+  "protein": 4.4,
+  "carbs": 21.3,
+  "fat": 1.92
+ },
+ "sweet potato, cooked, baked": {
+  "id": 170134,
+  "description": "Sweet potato, cooked, baked in skin, flesh, with salt",
+  "kcal": 90,
+  "protein": 2.01,
+  "carbs": 20.71,
+  "fat": 0.15
+ },
+ "chickpeas, cooked": {
+  "id": 173799,
+  "description": "Chickpeas (garbanzo beans, bengal gram), mature seeds, cooked, boiled, with salt",
+  "kcal": 164,
+  "protein": 8.86,
+  "carbs": 27.42,
+  "fat": 2.59
+ },
+ "bread, sourdough": {
+  "id": 172675,
+  "description": "Bread, french or vienna (includes sourdough)",
+  "kcal": 272,
+  "protein": 10.75,
+  "carbs": 51.88,
+  "fat": 2.42
+ },
+ "kataifi pastry, cooked": {
+  "id": 172738,
+  "description": "Puff pastry, frozen, ready-to-bake, baked",
+  "kcal": 558,
+  "protein": 7.4,
+  "carbs": 45.7,
+  "fat": 38.5
+ },
+ "caramel sauce": {
+  "id": 171823,
+  "description": "Sauce, duck, ready-to-serve",
+  "kcal": 245,
+  "protein": 0.36,
+  "carbs": 60.66,
+  "fat": 0.13
+ },
+ "tofu, firm, pan-fried": {
+  "id": 172451,
+  "description": "Tofu, fried",
+  "kcal": 270,
+  "protein": 18.82,
+  "carbs": 8.86,
+  "fat": 20.18
+ },
+ "soy sauce or balsamic dressing": {
+  "id": 174277,
+  "description": "Soy sauce made from soy and wheat (shoyu)",
+  "kcal": 53,
+  "protein": 8.14,
+  "carbs": 4.93,
+  "fat": 0.57
+ },
+ "kataifi pastry, fried": {
+  "id": 172738,
+  "description": "Puff pastry, frozen, ready-to-bake, baked",
+  "kcal": 558,
+  "protein": 7.4,
+  "carbs": 45.7,
+  "fat": 38.5
+ },
+ "salad greens, mixed, raw": {
+  "id": 169249,
+  "description": "Lettuce, green leaf, raw",
+  "kcal": 15,
+  "protein": 1.36,
+  "carbs": 2.87,
+  "fat": 0.15
+ },
+ "yogurt, plain": {
+  "id": 171284,
+  "description": "Yogurt, plain, whole milk",
+  "kcal": 61,
+  "protein": 3.47,
+  "carbs": 4.66,
+  "fat": 3.25
+ },
+ "oatmeal, dry": {
+  "id": 172972,
+  "description": "Cereals, QUAKER, QUAKER MultiGrain Oatmeal, dry",
+  "kcal": 334,
+  "protein": 12.64,
+  "carbs": 72.62,
+  "fat": 2.73
+ },
+ "peach, raw": {
+  "id": 169928,
+  "description": "Peaches, yellow, raw",
+  "kcal": 39,
+  "protein": 0.91,
+  "carbs": 9.54,
+  "fat": 0.25
+ },
+ "grapes, red and green": {
+  "id": 174683,
+  "description": "Grapes, red or green (European type, such as Thompson seedless), raw",
+  "kcal": 69,
+  "protein": 0.72,
+  "carbs": 18.1,
+  "fat": 0.16
+ },
+ "melon, cantaloupe": {
+  "id": 169092,
+  "description": "Melons, cantaloupe, raw",
+  "kcal": 34,
+  "protein": 0.84,
+  "carbs": 8.16,
+  "fat": 0.19
+ },
+ "salmon, baked": {
+  "id": 175168,
+  "description": "Fish, salmon, Atlantic, farmed, cooked, dry heat",
+  "kcal": 206,
+  "protein": 22.1,
+  "carbs": 0,
+  "fat": 12.35
+ },
+ "hash browns, pan-fried": {
+  "id": 170044,
+  "description": "Potatoes, hash brown, frozen, plain, prepared, pan fried in canola oil",
+  "kcal": 219,
+  "protein": 2.65,
+  "carbs": 28.51,
+  "fat": 11.59
+ },
+ "vinaigrette salad dressing": {
+  "id": 171019,
+  "description": "Salad dressing, italian dressing, commercial, regular",
+  "kcal": 240,
+  "protein": 0.41,
+  "carbs": 12.12,
+  "fat": 21.12
+ },
+ "vegetable oil": {
+  "id": 172370,
+  "description": "Oil, vegetable, soybean, refined",
+  "kcal": 884,
+  "protein": 0,
+  "carbs": 0,
+  "fat": 100
+ },
+ "apple, raw": {
+  "id": 171688,
+  "description": "Apples, raw, with skin (Includes foods for USDA's Food Distribution Program)",
+  "kcal": 52,
+  "protein": 0.26,
+  "carbs": 13.81,
+  "fat": 0.17
+ },
+ "tomato, raw": {
+  "id": 170457,
+  "description": "Tomatoes, red, ripe, raw, year round average",
+  "kcal": 18,
+  "protein": 0.88,
+  "carbs": 3.89,
+  "fat": 0.2
+ },
+ "spinach, cooked": {
+  "id": 170531,
+  "description": "Spinach, cooked, boiled, drained, with salt",
+  "kcal": 23,
+  "protein": 2.97,
+  "carbs": 3.75,
+  "fat": 0.26
+ },
+ "fish fillet, cooked, in tomato sauce": {
+  "id": 175140,
+  "description": "Fish, sardine, Pacific, canned in tomato sauce, drained solids with bone",
+  "kcal": 185,
+  "protein": 20.86,
+  "carbs": 0.54,
+  "fat": 10.45
+ },
+ "tomato sauce, cooked, with herbs": {
+  "id": 170057,
+  "description": "Tomato products, canned, sauce, with herbs and cheese",
+  "kcal": 59,
+  "protein": 2.13,
+  "carbs": 10.24,
+  "fat": 1.93
+ },
+ "chicken, cooked, in sauce": {
+  "id": 171051,
+  "description": "Chicken, broilers or fryers, meat and skin, cooked, stewed",
+  "kcal": 219,
+  "protein": 24.68,
+  "carbs": 0,
+  "fat": 12.56
+ },
+ "rice, white, cooked": {
+  "id": 168878,
+  "description": "Rice, white, long-grain, regular, enriched, cooked",
+  "kcal": 130,
+  "protein": 2.69,
+  "carbs": 28.17,
+  "fat": 0.28
+ },
+ "fish fillet, cooked": {
+  "id": 175177,
+  "description": "Fish, tilapia, cooked, dry heat",
+  "kcal": 128,
+  "protein": 26.15,
+  "carbs": 0,
+  "fat": 2.65
+ },
+ "tomato sauce with herbs, cooked": {
+  "id": 170057,
+  "description": "Tomato products, canned, sauce, with herbs and cheese",
+  "kcal": 59,
+  "protein": 2.13,
+  "carbs": 10.24,
+  "fat": 1.93
+ },
+ "scrambled egg, cooked": {
+  "id": 172187,
+  "description": "Egg, whole, cooked, scrambled",
+  "kcal": 149,
+  "protein": 9.99,
+  "carbs": 1.61,
+  "fat": 10.98
+ },
+ "bacon, pan-fried, cooked": {
+  "id": 168322,
+  "description": "Pork, cured, bacon, pre-sliced, cooked, pan-fried",
+  "kcal": 468,
+  "protein": 33.92,
+  "carbs": 1.7,
+  "fat": 35.09
+ },
+ "pork breakfast sausage links, cooked, pan-fried": {
+  "id": 174578,
+  "description": "Pork sausage, link/patty, cooked, pan-fried",
+  "kcal": 325,
+  "protein": 18.53,
+  "carbs": 1.42,
+  "fat": 27.25
+ },
+ "egg, whole, scrambled": {
+  "id": 172187,
+  "description": "Egg, whole, cooked, scrambled",
+  "kcal": 149,
+  "protein": 9.99,
+  "carbs": 1.61,
+  "fat": 10.98
+ },
+ "pork sausage, cooked, pan-fried": {
+  "id": 174578,
+  "description": "Pork sausage, link/patty, cooked, pan-fried",
+  "kcal": 325,
+  "protein": 18.53,
+  "carbs": 1.42,
+  "fat": 27.25
+ },
+ "meatballs, cooked": {
+  "id": 171638,
+  "description": "Meatballs, frozen, Italian style",
+  "kcal": 286,
+  "protein": 14.4,
+  "carbs": 8.06,
+  "fat": 22.21
+ },
+ "peppers, sweet, green, raw": {
+  "id": 170427,
+  "description": "Peppers, sweet, green, raw",
+  "kcal": 20,
+  "protein": 0.86,
+  "carbs": 4.64,
+  "fat": 0.17
+ },
+ "peppers, sweet, red, raw": {
+  "id": 170108,
+  "description": "Peppers, sweet, red, raw",
+  "kcal": 26,
+  "protein": 0.99,
+  "carbs": 6.03,
+  "fat": 0.3
+ },
+ "onions, red, raw": {
+  "id": 170000,
+  "description": "Onions, raw",
+  "kcal": 40,
+  "protein": 1.1,
+  "carbs": 9.34,
+  "fat": 0.1
+ },
+ "cabbage, white, raw": {
+  "id": 169975,
+  "description": "Cabbage, raw",
+  "kcal": 25,
+  "protein": 1.28,
+  "carbs": 5.8,
+  "fat": 0.1
+ },
+ "balsamic vinaigrette": {
+  "id": 172241,
+  "description": "Vinegar, balsamic",
+  "kcal": 88,
+  "protein": 0.49,
+  "carbs": 17.03,
+  "fat": 0
+ },
+ "white cabbage, raw": {
+  "id": 169975,
+  "description": "Cabbage, raw",
+  "kcal": 25,
+  "protein": 1.28,
+  "carbs": 5.8,
+  "fat": 0.1
+ },
+ "sausage balls, cooked": {
+  "id": 174579,
+  "description": "Sausage, pork and beef, fresh, cooked",
+  "kcal": 396,
+  "protein": 13.8,
+  "carbs": 2.7,
+  "fat": 36.25
+ },
+ "smoked sausage, pork or beef, sliced, cooked": {
+  "id": 174585,
+  "description": "Sausage, smoked link sausage, pork and beef",
+  "kcal": 320,
+  "protein": 12,
+  "carbs": 2.42,
+  "fat": 28.73
+ },
+ "grapes, red, raw": {
+  "id": 174683,
+  "description": "Grapes, red or green (European type, such as Thompson seedless), raw",
+  "kcal": 69,
+  "protein": 0.72,
+  "carbs": 18.1,
+  "fat": 0.16
+ },
+ "grapes, green, raw": {
+  "id": 174683,
+  "description": "Grapes, red or green (European type, such as Thompson seedless), raw",
+  "kcal": 69,
+  "protein": 0.72,
+  "carbs": 18.1,
+  "fat": 0.16
+ },
+ "kataifi, shredded phyllo pastry, baked": {
+  "id": 172738,
+  "description": "Puff pastry, frozen, ready-to-bake, baked",
+  "kcal": 558,
+  "protein": 7.4,
+  "carbs": 45.7,
+  "fat": 38.5
+ },
+ "yogurt, plain, whole milk": {
+  "id": 171284,
+  "description": "Yogurt, plain, whole milk",
+  "kcal": 61,
+  "protein": 3.47,
+  "carbs": 4.66,
+  "fat": 3.25
+ },
+ "muesli, with seeds, no added sugar": {
+  "id": 173904,
+  "description": "Cereals, oats, regular and quick, not fortified, dry",
+  "kcal": 379,
+  "protein": 13.15,
+  "carbs": 67.7,
+  "fat": 6.52,
+  "manual": true
+ },
+ "chocolate hazelnut spread": {
+  "id": 168000,
+  "description": "Chocolate-flavored hazelnut spread",
+  "kcal": 539,
+  "protein": 5.41,
+  "carbs": 62.36,
+  "fat": 29.73
+ },
+ "hawaiian pizza, baked": {
+  "id": 170715,
+  "description": "Pizza, meat and vegetable topping, regular crust, frozen, cooked",
+  "kcal": 276,
+  "protein": 11.28,
+  "carbs": 25.14,
+  "fat": 14.43
+ },
+ "tofu, roasted": {
+  "id": 172451,
+  "description": "Tofu, fried",
+  "kcal": 270,
+  "protein": 18.82,
+  "carbs": 8.86,
+  "fat": 20.18
+ },
+ "spinach and kale, raw": {
+  "id": 168462,
+  "description": "Spinach, raw",
+  "kcal": 23,
+  "protein": 2.86,
+  "carbs": 3.63,
+  "fat": 0.39
+ },
+ "carrots, cooked": {
+  "id": 169339,
+  "description": "Carrots, cooked, boiled, drained, with salt",
+  "kcal": 35,
+  "protein": 0.76,
+  "carbs": 8.22,
+  "fat": 0.18
+ },
+ "nectarine, raw": {
+  "id": 169914,
+  "description": "Nectarines, raw",
+  "kcal": 44,
+  "protein": 1.06,
+  "carbs": 10.55,
+  "fat": 0.32
+ },
+ "sourdough bread": {
+  "id": 172675,
+  "description": "Bread, french or vienna (includes sourdough)",
+  "kcal": 272,
+  "protein": 10.75,
+  "carbs": 51.88,
+  "fat": 2.42
+ },
+ "cauliflower, cooked": {
+  "id": 168520,
+  "description": "Cauliflower, cooked, boiled, drained, with salt",
+  "kcal": 23,
+  "protein": 1.84,
+  "carbs": 4.11,
+  "fat": 0.45
+ },
+ "mixed salad greens": {
+  "id": 172074,
+  "description": "McDONALD'S, Side Salad",
+  "kcal": 20,
+  "protein": 1.03,
+  "carbs": 4.3,
+  "fat": 0.19
+ },
+ "yellowtail, raw": {
+  "id": 175163,
+  "description": "Fish, yellowtail, mixed species, raw",
+  "kcal": 146,
+  "protein": 23.14,
+  "carbs": 0,
+  "fat": 5.24
+ },
+ "cream sauce, white": {
+  "id": 174525,
+  "description": "Sauce, homemade, white, medium",
+  "kcal": 147,
+  "protein": 3.84,
+  "carbs": 9.17,
+  "fat": 10.63
+ },
+ "hard cheese, grated": {
+  "id": 171247,
+  "description": "Cheese, parmesan, grated",
+  "kcal": 420,
+  "protein": 28.42,
+  "carbs": 13.91,
+  "fat": 27.84
+ },
+ "beef steak, pan-fried, sliced": {
+  "id": 169550,
+  "description": "Beef, top sirloin, steak, separable lean and fat, trimmed to 1/8 fat, choice, cooked, pan-fried",
+  "kcal": 313,
+  "protein": 28.77,
+  "carbs": 0,
+  "fat": 21.06
+ },
+ "beef gravy, brown sauce": {
+  "id": 171564,
+  "description": "Gravy, beef, canned, ready-to-serve",
+  "kcal": 53,
+  "protein": 3.75,
+  "carbs": 4.81,
+  "fat": 2.36
+ },
+ "salmon, atlantic, cooked, dry heat (roasted)": {
+  "id": 175168,
+  "description": "Fish, salmon, Atlantic, farmed, cooked, dry heat",
+  "kcal": 206,
+  "protein": 22.1,
+  "carbs": 0,
+  "fat": 12.35
+ },
+ "yellow bell pepper, raw": {
+  "id": 169383,
+  "description": "Peppers, sweet, yellow, raw",
+  "kcal": 27,
+  "protein": 1,
+  "carbs": 6.32,
+  "fat": 0.21
+ },
+ "dill weed, fresh": {
+  "id": 172233,
+  "description": "Dill weed, fresh",
+  "kcal": 43,
+  "protein": 3.46,
+  "carbs": 7.02,
+  "fat": 1.12
+ },
+ "salmon, baked or roasted": {
+  "id": 175168,
+  "description": "Fish, salmon, Atlantic, farmed, cooked, dry heat",
+  "kcal": 206,
+  "protein": 22.1,
+  "carbs": 0,
+  "fat": 12.35
+ },
+ "sweet pepper, red and yellow, raw": {
+  "id": 170108,
+  "description": "Peppers, sweet, red, raw",
+  "kcal": 26,
+  "protein": 0.99,
+  "carbs": 6.03,
+  "fat": 0.3
+ },
+ "dill, fresh": {
+  "id": 172233,
+  "description": "Dill weed, fresh",
+  "kcal": 43,
+  "protein": 3.46,
+  "carbs": 7.02,
+  "fat": 1.12
+ },
+ "potato, boiled, without skin": {
+  "id": 170440,
+  "description": "Potatoes, boiled, cooked without skin, flesh, without salt",
+  "kcal": 86,
+  "protein": 1.71,
+  "carbs": 20.01,
+  "fat": 0.1
+ },
+ "carrots, boiled": {
+  "id": 170394,
+  "description": "Carrots, cooked, boiled, drained, without salt",
+  "kcal": 35,
+  "protein": 0.76,
+  "carbs": 8.22,
+  "fat": 0.18
+ },
+ "cauliflower, boiled": {
+  "id": 170397,
+  "description": "Cauliflower, cooked, boiled, drained, without salt",
+  "kcal": 23,
+  "protein": 1.84,
+  "carbs": 4.11,
+  "fat": 0.45
+ },
+ "broccoli, boiled": {
+  "id": 169967,
+  "description": "Broccoli, cooked, boiled, drained, without salt",
+  "kcal": 35,
+  "protein": 2.38,
+  "carbs": 7.18,
+  "fat": 0.41
+ },
+ "lemon, raw, without peel": {
+  "id": 167746,
+  "description": "Lemons, raw, without peel",
+  "kcal": 29,
+  "protein": 1.1,
+  "carbs": 9.32,
+  "fat": 0.3
+ },
+ "pork bacon, pan-fried": {
+  "id": 168322,
+  "description": "Pork, cured, bacon, pre-sliced, cooked, pan-fried",
+  "kcal": 468,
+  "protein": 33.92,
+  "carbs": 1.7,
+  "fat": 35.09
+ },
+ "carrots, cooked, boiled": {
+  "id": 170394,
+  "description": "Carrots, cooked, boiled, drained, without salt",
+  "kcal": 35,
+  "protein": 0.76,
+  "carbs": 8.22,
+  "fat": 0.18
+ },
+ "scrambled eggs": {
+  "id": 172187,
+  "description": "Egg, whole, cooked, scrambled",
+  "kcal": 149,
+  "protein": 9.99,
+  "carbs": 1.61,
+  "fat": 10.98
+ },
+ "carrots, raw, shredded": {
+  "id": 170393,
+  "description": "Carrots, raw",
+  "kcal": 41,
+  "protein": 0.93,
+  "carbs": 9.58,
+  "fat": 0.24
+ },
+ "sausage, pork or beef, cooked": {
+  "id": 174579,
+  "description": "Sausage, pork and beef, fresh, cooked",
+  "kcal": 396,
+  "protein": 13.8,
+  "carbs": 2.7,
+  "fat": 36.25
+ },
+ "oats, rolled, dry": {
+  "id": 173904,
+  "description": "Cereals, oats, regular and quick, not fortified, dry",
+  "kcal": 379,
+  "protein": 13.15,
+  "carbs": 67.7,
+  "fat": 6.52
+ },
+ "honey": {
+  "id": 169640,
+  "description": "Honey",
+  "kcal": 304,
+  "protein": 0.3,
+  "carbs": 82.4,
+  "fat": 0
+ },
+ "granola, dry": {
+  "id": 171646,
+  "description": "Cereals ready-to-eat, granola, homemade",
+  "kcal": 489,
+  "protein": 13.67,
+  "carbs": 53.88,
+  "fat": 24.31
+ },
+ "sauce": {
+  "id": 174523,
+  "description": "Sauce, barbecue",
+  "kcal": 172,
+  "protein": 0.82,
+  "carbs": 40.77,
+  "fat": 0.63
+ },
+ "carrot, roasted": {
+  "id": 169339,
+  "description": "Carrots, cooked, boiled, drained, with salt",
+  "kcal": 35,
+  "protein": 0.76,
+  "carbs": 8.22,
+  "fat": 0.18
+ },
+ "wheat bread": {
+  "id": 172686,
+  "description": "Bread, wheat",
+  "kcal": 274,
+  "protein": 10.67,
+  "carbs": 47.54,
+  "fat": 4.53
+ },
+ "sourdough bread, baked": {
+  "id": 172675,
+  "description": "Bread, french or vienna (includes sourdough)",
+  "kcal": 272,
+  "protein": 10.75,
+  "carbs": 51.88,
+  "fat": 2.42
+ },
+ "caramel topping sauce": {
+  "id": 168841,
+  "description": "Toppings, butterscotch or caramel",
+  "kcal": 216,
+  "protein": 1.21,
+  "carbs": 57.01,
+  "fat": 0
+ },
+ "prosciutto, cured": {
+  "id": 167876,
+  "description": "Pork, cured, ham, whole, separable lean only, unheated",
+  "kcal": 147,
+  "protein": 22.32,
+  "carbs": 0.05,
+  "fat": 5.71
+ },
+ "cream sauce, prepared": {
+  "id": 174542,
+  "description": "Sauce, white, thin, prepared-from-recipe, with butter",
+  "kcal": 72,
+  "protein": 3.95,
+  "carbs": 8.29,
+  "fat": 2.56
+ },
+ "olive oil, raw": {
+  "id": 171413,
+  "description": "Oil, olive, salad or cooking",
+  "kcal": 884,
+  "protein": 0,
+  "carbs": 0,
+  "fat": 100
+ },
+ "chicken breast, diced, cooked": {
+  "id": 171477,
+  "description": "Chicken, broilers or fryers, breast, meat only, cooked, roasted",
+  "kcal": 165,
+  "protein": 31.02,
+  "carbs": 0,
+  "fat": 3.57
+ },
+ "kataifi shredded phyllo dough, baked": {
+  "id": 172791,
+  "description": "Phyllo dough",
+  "kcal": 299,
+  "protein": 7.1,
+  "carbs": 52.6,
+  "fat": 6
+ },
+ "tuna, raw": {
+  "id": 175159,
+  "description": "Fish, tuna, fresh, yellowfin, raw",
+  "kcal": 109,
+  "protein": 24.4,
+  "carbs": 0,
+  "fat": 0.49
+ },
+ "salad dressing": {
+  "id": 171019,
+  "description": "Salad dressing, italian dressing, commercial, regular",
+  "kcal": 240,
+  "protein": 0.41,
+  "carbs": 12.12,
+  "fat": 21.12
+ },
+ "plain yogurt": {
+  "id": 171284,
+  "description": "Yogurt, plain, whole milk",
+  "kcal": 61,
+  "protein": 3.47,
+  "carbs": 4.66,
+  "fat": 3.25
+ },
+ "rolled oats, raw": {
+  "id": 173904,
+  "description": "Cereals, oats, regular and quick, not fortified, dry",
+  "kcal": 379,
+  "protein": 13.15,
+  "carbs": 67.7,
+  "fat": 6.52
+ },
+ "mashed potatoes, cooked": {
+  "id": 168555,
+  "description": "Potatoes, mashed, home-prepared, whole milk and butter added",
+  "kcal": 113,
+  "protein": 1.86,
+  "carbs": 16.81,
+  "fat": 4.22
+ },
+ "brown gravy, cooked": {
+  "id": 171564,
+  "description": "Gravy, beef, canned, ready-to-serve",
+  "kcal": 53,
+  "protein": 3.75,
+  "carbs": 4.81,
+  "fat": 2.36
+ },
+ "duck breast, roasted": {
+  "id": 171510,
+  "description": "Duck, young duckling, domesticated, White Pekin, breast, meat and skin, boneless, cooked, roasted",
+  "kcal": 202,
+  "protein": 24.5,
+  "carbs": 0,
+  "fat": 10.85
+ },
+ "gravy, cooked": {
+  "id": 171564,
+  "description": "Gravy, beef, canned, ready-to-serve",
+  "kcal": 53,
+  "protein": 3.75,
+  "carbs": 4.81,
+  "fat": 2.36
+ },
+ "cooking oil, cooked": {
+  "id": 171411,
+  "description": "Oil, soybean, salad or cooking",
+  "kcal": 884,
+  "protein": 0,
+  "carbs": 0,
+  "fat": 100
+ },
+ "trout, cooked": {
+  "id": 172004,
+  "description": "Fish, trout, mixed species, cooked, dry heat",
+  "kcal": 190,
+  "protein": 26.63,
+  "carbs": 0,
+  "fat": 8.47
+ },
+ "lemon, raw": {
+  "id": 167746,
+  "description": "Lemons, raw, without peel",
+  "kcal": 29,
+  "protein": 1.1,
+  "carbs": 9.32,
+  "fat": 0.3
+ },
+ "white fish, raw": {
+  "id": 175150,
+  "description": "Fish, sucker, white, raw",
+  "kcal": 92,
+  "protein": 16.76,
+  "carbs": 0,
+  "fat": 2.32
+ },
+ "figs, fresh, raw": {
+  "id": 173021,
+  "description": "Figs, raw",
+  "kcal": 74,
+  "protein": 0.75,
+  "carbs": 19.18,
+  "fat": 0.3
+ },
+ "trout, roasted": {
+  "id": 172004,
+  "description": "Fish, trout, mixed species, cooked, dry heat",
+  "kcal": 190,
+  "protein": 26.63,
+  "carbs": 0,
+  "fat": 8.47
+ },
+ "potato, baked with skin": {
+  "id": 170093,
+  "description": "Potatoes, baked, flesh and skin, without salt",
+  "kcal": 93,
+  "protein": 2.5,
+  "carbs": 21.15,
+  "fat": 0.13
+ },
+ "beef gravy": {
+  "id": 171564,
+  "description": "Gravy, beef, canned, ready-to-serve",
+  "kcal": 53,
+  "protein": 3.75,
+  "carbs": 4.81,
+  "fat": 2.36
+ },
+ "mashed potatoes, prepared with butter": {
+  "id": 168555,
+  "description": "Potatoes, mashed, home-prepared, whole milk and butter added",
+  "kcal": 113,
+  "protein": 1.86,
+  "carbs": 16.81,
+  "fat": 4.22
+ },
+ "cantaloupe": {
+  "id": 169092,
+  "description": "Melons, cantaloupe, raw",
+  "kcal": 34,
+  "protein": 0.84,
+  "carbs": 8.16,
+  "fat": 0.19
+ },
+ "almonds": {
+  "id": 170567,
+  "description": "Nuts, almonds",
+  "kcal": 579,
+  "protein": 21.15,
+  "carbs": 21.55,
+  "fat": 49.93
+ },
+ "sausage": {
+  "id": 174579,
+  "description": "Sausage, pork and beef, fresh, cooked",
+  "kcal": 396,
+  "protein": 13.8,
+  "carbs": 2.7,
+  "fat": 36.25
+ },
+ "mixed greens": {
+  "id": 169249,
+  "description": "Lettuce, green leaf, raw",
+  "kcal": 15,
+  "protein": 1.36,
+  "carbs": 2.87,
+  "fat": 0.15
+ },
+ "pears": {
+  "id": 169118,
+  "description": "Pears, raw",
+  "kcal": 57,
+  "protein": 0.36,
+  "carbs": 15.23,
+  "fat": 0.14
+ },
+ "mandarin oranges": {
+  "id": 169105,
+  "description": "Tangerines, (mandarin oranges), raw",
+  "kcal": 53,
+  "protein": 0.81,
+  "carbs": 13.34,
+  "fat": 0.31
+ },
+ "potatoes": {
+  "id": 170093,
+  "description": "Potatoes, baked, flesh and skin, without salt",
+  "kcal": 93,
+  "protein": 2.5,
+  "carbs": 21.15,
+  "fat": 0.13
+ },
+ "cherry tomatoes": {
+  "id": 170457,
+  "description": "Tomatoes, red, ripe, raw, year round average",
+  "kcal": 18,
+  "protein": 0.88,
+  "carbs": 3.89,
+  "fat": 0.2
+ },
+ "lettuce": {
+  "id": 169248,
+  "description": "Lettuce, iceberg (includes crisphead types), raw",
+  "kcal": 14,
+  "protein": 0.9,
+  "carbs": 2.97,
+  "fat": 0.14
+ },
+ "pizza": {
+  "id": 170317,
+  "description": "Pizza, cheese topping, regular crust, frozen, cooked",
+  "kcal": 268,
+  "protein": 10.36,
+  "carbs": 29.02,
+  "fat": 12.28
+ },
+ "steak": {
+  "id": 172115,
+  "description": "Beef, short loin, porterhouse steak, separable lean and fat, all grades, cooked, grilled",
+  "kcal": 276,
+  "protein": 25.4,
+  "carbs": 0,
+  "fat": 18.57,
+  "manual": true
+ },
+ "egg whites": {
+  "id": 172183,
+  "description": "Egg, white, raw, fresh",
+  "kcal": 52,
+  "protein": 10.9,
+  "carbs": 0.73,
+  "fat": 0.17
+ },
+ "watermelon": {
+  "id": 167765,
+  "description": "Watermelon, raw",
+  "kcal": 30,
+  "protein": 0.61,
+  "carbs": 7.55,
+  "fat": 0.15
+ },
+ "honeydew melons": {
+  "id": 169911,
+  "description": "Melons, honeydew, raw",
+  "kcal": 36,
+  "protein": 0.54,
+  "carbs": 9.09,
+  "fat": 0.14
+ },
+ "grilled chicken": {
+  "id": 171534,
+  "description": "Chicken, broiler or fryers, breast, skinless, boneless, meat only, cooked, grilled",
+  "kcal": 151,
+  "protein": 30.54,
+  "carbs": 0,
+  "fat": 3.17
+ },
+ "strawberries": {
+  "id": 167762,
+  "description": "Strawberries, raw",
+  "kcal": 32,
+  "protein": 0.67,
+  "carbs": 7.68,
+  "fat": 0.3
+ },
+ "bell peppers": {
+  "id": 170427,
+  "description": "Peppers, sweet, green, raw",
+  "kcal": 20,
+  "protein": 0.86,
+  "carbs": 4.64,
+  "fat": 0.17
+ },
+ "carrot": {
+  "id": 170393,
+  "description": "Carrots, raw",
+  "kcal": 41,
+  "protein": 0.93,
+  "carbs": 9.58,
+  "fat": 0.24
+ },
+ "cucumbers": {
+  "id": 168409,
+  "description": "Cucumber, with peel, raw",
+  "kcal": 15,
+  "protein": 0.65,
+  "carbs": 3.63,
+  "fat": 0.11
+ },
+ "onions": {
+  "id": 170000,
+  "description": "Onions, raw",
+  "kcal": 40,
+  "protein": 1.1,
+  "carbs": 9.34,
+  "fat": 0.1
+ },
+ "garden salad": {
+  "id": 172074,
+  "description": "McDONALD'S, Side Salad",
+  "kcal": 20,
+  "protein": 1.03,
+  "carbs": 4.3,
+  "fat": 0.19
+ },
+ "hash browns": {
+  "id": 170036,
+  "description": "Potatoes, hash brown, home-prepared",
+  "kcal": 265,
+  "protein": 3,
+  "carbs": 35.11,
+  "fat": 12.52
+ },
+ "artichokes": {
+  "id": 168386,
+  "description": "Artichokes, (globe or french), cooked, boiled, drained, without salt",
+  "kcal": 53,
+  "protein": 2.89,
+  "carbs": 11.95,
+  "fat": 0.34
+ },
+ "cantaloupe melon, raw, cubed": {
+  "id": 169092,
+  "description": "Melons, cantaloupe, raw",
+  "kcal": 34,
+  "protein": 0.84,
+  "carbs": 8.16,
+  "fat": 0.19
+ },
+ "bacon, cooked": {
+  "id": 168322,
+  "description": "Pork, cured, bacon, pre-sliced, cooked, pan-fried",
+  "kcal": 468,
+  "protein": 33.92,
+  "carbs": 1.7,
+  "fat": 35.09
+ },
+ "potatoes, fried": {
+  "id": 167605,
+  "description": "Potatoes, hash brown, refrigerated, prepared, pan-fried in canola oil",
+  "kcal": 242,
+  "protein": 3.24,
+  "carbs": 33.99,
+  "fat": 10.3
+ },
+ "globe artichokes, cooked": {
+  "id": 169311,
+  "description": "Artichokes, (globe or french), cooked, boiled, drained, with salt",
+  "kcal": 51,
+  "protein": 2.89,
+  "carbs": 11.39,
+  "fat": 0.34
+ },
+ "sausages, pork or beef, cooked, pan-fried": {
+  "id": 174578,
+  "description": "Pork sausage, link/patty, cooked, pan-fried",
+  "kcal": 325,
+  "protein": 18.53,
+  "carbs": 1.42,
+  "fat": 27.25
+ },
+ "blueberries, raw": {
+  "id": 171711,
+  "description": "Blueberries, raw",
+  "kcal": 57,
+  "protein": 0.74,
+  "carbs": 14.49,
+  "fat": 0.33
+ },
+ "strawberries, raw": {
+  "id": 167762,
+  "description": "Strawberries, raw",
+  "kcal": 32,
+  "protein": 0.67,
+  "carbs": 7.68,
+  "fat": 0.3
+ },
+ "chicken breast, cooked, skinless": {
+  "id": 171140,
+  "description": "Chicken, broiler or fryers, breast, skinless, boneless, meat only, cooked, braised",
+  "kcal": 157,
+  "protein": 32.06,
+  "carbs": 0,
+  "fat": 3.24
+ },
+ "mixed salad greens, raw": {
+  "id": 169249,
+  "description": "Lettuce, green leaf, raw",
+  "kcal": 15,
+  "protein": 1.36,
+  "carbs": 2.87,
+  "fat": 0.15
+ },
+ "black olives, canned": {
+  "id": 169094,
+  "description": "Olives, ripe, canned (small-extra large)",
+  "kcal": 116,
+  "protein": 0.84,
+  "carbs": 6.04,
+  "fat": 10.9
+ },
+ "olives, black, cured": {
+  "id": 169094,
+  "description": "Olives, ripe, canned (small-extra large)",
+  "kcal": 116,
+  "protein": 0.84,
+  "carbs": 6.04,
+  "fat": 10.9
+ },
+ "potato, baked": {
+  "id": 170111,
+  "description": "Potatoes, baked, flesh and skin, with salt",
+  "kcal": 93,
+  "protein": 2.5,
+  "carbs": 21.15,
+  "fat": 0.13
+ },
+ "pear, raw": {
+  "id": 169118,
+  "description": "Pears, raw",
+  "kcal": 57,
+  "protein": 0.36,
+  "carbs": 15.23,
+  "fat": 0.14
+ },
+ "clementine, raw": {
+  "id": 168195,
+  "description": "Clementines, raw",
+  "kcal": 47,
+  "protein": 0.85,
+  "carbs": 12.02,
+  "fat": 0.15
+ },
+ "potatoes, roasted": {
+  "id": 170111,
+  "description": "Potatoes, baked, flesh and skin, with salt",
+  "kcal": 93,
+  "protein": 2.5,
+  "carbs": 21.15,
+  "fat": 0.13
+ },
+ "mandarin, raw": {
+  "id": 169105,
+  "description": "Tangerines, (mandarin oranges), raw",
+  "kcal": 53,
+  "protein": 0.81,
+  "carbs": 13.34,
+  "fat": 0.31
+ },
+ "sausage, pork, cooked": {
+  "id": 174578,
+  "description": "Pork sausage, link/patty, cooked, pan-fried",
+  "kcal": 325,
+  "protein": 18.53,
+  "carbs": 1.42,
+  "fat": 27.25
+ },
+ "scrambled eggs, cooked": {
+  "id": 172187,
+  "description": "Egg, whole, cooked, scrambled",
+  "kcal": 149,
+  "protein": 9.99,
+  "carbs": 1.61,
+  "fat": 10.98
+ },
+ "pork belly, roasted": {
+  "id": 169178,
+  "description": "Pork, fresh, spareribs, separable lean and fat, cooked, roasted",
+  "kcal": 361,
+  "protein": 20.89,
+  "carbs": 0,
+  "fat": 30.86
+ },
+ "sweet potato, baked": {
+  "id": 168483,
+  "description": "Sweet potato, cooked, baked in skin, flesh, without salt",
+  "kcal": 90,
+  "protein": 2.01,
+  "carbs": 20.71,
+  "fat": 0.15
+ },
+ "raspberries, raw": {
+  "id": 167755,
+  "description": "Raspberries, raw",
+  "kcal": 52,
+  "protein": 1.2,
+  "carbs": 11.94,
+  "fat": 0.65
+ },
+ "blackberries, raw": {
+  "id": 173946,
+  "description": "Blackberries, raw",
+  "kcal": 43,
+  "protein": 1.39,
+  "carbs": 9.61,
+  "fat": 0.49
+ },
+ "sausage, pork, cooked, pan-fried": {
+  "id": 174578,
+  "description": "Pork sausage, link/patty, cooked, pan-fried",
+  "kcal": 325,
+  "protein": 18.53,
+  "carbs": 1.42,
+  "fat": 27.25
+ },
+ "scrambled eggs, cooked with butter": {
+  "id": 172187,
+  "description": "Egg, whole, cooked, scrambled",
+  "kcal": 149,
+  "protein": 9.99,
+  "carbs": 1.61,
+  "fat": 10.98
+ },
+ "cabbage, cooked": {
+  "id": 168514,
+  "description": "Cabbage, common, cooked, boiled, drained, with salt",
+  "kcal": 23,
+  "protein": 1.27,
+  "carbs": 5.51,
+  "fat": 0.06
+ },
+ "potatoes, pan-fried": {
+  "id": 167605,
+  "description": "Potatoes, hash brown, refrigerated, prepared, pan-fried in canola oil",
+  "kcal": 242,
+  "protein": 3.24,
+  "carbs": 33.99,
+  "fat": 10.3
+ },
+ "mango, raw": {
+  "id": 169910,
+  "description": "Mangos, raw",
+  "kcal": 60,
+  "protein": 0.82,
+  "carbs": 14.98,
+  "fat": 0.38
+ },
+ "figs, dried": {
+  "id": 174665,
+  "description": "Figs, dried, uncooked",
+  "kcal": 249,
+  "protein": 3.3,
+  "carbs": 63.87,
+  "fat": 0.93
+ },
+ "dates, dried": {
+  "id": 168191,
+  "description": "Dates, medjool",
+  "kcal": 277,
+  "protein": 1.81,
+  "carbs": 74.97,
+  "fat": 0.15
+ },
+ "potato, roasted": {
+  "id": 170111,
+  "description": "Potatoes, baked, flesh and skin, with salt",
+  "kcal": 93,
+  "protein": 2.5,
+  "carbs": 21.15,
+  "fat": 0.13
+ },
+ "parmesan cheese, shaved": {
+  "id": 173431,
+  "description": "Cheese, parmesan, shredded",
+  "kcal": 415,
+  "protein": 37.86,
+  "carbs": 3.41,
+  "fat": 27.34
+ },
+ "kidney beans, cooked, boiled": {
+  "id": 175242,
+  "description": "Beans, kidney, red, mature seeds, cooked, boiled, with salt",
+  "kcal": 127,
+  "protein": 8.67,
+  "carbs": 22.8,
+  "fat": 0.5
+ },
+ "cucumber, raw, with peel": {
+  "id": 168409,
+  "description": "Cucumber, with peel, raw",
+  "kcal": 15,
+  "protein": 0.65,
+  "carbs": 3.63,
+  "fat": 0.11
+ },
+ "honey mustard salad dressing": {
+  "id": 171043,
+  "description": "Salad dressing, honey mustard, regular",
+  "kcal": 464,
+  "protein": 0.87,
+  "carbs": 23.33,
+  "fat": 40.83
+ },
+ "bacon, cooked, pan-fried": {
+  "id": 168322,
+  "description": "Pork, cured, bacon, pre-sliced, cooked, pan-fried",
+  "kcal": 468,
+  "protein": 33.92,
+  "carbs": 1.7,
+  "fat": 35.09
+ },
+ "mandarin orange, raw": {
+  "id": 169105,
+  "description": "Tangerines, (mandarin oranges), raw",
+  "kcal": 53,
+  "protein": 0.81,
+  "carbs": 13.34,
+  "fat": 0.31
+ },
+ "almonds, dry roasted": {
+  "id": 170158,
+  "description": "Nuts, almonds, dry roasted, without salt added",
+  "kcal": 598,
+  "protein": 20.96,
+  "carbs": 21.01,
+  "fat": 52.54
+ },
+ "black olives": {
+  "id": 169094,
+  "description": "Olives, ripe, canned (small-extra large)",
+  "kcal": 116,
+  "protein": 0.84,
+  "carbs": 6.04,
+  "fat": 10.9
+ },
+ "balsamic vinaigrette dressing": {
+  "id": 168096,
+  "description": "Salad dressing, italian dressing, reduced calorie",
+  "kcal": 200,
+  "protein": 0.3,
+  "carbs": 6.7,
+  "fat": 20
+ },
+ "vanilla ice cream": {
+  "id": 167575,
+  "description": "Ice creams, vanilla",
+  "kcal": 207,
+  "protein": 3.5,
+  "carbs": 23.6,
+  "fat": 11
+ },
+ "fish, raw": {
+  "id": 175176,
+  "description": "Fish, tilapia, raw",
+  "kcal": 96,
+  "protein": 20.08,
+  "carbs": 0,
+  "fat": 1.7
+ },
+ "figs, raw": {
+  "id": 173021,
+  "description": "Figs, raw",
+  "kcal": 74,
+  "protein": 0.75,
+  "carbs": 19.18,
+  "fat": 0.3
+ },
+ "sauce, creamy": {
+  "id": 174525,
+  "description": "Sauce, homemade, white, medium",
+  "kcal": 147,
+  "protein": 3.84,
+  "carbs": 9.17,
+  "fat": 10.63
+ },
+ "olive oil": {
+  "id": 171413,
+  "description": "Oil, olive, salad or cooking",
+  "kcal": 884,
+  "protein": 0,
+  "carbs": 0,
+  "fat": 100
+ },
+ "tangerine, raw": {
+  "id": 169105,
+  "description": "Tangerines, (mandarin oranges), raw",
+  "kcal": 53,
+  "protein": 0.81,
+  "carbs": 13.34,
+  "fat": 0.31
+ },
+ "tahini paste": {
+  "id": 170189,
+  "description": "Seeds, sesame butter, tahini, from roasted and toasted kernels (most common type)",
+  "kcal": 595,
+  "protein": 17,
+  "carbs": 21.19,
+  "fat": 53.76
+ },
+ "beef steak, grilled": {
+  "id": 168716,
+  "description": "Beef, short loin, porterhouse steak, separable lean and fat, trimmed to 1/8 fat, choice, cooked, grilled",
+  "kcal": 284,
+  "protein": 24.85,
+  "carbs": 0,
+  "fat": 19.78
+ },
+ "mashed potatoes": {
+  "id": 168555,
+  "description": "Potatoes, mashed, home-prepared, whole milk and butter added",
+  "kcal": 113,
+  "protein": 1.86,
+  "carbs": 16.81,
+  "fat": 4.22
+ },
+ "green beans, cooked": {
+  "id": 169321,
+  "description": "Beans, snap, green, cooked, boiled, drained, with salt",
+  "kcal": 35,
+  "protein": 1.89,
+  "carbs": 7.88,
+  "fat": 0.28
+ },
+ "gravy, meat": {
+  "id": 171564,
+  "description": "Gravy, beef, canned, ready-to-serve",
+  "kcal": 53,
+  "protein": 3.75,
+  "carbs": 4.81,
+  "fat": 2.36
+ },
+ "egg, whole, scrambled, cooked": {
+  "id": 172187,
+  "description": "Egg, whole, cooked, scrambled",
+  "kcal": 149,
+  "protein": 9.99,
+  "carbs": 1.61,
+  "fat": 10.98
+ },
+ "hash browns, potato, pan-fried": {
+  "id": 170044,
+  "description": "Potatoes, hash brown, frozen, plain, prepared, pan fried in canola oil",
+  "kcal": 219,
+  "protein": 2.65,
+  "carbs": 28.51,
+  "fat": 11.59
+ },
+ "lettuce, mixed salad greens, raw": {
+  "id": 169249,
+  "description": "Lettuce, green leaf, raw",
+  "kcal": 15,
+  "protein": 1.36,
+  "carbs": 2.87,
+  "fat": 0.15
+ },
+ "salad dressing, vinaigrette": {
+  "id": 171019,
+  "description": "Salad dressing, italian dressing, commercial, regular",
+  "kcal": 240,
+  "protein": 0.41,
+  "carbs": 12.12,
+  "fat": 21.12
+ },
+ "salmon fillet, baked": {
+  "id": 175168,
+  "description": "Fish, salmon, Atlantic, farmed, cooked, dry heat",
+  "kcal": 206,
+  "protein": 22.1,
+  "carbs": 0,
+  "fat": 12.35,
+  "manual": true
+ },
+ "vegetable oil, cooked": {
+  "id": 172370,
+  "description": "Oil, vegetable, soybean, refined",
+  "kcal": 884,
+  "protein": 0,
+  "carbs": 0,
+  "fat": 100
+ },
+ "cabbage, savoy, raw": {
+  "id": 170388,
+  "description": "Cabbage, savoy, raw",
+  "kcal": 27,
+  "protein": 2,
+  "carbs": 6.1,
+  "fat": 0.1
+ },
+ "cinnamon roll, baked": {
+  "id": 172799,
+  "description": "Sweet rolls, cinnamon, refrigerated dough with frosting, baked",
+  "kcal": 362,
+  "protein": 5.4,
+  "carbs": 56.1,
+  "fat": 13.2
+ },
+ "carrots, raw": {
+  "id": 170393,
+  "description": "Carrots, raw",
+  "kcal": 41,
+  "protein": 0.93,
+  "carbs": 9.58,
+  "fat": 0.24
+ },
+ "white rice, cooked": {
+  "id": 168878,
+  "description": "Rice, white, long-grain, regular, enriched, cooked",
+  "kcal": 130,
+  "protein": 2.69,
+  "carbs": 28.17,
+  "fat": 0.28
+ },
+ "chicken, roasted": {
+  "id": 171054,
+  "description": "Chicken, broilers or fryers, meat only, cooked, roasted",
+  "kcal": 190,
+  "protein": 28.93,
+  "carbs": 0,
+  "fat": 7.41
+ },
+ "chicken pieces, roasted": {
+  "id": 171054,
+  "description": "Chicken, broilers or fryers, meat only, cooked, roasted",
+  "kcal": 190,
+  "protein": 28.93,
+  "carbs": 0,
+  "fat": 7.41
+ },
+ "trout, cooked, baked": {
+  "id": 172004,
+  "description": "Fish, trout, mixed species, cooked, dry heat",
+  "kcal": 190,
+  "protein": 26.63,
+  "carbs": 0,
+  "fat": 8.47
+ },
+ "potato, boiled": {
+  "id": 170520,
+  "description": "Potatoes, boiled, cooked without skin, flesh, with salt",
+  "kcal": 86,
+  "protein": 1.71,
+  "carbs": 20.01,
+  "fat": 0.1
+ },
+ "chicken, cooked": {
+  "id": 171054,
+  "description": "Chicken, broilers or fryers, meat only, cooked, roasted",
+  "kcal": 190,
+  "protein": 28.93,
+  "carbs": 0,
+  "fat": 7.41
+ },
+ "pizza, cheese, with ham and pineapple, baked": {
+  "id": 170363,
+  "description": "DIGIORNO Pizza, supreme topping, rising crust, frozen, baked",
+  "kcal": 255,
+  "protein": 11.74,
+  "carbs": 27.93,
+  "fat": 10.68
+ },
+ "chicken breast, roasted, skinless": {
+  "id": 171477,
+  "description": "Chicken, broilers or fryers, breast, meat only, cooked, roasted",
+  "kcal": 165,
+  "protein": 31.02,
+  "carbs": 0,
+  "fat": 3.57
+ },
+ "tomatoes, cherry, raw": {
+  "id": 170457,
+  "description": "Tomatoes, red, ripe, raw, year round average",
+  "kcal": 18,
+  "protein": 0.88,
+  "carbs": 3.89,
+  "fat": 0.2
+ },
+ "pizza, cheese, ham and pineapple topping, baked": {
+  "id": 170715,
+  "description": "Pizza, meat and vegetable topping, regular crust, frozen, cooked",
+  "kcal": 276,
+  "protein": 11.28,
+  "carbs": 25.14,
+  "fat": 14.43
+ },
+ "olives, cured": {
+  "id": 169094,
+  "description": "Olives, ripe, canned (small-extra large)",
+  "kcal": 116,
+  "protein": 0.84,
+  "carbs": 6.04,
+  "fat": 10.9
+ },
+ "balsamic salad dressing": {
+  "id": 171019,
+  "description": "Salad dressing, italian dressing, commercial, regular",
+  "kcal": 240,
+  "protein": 0.41,
+  "carbs": 12.12,
+  "fat": 21.12
+ },
+ "tofu, firm, baked": {
+  "id": 172448,
+  "description": "Tofu, firm, prepared with calcium sulfate and magnesium chloride (nigari)",
+  "kcal": 78,
+  "protein": 9.04,
+  "carbs": 2.85,
+  "fat": 4.17
+ },
+ "cauliflower, cooked, boiled": {
+  "id": 168520,
+  "description": "Cauliflower, cooked, boiled, drained, with salt",
+  "kcal": 23,
+  "protein": 1.84,
+  "carbs": 4.11,
+  "fat": 0.45
+ },
+ "carrot, cooked, boiled": {
+  "id": 169339,
+  "description": "Carrots, cooked, boiled, drained, with salt",
+  "kcal": 35,
+  "protein": 0.76,
+  "carbs": 8.22,
+  "fat": 0.18
+ },
+ "lemon juice": {
+  "id": 167747,
+  "description": "Lemon juice, raw",
+  "kcal": 22,
+  "protein": 0.35,
+  "carbs": 6.9,
+  "fat": 0.24
+ },
+ "carrots, shredded, raw": {
+  "id": 170393,
+  "description": "Carrots, raw",
+  "kcal": 41,
+  "protein": 0.93,
+  "carbs": 9.58,
+  "fat": 0.24
+ },
+ "black olives, raw": {
+  "id": 169094,
+  "description": "Olives, ripe, canned (small-extra large)",
+  "kcal": 116,
+  "protein": 0.84,
+  "carbs": 6.04,
+  "fat": 10.9
+ },
+ "english muffin, toasted": {
+  "id": 174995,
+  "description": "Muffins, English, plain, toasted, enriched, with calcium propionate (includes sourdough)",
+  "kcal": 270,
+  "protein": 10.32,
+  "carbs": 52.65,
+  "fat": 2.02
+ },
+ "egg, poached": {
+  "id": 172186,
+  "description": "Egg, whole, cooked, poached",
+  "kcal": 143,
+  "protein": 12.51,
+  "carbs": 0.71,
+  "fat": 9.47
+ },
+ "hollandaise sauce": {
+  "id": 174525,
+  "description": "Sauce, homemade, white, medium",
+  "kcal": 147,
+  "protein": 3.84,
+  "carbs": 9.17,
+  "fat": 10.63
+ },
+ "salmon, cooked": {
+  "id": 175168,
+  "description": "Fish, salmon, Atlantic, farmed, cooked, dry heat",
+  "kcal": 206,
+  "protein": 22.1,
+  "carbs": 0,
+  "fat": 12.35
+ },
+ "orange, raw": {
+  "id": 169097,
+  "description": "Oranges, raw, all commercial varieties",
+  "kcal": 47,
+  "protein": 0.94,
+  "carbs": 11.75,
+  "fat": 0.12
+ },
+ "egg white, scrambled, cooked": {
+  "id": 172183,
+  "description": "Egg, white, raw, fresh",
+  "kcal": 52,
+  "protein": 10.9,
+  "carbs": 0.73,
+  "fat": 0.17
+ },
+ "rice, white, cooked, fried with onion": {
+  "id": 168878,
+  "description": "Rice, white, long-grain, regular, enriched, cooked",
+  "kcal": 130,
+  "protein": 2.69,
+  "carbs": 28.17,
+  "fat": 0.28
+ },
+ "rice with vermicelli, cooked": {
+  "id": 168952,
+  "description": "Rice and vermicelli mix, rice pilaf flavor, prepared with 80% margarine",
+  "kcal": 148,
+  "protein": 2.94,
+  "carbs": 25.67,
+  "fat": 3.7
+ },
+ "rice, cooked, with fried onion": {
+  "id": 167668,
+  "description": "Restaurant, Chinese, fried rice, without meat",
+  "kcal": 174,
+  "protein": 4.05,
+  "carbs": 32.79,
+  "fat": 2.96
+ },
+ "honeydew melon, raw": {
+  "id": 169911,
+  "description": "Melons, honeydew, raw",
+  "kcal": 36,
+  "protein": 0.54,
+  "carbs": 9.09,
+  "fat": 0.14
+ },
+ "bacon, pan-fried, crispy": {
+  "id": 168322,
+  "description": "Pork, cured, bacon, pre-sliced, cooked, pan-fried",
+  "kcal": 468,
+  "protein": 33.92,
+  "carbs": 1.7,
+  "fat": 35.09
+ },
+ "romaine lettuce, raw": {
+  "id": 169247,
+  "description": "Lettuce, cos or romaine, raw",
+  "kcal": 17,
+  "protein": 1.23,
+  "carbs": 3.29,
+  "fat": 0.3
+ },
+ "pizza, ham and pineapple, baked": {
+  "id": 170363,
+  "description": "DIGIORNO Pizza, supreme topping, rising crust, frozen, baked",
+  "kcal": 255,
+  "protein": 11.74,
+  "carbs": 27.93,
+  "fat": 10.68
+ },
+ "breakfast sausage, cooked": {
+  "id": 174579,
+  "description": "Sausage, pork and beef, fresh, cooked",
+  "kcal": 396,
+  "protein": 13.8,
+  "carbs": 2.7,
+  "fat": 36.25
+ },
+ "cheese, parmesan": {
+  "id": 170848,
+  "description": "Cheese, parmesan, hard",
+  "kcal": 392,
+  "protein": 35.75,
+  "carbs": 3.22,
+  "fat": 25
+ },
+ "dressing, brown": {
+  "id": 171565,
+  "description": "Gravy, brown, dry",
+  "kcal": 367,
+  "protein": 10.74,
+  "carbs": 59.38,
+  "fat": 9.61
+ },
+ "pizza crust, baked": {
+  "id": 170317,
+  "description": "Pizza, cheese topping, regular crust, frozen, cooked",
+  "kcal": 268,
+  "protein": 10.36,
+  "carbs": 29.02,
+  "fat": 12.28
+ },
+ "tomato sauce, cooked": {
+  "id": 170054,
+  "description": "Tomato products, canned, sauce",
+  "kcal": 24,
+  "protein": 1.2,
+  "carbs": 5.31,
+  "fat": 0.3
+ },
+ "mozzarella cheese, baked": {
+  "id": 170846,
+  "description": "Cheese, mozzarella, whole milk, low moisture",
+  "kcal": 318,
+  "protein": 21.6,
+  "carbs": 2.47,
+  "fat": 24.64
+ },
+ "beef steak, roasted": {
+  "id": 168677,
+  "description": "Beef, rib, whole (ribs 6-12), separable lean and fat, trimmed to 1/8 fat, choice, cooked, roasted",
+  "kcal": 365,
+  "protein": 22.6,
+  "carbs": 0,
+  "fat": 29.79
+ },
+ "salad greens, raw": {
+  "id": 169249,
+  "description": "Lettuce, green leaf, raw",
+  "kcal": 15,
+  "protein": 1.36,
+  "carbs": 2.87,
+  "fat": 0.15
+ },
+ "parmesan cheese, grated": {
+  "id": 171247,
+  "description": "Cheese, parmesan, grated",
+  "kcal": 420,
+  "protein": 28.42,
+  "carbs": 13.91,
+  "fat": 27.84
+ },
+ "salad, mixed greens, raw": {
+  "id": 169249,
+  "description": "Lettuce, green leaf, raw",
+  "kcal": 15,
+  "protein": 1.36,
+  "carbs": 2.87,
+  "fat": 0.15
+ },
+ "brown gravy, beef": {
+  "id": 171564,
+  "description": "Gravy, beef, canned, ready-to-serve",
+  "kcal": 53,
+  "protein": 3.75,
+  "carbs": 4.81,
+  "fat": 2.36
+ },
+ "potato, baked, with skin": {
+  "id": 170093,
+  "description": "Potatoes, baked, flesh and skin, without salt",
+  "kcal": 93,
+  "protein": 2.5,
+  "carbs": 21.15,
+  "fat": 0.13
+ },
+ "mashed potatoes, with butter and milk": {
+  "id": 168555,
+  "description": "Potatoes, mashed, home-prepared, whole milk and butter added",
+  "kcal": 113,
+  "protein": 1.86,
+  "carbs": 16.81,
+  "fat": 4.22
+ },
+ "ham, cooked": {
+  "id": 173864,
+  "description": "Ham, sliced, regular (approximately 11% fat)",
+  "kcal": 164,
+  "protein": 16.6,
+  "carbs": 3.63,
+  "fat": 8.8
+ },
+ "ice cream, vanilla": {
+  "id": 167575,
+  "description": "Ice creams, vanilla",
+  "kcal": 207,
+  "protein": 3.5,
+  "carbs": 23.6,
+  "fat": 11
+ },
+ "caramel sauce, topping": {
+  "id": 168841,
+  "description": "Toppings, butterscotch or caramel",
+  "kcal": 216,
+  "protein": 1.21,
+  "carbs": 57.01,
+  "fat": 0
+ },
+ "kataifi pastry, baked": {
+  "id": 172738,
+  "description": "Puff pastry, frozen, ready-to-bake, baked",
+  "kcal": 558,
+  "protein": 7.4,
+  "carbs": 45.7,
+  "fat": 38.5
+ },
+ "chocolate sauce": {
+  "id": 170911,
+  "description": "Ice cream, lowfat, no sugar added, cone, added peanuts and chocolate sauce",
+  "kcal": 265,
+  "protein": 5.33,
+  "carbs": 40.01,
+  "fat": 9.33
+ },
+ "pizza with cheese and meat, baked": {
+  "id": 170760,
+  "description": "DIGIORNO Pizza, pepperoni topping, rising crust, frozen, baked",
+  "kcal": 265,
+  "protein": 12.46,
+  "carbs": 31.15,
+  "fat": 10.11
+ },
+ "tofu, cooked": {
+  "id": 172451,
+  "description": "Tofu, fried",
+  "kcal": 270,
+  "protein": 18.82,
+  "carbs": 8.86,
+  "fat": 20.18
+ },
+ "beef, roasted": {
+  "id": 168723,
+  "description": "Beef, tenderloin, roast, separable lean and fat, trimmed to 1/8 fat, choice, cooked, roasted",
+  "kcal": 331,
+  "protein": 23.9,
+  "carbs": 0,
+  "fat": 25.39
+ },
+ "beef, fried": {
+  "id": 169550,
+  "description": "Beef, top sirloin, steak, separable lean and fat, trimmed to 1/8 fat, choice, cooked, pan-fried",
+  "kcal": 313,
+  "protein": 28.77,
+  "carbs": 0,
+  "fat": 21.06
+ },
+ "smoked sausage, pan-fried": {
+  "id": 173878,
+  "description": "Kielbasa, fully cooked, pan-fried",
+  "kcal": 333,
+  "protein": 12.36,
+  "carbs": 4.78,
+  "fat": 29.43
+ },
+ "egg white, cooked": {
+  "id": 172183,
+  "description": "Egg, white, raw, fresh",
+  "kcal": 52,
+  "protein": 10.9,
+  "carbs": 0.73,
+  "fat": 0.17
+ },
+ "cinnamon roll, baked, yeast dough": {
+  "id": 172799,
+  "description": "Sweet rolls, cinnamon, refrigerated dough with frosting, baked",
+  "kcal": 362,
+  "protein": 5.4,
+  "carbs": 56.1,
+  "fat": 13.2
+ },
+ "chicken, roasted, with skin": {
+  "id": 171450,
+  "description": "Chicken, broilers or fryers, meat and skin, cooked, roasted",
+  "kcal": 239,
+  "protein": 27.3,
+  "carbs": 0,
+  "fat": 13.6
+ },
+ "mixed berries (raspberries, blackberries, blueberries, strawberries), raw": {
+  "id": 173946,
+  "description": "Blackberries, raw",
+  "kcal": 43,
+  "protein": 1.39,
+  "carbs": 9.61,
+  "fat": 0.49
+ },
+ "cooking oil": {
+  "id": 171411,
+  "description": "Oil, soybean, salad or cooking",
+  "kcal": 884,
+  "protein": 0,
+  "carbs": 0,
+  "fat": 100
+ },
+ "cabbage, raw": {
+  "id": 169975,
+  "description": "Cabbage, raw",
+  "kcal": 25,
+  "protein": 1.28,
+  "carbs": 5.8,
+  "fat": 0.1
+ },
+ "trout, cooked, dry heat": {
+  "id": 172004,
+  "description": "Fish, trout, mixed species, cooked, dry heat",
+  "kcal": 190,
+  "protein": 26.63,
+  "carbs": 0,
+  "fat": 8.47
+ },
+ "mixed berries": {
+  "id": 171711,
+  "description": "Blueberries, raw",
+  "kcal": 57,
+  "protein": 0.74,
+  "carbs": 14.49,
+  "fat": 0.33,
+  "manual": true
+ },
+ "tomato, raw, sliced": {
+  "id": 170457,
+  "description": "Tomatoes, red, ripe, raw, year round average",
+  "kcal": 18,
+  "protein": 0.88,
+  "carbs": 3.89,
+  "fat": 0.2
+ },
+ "spinach, cooked, sauteed": {
+  "id": 170531,
+  "description": "Spinach, cooked, boiled, drained, with salt",
+  "kcal": 23,
+  "protein": 2.97,
+  "carbs": 3.75,
+  "fat": 0.26
+ },
+ "avocado, raw, mashed": {
+  "id": 171705,
+  "description": "Avocados, raw, all commercial varieties",
+  "kcal": 160,
+  "protein": 2,
+  "carbs": 8.53,
+  "fat": 14.66
+ },
+ "spinach, cooked, sautéed": {
+  "id": 170531,
+  "description": "Spinach, cooked, boiled, drained, with salt",
+  "kcal": 23,
+  "protein": 2.97,
+  "carbs": 3.75,
+  "fat": 0.26
+ },
+ "pizza, with ham and pineapple, baked": {
+  "id": 170363,
+  "description": "DIGIORNO Pizza, supreme topping, rising crust, frozen, baked",
+  "kcal": 255,
+  "protein": 11.74,
+  "carbs": 27.93,
+  "fat": 10.68
+ },
+ "fish fillet, white, cooked": {
+  "id": 175178,
+  "description": "Fish, cod, Pacific, cooked",
+  "kcal": 84,
+  "protein": 20.42,
+  "carbs": 0,
+  "fat": 0.25
+ },
+ "braised meat pieces in brown sauce": {
+  "id": 171825,
+  "description": "Sauce, steak, tomato based",
+  "kcal": 95,
+  "protein": 1.25,
+  "carbs": 22.04,
+  "fat": 0.23
+ },
+ "mixed vegetables, cooked": {
+  "id": 170142,
+  "description": "Vegetables, mixed, frozen, cooked, boiled, drained, with salt",
+  "kcal": 60,
+  "protein": 2.86,
+  "carbs": 13.09,
+  "fat": 0.15
+ },
+ "fresh herbs, raw": {
+  "id": 167758,
+  "description": "Rhubarb, raw",
+  "kcal": 21,
+  "protein": 0.9,
+  "carbs": 4.54,
+  "fat": 0.2
+ },
+ "salmon, roasted": {
+  "id": 175168,
+  "description": "Fish, salmon, Atlantic, farmed, cooked, dry heat",
+  "kcal": 206,
+  "protein": 22.1,
+  "carbs": 0,
+  "fat": 12.35,
+  "manual": true
+ },
+ "salmon, cooked, roasted": {
+  "id": 175168,
+  "description": "Fish, salmon, Atlantic, farmed, cooked, dry heat",
+  "kcal": 206,
+  "protein": 22.1,
+  "carbs": 0,
+  "fat": 12.35
+ },
+ "sweet pepper, cooked": {
+  "id": 170515,
+  "description": "Peppers, sweet, red, cooked, boiled, drained, with salt",
+  "kcal": 26,
+  "protein": 0.92,
+  "carbs": 6.11,
+  "fat": 0.2
+ },
+ "herbs, fresh": {
+  "id": 174156,
+  "description": "Beverages, tea, herb, brewed, chamomile",
+  "kcal": 1,
+  "protein": 0,
+  "carbs": 0.2,
+  "fat": 0
+ },
+ "chicken, fried": {
+  "id": 171053,
+  "description": "Chicken, broilers or fryers, meat only, cooked, fried",
+  "kcal": 219,
+  "protein": 30.57,
+  "carbs": 1.69,
+  "fat": 9.12
+ },
+ "cream sauce": {
+  "id": 174525,
+  "description": "Sauce, homemade, white, medium",
+  "kcal": 147,
+  "protein": 3.84,
+  "carbs": 9.17,
+  "fat": 10.63
+ },
+ "water": {
+  "id": 173647,
+  "description": "Beverages, water, tap, drinking",
+  "kcal": 0,
+  "protein": 0,
+  "carbs": 0,
+  "fat": 0
+ },
+ "dates, pitted": {
+  "id": 168191,
+  "description": "Dates, medjool",
+  "kcal": 277,
+  "protein": 1.81,
+  "carbs": 74.97,
+  "fat": 0.15
+ },
+ "fish, cooked": {
+  "id": 175177,
+  "description": "Fish, tilapia, cooked, dry heat",
+  "kcal": 128,
+  "protein": 26.15,
+  "carbs": 0,
+  "fat": 2.65
+ },
+ "oil": {
+  "id": 172336,
+  "description": "Oil, canola",
+  "kcal": 884,
+  "protein": 0,
+  "carbs": 0,
+  "fat": 100
+ },
+ "salmon fillet, roasted": {
+  "id": 175168,
+  "description": "Fish, salmon, Atlantic, farmed, cooked, dry heat",
+  "kcal": 206,
+  "protein": 22.1,
+  "carbs": 0,
+  "fat": 12.35,
+  "manual": true
+ },
+ "meat, roasted": {
+  "id": 171481,
+  "description": "Turkey, whole, meat only, cooked, roasted",
+  "kcal": 159,
+  "protein": 29.06,
+  "carbs": 0,
+  "fat": 3.84
+ },
+ "oil, cooking": {
+  "id": 171411,
+  "description": "Oil, soybean, salad or cooking",
+  "kcal": 884,
+  "protein": 0,
+  "carbs": 0,
+  "fat": 100
+ },
+ "cinnamon roll, baked, without frosting": {
+  "id": 172799,
+  "description": "Sweet rolls, cinnamon, refrigerated dough with frosting, baked",
+  "kcal": 362,
+  "protein": 5.4,
+  "carbs": 56.1,
+  "fat": 13.2
+ },
+ "chicken thigh, roasted": {
+  "id": 173625,
+  "description": "Chicken, broilers or fryers, thigh, meat and skin, cooked, roasted",
+  "kcal": 232,
+  "protein": 23.26,
+  "carbs": 0,
+  "fat": 14.71
+ },
+ "sausage, sliced, cooked": {
+  "id": 174618,
+  "description": "Sausage, beef, fresh, cooked",
+  "kcal": 332,
+  "protein": 18.21,
+  "carbs": 0.35,
+  "fat": 27.98
+ },
+ "potatoes, boiled": {
+  "id": 170520,
+  "description": "Potatoes, boiled, cooked without skin, flesh, with salt",
+  "kcal": 86,
+  "protein": 1.71,
+  "carbs": 20.01,
+  "fat": 0.1
+ },
+ "sausage, grilled": {
+  "id": 174618,
+  "description": "Sausage, beef, fresh, cooked",
+  "kcal": 332,
+  "protein": 18.21,
+  "carbs": 0.35,
+  "fat": 27.98
+ },
+ "grapes": {
+  "id": 174683,
+  "description": "Grapes, red or green (European type, such as Thompson seedless), raw",
+  "kcal": 69,
+  "protein": 0.72,
+  "carbs": 18.1,
+  "fat": 0.16
+ },
+ "trout, baked": {
+  "id": 173718,
+  "description": "Fish, trout, rainbow, farmed, cooked, dry heat",
+  "kcal": 168,
+  "protein": 23.8,
+  "carbs": 0,
+  "fat": 7.38
+ },
+ "butter, melted": {
+  "id": 173410,
+  "description": "Butter, salted",
+  "kcal": 717,
+  "protein": 0.85,
+  "carbs": 0.06,
+  "fat": 81.11
+ },
+ "tomato sauce, cooked with oil and spices": {
+  "id": 170085,
+  "description": "Tomato products, canned, sauce, spanish style",
+  "kcal": 33,
+  "protein": 1.44,
+  "carbs": 7.24,
+  "fat": 0.27
+ },
+ "leafy greens and herbs, cooked": {
+  "id": 168508,
+  "description": "Beet greens, cooked, boiled, drained, with salt",
+  "kcal": 27,
+  "protein": 2.57,
+  "carbs": 5.46,
+  "fat": 0.2
+ },
+ "red bell pepper, cooked": {
+  "id": 170515,
+  "description": "Peppers, sweet, red, cooked, boiled, drained, with salt",
+  "kcal": 26,
+  "protein": 0.92,
+  "carbs": 6.11,
+  "fat": 0.2
+ },
+ "beef stew meat, braised": {
+  "id": 171203,
+  "description": "Beef, chuck for stew, separable lean and fat, all grades, cooked, braised",
+  "kcal": 191,
+  "protein": 32.41,
+  "carbs": 0,
+  "fat": 6.82
+ },
+ "chicken breast, cooked, shredded": {
+  "id": 171478,
+  "description": "Chicken, broilers or fryers, breast, meat only, cooked, stewed",
+  "kcal": 151,
+  "protein": 28.98,
+  "carbs": 0,
+  "fat": 3.03
+ },
+ "white fish fillet, cooked, simmered": {
+  "id": 175178,
+  "description": "Fish, cod, Pacific, cooked",
+  "kcal": 84,
+  "protein": 20.42,
+  "carbs": 0,
+  "fat": 0.25
+ },
+ "tomato sauce with onion and pepper, cooked with oil": {
+  "id": 170462,
+  "description": "Tomato products, canned, sauce, with onions, green peppers, and celery",
+  "kcal": 41,
+  "protein": 0.94,
+  "carbs": 8.77,
+  "fat": 0.74
+ },
+ "leafy greens, cooked": {
+  "id": 168508,
+  "description": "Beet greens, cooked, boiled, drained, with salt",
+  "kcal": 27,
+  "protein": 2.57,
+  "carbs": 5.46,
+  "fat": 0.2
+ },
+ "white fish fillet, cooked": {
+  "id": 175178,
+  "description": "Fish, cod, Pacific, cooked",
+  "kcal": 84,
+  "protein": 20.42,
+  "carbs": 0,
+  "fat": 0.25
+ },
+ "tomato and pepper sauce, cooked": {
+  "id": 170462,
+  "description": "Tomato products, canned, sauce, with onions, green peppers, and celery",
+  "kcal": 41,
+  "protein": 0.94,
+  "carbs": 8.77,
+  "fat": 0.74
+ },
+ "chicken thigh, braised": {
+  "id": 174498,
+  "description": "Chicken, broilers or fryers, dark meat, thigh, meat and skin, cooked, braised",
+  "kcal": 229,
+  "protein": 22.57,
+  "carbs": 0,
+  "fat": 15.43
+ },
+ "tomato pepper sauce, cooked": {
+  "id": 170462,
+  "description": "Tomato products, canned, sauce, with onions, green peppers, and celery",
+  "kcal": 41,
+  "protein": 0.94,
+  "carbs": 8.77,
+  "fat": 0.74
+ },
+ "chicken meat with skin, braised": {
+  "id": 171051,
+  "description": "Chicken, broilers or fryers, meat and skin, cooked, stewed",
+  "kcal": 219,
+  "protein": 24.68,
+  "carbs": 0,
+  "fat": 12.56
+ },
+ "chicken onion gravy, cooked": {
+  "id": 171566,
+  "description": "Gravy, chicken, canned or bottled, ready-to-serve",
+  "kcal": 48,
+  "protein": 0.71,
+  "carbs": 5.29,
+  "fat": 2.62
+ },
+ "almonds, caramelized": {
+  "id": 170656,
+  "description": "Candies, sugar-coated almonds",
+  "kcal": 465,
+  "protein": 10,
+  "carbs": 68.26,
+  "fat": 17.93
+ },
+ "toasted cookie crumbs": {
+  "id": 175084,
+  "description": "Nabisco, Nabisco Oreo Crunchies, Cookie Crumb Topping",
+  "kcal": 476,
+  "protein": 4.78,
+  "carbs": 70.23,
+  "fat": 21.5
+ },
+ "chocolate cream, dessert": {
+  "id": 168777,
+  "description": "Desserts, mousse, chocolate, prepared-from-recipe",
+  "kcal": 225,
+  "protein": 4.14,
+  "carbs": 16.07,
+  "fat": 16
+ },
+ "oats, rolled, raw": {
+  "id": 172989,
+  "description": "Cereals, QUAKER, Quick Oats, Dry",
+  "kcal": 371,
+  "protein": 13.7,
+  "carbs": 68.18,
+  "fat": 6.87
+ },
+ "rye bread": {
+  "id": 172684,
+  "description": "Bread, rye",
+  "kcal": 259,
+  "protein": 8.5,
+  "carbs": 48.3,
+  "fat": 3.3
+ },
+ "couscous, cooked": {
+  "id": 169700,
+  "description": "Couscous, cooked",
+  "kcal": 112,
+  "protein": 3.79,
+  "carbs": 23.22,
+  "fat": 0.16
+ },
+ "salmon, smoked": {
+  "id": 173687,
+  "description": "Fish, salmon, chinook, smoked",
+  "kcal": 117,
+  "protein": 18.28,
+  "carbs": 0,
+  "fat": 4.32
+ },
+ "bread, whole grain": {
+  "id": 168013,
+  "description": "Bread, multi-grain (includes whole-grain)",
+  "kcal": 265,
+  "protein": 13.36,
+  "carbs": 43.34,
+  "fat": 4.23
+ },
+ "fig, raw": {
+  "id": 173021,
+  "description": "Figs, raw",
+  "kcal": 74,
+  "protein": 0.75,
+  "carbs": 19.18,
+  "fat": 0.3
+ },
+ "coconut milk sauce": {
+  "id": 171575,
+  "description": "Sauce, peanut, made from coconut, water, sugar, peanuts",
+  "kcal": 179,
+  "protein": 2.02,
+  "carbs": 28.46,
+  "fat": 6.34
+ },
+ "bacon": {
+  "id": 167914,
+  "description": "Pork, cured, bacon, cooked, baked",
+  "kcal": 548,
+  "protein": 35.73,
+  "carbs": 1.35,
+  "fat": 43.27
+ },
+ "bell pepper, cooked": {
+  "id": 170515,
+  "description": "Peppers, sweet, red, cooked, boiled, drained, with salt",
+  "kcal": 26,
+  "protein": 0.92,
+  "carbs": 6.11,
+  "fat": 0.2
+ },
+ "barbecue sauce": {
+  "id": 174523,
+  "description": "Sauce, barbecue",
+  "kcal": 172,
+  "protein": 0.82,
+  "carbs": 40.77,
+  "fat": 0.63
+ },
+ "fish, baked": {
+  "id": 171952,
+  "description": "Fish, carp, raw",
+  "kcal": 127,
+  "protein": 17.83,
+  "carbs": 0,
+  "fat": 5.6
+ },
+ "fish, whole, baked": {
+  "id": 171952,
+  "description": "Fish, carp, raw",
+  "kcal": 127,
+  "protein": 17.83,
+  "carbs": 0,
+  "fat": 5.6
+ },
+ "carrot, cooked": {
+  "id": 169339,
+  "description": "Carrots, cooked, boiled, drained, with salt",
+  "kcal": 35,
+  "protein": 0.76,
+  "carbs": 8.22,
+  "fat": 0.18
+ },
+ "berries": {
+  "id": 171711,
+  "description": "Blueberries, raw",
+  "kcal": 57,
+  "protein": 0.74,
+  "carbs": 14.49,
+  "fat": 0.33,
+  "manual": true
+ },
+ "yam": {
+  "id": 170551,
+  "description": "Yam, cooked, boiled, drained, or baked, with salt",
+  "kcal": 114,
+  "protein": 1.49,
+  "carbs": 26.99,
+  "fat": 0.14
+ },
+ "eggs": {
+  "id": 173424,
+  "description": "Egg, whole, cooked, hard-boiled",
+  "kcal": 155,
+  "protein": 12.58,
+  "carbs": 1.12,
+  "fat": 10.61
+ },
+ "chicken apple sausage": {
+  "id": 173880,
+  "description": "Sausage, chicken or turkey, Italian style,  lower sodium",
+  "kcal": 183,
+  "protein": 21.43,
+  "carbs": 14.25,
+  "fat": 4.46
+ },
+ "chicken": {
+  "id": 172395,
+  "description": "Chicken, roasting, meat only, cooked, roasted",
+  "kcal": 167,
+  "protein": 25.01,
+  "carbs": 0,
+  "fat": 6.63
+ },
+ "avocado": {
+  "id": 171705,
+  "description": "Avocados, raw, all commercial varieties",
+  "kcal": 160,
+  "protein": 2,
+  "carbs": 8.53,
+  "fat": 14.66
+ },
+ "spinach (raw)": {
+  "id": 168462,
+  "description": "Spinach, raw",
+  "kcal": 23,
+  "protein": 2.86,
+  "carbs": 3.63,
+  "fat": 0.39
+ },
+ "broccoli": {
+  "id": 168510,
+  "description": "Broccoli, cooked, boiled, drained, with salt",
+  "kcal": 35,
+  "protein": 2.38,
+  "carbs": 7.18,
+  "fat": 0.41
+ },
+ "olives": {
+  "id": 169094,
+  "description": "Olives, ripe, canned (small-extra large)",
+  "kcal": 116,
+  "protein": 0.84,
+  "carbs": 6.04,
+  "fat": 10.9
+ },
+ "pineapple": {
+  "id": 169124,
+  "description": "Pineapple, raw, all varieties",
+  "kcal": 50,
+  "protein": 0.54,
+  "carbs": 13.12,
+  "fat": 0.12
+ },
+ "roasted potatoes": {
+  "id": 170111,
+  "description": "Potatoes, baked, flesh and skin, with salt",
+  "kcal": 93,
+  "protein": 2.5,
+  "carbs": 21.15,
+  "fat": 0.13
+ },
+ "ginger, raw": {
+  "id": 169231,
+  "description": "Ginger root, raw",
+  "kcal": 80,
+  "protein": 1.82,
+  "carbs": 17.77,
+  "fat": 0.75
+ },
+ "gravy": {
+  "id": 171564,
+  "description": "Gravy, beef, canned, ready-to-serve",
+  "kcal": 53,
+  "protein": 3.75,
+  "carbs": 4.81,
+  "fat": 2.36
+ },
+ "mashed potato": {
+  "id": 168555,
+  "description": "Potatoes, mashed, home-prepared, whole milk and butter added",
+  "kcal": 113,
+  "protein": 1.86,
+  "carbs": 16.81,
+  "fat": 4.22
+ },
+ "gravy, beef": {
+  "id": 171564,
+  "description": "Gravy, beef, canned, ready-to-serve",
+  "kcal": 53,
+  "protein": 3.75,
+  "carbs": 4.81,
+  "fat": 2.36
+ },
+ "fish fillet, baked": {
+  "id": 171964,
+  "description": "Fish, haddock, raw",
+  "kcal": 74,
+  "protein": 16.32,
+  "carbs": 0,
+  "fat": 0.45
+ },
+ "tomato and bell pepper, cooked": {
+  "id": 170462,
+  "description": "Tomato products, canned, sauce, with onions, green peppers, and celery",
+  "kcal": 41,
+  "protein": 0.94,
+  "carbs": 8.77,
+  "fat": 0.74
+ },
+ "oil with spices": {
+  "id": 171329,
+  "description": "Spices, paprika",
+  "kcal": 282,
+  "protein": 14.14,
+  "carbs": 53.99,
+  "fat": 12.89
+ },
+ "herbs (dill/parsley)": {
+  "id": 170416,
+  "description": "Parsley, fresh",
+  "kcal": 36,
+  "protein": 2.97,
+  "carbs": 6.33,
+  "fat": 0.79
+ },
+ "vinaigrette": {
+  "id": 171417,
+  "description": "Salad dressing, home recipe, vinegar and oil",
+  "kcal": 449,
+  "protein": 0,
+  "carbs": 2.5,
+  "fat": 50.1,
+  "manual": true
+ }
+}
