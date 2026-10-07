@@ -31,24 +31,30 @@ const peer = (phone, firstAgoMin, lastAgoMin = firstAgoMin, extra = {}) => ({
 
 function deps(peers, seen = [], sendResult = { ok: true }) {
   const sent = [];
+  // An array of arrays (or nulls) is one answer per read, the last repeating —
+  // the job reads the sessions twice when somebody is owed a greeting.
+  const reads = Array.isArray(seen) && seen.length && (seen[0] === null || Array.isArray(seen[0]))
+    ? seen : [seen];
+  let read = 0;
   return {
     sent,
     now,
     listInboundPeers: async () => peers,
-    listSessions: async () => seen,
+    listSessions: async () => reads[Math.min(read++, reads.length - 1)],
     send: async (phone, text) => { sent.push({ phone, text }); return sendResult; },
   };
 }
 
-test('a stranger whose first message was dropped gets the opening and the ask, once', async () => {
+test('a stranger whose first message was dropped gets the one sentence, once, and not the opening', async () => {
   const d = deps([peer(STRANGER, 30)]);
   const res = await greet.run(db.pool, d);
   assert.deepEqual(res, { greeted: 1, timedOut: 0, failed: 0 });
   assert.equal(d.sent.length, 1);
   assert.equal(d.sent[0].phone, STRANGER);
-  // Hebrew, off the +972: the opening first, the missing-message line after it.
-  assert.ok(d.sent[0].text.startsWith(templates.textFor('opening_he')));
-  assert.ok(d.sent[0].text.endsWith(templates.textFor('lost_first_message_he')));
+  // Hebrew, off the +972, and ONLY the missing-message line: the greeter says
+  // the opening when they write again, and twice is the duplicate.
+  assert.equal(d.sent[0].text, templates.textFor('lost_first_message_he'));
+  assert.ok(!d.sent[0].text.includes('allma.world/privacy'), 'the privacy line stays the greeter\'s');
 
   const again = await greet.run(db.pool, d);
   assert.deepEqual(again, { greeted: 0 });
@@ -62,17 +68,21 @@ test('a stranger whose first message was dropped gets the opening and the ask, o
 test('a number outside Israel is greeted in English', async () => {
   const d = deps([peer('+447700900123', 30)]);
   await greet.run(db.pool, d);
-  assert.ok(d.sent[0].text.startsWith(templates.textFor('opening_en')));
-  assert.ok(d.sent[0].text.endsWith(templates.textFor('lost_first_message_en')));
+  assert.equal(d.sent[0].text, templates.textFor('lost_first_message_en'));
 });
 
-test('silent: a peer with a session, a users row of any status, an old lane, or a lane still moving', async () => {
+test('silent: a session, a user, a pending row we spoke to first, an old lane, or a lane still moving', async () => {
   await makeUser(db.pool, '+972509990001');
-  await makeUser(db.pool, '+972509990002', { status: 'pending' });
+  const invited = await makeUser(db.pool, '+972509990002', { status: 'pending' });
+  await db.pool.query(
+    `INSERT INTO outbox (user_id, kind, payload) VALUES ($1, 'connection_intro', '{}')`, [invited.id]);
+  const gamed = await makeUser(db.pool, '+972509990005', { status: 'pending' });
+  await db.pool.query('UPDATE users SET opening_sent_at = now() WHERE id = $1', [gamed.id]);
   const d = deps([
     peer('+972509990000', 30), // the greeter answered them: a session
     peer('+972509990001', 30), // already a user
-    peer('+972509990002', 30), // pending: we wrote first, the lane is our echo
+    peer('+972509990002', 30), // pending with an invite's intro: the lane may be our echo
+    peer('+972509990005', 30), // pending and already introduced (a game code's answer)
     peer('+972509990003', 90), // first heard before the window
     peer('+972509990004', 2, 1), // still inside the settle minutes
     peer(null, 30), // a lane we cannot put a number to
@@ -90,10 +100,33 @@ test('an unreadable store is a skipped tick, never "nobody has a session"', asyn
   assert.equal(noSessions.sent.length, 0);
 });
 
-test('registration closed: nobody is told to send it again', async () => {
+test('a pending row minted off a group roster is still a stranger, and is answered', async () => {
+  // `groups.ensureRosterUsers`: a number SEEN in a room, never written to. A
+  // joiner who found Olma through that room is who this job exists for.
+  await makeUser(db.pool, STRANGER, { status: 'pending' });
+  const d = deps([peer(STRANGER, 30)]);
+  assert.deepEqual(await greet.run(db.pool, d), { greeted: 1, timedOut: 0, failed: 0 });
+  assert.equal(d.sent.length, 1);
+});
+
+test('registration closed: still answered — the greeter meets their resend with the waitlist', async () => {
   await flags.setFlag(db.pool, 'registration_open', false);
   const d = deps([peer(STRANGER, 30)]);
-  assert.deepEqual(await greet.run(db.pool, d), { skipped: 'registration closed' });
+  assert.deepEqual(await greet.run(db.pool, d), { greeted: 1, timedOut: 0, failed: 0 });
+});
+
+test('a session that opens while the tick reads is not talked over', async () => {
+  // First read: nobody. Second read, right before the send: the greeter has them.
+  const d = deps([peer(STRANGER, 30)], [[], [{ peer: STRANGER }]]);
+  assert.deepEqual(await greet.run(db.pool, d), { greeted: 0 });
+  assert.equal(d.sent.length, 0);
+  const { rows } = await db.pool.query('SELECT 1 FROM stranger_greetings WHERE phone = $1', [STRANGER]);
+  assert.equal(rows.length, 0, 'no claim either: they were never owed one');
+});
+
+test('the second session read failing is a skipped tick, and nothing is sent', async () => {
+  const d = deps([peer(STRANGER, 30)], [[], null]);
+  assert.match((await greet.run(db.pool, d)).skipped, /session stores unreadable/);
   assert.equal(d.sent.length, 0);
 });
 

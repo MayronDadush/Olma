@@ -363,20 +363,30 @@ hand later that evening.
 stores the guard reads. A lane that meets all of these is owed a greeting:
 
 - first heard inside the last hour, and quiet for three minutes;
-- no session and no `users` row of any status;
-- `registration_open` is set.
+- no session — read twice, the second time right before the send;
+- no `users` row, or only a `pending` one nobody has spoken to (a row
+  `groups.ensureRosterUsers` minted off a group's roster). A pending row with
+  an invite's, waitlist's or room's outbox row, or with `opening_sent_at`, is
+  somebody we wrote to first, and their lane may be our own echo.
 
-It gets the owner's opening and one fixed line ("נראה שההודעה הראשונה שלך לא
-הגיעה אליי — אפשר לשלוח אותה שוב? 🙏"), on the raw pipe, in the language the
-dialling code suggests. A claim row in `stranger_greetings` (migration 115) is
+It gets ONE short fixed message, alone ("היי 👋 כאן עולמה, עוזרת AI בוואטסאפ /
+נראה שההודעה הראשונה שלך לא הגיעה אליי — אפשר לשלוח אותה שוב? 🙏"), on the raw
+pipe, in the language the dialling code suggests — whether registration is
+open or not, since with it closed the greeter answers their resend with the
+waitlist. A claim row in `stranger_greetings` (migration 115) is
 committed before the send, so nobody is greeted twice. A failed send is not
 retried and the guard keeps reporting them; a greeted one leaves the guard.
 
 What it does NOT do is recover the words they wrote — those are gone. The
 plugin-side fix — skip a CIPHERTEXT stub instead of claiming its id — is
-separate work on a file that is not ours. Known cost: when they answer, the
-greeter says its opening a second time, because nothing marks a person with no
-row as already greeted.
+separate work on a file that is not ours.
+
+The first version sent the owner's opening above that line. Reviewed before
+merge and changed: when they answer, the greeter opens a brand-new conversation
+and says the opening as it does for everybody, so the person read two
+introductions — the duplicate "Two introductions" was about. Now the line says
+who is writing ("AI", as the opening's first line does) and the greeter keeps
+the opening, the privacy line and the `opening_sent_at` stamp.
 
 ### She wrote twice and stayed paused, and her list never reached her morning (fixed 2026-10-06)
 
