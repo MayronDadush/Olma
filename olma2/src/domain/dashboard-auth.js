@@ -186,7 +186,7 @@ async function redeemLink(client, token) {
   await client.query(
     `INSERT INTO dashboard_sessions (id, user_id, by_admin) VALUES ($1, $2, $3)`,
     [hash(sid), userId, Boolean(rows[0].by_admin)]);
-  return ok({ sessionId: sid, userId, ...(await landing(client, rows[0])) });
+  return ok({ sessionId: sid, userId, byAdmin: Boolean(rows[0].by_admin), ...(await landing(client, rows[0])) });
 }
 
 // ---- codes -----------------------------------------------------------------

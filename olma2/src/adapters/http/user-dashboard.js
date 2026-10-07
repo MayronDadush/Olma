@@ -408,6 +408,7 @@ async function handle(req, res, pool, pathname) {
       // what switches whose page this is.
       const who = await currentUser(pool, req);
       if (who && who.userId === peek.data.userId) {
+        await withTx(pool, (c) => opens.record(c, who.userId, { byAdmin: who.byAdmin, source: 'link' })).catch(() => {});
         res.writeHead(303, headers(HTML, { Location: '/me' + landingFragment(peek.data, req.url) }));
         return res.end();
       }
@@ -419,6 +420,7 @@ async function handle(req, res, pool, pathname) {
         const holder = await currentUser(pool, req);
         return messagePage(res, 410, 'linkUsed', holder ? holder.locale || 'he' : null);
       }
+      await withTx(pool, (c) => opens.record(c, opened.data.userId, { byAdmin: opened.data.byAdmin, source: 'link' })).catch(() => {});
       res.writeHead(303, headers(HTML, {
         Location: '/me' + landingFragment(opened.data, req.url),
         'Set-Cookie': auth.cookieHeader(opened.data.sessionId),
@@ -452,6 +454,9 @@ async function handle(req, res, pool, pathname) {
       if (opened.error.code === 'not_found') codeMissed(addr);
       return sendJson(res, opened.error.code === 'forbidden' ? 403 : 400, { ok: false, error: { code: opened.error.code } });
     }
+    // A code is the installed app's door and nothing else's, so this is an
+    // app open whatever address the page reloads to.
+    await withTx(pool, (c) => opens.record(c, opened.data.userId, { source: 'app' })).catch(() => {});
     return sendJson(res, 200, { ok: true }, { 'Set-Cookie': auth.cookieHeader(opened.data.sessionId) });
   }
 
@@ -484,7 +489,7 @@ async function handle(req, res, pool, pathname) {
     }
     // Counted for the admin page (domain/dashboard-opens.js), and never at
     // the page's expense: a failed write is a visit not counted, nothing more.
-    await withTx(pool, (c) => opens.record(c, userId, { byAdmin: who.byAdmin })).catch(() => {});
+    await withTx(pool, (c) => opens.record(c, userId, { byAdmin: who.byAdmin, source: opens.sourceOf(req.url) })).catch(() => {});
     res.writeHead(200, headers(HTML));
     return res.end(ownPageHtml(who.locale));
   }
