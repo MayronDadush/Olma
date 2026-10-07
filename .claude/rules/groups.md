@@ -323,6 +323,16 @@ have already had to be argued for.
   inside the window is still an exit (`incidents.md`, "Yossi was abroad, and
   was taken out").
 
+- **A room does not open a coordination its asker is already negotiating
+  PRIVATELY with nearly the same people** (2026-10-05, the poker room: 73 and
+  74, the same twelve, two and a half minutes apart). `startCoordination`
+  answers `already_open` off `meetings.privateOpenLikeRoom` and
+  `start_group_coordination` takes `separate`; the room hears the private
+  one's title and its opener's tag, never its times or answers. "Continue"
+  adopts nothing — making the private one the room's is the owner's call. The
+  matching rule is in `rules/reminders-and-tasks.md` (`incidents.md`, "Two
+  invites for one poker night").
+
 - **Somebody a room sent to the greeter hears about that room in the FIRST
   reply, and its coordination follows that same night if they are awake**
   (2026-09-25). The greeter is handed the room by brokerd `intake_context`
