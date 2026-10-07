@@ -186,7 +186,7 @@ test('a silent member who was never paused hears about the coordination once', a
   assert.equal(rows[0].hold_reason, 'quiet', 'and the allowance is spent, so it drops as it always did');
 });
 
-test('a paused member hears about the coordination once, and the second one leaves them out', async () => {
+test('a quietly paused member hears about EACH coordination once (owner, 2026-10-07)', async () => {
   const { group, people } = await room(1);
   const [asker, other, paused] = people;
   await withTx(db.pool, (c) => pause.quietPause(c, paused.id));
@@ -205,12 +205,28 @@ test('a paused member hears about the coordination once, and the second one leav
   const { rows: [u] } = await db.pool.query(`SELECT room_invite_sent_at FROM users WHERE id = $1`, [paused.id]);
   assert.ok(u.room_invite_sent_at, 'the allowance is spent once the send confirmed');
 
+  // A changed table writes the invite again ("tableChanged"). That is the
+  // same coordination, and its one message is spent.
+  await db.pool.query(
+    `INSERT INTO outbox (user_id, kind, payload, urgency, idempotency_key)
+     VALUES ($1, 'meeting_invite', $2, 'urgent', $3)`,
+    [paused.id, JSON.stringify({ meetingId: first.meeting.id, title: 'פאדל', tableChanged: true }),
+      `reinvite:${first.meeting.id}:${paused.id}`]);
+  const again = recorder();
+  await drainOnce(db.pool, again.deliver, GATE_NOW, live);
+  assert.equal(again.sent.filter((r) => Number(r.user_id) === Number(paused.id)).length, 0,
+    'a second invite about the same coordination does not reach them');
+
+  // The NEXT coordination is a new one: one message about it too. Until
+  // 2026-10-07 one invite per pause left them out of every later one.
   await close(first.meeting.id);
   const second = await start(group, asker, 'פאדל שוב');
-  assert.equal(second.participants, 2, 'a spent pause is not swept into the next one');
-  assert.equal(await stateOf(second.meeting.id, paused.id), null);
-  const rows = await inviteRows(second.meeting.id);
-  assert.ok(rows.every((r) => Number(r.user_id) !== Number(paused.id)));
+  assert.equal(second.participants, 3, 'a quiet pause is swept into the next coordination');
+  const next = recorder();
+  await drainOnce(db.pool, next.deliver, GATE_NOW, live);
+  const toPausedNext = next.sent.filter((r) => Number(r.user_id) === Number(paused.id));
+  assert.equal(toPausedNext.length, 1, 'and hears about it once');
+  assert.equal(toPausedNext[0].payload.pausedNotice, true);
 });
 
 test('a failed send spends nothing', async () => {

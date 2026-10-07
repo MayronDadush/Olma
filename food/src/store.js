@@ -57,6 +57,10 @@ function dayFor(p, v, { at } = {}) {
   if (v == null || v === '' || v === 'today') return t;
   if (v === 'yesterday') return D.addDays(t, -1);
   if (!D.isDay(v)) refuse('bad_day');
+  // Before 04:00 the calendar is a date ahead of the food day, and a model
+  // that reads the date off the clock will name it. That is tonight, not a
+  // future day.
+  if (v === D.partsIn(p.timezone, at).day) return t;
   const back = D.daysBetween(v, t);
   if (back < 0) refuse('future_day');
   if (back > BACK_DAYS) refuse('too_old');
@@ -322,7 +326,9 @@ async function runAuto(pool, { at = new Date() } = {}) {
     'SELECT a.*, p.timezone FROM auto_meals a JOIN people p USING (user_id)');
   const wrote = [];
   for (const a of rows) {
-    const x = D.partsIn(a.timezone, at);
+    // The hour is the clock's, the day is the food day (D.today), so an auto
+    // meal set for 02:00 is written once and never onto a day still ahead.
+    const x = { hour: D.hourIn(a.timezone, at), day: D.today(a.timezone, at) };
     const last = a.last_day ? (typeof a.last_day === 'string' ? a.last_day : dayString(a.last_day)) : null;
     if (x.hour < a.hour || last === x.day) continue;
     const { rowCount } = await pool.query(

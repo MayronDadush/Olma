@@ -621,7 +621,7 @@ test('the address book arrives, and drops anyone already connected or asked', as
     `INSERT INTO connections (requester_id, target_phone, status)
      VALUES ($1, '+972531920012', 'invited')`, [me.id]);
 
-  const page = await tx((c) => dash.load(c, me.id));
+  const page = await tx((c) => dash.contactsPage(c, me.id));
   const names = page.data.contacts.map((x) => x.name);
   assert.equal(names.includes('גלי'), false, 'offered to invite somebody already connected');
   assert.equal(names.includes('יעל'), false, 'offered to ask again somebody still deciding');

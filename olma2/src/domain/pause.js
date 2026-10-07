@@ -107,11 +107,16 @@ function pausedByRequest(row) {
 }
 
 // Is this member left out of a room's coordination — never invited, never
-// swept in, never counted? Anybody who paused her themselves, and a quiet
-// pause whose one invite is spent. Needs `paused_at`, `paused_reason` and
-// `room_invite_sent_at` on the row (users, or groups.listMembers).
+// swept in, never counted? Anybody who paused her themselves. A quiet pause
+// is NOT, since 2026-10-07: the owner's rule is one message about EACH
+// coordination opened with them ("חוץ מהודעה אחת על כל תיאום שנפתח איתם"),
+// so somebody the ladder or the silence clock paused is swept into every new
+// one, hears its invite once (outbox/worker.js), and a day of silence takes
+// them out of THAT one (group-meetings.sweepSilentPausedMembers). Until then
+// one invite per pause kept them out of every later coordination too. Needs
+// `paused_at` and `paused_reason` on the row (users, or groups.listMembers).
 function keptOutOfRooms(row) {
-  return pausedByRequest(row) || roomInviteSpent(row);
+  return pausedByRequest(row);
 }
 
 const MAX_CATCHUP_STEPS = 800; // ~2 years of daily; a guard, never a limit in practice
@@ -348,13 +353,19 @@ async function resumeUser(client, userId, { now = new Date(), reason = null } = 
 // stopping: the gate drops every row for a paused person, dueForSending and
 // the sweeps skip them, and the dashboard says so. A pause already in place
 // (theirs) is left exactly as it is, reason included.
-async function quietPause(client, userId) {
+//
+// Two callers take it: the ladder's third miss (jobs/checkin.js) and the
+// silence clock (domain/silence-pause.js, 2026-10-07), which says which one it
+// was in `note` so the trail can tell them apart. Same reason column for both,
+// on purpose — everything that ends, counts or invites a quiet pause reads
+// `quiet_ladder`, and a second reason would be a second set of readers.
+async function quietPause(client, userId, { note = QUIET_LADDER, detail = null } = {}) {
   const { rows } = await client.query(
     `UPDATE users SET paused_at = now(), paused_reason = $2
       WHERE id = $1 AND paused_at IS NULL RETURNING paused_at`, [userId, QUIET_LADDER]);
   if (!rows[0]) return ok({ paused: false });
   await audit.record(client, userId, 'user.paused', {
-    note: QUIET_LADDER, reason: QUIET_LADDER,
+    note, reason: QUIET_LADDER, ...(detail || {}),
     remindersCancelled: [], outboxCancelled: [], dataDeleted: false,
   });
   return ok({ paused: true, pausedAt: rows[0].paused_at });

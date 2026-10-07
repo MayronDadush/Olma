@@ -14,6 +14,14 @@
 //  - only an image, by its first bytes, never by its name;
 //  - not consumed, unlike a contact file: the person may correct the meal and
 //    the model may look again inside the same window.
+//
+// The path the model is SHOWN is not in that shared directory. The gateway
+// copies the picture into the person's own workspace before the turn
+// (`<workspace>/media/inbound/openclaw-staged-<uuid>/input-<name>.jpg`), so
+// the shared directory alone refused every real photo: the first one, on
+// 2026-10-07, was refused twice and logged from the gateway's text
+// description instead. The caller passes that person's own directory as
+// `ownDir`; it belongs to one person, which is narrower than the shared one.
 const fs = require('node:fs');
 const path = require('node:path');
 const { ok, err } = require('./results');
@@ -29,12 +37,19 @@ function mimeOf(buf) {
   return null;
 }
 
-function readInboundImage(rawPath, { now = Date.now() } = {}) {
+// A directory's real path, or null when it does not exist (a person who has
+// never been sent a picture has no media/inbound of their own).
+function realDir(d) {
+  if (!d) return null;
+  try { return fs.realpathSync(d); } catch { return null; }
+}
+
+function readInboundImage(rawPath, { now = Date.now(), ownDir = null } = {}) {
   if (!rawPath || typeof rawPath !== 'string') return err('invalid', 'no path given');
-  let real, dir;
+  let real;
   try { real = fs.realpathSync(rawPath); } catch { return err('not_found', 'no such file'); }
-  try { dir = fs.realpathSync(inboundDir()); } catch { return err('not_found', 'no such file'); }
-  if (!real.startsWith(dir + path.sep)) return err('forbidden', 'that path is not a picture the person sent');
+  const dirs = [realDir(inboundDir()), realDir(ownDir)].filter(Boolean);
+  if (!dirs.some(dir => real.startsWith(dir + path.sep))) return err('forbidden', 'that path is not a picture the person sent');
   let stat;
   try { stat = fs.statSync(real); } catch { return err('not_found', 'no such file'); }
   if (!stat.isFile()) return err('invalid', 'not a file');

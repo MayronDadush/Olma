@@ -1274,19 +1274,20 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
 
   // The other direction: a picture the person SENT, for a pack's server to
   // look at (food/: their plate). The pack cannot read the gateway's inbound
-  // directory; domain/inbound-media.js guards the path the model passed (that
-  // directory only, recent, an image by its bytes). Same gate as the card: an
-  // active person holding the asking pack. Audited without the path or bytes.
+  // directory or the copy the gateway staged in THIS person's own workspace,
+  // recent, an image by its bytes). Same gate as the card: an active person
+  // holding the asking pack. Audited without the path or bytes.
   async function handlePackMedia(params = {}) {
     const caller = String(params.caller || '');
     const userId = Number(params.userId);
     if (!require('../intake/agent-tool-policy').PACKS[caller]) return { ok: false, error: 'unknown pack' };
     if (!Number.isSafeInteger(userId) || userId <= 0) return { ok: false, error: 'bad userId' };
     const { rows } = await pool.query(
-      `SELECT u.id FROM users u JOIN user_packs p ON p.user_id = u.id AND p.pack = $2
+      `SELECT u.id, u.workspace_path FROM users u JOIN user_packs p ON p.user_id = u.id AND p.pack = $2
         WHERE u.id = $1 AND u.status = 'active'`, [userId, caller]);
     if (!rows.length) return { ok: false, error: `not a ${caller} user` };
-    const r = require('../domain/inbound-media').readInboundImage(params.path);
+    const ownDir = rows[0].workspace_path ? require('node:path').join(rows[0].workspace_path, 'media', 'inbound') : null;
+    const r = require('../domain/inbound-media').readInboundImage(params.path, { ownDir });
     if (!r.ok) return { ok: false, error: r.error.message, code: r.error.code };
     await audit.record(pool, userId, 'pack.media', { caller, bytes: r.data.bytes, mime: r.data.mime });
     return { ok: true, mime: r.data.mime, base64: r.data.base64 };
@@ -1652,15 +1653,17 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
         // Asked of the hold being ON, not of this mark still pending: a reply
         // earlier in the turn already dropped it, and "already put" would lie.
         const held = Boolean(actorAgentId) && signalsLive();
+        // ⏰ for an add_task that armed a reminder they asked for, 👍 otherwise.
+        const emoji = reactions.stateFor(name, result) === 'scheduled' ? '⏰' : '👍';
         result.data.hints = {
           ...(result.data.hints || {}),
           markPlaced: held
-            ? 'When this turn ends a 👍 goes on their message, telling them this is done — '
+            ? `When this turn ends a ${emoji} goes on their message, telling them this is done — `
               + 'but only if you write nothing: any words you send replace it. If they gave a '
               + 'plain instruction and you have nothing to add — no question worth asking, no '
               + 'caveat, no error, no other hint here — reply with exactly NO_REPLY and nothing '
               + 'else. Write only when the words carry something the mark cannot.'
-            : 'A 👍 has already been put on their message: it tells them this is done. '
+            : `A ${emoji} has already been put on their message: it tells them this is done. `
               + 'If they gave a plain instruction and you have nothing to add — no question worth '
               + 'asking, no caveat, no error, no other hint here — reply with exactly NO_REPLY and '
               + 'nothing else. Write only when the words carry something the mark cannot.',

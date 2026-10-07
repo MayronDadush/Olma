@@ -63,6 +63,7 @@ never trust a dated narrative for something you are about to act on.
 - [Two exits, two messages, to a man who asked for one a day (fixed 2026-10-03)](#two-exits-two-messages-to-a-man-who-asked-for-one-a-day-fixed-2026-10-03)
 - [Four messages in sixty-two seconds (fixed 2026-09-20)](#four-messages-in-sixty-two-seconds-fixed-2026-09-20)
 - [Two day-one steps twelve minutes apart, the first two hours late (fixed 2026-10-03)](#two-day-one-steps-twelve-minutes-apart-the-first-two-hours-late-fixed-2026-10-03)
+- [Twenty o'clock, every evening, about nothing (fixed 2026-10-07)](#twenty-oclock-every-evening-about-nothing-fixed-2026-10-07)
 - [Once a day, said and not kept (built 2026-10-03)](#once-a-day-said-and-not-kept-built-2026-10-03)
 - [Saved, marked done, and read as nothing (fixed 2026-10-04)](#saved-marked-done-and-read-as-nothing-fixed-2026-10-04)
 - [Today at five is not Monday (fixed 2026-09-24)](#today-at-five-is-not-monday-fixed-2026-09-24)
@@ -2446,6 +2447,48 @@ Left alone on purpose: the welcome follow-up does not count toward the gap. It
 goes out seconds after the greeter for nearly everybody who arrives through
 it, so counting it would cancel the 15m step for all of them. That is a change
 to the ladder's design, and it is the owner's call.
+
+### Twenty o'clock, every evening, about nothing (fixed 2026-10-07)
+
+Saar (u-55) last wrote on 2026-10-05 at 22:27. On the 6th and the 7th he got
+the 20:00 once-a-day message all the same — on the 6th with nothing folded
+into it, on the 7th carrying a second invite to the same poker coordination
+(meeting 74) he had already answered three times. The owner: somebody who has
+not written for days is probably less interested, and Olma should pause them
+on her own.
+
+**Why nothing paused him.** The only automatic pause was the check-in ladder's
+third miss, and a miss is a check-in that REACHED somebody. The once-a-day rule
+drops a check-in at the gate (the evening message is supposed to answer it),
+so his three "silence" rungs on 10-05, 10-06 and 10-07 were each dropped as
+`daily_once` in under a second, `checkin_misses` stayed 0, and the ladder could
+never get to three. Two rules, each right on its own, cancelled each other: the
+ladder measured silence in questions, and the other rule stopped the questions.
+
+**What was built** (`domain/silence-pause.js`): silence measured in TIME, from
+the person's side only — onboarding, a message, a write from their page, a
+word to her in a room, an answer in a coordination, a resume. Two days with no
+open task, five with one (owner's choice, both flags), and never somebody with
+a reminder they asked for still to come, because a pause stops every reminder.
+The pause is the ladder's own (`quiet_ladder`), so nothing is cancelled and
+their first message ends it.
+
+**One message per coordination**, by the owner's words ("חוץ מהודעה אחת על כל
+תיאום שנפתח איתם"). Until now a quiet pause had ONE room invite per pause and
+was then kept out of every later room coordination, and a private invite did
+not reach a paused person at all. Now a quiet pause is swept into each new
+coordination, room or private, its first invite reaches them (the once-a-day
+hold steps aside — a paused person's evening message never comes, so holding
+it would be holding it for ever), every later message about it drops, and a
+day with no answer takes them out of that coordination only.
+
+**Measured on the box before it shipped** (2026-10-07, read-only): of 38
+active users, 24 would be paused on the first tick — 18 holding nothing and 6
+holding a task, the longest silent for 28 days. That number is
+the owner's to see before merging, not a surprise after.
+
+The test is `tests/silence-pause.test.js`; `tests/paused-room-invite.test.js`
+now asserts one invite per coordination where it asserted one per pause.
 
 ### Once a day, said and not kept (built 2026-10-03)
 
@@ -7463,6 +7506,19 @@ passing unchanged through this change — which is exactly how the bug shipped
 unnoticed in the first place. `tests/outbox.test.js` now pins the hour too:
 checked at 19:00 Saturday, released 09:00 Sunday, not 19:00 Sunday.
 
+
+### The owner's own message counted as a question nobody answered (2026-10-08)
+
+Gali's and Dov's 09:00 digests of 2026-10-07 were dropped as `quiet` and
+stamped as sent. Cause: `outbox/worker.js`, `countLadderAsk`, counted every
+`checkin` row except `onboarding_*` as the ladder asking "את פה?". The owner's
+hand-sent cards of 10-06 (`rung: admin`) and a repair of our own fault
+(`unanswered_repair`, sent to Gali three minutes after she wrote) each raised
+`checkin_misses` to 1, and the gate's silence rule (`checkin_misses >= 1`)
+then dropped everything Olma decides to say. Gali had answered; the repair
+landed after her answer and counted again. Rule: only the ladder's own rungs
+count; `admin`, `unanswered_repair` and `missed_goal_repair` do not
+(`tests/checkin-misses.test.js`). Gali's counter was reset by hand.
 
 ## Stopping, pausing and doctrine
 

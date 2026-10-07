@@ -333,6 +333,13 @@ const TEMPLATES = [
     text: '⏰ תזכורת: *{{title}}*',
   },
   {
+    key: 'reminder_again', audience: 'private', label: 'תזכורת נוספת על אותה משימה',
+    help: 'כשביקשו עוד תזכורת על אותה משימה (למשל גם ב-8:00 וגם ב-8:30) והראשונה כבר הגיעה אליהם. לא שואלת "בוצע?" — זה רגע שהם בחרו.',
+    vars: { title: 'מה שביקשו להזכיר, במילים שלהם' }, required: ['title'],
+    sample: { title: 'לקחת את הרכב לטסט' },
+    text: '⏰ תזכורת חוזרת: *{{title}}*',
+  },
+  {
     key: 'reminder_followup', audience: 'private', label: 'תזכורת חוזרת',
     help: 'השלב השני והשלישי של אותה תזכורת, אם לא ענו, וכל הודעה של נודניק אחרי הראשונה. חייבת להגיד איך מפסיקים אותה — "די להזכיר" נעצר בקוד, בלי מודל.',
     vars: { title: 'מה שביקשו להזכיר' }, required: ['title'],
@@ -410,6 +417,13 @@ const TEMPLATES = [
     vars: { title: 'what they asked to be reminded of, in their words' }, required: ['title'],
     sample: { title: 'take the car for its test' },
     text: '⏰ Reminder: *{{title}}*',
+  },
+  {
+    key: 'reminder_again_en', audience: 'private', label: 'תזכורת נוספת על אותה משימה',
+    help: '',
+    vars: { title: 'what they asked to be reminded of, in their words' }, required: ['title'],
+    sample: { title: 'take the car for its test' },
+    text: '⏰ Reminder again: *{{title}}*',
   },
   {
     key: 'reminder_followup_en', audience: 'private', label: 'תזכורת חוזרת',
