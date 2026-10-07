@@ -20,6 +20,7 @@ const NOT_ARMED = new Set([
   'brokerd',        // the daemon's own liveness beat, written directly at startup and every 60s
   'backup_offbox',  // root's crontab (scripts/backup-offbox.sh) writes it after the nightly dump
   'backup_offbox_games',  // the same script, `backup-offbox.sh olma_games`, for the game nights database
+  'backup_offbox_food',   // and `backup-offbox.sh olma_food`, for the food tracking database
 ]);
 
 // A pool nothing here should ever query: building the list must be pure.

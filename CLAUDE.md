@@ -143,7 +143,7 @@ Loads when you **Read** a file under `src/intake/openclaw-config.js`, `src/intak
 - **Every session resets daily: `session.reset: { mode: "daily", atHour: 2 }`**
 - **memory-core "dreaming" stays OFF: `plugins.entries["memory-core"].config.dreaming.enabled: false`** — the gateway's default is on, and `config_guard` goes red if it comes back
 - **A room's agent is shown six tools and a person's the rest, by a computed `tools.deny` per agent** — never hand-edited; the deploy re-syncs it.
-- **A pack's tools (`games__*`) are denied to EVERY agent and lifted only for a person holding the pack** — `user_packs`, read by the sync and `config_guard`; gamesd is still the lock
+- **A pack's tools (`games__*`, `food__*`) are denied to EVERY agent and lifted only for a person holding the pack** — `user_packs`, read by the sync and `config_guard`; gamesd is still the lock
 
 ### Delivering a message
 
@@ -163,7 +163,7 @@ Loads when you **Read** a file under `src/outbox/**`, `src/domain/message-format
 - **EVERY private message about a coordination offers its own page, after one fixed sentence ("אפשר לענות לי כאן בצ'אט או דרך הקישור:") and on a bare line** — since 2026-09-24, reversing 2026-09-20; and the characters are handed over, never asked for: a prompt that named a meeting id got three invented domains in one minute
 - **A private message about a coordination is one sentence of context and one question** — two options are a sentence, a game room counts heads, and the length is measured
 - **The same thing does not go out twice inside a few minutes unless the person ASKED**
-- **The delivery gate is the chokepoint and a paused user has no exceptions** — save one room-coordination invite per pause, and one per run of silence
+- **The delivery gate is the chokepoint and a paused user has no exceptions** — save one invite per COORDINATION for a quiet pause (since 2026-10-07), and one room invite per run of silence
 - **Somebody on `daily_once_phones` hears ONE message a day that Olma started, at 20:00, and none when nothing is open** — held as `daily_once`, folded by `sweepDigests`; only a reminder they asked for and an introduction pass
 - **An unstated quiet day is not "none" — it is Saturday or Sunday, and which one is a fact about the PERSON.**
 - **Quiet HOURS and a quiet DAY draw different lines, and the digest is where they differ.**
@@ -269,12 +269,13 @@ Loads when you **Read** a file under `src/domain/reminders.js`, `src/domain/task
 ### People, silence, and data you must not get wrong
 
 **`.claude/rules/people-and-quiet.md`** — the timezone that must never be NULL, the check-in ladder, the once-ever question, deleting a person, and the rename.
-Loads when you **Read** a file under `src/jobs/checkin.js`, `src/jobs/onboarding-review.js`, `src/domain/users.js` and 5 more.
+Loads when you **Read** a file under `src/jobs/checkin.js`, `src/jobs/onboarding-review.js`, `src/domain/users.js` and 6 more.
 
 - **`users.timezone` must never be NULL**
 - **Every time crossing a tool boundary needs an explicit offset.**
 - **Nobody is asked a question they have already not answered once.** — and a miss is a check-in that REACHED them, counted at delivery, never when it was queued
 - **A day-one step that has not gone out is REPLACED by the NEXT CHECK-IN of any kind, never joined by it.** — and one that has gone out spaces the next by `STEP_GAP_MS`, counted from when it reached them; none after the first starts while they are talking
+- **Somebody silent for DAYS is paused on a clock, not only on unanswered questions** — two days holding nothing, five holding an open task (`silence-pause.due`, flags `silence_pause_days_empty`/`_holding`); never somebody with a reminder they asked for; and a quiet pause hears ONE message per coordination opened with them, room or private
 - **Somebody who has stopped answering hears nothing Olma decided to say, and nothing on their record is cancelled.** — but a coordination they ANSWERED is not her idea, and an answer is what earns that, never membership; and another PERSON reaching them (a connection request, a private invite, a share, a relayed message) is not her idea either (`gate.PEER_KINDS`)
 - **A stop is acted on the moment it is HEARD, not when it is confirmed** — `paused_reason = 'said_stop'` is a full pause, and their next message about anything else ends it.
 - **A write from their own page IS the person answering** — `last_dashboard_at`, never `last_inbound_at`
@@ -407,7 +408,7 @@ Loads when you **Read** a file under `src/domain/group-connections.js`, `src/dom
 - **Every line a room hears unasked is Olma's own text, save exactly one: a sentence a MEMBER asked her to say there** — one per person per coordination, and only in a room the flag names
 - **…and that line carries what the same person did to the TABLE, because the reason and the change are one piece of news** — three shapes, chosen by what is true
 - **A joke in the room is answered with a joke, built only from what the room said** — one short line; nothing invented, nothing private, nobody really mocked
-- **A paused member is counted into a room's coordination only until their one invite is spent; a day of silence takes them out** — and only a pause the LADDER took; somebody who paused her themselves is never invited, tagged or asked, and whoever left the WhatsApp group leaves its coordination — **but since 2026-09-28 the room's NUMBER counts every paused member, and a room waits on them before "everybody said yes"**; only a CHOSEN exit leaves the count
+- **A quietly paused member is counted into EVERY new coordination and hears its invite once (since 2026-10-07; it was one per pause); a day of silence takes them out of THAT one** — and only a pause the LADDER took; somebody who paused her themselves is never invited, tagged or asked, and whoever left the WhatsApp group leaves its coordination — **but since 2026-09-28 the room's NUMBER counts every paused member, and a room waits on them before "everybody said yes"**; only a CHOSEN exit leaves the count
 - **A room on more than one clock hears every time in each, by city, from the owner's own `_zones` templates; a time with no clock in it is never converted, and a one-clock room is untouched** — and asked for hours that suit everyone, she answers from `meeting-time.commonHours`, where only a confirmed clock is counted
 - **A member's message in the room opens the gate's fifteen-minute window for that room's coordination — and, since 2026-09-09, the room's own announcement window; nothing else**
 - **The private side knows every room a person shares with Olma, off the ROSTER, and says the list is complete** (`groups.roomsOf` → the turn context's `rooms` and `list_my_meetings`)

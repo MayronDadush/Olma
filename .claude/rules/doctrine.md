@@ -100,6 +100,13 @@ title means this file. Grep the title, not the filename.
   to make it "feel faster"**: that is exactly what put a sentence under a 👍
   in up to 60 of 90 marks in a week. Not covered: 🙏 and the stop-reminders
   👍 (turn open), and a burst-held reply.
+  **ONE mark per message, because every reaction is a notification**
+  (owner, 2026-10-06). A 👍 then an ⏰ in the same turn is one ⏰ at the end,
+  never a 👍 the ⏰ replaces (the hold keeps only the newest state). **An
+  `add_task` that armed a reminder THEY asked for earns ⏰**
+  (`reactions.stateFor`: any reminder with `auto = false`); a date alone,
+  whose automatic reminder nobody asked for, stays 👍. `doneMarkStands`
+  counts that ⏰, so `markPlaced` and the echo gate still follow it.
 
 - **The owner's rule is that anything which CAN end in a like should**
   (2026-09-10), so the table covers every capture, every undo, everything Olma

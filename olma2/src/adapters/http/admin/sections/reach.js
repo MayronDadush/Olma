@@ -35,6 +35,33 @@ function hourStrip(byHour) {
       <span class="dim">${v || ''}</span></td>`).join('')}</tr></table>`;
 }
 
+// Where an open came from (migration 116, dashboard-opens.js).
+const SOURCE = { app: 'אפליקציה בטלפון', link: 'קישור מוואטסאפ', browser: 'דפדפן בלי קישור', unknown: 'לא ידוע' };
+const SOURCE_SHORT = { app: 'אפליקציה', link: 'קישור', browser: 'דפדפן' };
+
+function sourceBlock(s) {
+  const by = Object.fromEntries((s.bySource || []).map((r) => [r.source, r]));
+  const order = ['app', 'link', 'browser', 'unknown'].filter((k) => by[k]);
+  const c = s.codes;
+  // A code is ONE way into the iPhone app, not the only one: adding the page
+  // to the home screen can carry Safari's session along, so the owner's own
+  // app runs with no code ever sent. The count is codes, never app users.
+  const codeLine = c && c.sent
+    ? `קודי כניסה נשלחו ${c.sent} פעמים ל־${c.people} אנשים, האחרון ${esc(ago(c.last_at))}.`
+    : '';
+  return `<h4>מאיפה פתחו</h4>
+    ${order.length ? `<table><tr><th></th><th>פתיחות 7 ימים</th><th>אנשים 7 ימים</th><th>פתיחות ${s.days} יום</th><th>אנשים ${s.days} יום</th></tr>
+    ${order.map((k) => `<tr><td>${SOURCE[k]}</td><td>${by[k].opens7}</td><td>${by[k].people7}</td><td>${by[k].opens}</td><td>${by[k].people}</td></tr>`).join('')}</table>` : ''}
+    <p class="small dim">אפליקציה = נפתח מהאייקון במסך הבית. קישור = לחיצה על קישור שעולמה שלחה. דפדפן = כתובת שמורה או לשונית פתוחה.
+    ${s.totals.source_since ? `נספר מאז ${esc(localTime(s.totals.source_since, OWNER_TZ))}. ` : ''}${c && !c.sent ? 'כניסות מלפני כן נספרו כקישור, כי אף קוד לא נשלח. מי פתח מהאפליקציה לפני כן — לא ידוע: אייפון שמוסיף למסך הבית יכול לקחת איתו את החיבור מספארי, בלי קוד.' : ''}
+    ${codeLine}</p>`;
+}
+
+function sourceCell(p) {
+  const parts = ['app', 'link', 'browser'].filter((k) => p[k]).map((k) => `${SOURCE_SHORT[k]} ${p[k]}`);
+  return parts.join(' · ') || '<span class="dim">—</span>';
+}
+
 function renderOpensView(s) {
   const t = s.totals;
   const head = `<table><tr><th></th><th>פתיחות</th><th>אנשים</th></tr>
@@ -43,16 +70,17 @@ function renderOpensView(s) {
     <p class="small dim">לא נספרו: ${t.admin_opens} פתיחות שלך מדף המשתמש באדמין${t.test_opens ? `, ${t.test_opens} של חשבונות בדיקה` : ''}.
     ${t.counting_since ? `כל טעינה נספרת מאז ${esc(localTime(t.counting_since, OWNER_TZ))};` : 'עוד לא נספרה אף טעינה;'}
     לפני זה רק כניסות (לינק או קוד) שעוד שמורות, ולכן המספרים הישנים נמוכים מהאמת.</p>`;
-  if (!s.people.length) return head + '<p class="dim">אף אחד לא פתח את העמוד שלו בתקופה הזו.</p>';
+  if (!s.people.length) return head + '<p class="dim">אף אחד לא פתח את העמוד שלו בתקופה הזו.</p>' + sourceBlock(s);
   const rows = s.people.map((p) => `<tr>
       <td>${nameLink(p.id, p.first_name)}${zoneNote(p.timezone)}</td>
       <td>${p.opens7}</td><td>${p.opens}${p.backfilled ? ` <span class="dim small" title="מתוכן כניסות משוחזרות, מלפני שנספרה כל טעינה">(${p.backfilled} כניסות)</span>` : ''}</td>
+      <td class="small">${sourceCell(p)}</td>
       <td>${esc(localTime(p.first_at, p.timezone))}</td>
       <td>${esc(localTime(p.last_at, p.timezone))} <span class="dim small">${esc(ago(p.last_at))}</span></td>
       <td class="small">${(p.recent || []).map((ts) => esc(localTime(ts, p.timezone))).join(' · ')}</td></tr>`).join('');
-  return `${head}
+  return `${head}${sourceBlock(s)}
     <h4>מי פתח</h4>
-    <table><tr><th>מי</th><th>7 ימים</th><th>${s.days} יום</th><th>ראשונה</th><th>אחרונה</th><th>חמש האחרונות (בשעון שלו)</th></tr>${rows}</table>
+    <table><tr><th>מי</th><th>7 ימים</th><th>${s.days} יום</th><th>מאיפה</th><th>ראשונה</th><th>אחרונה</th><th>חמש האחרונות (בשעון שלו)</th></tr>${rows}</table>
     <h4>באיזו שעה ביום שלהם</h4>${hourStrip(s.byHour)}
     <h4>לפי יום</h4>
     <table><tr><th>יום</th><th>פתיחות</th><th>אנשים</th></tr>

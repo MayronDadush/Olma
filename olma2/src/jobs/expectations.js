@@ -106,6 +106,8 @@ const JOB_INTERVAL_SECONDS = {
   // The same script, for the game nights database (games/, olma_games), on
   // its own row so the two copies are judged separately.
   backup_offbox_games: 86400,
+  // And for food tracking (food/, olma_food), the same way.
+  backup_offbox_food: 86400,
 };
 
 const STALE_MULTIPLIER = 3;

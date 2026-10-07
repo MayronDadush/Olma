@@ -166,6 +166,13 @@ const DEFAULTS = {
   // sent when nothing is open. Replies to their own messages are untouched.
   // '' = nobody, 'all', or a comma-separated E.164 list.
   daily_once_phones: '',
+  // domain/silence-pause.js (owner, 2026-10-07, Saar): somebody who has given
+  // no sign of life for this many days is paused the way the ladder pauses —
+  // nothing cancelled, their first message ends it — and Olma stops starting
+  // conversations with them. Faster for somebody who holds nothing (no open
+  // task), slower for somebody who does. 0 turns that half off.
+  silence_pause_days_empty: 2,
+  silence_pause_days_holding: 5,
   // jobs/intake.js (owner, 2026-10-04, new people said she "חופרת"): the
   // morning-after welcome of somebody who came in through a game night or a
   // room is the intro clip with one fixed line and their page, instead of a

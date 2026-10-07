@@ -1,0 +1,903 @@
+{
+ "dish_1559751801": {
+  "kcal": 451.635986,
+  "mass": 343,
+  "fat": 22.040001,
+  "carb": 32.778,
+  "protein": 29.228001,
+  "ings": [
+   {
+    "name": "berries",
+    "grams": 66,
+    "kcal": 37.62,
+    "fat": 0.198,
+    "carb": 9.24,
+    "protein": 0.462
+   },
+   {
+    "name": "yam",
+    "grams": 66,
+    "kcal": 81.906,
+    "fat": 0.132,
+    "carb": 19.404,
+    "protein": 1.056
+   },
+   {
+    "name": "eggs",
+    "grams": 122,
+    "kcal": 189.71,
+    "fat": 12.81,
+    "carb": 1.464,
+    "protein": 15.25
+   },
+   {
+    "name": "chicken apple sausage",
+    "grams": 89,
+    "kcal": 142.4,
+    "fat": 8.9,
+    "carb": 2.67,
+    "protein": 12.46
+   }
+  ]
+ },
+ "dish_1566413445": {
+  "kcal": 377.830017,
+  "mass": 360,
+  "fat": 20.130001,
+  "carb": 16.335999,
+  "protein": 36.927002,
+  "ings": [
+   {
+    "name": "chicken",
+    "grams": 103,
+    "kcal": 169.95,
+    "fat": 3.708,
+    "carb": 0,
+    "protein": 31.93
+   },
+   {
+    "name": "avocado",
+    "grams": 49,
+    "kcal": 78.4,
+    "fat": 7.35,
+    "carb": 4.41,
+    "protein": 0.98
+   },
+   {
+    "name": "spinach (raw)",
+    "grams": 61,
+    "kcal": 14.03,
+    "fat": 0.244,
+    "carb": 2.196,
+    "protein": 1.769
+   },
+   {
+    "name": "broccoli",
+    "grams": 67,
+    "kcal": 23.45,
+    "fat": 0.268,
+    "carb": 4.69,
+    "protein": 1.608
+   },
+   {
+    "name": "olives",
+    "grams": 80,
+    "kcal": 92,
+    "fat": 8.56,
+    "carb": 5.04,
+    "protein": 0.64
+   }
+  ]
+ },
+ "dish_1563555605": {
+  "kcal": 537.809998,
+  "mass": 403,
+  "fat": 31.371,
+  "carb": 39.622002,
+  "protein": 24.804001,
+  "ings": [
+   {
+    "name": "scrambled eggs",
+    "grams": 131,
+    "kcal": 193.88,
+    "fat": 14.41,
+    "carb": 2.096,
+    "protein": 13.1
+   },
+   {
+    "name": "pineapple",
+    "grams": 149,
+    "kcal": 74.5,
+    "fat": 0.149,
+    "carb": 19.37,
+    "protein": 0.745
+   },
+   {
+    "name": "roasted potatoes",
+    "grams": 99,
+    "kcal": 139.59,
+    "fat": 6.732,
+    "carb": 17.82,
+    "protein": 2.079
+   },
+   {
+    "name": "bacon",
+    "grams": 24,
+    "kcal": 129.84,
+    "fat": 10.08,
+    "carb": 0.336,
+    "protein": 8.88
+   }
+  ]
+ },
+ "dish_1558376483": {
+  "kcal": 735.030029,
+  "mass": 270,
+  "fat": 55.444,
+  "carb": 32.240002,
+  "protein": 33.301003,
+  "ings": [
+   {
+    "name": "cantaloupe",
+    "grams": 39,
+    "kcal": 13.26,
+    "fat": 0.078,
+    "carb": 3.12,
+    "protein": 0.312
+   },
+   {
+    "name": "almonds",
+    "grams": 52,
+    "kcal": 300.612,
+    "fat": 25.74,
+    "carb": 11.804,
+    "protein": 11.648
+   },
+   {
+    "name": "grapes",
+    "grams": 71,
+    "kcal": 48.99,
+    "fat": 0.142,
+    "carb": 12.78,
+    "protein": 0.497
+   },
+   {
+    "name": "sausage",
+    "grams": 108,
+    "kcal": 372.168,
+    "fat": 29.484,
+    "carb": 4.536,
+    "protein": 20.844
+   }
+  ]
+ },
+ "dish_1566931586": {
+  "kcal": 379.380005,
+  "mass": 389,
+  "fat": 15.281001,
+  "carb": 15.525999,
+  "protein": 46.593998,
+  "ings": [
+   {
+    "name": "olives",
+    "grams": 91,
+    "kcal": 104.65,
+    "fat": 9.737,
+    "carb": 5.733,
+    "protein": 0.728
+   },
+   {
+    "name": "mixed greens",
+    "grams": 91,
+    "kcal": 25.48,
+    "fat": 0.364,
+    "carb": 4.823,
+    "protein": 2.002
+   },
+   {
+    "name": "chicken",
+    "grams": 136,
+    "kcal": 224.4,
+    "fat": 4.896,
+    "carb": 0,
+    "protein": 42.16
+   },
+   {
+    "name": "broccoli",
+    "grams": 71,
+    "kcal": 24.85,
+    "fat": 0.284,
+    "carb": 4.97,
+    "protein": 1.704
+   }
+  ]
+ },
+ "dish_1559845767": {
+  "kcal": 236.23201,
+  "mass": 375,
+  "fat": 0.481,
+  "carb": 58.011997,
+  "protein": 3.648,
+  "ings": [
+   {
+    "name": "pears",
+    "grams": 201,
+    "kcal": 114.972,
+    "fat": 0.201,
+    "carb": 30.552,
+    "protein": 0.804
+   },
+   {
+    "name": "mandarin oranges",
+    "grams": 53,
+    "kcal": 28.09,
+    "fat": 0.159,
+    "carb": 6.89,
+    "protein": 0.424
+   },
+   {
+    "name": "potatoes",
+    "grams": 121,
+    "kcal": 93.17,
+    "fat": 0.121,
+    "carb": 20.57,
+    "protein": 2.42
+   }
+  ]
+ },
+ "dish_1565725123": {
+  "kcal": 430.269989,
+  "mass": 444,
+  "fat": 11.865999,
+  "carb": 19.185001,
+  "protein": 61.118999,
+  "ings": [
+   {
+    "name": "cherry tomatoes",
+    "grams": 67,
+    "kcal": 12.06,
+    "fat": 0.134,
+    "carb": 2.613,
+    "protein": 0.603
+   },
+   {
+    "name": "olives",
+    "grams": 44,
+    "kcal": 50.6,
+    "fat": 4.708,
+    "carb": 2.772,
+    "protein": 0.352
+   },
+   {
+    "name": "bell peppers",
+    "grams": 80,
+    "kcal": 32,
+    "fat": 0.16,
+    "carb": 7.2,
+    "protein": 1.6
+   },
+   {
+    "name": "carrot",
+    "grams": 66,
+    "kcal": 27.06,
+    "fat": 0.132,
+    "carb": 6.6,
+    "protein": 0.594
+   },
+   {
+    "name": "chicken",
+    "grams": 187,
+    "kcal": 308.55,
+    "fat": 6.732,
+    "carb": 0,
+    "protein": 57.97
+   }
+  ]
+ },
+ "dish_1565383128": {
+  "kcal": 600.278931,
+  "mass": 456,
+  "fat": 39.396999,
+  "carb": 14.009,
+  "protein": 50.022999,
+  "ings": [
+   {
+    "name": "parmesan cheese",
+    "grams": 27,
+    "kcal": 116.289,
+    "fat": 7.722,
+    "carb": 1.134,
+    "protein": 10.368
+   },
+   {
+    "name": "cucumbers",
+    "grams": 101,
+    "kcal": 10.1,
+    "fat": 0,
+    "carb": 2.02,
+    "protein": 1.01
+   },
+   {
+    "name": "vinaigrette",
+    "grams": 26,
+    "kcal": 121.03,
+    "fat": 13.468,
+    "carb": 0.676,
+    "protein": 0
+   },
+   {
+    "name": "olives",
+    "grams": 129,
+    "kcal": 148.35,
+    "fat": 13.803,
+    "carb": 8.127,
+    "protein": 1.032
+   },
+   {
+    "name": "chicken",
+    "grams": 116,
+    "kcal": 191.4,
+    "fat": 4.176,
+    "carb": 0,
+    "protein": 35.96
+   },
+   {
+    "name": "spinach (raw)",
+    "grams": 57,
+    "kcal": 13.11,
+    "fat": 0.228,
+    "carb": 2.052,
+    "protein": 1.653
+   }
+  ]
+ },
+ "dish_1568060746": {
+  "kcal": 778.819946,
+  "mass": 395,
+  "fat": 53.007999,
+  "carb": 12.233,
+  "protein": 64.398003,
+  "ings": [
+   {
+    "name": "olive oil",
+    "grams": 36,
+    "kcal": 318.24,
+    "fat": 36,
+    "carb": 0,
+    "protein": 0
+   },
+   {
+    "name": "mixed greens",
+    "grams": 61,
+    "kcal": 17.08,
+    "fat": 0.244,
+    "carb": 3.233,
+    "protein": 1.342
+   },
+   {
+    "name": "avocado",
+    "grams": 64,
+    "kcal": 102.4,
+    "fat": 9.6,
+    "carb": 5.76,
+    "protein": 1.28
+   },
+   {
+    "name": "onions",
+    "grams": 36,
+    "kcal": 14.4,
+    "fat": 0.036,
+    "carb": 3.24,
+    "protein": 0.396
+   },
+   {
+    "name": "chicken",
+    "grams": 198,
+    "kcal": 326.7,
+    "fat": 7.128,
+    "carb": 0,
+    "protein": 61.38
+   }
+  ]
+ },
+ "dish_1559668314": {
+  "kcal": 551.546021,
+  "mass": 300,
+  "fat": 38.153999,
+  "carb": 32.832001,
+  "protein": 21.035,
+  "ings": [
+   {
+    "name": "scrambled eggs",
+    "grams": 150,
+    "kcal": 222,
+    "fat": 16.5,
+    "carb": 2.4,
+    "protein": 15
+   },
+   {
+    "name": "garden salad",
+    "grams": 61,
+    "kcal": 39.406,
+    "fat": 2.074,
+    "carb": 1.952,
+    "protein": 3.721
+   },
+   {
+    "name": "hash browns",
+    "grams": 89,
+    "kcal": 290.14,
+    "fat": 19.58,
+    "carb": 28.48,
+    "protein": 2.314
+   }
+  ]
+ },
+ "dish_1568666329": {
+  "kcal": 743.76001,
+  "mass": 594,
+  "fat": 42.484001,
+  "carb": 19.77,
+  "protein": 72.891998,
+  "ings": [
+   {
+    "name": "artichokes",
+    "grams": 80,
+    "kcal": 37.6,
+    "fat": 0.16,
+    "carb": 8.8,
+    "protein": 2.64
+   },
+   {
+    "name": "olive oil",
+    "grams": 34,
+    "kcal": 300.56,
+    "fat": 34,
+    "carb": 0,
+    "protein": 0
+   },
+   {
+    "name": "lettuce",
+    "grams": 190,
+    "kcal": 28.5,
+    "fat": 0.38,
+    "carb": 5.51,
+    "protein": 2.66
+   },
+   {
+    "name": "broccoli",
+    "grams": 78,
+    "kcal": 27.3,
+    "fat": 0.312,
+    "carb": 5.46,
+    "protein": 1.872
+   },
+   {
+    "name": "chicken",
+    "grams": 212,
+    "kcal": 349.8,
+    "fat": 7.632,
+    "carb": 0,
+    "protein": 65.72
+   }
+  ]
+ },
+ "dish_1562686577": {
+  "kcal": 556.563965,
+  "mass": 531,
+  "fat": 24.720999,
+  "carb": 56.031998,
+  "protein": 29.221001,
+  "ings": [
+   {
+    "name": "chicken apple sausage",
+    "grams": 100,
+    "kcal": 160,
+    "fat": 10,
+    "carb": 3,
+    "protein": 14
+   },
+   {
+    "name": "berries",
+    "grams": 251,
+    "kcal": 143.07,
+    "fat": 0.753,
+    "carb": 35.14,
+    "protein": 1.757
+   },
+   {
+    "name": "scrambled eggs",
+    "grams": 126,
+    "kcal": 186.48,
+    "fat": 13.86,
+    "carb": 2.016,
+    "protein": 12.6
+   },
+   {
+    "name": "yam",
+    "grams": 54,
+    "kcal": 67.014,
+    "fat": 0.108,
+    "carb": 15.876,
+    "protein": 0.864
+   }
+  ]
+ },
+ "dish_1566328805": {
+  "kcal": 927.809998,
+  "mass": 488,
+  "fat": 28.737,
+  "carb": 85.054001,
+  "protein": 77.984001,
+  "ings": [
+   {
+    "name": "cherry tomatoes",
+    "grams": 36,
+    "kcal": 6.48,
+    "fat": 0.072,
+    "carb": 1.404,
+    "protein": 0.324
+   },
+   {
+    "name": "pizza",
+    "grams": 233,
+    "kcal": 619.78,
+    "fat": 22.601,
+    "carb": 76.89,
+    "protein": 25.63
+   },
+   {
+    "name": "chicken",
+    "grams": 167,
+    "kcal": 275.55,
+    "fat": 6.012,
+    "carb": 0,
+    "protein": 51.77
+   },
+   {
+    "name": "pineapple",
+    "grams": 52,
+    "kcal": 26,
+    "fat": 0.052,
+    "carb": 6.76,
+    "protein": 0.26
+   }
+  ]
+ },
+ "dish_1568318480": {
+  "kcal": 1119.280029,
+  "mass": 587,
+  "fat": 67.208,
+  "carb": 9.174999,
+  "protein": 117.905998,
+  "ings": [
+   {
+    "name": "mixed greens",
+    "grams": 115,
+    "kcal": 32.2,
+    "fat": 0.46,
+    "carb": 6.095,
+    "protein": 2.53
+   },
+   {
+    "name": "chicken",
+    "grams": 222,
+    "kcal": 366.3,
+    "fat": 7.992,
+    "carb": 0,
+    "protein": 68.82
+   },
+   {
+    "name": "olive oil",
+    "grams": 24,
+    "kcal": 212.16,
+    "fat": 24,
+    "carb": 0,
+    "protein": 0
+   },
+   {
+    "name": "steak",
+    "grams": 182,
+    "kcal": 493.22,
+    "fat": 34.58,
+    "carb": 0,
+    "protein": 45.5
+   },
+   {
+    "name": "broccoli",
+    "grams": 44,
+    "kcal": 15.4,
+    "fat": 0.176,
+    "carb": 3.08,
+    "protein": 1.056
+   }
+  ]
+ },
+ "dish_1561737271": {
+  "kcal": 762.381958,
+  "mass": 520,
+  "fat": 45.844997,
+  "carb": 46.548996,
+  "protein": 40.999001,
+  "ings": [
+   {
+    "name": "sausage",
+    "grams": 117,
+    "kcal": 403.182,
+    "fat": 31.941,
+    "carb": 4.914,
+    "protein": 22.581
+   },
+   {
+    "name": "hash browns",
+    "grams": 60,
+    "kcal": 195.6,
+    "fat": 13.2,
+    "carb": 19.2,
+    "protein": 1.56
+   },
+   {
+    "name": "pineapple",
+    "grams": 126,
+    "kcal": 63,
+    "fat": 0.126,
+    "carb": 16.38,
+    "protein": 0.63
+   },
+   {
+    "name": "broccoli",
+    "grams": 72,
+    "kcal": 25.2,
+    "fat": 0.288,
+    "carb": 5.04,
+    "protein": 1.728
+   },
+   {
+    "name": "egg whites",
+    "grams": 145,
+    "kcal": 75.4,
+    "fat": 0.29,
+    "carb": 1.015,
+    "protein": 14.5
+   }
+  ]
+ },
+ "dish_1560444785": {
+  "kcal": 313.079987,
+  "mass": 448,
+  "fat": 13.188,
+  "carb": 38.66,
+  "protein": 13.360001,
+  "ings": [
+   {
+    "name": "bacon",
+    "grams": 30,
+    "kcal": 162.3,
+    "fat": 12.6,
+    "carb": 0.42,
+    "protein": 11.1
+   },
+   {
+    "name": "watermelon",
+    "grams": 170,
+    "kcal": 51,
+    "fat": 0.34,
+    "carb": 12.92,
+    "protein": 1.02
+   },
+   {
+    "name": "honeydew melons",
+    "grams": 173,
+    "kcal": 62.28,
+    "fat": 0.173,
+    "carb": 15.57,
+    "protein": 0.865
+   },
+   {
+    "name": "pineapple",
+    "grams": 75,
+    "kcal": 37.5,
+    "fat": 0.075,
+    "carb": 9.75,
+    "protein": 0.375
+   }
+  ]
+ },
+ "dish_1562946106": {
+  "kcal": 578.963989,
+  "mass": 359,
+  "fat": 41.862,
+  "carb": 16.796,
+  "protein": 33.006001,
+  "ings": [
+   {
+    "name": "cantaloupe",
+    "grams": 62,
+    "kcal": 21.08,
+    "fat": 0.124,
+    "carb": 4.96,
+    "protein": 0.496
+   },
+   {
+    "name": "watermelon",
+    "grams": 73,
+    "kcal": 21.9,
+    "fat": 0.146,
+    "carb": 5.548,
+    "protein": 0.438
+   },
+   {
+    "name": "sausage",
+    "grams": 104,
+    "kcal": 358.384,
+    "fat": 28.392,
+    "carb": 4.368,
+    "protein": 20.072
+   },
+   {
+    "name": "scrambled eggs",
+    "grams": 120,
+    "kcal": 177.6,
+    "fat": 13.2,
+    "carb": 1.92,
+    "protein": 12
+   }
+  ]
+ },
+ "dish_1563389742": {
+  "kcal": 569.417969,
+  "mass": 556,
+  "fat": 29.556002,
+  "carb": 30.394001,
+  "protein": 48.338997,
+  "ings": [
+   {
+    "name": "cherry tomatoes",
+    "grams": 70,
+    "kcal": 12.6,
+    "fat": 0.14,
+    "carb": 2.73,
+    "protein": 0.63
+   },
+   {
+    "name": "onions",
+    "grams": 74,
+    "kcal": 29.6,
+    "fat": 0.074,
+    "carb": 6.66,
+    "protein": 0.814
+   },
+   {
+    "name": "grilled chicken",
+    "grams": 194,
+    "kcal": 438.828,
+    "fat": 28.906,
+    "carb": 0.194,
+    "protein": 43.844
+   },
+   {
+    "name": "carrot",
+    "grams": 119,
+    "kcal": 48.79,
+    "fat": 0.238,
+    "carb": 11.9,
+    "protein": 1.071
+   },
+   {
+    "name": "bell peppers",
+    "grams": 99,
+    "kcal": 39.6,
+    "fat": 0.198,
+    "carb": 8.91,
+    "protein": 1.98
+   }
+  ]
+ },
+ "dish_1558115641": {
+  "kcal": 584.526001,
+  "mass": 331,
+  "fat": 34.696999,
+  "carb": 41.082001,
+  "protein": 27.196001,
+  "ings": [
+   {
+    "name": "grapes",
+    "grams": 94,
+    "kcal": 64.86,
+    "fat": 0.188,
+    "carb": 16.92,
+    "protein": 0.658
+   },
+   {
+    "name": "sausage",
+    "grams": 126,
+    "kcal": 434.196,
+    "fat": 34.398,
+    "carb": 5.292,
+    "protein": 24.318
+   },
+   {
+    "name": "potatoes",
+    "grams": 111,
+    "kcal": 85.47,
+    "fat": 0.111,
+    "carb": 18.87,
+    "protein": 2.22
+   }
+  ]
+ },
+ "dish_1558029324": {
+  "kcal": 273.5,
+  "mass": 250,
+  "fat": 11.562999,
+  "carb": 29.648003,
+  "protein": 12.83,
+  "ings": [
+   {
+    "name": "potatoes",
+    "grams": 115,
+    "kcal": 88.55,
+    "fat": 0.115,
+    "carb": 19.55,
+    "protein": 2.3
+   },
+   {
+    "name": "bacon",
+    "grams": 27,
+    "kcal": 146.07,
+    "fat": 11.34,
+    "carb": 0.378,
+    "protein": 9.99
+   },
+   {
+    "name": "honeydew melons",
+    "grams": 108,
+    "kcal": 38.88,
+    "fat": 0.108,
+    "carb": 9.72,
+    "protein": 0.54
+   }
+  ]
+ },
+ "dish_1559844113": {
+  "kcal": 312.955017,
+  "mass": 356,
+  "fat": 12.968,
+  "carb": 49.254997,
+  "protein": 7.371,
+  "ings": [
+   {
+    "name": "strawberries",
+    "grams": 77,
+    "kcal": 25.41,
+    "fat": 0.231,
+    "carb": 6.16,
+    "protein": 0.539
+   },
+   {
+    "name": "pears",
+    "grams": 200,
+    "kcal": 114.4,
+    "fat": 0.2,
+    "carb": 30.4,
+    "protein": 0.8
+   },
+   {
+    "name": "mandarin oranges",
+    "grams": 54,
+    "kcal": 28.62,
+    "fat": 0.162,
+    "carb": 7.02,
+    "protein": 0.432
+   },
+   {
+    "name": "almonds",
+    "grams": 25,
+    "kcal": 144.525,
+    "fat": 12.375,
+    "carb": 5.675,
+    "protein": 5.6
+   }
+  ]
+ }
+}

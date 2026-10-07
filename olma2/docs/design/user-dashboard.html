@@ -4932,8 +4932,20 @@ button.srow:active{background:var(--bg-tint)}
      creates one or edits one — the page numbers its own new rows from a local
      counter, and asking "is this id one of ours" is the only honest test. */
   var SERVER_IDS = {};
+  /* Browsers cap the bodies of all in-flight keepalive requests together at
+     64KB; a write is a few hundred bytes, and this leaves room for several. */
+  var KEEPALIVE_MAX = 8 * 1024;
   /* Which /me/data read is the current one — see API.reload. */
   var dataSeq = 0;
+  /* Writes on the wire, and how many have ever started: a read waits for the
+     first to reach zero, and throws away an answer the second moved under. */
+  var writesInFlight = 0, writeGen = 0, reloadDeferred = false;
+  /* The `done` of every reload asked for since the last one landed. */
+  var reloadWaiting = [];
+  function flushReloadWaiting(ok){
+    var list = reloadWaiting; reloadWaiting = [];
+    list.forEach(function(fn){ try{ fn(ok); }catch(e){} });
+  }
   /* This person's own user id, once the server has said what it is. Needed for
      exactly one thing: leaving a shared task means revoking MY share row, and
      the row is keyed by the real id even though the page calls me 0. */
@@ -5097,23 +5109,76 @@ button.srow:active{background:var(--bg-tint)}
        the row under somebody's finger if the server disagreed — is worse than
        being briefly out of date. A refusal is surfaced, not swallowed: the
        page reloads its data, so the next paint is the truth rather than the
-       optimistic guess. */
+       optimistic guess.
+
+       And so is a write that never landed. Until 2026-10-06 only an answer
+       carrying `ok:false` counted as a failure: a 500 (the router answers
+       one in plain text, which does not parse), a dropped connection, a
+       request the phone killed when the app went to the background — every
+       one of them reached onOk as an ordinary success. The row stayed drawn
+       the way it was typed, "נשמר" had already flashed, and the change was
+       gone at the next reload. Success is now exactly a 2xx whose body says
+       `ok:true`; anything else is said out loud and re-read.
+
+       `onOk(data, ok)` — `ok` is the one honest answer to "did it land",
+       because a write that succeeded may still carry no `data`.
+
+       `keepalive` on every write that fits under the browser's 64KB budget
+       for them: an installed app is put in the background the moment
+       somebody goes back to WhatsApp, and a plain fetch dies with it. */
     send: function(action, payload, onOk, keepalive){
-      if(!LIVE || !ACT[action]){ if(onOk) onOk(null); return true; }
+      if(!LIVE || !ACT[action]){ if(onOk) onOk(null, false); return true; }
       lastWriteAt = Date.now();
+      var body = JSON.stringify({action:ACT[action], payload:payload || {}});
+      /* Counted while on the wire, so API.reload waits for it (see there).
+         Settled AFTER the caller's onOk: an add that renumbers its row and
+         sends what was queued behind it keeps the read waiting for those too. */
+      writesInFlight++; writeGen++;
+      var settled = false, answered = false;
+      function settle(){
+        if(settled) return;
+        settled = true;
+        writesInFlight--;
+        if(writesInFlight === 0 && reloadDeferred){ reloadDeferred = false; API.reload(); }
+      }
       fetch("/me/act", {
-        method:"POST", credentials:"same-origin", keepalive:!!keepalive,
+        method:"POST", credentials:"same-origin",
+        keepalive:!!keepalive || body.length < KEEPALIVE_MAX,
         headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({action:ACT[action], payload:payload || {}})
-      }).then(function(r){ return r.json().catch(function(){ return null; }); })
-        .then(function(body){
-          if(body && body.ok === false){ API.refused(body.error); if(onOk) onOk(null); }
-          else if(onOk) onOk(body && body.data ? body.data : null);
+        body:body
+      }).then(function(r){
+          return r.json().then(function(b){ return {status:r.status, body:b}; },
+                               function(){ return {status:r.status, body:null}; });
         })
-        .catch(function(){ if(onOk) onOk(null); /* offline: the page keeps what it shows */ });
+        .then(function(res){
+          var b = res.body;
+          answered = true;
+          if(b && b.ok === false){ API.refused(b.error); if(onOk) onOk(null, false); }
+          else if(res.status >= 200 && res.status < 300 && b && b.ok){ if(onOk) onOk(b.data || null, true); }
+          else { API.lost(); if(onOk) onOk(null, false); }
+          settle();
+        })
+        /* Only for a write nobody has answered: a caller's onOk that threw is
+           not the network failing, and a write that landed is not "not saved". */
+        .catch(function(){ if(!answered){ API.lost(); if(onOk) onOk(null, false); } settle(); })
+        /* An onOk that throws must not leave the count up for good — every
+           read after it would wait for a write that already ended. */
+        .then(settle, settle);
       return true;
     },
+    /* A write that did not land, for no reason the server gave. Said before
+       the caller's own onOk runs, so a caller with a more specific line of its
+       own (a call that did not ring) still has the last word. */
+    lost: function(){
+      toast(t("toast.notSaved"), null, true);
+      API.reload();
+    },
     refused: function(error){
+      /* The session is gone (thirty idle days, or "sign out everywhere"). The
+         page itself knows how to sign back in, so it asks for itself again —
+         the same answer bootFetch gives a 401. Nothing written from here on
+         could land, and saying "not saved" on every tap would only repeat it. */
+      if(error && error.code === "unauthorized"){ location.reload(); return; }
       /* Two of these the person can act on, so they are said out loud; the
          rest are ours to fix and saying "invalid" to somebody helps nobody.
          Said as errors, which is what keeps them on screen long enough to be
@@ -5135,20 +5200,34 @@ button.srow:active{background:var(--bg-tint)}
     },
     /* One re-read, so what is on screen goes back to being what is stored. */
     reload: function(done){
-      if(!LIVE){ if(done) done(); return; }
+      if(!LIVE){ if(done) done(true); return; }
+      /* Everybody waiting is answered by whichever read finally lands. A read
+         superseded by a newer one used to drop its `done` on the floor, which
+         left the pull-to-refresh spinner turning for good. */
+      if(done) reloadWaiting.push(done);
+      /* Not while a write of ours is on the wire. A read that starts before a
+         write lands carries the picture from before it, and hydrate draws that
+         picture over the change the person just made — the title they typed
+         goes back, a task they just added disappears from the list. It runs
+         when the last write settles (API.send). */
+      if(writesInFlight > 0){ reloadDeferred = true; return; }
       /* The newest read wins. Answers on this page fire their own reload, so
          two taps a second apart leave two of these in flight — and the slower
          one, which is the OLDER picture, used to land last and put the answer
          the person had just given back the way it was. */
-      var mine = ++dataSeq;
+      var mine = ++dataSeq, gen = writeGen;
       fetch("/me/data", {credentials:"same-origin", headers:{Accept:"application/json"}})
         .then(function(r){ return r.ok ? r.json() : null; })
         .then(function(body){
           if(mine !== dataSeq) return;
-          if(body && body.ok && body.data) hydrate(body.data);
-          if(done) done();
+          /* A write went out while this read was on its way: what came back may
+             be from before it. Read again once it has landed. */
+          if(writeGen !== gen){ API.reload(); return; }
+          var ok = !!(body && body.ok && body.data);
+          if(ok) hydrate(body.data);
+          flushReloadWaiting(ok);
         })
-        .catch(function(){});
+        .catch(function(){ if(mine === dataSeq) flushReloadWaiting(false); });
     },
 
     saveTask: function(x){
@@ -5169,8 +5248,14 @@ button.srow:active{background:var(--bg-tint)}
           patch[k] = payload[k]; moved = true;
         });
         if(!moved) return true;
-        lastSent[String(x.id)] = payload;
-        return API.send("editTask", patch);
+        var key = String(x.id);
+        lastSent[key] = payload;
+        /* Put back if it did not land. Otherwise a failed edit is remembered
+           as sent, and typing the same value again sends nothing — "nothing
+           moved". Only if no later edit has replaced it since. */
+        return API.send("editTask", patch, function(data, ok){
+          if(!ok && lastSent[key] === payload) lastSent[key] = was;
+        });
       }
       if(adding[String(x.id)]){
         /* An add is already on the wire for this row. Sending a second one
@@ -5681,6 +5766,8 @@ button.srow:active{background:var(--bg-tint)}
       "cn.title":"מי מאנשי הקשר שלך?","cn.from":"מתוך אנשי הקשר של {name}",
       "cn.search":"חיפוש באנשי קשר","cn.invite":"הזמנה","cn.sent":"נשלחה",
       "cn.noMatch":"אין איש קשר בשם „{q}”.",
+      "cn.loading":"רק רגע, טוענים את אנשי הקשר…",
+      "cn.loadFailed":"לא הצלחנו לטעון את אנשי הקשר כרגע. אפשר לסגור ולפתוח שוב.",
       "cn.noneH":"אין עדיין אנשי קשר","cn.noneP":"כדי להזמין חברים עולמה צריכה גישה לאנשי הקשר שלך. זה מתחבר פעם אחת, בחיבורים.",
       "cn.connect":"חיבור חשבון",
       "toast.cnConnect":"חבר חשבון עם אנשי קשר וזה יופיע כאן",
@@ -5796,6 +5883,7 @@ button.srow:active{background:var(--bg-tint)}
       "toast.provSoon":"החיבור ל{name} עוד לא מוכן — בינתיים רק גוגל",
       "toast.notOpenYet":"זה עוד לא פתוח — יגיע בהמשך",
       "toast.duplicate":"זה כבר ברשימה שלך",
+      "toast.notSaved":"השינוי לא נשמר. אפשר לנסות שוב",
       "toast.sharingOff":"אצל {name} שיתוף המשימות כבוי, אז לא שיתפתי. שלחתי לך בוואטסאפ משפט להעביר הלאה",
       "soon":"בקרוב",
       "toast.provFailed":"לא הצלחתי לפתוח את מסך ההרשאות של גוגל",
@@ -6073,6 +6161,8 @@ button.srow:active{background:var(--bg-tint)}
       "cn.title":"Who from your contacts?","cn.from":"From your {name} contacts",
       "cn.search":"Search contacts","cn.invite":"Invite","cn.sent":"Sent",
       "cn.noMatch":"No contact matches \u201c{q}\u201d.",
+      "cn.loading":"One moment — loading your contacts…",
+      "cn.loadFailed":"We could not load your contacts just now. Close this and open it again.",
       "cn.noneH":"No contacts yet","cn.noneP":"To invite friends, Allma needs access to your contacts. You connect that once, under Connections.",
       "cn.connect":"Connect an account",
       "toast.cnConnect":"Connect an account with contacts and they will show up here",
@@ -6188,6 +6278,7 @@ button.srow:active{background:var(--bg-tint)}
       "toast.provSoon":"{name} cannot be connected yet — Google only, for now",
       "toast.notOpenYet":"Not open yet — it is coming",
       "toast.duplicate":"That is already on your list",
+      "toast.notSaved":"That change wasn't saved. Please try again",
       "toast.sharingOff":"{name} has task sharing switched off, so nothing was shared. I sent you a WhatsApp line to pass on",
       "soon":"Soon",
       "toast.provFailed":"Google's permission screen would not open",
@@ -9973,6 +10064,12 @@ button.srow:active{background:var(--bg-tint)}
   function flushTitle(){ if(titleTimer){ clearTimeout(titleTimer); titleTimer = null; commit(); } }
   $("#sTitle").addEventListener("input", commitTitleSoon);
   $("#sTitle").addEventListener("blur", flushTitle);
+  /* …and so does leaving the app. Going back to WhatsApp does not blur the
+     field, and a phone freezes a page in the background before a 400ms timer
+     comes due — so the last word typed waited on a timer that might never
+     run. The write that goes now is a keepalive one (API.send). */
+  window.addEventListener("pagehide", flushTitle);
+  document.addEventListener("visibilitychange", function(){ if(document.hidden) flushTitle(); });
   /* the visible chip is the target; the real <input type=time> holds the
      value and fires "change" into commit() same as it always did — only
      what RAISES it changed, from the platform's own popup to this page's
@@ -12349,6 +12446,11 @@ button.srow:active{background:var(--bg-tint)}
        sides, every contact matched a friend, and the list came back empty for
        anybody who had made a single connection — the one screen where that
        looks exactly like "you have no contacts". */
+    if(contactsState === "loading" || contactsState === "failed"){
+      $("#cnList").innerHTML = '<div class="empty">' + esc(t(contactsState === "loading" ? "cn.loading" : "cn.loadFailed")) + "</div>";
+      paintCue($("#cnSheet"), $("#cnCue"));
+      return;
+    }
     var known = FRIENDS.map(nameOf).filter(Boolean);
     var q = cnQ.trim().toLowerCase();
     var list = CONTACTS.filter(function(c){
@@ -12368,9 +12470,36 @@ button.srow:active{background:var(--bg-tint)}
     }).join("") : '<div class="empty">' + esc(t("cn.noMatch", {q:cnQ.trim()})) + "</div>";
     paintCue($("#cnSheet"), $("#cnCue"));
   }
+  /* "idle" until asked for, "loading" on the way, "ready" once it landed,
+     "failed" when it could not. Only the live page asks; the design page keeps
+     its seed and is always "ready". */
+  var contactsState = "ready";
+  function setContacts(list){
+    CONTACTS = list.map(liveContact);
+    contactsState = "ready";
+    /* The server leaves out anybody already asked, so the per-session marks
+       have nothing left to mark. */
+    invited = {};
+  }
+  /* Asked for every time the sheet opens, not once: the server's filter
+     (already connected, already asked) is only true as of the read. A book
+     already on screen is drawn at once and swapped when the fresh one lands. */
+  function loadContacts(){
+    if(!LIVE || contactsState === "loading") return;
+    if(contactsState !== "ready") contactsState = "loading";
+    fetch("/me/data?part=contacts", {credentials:"same-origin", headers:{Accept:"application/json"}})
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(body){
+        if(body && body.ok && body.data && body.data.contacts) setContacts(body.data.contacts);
+        else if(contactsState !== "ready") contactsState = "failed";
+        renderContacts();
+      })
+      .catch(function(){ if(contactsState !== "ready") contactsState = "failed"; renderContacts(); });
+  }
   function openContacts(){
     cnQ = "";
     $("#cnSearch").value = "";
+    loadContacts();
     renderContacts();
     showSheet($("#cnSheet"));
   }
@@ -12499,7 +12628,7 @@ button.srow:active{background:var(--bg-tint)}
   setInterval(checkForNews, NEWS_EVERY_MS);
   $("#newsPill").addEventListener("click", function(){
     hideNews();
-    API.reload(function(){ toast(t("news.done")); });
+    API.reload(function(ok){ if(ok) toast(t("news.done")); });
   });
 
   /* Pull to refresh. Only from the very top of the page, only downward, and
@@ -14775,6 +14904,17 @@ button.srow:active{background:var(--bg-tint)}
     open.forEach(function(x){
       lastSent[String(x.id)] = {title:L(x.t), category:x.cat || null, dueAt:dueIso(x), endsAt:endIso(x)};
     });
+    /* The task open in the sheet stays the SAME object. Every control in the
+       sheet writes into `editing`, and a re-read used to leave it pointing at
+       a row no longer in the list: the person kept typing, the writes still
+       went out, but the list behind the sheet — and after it closed — showed
+       the copy from the read. After lastSent above, so that keeps comparing
+       against what the server holds and the next edit still sends. */
+    if(editing && !isNew && $("#sheet").classList.contains("show")){
+      for(var oi = 0; oi < open.length; oi++){
+        if(String(open[oi].id) === String(editing.id)){ open[oi] = editing; break; }
+      }
+    }
     archived = (d.archived || []).map(function(x){
       return {id:x.id, t:x.title, done:whenLabel(x.completedAt)};
     });
@@ -14808,9 +14948,14 @@ button.srow:active{background:var(--bg-tint)}
        account first, which is exactly the flow this screen was designed for.
 
        `invited` is per-session state about who has been asked from this
-       screen, and the seeded contacts it referred to are gone. */
-    CONTACTS = (d.contacts || []).map(liveContact);
-    invited = {};
+       screen, and the seeded contacts it referred to are gone.
+
+       Since 2026-10-08 the book is not in /me/data at all — it was 217KB of
+       one person's 318KB, re-sent on every read. It is fetched when the sheet
+       opens (loadContacts), so a hydrate leaves it alone, and only the first
+       one drops the seed. A payload that still carries it is honoured. */
+    if(d.contacts){ setContacts(d.contacts); }
+    else if(!LIVE){ CONTACTS = []; contactsState = "idle"; invited = {}; }
     /* The days are NOT here. Every event is fetched from Google, so they come
        from /me/events on their own request — see loadDays() below, which fills
        them in after the page is already on screen. Until it answers, an empty
@@ -15208,7 +15353,9 @@ button.srow:active{background:var(--bg-tint)}
       headers:{"Content-Type":"application/json", Accept:"application/json"},
       body:JSON.stringify({code:c})
     }).then(function(r){
-      if(r.ok){ location.replace("/me"); return; }
+      /* the query kept: `?hl=` is how the server tells an app open from a
+         browser one (domain/dashboard-opens.js), and this is the app */
+      if(r.ok){ location.replace("/me" + location.search); return; }
       codeBusy = false;
       $("#wCodeErr").textContent = t(r.status === 429 ? "code.slow" : "code.bad");
       codeInput();

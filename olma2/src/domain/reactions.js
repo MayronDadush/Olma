@@ -444,8 +444,9 @@ function _resetStampCache() { stampCache = { at: 0, live: false }; }
 // through — and because the question "what does Olma react to?" should be
 // answerable by reading eleven lines, not by grepping eighty handlers.
 //
-// Only `set_task_reminder` earns ⏰, because only it arms something that will
-// later speak to the person unprompted (see REACTION_STATES). Everything else
+// `set_task_reminder` earns ⏰, because it arms something that will later
+// speak to the person unprompted (see REACTION_STATES) — and so does an
+// `add_task` that armed a reminder they asked for (`stateFor`, 2026-10-06). Everything else
 // here ends with the request itself in hand and earns 👍 — the calendar write
 // included. That is Miron's 2026-09-03 request, the one that took long enough
 // that he wondered whether it had registered at all: 👀 the moment it arrives,
@@ -611,8 +612,23 @@ const TOOL_MARKS = Object.freeze({
 // is nearly always something Olma then explains in words, and a ⚠️ beside a
 // perfectly good explanation reads as a second, worse failure. ⚠️ is reserved
 // for a turn that ends with nothing said, which the dispatcher cannot see.
+// `add_task` that armed a reminder THEY asked for — an hour they named, a
+// chase, "תזכיר לי" with no when — earns ⏰, not 👍 (owner, 2026-10-06):
+// "תזכורת 8:40 להוריד זבל" is a reminder request, and ⏰ is the mark for
+// "this will speak to you later". Asked means `auto = false`, which every
+// asked-for door writes; a date alone arms an automatic one nobody asked
+// for, and stays 👍.
+function armsAskedReminder(result) {
+  const list = result && result.data && result.data.reminders;
+  return Array.isArray(list) && list.some((r) => r && r.auto === false);
+}
+function stateFor(toolName, result) {
+  if (toolName === 'add_task' && armsAskedReminder(result)) return 'scheduled';
+  return TOOL_MARKS[toolName];
+}
+
 function markFor(toolName, result, turn, now = Date.now()) {
-  const state = TOOL_MARKS[toolName];
+  const state = stateFor(toolName, result);
   if (!state) return null;
   if (!result || !result.ok) return null;
   if (!turn || !turn.messageId) return null;
@@ -671,12 +687,17 @@ function noteMarkAttempted(turn, state) {
 // outlives the turn and serves the same `turn` object for hours, so anything
 // latched to the connection instead of the message freezes (CLAUDE.md, "The
 // mark that never moved").
+// The ⏰ an `add_task` earns for an asked-for reminder counts here too: it is
+// the same "done, nothing to add" answer, and the reminders hint beside it
+// already says when the hour is worth a sentence. `set_task_reminder`'s ⏰
+// stays out — its hour is often Olma's, which is news.
 function doneMarkStands(toolName, result, turn, now = Date.now()) {
-  if (TOOL_MARKS[toolName] !== 'done') return false;
+  const state = stateFor(toolName, result);
+  if (state !== 'done' && !(toolName === 'add_task' && state === 'scheduled')) return false;
   if (!result || !result.ok) return false;
   if (!turn || !turn.messageId) return false;
   if (!isLive(turn.lastInboundAt, now)) return false;
-  return Boolean(turn.markStanding && turn.markStanding.get(turn.messageId) === 'done');
+  return Boolean(turn.markStanding && turn.markStanding.get(turn.messageId) === state);
 }
 
 // The flag the dashboard's emoji editor writes. One JSON object, one place.
@@ -685,7 +706,7 @@ const VOCAB_FLAG = 'reaction_emoji';
 module.exports = {
   REACTION_STATES, REACTION_CAPABLE, TOOL_MARKS, LIVE_WINDOW_MS, VOCAB_FLAG,
   THANKS_AFTER_QUESTION_MS, EYES_DELAY_FLAG, TURN_END_HOOK, openingDelayMs, endSignalsLive, _resetStampCache,
-  noteMarkAttempted, doneMarkStands,
+  noteMarkAttempted, doneMarkStands, stateFor,
   isReactionCapable, buildReactRequest, buildReactArgs, outcomeState, placeMark, markFor, isLive,
   cleanMessageId, vocabulary, isUsableEmoji, _setLogs,
 };

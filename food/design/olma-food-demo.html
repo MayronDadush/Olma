@@ -1,0 +1,945 @@
+<title>עולמה · הצלחת של היום</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Hebrew:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a WhatsApp chat with Olma beside the "today" page she links to. Phone: one at a time, switched from the band.
+   Brand: Allma Cypress + Mustard on Sand (same tokens as games/public/night.html). Mustard = the ONE main action. */
+:root{
+  color-scheme:light;
+  --font:'IBM Plex Sans Hebrew',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,Menlo,monospace;
+  --bg:#F0EDE5;--fill:#EDEAE2;--surface:#FFFFFF;--surface-2:#F8F7F3;
+  --sep:#E2DFD6;--sep-2:#D2CFC5;--text:#0E1F1E;--text-2:#44504E;--text-3:#5E6966;
+  --accent:#004643;--accent-soft:#E1EBE8;--on-accent:#FFFFFF;
+  --action:#F9C23C;--on-action:#004643;
+  --band:#004643;--on-band:#F0EDE5;--on-band-2:#BFD3CF;--band-tint:rgba(255,255,255,.14);
+  --logo-d:#004643;--logo-l:#F0EDE5;--logo-lens:#F9C23C;--logo-ring:#004643;
+  --bubble-me:#DDEBE6;--bubble-ol:#FFFFFF;--chat-bg:#E9E6DD;
+  --wall-ink:rgba(0,70,67,.06);
+  --m-protein:#009488;--m-carbs:#C98A0E;--m-fat:#A0559A;
+  --track:#ECE9E1;
+  --shadow-s:0 1px 2px rgba(14,31,30,.06);
+  --shadow-m:0 1px 2px rgba(14,31,30,.05),0 12px 30px -18px rgba(14,31,30,.32);
+  --ease:cubic-bezier(.22,1,.36,1);
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  color-scheme:dark;
+  --bg:#1B1A18;--fill:#36342D;--surface:#26251F;--surface-2:#2D2B26;
+  --sep:#35332D;--sep-2:#44413A;--text:#EDE9DF;--text-2:#B9B5AC;--text-3:#A39F96;
+  --accent:#7CC4BA;--accent-soft:#1F3532;--on-accent:#1B1A18;
+  --action:#F9C23C;--on-action:#0E1F1E;
+  --band:#004643;--on-band:#EDE9DF;--on-band-2:#AFC6C1;--band-tint:rgba(255,255,255,.1);
+  --logo-d:#1B1A18;--logo-l:#EDE9DF;--logo-lens:#F9C23C;--logo-ring:#EDE9DF;
+  --bubble-me:#1F3532;--bubble-ol:#2D2B26;--chat-bg:#161513;
+  --wall-ink:rgba(240,237,229,.04);
+  --m-protein:#279E93;--m-carbs:#B57D0C;--m-fat:#B06AA9;
+  --track:#34322C;
+  --shadow-s:0 1px 2px rgba(0,0,0,.4);
+  --shadow-m:0 1px 2px rgba(0,0,0,.4),0 12px 30px -18px rgba(0,0,0,.8);
+}}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#1B1A18;--fill:#36342D;--surface:#26251F;--surface-2:#2D2B26;
+  --sep:#35332D;--sep-2:#44413A;--text:#EDE9DF;--text-2:#B9B5AC;--text-3:#A39F96;
+  --accent:#7CC4BA;--accent-soft:#1F3532;--on-accent:#1B1A18;
+  --action:#F9C23C;--on-action:#0E1F1E;
+  --band:#004643;--on-band:#EDE9DF;--on-band-2:#AFC6C1;--band-tint:rgba(255,255,255,.1);
+  --logo-d:#1B1A18;--logo-l:#EDE9DF;--logo-lens:#F9C23C;--logo-ring:#EDE9DF;
+  --bubble-me:#1F3532;--bubble-ol:#2D2B26;--chat-bg:#161513;
+  --wall-ink:rgba(240,237,229,.04);
+  --m-protein:#279E93;--m-carbs:#B57D0C;--m-fat:#B06AA9;
+  --track:#34322C;
+  --shadow-s:0 1px 2px rgba(0,0,0,.4);
+  --shadow-m:0 1px 2px rgba(0,0,0,.4),0 12px 30px -18px rgba(0,0,0,.8);
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
+.num{font-variant-numeric:tabular-nums}
+
+/* band */
+.band{background:var(--band);color:var(--on-band);padding:12px 16px}
+.band .in{max-width:1180px;margin:0 auto;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:10px;min-width:0;flex:1}
+.mark{width:34px;height:34px;flex:none}
+.brand b{display:block;font-size:17px;font-weight:700;letter-spacing:-.01em}
+.brand span{display:block;font-size:12.5px;color:var(--on-band-2)}
+.pill{font-size:11.5px;font-weight:600;letter-spacing:.04em;padding:3px 9px;border-radius:99px;background:var(--band-tint);color:var(--on-band)}
+.ibtn{width:36px;height:36px;border-radius:50%;border:0;background:var(--band-tint);color:var(--on-band);display:grid;place-items:center}
+.ibtn svg{width:18px;height:18px}
+.seg{display:none;background:var(--band-tint);border-radius:99px;padding:3px;gap:2px;width:100%}
+.seg button{flex:1;border:0;background:transparent;color:var(--on-band);padding:7px 10px;border-radius:99px;font-size:14px;font-weight:600}
+.seg button[aria-pressed="true"]{background:var(--on-band);color:var(--band)}
+
+.stage{max-width:1180px;margin:0 auto;padding:22px 16px 40px;display:grid;grid-template-columns:400px minmax(0,1fr);gap:28px;align-items:start}
+.col-h{font-size:12px;font-weight:600;letter-spacing:.06em;color:var(--text-3);margin:0 4px 8px}
+
+/* phone / chat */
+.phone{background:var(--chat-bg);border-radius:28px;border:1px solid var(--sep);box-shadow:var(--shadow-m);overflow:hidden;display:flex;flex-direction:column;height:min(780px,calc(100vh - 120px));min-height:560px;position:sticky;top:calc(16px + env(safe-area-inset-top,0px))}
+.chathead{display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--surface);border-bottom:1px solid var(--sep)}
+.chathead .mark{width:36px;height:36px}
+.chathead b{display:block;font-size:15.5px}
+.chathead span{display:block;font-size:12.5px;color:var(--text-3)}
+.msgs{flex:1;overflow-y:auto;padding:14px 12px;display:flex;flex-direction:column;gap:8px;
+  background-image:radial-gradient(var(--wall-ink) 1.4px,transparent 1.6px);background-size:22px 22px}
+.day-chip{align-self:center;font-size:12px;color:var(--text-2);background:var(--surface);padding:3px 10px;border-radius:8px;box-shadow:var(--shadow-s)}
+.b{max-width:86%;padding:8px 11px 6px;border-radius:14px;box-shadow:var(--shadow-s);font-size:14.5px;line-height:1.45;position:relative;animation:pop .28s var(--ease) both}
+.b.me{align-self:flex-start;background:var(--bubble-me);border-start-start-radius:4px}
+.b.ol{align-self:flex-end;background:var(--bubble-ol);border-start-end-radius:4px}
+.b .t{display:block;font-size:11px;color:var(--text-3);text-align:end;margin-top:2px}
+.b.photo{padding:4px;width:200px}
+.b.photo .ph{width:100%;aspect-ratio:1;border-radius:11px;overflow:hidden;display:block;max-width:100%}
+.b.photo .ph>svg,.b.photo .ph>img{width:100%;height:100%;display:block;object-fit:cover}
+.b.photo .t{padding:0 6px 2px}
+.b.wide{max-width:94%;width:330px}
+.b p{margin:0}
+.b p+p{margin-top:6px}
+.typing{align-self:flex-end;display:flex;gap:4px;padding:11px 13px;border-radius:14px;background:var(--bubble-ol);box-shadow:var(--shadow-s);align-items:center}
+.typing i{width:6px;height:6px;border-radius:50%;background:var(--text-3);animation:blink 1.2s infinite}
+.typing i:nth-child(2){animation-delay:.15s}.typing i:nth-child(3){animation-delay:.3s}
+.typing span{font-size:12.5px;color:var(--text-3);margin-inline-start:6px}
+@keyframes blink{0%,80%,100%{opacity:.25}40%{opacity:1}}
+@keyframes pop{from{opacity:0;transform:translateY(6px) scale(.98)}to{opacity:1;transform:none}}
+
+/* analysis card */
+.ana h4{margin:0 0 2px;font-size:14.5px}
+.ana .sub{font-size:12.5px;color:var(--text-3);margin-bottom:8px}
+.rows{display:flex;flex-direction:column;border-top:1px solid var(--sep)}
+.row{display:grid;grid-template-columns:minmax(0,1fr) auto 52px;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--sep)}
+.row .nm{min-width:0;font-size:14px;display:flex;align-items:center;gap:6px}
+.row .nm span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.conf{font-size:10.5px;font-weight:600;padding:1px 6px;border-radius:99px;background:var(--fill);color:var(--text-2);flex:none}
+.step{display:flex;align-items:center;background:var(--surface-2);border:1px solid var(--sep);border-radius:99px}
+.step button{width:26px;height:26px;border:0;background:transparent;font-size:16px;line-height:1;border-radius:50%;color:var(--accent);font-weight:700}
+.step button:disabled{opacity:.3;cursor:default}
+.step output{min-width:50px;text-align:center;font-size:13px}
+.row .kc{text-align:start;font-size:13px;color:var(--text-2)}
+.tot{display:flex;gap:10px;flex-wrap:wrap;align-items:baseline;margin-top:8px;font-size:12.5px;color:var(--text-2)}
+.tot b{font-size:17px;color:var(--text);margin-inline-end:auto}
+.tot .dot{display:inline-block;width:8px;height:8px;border-radius:2px;margin-inline-end:4px;vertical-align:1px}
+.acts{display:flex;gap:8px;margin-top:10px}
+.btn{border:0;border-radius:99px;padding:8px 16px;font-weight:600;font-size:14px}
+.btn.main{background:var(--action);color:var(--on-action)}
+.btn.ghost{background:var(--fill);color:var(--text-2)}
+.done-tag{font-size:13px;font-weight:600;color:var(--accent);margin-top:10px;display:flex;align-items:center;gap:6px}
+details.peek{margin-top:8px;font-size:12px;color:var(--text-3)}
+details.peek summary{cursor:pointer}
+details.peek pre{font-family:var(--mono);font-size:11px;line-height:1.5;background:var(--surface-2);border:1px solid var(--sep);border-radius:8px;padding:8px;overflow-x:auto;direction:ltr;text-align:left;color:var(--text-2);margin:6px 0 0;max-height:220px}
+.linkcard{display:flex;align-items:center;gap:10px;margin-top:8px;padding:8px 10px;border-radius:10px;background:var(--accent-soft);border:0;width:100%;text-align:start}
+.linkcard .mark{width:26px;height:26px}
+.linkcard b{font-size:13.5px;display:block}
+.linkcard span{font-size:12px;color:var(--text-2)}
+
+/* tray + composer */
+.tray{display:flex;gap:8px;align-items:center;padding:8px 10px 0;background:var(--chat-bg);overflow-x:auto}
+.tray .lbl{font-size:12px;color:var(--text-3);flex:none}
+.thumb{flex:none;width:52px;height:52px;border-radius:12px;border:2px solid var(--surface);box-shadow:var(--shadow-s);padding:0;overflow:hidden;background:var(--surface)}
+.thumb svg{width:100%;height:100%;display:block}
+.thumb[disabled]{opacity:.35;cursor:default}
+.upl{flex:none;height:52px;border-radius:12px;border:1.5px dashed var(--sep-2);background:var(--surface-2);padding:0 12px;font-size:12.5px;font-weight:600;color:var(--accent);display:flex;align-items:center;gap:6px;cursor:pointer}
+.upl svg{width:18px;height:18px}
+.composer{display:flex;gap:8px;padding:8px 10px 10px;background:var(--chat-bg)}
+.composer input{flex:1;min-width:0;border:0;border-radius:99px;padding:10px 14px;font:inherit;font-size:15px;background:var(--surface);color:var(--text);box-shadow:var(--shadow-s)}
+.composer .send{width:42px;height:42px;border-radius:50%;border:0;background:var(--accent);color:var(--on-accent);display:grid;place-items:center;flex:none}
+.composer .send svg{width:19px;height:19px}
+
+/* today page */
+.today{display:flex;flex-direction:column;gap:18px;min-width:0}
+.card{background:var(--surface);border:1px solid var(--sep);border-radius:20px;padding:18px;box-shadow:var(--shadow-s)}
+.dayhead{display:flex;align-items:flex-end;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.dayhead h1{margin:0;font-size:26px;letter-spacing:-.02em;line-height:1.15;text-wrap:balance}
+.dayhead p{margin:2px 0 0;color:var(--text-3);font-size:13.5px}
+.hero{display:grid;grid-template-columns:200px minmax(0,1fr);gap:24px;align-items:center}
+.ring{position:relative;width:200px;height:200px;max-width:100%}
+.ring svg{width:100%;height:100%;transform:rotate(-90deg)}
+.ring .ctr{position:absolute;inset:0;display:grid;place-content:center;text-align:center}
+.ring .big{font-size:40px;font-weight:700;letter-spacing:-.03em;line-height:1}
+.ring .of{font-size:13px;color:var(--text-3);margin-top:4px}
+.ring .left{font-size:13px;font-weight:600;color:var(--accent);margin-top:6px}
+.ring circle{transition:stroke-dashoffset .9s var(--ease)}
+.macros{display:flex;flex-direction:column;gap:14px;min-width:0}
+.mac .top{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:14px}
+.mac .top b{font-weight:600}
+.mac .top span{color:var(--text-2);font-size:13.5px}
+.bar{height:10px;border-radius:99px;background:var(--track);overflow:hidden;margin-top:6px}
+.bar i{display:block;height:100%;border-radius:99px;transition:width .9s var(--ease)}
+.say{display:flex;gap:10px;align-items:flex-start;background:var(--accent-soft);border-radius:14px;padding:12px 14px;font-size:14.5px}
+.say .mark{width:24px;height:24px;margin-top:1px}
+.flash{animation:flash 1.1s var(--ease)}
+@keyframes flash{0%{box-shadow:0 0 0 0 var(--action)}30%{box-shadow:0 0 0 4px var(--action)}100%{box-shadow:var(--shadow-s)}}
+
+.sec-h{display:flex;justify-content:space-between;align-items:baseline;margin:0 0 10px}
+.sec-h h2{margin:0;font-size:16px}
+.sec-h span{font-size:12.5px;color:var(--text-3)}
+.meals{display:flex;flex-direction:column}
+.meal{display:grid;grid-template-columns:52px minmax(0,1fr) auto;gap:12px;align-items:center;padding:10px 0;border-top:1px solid var(--sep)}
+.meal:first-child{border-top:0;padding-top:0}
+.meal .im{width:52px;height:52px;border-radius:12px;overflow:hidden;background:var(--fill)}
+.meal .im svg,.meal .im img{width:100%;height:100%;display:block;object-fit:cover}
+.meal .im.empty{display:grid;place-items:center;color:var(--text-3);border:1.5px dashed var(--sep-2);background:transparent}
+.meal .nm{min-width:0}
+.meal .nm small{display:block;font-size:12px;color:var(--text-3)}
+.meal .nm b{display:block;font-weight:600;font-size:14.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.meal .nm .mx{font-size:12px;color:var(--text-2)}
+.meal .kc{font-weight:600;font-size:15px}
+.meal .kc small{font-weight:400;color:var(--text-3);font-size:11.5px}
+.meal.new{animation:pop .5s var(--ease) both}
+
+.two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);gap:18px}
+.cups{display:flex;gap:6px;flex-wrap:wrap}
+.cup{width:34px;height:42px;border:0;background:transparent;padding:0;color:var(--sep-2)}
+.cup.on{color:var(--m-protein)}
+.cup svg{width:100%;height:100%}
+.week{position:relative}
+.week svg{width:100%;height:auto;display:block}
+.tip{position:absolute;pointer-events:none;background:var(--text);color:var(--bg);font-size:12px;padding:4px 8px;border-radius:6px;white-space:nowrap;transform:translate(50%,-100%);opacity:0;transition:opacity .12s}
+.foot{text-align:center;font-size:12.5px;color:var(--text-3);margin:4px 0 0}
+.note{font-size:12px;color:var(--text-3)}
+
+@media (max-width:900px){
+  .seg{display:flex}
+  .stage{grid-template-columns:minmax(0,1fr);padding-top:14px}
+  .stage[data-view="chat"] .today{display:none}
+  .stage[data-view="today"] .chatcol{display:none}
+  .phone{position:static;height:calc(100vh - 150px);min-height:520px;border-radius:20px}
+  .col-h{display:none}
+}
+@media (max-width:560px){
+  .hero{grid-template-columns:minmax(0,1fr);justify-items:center}
+  .macros{width:100%}
+  .two{grid-template-columns:minmax(0,1fr)}
+  .dayhead h1{font-size:22px}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* v2: quick chips, demo strip, onboarding, learned portions, no-numbers mode */
+.demo{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:0 4px 10px}
+.demo span{font-size:12px;color:var(--text-3)}
+.demo button{border:1px solid var(--sep-2);background:var(--surface);border-radius:99px;padding:5px 11px;font-size:12.5px;font-weight:600;color:var(--accent)}
+.chips{display:flex;gap:6px;padding:8px 10px 0;background:var(--chat-bg);overflow-x:auto}
+.chip{flex:none;border:1px solid var(--sep-2);background:var(--surface);border-radius:99px;padding:5px 12px;font-size:13px;font-weight:500;color:var(--text)}
+.qr{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.qr button{border:1px solid var(--accent);background:transparent;color:var(--accent);border-radius:99px;padding:5px 12px;font-size:13px;font-weight:600;text-align:start}
+.qr button:disabled{opacity:.4;cursor:default}
+.qr button.picked{background:var(--accent);color:var(--on-accent);opacity:1}
+.conf.mine{background:var(--accent-soft);color:var(--accent)}
+.conf.lbl{background:var(--accent-soft);color:var(--accent)}
+.grp{font-size:11px;font-weight:600;padding:1px 7px;border-radius:99px;background:var(--fill);color:var(--text-2);flex:none}
+.goalcard{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin:8px 0 2px}
+.goalcard div{background:var(--surface-2);border:1px solid var(--sep);border-radius:10px;padding:6px 4px;text-align:center}
+.goalcard b{display:block;font-size:16px}
+.goalcard span{font-size:11px;color:var(--text-3)}
+.small{font-size:12.5px;color:var(--text-3)}
+.wk{display:block;width:100%;height:auto;margin:6px 0 4px}
+.switch{display:flex;align-items:center;gap:8px;border:0;background:var(--surface);border:1px solid var(--sep);border-radius:99px;padding:5px 6px 5px 12px;font-size:13px;font-weight:600;color:var(--text-2)}
+.switch i{width:34px;height:20px;border-radius:99px;background:var(--sep-2);position:relative;flex:none;transition:background .2s}
+.switch i::after{content:"";position:absolute;top:2px;inset-inline-start:2px;width:16px;height:16px;border-radius:50%;background:var(--surface);transition:inset-inline-start .2s var(--ease)}
+.switch[aria-checked="true"] i{background:var(--accent)}
+.switch[aria-checked="true"] i::after{inset-inline-start:16px}
+.bal{display:flex;flex-direction:column;gap:14px;width:100%}
+.bal .lead{font-size:30px;font-weight:700;letter-spacing:-.02em;line-height:1.1}
+.bal .lead small{display:block;font-size:13.5px;font-weight:400;color:var(--text-3);letter-spacing:0;margin-top:4px}
+.balrow{display:grid;grid-template-columns:120px minmax(0,1fr);gap:10px;align-items:center;font-size:14px}
+.dots{display:flex;gap:6px;flex-wrap:wrap}
+.dots i{width:22px;height:22px;border-radius:50%;border:2px solid var(--sep-2)}
+.dots i.on{border-color:transparent}
+.learn{display:flex;flex-direction:column}
+.lrow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:9px 0;border-top:1px solid var(--sep)}
+.lrow:first-child{border-top:0;padding-top:0}
+.lrow b{font-weight:600;font-size:14.5px}
+.lrow span{display:block;font-size:12px;color:var(--text-3)}
+.lrow button{border:0;background:var(--fill);border-radius:99px;padding:5px 11px;font-size:12.5px;color:var(--text-2)}
+.wkdots{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;text-align:center;font-size:12px;color:var(--text-3)}
+.wkdots i{display:grid;place-items:center;width:34px;height:34px;margin:0 auto 4px;border-radius:50%;border:2px dashed var(--sep-2);font-style:normal;font-weight:700;color:var(--text-3)}
+.wkdots i.on{border:0;background:var(--accent-soft);color:var(--accent)}
+.wkdots i.today{background:var(--accent);color:var(--on-accent)}
+.mic{width:42px;height:42px;border-radius:50%;border:1px solid var(--sep-2);background:var(--surface);color:var(--accent);display:grid;place-items:center;flex:none}
+.mic svg{width:19px;height:19px}
+.voice{display:flex;align-items:center;gap:8px;width:210px;max-width:100%}
+.voice .pl{width:32px;height:32px;border-radius:50%;border:0;background:var(--accent);color:var(--on-accent);display:grid;place-items:center;flex:none}
+.voice .pl svg{width:14px;height:14px}
+.voice .wave{display:flex;gap:2px;align-items:center;height:26px;flex:1;min-width:0}
+.voice .wave i{width:3px;border-radius:2px;background:var(--text-3);opacity:.55;flex:none}
+.voice .wave i.on{background:var(--accent);opacity:1}
+.voice small{font-size:11.5px;color:var(--text-3);flex:none}
+.qstrip{margin-top:8px;padding:9px 10px;border-radius:10px;background:var(--accent-soft)}
+.qstrip p{margin:0;font-size:13.5px;font-weight:600}
+.qstrip .qr{margin-top:6px}
+.pips{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;text-align:center;font-size:12px;color:var(--text-3);margin-top:12px}
+.pips i{display:block;height:10px;border-radius:99px;background:var(--track);margin-bottom:5px}
+.pips i.ok{background:var(--accent)}
+.pips i.miss{background:var(--sep-2)}
+.pips i.now{box-shadow:0 0 0 2px var(--action)}
+.chal b{font-size:16px;display:block}
+.chal p{margin:4px 0 0;font-size:13.5px;color:var(--text-2)}
+.insight p{margin:0;font-size:15px;line-height:1.6;min-height:4.8em}
+.rowbtns{display:flex;justify-content:space-between;align-items:center;margin-top:12px;gap:8px}
+.linkbtn{border:0;background:transparent;color:var(--accent);font-weight:600;font-size:13.5px;padding:0}
+.b.ol.photo{border-start-end-radius:4px}
+.b.photo.daycard{width:250px}
+.b.photo.daycard .ph{aspect-ratio:300/430}
+@media (max-width:560px){.balrow{grid-template-columns:minmax(0,1fr)}}
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <clipPath id="logo-c"><circle cx="60" cy="60" r="60"/></clipPath>
+  <clipPath id="logo-a"><circle cx="44" cy="60" r="24"/></clipPath>
+  <symbol id="logo" viewBox="0 0 120 120">
+    <g clip-path="url(#logo-c)">
+      <rect width="60" height="120" fill="var(--logo-d)"/><rect x="60" width="60" height="120" fill="var(--logo-l)"/>
+      <circle cx="44" cy="60" r="24" fill="var(--logo-l)"/><circle cx="76" cy="60" r="24" fill="var(--logo-d)"/>
+      <circle cx="76" cy="60" r="24" fill="var(--logo-lens)" clip-path="url(#logo-a)"/>
+    </g>
+    <circle cx="60" cy="60" r="58.25" fill="none" stroke="var(--logo-ring)" stroke-width="3.5"/>
+  </symbol>
+</defs></svg>
+
+<div dir="rtl" lang="he">
+<header class="band"><div class="in">
+  <div class="brand">
+    <svg class="mark" viewBox="0 0 120 120" aria-hidden="true"><use href="#logo"/></svg>
+    <div style="min-width:0"><b>הצלחת של היום</b><span>עולמה · מעקב תזונה מתמונה</span></div>
+  </div>
+  <span class="pill">דמו</span>
+  <button class="ibtn" id="themeBtn" type="button" aria-label="החלפת מצב תצוגה">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>
+  </button>
+  <div class="seg" role="group" aria-label="תצוגה">
+    <button type="button" data-v="chat" aria-pressed="true">וואטסאפ</button>
+    <button type="button" data-v="today" aria-pressed="false">היום שלי</button>
+  </div>
+</div></header>
+
+<main class="stage" id="stage" data-view="chat">
+  <section class="chatcol" aria-label="הצ'אט עם עולמה">
+    <div class="demo" aria-label="להדגים">
+      <span>להדגים:</span>
+      <button type="button" id="dOnb">היכרות ויעד</button>
+      <button type="button" id="dEve">סיכום ערב · 21:30</button>
+      <button type="button" id="dWeek">סיכום שבועי · מוצ״ש</button>
+      <button type="button" id="dShab">ערב שבת</button>
+    </div>
+    <div class="phone">
+      <div class="chathead">
+        <svg class="mark" viewBox="0 0 120 120" aria-hidden="true"><use href="#logo"/></svg>
+        <div><b>עולמה</b><span id="status">מחוברת</span></div>
+      </div>
+      <div class="msgs" id="msgs" aria-live="polite"></div>
+      <div class="tray">
+        <span class="lbl">לצלם:</span>
+        <button class="thumb" type="button" data-sample="shakshuka" aria-label="לשלוח תמונה של שקשוקה"></button>
+        <button class="thumb" type="button" data-sample="yogurt" aria-label="לשלוח תמונה של יוגורט וגרנולה"></button>
+        <button class="thumb" type="button" data-sample="label" aria-label="לשלוח תמונה של תווית תזונתית"></button>
+        <button class="thumb" type="button" data-sample="pizza" aria-label="לשלוח תמונה של פיצה משפחתית"></button>
+        <label class="upl" for="file">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
+          תמונה משלך
+        </label>
+        <input type="file" id="file" accept="image/*" hidden>
+      </div>
+      <div class="chips" id="chips">
+        <button class="chip" type="button" data-say="כמו אתמול">כמו אתמול</button>
+        <button class="chip" type="button" data-say="אתמול בערב אכלתי פיצה">אתמול בערב אכלתי פיצה</button>
+        <button class="chip" type="button" data-say="הקבועות שלי">הקבועות שלי</button>
+        <button class="chip" type="button" data-say="כרטיס היום">כרטיס היום</button>
+        <button class="chip" type="button" data-say="איך היום שלי?">איך היום שלי?</button>
+        <button class="chip" type="button" data-say="בלי מספרים" id="modeChip">בלי מספרים</button>
+      </div>
+      <form class="composer" id="composer" autocomplete="off">
+        <input id="msgIn" type="text" placeholder="אכלתי בננה… / כמו אתמול בבוקר" aria-label="הודעה לעולמה" enterkeyhint="send">
+        <button class="mic" type="button" id="micBtn" aria-label="לשלוח הודעה קולית לדוגמה"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
+        <button class="send" type="submit" aria-label="שליחה"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12H5M11 5l-7 7 7 7"/></svg></button>
+      </form>
+    </div>
+  </section>
+
+  <section class="today" id="today" aria-label="היום שלי">
+    <div class="dayhead">
+      <div><h1>יום רביעי, 7 באוקטובר</h1><p id="goalTxt"></p></div>
+      <button class="switch" type="button" role="switch" id="numSwitch" aria-checked="true"><i></i>להציג מספרים</button>
+    </div>
+    <div class="card" id="heroCard">
+      <div class="hero" id="numHero">
+        <div class="ring" role="img" id="ringBox">
+          <svg viewBox="0 0 120 120"><circle cx="60" cy="60" r="52" fill="none" stroke="var(--track)" stroke-width="11"/><circle id="ringArc" cx="60" cy="60" r="52" fill="none" stroke="var(--accent)" stroke-width="11" stroke-linecap="round" stroke-dasharray="326.7" stroke-dashoffset="326.7"/></svg>
+          <div class="ctr"><div class="big num" id="kcal">0</div><div class="of num" id="ofTxt"></div><div class="left num" id="left"></div></div>
+        </div>
+        <div class="macros" id="macros"></div>
+      </div>
+      <div class="bal" id="balHero" hidden></div>
+      <div class="say" style="margin-top:16px"><svg class="mark" viewBox="0 0 120 120" aria-hidden="true"><use href="#logo"/></svg><div id="say"></div></div>
+    </div>
+
+    <div class="card">
+      <div class="sec-h"><h2>הארוחות היום</h2><span id="mealCount"></span></div>
+      <div class="meals" id="meals"></div>
+    </div>
+
+    <div class="two">
+      <div class="card chal">
+        <div class="sec-h"><h2>אתגר השבוע</h2><button class="linkbtn" type="button" id="chalSwap">להחליף</button></div>
+        <div id="chal"></div>
+      </div>
+      <div class="card insight">
+        <div class="sec-h"><h2>משהו שגיליתי</h2><span class="num" id="insN"></span></div>
+        <p id="ins"></p>
+        <div class="rowbtns"><button class="linkbtn" type="button" id="insNext">עוד אחד</button></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="sec-h"><h2>מה עולמה למדה עליך</h2><span>מנות שתיקנת, ומה שחוזר</span></div>
+      <div class="learn" id="learn"></div>
+    </div>
+
+    <div class="two">
+      <div class="card">
+        <div class="sec-h"><h2>מים</h2><span class="num" id="waterTxt"></span></div>
+        <div class="cups" id="cups"></div>
+        <p class="note" style="margin:10px 0 0">גם ״שתיתי כוס מים״ בצ'אט עובד.</p>
+      </div>
+      <div class="card">
+        <div class="sec-h"><h2>השבוע</h2><span id="weekSub"></span></div>
+        <div class="week" id="week"><div class="tip" id="tip"></div></div>
+      </div>
+    </div>
+    <p class="foot">הקישור לעמוד הזה נשלח מעולמה בוואטסאפ · הערכים הם הערכה, לא מדידה</p>
+  </section>
+</main>
+</div>
+
+<script>
+(()=>{
+'use strict';
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt=n=>Math.round(n).toLocaleString('he-IL');
+const goal={kcal:2200,protein:130,carbs:240,fat:75};
+let numbers=true;
+const SLOTS=['בוקר','צהריים','נשנוש','ערב'];
+const SLOT_NAME={'בוקר':'ארוחת בוקר','צהריים':'ארוחת צהריים','ערב':'ארוחת ערב','נשנוש':'נשנוש'};
+const slotKey=s=>({'בוקר':'breakfast','צהריים':'lunch','ערב':'dinner','נשנוש':'snack'}[s]);
+
+/* ---------- illustrations (each brings its own background, so they read in both themes) ---------- */
+const ART={
+shakshuka:`<svg viewBox="0 0 120 120"><rect width="120" height="120" fill="#E9DCC6"/><rect x="88" y="54" width="36" height="12" rx="6" fill="#2A2725" transform="rotate(-28 88 60)"/><circle cx="56" cy="62" r="46" fill="#2A2725"/><circle cx="56" cy="62" r="39" fill="#C2412A"/><g fill="#A1301D"><circle cx="38" cy="44" r="4"/><circle cx="72" cy="80" r="5"/><circle cx="34" cy="78" r="3.5"/><circle cx="76" cy="46" r="3"/><circle cx="58" cy="90" r="3"/></g><path d="M40 60c0-9 8-14 14-12 7 2 10 9 7 15-3 7-12 9-17 5-3-2-4-5-4-8z" fill="#FFF8EC"/><circle cx="50" cy="59" r="6.5" fill="#F4B32B"/><path d="M60 76c1-8 9-11 15-8 6 3 7 10 3 14-4 5-12 5-16 1-2-2-2-5-2-7z" fill="#FFF8EC"/><circle cx="69" cy="76" r="6" fill="#F4B32B"/><g fill="#3F8A3A"><circle cx="44" cy="74" r="2"/><circle cx="66" cy="54" r="2"/><circle cx="78" cy="64" r="1.8"/><circle cx="36" cy="54" r="1.6"/></g><path d="M8 112a26 26 0 0 1 40-6z" fill="#E4BF7F"/><path d="M14 110a20 20 0 0 1 28-4" stroke="#C99A4D" stroke-width="2" fill="none"/><path d="M92 96c6-4 14-2 18 4" stroke="#EADBB8" stroke-width="5" stroke-linecap="round" fill="none"/></svg>`,
+chicken:`<svg viewBox="0 0 120 120"><rect width="120" height="120" fill="#CFD9D3"/><circle cx="60" cy="60" r="50" fill="#FBFAF6"/><circle cx="60" cy="60" r="42" fill="none" stroke="#E7E2D6" stroke-width="2"/><ellipse cx="44" cy="46" rx="22" ry="18" fill="#FFFDF6"/><g fill="#ECE5D2"><ellipse cx="36" cy="42" rx="2.4" ry="1.2"/><ellipse cx="46" cy="38" rx="2.4" ry="1.2" transform="rotate(30 46 38)"/><ellipse cx="52" cy="48" rx="2.4" ry="1.2"/><ellipse cx="40" cy="52" rx="2.4" ry="1.2" transform="rotate(-20 40 52)"/><ellipse cx="30" cy="48" rx="2.4" ry="1.2"/><ellipse cx="56" cy="40" rx="2.2" ry="1.1"/></g><g transform="rotate(-18 72 70)"><rect x="56" y="58" width="40" height="11" rx="5" fill="#D59A5C"/><rect x="58" y="71" width="38" height="11" rx="5" fill="#C98A4B"/><rect x="60" y="84" width="34" height="10" rx="5" fill="#D59A5C"/><path d="M64 60l4 8M74 60l4 8M84 60l4 8M66 73l4 8M78 73l4 8" stroke="#A86A33" stroke-width="2"/></g><g><rect x="70" y="26" width="8" height="8" rx="1.5" fill="#D84A3A" transform="rotate(12 74 30)"/><rect x="82" y="34" width="8" height="8" rx="1.5" fill="#5EA34A"/><circle cx="88" cy="24" r="5" fill="#9CCB6E"/><circle cx="88" cy="24" r="2.5" fill="#D9EBB8"/><rect x="74" y="40" width="7" height="7" rx="1.5" fill="#5EA34A" transform="rotate(-15 77 43)"/><rect x="92" y="44" width="7" height="7" rx="1.5" fill="#D84A3A"/><circle cx="66" cy="38" r="4" fill="#9CCB6E"/></g></svg>`,
+yogurt:`<svg viewBox="0 0 120 120"><rect width="120" height="120" fill="#E8D7CF"/><circle cx="60" cy="60" r="48" fill="#3F5F73"/><circle cx="60" cy="60" r="41" fill="#FFFFFF"/><circle cx="60" cy="60" r="41" fill="none" stroke="#EDEBE6" stroke-width="3"/><g fill="#C48A45"><circle cx="46" cy="44" r="4"/><circle cx="54" cy="38" r="3.5"/><circle cx="40" cy="54" r="3"/><circle cx="50" cy="50" r="3.5"/><circle cx="60" cy="44" r="3"/><circle cx="44" cy="62" r="3.5"/></g><g fill="#A86B2E"><circle cx="52" cy="58" r="2.5"/><circle cx="38" cy="44" r="2.5"/><circle cx="58" cy="52" r="2"/></g><g><path d="M74 66c4-6 14-4 14 3 0 7-7 11-11 12-3-3-6-9-3-15z" fill="#E0475B"/><path d="M64 80c4-6 14-4 14 3 0 7-7 11-11 12-3-3-6-9-3-15z" fill="#D63A50"/><path d="M80 48c4-6 14-4 14 3 0 7-7 11-11 12-3-3-6-9-3-15z" fill="#E0475B"/><g fill="#F7D96B"><circle cx="80" cy="72" r=".9"/><circle cx="84" cy="70" r=".9"/><circle cx="70" cy="86" r=".9"/><circle cx="73" cy="90" r=".9"/><circle cx="86" cy="54" r=".9"/></g></g><path d="M34 72c8 6 18 2 22 10s14 6 18-2" stroke="#F2B33D" stroke-width="3" fill="none" stroke-linecap="round"/></svg>`,
+toast:`<svg viewBox="0 0 120 120"><rect width="120" height="120" fill="#D9DEE6"/><circle cx="60" cy="60" r="50" fill="#F6F2EA"/><g transform="rotate(-10 44 56)"><rect x="20" y="30" width="44" height="52" rx="12" fill="#B9813F"/><rect x="24" y="34" width="36" height="44" rx="9" fill="#E3B26B"/><path d="M28 50c8-6 20-6 28 0M28 60c8-6 20-6 28 0" stroke="#96C35A" stroke-width="7" stroke-linecap="round" fill="none"/><path d="M28 70c8-6 20-6 28 0" stroke="#7FAE45" stroke-width="7" stroke-linecap="round" fill="none"/></g><g transform="rotate(12 78 70)"><rect x="56" y="44" width="44" height="52" rx="12" fill="#B9813F"/><rect x="60" y="48" width="36" height="44" rx="9" fill="#E3B26B"/><path d="M62 70c0-12 10-18 18-16 9 2 14 10 12 18-2 10-14 14-22 10-5-2-8-7-8-12z" fill="#FFFDF5"/><circle cx="78" cy="70" r="7" fill="#F4B32B"/></g><circle cx="96" cy="30" r="9" fill="#E6D3B5"/><circle cx="96" cy="30" r="6" fill="#7A4F2A"/></svg>`,
+pasta:`<svg viewBox="0 0 120 120"><rect width="120" height="120" fill="#DCD3E6"/><circle cx="60" cy="60" r="50" fill="#FBFAF6"/><g stroke="#EBC86A" stroke-width="5" fill="none" stroke-linecap="round"><path d="M30 60c6-10 14 10 20 0s14 10 20 0 14 10 20 0"/><path d="M34 48c6-10 14 10 20 0s14 10 20 0 10 8 14 2"/><path d="M34 72c6-10 14 10 20 0s14 10 20 0 10 8 14 2"/><path d="M42 84c6-8 12 8 18 0s12 8 18 0"/><path d="M44 36c6-8 12 8 18 0s12 8 18 0"/></g><path d="M44 52c6-8 22-8 30 0 6 8-2 16-14 16S38 60 44 52z" fill="#C2412A"/><g fill="#FFF6DC"><circle cx="54" cy="56" r="2"/><circle cx="62" cy="54" r="2"/><circle cx="58" cy="62" r="2"/><circle cx="66" cy="60" r="1.6"/></g><g fill="#3F8A3A"><circle cx="50" cy="60" r="2"/><circle cx="68" cy="56" r="2"/></g></svg>`,
+salad:`<svg viewBox="0 0 120 120"><rect width="120" height="120" fill="#D8E3D2"/><circle cx="60" cy="60" r="48" fill="#5A7F94"/><circle cx="60" cy="60" r="41" fill="#F7F5EE"/><g fill="#7CB65A"><circle cx="40" cy="48" r="10"/><circle cx="52" cy="38" r="9"/><circle cx="44" cy="66" r="9"/><circle cx="74" cy="80" r="9"/></g><g fill="#D84A3A"><rect x="64" y="40" width="8" height="8" rx="2"/><rect x="38" y="78" width="8" height="8" rx="2"/></g><g fill="#C9B58A"><rect x="56" y="52" width="22" height="16" rx="6"/></g><path d="M60 56h14M60 62h12" stroke="#B19C6F" stroke-width="2"/><ellipse cx="82" cy="54" rx="9" ry="11" fill="#FFFDF5"/><circle cx="82" cy="55" r="5" fill="#F4B32B"/></svg>`,
+pizza:`<svg viewBox="0 0 120 120"><rect width="120" height="120" fill="#E3D5C0"/><rect x="6" y="6" width="108" height="108" rx="6" fill="#F3EBDD" stroke="#D8C8AE" stroke-width="2"/><circle cx="60" cy="60" r="47" fill="#C98A45"/><circle cx="60" cy="60" r="41" fill="#E2553C"/><circle cx="60" cy="60" r="39" fill="#F4D08A" opacity=".8"/><g stroke="#B9782F" stroke-width="2"><path d="M60 13v94M13 60h94M27 27l66 66M93 27l-66 66"/></g><g fill="#2E2A28"><circle cx="46" cy="38" r="3"/><circle cx="78" cy="48" r="3"/><circle cx="40" cy="74" r="3"/><circle cx="70" cy="84" r="3"/><circle cx="84" cy="68" r="2.6"/></g><g fill="#3F8A3A"><ellipse cx="56" cy="46" rx="4" ry="2.4"/><ellipse cx="66" cy="72" rx="4" ry="2.4" transform="rotate(30 66 72)"/><ellipse cx="38" cy="58" rx="4" ry="2.4"/></g><g fill="#C2412A"><circle cx="72" cy="34" r="4"/><circle cx="52" cy="88" r="4"/><circle cx="86" cy="54" r="3.4"/></g></svg>`,
+sabich:`<svg viewBox="0 0 120 120"><rect width="120" height="120" fill="#E6DCC8"/><rect x="82" y="40" width="22" height="50" rx="4" fill="#1D1D1D"/><rect x="82" y="56" width="22" height="10" fill="#D7262F"/><rect x="85" y="36" width="16" height="5" rx="2" fill="#BDBDBD"/><g transform="rotate(-14 46 64)"><path d="M16 50h60l-6 50a8 8 0 0 1-8 7H30a8 8 0 0 1-8-7z" fill="#EBCB8E"/><path d="M14 52c12-12 52-12 64 0" fill="#5B3A4A"/><circle cx="30" cy="46" r="7" fill="#6B4456"/><ellipse cx="50" cy="44" rx="9" ry="6" fill="#FFF8EC"/><circle cx="50" cy="44" r="3.5" fill="#F4B32B"/><circle cx="66" cy="47" r="6" fill="#6B4456"/><g fill="#5EA34A"><circle cx="40" cy="40" r="3"/><circle cx="60" cy="38" r="2.6"/></g><path d="M22 54c10 6 20-4 30 2s18 0 24-2" stroke="#E39B2D" stroke-width="3" fill="none" stroke-linecap="round"/></g></svg>`,
+shabbat:`<svg viewBox="0 0 120 120"><rect width="120" height="120" fill="#3A2A4E"/><rect y="62" width="120" height="58" fill="#F7F1E6"/><rect x="18" y="26" width="7" height="36" rx="2" fill="#FFFFFF"/><rect x="32" y="26" width="7" height="36" rx="2" fill="#FFFFFF"/><path d="M21.5 14c4 5 4 9 0 12-4-3-4-7 0-12zM35.5 14c4 5 4 9 0 12-4-3-4-7 0-12z" fill="#F2C46D"/><g fill="#D9A04E" stroke="#B57B2E" stroke-width="1.5"><ellipse cx="62" cy="80" rx="12" ry="9"/><ellipse cx="76" cy="78" rx="12" ry="10"/><ellipse cx="90" cy="80" rx="12" ry="9"/></g><ellipse cx="76" cy="66" rx="26" ry="3" fill="#E9E3D6"/><circle cx="30" cy="96" r="14" fill="#FFFFFF" stroke="#E2DACB" stroke-width="2"/><circle cx="96" cy="104" r="12" fill="#FFFFFF" stroke="#E2DACB" stroke-width="2"/><rect x="56" y="94" width="5" height="18" rx="2" fill="#8E2C4A"/></svg>`,
+label:`<svg viewBox="0 0 120 120" direction="ltr"><rect width="120" height="120" fill="#3D6E8C"/><rect x="20" y="12" width="80" height="96" rx="4" fill="#FFFFFF"/><g font-family="IBM Plex Sans Hebrew,sans-serif" fill="#111" text-anchor="end"><text x="94" y="25" font-size="8.5" font-weight="700">סימון תזונתי</text><text x="94" y="34" font-size="5.6">ל-100 גרם · אריזה 60 גרם</text></g><rect x="26" y="37" width="68" height="1.6" fill="#111"/><g font-family="IBM Plex Sans Hebrew,sans-serif" font-size="6.4" fill="#111"><text x="94" y="48" text-anchor="end">אנרגיה (קק״ל)</text><text x="28" y="48" font-weight="700">360</text><text x="94" y="59" text-anchor="end">חלבונים (גרם)</text><text x="28" y="59" font-weight="700">33</text><text x="94" y="70" text-anchor="end">פחמימות (גרם)</text><text x="28" y="70" font-weight="700">38</text><text x="94" y="81" text-anchor="end">מתוכן סוכרים</text><text x="28" y="81">4.5</text><text x="94" y="92" text-anchor="end">שומנים (גרם)</text><text x="28" y="92" font-weight="700">11</text></g><g fill="#D2D0CA"><rect x="26" y="51" width="68" height=".7"/><rect x="26" y="62" width="68" height=".7"/><rect x="26" y="73" width="68" height=".7"/><rect x="26" y="84" width="68" height=".7"/></g><rect x="36" y="97" width="48" height="7" fill="#E9E6DE"/><g fill="#222"><rect x="38" y="98" width="1" height="5"/><rect x="41" y="98" width="2" height="5"/><rect x="45" y="98" width="1" height="5"/><rect x="48" y="98" width="3" height="5"/><rect x="53" y="98" width="1" height="5"/><rect x="56" y="98" width="2" height="5"/><rect x="60" y="98" width="1" height="5"/><rect x="63" y="98" width="3" height="5"/><rect x="68" y="98" width="1" height="5"/><rect x="71" y="98" width="2" height="5"/><rect x="75" y="98" width="1" height="5"/><rect x="78" y="98" width="3" height="5"/></g></svg>`,
+note:`<svg viewBox="0 0 120 120"><rect width="120" height="120" fill="#D6E3DE"/><circle cx="60" cy="60" r="44" fill="#FBFAF6"/><circle cx="60" cy="60" r="34" fill="none" stroke="#E7E2D6" stroke-width="2"/><path d="M24 30v22a5 5 0 0 0 10 0V30M29 30v76" stroke="#6E7F7A" stroke-width="4" stroke-linecap="round" fill="none"/><path d="M96 106V30c-6 4-9 12-9 22v12h9" stroke="#6E7F7A" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>`
+};
+const artHTML=m=>m.img?`<img src="${m.img}" alt="">`:ART[m.art]||ART.note;
+
+/* ---------- foods. per 100g: [kcal, protein, carbs, fat]. grp: what kind of food it is, for the no-numbers mode ---------- */
+const I=(name,g,v,conf='high',grp)=>({name,g,v,conf,grp});
+// idea 4 (convenience): when one thing is uncertain, ONE question with buttons instead of a form
+const Q=(it,text,opts)=>Object.assign(it,{q:{text,opts}});
+const PRESET={
+toast:{art:'toast',title:'טוסט מחמצת עם אבוקדו וביצת עין',items:[I('לחם מחמצת · 2 פרוסות',80,[250,9,48,1.5],'high','grain'),I('אבוקדו',70,[160,2,8.5,14.7],'mid','fat'),I('ביצת עין',50,[196,13.6,.8,15],'high','protein'),I('קפה הפוך',240,[54,3.3,4.8,2.4],'mid','drink')]},
+chicken:{art:'chicken',title:'חזה עוף, אורז וסלט',items:[I('חזה עוף צלוי',150,[165,31,0,3.6],'high','protein'),I('אורז לבן',180,[130,2.7,28,.3],'mid','grain'),I('סלט ירקות',150,[25,1,4.5,.2],'high','veg'),I('שמן זית בסלט',10,[884,0,0,100],'low','fat')]},
+shakshuka:{art:'shakshuka',title:'שקשוקה עם פיתה וטחינה',note:'ראיתי 2 ביצים. את כמות הרוטב אני מעריכה לפי גודל המחבת.',items:[I('ביצים · 2',120,[143,12.6,.7,9.5],'high','protein'),I('רוטב עגבניות ופלפלים',180,[50,1.5,6,2.5],'mid','veg'),Q(I('פיתה · חצי',60,[275,9,55,1.2],'mid','grain'),'הפיתה הייתה חצי או שלמה?',[['חצי',{g:60,name:'פיתה · חצי'}],['שלמה',{g:120,name:'פיתה · שלמה'}],['בלי פיתה',{g:0}]]),I('טחינה',25,[595,17,21,54],'low','fat')]},
+yogurt:{art:'yogurt',title:'יוגורט עם גרנולה ותותים',items:[Q(I('יוגורט יווני 5%',200,[97,9,4,5],'mid','protein'),'היוגורט היה יווני 5% או 0%?',[['5%',{}],['0%',{v:[59,10,3.6,.4],name:'יוגורט יווני 0%'}],['רגיל 3%',{v:[62,3.5,4.7,3],name:'יוגורט 3%'}]]),I('גרנולה',40,[471,10,64,20],'mid','grain'),I('תותים',80,[32,.7,7.7,.3],'high','fruit'),I('דבש',10,[304,.3,82,0],'low','sweet')]},
+label:{art:'label',title:'חטיף חלבון',note:'קראתי את הערכים מהתווית, אז כאן אין הערכה. בגרסה המלאה אפשר גם לצלם ברקוד.',items:[I('חטיף חלבון · אריזה',60,[360,33,38,11],'label','protein')]},
+pasta:{art:'pasta',title:'פסטה ברוטב עגבניות ופרמזן',items:[I('פסטה מבושלת',220,[158,5.8,31,.9],'mid','grain'),I('רוטב עגבניות',120,[50,1.5,6,2.5],'mid','veg'),I('פרמזן',15,[431,38,4,29],'low','protein')]},
+tuna:{art:'salad',title:'סלט טונה עם ביצה ולחם מלא',items:[I('טונה במים',120,[116,26,0,1],'high','protein'),I('סלט ירקות',200,[25,1,4.5,.2],'high','veg'),I('ביצה קשה',55,[155,12.6,1.1,10.6],'high','protein'),I('שמן זית בסלט',10,[884,0,0,100],'low','fat'),I('לחם מלא · פרוסה',40,[247,13,41,3.4],'high','grain')]},
+pizza:{art:'pizza',title:'פיצה משפחתית',items:[I('פיצה משפחתית · משולש',110,[266,11,33,10],'high','grain')]},
+sabich:{art:'sabich',title:'סביח וקולה זירו',items:[I('פיתה',100,[275,9,55,1.2],'high','grain'),Q(I('חציל',80,[230,1.5,9,21],'low','veg'),'החציל היה מטוגן או קלוי?',[['מטוגן',{}],['קלוי',{v:[50,1.2,8,2],name:'חציל קלוי'}]]),I('ביצה קשה',55,[155,12.6,1.1,10.6],'high','protein'),I('טחינה',25,[595,17,21,54],'mid','fat'),I('סלט קצוץ',50,[25,1,4.5,.2],'high','veg'),I('עמבה',15,[90,1,20,1],'mid','sweet'),I('קולה זירו',330,[.3,0,0,0],'high','drink')]},
+latte:{art:'note',title:'הפוך של הבוקר',items:[I('קפה הפוך',240,[54,3.3,4.8,2.4],'high','drink')]}
+};
+const FOOD=[ // a quick local matcher for typed meals when Claude isn't reachable
+ [/בננה/,'בננה',120,[89,1.1,23,.3],'fruit'],[/תפוח/,'תפוח',180,[52,.3,14,.2],'fruit'],[/ביצה|ביצים/,'ביצה',55,[143,12.6,.7,9.5],'protein'],
+ [/קפה|הפוך/,'קפה הפוך',240,[54,3.3,4.8,2.4],'drink'],[/יוגורט/,'יוגורט',150,[62,3.5,4.7,3],'protein'],[/שוקולד/,'שוקולד · 2 קוביות',20,[546,5,60,31],'sweet'],
+ [/פיתה/,'פיתה',100,[275,9,55,1.2],'grain'],[/חומוס/,'חומוס',100,[166,8,14,10],'protein'],[/טוסט|לחם/,'לחם · פרוסה',35,[250,9,48,1.5],'grain'],
+ [/שקדים|אגוזים/,'שקדים · חופן',30,[579,21,22,50],'fat'],[/גבינה/,'גבינה לבנה 5%',100,[96,9,4,5],'protein'],[/פיצה/,'פיצה · משולש',110,[266,11,33,10],'grain'],
+ [/סלט/,'סלט ירקות',150,[25,1,4.5,.2],'veg'],[/אורז/,'אורז',150,[130,2.7,28,.3],'grain'],[/עוף|שניצל/,'עוף',150,[165,31,0,3.6],'protein'],[/פסטה/,'פסטה',200,[158,5.8,31,.9],'grain']
+];
+const GRP={protein:'חלבון',dairy:'חלבון',veg:'ירק',fruit:'פרי',grain:'פחמימה',fat:'שומן',sweet:'מתוק',drink:'שתייה'};
+function grpOf(it){
+  if(it.grp&&GRP[it.grp])return it.grp;
+  const[k,p,c,f]=it.v; if(!k)return 'drink';
+  if(/תות|בננה|תפוח|ענב|אבטיח|פרי/.test(it.name))return'fruit';
+  if(p*4/k>=.3)return'protein'; if(k<45)return'veg'; if(f*9/k>=.6)return'fat'; if(c*4/k>=.5)return'grain'; return'fat';
+}
+const BAL=[['protein','חלבון',g=>g==='protein'||g==='dairy'],['veg','ירקות ופירות',g=>g==='veg'||g==='fruit'],['grain','פחמימות',g=>g==='grain']];
+const balOf=items=>{const gs=items.map(grpOf);return BAL.filter(b=>gs.some(b[2])).map(b=>b[0])};
+
+/* ---------- state ---------- */
+const meals=[]; let water=5; let clock=19*60+38; let seq=0;
+const learned=new Map([['טחינה',{g:40,unit:'ג׳',why:'תיקנת את זה פעמיים השבוע, מ-25 ל-40 ג׳'}]]);
+const auto=new Set(); // idea 6 (convenience): meals logged by themselves every morning
+const usual=[{title:'יוגורט עם גרנולה ותותים',key:'yogurt',why:'5 פעמים בשבועיים האחרונים, בדרך כלל בבוקר'},{title:'הפוך של הבוקר',key:'latte',why:'כמעט כל בוקר, 240 מ״ל'}];
+const YESTERDAY=[['בוקר','07:55','yogurt'],['צהריים','13:10','pasta'],['ערב','20:05','tuna']];
+const hh=m=>`${String(Math.floor(m/60)).padStart(2,'0')}:${String(m%60).padStart(2,'0')}`;
+const tick=(m=4)=>{clock+=m;return hh(clock)};
+const calc=items=>items.reduce((a,it)=>{const k=it.g/100;a.kcal+=it.v[0]*k;a.protein+=it.v[1]*k;a.carbs+=it.v[2]*k;a.fat+=it.v[3]*k;return a},{kcal:0,protein:0,carbs:0,fat:0});
+const dayTot=()=>{const t={kcal:0,protein:0,carbs:0,fat:0};meals.forEach(m=>{const c=calc(m.items);for(const k in t)t[k]+=c[k]});return t};
+const clone=p=>({title:p.title,note:p.note,art:p.art,items:p.items.map(i=>({...i,v:[...i.v]}))});
+const base=n=>n.split(' · ')[0].trim();
+const unitOf=n=>/קפה|הפוך|חלב|מ״ל|מיץ|קולה|שתייה/.test(n)?'מ״ל':'ג׳';
+function addMeal(m){m.id=++seq;meals.push(m);renderToday(m.id)}
+function slotFor(){if(clock<11*60)return'בוקר';if(clock<16*60)return'צהריים';return meals.some(m=>m.slot==='ערב')?'נשנוש':'ערב'}
+
+/* ---------- chat primitives ---------- */
+const msgs=$('#msgs');
+const scroll=()=>requestAnimationFrame(()=>msgs.scrollTop=msgs.scrollHeight);
+function bubble(who,html,cls='',time){const d=document.createElement('div');d.className=`b ${who} ${cls}`;d.innerHTML=html+(time?`<span class="t num">${time}</span>`:'');msgs.appendChild(d);scroll();return d}
+const photo=(inner,time)=>bubble('me',`<span class="ph">${inner}</span>`,'photo',time);
+const me=txt=>bubble('me',`<p>${esc(txt)}</p>`,'',tick(1));
+const reply=(html,raw)=>bubble('ol',raw?html:`<p>${html}</p>`,'',tick(1));
+function typing(label){const d=document.createElement('div');d.className='typing';d.innerHTML=`<i></i><i></i><i></i>${label?`<span>${esc(label)}</span>`:''}`;msgs.appendChild(d);scroll();$('#status').textContent='מקלידה…';return()=>{d.remove();$('#status').textContent='מחוברת'}}
+const wait=ms=>new Promise(r=>setTimeout(r,ms));
+async function think(ms=900,label){const s=typing(label);await wait(ms);s()}
+// Olma's message with quick replies: opts = [[label, fn], ...]; one tap answers it.
+function ask(html,opts,cls=''){
+  const el=bubble('ol',html+`<div class="qr">${opts.map((o,i)=>`<button type="button" data-q="${i}">${esc(o[0])}</button>`).join('')}</div>`,cls,tick(1));
+  el.querySelector('.qr').addEventListener('click',e=>{const b=e.target.closest('[data-q]');if(!b||b.disabled)return;
+    el.querySelectorAll('.qr button').forEach(x=>{x.disabled=true});b.classList.add('picked');opts[+b.dataset.q][1](opts[+b.dataset.q][0])});
+  return el;
+}
+const linkCard=()=>`<button class="linkcard" type="button" data-goday><svg class="mark" viewBox="0 0 120 120" aria-hidden="true"><use href="#logo"/></svg><div><b>הצלחת של היום</b><span>allma.world/day/…</span></div></button>`;
+msgs.addEventListener('click',e=>{if(e.target.closest('[data-goday]'))goToday()});
+
+/* ---------- the meal card: Olma's breakdown, correctable, then logged ---------- */
+const cards=[]; // redraw functions, so switching the numbers mode updates cards already in the chat
+function analysisCard(data,meta){
+  const items=data.items; const slot=meta.slot||slotFor(); const yest=meta.day==='yesterday';
+  items.forEach(it=>{it.orig=it.g;const l=learned.get(base(it.name));if(l&&it.conf!=='label'){it.g=l.g;it.orig=l.g;it.learned=true}});
+  const usedLearned=items.filter(it=>it.learned);
+  const el=bubble('ol','','wide ana'); let locked=false;
+  const tag=it=>it.learned?'<em class="conf mine">המנה שלך</em>':it.conf==='label'?'<em class="conf lbl">מהתווית</em>':it.conf==='mid'?'<em class="conf">בערך</em>':it.conf==='low'?'<em class="conf">הערכה</em>':'';
+  const draw=()=>{
+    const t=calc(items);
+    const sub=data.note||(usedLearned.length?`את ה${base(usedLearned[0].name)} שמתי לפי המנה שאתה רגיל אליה.`:'אם משהו לא מדויק, אפשר לתקן כאן או לכתוב לי.');
+    const rows=numbers
+      ? items.map((it,i)=>`<div class="row"><div class="nm"><span>${esc(it.name)}</span>${tag(it)}</div>
+        <div class="step"><button type="button" data-i="${i}" data-d="-1" aria-label="פחות ${esc(it.name)}" ${locked?'disabled':''}>−</button><output class="num">${fmt(it.g)} ${unitOf(it.name)}</output><button type="button" data-i="${i}" data-d="1" aria-label="יותר ${esc(it.name)}" ${locked?'disabled':''}>+</button></div>
+        <div class="kc num">${fmt(it.g/100*it.v[0])}</div></div>`).join('')
+      : items.map(it=>`<div class="row" style="grid-template-columns:minmax(0,1fr) auto"><div class="nm"><span>${esc(it.name)}</span></div><em class="grp">${GRP[grpOf(it)]}</em></div>`).join('');
+    const bal=balOf(items);
+    const tot=numbers
+      ? `<div class="tot num"><b>${fmt(t.kcal)} קק״ל</b><span><i class="dot" style="background:var(--m-protein)"></i>חלבון ${fmt(t.protein)}</span><span><i class="dot" style="background:var(--m-carbs)"></i>פחמ׳ ${fmt(t.carbs)}</span><span><i class="dot" style="background:var(--m-fat)"></i>שומן ${fmt(t.fat)}</span></div>`
+      : `<div class="tot">בצלחת: ${BAL.map(b=>bal.includes(b[0])?`<b style="font-size:14px;margin:0">${b[1]} ✓</b>`:`<span>${b[1]} –</span>`).join(' · ')}</div>`;
+    const qi=locked?-1:items.findIndex(it=>it.q&&!it.answered&&!it.learned);
+    const qs=qi<0?'':`<div class="qstrip"><p>${esc(items[qi].q.text)}</p><div class="qr">${items[qi].q.opts.map((o,j)=>`<button type="button" data-qa="${qi}" data-j="${j}">${esc(o[0])}</button>`).join('')}</div></div>`;
+    el.innerHTML=`<h4>${esc(data.title)}</h4><div class="sub">${esc(sub)}</div><div class="rows">${rows}</div>${tot}${qs}
+    ${locked?`<div class="done-tag">✓ נרשם · ${yest?'אתמול · '+SLOT_NAME[slot]:SLOT_NAME[slot]+' · '+meta.time}</div>`:`<div class="acts"><button class="btn main" type="button" data-ok>לרשום ל${yest?'אתמול, ':''}${SLOT_NAME[slot]}</button><button class="btn ghost" type="button" data-no>לא לרשום</button></div>`}
+    ${locked?`<details class="peek"><summary>מה עולמה קראה מאחורי הקלעים</summary><pre>${esc(JSON.stringify({tool:'log_meal',args:{date:yest?'2026-10-06':'2026-10-07',meal:slotKey(slot),title:data.title,source:meta.src,items:items.map(it=>({name:it.name,grams:it.g,group:grpOf(it),kcal:Math.round(it.g/100*it.v[0]),protein:+(it.g/100*it.v[1]).toFixed(1),carbs:+(it.g/100*it.v[2]).toFixed(1),fat:+(it.g/100*it.v[3]).toFixed(1),confidence:it.learned?'learned':it.conf}))}},null,2))}</pre></details>`:''}`;
+  };
+  draw(); cards.push(draw);
+  el.addEventListener('click',async e=>{
+    const s=e.target.closest('[data-d]');
+    const qa=e.target.closest('[data-qa]');
+    if(qa){const it=items[+qa.dataset.qa];const o=it.q.opts[+qa.dataset.j][1];if(o.g!=null){it.g=o.g;it.orig=o.g}if(o.v)it.v=[...o.v];if(o.name)it.name=o.name;it.answered=true;it.conf='high';draw();return}
+    if(s&&!s.disabled){const it=items[+s.dataset.i];const step=Math.max(5,Math.round(it.g*.2/5)*5);it.g=Math.max(0,it.g+step*(+s.dataset.d));draw();return}
+    if(e.target.closest('[data-no]')){locked=true;cards.splice(cards.indexOf(draw),1);el.querySelector('.acts').remove();await wait(300);reply('בסדר, לא רשמתי.');return}
+    if(e.target.closest('[data-ok]')){
+      locked=true; draw();
+      if(yest){logYesterday(items,slot);if(meta.after)meta.after();return}
+      addMeal({slot,time:meta.time,title:data.title,art:meta.art,img:meta.img,items});
+      // idea 2: a correction is a lesson. the next plate with the same thing starts from their amount
+      const taught=items.filter(it=>it.conf!=='label'&&it.g!==it.orig&&it.g>0);
+      taught.forEach(it=>learned.set(base(it.name),{g:it.g,unit:unitOf(it.name),why:`תיקנת ב-${meta.time}, מ-${fmt(it.orig)} ל-${fmt(it.g)} ${unitOf(it.name)}`}));
+      if(taught.length)renderLearn();
+      await wait(500);
+      afterLog(taught);
+      if(meta.after){await wait(700);meta.after()}
+    }
+  });
+  return el;
+}
+function afterLog(taught){
+  const t=dayTot(), left=goal.kcal-t.kcal, pLeft=goal.protein-t.protein;
+  let html;
+  if(numbers){
+    let line=left>0?`נשארו לך בערך ${fmt(left)} קק״ל להיום.`:`עברת את היעד ב-${fmt(-left)} קק״ל. קורה, מחר יום חדש.`;
+    line+=pLeft>8?` חסרים עוד ${fmt(pLeft)} ג׳ חלבון, אם בא לך משהו קטן: יוגורט או חופן שקדים.`:' ובחלבון סגרת את היום יפה.';
+    html=`<p>רשמתי. עד עכשיו היום: <b class="num">${fmt(t.kcal)}</b> מתוך ${fmt(goal.kcal)} קק״ל, חלבון <b class="num">${fmt(t.protein)}</b>/${goal.protein} ג׳.</p><p>${line}</p>`;
+  } else {
+    const b=BAL.map(x=>[x[1],meals.filter(m=>balOf(m.items).includes(x[0])).length]);
+    html=`<p>רשמתי. היום עד עכשיו: ${meals.length} ארוחות. ב-${b[1][1]} מהן היו ירקות או פירות, וב-${b[0][1]} היה חלבון.</p>`;
+  }
+  if(taught.length)html+=`<p>שמתי לב שתיקנת את ה${esc(base(taught[0].name))} ל-${fmt(taught[0].g)} ${unitOf(taught[0].name)}. מעכשיו זו המנה שלך, ואתחיל ממנה.</p>`;
+  reply(html+linkCard(),true);
+}
+
+/* ---------- Claude (only inside a Claude viewer) ---------- */
+let sample=null, imagesOk=false;
+(async()=>{try{sample=await window.claude?.use?.('sample');if(sample){const l=await sample.limits().catch(()=>null);imagesOk=!!l?.images}}catch{sample=null}})();
+const PROMPT=()=>`את עולמה, עוזרת אישית בוואטסאפ שעוזרת לאדם לעקוב אחרי מה שהוא אוכל. התפקיד: לפרק ארוחה לרכיבים, להעריך כמות בגרמים (או מ״ל לשתייה) לפי מה שנראה או נכתב, ולתת ערכים תזונתיים ל-100 גרם לפי טבלאות מקובלות. מאכלים ישראליים בשמות שלהם בעברית. אם בתמונה יש תווית תזונתית של מוצר, קראי ממנה את הערכים ל-100 גרם ואת משקל האריזה בדיוק, ו-confidence יהיה "label". אל תשפטי ואל תמליצי על דיאטה.
+המנות הקבועות של האדם (השתמשי בהן כשהרכיב מופיע): ${JSON.stringify(Object.fromEntries([...learned].map(([k,v])=>[k,v.g])))}
+החזירי JSON בלבד, בדיוק במבנה:
+{"title":"שם קצר לארוחה","note":"משפט אחד קצר על מה שהיה קשה להעריך, או מחרוזת ריקה","items":[{"name":"ביצים · 2","grams":120,"group":"protein","per100":{"kcal":143,"protein":12.6,"carbs":0.7,"fat":9.5},"confidence":"high"}]}
+אם יש רכיב אחד שהכמות שלו באמת לא ברורה, אפשר להוסיף שאלה אחת קצרה עם 2-4 תשובות: "question":{"item":0,"text":"הטחינה הייתה כף או שתיים?","options":[{"label":"כף","grams":15},{"label":"שתיים","grams":30}]}. בלי שאלה אם הכול ברור.
+group הוא אחד מ: protein, veg, fruit, grain, fat, sweet, drink. confidence הוא high, mid, low או label. לכל היותר 8 רכיבים. אם אין כאן אוכל, items ריק ו-note מסביר בעדינות.`;
+function fromClaude(j){
+  const items=(Array.isArray(j?.items)?j.items:[]).slice(0,8).map(x=>{const p=x.per100||{};const n=v=>Math.max(0,Math.min(1000,+v||0));
+    return I(String(x.name||'רכיב').slice(0,40),Math.max(1,Math.min(1500,Math.round(+x.grams||100))),[n(p.kcal),n(p.protein),n(p.carbs),n(p.fat)],['high','mid','low','label'].includes(x.confidence)?x.confidence:'mid',GRP[x.group]?x.group:undefined)});
+  const q=j?.question, qi=+q?.item;
+  if(q&&items[qi]&&Array.isArray(q.options)&&q.options.length>=2)Q(items[qi],String(q.text||'').slice(0,80),q.options.slice(0,4).map(o=>[String(o.label||'').slice(0,24),{g:Math.max(0,Math.min(1500,Math.round(+o.grams||0)))}]));
+  return {title:String(j?.title||'הארוחה שלך').slice(0,60),note:String(j?.note||'').slice(0,160),items};
+}
+const errCopy=e=>({not_granted:'צריך לאשר לעמוד לשאול את Claude כדי שאוכל לנתח.',rate_limited:'יותר מדי בקשות ברגע אחד, נסה שוב עוד רגע.',image_rejected:'לא הצלחתי לפתוח את הקובץ. נסה תמונת JPG או PNG.'}[e?.code]||'משהו השתבש בניתוח. אפשר לנסות שוב או לכתוב לי מה אכלת.');
+
+/* ---------- flows ---------- */
+let busy=false; const usedSamples=new Set();
+function lockTray(b){busy=b;document.querySelectorAll('.thumb').forEach(t=>{t.disabled=b||usedSamples.has(t.dataset.sample)})}
+async function sendSample(key){
+  if(busy)return; usedSamples.add(key); lockTray(true);
+  const time=tick(); photo(ART[key],time);
+  if(key==='pizza'){await wait(400);await sharedPizza(time);lockTray(false);return}
+  await wait(400); await think(key==='label'?1100:1600,key==='label'?'קוראת את התווית':'מסתכלת על הצלחת');
+  const p=clone(PRESET[key]);
+  analysisCard(p,{slot:(key==='yogurt'||key==='label')&&meals.some(m=>m.slot==='ערב')?'נשנוש':undefined,time,art:key,src:key==='label'?'label':'photo'});
+  lockTray(false);
+}
+async function sendFile(file){
+  if(!file||busy)return; lockTray(true);
+  const url=URL.createObjectURL(file); const time=tick();
+  photo(`<img src="${url}" alt="התמונה ששלחת">`,time);
+  await wait(400);
+  if(!sample||!imagesOk){reply('בדמו הזה ניתוח של תמונה אמיתית עובד כשפותחים את העמוד בתוך Claude. בינתיים אפשר לנסות את התמונות לדוגמה, או לכתוב לי מה אכלת.');lockTray(false);return}
+  const stop=typing('מסתכלת על הצלחת');
+  try{const d=fromClaude(await sample.json(PROMPT()+'\n\nהתמונה המצורפת היא מה שהאדם אכל עכשיו, או תווית של מה שאכל.',{images:[file]}));stop();
+    if(!d.items.length)reply(esc(d.note||'לא מצאתי אוכל בתמונה הזו.')); else analysisCard(d,{time,img:url,src:'photo'})}
+  catch(e){stop();reply(errCopy(e))}
+  lockTray(false);
+}
+
+// idea 3: "like yesterday" and the meals that keep coming back
+async function likeYesterday(slotWanted){
+  await think(700);
+  const pick=YESTERDAY.filter(y=>!slotWanted||y[0]===slotWanted);
+  ask(`<p>${slotWanted?'זה מה שאכלת אתמול ב'+SLOT_NAME[slotWanted].replace('ארוחת ',''):'אתמול אכלת:'}</p>`,pick.map(([s,t,k])=>[`${SLOT_NAME[s]}: ${PRESET[k].title}`,lab=>relog(k,'repeat')]));
+}
+async function showUsual(){
+  await think(700);
+  ask('<p>הארוחות שחוזרות אצלך הכי הרבה:</p>',usual.map(u=>[u.title,()=>relog(u.key,'favorite')]));
+}
+async function relog(key,src){
+  await think(600);
+  const p=clone(PRESET[key]);
+  p.note=src==='repeat'?'אותה ארוחה כמו אתמול. אם הפעם היה קצת אחרת, אפשר לתקן.':'מהארוחות הקבועות שלך.';
+  analysisCard(p,{time:hh(clock),art:p.art,src,after:key==='latte'?()=>offerAuto('latte'):null});
+}
+
+// idea 1 (convenience): a voice note is a meal too
+async function sendVoice(){
+  if(busy)return; lockTray(true); $('#micBtn').disabled=true;
+  const bars=[6,12,18,9,22,14,8,20,16,10,24,12,7,15,19,11,6,13,21,9,14,8];
+  const v=bubble('me',`<div class="voice"><button class="pl" type="button" aria-label="לנגן"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4v16l13-8z"/></svg></button><div class="wave">${bars.map(h=>`<i style="height:${h}px"></i>`).join('')}</div><small class="num">0:06</small></div>`,'',tick());
+  v.querySelector('.pl').addEventListener('click',()=>{const is=[...v.querySelectorAll('.wave i')];is.forEach((x,i)=>setTimeout(()=>x.classList.add('on'),i*250));setTimeout(()=>is.forEach(x=>x.classList.remove('on')),is.length*250+400)});
+  await wait(400); await think(1500,'מקשיבה');
+  const p=clone(PRESET.sabich); p.note='שמעתי: "אכלתי סביח עם הכול וקולה זירו". אם משהו לא נכון, אפשר לתקן כאן.';
+  analysisCard(p,{time:hh(clock),art:'sabich',src:'voice',slot:meals.some(m=>m.slot==='ערב')?'נשנוש':undefined});
+  lockTray(false);
+}
+
+// idea 5 (convenience): a shared plate. only their part is counted
+async function sharedPizza(time){
+  await think(1200,'מסתכלת על הצלחת');
+  const n2=['','אחד','שניים','שלושה','ארבעה'];
+  ask('<p>פיצה משפחתית, 8 משולשים. כמה מהם היו שלך?</p>',[1,2,3,4].map(n=>[n===1?'משולש אחד':`${n2[n]} משולשים`,()=>pizzaCard(n,time)]));
+}
+async function pizzaCard(n,time,day){
+  await think(600);
+  const p=clone(PRESET.pizza); p.items[0].g=110*n; p.items[0].name=`פיצה משפחתית · ${n===1?'משולש אחד':n+' משולשים'}`;
+  p.note=day?'רושמת לאתמול, בלי לגעת בהיום.':`חישבתי רק את החלק שלך: ${n} מתוך 8.`;
+  analysisCard(p,{time:time||hh(clock),art:'pizza',src:'photo',day,slot:day?'ערב':undefined});
+}
+
+// idea 3 (convenience): logging late. "yesterday evening I had pizza" goes to yesterday, not today
+function logYesterday(items,slot){
+  const c=calc(items); WEEK[2][1]+=c.kcal; WEEK[2][2]++; renderToday();
+  setTimeout(()=>reply(numbers?`<p>רשמתי ליום שלישי, ל${SLOT_NAME[slot]}. היום לא השתנה.</p><p class="num">אתמול נסגר בסוף על ${fmt(WEEK[2][1])} קק״ל, וזה מתעדכן גם בגרף השבועי.</p>${linkCard()}`:`<p>רשמתי ליום שלישי, ל${SLOT_NAME[slot]}. היום לא השתנה.</p>${linkCard()}`,true),500);
+}
+async function lateLog(txt){
+  const slot=/בוקר/.test(txt)?'בוקר':/צהריים/.test(txt)?'צהריים':'ערב';
+  const nm=countOf(txt);
+  if(/פיצה/.test(txt)){
+    if(nm){pizzaCard(nm,'אתמול','yesterday');return}
+    await think(700);
+    ask('<p>אתמול בערב, פיצה. כמה משולשים בערך?</p>',[1,2,3,4].map(n=>[String(n),()=>pizzaCard(n,'אתמול','yesterday')]));return}
+  const found=FOOD.filter(f=>f[0].test(txt));
+  if(!found.length){await think(500);reply('הבנתי שזה לאתמול, אבל לא זיהיתי מה אכלת. אפשר לכתוב שוב, למשל "אתמול בצהריים אכלתי שניצל".');return}
+  await think(800);
+  analysisCard({title:found.map(f=>f[1].split(' · ')[0]).join(', '),note:'רושמת לאתמול, בלי לגעת בהיום.',items:found.map(f=>I(f[1],f[2],[...f[3]],'mid',f[4]))},{time:'אתמול',src:'text',art:'note',day:'yesterday',slot});
+}
+const countOf=t=>{const m=t.match(/(\d+)\s*משולש/);if(m)return Math.min(8,+m[1]);const w={'אחד':1,'שניים':2,'שני':2,'שתי':2,'שלושה':3,'שלוש':3,'ארבעה':4,'ארבע':4};for(const k in w)if(new RegExp(k+'\\s*משולש').test(t))return w[k];return 0};
+
+// idea 6 (convenience): a meal that repeats every morning can log itself
+function offerAuto(key){
+  if(auto.has(key))return;
+  ask(`<p>את ה${esc(PRESET[key].title.replace('של הבוקר','').trim())} אתה שולח לי כמעט כל בוקר. רוצה שארשום אותו לבד?</p><p class="small">כל בוקר ב-8:00 אכתוב רק "רשמתי את ההפוך". אם לא שתית, עונים "לא היום" ואני מוחקת.</p>`,
+    [['כן, כל בוקר',async()=>{auto.add(key);renderLearn();await think(400);reply('סגור. מחר בבוקר זה כבר יירשם לבד. אפשר לעצור את זה מתי שרוצים, גם מהעמוד.')}],['לא, אשלח בעצמי',async()=>{await think(400);reply('בסדר גמור.')}]]);
+}
+
+// idea 1 (fun): the day as one picture to share. no calories on it on purpose: people share plates, not numbers
+let dcN=0;
+async function dailyCard(){
+  await think(1300,'מציירת');
+  dcN++; const W=300,H=430,ms=meals.slice(0,4),S=124,G=12,x0=(W-2*S-G)/2;
+  let s=`<svg viewBox="0 0 ${W} ${H}" direction="ltr" font-family="IBM Plex Sans Hebrew,sans-serif"><rect width="${W}" height="${H}" fill="#F0EDE5"/><rect width="${W}" height="74" fill="#004643"/>
+  <text x="${W-18}" y="34" direction="rtl" text-anchor="start" font-size="20" font-weight="700" fill="#F0EDE5">הצלחת של רביעי</text><text x="${W-18}" y="56" direction="rtl" text-anchor="start" font-size="12.5" fill="#BFD3CF">7 באוקטובר</text>
+  <use href="#logo" x="18" y="19" width="36" height="36"/>`;
+  ms.forEach((m,i)=>{const x=x0+(i%2?0:S+G),y=88+Math.floor(i/2)*(S+G);const id=`dc${dcN}-${i}`;
+    s+=`<clipPath id="${id}"><rect x="${x}" y="${y}" width="${S}" height="${S}" rx="14"/></clipPath><g clip-path="url(#${id})">${m.img?`<image href="${m.img}" x="${x}" y="${y}" width="${S}" height="${S}" preserveAspectRatio="xMidYMid slice"/>`:(ART[m.art]||ART.note).replace('<svg ',`<svg x="${x}" y="${y}" width="${S}" height="${S}" `)}</g>
+    <rect x="${x+6}" y="${y+S-24}" width="${S-12}" height="18" rx="9" fill="rgba(14,31,30,.62)"/><text x="${x+S/2}" y="${y+S-11}" direction="rtl" text-anchor="middle" font-size="10.5" fill="#FFFFFF">${esc(SLOT_NAME[m.slot])}</text>`});
+  const veg=meals.filter(m=>balOf(m.items).includes('veg')).length;
+  s+=`<text x="${W/2}" y="${H-46}" direction="rtl" text-anchor="middle" font-size="15" font-weight="700" fill="#0E1F1E">${meals.length} ארוחות · ירקות ב-${veg} · ${water} כוסות מים</text>
+  <text x="${W/2}" y="${H-24}" direction="rtl" text-anchor="middle" font-size="12" fill="#56615E">${CH[challenge].title}: ${chalScore()} מתוך 4 עד עכשיו</text></svg>`;
+  bubble('ol',`<span class="ph">${s}</span>`,'photo daycard',tick(1));
+  await wait(300);
+  reply('הנה היום שלך בתמונה אחת. אפשר להעביר אותה לחבר או לשים בסטטוס, אין עליה קלוריות.');
+}
+
+// idea 3 (fun): a small challenge for the week, never a punishment
+const CH={
+  veg:{title:'ירק בכל ארוחת ערב',past:[true,false,true],now:()=>meals.some(m=>m.slot==='ערב'&&balOf(m.items).includes('veg')),wait:'מחכה לארוחת הערב'},
+  protein:{title:'חלבון בארוחת הבוקר',past:[true,true,false],now:()=>meals.some(m=>m.slot==='בוקר'&&balOf(m.items).includes('protein')),wait:'מחכה לארוחת הבוקר'},
+  water:{title:'6 כוסות מים ביום',past:[false,true,true],now:()=>water>=6,wait:'עוד כוס או שתיים'}
+};
+let challenge='veg';
+const chalScore=()=>CH[challenge].past.filter(Boolean).length+(CH[challenge].now()?1:0);
+function renderChallenge(){
+  const c=CH[challenge], ok=c.now();
+  $('#chal').innerHTML=`<b>${c.title}</b><p>${chalScore()} מתוך 4 עד עכשיו. 5 מתוך 7 זה כבר ניצחון.${ok?'':' היום: '+c.wait+'.'}</p>
+  <div class="pips">${['א׳','ב׳','ג׳','ד׳','ה׳','ו׳','ש׳'].map((d,i)=>`<div><i class="${i<3?(c.past[i]?'ok':'miss'):i===3?(ok?'ok now':'now'):''}"></i>${d}</div>`).join('')}</div>`;
+}
+async function chooseChallenge(){
+  setView('chat'); await think(600);
+  ask('<p>איזה אתגר בא לך השבוע? משהו קטן, בלי עונשים.</p>',Object.entries(CH).map(([k,c])=>[c.title,async()=>{challenge=k;renderChallenge();await think(400);reply(`יאללה: ${c.title}. אני סופרת לבד מהתמונות, ובמוצ״ש נראה איך היה.`)}]));
+}
+
+// idea 4 (fun): something surprising, found in what they logged
+const INS=[
+  {t:'בימים ששתית 6 כוסות מים ומעלה, נשנשת פחות אחרי 21:00. ככה היה ב-4 מתוך 5 הפעמים האחרונות.'},
+  {t:'שקשוקה מופיעה אצלך כל רביעי, כבר 3 שבועות ברצף. מסורת?'},
+  {t:'ארוחת הצהריים שלך הכי יציבה: כמעט תמיד בין 550 ל-650 קק״ל.',num:true},
+  {t:'הירק שהכי חוזר אצלך החודש הוא עגבנייה, ב-14 ארוחות. במקום השני מלפפון, עם 9.'},
+  {t:'הארוחה הכי חלבונית שלך השבוע הייתה דווקא סלט הטונה של אתמול, עם 46 ג׳ חלבון.',num:true}
+];
+let insI=1;
+function renderInsight(){const list=INS.filter(x=>numbers||!x.num);insI%=list.length;$('#ins').textContent=list[insI].t;$('#insN').textContent=`${insI+1} מתוך ${list.length}`}
+
+// idea 6 (fun): Friday evening. Olma steps back for Shabbat
+async function shabbatEve(){
+  setView('chat'); await think(900);
+  ask('<p class="small">(כאילו עכשיו שישי, 17:40)</p><p>שבת שלום. בשבת אני לא שולחת סיכומים ולא תזכורות. אם תרצה לרשום את ארוחת שישי, אפשר לצלם את השולחן ואסכם בערך, בלי פירוט ובלי מספרים.</p>',
+    [['לצלם את השולחן',async()=>{photo(ART.shabbat,tick());await wait(400);await think(1200);reply('<p>רשמתי "ארוחת שישי משפחתית", בערך ובלי פירוט. היא לא תיספר באתגר ולא תופיע כחריגה בגרף.</p><p>שבת שלום, נתראה במוצ״ש עם סיכום השבוע.</p>',true)}],
+     ['לא השבת',async()=>{await think(400);reply('מעולה. שבת שלום, נתראה במוצ״ש.')}]],'wide');
+}
+
+// idea 1: getting to know them, and a goal computed from it (Mifflin-St Jeor, an estimate)
+let onb=null;
+async function startOnboarding(){
+  onb={step:'goal'};
+  await think(700);
+  ask('<p>בוא נכיר רגע, כדי שהמספרים יתאימו לך ולא לממוצע. מה הכי חשוב לך עכשיו?</p>',[
+    ['לרדת קצת במשקל',()=>onbGoal('lose')],['לשמור על מה שיש',()=>onbGoal('keep')],['לעלות במסת שריר',()=>onbGoal('gain')],['רק לראות מה אני אוכל, בלי מספרים',()=>onbGoal('none')]]);
+}
+async function onbGoal(g){
+  onb.goal=g;
+  if(g==='none'){onb=null;await think(700);setNumbers(false);reply('<p>מעולה, ככה נעשה. לא אראה קלוריות וגרמים, רק מה היה בצלחת: חלבון, ירקות, פחמימות. אם תרצה מספרים אחר כך, תכתוב לי "עם מספרים".</p>',true);return}
+  onb.step='body'; await think(800);
+  ask('<p>כדי לחשב יעד אני צריכה גובה, משקל וגיל, ואם לחשב לפי גבר או אישה (הנוסחה שונה). אפשר לכתוב בשורה אחת, למשל: <b>178, 80, 32, גבר</b></p>',[['178 ס״מ · 80 ק״ג · 32 · גבר',lab=>{me(lab);onbBody(lab)}],['165 ס״מ · 62 ק״ג · 29 · אישה',lab=>{me(lab);onbBody(lab)}]]);
+}
+async function onbBody(txt){
+  const ns=(txt.match(/\d+(\.\d+)?/g)||[]).map(Number);
+  const h=ns.find(n=>n>=120&&n<=230), w=ns.find(n=>n>=35&&n<=250&&n!==h), a=ns.find(n=>n>=10&&n<=100&&n!==h&&n!==w);
+  const sex=/אישה|נקבה|בחורה/.test(txt)?'f':/גבר|זכר|בחור/.test(txt)?'m':null;
+  await think(700);
+  if(!h||!w||!a||!sex){reply('לא הצלחתי לקרוא את כל ארבעת הפרטים. אפשר לכתוב שוב, למשל: 178, 80, 32, גבר');return}
+  if(a<18){onb=null;setNumbers(false);reply('לגיל הזה אני לא מחשבת יעד קלורי. אשמח לעזור לך לעקוב בלי מספרים, רק מה היה בצלחת. ואם יש משהו שמטריד אותך באוכל, כדאי לדבר עליו עם מישהו מבוגר שאתה סומך עליו.');return}
+  Object.assign(onb,{h,w,a,sex,step:'act'});
+  ask('<p>ואיך נראה שבוע רגיל שלך מבחינת תנועה?</p>',[['כמעט לא זז',()=>onbAct(1.3)],['2-3 אימונים בשבוע',()=>onbAct(1.5)],['4 אימונים ומעלה',()=>onbAct(1.7)]]);
+}
+async function onbAct(f){
+  const o=onb; const bmr=10*o.w+6.25*o.h-5*o.a+(o.sex==='m'?5:-161);
+  const adj={lose:-400,keep:0,gain:250}[o.goal];
+  const kcal=Math.max(Math.round(bmr*1.1/50)*50,Math.round((bmr*f+adj)/50)*50);
+  const protein=Math.round(o.w*(o.goal==='keep'?1.4:1.8)/5)*5, fat=Math.round(kcal*.28/9/5)*5, carbs=Math.max(0,Math.round((kcal-protein*4-fat*9)/4/5)*5);
+  onb.result={kcal,protein,carbs,fat};
+  await think(1100,'מחשבת');
+  ask(`<p>זה היעד היומי שיצא לי:</p><div class="goalcard num"><div><b>${fmt(kcal)}</b><span>קק״ל</span></div><div><b>${protein}</b><span>חלבון ג׳</span></div><div><b>${carbs}</b><span>פחמ׳ ג׳</span></div><div><b>${fat}</b><span>שומן ג׳</span></div></div>
+    <p class="small">חישוב לפי נוסחת מיפלין-סנט ג'ור והתנועה שלך${o.goal==='lose'?', עם גירעון קטן שמתאים לירידה של עד חצי קילו בשבוע':''}. זו הערכה, ואם משהו לא מרגיש נכון, משנים.</p>`,
+    [['לשמור את היעד',async()=>{Object.assign(goal,o.result);onb=null;setNumbers(true);renderToday();await think(500);reply('שמרתי. מעכשיו העמוד היומי והסיכומים מחושבים לפי היעד הזה.'+linkCard(),true)}],
+     ['לא עכשיו',async()=>{onb=null;await think(400);reply('בסדר, נשארים עם היעד הקודם.')}]],'wide');
+}
+
+// idea 5: evening summary and weekly summary, both drawn from what was logged
+async function eveningSummary(){
+  await think(900);
+  const t=dayTot(); let html;
+  if(numbers){
+    const left=goal.kcal-t.kcal;
+    html=`<p><b>סיכום היום</b></p><p class="num">${fmt(t.kcal)} מתוך ${fmt(goal.kcal)} קק״ל · חלבון ${fmt(t.protein)}/${goal.protein} ג׳ · ${meals.length} ארוחות · ${water} כוסות מים</p>
+      <p>${Math.abs(left)<=150?'יום מדויק, ממש על היעד.':left>150?`נגמר קצת מתחת ליעד, ${fmt(left)} קק״ל. זה בסדר, רק שים לב שזה לא קורה כל יום.`:'קצת מעל היעד היום, ממש לא נורא.'}${t.protein>=goal.protein*.9?' החלבון היה מצוין.':''}</p>`;
+  } else {
+    const b=BAL.map(x=>meals.filter(m=>balOf(m.items).includes(x[0])).length);
+    html=`<p><b>סיכום היום</b></p><p>${meals.length} ארוחות · ירקות או פירות ב-${b[1]} · חלבון ב-${b[0]} · ${water} כוסות מים</p><p>${b[1]>=2?'יום צבעוני.':'מחר אפשר להוסיף ירק לאחת הארוחות.'}</p>`;
+  }
+  const ins=INS.filter(x=>numbers||!x.num)[0].t;
+  ask(html+`<p class="small">ומשהו שגיליתי: ${esc(ins)}</p><p>להזכיר לך מחר ב-8:30 לצלם את ארוחת הבוקר?</p>`,[['כן',async()=>{await think(400);reply('סגור, אזכיר מחר ב-8:30.')}],['לא צריך',async()=>{await think(400);reply('בסדר גמור.')}],['לקבל את כרטיס היום',()=>dailyCard()]],'wide');
+}
+const WEEKVALS=[['א׳',1980,3,112],['ב׳',2240,4,128],['ג׳',1870,3,96],['ד׳',null,0,0],['ה׳',2050,3,118],['ו׳',2380,4,104],['ש׳',1720,2,88]];
+async function weeklySummary(){
+  await think(1200,'מסכמת את השבוע');
+  const today=dayTot(); const wk=WEEKVALS.map((d,i)=>i===3?[d[0],today.kcal,meals.length,today.protein]:d);
+  const logged=wk.filter(d=>d[2]>0).length, avg=wk.reduce((a,d)=>a+d[1],0)/7, avgP=wk.reduce((a,d)=>a+d[3],0)/7;
+  const W=280,H=74,bw=26,gap=(W-7*bw)/6,max=2800,y=v=>6+(H-22)*(1-v/max);
+  let svg=`<svg class="wk" viewBox="0 0 ${W} ${H}" role="img" aria-label="קלוריות בכל יום בשבוע">`;
+  wk.forEach(([d,v],i)=>{const x=W-bw-i*(bw+gap);svg+=`<rect x="${x}" y="${y(v)}" width="${bw}" height="${y(0)-y(v)}" rx="3" fill="${v>goal.kcal*1.05?'var(--m-carbs)':'var(--accent)'}"/><text x="${x+bw/2}" y="${H-3}" text-anchor="middle" font-size="10" fill="var(--text-3)" font-family="IBM Plex Sans Hebrew,sans-serif">${d}</text>`});
+  svg+=`<line x1="0" x2="${W}" y1="${y(goal.kcal)}" y2="${y(goal.kcal)}" stroke="var(--text-2)" stroke-dasharray="3 3"/></svg>`;
+  const html=numbers
+    ? `<p><b>השבוע שלך</b> <span class="small">(דוגמה, כאילו היום מוצ״ש)</span></p>${svg}<p class="num">ממוצע ${fmt(avg)} קק״ל ליום מול יעד ${fmt(goal.kcal)} · חלבון ממוצע ${fmt(avgP)} ג׳ · רשמת ${logged} מתוך 7 ימים</p><p>משהו שראיתי: בימים שהתחלת עם ביצים או יוגורט, החלבון הגיע ליעד. בשישי, עם ארוחת הערב המשפחתית, היית הכי גבוה, וזה צפוי לגמרי.</p>`
+    : `<p><b>השבוע שלך</b> <span class="small">(דוגמה, כאילו היום מוצ״ש)</span></p><p>רשמת ${logged} מתוך 7 ימים, ${wk.reduce((a,d)=>a+d[2],0)} ארוחות. בבקרים היה כמעט תמיד חלבון. ירקות היו בעיקר בצהריים, אז אולי שווה לנסות ירק גם בערב.</p>`;
+  ask(html+`<p>${CH[challenge].title}: ${chalScore()+2} מתוך 7 השבוע.</p>`,[['אתגר לשבוע הבא',()=>chooseChallenge()],['לשנות את היעד',()=>startOnboarding()],['להמשיך ככה',async()=>{await think(400);reply('יאללה, שבוע טוב.')}]],'wide');
+}
+
+// idea 7: a mode without numbers
+function setNumbers(on){
+  numbers=on; $('#numSwitch').setAttribute('aria-checked',on); $('#modeChip').textContent=on?'בלי מספרים':'עם מספרים'; $('#modeChip').dataset.say=on?'בלי מספרים':'עם מספרים';
+  cards.forEach(d=>d()); renderToday();
+}
+
+async function sendText(txt){
+  me(txt); await wait(400);
+  if(onb?.step==='body'){onbBody(txt);return}
+  if(/היכרות|יעד|להתחיל מחדש/.test(txt)){startOnboarding();return}
+  if(/בלי מספרים/.test(txt)){await think(600);setNumbers(false);reply('בסדר. מעכשיו בלי קלוריות וגרמים, רק מה שהיה בצלחת. אני ממשיכה לרשום ברקע, אז אם תתחרט, הכול שם.');return}
+  if(/עם מספרים/.test(txt)){await think(600);setNumbers(true);reply('חזרנו למספרים.'+linkCard(),true);return}
+  if(/כרטיס/.test(txt)){dailyCard();return}
+  if(/אתגר/.test(txt)){chooseChallenge();return}
+  if(!/כמו אתמול/.test(txt)&&/אתמול/.test(txt)&&/אכלתי|שתיתי|היה לי|אכלנו/.test(txt)){lateLog(txt);return}
+  if(/פיצה/.test(txt)&&/אכלנו|משפחתית|משולש/.test(txt)){const n=countOf(txt);if(n){pizzaCard(n);return}await think(600);ask('<p>פיצה משפחתית, 8 משולשים. כמה מהם היו שלך?</p>',[1,2,3,4].map(k=>[String(k),()=>pizzaCard(k)]));return}
+  if(/אתמול/.test(txt)){likeYesterday(/בוקר/.test(txt)?'בוקר':/צהריים/.test(txt)?'צהריים':/ערב/.test(txt)?'ערב':null);return}
+  if(/קבוע|הרגיל|כרגיל/.test(txt)){showUsual();return}
+  if(/נשאר|כמה אכלתי|סיכום|איך (אני|היום)/.test(txt)){
+    await think(600); const t=dayTot();
+    if(numbers)reply(`<p>עד עכשיו: <b class="num">${fmt(t.kcal)}</b> קק״ל מתוך ${fmt(goal.kcal)}.</p><p class="num">חלבון ${fmt(t.protein)}/${goal.protein} · פחמימות ${fmt(t.carbs)}/${goal.carbs} · שומן ${fmt(t.fat)}/${goal.fat} ג׳ · מים ${water}/8 כוסות</p>${linkCard()}`,true);
+    else reply(`<p>היום: ${meals.length} ארוחות, ${water} כוסות מים. ${BAL.map(b=>`${b[1]} ב-${meals.filter(m=>balOf(m.items).includes(b[0])).length}`).join(', ')}.</p>${linkCard()}`,true);
+    return}
+  if(/מים/.test(txt)){water=Math.min(8,water+1);renderWater();renderChallenge();await think(400);reply(`רשמתי כוס מים. ${water} מתוך 8 היום.`);return}
+  if(/מחק|תמחקי|בטלי|ביטול/.test(txt)){const m=meals.pop();renderToday();await think(400);reply(m?`מחקתי את "${esc(m.title)}".`:'אין מה למחוק היום.');return}
+  const time=hh(clock);
+  if(sample){
+    const stop=typing();
+    try{const d=fromClaude(await sample.json(PROMPT()+'\n\nזה מה שהאדם כתב על מה שאכל: '+JSON.stringify(txt)));stop();
+      if(d.items.length){analysisCard(d,{time,src:'text',art:'note'});return}
+      reply(esc(d.note||'לא הבנתי מה אכלת. אפשר לשלוח תמונה או לכתוב למשל "אכלתי פיתה עם חומוס".'));return}
+    catch(e){stop();if(e?.code!=='not_granted'){reply(errCopy(e));return}}
+  }
+  const found=FOOD.filter(f=>f[0].test(txt));
+  if(!found.length){await think(500);reply('לא זיהיתי מה אכלת. אפשר לשלוח תמונה, או לכתוב למשל "אכלתי פיתה עם חומוס".');return}
+  await think(900);
+  analysisCard({title:found.map(f=>f[1].split(' · ')[0]).join(', '),note:'רשמתי לפי מנה ממוצעת. אפשר לתקן את הכמות.',items:found.map(f=>{const it=I(f[1],f[2],[...f[3]],'mid',f[4]);return /פיצה/.test(f[1])?Q(it,'כמה משולשים?',[1,2,3,4].map(n=>[String(n),{g:110*n,name:`פיצה · ${n} משולשים`}])):it})},{time,src:'text',art:'note'});
+}
+
+document.querySelectorAll('.thumb').forEach(t=>{t.innerHTML=ART[t.dataset.sample];t.addEventListener('click',()=>sendSample(t.dataset.sample))});
+$('#file').addEventListener('change',e=>{sendFile(e.target.files[0]);e.target.value=''});
+$('#composer').addEventListener('submit',e=>{e.preventDefault();const v=$('#msgIn').value.trim();if(!v||busy)return;$('#msgIn').value='';sendText(v)});
+$('#chips').addEventListener('click',e=>{const c=e.target.closest('[data-say]');if(c&&!busy)sendText(c.dataset.say)});
+$('#dOnb').addEventListener('click',()=>{if(!busy){setView('chat');startOnboarding()}});
+$('#dEve').addEventListener('click',()=>{if(!busy){setView('chat');clock=Math.max(clock,21*60+30);eveningSummary()}});
+$('#dWeek').addEventListener('click',()=>{if(!busy){setView('chat');weeklySummary()}});
+$('#numSwitch').addEventListener('click',()=>setNumbers(!numbers));
+$('#dShab').addEventListener('click',()=>{if(!busy)shabbatEve()});
+$('#micBtn').addEventListener('click',()=>{setView('chat');sendVoice().finally(()=>{$('#micBtn').disabled=false})});
+$('#chalSwap').addEventListener('click',()=>{if(!busy)chooseChallenge()});
+$('#insNext').addEventListener('click',()=>{insI++;renderInsight()});
+
+/* ---------- today page ---------- */
+const MAC=[['protein','חלבון','--m-protein'],['carbs','פחמימות','--m-carbs'],['fat','שומן','--m-fat']];
+function renderToday(newId){
+  const t=dayTot(); const left=goal.kcal-t.kcal, pLeft=goal.protein-t.protein;
+  $('#goalTxt').textContent=numbers?`יעד יומי ${fmt(goal.kcal)} קק״ל · ${goal.protein} ג׳ חלבון`:'בלי מספרים · רק מה שהיה בצלחת';
+  $('#numHero').hidden=!numbers; $('#balHero').hidden=numbers;
+  if(numbers){
+    $('#ringArc').style.strokeDashoffset=326.7*(1-Math.min(1,t.kcal/goal.kcal));
+    $('#kcal').textContent=fmt(t.kcal); $('#ofTxt').textContent=`מתוך ${fmt(goal.kcal)} קק״ל`;
+    $('#left').textContent=left>=0?`נשארו ${fmt(left)}`:`${fmt(-left)} מעל היעד`;
+    $('#ringBox').setAttribute('aria-label',`${fmt(t.kcal)} מתוך ${fmt(goal.kcal)} קלוריות היום`);
+    $('#macros').innerHTML=MAC.map(([k,n,c])=>`<div class="mac"><div class="top"><b>${n}</b><span class="num">${fmt(t[k])} / ${goal[k]} ג׳</span></div><div class="bar"><i style="width:${Math.min(100,t[k]/goal[k]*100)}%;background:var(${c})"></i></div></div>`).join('');
+    $('#say').textContent=!meals.some(m=>m.slot==='ערב')?`יום טוב עד עכשיו. נשארו בערך ${fmt(left)} קק״ל לערב, וחסרים ${fmt(Math.max(0,pLeft))} ג׳ חלבון. ארוחת ערב עם ביצים, עוף או קטניות תסגור את זה.`
+      :pLeft>8?`ארוחת הערב נרשמה. עוד ${fmt(pLeft)} ג׳ חלבון והיום סגור. נשנוש של יוגורט יווני יעשה את זה.`:`סגרת את החלבון של היום. ${left>=0?`נשארו ${fmt(left)} קק״ל, בלי לחץ.`:'הקלוריות קצת מעל היעד, זה בסדר גמור ביום אחד.'}`;
+  } else {
+    const cnt=BAL.map(b=>meals.filter(m=>balOf(m.items).includes(b[0])).length);
+    const col={protein:'var(--m-protein)',veg:'#5E9E4A',grain:'var(--m-carbs)'};
+    $('#balHero').innerHTML=`<div class="lead">${meals.length} ארוחות היום<small>כל עיגול הוא ארוחה. מלא אם היה בה</small></div>`+BAL.map(b=>`<div class="balrow"><b>${b[1]}</b><div class="dots">${meals.map(m=>`<i class="${balOf(m.items).includes(b[0])?'on':''}" style="${balOf(m.items).includes(b[0])?'background:'+col[b[0]]:''}" title="${esc(m.title)}"></i>`).join('')}</div></div>`).join('');
+    $('#say').textContent=cnt[1]<meals.length/2?'הרבה חלבון היום. אם בא לך, ירק או פרי בארוחה הבאה יאזנו את הצלחת.':'צלחת מגוונת היום, עם חלבון וירקות ברוב הארוחות.';
+  }
+  $('#meals').innerHTML=SLOTS.map(s=>{const ms=meals.filter(m=>m.slot===s);
+    if(!ms.length)return s==='נשנוש'?'':`<div class="meal"><div class="im empty"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></div><div class="nm"><small>${SLOT_NAME[s]}</small><b style="color:var(--text-3);font-weight:500">עוד לא נרשם · שולחים תמונה לעולמה</b></div><div></div></div>`;
+    return ms.map(m=>{const c=calc(m.items);const bal=balOf(m.items);
+      return `<div class="meal ${m.id===newId?'new':''}"><div class="im">${artHTML(m)}</div><div class="nm"><small>${SLOT_NAME[s]} · <span class="num">${m.time}</span></small><b>${esc(m.title)}</b><span class="mx num">${numbers?`חלבון ${fmt(c.protein)} · פחמ׳ ${fmt(c.carbs)} · שומן ${fmt(c.fat)} ג׳`:BAL.filter(b=>bal.includes(b[0])).map(b=>b[1]).join(' · ')}</span></div><div class="kc num">${numbers?`${fmt(c.kcal)} <small>קק״ל</small>`:''}</div></div>`}).join('')}).join('');
+  $('#mealCount').textContent=`${meals.length} ארוחות`;
+  renderWeek(t.kcal); renderLearn(); renderChallenge(); renderInsight();
+  if(newId){const h=$('#heroCard');h.classList.remove('flash');void h.offsetWidth;h.classList.add('flash')}
+}
+function renderLearn(){
+  const rows=[...learned].map(([k,v])=>`<div class="lrow"><div><b>${esc(k)} · <span class="num" style="display:inline;font-size:inherit;color:inherit">${fmt(v.g)} ${v.unit}</span></b><span>המנה שלך · ${esc(v.why)}</span></div><button type="button" data-forget="${esc(k)}">לשכוח</button></div>`)
+    .concat(usual.map(u=>auto.has(u.key)
+      ?`<div class="lrow"><div><b>${esc(u.title)}</b><span>נרשם לבד כל בוקר ב-8:00 · ${esc(u.why)}</span></div><button type="button" data-unauto="${u.key}">להפסיק</button></div>`
+      :`<div class="lrow"><div><b>${esc(u.title)}</b><span>ארוחה קבועה · ${esc(u.why)}</span></div><button type="button" data-relog="${u.key}">לרשום עכשיו</button></div>`));
+  $('#learn').innerHTML=rows.join('')||'<p class="note" style="margin:0">עוד לא למדתי כלום. כשתתקן כמות, אזכור אותה.</p>';
+}
+$('#learn').addEventListener('click',e=>{const ua=e.target.closest('[data-unauto]');if(ua){auto.delete(ua.dataset.unauto);renderLearn();return}
+  const f=e.target.closest('[data-forget]');if(f){learned.delete(f.dataset.forget);renderLearn();return}
+  const r=e.target.closest('[data-relog]');if(r&&!busy){setView('chat');me('הרגיל: '+PRESET[r.dataset.relog].title);relog(r.dataset.relog,'favorite')}});
+function renderWater(){
+  $('#cups').innerHTML=Array.from({length:8},(_,i)=>`<button type="button" class="cup ${i<water?'on':''}" data-c="${i}" aria-label="כוס ${i+1}" aria-pressed="${i<water}"><svg viewBox="0 0 34 42"><path d="M5 4h24l-3 33a3 3 0 0 1-3 3H11a3 3 0 0 1-3-3z" fill="${i<water?'currentColor':'none'}" fill-opacity="${i<water?.85:0}" stroke="currentColor" stroke-width="2"/></svg></button>`).join('');
+  $('#waterTxt').textContent=`${water} / 8 כוסות`;
+}
+$('#cups').addEventListener('click',e=>{const b=e.target.closest('[data-c]');if(!b)return;const i=+b.dataset.c;water=(i+1===water)?i:i+1;renderWater();renderChallenge()});
+
+const WEEK=[['א׳',1980,3],['ב׳',2240,4],['ג׳',1870,3],['ד׳',null,0],['ה׳',null,0],['ו׳',null,0],['ש׳',null,0]];
+function renderWeek(todayK){
+  const wk=$('#week'); wk.querySelector('svg,.wkdots')?.remove();
+  $('#weekSub').textContent=numbers?'קק״ל ליום · הקו הוא היעד':'ימים עם רישום · המספר הוא ארוחות';
+  if(!numbers){
+    wk.insertAdjacentHTML('beforeend',`<div class="wkdots">${WEEK.map(([d,,n],i)=>{const c=i===3?meals.length:n;return `<div><i class="${i===3?'on today':c?'on':''}">${i<=3?c:''}</i>${d}</div>`}).join('')}</div>`);return}
+  const W=320,H=150,pad={t:12,b:26,l:8,r:8},max=2800,bw=24,gap=(W-pad.l-pad.r-7*bw)/6;
+  const y=v=>pad.t+(H-pad.t-pad.b)*(1-v/max);
+  let s=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="קלוריות בכל יום השבוע מול היעד">`;
+  [0,1000,2000].forEach(v=>{s+=`<line x1="${pad.l}" x2="${W-pad.r}" y1="${y(v)}" y2="${y(v)}" stroke="var(--sep)" stroke-width="1"/>`});
+  WEEK.forEach(([d,v],i)=>{
+    const val=i===3?todayK:v; const x=W-pad.r-bw-i*(bw+gap);
+    if(val==null)s+=`<rect x="${x}" y="${y(0)-4}" width="${bw}" height="4" rx="2" fill="var(--sep-2)"/>`;
+    else{const top=y(val);s+=`<path d="M${x},${y(0)} V${top+4} a4,4 0 0 1 4,-4 h${bw-8} a4,4 0 0 1 4,4 V${y(0)} Z" fill="${i===3?'var(--accent)':'var(--sep-2)'}"/><rect x="${x-gap/2}" y="${pad.t}" width="${bw+gap}" height="${H-pad.t-pad.b}" fill="transparent" data-tip="${d} · ${fmt(val)} קק״ל" data-x="${x+bw/2}" data-y="${top}"/>`}
+    s+=`<text x="${x+bw/2}" y="${H-8}" text-anchor="middle" font-size="11.5" font-family="IBM Plex Sans Hebrew, sans-serif" fill="${i===3?'var(--text)':'var(--text-3)'}" font-weight="${i===3?700:400}">${d}</text>`;
+  });
+  s+=`<line x1="${pad.l}" x2="${W-pad.r}" y1="${y(goal.kcal)}" y2="${y(goal.kcal)}" stroke="var(--text-2)" stroke-width="1.5" stroke-dasharray="4 4"/></svg>`;
+  wk.insertAdjacentHTML('beforeend',s);
+}
+$('#week').addEventListener('pointermove',e=>{const t=e.target.closest('[data-x]');const tip=$('#tip');if(!t){tip.style.opacity=0;return}
+  const k=$('#week svg').getBoundingClientRect().width/320;tip.textContent=t.dataset.tip;tip.style.left=(+t.dataset.x*k)+'px';tip.style.top=(+t.dataset.y*k)+'px';tip.style.transform='translate(-50%,-110%)';tip.style.opacity=1});
+$('#week').addEventListener('pointerleave',()=>$('#tip').style.opacity=0);
+
+/* ---------- views + theme ---------- */
+const stage=$('#stage');
+function setView(v){stage.dataset.view=v;document.querySelectorAll('.seg button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.v===v))}
+function goToday(){setView('today');if(matchMedia('(max-width:900px)').matches)window.scrollTo({top:0});const h=$('#heroCard');h.classList.remove('flash');void h.offsetWidth;h.classList.add('flash')}
+document.querySelectorAll('.seg button').forEach(b=>b.addEventListener('click',()=>setView(b.dataset.v)));
+$('#themeBtn').addEventListener('click',()=>{const r=document.documentElement;const dark=r.dataset.theme?r.dataset.theme==='dark':matchMedia('(prefers-color-scheme:dark)').matches;r.dataset.theme=dark?'light':'dark'});
+
+/* ---------- the day so far ---------- */
+const pre=(key,slot,time)=>{const p=clone(PRESET[key]);meals.push({id:++seq,slot,time,title:p.title,art:p.art,items:p.items})};
+pre('toast','בוקר','08:12'); pre('chicken','צהריים','13:27');
+msgs.insertAdjacentHTML('beforeend','<div class="day-chip">היום</div>');
+photo(ART.toast,'08:12');
+bubble('ol',`<p>רשמתי ארוחת בוקר: טוסט מחמצת, אבוקדו, ביצת עין והפוך. <b class="num">${fmt(calc(meals[0].items).kcal)}</b> קק״ל, ${fmt(calc(meals[0].items).protein)} ג׳ חלבון.</p>`,'','08:12');
+photo(ART.chicken,'13:27');
+bubble('ol',`<p>רשמתי צהריים: חזה עוף, אורז וסלט. <b class="num">${fmt(calc(meals[1].items).kcal)}</b> קק״ל. את השמן בסלט הערכתי, אם שמת יותר תגיד.</p>`,'','13:28');
+bubble('ol',`<p>ערב טוב. נשארו לך בערך <b class="num">${fmt(goal.kcal-dayTot().kcal)}</b> קק״ל להיום. כשתאכל, פשוט תצלם לי.</p>`,'','19:30');
+renderToday(); renderWater();
+})();
+</script>
