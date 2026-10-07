@@ -1117,20 +1117,20 @@ async function dueForSending(client, now, opts = {}) {
 // האשראי" and the automatic rung 2 landed a minute behind it, saying it again.
 // Only an AUTOMATIC one-off ladder is covered — a nudge and an explicit
 // reminder are things they asked to be chased about — and only by a digest that
-// really reached them after the previous rung (`hold_reason` NULL) and really
-// names the task: `full` lists every open task, `today` those due today or
-// earlier, `summary` is counts and names nothing.
-async function coveredByDigest(client, { userId, dueAt, timezone, since, now }) {
-  const tz = timezone || 'UTC';
+// really reached them after the previous rung (`hold_reason` NULL). Since
+// 2026-10-06 every scheduled digest carries every open task (`digest.assemble`,
+// `sweeps.scopeForDigest`), so reaching them is naming it; `block_view` is the
+// one scope that is counts only, and no digest row carries it. Past 25 items
+// the card is a summary of the most pressing — a task whose reminder already
+// fired today is among them.
+async function coveredByDigest(client, { userId, since, now }) {
   const { rows } = await client.query(
     `SELECT 1 FROM outbox
       WHERE user_id = $1 AND kind = 'digest' AND hold_reason IS NULL
         AND sent_at > $2::timestamptz AND sent_at <= $3::timestamptz
-        AND (payload->>'scope' = 'full'
-             OR (payload->>'scope' = 'today' AND $4::timestamptz IS NOT NULL
-                 AND ($4::timestamptz AT TIME ZONE $5)::date <= (sent_at AT TIME ZONE $5)::date))
+        AND COALESCE(payload->>'scope', '') <> 'block_view'
       LIMIT 1`,
-    [userId, since, now, dueAt || null, tz]
+    [userId, since, now]
   );
   return rows.length > 0;
 }

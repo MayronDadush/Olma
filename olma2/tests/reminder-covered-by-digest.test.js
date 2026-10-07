@@ -50,10 +50,10 @@ test('a digest that listed the task covers the automatic follow-up', async (t) =
   assert.equal(a.length, 1);
 });
 
-test('a summary digest names nothing, so the follow-up still goes', async (t) => {
+test('a digest from BEFORE rung 1 covers nothing', async (t) => {
   const { pool, teardown, user } = await setup('+972505500202');
   t.after(teardown);
-  await digest(pool, user.id, 'summary', DIGEST_AT);
+  await digest(pool, user.id, 'full', '2026-10-06T03:30:00Z');
   await withTx(pool, (c) => sweeps.sweepReminders(c, RUNG2_TICK));
   assert.equal((await rungKeys(pool)).length, 2);
 });

@@ -21,6 +21,8 @@ const options = require('../src/domain/meeting-options');
 const groupsJob = require('../src/jobs/groups');
 const groupOutbox = require('../src/domain/group-outbox');
 const templates = require('../src/domain/message-templates');
+const dt = require('../src/domain/datetime');
+const meetingTime = require('../src/domain/meeting-time');
 const { renderGroupCoordination, PLACE_ASK_ONLINE } = require('../src/domain/proactive-text');
 
 const IL = 'Asia/Jerusalem';
@@ -94,6 +96,38 @@ test('a one-clock line, and a row queued before this existed, render exactly as 
   }).trim());
 });
 
+// The poker room, 2026-10-06: "מחר (שלישי) בערב" was proposed on the Monday and
+// said as "מחר" in the room at 09:00 on the Tuesday. The renderer reads the
+// live clock, so the moment is built off it ONCE: 19:00 today in Israel,
+// whatever hour the suite runs — "מחר" about it is wrong by construction.
+const TODAY_IL = (() => {
+  const p = dt.partsInZone(IL, new Date());
+  const at = dt.instantInZone(IL, { y: p.y, m: p.m, d: p.d, hh: 19, mi: 0, ss: 0 });
+  return {
+    startsAt: new Date(at).toISOString(), allDay: false, daypart: 'evening', authorTz: IL,
+    weekday: meetingTime.DAYS_HE[dt.weekdayOfParts(p)],
+  };
+})();
+const escaped = (s) => s.replace(/[()*]/g, '\\$&');
+
+test('a stale "מחר" in a room\'s line is said as the day it is now, on one clock and on several', () => {
+  const fresh = `היום (${TODAY_IL.weekday}) בערב`;
+  const table = { kind: 'table', count: 2, lead: 'מחר בערב', roomTz: IL, at: { lead: TODAY_IL } };
+  assert.equal(renderGroupCoordination(table), `השולחן זז — עכשיו *2* מועדים על הפרק. הכי מתקדם: *${fresh}*.`);
+  // the room it happened in was on two clocks, Israel and Rome, and an evening names no hour
+  const rome = renderGroupCoordination({ ...table, multiZone: true, zones: [IL, 'Europe/Rome'] });
+  assert.match(rome, new RegExp(`הכי מתקדם: \\*${escaped(fresh)} \\(ישראל\\)\\*`));
+  // every line that says a slot in its author's words goes through the same door
+  const base = renderGroupCoordination({ kind: 'base', slot: 'מחר בערב', yes: 2, total: 4, missing: [], roomTz: IL, at: { slot: TODAY_IL } });
+  assert.match(base, new RegExp(`\\*${escaped(fresh)}\\*`));
+  const done = renderGroupCoordination({ kind: 'done', slot: 'מחר בערב', who: null, placeAsk: false, roomTz: IL, at: { slot: TODAY_IL } });
+  assert.match(done, new RegExp(`^סגור: \\*${escaped(fresh)}\\*`));
+  const laid = renderGroupCoordination({ kind: 'laid', slots: ['מחר בערב'], roomTz: IL, at: { slots: [TODAY_IL] } });
+  assert.match(laid, new RegExp(escaped(fresh)));
+  // a row queued before lines carried the instant says what it always said
+  assert.match(renderGroupCoordination({ kind: 'table', count: 2, lead: 'מחר בערב' }), /\*מחר בערב\*/);
+});
+
 test('the owner\'s rewording of a several-clocks line is the one that goes out', () => {
   const overrides = { group_coord_soon_zones: '⏰ {{slot}}' };
   assert.equal(renderGroupCoordination(clocks({ kind: 'soon', slot: 'x 20:00', at: { slot: SAT } }), overrides),
@@ -119,8 +153,14 @@ test('the decision marks a line only when the people asked span clocks', () => {
   assert.deepEqual(many.at.slot, SAT);
   const one = groupVoice.decideGroupLine(co([IL]), { nowMs: NOW, timezone: IL });
   const bare = groupVoice.decideGroupLine({ ...co([IL]), zones: undefined, moments: undefined }, { nowMs: NOW, timezone: IL });
-  assert.deepEqual(one, bare, 'one clock: the line is field for field what it was');
+  // One clock carries the instant too (2026-10-06), so a stale "מחר" in the
+  // words can be said again — and nothing else about the line moves.
+  const { at, roomTz, ...rest } = one;
+  assert.deepEqual(rest, bare, 'one clock: every other field is what it was');
+  assert.deepEqual(at.slot, SAT);
+  assert.equal(roomTz, IL);
   assert.equal(one.multiZone, undefined);
+  assert.equal(one.zones, undefined);
 });
 
 // ---- a real room, end to end ---------------------------------------------------

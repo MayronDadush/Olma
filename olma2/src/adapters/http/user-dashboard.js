@@ -37,6 +37,7 @@ const auth = require('../../domain/dashboard-auth');
 const dash = require('../../domain/user-dashboard');
 const experiments = require('../../domain/experiments');
 const events = require('../../domain/user-dashboard-events');
+const opens = require('../../domain/dashboard-opens');
 const write = require('../../domain/user-dashboard-write');
 const { refreshUserCard } = require('../../intake/user-card');
 
@@ -407,6 +408,7 @@ async function handle(req, res, pool, pathname) {
       // what switches whose page this is.
       const who = await currentUser(pool, req);
       if (who && who.userId === peek.data.userId) {
+        await withTx(pool, (c) => opens.record(c, who.userId, { byAdmin: who.byAdmin, source: 'link' })).catch(() => {});
         res.writeHead(303, headers(HTML, { Location: '/me' + landingFragment(peek.data, req.url) }));
         return res.end();
       }
@@ -418,6 +420,7 @@ async function handle(req, res, pool, pathname) {
         const holder = await currentUser(pool, req);
         return messagePage(res, 410, 'linkUsed', holder ? holder.locale || 'he' : null);
       }
+      await withTx(pool, (c) => opens.record(c, opened.data.userId, { byAdmin: opened.data.byAdmin, source: 'link' })).catch(() => {});
       res.writeHead(303, headers(HTML, {
         Location: '/me' + landingFragment(opened.data, req.url),
         'Set-Cookie': auth.cookieHeader(opened.data.sessionId),
@@ -451,6 +454,9 @@ async function handle(req, res, pool, pathname) {
       if (opened.error.code === 'not_found') codeMissed(addr);
       return sendJson(res, opened.error.code === 'forbidden' ? 403 : 400, { ok: false, error: { code: opened.error.code } });
     }
+    // A code is the installed app's door and nothing else's, so this is an
+    // app open whatever address the page reloads to.
+    await withTx(pool, (c) => opens.record(c, opened.data.userId, { source: 'app' })).catch(() => {});
     return sendJson(res, 200, { ok: true }, { 'Set-Cookie': auth.cookieHeader(opened.data.sessionId) });
   }
 
@@ -481,6 +487,9 @@ async function handle(req, res, pool, pathname) {
       res.writeHead(200, headers(HTML, { 'Set-Cookie': auth.clearCookieHeader() }));
       return res.end(newPageHtml());
     }
+    // Counted for the admin page (domain/dashboard-opens.js), and never at
+    // the page's expense: a failed write is a visit not counted, nothing more.
+    await withTx(pool, (c) => opens.record(c, userId, { byAdmin: who.byAdmin, source: opens.sourceOf(req.url) })).catch(() => {});
     res.writeHead(200, headers(HTML));
     return res.end(ownPageHtml(who.locale));
   }
@@ -492,6 +501,14 @@ async function handle(req, res, pool, pathname) {
 
   if (pathname === '/me/data') {
     if (req.method !== 'GET') return sendJson(res, 405, { ok: false, error: { code: 'invalid' } }, { Allow: 'GET' });
+    // The address book on its own, asked for by the one sheet that shows it
+    // (domain/user-dashboard.contactsPage). A query on the same path rather
+    // than a route of its own, so Caddy's allowlist — which matches /me/data
+    // by path — needs nothing new to pass it.
+    if (new URL(String(req.url || ''), 'http://x').searchParams.get('part') === 'contacts') {
+      const book = await withTx(pool, (c) => dash.contactsPage(c, userId));
+      return sendJson(res, book.ok ? 200 : 404, book);
+    }
     const page = await withTx(pool, async (c) => {
       const loaded = await dash.load(c, userId);
       // Opening the page IS the exposure, in both arms — including the arm

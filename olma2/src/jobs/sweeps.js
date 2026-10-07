@@ -212,13 +212,32 @@ async function sweepReminders(client, nowIso) {
     // morning picture was the chase.
     if (attempt > 1 && !redo && r.auto && !r.nudge && (r.rungs === null || r.rungs === undefined)
         && !repeats && await reminders.coveredByDigest(client, {
-      userId: r.user_id, dueAt: r.due_at, timezone: r.timezone, since: r.remind_at, now,
+      userId: r.user_id, since: r.remind_at, now,
     })) {
       await reminders.recordAttempt(client, r.reminder_id, { retire: true });
       await audit.record(client, r.user_id, 'reminder.covered_by_digest', {
         taskId: Number(r.task_id), reminderId: Number(r.reminder_id), attempt,
       });
       continue;
+    }
+    // A second moment they asked for on the same task ("גם ב-8 וגם ב-8:30")
+    // is rung 1 of its own reminder, and read exactly like the first: Bar got
+    // "⏰ תזכורת" twice, thirty minutes apart. When a reminder about this task
+    // already REACHED them in the last day, this one says "תזכורת חוזרת" —
+    // still plain, still asking nothing, because it is a moment they chose.
+    // Reached means sent and not held: a row the gate dropped told nobody.
+    let again = false;
+    if (attempt === 1 && !repeats && !chase && !redo) {
+      const { rows: before } = await client.query(
+        `SELECT 1 FROM outbox
+          WHERE user_id = $1 AND kind = 'reminder'
+            AND payload->>'taskId' = $2::text
+            AND sent_at IS NOT NULL AND hold_reason IS NULL
+            AND sent_at > $3::timestamptz - interval '24 hours'
+          LIMIT 1`,
+        [r.user_id, String(r.task_id), now]
+      );
+      again = before.length > 0;
     }
     const res = await enqueue(client, {
       // the person the reminder is FOR — on a shared task not necessarily the
@@ -245,6 +264,7 @@ async function sweepReminders(client, nowIso) {
         // reminder they asked for still goes out.
         auto: Boolean(r.auto),
         ...(redo ? { redo: true } : chase ? chaseWording : attempt > 1 ? { attempt, finalAttempt } : {}),
+        ...(again ? { again: true } : {}),
       },
       // Rung 1 keeps the original 2h-past-the-moment window. A later rung is
       // measured from now: remind_at is hours or a day behind and would make
@@ -348,6 +368,18 @@ async function dailyOnceIsDue(client, u, now) {
 // ---- digests ----------------------------------------------------------------
 // Fires when a user's local HH:MM matches one of their digest_times (±2min
 // tolerance so a slow tick can't skip a slot). Budget-held rows fold in here.
+// `summary` is counts only, and a card can only be drawn off items, so the
+// choice to draw never even came up for anybody on it (2026-10-06: a morning
+// of 5 open tasks went out as a sentence that said "הנה התמונה:" and nothing
+// else). The scheduled digest therefore always fetches the list; get_my_digest
+// decides in code whether it is drawn, laid out as a block, or — for a short
+// morning — a block of a line or two. Since the same day `digest.assemble`
+// returns every open task on every scope but `block_view`, so this mapping is
+// belt and braces for old rows, not the thing that carries the list.
+function scopeForDigest(scope) {
+  return !scope || scope === 'summary' ? 'full' : scope;
+}
+
 async function sweepDigests(client, now = new Date()) {
   // `last_digest_at` is what decides whether this morning may ask anything.
   // Only rows that were really delivered count: a cancelled or expired row
@@ -413,7 +445,7 @@ async function sweepDigests(client, now = new Date()) {
       || (u.last_inbound_at && new Date(u.last_inbound_at) > new Date(u.last_digest_at));
     const res = await enqueue(client, {
       userId: u.id, kind: 'digest',
-      payload: { scope: u.digest_scope || 'summary', folded: [], mayAsk: Boolean(mayAsk) },
+      payload: { scope: scopeForDigest(u.digest_scope), folded: [], mayAsk: Boolean(mayAsk) },
       idempotencyKey: `digest:${u.id}:${day}:${slot}`,
     });
     if (!res.data.enqueued) continue;
@@ -480,6 +512,13 @@ async function sweepStaleMeetings(client, nowMs) {
 // ---- paused room members who never answered -------------------------------
 // The day-later half of a paused person's one coordination message; the rule
 // and the reasons live in domain/group-meetings.js, where the exit is.
+// ---- somebody silent for days ---------------------------------------------
+// Paused on a clock rather than on unanswered questions (owner, 2026-10-07);
+// the rule and the reasons live in domain/silence-pause.js.
+async function sweepSilencePause(client, now) {
+  return require('../domain/silence-pause').sweep(client, now || new Date());
+}
+
 async function sweepSilentPausedMembers(client, nowMs) {
   return groupMeetings.sweepSilentPausedMembers(client, nowMs || Date.now());
 }
@@ -720,7 +759,7 @@ async function sweepFinishedTasks(client, nowIso) {
 
 module.exports = {
   sweepReminders, sweepDigests, DAILY_ONCE_AT, sweepUnblocks, sweepStaleMeetings, sweepSettlingMeetings,
-  sweepSilentPausedMembers,
+  sweepSilentPausedMembers, sweepSilencePause,
   sweepRoomLeavers,
   sweepMediaJobs, sweepNameConfirm, sweepFinishedTasks,
 };

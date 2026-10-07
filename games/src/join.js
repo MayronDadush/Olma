@@ -136,7 +136,7 @@ async function joinByCode(pool, body = {}, { publicBase = '', onState } = {}) {
         `UPDATE players SET user_id = $3, linked_at = now(), linked_via = 'invite'
           WHERE night_id = $1 AND id = $2 AND user_id IS NULL`, [n.id, pid, userId]);
       if (!rowCount) continue;
-      const { state } = await store.write(pool, n.token, { op: 'add', col: 'log', data: { t: `${want} בשולחן`, via: 'olma' } });
+      const { state } = await store.write(pool, n.token, { op: 'add', col: 'log', data: { t: `${want} בשולחן`, via: 'olma' } }, { userId });
       if (onState) onState(n.token, state);
     } catch (e) {
       if (e instanceof Refused) return { ok: false, error: e.code === 'too_many' ? 'full' : 'bad_name', night: describe(n) };

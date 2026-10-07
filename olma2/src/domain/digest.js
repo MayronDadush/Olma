@@ -4,9 +4,9 @@
 // decision; no second snapshot mechanism).
 //
 // scope:
-//   'summary'    – counts only ("5 open, 2 due today")
-//   'full'       – every open task, nothing omitted
-//   'today'      – due today / overdue only
+//   'summary', 'full', 'today'
+//                – since 2026-10-06 all three are every open task, nothing
+//                  omitted (see the comment above the task query below)
 //   'block_view' – the quota-block notice: counts ONLY for personal items
 //                  (deliberate FOMO), full detail for anything involving
 //                  another person (never block human-to-human coordination)
@@ -168,15 +168,18 @@ async function assemble(client, userId, scope) {
     } } : {}),
   };
 
-  if (scope === 'summary' || scope === 'block_view') {
+  if (scope === 'block_view') {
     return ok(base); // personal items stay counts-only
   }
 
-  const taskFilter = scope === 'today'
-    ? `AND due_at IS NOT NULL AND due_at::date <= CURRENT_DATE` : '';
+  // Every scope a person can hold carries EVERY open task (owner, 2026-10-06).
+  // `today` used to mean "dated today or overdue" and `summary` meant counts
+  // only, so ברית — 16 open tasks, none of them dated, on `today` — had a
+  // morning digest that could never show her a single one. The scope column is
+  // kept, and nothing reads a difference out of it any more.
   const rows = (await client.query(
     `SELECT id, title, category, due_at, ends_at, kind, location, parent_id FROM tasks
-     WHERE owner_id = $1 AND status = 'open' AND archived_at IS NULL AND include_in_digest ${taskFilter}
+     WHERE owner_id = $1 AND status = 'open' AND archived_at IS NULL AND include_in_digest
      ORDER BY due_at NULLS LAST, id`,
     [userId]
   )).rows;

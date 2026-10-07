@@ -1,0 +1,16 @@
+{
+  "name": "olma-food",
+  "version": "0.1.0",
+  "private": true,
+  "description": "What a person ate, from a photo, a voice note or a line to Olma: meals, portions, water and a page for the day. Its own service and database, beside Olma.",
+  "scripts": {
+    "test": "node --test --test-timeout=60000 'tests/*.test.js'",
+    "check": "for f in bin/*.js src/*.js; do node --check \"$f\" || exit 1; done"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "dependencies": {
+    "pg": "^8.13.1"
+  }
+}

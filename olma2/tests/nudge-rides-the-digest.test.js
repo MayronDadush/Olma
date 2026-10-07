@@ -133,7 +133,7 @@ test('at the digest hour the nudge is carried, not sent as its own message', asy
   assert.equal(a.length, 1);
 });
 
-test('the digest draws it, on summary scope, where there is no list at all', async () => {
+test('the digest draws it on summary scope, and only once', async () => {
   await nudgedTask('ריצות בים פעמיים בשבוע');
   await tick();
 
@@ -141,15 +141,18 @@ test('the digest draws it, on summary scope, where there is no list at all', asy
   assert.ok(res.ok);
   assert.equal(res.data.nudges.length, 1, 'summary carries the nudge — it is not a count');
   assert.equal(res.data.nudges[0].title, 'ריצות בים פעמיים בשבוע');
-  assert.equal(res.data.tasks, undefined, 'and still no list: the scope is unchanged');
+  // Since 2026-10-06 summary carries the whole list too (owner), so the task
+  // is already on it and the nudge must not draw the same title a second time.
+  assert.deepEqual(res.data.tasks.map((t) => t.title), ['ריצות בים פעמיים בשבוע']);
 
   const block = digestBlock.renderDigestBlock(res.data, { locale: 'he', timezone: TZ });
-  assert.ok(block, 'a morning with only a nudge is still a block');
-  assert.match(block, /ממשיך לחכות/);
-  assert.match(block, /ריצות בים פעמיים בשבוע/);
+  assert.ok(block);
+  assert.equal(block.split('ריצות בים פעמיים בשבוע').length - 1, 1, block);
+  assert.doesNotMatch(block, /ממשיך לחכות/);
 
-  const en = digestBlock.renderDigestBlock(res.data, { locale: 'en', timezone: TZ });
-  assert.match(en, /Still waiting/);
+  // With no list beside it, the nudge still gets its own heading.
+  const alone = digestBlock.renderDigestBlock({ ...res.data, tasks: [] }, { locale: 'en', timezone: TZ });
+  assert.match(alone, /Still waiting/);
 });
 
 // The row is the link, not a clock, and this is what that buys: once the

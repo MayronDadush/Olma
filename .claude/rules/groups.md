@@ -323,6 +323,16 @@ have already had to be argued for.
   inside the window is still an exit (`incidents.md`, "Yossi was abroad, and
   was taken out").
 
+- **A room does not open a coordination its asker is already negotiating
+  PRIVATELY with nearly the same people** (2026-10-05, the poker room: 73 and
+  74, the same twelve, two and a half minutes apart). `startCoordination`
+  answers `already_open` off `meetings.privateOpenLikeRoom` and
+  `start_group_coordination` takes `separate`; the room hears the private
+  one's title and its opener's tag, never its times or answers. "Continue"
+  adopts nothing — making the private one the room's is the owner's call. The
+  matching rule is in `rules/reminders-and-tasks.md` (`incidents.md`, "Two
+  invites for one poker night").
+
 - **Somebody a room sent to the greeter hears about that room in the FIRST
   reply, and its coordination follows that same night if they are awake**
   (2026-09-25). The greeter is handed the room by brokerd `intake_context`
@@ -910,6 +920,11 @@ have already had to be argued for.
   one invite is spent; a day of silence takes them out** (owner, 2026-09-13).
   They are left out only until they write again: that ends the pause
   (people-and-quiet.md).
+  **Since 2026-10-07 the allowance is one invite per COORDINATION for a quiet
+  pause, not one per pause** (`pause.keptOutOfRooms` is now a pause they asked
+  for and nothing else, and the exit below reads the invite about THAT
+  meeting, not `users.room_invite_sent_at`; people-and-quiet.md, "Somebody
+  silent for DAYS"). The rest of this paragraph is the per-pause history.
   `startCoordination` filters out members where `pause.roomInviteSpent` is
   true, but only for who gets COUNTED IN. The membership check, and `settle`,
   still use the full `coordinatingMembers` list, because a pause does not

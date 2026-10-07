@@ -4,6 +4,7 @@ const {
   scheduleCard, cardStore, selfInitiated, S, ok, err, scrubTokens, ICON_NAMES, tool,
 } = require('./_shared');
 const repeatGuard = require('../../../domain/repeat-guard');
+const cardBudget = require('../../../domain/card-budget');
 
 module.exports = [
   // Draws a schedule the person can take in at a glance instead of reading.
@@ -56,6 +57,20 @@ module.exports = [
         });
       }
 
+      // ── Olma's own pictures are rationed: two a day, three hours apart ───────
+      // Only on a turn she started (domain/card-budget.js). The digest tool
+      // already stops handing out the order to draw, so this is the second
+      // door: a model drawing off the doctrine's "5+ items" on a reminder turn.
+      if (ours) {
+        const budget = await cardBudget.check(client, user.id);
+        if (!budget.ok) {
+          return err('conflict', 'pictures from Olma are limited to two a day, at least three hours apart, and that budget is spent', {
+            reason: budget.reason,
+            next_step: 'Do not draw it. Say what they need in text, or reply NO_REPLY if there is nothing to add.',
+          });
+        }
+      }
+
       const rendered = scheduleCard.renderPng(clean);
       if (!rendered.ok) return rendered;
       const saved = cardStore.saveCard(user, rendered.data.png);
@@ -64,6 +79,7 @@ module.exports = [
       // failed write is not something that went out, and marking it as one
       // would block the retry that fixes it.
       repeatGuard.remember(user.id, sig);
+      if (ours) await cardBudget.record(client, user.id);
       return ok({
         path: saved.data.path,
         width: rendered.data.width,

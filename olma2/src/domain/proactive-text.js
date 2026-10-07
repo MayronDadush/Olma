@@ -57,7 +57,10 @@ function cleanTitle(title) {
 function reminderTemplateKey(payload) {
   const p = typeof payload === 'string' ? JSON.parse(payload) : (payload || {});
   const attempt = Number(p.attempt) || 1;
-  if (attempt <= 1) return 'reminder';
+  // A second reminder they asked for on the same task, after one already
+  // reached them, is not the first word about it and must not read like one
+  // (sweeps.sweepReminders sets `again`; owner, 2026-10-05).
+  if (attempt <= 1) return p.again ? 'reminder_again' : 'reminder';
   if (!p.finalAttempt) return 'reminder_followup';
   // A nudge that ran out at the three-day cap, not at a deadline, ends on a
   // question rather than on "the last one" (reminders.startChase).
@@ -67,6 +70,8 @@ function reminderTemplateKey(payload) {
 // The list form of each rung. One key per rung, for the reason above.
 const LIST_TEMPLATE = {
   reminder: 'reminder_list',
+  // Plain, like rung 1: it asks nothing, so the plain list makes its promise.
+  reminder_again: 'reminder_list',
   reminder_followup: 'reminder_list_followup',
   reminder_last: 'reminder_list_last',
   reminder_nudge_end: 'reminder_list_nudge_end',
@@ -294,6 +299,16 @@ function keyFor(base, line) {
   return line && line.multiZone ? `${base}_zones` : base;
 }
 
+// A slot's words as they are true NOW: "מחר" written yesterday is today
+// (`meeting-time.freshDayWords`). Every room line that says a slot in its
+// author's words goes through this, on one clock or several — `at[field]` is
+// the instant behind it, and its author's clock is the one the word was said on.
+function slotSaid(line, field) {
+  const text = line[field];
+  const m = line.at && line.at[field];
+  return slotText(m ? meetingTime.freshDayWords(text, m, m.authorTz || line.roomTz) : text);
+}
+
 function timesOf(line, field) {
   const m = line.at && line.at[field];
   if (!m) return null;
@@ -306,13 +321,13 @@ function timesOf(line, field) {
 function authored(line, field) {
   const m = (line.at && line.at[field]) || {};
   const city = meetingTime.zoneLabel(m.authorTz || line.roomTz);
-  const text = slotText(line[field]);
+  const text = slotSaid(line, field);
   return city ? `${text} (${city})` : text;
 }
 
 // The slot on ONE line: every zone joined with " · ", or its author's words.
 function roomInline(line, field) {
-  if (!line.multiZone) return slotText(line[field]);
+  if (!line.multiZone) return slotSaid(line, field);
   const t = timesOf(line, field);
   return t ? t.inline : authored(line, field);
 }
@@ -376,7 +391,7 @@ function renderGroupCoordination(line, overrides) {
     };
     const lead = line.multiZone
       ? tidy(templates.render('group_coord_base_zones', { ...vars, ...roomBlock(line, 'slot') }, overrides))
-      : templates.render('group_coord_base', { ...vars, slot: slotText(line.slot) }, overrides);
+      : templates.render('group_coord_base', { ...vars, slot: slotSaid(line, 'slot') }, overrides);
     if (line.kind === 'base') return lead;
     // The new direction is the base line itself, carried whole as one var — so
     // a rewording of "יש כיוון" is said the same way in both places, and the
@@ -475,7 +490,7 @@ function renderGroupCoordination(line, overrides) {
   // the poker room heard "המשחק אצל שמר" and then "סגור" as two messages).
   const placeLine = line.place ? `📍 ${format.stripUserMarkup(String(line.place).replace(/\s+/g, ' ').trim())}` : '';
   let done = templates.render('group_coord_done', {
-    slot: slotText(line.slot), who, place: placeLine && timeAsk ? `${placeLine}\n` : placeLine,
+    slot: slotSaid(line, 'slot'), who, place: placeLine && timeAsk ? `${placeLine}\n` : placeLine,
     place_ask: line.placeAsk && !line.timeAsk ? PLACE_ASK : '', time_ask: timeAsk,
   }, overrides).trim();
   // An owner's rewording saved before {{place}} or {{time_ask}} existed has

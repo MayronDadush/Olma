@@ -28,6 +28,7 @@ const carryoverRepair = require('../domain/carryover-repair');
 const sessionsAsync = require('../channels/sessions-async');
 const livenessWatch = require('./liveness-watch');
 const unanswered = require('./unanswered');
+const strangerGreet = require('./stranger-greet');
 const laneWatchdog = require('./lane-watchdog');
 const onboardingReview = require('./onboarding-review');
 const taskSuggestions = require('../domain/task-suggestions');
@@ -207,6 +208,11 @@ const deployDrift = require('./deploy-drift');
       // no answer (domain/group-meetings.js). An hour-scale rule on a minute
       // tick because the query is one join that is empty almost always.
       silentPausedMembers: await sweeps.sweepSilentPausedMembers(c),
+      // Somebody who has given no sign of life for days is paused like the
+      // ladder pauses (domain/silence-pause.js). A day-scale rule on a minute
+      // tick for the same reason as the line above: one query over the
+      // active users, and a pause it takes is a no-op the next time.
+      silencePause: await sweeps.sweepSilencePause(c),
       // …and somebody who left the WhatsApp group that is coordinating.
       roomLeavers: await sweeps.sweepRoomLeavers(c),
       mediaJobs: await sweeps.sweepMediaJobs(c),
@@ -227,6 +233,14 @@ const deployDrift = require('./deploy-drift');
     { name: 'checkin_ladder', run: () => withTx(pool, (c) => checkin.run(c)) },
     // repair pass for messages the gateway dropped — see jobs/unanswered.js
     { name: 'unanswered_sweep', run: () => withTx(pool, (c) => unanswered.sweepUnanswered(c)) },
+    // A first message the gateway dropped before any session opened is
+    // answered here on the raw pipe — jobs/stranger-greet.js. On the pool,
+    // never inside withTx: its claim must be committed before the send.
+    { name: 'stranger_greet', run: () => strangerGreet.run(pool, {
+      listInboundPeers: () => sessionsAsync.listInboundPeers(),
+      listSessions: () => sessionsAsync.listSessions(),
+      send: rawSend,
+    }) },
     { name: 'lane_watchdog', run: () =>
       withTx(pool, (c) => laneWatchdog.sweepLaneWatchdog(c, { abort: abortSessionLane })) },
     // intake pipeline — inert until an 'intake' agent exists in openclaw.json.
