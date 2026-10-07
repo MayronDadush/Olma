@@ -305,6 +305,7 @@ Loads when you **Read** a file under `src/jobs/**`, `src/domain/issues.js`, `src
 - **Stamp "we told them" only after the send confirms.**
 - **A joiner nobody has reached is asked about as a PERSON, not a config.**
 - **Every check that starts from `users` is blind to the person the gateway dropped**
+- **…and since 2026-10-07 that stranger is ANSWERED: `stranger_greet` sends ONLY "your first message did not arrive" (the greeter says the opening on their resend), once per number, claimed before the send**
 - **`liveness_watch` repairs before it reports.**
 - **A live gateway PROCESS is not a gateway that can send anything, and for six hours nothing in the system knew the difference.**
 - **A new person's first hours are read back by code TWICE — three hours in, and again after their first day**

@@ -743,6 +743,12 @@ async function checkUnansweredStrangers(client, deps = {}) {
   const { rows } = await client.query(
     "SELECT phone FROM users WHERE phone IS NOT NULL AND status <> 'pending'");
   const known = new Set(rows.map((r) => String(r.phone).replace(/^\+/, '')));
+  // Somebody `stranger_greet` has already answered is no longer waiting on
+  // anybody: the next move is theirs, and their reply opens a session. A
+  // FAILED greeting is not here, so they stay reported.
+  const greeted = await client.query(
+    "SELECT phone FROM stranger_greetings WHERE result IN ('sent', 'timed_out')");
+  for (const r of greeted.rows) known.add(String(r.phone).replace(/^\+/, ''));
 
   const violations = [];
   for (const p of settled) {

@@ -742,4 +742,7 @@ module.exports = {
   weekdayInTz, localDateInTz, msUntilQuietDaysEnd, quietDayReason, askedForInWords,
   CONVERSATION_GRACE_MS, SAYS_IT_ONCE, REPEAT_WINDOW_MS,
   COORDINATION_DAILY_MAX, COORDINATION_GAP_MS, COORDINATION_RESULTS,
+  // Read by jobs/stranger-greet.js: a pending row with one of these is
+  // somebody WE wrote to first.
+  PENDING_USER_KINDS,
 };

@@ -80,6 +80,29 @@ const TEMPLATES = [
       + '\n'
       + 'What I keep and how to delete it: https://allma.world/privacy',
   },
+  // Said by code, alone, to somebody whose first message the gateway accepted
+  // and then dropped (jobs/stranger-greet.js). It is the only honest sentence
+  // available: we know they wrote and we do not know what. NOT the opening —
+  // the greeter says that when they write again, and saying it here too would
+  // be two introductions. It still says "AI" up front, for the same reason the
+  // opening does (revision 4 above): this is the first thing they read from us.
+  {
+    key: 'lost_first_message_he', audience: 'private', label: 'ההודעה הראשונה לא הגיעה',
+    help: 'נשלחת לבד, בלי הודעת הפתיחה, למי שכתב ראשון וההודעה שלו נזרקה בדרך. פעם אחת בחיים. את הפתיחה הגרייטר אומר כשהם שולחים שוב.',
+    vars: {}, required: [],
+    sample: {},
+    text: 'היי 👋 כאן עולמה, עוזרת AI בוואטסאפ\n'
+      + '\n'
+      + 'נראה שההודעה הראשונה שלך לא הגיעה אליי — אפשר לשלוח אותה שוב? 🙏',
+  },
+  {
+    key: 'lost_first_message_en', audience: 'private', label: 'ההודעה הראשונה לא הגיעה', help: '',
+    vars: {}, required: [],
+    sample: {},
+    text: 'Hi 👋 Allma here, an AI assistant on WhatsApp\n'
+      + '\n'
+      + "Looks like your first message didn't reach me — could you send it again? 🙏",
+  },
   // The whole answer to "שלח לי קישור" (domain/link-request.js): said by code,
   // with no model turn, the moment a message asks for their page and nothing
   // else. The link is minted for this message and opens once; it goes on a
