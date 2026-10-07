@@ -112,7 +112,11 @@ function batchKeyFor(row) {
   const p = payloadOf(row);
   if (p.instruction) return null;
   if (!String(p.title || '').trim()) return null;
-  return proactiveText.reminderTemplateKey(p);
+  // "תזכורת חוזרת" alone, and a plain line in the plain list beside others:
+  // both are rung 1, ask nothing, and render through 'reminder_list', so a
+  // second moment on one task must not split a tick into two messages.
+  const key = proactiveText.reminderTemplateKey(p);
+  return key === 'reminder_again' ? 'reminder' : key;
 }
 
 // Coordinations that ended with no time and that this person has not heard
