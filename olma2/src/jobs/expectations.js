@@ -19,6 +19,11 @@ const JOB_INTERVAL_SECONDS = {
   reopen_sweep: 60,
   intake_template_sync: 60,
   unanswered_sweep: 60,
+  // Somebody whose first message the gateway dropped is waiting for an answer
+  // right now. A tick is two store reads in the worker (~350ms measured on the
+  // box) and stops there on nearly every minute: no lane first heard in the
+  // last hour.
+  stranger_greet: 60,
   lane_watchdog: 30,
   config_guard: 600,
   // Same beat as the guard that reports the same condition — the two are one

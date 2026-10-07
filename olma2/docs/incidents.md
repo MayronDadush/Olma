@@ -19,6 +19,7 @@ never trust a dated narrative for something you are about to act on.
 
 **Gateway, config and upgrades**
 
+- [The first message that reached nobody (repair added 2026-10-07)](#the-first-message-that-reached-nobody-repair-added-2026-10-07)
 - [She wrote twice and stayed paused, and her list never reached her morning (fixed 2026-10-06)](#she-wrote-twice-and-stayed-paused-and-her-list-never-reached-her-morning-fixed-2026-10-06)
 - [The silence the gateway asked again (fixed 2026-10-03)](#the-silence-the-gateway-asked-again-fixed-2026-10-03)
 - [Three messages in a row got three replies (2026-10-02, the debounce replaced the same day)](#three-messages-in-a-row-got-three-replies-2026-10-02-the-debounce-replaced-the-same-day)
@@ -332,6 +333,50 @@ never trust a dated narrative for something you are about to act on.
 - [Merged is not deployed — the drift row (2026-09-04)](#merged-is-not-deployed-the-drift-row-2026-09-04)
 
 ## Gateway, config and upgrades
+
+### The first message that reached nobody (repair added 2026-10-07)
+
+Between 18:50 and 19:08 UTC three new people wrote to Olma for the first time.
+One (u-68) got an English opening a minute late; the other two got nothing at
+all. Their lanes are in the gateway's ingress queue — two events each — and
+neither ever had a session: the WhatsApp plugin accepted each message and
+completed it 10-20ms later without handing it to anything.
+
+The cause is inferred, not proven, because Baileys logs nothing at this level.
+In every dropped case the LID mapping was written 3-7ms before the event, where
+contacts that went through had theirs 190-700ms earlier. That is the shape of a
+CIPHERTEXT stub: a first message WhatsApp could not decrypt yet, or a
+Click-to-WhatsApp ad's "no message found" placeholder. Baileys then asks the
+phone to resend it. The resend arrives through `messages.upsert` under the SAME
+key id, so the plugin's durable ingress queue
+(`channel_ingress_events`, `ON CONFLICT DO NOTHING`) answers "duplicate of a
+completed event" and drops the real text. The stub itself was completed with
+nothing in it, because the normaliser returns null when there is no user
+content.
+
+`config_guard.checkUnansweredStrangers` saw both people. It saw them half an
+hour later, on the dashboard, which is the owner's screen; the two people
+themselves had a message read by nobody. The owner sent the opening to both by
+hand later that evening.
+
+**The repair is `jobs/stranger-greet.js`.** Once a minute it reads the same two
+stores the guard reads. A lane that meets all of these is owed a greeting:
+
+- first heard inside the last hour, and quiet for three minutes;
+- no session and no `users` row of any status;
+- `registration_open` is set.
+
+It gets the owner's opening and one fixed line ("נראה שההודעה הראשונה שלך לא
+הגיעה אליי — אפשר לשלוח אותה שוב? 🙏"), on the raw pipe, in the language the
+dialling code suggests. A claim row in `stranger_greetings` (migration 115) is
+committed before the send, so nobody is greeted twice. A failed send is not
+retried and the guard keeps reporting them; a greeted one leaves the guard.
+
+What it does NOT do is recover the words they wrote — those are gone. The
+plugin-side fix — skip a CIPHERTEXT stub instead of claiming its id — is
+separate work on a file that is not ours. Known cost: when they answer, the
+greeter says its opening a second time, because nothing marks a person with no
+row as already greeted.
 
 ### She wrote twice and stayed paused, and her list never reached her morning (fixed 2026-10-06)
 

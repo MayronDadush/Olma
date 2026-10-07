@@ -28,6 +28,7 @@ const carryoverRepair = require('../domain/carryover-repair');
 const sessionsAsync = require('../channels/sessions-async');
 const livenessWatch = require('./liveness-watch');
 const unanswered = require('./unanswered');
+const strangerGreet = require('./stranger-greet');
 const laneWatchdog = require('./lane-watchdog');
 const onboardingReview = require('./onboarding-review');
 const taskSuggestions = require('../domain/task-suggestions');
@@ -227,6 +228,14 @@ const deployDrift = require('./deploy-drift');
     { name: 'checkin_ladder', run: () => withTx(pool, (c) => checkin.run(c)) },
     // repair pass for messages the gateway dropped — see jobs/unanswered.js
     { name: 'unanswered_sweep', run: () => withTx(pool, (c) => unanswered.sweepUnanswered(c)) },
+    // A first message the gateway dropped before any session opened is
+    // answered here on the raw pipe — jobs/stranger-greet.js. On the pool,
+    // never inside withTx: its claim must be committed before the send.
+    { name: 'stranger_greet', run: () => strangerGreet.run(pool, {
+      listInboundPeers: () => sessionsAsync.listInboundPeers(),
+      listSessions: () => sessionsAsync.listSessions(),
+      send: rawSend,
+    }) },
     { name: 'lane_watchdog', run: () =>
       withTx(pool, (c) => laneWatchdog.sweepLaneWatchdog(c, { abort: abortSessionLane })) },
     // intake pipeline — inert until an 'intake' agent exists in openclaw.json.

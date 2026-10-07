@@ -80,6 +80,22 @@ const TEMPLATES = [
       + '\n'
       + 'What I keep and how to delete it: https://allma.world/privacy',
   },
+  // Said under the opening, by code, to somebody whose first message the
+  // gateway accepted and then dropped (jobs/stranger-greet.js). It is the only
+  // honest sentence available: we know they wrote and we do not know what.
+  {
+    key: 'lost_first_message_he', audience: 'private', label: 'ההודעה הראשונה לא הגיעה',
+    help: 'נשלחת מתחת להודעת הפתיחה למי שכתב ראשון וההודעה שלו נזרקה בדרך. פעם אחת בחיים.',
+    vars: {}, required: [],
+    sample: {},
+    text: 'נראה שההודעה הראשונה שלך לא הגיעה אליי — אפשר לשלוח אותה שוב? 🙏',
+  },
+  {
+    key: 'lost_first_message_en', audience: 'private', label: 'ההודעה הראשונה לא הגיעה', help: '',
+    vars: {}, required: [],
+    sample: {},
+    text: "Looks like your first message didn't reach me — could you send it again? 🙏",
+  },
   // The whole answer to "שלח לי קישור" (domain/link-request.js): said by code,
   // with no model turn, the moment a message asks for their page and nothing
   // else. The link is minted for this message and opens once; it goes on a

@@ -116,6 +116,18 @@ title means this file. Grep the title, not the filename.
   from" and nothing quantitative (`incidents.md`, "A message reached the box
   and stopped there").
 
+- **…and since 2026-10-07 a stranger the gateway dropped is ANSWERED, not only
+  reported** (`jobs/stranger-greet.js`, migration 115). Once a minute it
+  looks for a lane first heard inside the last hour and quiet for three
+  minutes. If that lane has no session, no `users` row of ANY status (a
+  pending row means we wrote first, and our send is an echo on the same lane)
+  and `registration_open` is set, it gets the opening plus
+  `lost_first_message` on the raw pipe. The claim is committed before the send:
+  once per number for ever, and a failed send is never retried. The guard skips
+  a number that was greeted and goes on reporting one whose send failed. **Their
+  words are not recovered**, and that is the plugin's fix to make
+  (`incidents.md`, "The first message that reached nobody").
+
 - **`liveness_watch` repairs before it reports.** Every five minutes: gateway
   probe, CHANNEL probe and delivery queue; two bad ticks before a word; a
   gateway or channel down for two ticks is restarted (`intake/gateway-restart.js`, once per half hour) and
