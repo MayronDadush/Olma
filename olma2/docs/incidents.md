@@ -382,6 +382,24 @@ What it does NOT do is recover the words they wrote — those are gone. The
 plugin-side fix — skip a CIPHERTEXT stub instead of claiming its id — is
 separate work on a file that is not ours.
 
+**The plugin-side fix (2026-10-08) is a patch to the installed plugin**
+(`src/intake/whatsapp-stub-patch.js`, applied by
+`scripts/patch-whatsapp-stub.js --apply`, live after a gateway restart). The
+stub is still admitted — skipping it would erase the one trace
+`stranger_greet` reads when the resend never comes — but under its own id,
+`<id>:olma-stub`, so the real message keeps the real one and is not a
+duplicate. Read against the shipped code before it was written: Baileys
+7.0.0-rc14 upserts the stub on "Message absent from node" and on a failed
+decrypt, then asks again, and the answer comes back through the same
+`messages.upsert` under the same key id. Until now that answer reached the
+"completed" branch and earned only a read receipt. A stub normalises to
+nothing, so no receipt is sent for the altered id. Each stub is now logged
+(`[olma2] whatsapp ciphertext stub <id> (<reason>)`) without the person's
+number, so the next one is a measurement instead of a 3-7ms inference.
+The patch is matched on two exact lines and refuses a bundle it does not
+recognise. It is lost on every plugin update, and
+`config_guard.checkWhatsAppStubPatch` files a dashboard row when it is.
+
 The first version sent the owner's opening above that line. Reviewed before
 merge and changed: when they answer, the greeter opens a brand-new conversation
 and says the opening as it does for everybody, so the person read two
