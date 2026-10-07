@@ -207,6 +207,11 @@ const deployDrift = require('./deploy-drift');
       // no answer (domain/group-meetings.js). An hour-scale rule on a minute
       // tick because the query is one join that is empty almost always.
       silentPausedMembers: await sweeps.sweepSilentPausedMembers(c),
+      // Somebody who has given no sign of life for days is paused like the
+      // ladder pauses (domain/silence-pause.js). A day-scale rule on a minute
+      // tick for the same reason as the line above: one query over the
+      // active users, and a pause it takes is a no-op the next time.
+      silencePause: await sweeps.sweepSilencePause(c),
       // …and somebody who left the WhatsApp group that is coordinating.
       roomLeavers: await sweeps.sweepRoomLeavers(c),
       mediaJobs: await sweeps.sweepMediaJobs(c),
