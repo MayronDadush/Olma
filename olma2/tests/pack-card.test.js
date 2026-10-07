@@ -98,6 +98,35 @@ test('pack_media: a holder gets a recent picture from the inbound directory, and
   }
 });
 
+// The path the model is actually SHOWN: the gateway stages the picture into
+// the person's own workspace. The first real photo (2026-10-07) was refused
+// twice on exactly this shape, and the meal was logged from a text description.
+test('pack_media: the copy the gateway staged in their OWN workspace is theirs, and nobody else\'s', async () => {
+  const inbound = fs.mkdtempSync(path.join(os.tmpdir(), 'olma2-inbound-'));
+  const before = process.env.OLMA_INBOUND_MEDIA_DIR;
+  process.env.OLMA_INBOUND_MEDIA_DIR = inbound;
+  try {
+    const media = params => broker.dispatch({ id: 1, method: 'pack_media', params: { caller: 'food', ...params } });
+    const u = await person();
+    const staged = path.join(ws, `u-${seq}`, 'media', 'inbound', 'openclaw-staged-8b44410d-6e57-4eba-98ba-083da423e419');
+    fs.mkdirSync(staged, { recursive: true });
+    const photo = path.join(staged, 'input-c9556d20-0851-498e-906d-91ad31c4d64a.jpg');
+    fs.writeFileSync(photo, JPEG);
+    const got = await media({ userId: Number(u.id), path: photo });
+    assert.equal(got.ok, true, JSON.stringify(got));
+    assert.deepEqual(Buffer.from(got.base64, 'base64'), JPEG);
+
+    const other = await person();
+    assert.equal((await media({ userId: Number(other.id), path: photo })).code, 'forbidden', 'another person\'s workspace is not theirs');
+    const notInbound = path.join(ws, `u-${seq - 1}`, 'cards', 'x.jpg');
+    fs.mkdirSync(path.dirname(notInbound), { recursive: true }); fs.writeFileSync(notInbound, JPEG);
+    assert.equal((await media({ userId: Number(u.id), path: notInbound })).code, 'forbidden', 'only media/inbound, not the whole workspace');
+  } finally {
+    if (before === undefined) delete process.env.OLMA_INBOUND_MEDIA_DIR; else process.env.OLMA_INBOUND_MEDIA_DIR = before;
+    fs.rmSync(inbound, { recursive: true, force: true });
+  }
+});
+
 test('refused: no pack, another pack\'s caller, a stranger pack, a bad SVG, no workspace', async () => {
   const none = await person({ pack: null });
   assert.match((await card({ userId: Number(none.id) })).error, /not a food user/);
