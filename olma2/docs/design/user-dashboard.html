@@ -5766,6 +5766,8 @@ button.srow:active{background:var(--bg-tint)}
       "cn.title":"מי מאנשי הקשר שלך?","cn.from":"מתוך אנשי הקשר של {name}",
       "cn.search":"חיפוש באנשי קשר","cn.invite":"הזמנה","cn.sent":"נשלחה",
       "cn.noMatch":"אין איש קשר בשם „{q}”.",
+      "cn.loading":"רק רגע, טוענים את אנשי הקשר…",
+      "cn.loadFailed":"לא הצלחנו לטעון את אנשי הקשר כרגע. אפשר לסגור ולפתוח שוב.",
       "cn.noneH":"אין עדיין אנשי קשר","cn.noneP":"כדי להזמין חברים עולמה צריכה גישה לאנשי הקשר שלך. זה מתחבר פעם אחת, בחיבורים.",
       "cn.connect":"חיבור חשבון",
       "toast.cnConnect":"חבר חשבון עם אנשי קשר וזה יופיע כאן",
@@ -6159,6 +6161,8 @@ button.srow:active{background:var(--bg-tint)}
       "cn.title":"Who from your contacts?","cn.from":"From your {name} contacts",
       "cn.search":"Search contacts","cn.invite":"Invite","cn.sent":"Sent",
       "cn.noMatch":"No contact matches \u201c{q}\u201d.",
+      "cn.loading":"One moment — loading your contacts…",
+      "cn.loadFailed":"We could not load your contacts just now. Close this and open it again.",
       "cn.noneH":"No contacts yet","cn.noneP":"To invite friends, Allma needs access to your contacts. You connect that once, under Connections.",
       "cn.connect":"Connect an account",
       "toast.cnConnect":"Connect an account with contacts and they will show up here",
@@ -12442,6 +12446,11 @@ button.srow:active{background:var(--bg-tint)}
        sides, every contact matched a friend, and the list came back empty for
        anybody who had made a single connection — the one screen where that
        looks exactly like "you have no contacts". */
+    if(contactsState === "loading" || contactsState === "failed"){
+      $("#cnList").innerHTML = '<div class="empty">' + esc(t(contactsState === "loading" ? "cn.loading" : "cn.loadFailed")) + "</div>";
+      paintCue($("#cnSheet"), $("#cnCue"));
+      return;
+    }
     var known = FRIENDS.map(nameOf).filter(Boolean);
     var q = cnQ.trim().toLowerCase();
     var list = CONTACTS.filter(function(c){
@@ -12461,9 +12470,36 @@ button.srow:active{background:var(--bg-tint)}
     }).join("") : '<div class="empty">' + esc(t("cn.noMatch", {q:cnQ.trim()})) + "</div>";
     paintCue($("#cnSheet"), $("#cnCue"));
   }
+  /* "idle" until asked for, "loading" on the way, "ready" once it landed,
+     "failed" when it could not. Only the live page asks; the design page keeps
+     its seed and is always "ready". */
+  var contactsState = "ready";
+  function setContacts(list){
+    CONTACTS = list.map(liveContact);
+    contactsState = "ready";
+    /* The server leaves out anybody already asked, so the per-session marks
+       have nothing left to mark. */
+    invited = {};
+  }
+  /* Asked for every time the sheet opens, not once: the server's filter
+     (already connected, already asked) is only true as of the read. A book
+     already on screen is drawn at once and swapped when the fresh one lands. */
+  function loadContacts(){
+    if(!LIVE || contactsState === "loading") return;
+    if(contactsState !== "ready") contactsState = "loading";
+    fetch("/me/data?part=contacts", {credentials:"same-origin", headers:{Accept:"application/json"}})
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(body){
+        if(body && body.ok && body.data && body.data.contacts) setContacts(body.data.contacts);
+        else if(contactsState !== "ready") contactsState = "failed";
+        renderContacts();
+      })
+      .catch(function(){ if(contactsState !== "ready") contactsState = "failed"; renderContacts(); });
+  }
   function openContacts(){
     cnQ = "";
     $("#cnSearch").value = "";
+    loadContacts();
     renderContacts();
     showSheet($("#cnSheet"));
   }
@@ -14912,9 +14948,14 @@ button.srow:active{background:var(--bg-tint)}
        account first, which is exactly the flow this screen was designed for.
 
        `invited` is per-session state about who has been asked from this
-       screen, and the seeded contacts it referred to are gone. */
-    CONTACTS = (d.contacts || []).map(liveContact);
-    invited = {};
+       screen, and the seeded contacts it referred to are gone.
+
+       Since 2026-10-08 the book is not in /me/data at all — it was 217KB of
+       one person's 318KB, re-sent on every read. It is fetched when the sheet
+       opens (loadContacts), so a hydrate leaves it alone, and only the first
+       one drops the seed. A payload that still carries it is honoured. */
+    if(d.contacts){ setContacts(d.contacts); }
+    else if(!LIVE){ CONTACTS = []; contactsState = "idle"; invited = {}; }
     /* The days are NOT here. Every event is fetched from Google, so they come
        from /me/events on their own request — see loadDays() below, which fills
        them in after the page is already on screen. Until it answers, an empty
