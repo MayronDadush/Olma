@@ -5,8 +5,9 @@
 // back in here after its own permission check), keeping one write path.
 const { ok, err } = require('./results');
 const audit = require('./audit');
-const { hasOffset, badTime, partsInZone } = require('./datetime');
+const { hasOffset, badTime, partsInZone, weekdayOfParts } = require('./datetime');
 const reminders = require('./reminders');
+const taskCalendar = require('./task-calendar');
 const autoReminder = require('./auto-reminder');
 const shopping = require('./shopping-list');
 const taskCategory = require('./task-category');
@@ -219,7 +220,7 @@ const normaliseTitle = (t) => String(t == null ? '' : t).trim().toLowerCase().re
 // 2026-09-07: the same line twice in one `add_tasks_bulk`, no gap at all).
 async function openTitles(client, ownerId) {
   const { rows } = await client.query(
-    `SELECT id, title FROM tasks
+    `SELECT id, title, repeat_rule, due_at FROM tasks
       WHERE owner_id = $1 AND status = 'open' AND archived_at IS NULL`,
     [ownerId]
   );
@@ -242,12 +243,84 @@ const duplicateError = (existing) => err('conflict',
   + 'to change something about it use edit_task or set_task_reminder on that id.',
   { reason: 'duplicate', existingTaskId: Number(existing.id) });
 
-async function addTask(client, ownerId, { title, category, dueAt, endsAt, kind, location, parentId, source, remindAt, nudge, weekly, now }) {
+// ── A repeating EVENT ────────────────────────────────────────────────────────
+// Dov, 2026-10-05: "יש לי קורס שעתיד להפתח ב-12.10 ימי שני וחמישי בין השעות
+// 17:30-21:30 תוסיף שיהיה קבוע". An event was one moment and nothing could
+// say "every Monday", so Olma saved ONE event on 12.10 and hung a weekly:MO,TH
+// REMINDER off it: the reminder would have come back every week while the
+// course itself sat on his list once (migration 111).
+//
+// The cadence is the reminders' own grammar, so one normaliser and one
+// `nextOccurrence` serve both — but narrower, because a row is ONE thing at ONE
+// moment at a time:
+//   - 'weekly' is pinned to the weekday the first occurrence falls on, in THEIR
+//     zone, so the stored rule says the day and the list can draw it;
+//   - two weekdays are TWO events (one per day) and are refused here, never
+//     split silently — a Monday class and a Thursday class move, get cancelled
+//     and get asked about separately;
+//   - a weekday that is not the first occurrence's weekday is refused: the two
+//     disagree, and either one could be the mistake.
+// A bare 'monthly' is pinned to the first occurrence's day of the month.
+const DAY_CODES = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'];
+
+function eventRepeatRule(raw, dueAt, tz) {
+  const norm = reminders.normalizeRepeatRule(raw);
+  if (!norm) return err('invalid', `repeat "${raw}" is not a cadence: use daily, weekly or monthly`);
+  if (!dueAt) return err('invalid', 'a repeating event needs due_at — the FIRST occurrence');
+  const p = partsInZone(tz, new Date(dueAt));
+  const day = DAY_CODES[weekdayOfParts(p)];
+  if (norm === 'weekly') return ok(`weekly:${day}`);
+  if (norm === 'monthly') return ok(`monthly:${p.d}`);
+  if (norm.startsWith('weekly:')) {
+    const days = norm.slice('weekly:'.length).split(',');
+    if (days.length > 1) {
+      return err('invalid', `one event repeats on ONE weekday — nothing was saved. Call add_task once per day (${days.join(', ')}), each with due_at on that day's first occurrence.`,
+        { reason: 'one_weekday' });
+    }
+    if (days[0] !== day) {
+      return err('invalid', `repeat says ${days[0]} but due_at falls on ${day} in their zone — nothing was saved. due_at is the FIRST occurrence, on the day it repeats.`,
+        { reason: 'weekday_clash' });
+    }
+  }
+  return ok(norm);
+}
+
+// The rule a repeating event carries once its next occurrence is moved to
+// `dueAt`: a weekly one follows it to the new weekday, a monthly one to the new
+// day of the month ("the last day" only while the new date still is one), and
+// a daily one is unchanged.
+function repinnedRule(rule, dueAt, tz) {
+  const p = partsInZone(tz, new Date(dueAt));
+  if (/^weekly:[A-Z]{2}$/.test(rule)) return `weekly:${DAY_CODES[weekdayOfParts(p)]}`;
+  if (/^monthly:/.test(rule)) {
+    const last = new Date(Date.UTC(p.y, p.m, 0)).getUTCDate() === p.d;
+    return rule === 'monthly:last' && last ? rule : `monthly:${p.d}`;
+  }
+  return rule;
+}
+
+async function timezoneOf(client, ownerId) {
+  const { rows } = await client.query(`SELECT timezone FROM users WHERE id = $1`, [ownerId]);
+  return (rows[0] && rows[0].timezone) || 'UTC';
+}
+
+async function addTask(client, ownerId, { title, category, dueAt, endsAt, kind, location, parentId, source, remindAt, nudge, weekly, repeat, repeatUntil, now }) {
   if (!title || !title.trim()) return err('invalid', 'title required');
   if (dueAt && !hasOffset(dueAt)) return badTime('due_at', dueAt);
   if (remindAt && !hasOffset(remindAt)) return badTime('remind_at', remindAt);
   const range = checkRange(dueAt, endsAt);
   if (range) return range;
+  let repeatRule = null;
+  if (repeat) {
+    // A repeating TO-DO is a repeating reminder (set_task_reminder), and has
+    // been since long before this; only the thing they will be AT repeats here.
+    if (kind === 'todo') return err('invalid', 'only an event repeats — a repeating to-do is set_task_reminder with repeat_rule');
+    if (repeatUntil && !hasOffset(repeatUntil)) return badTime('repeat_until', repeatUntil);
+    const rule = eventRepeatRule(repeat, dueAt, await timezoneOf(client, ownerId));
+    if (!rule.ok) return rule;
+    repeatRule = rule.data;
+    kind = 'event';
+  }
   let parent = null;
   if (parentId) {
     const check = await checkParent(client, ownerId, parentId);
@@ -269,7 +342,13 @@ async function addTask(client, ownerId, { title, category, dueAt, endsAt, kind, 
   // must not reach autoAttach either, or the second copy quietly arms a second
   // reminder for the same thing.
   const already = (await openTitles(client, ownerId)).get(normaliseTitle(title));
-  if (already) return duplicateError(already);
+  // A course on Monday and Thursday is two repeating events with one name, and
+  // that is the one shape of "the same title, open twice" that is not a
+  // duplicate. Only when BOTH repeat and the moments differ — a retried call
+  // carries the same due_at and is still refused.
+  const sibling = already && repeatRule && already.repeat_rule && dueAt
+    && new Date(already.due_at).getTime() !== new Date(dueAt).getTime();
+  if (already && !sibling) return duplicateError(already);
   // …and for a title that is the same thing in DIFFERENT words, the task is
   // saved and the question is handed to the model. Never a refusal here, and
   // the attempt to make it one is the measurement that settled it: refusing a
@@ -296,12 +375,16 @@ async function addTask(client, ownerId, { title, category, dueAt, endsAt, kind, 
   const twin = parentId ? null : await similarity.findTwin(client, ownerId, title);
   const cat = pickCategory({ category, title, parent });
   const { rows } = await client.query(
-    `INSERT INTO tasks (owner_id, title, category, category_auto, due_at, ends_at, kind, location, parent_id, source)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, COALESCE($10, 'chat')) RETURNING *`,
+    `INSERT INTO tasks (owner_id, title, category, category_auto, due_at, ends_at, kind, location, parent_id, source,
+                        repeat_rule, repeat_until)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, COALESCE($10, 'chat'), $11, $12) RETURNING *`,
     [ownerId, title.trim(), cat.category, cat.auto, dueAt || null, endsAt || null,
-      taskKind.decideKind({ title, kind }), cleanLocation(location), parentId || null, source || null]
+      taskKind.decideKind({ title, kind }), cleanLocation(location), parentId || null, source || null,
+      repeatRule, repeatRule ? (repeatUntil || null) : null]
   );
-  await audit.record(client, ownerId, 'task.created', { taskId: rows[0].id, parentId: parentId || null });
+  await audit.record(client, ownerId, 'task.created', {
+    taskId: rows[0].id, parentId: parentId || null, ...(repeatRule ? { repeatRule } : {}),
+  });
   // A moment they named as the REMINDER is not the moment the thing happens,
   // and the automatic hour-before is only ever right about the second one.
   // "תזכיר לי מחר ב-19:00 להתקשר למלי" armed 18:00 while Olma told him 19:00
@@ -464,6 +547,17 @@ async function editTask(client, ownerId, taskId, patch = {}) {
     // and leaves the row as it was — an edit must not turn a meeting into a
     // job because a caller misspelled a field.
     const k = taskKind.normaliseKind(patch.kind);
+    // Only an event repeats (migration 111). A repeating row turned into a
+    // to-do would keep advancing on "done" and never close, with nothing on
+    // the page saying why — so it is refused, never half-applied.
+    if (k === 'todo') {
+      const { rows: rr } = await client.query(
+        `SELECT repeat_rule FROM tasks WHERE id = $1 AND owner_id = $2`, [taskId, ownerId]);
+      if (rr[0] && rr[0].repeat_rule) {
+        return err('invalid', 'this is a repeating event, and only an event repeats — nothing was changed. A repeating to-do is a task with a repeating reminder (set_task_reminder).',
+          { reason: 'repeat_is_event' });
+      }
+    }
     if (k) { sets.push(`kind = $${vals.push(k)}`); changed.kind = k; }
   }
   if (has('location')) {
@@ -485,10 +579,26 @@ async function editTask(client, ownerId, taskId, patch = {}) {
   // it. Clearing the start clears the end with it: an end alone is not a time.
   if (has('endsAt') || has('dueAt')) {
     const { rows: cur } = await client.query(
-      `SELECT due_at, ends_at FROM tasks WHERE id = $1 AND owner_id = $2 AND archived_at IS NULL`,
+      `SELECT due_at, ends_at, repeat_rule FROM tasks WHERE id = $1 AND owner_id = $2 AND archived_at IS NULL`,
       [taskId, ownerId]
     );
     if (!cur[0]) return err('not_found', 'task not found');
+    // A repeating event's date IS its next occurrence, and moving it moves the
+    // series (owner, 2026-10-05): a Monday course moved to a Tuesday is a
+    // Tuesday course from then on. Left alone, the rule kept saying MO and the
+    // next advance jumped back to Monday. And it cannot lose its date — with
+    // none there is nothing to advance from; ending one is deleting it.
+    if (has('dueAt') && cur[0].repeat_rule) {
+      if (!patch.dueAt) {
+        return err('invalid', 'a repeating event always has a date — its next occurrence. Nothing was changed; to end the series, delete the task.',
+          { reason: 'repeat_needs_date' });
+      }
+      const rule = repinnedRule(cur[0].repeat_rule, patch.dueAt, await timezoneOf(client, ownerId));
+      if (rule !== cur[0].repeat_rule) {
+        sets.push(`repeat_rule = $${vals.push(rule)}`);
+        changed.repeatRule = rule;
+      }
+    }
     const iso = (v) => (v instanceof Date ? v.toISOString() : v);
     const nextDue = has('dueAt') ? patch.dueAt ?? null : iso(cur[0].due_at);
     let nextEnd = has('endsAt') ? patch.endsAt ?? null : iso(cur[0].ends_at);
@@ -695,7 +805,13 @@ async function listTasks(client, ownerId, { status, includeArchived } = {}) {
 // under this branch it would have been the worse half of חיים's bug — "עשיתי"
 // acknowledged, the task still open, and the same message again the next
 // morning — so `repeat_until IS NULL` is what "standing" actually means here.
-async function completeTask(client, ownerId, taskId) {
+async function completeTask(client, ownerId, taskId, { now = new Date() } = {}) {
+  // A repeating EVENT is the same argument made about the thing itself rather
+  // than about its reminder: this occurrence is over, the series is not
+  // (migration 111). Past `repeat_until` there is no next one, and it closes
+  // below like any event.
+  const advanced = await advanceRecurring(client, ownerId, taskId, { now });
+  if (advanced) return advanced;
   const { rows: standing } = await client.query(
     `SELECT r.id, r.remind_at, r.repeat_rule
        FROM task_reminders r JOIN tasks t ON t.id = r.task_id
@@ -738,6 +854,71 @@ async function completeTask(client, ownerId, taskId) {
   });
   const parentDone = await completeParentIfDrained(client, ownerId, rows[0].parent_id);
   return ok({ task: rows[0], remindersCancelled: cancelled.rowCount, ...parentDone });
+}
+
+// Move a repeating event on to its next occurrence. Called by completeTask —
+// and so by the finished-tasks sweep, which completes an event at its END and
+// already skips anything that comes back `recurring` — and by nothing else.
+//
+// Returns null when there is nothing to advance (not a repeating event, or the
+// series is over), and the caller then closes the row as it always has.
+//
+// Three things move with it, and each one for a reason already paid for:
+//   - the next moment is stepped until its END is ahead of `now`, so a sweep
+//     that was down for a fortnight lands on the next real class, never on one
+//     that is already over (and is never asked twice about the same lag);
+//   - the Google SERIES is left exactly as it is: it already holds every
+//     occurrence (task-calendar.syncSeries). Only `calendar_series_key` moves
+//     with the row, and only when it described the row as it was — a row
+//     changed since its last sync keeps the old key, so the sweep still sees
+//     the change and splits the series;
+//   - the reminders follow exactly as on a snooze (reminders.retireForMovedTask):
+//     a ladder still chasing the old occurrence is answered, the automatic one
+//     is armed for the new one, and a repeating reminder is left alone.
+async function advanceRecurring(client, ownerId, taskId, { now = new Date() } = {}) {
+  const { rows } = await client.query(
+    `SELECT * FROM tasks
+      WHERE id = $1 AND owner_id = $2 AND status = 'open' AND archived_at IS NULL
+        AND repeat_rule IS NOT NULL AND due_at IS NOT NULL
+      FOR UPDATE`,
+    [taskId, ownerId]
+  );
+  const task = rows[0];
+  if (!task) return null;
+  const tz = await timezoneOf(client, ownerId);
+  const lengthMs = task.ends_at ? new Date(task.ends_at) - new Date(task.due_at) : 0;
+  let next = new Date(task.due_at);
+  // Bounded: a daily rule a year behind is 366 steps, and a rule the
+  // normaliser no longer reads returns null and ends the series.
+  for (let i = 0; i < 400; i++) {
+    next = reminders.nextOccurrence(next, task.repeat_rule, tz);
+    if (!next || next.getTime() + lengthMs > now.getTime()) break;
+  }
+  if (!next) return null;
+  if (task.repeat_until && next > new Date(task.repeat_until)) return null;
+  // The length is carried as a duration, which is exact for anything that does
+  // not straddle a clock change; a course at 17:30-21:30 never does.
+  const nextEnd = task.ends_at ? new Date(next.getTime() + lengthMs) : null;
+  const inSync = task.calendar_series_key && task.calendar_series_key === taskCalendar.seriesKey(task);
+  const key = inSync ? taskCalendar.seriesKey({ ...task, due_at: next, ends_at: nextEnd }) : task.calendar_series_key;
+  const { rows: moved } = await client.query(
+    `UPDATE tasks SET due_at = $2, ends_at = $3, calendar_series_key = $4
+      WHERE id = $1 RETURNING *`,
+    [taskId, next, nextEnd, key]
+  );
+  await audit.record(client, ownerId, 'task.occurrence_advanced', {
+    taskId: Number(taskId), fromDueAt: new Date(task.due_at).toISOString(),
+    nextDueAt: next.toISOString(), repeatRule: task.repeat_rule,
+  });
+  const follow = await reminders.retireForMovedTask(client, ownerId, moved[0], { timezone: tz, now });
+  return ok({
+    task: moved[0],
+    recurring: true,
+    repeatRule: task.repeat_rule,
+    nextDueAt: next.toISOString(),
+    ...(follow.reminder ? { nextRemindAt: follow.reminder.remind_at } : {}),
+    remindersCancelled: 0,
+  });
 }
 
 // Ticking the last item off a list finishes the list.
@@ -971,4 +1152,5 @@ module.exports = {
   MAX_BULK, addTask, addTasksBulk, editTask, listTasks, completeTask,
   snoozeTask, archiveTask, deleteTask, unarchiveTask, projectOverview,
   completeParentIfDrained, joinsTwoAsks, normaliseTitle, nestTask, unnestTask,
+  advanceRecurring, eventRepeatRule,
 };

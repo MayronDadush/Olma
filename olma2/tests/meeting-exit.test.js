@@ -109,6 +109,41 @@ test('the hook reads a message that is only "out", and nothing that only contain
   assert.equal(hook.outOnly('[Replying to Olma id:3EB0X]\nמה נוח לך לפוקר?\n[/Replying]\nבחוץ'), true);
 });
 
+test('the hook reads a quoted status as one, and a person speaking for themselves as not (Eden, 2026-10-05)', () => {
+  const yes = ['רשום עדן יצא', 'עדן יצא', 'כתוב שם שיוסי עזב', 'רשום שעדן הוצא'];
+  const no = [
+    // the measured near-misses on the box
+    'בסוף אני לא יכול בשבת הקרובה תחפש שותף במקומי אל תגיד שזה שרון יצא',
+    'לבדוק כמה מתוך הפנסיה נחשב הוצאה מוכרת',
+    // asking, or asking for themselves
+    'עדן יצא?', 'אני יצאתי', 'תוציאי אותי', 'תצא משני הפגישות', 'לא מגיע', 'בחוץ',
+  ];
+  for (const t of yes) assert.equal(hook.reportsExit(t), true, `reported: ${JSON.stringify(t)}`);
+  for (const t of no) assert.equal(hook.reportsExit(t), false, `not reported: ${JSON.stringify(t)}`);
+});
+
+test('Eden: opt_out_of_meeting on a quoted "עדן יצא" writes nothing and tells the model to ask', async () => {
+  const p = await cast();
+  const m = await poker(p);
+  await deliver(p.yuval.id, 'meeting_invite');
+
+  const quoted = newTurn();
+  await open({ agentId: p.agentId, messageId: '3EB0QUOTE01', kind: 'text', reportedExit: true });
+  await call(p.yuval, 'turn_start', { message_id: '3EB0QUOTE01' }, quoted);
+  const refused = await call(p.yuval, 'opt_out_of_meeting', { meeting_id: m }, quoted);
+  assert.match(refused.text, /^ERROR invalid/);
+  assert.match(refused.text, /Nothing was written/);
+  assert.notEqual(await stateOf(m, p.yuval.id), 'opted_out', 'a status he quoted is not him leaving');
+
+  // His answer to the question is an ordinary turn, and it works.
+  const asked = newTurn();
+  await open({ agentId: p.agentId, messageId: '3EB0QUOTE02', kind: 'text' });
+  await call(p.yuval, 'turn_start', { message_id: '3EB0QUOTE02' }, asked);
+  const left = await call(p.yuval, 'opt_out_of_meeting', { meeting_id: m }, asked);
+  assert.match(left.text, /^OK /);
+  assert.equal(await stateOf(m, p.yuval.id), 'opted_out');
+});
+
 test('Yuval: "בחוץ" to the invite takes him out of the coordination, with a 👍 and nothing asked', async () => {
   const p = await cast();
   const m = await poker(p);

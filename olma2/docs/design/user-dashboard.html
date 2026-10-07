@@ -1511,6 +1511,10 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 .ttime.late{color:var(--danger)}
 /* "נודניק" on the row: a word, because the glyph beside it meant "repeats". */
 .tnag{font-size:12px;font-weight:600;color:var(--warn);white-space:nowrap}
+.tloc.trep{color:var(--accent);font-weight:600}
+.edays{display:flex;gap:4px;margin-top:6px}
+.edays b{display:grid;place-items:center;width:26px;height:26px;border-radius:50%;font-size:12px;font-weight:600;color:var(--text-3);border:1px solid var(--sep)}
+.edays b.on{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
 .tsec + .tsec{margin-top:19px}
 .glabel .late{color:var(--danger)}
 /* ── a task shared with people ──
@@ -1638,6 +1642,10 @@ button.srow:active{background:var(--bg-tint)}
 }
 .srow[aria-expanded="true"] .chev{transform:rotate(-90deg)}
 .srow.locked{opacity:.42;cursor:default}
+/* A repeating event's rhythm: a fact to read, not a dead control — full
+   strength, no chevron, and the row says where it is changed. */
+.srow.locked.fixed{opacity:1}
+.srow.fixed .chev{display:none}
 .stile{
   width:36px;height:36px;border-radius:11px;flex:none;display:grid;place-items:center;
 }
@@ -4228,7 +4236,7 @@ button.srow:active{background:var(--bg-tint)}
   <div class="group lfold" id="sMainGroup">
     <button class="srow" id="sWhenRow" aria-expanded="false">
       <span class="stile st-cal"><svg><use href="#i-cal"/></svg></span>
-      <span class="stx"><span class="slab" data-i18n="sheet.when"></span><span class="sval" id="sWhenSay"></span><span class="sval slock"><svg><use href="#i-lock"/></svg><span data-i18n="sheet.afterName"></span></span></span>
+      <span class="stx"><span class="slab" data-i18n="sheet.when"></span><span class="sval" id="sWhenSay"></span><span id="sErepDots"></span><span class="sval slock"><svg><use href="#i-lock"/></svg><span data-i18n="sheet.afterName"></span></span></span>
       <svg class="chev"><use href="#i-chev"/></svg>
     </button>
     <!-- "When" opens in place, as two short lines: the day, then the hour.
@@ -5773,6 +5781,7 @@ button.srow:active{background:var(--bg-tint)}
       "off.at":"בזמן","off.m10":"10 דק׳ לפני","off.h1":"שעה לפני","off.d1":"יום לפני",
       "sheet.remindAt":"שעת התזכורת","sheet.remindAtVal":"להזכיר ב־{time}",
       "rep.once":"ללא","rep.day":"כל יום","rep.week":"כל שבוע","rep.month":"כל חודש",
+      "rep.everyDay":"כל {day}","rep.monthDay":"כל חודש ב־{n}","sheet.repeatInChat":"חזרה של אירוע משנים בצ'אט עם עולמה","erep.nextLong":"המפגש הבא",
       "kind.plain":"רגילה","kind.plainSub":"פעם 1 בכל זמן שבחרת","kind.nag":"נודניק","kind.nagSub":"עד שזה בוצע",
       "rep.untilVal":"נודניק עד {date}","rep.untilCap":"נודניק ל־3 ימים","rep.nagTag":"נודניק",
       "sheet.nagNear":"עד 3 פעמים ביום עד התאריך. נעצר ברגע שזה בוצע",
@@ -6164,6 +6173,7 @@ button.srow:active{background:var(--bg-tint)}
       "off.at":"On time","off.m10":"10 min before","off.h1":"1 hour before","off.d1":"1 day before",
       "sheet.remindAt":"Reminder time","sheet.remindAtVal":"Remind at {time}",
       "rep.once":"Never","rep.day":"Every day","rep.week":"Every week","rep.month":"Every month",
+      "rep.everyDay":"Every {day}","rep.monthDay":"Monthly on the {n}","sheet.repeatInChat":"An event's repeat is changed in the chat with Allma","erep.nextLong":"Next one",
       "kind.plain":"Regular","kind.plainSub":"Once at each time you chose","kind.nag":"Nudge","kind.nagSub":"Until it is done",
       "rep.untilVal":"Nudge until {date}","rep.untilCap":"Nudge for 3 days","rep.nagTag":"Nudge",
       "sheet.nagNear":"Up to 3 times a day until the date. Stops the moment it is done",
@@ -6712,6 +6722,12 @@ button.srow:active{background:var(--bg-tint)}
        where nothing could read them. */
     {id:14, d:isoAt(2), tm:"12:00", tmEnd:"19:00", all:false, t:{he:"משמרת",en:"Shift"},
      rem:true, rep:"week", cal:true, inCal:true, kind:"event", cat:"work", catAuto:true},
+    /* A repeating event (migration 111): a course on Mondays and Thursdays is
+       TWO rows, one weekday each, and `d` is the next occurrence of each. */
+    {id:201, d:isoAt(((1 - new Date().getDay() + 7) % 7) || 7), tm:"17:30", tmEnd:"21:30", all:false,
+     t:{he:"קורס",en:"Course"}, rem:true, rep:"none", cal:true, kind:"event", erep:"weekly:MO"},
+    {id:202, d:isoAt(((4 - new Date().getDay() + 7) % 7) || 7), tm:"17:30", tmEnd:"21:30", all:false,
+     t:{he:"קורס",en:"Course"}, rem:true, rep:"none", cal:true, kind:"event", erep:"weekly:TH"},
     {id:4, d:"",        tm:"", all:false, t:{he:"לקבוע תור לרופא שיניים",en:"Book a dentist appointment"}, rem:false, rep:"none", cal:false, cat:"health", catAuto:true},
     /* The dateless kind that still nudges: no date, no deadline, and a weekly
        reminder at an hour of its own. Four of the owner's own tasks were this
@@ -7999,8 +8015,68 @@ button.srow:active{background:var(--bg-tint)}
     return (x.items || []).filter(function(it){ return it.done; }).length;
   }
 
+  /* A repeating event's rule, in the grammar the server stores: daily,
+     weekly:XX (one weekday per row — Monday and Thursday are two rows),
+     monthly:N / monthly:last. */
+  var EREP_DOW = {SU:0, MO:1, TU:2, WE:3, TH:4, FR:5, SA:6};
+  function erepLabel(x){
+    var r = x && x.erep;
+    if(!r) return "";
+    if(r === "daily") return t("rep.day");
+    var w = /^weekly:([A-Z]{2})$/.exec(r);
+    if(w && EREP_DOW[w[1]] !== undefined){
+      /* 2023-01-01 was a Sunday, so day N of that week is weekday N. */
+      var name = new Date(2023, 0, 1 + EREP_DOW[w[1]]).toLocaleDateString(loc(), {weekday:"long"});
+      return t("rep.everyDay", {day:name});
+    }
+    var m = /^monthly:(\d+)$/.exec(r);
+    if(m) return t("rep.monthDay", {n:m[1]});
+    return t(r.indexOf("weekly") === 0 ? "rep.week" : "rep.month");
+  }
+  /* Does the series fall on this local day? Only from its next occurrence on
+     (`d`) — the ones before it are over, and on Google if they went there —
+     and never past its end. */
+  function erepOn(x, iso){
+    if(!x.erep || !x.d || iso < x.d) return false;
+    if(x.erepUntil && iso > x.erepUntil) return false;
+    var p = iso.split("-"), day = new Date(+p[0], +p[1] - 1, +p[2]);
+    var q = x.d.split("-"), first = new Date(+q[0], +q[1] - 1, +q[2]);
+    if(x.erep === "daily") return true;
+    if(x.erep.indexOf("weekly") === 0) return day.getDay() === first.getDay();
+    if(x.erep === "monthly:last") return new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1).getDate() === 1;
+    if(x.erep.indexOf("monthly") === 0) return day.getDate() === first.getDate();
+    return false;
+  }
+  /* Isolated left-to-right: inside a Hebrew sentence "17:30–21:30" otherwise reads back as 21:30–17:30. */
+  function erepRange(x){ return x.tm ? "\u2066" + x.tm + (x.tmEnd ? "–" + x.tmEnd : "") + "\u2069" : ""; }
+  /* The line under a dated task's title: its hours, or "all day". */
+  function hourLine(x){ return x.all ? t("cal.allDay") : erepRange(x); }
+  /* The week as seven dots, the days a repeating event falls on lit: one for
+     a weekly row, all of them for a daily one, and nothing for a monthly one,
+     where a week says nothing at all. */
+  function erepDots(x){
+    if(!x.erep || /^monthly/.test(x.erep)) return "";
+    var on = {};
+    if(x.erep === "daily") for(var k = 0; k < 7; k++) on[k] = 1;
+    else on[new Date(x.d + "T00:00:00").getDay()] = 1;
+    var h = '<span class="edays">';
+    for(var i = 0; i < 7; i++) h += '<b' + (on[i] ? ' class="on"' : "") + ">" +
+      esc(new Date(2023, 0, 1 + i).toLocaleDateString(loc(), {weekday:"narrow"})) + "</b>";
+    return h + "</span>";
+  }
+  /* Set while a day's own section is drawn: under "היום" the row need not say
+     "היום" again. */
+  var ROW_DAYLESS = false;
   function taskHTML(x){
-    var end = "", b = bucketFor(x.d), lbl = labelFor(x);
+    var end = "", b = bucketFor(x.d), lbl = labelFor(x), sub = "";
+    /* The hours go under the title and the day stands at the end (owner,
+       2026-10-05) — "כל שבוע · 17:30–21:30" over a course, "16:00" over a
+       haircut, and "יום חמישי" beside either. */
+    if(x.d){
+      sub = (x.erep ? t("rep." + repShape(x.erep)) + (hourLine(x) ? " · " : "") : "") + hourLine(x);
+      lbl = ROW_DAYLESS && (b === "today" || b === "tomorrow") ? null
+        : x.d === isoAt(-1) ? t("cal.yesterday") : dayWord(x.d);
+    }
     if(x.items && x.items.length){
       var dn = itemsDone(x), pc = Math.round(dn / x.items.length * 100);
       end += '<span class="tcount' + (dn === x.items.length ? " full" : "") + '" style="--p:' + pc + '%">' +
@@ -8038,7 +8114,10 @@ button.srow:active{background:var(--bg-tint)}
       (x.src ? srcBadge(x) : "") +
       esc(L(x.t) || t("sheet.untitled")) + "</span>" +
       (facesOf(x).length ? faceStack(facesOf(x)) : "") +
-      (x.kind === "event" && x.loc ? '<span class="tloc">' + esc(x.loc) + "</span>" : "") + "</div>" +
+      (x.kind === "event" && x.loc ? '<span class="tloc">' + esc(x.loc) + "</span>" : "") +
+      /* A repeating event says its rhythm in words beside its hours: a glyph
+         alone would read as a reminder's. */
+      (sub ? '<span class="tloc trep">' + esc(sub) + "</span>" : "") + "</div>" +
       (end ? '<span class="tend">' + end + "</span>" : "") +
       "</div></div></div></div>";
   }
@@ -8311,7 +8390,8 @@ button.srow:active{background:var(--bg-tint)}
       var items = open.filter(function(x){ return !x.src && !isPinned(x) && !offList(x) && bucketFor(x.d) === b; });
       if(!items.length) return;
       html += '<div class="tsec"><div class="glabel"><span class="' + (b === "late" ? "late" : "") + '">' +
-        esc(t("bucket." + b)) + "</span></div>" + kindGroups(items) + "</div>";
+        esc(t("bucket." + b)) + "</span></div>" + (ROW_DAYLESS = true, kindGroups(items)) + "</div>";
+      ROW_DAYLESS = false;
     });
     html += importedSection();
     renderSuggestion();
@@ -9157,8 +9237,9 @@ button.srow:active{background:var(--bg-tint)}
        limitation wins the tooltip when both apply: adding a reminder would not
        open a row an imported task can never carry a repeat in. */
     var repNeedsRem = !editing.rem, repNoField = !canEdit(editing, "rep");
-    lockRow($("#sRepeatRow"), repNeedsRem || repNoField,
-            repNoField ? why : t("sheet.repeatNeedsRemind"));
+    $("#sRepeatRow").classList.toggle("fixed", !!editing.erep);
+    lockRow($("#sRepeatRow"), !!editing.erep || repNeedsRem || repNoField,
+            editing.erep ? t("sheet.repeatInChat") : repNoField ? why : t("sheet.repeatNeedsRemind"));
     lockRow($("#sListRow"),   !canEdit(editing, "items"), why);
     lockRow($("#sShareRow"),  !canEdit(editing, "who"),  why);
     lockRow($("#sHourLine"),  !canEdit(editing, "time"), why);
@@ -9194,6 +9275,10 @@ button.srow:active{background:var(--bg-tint)}
   }
   function whenSay(x){
     if(!x.d) return t("sheet.sum.noDate");
+    /* A repeating event: the hours, and the dots under them say the days
+       (erepDots). A month has no dots, so it says its day in words. */
+    if(x.erep && /^monthly/.test(x.erep)) return erepLabel(x) + (hourLine(x) ? ", " + hourLine(x) : "");
+    if(x.erep) return x.all ? t("cal.allDay") : x.tmEnd ? t("sheet.whenRange", {start:x.tm, end:x.tmEnd}) : x.tm;
     var day = dayWord(x.d);
     if(x.all) return t("sheet.whenAll", {day:day});
     if(!x.tm) return day;
@@ -9223,6 +9308,7 @@ button.srow:active{background:var(--bg-tint)}
     $("#sWeekTog").setAttribute("aria-expanded", String(weekOpen));
     $("#sWeekTog").setAttribute("aria-pressed", String(dated && x.d !== isoAt(0) && x.d !== isoAt(1)));
     $("#sDateClear").setAttribute("aria-pressed", String(!dated));
+    $("#sDateClear").hidden = !!x.erep;
     if(weekOpen) paintWeek();
     /* a clock and an all-day switch are both answers to a question that has
        not been asked yet when there is no date, so neither is offered */
@@ -9258,8 +9344,17 @@ button.srow:active{background:var(--bg-tint)}
     var chosen = $$("#sRepeat .chip").filter(function(c){ return c.getAttribute("aria-pressed") === "true"; })[0];
     var chosenRep = x.rep === "until" ? "until" : (chosen ? chosen.dataset.rep : "none");
     /* A nudge has its own rhythm, so the repeat row goes while it is chosen. */
-    $("#sRepeatRow").hidden = chosenRep === "until" || !(chosenRep !== "none" || shown.rep);
-    sayText($("#sRepeatVal"), chosenRep === "until" ? nagText(x)
+    $("#sRepeatRow").hidden = chosenRep === "until" || !(chosenRep !== "none" || shown.rep || x.erep);
+    /* A repeating EVENT shows its own rhythm here, read-only (syncSheetSource
+       locks the row): the chips below are a reminder's repeat, and offering
+       them on the event would be offering the wrong thing. */
+    var repLab = $("#sRepeatRow .slab");
+    /* On a repeating event this row is where the next one falls, since the
+       rhythm itself is already drawn under "מתי". */
+    repLab.textContent = t(x.erep ? "erep.nextLong" : "sheet.repeat");
+    $("#sErepDots").innerHTML = erepDots(x);
+    if(x.erep) sayText($("#sRepeatVal"), new Date(x.d + "T00:00:00").toLocaleDateString(loc(), {weekday:"long"}) + ", " + longDate(x.d));
+    else sayText($("#sRepeatVal"), chosenRep === "until" ? nagText(x)
       : t("rep." + ({none:"once", day:"day", week:"week", month:"month"}[chosenRep] || "once")));
     /* ── reminder ── one sentence: who writes, where, and the part that is a
        choice. The fold under it asks one question or the other, never both:
@@ -9300,7 +9395,7 @@ button.srow:active{background:var(--bg-tint)}
     $("#sShareGroup").hidden = !(who.length || shown.share);
     var tiles = {
       list:  !items && !shown.list && canEdit(x, "items"),
-      rep:   chosenRep === "none" && !shown.rep && canEdit(x, "rep"),
+      rep:   chosenRep === "none" && !shown.rep && !x.erep && canEdit(x, "rep"),
       share: !who.length && !shown.share && canEdit(x, "who"),
       cal:   dated && !!calTarget() && !x.cal && !shown.cal
     }, n = 0;
@@ -10331,6 +10426,19 @@ button.srow:active{background:var(--bg-tint)}
   /* the popover only knows it produced a date; what that date means is the
      caller's business, which is what keeps it usable on any field */
   function setTaskDate(v){
+    /* A repeating event's date is its next occurrence, and moving it moves the
+       series — the server re-pins the rule the same way (tasks.repinnedRule);
+       this only keeps the sheet saying so before the reload. It never loses
+       its date: that chip is not offered on one. */
+    if(editing.erep){
+      if(!v) return;
+      var nd = new Date(v + "T00:00:00");
+      if(/^weekly:/.test(editing.erep)) editing.erep = "weekly:" + ["SU","MO","TU","WE","TH","FR","SA"][nd.getDay()];
+      else if(/^monthly:/.test(editing.erep)){
+        var lastDay = new Date(nd.getFullYear(), nd.getMonth() + 1, 0).getDate() === nd.getDate();
+        if(!(editing.erep === "monthly:last" && lastDay)) editing.erep = "monthly:" + nd.getDate();
+      }
+    }
     $("#sDateRow").dataset.val = v;
     editing.d = v;
     /* syncSheetRows owns every value on the when-row now, including this
@@ -12530,7 +12638,7 @@ button.srow:active{background:var(--bg-tint)}
       return String(title || "").replace(/\s+/g, " ").trim().toLowerCase() + "|" + (time || "");
     };
     open.forEach(function(x){
-      if(x.d !== iso) return;
+      if(x.d !== iso && !erepOn(x, iso)) return;
       if(x.gid) ownIds[x.gid] = 1;
       ownKeys[sameKey(L(x.t), x.all ? "" : x.tm)] = 1;
     });
@@ -12556,12 +12664,14 @@ button.srow:active{background:var(--bg-tint)}
          DISPLAY switch, which meant somebody with no Google connection saw an
          empty week while holding six dated tasks. That was Maya, on the day
          this was found: one flag doing two jobs, and the wrong one won. */
-      if(x.d !== iso) return;
+      /* …and a repeating event stands in every day its rule falls on. */
+      if(x.d !== iso && !erepOn(x, iso)) return;
       evs.push({time:x.all ? "" : (x.tm || ""), allDay:x.all,
                 end:x.all ? "" : (x.tmEnd || ""),
                 title:L(x.t) || t("sheet.untitled"),
                 /* An event says where it is; a task says where it came from. */
                 sub:x.kind === "event" && x.loc ? x.loc
+                  : x.erep ? erepLabel(x)
                   : t(x.rem ? "cal.taskRem" : "cal.taskSub", {name:chanName(defaultChannel)}),
                 c:"var(--accent)", task:x.id, kind:x.kind});
     });
@@ -14322,6 +14432,11 @@ button.srow:active{background:var(--bg-tint)}
          shows the calendar before the to-dos on the strength of this. */
       kind:x.kind === "event" ? "event" : "todo",
       loc:x.location || "",
+      /* A repeating EVENT (tasks.repeat_rule, migration 111) — the rhythm of
+         the THING, not of a reminder about it, so it is kept apart from `rep`.
+         `d` is its next occurrence; the calendar tab draws the rest. */
+      erep:x.kind === "event" && x.repeat ? x.repeat : "",
+      erepUntil:x.repeatUntil || "",
       cat:(x.category && x.category !== "none") ? x.category : "",
       /* Whether Olma chose the category rather than the person. Real, not a
          seed flourish: `tasks.category_auto` records it, and a task edited by

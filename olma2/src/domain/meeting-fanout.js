@@ -582,9 +582,29 @@ async function meetingBrief(client, meetingId) {
 // table, told to the people the table is still a question for — and a
 // parameter kept in the signature says that reading it again is a decision,
 // not an oversight.
+function joinCalendarHint(cal) {
+  if (!cal) return '';
+  if (cal.added || cal.reason === 'already_on_event' || cal.reason === 'organiser') {
+    return 'It is on their calendar through the shared invitation — say so in a few words.';
+  }
+  if (cal.reason === 'no_event') {
+    return 'If their calendar is connected (USER.md says) and they want it there, add it with create_calendar_event.';
+  }
+  return 'It could not be added to their calendar automatically; if they want it there, offer create_calendar_event.';
+}
+
 async function afterSlotResponse(client, actor, meetingId, res, _opts = {}) {
   const brief = await meetingBrief(client, meetingId);
   const others = await activeParticipantsExcept(client, meetingId, actor.id);
+  if (res.data.joinedSettled) {
+    // A yes to a meeting that has already settled (meetings.joinSettled).
+    // QUIET, like an exit or a rejoin: who is coming is on the page and in the
+    // room's count, and nobody else is messaged. Onto the shared event if
+    // there is one; otherwise the model offers their own calendar.
+    const cal = res.data.alreadyIn ? null : (await calendar.addMeetingAttendee(client, meetingId, actor.id)).data;
+    res.data.hint = `${res.data.alreadyIn ? 'They were already counted in.' : 'They are counted in; it stays settled on that time.'} Nobody else is messaged about it, so never say they will be told. ${joinCalendarHint(cal)}`;
+    return res;
+  }
   if (res.data.meetingStatus === 'settling') {
     // Their yes was the last one. NOBODY is told yet — that is the entire
     // point of the grace: the announcement is what cannot be taken back, so
@@ -711,20 +731,28 @@ async function afterOptionAdded(client, actor, meetingId, res, { exceptUserIds =
     res.data.hint = 'That moment was already on the table — their yes to it was recorded instead of a second copy.';
     return res;
   }
-  // Anybody who already answered this time before it existed — a window on a
+  // Anybody who already ruled this time out before it existed — a window on a
   // constraint they gave (`domain/standing-answers.js`, owner 2026-09-28) — is
-  // answered now and TOLD so privately, instead of being asked a question they
-  // answered already.
+  // answered no now and TOLD so privately, instead of being asked a question
+  // they answered already. A window it FITS writes nothing (owner, 2026-10-05):
+  // they are asked like everybody else, told it matches what they said.
   const standing = require('./standing-answers');
-  const auto = await standing.applyToOption(client, meetingId, o.id, { exceptUserId: actor.id });
+  const { answered: auto, fits } = await standing.applyToOption(client, meetingId, o.id, { exceptUserId: actor.id });
   const autoIds = new Set(auto.map((a) => a.userId));
   const skip = new Set(exceptUserIds.map(Number));
-  const others = (await activeParticipantsExcept(client, meetingId, actor.id))
+  const fitIds = new Map(fits.map((f) => [f.userId, f.because]));
+  const asked = (await activeParticipantsExcept(client, meetingId, actor.id))
     .filter((id) => !autoIds.has(Number(id)) && !skip.has(Number(id)));
-  await fanout(client, others, 'meeting_slot_proposed', {
+  const proposed = {
     ...base, ...(await slotMoment(client, meetingId, o.slotText)),
     reasons: await meetings.shareableConstraints(client, meetingId, actor.id),
-  }, { key: `mopt:${meetingId}:${o.id}` });
+  };
+  await fanout(client, asked.filter((id) => !fitIds.has(Number(id))), 'meeting_slot_proposed', proposed,
+    { key: `mopt:${meetingId}:${o.id}` });
+  for (const id of asked.filter((uid) => fitIds.has(Number(uid)))) {
+    await fanout(client, [id], 'meeting_slot_proposed', { ...proposed, fits: fitIds.get(Number(id)) },
+      { key: `mopt:${meetingId}:${o.id}` });
+  }
   for (const a of auto) await standing.tell(client, a.userId, meetingId, [a], { title: brief.title });
   return res;
 }
@@ -878,6 +906,7 @@ async function reopenAndTell(client, actor, meetingId, { fromRoom = false } = {}
         meetingId: Number(meetingId), title: brief.title || 'meeting',
         byName: actorName(actor), was: res.data.was || brief.confirmed_slot || undefined,
         options: res.data.table.map((o) => o.slotText),
+        ...((res.data.yesStands || []).includes(Number(uid)) ? { yesStands: true } : {}),
         calendarCleanup: roles ? cancelCalendarCleanup(roles, removed, uid) : 'none',
         ...(brief.group_subject ? { groupSubject: brief.group_subject } : {}),
         ...(fromRoom ? { fromRoom: true } : {}),

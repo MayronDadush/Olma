@@ -459,8 +459,12 @@ test('the digest hands over the calendar and the plate as two lists, and counts 
     assert.ok(!('kind' in full.tasks[0]) && !('location' in full.tasks[0]), 'a to-do carries no calendar fields');
     assert.equal(full.counts.openTasks, 2, 'open tasks are the jobs');
     assert.equal(full.counts.openEvents, 1);
+    // Owner, 2026-10-06: every scope a person holds carries the whole list;
+    // only the quota-block notice stays counts-only.
     const summary = (await digest.assemble(c, u.id, 'summary')).data;
-    assert.equal(summary.events, undefined, 'summary stays counts-only');
+    assert.deepEqual(summary.tasks.map((e) => e.title), ['לשלם חשמל', 'לנקות את הבית']);
+    const blocked = (await digest.assemble(c, u.id, 'block_view')).data;
+    assert.equal(blocked.events, undefined, 'the block notice stays counts-only');
   });
 });
 

@@ -31,6 +31,7 @@
 // produce is proof it was renamed or rescheduled since it synced — and the
 // repair is the obvious one: remove the stale event, write the new one. No
 // second column to drift out of step, and no way for the two to disagree.
+const crypto = require('node:crypto');
 const { ok, err } = require('./results');
 const calendar = require('./calendar');
 const audit = require('./audit');
@@ -86,6 +87,59 @@ function windowFor(dueAt, endsAt, timezone) {
 // standing and add a second.
 function expectedIdFor(userId, task) {
   return calendar.eventIdFor(userId, task.title, windowFor(task.due_at, task.ends_at).start);
+}
+
+// ---- a repeating event is a SERIES on Google ----
+//
+// Owner, 2026-10-05: a course every Monday is ONE thing Google knows — the
+// whole term on the calendar from the day it is saved, and every change made
+// the way Google makes it. It used to go up one occurrence at a time, each
+// created when the last one ended, so the calendar never showed next week.
+//
+// One row is one series (one weekday each — Monday and Thursday are two, so
+// the two days can keep different hours), written with an RRULE in the
+// person's zone. The row's `due_at` is its NEXT occurrence and moves every
+// week; the series does not, so it is not fingerprinted by the date the way a
+// single event is (`expectedIdFor`). `calendar_series_key` holds what the
+// series was written for, `tasks.advanceRecurring` carries it forward when
+// the row merely moves on, and anything else that changes it — the title,
+// the hours, the day, the end — SPLITS the series: the old one is cut at now
+// (calendar.endSeries keeps what already happened) and a new one starts at
+// the next occurrence. The same as Google's "this and following events".
+function seriesKey(t) {
+  const iso = (v) => (v ? new Date(v).toISOString() : '');
+  return crypto.createHash('sha256')
+    .update(`${t.title}|${t.repeat_rule}|${iso(t.due_at)}|${iso(t.ends_at)}|${iso(t.repeat_until)}`)
+    .digest('hex').slice(0, 24);
+}
+
+// Chained off the series it replaces, so a split never asks Google for an id
+// it has already seen; `n` steps past one that turns out to be taken.
+function seriesIdFor(userId, prevId, key, n = 0) {
+  return 'olma' + crypto.createHash('sha256')
+    .update(`${userId}|series|${prevId || ''}|${key}|${n}`).digest('hex').slice(0, 32);
+}
+
+// The RRULE, in Google's dialect of RFC 5545. A month with no day N gets its
+// LAST day, the way reminders.nextOccurrence clamps — BYMONTHDAY=31 alone
+// would skip those months, and the calendar and the row would disagree.
+function seriesRecurrence(t, { allDay, timezone }) {
+  const r = t.repeat_rule;
+  let rule = null;
+  const w = /^weekly:([A-Z]{2})$/.exec(r || '');
+  const m = /^monthly:(\d+)$/.exec(r || '');
+  if (r === 'daily') rule = 'FREQ=DAILY';
+  else if (w) rule = `FREQ=WEEKLY;BYDAY=${w[1]}`;
+  else if (r === 'monthly:last') rule = 'FREQ=MONTHLY;BYMONTHDAY=-1';
+  else if (m && Number(m[1]) <= 28) rule = `FREQ=MONTHLY;BYMONTHDAY=${Number(m[1])}`;
+  else if (m) {
+    const days = [];
+    for (let d = 28; d <= Number(m[1]); d++) days.push(d);
+    rule = `FREQ=MONTHLY;BYMONTHDAY=${days.join(',')};BYSETPOS=-1`;
+  }
+  if (!rule) return null;
+  if (t.repeat_until) rule += `;UNTIL=${calendar.untilStamp(t.repeat_until, { allDay, timezone })}`;
+  return [`RRULE:${rule}`];
 }
 
 // Whether this row belongs on its owner's calendar, as ONE SQL expression over
@@ -165,8 +219,9 @@ async function setSync(client, userId, on, { removeExisting = false, ...deps } =
 async function setTaskSync(client, userId, taskId, on, deps = {}) {
   if (typeof on !== 'boolean') return err('invalid', 'on must be true or false');
   const { rows } = await client.query(
-    `SELECT id, due_at, calendar_event_id FROM tasks
-      WHERE id = $1 AND owner_id = $2 AND parent_id IS NULL`,
+    `SELECT t.id, t.due_at, t.calendar_event_id, t.repeat_rule, u.timezone
+       FROM tasks t JOIN users u ON u.id = t.owner_id
+      WHERE t.id = $1 AND t.owner_id = $2 AND t.parent_id IS NULL`,
     [taskId, userId]
   );
   const task = rows[0];
@@ -187,12 +242,17 @@ async function setTaskSync(client, userId, taskId, on, deps = {}) {
   await client.query(`UPDATE tasks SET calendar_opt_in = $2 WHERE id = $1`, [taskId, on]);
   let removed = false;
   if (!on && task.calendar_event_id) {
-    const remove = deps.deleteEvent || calendar.deleteEvent;
-    const res = await remove(client, userId, { eventId: task.calendar_event_id });
+    // A series is ended at now, never deleted, exactly as removeEventsFor
+    // does it: the classes that already happened stay theirs.
+    const res = task.repeat_rule
+      ? await (deps.endSeries || calendar.endSeries)(client, userId, {
+        eventId: task.calendar_event_id, at: deps.now ? new Date(deps.now) : new Date(), timezone: task.timezone,
+      })
+      : await (deps.deleteEvent || calendar.deleteEvent)(client, userId, { eventId: task.calendar_event_id });
     // Already gone counts: the calendar is in the state they asked for, and a
     // stored id pointing at nothing would make every later tick try again.
     if (res.ok || res.error.code === 'not_found') {
-      await client.query(`UPDATE tasks SET calendar_event_id = NULL WHERE id = $1`, [taskId]);
+      await client.query(`UPDATE tasks SET calendar_event_id = NULL, calendar_series_key = NULL WHERE id = $1`, [taskId]);
       removed = true;
     }
   }
@@ -207,17 +267,21 @@ async function setTaskSync(client, userId, taskId, on, deps = {}) {
 // Already gone counts as removed, exactly as in setTaskSync.
 async function removeEventsFor(client, ownerId, taskId, deps = {}) {
   const remove = deps.deleteEvent || calendar.deleteEvent;
+  const end = deps.endSeries || calendar.endSeries;
   const { rows } = await client.query(
-    `SELECT id, calendar_event_id FROM tasks
-      WHERE (id = $1 OR parent_id = $1) AND owner_id = $2 AND calendar_event_id IS NOT NULL`,
+    `SELECT t.id, t.calendar_event_id, t.repeat_rule, u.timezone FROM tasks t JOIN users u ON u.id = t.owner_id
+      WHERE (t.id = $1 OR t.parent_id = $1) AND t.owner_id = $2 AND t.calendar_event_id IS NOT NULL`,
     [taskId, ownerId]
   );
   for (const t of rows) {
-    const res = await remove(client, ownerId, { eventId: t.calendar_event_id });
+    // A series is ended, never deleted: its past is their record.
+    const res = t.repeat_rule
+      ? await end(client, ownerId, { eventId: t.calendar_event_id, at: deps.now ? new Date(deps.now) : new Date(), timezone: t.timezone })
+      : await remove(client, ownerId, { eventId: t.calendar_event_id });
     if (!res.ok && res.error.code !== 'not_found') {
       return err('conflict', 'could not take the task off the calendar', { reason: 'calendar' });
     }
-    await client.query(`UPDATE tasks SET calendar_event_id = NULL WHERE id = $1`, [t.id]);
+    await client.query(`UPDATE tasks SET calendar_event_id = NULL, calendar_series_key = NULL WHERE id = $1`, [t.id]);
   }
   return ok({ removed: rows.length });
 }
@@ -242,6 +306,7 @@ async function removeEventsFor(client, ownerId, taskId, deps = {}) {
 async function pending(client, { limit = MAX_PER_TICK, now = new Date() } = {}) {
   const { rows } = await client.query(
     `SELECT t.id, t.owner_id, t.title, t.due_at, t.ends_at, t.location, t.calendar_event_id,
+            t.repeat_rule, t.repeat_until, t.calendar_series_key,
             u.calendar_sync_tasks, u.timezone, t.calendar_opt_in, t.status, t.archived_at,
             ${WANTED_SQL} AS sync_wanted
        FROM tasks t
@@ -284,6 +349,10 @@ async function syncOne(client, t, deps = {}) {
   const now = deps.now ? new Date(deps.now) : new Date();
   const over = t.due_at && new Date(t.ends_at || t.due_at) <= now;
   if (t.calendar_event_id && over) return { id: t.id, action: 'unchanged' };
+  if (t.repeat_rule) {
+    const series = await syncSeries(client, t, wanted, now, deps);
+    if (series) return series;
+  }
 
   if (t.calendar_event_id) {
     const stale = !wanted || t.calendar_event_id !== expectedIdFor(t.owner_id, t);
@@ -310,6 +379,48 @@ async function syncOne(client, t, deps = {}) {
   return { id: t.id, action: 'added', eventId: res.data.eventId };
 }
 
+// A repeating row's half of syncOne. Null when the rule is one Google cannot
+// be given, and the row then goes up as a single event like any other.
+async function syncSeries(client, t, wanted, now, deps) {
+  const w = windowFor(t.due_at, t.ends_at, t.timezone);
+  const recurrence = seriesRecurrence(t, { allDay: w.allDay, timezone: t.timezone });
+  if (!recurrence) return null;
+  const create = deps.createEvent || calendar.createEvent;
+  const end = deps.endSeries || calendar.endSeries;
+  const get = deps.getEvent || calendar.getEvent;
+  const key = seriesKey(t);
+  const prev = t.calendar_event_id;
+  if (prev) {
+    if (wanted && t.calendar_series_key === key) return { id: t.id, action: 'unchanged' };
+    const res = await end(client, t.owner_id, { eventId: prev, at: now, timezone: t.timezone });
+    if (!res.ok) return { id: t.id, action: 'remove', ok: false, error: res.error.message };
+    await client.query(`UPDATE tasks SET calendar_event_id = NULL, calendar_series_key = NULL WHERE id = $1`, [t.id]);
+    if (!wanted) return { id: t.id, action: 'removed' };
+  }
+  if (!wanted) return { id: t.id, action: 'skipped' };
+  const body = w.allDay
+    ? { title: t.title, start: w.localStart, end: w.localStart, allDay: true, location: t.location || undefined, recurrence }
+    : { title: t.title, start: w.start, end: w.end, location: t.location || undefined, recurrence, timeZone: t.timezone || 'UTC' };
+  for (let n = 0; n < 4; n++) {
+    const eventId = seriesIdFor(t.owner_id, prev, key, n);
+    const res = await create(client, t.owner_id, { ...body, eventId });
+    if (!res.ok) return { id: t.id, action: 'add', ok: false, error: res.error.message };
+    if (res.data.alreadyExisted) {
+      // Either our own earlier write whose answer never reached us — that IS
+      // this series, and is adopted — or one we have since ended or deleted,
+      // which Google will not let us reuse. Only an identical live rule is ours.
+      const got = await get(client, t.owner_id, { eventId });
+      if (!got.ok) return { id: t.id, action: 'add', ok: false, error: got.error.message };
+      const ev = got.data.event;
+      if (!ev || JSON.stringify(ev.recurrence || []) !== JSON.stringify(recurrence)) continue;
+    }
+    await client.query(
+      `UPDATE tasks SET calendar_event_id = $2, calendar_series_key = $3 WHERE id = $1`, [t.id, eventId, key]);
+    return { id: t.id, action: 'added', eventId };
+  }
+  return { id: t.id, action: 'add', ok: false, error: 'no free series id' };
+}
+
 async function sweepTaskCalendar(client, deps = {}) {
   const now = deps.now ? new Date(deps.now) : new Date();
   const rows = await pending(client, { limit: deps.limit || MAX_PER_TICK, now });
@@ -334,4 +445,5 @@ async function sweepTaskCalendar(client, deps = {}) {
 module.exports = {
   setSync, setTaskSync, removeEventsFor, pending, syncOne, sweepTaskCalendar,
   expectedIdFor, windowFor, wantedFor, canWrite, MAX_PER_TICK, EVENT_MINUTES,
+  seriesKey, seriesIdFor, seriesRecurrence,
 };

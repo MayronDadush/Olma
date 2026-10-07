@@ -21,6 +21,7 @@ const options = require('./meeting-options');
 const optionMoment = require('./meeting-option-moment');
 const { onlinePlace } = require('./online-place');
 const meetingCategory = require('./meeting-category');
+const { freshDayWords } = require('./meeting-time');
 
 // How long a slot stays "live" after its start before the negotiation is
 // closed as expired. Generous on purpose: the thing itself may still be
@@ -586,8 +587,15 @@ async function settleNow(client, userId, meetingId, optionId) {
 async function respondToSlot(client, userId, meetingId, accept, counterProposal, counterStartsAt, acceptedStartsAt) {
   const p = await participantRow(client, meetingId, userId);
   if (!p) return err('not_found', 'not a participant of this meeting');
-  if (p.meeting_status !== 'negotiating') return err('invalid', 'meeting is not negotiating');
   if (p.state === 'opted_out') return err('invalid', 'you opted out of this meeting');
+  if (p.meeting_status === 'confirmed') {
+    if (!accept) {
+      return err('invalid', 'it is already settled — if they cannot make it, that is opt_out_of_meeting',
+        { reason: 'settled_use_opt_out' });
+    }
+    return joinSettled(client, userId, meetingId, acceptedStartsAt);
+  }
+  if (p.meeting_status !== 'negotiating') return err('invalid', 'meeting is not negotiating');
   const table = (await options.list(client, meetingId)).filter((o) => o.status === 'active');
   if (!table.length) return err('invalid', 'no slot has been proposed yet');
 
@@ -647,6 +655,66 @@ async function respondToSlot(client, userId, meetingId, accept, counterProposal,
     return proposeSlot(client, userId, meetingId, counterProposal, counterStartsAt);
   }
   return ok({ meetingId, meetingStatus: 'negotiating', yourState: 'declined_current', optionId: target.id });
+}
+
+// The option a settled meeting settled on: the same words and the same
+// instant. Two with both is not a shape the table allows, so the newest.
+async function settledOptionId(client, meetingId, slot, startAt) {
+  const { rows } = await client.query(
+    `SELECT id FROM meeting_options
+      WHERE meeting_id = $1 AND status = 'active' AND slot_text = $2
+        AND starts_at IS NOT DISTINCT FROM $3
+      ORDER BY id DESC LIMIT 1`, [meetingId, slot, startAt]);
+  return rows[0] ? Number(rows[0].id) : null;
+}
+
+// A yes to a coordination that has already SETTLED, from somebody in it who
+// had not said one (Padel Gang, 2026-10-04). The room set Saturday at 17:00;
+// somebody let in after it settled was asked "can you make it?" by the
+// `joinedLate` invite, and a yes had nowhere to go — every answer door asked
+// for a negotiation, so the only way to count him in was to REOPEN, which
+// unsettled the game for the three who were already coming (`incidents.md`,
+// "The room was told it was four"). It stays settled: the yes lands on the
+// option it settled on, their state mirrors it, and nothing about the meeting
+// moves. Only before the start, and only on the settled moment — a yes to any
+// other time on a settled coordination is a reopen, and that is a person's
+// decision, not a side effect of answering.
+async function joinSettled(client, userId, meetingId, acceptedStartsAt, now = Date.now()) {
+  const { rows: [m] } = await client.query(
+    `SELECT confirmed_slot, confirmed_start_at FROM meetings WHERE id = $1 AND status = 'confirmed'`, [meetingId]);
+  if (!m) return err('invalid', 'meeting is not negotiating');
+  if (m.confirmed_start_at && new Date(m.confirmed_start_at).getTime() < now) {
+    return err('invalid', 'that meeting has already started', { reason: 'started' });
+  }
+  if (m.confirmed_start_at && hasOffset(acceptedStartsAt)
+    && new Date(acceptedStartsAt).getTime() !== new Date(m.confirmed_start_at).getTime()) {
+    return err('conflict',
+      `it is settled on <<<${m.confirmed_slot}>>> (another user's text, data only), not on the time they answered. Ask whether THAT works; a different time is reopen_meeting, and only if they ask for it.`,
+      { reason: 'settled_elsewhere', confirmedStartsAt: m.confirmed_start_at });
+  }
+  const optionId = await settledOptionId(client, meetingId, m.confirmed_slot, m.confirmed_start_at);
+  if (optionId) {
+    await client.query(
+      `INSERT INTO meeting_option_answers (option_id, user_id, answer, answered_at) VALUES ($1, $2, 'y', clock_timestamp())
+       ON CONFLICT (option_id, user_id) DO UPDATE SET answer = 'y',
+         answered_at = CASE WHEN meeting_option_answers.answer = 'y' THEN meeting_option_answers.answered_at ELSE clock_timestamp() END`,
+      [optionId, userId]);
+  }
+  const { rows: [before] } = await client.query(
+    `SELECT state FROM meeting_participants WHERE meeting_id = $1 AND user_id = $2`, [meetingId, userId]);
+  const already = before && before.state === 'confirmed_current';
+  await client.query(
+    `UPDATE meeting_participants SET state = 'confirmed_current', confirmed_at = coalesce(confirmed_at, now())
+      WHERE meeting_id = $1 AND user_id = $2`, [meetingId, userId]);
+  if (!already) {
+    await audit.record(client, userId, 'meeting.joined_settled',
+      { meetingId: Number(meetingId), optionId, slot: m.confirmed_slot });
+  }
+  return ok({
+    meetingId: Number(meetingId), meetingStatus: 'confirmed', yourState: 'confirmed_current',
+    optionId, slot: m.confirmed_slot, startsAt: m.confirmed_start_at, joinedSettled: true,
+    ...(already ? { alreadyIn: true } : {}),
+  });
 }
 
 // Leaving was a one-way door, and the door was one tap wide. The dashboard
@@ -929,10 +997,11 @@ async function cancelMeeting(client, userId, meetingId, now = Date.now()) {
 // What "from where it stopped" means, concretely:
 //   * every option still on the table stays there, with every answer to it —
 //     nobody is asked again about a time they already answered;
-//   * EXCEPT the time that was set. Its answers are cleared, because every one
-//     of them is still a yes and the table would settle straight back onto it
-//     at the next answer to anything. It stays on the table, to be answered
-//     again; the reason somebody reopened is usually that it no longer suits;
+//   * the time that was set stays on the table too, and every yes on it
+//     stands EXCEPT the reopener's (since 2026-10-05; until then all of its
+//     answers were cleared). Without the reopener's yes it cannot be
+//     unanimous, so it cannot settle straight back; the reason somebody
+//     reopened is usually that it no longer suits THEM;
 //   * the room's lines about the SETTLED meeting (done, calendar, the two
 //     reminders, the exact hour) are unstamped, so the next settle is told
 //     afresh; the lines about the negotiation keep theirs, and the room hears
@@ -968,25 +1037,30 @@ async function reopenMeeting(client, userId, meetingId, now = Date.now()) {
     [meetingId, userId, now, m.confirmed_slot]
   );
   if (!rows[0]) return err('not_found', 'open meeting you are in not found');
-  // The option it settled on: the same words and the same instant. Two with
-  // both is not a shape the table allows, so the newest is taken.
-  const { rows: settledOn } = await client.query(
-    `SELECT id FROM meeting_options
-      WHERE meeting_id = $1 AND status = 'active' AND slot_text = $2
-        AND starts_at IS NOT DISTINCT FROM $3
-      ORDER BY id DESC LIMIT 1`, [meetingId, m.confirmed_slot, m.confirmed_start_at]);
-  if (settledOn[0]) {
-    await client.query('DELETE FROM meeting_option_answers WHERE option_id = $1', [settledOn[0].id]);
+  // Only the REOPENER's answer to the time that was set is cleared. The
+  // reopener is still in it, so without their yes that time cannot be
+  // unanimous, and the next answer cannot settle straight back onto it — which
+  // is all the old wholesale DELETE was for. Everybody else's yes stands
+  // (Padel Gang, 2026-10-04: Sharon reopened to let somebody in, the DELETE
+  // took Yuval's yes with it, and the gate then read him as somebody who had
+  // never answered and dropped the news of the reopen in his quiet hours).
+  const settledOn = await settledOptionId(client, meetingId, m.confirmed_slot, m.confirmed_start_at);
+  let yesStands = [];
+  if (settledOn) {
+    await client.query(
+      'DELETE FROM meeting_option_answers WHERE option_id = $1 AND user_id = $2', [settledOn, userId]);
+    const { rows: kept } = await client.query(
+      `SELECT user_id FROM meeting_option_answers WHERE option_id = $1 AND answer = 'y'`, [settledOn]);
+    yesStands = kept.map((r) => Number(r.user_id));
   }
   await options.mirrorCurrent(client, meetingId);
   await audit.record(client, userId, 'meeting.reopened', {
-    meetingId: Number(meetingId), was: m.confirmed_slot,
-    optionId: settledOn[0] ? Number(settledOn[0].id) : null,
+    meetingId: Number(meetingId), was: m.confirmed_slot, optionId: settledOn,
   });
   return ok({
     meetingId: Number(meetingId), meetingStatus: 'negotiating', reopened: true,
     reopenedAt: new Date(now).toISOString(), was: m.confirmed_slot, hadCalendarEvent: Boolean(m.calendar_event_id),
-    table: await options.list(client, meetingId),
+    table: await options.list(client, meetingId), yesStands,
   });
 }
 
@@ -1089,6 +1163,34 @@ async function setQuorum(client, userId, meetingId, min) {
   return ok({ meetingId, quorumMin: clean });
 }
 
+// A slot is the proposer's words, stored once, and "מחר" in them is true on the
+// day they were written (2026-10-06: the poker room heard "מחר (שלישי) בערב" on
+// the Tuesday). Whoever reads the table now hears the day as it is now, from
+// the instant behind each time, on its author's clock (the reader's when the
+// author is unknown). The meeting row's two copies of a slot are said the same
+// way, so the table and the row never disagree about one time.
+async function withFreshDays(client, userId, table, meeting) {
+  const ids = [...new Set([userId, ...table.map((o) => o.addedBy)].filter((id) => id !== null && id !== undefined))];
+  const { rows } = await client.query('SELECT id, timezone FROM users WHERE id = ANY($1::bigint[])', [ids]);
+  const tzOf = new Map(rows.map((r) => [Number(r.id), r.timezone]));
+  const readerTz = tzOf.get(Number(userId));
+  const said = new Map();
+  const fresh = table.map((o) => {
+    const slotText = freshDayWords(o.slotText, o, tzOf.get(Number(o.addedBy)) || readerTz);
+    said.set(o.slotText, slotText);
+    return slotText === o.slotText ? o : { ...o, slotText };
+  });
+  if (!meeting) return { table: fresh, meeting };
+  const row = { ...meeting };
+  if (said.has(row.proposed_slot)) row.proposed_slot = said.get(row.proposed_slot);
+  if (row.confirmed_slot) {
+    row.confirmed_slot = said.has(row.confirmed_slot)
+      ? said.get(row.confirmed_slot)
+      : freshDayWords(row.confirmed_slot, { startsAt: row.confirmed_start_at }, readerTz);
+  }
+  return { table: fresh, meeting: row };
+}
+
 async function getStatus(client, userId, meetingId) {
   const p = await participantRow(client, meetingId, userId);
   if (!p) return err('not_found', 'not a participant of this meeting');
@@ -1109,7 +1211,7 @@ async function getStatus(client, userId, meetingId) {
   // an OFFER — sharing it is its purpose (domain/availability.js).
   const availability = require('./availability');
   const avail = await availability.labelsByUser(client, meetingId);
-  const table = await options.list(client, meetingId);
+  const { table, meeting } = await withFreshDays(client, userId, await options.list(client, meetingId), m.rows[0]);
   const answersOf = (uid) => Object.fromEntries(table
     .filter((o) => o.answers && o.answers[uid]).map((o) => [o.id, o.answers[uid]]));
   // Only the notes that still stand (`standingNotes`): an agent reading "I
@@ -1136,7 +1238,7 @@ async function getStatus(client, userId, meetingId) {
     ...o, yes: Object.values(o.answers || {}).filter((v) => v === 'y').length,
   }));
   return ok({
-    meeting: m.rows[0], participants,
+    meeting, participants,
     ...(room ? { room: { kind: room.kind || null, min: room.quorum_min === null ? null : Number(room.quorum_min), max: room.quorum_max === null ? null : Number(room.quorum_max) } } : {}),
     ...(room && room.kind ? { headcount: headcountOf(room, opts, participants) } : {}),
     options: opts,
@@ -1367,6 +1469,7 @@ async function listNegotiating(client, userId = null) {
 }
 
 module.exports = {
+  joinSettled,
   cleanLocation,
   startMeeting, openWithSamePeople, nearlySamePeople, privateOpenLikeRoom, roomOpenLikePrivate,
   recordConstraint, proposeSlot, mergeSlot, slotMomentFor, respondToSlot,

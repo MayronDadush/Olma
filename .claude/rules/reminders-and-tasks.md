@@ -75,6 +75,17 @@ title means this file. Grep the title, not the filename.
   "הספקת לארוז?" the morning after the hospital is a message about nothing,
   and an overdue task is in the digest either way.
 
+- **…and a LIST of three or more is not chased at all.** When a first-rung
+  batch of `LIST_NO_FOLLOWUP_MIN` (3) or more lines confirms, the worker ends
+  every automatic ladder behind it (`outbox/worker.js`, `endListLadders`;
+  audit `reminder.list_not_chased`). Twelve follow-ups due in one tick are one
+  message, and it is the morning's list again: 0 of 12 done after one, 9 of 24
+  after a follow-up that went out alone (`incidents.md`, "Twelve at eight,
+  the same twelve at eleven"). A nudge, a repeat rule, a chase and
+  `users.reminder_nudge` keep their ladders, the same line `RUNG_CAP_SQL`
+  draws; one or two together are still followed up. Stamped only on a sent
+  or timed-out send, never on a failure.
+
 - **"להפסיק להזכיר" is a WRITE, not a question.** מאיה asked twice over — once
   for one reminder at 09:00, and once for it to stop — and got six messages and
   a multiple-choice question ("מה להפסיק? 1. … 2. … 3. …") with nothing
@@ -267,6 +278,15 @@ title means this file. Grep the title, not the filename.
   window said wins. Every answer is audited `meeting.auto_answered`, because a
   yes nobody said out loud is the first thing to measure (`incidents.md`,
   "Answered before the question existed").
+  **Since 2026-10-05 only the NO is written for a time added later** (owner:
+  "שעולמה פשוט תבקש מהבן אדם עצמו לאשר את זה בעצמו"). A window the time FITS
+  writes nothing: `standing-answers.applyToOption` returns it as `fits`, and the
+  person gets the ordinary `meeting_slot_proposed` with `fits` on the payload,
+  so she says it matches what they said and asks. A yes written by code can be
+  the last one a coordination needed and settle it for everybody; a no only
+  repeats their words and closes nothing. Said with times already up, in their
+  own turn, both directions are still answered at once (`applyToTable`)
+  (`incidents.md`, "The check-in that answered for him").
 - **A time taken OFF that table is never a message of its own** (owner,
   2026-09-09) — the commonest removal is somebody taking back a time they typed
   a minute ago. It rides the next thing each person hears about that
@@ -376,6 +396,12 @@ title means this file. Grep the title, not the filename.
   Yuval's. **A misread is undone the same way any exit is**: the exit is
   `user_choice`, so `rejoin_meeting` (#686) can put them back, and the hint
   names it. Like every hook change, this is inert until the gateway restarts.
+  **The mirror image: a STATUS they quote is not leaving** (2026-10-05,
+  `incidents.md`, "רשום עדן יצא"). The hook's `reportsExit` reads a
+  third-person past exit verb ("יצא", "עזב", "הוצא") with no question and
+  nobody speaking for themselves, and brokerd marks the turn `reportedExit`.
+  On that turn `opt_out_of_meeting` writes nothing and tells the model to
+  ask. It fired on 2 of 6,386 real messages, both Eden's own sentence.
 
 - **A settled coordination can be REOPENED, and it carries on from where it
   stopped** (owner, 2026-09-25). `meetings.reopenMeeting` is the one writer
@@ -383,9 +409,18 @@ title means this file. Grep the title, not the filename.
   it, before the start. It is reached through `meeting-fanout.reopenAndTell`
   from `reopen_meeting`, `reopen_group_coordination` and the page's
   `reopenMeeting`.
-  - **Every other option and every answer stays.** Only the option it
-    settled on has its answers cleared, or the next answer to anything would
-    settle straight back onto it.
+  - **Every other option and every answer stays — and on the time it
+    settled on, every yes but the REOPENER's** (since 2026-10-05; until then
+    that option's answers were all cleared). The reopener is still in it, so
+    without their yes it cannot be unanimous and cannot settle straight back;
+    everybody else's yes stands and their `meeting_reopened` says so
+    (`yesStands`) rather than asking again.
+  - **Counting somebody in is NOT a reopen.** A yes to the settled moment,
+    before the start, is `meetings.joinSettled`: it lands on the settled
+    option and the meeting stays settled, from the chat and from the room,
+    quietly, and onto the shared event (`calendar.addMeetingAttendee`). A yes
+    to any other time on a settled one is refused (`settled_elsewhere`).
+    `incidents.md`, "A yes had no door, so the game was reopened".
   - **Anything said once per SETTLING keys on the reopening too.**
     `mconf`/`mexact`/`mtime` go through `meeting-fanout.roundOf`, and the
     room's once-per-coordination lines go through `jobs/groups.idempotencyKeyFor`.
@@ -701,6 +736,23 @@ title means this file. Grep the title, not the filename.
   letting the nudge vanish into a picture on a row already stamped as the
   message that carried it. It survives `summary` scope for the same reason a
   nudge is not a count: four of the six people with a digest are on it.
+
+- **An EVENT can repeat, and the cadence lives on the EVENT, never on a
+  reminder hung off a one-off** (migration 111, `tasks.repeat_rule`). Dov's
+  Monday-and-Thursday course was saved as one Monday plus a `weekly:MO,TH`
+  reminder (`incidents.md`, "A course on Mondays and Thursdays, saved as one
+  Monday").
+  - `add_task(repeat)` takes one weekday per row. Two days are two calls. A
+    weekday that disagrees with `due_at` is refused (`tasks.eventRepeatRule`).
+  - The same title open twice is allowed only between two repeating events at
+    different moments. A retry is still a duplicate.
+  - An occurrence that ends is ADVANCED, never archived
+    (`tasks.advanceRecurring`, reached through `completeTask`, which the
+    finished-tasks sweep already skips when it answers `recurring`).
+  - The advance clears `calendar_event_id`, because a stale id is how
+    task-calendar decides to DELETE the old Google event. So each occurrence
+    reaches Google as its own event, created once the previous one is over —
+    there is no RRULE series there yet.
 
 - **A calendar event reminds NOBODY, and `create_calendar_event`'s result says
   so rather than leaving it to be guessed.** `calendar.createEvent` sends

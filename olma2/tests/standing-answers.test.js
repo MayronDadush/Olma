@@ -119,7 +119,13 @@ test('coordination 57: a time put up later is answered for whoever already answe
 
     const evening = await addTime(c, yuval, m, 'option A 19:00', at(1, 19));
     assert.equal(await answerOf(evening, guy.id), 'n', 'abroad all week: declined, not asked');
-    assert.equal(await answerOf(evening, miron.id), 'y', 'any evening from 18: a yes');
+    // A window it FITS writes nothing (owner, 2026-10-05): a yes by code can
+    // be the last one a coordination needed. He is ASKED, told it matches.
+    assert.equal(await answerOf(evening, miron.id), null, 'any evening from 18: asked, never a yes by code');
+    const asked = (await rowsFor(miron.id, m)).find((r) => r.kind === 'meeting_slot_proposed' || r.kind === 'meeting_invite');
+    assert.ok(asked, 'Miron is asked about the evening');
+    if (asked.kind === 'meeting_slot_proposed') assert.equal(asked.payload.fits, 'אני יכול כל יום השבוע מ18 בערב');
+    assert.ok(!(await rowsFor(miron.id, m)).some((r) => r.kind === 'meeting_auto_answered'), 'nothing to tell him: nothing was marked');
     assert.equal(await answerOf(evening, sharon.id), null, 'said nothing: still asked');
 
     const kindsOf = async (u) => (await rowsFor(u.id, m)).map((r) => r.kind);
@@ -141,7 +147,7 @@ test('coordination 57: a time put up later is answered for whoever already answe
 
     const { rows: trail } = await db.pool.query(
       `SELECT count(*)::int AS n FROM audit_log WHERE event = 'meeting.auto_answered' AND (detail->>'meetingId')::bigint = $1`, [m]);
-    assert.equal(trail[0].n, 3, 'every automatic answer is on the trail, where it can be measured');
+    assert.equal(trail[0].n, 2, 'every automatic answer is on the trail, where it can be measured — and only the noes are automatic');
   });
 });
 

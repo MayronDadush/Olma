@@ -481,3 +481,140 @@ test('a stated hour stays a timed block, and a stated end beats the day', () => 
   const shift = tc.windowFor('2026-10-29T22:00:00.000Z', '2026-10-30T05:00:00.000Z', tz);
   assert.equal(shift.allDay, false, 'a task that says where it stops is not a banner');
 });
+
+// ---- a repeating event is ONE series on Google (owner, 2026-10-05) ------------
+// A stand-in Google that keeps the events it holds, so "this id is taken" and
+// "this series was ended" are real states rather than scripted answers.
+function seriesGoogle() {
+  const held = new Map();
+  const calls = [];
+  return {
+    calls, held,
+    createEvent: async (client, userId, ev) => {
+      calls.push({ op: 'create', ...ev });
+      if (held.has(ev.eventId)) return { ok: true, data: { alreadyExisted: true, eventId: ev.eventId } };
+      held.set(ev.eventId, { id: ev.eventId, recurrence: ev.recurrence, start: ev.start });
+      return { ok: true, data: { created: true, eventId: ev.eventId } };
+    },
+    endSeries: async (client, userId, { eventId, at }) => {
+      calls.push({ op: 'end', eventId, at: new Date(at).toISOString() });
+      const ev = held.get(eventId);
+      if (ev) ev.recurrence = ev.recurrence.map((l) => `${l};UNTIL=cut`);
+      return { ok: true, data: { ended: true, eventId } };
+    },
+    getEvent: async (client, userId, { eventId }) => ({ ok: true, data: { event: held.get(eventId) || null } }),
+    deleteEvent: async (client, userId, { eventId }) => { calls.push({ op: 'delete', eventId }); return { ok: true, data: {} }; },
+  };
+}
+const MON = '2030-10-14T17:30:00+03:00';
+const MON_END = '2030-10-14T21:30:00+03:00';
+const before14 = '2030-10-10T09:00:00Z';
+
+test('a weekly course goes up as one series, and moving on to next week costs Google nothing', async () => {
+  const u = await syncingUser('+972594000101');
+  const g = seriesGoogle();
+  await withClient(async (c) => {
+    const t = await tasksDomain.addTask(c, u.id, { title: 'קורס', dueAt: MON, endsAt: MON_END, repeat: 'weekly', now: new Date(before14) });
+    await tc.sweepTaskCalendar(c, { ...g, now: before14 });
+    const made = g.calls.filter((x) => x.op === 'create');
+    assert.equal(made.length, 1);
+    assert.deepEqual(made[0].recurrence, ['RRULE:FREQ=WEEKLY;BYDAY=MO']);
+    assert.equal(made[0].timeZone, 'Asia/Jerusalem');
+
+    // The class ends; the row moves to 21.10. Google already holds 21.10.
+    await require('../src/jobs/sweeps').sweepFinishedTasks(c, '2030-10-14T19:00:00Z');
+    const { rows: [row] } = await c.query('SELECT due_at, calendar_event_id FROM tasks WHERE id = $1', [t.data.task.id]);
+    assert.equal(new Date(row.due_at).toISOString(), '2030-10-21T14:30:00.000Z');
+    assert.equal(row.calendar_event_id, made[0].eventId, 'the series is kept, not re-made per class');
+    g.calls.length = 0;
+    await tc.sweepTaskCalendar(c, { ...g, now: '2030-10-15T09:00:00Z' });
+    assert.equal(g.calls.length, 0, 'an advance is not a change');
+  });
+});
+
+test('new hours split the series: the old one is cut at now, a new one starts at the next class', async () => {
+  const u = await syncingUser('+972594000102');
+  const g = seriesGoogle();
+  await withClient(async (c) => {
+    const t = await tasksDomain.addTask(c, u.id, { title: 'קורס', dueAt: MON, endsAt: MON_END, repeat: 'weekly', now: new Date(before14) });
+    await tc.sweepTaskCalendar(c, { ...g, now: before14 });
+    const first = g.calls[0].eventId;
+    await tasksDomain.editTask(c, u.id, t.data.task.id, { dueAt: '2030-10-14T18:00:00+03:00', endsAt: '2030-10-14T22:00:00+03:00' });
+    g.calls.length = 0;
+    await tc.sweepTaskCalendar(c, { ...g, now: '2030-10-11T09:00:00Z' });
+    assert.deepEqual(g.calls.map((x) => x.op), ['end', 'create']);
+    assert.equal(g.calls[0].eventId, first);
+    assert.equal(g.calls[0].at, '2030-10-11T09:00:00.000Z');
+    assert.notEqual(g.calls[1].eventId, first);
+    assert.equal(g.calls[1].start, '2030-10-14T15:00:00.000Z');
+
+    // Moving the day re-pins the rule, and the new series says so.
+    await tasksDomain.editTask(c, u.id, t.data.task.id, { dueAt: '2030-10-15T18:00:00+03:00', endsAt: '2030-10-15T22:00:00+03:00' });
+    g.calls.length = 0;
+    await tc.sweepTaskCalendar(c, { ...g, now: '2030-10-11T10:00:00Z' });
+    assert.deepEqual(g.calls.map((x) => x.op), ['end', 'create']);
+    assert.deepEqual(g.calls[1].recurrence, ['RRULE:FREQ=WEEKLY;BYDAY=TU']);
+  });
+});
+
+test('deleting or archiving a series ENDS it — the classes that happened stay', async () => {
+  const u = await syncingUser('+972594000103');
+  const g = seriesGoogle();
+  await withClient(async (c) => {
+    const a = await tasksDomain.addTask(c, u.id, { title: 'קורס', dueAt: MON, endsAt: MON_END, repeat: 'weekly', now: new Date(before14) });
+    const b = await tasksDomain.addTask(c, u.id, { title: 'חוג', dueAt: '2030-10-16T18:00:00+03:00', repeat: 'weekly', now: new Date(before14) });
+    await tc.sweepTaskCalendar(c, { ...g, now: before14 });
+    g.calls.length = 0;
+
+    const off = await tc.removeEventsFor(c, u.id, a.data.task.id, { ...g, now: '2030-10-20T09:00:00Z' });
+    assert.ok(off.ok);
+    assert.deepEqual(g.calls.map((x) => x.op), ['end']);
+    await tasksDomain.deleteTask(c, u.id, a.data.task.id);
+
+    await tasksDomain.archiveTask(c, u.id, b.data.task.id);
+    g.calls.length = 0;
+    await tc.sweepTaskCalendar(c, { ...g, now: '2030-10-11T09:00:00Z' });
+    assert.deepEqual(g.calls.map((x) => x.op), ['end'], 'never a delete');
+  });
+});
+
+test('a retried write adopts its own series, and never one it has already ended', async () => {
+  const u = await syncingUser('+972594000104');
+  const g = seriesGoogle();
+  await withClient(async (c) => {
+    const t = await tasksDomain.addTask(c, u.id, { title: 'קורס', dueAt: MON, endsAt: MON_END, repeat: 'weekly', now: new Date(before14) });
+    const row = (await c.query('SELECT * FROM tasks WHERE id = $1', [t.data.task.id])).rows[0];
+    const key = tc.seriesKey(row);
+    const id0 = tc.seriesIdFor(u.id, null, key, 0);
+
+    // Google took our first write and the answer never came back.
+    g.held.set(id0, { id: id0, recurrence: ['RRULE:FREQ=WEEKLY;BYDAY=MO'] });
+    await tc.sweepTaskCalendar(c, { ...g, now: before14 });
+    let { rows: [r] } = await c.query('SELECT calendar_event_id FROM tasks WHERE id = $1', [t.data.task.id]);
+    assert.equal(r.calendar_event_id, id0, 'the same series, not a second one');
+
+    // Off and on again: the id it would choose names a series we ended.
+    await tc.setTaskSync(c, u.id, t.data.task.id, false, { ...g, now: before14 });
+    await c.query('UPDATE tasks SET calendar_opt_in = NULL WHERE id = $1', [t.data.task.id]);
+    g.calls.length = 0;
+    await tc.sweepTaskCalendar(c, { ...g, now: before14 });
+    ({ rows: [r] } = await c.query('SELECT calendar_event_id FROM tasks WHERE id = $1', [t.data.task.id]));
+    assert.notEqual(r.calendar_event_id, id0);
+    assert.equal(r.calendar_event_id, tc.seriesIdFor(u.id, null, key, 1));
+  });
+});
+
+test('every rule Google is given matches the row\'s own arithmetic', () => {
+  const tz = { allDay: false, timezone: 'Asia/Jerusalem' };
+  assert.deepEqual(tc.seriesRecurrence({ repeat_rule: 'daily' }, tz), ['RRULE:FREQ=DAILY']);
+  assert.deepEqual(tc.seriesRecurrence({ repeat_rule: 'monthly:12' }, tz), ['RRULE:FREQ=MONTHLY;BYMONTHDAY=12']);
+  assert.deepEqual(tc.seriesRecurrence({ repeat_rule: 'monthly:last' }, tz), ['RRULE:FREQ=MONTHLY;BYMONTHDAY=-1']);
+  // The 31st in a 30-day month is the 30th, as reminders.nextOccurrence clamps it.
+  assert.deepEqual(tc.seriesRecurrence({ repeat_rule: 'monthly:31' }, tz),
+    ['RRULE:FREQ=MONTHLY;BYMONTHDAY=28,29,30,31;BYSETPOS=-1']);
+  assert.deepEqual(tc.seriesRecurrence({ repeat_rule: 'weekly:TH', repeat_until: '2031-01-31T21:59:00Z' }, tz),
+    ['RRULE:FREQ=WEEKLY;BYDAY=TH;UNTIL=20310131T215900Z']);
+  assert.deepEqual(tc.seriesRecurrence({ repeat_rule: 'weekly:TH', repeat_until: '2031-01-31T21:59:00Z' }, { allDay: true, timezone: 'Asia/Jerusalem' }),
+    ['RRULE:FREQ=WEEKLY;BYDAY=TH;UNTIL=20310131']);
+  assert.equal(tc.seriesRecurrence({ repeat_rule: 'weekly:MO,TH' }, tz), null, 'never a rule a row cannot hold');
+});

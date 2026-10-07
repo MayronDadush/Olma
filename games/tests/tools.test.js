@@ -220,6 +220,9 @@ test('a whole night through the tools: buy-ins, a cancel, food, a count that is 
     assert.ok(log.includes(line), `log has "${line}": ${JSON.stringify(log)}`);
   }
   assert.ok(log.some(l => l.startsWith('🍕 פיצה, ⁦120 ₪⁩ · 💳 מיכל')), JSON.stringify(log));
+  // ...and every one of them names who asked: מיכל, whose seat Olma knows (migration 005).
+  const by = (await pool.query(`SELECT DISTINCT by_name FROM log WHERE via = 'olma'`)).rows.map(x => x.by_name);
+  assert.deepEqual(by, ['מיכל']);
   assert.equal((await pool.query('SELECT count(*)::int n FROM game_results')).rows[0].n, 3, 'a closed count writes results, same as the page');
 });
 

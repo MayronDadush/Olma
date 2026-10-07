@@ -1081,6 +1081,18 @@ have already had to be argued for.
   model, which is the pre-2026-09-06 behaviour for exactly one class of
   sender (`incidents.md`, "The tags that vanished before any hook ran").
 
+- **A room is told how its coordination reaches each member, and says nothing
+  else about it** (`group-turn.reachOf`, `REACH_RULE`). `room.people[].reach`
+  is `in`, `joining`, `invited`, `invite_coming` or `must_write_first`, drawn
+  from `meeting_participants`, the connected test, the `room_cold_invite`
+  rows and `coldInvite`'s own conditions — present only while the
+  coordination can still let somebody in, and absent for somebody who left it
+  or paused her themselves. She has no way to write to anybody privately, so
+  "I'll ask him" is never hers to promise, and "he can" from another member
+  is never his yes. When `coldInvite`'s or `admitLateMembers`' conditions
+  change, change `reachOf` with them, or the room is told a door is open that
+  is not (`incidents.md`, "The room was told it was four").
+
 - **A room member who has never written to her hears about a coordination
   ONCE (per room until 2026-09-28, per person since), privately, in the owner's fixed words — and is never made a
   participant** (owner, 2026-09-26; `group-meetings.coldInvite`, flag
@@ -1101,7 +1113,11 @@ have already had to be argued for.
   explain away. Their reply reaches the greeter, which already says the room's
   line (`domain/intake-room.js`), and `admitLateMembers` lets them in once they
   are connected — so silence costs the coordination nothing. Only a pending row
-  with a real number (a LID has nothing to write to), and never while
+  with a real number (a LID has nothing to write to), on the roster for half
+  an hour first (`COLD_INVITE_SETTLE_MINUTES`; a LID resolved to its phone
+  in 22 minutes on 2026-10-04) and still on it at delivery (the worker's
+  `coldInviteGone` drops `left_room` / `coordination_closed`; `incidents.md`,
+  "The invite that went to Germany"), and never while
   `registration_open` is false, because the message promises to add them and
   their reply would be waitlisted. PR #448 (`group_invite_unconnected`) is the
   approach this replaces: it widened `coordinatingMembers` to every roster row,

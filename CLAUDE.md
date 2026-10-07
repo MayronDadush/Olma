@@ -196,7 +196,7 @@ Loads when you **Read** a file under `src/brokerd/**`, `src/domain/turn.js`, `sr
 - **A block written to REPLACE a tool call has to say what it does not hold, or its silence is read as the answer** — `today` counts `undated` to-dos, and a question about the whole list (`asksOpenList`, read by the hook) gets no `today` block at all
 - **`messages.queue.mode` stays `followup`.**
 - **Messages sent in a row are answered ONCE, at the reply gate, never by holding the inbox** — `messages.inbound` debounce cannot batch on WhatsApp; flag `burst_reply_phones`, `''` = off
-- **A turn Olma started is not a message from the person.** — but a gateway open carrying a WhatsApp message id is never ours, and the delivery's grace minute records it (`duringOurTurn`)
+- **A turn Olma started is not a message from the person.** — but a gateway open carrying a WhatsApp message id is never ours, and the delivery's grace minute records it (`duringOurTurn`); and such a turn writes no coordination ANSWER (`not_their_turn`) unless they wrote since it began
 - **A WhatsApp reply names ONE message, and only the MODEL is ever told which.**
 - **A turn is told where every coordination it heard about in the last day stands NOW** — the session remembers the question, not the answer
 - **A DECISION to stay quiet is not a reply that got lost.**
@@ -218,6 +218,7 @@ Loads when you **Read** a file under `src/domain/reminders.js`, `src/domain/task
 - **"What is still pending" must ask `attempts = 0`**
 - **…and "what is still going to REACH them" is a THIRD question, which `attempts = 0` answers wrongly.**
 - **A ladder is something they ASK for, and the question is who chose the HOUR** — measured: one rung for an hour they named, two for one Olma inferred, three for whoever asks
+- **…and a LIST of three or more automatic reminders is not chased** — the ladders end when the list is sent (`endListLadders`); a nudge, a repeat and a chase keep theirs
 - **"להפסיק להזכיר" is a WRITE, not a question**, and it stops everything that has actually reached them
 - **Moving a task's date answers every rung that was chasing the old one.**
 - **A task chases through ONE ladder — the one behind the LATEST reminder they asked for.**
@@ -227,14 +228,14 @@ Loads when you **Read** a file under `src/domain/reminders.js`, `src/domain/task
 - **…and the mirror is a CONVENIENCE, never a clock — a time whose moment has passed leaves the TABLE, and only a coordination that has just lost one is asked whether it is empty.**
 - **In the private chat and the room a time within two hours of one on the table is a QUESTION — merge (the answers move to it) or separate** (`similar_option`, `meeting-options.merge`)
 - **A constraint that rules out a time ON the table is an ANSWER, and the tool that records it is the one that declines it** — and it earns no 👍; one the time still FITS ("אחרי 21" vs an evening) is a yes carrying the note, `accepts_option_ids`
-- **An answer given BEFORE a time existed answers it when it arrives — yes and no — and the person is told privately** (`standing-answers`, windows on a constraint)
+- **An answer given BEFORE a time existed answers it when it arrives — a NO is written and they are told, a YES is only a question since 2026-10-05** (`standing-answers`, windows on a constraint; `fits` on the proposal)
 - **A time taken OFF that table is never a message of its own — it rides the next thing each person hears about that coordination.**
 - **A time ADDED to it rides the same thing, as long as that thing has not gone out yet** — four messages in sixty-two seconds is what queueing beside it looks like
 - **…and so does the HOUR set on a settled one: a confirmation still waiting says it, and no second message is written** (`meeting-fanout.afterTimeSet`)
 - **A negotiation message WAITS a quarter of an hour behind the last one that reached that person, and everything meanwhile folds into it** — the fold already existed and `urgent` never let it run; a RESULT never waits.
 - **Opening a coordination is not a subscription to every answer in it** — a decline and an exit (a confirmed one too, since 2026-10-03) stop being messages of their own; the reason moves from a push to a pull.
 - **"בחוץ" to a GENERAL question about a coordination is LEAVING it, and to ONE time it is a question back** — `outOnly` in the hook, `meeting-exit.onOut` reads the last row that reached them; opted out with a 👍, or one question and nothing written
-- **A settled coordination can be REOPENED and carries on from where it stopped** — `meetings.reopenMeeting`, anybody in it, before the start; only the settled option's answers are cleared; every once-per-settle key carries the reopening (`meeting-fanout.roundOf`, `jobs/groups.idempotencyKeyFor`) or the second "סגור" is swallowed.
+- **A settled coordination can be REOPENED and carries on from where it stopped** — `meetings.reopenMeeting`, anybody in it, before the start; only the REOPENER's yes on the settled time is cleared (since 2026-10-05), and a yes to a settled one's own time joins it without reopening (`meetings.joinSettled`); every once-per-settle key carries the reopening (`meeting-fanout.roundOf`, `jobs/groups.idempotencyKeyFor`) or the second "סגור" is swallowed.
 - **Nobody manages a coordination** — `initiator_id` is who opened it and grants nothing: anybody still in it settles, renames, cancels (in the chat or the room) or leaves; its ending rides the next digest (`crossUser.closedMeetings`) or, in passing, whatever she says first (`digest.unheardClosedMeetings`, said once between them), never a message of its own; and leaving a confirmed one takes it off THEIR calendar only (`calendar.removeMeetingAttendee`) — the event is never deleted from under the others.
 - **An explicit reminder replaces the automatic one only on the SAME local day; on another day it stands beside it.**
 - **An event is SAID, never only guessed, and it is never told back as a task.**
@@ -246,6 +247,8 @@ Loads when you **Read** a file under `src/domain/reminders.js`, `src/domain/task
 - **A day named with ל־ in a title dates the THING, not the task.**
 - **…and a weekday they SAID travels with the time, so the two can be checked against each other** — `when_said` on all four doors that date a task, refused before the write; ל־ and a day the moment is measured FROM ("ערב לפני", "עד", "ערב שבת") are stripped first.
 - **`due_at` is when the THING is; `remind_at` is the hour THEY named.**
+- **An EVENT can repeat (`tasks.repeat_rule`, migration 111), one weekday per row, and an ended occurrence is ADVANCED, never archived** — the cadence never lives on a reminder hung off a one-off (`tasks.advanceRecurring`)
+- **The scheduled digest always fetches the list, and Olma's own pictures are two a day, three hours apart** — `sweeps.scopeForDigest`, `card-budget.check`; never a person who asked
 - **A calendar event reminds NOBODY, and `create_calendar_event`'s result says so rather than leaving it to be guessed** — `add_task kind:'event'` is what arms one, and `eventIdFor` hashes the instant so the same moment saved both ways is one entry.
 - **Leaving the LIST is not leaving the CALENDAR: a moment that is over stays on Google** — `task-calendar.pending` removes only what is still ahead
 - **An EVENT goes to Google on its own when the calendar is writable; a TO-DO still waits for "משימות ליומן"** — `task-calendar.WANTED_SQL`, and the page's switch reads the same rule (`task-calendar.wantedFor`)
@@ -337,6 +340,7 @@ Loads when you **Read** a file under `src/intake/agents-template.md`, `src/intak
 - **The tool schemas have a ceiling too: 55k chars of JSON, 700 per description, the identity line under 40**
 - **When brokerd has put a 👍 on their message, the result says so (`hints.markPlaced`) and the model answers `NO_REPLY` unless words add something**
 - **The owner's rule is that anything which CAN end in a like should**
+- **A 👍 OR a message, never both: the closing mark waits for the turn's end and a reply drops it** (`holdClose` in brokerd, released by `turn_progress`)
 - **The hint follows the MARK, not the spawn.**
 - **A message that is only thanks is answered by a 🙏 and by nothing else** — in any language, and not right after Olma asked a question: then it is their answer, most likely a yes, and the model decides
 - **`markPlaced` is CONDITIONAL, so nothing else on the same result may be an unconditional instruction to write.**
@@ -407,6 +411,7 @@ Loads when you **Read** a file under `src/domain/group-connections.js`, `src/dom
 - **A room on more than one clock hears every time in each, by city, from the owner's own `_zones` templates; a time with no clock in it is never converted, and a one-clock room is untouched** — and asked for hours that suit everyone, she answers from `meeting-time.commonHours`, where only a confirmed clock is counted
 - **A member's message in the room opens the gate's fifteen-minute window for that room's coordination — and, since 2026-09-09, the room's own announcement window; nothing else**
 - **The private side knows every room a person shares with Olma, off the ROSTER, and says the list is complete** (`groups.roomsOf` → the turn context's `rooms` and `list_my_meetings`)
+- **A room is told how its coordination reaches each member (`group-turn.reachOf`), and "I'll ask him" or "he can" is never said past it** — she writes to nobody privately herself
 - **A room member who never wrote hears about a coordination ONCE (per person, across rooms, since 2026-09-28), privately, in the owner's words, and is never counted in** (`group-meetings.coldInvite`, flag `group_cold_invite`; their reply reaches the greeter and `admitLateMembers` does the rest)
 - **A tag from somebody the gateway would have dropped is answered: a pause their next word would end is ENDED by it, and a roster row gets the fixed line on every tag** (`syncSenderGate` → `pause.endsOnWrite`/`resumeOnWrite`; `reason: 'pending_sender'` is the only addressed claim)
 - **A quiet room coordination is offered a way out ONCE and closes quietly unanswered, and somebody who answered nothing is nudged privately ONCE — only in rooms the flag names, shadow first** (`coordination-policy.nextMoves`, flag `coordination_policy`)

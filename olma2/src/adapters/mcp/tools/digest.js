@@ -1,10 +1,12 @@
 'use strict';
 // digest — one slice of the tool registry (see ../registry.js).
 const {
-  digest, users, flags, scheduleCard, dashboardAuth, S, tool, ok,
+  digest, users, flags, scheduleCard, dashboardAuth, selfInitiated, S, tool, ok,
 } = require('./_shared');
 const digestBlock = require('../../../domain/digest-block');
 const format = require('../../../domain/message-format');
+const cardBudget = require('../../../domain/card-budget');
+const digestCard = require('../../../domain/digest-card');
 
 // The block and a drawn card are two renderings of the SAME list, and a turn
 // that holds both sends both — the same evening twice, once as characters and
@@ -23,11 +25,16 @@ const format = require('../../../domain/message-format');
 // both, and the delivery instruction now only relays whichever came back.
 // A sentence in a prompt asking a model not to send two things is a request;
 // not giving it two things is a guarantee.
-function cardOrder(itemCount) {
+//
+// Since 2026-10-06 the card's LAYOUT is code's too (domain/digest-card.js):
+// the result carries `cardArgs`, and the model passes them through unchanged.
+function cardOrder(itemCount, summarized) {
   return `This list is ${itemCount} lines — long enough to be worth an IMAGE, so there is NO block this turn. `
-    + 'Call render_schedule_card off the events and tasks in THIS result, then reply with one short '
-    + 'sentence plus "MEDIA: <path>" on its own line. Do not write the items out as text as well: '
-    + 'the card is the list, and a list beside it is the same picture twice.';
+    + 'Call render_schedule_card with EXACTLY the fields of `cardArgs` in this result as its arguments — '
+    + 'do not regroup, reorder, rename, add or drop anything; the layout is already decided. '
+    + 'Then reply with one short sentence plus "MEDIA: <path>" on its own line. Do not write the items out as text as well: '
+    + 'the card is the list, and a list beside it is the same picture twice.'
+    + (summarized ? ' The card shows only the most urgent and important items, and says how many more are open: say so in your sentence, in a few words.' : '');
 }
 
 // A morning list long enough that the person would rather arrange it on a
@@ -45,10 +52,14 @@ function listWorthAPage(data, now = Date.now()) {
 }
 
 module.exports = [
-  tool('get_my_digest', 'Assemble the current picture. scope: summary (counts) | full (every open task) | today (due/overdue today).',
+  tool('get_my_digest', 'Assemble the current picture: every open task and event, plus counts. scope is kept for old callers and changes nothing.',
     { scope: S('string', 'summary | full | today') }, [],
     async (client, user, a) => {
-      const res = await digest.assemble(client, user.id, a.scope || user.digest_scope || 'summary');
+      const full = await digest.assemble(client, user.id, a.scope || user.digest_scope || 'full');
+      // Past what one card holds, the morning is the most pressing items and
+      // a count of the rest (owner, 2026-10-06) — on the card AND in the block.
+      const sum = full.ok && full.data ? digestCard.summarize(full.data) : { omitted: 0, summarized: false };
+      const res = sum.summarized ? ok(sum.data) : full;
       // `summary` returns neither list, and until 2026-09-20 that was the end
       // of it. A standing nudge handed over by the reminder sweep is the one
       // personal item that survives that scope: it is not a count, it is the
@@ -65,15 +76,26 @@ module.exports = [
       const items = digestBlock.blockItemCount(res.data);
       const min = await flags.getFlag(client, 'digest_card_min_items');
       const link = listWorthAPage(res.data) ? await dashboardAuth.tasksLinkUnlessRecent(client, user.id) : null;
-      if (digestBlock.drawInsteadOfBlock(items, min, { hasNudges: nudges.length > 0 })) {
+      // A card is Olma's own idea only on a turn she started, and only those are
+      // rationed (domain/card-budget.js); a person who asked gets the picture.
+      const cardArgs = digestCard.cardFor(res.data, {
+        locale: user.locale, timezone: user.timezone, omitted: sum.omitted, summarized: sum.summarized,
+      });
+      const wantsCard = digestBlock.drawInsteadOfBlock(items, min, { hasNudges: nudges.length > 0 })
+        && cardArgs.sections.length <= scheduleCard.LIMITS.sections;
+      const budget = wantsCard && selfInitiated.isActive(user.id)
+        ? await cardBudget.check(client, user.id) : { ok: true };
+      if (wantsCard && budget.ok) {
         return ok({
           ...res.data,
+          cardArgs,
+          ...(sum.summarized ? { omitted: sum.omitted } : {}),
           // On the card path there is no block to draw the link into, so it
           // rides the result the way every other minted link does.
           ...(link ? { dashboard: link } : {}),
           hints: {
             ...(res.data.hints || {}),
-            card: cardOrder(items),
+            card: cardOrder(items, sum.summarized),
             ...(link ? { dashboard: 'After the MEDIA line, give `dashboard.url` on a line of its own: the same list on their own page, to edit and arrange. No more than a few words before it.' } : {}),
           },
         });
@@ -84,19 +106,21 @@ module.exports = [
         timezone: user.timezone,
         channelType: ch.ok ? ch.data.channel.channel_type : null,
         link: link ? link.url : null,
+        omitted: sum.omitted,
       });
       if (!block) return res;
       return ok({
         ...res.data,
         block,
+        ...(sum.summarized ? { omitted: sum.omitted } : {}),
         hints: {
           ...(res.data.hints || {}),
           // Said out loud on the short mornings too, because the doctrine also
           // tells the agent to draw a long list and this is the one place that
           // knows this list is not one.
-          card: items > scheduleCard.LIMITS.totalItems
-            ? 'This list is too long for ONE picture — render_schedule_card would refuse it — so do NOT call it this turn: the block below IS the message, and say nothing about the count or the picture.'
-            : 'This list is short enough to read: do NOT draw a card this turn — the block below IS the message.',
+          card: !budget.ok
+            ? 'They have already been sent pictures today, so this one goes out as text: do NOT call render_schedule_card this turn — the block below IS the message, and say nothing about pictures.'
+            : 'This one goes out as text: do NOT draw a card this turn — the block below IS the message.',
           // The contract itself is `format.HINTS.relayBlock`, said once for all
           // three tools that hand a block over; only the sentence about THIS
           // block's own morning is written here.
@@ -108,6 +132,6 @@ module.exports = [
     }),
   tool('set_digest_preferences', 'Set when the user gets their daily digest, and how much detail. times are LOCAL "HH:MM" (max 4); an empty array turns the digest off. Ask them, never guess.',
     { times: S('array', 'Local times, e.g. ["09:00","20:00"]. [] turns it off.', { items: { type: 'string' } }),
-      scope: S('string', 'summary | full | today') }, [],
+      scope: S('string', 'Leave out: every digest carries the full list.') }, [],
     (client, user, a) => digest.setPreferences(client, user.id, a.times, a.scope)),
 ];

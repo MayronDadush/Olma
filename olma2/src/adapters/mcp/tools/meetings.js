@@ -2,6 +2,7 @@
 // meetings — one slice of the tool registry (see ../registry.js).
 const {
   dashboardAuth, meetings, meetingFanout, S, actorName, fanout, tool, connectedUserByPhone, users, groups, groupMeetings, ok, err,
+  selfInitiated,
 } = require('./_shared');
 const format = require('../../../domain/message-format');
 const listBlock = require('../../../domain/list-block');
@@ -69,7 +70,37 @@ async function withStartLink(client, user, res) {
   return ok({ ...res.data, dashboard: link.data, hints: { ...(res.data.hints || {}), dashboard: START_LINK_HINT } });
 }
 
-module.exports = [
+// A turn OLMA started — a check-in, a reminder, a coordination message being
+// delivered — is not the person answering anything (2026-10-04: a check-in
+// turn wrote a yes onto a coordination its reader had never been asked about,
+// and the room counted it). Every tool that writes a person's own answer
+// refuses there, unless they have written since that delivery began: inside
+// the grace minute a real reply is theirs (`self-initiated.since`, against the
+// gateway opener's `last_woke_at`). The page and the room are other doors and
+// are not touched: the page is their own hand, and a room tool acts only as
+// the member whose tag opened the turn.
+//
+// The guard is applied in ONE place, off `WRITES_ANSWER` below, and never
+// inside a handler (owner, 2026-10-05: "a yes or a no is only ever theirs").
+// A guard per handler is a guard the next tool forgets;
+// `tests/self-initiated-answers.test.js` fails when a handler here reaches a
+// function that writes an answer and its tool is not in the list.
+const OUR_TURN_SLACK_MS = 2 * 60_000;
+async function ourTurn(client, user) {
+  const since = selfInitiated.since(user.id);
+  if (since === null) return null;
+  const { rows: [u] } = await client.query('SELECT last_woke_at FROM users WHERE id = $1', [user.id]);
+  // Two minutes of slack before the mark: somebody who wrote just before a
+  // delivery is mid-conversation, and their own turn may still be running
+  // when ours begins.
+  if (u && u.last_woke_at && new Date(u.last_woke_at).getTime() >= since - OUR_TURN_SLACK_MS) return null;
+  return err('forbidden',
+    'this turn was started by Olma, not by the user, so nobody has answered anything. Write nothing in their name: ask them, and record the answer only when THEY reply. A constraint with no ids and no windows is only a note and may still be saved.',
+    { reason: 'not_their_turn' });
+}
+
+const TOOLS = [
+
   tool('start_meeting_coordination', 'Start coordinating a meeting with connected people (phones). The ONLY path for cross-user scheduling. A meeting is confirmed ONLY when the system says so — never announce agreement yourself. Title: the topic in their words; it is what everyone\'s invites and calendar show.',
     { title: S('string', 'What the meeting is about'),
       phones: S('array', 'Participant phones (E.164)', { items: { type: 'string' } }),
@@ -320,7 +351,7 @@ module.exports = [
       }
       return offerDashboardOnce(client, user, a.meeting_id, out);
     }),
-  tool('respond_to_meeting_slot', 'Answer ONE option on the table. accept=true only after the user saw that exact option (day included) and agreed, with accepted_starts_at. accept=false declines it; the others stay. A decline may carry counter_proposal + counter_starts_at (same rules as propose), one more option.',
+  tool('respond_to_meeting_slot', 'Answer ONE option on the table. accept=true only after the user saw that exact option (day included) and agreed, with accepted_starts_at. accept=false declines it; the others stay. A decline may carry counter_proposal + counter_starts_at (same rules as propose), one more option. Settled: yes joins it.',
     { meeting_id: S('number', 'Meeting id'), accept: S('boolean', 'true = user agrees to that exact option'),
       accepted_starts_at: S('string', 'The startsAt of the option they answered, as received. Required with accept=true; with accept=false names the declined option.'),
       counter_proposal: S('string', 'Optional new option when declining'),
@@ -354,7 +385,14 @@ module.exports = [
     }),
   tool('opt_out_of_meeting', 'Leave a meeting — while negotiating, OR "I can\'t come" after it was confirmed (it stays on for the others). One person bowing out, NOT a cancellation — whoever opened it may leave too, and it carries on. "Call the whole thing off" is cancel_meeting. Confirm with the user first.',
     { meeting_id: S('number', 'Meeting id') }, ['meeting_id'],
-    async (client, user, a) => {
+    async (client, user, a, ctx) => {
+      // Eden pasted "רשום עדן יצא" — what the page said about him — and this
+      // ran on it (2026-10-05). The hook reads a quoted status off the
+      // message; on that turn nothing is written and the model asks.
+      if (ctx && ctx.turn && ctx.turn.reportedExit) {
+        return err('invalid', 'Their message REPORTS a status ("X יצא"); it does not ask to leave. '
+          + 'Nothing was written. Ask them, in one line, whether they want out of this coordination.');
+      }
       const res = await meetings.optOut(client, user.id, a.meeting_id);
       if (!res.ok) return res;
       return meetingFanout.afterOptOut(client, user, a.meeting_id, res);
@@ -472,7 +510,7 @@ module.exports = [
   // A settled time back on the table, carried on from where it stopped (owner,
   // 2026-09-25): every other answer stands. The room and the page reach the
   // same fan-out.
-  tool('reopen_meeting', 'Reopen a CONFIRMED meeting you are in (before it starts) so its time can change — anyone in it may. Other times and answers stay; the set time is asked again. Everyone is told; the calendar event is removed.',
+  tool('reopen_meeting', 'Reopen a CONFIRMED meeting you are in (before it starts) so its time can change; anyone in it may. Answers stay, except your yes to the set time. Everyone is told; its calendar event goes.',
     { meeting_id: S('number', 'Meeting id') }, ['meeting_id'],
     (client, user, a) => meetingFanout.reopenAndTell(client, user, a.meeting_id)),
   // The name, and since 2026-10-04 the category too — everything the page can
@@ -516,3 +554,29 @@ module.exports = [
     ['meeting_id'],
     (client, user, a) => meetings.setQuorum(client, user.id, a.meeting_id, a.minimum === undefined ? null : a.minimum)),
 ];
+
+// Which tools write a person's own answer, and when. A constraint with no ids
+// and no windows is a note and changes no count, so it is still saved inside
+// our turn; the moment it carries an answer it is one. A proposal is the
+// proposer's yes (`meeting-options.add`), and a settled meeting's new hour is
+// a decision in their name.
+const listed = (v) => Array.isArray(v) && v.length > 0;
+const WRITES_ANSWER = {
+  respond_to_meeting_slot: () => true,
+  opt_out_of_meeting: () => true,
+  rejoin_meeting: () => true,
+  propose_meeting_slot: () => true,
+  record_meeting_constraint: (a) => listed(a.declines_option_ids) || listed(a.accepts_option_ids) || listed(a.windows),
+};
+
+for (const t of TOOLS) {
+  const writes = WRITES_ANSWER[t.name];
+  if (!writes) continue;
+  const handler = t.handler;
+  t.handler = async (client, user, a, ...rest) =>
+    (writes(a || {}) && await ourTurn(client, user)) || handler(client, user, a, ...rest);
+  t.writesAnswer = true;
+}
+
+module.exports = TOOLS;
+module.exports.WRITES_ANSWER = WRITES_ANSWER;

@@ -132,6 +132,11 @@ function sample(overrides = {}) {
   };
 }
 
+// The card budget (domain/card-budget.js) has its own test against a real
+// database; here the ledger is empty on every call, so only the repeat guard
+// is under test.
+const emptyLedger = { query: async () => ({ rows: [] }) };
+
 test('a turn OLMA started may not draw the same card twice', async () => {
   repeatGuard._reset();
   selfInitiated._reset();
@@ -140,17 +145,17 @@ test('a turn OLMA started may not draw the same card twice', async () => {
   const tool = BY_NAME.get('render_schedule_card');
 
   await selfInitiated.around(ws.id, async () => {
-    const first = await tool.handler(null, ws, sample(), {});
+    const first = await tool.handler(emptyLedger, ws, sample(), {});
     assert.equal(first.ok, true, first.ok ? '' : first.error.message);
 
-    const again = await tool.handler(null, ws, sample(), {});
+    const again = await tool.handler(emptyLedger, ws, sample(), {});
     assert.equal(again.ok, false, 'the same card, moments later, is the message twice');
     assert.equal(again.error.code, 'conflict');
     assert.match(again.error.next_step, /NO_REPLY/);
 
     // A redraw the doctrine actually asks for — the range narrowed after a
     // refusal — is a different card and passes untouched.
-    const narrower = await tool.handler(null, ws, sample({ subtitle: 'רק השבוע' }), {});
+    const narrower = await tool.handler(emptyLedger, ws, sample({ subtitle: 'רק השבוע' }), {});
     assert.equal(narrower.ok, true, narrower.ok ? '' : narrower.error.message);
   });
 });

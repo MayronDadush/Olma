@@ -69,10 +69,10 @@ test('the instruction names no threshold of its own, whatever the flag says', as
 });
 
 test('the instruction orders the ITEMS fetched and relays whichever half came back', async () => {
-  // scope=summary returns counts only, so an agent told to draw off it has
-  // nothing to put on the card — the tool is still named by scope.
+  // Since 2026-10-06 every scope returns the items, so there is no second
+  // fetch "with scope=full" to order any more — the first result decides.
   const text = instructionFor({ kind: 'digest', payload: { scope: 'summary' } });
-  assert.match(text, /scope="full"/);
+  assert.doesNotMatch(text, /again with scope="full"/);
   assert.match(text, /get_my_digest/);
   assert.match(text, /render_schedule_card/);
   assert.match(text, /MEDIA: <path>/);
@@ -135,14 +135,21 @@ test('a long list comes back as an order to DRAW, with no block beside it', asyn
 // exactly the shape that produces a narrated retry and a second message. Main
 // wrote the ceiling into the delivery instruction; here it lives with the
 // threshold, in the ONE reader, and the tool never orders what will be refused.
-test('past the card\'s own ceiling the tool hands over the block, and never an order to draw', async () => {
-  const { LIMITS } = require('../src/domain/schedule-card');
+// Since 2026-10-06 (owner): past the ceiling the morning is a SUMMARY of the
+// most pressing items, drawn — never the whole list as a wall of text — and
+// the card it orders is one render_schedule_card will accept.
+test('past the card\'s own ceiling the tool orders a SUMMARY card that the renderer accepts', async () => {
+  const { LIMITS, renderPng } = require('../src/domain/schedule-card');
   await flags.setFlag(db.pool, 'digest_card_min_items', 3);
   await giveTasks(LIMITS.totalItems + 1);
   const data = await digestFor('full');
-  assert.ok(data.block, 'too long for a picture is still a morning, and the block is how it is read');
-  assert.match(data.hints.card, /do NOT call it this turn/);
-  assert.doesNotMatch(data.hints.card, /MEDIA: <path>/);
+  assert.equal(data.block, undefined);
+  assert.ok(data.omitted > 0, 'the count of what was left out rides the result');
+  assert.ok(data.tasks.length <= LIMITS.totalItems);
+  assert.match(data.cardArgs.footer_note, new RegExp(`ועוד ${data.omitted}`));
+  assert.match(data.hints.card, /only the most urgent and important/);
+  const drawn = renderPng(data.cardArgs);
+  assert.equal(drawn.ok, true, drawn.ok ? '' : JSON.stringify(drawn.error));
   // and the instruction names no number at all — one reader per threshold
   const text = instructionFor({ kind: 'digest', payload: { scope: 'full' } });
   assert.doesNotMatch(text, new RegExp(`past ${LIMITS.totalItems}`));
@@ -156,6 +163,17 @@ test('a short list comes back as a block, and says not to draw one', async () =>
   assert.ok(data.block, 'a short morning is the block');
   assert.match(data.hints.block, /EXACTLY as it is/);
   assert.match(data.hints.card, /do NOT draw a card/);
+});
+
+test('with cards off, a list past the ceiling is still a summary, and the block says how many more', async () => {
+  const { LIMITS } = require('../src/domain/schedule-card');
+  await flags.setFlag(db.pool, 'digest_card_min_items', 0);
+  await giveTasks(LIMITS.totalItems + 4);
+  const data = await digestFor('full');
+  assert.ok(data.block);
+  assert.ok(data.omitted > 0);
+  assert.match(data.block, new RegExp(`ועוד ${data.omitted} משימות פתוחות`));
+  assert.ok((data.block.match(/משימה \d+/g) || []).length <= LIMITS.totalItems);
 });
 
 test('0 turns cards off: every list comes back as a block', async () => {
@@ -177,13 +195,16 @@ test('a corrupt flag value falls back rather than disabling the card', async () 
   assert.match(data.hints.card, /render_schedule_card/);
 });
 
-test('summary scope has neither: counts are what that person asked for', async () => {
+// Owner, 2026-10-06: every digest carries every open task, whatever the
+// scope says — `summary` used to be counts only, and a person on it never saw
+// one task in their morning.
+test('summary scope carries the list too, so a long one is drawn', async () => {
   await flags.setFlag(db.pool, 'digest_card_min_items', 3);
   await giveTasks(9);
   const data = await digestFor('summary');
   assert.equal(data.block, undefined);
-  assert.equal(data.hints && data.hints.card, undefined);
-  assert.ok(data.counts.openTasks >= 9);
+  assert.match(data.hints.card, /render_schedule_card/);
+  assert.ok(data.tasks.length >= 9);
 });
 
 test('the delivery preamble still rides along', async () => {

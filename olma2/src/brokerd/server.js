@@ -248,6 +248,65 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
     for (const list of pendingEyes.values()) for (const e of list) if (e.messageId === messageId) stopEyes(e);
   }
 
+  // ── The closing mark waits for the turn's end (owner, 2026-10-06) ─────────
+  // A 👍 OR a message, never both. Miron, 01:08: "תזכןרת 8:40 להןריד זבל
+  // היום" → `add_task`, a 👍 at once, and five seconds later "רשמתי, תזכורת
+  // להוריד זבל תגיע היום ב-08:40" — the hint asked for NO_REPLY, the echo
+  // gate missed it (a typo, "תגיע", "08" against "8"), and up to 60 of 90
+  // 👍 that week had a message under them inside 15s. Asking the model not
+  // to write lost every time it was tried, so the mark now follows the
+  // REPLY instead: brokerd holds the 👍/⏰ a tool earned and puts it on when
+  // the turn ends with nothing sent (`turn_progress end`, the same signal
+  // the 👀 hold reads); a reply going out (`turn_progress reply`) drops it.
+  // A reply the gate cancelled sends no `reply`, so its mark still lands.
+  // Only where the plugin says `end` is live (`signalsLive`) — otherwise
+  // nothing would ever release it, and the mark goes on at once as before.
+  // A lost `end` is bounded by CLOSE_MAX_HOLD_MS. In memory: a brokerd
+  // restart loses a held mark, which costs one 👍, never a message.
+  const CLOSE_GRACE_MS = 1500;      // a `reply` racing the `end` on another socket
+  const CLOSE_MAX_HOLD_MS = 120_000;
+  const pendingClose = new Map();   // agentId → { mark, userId, since, timer }
+  const lastReplyAt = new Map();    // agentId → when a reply last reached them
+  const turnBegunAt = new Map();    // agentId → { messageId, at }: its prompt was built
+  function releaseClose(agentId, entry) {
+    if (pendingClose.get(agentId) !== entry) return null;
+    pendingClose.delete(agentId);
+    if (entry.timer) { clearTimer(entry.timer); entry.timer = null; }
+    const replied = lastReplyAt.get(agentId);
+    if (replied != null && replied >= entry.since) return 'dropped';
+    placeMark(entry.mark);
+    return 'placed';
+  }
+  function holdClose(agentId, userId, mark) {
+    const prev = pendingClose.get(agentId);
+    // An earlier message's turn whose end was never heard: settle it first.
+    if (prev && prev.mark.messageId !== mark.messageId) releaseClose(agentId, prev);
+    const cur = pendingClose.get(agentId);
+    // Same message: the newest state asked for is the one that would stand.
+    if (cur) { cur.mark = mark; return; }
+    // From when this message's turn began, so a sentence written BEFORE the
+    // tool ("רגע, בודקת") counts as the reply too.
+    const begun = turnBegunAt.get(agentId);
+    const since = begun && begun.messageId === mark.messageId ? begun.at : clock();
+    const entry = { mark, userId, since, timer: null };
+    entry.timer = setTimer(() => { entry.timer = null; releaseClose(agentId, entry); }, CLOSE_MAX_HOLD_MS);
+    pendingClose.set(agentId, entry);
+  }
+  // A turn Olma started is not the turn the mark is waiting on: its reply is
+  // not an answer to their message, and its end is not that turn's end.
+  function closeProgress(agentId, what) {
+    const entry = pendingClose.get(agentId);
+    if (entry && selfInitiated.isActive(entry.userId)) return;
+    if (what === 'reply') {
+      lastReplyAt.set(agentId, clock());
+      if (entry) releaseClose(agentId, entry);
+      return;
+    }
+    if (!entry) return;
+    if (entry.timer) clearTimer(entry.timer);
+    entry.timer = setTimer(() => { entry.timer = null; releaseClose(agentId, entry); }, CLOSE_GRACE_MS);
+  }
+
   // When Olma's latest reply to a person ENDED on a question (the plugin's
   // `turn_progress reply` says so, a boolean and never the words). A bare
   // thanks inside reactions.THANKS_AFTER_QUESTION_MS of it is their answer.
@@ -377,6 +436,9 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
         // (reminders.startWeeklyNudge) — and only inside the same window a
         // chase gets, never on a turn that runs on long after the message.
         remindAsk: adopt && params.remindAsk === true ? clock() : null,
+        // "רשום עדן יצא": a status they quoted. opt_out_of_meeting refuses on
+        // this turn (tools/meetings.js) — the hook's verdict, never the words.
+        reportedExit: adopt && params.reportedExit === true,
         marked: new Set(), contextSent: false,
       };
       if (adopt && messageId) {
@@ -1187,6 +1249,7 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
     if (what === 'reply') {
       if (params.asked === true) askedAt.set(agentId, clock()); else askedAt.delete(agentId);
     }
+    closeProgress(agentId, what);
     const list = eyesOf(agentId);
     const idx = list.findIndex((e) => e.running);
     if (idx < 0) return { ok: true, held: false };
@@ -1230,8 +1293,19 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
       // gateway that changes that).
       const replyTarget = params.replyTarget === true || Boolean(pre && pre.replyToId);
       if (!pre && !ourTurn) {
+        // The gateway's open never arrived, but a prompt built for a WhatsApp
+        // message from the person IS them writing — and their writing is what
+        // ends a pause (pause.resumeOnWrite, the owner's rule). Without this a
+        // missed open left ברית paused through two days of her own messages
+        // (2026-10-05/06). `webchat` is our own --deliver turns and CLI probes
+        // (660 of 702 such rows in thirty days), so it never counts as them;
+        // the `whatsapp` rows were checked one by one and every one was a
+        // real person writing.
+        const wrote = params.trigger === 'user' && params.messageProvider === 'whatsapp';
+        if (wrote) await require('../domain/pause').resumeOnWrite(client, user.id);
         await require('../domain/audit').record(client, user.id, 'turn.context_without_open', {
           trigger: params.trigger || null, messageProvider: params.messageProvider || null,
+          ...(wrote ? { wrote: true } : {}),
         });
         out = { ok: true, enabled: true, context: null };
         return;
@@ -1254,7 +1328,10 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
         openList: Boolean(pre && pre.openList),
         remindAsk: Boolean(pre && pre.remindAsk),
       });
-      if (pre) { pre.contextSent = true; eyesRunning(agentId, pre.messageId); }
+      if (pre) {
+        pre.contextSent = true; eyesRunning(agentId, pre.messageId);
+        turnBegunAt.set(agentId, { messageId: pre.messageId, at: clock() });
+      }
       out = {
         ok: true, enabled: true, context: turnDomain.renderContext(data), directive: data.directive,
         // Not for the model — for the GATE. `reply_payload_sending` fires in
@@ -1278,6 +1355,7 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
       // Carried out of the transaction for the acknowledgement mark below: the
       // reaction target is read from OUR row, never from anything the model sent.
       let actorPhone = null;
+      let actorAgentId = null;
       // A group tool that writes to the SENDER's own record (their form of
       // address, said in the room) leaves that person's USER.md stale, and the
       // card refresh below keys on `actorId` — which a group call never sets,
@@ -1342,6 +1420,7 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
         }
         actorId = auth.data.user.id;
         actorPhone = auth.data.user.phone;
+        actorAgentId = auth.data.user.agent_id || null;
 
         // The first tool of the turn decides whether the turn was opened
         // properly. `turn_start` opens it itself; anything else means the
@@ -1392,6 +1471,7 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
           turn.chase = pre.chase || null; turn.chaseUsed = false;
           turn.openList = Boolean(pre.openList);
           turn.remindAsk = pre.remindAsk || null; turn.remindAskUsed = false;
+          turn.reportedExit = Boolean(pre.reportedExit);
           turn.openedByGateway = true;
         } else if (!turn.opened) {
           // No gateway open on file and this connection has not served a turn
@@ -1462,8 +1542,9 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
       const mark = reactions.markFor(name, result, turn, clock());
       let placed = null;
       if (mark && actorPhone) {
-        if (mark !== 'working' && mark !== 'listening') eyesAnswered(turn.messageId);
-        placed = placeMark({
+        const closing = mark !== 'working' && mark !== 'listening';
+        if (closing) eyesAnswered(turn.messageId);
+        const req = {
           channel: 'whatsapp', // the one channel whose reactions we have verified
           target: actorPhone,
           messageId: turn.messageId,
@@ -1473,7 +1554,16 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
           // built-in table, which is the same thing this did before it was
           // configurable at all.
           emoji: turn.reactionVocab && turn.reactionVocab[mark],
-        });
+        };
+        // A 👍/⏰ waits for the turn's end and is dropped if a reply went out
+        // (holdClose above). Recorded as attempted so the hint below still
+        // follows it.
+        if (closing && actorAgentId && signalsLive()) {
+          holdClose(actorAgentId, Number(actorId), req);
+          placed = { attempted: true, held: true };
+        } else {
+          placed = placeMark(req);
+        }
         // What is now standing on their message, for the hint below. Recorded
         // where the attempt is made, so a mark nobody could spawn is never
         // claimed — `attempted`, never `sent`, exactly as the hint says.
@@ -1498,12 +1588,23 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
       // reactions.doneMarkStands). One mark, and every result that earned it
       // says so.
       if (reactions.doneMarkStands(name, result, turn, clock()) && result.data && typeof result.data === 'object') {
+        // Held (holdClose): the 👍 goes on only if nothing is written, so the
+        // hint says the choice is one or the other — never "already there".
+        // Asked of the hold being ON, not of this mark still pending: a reply
+        // earlier in the turn already dropped it, and "already put" would lie.
+        const held = Boolean(actorAgentId) && signalsLive();
         result.data.hints = {
           ...(result.data.hints || {}),
-          markPlaced: 'A 👍 has already been put on their message: it tells them this is done. '
-            + 'If they gave a plain instruction and you have nothing to add — no question worth '
-            + 'asking, no caveat, no error, no other hint here — reply with exactly NO_REPLY and '
-            + 'nothing else. Write only when the words carry something the mark cannot.',
+          markPlaced: held
+            ? 'When this turn ends a 👍 goes on their message, telling them this is done — '
+              + 'but only if you write nothing: any words you send replace it. If they gave a '
+              + 'plain instruction and you have nothing to add — no question worth asking, no '
+              + 'caveat, no error, no other hint here — reply with exactly NO_REPLY and nothing '
+              + 'else. Write only when the words carry something the mark cannot.'
+            : 'A 👍 has already been put on their message: it tells them this is done. '
+              + 'If they gave a plain instruction and you have nothing to add — no question worth '
+              + 'asking, no caveat, no error, no other hint here — reply with exactly NO_REPLY and '
+              + 'nothing else. Write only when the words carry something the mark cannot.',
         };
         if (actorId) {
           const prev = markEchoes.get(Number(actorId));

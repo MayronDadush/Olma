@@ -217,3 +217,100 @@ test('the plugin says "end" for a person\'s turn, never for a room\'s, and never
     ['turn_progress', { agentId: 'u-4', what: 'end' }],
   ]);
 });
+
+// ── A 👍 OR a message, never both (owner, 2026-10-06) ───────────────────────
+// Miron's "תזכןרת 8:40 להןריד זבל היום" got a 👍 and then "רשמתי, תזכורת
+// להוריד זבל תגיע היום ב-08:40". The closing mark now waits for the turn's
+// end and is dropped if a reply reached them.
+const freshTurn = () => ({ userId: null, opened: false, counted: false, quota: null, messageId: null, lastInboundAt: null, marked: null });
+const addTask = (u, turn, title = 'להוריד זבל') =>
+  dispatch('tool_call', { name: 'add_task', args: { olma_identity: u.identity_token, title } }, turn);
+const closing = () => marks.filter((m) => m.state === 'done' || m.state === 'scheduled');
+
+test('a turn that ends in silence gets its 👍 at the end, not at the tool', async () => {
+  const u = await person();
+  await open(u, '3EB0CLOSE001');
+  await prompt(u);
+  const turn = freshTurn();
+  const added = await addTask(u, turn);
+  assert.equal(added.ok, true, added.text);
+  assert.deepEqual(closing(), [], 'nothing placed while the model may still write');
+  assert.match(added.text, /only if you write nothing/, 'the hint says it is one or the other');
+  await progress(u, 'end');
+  timers.fireAll();
+  assert.deepEqual(closing().map((m) => [m.state, m.messageId, m.target]), [['done', '3EB0CLOSE001', u.phone]]);
+});
+
+test('a reply after the tool drops the 👍 — the message is the answer', async () => {
+  const u = await person();
+  await open(u, '3EB0CLOSE002');
+  await prompt(u);
+  await addTask(u, freshTurn());
+  await progress(u, 'reply');
+  await progress(u, 'end');
+  timers.fireAll();
+  assert.deepEqual(closing(), []);
+});
+
+test('a reply written BEFORE the tool in the same turn drops it too', async () => {
+  const u = await person();
+  await open(u, '3EB0CLOSE003');
+  await prompt(u);
+  now += 1000;
+  await progress(u, 'reply');
+  now += 1000;
+  await addTask(u, freshTurn());
+  await progress(u, 'end');
+  timers.fireAll();
+  assert.deepEqual(closing(), []);
+});
+
+test('a reply from the PREVIOUS turn does not drop this one', async () => {
+  const u = await person();
+  await open(u, '3EB0CLOSE004');
+  await prompt(u);
+  await progress(u, 'reply');
+  await progress(u, 'end');
+  timers.fireAll();
+  now += 60_000;
+  await open(u, '3EB0CLOSE005');
+  await prompt(u);
+  now += 1000;
+  await addTask(u, freshTurn(), 'לקנות לחם');
+  await progress(u, 'end');
+  timers.fireAll();
+  assert.deepEqual(closing().map((m) => m.messageId), ['3EB0CLOSE005']);
+});
+
+test('a lost "end" still puts the 👍 on, after the hold runs out', async () => {
+  const u = await person();
+  await open(u, '3EB0CLOSE006');
+  await prompt(u);
+  await addTask(u, freshTurn());
+  assert.ok(timers.pending().includes(120_000), JSON.stringify(timers.pending()));
+  timers.fireAll();
+  assert.deepEqual(closing().map((m) => m.messageId), ['3EB0CLOSE006']);
+});
+
+test('a reply from a turn Olma started does not drop the person\'s 👍', async () => {
+  const u = await person();
+  await open(u, '3EB0CLOSE007');
+  await prompt(u);
+  await addTask(u, freshTurn());
+  selfInitiated.begin(u.id);
+  await progress(u, 'reply');
+  selfInitiated._reset();
+  await progress(u, 'end');
+  timers.fireAll();
+  assert.deepEqual(closing().map((m) => m.messageId), ['3EB0CLOSE007']);
+});
+
+test('a plugin that cannot say "end" gets the old immediate 👍 and the old hint', async () => {
+  const u = await person();
+  await open(u, '3EB0CLOSE008');
+  await prompt(u);
+  signals = false;
+  const added = await addTask(u, freshTurn());
+  assert.deepEqual(closing().map((m) => m.messageId), ['3EB0CLOSE008']);
+  assert.match(added.text, /has already been put on their message/);
+});

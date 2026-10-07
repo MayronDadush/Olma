@@ -142,7 +142,14 @@ function renderTaskListBlock(data, opts = {}) {
     return done.length >= MIN_LINES ? section(f, HEADINGS[k].done, done) : null;
   }
 
-  const events = rows.filter((r) => r.kind === 'event').map((r) => line(r, ctx, true)).filter(Boolean);
+  // A repeating event (migration 111) shows its NEXT occurrence, and a line
+  // with no cadence on it reads as a one-off — the same reason a reminder line
+  // carries its own.
+  const events = rows.filter((r) => r.kind === 'event').map((r) => {
+    const head = line(r, ctx, true);
+    const every = head && r.repeat_rule ? repeatLabel(r.repeat_rule, k) : '';
+    return every ? `${head}, ${every}` : head;
+  }).filter(Boolean);
   const tasks = rows.filter((r) => r.kind !== 'event').map((r) => line(r, ctx, false)).filter(Boolean);
   if (events.length + tasks.length < MIN_LINES) return null;
 
