@@ -119,6 +119,27 @@ test('late logging lands on the day it was eaten, and today does not move', asyn
   assert.equal((await okOf(TOK(1), 'food_today', {})).totals.kcal, 0);
 });
 
+test('a plate after midnight is that evening\'s dinner, and the day turns at 04:00', async t => {
+  // Fixed instants, so the hour the suite runs at never matters. 21:41Z in
+  // October is 00:41 in Jerusalem on the 8th.
+  assert.equal(D.today('Asia/Jerusalem', new Date('2026-10-07T21:41:00Z')), '2026-10-07');
+  assert.equal(D.today('Asia/Jerusalem', new Date('2026-10-08T00:59:00Z')), '2026-10-07');
+  assert.equal(D.today('Asia/Jerusalem', new Date('2026-10-08T01:00:00Z')), '2026-10-08');
+  assert.equal(D.slotAt(0), 'dinner');
+  assert.equal(D.slotAt(23, { hasDinner: true }), 'snack');
+  assert.equal(D.slotAt(4), 'breakfast');
+
+  const { pool, okOf } = await boot(t);
+  await okOf(TOK(1), 'food_today', {});
+  const p = await store.reload(pool, 101);
+  const at = new Date('2026-10-07T21:41:00Z');
+  const a = await store.logMeal(pool, p, { title: 'שקשוקה', items: [EGGS, SAUCE] }, { via: 'olma', at });
+  // The date a model reads off the clock after midnight is tonight too, not a future day.
+  const b = await store.logMeal(pool, p, { title: 'פיתה', date: '2026-10-08', items: [PITA] }, { via: 'olma', at });
+  const { rows } = await pool.query('SELECT day::text AS day, slot FROM meals WHERE user_id = 101 AND id = ANY($1) ORDER BY id', [[a.meal.id, b.meal.id]]);
+  assert.deepEqual(rows, [{ day: '2026-10-07', slot: 'dinner' }, { day: '2026-10-07', slot: 'snack' }]);
+});
+
 test('no-numbers mode: no calorie or gram reaches the model, and turning it back on loses nothing', async t => {
   const { okOf } = await boot(t);
   await okOf(TOK(1), 'log_meal', { title: 'שקשוקה', meal: 'dinner', items: [EGGS, SAUCE] });
