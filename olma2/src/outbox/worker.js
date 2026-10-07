@@ -112,7 +112,11 @@ function batchKeyFor(row) {
   const p = payloadOf(row);
   if (p.instruction) return null;
   if (!String(p.title || '').trim()) return null;
-  return proactiveText.reminderTemplateKey(p);
+  // "תזכורת חוזרת" alone, and a plain line in the plain list beside others:
+  // both are rung 1, ask nothing, and render through 'reminder_list', so a
+  // second moment on one task must not split a tick into two messages.
+  const key = proactiveText.reminderTemplateKey(p);
+  return key === 'reminder_again' ? 'reminder' : key;
 }
 
 // Coordinations that ended with no time and that this person has not heard
@@ -674,13 +678,17 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
         // them rather than where it was queued (jobs/checkin.js, `run`, says
         // why). Any ladder rung among the rows this send carried counts once
         // — a merge puts at most one check-in in a message, and one message
-        // is one question — and a day-one step never counts.
+        // is one question — and a day-one step never counts. Neither does a
+        // message the OWNER sent by hand (`admin`) or a repair of our own
+        // fault: neither is the ladder asking "את פה?", and counting them
+        // silenced Gali's and Dov's 2026-10-07 digests (gate: misses >= 1).
         const countLadderAsk = () => client.query(
           `UPDATE users SET checkin_misses = checkin_misses + 1
             WHERE id = $1
               AND EXISTS (SELECT 1 FROM outbox o
                            WHERE o.id = ANY($2::bigint[]) AND o.kind = 'checkin'
-                             AND COALESCE(o.payload->>'rung', '') NOT LIKE 'onboarding\\_%')`,
+                             AND COALESCE(o.payload->>'rung', '') NOT LIKE 'onboarding\\_%'
+                             AND COALESCE(o.payload->>'rung', '') NOT IN ('admin', 'unanswered_repair', 'missed_goal_repair'))`,
           [row.user_id, ids]);
         // A first-rung LIST of three or more is not chased. Dov got twelve at
         // 08:00 and the same twelve at 11:01 (2026-10-04); over thirty days an
