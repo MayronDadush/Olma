@@ -149,11 +149,11 @@ title means this file. Grep the title, not the filename.
   the lock; this only decides what the model reads.
 - **A PACK's tools are denied to EVERY agent, `main`, `intake` and `ggreet`
   included, and lifted only for a person holding the pack** (`games__*`,
-  2026-09-30). Who holds one is the `user_packs` table, read by the sync and by
+  2026-09-30; `food__*`, migration 114). Who holds one is the `user_packs` table, read by the sync and by
   `config_guard` through `agent-tool-policy.packsByAgent`. To the sync an
   unreadable table means nobody holds anything, never "leave it as it is";
   `config_guard` skips the comparison instead of calling a holder drift
-  (unreadable is not broken). gamesd refuses the
+  (unreadable is not broken). gamesd and foodd refuse the
   call anyway for anybody brokerd's `identity_resolve` does not name as a
   holder — the deny is what the model reads, not the lock.
   **A new number that joins a night with its code holds the pack BEFORE it has

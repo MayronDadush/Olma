@@ -37,6 +37,7 @@ const auth = require('../../domain/dashboard-auth');
 const dash = require('../../domain/user-dashboard');
 const experiments = require('../../domain/experiments');
 const events = require('../../domain/user-dashboard-events');
+const opens = require('../../domain/dashboard-opens');
 const write = require('../../domain/user-dashboard-write');
 const { refreshUserCard } = require('../../intake/user-card');
 
@@ -481,6 +482,9 @@ async function handle(req, res, pool, pathname) {
       res.writeHead(200, headers(HTML, { 'Set-Cookie': auth.clearCookieHeader() }));
       return res.end(newPageHtml());
     }
+    // Counted for the admin page (domain/dashboard-opens.js), and never at
+    // the page's expense: a failed write is a visit not counted, nothing more.
+    await withTx(pool, (c) => opens.record(c, userId, { byAdmin: who.byAdmin })).catch(() => {});
     res.writeHead(200, headers(HTML));
     return res.end(ownPageHtml(who.locale));
   }

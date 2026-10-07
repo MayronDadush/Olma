@@ -20,6 +20,7 @@ const { renderTemplates } = require('./templates');
 const { renderOnboardingReviews } = require('./onboarding');
 const { renderOwnerLog } = require('./owner-log');
 const { renderAds } = require('./brand');
+const { renderDashboardOpens, renderDigests } = require('./reach');
 
 
 // Since 2026-09-15 each group is its own menu page at /g/<id>, and `/` is the
@@ -55,6 +56,8 @@ const SECTIONS = [
   { id: 'cost', group: 'money', title: 'עלות', hint: 'כל שירות חיצוני שהפרויקט משלם עליו — מופרד ליתרות מראש (שנגמרות) ולחיוב שוטף (שנצבר) — וכמה עולה השימוש במודל לפי יום ולפי משתמש, כולל עמודה נפרדת ליצירת תמונות ווידאו. הערכה, לא חשבונית.', render: renderCost },
   { id: 'outcomes', group: 'measure', title: 'האם זה עובד', hint: 'המדדים שנבחרו כדי לענות על השאלה הזו: ענו לנו? נסגרו משימות? נאלצו לתקן אותנו? נוצר הרגל? כל מספר עם המכנה שלו.', render: renderOutcomes },
   { id: 'metrics', group: 'measure', title: 'שימוש במוצר', hint: 'מה באמת קורה במוצר: כמה אנשים פעילים, כמה נוצר, מה הצליח.', render: renderMetrics },
+  { id: 'page-opens', group: 'measure', title: 'מי פותח את העמוד שלו', hint: 'כל פעם שמישהו טען את הדאשבורד האישי שלו, לכל היותר פעם בחצי שעה לאדם. פתיחה שלך דרך כפתור "פתיחה" בדף המשתמש מסומנת ולא נספרת, וגם חשבונות בדיקה לא. עמוד שחזר מהרקע בטלפון בלי טעינה לא נראה — המספר הוא לכל היותר מה שקרה.', render: renderDashboardOpens },
+  { id: 'digests', group: 'measure', title: 'סיכומי בוקר וערב', hint: 'מי מוגדר לקבל סיכום יומי ובאיזו שעה, ומה באמת הגיע אליו ב־30 הימים האחרונים ובאיזו שעה בשעון שלו. "מושהה" ו"לא סיים הצטרפות" מוגדרים אבל לא יקבלו עד שזה ישתנה.', render: renderDigests },
   { id: 'experiments', group: 'measure', title: 'ניסויי A/B', hint: 'שתי גרסאות של הודעה או של התזמון שלה, וכל אדם מקבל תמיד את אותה אחת. עם כמה עשרות משתמשים רוב ההבדלים מקריים — הדף לא יכריז על מנצחת לפני שיש מספיק נתונים, וגם אז הקיבוע הוא ידני.', render: renderExperiments },
   { id: 'planned', group: 'sending', title: 'מה מתוכנן להישלח', hint: 'כל מה שעולמה מתכננת לשלוח, ומתי — בשעון המקומי של כל משתמש, מקובץ לפי מי שיקרא. שורה עם ✓ יוצאת כלשונה וזה בדיוק הטקסט שיגיע; השאר נכתב ברגע השליחה, ולכן מופיע הנושא בלבד.', render: renderPlanned },
   { id: 'owner-log', group: 'sending', title: 'מה כתבתי בעצמי', hint: 'כל הודעה יזומה שנכתבה ידנית מדף משתמש, מה עולמה ניסחה ממנה בפועל, והאם ענו. כל שורה היא רגע שעולמה הייתה יכולה לזהות לבד: רושמים ליד מה היא מלמדת ומשייכים לפיצ\'ר אפשרי. שום דבר כאן לא נבנה לבד ועולמה לא קוראת את זה — עוברים על זה ביחד כשמחליטים.', render: renderOwnerLog },

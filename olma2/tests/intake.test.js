@@ -24,8 +24,8 @@ let db, tmp, configPath;
 function baseConfig() {
   return {
     agents: {
-      // Denied the game-nights pack like every agent (intake/agent-tool-policy.js).
-      list: [{ id: 'intake', workspace: '/x/intake', agentDir: '/x/intake-agent', tools: { deny: ['games__*'] } }],
+      // Denied every pack like every agent (intake/agent-tool-policy.js).
+      list: [{ id: 'intake', workspace: '/x/intake', agentDir: '/x/intake-agent', tools: { deny: ['food__*', 'games__*'] } }],
       defaults: {
         heartbeat: { every: '0m', target: 'none' },
         model: { primary: 'openrouter/deepseek/deepseek-v4-flash' },
@@ -2173,7 +2173,7 @@ test('openclaw-config: entries format — add/remove/has work and never resurrec
   assert.equal(occ.addAgent(cfg, { id: 'u-41', workspace: '/x/u-41', agentDir: '/x/u-41-agent' }), false, 'idempotent');
   assert.deepEqual(cfg.agents.entries['u-41'], {
     name: 'u-41', workspace: '/x/u-41', agentDir: '/x/u-41-agent',
-    tools: { deny: ['games__*'] }, // no olma server in this config, so only the pack
+    tools: { deny: ['food__*', 'games__*'] }, // no olma server in this config, so only the packs
   });
   assert.equal(cfg.agents.list, undefined, 'the fatal shape: list must never appear beside entries');
 
