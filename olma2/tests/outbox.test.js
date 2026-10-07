@@ -925,6 +925,30 @@ test('a tick delivers at most MAX_DELIVERIES_PER_TICK — a backlog drains in sh
   assert.equal(second.delivered, 3, 'the next tick finishes the backlog');
 });
 
+// A second moment on one task ("תזכורת חוזרת") is still rung 1 and asks
+// nothing, so it joins the plain list with a reminder due beside it.
+test('worker: a repeat reminder and a plain one due together are ONE message', async () => {
+  const proactiveText = require('../src/domain/proactive-text');
+  await flushOutbox();
+  const now = new Date('2026-08-16T12:00:00Z');
+  await withTx(db.pool, (c) => enqueue(c, {
+    userId: user.id, kind: 'reminder', urgency: 'urgent', payload: { title: 'לקחת את החלב', again: true },
+    idempotencyKey: 'reminder:again:1',
+  }));
+  await withTx(db.pool, (c) => enqueue(c, {
+    userId: user.id, kind: 'reminder', urgency: 'urgent', payload: { title: 'להתקשר לרופא' },
+    idempotencyKey: 'reminder:again:2',
+  }));
+  const sent = [];
+  const out = await drainOnce(db.pool, async (r) => { sent.push(r); return { ok: true }; }, now);
+  assert.equal(out.delivered, 1);
+  assert.equal(out.batched, 1);
+  const list = proactiveText.rawPipeTextFor(sent[0]);
+  assert.match(list, /חלב/);
+  assert.match(list, /רופא/);
+  await flushOutbox();
+});
+
 // Vered's first morning: a night of held reminders released together, and she
 // got nine separate WhatsApp messages one after another. They are one moment
 // in her day.
