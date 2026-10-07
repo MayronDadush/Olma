@@ -1233,6 +1233,65 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
     return { ok: true, queued: true };
   }
 
+  // A pack's server asking for a picture in a person's workspace (food/, the
+  // day card). The pack draws the SVG; only we have the fonts and know the
+  // workspace, which is the one place the gateway attaches `MEDIA:` from
+  // (domain/card-store.js). It answers with the file's path and the person's
+  // invite link (domain/referral.js), for the caption under the picture.
+  //
+  // Asked for, never sent: it writes a file and says where, and the model
+  // attaches it in the same turn — exactly what `render_schedule_card` does.
+  // Only for an active person who holds the pack that is asking, and the
+  // render is capped by size, because resvg blocks this loop while it runs
+  // (schedule-card.renderPng: ~100ms for a full card).
+  const PACK_CARD_MAX_SVG = 300 * 1024;
+  async function handlePackCard(params = {}) {
+    const caller = String(params.caller || '');
+    const userId = Number(params.userId);
+    const svg = typeof params.svg === 'string' ? params.svg : '';
+    if (!require('../intake/agent-tool-policy').PACKS[caller]) return { ok: false, error: 'unknown pack' };
+    if (!Number.isSafeInteger(userId) || userId <= 0) return { ok: false, error: 'bad userId' };
+    if (!svg.startsWith('<svg') || svg.length > PACK_CARD_MAX_SVG) return { ok: false, error: 'bad svg' };
+    const { rows } = await pool.query(
+      `SELECT u.* FROM users u JOIN user_packs p ON p.user_id = u.id AND p.pack = $2
+        WHERE u.id = $1 AND u.status = 'active'`, [userId, caller]);
+    if (!rows.length) return { ok: false, error: `not a ${caller} user` };
+    const user = rows[0];
+    const { FONT_FILES, FONT_FAMILY } = require('../domain/schedule-card');
+    let png;
+    try {
+      const { Resvg } = require('@resvg/resvg-js');
+      png = new Resvg(svg, { font: { fontFiles: FONT_FILES, loadSystemFonts: false, defaultFontFamily: FONT_FAMILY } }).render().asPng();
+    } catch (e) {
+      return { ok: false, error: `render failed: ${e.message}` };
+    }
+    const saved = require('../domain/card-store').saveCard(user, png);
+    if (!saved.ok) return { ok: false, error: saved.error && saved.error.message || 'not saved' };
+    const invite = require('../domain/referral').inviteFor({ id: Number(user.id), firstName: user.first_name, locale: user.locale });
+    await audit.record(pool, Number(user.id), 'pack.card', { caller, bytes: png.length });
+    return { ok: true, path: saved.data.path, invite_link: invite ? invite.link : null };
+  }
+
+  // The other direction: a picture the person SENT, for a pack's server to
+  // look at (food/: their plate). The pack cannot read the gateway's inbound
+  // directory; domain/inbound-media.js guards the path the model passed (that
+  // directory only, recent, an image by its bytes). Same gate as the card: an
+  // active person holding the asking pack. Audited without the path or bytes.
+  async function handlePackMedia(params = {}) {
+    const caller = String(params.caller || '');
+    const userId = Number(params.userId);
+    if (!require('../intake/agent-tool-policy').PACKS[caller]) return { ok: false, error: 'unknown pack' };
+    if (!Number.isSafeInteger(userId) || userId <= 0) return { ok: false, error: 'bad userId' };
+    const { rows } = await pool.query(
+      `SELECT u.id FROM users u JOIN user_packs p ON p.user_id = u.id AND p.pack = $2
+        WHERE u.id = $1 AND u.status = 'active'`, [userId, caller]);
+    if (!rows.length) return { ok: false, error: `not a ${caller} user` };
+    const r = require('../domain/inbound-media').readInboundImage(params.path);
+    if (!r.ok) return { ok: false, error: r.error.message, code: r.error.code };
+    await audit.record(pool, userId, 'pack.media', { caller, bytes: r.data.bytes, mime: r.data.mime });
+    return { ok: true, mime: r.data.mime, base64: r.data.base64 };
+  }
+
   // The plugin telling us a person's turn has put something in front of them
   // (`reply`, from reply_payload_sending) or has ended (`end`, from agent_end —
   // the only signal for a turn that ends in silence). Either way the 👀 held
@@ -1664,6 +1723,10 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
         return handleGameSummary(msg.params || {});
       case 'game_invite':
         return handleGameInvite(msg.params || {});
+      case 'pack_card':
+        return handlePackCard(msg.params || {});
+      case 'pack_media':
+        return handlePackMedia(msg.params || {});
       default:
         return { ok: false, error: `unknown method ${msg.method}` };
     }
