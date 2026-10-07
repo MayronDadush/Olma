@@ -65,7 +65,10 @@ function serverName(cfg) {
 // nothing serves hides nothing and costs nothing, and it means that on the day
 // the server IS registered every agent already carries it. The other order
 // would show the game tools to everybody for as long as the sync took.
-const PACKS = { games: 'games' };
+//
+// Food tracking is the second (food/, scripts/register-food-mcp.js): the same
+// shape, its own server name, its own `user_packs` value (migration 114).
+const PACKS = { games: 'games', food: 'food' };
 const packDeny = (packs) => Object.keys(PACKS)
   .filter((p) => !(packs || []).includes(p))
   .map((p) => `${PACKS[p]}${SEP}*`);

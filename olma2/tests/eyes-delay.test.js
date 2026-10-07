@@ -314,3 +314,36 @@ test('a plugin that cannot say "end" gets the old immediate 👍 and the old hin
   assert.deepEqual(closing().map((m) => m.messageId), ['3EB0CLOSE008']);
   assert.match(added.text, /has already been put on their message/);
 });
+
+// Every reaction is a notification on their phone (owner, 2026-10-06), so a
+// message gets ONE mark, never a 👍 that an ⏰ then replaces.
+test('"תזכורת 8:40 להוריד זבל": one ⏰, and the hint names it', async () => {
+  const u = await person();
+  await open(u, '3EB0ALARM001');
+  await prompt(u);
+  const added = await dispatch('tool_call', { name: 'add_task', args: {
+    olma_identity: u.identity_token, title: 'להוריד זבל', remind_at: new Date(now + 3 * 3600_000).toISOString(),
+  } }, freshTurn());
+  assert.equal(added.ok, true, added.text);
+  assert.match(added.text, /a ⏰ goes on their message/);
+  await progress(u, 'end');
+  timers.fireAll();
+  assert.deepEqual(closing().map((m) => m.state), ['scheduled']);
+});
+
+test('a 👍 and then an ⏰ in one turn put ONE mark on the message, not two', async () => {
+  const u = await person();
+  await open(u, '3EB0ALARM002');
+  await prompt(u);
+  const turn = freshTurn();
+  const added = await addTask(u, turn, 'להתקשר לרופא');
+  const taskId = JSON.parse(added.text.replace(/^OK /, '')).task.id;
+  const set = await dispatch('tool_call', { name: 'set_task_reminder', args: {
+    olma_identity: u.identity_token, task_id: taskId, remind_at: new Date(now + 3 * 3600_000).toISOString(),
+  } }, turn);
+  assert.equal(set.ok, true, set.text);
+  assert.deepEqual(closing(), [], 'nothing on their phone mid-turn');
+  await progress(u, 'end');
+  timers.fireAll();
+  assert.deepEqual(closing().map((m) => [m.state, m.messageId]), [['scheduled', '3EB0ALARM002']]);
+});

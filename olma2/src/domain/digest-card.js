@@ -30,10 +30,11 @@ function markedUrgent(title) {
   return URGENT_PHRASES.some((p) => t.includes(p));
 }
 
-// A summary is short enough to take in at a glance, and never shorter than a
-// morning worth opening.
-const SUMMARY_MAX = 15;
-const SUMMARY_MIN = 8;
+// What goes on the card once the list is over the ceiling: the owner's cap is
+// 25 items (2026-10-06) and the rest is only COUNTED ("ועוד N"), so the card is
+// always as full as one card may be — pressing items first, then the fill below.
+const SUMMARY_MAX = 25;
+const SUMMARY_MIN = 25;
 const SOON_DAYS = 2;
 const WEEK_DAYS = 7;
 

@@ -22,8 +22,11 @@ function cfg() {
 }
 
 const GAMES = 'games__*';
-const names = (aud) => [GAMES, ...TOOLS.filter((t) => audienceOf(t) === aud).map((t) => `olma__${t.name}`)].sort();
-const ours = (deny) => deny.filter((n) => n !== GAMES);
+const FOOD = 'food__*';
+// Every pack an agent is denied while its person holds none (PACKS), sorted.
+const PACK_DENY = [FOOD, GAMES];
+const names = (aud) => [...PACK_DENY, ...TOOLS.filter((t) => audienceOf(t) === aud).map((t) => `olma__${t.name}`)].sort();
+const ours = (deny) => deny.filter((n) => !PACK_DENY.includes(n));
 
 test('a room is shown exactly the group tools, a person exactly the rest', () => {
   const c = cfg();
@@ -44,9 +47,9 @@ test('a room is shown exactly the group tools, a person exactly the rest', () =>
 
 test('agents that are not a person or a room keep every tool of ours, and are denied every pack', () => {
   for (const id of ['main', 'intake', 'ggreet', 'u-', 'g-x', 'u-3-old']) {
-    assert.deepEqual(policy.agentToolPolicy(id, cfg()), { deny: [GAMES] }, id);
+    assert.deepEqual(policy.agentToolPolicy(id, cfg()), { deny: PACK_DENY }, id);
     // Handing one a pack changes nothing: only a person's agent can hold one.
-    assert.deepEqual(policy.agentToolPolicy(id, cfg(), { packs: ['games'] }), { deny: [GAMES] }, id);
+    assert.deepEqual(policy.agentToolPolicy(id, cfg(), { packs: ['games'] }), { deny: PACK_DENY }, id);
   }
 });
 
@@ -57,18 +60,20 @@ test('the games pack is hidden from every agent until its person turns it on', (
   c.mcp.servers.games = { command: 'node', args: ['/opt/olma-games/bin/games-mcp.js'] };
   const person = policy.agentToolPolicy('u-3', c);
   assert.ok(person.deny.includes(GAMES));
-  assert.ok(person.deny.every((n) => n === GAMES || n.startsWith('olma__')),
+  assert.ok(person.deny.every((n) => PACK_DENY.includes(n) || n.startsWith('olma__')),
     'a second server does not confuse which one is ours');
   const withPack = policy.agentToolPolicy('u-3', c, { packs: ['games'] });
   assert.ok(!withPack.deny.includes(GAMES));
-  assert.deepEqual(withPack.deny, ours(person.deny), 'the pack lifts its own deny and nothing else');
+  assert.deepEqual(withPack.deny, [FOOD, ...ours(person.deny)].sort(), 'the pack lifts its own deny and nothing else');
   assert.ok(policy.agentToolPolicy('g-7', c, { packs: ['games'] }).deny.includes(GAMES), 'a room never holds a pack');
   assert.ok(policy.agentToolPolicy('u-3', c, { packs: ['other'] }).deny.includes(GAMES),
     'an unknown pack name lifts nothing');
   // With only the games server registered, nothing of ours is named, but the
   // pack deny still is.
-  assert.deepEqual(policy.agentToolPolicy('u-3', { mcp: { servers: { games: {} } } }), { deny: [GAMES] });
-  assert.equal(policy.agentToolPolicy('u-3', { mcp: { servers: { games: {} } } }, { packs: ['games'] }), null);
+  assert.deepEqual(policy.agentToolPolicy('u-3', { mcp: { servers: { games: {} } } }), { deny: PACK_DENY });
+  assert.deepEqual(policy.agentToolPolicy('u-3', { mcp: { servers: { games: {} } } }, { packs: ['games'] }), { deny: [FOOD] });
+  // Holding both lifts both, and then nothing is denied at all.
+  assert.equal(policy.agentToolPolicy('u-3', { mcp: { servers: { games: {} } } }, { packs: ['food', 'games'] }), null);
 });
 
 test('the prefix is the registered server name, and an unknown server writes nothing', () => {
@@ -77,9 +82,9 @@ test('the prefix is the registered server name, and an unknown server writes not
   assert.ok(ours(policy.agentToolPolicy('g-1', c).deny).every((n) => n.startsWith('mine__')));
   // A deny under the wrong prefix would hide nothing and look like it worked.
   c.mcp.servers = { a: {}, b: {} };
-  assert.deepEqual(policy.agentToolPolicy('g-1', c), { deny: [GAMES] });
+  assert.deepEqual(policy.agentToolPolicy('g-1', c), { deny: PACK_DENY });
   delete c.mcp;
-  assert.deepEqual(policy.agentToolPolicy('g-1', c), { deny: [GAMES] });
+  assert.deepEqual(policy.agentToolPolicy('g-1', c), { deny: PACK_DENY });
 });
 
 test('addAgent writes the policy itself, in both roster formats', () => {
@@ -87,7 +92,7 @@ test('addAgent writes the policy itself, in both roster formats', () => {
   occ.addAgent(c, { id: 'g-9', workspace: '/w', agentDir: '/a' });
   assert.deepEqual(c.agents.entries['g-9'].tools.deny, names('user'));
   occ.addAgent(c, { id: 'intake2', workspace: '/w', agentDir: '/a' });
-  assert.deepEqual(c.agents.entries.intake2.tools, { deny: [GAMES] }, 'a non-person agent is denied only the packs');
+  assert.deepEqual(c.agents.entries.intake2.tools, { deny: PACK_DENY }, 'a non-person agent is denied only the packs');
   occ.addAgent(c, { id: 'u-10', workspace: '/w', agentDir: '/a', tools: null });
   assert.equal(c.agents.entries['u-10'].tools, undefined, 'null overrides');
 

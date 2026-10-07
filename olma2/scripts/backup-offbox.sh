@@ -33,8 +33,8 @@
 # Overrides, for the test suite only:
 #   OLMA_ENV_FILE, OLMA_BACKUP_DIR, OLMA_OFFBOX_KEEP_DAYS, OLMA_OFFBOX_PREFIX
 #
-# Which database, as the one argument: `olma2` (the default) or `olma_games`
-# (game nights, games/). Each has its own dump file prefix, its own folder in
+# Which database, as the one argument: `olma2` (the default), `olma_games`
+# (game nights, games/) or `olma_food` (food tracking, food/). Each has its own dump file prefix, its own folder in
 # the bucket and its OWN heartbeat row, so a green games copy can never paint
 # over a red olma2 one on the board. Anything else is refused before a word
 # is written.
@@ -42,13 +42,15 @@
 # Cron lines (root, after each dump):
 #   40 2 * * * bash /opt/olma2/scripts/backup-offbox.sh >> /var/log/olma2-backup-offbox.log 2>&1
 #   45 2 * * * bash /opt/olma2/scripts/backup-offbox.sh olma_games >> /var/log/olma2-backup-offbox.log 2>&1
+#   50 2 * * * bash /opt/olma2/scripts/backup-offbox.sh olma_food >> /var/log/olma2-backup-offbox.log 2>&1
 set -euo pipefail
 
 SOURCE="${1:-olma2}"
 case "$SOURCE" in
   olma2)      JOB=backup_offbox ;;
   olma_games) JOB=backup_offbox_games ;;
-  *) echo "[backup-offbox] unknown database: $SOURCE (olma2 or olma_games)" >&2; exit 2 ;;
+  olma_food)  JOB=backup_offbox_food ;;
+  *) echo "[backup-offbox] unknown database: $SOURCE (olma2, olma_games or olma_food)" >&2; exit 2 ;;
 esac
 
 ENV_FILE="${OLMA_ENV_FILE:-/opt/olma2/.env}"
