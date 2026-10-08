@@ -9,6 +9,7 @@ const { withTx } = require('./db');
 const V = require('./validate');
 const N = require('./nutrition');
 const D = require('./days');
+const photos = require('./photos');
 
 const { refuse } = V;
 const MAX_MEALS_PER_DAY = 40;
@@ -92,7 +93,7 @@ function mealOut(p, m, items) {
   const totals = m.rough ? N.rounded(N.sum([])) : N.rounded(N.sum(items));
   return {
     id: Number(m.id), day, slot: m.slot, slot_he: N.SLOT_HE[m.slot], time: timeIn(p.timezone, m.at),
-    title: m.title, source: m.source, rough: m.rough, shared_part: m.shared_part || null,
+    title: m.title, source: m.source, rough: m.rough, shared_part: m.shared_part || null, photo: !!m.photo,
     items: items.map(it => ({ ...it, kcal: N.r0(N.itemTotals(it).kcal) })),
     totals, balance: m.rough ? [] : N.balanceOf(items),
   };
@@ -233,18 +234,63 @@ async function editMeal(pool, p, a, { via = 'olma' } = {}) {
     if (a.title) await c.query('UPDATE meals SET title = $2 WHERE id = $1', [meal.id, V.text(a.title, 80)]);
     if (a.date != null) await c.query('UPDATE meals SET day = $2 WHERE id = $1', [meal.id, dayFor(p, a.date)]);
     const { rows: [{ left }] } = await c.query('SELECT count(*)::int AS left FROM items WHERE meal_id = $1', [meal.id]);
-    if (!left && !meal.rough) await c.query('UPDATE meals SET deleted_at = now() WHERE id = $1', [meal.id]);
-    return { meal: left || meal.rough ? await mealOf(c, p, meal.id) : null, deleted: !left && !meal.rough, learned: learned.filter(Boolean) };
-  });
+    const gone = !left && !meal.rough ? await dropMeal(c, meal.id) : null;
+    return { meal: left || meal.rough ? await mealOf(c, p, meal.id) : null, deleted: !left && !meal.rough, learned: learned.filter(Boolean), [PHOTO_GONE]: gone };
+  }).then(afterDrop);
 }
 
 async function deleteMeal(pool, p, mealId) {
   return withTx(pool, async c => {
     const meal = await mealOrLast(c, p, mealId);
     editable(p, meal);
-    await c.query('UPDATE meals SET deleted_at = now() WHERE id = $1', [meal.id]);
-    return { deleted: { id: meal.id, title: meal.title, day: meal.day, slot: meal.slot } };
-  });
+    const gone = await dropMeal(c, meal.id);
+    return { deleted: { id: meal.id, title: meal.title, day: meal.day, slot: meal.slot }, [PHOTO_GONE]: gone };
+  }).then(afterDrop);
+}
+
+// A meal deleted takes its photo with it (the owner's rule, 2026-10-08). The
+// row forgets the file inside the transaction; the file goes only after it
+// commits, so a rollback never leaves a row pointing at nothing it had.
+const PHOTO_GONE = Symbol('photo');
+async function dropMeal(c, id) {
+  const { rows: [r] } = await c.query('SELECT photo FROM meals WHERE id = $1', [id]);
+  await c.query('UPDATE meals SET deleted_at = now(), photo = NULL WHERE id = $1', [id]);
+  return r ? r.photo : null;
+}
+function afterDrop(out) {
+  if (out[PHOTO_GONE]) photos.remove(out[PHOTO_GONE]);
+  delete out[PHOTO_GONE];
+  return out;
+}
+
+// The photo a meal was read from, once it is on disk.
+async function setPhoto(pool, p, mealId, name) {
+  await pool.query('UPDATE meals SET photo = $3 WHERE id = $1 AND user_id = $2', [mealId, p.user_id, name]);
+}
+async function photoOf(pool, p, mealId) {
+  const n = Number(mealId);
+  if (!Number.isSafeInteger(n) || n <= 0) return null;
+  const { rows: [r] } = await pool.query('SELECT photo FROM meals WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL', [n, p.user_id]);
+  return r && r.photo ? photos.read(r.photo) : null;
+}
+
+// Everything they ever logged, newest day first, a page of days at a time:
+// the page's "הצלחות" tab. `before` is the cursor, the oldest day already shown.
+const JOURNAL_DAYS = 10;
+async function journal(pool, p, { before } = {}) {
+  const until = before && D.isDay(before) ? D.addDays(before, -1) : todayOf(p);
+  const { rows } = await pool.query(
+    `SELECT DISTINCT day FROM meals WHERE user_id = $1 AND deleted_at IS NULL AND day <= $2 ORDER BY day DESC LIMIT $3`,
+    [p.user_id, until, JOURNAL_DAYS + 1]);
+  const days = rows.map(r => (typeof r.day === 'string' ? r.day : dayString(r.day)));
+  const more = days.length > JOURNAL_DAYS;
+  const shown = days.slice(0, JOURNAL_DAYS);
+  if (!shown.length) return { days: [], more: false, numbers: p.numbers, today_day: todayOf(p) };
+  const meals = await mealsBetween(pool, p, shown[shown.length - 1], shown[0]);
+  return {
+    numbers: p.numbers, today_day: todayOf(p), more, editable_from: D.addDays(todayOf(p), -BACK_DAYS),
+    days: shown.map(d => ({ day: d, date_he: D.heDate(d), meals: meals.filter(m => m.day === d) })),
+  };
 }
 
 // The same meal again, on another day: "like yesterday", or one of the usual.
@@ -430,4 +476,5 @@ module.exports = {
   mealsBetween, mealOf, lastMeal, logMeal, editMeal, deleteMeal, relog,
   portionsOf, forgetPortion, water, setNumbers, setGoal, setChallenge,
   usualOf, setAuto, runAuto, dayView, insights, BACK_DAYS,
+  setPhoto, photoOf, journal,
 };

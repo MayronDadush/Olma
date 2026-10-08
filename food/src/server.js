@@ -15,6 +15,7 @@ const fs = require('fs');
 const path = require('path');
 const store = require('./store');
 const card = require('./card');
+const chat = require('./chat');
 const { Refused } = require('./validate');
 const { runTool } = require('./tools');
 const { resolveIdentity, makeCard, readMedia } = require('./identity');
@@ -132,9 +133,9 @@ function createServer({ pool, publicBase = '', page, identify = resolveIdentity,
         return send(res, 200, { ok: true, url: `${publicBase}/food/${p.token}` });
       }
 
-      const m = p_.match(/^\/food\/([A-Za-z0-9]{22})(?:\/(api\/state|api\/write|card\.svg))?$/);
+      const m = p_.match(/^\/food\/([A-Za-z0-9]{22})(?:\/(api\/state|api\/write|api\/journal|api\/chat|card\.svg|photo\/(\d{1,12})))?$/);
       if (!m) return send(res, 404, { error: 'not_found' });
-      const [, token, action] = m;
+      const [, token, action, photoId] = m;
       const p = await store.personByToken(pool, token);
 
       if (!action) {
@@ -147,10 +148,31 @@ function createServer({ pool, publicBase = '', page, identify = resolveIdentity,
         if (req.method !== 'GET') return send(res, 405, { error: 'method' });
         return send(res, 200, await store.dayView(pool, p, url.searchParams.get('day') || undefined, { publicBase }));
       }
+      if (action === 'api/journal') {
+        if (req.method !== 'GET') return send(res, 405, { error: 'method' });
+        return send(res, 200, await store.journal(pool, p, { before: url.searchParams.get('before') || undefined }));
+      }
+      // A plate's photo, only through its owner's own link. The id is in the
+      // path, so the same id under somebody else's token finds nothing.
+      if (photoId) {
+        if (req.method !== 'GET') return send(res, 405, { error: 'method' });
+        const ph = await store.photoOf(pool, p, photoId);
+        if (!ph) return send(res, 404, { error: 'not_found' });
+        res.writeHead(200, { ...base, 'Content-Type': ph.mime, 'Cache-Control': 'private, max-age=86400', 'Content-Length': ph.body.length });
+        return res.end(ph.body);
+      }
       if (action === 'card.svg') {
         if (req.method !== 'GET') return send(res, 405, { error: 'method' });
         const v = await store.dayView(pool, p, url.searchParams.get('day') || undefined);
         return send(res, 200, card.buildSvg(v).svg, 'image/svg+xml; charset=utf-8');
+      }
+      if (action === 'api/chat') {
+        if (req.method !== 'POST') return send(res, 405, { error: 'method' });
+        if (limited('t:' + token) || limited('c:' + clientOf(req))) return send(res, 429, { error: 'rate_limited' });
+        const body = await readBody(req);
+        if (typeof body.text !== 'string' || !body.text.trim()) return send(res, 400, { error: 'bad_text' });
+        const out = await chat.turn(pool, p, body.text, { fetchImpl });
+        return send(res, 200, { ok: true, ...out, state: await store.dayView(pool, await store.reload(pool, p.user_id), undefined, { publicBase }) });
       }
       // api/write
       if (req.method !== 'POST') return send(res, 405, { error: 'method' });

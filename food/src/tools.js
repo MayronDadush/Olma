@@ -16,6 +16,7 @@ const D = require('./days');
 const card = require('./card');
 const foods = require('./foods');
 const vision = require('./vision');
+const photos = require('./photos');
 const llm = require('./llm');
 const { Refused } = require('./validate');
 
@@ -115,6 +116,12 @@ const TOOLS = {
     if (!seen.food) return { logged: null, note: 'There is no food in this photo. Ask, in one line, whether they meant to send another one.' };
     const items = await foods.resolve(pool, seen.items, { userId: p.user_id, fetchImpl });
     const { meal, applied } = await store.logMeal(pool, p, { title: seen.title || undefined, items, meal: a.meal, date: a.date, source: 'photo' }, { via: 'olma' });
+    // Kept so the page can show the plate. A photo that could not be written
+    // costs only the picture, never the meal.
+    try {
+      const name = photos.save({ userId: p.user_id, mealId: meal.id, mime: media.mime, base64: media.base64 });
+      if (name) await store.setPhoto(pool, p, meal.id, name);
+    } catch (e) { console.error('[foodd photo] not kept:', e.message); }
     const v = await store.dayView(pool, p, meal.day);
     const out = { logged: mealBrief(meal, p.numbers), for_day: meal.day === v.today_day ? 'today' : meal.day };
     if (applied.length) out.applied_portions = applied.map(x => (p.numbers ? x : { name: x.name }));

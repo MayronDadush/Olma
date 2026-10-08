@@ -27,6 +27,9 @@
   --logo-d:#004643;--logo-l:#F0EDE5;--logo-lens:#F9C23C;--logo-ring:#F0EDE5;
   --m-protein:#009488;--m-carbs:#C98A0E;--m-fat:#A0559A;--m-veg:#5E9E4A;
   --track:#ECE9E1;--scrim:rgba(14,31,30,.34);
+  --bar:rgba(255,255,255,.44);--glass-line:rgba(14,31,30,.08);--lens-bar:blur(15px) saturate(280%) brightness(1.05);
+  --rim-soft:inset 0 .6px 0 rgba(255,255,255,.72);--shadow-m:0 1px 2px rgba(14,31,30,.05),0 10px 28px -16px rgba(14,31,30,.28);
+  --bubble-me:#E1EBE8;--bubble-ol:#FFFFFF;--chat-bg:#E9E6DD;
   --shadow-s:0 1px 2px rgba(14,31,30,.06);
   --shadow-l:0 24px 64px -20px rgba(14,31,30,.34),0 2px 8px rgba(14,31,30,.08);
   --ease:cubic-bezier(.22,1,.36,1);
@@ -41,6 +44,9 @@
   --logo-d:#1B1A18;--logo-l:#EDE9DF;--logo-lens:#F9C23C;--logo-ring:#EDE9DF;
   --m-protein:#279E93;--m-carbs:#B57D0C;--m-fat:#B06AA9;--m-veg:#6FAE5A;
   --track:#34322C;--scrim:rgba(0,0,0,.55);
+  --bar:rgba(38,37,31,.40);--glass-line:rgba(255,255,255,.09);--lens-bar:blur(15px) saturate(300%) brightness(1.22);
+  --rim-soft:inset 0 .6px 0 rgba(255,255,255,.16);--shadow-m:0 1px 2px rgba(0,0,0,.4),0 10px 28px -16px rgba(0,0,0,.8);
+  --bubble-me:#1F3532;--bubble-ol:#2D2B26;--chat-bg:#161513;
   --shadow-s:0 1px 2px rgba(0,0,0,.4);
   --shadow-l:0 24px 64px -20px rgba(0,0,0,.8),0 2px 8px rgba(0,0,0,.5);
 }}
@@ -54,6 +60,9 @@
   --logo-d:#1B1A18;--logo-l:#EDE9DF;--logo-lens:#F9C23C;--logo-ring:#EDE9DF;
   --m-protein:#279E93;--m-carbs:#B57D0C;--m-fat:#B06AA9;--m-veg:#6FAE5A;
   --track:#34322C;--scrim:rgba(0,0,0,.55);
+  --bar:rgba(38,37,31,.40);--glass-line:rgba(255,255,255,.09);--lens-bar:blur(15px) saturate(300%) brightness(1.22);
+  --rim-soft:inset 0 .6px 0 rgba(255,255,255,.16);--shadow-m:0 1px 2px rgba(0,0,0,.4),0 10px 28px -16px rgba(0,0,0,.8);
+  --bubble-me:#1F3532;--bubble-ol:#2D2B26;--chat-bg:#161513;
   --shadow-s:0 1px 2px rgba(0,0,0,.4);
   --shadow-l:0 24px 64px -20px rgba(0,0,0,.8),0 2px 8px rgba(0,0,0,.5);
 }
@@ -75,7 +84,9 @@ button{cursor:pointer}
 .ibtn{width:36px;height:36px;border-radius:50%;border:0;background:var(--band-tint);color:var(--on-band);display:grid;place-items:center;flex:none}
 .ibtn svg{width:18px;height:18px}
 
-main{max-width:860px;margin:0 auto;padding:18px 16px 40px;display:flex;flex-direction:column;gap:16px}
+main{max-width:860px;margin:0 auto;padding:18px 16px calc(var(--bar-bottom) + 112px)}
+:root{--bar-bottom:max(44px,calc(env(safe-area-inset-bottom,0px) + 16px))}
+.view{display:flex;flex-direction:column;gap:16px}
 .card{background:var(--surface);border:1px solid var(--sep);border-radius:20px;padding:18px;box-shadow:var(--shadow-s);min-width:0}
 .two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}
 .sec-h{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin:0 0 12px}
@@ -193,10 +204,71 @@ main{max-width:860px;margin:0 auto;padding:18px 16px 40px;display:flex;flex-dire
 
 .scrim{position:fixed;inset:0;background:var(--scrim);opacity:0;pointer-events:none;transition:opacity .2s;z-index:20}
 .scrim.on{opacity:1;pointer-events:auto}
-.sheet{visibility:hidden;position:fixed;inset-inline:0;bottom:0;max-width:520px;margin:0 auto;background:var(--surface);border-radius:22px 22px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom,0px));box-shadow:var(--shadow-l);transform:translateY(105%);transition:transform .3s var(--ease);z-index:21;max-height:92vh;overflow:auto}
-.sheet.on{transform:none;visibility:visible}
+.sheet{visibility:hidden;position:fixed;inset-inline:0;bottom:0;max-width:560px;margin:0 auto;background:var(--surface);border-radius:22px 22px 0 0;padding-bottom:env(safe-area-inset-bottom,0px);box-shadow:var(--shadow-l);transform:translateY(105%);transition:transform .3s var(--ease),visibility 0s .3s;z-index:21;max-height:88dvh;display:flex;flex-direction:column}
+.sheet.on{transform:none;visibility:visible;transition:transform .3s var(--ease)}
 .sheet img{width:100%;max-width:100%;border-radius:14px;display:block;border:1px solid var(--sep)}
-.toast{position:fixed;bottom:calc(18px + env(safe-area-inset-bottom,0px));inset-inline:16px;max-width:420px;margin:0 auto;background:var(--text);color:var(--bg);padding:10px 14px;border-radius:12px;font-size:14px;opacity:0;transform:translateY(8px);transition:.2s;pointer-events:none;z-index:30;text-align:center}
+.grab{width:38px;height:5px;border-radius:99px;background:var(--sep-2);margin:8px auto 2px;flex:none}
+.sheethead{display:flex;align-items:center;gap:10px;padding:8px 16px 12px;flex:none}
+.sheethead .mark{width:34px;height:34px}
+.sheethead b{font-weight:700;font-size:17px;display:block;line-height:1.2}
+.sheethead span{font-size:12.5px;color:var(--text-3);display:block}
+.sheethead .ibtn{margin-inline-start:auto;width:34px;height:34px;background:var(--fill);color:var(--text-2)}
+.sheetbody{overflow-y:auto;padding:0 16px 18px;display:grid;gap:14px}
+.sheetbody img{max-height:52vh;object-fit:cover}
+
+/* ── the floating bar: the same numbers as the bar on the person's own page
+   (olma2 /me) and the game night's, so whoever knows one knows all three;
+   the round button beside it is the chat, as on the game night ── */
+.tabbar{position:fixed;z-index:15;inset-inline:0;bottom:var(--bar-bottom);display:flex;justify-content:center;align-items:center;gap:10px;padding:0 12px;pointer-events:none}
+.tabs{pointer-events:auto;display:flex;gap:2px;padding:8px;border-radius:28px;background:var(--bar);border:.5px solid var(--glass-line);-webkit-backdrop-filter:var(--lens-bar);backdrop-filter:var(--lens-bar);box-shadow:var(--shadow-m),var(--rim-soft)}
+.tabs button{border:0;background:transparent;display:flex;flex-direction:column;align-items:center;gap:3px;padding:10px 16px 9px;min-width:72px;border-radius:20px;font-size:12.5px;font-weight:600;line-height:1.4;letter-spacing:-.01em;color:var(--text-3);transition:background .26s var(--ease),color .26s var(--ease),transform .3s var(--ease)}
+.tabs button svg{width:26px;height:26px}
+.tabs button:active{transform:scale(.94)}
+.tabs button[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent);font-weight:700}
+.fab{pointer-events:auto;width:64px;height:64px;border-radius:50%;border:0;flex:none;display:grid;place-items:center;background:var(--accent);color:var(--on-accent);box-shadow:var(--shadow-m),var(--rim-soft);transition:transform .3s var(--ease)}
+.fab:active{transform:scale(.92)}
+.fab svg{width:24px;height:24px}
+
+/* ── chat ── */
+.sheet.chat{height:86dvh}
+.msgs{flex:1;overflow-y:auto;padding:14px 12px;display:flex;flex-direction:column;gap:8px;background:var(--chat-bg);overscroll-behavior:contain}
+.b{max-width:84%;padding:8px 12px 9px;border-radius:16px;font-size:15.5px;line-height:1.45;white-space:pre-line;overflow-wrap:anywhere;box-shadow:var(--shadow-s)}
+.b.me{align-self:flex-start;background:var(--bubble-me);border-start-start-radius:5px}
+.b.ol{align-self:flex-end;background:var(--bubble-ol);border-start-end-radius:5px}
+.typing{align-self:flex-end;display:flex;gap:4px;padding:11px 13px;border-radius:16px;background:var(--bubble-ol);box-shadow:var(--shadow-s)}
+.typing i{width:6px;height:6px;border-radius:50%;background:var(--text-3);animation:tdot 1s ease-in-out infinite}
+.typing i:nth-child(2){animation-delay:.14s}.typing i:nth-child(3){animation-delay:.28s}
+@keyframes tdot{0%,100%{opacity:.3;transform:none}45%{opacity:1;transform:translateY(-3px)}}
+.qr{display:flex;gap:6px;overflow-x:auto;padding:8px 12px 0;scrollbar-width:none;background:var(--chat-bg);flex:none}
+.qr::-webkit-scrollbar{display:none}
+.qr .chip{white-space:nowrap;border:0;background:var(--surface);box-shadow:var(--shadow-s);color:var(--accent);font-weight:600}
+.composer{display:flex;gap:8px;padding:10px 12px 12px;background:var(--chat-bg);flex:none}
+.composer input{flex:1;min-width:0;border:0;border-radius:99px;background:var(--surface);padding:10px 16px;font-size:16px;box-shadow:var(--shadow-s)}
+.send{width:44px;height:44px;border:0;border-radius:50%;background:var(--action);color:var(--on-action);display:grid;place-items:center;flex:none}
+.send svg{width:18px;height:18px}
+
+/* ── the plates: everything photographed or written, newest first ── */
+.jday h2{margin:0 0 10px;font-size:15px}
+.jday h2 small{font-weight:400;color:var(--text-3);font-size:12.5px;margin-inline-start:6px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px}
+.tile{padding:0;background:var(--surface);border:1px solid var(--sep);border-radius:16px;overflow:hidden;text-align:start;display:flex;flex-direction:column;box-shadow:var(--shadow-s);min-width:0}
+.tile img,.tile .ph{width:100%;aspect-ratio:4/3;object-fit:cover;display:block;background:var(--fill);border:0;border-radius:0}
+.tile .ph{display:flex;flex-direction:column;gap:6px;padding:10px 12px;background:var(--accent-soft);color:var(--accent);font-size:13px;line-height:1.4;font-weight:500}
+.tile .ph svg{width:18px;height:18px;flex:none;opacity:.7}
+.tile .ph span{display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
+.tile .cap{padding:8px 10px 10px;min-width:0}
+.tile .cap b{display:block;font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tile .cap small{display:block;font-size:12px;color:var(--text-3)}
+.mitems{display:flex;flex-direction:column}
+.mitems div{display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-top:1px solid var(--sep);font-size:14px}
+.mitems div:first-child{border-top:0}
+.mitems span{color:var(--text-2)}
+.acts2{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.btn2{border:0;border-radius:99px;padding:9px 16px;font-weight:600;font-size:14px;background:var(--fill);color:var(--text)}
+.btn2.main{background:var(--action);color:var(--on-action)}
+.btn2.del{background:transparent;color:var(--danger);margin-inline-start:auto;padding-inline:8px}
+.btn2.yes{background:var(--danger);color:#fff}
+.toast{position:fixed;bottom:calc(var(--bar-bottom) + 100px);inset-inline:16px;max-width:420px;margin:0 auto;background:var(--text);color:var(--bg);padding:10px 14px;border-radius:12px;font-size:14px;opacity:0;transform:translateY(8px);transition:.2s;pointer-events:none;z-index:30;text-align:center}
 .toast.on{opacity:1;transform:none}
 .foot{text-align:center;font-size:12.5px;color:var(--text-3);margin:4px 0 0}
 .skeleton{min-height:200px;display:grid;place-items:center;color:var(--text-3)}
@@ -208,6 +280,7 @@ main{max-width:860px;margin:0 auto;padding:18px 16px 40px;display:flex;flex-dire
   .balrow{grid-template-columns:minmax(0,1fr)}
   .goalform{grid-template-columns:repeat(2,minmax(0,1fr))}
   .daynav h1{font-size:19px}
+  .grid{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
@@ -237,14 +310,43 @@ main{max-width:860px;margin:0 auto;padding:18px 16px 40px;display:flex;flex-dire
 </div></header>
 
 <main id="main">
-  <div class="card skeleton" id="loading">טוען…</div>
+  <section class="view" id="vToday"><div class="card skeleton">טוען…</div></section>
+  <section class="view" id="vPlates" hidden></section>
+  <section class="view" id="vWeek" hidden></section>
 </main>
+
+<nav class="tabbar" aria-label="מסכים">
+  <div class="tabs">
+    <button type="button" data-tab="today" aria-pressed="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11h18a9 9 0 0 1-18 0z"/><path d="M7.5 11c0-2.5 1.6-4.5 4.5-4.5s4.5 2 4.5 4.5M12 6.5V4"/></svg><span>היום</span></button>
+    <button type="button" data-tab="plates" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="2"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="2"/></svg><span>הצלחות</span></button>
+    <button type="button" data-tab="week" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h16M7 16v-5M12 16V6M17 16v-8"/></svg><span>השבוע</span></button>
+  </div>
+  <button class="fab" id="chatBtn" type="button" aria-label="לכתוב לעולמה"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 0 1-11.6 7.1L4 20l1-4.2A8 8 0 1 1 20 12z"/></svg></button>
+</nav>
 
 <div class="scrim" id="scrim"></div>
 <section class="sheet" id="cardSheet" aria-label="כרטיס היום" aria-hidden="true">
-  <div class="sec-h"><h2>כרטיס היום</h2><button class="link" type="button" data-close>סגירה</button></div>
-  <img id="cardImg" alt="כרטיס היום: הארוחות, בלי קלוריות">
-  <p class="note" style="margin-top:10px">כדי לקבל אותו כתמונה לשיתוף, כותבים לעולמה ״כרטיס היום״. הוא יוצא עם קישור הצטרפות מתחתיו.</p>
+  <div class="grab"></div>
+  <div class="sheethead"><div><b>כרטיס היום</b><span>ככה הוא נראה כשעולמה שולחת אותו</span></div><button class="ibtn" type="button" data-close aria-label="סגירה"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+  <div class="sheetbody">
+    <img id="cardImg" alt="כרטיס היום: הארוחות, בלי קלוריות">
+    <p class="note">כדי לקבל אותו כתמונה לשיתוף, כותבים לעולמה ״כרטיס היום״. הוא יוצא עם קישור הצטרפות מתחתיו.</p>
+  </div>
+</section>
+<section class="sheet" id="mealSheet" aria-label="ארוחה" aria-hidden="true"></section>
+<section class="sheet chat" id="chatSheet" aria-label="צ'אט עם עולמה" aria-hidden="true">
+  <div class="grab"></div>
+  <div class="sheethead">
+    <svg class="mark" viewBox="0 0 120 120" aria-hidden="true"><use href="#logo"/></svg>
+    <div><b>עולמה</b><span>רק אוכל ומים, כמו בוואטסאפ</span></div>
+    <button class="ibtn" type="button" data-close aria-label="סגירה"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+  </div>
+  <div class="msgs" id="msgs" aria-live="polite"></div>
+  <div class="qr" id="qr"></div>
+  <form class="composer" id="composer" autocomplete="off">
+    <input id="msgIn" type="text" placeholder="מה אכלת?" aria-label="הודעה לעולמה" enterkeyhint="send" maxlength="500">
+    <button class="send" type="submit" aria-label="שליחה"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12H5M11 5l-7 7 7 7"/></svg></button>
+  </form>
 </section>
 <div class="toast" id="toast" role="status"></div>
 
@@ -271,11 +373,12 @@ let open = new Set();    // meal ids whose details are open, kept across redraws
 let insI = 0;
 let confirmDel = null;
 
+const dead = () => { $('#vToday').innerHTML = '<div class="card">הקישור הזה לא מוביל לשום עמוד.</div>'; };
 function toast(t) { const el = $('#toast'); el.textContent = t; el.classList.add('on'); clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.remove('on'), 2400); }
 
 async function load(d) {
   const r = await fetch(`${API}/api/state${d ? `?day=${d}` : ''}`);
-  if (!r.ok) { $('#main').innerHTML = '<div class="card">הקישור הזה לא מוביל לשום עמוד.</div>'; return; }
+  if (!r.ok) return dead();
   S = await r.json(); day = S.today ? null : S.day; render();
 }
 async function write(op, data = {}) {
@@ -337,9 +440,17 @@ function render() {
   }
   h += `</div>`;
 
-  // challenge + insight
+  // water
+  h += `<div class="card"><div class="sec-h"><h2>מים</h2><span class="num">${S.water} / ${S.person.water_goal} כוסות</span></div>
+      <div class="cups">${Array.from({ length: Math.max(S.person.water_goal, S.water) }, (_, i) => `<button type="button" class="cup ${i < S.water ? 'on' : ''}" data-cup="${i}" aria-label="כוס ${i + 1}" aria-pressed="${i < S.water}"><svg viewBox="0 0 34 42"><path d="M5 4h24l-3 33a3 3 0 0 1-3 3H11a3 3 0 0 1-3-3z" fill="${i < S.water ? 'currentColor' : 'none'}" fill-opacity=".85" stroke="currentColor" stroke-width="2"/></svg></button>`).join('')}</div></div>`;
+  h += `<p class="foot">כל מה שאפשר לעשות כאן, אפשר גם לבקש מעולמה בצ׳אט · הערכים הם הערכה, לא מדידה</p>`;
+  $('#vToday').innerHTML = h;
+
+  // the week: the chart, the challenge, what she found and what she learned
+  let w = `<div class="dayhead"><div class="daynav"><div><h1>השבוע</h1><p>${esc(S.today ? 'השבוע הזה' : `השבוע של ${S.date_he}`)}</p></div></div></div>`;
+  w += `<div class="card"><div class="sec-h"><h2>יום אחרי יום</h2><span>${num ? 'קק״ל ליום · הקו הוא היעד' : 'ארוחות בכל יום'}</span></div><div class="week">${weekHtml(num)}</div></div>`;
   const ins = S.insights.filter(i => num || !i.numbers);
-  h += `<div class="two"><div class="card chal"><div class="sec-h"><h2>אתגר השבוע</h2></div>${chalHtml()}</div>
+  w += `<div class="two"><div class="card chal"><div class="sec-h"><h2>אתגר השבוע</h2></div>${chalHtml()}</div>
     <div class="card insight"><div class="sec-h"><h2>משהו שגיליתי</h2><span class="num">${ins.length > 1 ? `${(insI % ins.length) + 1} מתוך ${ins.length}` : ''}</span></div>
       <p>${ins.length ? esc(ins[insI % ins.length].he) : 'עוד מעט. אחרי כמה ימים של רישום יופיעו כאן דברים שמצאתי.'}</p>
       ${ins.length > 1 ? '<div class="rowbtns"><button class="link" type="button" id="insNext">עוד אחד</button></div>' : ''}</div></div>`;
@@ -349,14 +460,8 @@ function render() {
     .concat(S.usual.map(u => `<div class="lrow"><div><b>${esc(u.title)}</b><span class="sub">${u.times} פעמים בארבעה שבועות${u.auto_hour != null ? ` · נרשם לבד כל יום ב-${u.auto_hour}:00` : ''}</span></div><div class="acts">
       <button class="sbtn" type="button" data-relog="${u.meal_id}">לרשום עכשיו</button>
       ${u.auto_hour != null ? `<button class="sbtn on" type="button" data-unauto="${esc(u.title)}">להפסיק רישום אוטומטי</button>` : `<button class="sbtn" type="button" data-auto="${u.meal_id}">לרשום לבד כל יום</button>`}</div></div>`));
-  h += `<div class="card"><div class="sec-h"><h2>מה עולמה למדה עליך</h2><span>מנות שתיקנת, ומה שחוזר</span></div>${rows.join('') || '<p class="note">עוד כלום. כשמתקנים כמות, עולמה זוכרת אותה. ארוחה שחוזרת 3 פעמים מופיעה כאן.</p>'}</div>`;
-
-  // water + week
-  h += `<div class="two"><div class="card"><div class="sec-h"><h2>מים</h2><span class="num">${S.water} / ${S.person.water_goal} כוסות</span></div>
-      <div class="cups">${Array.from({ length: Math.max(S.person.water_goal, S.water) }, (_, i) => `<button type="button" class="cup ${i < S.water ? 'on' : ''}" data-cup="${i}" aria-label="כוס ${i + 1}" aria-pressed="${i < S.water}"><svg viewBox="0 0 34 42"><path d="M5 4h24l-3 33a3 3 0 0 1-3 3H11a3 3 0 0 1-3-3z" fill="${i < S.water ? 'currentColor' : 'none'}" fill-opacity=".85" stroke="currentColor" stroke-width="2"/></svg></button>`).join('')}</div></div>
-    <div class="card"><div class="sec-h"><h2>השבוע</h2><span>${num ? 'קק״ל ליום · הקו הוא היעד' : 'ארוחות בכל יום'}</span></div><div class="week">${weekHtml(num)}</div></div></div>`;
-  h += `<p class="foot">כל מה שאפשר לעשות כאן, אפשר גם לבקש מעולמה בצ׳אט · הערכים הם הערכה, לא מדידה</p>`;
-  $('#main').innerHTML = h;
+  w += `<div class="card"><div class="sec-h"><h2>מה עולמה למדה עליך</h2><span>מנות שתיקנת, ומה שחוזר</span></div>${rows.join('') || '<p class="note">עוד כלום. כשמתקנים כמות, עולמה זוכרת אותה. ארוחה שחוזרת 3 פעמים מופיעה כאן.</p>'}</div>`;
+  $('#vWeek').innerHTML = w;
 }
 
 function mealHtml(m, num) {
@@ -441,21 +546,135 @@ $('#main').addEventListener('submit', async e => {
   if (await write('goal', { kcal: v('kcal'), protein: v('protein'), carbs: v('carbs'), fat: v('fat') })) toast('היעד נשמר');
 });
 
-/* ── card sheet, theme ── */
-const sheet = $('#cardSheet'), scrim = $('#scrim');
-const closeSheet = () => { sheet.classList.remove('on'); scrim.classList.remove('on'); sheet.setAttribute('aria-hidden', 'true'); };
-$('#cardBtn').addEventListener('click', () => { $('#cardImg').src = `${API}/card.svg${S && !S.today ? `?day=${S.day}` : ''}`; sheet.classList.add('on'); scrim.classList.add('on'); sheet.setAttribute('aria-hidden', 'false'); });
+/* ── tabs: the same bar as the person's own page ── */
+let tab = 'today';
+function setTab(t) {
+  tab = t;
+  for (const [k, id] of [['today', '#vToday'], ['plates', '#vPlates'], ['week', '#vWeek']]) $(id).hidden = k !== t;
+  document.querySelectorAll('.tabs [data-tab]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.tab === t)));
+  try { history.replaceState(null, '', t === 'today' ? location.pathname : `#${t}`); } catch {}
+  if (t === 'plates' && !J) loadJournal();
+  scrollTo(0, 0);
+}
+document.querySelector('.tabs').addEventListener('click', e => { const b = e.target.closest('[data-tab]'); if (b) setTab(b.dataset.tab); });
+
+/* ── sheets ── */
+const scrim = $('#scrim');
+function openSheet(sel) { closeSheet(); const s = $(sel); s.classList.add('on'); s.setAttribute('aria-hidden', 'false'); scrim.classList.add('on'); }
+function closeSheet() { document.querySelectorAll('.sheet.on').forEach(s => { s.classList.remove('on'); s.setAttribute('aria-hidden', 'true'); }); scrim.classList.remove('on'); }
+$('#cardBtn').addEventListener('click', () => { $('#cardImg').src = `${API}/card.svg${S && !S.today ? `?day=${S.day}` : ''}`; openSheet('#cardSheet'); });
 scrim.addEventListener('click', closeSheet);
-sheet.addEventListener('click', e => { if (e.target.closest('[data-close]')) closeSheet(); });
+document.addEventListener('click', e => { if (e.target.closest('.sheet [data-close]')) closeSheet(); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSheet(); });
 $('#themeBtn').addEventListener('click', () => { const r = document.documentElement; const dark = r.dataset.theme ? r.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches; r.dataset.theme = dark ? 'light' : 'dark'; });
 
+/* ── the plates: every meal photographed or written, newest day first ── */
+let J = null;            // the journal as the server last sent it
+let jDel = null;
+const PEN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg>';
+const X = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+async function loadJournal(more) {
+  const before = more && J && J.days.length ? `?before=${J.days[J.days.length - 1].day}` : '';
+  try {
+    const r = await fetch(`${API}/api/journal${before}`);
+    if (!r.ok) throw new Error();
+    const j = await r.json();
+    if (more && J) { J.days.push(...j.days); J.more = j.more; } else J = j;
+  } catch { if (!J) $('#vPlates').innerHTML = '<div class="card">לא הצלחתי לטעון. נסו שוב עוד רגע.</div>'; else toast('אין חיבור. נסו שוב.'); return; }
+  renderPlates();
+}
+const dayLabel = d => d === J.today_day ? 'היום' : addDays(d, 1) === J.today_day ? 'אתמול' : null;
+const allMeals = () => J ? J.days.flatMap(d => d.meals) : [];
+function renderPlates() {
+  let h = `<div class="dayhead"><div class="daynav"><div><h1>הצלחות</h1><p>כל מה שצילמת או כתבת לעולמה, מהחדש לישן</p></div></div></div>`;
+  if (!J.days.length) h += `<div class="card"><div class="empty"><svg class="mark" viewBox="0 0 120 120" aria-hidden="true"><use href="#logo"/></svg><span>עוד אין כאן צלחות. שולחים לעולמה תמונה של מה שאכלת או שורה, והן יופיעו כאן.</span></div></div>`;
+  for (const d of J.days) {
+    const l = dayLabel(d.day);
+    h += `<section class="jday"><h2>${esc(l || d.date_he)}${l ? `<small>${esc(d.date_he)}</small>` : ''}</h2><div class="grid">${d.meals.map(tileHtml).join('')}</div></section>`;
+  }
+  if (J.more) h += `<div style="text-align:center"><button class="btn2" type="button" id="jMore">ימים קודמים</button></div>`;
+  $('#vPlates').innerHTML = h;
+}
+function tileHtml(m) {
+  const pic = m.photo ? `<img src="${API}/photo/${m.id}" alt="" loading="lazy" decoding="async">`
+    : `<span class="ph">${PEN}<span>${esc(m.rough ? 'נרשם בערך, בלי פירוט' : m.items.map(i => i.name).join(' · '))}</span></span>`;
+  const sub = [m.slot_he, m.time, J.numbers && !m.rough ? `${fmt(m.totals.kcal)} קק״ל` : null].filter(Boolean).join(' · ');
+  return `<button class="tile" type="button" data-jm="${m.id}" aria-label="${esc(m.title)}">${pic}<span class="cap"><b>${esc(m.title)}</b><small class="num">${esc(sub)}</small></span></button>`;
+}
+function mealSheet(id) {
+  const m = allMeals().find(x => x.id === id); if (!m) return;
+  const d = J.days.find(x => x.day === m.day);
+  const editable = m.day >= J.editable_from;
+  const items = m.rough ? '<p class="note">נרשם בערך, בלי פירוט.</p>' : `<div class="mitems">${m.items.map(it => `<div><b>${esc(it.name)}</b><span class="num">${J.numbers ? `${fmt(it.grams)} ג׳ · ${fmt(it.kcal)} קק״ל` : esc(GROUP[it.grp] || '')}</span></div>`).join('')}</div>`;
+  $('#mealSheet').innerHTML = `<div class="grab"></div>
+    <div class="sheethead"><div><b>${esc(m.title)}</b><span>${esc([dayLabel(m.day) || d.date_he, m.slot_he, m.time].join(' · '))}</span></div><button class="ibtn" type="button" data-close aria-label="סגירה">${X}</button></div>
+    <div class="sheetbody">
+      ${m.photo ? `<img src="${API}/photo/${m.id}" alt="התמונה ששלחת">` : ''}
+      ${items}
+      ${J.numbers && !m.rough ? `<p class="note num">ביחד ${fmt(m.totals.kcal)} קק״ל · חלבון ${fmt(m.totals.protein)} ג׳ · פחמימות ${fmt(m.totals.carbs)} ג׳ · שומן ${fmt(m.totals.fat)} ג׳</p>` : ''}
+      <div class="acts2">
+        <button class="btn2" type="button" data-jday="${m.day}">לפתוח את היום</button>
+        ${m.rough ? '' : `<button class="btn2 main" type="button" data-jrelog="${m.id}">לרשום שוב היום</button>`}
+        ${!editable ? '' : jDel === m.id ? `<span class="confirm">למחוק? <button class="btn2 yes" type="button" data-jdelyes="${m.id}">למחוק</button><button class="btn2" type="button" data-jdelno="${m.id}">לא</button></span>` : `<button class="btn2 del" type="button" data-jdel="${m.id}">למחוק</button>`}
+      </div>
+    </div>`;
+}
+$('#vPlates').addEventListener('click', e => {
+  const t = e.target.closest('button'); if (!t) return;
+  if (t.dataset.jm) { jDel = null; mealSheet(+t.dataset.jm); openSheet('#mealSheet'); }
+  if (t.id === 'jMore') loadJournal(true);
+});
+$('#mealSheet').addEventListener('click', async e => {
+  const t = e.target.closest('button'); if (!t) return;
+  if (t.dataset.jday) { closeSheet(); setTab('today'); return load(t.dataset.jday >= J.today_day ? null : t.dataset.jday); }
+  if (t.dataset.jrelog) { const r = await write('relog', { meal_id: +t.dataset.jrelog, date: J.today_day }); if (r) { toast(`נרשם להיום: ${r.meal.title}`); closeSheet(); loadJournal(); } return; }
+  if (t.dataset.jdel) { jDel = +t.dataset.jdel; return mealSheet(jDel); }
+  if (t.dataset.jdelno) { jDel = null; return mealSheet(+t.dataset.jdelno); }
+  if (t.dataset.jdelyes) { const id = +t.dataset.jdelyes; jDel = null; if (await write('meal_delete', { meal_id: id })) { toast('הארוחה נמחקה'); closeSheet(); loadJournal(); } }
+});
+
+/* ── chat: Olma, for food and water only. Code answers what has one shape;
+   a sentence about a meal goes to a small model, and the values come from
+   the same table as everywhere else. What was said lives on this device. ── */
+const CHAT_KEY = `food-chat-${TOKEN}`;
+const HELLO = 'היי, כאן רושמים אוכל ומים, כמו בוואטסאפ. למשל ״אכלתי חביתה משתי ביצים וסלט״ או ״כוס מים״. תמונה של צלחת שולחים לי בוואטסאפ.';
+const QR = ['כוס מים', 'מה נשאר לי היום?', 'תמחקי את האחרונה', 'עזרה'];
+let chatLog = [];
+try { chatLog = JSON.parse(localStorage.getItem(CHAT_KEY) || '[]'); if (!Array.isArray(chatLog)) chatLog = []; } catch { chatLog = []; }
+let sending = false;
+const saveChat = () => { try { localStorage.setItem(CHAT_KEY, JSON.stringify(chatLog.slice(-60))); } catch {} };
+function drawChat(typing) {
+  const shown = chatLog.length ? chatLog : [{ who: 'ol', t: HELLO }];
+  $('#msgs').innerHTML = shown.map(m => `<div class="b ${m.who === 'me' ? 'me' : 'ol'}">${esc(m.t)}</div>`).join('') + (typing ? '<div class="typing" aria-label="עולמה כותבת"><i></i><i></i><i></i></div>' : '');
+  $('#msgs').scrollTop = $('#msgs').scrollHeight;
+}
+$('#qr').innerHTML = QR.map(q => `<button class="chip" type="button" data-q="${esc(q)}">${esc(q)}</button>`).join('');
+async function sendChat(text) {
+  text = text.trim(); if (!text || sending) return;
+  sending = true; chatLog.push({ who: 'me', t: text }); saveChat(); drawChat(true);
+  let reply;
+  try {
+    const r = await fetch(`${API}/api/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) reply = ERR[j.error] || 'לא הצלחתי לענות. נסו שוב.';
+    else {
+      reply = j.reply;
+      if (j.state && day === null) { S = j.state; render(); }
+      if (J) { J = null; if (tab === 'plates') loadJournal(); }
+    }
+  } catch { reply = 'אין חיבור. נסו שוב.'; }
+  chatLog.push({ who: 'ol', t: reply }); saveChat(); sending = false; drawChat(false);
+}
+$('#chatBtn').addEventListener('click', () => { drawChat(sending); openSheet('#chatSheet'); });
+$('#composer').addEventListener('submit', e => { e.preventDefault(); const i = $('#msgIn'); const v = i.value; i.value = ''; sendChat(v); });
+$('#qr').addEventListener('click', e => { const b = e.target.closest('[data-q]'); if (b) sendChat(b.dataset.q); });
+
 // Olma may have logged something since the page opened: look again whenever
 // the page comes back into view, never on a timer.
-document.addEventListener('visibilitychange', () => { if (!document.hidden && S) load(day); });
+document.addEventListener('visibilitychange', () => { if (document.hidden || !S) return; load(day); if (J) loadJournal(); });
 
-if (!TOKEN) $('#main').innerHTML = '<div class="card">הקישור הזה לא מוביל לשום עמוד.</div>';
-else load(null);
+if (!TOKEN) dead();
+else { load(null); const h = location.hash.slice(1); if (h === 'plates' || h === 'week') setTab(h); }
 })();
 </script>
 <script>
