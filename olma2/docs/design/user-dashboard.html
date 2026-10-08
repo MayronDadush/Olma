@@ -1040,14 +1040,14 @@ html[data-served] .groupsblock:not(button){display:none}
    replaced was also a pill's — see .livepill. */
 html[data-served] .groupsblock.hasrooms{display:block}
 .langtog{
-  position:fixed;bottom:calc(env(safe-area-inset-bottom,0px) + 96px);inset-inline-start:14px;z-index:40;
+  position:fixed;bottom:max(130px,calc(env(safe-area-inset-bottom,0px) + 102px));inset-inline-start:14px;z-index:40;
   display:flex;padding:3px;border-radius:999px;background:var(--surface);
   box-shadow:var(--shadow-m);font-size:10.5px;font-weight:700;letter-spacing:.06em;
 }
 .langtog span{padding:4px 8px;border-radius:999px;color:var(--text-3);transition:background .22s var(--ease),color .22s var(--ease)}
 .langtog span.on{background:var(--accent);color:var(--on-accent)}
 .introtog{
-  position:fixed;bottom:calc(env(safe-area-inset-bottom,0px) + 96px);inset-inline-start:64px;z-index:40;
+  position:fixed;bottom:max(130px,calc(env(safe-area-inset-bottom,0px) + 102px));inset-inline-start:64px;z-index:40;
   width:26px;height:26px;border-radius:999px;background:var(--surface);
   box-shadow:var(--shadow-m);color:var(--text-3);font-size:14px;line-height:1;
   display:grid;place-items:center;
@@ -1276,13 +1276,13 @@ html.is-app .welcome .wcode-have{display:none}
   text-align:center;text-decoration:none;
 }
 .themetog{
-  position:fixed;bottom:calc(env(safe-area-inset-bottom,0px) + 96px);inset-inline-start:128px;z-index:80;
+  position:fixed;bottom:max(130px,calc(env(safe-area-inset-bottom,0px) + 102px));inset-inline-start:128px;z-index:80;
   width:26px;height:26px;border-radius:999px;background:var(--surface);
   box-shadow:var(--shadow-m);color:var(--text-3);font-size:13px;line-height:1;
   display:grid;place-items:center;
 }
 .newtog{
-  position:fixed;bottom:calc(env(safe-area-inset-bottom,0px) + 96px);inset-inline-start:96px;z-index:80;
+  position:fixed;bottom:max(130px,calc(env(safe-area-inset-bottom,0px) + 102px));inset-inline-start:96px;z-index:80;
   width:26px;height:26px;border-radius:999px;background:var(--surface);
   box-shadow:var(--shadow-m);color:var(--text-3);font-size:13px;line-height:1;
   display:grid;place-items:center;
@@ -3085,14 +3085,14 @@ button.srow:active{background:var(--bg-tint)}
 
 /* ─────────────────────────  tab bar  ───────────────────────── */
 .tabbar{
-  position:fixed;bottom:18px;inset-inline:0;margin-inline:auto;
+  position:fixed;bottom:max(44px,calc(env(safe-area-inset-bottom,0px) + 16px));inset-inline:0;margin-inline:auto;
   width:max-content;max-width:calc(100% - 24px);
   /* ~8% larger than it was first drawn: at 22px icons the bar read as a
      caption strip rather than as the app's main control. Every number in the
      bar moves together — icon, label, padding, radius and the pill's inset —
      because scaling one of them alone is what makes a control look stretched
      rather than bigger. */
-  display:flex;gap:2px;padding:7px;border-radius:26px;z-index:60;
+  display:flex;gap:2px;padding:8px;border-radius:28px;z-index:60;
   background:var(--bar);border:.5px solid var(--glass-line);
   /* Its own lens, not the shared one: LESS blur and MORE saturation than a
      card, which is what makes the bar answer to whatever scrolls under it —
@@ -3106,7 +3106,7 @@ button.srow:active{background:var(--bg-tint)}
    moved. Stretching it along its direction of travel and letting it settle
    is what makes it read as one liquid thing following your finger. */
 .tabpill{
-  position:absolute;top:7px;height:calc(100% - 14px);border-radius:19px;overflow:hidden;
+  position:absolute;top:8px;height:calc(100% - 16px);border-radius:20px;overflow:hidden;
   background:var(--accent-soft);z-index:0;
   box-shadow:0 2px 10px rgba(0,0,0,.10),var(--rim-soft);
   transform-origin:50% 50%;
@@ -3147,11 +3147,11 @@ button.srow:active{background:var(--bg-tint)}
 .tabpill.sweep::after{animation:lensSweep .3s var(--ease-io)}
 .tab{
   position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;gap:3px;
-  padding:9px 15px 8px;border-radius:19px;color:var(--text-3);min-width:67px;
+  padding:10px 16px 9px;border-radius:20px;color:var(--text-3);min-width:72px;
   transition:color .4s var(--ease-io),transform .38s var(--squash);
 }
-.tab svg{width:24px;height:24px}
-.tab span{font-size:11.5px;font-weight:600;letter-spacing:-.01em}
+.tab svg{width:26px;height:26px}
+.tab span{font-size:12.5px;font-weight:600;letter-spacing:-.01em}
 .tab[aria-selected="true"]{color:var(--accent)}
 .tab:active{transform:scale(.92)}
 .tab svg{transition:transform .38s var(--squash)}
@@ -3452,7 +3452,7 @@ button.srow:active{background:var(--bg-tint)}
    and leaves on the SAME clock as the switch — one movement vocabulary for
    the whole app instead of a spring here and an ease there. */
 .toast{
-  position:fixed;bottom:104px;inset-inline:0;margin-inline:auto;width:max-content;
+  position:fixed;bottom:140px;inset-inline:0;margin-inline:auto;width:max-content;
   max-width:calc(100% - 48px);z-index:90;
   padding:8px 15px;border-radius:999px;font-size:13px;font-weight:600;
   color:var(--text-2);background:var(--toast-bg);
@@ -3525,7 +3525,7 @@ button.srow:active{background:var(--bg-tint)}
      the theme icons shared this row, and a green dot with no words was the
      one thing in the header nobody could read (the owner, 2026-09-27). */
   .topbar{gap:8px}
-  .tab{min-width:0;padding:9px 11px 8px}
+  .tab{min-width:0;padding:10px 12px 9px}
   .field label{width:86px;font-size:15px}
 }
 @media (prefers-reduced-motion:reduce){
