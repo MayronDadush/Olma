@@ -243,6 +243,7 @@ Loads when you **Read** a file under `src/domain/reminders.js`, `src/domain/task
 - **A list is ONE row with its items under it, through every door, and is filed under `lists`** — `add_tasks_bulk`'s `list`, `looksLikeShoppingBulk`, "קניות - א, ב"; the open list is found by TITLE, never by category
 - **A task already OPEN on somebody's list is never saved a second time.**
 - **…and the same thing in OTHER words is a judgement, so it was measured before it was written** — and the extraction pass and the live tool take OPPOSITE answers from it
+- **A day said with no hour is the DAY, and 09:00 is the hour the model invents for it** — hook `namesNoHour` → `noHour`, `invented-hour.asDay`, exactly 09:00 local only
 - **A model asked to date something must first be told what time it is.**
 - **A title need not restate the hour the row now carries, but only the SERVER may take it out.**
 - **A day named with ל־ in a title dates the THING, not the task.**

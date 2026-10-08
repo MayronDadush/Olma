@@ -281,6 +281,7 @@ never trust a dated narrative for something you are about to act on.
 - [The rung nobody asked for, at half past one (2026-09-07)](#the-rung-nobody-asked-for-at-half-past-one-2026-09-07)
 - [Two ladders for one phone call (fixed 2026-09-08)](#two-ladders-for-one-phone-call-fixed-2026-09-08)
 - [The message id the model made up (2026-09-07)](#the-message-id-the-model-made-up-2026-09-07)
+- [Nine o'clock, which nobody said (2026-10-08)](#nine-oclock-which-nobody-said-2026-10-08)
 - [Ten groceries, ten tasks (2026-10-05)](#ten-groceries-ten-tasks-2026-10-05)
 - [Two asks, one task (2026-09-07)](#two-asks-one-task-2026-09-07)
 - [The same thing, saved twice (fixed 2026-09-08)](#the-same-thing-saved-twice-fixed-2026-09-08)
@@ -13150,6 +13151,40 @@ Fixture drift, worth knowing before the next such guard: twenty-three tests in
 four files broke, and every one of them was a test giving the same person two
 open tasks with the same title — two shared helpers (`mkTask`, `taskWithReminder`)
 accounted for all but four. None of them were about titles.
+
+### Nine o'clock, which nobody said (2026-10-08)
+
+Dov dictated a long evening of things for "מחר" and named an hour for none of
+them. Every one came back on his page, his digest and his lists as "09:00"
+(owner, 2026-10-05). The reminder was right either way — a day-shaped task and
+a 09:00 one are both reminded at 08:00 — but the hour on the row was one the
+model wrote, not one he said.
+
+The model has no way to write "a day" except local midnight, and it does not
+reach for it: of 68 chat-dated tasks in thirty days, none sat at midnight.
+Asked for "tomorrow" it writes tomorrow at 09:00 — 35 tasks across 5 people in
+the same window, 16 of them Dov's from that one evening.
+
+Measured on the box before writing anything (counts only, every transcript
+event per agent — `readRecentMessages` alone matched 1 of 32, because sessions
+reset daily): of 32 tasks saved at 09:00 from chat or a dump in thirty days,
+the message behind 13 named no hour; 19 did (12 a digit, 4 a part of the day,
+3 another time word), and two messages that really said nine are kept. One of
+the 13 followed an Olma message that itself named a nine — a "כן" to an
+offered hour is the case this cannot see, and the reason it acts only on
+09:00. 18 of 57 tasks at OTHER hours came from messages with no hour too: the
+hour came from the conversation, so any hour but the invented one stands.
+
+The fix is the turn-open pattern again. The hook's `namesNoHour` reads the
+message (a digit, an hour word, a part of the day, a span, "now", before/after,
+in Hebrew and English — the quoted reply is NOT stripped, so a quote naming an
+hour keeps it) and sends a boolean; brokerd stamps it on the open, not spent,
+fifteen minutes; `add_task` and `add_tasks_bulk` move a due moment at exactly
+09:00:00 in THEIR zone to that day's midnight (`domain/invented-hour.asDay`),
+never one with `ends_at` and never under a heard chase. The result carries
+`hints.dayOnly`, conditional like every hint beside `markPlaced`. Coverage is
+about 40% of the 09:00 rows; mixed dumps and dayparts are left alone on
+purpose. Inert until the gateway restarts, like every hook change.
 
 ### Ten groceries, ten tasks (2026-10-05)
 
