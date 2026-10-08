@@ -74,6 +74,7 @@ never trust a dated narrative for something you are about to act on.
 - [The slot that was already closed (fixed 2026-09-20)](#the-slot-that-was-already-closed-fixed-2026-09-20)
 - [The night that had already settled (fixed 2026-10-03)](#the-night-that-had-already-settled-fixed-2026-10-03)
 - [Introduced twice, by the invite and the greeter (fixed 2026-10-01)](#introduced-twice-by-the-invite-and-the-greeter-fixed-2026-10-01)
+- [Two introductions in a minute (fixed 2026-10-08)](#two-introductions-in-a-minute-fixed-2026-10-08)
 - [The fixed line that never went (fixed 2026-10-03)](#the-fixed-line-that-never-went-fixed-2026-10-03)
 - [The poker count was the people asked (fixed 2026-10-01)](#the-poker-count-was-the-people-asked-fixed-2026-10-01)
 - [The room was told it was four (fixed 2026-10-05)](#the-room-was-told-it-was-four-fixed-2026-10-05)
@@ -1968,6 +1969,47 @@ down; the audit row carries fingerprints, which is what `token-leak.js`
 compares on anyway. (`domain/identity-repair.js`, `rotateIdentityToken`.)
 
 ## Delivery, outbox and proactive messages
+
+### Two introductions in a minute (fixed 2026-10-08)
+
+A new person (u-69) wrote to Olma for the first time on 2026-10-08. The
+greeter answered with the owner's opening, and a few minutes later their own
+agent's `welcome_followup` arrived: a second long message that restated the
+greeter's introduction in other words and ended with the link to their page.
+The owner saw both and said the first one was enough.
+
+The follow-up had two jobs when it was built (2026-09-25): act on what they
+wrote to the greeter, which has no tools, and hand over their page, which
+could not exist while the greeter spoke. When what they wrote held nothing to
+act on, the page was the whole message — and a model asked to write "one short
+message" around a bare link padded it with the only content in front of it,
+the introduction it had been told not to repeat. The fence around the
+greeter's reply did not stop it; there was nothing else to say.
+
+The owner's decision removed the cause rather than the padding: **no page
+link at the start of somebody's life with Olma** ("הרבה מאוד אנשים נוח להם
+להפעיל את זה רק בוואטסאפ"). The follow-up no longer carries it, the first
+turn no longer hands it over (`firstTurnPageLink` is gone), and the
+welcome clip's caption is the fixed line alone. Without the link, the
+follow-up is queued only when it has something to do — a room's or a game
+night's short opening that never said what Olma is, or words left with the
+greeter (`users.intake_note_at`) — and the default branch tells the model
+that a note with nothing to act on is answered with exactly `NO_REPLY`. The
+page is offered later, by the task count below, and whenever they ask for it.
+
+The owner then took the day-one 22h step out too ("היא גם נחשבת התחלה") —
+until now it was skipped for most people because the welcome had already
+minted their link, and without that it would have reached everyone. Their
+page is now a discovery gap of the ordinary ladder (`dashboard`, once ever),
+offered when they hold three open tasks (`DASHBOARD_MIN_TASKS`, owner: "ברגע
+שיש למשתמש לפחות 2 3 משימות") and never to somebody who already has a link
+to their own page.
+
+What is left to the model: a note that exists but asks for nothing ("מה את
+יודעת לעשות?", already answered by the greeter) still queues the follow-up,
+and it is the model that decides to stay silent. The carryover guard drops
+a bare "היי" before it becomes a note, so the commonest case never reaches
+it.
 
 ### בחוץ (fixed 2026-10-01)
 

@@ -360,7 +360,7 @@ Loads when you **Read** a file under `src/intake/agents-template.md`, `src/intak
 - **Telling the model to call a tool is not telling it what the reader of that tool's write actually checks.**
 - **A fixture that writes the state by hand cannot notice the state is only ever reached the other way.**
 - **The owner's opening copy is said ONCE, by whichever voice reaches the person first.**
-- **A first message is not a hello, and the newest arrivals prove it.** …and carrying their words into USER.md is only half of it: the first-turn instruction has to SAY they are unanswered (`users.intake_note_at`) — and since 2026-09-25 their own agent answers them unasked, seconds after the greeter, with their page (`welcome_followup`)
+- **A first message is not a hello, and the newest arrivals prove it.** …and carrying their words into USER.md is only half of it: the first-turn instruction has to SAY they are unanswered (`users.intake_note_at`) — and since 2026-09-25 their own agent answers them unasked, seconds after the greeter (`welcome_followup`) — with no page since 2026-10-08, and not at all when there is nothing to act on
 - **`gmail.readonly` is a RESTRICTED scope and everything else Olma asks for is merely SENSITIVE — the two words are different verification tracks, and one restricted scope prices the whole app onto the paid one** — and since 2026-09-30 the mailbox connection is REMOVED, not closed: no domain, no watch, no USER.md line, no /me switch (migration 103)
 - **Every NEW Google consent link goes through one door, and it is CLOSED**
 - **A display name is not a word to be translated.**
