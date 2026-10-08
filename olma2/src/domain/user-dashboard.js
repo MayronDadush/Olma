@@ -456,6 +456,21 @@ async function loadContacts(client, userId) {
   }));
 }
 
+// The address book on its own, for the one sheet that shows it.
+//
+// It used to ride every `load`, and for somebody with Google contacts
+// connected it was most of the payload: 2,848 rows and 217KB of the owner's
+// 318KB, measured on the box on 2026-10-08 — re-sent on every open, every
+// re-read after a write, the once-a-minute "anything new" check and the
+// eight-second poll under an open coordination sheet. Everybody else's page
+// was 9-34KB. The page now asks for it when "add a friend" opens, which is
+// also the moment the already-connected filter above is worth re-running.
+async function contactsPage(client, userId) {
+  const user = await loadUser(client, userId);
+  if (!user) return err('not_found', 'no such user');
+  return ok({ contacts: await loadContacts(client, userId) });
+}
+
 // Where Olma can actually reach this person. One WhatsApp row each today, and
 // the schema has always allowed a second identity to join the same user — so
 // this is a LIST, and the page draws its choices from it rather than from a
@@ -823,7 +838,6 @@ async function load(client, userId) {
   const callAllowed = await voice.pageCallAllowed(client, gateUser);
   const callAttempts = callAllowed ? await voice.attemptsRemaining(client, gateUser.id) : null;
   const channels = await loadChannels(client, userId);
-  const contacts = await loadContacts(client, userId);
   const groups = await loadGroups(client, userId);
   const meetings = await loadMeetings(client, userId, zone, user.locale);
   const liveSuggestions = await suggestions.liveFor(client, userId);
@@ -870,10 +884,14 @@ async function load(client, userId) {
     facts: knownFacts,
     factPrompts: prompts,
     channels,
-    contacts,
+    // No `contacts` here since 2026-10-08 — see contactsPage below.
     groups,
     tasks: tasks.open,
-    archived: tasks.archived,
+    // The archive draws a title and a "when" and nothing else (hydrate in
+    // docs/design/user-dashboard.html reads id, title and completedAt), so
+    // only those travel. The full rows — items, reminders, faces — were 63KB
+    // of the owner's every read on 2026-10-08, for a list that shows eight.
+    archived: tasks.archived.map((t) => ({ id: t.id, title: t.title, completedAt: t.completedAt })),
     // One concrete proposal about their own list, or null — and null is the
     // usual answer. The page renders nothing at all for null, which is the
     // owner's rule for this feature: no filler, no forced suggestion. Read
@@ -932,4 +950,4 @@ async function inviteCard(client, user) {
   return invite;
 }
 
-module.exports = { load, SOURCE_CAPS, KNOWN_CATEGORIES, goodMoment, MOMENT_HOURS };
+module.exports = { load, contactsPage, SOURCE_CAPS, KNOWN_CATEGORIES, goodMoment, MOMENT_HOURS };

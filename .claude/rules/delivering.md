@@ -653,13 +653,46 @@ title means this file. Grep the title, not the filename.
   instead of the order to draw, and `render_schedule_card` refuses — and never
   a person who asked. `incidents.md`, "A morning that said "here is the
   picture" and had none".
-  **The card's LAYOUT is code's too, and past 36 items the morning is a
+  **The card's LAYOUT is code's too, and past 25 items the morning is a
   SUMMARY** (owner, 2026-10-06). `digest-card.cardFor` builds the sections:
   - calendar first, then "דחוף" (overdue, or marked in the title), then what
     has a date, then the undated by category;
   - one heading per category, and an overflow continues under "(המשך)".
 
   `get_my_digest` hands them over as `cardArgs`, to be passed through
-  unchanged. `digest-card.summarize` keeps the most pressing items, at most 15
-  and at least 8, and the card and the block both say how many more are open.
+  unchanged. `digest-card.summarize` keeps the most pressing items, filled up to
+  25 (`SUMMARY_MAX`/`SUMMARY_MIN`; the card's own ceiling is
+  `schedule-card.LIMITS.totalItems`, 25), and the card and the block both say how many more are open.
   `incidents.md`, "She wrote twice and stayed paused".
+  New people start on `digest_scope` `full` (migration 113), and
+  `set_digest_preferences` tells the model to leave `scope` out: a model that
+  filled it in wrote `summary` over a `full` the owner had just set (u-30).
+
+- **A notification to the installed app REPLACES the WhatsApp message, never
+  joins it, and only when five things hold** (owner, 2026-10-08;
+  `domain/push.js`, `outbox/worker.js`, migration 117). Most people have no
+  app, so the one failure this must never have is a message taken from
+  somebody who will not see it (owner: "שלא בטעות אנשים לא יקבלו התראות על
+  דברים"). A `meeting_*` row goes as a notification only when: the
+  `push_delivery_phones` flag covers them (off by default); they turned it on
+  themselves, from the installed app; the app confirmed that subscription
+  within `push.LIVE_DAYS` (14) — `last_seen_at` is stamped by an app OPEN,
+  never by a send, because a push service accepting proves only that the
+  address exists; the kind is one the page answers whole (`push.templateFor`);
+  and a push service accepted it. **Any refusal is a WhatsApp send in the same
+  tick**, a 404/410 retires the subscription, and the gate still decides WHEN —
+  only HOW changes. `templateFor` keeps on WhatsApp everything the turn DOES or
+  SAYS that a fixed line cannot: a confirmation that makes or offers a
+  calendar event (only an `invitee` is pushed), a cancellation offering
+  cleanup, a reopening, the exact-hour question, a time that fits what they
+  said, a reason, a time taken off the table, the paused notice and the zone
+  question — and a merge or a batch. When unsure, the answer is WhatsApp. The
+  words are templates (`push_meeting_*`, both languages), the slot keeps the
+  proposer's words with `freshDayWords` and the reader's own clock beside it.
+  **The app's three calls (`pushSubscribe`/`pushSeen`/`pushOff`) never go
+  through `user-dashboard-write.perform`** — that stamps a page write as the
+  person answering and audits its payload, and an endpoint is an address that
+  can be written to. A page the owner opened from the admin side is offered no
+  switch and refused all three, or his phone would carry somebody else's
+  coordinations. The endpoint is checked against a closed list of push
+  services before the server ever POSTs to it.

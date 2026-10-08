@@ -246,6 +246,42 @@ function checkReplyGateLive({ registerStampPath, readFileSync = fs.readFileSync 
   };
 }
 
+// The WhatsApp plugin is patched in place so a CIPHERTEXT stub cannot swallow
+// the real message that follows it under the same id
+// (intake/whatsapp-stub-patch.js). The patch lives in the installed package,
+// so any plugin update takes it out without a word — this is the word.
+// Dashboard row, never BREAKS_USERS: nobody's tools fail, a first message that
+// arrives undecryptable is lost again, and stranger_greet still answers them.
+// No plugin directory, or a bundle the patch was not written against, is
+// reported on the heartbeat: unreadable is not broken, and an unknown bundle
+// is a question for a person, not an alarm. The marker on disk says what the
+// NEXT gateway start loads; a patch applied without a restart reads as live.
+function checkWhatsAppStubPatch(deps = {}) {
+  const stubPatch = require('../intake/whatsapp-stub-patch');
+  const home = deps.openclawHome || process.env.OLMA_OPENCLAW_HOME || '/root/.openclaw';
+  const readFileSync = deps.readFileSync || fs.readFileSync;
+  const files = (deps.findMonitorFiles || stubPatch.findMonitorFiles)(home);
+  if (files === null) return { violations: [], skipped: 'whatsapp plugin directory unreadable' };
+  if (!files.length) return { violations: [], skipped: 'no whatsapp plugin monitor found' };
+  const unpatched = [];
+  const unknown = [];
+  for (const file of files) {
+    let src;
+    try { src = String(readFileSync(file, 'utf8')); } catch { unknown.push(path.basename(file)); continue; }
+    const { state } = stubPatch.patchSource(src);
+    if (state === 'unpatched') unpatched.push(path.basename(file));
+    else if (state === 'unknown') unknown.push(path.basename(file));
+  }
+  return {
+    violations: unpatched.length
+      ? [`the WhatsApp plugin is not patched for undecryptable first messages (${unpatched.sort().join(', ')}) — `
+        + `a stub can make the real message a duplicate and drop it, as after a plugin update `
+        + `(fix: node scripts/patch-whatsapp-stub.js --apply, then restart the gateway)`]
+      : [],
+    skipped: unknown.length ? `whatsapp plugin bundle not recognised: ${unknown.sort().join(', ')}` : null,
+  };
+}
+
 async function checkIdentityFiles(client) {
   const { rows } = await client.query(
     `SELECT id, phone, workspace_path, identity_token FROM users
@@ -743,6 +779,12 @@ async function checkUnansweredStrangers(client, deps = {}) {
   const { rows } = await client.query(
     "SELECT phone FROM users WHERE phone IS NOT NULL AND status <> 'pending'");
   const known = new Set(rows.map((r) => String(r.phone).replace(/^\+/, '')));
+  // Somebody `stranger_greet` has already answered is no longer waiting on
+  // anybody: the next move is theirs, and their reply opens a session. A
+  // FAILED greeting is not here, so they stay reported.
+  const greeted = await client.query(
+    "SELECT phone FROM stranger_greetings WHERE result IN ('sent', 'timed_out')");
+  for (const r of greeted.rows) known.add(String(r.phone).replace(/^\+/, ''));
 
   const violations = [];
   for (const p of settled) {
@@ -1217,6 +1259,8 @@ async function run(client, { configPath, ...deps } = {}) {
   violations = violations.concat(await checkLeakedTokens(client, deps));
   const gate = checkReplyGateLive(deps);
   violations = violations.concat(gate.violations);
+  const stub = checkWhatsAppStubPatch(deps);
+  violations = violations.concat(stub.violations);
   const filed = await fileViolations(client, violations);
   const closed = await closeResolved(client, violations);
   // Filing first, alerting second: the dashboard row is the durable record
@@ -1236,6 +1280,9 @@ async function run(client, { configPath, ...deps } = {}) {
     // box that has not restarted since the stamp existed has none. Silence
     // here would read exactly like "the gate is live".
     ...(gate.skipped ? { replyGateCheck: gate.skipped } : {}),
+    // And again: a plugin directory or bundle this check cannot read is not
+    // a patched one.
+    ...(stub.skipped ? { whatsappStubCheck: stub.skipped } : {}),
     // Always present when it ran, so the doctrine's headroom is a number an
     // operator watches shrink rather than a thing they hear about once it is
     // already gone.
@@ -1257,5 +1304,6 @@ module.exports = {
   GATEWAY_DEFAULT_BOOTSTRAP_MAX_CHARS, BOOTSTRAP_WARN_MARGIN,
   checkLeakedTokens, fileViolations, closeResolved,
   checkReplyGateLive, REGISTER_STAMP, GATE_HOOK,
+  checkWhatsAppStubPatch,
   alertCritical, breaksUsers, leaksCredential, ALERTED_FLAG, LEAK_FLAG,
 };

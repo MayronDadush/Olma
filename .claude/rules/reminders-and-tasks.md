@@ -86,6 +86,16 @@ title means this file. Grep the title, not the filename.
   draws; one or two together are still followed up. Stamped only on a sent
   or timed-out send, never on a failure.
 
+- **…and a follow-up rung is not sent behind a digest that already LISTED the
+  task.** Yahav (2026-10-06): the 10:00 digest named "לבטל את האשראי" and the
+  automatic rung 2 went out 59 seconds later. `sweepReminders` retires the
+  ladder instead (`reminders.coveredByDigest`, audit
+  `reminder.covered_by_digest`) when a digest that REACHED them
+  (`hold_reason` NULL) after rung 1 — every scheduled digest carries every open
+  task since 2026-10-06, so reaching them is naming it. Only an
+  automatic one-off ladder: a nudge, an explicit reminder and a repeat keep
+  theirs.
+
 - **"להפסיק להזכיר" is a WRITE, not a question.** מאיה asked twice over — once
   for one reminder at 09:00, and once for it to stop — and got six messages and
   a multiple-choice question ("מה להפסיק? 1. … 2. … 3. …") with nothing
@@ -204,9 +214,23 @@ title means this file. Grep the title, not the filename.
     connection resumed the errand on BOTH sides. In the same instant, each
     would read the other's row as absent. With the lock line disabled, the race
     test opened two coordinations in 3 of 3 runs.
-  - The page's start button and a room's coordination do not come through the
-    tool, on purpose. A tap on "new" has already answered the question.
-  - `incidents.md`, "Two coordinations for one meeting".
+  - The page's start button does not come through the tool, on purpose. A tap
+    on "new" has already answered the question.
+  - **Since 2026-10-05 the check crosses the line between a room and a chat, in
+    both directions** — the poker room's coordination and a private "פוקר" to
+    the same twelve people opened two and a half minutes apart, and everybody
+    was invited twice. `start_group_coordination` asks
+    `meetings.privateOpenLikeRoom` and `start_meeting_coordination` also asks
+    `meetings.roomOpenLikePrivate`; both answer `already_open` and the room
+    tool takes `separate` too. Across the line the match is NEARLY, never
+    exact (`meetings.nearlySamePeople`): everybody in the private one is in the
+    room's set, and the room's set is at most a quarter bigger, never less
+    than one. Private against private stays exact. No age window:
+    `negotiating` is already the recency. The room only counts a private one
+    the ASKER is in, and hears its title and opener's tag, never its times or
+    answers. No lock spans the two doors.
+  - `incidents.md`, "Two coordinations for one meeting" and "Two invites for one
+    poker night".
 
 - **In the private chat AND the room, a time CLOSE to one already on the
   table is a question before it is a second option** (owner, 2026-10-05).
@@ -220,8 +244,14 @@ title means this file. Grep the title, not the filename.
       moves across (`meeting-options.merge`). Whoever answered is told, not
       asked again (`meeting_answer_moved`).
     - `merge_with=0`: a separate time with new answers.
+  - A decline's COUNTER is a new time too, and asks the same question
+    (`respond_to_meeting_slot` `merge_with`, 2026-10-07) before the decline is
+    written. Merged, the no lands on the time they declined, resolved before
+    the merge — after it, a bare decline would fall on the counter itself
+    (`meetings.declineAndMerge`).
   - Never chosen for them. In a room, `similar` carries the times only, never
-    whose answer is whose. The page does not ask.
+    whose answer is whose. The page does not ask (the owner's call, confirmed
+    2026-10-07).
   - `incidents.md`, "Two times for one game".
 
 - **A constraint that rules out a time ON the table is an ANSWER, and the tool

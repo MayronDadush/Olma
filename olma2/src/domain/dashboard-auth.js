@@ -97,7 +97,11 @@ async function inMeeting(client, userId, meetingId) {
 // Returns the RAW token exactly once; nothing can read it back afterwards.
 // `target` is where the link lands; a meeting target needs `meetingId`, and
 // the caller has already checked the person is in it (createLinkUrl does).
-async function createLink(client, userId, { target = 'home', meetingId = null } = {}) {
+//
+// `byAdmin` marks a link the owner minted from the admin user page to open
+// the page himself (migration 112). The session it becomes carries the same
+// mark, so his visits are never counted as the person's (dashboard-opens.js).
+async function createLink(client, userId, { target = 'home', meetingId = null, byAdmin = false } = {}) {
   if (!TARGETS.has(target)) return err('invalid', `target must be one of ${[...TARGETS].join('|')}`);
   if (target === 'meeting' && !meetingId) return err('invalid', 'a meeting link needs a meeting');
   const { rows } = await client.query(
@@ -117,9 +121,9 @@ async function createLink(client, userId, { target = 'home', meetingId = null } 
         OFFSET $2)`,
     [userId, MAX_LIVE_LINKS - 1]);
   await client.query(
-    `INSERT INTO magic_links (token_hash, user_id, expires_at, target, meeting_id)
-     VALUES ($1, $2, now() + ($3 || ' minutes')::interval, $4, $5)`,
-    [hash(token), userId, String(LINK_TTL_MINUTES), target, target === 'meeting' ? Number(meetingId) : null]
+    `INSERT INTO magic_links (token_hash, user_id, expires_at, target, meeting_id, by_admin)
+     VALUES ($1, $2, now() + ($3 || ' minutes')::interval, $4, $5, $6)`,
+    [hash(token), userId, String(LINK_TTL_MINUTES), target, target === 'meeting' ? Number(meetingId) : null, Boolean(byAdmin)]
   );
   return ok({ token, expiresInMinutes: LINK_TTL_MINUTES, target });
 }
@@ -165,7 +169,7 @@ async function redeemLink(client, token) {
   const { rows } = await client.query(
     `UPDATE magic_links SET used_at = now()
       WHERE token_hash = $1 AND used_at IS NULL AND expires_at > now() AND target <> 'code'
-      RETURNING user_id, target, meeting_id`,
+      RETURNING user_id, target, meeting_id, by_admin`,
     [hash(token)]
   );
   if (!rows[0]) return err('not_found', 'link is spent, expired, or unknown');
@@ -180,8 +184,9 @@ async function redeemLink(client, token) {
   if (!live.rows[0]) return err('forbidden', 'this account cannot open the dashboard');
   const sid = mint();
   await client.query(
-    `INSERT INTO dashboard_sessions (id, user_id) VALUES ($1, $2)`, [hash(sid), userId]);
-  return ok({ sessionId: sid, userId, ...(await landing(client, rows[0])) });
+    `INSERT INTO dashboard_sessions (id, user_id, by_admin) VALUES ($1, $2, $3)`,
+    [hash(sid), userId, Boolean(rows[0].by_admin)]);
+  return ok({ sessionId: sid, userId, byAdmin: Boolean(rows[0].by_admin), ...(await landing(client, rows[0])) });
 }
 
 // ---- codes -----------------------------------------------------------------
@@ -272,11 +277,11 @@ async function resolveSession(client, sid) {
         AND s.last_seen_at > now() - ($2 || ' days')::interval
         AND s.created_at   > now() - ($3 || ' days')::interval
         AND u.status = 'active' AND u.is_eval = false
-      RETURNING s.user_id, u.locale`,
+      RETURNING s.user_id, u.locale, s.by_admin`,
     [hash(sid), String(SESSION_IDLE_DAYS), String(SESSION_MAX_DAYS)]
   );
   if (!rows[0]) return err('not_found', 'no session');
-  return ok({ userId: rows[0].user_id, locale: rows[0].locale });
+  return ok({ userId: rows[0].user_id, locale: rows[0].locale, byAdmin: Boolean(rows[0].by_admin) });
 }
 
 async function endSession(client, sid) {
@@ -298,10 +303,10 @@ async function endAllSessions(client, userId) {
 // on 2026-09-04 and only wired in on 2026-10-03, so for a month nothing ran it.
 //
 // A spent or expired link is kept a WEEK, not a day, because it is still read:
-// the day-one 22h check-in (jobs/checkin.js) asks "has this person ever had a
-// link?" between their 22nd and 26th hour. A link they opened in their first
-// hour would be gone by then under a one-day grace, and the person who already
-// has their page would be pitched it again.
+// the check-in ladder's `dashboard` offer (jobs/checkin.js) asks "has this
+// person ever had a link to their page?". It is offered once ever either way
+// (the discovery topic), so a purged link costs at most an offer that would
+// otherwise have been skipped.
 async function purgeExpired(client) {
   const links = await client.query(
     `DELETE FROM magic_links WHERE expires_at < now() - interval '7 days' OR used_at < now() - interval '7 days'`);
@@ -347,12 +352,12 @@ function readCookie(header) {
 // it came to be minted — an invite, the start of one, or the person asking —
 // so it writes the same audit row offerDashboardOnce reads. Offering it again
 // two options later would be the same link twice.
-async function createLinkUrl(client, userId, { meetingId, view } = {}) {
+async function createLinkUrl(client, userId, { meetingId, view, byAdmin = false } = {}) {
   let target = view === 'tasks' ? 'tasks' : 'home';
   const mid = Number(meetingId);
   const named = await inMeeting(client, userId, mid);
   if (named) target = 'meeting';
-  const made = await createLink(client, userId, { target, meetingId: named ? mid : null });
+  const made = await createLink(client, userId, { target, meetingId: named ? mid : null, byAdmin });
   if (!made.ok) return made;
   if (named) {
     const seen = await client.query(

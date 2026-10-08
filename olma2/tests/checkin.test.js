@@ -120,7 +120,7 @@ test('checkin cadence: fast for new users, slower once settled, backs off when i
   assert.equal(h(requiredGapMs(30, 2)), 24 * 7, 'weekly regardless of age');
 });
 
-test('day one ladder: 15m / 2h / 5h / 8h / 22h, and steps expire instead of piling up', async () => {
+test('day one ladder: 15m / 2h / 5h / 8h, and steps expire instead of piling up', async () => {
   const checkin = require('../src/jobs/checkin');
   const { onboardingStepDue, DEAF_SILENT_SLOTS } = checkin;
   const MIN = 60_000, H = 3600_000;
@@ -129,26 +129,27 @@ test('day one ladder: 15m / 2h / 5h / 8h / 22h, and steps expire instead of pili
   assert.equal(onboardingStepDue(16 * MIN, 0).slot, '15m');
   assert.equal(onboardingStepDue(2.5 * H, 0).slot, '2h');
   assert.equal(onboardingStepDue(6 * H, 0).slot, '5h');
-  // The two link rungs, added 2026-09-04: the calendar offer, then their own
-  // dashboard. Late on purpose — a link in hour one asks them to leave before
-  // anything here has proved useful.
+  // The calendar offer, late on purpose — a link in hour one asks them to
+  // leave before anything here has proved useful. Their page was a 22h step
+  // until 2026-10-08; it now waits for their tasks (the `dashboard` gap).
   assert.equal(onboardingStepDue(9 * H, 0).slot, '8h');
   // only the latest due step, so a gap in the sweep never replays old ones
-  assert.equal(onboardingStepDue(23 * H, 0).slot, '22h');
+  assert.equal(onboardingStepDue(23 * H, 0).slot, '8h');
   assert.equal(onboardingStepDue(25 * H, 0), null, 'day one is over');
   // present, not deaf: deafness now means DELIVERED-and-ignored (a boolean
   // the caller derives from the outbox), never a counter that ghost-expired
   // messages inflated.
   assert.equal(onboardingStepDue(6 * H, true), null);
   assert.equal(onboardingStepDue(6 * H, false).slot, '5h');
-  // Both link rungs ask the person to go and DO something, so neither is sent
+  // The link rung asks the person to go and DO something, so it is not sent
   // to somebody who has never once answered.
   assert.equal(onboardingStepDue(9 * H, true), null);
   assert.equal(onboardingStepDue(23 * H, true), null);
   // ...while the first two fire regardless — that is the point of the ladder.
   assert.equal(onboardingStepDue(16 * MIN, true).slot, '15m');
   assert.equal(onboardingStepDue(2.5 * H, true).slot, '2h');
-  assert.deepEqual([...DEAF_SILENT_SLOTS].sort(), ['22h', '5h', '8h']);
+  assert.deepEqual([...DEAF_SILENT_SLOTS].sort(), ['5h', '8h']);
+  assert.equal(checkin.ONBOARDING_STEPS.find((s) => s.slot === '22h'), undefined, 'no page at the start');
 });
 
 // Both link rungs are for something the person does not yet have. A step whose
@@ -265,16 +266,34 @@ test('the ongoing calendar pitch goes quiet while connecting is off', async () =
   } finally { c.release(); }
 });
 
-test('day one: the dashboard rung is skipped if they already have a link', async () => {
+// Owner, 2026-10-08: their page is not part of the start — it is offered
+// once they hold enough tasks for it to show something, and only once.
+test('their page is offered at three open tasks, not before, and not to somebody who has it', async () => {
   const checkin = require('../src/jobs/checkin');
   const dashboardAuth = require('../src/domain/dashboard-auth');
-  const step = checkin.ONBOARDING_STEPS.find((s) => s.slot === '22h');
   const u = await makeUser(db.pool, '+972615000089', { firstName: 'Adi' });
+  const has = async () => (await withTx(db.pool, (c) => checkin.discoveryGaps(c, u.id)))
+    .some((g) => g.topic === 'dashboard');
+  const addTask = (t) => db.pool.query(`INSERT INTO tasks (owner_id, title) VALUES ($1, $2)`, [u.id, t]);
+  await addTask('א'); await addTask('ב');
+  assert.equal(await has(), false, 'two is not yet');
+  await addTask('ג');
+  assert.equal(await has(), true, 'three is');
+  const gap = (await withTx(db.pool, (c) => checkin.discoveryGaps(c, u.id))).find((g) => g.topic === 'dashboard');
+  assert.match(gap.instruction, /open_my_dashboard/);
+  assert.match(gap.instruction, /3 open tasks/);
+
   const client = await db.pool.connect();
   try {
-    assert.equal(await step.skipIf(client, u), false);
+    // The owner opening it from the admin page is not them having it, and
+    // neither is a coordination's page.
+    await dashboardAuth.createLinkUrl(client, u.id, { byAdmin: true });
+    assert.equal(await has(), true);
+    await client.query(
+      `INSERT INTO magic_links (token_hash, user_id, expires_at, target) VALUES ('m1', $1, now() + interval '1 day', 'meeting')`, [u.id]);
+    assert.equal(await has(), true, 'a coordination page is not their list');
     await dashboardAuth.createLinkUrl(client, u.id);
-    assert.equal(await step.skipIf(client, u), true, 'a second link is noise, not news');
+    assert.equal(await has(), false, 'a second link to their page is noise, not news');
   } finally { client.release(); }
 });
 
@@ -303,6 +322,34 @@ test('day one ladder enqueues one step at a time, each with its own expiry', asy
   await withTx(db.pool, (c) => checkin.run(c, Date.now()));
   const again = await db.pool.query(`SELECT count(*)::int n FROM outbox WHERE user_id = $1`, [fresh.id]);
   assert.equal(again.rows[0].n, 1);
+});
+
+// Owner, 2026-10-08: the intro clip a few minutes after the opening takes the
+// 15m step's place ("הסרטון במקומה") — silently, never handed to the ladder —
+// and a clip the gate dropped leaves the step to go as before.
+test('day one: a joiner\'s intro clip takes the 15m step\'s place', async () => {
+  const mk = async (phone) => {
+    const u = await makeUser(db.pool, phone, { firstName: 'Clip' });
+    await db.pool.query(
+      `UPDATE users SET agent_id = 'u-' || id, onboarded_at = now() - interval '20 minutes' WHERE id = $1`, [u.id]);
+    return u;
+  };
+  const clipped = await mk('+972615077301');
+  await db.pool.query(
+    `INSERT INTO outbox (user_id, kind, payload, urgency, idempotency_key, sent_at)
+     VALUES ($1::bigint, 'intro_video', '{"video":"v2","joiner":true}', 'urgent', 'intro_video:v2:' || $1::text, now())`, [clipped.id]);
+  const dropped = await mk('+972615077302');
+  await db.pool.query(
+    `INSERT INTO outbox (user_id, kind, payload, urgency, idempotency_key, sent_at, hold_reason)
+     VALUES ($1::bigint, 'intro_video', '{"video":"v2"}', 'urgent', 'intro_video:v2:' || $1::text, now(), 'paused')`, [dropped.id]);
+
+  const out = await withTx(db.pool, (c) => checkin.run(c, Date.now()));
+  assert.equal(out.filter((r) => r.userId === clipped.id).length, 0, 'the clip was the 15m message');
+  const { rows } = await db.pool.query(
+    `SELECT count(*)::int n FROM outbox WHERE user_id = $1 AND kind = 'checkin'`, [clipped.id]);
+  assert.equal(rows[0].n, 0, 'and its slot was not handed to the ordinary ladder');
+  assert.deepEqual(out.filter((r) => r.userId === dropped.id).map((r) => r.rung), ['onboarding_15m'],
+    'a clip that never reached them leaves the step');
 });
 
 test('a stuck-meeting nudge carries the user\'s own recorded constraints', async () => {
@@ -1142,7 +1189,7 @@ test('day one: a step held past its moment is dropped, and the next waits for th
 test('day one stops at two unasked messages, and what they chose does not count', async () => {
   const flags = require('../src/domain/flags');
   const H = 3600_000;
-  const u = await makeUser(db.pool, '+972615000301', { firstName: 'Lior' });
+  const u = await makeUser(db.pool, '+972615009301', { firstName: 'Lior' });
   const t0 = Date.now() - 3 * H;
   await db.pool.query(
     `UPDATE users SET onboarded_at = $2, created_at = $2, timezone = 'Asia/Jerusalem',
@@ -1204,7 +1251,7 @@ test('the country question is not asked when the number already answered it', as
 // 63 and 64 heard the 2h step in the middle of the game).
 test('no day-one step goes out ahead of the welcome follow-up still owed', async () => {
   const H = 3600_000;
-  const u = await makeUser(db.pool, '+972615000302', { firstName: 'Omer' });
+  const u = await makeUser(db.pool, '+972615009302', { firstName: 'Omer' });
   const t0 = Date.now() - 3 * H;
   await db.pool.query(
     `UPDATE users SET onboarded_at = $2, created_at = $2, timezone = 'Asia/Jerusalem',

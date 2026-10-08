@@ -285,6 +285,8 @@ function decide(facts) {
   //
   // One exception since 2026-09-13, and it is the owner's: a paused person in a
   // WhatsApp room where a coordination starts hears about it ONCE per pause.
+  // (Since 2026-10-07, for a pause the ladder or the silence clock took: once
+  // per COORDINATION, room or private — the worker decides, outbox/worker.js.)
   // `pausedRoomInvite` is the worker's fact and it is narrow by construction —
   // true only for a `meeting_invite` about a group meeting, for a person whose
   // pause has not yet spent that one message (pause.roomInviteSpent) — so the
@@ -389,8 +391,13 @@ function decide(facts) {
   // rather than carried. A hold here has no release time on purpose: the
   // worker skips it and only the evening message's `collectHeld` picks it up.
   // Only an explicit `true` acts, as for `pendingUser`.
+  //
+  // Nor the one invite a quiet PAUSE still lets through (2026-10-07). The
+  // evening message never comes for a paused person — sweepDigests skips
+  // them — so holding it here for that message would hold it for ever. It
+  // goes out on its own, and the night and a quiet day below still apply.
   if (facts.dailyOnce === true && row.kind !== 'digest' && row.kind !== 'introduction'
-    && !askedForInWords(row)) {
+    && !askedForInWords(row) && !(facts.paused && facts.pausedRoomInvite)) {
     if (row.kind === 'checkin') return { action: 'drop', holdReason: 'daily_once' };
     return { action: 'hold', holdReason: 'daily_once', releaseAfter: null };
   }
@@ -735,4 +742,7 @@ module.exports = {
   weekdayInTz, localDateInTz, msUntilQuietDaysEnd, quietDayReason, askedForInWords,
   CONVERSATION_GRACE_MS, SAYS_IT_ONCE, REPEAT_WINDOW_MS,
   COORDINATION_DAILY_MAX, COORDINATION_GAP_MS, COORDINATION_RESULTS,
+  // Read by jobs/stranger-greet.js: a pending row with one of these is
+  // somebody WE wrote to first.
+  PENDING_USER_KINDS,
 };

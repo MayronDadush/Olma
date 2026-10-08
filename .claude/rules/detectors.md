@@ -116,6 +116,30 @@ title means this file. Grep the title, not the filename.
   from" and nothing quantitative (`incidents.md`, "A message reached the box
   and stopped there").
 
+- **…and since 2026-10-07 a stranger the gateway dropped is ANSWERED, not only
+  reported** (`jobs/stranger-greet.js`, migration 115). Once a minute it
+  looks for a lane first heard inside the last hour and quiet for three
+  minutes. If that lane has no session (read twice, the second time right
+  before the send) and no `users` row other than a `pending` one we never
+  spoke to (a roster-minted row is a stranger; one with a
+  `PENDING_USER_KINDS` outbox row or `opening_sent_at` is somebody we wrote
+  to first, and the lane may be our echo), it gets `lost_first_message` ALONE
+  on the raw pipe — not the opening, which the greeter says when they write
+  again — whatever `registration_open` says. The claim is committed before the send:
+  once per number for ever, and a failed send is never retried. The guard skips
+  a number that was greeted and goes on reporting one whose send failed. **Their
+  words are not recovered by this job.** That is the plugin patch's job (the
+  next bullet) (`incidents.md`, "The first message that reached nobody").
+
+- **The WhatsApp plugin is PATCHED in place, and an update takes the patch
+  out silently, so `config_guard.checkWhatsAppStubPatch` says so** (2026-10-08,
+  `src/intake/whatsapp-stub-patch.js`). The patch admits a CIPHERTEXT stub
+  under `<id>:olma-stub` so the resend under the real id is not a duplicate.
+  An unpatched bundle files a dashboard row, never `BREAKS_USERS`. A plugin
+  directory it cannot read, or a bundle whose two anchor lines moved, goes on
+  the heartbeat (`whatsappStubCheck`) and is never patched by a guess. Fix:
+  `node scripts/patch-whatsapp-stub.js --apply`, then restart the gateway.
+
 - **`liveness_watch` repairs before it reports.** Every five minutes: gateway
   probe, CHANNEL probe and delivery queue; two bad ticks before a word; a
   gateway or channel down for two ticks is restarted (`intake/gateway-restart.js`, once per half hour) and

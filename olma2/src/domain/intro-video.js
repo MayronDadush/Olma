@@ -45,7 +45,9 @@ function langFor(locale) {
 
 // The welcome of somebody who came in through a game night or a room
 // (jobs/intake.js, `clip` on the payload): the same clip, and ONE fixed line
-// handing over their page. Fixed rather than composed — a model asked for "one
+// under it. No page link since 2026-10-08 (owner: many people use Olma in
+// WhatsApp only, so the page is not handed over at the start). Fixed rather
+// than composed — a model asked for "one
 // short line" wrote 210-245 characters about what Olma does, which is exactly
 // what the clip already says (owner, 2026-10-04). The flag names the clip;
 // anything that is not one of ours is "no clip", and the text goes as before.
@@ -55,15 +57,12 @@ function welcomeClipFor(flagValue) {
 }
 
 const WELCOME_CAPTION = {
-  he: 'זו עולמה, ב־15 שניות 🙂\nוזה הדף האישי שלך:',
-  en: 'This is Olma, in 15 seconds 🙂\nAnd this is your own page:',
+  he: 'זו עולמה, ב־15 שניות 🙂',
+  en: 'This is Olma, in 15 seconds 🙂',
 };
 
-// No url, no caption: a line promising a page that is not there is worse than
-// the clip alone.
-function welcomeCaption(locale, url) {
-  if (!url) return null;
-  return `${WELCOME_CAPTION[langFor(locale)]}\n${url}`;
+function welcomeCaption(locale) {
+  return WELCOME_CAPTION[langFor(locale)];
 }
 
 function fileFor(videoId, locale) {
@@ -117,14 +116,23 @@ async function enqueueAll(client, videoId) {
   const { rows } = await client.query(`SELECT id FROM users WHERE ${AUDIENCE} ORDER BY id`);
   let queued = 0;
   for (const u of rows) {
-    const r = await enqueue(client, {
-      userId: u.id, kind: KIND, urgency: 'urgent',
-      payload: { video: videoId },
-      idempotencyKey: `${KIND}:${videoId}:${u.id}`,
-    });
-    if (r.data.enqueued) queued += 1;
+    if (await enqueueOne(client, u.id, videoId)) queued += 1;
   }
   return { candidates: rows.length, queued };
+}
+
+// One person, the same row and key as the broadcast: a new joiner's clip
+// (jobs/intake.js, `joiner_clip`) and the broadcast can never both reach them.
+// -> true when a row was queued.
+async function enqueueOne(client, userId, videoId, { releaseAfter = null, joiner = false } = {}) {
+  if (!VIDEOS[videoId]) throw new Error(`unknown intro video: ${videoId}`);
+  const r = await enqueue(client, {
+    userId, kind: KIND, urgency: 'urgent',
+    payload: { video: videoId, ...(joiner ? { joiner: true } : {}) },
+    idempotencyKey: `${KIND}:${videoId}:${userId}`,
+    releaseAfter,
+  });
+  return Boolean(r.data.enqueued);
 }
 
 async function stats(client, videoId, now = new Date()) {
@@ -174,5 +182,5 @@ async function stats(client, videoId, now = new Date()) {
 module.exports = {
   KIND, VIDEOS, DROPPED, REPLY_WINDOW_MIN, IGNORE_WINDOW_HOURS,
   WELCOME_CAPTION,
-  langFor, fileFor, stageMedia, welcomeClipFor, welcomeCaption, audience, enqueueAll, stats,
+  langFor, fileFor, stageMedia, welcomeClipFor, welcomeCaption, audience, enqueueAll, enqueueOne, stats,
 };

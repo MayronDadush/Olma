@@ -166,11 +166,27 @@ const DEFAULTS = {
   // sent when nothing is open. Replies to their own messages are untouched.
   // '' = nobody, 'all', or a comma-separated E.164 list.
   daily_once_phones: '',
+  // Notifications to the installed app (domain/push.js, owner 2026-10-08):
+  // 'all', an E.164 list, or '' (off). Covers who is OFFERED the switch on
+  // their page and whose coordination rows may go as a notification instead
+  // of WhatsApp; off, nothing changes for anybody, subscribed or not.
+  push_delivery_phones: '',
+  // domain/silence-pause.js (owner, 2026-10-07, Saar): somebody who has given
+  // no sign of life for this many days is paused the way the ladder pauses —
+  // nothing cancelled, their first message ends it — and Olma stops starting
+  // conversations with them. Faster for somebody who holds nothing (no open
+  // task), slower for somebody who does. 0 turns that half off.
+  silence_pause_days_empty: 2,
+  silence_pause_days_holding: 5,
   // jobs/intake.js (owner, 2026-10-04, new people said she "חופרת"): the
   // morning-after welcome of somebody who came in through a game night or a
-  // room is the intro clip with one fixed line and their page, instead of a
-  // paragraph about what Olma does. Decided at enqueue; '' = the text, as before.
+  // room is the intro clip with one fixed line (no page since 2026-10-08),
+  // instead of a paragraph about what Olma does. Decided at enqueue; '' = the
+  // text, as before.
   welcome_clip: 'v2',
+  // jobs/intake.js (owner, 2026-10-08): the intro clip a few minutes after the
+  // owner's full opening, in place of the 15m day-one step. '' = off.
+  joiner_clip: 'v2',
   // domain/experiments.js: the A/B tests the owner has ENDED, as
   // { key: 'a' | 'b' }. Empty means every experiment in the code is running.
   // Written only by the admin page's "לקבע" button.

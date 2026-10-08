@@ -80,6 +80,29 @@ const TEMPLATES = [
       + '\n'
       + 'What I keep and how to delete it: https://allma.world/privacy',
   },
+  // Said by code, alone, to somebody whose first message the gateway accepted
+  // and then dropped (jobs/stranger-greet.js). It is the only honest sentence
+  // available: we know they wrote and we do not know what. NOT the opening —
+  // the greeter says that when they write again, and saying it here too would
+  // be two introductions. It still says "AI" up front, for the same reason the
+  // opening does (revision 4 above): this is the first thing they read from us.
+  {
+    key: 'lost_first_message_he', audience: 'private', label: 'ההודעה הראשונה לא הגיעה',
+    help: 'נשלחת לבד, בלי הודעת הפתיחה, למי שכתב ראשון וההודעה שלו נזרקה בדרך. פעם אחת בחיים. את הפתיחה הגרייטר אומר כשהם שולחים שוב.',
+    vars: {}, required: [],
+    sample: {},
+    text: 'היי 👋 כאן עולמה, עוזרת AI בוואטסאפ\n'
+      + '\n'
+      + 'נראה שההודעה הראשונה שלך לא הגיעה אליי — אפשר לשלוח אותה שוב? 🙏',
+  },
+  {
+    key: 'lost_first_message_en', audience: 'private', label: 'ההודעה הראשונה לא הגיעה', help: '',
+    vars: {}, required: [],
+    sample: {},
+    text: 'Hi 👋 Allma here, an AI assistant on WhatsApp\n'
+      + '\n'
+      + "Looks like your first message didn't reach me — could you send it again? 🙏",
+  },
   // The whole answer to "שלח לי קישור" (domain/link-request.js): said by code,
   // with no model turn, the moment a message asks for their page and nothing
   // else. The link is minted for this message and opens once; it goes on a
@@ -310,6 +333,13 @@ const TEMPLATES = [
     text: '⏰ תזכורת: *{{title}}*',
   },
   {
+    key: 'reminder_again', audience: 'private', label: 'תזכורת נוספת על אותה משימה',
+    help: 'כשביקשו עוד תזכורת על אותה משימה (למשל גם ב-8:00 וגם ב-8:30) והראשונה כבר הגיעה אליהם. לא שואלת "בוצע?" — זה רגע שהם בחרו.',
+    vars: { title: 'מה שביקשו להזכיר, במילים שלהם' }, required: ['title'],
+    sample: { title: 'לקחת את הרכב לטסט' },
+    text: '⏰ תזכורת חוזרת: *{{title}}*',
+  },
+  {
     key: 'reminder_followup', audience: 'private', label: 'תזכורת חוזרת',
     help: 'השלב השני והשלישי של אותה תזכורת, אם לא ענו, וכל הודעה של נודניק אחרי הראשונה. חייבת להגיד איך מפסיקים אותה — "די להזכיר" נעצר בקוד, בלי מודל.',
     vars: { title: 'מה שביקשו להזכיר' }, required: ['title'],
@@ -387,6 +417,13 @@ const TEMPLATES = [
     vars: { title: 'what they asked to be reminded of, in their words' }, required: ['title'],
     sample: { title: 'take the car for its test' },
     text: '⏰ Reminder: *{{title}}*',
+  },
+  {
+    key: 'reminder_again_en', audience: 'private', label: 'תזכורת נוספת על אותה משימה',
+    help: '',
+    vars: { title: 'what they asked to be reminded of, in their words' }, required: ['title'],
+    sample: { title: 'take the car for its test' },
+    text: '⏰ Reminder again: *{{title}}*',
   },
   {
     key: 'reminder_followup_en', audience: 'private', label: 'תזכורת חוזרת',
@@ -995,6 +1032,72 @@ const TEMPLATES = [
     text: 'עוד שעה: *{{slot}}* 🙂',
   },
 ];
+
+// ---- a notification to the installed app ----------------------------------
+// For somebody who turned notifications on inside the home-screen app, a
+// coordination message the page can answer goes out as a notification
+// INSTEAD of a WhatsApp turn (domain/push.js, owner 2026-10-08). No model
+// writes it, so it is a template like every other verbatim sentence; the
+// notification's title is the coordination's own name, and a tap opens its
+// page. Plain text — a notification renders no WhatsApp markers — and no verb
+// addressed to the reader in a gendered form, for the same reason as every
+// drawn line: there is no model to pick one.
+const PUSH_VARS = {
+  by: 'מי עשה את זה (שם)',
+  group: 'שם הקבוצה',
+  slot: 'הזמן, במילים של מי שהציע, ובשעון של הקורא כשהוא אחר',
+  from: 'הזמן הקודם',
+};
+const PUSH_SAMPLE = { by: 'דנה', group: 'פאדל', slot: 'יום חמישי 20:00', from: 'יום רביעי 20:00' };
+const PUSH_SAMPLE_EN = { by: 'Dana', group: 'Padel', slot: 'Thursday 20:00', from: 'Wednesday 20:00' };
+const PUSH_TEMPLATES = [
+  ['push_meeting_invite', 'התראה: תיאום חדש', ['by'],
+    'תיאום חדש, מ־{{by}}. מתי מתאים לך?', 'New coordination from {{by}}. When suits you?'],
+  ['push_meeting_invite_group', 'התראה: תיאום חדש בקבוצה', ['group'],
+    'הקבוצה {{group}} מתאמת את זה. מתי מתאים לך?', 'The group {{group}} is arranging this. When suits you?'],
+  ['push_meeting_slot_proposed', 'התראה: זמן חדש', ['slot'],
+    'זמן חדש על השולחן: {{slot}}. מתאים לך?', 'A new time: {{slot}}. Does it work for you?'],
+  ['push_meeting_table', 'התראה: כמה זמנים חדשים', [],
+    'יש זמנים חדשים על השולחן. מה מתאים לך?', 'New times are on the table. Which work for you?'],
+  ['push_meeting_nudge', 'התראה: עוד מחכים לתשובה', [],
+    'עוד מחכים לתשובה שלך.', 'Still waiting to hear from you.'],
+  ['push_meeting_auto_answered', 'התראה: סומן לפי מה שנאמר קודם', [],
+    'נוספו זמנים, וסימנתי אותם לפי מה שאמרת קודם. אפשר לשנות.', 'New times were added, and I marked them from what you said earlier. You can change it.'],
+  ['push_meeting_answer_moved', 'התראה: התשובה עברה לזמן החדש', ['from', 'slot'],
+    'הזמן {{from}} הוחלף ב־{{slot}}, והתשובה שלך עברה איתו.', '{{from}} was replaced by {{slot}}, and your answer moved with it.'],
+  ['push_meeting_slot_declined', 'התראה: הזמן לא מתאים למישהו', ['by'],
+    'הזמן שעל השולחן לא מתאים ל־{{by}}. יש זמן אחר שמתאים לך?', 'The time on the table does not work for {{by}}. Is there another that suits you?'],
+  ['push_meeting_opt_out', 'התראה: מישהו יצא מהתיאום', ['by'],
+    'התיאום ממשיך בלי {{by}}.', 'It carries on without {{by}}.'],
+  ['push_meeting_no_match', 'התראה: נסגר בלי הסכמה', [],
+    'התיאום נסגר בלי זמן מוסכם.', 'This one closed without an agreed time.'],
+  ['push_meeting_rejoined', 'התראה: מישהו חזר לתיאום', ['by'],
+    '{{by}} שוב בתיאום.', '{{by}} is back in.'],
+  ['push_meeting_withdrawn', 'התראה: מישהו לא יגיע', ['by'],
+    'הפגישה בעינה, בלי {{by}}.', 'Still on, without {{by}}.'],
+  ['push_meeting_expired', 'התראה: הזמן עבר בלי הסכמה', [],
+    'הזמן עבר והתיאום לא נסגר.', 'The time passed without an agreement.'],
+  ['push_meeting_time_set', 'התראה: נקבעה שעה', ['slot'],
+    'נקבעה שעה: {{slot}}.', 'Time set: {{slot}}.'],
+  ['push_meeting_time_moved', 'התראה: השעה השתנתה', ['slot'],
+    'השעה השתנתה: {{slot}}.', 'Time changed: {{slot}}.'],
+  ['push_meeting_cancelled', 'התראה: בוטל', [],
+    'התיאום בוטל.', 'This was cancelled.'],
+  ['push_meeting_confirmed', 'התראה: נקבע', ['slot'],
+    'נקבע: {{slot}}. ההזמנה ליומן תגיע מגוגל.', 'Set: {{slot}}. The calendar invite will come from Google.'],
+];
+for (const [key, label, required, he, en] of PUSH_TEMPLATES) {
+  const pick = (sample) => Object.fromEntries(Object.entries(sample).filter(([k]) => he.includes(`{{${k}}}`)));
+  const vars = Object.fromEntries(Object.entries(PUSH_VARS).filter(([k]) => he.includes(`{{${k}}}`)));
+  TEMPLATES.push(
+    {
+      key, audience: 'private', label,
+      help: 'התראה לאפליקציה, במקום הודעה בוואטסאפ, למי שהפעיל התראות. הכותרת היא שם התיאום, ולחיצה פותחת אותו.',
+      vars, required, sample: pick(PUSH_SAMPLE), text: he,
+    },
+    { key: `${key}_en`, audience: 'private', label, help: '', vars, required, sample: pick(PUSH_SAMPLE_EN), text: en },
+  );
+}
 
 const BY_KEY = new Map(TEMPLATES.map((t) => [t.key, t]));
 

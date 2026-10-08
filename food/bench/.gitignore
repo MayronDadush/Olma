@@ -1,0 +1,5 @@
+# Personal food photos and downloaded dataset images stay on this computer.
+photos/
+weighed/
+# The table lives once, in food/data/.
+usda-sr-legacy.csv

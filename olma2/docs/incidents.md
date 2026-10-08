@@ -19,6 +19,7 @@ never trust a dated narrative for something you are about to act on.
 
 **Gateway, config and upgrades**
 
+- [The first message that reached nobody (repair added 2026-10-07)](#the-first-message-that-reached-nobody-repair-added-2026-10-07)
 - [She wrote twice and stayed paused, and her list never reached her morning (fixed 2026-10-06)](#she-wrote-twice-and-stayed-paused-and-her-list-never-reached-her-morning-fixed-2026-10-06)
 - [The silence the gateway asked again (fixed 2026-10-03)](#the-silence-the-gateway-asked-again-fixed-2026-10-03)
 - [Three messages in a row got three replies (2026-10-02, the debounce replaced the same day)](#three-messages-in-a-row-got-three-replies-2026-10-02-the-debounce-replaced-the-same-day)
@@ -62,6 +63,7 @@ never trust a dated narrative for something you are about to act on.
 - [Two exits, two messages, to a man who asked for one a day (fixed 2026-10-03)](#two-exits-two-messages-to-a-man-who-asked-for-one-a-day-fixed-2026-10-03)
 - [Four messages in sixty-two seconds (fixed 2026-09-20)](#four-messages-in-sixty-two-seconds-fixed-2026-09-20)
 - [Two day-one steps twelve minutes apart, the first two hours late (fixed 2026-10-03)](#two-day-one-steps-twelve-minutes-apart-the-first-two-hours-late-fixed-2026-10-03)
+- [Twenty o'clock, every evening, about nothing (fixed 2026-10-07)](#twenty-oclock-every-evening-about-nothing-fixed-2026-10-07)
 - [Once a day, said and not kept (built 2026-10-03)](#once-a-day-said-and-not-kept-built-2026-10-03)
 - [Saved, marked done, and read as nothing (fixed 2026-10-04)](#saved-marked-done-and-read-as-nothing-fixed-2026-10-04)
 - [Today at five is not Monday (fixed 2026-09-24)](#today-at-five-is-not-monday-fixed-2026-09-24)
@@ -72,6 +74,7 @@ never trust a dated narrative for something you are about to act on.
 - [The slot that was already closed (fixed 2026-09-20)](#the-slot-that-was-already-closed-fixed-2026-09-20)
 - [The night that had already settled (fixed 2026-10-03)](#the-night-that-had-already-settled-fixed-2026-10-03)
 - [Introduced twice, by the invite and the greeter (fixed 2026-10-01)](#introduced-twice-by-the-invite-and-the-greeter-fixed-2026-10-01)
+- [Two introductions in a minute (fixed 2026-10-08)](#two-introductions-in-a-minute-fixed-2026-10-08)
 - [The fixed line that never went (fixed 2026-10-03)](#the-fixed-line-that-never-went-fixed-2026-10-03)
 - [The poker count was the people asked (fixed 2026-10-01)](#the-poker-count-was-the-people-asked-fixed-2026-10-01)
 - [The room was told it was four (fixed 2026-10-05)](#the-room-was-told-it-was-four-fixed-2026-10-05)
@@ -257,6 +260,7 @@ never trust a dated narrative for something you are about to act on.
 - [Saturday's game, filed under "closed" (fixed 2026-09-23)](#saturdays-game-filed-under-closed-fixed-2026-09-23)
 - [Two times for one game (fixed 2026-10-05)](#two-times-for-one-game-fixed-2026-10-05)
 - [Two coordinations for one meeting (fixed 2026-09-30)](#two-coordinations-for-one-meeting-fixed-2026-09-30)
+- [Two invites for one poker night (fixed 2026-10-05)](#two-invites-for-one-poker-night-fixed-2026-10-05)
 - [The coordination that expired on the wrong Tuesday (fixed 2026-09-23)](#the-coordination-that-expired-on-the-wrong-tuesday-fixed-2026-09-23)
 - [The list he could not put his own task into (2026-09-19)](#the-list-he-could-not-put-his-own-task-into-2026-09-19)
 - [An offer to call a number the bridge has never served (fixed 2026-09-06)](#an-offer-to-call-a-number-the-bridge-has-never-served-fixed-2026-09-06)
@@ -331,6 +335,78 @@ never trust a dated narrative for something you are about to act on.
 - [Merged is not deployed — the drift row (2026-09-04)](#merged-is-not-deployed-the-drift-row-2026-09-04)
 
 ## Gateway, config and upgrades
+
+### The first message that reached nobody (repair added 2026-10-07)
+
+Between 18:50 and 19:08 UTC three new people wrote to Olma for the first time.
+One (u-68) got an English opening a minute late; the other two got nothing at
+all. Their lanes are in the gateway's ingress queue — two events each — and
+neither ever had a session: the WhatsApp plugin accepted each message and
+completed it 10-20ms later without handing it to anything.
+
+The cause is inferred, not proven, because Baileys logs nothing at this level.
+In every dropped case the LID mapping was written 3-7ms before the event, where
+contacts that went through had theirs 190-700ms earlier. That is the shape of a
+CIPHERTEXT stub: a first message WhatsApp could not decrypt yet, or a
+Click-to-WhatsApp ad's "no message found" placeholder. Baileys then asks the
+phone to resend it. The resend arrives through `messages.upsert` under the SAME
+key id, so the plugin's durable ingress queue
+(`channel_ingress_events`, `ON CONFLICT DO NOTHING`) answers "duplicate of a
+completed event" and drops the real text. The stub itself was completed with
+nothing in it, because the normaliser returns null when there is no user
+content.
+
+`config_guard.checkUnansweredStrangers` saw both people. It saw them half an
+hour later, on the dashboard, which is the owner's screen; the two people
+themselves had a message read by nobody. The owner sent the opening to both by
+hand later that evening.
+
+**The repair is `jobs/stranger-greet.js`.** Once a minute it reads the same two
+stores the guard reads. A lane that meets all of these is owed a greeting:
+
+- first heard inside the last hour, and quiet for three minutes;
+- no session — read twice, the second time right before the send;
+- no `users` row, or only a `pending` one nobody has spoken to (a row
+  `groups.ensureRosterUsers` minted off a group's roster). A pending row with
+  an invite's, waitlist's or room's outbox row, or with `opening_sent_at`, is
+  somebody we wrote to first, and their lane may be our own echo.
+
+It gets ONE short fixed message, alone ("היי 👋 כאן עולמה, עוזרת AI בוואטסאפ /
+נראה שההודעה הראשונה שלך לא הגיעה אליי — אפשר לשלוח אותה שוב? 🙏"), on the raw
+pipe, in the language the dialling code suggests — whether registration is
+open or not, since with it closed the greeter answers their resend with the
+waitlist. A claim row in `stranger_greetings` (migration 115) is
+committed before the send, so nobody is greeted twice. A failed send is not
+retried and the guard keeps reporting them; a greeted one leaves the guard.
+
+What it does NOT do is recover the words they wrote — those are gone. The
+plugin-side fix — skip a CIPHERTEXT stub instead of claiming its id — is
+separate work on a file that is not ours.
+
+**The plugin-side fix (2026-10-08) is a patch to the installed plugin**
+(`src/intake/whatsapp-stub-patch.js`, applied by
+`scripts/patch-whatsapp-stub.js --apply`, live after a gateway restart). The
+stub is still admitted — skipping it would erase the one trace
+`stranger_greet` reads when the resend never comes — but under its own id,
+`<id>:olma-stub`, so the real message keeps the real one and is not a
+duplicate. Read against the shipped code before it was written: Baileys
+7.0.0-rc14 upserts the stub on "Message absent from node" and on a failed
+decrypt, then asks again, and the answer comes back through the same
+`messages.upsert` under the same key id. Until now that answer reached the
+"completed" branch and earned only a read receipt. A stub normalises to
+nothing, so no receipt is sent for the altered id. Each stub is now logged
+(`[olma2] whatsapp ciphertext stub <id> (<reason>)`) without the person's
+number, so the next one is a measurement instead of a 3-7ms inference.
+The patch is matched on two exact lines and refuses a bundle it does not
+recognise. It is lost on every plugin update, and
+`config_guard.checkWhatsAppStubPatch` files a dashboard row when it is.
+
+The first version sent the owner's opening above that line. Reviewed before
+merge and changed: when they answer, the greeter opens a brand-new conversation
+and says the opening as it does for everybody, so the person read two
+introductions — the duplicate "Two introductions" was about. Now the line says
+who is writing ("AI", as the opening's first line does) and the greeter keeps
+the opening, the privacy line and the `opening_sent_at` stamp.
 
 ### She wrote twice and stayed paused, and her list never reached her morning (fixed 2026-10-06)
 
@@ -1894,6 +1970,47 @@ compares on anyway. (`domain/identity-repair.js`, `rotateIdentityToken`.)
 
 ## Delivery, outbox and proactive messages
 
+### Two introductions in a minute (fixed 2026-10-08)
+
+A new person (u-69) wrote to Olma for the first time on 2026-10-08. The
+greeter answered with the owner's opening, and a few minutes later their own
+agent's `welcome_followup` arrived: a second long message that restated the
+greeter's introduction in other words and ended with the link to their page.
+The owner saw both and said the first one was enough.
+
+The follow-up had two jobs when it was built (2026-09-25): act on what they
+wrote to the greeter, which has no tools, and hand over their page, which
+could not exist while the greeter spoke. When what they wrote held nothing to
+act on, the page was the whole message — and a model asked to write "one short
+message" around a bare link padded it with the only content in front of it,
+the introduction it had been told not to repeat. The fence around the
+greeter's reply did not stop it; there was nothing else to say.
+
+The owner's decision removed the cause rather than the padding: **no page
+link at the start of somebody's life with Olma** ("הרבה מאוד אנשים נוח להם
+להפעיל את זה רק בוואטסאפ"). The follow-up no longer carries it, the first
+turn no longer hands it over (`firstTurnPageLink` is gone), and the
+welcome clip's caption is the fixed line alone. Without the link, the
+follow-up is queued only when it has something to do — a room's or a game
+night's short opening that never said what Olma is, or words left with the
+greeter (`users.intake_note_at`) — and the default branch tells the model
+that a note with nothing to act on is answered with exactly `NO_REPLY`. The
+page is offered later, by the task count below, and whenever they ask for it.
+
+The owner then took the day-one 22h step out too ("היא גם נחשבת התחלה") —
+until now it was skipped for most people because the welcome had already
+minted their link, and without that it would have reached everyone. Their
+page is now a discovery gap of the ordinary ladder (`dashboard`, once ever),
+offered when they hold three open tasks (`DASHBOARD_MIN_TASKS`, owner: "ברגע
+שיש למשתמש לפחות 2 3 משימות") and never to somebody who already has a link
+to their own page.
+
+What is left to the model: a note that exists but asks for nothing ("מה את
+יודעת לעשות?", already answered by the greeter) still queues the follow-up,
+and it is the model that decides to stay silent. The carryover guard drops
+a bare "היי" before it becomes a note, so the commonest case never reaches
+it.
+
 ### בחוץ (fixed 2026-10-01)
 
 The room "חייב קבוצה לפוקר" (chat_groups 13) opened a coordination for poker
@@ -2390,6 +2507,48 @@ Left alone on purpose: the welcome follow-up does not count toward the gap. It
 goes out seconds after the greeter for nearly everybody who arrives through
 it, so counting it would cancel the 15m step for all of them. That is a change
 to the ladder's design, and it is the owner's call.
+
+### Twenty o'clock, every evening, about nothing (fixed 2026-10-07)
+
+Saar (u-55) last wrote on 2026-10-05 at 22:27. On the 6th and the 7th he got
+the 20:00 once-a-day message all the same — on the 6th with nothing folded
+into it, on the 7th carrying a second invite to the same poker coordination
+(meeting 74) he had already answered three times. The owner: somebody who has
+not written for days is probably less interested, and Olma should pause them
+on her own.
+
+**Why nothing paused him.** The only automatic pause was the check-in ladder's
+third miss, and a miss is a check-in that REACHED somebody. The once-a-day rule
+drops a check-in at the gate (the evening message is supposed to answer it),
+so his three "silence" rungs on 10-05, 10-06 and 10-07 were each dropped as
+`daily_once` in under a second, `checkin_misses` stayed 0, and the ladder could
+never get to three. Two rules, each right on its own, cancelled each other: the
+ladder measured silence in questions, and the other rule stopped the questions.
+
+**What was built** (`domain/silence-pause.js`): silence measured in TIME, from
+the person's side only — onboarding, a message, a write from their page, a
+word to her in a room, an answer in a coordination, a resume. Two days with no
+open task, five with one (owner's choice, both flags), and never somebody with
+a reminder they asked for still to come, because a pause stops every reminder.
+The pause is the ladder's own (`quiet_ladder`), so nothing is cancelled and
+their first message ends it.
+
+**One message per coordination**, by the owner's words ("חוץ מהודעה אחת על כל
+תיאום שנפתח איתם"). Until now a quiet pause had ONE room invite per pause and
+was then kept out of every later room coordination, and a private invite did
+not reach a paused person at all. Now a quiet pause is swept into each new
+coordination, room or private, its first invite reaches them (the once-a-day
+hold steps aside — a paused person's evening message never comes, so holding
+it would be holding it for ever), every later message about it drops, and a
+day with no answer takes them out of that coordination only.
+
+**Measured on the box before it shipped** (2026-10-07, read-only): of 38
+active users, 24 would be paused on the first tick — 18 holding nothing and 6
+holding a task, the longest silent for 28 days. That number is
+the owner's to see before merging, not a surprise after.
+
+The test is `tests/silence-pause.test.js`; `tests/paused-room-invite.test.js`
+now asserts one invite per coordination where it asserted one per pause.
 
 ### Once a day, said and not kept (built 2026-10-03)
 
@@ -7415,6 +7574,19 @@ unnoticed in the first place. `tests/outbox.test.js` now pins the hour too:
 checked at 19:00 Saturday, released 09:00 Sunday, not 19:00 Sunday.
 
 
+### The owner's own message counted as a question nobody answered (2026-10-08)
+
+Gali's and Dov's 09:00 digests of 2026-10-07 were dropped as `quiet` and
+stamped as sent. Cause: `outbox/worker.js`, `countLadderAsk`, counted every
+`checkin` row except `onboarding_*` as the ladder asking "את פה?". The owner's
+hand-sent cards of 10-06 (`rung: admin`) and a repair of our own fault
+(`unanswered_repair`, sent to Gali three minutes after she wrote) each raised
+`checkin_misses` to 1, and the gate's silence rule (`checkin_misses >= 1`)
+then dropped everything Olma decides to say. Gali had answered; the repair
+landed after her answer and counted again. Rule: only the ladder's own rungs
+count; `admin`, `unanswered_repair` and `missed_goal_repair` do not
+(`tests/checkin-misses.test.js`). Gali's counter was reset by hand.
+
 ## Stopping, pausing and doctrine
 
 ### Not connected, read as not on Olma (fixed 2026-09-30)
@@ -10787,6 +10959,76 @@ the same pair from both sides in one `Promise.all` opened two coordinations in
 The approver's hint was left alone. It is not wrong, since עידן had just said
 when he could, and with this check whichever agent comes second is sent to the
 first one.
+
+### Two invites for one poker night (fixed 2026-10-05)
+
+On 2026-10-05 the poker room (group 13) got two coordinations two and a half
+minutes apart, both for the same people:
+
+- At 12:50:01 user 57 opened "פוקר" in his own chat with eleven people
+  (meeting 73, `group_id` NULL) and put two evenings on it.
+- At 12:52:32 user 3 tagged her in the room for "פוקר לשבוע הקרוב" (meeting
+  74, group 13). User 3 was one of the eleven, and had been sent his own
+  invite to 73 a minute earlier.
+
+**The two sets were IDENTICAL when they opened**: twelve people each, the same
+twelve. User 58, a new member, was let into 74 three minutes later by
+`admitLateMembers`, and that is the only difference the rows show today. Every
+one of them was invited twice, and 73 was cancelled by hand.
+
+The check from "Two coordinations for one meeting" did not fire, and could not
+have. `meetings.openWithSamePeople` compares private with private only
+(`group_id IS NULL`), and only `start_meeting_coordination` calls it. The room's
+door, `group-meetings.startCoordination`, asked one question: is THIS ROOM
+already running something? A private coordination among the same people was
+invisible to it, and the private door could not see a room's.
+
+**The fix** asks across the line in both directions. The room door calls
+`meetings.privateOpenLikeRoom`, and the private door calls
+`meetings.roomOpenLikePrivate` beside its existing exact check. Each gives the
+same answer the private door already gave: `reason: 'already_open'`, nothing
+opened, and the model continues in the open one, asks, or calls again with
+`separate: true`. `start_group_coordination` grew that parameter.
+
+**The matching rule, `meetings.nearlySamePeople`.** A room's set is never
+exactly a chat's: the room sweeps in whoever has written to her by now, and
+whoever opened it privately listed the people they had in mind. So across the
+two it is "nearly the same", and nearly means two things:
+
+- everybody in the private coordination is also in the room's set, because
+  somebody from outside the room makes it a different gathering;
+- the room's set is bigger by at most a quarter, and always allows at least one
+  more person (the newcomer). A private pair inside a room of ten is a coffee,
+  not the room's game.
+
+Private against private stays EXACT, as it was. **There is no age window**:
+`negotiating` is already bounded by `expireStaleMeetings`, and a coordination
+with times still on the table is live however old it is.
+
+On the room side, the room's set is everybody connected in it
+(`coordinatingMembers`), not only who this coordination would sweep in. A
+member who paused her is still in the room, and may be in the private one.
+On the private side, it is the room coordination's people still in it.
+
+**What the room may hear is narrower than what the chat may.** The answer is
+said in front of the room, so:
+
+- only a private coordination the ASKER is in counts, because it is theirs to
+  be reminded of;
+- the result carries its title, who opened it (by tag, never by name) and
+  when it opened;
+- it never carries its times or anybody's answers.
+
+Two things are left open on purpose:
+
+- **"Continue" from the room adopts nothing.** The room says the thing is
+  already being arranged privately and starts nothing. Turning the private
+  coordination INTO the room's (setting `group_id`, letting the newcomer in,
+  the room's lines from then on) is the real merge. It changes what the room
+  hears, so it is the owner's call and is not built.
+- **No lock spans the two doors.** The exact-set advisory lock still guards a
+  private race. A room and a chat opening in the same second would each read
+  the other as absent. This incident was two and a half minutes, not a second.
 
 ### The coordination that expired on the wrong Tuesday (fixed 2026-09-23)
 
@@ -15015,7 +15257,6 @@ envelope header and its sender label cut. The trace line now carries `src`
 and `chars`, so the next zero says which string it was read from. Needs a
 gateway restart; hooks load at startup.
 
-
 ### A morning that said "here is the picture" and had none (2026-10-06)
 
 User 8, 09:01: `get_my_digest` was called with `scope="summary"`, which returns
@@ -15032,3 +15273,19 @@ that would turn every long morning into an image, Olma's own cards are limited
 to two a day at least three hours apart (`card-budget.js`). A person asking is
 never limited. Not done: a per-user opt-out; rolling 24h rather than a local
 calendar day, on purpose, to need no timezone.
+
+### The follow-up a minute behind the digest that already said it (fixed 2026-10-06)
+
+Yahav's task "לבטל את האשראי" (due 08:00 Israel, automatic reminder) had rung 1
+at 07:00 local. At 10:00:36 the morning digest (`scope: today`) listed it, and
+at 10:01:35 rung 2 — the same-day follow-up an inferred hour earns — went out
+saying it again. Nothing was wrong with either by itself: the ladder waits
+three hours after a delivered rung, and the digest runs on its own clock. The
+gap was that a follow-up chases an action and the digest had just put the task
+in front of him.
+
+Fix: `sweepReminders` retires an automatic one-off ladder instead of sending a
+follow-up when a digest reached them after rung 1
+(`reminders.coveredByDigest`; since the same day every digest carries every
+open task, so reaching them is naming it). A nudge, an explicit reminder and a repeating one
+are untouched. Audited as `reminder.covered_by_digest`.

@@ -18,6 +18,7 @@ const { mergeRoleFor, planMerge, MERGEABLE_KINDS } = require('../domain/message-
 const { checkChannels } = require('../adapters/gateway-health');
 const gameSummary = require('../domain/game-summary');
 const { coveredBy } = require('../domain/turn');
+const pushDomain = require('../domain/push');
 
 // A delivery is a full model turn — 30-90s of wall time and most of the box's
 // one core. An unbounded tick over a backlog (observed live 2026-08-27: ~20
@@ -112,7 +113,11 @@ function batchKeyFor(row) {
   const p = payloadOf(row);
   if (p.instruction) return null;
   if (!String(p.title || '').trim()) return null;
-  return proactiveText.reminderTemplateKey(p);
+  // "תזכורת חוזרת" alone, and a plain line in the plain list beside others:
+  // both are rung 1, ask nothing, and render through 'reminder_list', so a
+  // second moment on one task must not split a tick into two messages.
+  const key = proactiveText.reminderTemplateKey(p);
+  return key === 'reminder_again' ? 'reminder' : key;
 }
 
 // Coordinations that ended with no time and that this person has not heard
@@ -290,14 +295,33 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
           && (row.paused_at
             ? !pauseDomain.keptOutOfRooms(row)
             : (Number(row.checkin_misses) || 0) >= 1 && !pauseDomain.quietRoomInviteSpent(row));
-        if (roomInviteCandidate) {
+        //
+        // Since 2026-10-07 a quiet pause's allowance is one invite per
+        // COORDINATION, not one per pause, and a private coordination earns it
+        // too (owner: "חוץ מהודעה אחת על כל תיאום שנפתח איתם"). One per
+        // coordination is read off the outbox: an invite about this meeting
+        // that already REACHED them spends it — sent on its own, or folded
+        // into a digest that went out (a `budget`/`daily_once` row that
+        // `collectHeld` stamped) — so the re-invite a changed table writes
+        // ("tableChanged") is not a second one. The ladder-silence allowance
+        // below is unchanged.
+        if (roomInviteCandidate && row.paused_at) {
+          const { rows: g } = await client.query(
+            `SELECT 1 FROM meetings mt
+              WHERE mt.id = $1 AND mt.status = 'negotiating'
+                AND NOT EXISTS (
+                  SELECT 1 FROM outbox o
+                   WHERE o.user_id = $2 AND o.kind = 'meeting_invite' AND o.id <> $3
+                     AND o.sent_at IS NOT NULL
+                     AND (o.hold_reason IS NULL OR o.hold_reason IN ('budget', 'daily_once'))
+                     AND (o.payload->>'meetingId')::bigint = mt.id)`,
+            [meetingId, row.user_id, row.id]);
+          pausedRoomInvite = g.length > 0;
+        } else if (roomInviteCandidate) {
           const { rows: g } = await client.query(
             `SELECT 1 FROM meetings WHERE id = $1 AND group_id IS NOT NULL AND status = 'negotiating'`,
             [meetingId]);
-          if (g.length > 0) {
-            if (row.paused_at) pausedRoomInvite = true;
-            else quietRoomInvite = true;
-          }
+          quietRoomInvite = g.length > 0;
         }
         // Have they ANSWERED in this coordination? The gate's silence branch
         // treats a yes or a no on record as proof this row is news about
@@ -620,10 +644,40 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
             // this person is paused and this is the one message about it.
             : pausedRoomInvite ? { ...row, payload: { ...payloadOf(row), pausedNotice: true, ...zoneAsk } }
               : zoneAsk.askZone ? { ...row, payload: { ...payloadOf(row), ...zoneAsk } } : row;
-        const closedNews = channels.status === 'down' ? null : await closedNewsFor(client, row, mergedParts);
-        const result = channels.status === 'down'
-          ? { ok: false, error: `channel unavailable, no turn spent: ${channels.detail}` }
-          : await deliver(closedNews ? { ...sendRow, payload: { ...payloadOf(sendRow), closedNews } } : sendRow);
+        // Notifications to the installed app (domain/push.js, owner
+        // 2026-10-08): for somebody who turned them on there, a coordination
+        // row the page answers whole goes as a notification INSTEAD of a turn.
+        // Only a row going out alone and carrying nothing a turn adds (a
+        // merge, a batch, the paused notice, the zone question), and only
+        // after the gate said deliver, so WHEN is unchanged. A refusal from
+        // every push service falls through to WhatsApp in this same tick:
+        // nobody loses a message to an app they no longer open.
+        let pushed = null;
+        if (!mergedParts && ids.length === 1 && !pausedRoomInvite && !zoneAsk.askZone
+          && pushDomain.pushable(row, payloadOf(row))
+          && await pushDomain.enabledFor(client, row.user_phone)) {
+          pushed = await pushDomain.deliver(client, row, { now, send: deps.webPushSend });
+          if (!pushed.ok && pushed.error !== 'no live subscription') {
+            await audit.record(client, row.user_id, 'push.fell_back', {
+              outboxId: Number(row.id), kind: row.kind, gone: pushed.gone, failed: pushed.failed,
+              error: String(pushed.error || '').slice(0, 200),
+            });
+          }
+        }
+        // A notification carries no closed-coordination news: it is one fixed
+        // line, and recording that news as heard would be a lie.
+        const closedNews = (pushed && pushed.ok) || channels.status === 'down' ? null : await closedNewsFor(client, row, mergedParts);
+        const result = pushed && pushed.ok ? { ok: true }
+          : channels.status === 'down'
+            ? { ok: false, error: `channel unavailable, no turn spent: ${channels.detail}` }
+            : await deliver(closedNews ? { ...sendRow, payload: { ...payloadOf(sendRow), closedNews } } : sendRow);
+        if (pushed && pushed.ok) {
+          await client.query(
+            `UPDATE outbox SET payload = payload || '{"deliveredBy":"push"}'::jsonb WHERE id = $1`, [row.id]);
+          await audit.record(client, row.user_id, 'push.delivered', {
+            outboxId: Number(row.id), kind: row.kind, sent: pushed.sent, gone: pushed.gone,
+          });
+        }
         // Written onto the stored row only now, beside the stamp, so "they
         // heard it" is never recorded for a send that failed — the digest and
         // the next message both read it back through unheardClosedMeetings.
@@ -674,13 +728,17 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
         // them rather than where it was queued (jobs/checkin.js, `run`, says
         // why). Any ladder rung among the rows this send carried counts once
         // — a merge puts at most one check-in in a message, and one message
-        // is one question — and a day-one step never counts.
+        // is one question — and a day-one step never counts. Neither does a
+        // message the OWNER sent by hand (`admin`) or a repair of our own
+        // fault: neither is the ladder asking "את פה?", and counting them
+        // silenced Gali's and Dov's 2026-10-07 digests (gate: misses >= 1).
         const countLadderAsk = () => client.query(
           `UPDATE users SET checkin_misses = checkin_misses + 1
             WHERE id = $1
               AND EXISTS (SELECT 1 FROM outbox o
                            WHERE o.id = ANY($2::bigint[]) AND o.kind = 'checkin'
-                             AND COALESCE(o.payload->>'rung', '') NOT LIKE 'onboarding\\_%')`,
+                             AND COALESCE(o.payload->>'rung', '') NOT LIKE 'onboarding\\_%'
+                             AND COALESCE(o.payload->>'rung', '') NOT IN ('admin', 'unanswered_repair', 'missed_goal_repair'))`,
           [row.user_id, ids]);
         // A first-rung LIST of three or more is not chased. Dov got twelve at
         // 08:00 and the same twelve at 11:01 (2026-10-04); over thirty days an

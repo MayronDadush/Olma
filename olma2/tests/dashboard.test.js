@@ -18,6 +18,13 @@ const AUTH = 'Basic ' + Buffer.from('admin:test-password-123').toString('base64'
 // nothing about either branch.
 let gatewayState = { status: 'live', detail: 'live', port: 18789 };
 
+// The billing APIs likewise: on the box the deploy's env carries the real
+// keys, so the alerts strip read the real OpenRouter balance and "a clean
+// board" went red the day it fell under the low-balance line (2026-10-07,
+// $10 left) — on the box only, green in CI. Unconfigured is the stated case.
+for (const k of ['ANTHROPIC_ADMIN_KEY', 'DO_API_TOKEN', 'ELEVENLABS_API_KEY', 'OPENROUTER_API_KEY',
+  'TWILIO_SID', 'TWILIO_TOKEN', 'DEEPGRAM_API_KEY', 'CARTESIA_API_KEY']) delete process.env[k];
+
 before(async () => {
   db = await freshDb();
   user = await makeUser(db.pool, '+972611000001', { firstName: 'Dana' });
