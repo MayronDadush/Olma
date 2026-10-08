@@ -1995,8 +1995,15 @@ follow-up is queued only when it has something to do — a room's or a game
 night's short opening that never said what Olma is, or words left with the
 greeter (`users.intake_note_at`) — and the default branch tells the model
 that a note with nothing to act on is answered with exactly `NO_REPLY`. The
-page is still offered later in day one (`jobs/checkin.js`) and whenever they
-ask for it.
+page is offered later, by the task count below, and whenever they ask for it.
+
+The owner then took the day-one 22h step out too ("היא גם נחשבת התחלה") —
+until now it was skipped for most people because the welcome had already
+minted their link, and without that it would have reached everyone. Their
+page is now a discovery gap of the ordinary ladder (`dashboard`, once ever),
+offered when they hold three open tasks (`DASHBOARD_MIN_TASKS`, owner: "ברגע
+שיש למשתמש לפחות 2 3 משימות") and never to somebody who already has a link
+to their own page.
 
 What is left to the model: a note that exists but asks for nothing ("מה את
 יודעת לעשות?", already answered by the greeter) still queues the follow-up,
