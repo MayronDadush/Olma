@@ -13,6 +13,7 @@ const { withTx } = require('../src/db/pool');
 const { createBrokerServer } = require('../src/brokerd/server');
 const saved = require('../src/domain/saved-links');
 const classify = require('../src/domain/link-classify');
+const extract = require('../src/domain/link-extract');
 const templates = require('../src/domain/message-templates');
 const replyLeak = require('../src/domain/reply-leak');
 const enrich = require('../src/jobs/saved-links-enrich');
@@ -418,11 +419,32 @@ test('a mixed message counts only what was saved now, and English says how to mo
     /^שמרתי קישור אחד:\n• ב\*מתכונים\* — Cake\n• כבר שמור ב\*לצפות\* — A talk\n/);
 });
 
+test('a sign-in wall\'s title is not what they saved, and a real title that starts with the word is', () => {
+  const f = extract.isSignInTitle;
+  for (const t of ['Instagram', 'Log in | Facebook', 'Log into Facebook', 'LinkedIn Login, Sign in | LinkedIn',
+    'Sign in - Google Accounts', 'Facebook - log in or sign up', 'Sign in to continue', 'התחברות', 'כניסה | ynet', 'כניסה לחשבון']) {
+    assert.equal(f(t), true, t);
+  }
+  for (const t of ['Simple chocolate cake', 'Login Ninja recipes for kids', 'התחברות מחדש אחרי פרידה: מדריך',
+    'Instagram photos of Paris trip', 'The Sign In Sheet: a novel review', 'כניסה חופשית לגן החיות', 'Wedding venues - Tel Aviv', null, '']) {
+    assert.equal(f(t), false, String(t));
+  }
+});
+
+test('a sign-in wall answering 200 is a page that was not read', async () => {
+  const wall = fakeFetch([[/walled\.example/, ok('<html><head><title>Log in | Walled</title></head><body>…</body></html>', 'text/html')]]);
+  assert.equal(await extract.extract('https://walled.example/p/123', { fetchImpl: wall, lookup: PUBLIC }), null);
+  const page = fakeFetch([[/open\.example/, ok('<html><head><title>Login Ninja recipes</title></head></html>', 'text/html')]]);
+  assert.equal((await extract.extract('https://open.example/r', { fetchImpl: page, lookup: PUBLIC })).title, 'Login Ninja recipes');
+});
+
 test('a page that could not be read is still saved, and the reply says it could not read it', () => {
   assert.equal(saved.shortcutReply([{ list: 'לקרוא אחר כך', emoji: '📖', title: null, read: false }], { lang: 'he' }),
     'לא הצלחתי לקרוא מה יש בקישור, אבל שמרתי אותו ב*לקרוא אחר כך* 📖\nאפשר לענות בשם של רשימה אחרת כדי להעביר');
   assert.equal(saved.shortcutReply([{ list: 'Wedding', emoji: '', read: false, createdList: true }], { lang: 'en' }),
     'I couldn’t read what’s in the link, but I saved it to a new list: *Wedding*\nReply with another list name to move it');
+  // Read, but nothing to call it by: the same sentence.
+  assert.match(saved.shortcutReply([{ list: 'השראה', title: null, read: true }], { lang: 'he' }), /^לא הצלחתי לקרוא מה יש בקישור, אבל שמרתי אותו ב\*השראה\*/);
   // Read, or a duplicate (not news about the page): the old sentence.
   assert.match(saved.shortcutReply([{ list: 'מתכונים', title: 'עוגה', read: true }], { lang: 'he' }), /^שמרתי ב\*מתכונים\* — עוגה/);
   assert.match(saved.shortcutReply([{ list: 'מתכונים', duplicate: true, read: false, savedAt: Date.now() }], { lang: 'he', now: Date.now() }), /^כבר שמור לך/);

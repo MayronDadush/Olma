@@ -589,9 +589,11 @@ function countWords(n, lang) {
 function shortcutReply(items, { lang = 'he', now, timezone, overrides } = {}) {
   const about = (t) => { const c = cleanTitle(t); return c ? `— ${c}` : ''; };
   const name = (l) => String(l || '').replace(/[*_~`]/g, '').trim();
-  // Only a save made NOW and not read says so; `read` is absent on a row that
-  // never went through the read, and a duplicate is not news about the page.
-  const unread = (it) => !it.duplicate && it.read === false;
+  // Only a save made NOW says so: not read, or read with no title to show
+  // (Instagram's front door gives a picture and nothing else). `read` is
+  // absent on a row that never went through the read, and a duplicate is not
+  // news about the page.
+  const unread = (it) => !it.duplicate && (it.read === false || (it.read === true && !cleanTitle(it.title)));
   let text;
   if (items.length === 1) {
     const it = items[0];
