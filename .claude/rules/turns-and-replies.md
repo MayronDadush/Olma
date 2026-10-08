@@ -211,6 +211,13 @@ title means this file. Grep the title, not the filename.
   minute that the rule above keeps theirs. The page and the room are other
   doors and are untouched (`incidents.md`, "The check-in that answered for
   him").
+  **…and it passes nobody's WORDS** (2026-10-08). `SPEAKS_FOR` beside each
+  tool — `send_message_to_connection` (`messages-between-people.js`) and the
+  private chat's `relay_to_group` (`meetings.js`) — is guarded by the same
+  `src/adapters/mcp/our-turn.js`, same exception, same reason code, with a refusal
+  that says to ask them. A test scans EVERY tool slice for a handler that
+  reaches a relay function off the list (`incidents.md`, "The check-in that
+  wrote to Sarah").
 
 - **A WhatsApp reply names ONE message, and only the MODEL is ever told which.**
   The gateway carries it end to end — `reply_to_id` in `Conversation info`, the
