@@ -189,7 +189,7 @@ main{max-width:860px;margin:0 auto;padding:18px 16px calc(var(--bar-bottom) + 11
 .vseg{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;margin:0 0 14px}
 .vseg::-webkit-scrollbar{display:none}
 .vseg button{min-width:0;display:flex;flex-direction:column;align-items:center;gap:5px;border:1px solid var(--sep);background:var(--surface);border-radius:14px;padding:8px 2px 7px;font-size:11.5px;line-height:1.1;white-space:nowrap;color:var(--text-2)}
-.vseg .ic{height:35px;display:flex;align-items:flex-end;color:var(--m-water)}
+.vseg .ic{height:42px;display:flex;align-items:flex-end;color:var(--m-water)}
 .vseg .ic svg{display:block}
 .vseg .wv{fill:var(--m-water);opacity:.8}
 @media (max-width:340px){.vseg button{font-size:10.5px}}
@@ -199,6 +199,11 @@ main{max-width:860px;margin:0 auto;padding:18px 16px calc(var(--bar-bottom) + 11
 .ves:active{transform:scale(.92)}
 .ves.on{color:var(--m-water)}
 .ves svg{display:block}
+.ves{transform-origin:50% 100%}
+.ves.out{animation:vsquash .2s ease-in forwards}
+.ves.in{animation:vpop .55s cubic-bezier(.2,.8,.3,1) both}
+@keyframes vsquash{to{transform:scale(1.35,.08);opacity:.3}}
+@keyframes vpop{from{transform:scale(1.35,.08)}55%{transform:scale(.88,1.12)}80%{transform:scale(1.05,.96)}to{transform:none}}
 .ves .wv{fill:var(--m-water);opacity:.8;transform-box:fill-box;transform-origin:50% 100%;transition:transform .8s var(--ease)}
 .ves .wave{animation:wave 2.4s ease-in-out infinite}
 @keyframes wave{0%,100%{transform:translateX(0)}50%{transform:translateX(-6px)}}
@@ -453,7 +458,15 @@ async function load(d) {
 // to rebuild, and re-animate, everything above it.
 const WATER_OPS = new Set(['water', 'vessel', 'water_goal']);
 let stale = false;   // the week tab still shows the water from before (its water6 challenge)
-function renderWater() {
+// A new vessel squashes the old row flat and pops the new one up out of it.
+const SQUASH_MS = 200;
+function renderWater(swap = false) {
+  const olds = swap && !matchMedia('(prefers-reduced-motion:reduce)').matches ? $('#waterCard').querySelectorAll('.vessels .ves') : [];
+  if (olds.length) {
+    olds.forEach(o => o.classList.add('out'));
+    clearTimeout(renderWater.t); renderWater.t = setTimeout(() => { renderWater(); $('#waterCard').querySelectorAll('.vessels .ves').forEach((n, i) => { n.style.animationDelay = `${i * 40}ms`; n.classList.add('in'); }); }, SQUASH_MS);
+    return;
+  }
   const c = $('#waterCard'); c.outerHTML = waterHtml();
   $('#waterCard').querySelectorAll('.ves').forEach(b => {
     const r = b.querySelector('.wv');
@@ -466,7 +479,7 @@ async function write(op, data = {}) {
     const r = await fetch(`${API}/api/write`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ op, date: S.day, ...data }) });
     const j = await r.json().catch(() => ({}));
     if (!r.ok) { toast(ERR[j.error] || 'לא נשמר. נסו שוב.'); return null; }
-    S = j.state; if (WATER_OPS.has(op) && $('#waterCard')) renderWater(); else render(); return j.result;
+    S = j.state; if (WATER_OPS.has(op) && $('#waterCard')) renderWater(op === 'vessel'); else render(); return j.result;
   } catch { toast('אין חיבור. נסו שוב.'); return null; }
 }
 
@@ -523,22 +536,31 @@ const L = ml => ml >= 1000 ? `${(ml / 1000).toFixed(2).replace(/\.?0+$/, '')} ל
 let wOpen = false;        // the goal stepper
 let wFrom = null;         // the ml the fill animates from, after a tap
 // Five vessels, five shapes, so the chips tell them apart at a glance: a
-// glass, a small bottle, a sports bottle (cap and loop), a carafe (handle) and
-// a big ribbed bottle. `d` is the body the water fills; `x` is drawn on top.
+// glass with a slice of lemon, a small bottle, a sports bottle, a tumbler with
+// a straw and a big family bottle with a handle. `d` is the body the water
+// fills; `x` is drawn on top in the outline colour; `deco` (the lemon, a cap)
+// keeps its own colours. Generic shapes on purpose: a brand's bottle outline
+// can be a registered trademark of its own.
+const LEMON = '#F9C23C', CAP = '#2E8A7F';
 function vesselPath(v) {
-  const bottle = (w, h) => { const n = w / 2; return `M${n - 3.5} 2h7v5c0 1.6 ${n - 5} 2.4 ${n - 5} 6v${h - 17}a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3V13c0-3.6 ${n - 5}-4.4 ${n - 5}-6z`; };
-  if (v === 250) return { w: 30, h: 40, d: 'M4 3h22l-2.6 32.5a3 3 0 0 1-3 2.5H9.6a3 3 0 0 1-3-2.5z' };
-  if (v === 500) return { w: 22, h: 44, d: bottle(22, 44) };
-  if (v === 750) return { w: 24, h: 52, d: 'M3 17a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3v30a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3z', x: 'M8 14V9a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v5M10 7V4.5a2 2 0 0 1 4 0V7' };
-  if (v === 1000) return { w: 30, h: 52, d: 'M7 3h10v4c0 4 6 7 6 13v25a4 4 0 0 1-4 4H5a4 4 0 0 1-4-4V20c0-6 6-9 6-13z', x: 'M23 23h2.5a3 3 0 0 1 3 3v10a3 3 0 0 1-3 3H23' };
-  return { w: 30, h: 62, d: bottle(30, 62), x: 'M2 36h26.5M2 41h26.5' };
+  if (v === 250) return { w: 38, h: 46, d: 'M5 8h25v33a4 4 0 0 1-4 4H9a4 4 0 0 1-4-4z',
+    deco: `<circle cx="30" cy="9" r="7" fill="${LEMON}"/><path d="M30 3v12M24.8 6l10.4 6M24.8 12l10.4-6" stroke="#fff" stroke-width="1.2"/>` };
+  if (v === 500) return { w: 28, h: 58, d: 'M10 13h8v3c0 2 6 3 6 7v30a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V23c0-4 6-5 6-7z',
+    deco: `<rect x="9" y="3" width="10" height="10" rx="2.5" fill="${CAP}"/>` };
+  if (v === 750) return { w: 32, h: 62, d: 'M4 21a4 4 0 0 1 4-4h16a4 4 0 0 1 4 4v8c-2.5 3-2.5 6 0 9v19a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4V38c2.5-3 2.5-6 0-9z',
+    deco: `<path d="M9 17v-5a3 3 0 0 1 3-3h8a3 3 0 0 1 3 3v5z" fill="${LEMON}"/><rect x="14" y="2.5" width="4" height="7" rx="1" fill="${LEMON}"/>` };
+  if (v === 1000) return { w: 46, h: 66, d: 'M7 16h26l-3 44a4 4 0 0 1-4 4H14a4 4 0 0 1-4-4z', x: 'M32.4 24h5.6a4 4 0 0 1 4 4v13a4 4 0 0 1-4 4h-6.4',
+    deco: `<rect x="5" y="9" width="30" height="7.5" rx="3" fill="${CAP}"/><path d="M23 9l5-7.5" stroke="#E2553F" stroke-width="3" stroke-linecap="round"/>` };
+  return { w: 40, h: 72, d: 'M16 9h8v5c0 3 12 5 12 13v39a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4V27c0-8 12-10 12-13z', x: 'M4 44h32M4 50h32M24.5 11.5c6-2 9 1 8 6.5',
+    deco: `<rect x="15" y="2" width="10" height="7.5" rx="2" fill="${CAP}"/>` };
 }
-function vesselSvg(v, fill, i, scale = 1) {
-  const { w, h, d, x } = vesselPath(v);
+function vesselSvg(v, fill, i, scale = ROW) {
+  const { w, h, d, x, deco } = vesselPath(v);
   return `<svg width="${Math.round(w * scale)}" height="${Math.round(h * scale)}" viewBox="0 0 ${w} ${h}" aria-hidden="true"><defs><clipPath id="wc${i}"><path d="${d}"/></clipPath></defs>
     <g clip-path="url(#wc${i})"><rect class="wv" x="-8" y="0" width="${w + 16}" height="${h}" data-to="${fill}" style="transform:scaleY(${fill})"/></g>
-    <path d="${d}${x ? ' ' + x : ''}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+    <path d="${d}${x ? ' ' + x : ''}" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>${deco || ''}</svg>`;
 }
+const ROW = 0.8;          // a glass row of eight fits a 320px phone
 function waterHtml() {
   const ml = S.water_ml || 0, goal = S.person.water_goal_ml || 2000, v = S.person.water_vessel || 250;
   const n = Math.min(24, Math.max(Math.ceil(goal / v), Math.ceil(ml / v)));
@@ -546,7 +568,7 @@ function waterHtml() {
   return `<div class="card" id="waterCard"><div class="sec-h"><h2>מים</h2>
       <button class="wsum num" type="button" data-wgoal aria-expanded="${wOpen}"><b>${L(ml)}</b><span>מתוך ${L(goal)}</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg></button></div>
     ${wOpen ? `<div class="wgoal"><span>היעד היומי</span><div class="st"><button type="button" data-wg="-250" aria-label="פחות">${I_MINUS}</button><b class="num">${L(goal)}</b><button type="button" data-wg="250" aria-label="יותר">${I_PLUS}</button></div></div>` : ''}
-    <div class="vseg" role="group" aria-label="שותים מ־">${VES.map(([x, t]) => `<button type="button" data-ves="${x}" aria-pressed="${x === v}"><span class="ic">${vesselSvg(x, x === v ? 1 : 0, 'c' + x, 0.56)}</span>${t}</button>`).join('')}</div>
+    <div class="vseg" role="group" aria-label="שותים מ־">${VES.map(([x, t]) => `<button type="button" data-ves="${x}" aria-pressed="${x === v}"><span class="ic">${vesselSvg(x, x === v ? 1 : 0, 'c' + x, 0.58)}</span>${t}</button>`).join('')}</div>
     <div class="vessels">${Array.from({ length: n }, (_, i) => `<button type="button" class="ves ${fillOf(ml, i) > 0 ? 'on' : ''}" data-ves-i="${i}" data-from="${wFrom == null ? fillOf(ml, i) : fillOf(wFrom, i)}" aria-label="${i + 1} · ${L((i + 1) * v)}">${vesselSvg(v, fillOf(ml, i), i)}</button>`).join('')}</div></div>`;
 }
 // What was drawn last, so the next drawing fills from there: a new day
