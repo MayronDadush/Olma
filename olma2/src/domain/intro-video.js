@@ -116,14 +116,23 @@ async function enqueueAll(client, videoId) {
   const { rows } = await client.query(`SELECT id FROM users WHERE ${AUDIENCE} ORDER BY id`);
   let queued = 0;
   for (const u of rows) {
-    const r = await enqueue(client, {
-      userId: u.id, kind: KIND, urgency: 'urgent',
-      payload: { video: videoId },
-      idempotencyKey: `${KIND}:${videoId}:${u.id}`,
-    });
-    if (r.data.enqueued) queued += 1;
+    if (await enqueueOne(client, u.id, videoId)) queued += 1;
   }
   return { candidates: rows.length, queued };
+}
+
+// One person, the same row and key as the broadcast: a new joiner's clip
+// (jobs/intake.js, `joiner_clip`) and the broadcast can never both reach them.
+// -> true when a row was queued.
+async function enqueueOne(client, userId, videoId, { releaseAfter = null, joiner = false } = {}) {
+  if (!VIDEOS[videoId]) throw new Error(`unknown intro video: ${videoId}`);
+  const r = await enqueue(client, {
+    userId, kind: KIND, urgency: 'urgent',
+    payload: { video: videoId, ...(joiner ? { joiner: true } : {}) },
+    idempotencyKey: `${KIND}:${videoId}:${userId}`,
+    releaseAfter,
+  });
+  return Boolean(r.data.enqueued);
 }
 
 async function stats(client, videoId, now = new Date()) {
@@ -173,5 +182,5 @@ async function stats(client, videoId, now = new Date()) {
 module.exports = {
   KIND, VIDEOS, DROPPED, REPLY_WINDOW_MIN, IGNORE_WINDOW_HOURS,
   WELCOME_CAPTION,
-  langFor, fileFor, stageMedia, welcomeClipFor, welcomeCaption, audience, enqueueAll, stats,
+  langFor, fileFor, stageMedia, welcomeClipFor, welcomeCaption, audience, enqueueAll, enqueueOne, stats,
 };

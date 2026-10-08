@@ -596,3 +596,33 @@ test('a settled coordination carries the Google event id it was written under', 
   const page = await tx((c) => dash.load(c, me.id));
   assert.equal(page.data.meetings.find((x) => Number(x.id) === id).calendarEventId, 'olmameet42');
 });
+
+// "מחר (שלישי)" read on the Tuesday (2026-10-06, the poker room): a moving day
+// in the proposer's words is said as the day it is now, on the page as in the
+// chat and the room. Moments are built once, two days ahead at 19:00 Israel
+// time, so the hour the suite runs cannot matter.
+test('a stale "מחר" in the proposer\'s words is drawn as the day it is now, and the stored words stay', async () => {
+  const dt = require('../src/domain/datetime');
+  const { DAYS_HE } = require('../src/domain/meeting-time');
+  const p = dt.partsInZone('Asia/Jerusalem', new Date());
+  const q = dt.partsInZone('Asia/Jerusalem', new Date(Date.UTC(p.y, p.m - 1, p.d + 2, 12)));
+  const at = new Date(dt.instantInZone('Asia/Jerusalem', { y: q.y, m: q.m, d: q.d, hh: 19, mi: 0, ss: 0 })).toISOString();
+  const weekday = DAYS_HE[dt.weekdayOfParts(q)];
+
+  const id = await coordination(gali, [me], 'פוקר');
+  assert.equal((await tx((c) => meetings.proposeSlot(c, gali.id, id, 'מחר בערב', at))).ok, true);
+  const row = (await tx((c) => dash.load(c, me.id))).data.meetings.find((x) => Number(x.id) === id);
+  assert.ok(!row.slot.includes('מחר') && row.slot.includes(weekday) && row.slot.endsWith('בערב'), row.slot);
+  const { rows } = await db.pool.query('SELECT proposed_slot FROM meetings WHERE id = $1', [id]);
+  assert.equal(rows[0].proposed_slot, 'מחר בערב', 'nothing is rewritten');
+});
+
+test('a settled meeting in the archive does not say "מחר" about a day that has gone', async () => {
+  const id = await coordination(gali, [me], 'ארכיון');
+  await db.pool.query(
+    `UPDATE meetings SET status = 'confirmed', confirmed_slot = 'מחר בערב',
+            confirmed_start_at = now() - interval '2 days' WHERE id = $1`, [id]);
+  const done = (await tx((c) => dash.load(c, me.id))).data.meetingsLeft.find((x) => x.id === id);
+  assert.ok(done, 'it is in the archive');
+  assert.ok(!done.slot.includes('מחר') && done.slot.endsWith('בערב'), done.slot);
+});

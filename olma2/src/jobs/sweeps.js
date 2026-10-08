@@ -207,6 +207,19 @@ async function sweepReminders(client, nowIso) {
         continue;
       }
     }
+    // A follow-up behind a digest that already listed the task is the same
+    // thing said twice a minute apart. The ladder is retired, not skipped: the
+    // morning picture was the chase.
+    if (attempt > 1 && !redo && r.auto && !r.nudge && (r.rungs === null || r.rungs === undefined)
+        && !repeats && await reminders.coveredByDigest(client, {
+      userId: r.user_id, since: r.remind_at, now,
+    })) {
+      await reminders.recordAttempt(client, r.reminder_id, { retire: true });
+      await audit.record(client, r.user_id, 'reminder.covered_by_digest', {
+        taskId: Number(r.task_id), reminderId: Number(r.reminder_id), attempt,
+      });
+      continue;
+    }
     // A second moment they asked for on the same task ("גם ב-8 וגם ב-8:30")
     // is rung 1 of its own reminder, and read exactly like the first: Bar got
     // "⏰ תזכורת" twice, thirty minutes apart. When a reminder about this task

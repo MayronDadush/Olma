@@ -284,8 +284,11 @@ test('intake sweep: open registration provisions immediately — and queues ONE 
   // 2026-09-25) is their own agent's first word — it acts on what they wrote
   // to the greeter, which has no tools (no page since 2026-10-08). Their words
   // are not in the row; USER.md holds them.
+  // (The intro clip minutes later, `joiner_clip`, is its own row and its own
+  // test below.)
   const { rows: outboxRows } = await db.pool.query(
-    `SELECT o.* FROM outbox o JOIN users u ON u.id = o.user_id WHERE u.phone = '+972601000002'`);
+    `SELECT o.* FROM outbox o JOIN users u ON u.id = o.user_id
+      WHERE u.phone = '+972601000002' AND o.kind <> 'intro_video'`);
   assert.deepEqual(outboxRows.map((r) => r.kind), ['welcome_followup'], 'exactly one row, and not a welcome');
   assert.equal(outboxRows[0].payload.hasNote, true);
   assert.equal(outboxRows[0].payload.greeterReply, OPENING.he);
@@ -339,7 +342,48 @@ test('intake sweep: a bare hello to the greeter queues nothing after it', async 
       WHERE u.phone = $1`, [phone]);
   assert.ok(rows[0].opening_sent_at, 'greeted');
   assert.equal(rows[0].intake_note_at, null, 'nothing carried over');
-  assert.deepEqual(rows.map((r) => r.kind), [null], 'and nothing queued behind the greeter');
+  assert.deepEqual(rows.map((r) => r.kind), ['intro_video'],
+    'nothing queued behind the greeter but the clip minutes later (joiner_clip, on by default)');
+});
+
+// Owner, 2026-10-08: the intro clip a few minutes after the full opening, named
+// by `joiner_clip`; never after a room's short opening, and once ever.
+test('intake sweep: the joiner clip follows the owner\'s opening, minutes later, once', async () => {
+  const introVideo = require('../src/domain/intro-video');
+  // On by default: no flag row needed.
+  try {
+    const phone = '+972601000014';
+    const before = Date.now();
+    const out = await withTx(db.pool, (c) => intake.sweepIntakeSessions(c, {
+      configPath,
+      listSessions: async () => [{ phone, key: `agent:intake:whatsapp:direct:${phone}` }],
+      readFirstMessage: async () => null,
+      readGreeterReply: async () => OPENING.he,
+    }));
+    assert.equal(out.clipped, 1);
+    const { rows } = await db.pool.query(
+      `SELECT o.* FROM outbox o JOIN users u ON u.id = o.user_id WHERE u.phone = $1 AND o.kind = 'intro_video'`, [phone]);
+    assert.equal(rows.length, 1);
+    assert.deepEqual(rows[0].payload, { video: 'v2', joiner: true });
+    assert.equal(rows[0].urgency, 'urgent');
+    assert.equal(rows[0].expires_at, null, 'a night joiner gets it in the morning');
+    const wait = new Date(rows[0].release_after).getTime() - before;
+    assert.ok(wait >= 5 * 60_000 && wait <= 10 * 60_000, `released ${wait}ms after provisioning`);
+    // The broadcast later queues nothing for them: one key per person per clip.
+    assert.equal(await withTx(db.pool, (c) => introVideo.enqueueOne(c, rows[0].user_id, 'v2')), false);
+
+    // Off: nothing.
+    await withTx(db.pool, (c) => flags.setFlag(c, 'joiner_clip', ''));
+    const off = await withTx(db.pool, (c) => intake.sweepIntakeSessions(c, {
+      configPath,
+      listSessions: async () => [{ phone: '+972601000015', key: 'agent:intake:whatsapp:direct:+972601000015' }],
+      readFirstMessage: async () => null,
+      readGreeterReply: async () => OPENING.he,
+    }));
+    assert.equal(off.clipped, undefined);
+  } finally {
+    await withTx(db.pool, (c) => flags.setFlag(c, 'joiner_clip', ''));
+  }
 });
 
 // ---- a newcomer from a room with a coordination waiting (owner, 2026-09-29)
@@ -374,13 +418,16 @@ test('intake sweep: the room\'s short opening is an introduction, and the follow
     (SELECT group_id FROM chat_group_members WHERE phone = $1)`, [closed]);
 
   const before = Date.now();
+  // The joiner clip is on, and a room's short opening still does not earn it.
+  await withTx(db.pool, (c) => flags.setFlag(c, 'joiner_clip', 'v2'));
   const out = await withTx(db.pool, (c) => intake.sweepIntakeSessions(c, {
     configPath,
     listSessions: async () => [inRoom, closed].map((phone) => ({ phone, key: `agent:intake:whatsapp:direct:${phone}` })),
     readFirstMessage: async () => 'היי',
     readGreeterReply: async (phone) => (phone === inRoom ? reply : said(ctxClosed)),
-  }));
+  })).finally(() => withTx(db.pool, (c) => flags.setFlag(c, 'joiner_clip', '')));
   assert.deepEqual(out.provisioned.sort(), [inRoom, closed].sort());
+  assert.equal(out.clipped, undefined, 'the room\'s door is the morning follow-up, not the clip');
 
   const { rows } = await db.pool.query(
     `SELECT u.phone, u.opening_sent_at, u.timezone, o.payload, o.release_after, o.expires_at
