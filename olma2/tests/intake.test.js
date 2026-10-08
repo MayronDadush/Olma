@@ -284,8 +284,11 @@ test('intake sweep: open registration provisions immediately — and queues ONE 
   // 2026-09-25) is their own agent's first word — it acts on what they wrote
   // to the greeter, which has no tools (no page since 2026-10-08). Their words
   // are not in the row; USER.md holds them.
+  // (The intro clip minutes later, `joiner_clip`, is its own row and its own
+  // test below.)
   const { rows: outboxRows } = await db.pool.query(
-    `SELECT o.* FROM outbox o JOIN users u ON u.id = o.user_id WHERE u.phone = '+972601000002'`);
+    `SELECT o.* FROM outbox o JOIN users u ON u.id = o.user_id
+      WHERE u.phone = '+972601000002' AND o.kind <> 'intro_video'`);
   assert.deepEqual(outboxRows.map((r) => r.kind), ['welcome_followup'], 'exactly one row, and not a welcome');
   assert.equal(outboxRows[0].payload.hasNote, true);
   assert.equal(outboxRows[0].payload.greeterReply, OPENING.he);
@@ -339,14 +342,15 @@ test('intake sweep: a bare hello to the greeter queues nothing after it', async 
       WHERE u.phone = $1`, [phone]);
   assert.ok(rows[0].opening_sent_at, 'greeted');
   assert.equal(rows[0].intake_note_at, null, 'nothing carried over');
-  assert.deepEqual(rows.map((r) => r.kind), [null], 'and nothing queued behind the greeter');
+  assert.deepEqual(rows.map((r) => r.kind), ['intro_video'],
+    'nothing queued behind the greeter but the clip minutes later (joiner_clip, on by default)');
 });
 
 // Owner, 2026-10-08: the intro clip a few minutes after the full opening, named
 // by `joiner_clip`; never after a room's short opening, and once ever.
 test('intake sweep: the joiner clip follows the owner\'s opening, minutes later, once', async () => {
   const introVideo = require('../src/domain/intro-video');
-  await withTx(db.pool, (c) => flags.setFlag(c, 'joiner_clip', 'v2'));
+  // On by default: no flag row needed.
   try {
     const phone = '+972601000014';
     const before = Date.now();

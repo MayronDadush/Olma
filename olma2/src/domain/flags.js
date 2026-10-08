@@ -180,9 +180,13 @@ const DEFAULTS = {
   silence_pause_days_holding: 5,
   // jobs/intake.js (owner, 2026-10-04, new people said she "חופרת"): the
   // morning-after welcome of somebody who came in through a game night or a
-  // room is the intro clip with one fixed line and their page, instead of a
-  // paragraph about what Olma does. Decided at enqueue; '' = the text, as before.
+  // room is the intro clip with one fixed line (no page since 2026-10-08),
+  // instead of a paragraph about what Olma does. Decided at enqueue; '' = the
+  // text, as before.
   welcome_clip: 'v2',
+  // jobs/intake.js (owner, 2026-10-08): the intro clip a few minutes after the
+  // owner's full opening, in place of the 15m day-one step. '' = off.
+  joiner_clip: 'v2',
   // domain/experiments.js: the A/B tests the owner has ENDED, as
   // { key: 'a' | 'b' }. Empty means every experiment in the code is running.
   // Written only by the admin page's "לקבע" button.

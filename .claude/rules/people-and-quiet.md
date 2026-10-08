@@ -118,7 +118,7 @@ title means this file. Grep the title, not the filename.
   אחרי ההודעה הראשונה שלהם"): `jobs/intake.js` queues the same row and key
   (`intro-video.enqueueOne`) seven minutes after provisioning, only after the
   owner's FULL opening — a room's or a game night's short opening has its own
-  door, `welcome_clip` — named by the flag `joiner_clip` ('' is off). No
+  door, `welcome_clip` — named by the flag `joiner_clip` (default 'v2', '' is off). No
   expiry: a night joiner gets it in their morning ("בבוקר"). It TAKES the 15m
   day-one step's place ("הסרטון במקומה", `checkin.ONBOARDING_STEPS` `silentIf`,
   silent rather than skipped), unless the gate dropped it; and it spaces the
