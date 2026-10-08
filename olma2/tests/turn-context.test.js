@@ -464,12 +464,13 @@ test('the plugin module registers its hooks under its own id and reads the agent
   // gateway says about a group turn (tests/group-context.test.js);
   // before_dispatch ends an untagged room message before any turn exists
   // (tests/group-untagged.test.js), and a second before_dispatch answers
-  // "שלח לי קישור" with no model (tests/link-shortcut.test.js);
+  // "שלח לי קישור" with no model (tests/link-shortcut.test.js), and a third
+  // saves a message that is only a link (tests/saved-links.test.js);
   // reply_payload_sending is the delivery gate (tests/reply-leak.test.js);
   // agent_end tells brokerd a turn is over, so a held 👀 is dropped
   // (tests/eyes-delay.test.js).
   assert.deepEqual(on.map(([name]) => name),
-    ['before_prompt_build', 'llm_input', 'before_dispatch', 'before_dispatch', 'before_dispatch', 'llm_output', 'reply_payload_sending', 'agent_end']);
+    ['before_prompt_build', 'llm_input', 'before_dispatch', 'before_dispatch', 'before_dispatch', 'before_dispatch', 'llm_output', 'reply_payload_sending', 'agent_end']);
   for (const [, fn] of on) assert.equal(typeof fn, 'function');
   // Registering STAMPS, and on the box this suite runs inside deploy.sh: the
   // stamp must land in the temp home tests/helpers.js chose, never in

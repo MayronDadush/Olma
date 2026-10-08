@@ -744,6 +744,55 @@ export function buildLinkShortcutHandler({ connect, sock, timeoutMs = 800, log =
   };
 }
 
+// ---- a message that is only a link is SAVED by code ("שמורים") -----------
+// A person's own DM that is one to five links, with at most a list's name
+// beside them, is saved by brokerd `save_link_shortcut` and answered with its
+// sentence ("שמרתי ב*מתכונים* 🍝 — …"); no model turn. What counts as such a
+// message is brokerd's to decide (`domain/saved-links.parseShortcut`), so the
+// rule moves with a deploy and never needs a restart. What stays here is the
+// cheap bound that keeps every other DM off the socket: no "http", or longer
+// than any message the shortcut takes, never leaves the gateway.
+//
+// The wait is longer than the page-link shortcut's because the answer READS
+// the page (brokerd spends at most 3.5s on it, then saves it unread) and may
+// ask the background model for a list (2s). The gateway puts no deadline on a
+// claiming hook (2026.8.1, `runClaimingHook`: only a timeout the plugin sets),
+// so this one is the only bound. Past it the message goes to the model, which
+// has the same tool, and the dedupe on the saved URL makes a double save say
+// "already saved" rather than keep two.
+const SAVE_LINK_MAX_CHARS = 2000;
+
+export function buildSaveLinkHandler({ connect, sock, timeoutMs = 8000, log = trace } = {}) {
+  return async (event, ctx) => {
+    try {
+      const key = String((event && event.sessionKey) || (ctx && ctx.sessionKey) || "");
+      if (INTAKE_KEY_RE.test(key)) return undefined;
+      const agentId = agentIdOf(key);
+      if (!agentId || !/^u-\d+$/.test(agentId) || (event && event.isGroup === true)) return undefined;
+      const body = typeof (event && event.body) === "string" ? event.body
+        : (typeof (event && event.content) === "string" ? event.content : "");
+      if (!/https?:\/\//i.test(body) || body.length > SAVE_LINK_MAX_CHARS) return undefined;
+      const messageId = String((event && event.messageId) || (ctx && ctx.messageId) || "").slice(0, 200);
+      const t0 = Date.now();
+      const reply = await askBroker("save_link_shortcut", { agentId, body, messageId }, { connect, sock, timeoutMs });
+      const claim = Boolean(reply && reply.ok === true && reply.claim === true
+        && typeof reply.text === "string" && reply.text.trim());
+      if (claim) forgetArrival(agentId, messageId);
+      // A line per link message, never the body: few enough to keep, and the
+      // `ms` is how the budget above gets checked against real pages.
+      log({
+        saveLink: agentId,
+        ...(claim ? { claim: true } : { outcome: reply ? (reply.ok === true ? "declined" : "refused") : "unreachable" }),
+        ms: Date.now() - t0,
+      });
+      return claim ? { handled: true, text: reply.text } : undefined;
+    } catch (e) {
+      log({ saveLink: "error", error: String((e && e.message) || e).slice(0, 200) });
+      return undefined;
+    }
+  };
+}
+
 // ---- the reply gate --------------------------------------------------------
 // The third thing this plugin does, since 2026-09-10: the last thing between
 // the model's text and somebody's phone.
@@ -1196,7 +1245,7 @@ export default {
     // `agent_end` is also what brokerd reads off the stamp to know the 👀 may
     // wait (domain/reactions.endSignalsLive): a gateway on a build without it
     // would never cancel a held mark.
-    const hooks = ["before_prompt_build", "llm_input", "before_dispatch", "before_dispatch:arrival", "before_dispatch:link", "llm_output", "reply_payload_sending", "agent_end"];
+    const hooks = ["before_prompt_build", "llm_input", "before_dispatch", "before_dispatch:arrival", "before_dispatch:link", "before_dispatch:save_link", "llm_output", "reply_payload_sending", "agent_end"];
     trace({ registered: true, agents, hooks });
     stampRegistration({ agents, hooks });
     api.on("before_prompt_build", buildHandler({ agents: cfg.agents }));
@@ -1211,6 +1260,9 @@ export default {
     // only for `g-N` sessions and this one only for `u-N`, so they never both
     // claim one message.
     api.on("before_dispatch", buildLinkShortcutHandler());
+    // After it: a short link-only DM asks the page-link shortcut first (one
+    // fast refusal), then this one saves it.
+    api.on("before_dispatch", buildSaveLinkHandler());
     // Remembers a run that answered NO_REPLY, for the gate below.
     api.on("llm_output", buildSilenceHandler());
     // Deliberately NOT narrowed by `cfg.agents`: that list is which people get

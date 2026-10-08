@@ -36,6 +36,7 @@ const markEcho = require('../domain/mark-echo');
 const linkRequest = require('../domain/link-request');
 const dashboardAuth = require('../domain/dashboard-auth');
 const templates = require('../domain/message-templates');
+const savedLinks = require('../domain/saved-links');
 const gameShortcut = require('../domain/game-shortcut');
 const packsDomain = require('../domain/packs');
 const { timezoneForPhone } = require('../domain/phone-timezone');
@@ -92,8 +93,15 @@ const PENDING_MAX_PER_USER = 8;
 // production gets the worker facade, never `channels/sessions.js` directly,
 // because every export there is synchronous and this daemon answers live
 // users on the same loop.
-function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, timers, endSignalsLive, games, readGreeterReply }) {
+function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, timers, endSignalsLive, games, readGreeterReply, saveLinks }) {
   flood = flood || new FloodCounter();
+  // What reading a saved link may reach: the network and the background
+  // model. Injectable, and REFUSED inside `node --test` unless a test injects
+  // its own — a suite that read real pages would depend on the internet and
+  // on the hour (rules/testing.md).
+  const saveLinkDeps = saveLinks || (process.env.NODE_TEST_CONTEXT
+    ? { fetchImpl: async () => { throw new Error('no network in tests'); }, model: false }
+    : {});
   // gamesd and the gateway's config, for the game shortcut. Injectable for the
   // same reason as the roster: the defaults reach live services.
   games = {
@@ -819,6 +827,81 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
     if (out.claim && messageId) noteAnsweredByCode(userId, messageId);
     // The link IS the answer, and a code-sent reply may reach neither signal
     // that drops a held 👀 (no model runs, so maybe no agent_end).
+    if (out.claim && messageId) eyesAnswered(messageId);
+    if (mark) placeMark(mark);
+    return out;
+  }
+
+  // A direct message that is only a link — or a link and a list's name
+  // ("לחתונה") — is SAVED by code, before any turn ("שמורים",
+  // docs/design/saved-links-handoff.md). The plugin's `before_dispatch` sends it
+  // here; the link is read, a list chosen without asking, the row written, and
+  // the sentence handed back for the gateway to send. Anything else, and every
+  // failure, answers `claim: false` and the model runs as it would have — the
+  // worst case of this path is a model turn that saves the same link, which
+  // the dedupe on `canonical_url` turns into "already saved".
+  //
+  // A text reply and no 👍: the reply says where it went, and a mark beside it
+  // would say the same thing twice (rules/doctrine.md, "A 👍 OR a message").
+  // The body is never logged or audited; only what was saved is.
+  async function handleSaveLinkShortcut(params = {}) {
+    const agentId = String(params.agentId || '').trim();
+    if (!/^u-\d+$/.test(agentId)) return { ok: true, claim: false };
+    const parsed = savedLinks.parseShortcut(params.body);
+    if (!parsed) return { ok: true, claim: false };
+    const messageId = reactions.cleanMessageId(params.messageId);
+    let out = { ok: true, claim: false };
+    let userId = null;
+    let mark = null;
+    await withTx(pool, async (client) => {
+      const { rows } = await client.query(
+        `SELECT id, phone, locale, timezone FROM users WHERE agent_id = $1 AND status = 'active' AND is_eval = false`, [agentId]);
+      const user = rows[0];
+      if (!user) return;
+      const hint = savedLinks.shortcutHint(parsed.rest, await savedLinks.listsOf(client, user.id));
+      if (hint === undefined) return;
+      const res = await savedLinks.saveUrls(client, user, {
+        urls: parsed.urls, hint, messageId, now: clock,
+      }, saveLinkDeps);
+      if (!res.ok) return;
+      const lang = String(user.locale || '').startsWith('en') ? 'en' : 'he';
+      const overrides = await templates.load(client);
+      const about = (t) => (t ? `— ${String(t).replace(/\s+/g, ' ').trim().slice(0, 80)}` : '');
+      const items = res.data.saved;
+      let text;
+      if (items.length === 1) {
+        const it = items[0];
+        text = it.duplicate
+          ? templates.render(templates.keyFor('saved_link_dup', lang),
+            { list: it.list || '', when: savedLinks.savedWhen(it.savedAt, clock, user.timezone, lang) }, overrides)
+          : templates.render(templates.keyFor(it.createdList ? 'saved_link_new_list' : 'saved_link', lang),
+            { list: it.list || '', emoji: it.emoji || '', about: about(it.title) }, overrides);
+      } else {
+        // "ב" before the list is not style: a line with no Hebrew letter in it
+        // ("• *Wedding* — Rick Astley - Never Gonna…") is the reply gate's
+        // `english` tier for a Hebrew reader, and the cut takes the whole reply.
+        const at = lang === 'en' ? '' : 'ב';
+        const lines = items.map((it) => `• ${at}*${it.list || ''}*${it.title ? ` ${about(it.title)}` : ''}`).join('\n');
+        text = templates.render(templates.keyFor('saved_link_many', lang),
+          { count: String(items.length), lines }, overrides);
+      }
+      // What an empty value left behind: "*חתונה*  —" with no emoji, or a
+      // space at a line's end.
+      text = text.split('\n').map((l) => l.replace(/[ \t]{2,}/g, ' ').replace(/\s+$/, '')).join('\n');
+      await audit.record(client, user.id, 'saved_link.shortcut', {
+        links: items.length, duplicates: items.filter((i) => i.duplicate).length, hint: Boolean(hint),
+      });
+      userId = Number(user.id);
+      out = { ok: true, claim: true, text };
+      // The same 👍 every code-answered shortcut puts on (the link request,
+      // the game join): a late turn_open would place it anyway when it lands
+      // second, so placing it here makes the mark not depend on the order.
+      if (messageId) {
+        const vocab = reactions.vocabulary(await require('../domain/flags').getFlag(client, reactions.VOCAB_FLAG));
+        mark = { channel: 'whatsapp', target: user.phone, messageId, state: 'done', emoji: vocab.done };
+      }
+    });
+    if (out.claim && messageId) noteAnsweredByCode(userId, messageId);
     if (out.claim && messageId) eyesAnswered(messageId);
     if (mark) placeMark(mark);
     return out;
@@ -1713,6 +1796,8 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
         return handleIntakeContext(msg.params || {});
       case 'group_room_write':
         return handleGroupRoomWrite(msg.params || {});
+      case 'save_link_shortcut':
+        return handleSaveLinkShortcut(msg.params || {});
       case 'dashboard_link_shortcut':
         return handleDashboardLinkShortcut(msg.params || {});
       case 'reply_gate':
