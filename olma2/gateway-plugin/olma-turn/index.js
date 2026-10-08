@@ -774,7 +774,11 @@ export function buildSaveLinkHandler({ connect, sock, timeoutMs = 8000, log = tr
       if (!/https?:\/\//i.test(body) || body.length > SAVE_LINK_MAX_CHARS) return undefined;
       const messageId = String((event && event.messageId) || (ctx && ctx.messageId) || "").slice(0, 200);
       const t0 = Date.now();
-      const reply = await askBroker("save_link_shortcut", { agentId, body, messageId }, { connect, sock, timeoutMs });
+      // The moment this stops waiting, sent along: past it the message is the
+      // model's, so brokerd must not save, claim or mark it (it rolls its
+      // write back and answers no claim).
+      const deadline = t0 + timeoutMs;
+      const reply = await askBroker("save_link_shortcut", { agentId, body, messageId, deadline }, { connect, sock, timeoutMs });
       const claim = Boolean(reply && reply.ok === true && reply.claim === true
         && typeof reply.text === "string" && reply.text.trim());
       if (claim) forgetArrival(agentId, messageId);

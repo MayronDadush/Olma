@@ -367,8 +367,8 @@ Loads when you **Read** a file under `src/intake/agents-template.md`, `src/intak
 - **A display name is not a word to be translated.**
 - **Olma never claims a lookup it did not perform.**
 - **A `url` in a tool result is delivered by the MODEL or not at all** — save a whole message that is only "שלח לי קישור", answered by code before any turn (`domain/link-request.js`, one table per language)
-- **A message that is ONLY a link is SAVED by code, and Olma never asks "which list?" before saving** — she decides, offers the move on the second line, and only the person's own words make a list (`save_link_shortcut`)
-- **A saved link is fetched by OUR server, so every fetch goes through the guard in `domain/link-extract.js`** — resolved and refused on a private answer, every redirect re-checked; unreadable is saved, never an error
+- **A message that is ONLY a link is SAVED by code, and Olma never asks "which list?" before saving** — she decides, says where it went with no 👍, offers the move on the second line, and only the person's own words make a list (`save_link_shortcut`)
+- **A saved link is fetched by OUR server, so every fetch goes through the guard in `domain/link-extract.js`** — ports 80/443, a BlockList over every answer, the socket pinned to the checked address, every redirect re-checked; unreadable is saved, never an error
 
 ### In a group
 

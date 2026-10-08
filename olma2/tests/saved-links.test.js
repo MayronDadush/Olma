@@ -297,7 +297,7 @@ test('to_task makes an ordinary task that carries the link, once', async () => {
 // One tool, eleven actions (tests/tool-schema-budget.test.js says why). The
 // save action reaches the network, so it is driven here only up to its
 // refusal; every other action runs end to end on links saved with fixtures.
-test('saved_links: every action is one door, names itself in the result, and only a write earns a 👍', async () => {
+test('saved_links: every action is one door, names itself in the result, and only a change earns a 👍', async () => {
   const { BY_NAME } = require('../src/adapters/mcp/registry');
   const reactions = require('../src/domain/reactions');
   const t = BY_NAME.get('saved_links');
@@ -329,7 +329,10 @@ test('saved_links: every action is one door, names itself in the result, and onl
   assert.equal((await call(u, { action: 'delete_list', list: 'החתונה של דנה' })).data.deleted, true);
 
   const mark = (action) => reactions.stateFor('saved_links', { ok: true, data: { action } });
-  for (const w of ['save', 'move', 'set_line', 'done', 'delete', 'rename_list', 'delete_list', 'to_task']) assert.equal(mark(w), 'done', w);
+  for (const w of ['move', 'set_line', 'done', 'delete', 'rename_list', 'delete_list', 'to_task']) assert.equal(mark(w), 'done', w);
+  // Owner, 2026-10-08: a save's reply says what and where; a 👍 beside it is
+  // the same thing twice.
+  assert.equal(mark('save'), undefined, 'a save is answered in words, not a 👍');
   for (const r of ['list', 'search', 'lists']) assert.equal(mark(r), undefined, `${r} is a read`);
   assert.equal(reactions.stateFor('saved_links', { ok: false, error: {} }), undefined);
 });
@@ -367,10 +370,87 @@ test('the words beside it are a list only when they plainly are one', () => {
   assert.equal(saved.shortcutHint('לחתונה', lists), 'לחתונה');
   assert.equal(saved.shortcutHint('חתונה', lists), 'חתונה', 'a list they have, by its name');
   assert.equal(saved.shortcutHint('מתכונים', lists), 'מתכונים', 'a starter, by its name');
-  assert.equal(saved.shortcutHint('לטיול ביפן', lists), 'לטיול ביפן');
+  assert.equal(saved.shortcutHint('לטיול', lists), 'לטיול', 'one word with a ל opens a list');
+  assert.equal(saved.shortcutHint('לטיול ביפן', lists), undefined, 'two words are a sentence: the model\'s');
+  // Review of PR #802: "link למה?" opened a list called "מה".
+  for (const w of ['למה', 'לאן', 'לפני', 'לדעתך', 'לך', 'לגבי']) assert.equal(saved.shortcutHint(w, lists), undefined, w);
+  assert.equal(saved.shortcutHint(saved.parseShortcut(`${YT} למה?`).rest, lists), undefined);
+  assert.equal(saved.shortcutHint('למה', [{ id: 2, name: 'מתכונים מהירים' }]), undefined, 'not even into a list it is inside');
   assert.equal(saved.shortcutHint('מה דעתך', lists), undefined, 'a sentence is a model turn');
   assert.equal(saved.shortcutHint('לנסות', lists), undefined, 'a verb is not a list');
   assert.equal(saved.shortcutHint('לראות אחר כך', lists), undefined);
+});
+
+// Review of PR #802: a message carrying OUR link is about it — their /me, a
+// coordination's page — and is never saved, whatever is beside it.
+test('a link to our own pages is never the shortcut, and never saved', async () => {
+  for (const own of ['https://allma.world/me?t=abc', 'https://allma.world./me', 'https://olmachat.duckdns.org/x',
+    'http://157.230.210.233/', 'https://www.allma.world/meetings/5']) {
+    assert.equal(saved.parseShortcut(own), null, own);
+    assert.equal(saved.parseShortcut(`${YT} ${own}`), null, `${own} beside another link`);
+  }
+  const u = await person();
+  const r = await save(u, { urls: ['https://allma.world/me?t=abc'] });
+  assert.equal(r.ok, false);
+  const { rows } = await db.pool.query(`SELECT count(*)::int AS n FROM saved_links WHERE user_id = $1`, [u.id]);
+  assert.equal(rows[0].n, 0);
+});
+
+test('a title is never a link or markup inside our sentence', () => {
+  assert.equal(saved.cleanTitle('*SALE* _today_ ~50%~ `code`'), 'SALE today 50% code');
+  assert.equal(saved.cleanTitle('Win big at https://evil.example/x now'), 'Win big at now');
+  assert.equal(saved.cleanTitle('go to www.evil.example today'), 'go to today');
+  assert.equal(saved.cleanTitle('see allma.world/me?t=x'), 'see');
+  assert.equal(saved.cleanTitle('Example.com'), 'Example.com', 'a bare site name is a name');
+  assert.equal(saved.cleanTitle('***'), null);
+  const text = saved.shortcutReply([{ list: 'מתכונים', emoji: '🍝', title: '*Best* cake https://x.example/y', createdList: false }], { lang: 'he' });
+  assert.equal(text, 'שמרתי ב*מתכונים* 🍝 — Best cake\nאפשר לענות בשם של רשימה אחרת כדי להעביר');
+});
+
+test('a mixed message counts only what was saved now, and English says how to move too', () => {
+  const items = [
+    { list: 'Recipes', title: 'Cake', duplicate: false },
+    { list: 'Watch later', title: 'A talk', duplicate: true },
+  ];
+  assert.equal(saved.shortcutReply(items, { lang: 'en' }),
+    'Saved 1 link:\n• *Recipes* — Cake\n• already in *Watch later* — A talk\nReply with another list name to move the last one');
+  assert.match(saved.shortcutReply(items.map((i) => ({ ...i, list: i.list === 'Recipes' ? 'מתכונים' : 'לצפות' })), { lang: 'he' }),
+    /^שמרתי קישור אחד:\n• ב\*מתכונים\* — Cake\n• כבר שמור ב\*לצפות\* — A talk\n/);
+});
+
+test('brokerd past the plugin\'s deadline saves nothing, claims nothing, marks nothing', async () => {
+  const marks = [];
+  const broker = createBrokerServer({
+    pool: db.pool, now: () => now, saveLinks: DEPS,
+    placeMark: (o) => { marks.push(o); return { attempted: true }; },
+  });
+  const u = await person();
+  const r = await broker.dispatch({ id: 1, method: 'save_link_shortcut',
+    params: { agentId: `u-${u.id}`, body: RECIPE, messageId: '3EB0LATE01', deadline: Date.now() - 1 } });
+  assert.equal(r.claim, false);
+  const { rows } = await db.pool.query(`SELECT count(*)::int AS n FROM saved_links WHERE user_id = $1`, [u.id]);
+  assert.equal(rows[0].n, 0, 'the model saves it, once');
+  await broker.dispatch({ id: 1, method: 'turn_open', params: { agentId: `u-${u.id}`, messageId: '3EB0LATE01' } });
+  assert.equal(broker.pendingCount(), 1, 'the turn that now answers it is left to adopt it');
+  assert.ok(!marks.some((m) => m.messageId === '3EB0LATE01' && m.state === 'done'));
+});
+
+test('the tool\'s save reads BEFORE the transaction and only writes inside it', async () => {
+  const { BY_NAME } = require('../src/adapters/mcp/registry');
+  const t = BY_NAME.get('saved_links');
+  const u = await person();
+  const seen = [];
+  const links = { ...DEPS, fetchImpl: fakeFetch(SITES, seen) };
+  const prepared = await t.prepare(db.pool, u, { action: 'save', url: RECIPE }, { links });
+  assert.equal(seen.length, 1, 'the page was read in prepare');
+  const noNet = { ...DEPS, fetchImpl: async () => { throw new Error('the write phase must not fetch'); } };
+  const r = await tx((c) => t.handler(c, u, { action: 'save', url: RECIPE }, { prepared, links: noNet }));
+  assert.equal(r.ok, true);
+  assert.equal(r.data.saved[0].title, 'עוגת שוקולד לילדים');
+  assert.equal(await t.prepare(db.pool, u, { action: 'list' }, { links }), undefined, 'only a save prepares');
+  const other = await person();
+  const r2 = await tx((c) => t.handler(c, other, { action: 'save', url: RECIPE }, { prepared, links: DEPS }));
+  assert.equal(r2.data.saved[0].duplicate, false, 'somebody else\'s prepared read is never used');
 });
 
 test('when it was saved is said in their clock', () => {
@@ -393,7 +473,7 @@ test('brokerd saves, answers in the owner\'s words, and claims the message', asy
 
   const one = await ask(RECIPE, '3EB0SAVE0001');
   assert.equal(one.claim, true);
-  assert.equal(one.text, 'פתחתי רשימה חדשה: *מתכונים* 🍝 — עוגת שוקולד לילדים\nאפשר לענות "לחתונה" כדי להעביר');
+  assert.equal(one.text, 'פתחתי רשימה חדשה: *מתכונים* 🍝 — עוגת שוקולד לילדים\nאפשר לענות בשם של רשימה אחרת כדי להעביר');
   const two = await ask(`${YT} לחתונה`, '3EB0SAVE0002');
   assert.match(two.text, /^פתחתי רשימה חדשה: \*חתונה\* — Rick Astley/);
   assert.doesNotMatch(two.text, / \n/, 'an empty emoji leaves no trailing space');
@@ -402,16 +482,22 @@ test('brokerd saves, answers in the owner\'s words, and claims the message', asy
   const many = await ask(`${FLAT}\nhttps://www.10dakot.co.il/recipe/another/`, '3EB0SAVE0004');
   assert.match(many.text, /^שמרתי 2 קישורים:\n• ב\*דירות\* — דירה, /);
 
-  // The 👍 every code-answered shortcut places, whichever lands first.
-  assert.deepEqual(marks.filter((m) => m.messageId === '3EB0SAVE0001').map((m) => m.state), ['done']);
+  const again = await ask(`${YT} ${FLAT}`, '3EB0SAVE0005');
+  assert.equal(again.text, 'כולם כבר שמורים אצלך:\n• כבר שמור ב*חתונה* — Rick Astley - Never Gonna Give You Up (Official Video) (4K Remaster)\n'
+    + '• כבר שמור ב*דירות* — דירה, הדוגמה 1, רמת אביב ג\', תל אביב יפו', 'all already saved never says "saved N"');
+
+  // No mark at all on a save (owner, 2026-10-08) — and a turn_open landing
+  // after the answer puts none on either: not the 👍, not a 👀.
+  assert.deepEqual(marks.filter((m) => m.messageId === '3EB0SAVE0001'), []);
   await broker.dispatch({ id: 1, method: 'turn_open', params: { agentId: `u-${u.id}`, messageId: '3EB0SAVE0001' } });
   assert.equal(broker.pendingCount(), 0, 'the hook\'s open is not left waiting for a turn');
-  assert.ok(!marks.some((m) => m.messageId === '3EB0SAVE0001' && m.state === 'working'), 'never a 👀 on a message already answered');
+  assert.deepEqual(marks.filter((m) => m.messageId === '3EB0SAVE0001'), [], 'no mark, whichever lands first');
   const audit = await db.pool.query(
     `SELECT detail FROM audit_log WHERE actor_id = $1 AND event = 'saved_link.shortcut' ORDER BY id`, [u.id]);
   assert.deepEqual(audit.rows.map((r) => r.detail), [
     { links: 1, duplicates: 0, hint: false }, { links: 1, duplicates: 0, hint: true },
     { links: 1, duplicates: 1, hint: false }, { links: 2, duplicates: 0, hint: false },
+    { links: 2, duplicates: 2, hint: false },
   ]);
   assert.ok(!JSON.stringify(audit.rows).includes('youtu'), 'the shortcut\'s audit carries no URL');
 });
@@ -438,7 +524,7 @@ test('every sentence the shortcut can say passes the reply gate, whoever is read
     list: 'לצפות אחר כך', emoji: '🎬', about: '— Rick Astley - Never Gonna Give You Up (Official Video)', when: 'אתמול', count: '2',
     lines: '• ב*Wedding* — Rick Astley - Never Gonna Give You Up\n• ב*מתכונים* — עוגת שוקולד',
   };
-  for (const base of ['saved_link', 'saved_link_new_list', 'saved_link_dup', 'saved_link_many']) {
+  for (const base of ['saved_link', 'saved_link_new_list', 'saved_link_dup', 'saved_link_many', 'saved_link_many_dup']) {
     for (const lang of ['he', 'en']) {
       const text = templates.render(templates.keyFor(base, lang), vars, {});
       // An English sentence goes only to somebody whose locale is English, and
@@ -475,7 +561,9 @@ test('the plugin claims only an explicit claim, and never carries the link in it
   const h = plugin.buildSaveLinkHandler({ connect, log: (o) => log.push(o) });
   assert.deepEqual(await h({ sessionKey: DM, body: RECIPE, messageId: '3EB0X' }, {}), { handled: true, text: 'שמרתי ב*מתכונים* 🍝' });
   assert.equal(sent[0].method, 'save_link_shortcut');
-  assert.deepEqual(sent[0].params, { agentId: 'u-3', body: RECIPE, messageId: '3EB0X' });
+  const { deadline, ...params } = sent[0].params;
+  assert.deepEqual(params, { agentId: 'u-3', body: RECIPE, messageId: '3EB0X' });
+  assert.ok(deadline > Date.now() && deadline <= Date.now() + 8000, 'the plugin says when it stops waiting');
   assert.ok(!JSON.stringify(log).includes('10dakot'));
 
   const mk = (reply) => plugin.buildSaveLinkHandler({ connect: fakeConnect(reply).connect, log: () => {} });

@@ -24,7 +24,10 @@
 // model's words (rules/doctrine.md, "Olma never claims a lookup it did not
 // perform").
 const dnsPromises = require('node:dns').promises;
+const http = require('node:http');
+const https = require('node:https');
 const net = require('node:net');
+const { Readable } = require('node:stream');
 
 const TIMEOUT_MS = 5000;
 const MAX_PAGE_BYTES = 2 * 1024 * 1024;
@@ -130,40 +133,126 @@ function normalize(u) {
 
 // ---- the guard every fetch goes through --------------------------------------
 
+// Every range that is not the open internet. One BlockList, because the forms
+// an address can be WRITTEN in outnumber the ranges: `new URL` hands back
+// `[::ffff:a9fe:a9fe]` for `[::ffff:169.254.169.254]`, and a list of string
+// patterns missed exactly that (review of PR #802, reproduced). BlockList
+// checks an IPv4-mapped IPv6 address against the IPv4 subnets itself; the
+// three other ways to carry an IPv4 address inside IPv6 — IPv4-compatible
+// (::/96), NAT64 (64:ff9b::/96, 64:ff9b:1::/48) and 6to4 (2002::/16) — are
+// refused whole, since no host a person saves a link to answers on them.
+const BLOCKED = (() => {
+  const b = new net.BlockList();
+  for (const [a, p] of [
+    ['0.0.0.0', 8], ['10.0.0.0', 8], ['127.0.0.0', 8], ['100.64.0.0', 10], ['169.254.0.0', 16],
+    ['172.16.0.0', 12], ['192.168.0.0', 16], ['192.0.0.0', 16], ['198.18.0.0', 15],
+    ['198.51.100.0', 24], ['203.0.113.0', 24], ['224.0.0.0', 3],
+  ]) b.addSubnet(a, p, 'ipv4');
+  for (const [a, p] of [
+    ['::', 96], ['64:ff9b::', 96], ['64:ff9b:1::', 48], ['2002::', 16], ['2001:db8::', 32],
+    ['fc00::', 7], ['fe80::', 10], ['fec0::', 10], ['ff00::', 8],
+  ]) b.addSubnet(a, p, 'ipv6');
+  return b;
+})();
+
 function isPrivateIp(ip) {
-  const v = net.isIP(ip);
-  if (v === 4) {
-    const [a, b] = ip.split('.').map(Number);
-    return a === 0 || a === 10 || a === 127 || a >= 224
-      || (a === 100 && b >= 64 && b <= 127)
-      || (a === 169 && b === 254)
-      || (a === 172 && b >= 16 && b <= 31)
-      || (a === 192 && b === 168)
-      || (a === 192 && b === 0)
-      || (a === 198 && (b === 18 || b === 19));
-  }
-  if (v === 6) {
-    const s = ip.toLowerCase();
-    if (s === '::' || s === '::1') return true;
-    const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(s);
-    if (mapped) return isPrivateIp(mapped[1]);
-    return /^f[cd]/.test(s) || /^fe[89ab]/.test(s) || /^ff/.test(s);
-  }
-  return true;   // not an address at all: refuse
+  const s = String(ip == null ? '' : ip).toLowerCase().replace(/^\[|\]$/g, '');
+  const v = net.isIP(s);
+  if (!v) return true;   // not an address at all: refuse
+  try { return BLOCKED.check(s, v === 4 ? 'ipv4' : 'ipv6'); } catch { return true; }
 }
 
-// Refuses anything that is not a public host on the open internet. The
-// address is resolved here and checked; the fetch resolves it again, so a
-// host that answers differently the second time (DNS rebinding) is not
-// covered — the reach of that is one GET with no credentials of ours.
+const OUR_IPS = new Set(['157.230.210.233']);
+
+// A host that is ours — the two hostnames, the box itself, localhost — with or
+// without the trailing dot DNS allows (`allma.world.` is the same host, and
+// `new URL` keeps the dot).
+function isOwnHost(hostname) {
+  const host = String(hostname || '').toLowerCase().replace(/^\[|\]$/g, '').replace(/\.+$/, '');
+  return OWN_HOSTS.has(host) || OUR_IPS.has(host)
+    || host.endsWith('.allma.world') || host.endsWith('.localhost')
+    || host.endsWith('.internal') || host.endsWith('.local');
+}
+
+// Only the two web ports. An explicit :22 or :5432 on a public host is a
+// probe, not a page.
+function portIsWeb(url) { return url.port === '' || url.port === '80' || url.port === '443'; }
+
+// Refuses anything that is not a public host on the open internet. This is
+// the early, cheap answer; the default fetch below checks the address it
+// actually CONNECTS to as well, so a host that answers differently the second
+// time (DNS rebinding) is refused at the socket.
 async function hostIsSafe(url, lookup) {
-  const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, '');
-  if (OWN_HOSTS.has(host) || host.endsWith('.localhost') || host.endsWith('.internal') || host.endsWith('.local')) return false;
+  if (!portIsWeb(url)) return false;
+  const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, '').replace(/\.+$/, '');
+  if (!host || isOwnHost(host)) return false;
   if (net.isIP(host)) return !isPrivateIp(host);
   try {
     const addrs = await lookup(host, { all: true });
     return Array.isArray(addrs) && addrs.length > 0 && addrs.every((a) => !isPrivateIp(a.address));
   } catch { return false; }
+}
+
+// The resolver handed to the socket: it resolves, refuses if ANY answer is
+// private, and connects to what it checked. Node calls it with `all: true`
+// when it races families, and without it otherwise.
+function guardedLookup(lookupImpl) {
+  return (hostname, options, cb) => {
+    const done = typeof options === 'function' ? options : cb;
+    const all = typeof options === 'object' && options && options.all;
+    Promise.resolve(lookupImpl(hostname, { all: true })).then((addrs) => {
+      if (!Array.isArray(addrs) || !addrs.length || addrs.some((a) => isPrivateIp(a.address))) {
+        const e = new Error(`refused address for ${hostname}`);
+        e.code = 'EREFUSED_PRIVATE';
+        done(e);
+        return;
+      }
+      if (all) done(null, addrs);
+      else done(null, addrs[0].address, addrs[0].family);
+    }, (e) => done(e));
+  };
+}
+
+// A fetch-shaped GET/HEAD over node:http(s), so the socket goes through
+// `guardedLookup` (there is no undici on the box to hand a lookup to). Only
+// what safeGet and resolveShort read is provided.
+function guardedFetch(href, init = {}, lookupImpl = dnsPromises.lookup) {
+  return new Promise((resolve, reject) => {
+    const url = new URL(href);
+    const mod = url.protocol === 'https:' ? https : http;
+    const req = mod.request(url, {
+      method: init.method || 'GET', headers: init.headers || {}, signal: init.signal,
+      lookup: guardedLookup(lookupImpl),
+    }, (res) => {
+      const body = Readable.toWeb(res);
+      resolve({
+        status: res.statusCode,
+        headers: { get: (k) => { const v = res.headers[String(k).toLowerCase()]; return v == null ? null : [].concat(v).join(', '); } },
+        body,
+      });
+    });
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+// What a fetch may still spend: its own five seconds, cut short by the
+// caller's deadline and by the caller's abort. `null` once nothing is left.
+function signalFor(opts) {
+  const left = opts.deadline ? opts.deadline - Date.now() : Infinity;
+  const ms = Math.min(opts.timeoutMs || TIMEOUT_MS, left);
+  if (!(ms > 0)) return null;
+  const timer = AbortSignal.timeout(Math.ceil(ms));
+  return opts.signal ? AbortSignal.any([timer, opts.signal]) : timer;
+}
+
+function fetcherOf(opts) {
+  const lookup = opts.lookup || dnsPromises.lookup;
+  return opts.fetchImpl || ((u, init) => guardedFetch(u, init, lookup));
+}
+
+function discard(res) {
+  try { if (res && res.body && typeof res.body.cancel === 'function') res.body.cancel().catch(() => {}); } catch { /* gone */ }
 }
 
 async function readCapped(res, maxBytes) {
@@ -186,30 +275,34 @@ async function readCapped(res, maxBytes) {
 
 // One GET, every hop checked. `null` for anything refused, failed, too big or
 // too slow — the reason goes to `why` for the audit, never to the person.
+// `opts.maxRedirects` is what the caller has left (resolveShort spends from
+// the same three), `opts.deadline`/`opts.signal` what it has left in time.
 async function safeGet(href, opts = {}) {
-  const fetchImpl = opts.fetchImpl || globalThis.fetch;
+  const fetchImpl = fetcherOf(opts);
   const lookup = opts.lookup || dnsPromises.lookup;
   const why = opts.why || (() => {});
+  const maxRedirects = Number.isInteger(opts.maxRedirects) ? opts.maxRedirects : MAX_REDIRECTS;
   let url = parse(href);
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), opts.timeoutMs || TIMEOUT_MS);
+  const signal = signalFor(opts);
+  if (!signal) { why('timeout'); return null; }
   try {
-    for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
+    for (let hop = 0; hop <= maxRedirects; hop += 1) {
       if (!url) { why('bad_url'); return null; }
       if (!(await hostIsSafe(url, lookup))) { why('refused_host'); return null; }
       const res = await fetchImpl(url.href, {
-        redirect: 'manual', signal: controller.signal,
+        redirect: 'manual', signal,
         headers: { 'user-agent': opts.ua || BROWSER_UA, accept: opts.accept || '*/*', 'accept-language': 'he,en;q=0.8' },
       });
       if (res.status >= 300 && res.status < 400) {
         const loc = res.headers.get('location');
+        discard(res);
         if (!loc) { why(`http_${res.status}`); return null; }
         try { url = parse(new URL(loc, url).href); } catch { url = null; }
         continue;
       }
-      if (res.status !== 200) { why(`http_${res.status}`); return null; }
+      if (res.status !== 200) { discard(res); why(`http_${res.status}`); return null; }
       const type = String(res.headers.get('content-type') || '').toLowerCase();
-      if (opts.type && !opts.type.test(type)) { why('wrong_type'); return null; }
+      if (opts.type && !opts.type.test(type)) { discard(res); why('wrong_type'); return null; }
       const body = await readCapped(res, opts.maxBytes || MAX_PAGE_BYTES);
       if (!body) { why('too_big'); return null; }
       return { finalUrl: url.href, type, body };
@@ -217,10 +310,10 @@ async function safeGet(href, opts = {}) {
     why('too_many_redirects');
     return null;
   } catch (e) {
-    why(e && e.name === 'AbortError' ? 'timeout' : 'fetch_failed');
+    const name = e && (e.name || (e.cause && e.cause.name));
+    why(name === 'AbortError' || name === 'TimeoutError' ? 'timeout'
+      : e && e.code === 'EREFUSED_PRIVATE' ? 'refused_address' : 'fetch_failed');
     return null;
-  } finally {
-    clearTimeout(timer);
   }
 }
 
@@ -452,24 +545,31 @@ function placeFromMapsUrl(href) {
   return m ? clean(decodeURIComponent(m[1].replace(/\+/g, ' ')), 120) : null;
 }
 
-// Follows a short link to where it goes, through the same guard as any fetch.
+// Follows a short link to where it goes, through the same guard as any fetch,
+// inside the same time budget, and out of the same three redirects the read
+// that follows it gets — so a short link cannot buy itself six hops.
 async function resolveShort(n, opts) {
-  if (!SHORT_HOSTS.has(parse(n.url).hostname.toLowerCase())) return n;
-  const fetchImpl = opts.fetchImpl || globalThis.fetch;
+  if (!SHORT_HOSTS.has(parse(n.url).hostname.toLowerCase())) return { n, hops: 0 };
+  const fetchImpl = fetcherOf(opts);
   const lookup = opts.lookup || dnsPromises.lookup;
   let url = parse(n.url);
+  let hops = 0;
+  const signal = signalFor(opts);
+  if (!signal) return { n, hops: MAX_REDIRECTS };
   try {
-    for (let hop = 0; hop < MAX_REDIRECTS; hop += 1) {
-      if (!url || !(await hostIsSafe(url, lookup))) return n;
-      const res = await fetchImpl(url.href, { method: 'HEAD', redirect: 'manual', headers: { 'user-agent': BROWSER_UA } });
+    while (hops < MAX_REDIRECTS) {
+      if (!url || !(await hostIsSafe(url, lookup))) return { n, hops };
+      const res = await fetchImpl(url.href, { method: 'HEAD', redirect: 'manual', signal, headers: { 'user-agent': BROWSER_UA } });
+      discard(res);
       const loc = res.status >= 300 && res.status < 400 ? res.headers.get('location') : null;
       if (!loc) break;
+      hops += 1;
       url = parse(new URL(loc, url).href);
       if (url && !SHORT_HOSTS.has(url.hostname.toLowerCase())) break;
     }
-  } catch { return n; }
+  } catch { return { n, hops: MAX_REDIRECTS }; }
   const target = url && normalize(url.href);
-  return target ? { ...target, url: n.url } : n;
+  return { n: target ? { ...target, url: n.url } : n, hops };
 }
 
 // The whole read. `null` = could not read it (retry later); otherwise an
@@ -481,7 +581,9 @@ async function extract(href, opts = {}) {
   try {
     let n = normalize(href);
     if (!n) return null;
-    n = await resolveShort(n, opts);
+    const short = await resolveShort(n, opts);
+    n = short.n;
+    opts = { ...opts, maxRedirects: Math.max(0, MAX_REDIRECTS - short.hops) };
     const read = {
       youtube: readYoutube, tiktok: readTiktok, instagram: readInstagram, yad2: readYad2,
     }[n.platform] || readPage;
@@ -517,8 +619,8 @@ async function fetchImage(href, opts = {}) {
 }
 
 module.exports = {
-  findUrls, normalize, platformOf, extract, fetchImage,
+  findUrls, normalize, platformOf, extract, fetchImage, isOwnHost,
   // exported for the tests
-  isPrivateIp, hostIsSafe, safeGet, yad2Listing, recipeFrom, jsonLdNodes, lineFrom,
+  isPrivateIp, hostIsSafe, safeGet, guardedFetch, guardedLookup, yad2Listing, recipeFrom, jsonLdNodes, lineFrom,
   MAX_URLS, MAX_IMAGE_BYTES, PREVIEW_UA,
 };

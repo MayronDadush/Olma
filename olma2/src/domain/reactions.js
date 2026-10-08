@@ -623,9 +623,12 @@ function armsAskedReminder(result) {
   return Array.isArray(list) && list.some((r) => r && r.auto === false);
 }
 // `saved_links` is one tool for eleven things, so its mark is read off the
-// action its result names: a write is in hand when it returns, exactly like
+// action its result names: a change is in hand when it returns, exactly like
 // add_task or archive_task, and a read (list, search, lists) earns nothing.
-const SAVED_LINK_WRITES = new Set(['save', 'move', 'set_line', 'done', 'delete', 'rename_list', 'delete_list', 'to_task']);
+// A `save` earns nothing either (owner, 2026-10-08): its reply names what was
+// saved and where, and a 👍 beside that says it twice — a move is the one
+// that is ONLY a 👍.
+const SAVED_LINK_WRITES = new Set(['move', 'set_line', 'done', 'delete', 'rename_list', 'delete_list', 'to_task']);
 function stateFor(toolName, result) {
   if (toolName === 'add_task' && armsAskedReminder(result)) return 'scheduled';
   if (toolName === 'saved_links') {

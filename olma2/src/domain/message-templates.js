@@ -152,7 +152,7 @@ const TEMPLATES = [
     vars: { list: 'שם הרשימה', emoji: 'האימוג׳י של הרשימה', about: '"— " והכותרת שנקראה, או ריק' },
     required: ['list'],
     sample: { list: 'מתכונים', emoji: '🍝', about: '— עוגת שוקולד פשוטה' },
-    text: 'שמרתי ב*{{list}}* {{emoji}} {{about}}\nאפשר לענות "לחתונה" כדי להעביר',
+    text: 'שמרתי ב*{{list}}* {{emoji}} {{about}}\nאפשר לענות בשם של רשימה אחרת כדי להעביר',
   },
   {
     key: 'saved_link_en', audience: 'private', label: 'שמורים: נשמר', help: '',
@@ -167,7 +167,7 @@ const TEMPLATES = [
     vars: { list: 'שם הרשימה', emoji: 'האימוג׳י של הרשימה', about: '"— " והכותרת שנקראה, או ריק' },
     required: ['list'],
     sample: { list: 'חתונה', emoji: '', about: '— אולם גני התערוכה' },
-    text: 'פתחתי רשימה חדשה: *{{list}}* {{emoji}} {{about}}\nאפשר לענות "לחתונה" כדי להעביר',
+    text: 'פתחתי רשימה חדשה: *{{list}}* {{emoji}} {{about}}\nאפשר לענות בשם של רשימה אחרת כדי להעביר',
   },
   {
     key: 'saved_link_new_list_en', audience: 'private', label: 'שמורים: נשמר ברשימה חדשה', help: '',
@@ -192,15 +192,28 @@ const TEMPLATES = [
   {
     key: 'saved_link_many', audience: 'private', label: 'שמורים: כמה קישורים',
     help: 'כשנשלחו כמה קישורים בהודעה אחת. שורה לכל קישור.',
-    vars: { count: 'כמה נשמרו', lines: 'שורה לכל קישור: הרשימה והכותרת' }, required: ['lines'],
-    sample: { count: '2', lines: '• ב*מתכונים* — עוגת שוקולד\n• ב*לצפות אחר כך* — הרצאה' },
-    text: 'שמרתי {{count}} קישורים:\n{{lines}}\nאפשר לענות "לחתונה" כדי להעביר את האחרון',
+    vars: { count: 'כמה נשמרו עכשיו: "קישור אחד", "2 קישורים"', lines: 'שורה לכל קישור: הרשימה והכותרת, ו"כבר שמור" למה שהיה' }, required: ['lines'],
+    sample: { count: '2 קישורים', lines: '• ב*מתכונים* — עוגת שוקולד\n• ב*לצפות אחר כך* — הרצאה' },
+    text: 'שמרתי {{count}}:\n{{lines}}\nאפשר לענות בשם של רשימה אחרת כדי להעביר את האחרון',
   },
   {
     key: 'saved_link_many_en', audience: 'private', label: 'שמורים: כמה קישורים', help: '',
-    vars: { count: 'how many were saved', lines: 'one line per link: list and title' }, required: ['lines'],
-    sample: { count: '2', lines: '• *Recipes* — Chocolate cake\n• *Watch later* — A talk' },
-    text: 'Saved {{count}} links:\n{{lines}}',
+    vars: { count: 'how many were saved now: "1 link", "2 links"', lines: 'one line per link: list and title' }, required: ['lines'],
+    sample: { count: '2 links', lines: '• *Recipes* — Chocolate cake\n• *Watch later* — A talk' },
+    text: 'Saved {{count}}:\n{{lines}}\nReply with another list name to move the last one',
+  },
+  {
+    key: 'saved_link_many_dup', audience: 'private', label: 'שמורים: כמה קישורים, כולם כבר שמורים',
+    help: 'כשנשלחו כמה קישורים וכולם כבר היו שמורים. לא נשמר כלום.',
+    vars: { lines: 'שורה לכל קישור: איפה הוא כבר שמור' }, required: ['lines'],
+    sample: { lines: '• כבר שמור ב*מתכונים* — עוגת שוקולד\n• כבר שמור ב*לצפות אחר כך* — הרצאה' },
+    text: 'כולם כבר שמורים אצלך:\n{{lines}}',
+  },
+  {
+    key: 'saved_link_many_dup_en', audience: 'private', label: 'שמורים: כמה קישורים, כולם כבר שמורים', help: '',
+    vars: { lines: 'one line per link: where it already is' }, required: ['lines'],
+    sample: { lines: '• already in *Recipes* — Chocolate cake\n• already in *Watch later* — A talk' },
+    text: 'All of these are already saved:\n{{lines}}',
   },
   // ---- game nights, answered by code (domain/game-shortcut.js) -----------
   // Said with no model, the moment somebody writes "ערב משחק חדש", answers

@@ -90,6 +90,79 @@ test('a lookup that fails or answers nothing is a refusal', async () => {
     'one private answer among several is enough to refuse');
 });
 
+// Review of PR #802, reproduced: `new URL` writes [::ffff:169.254.169.254] as
+// [::ffff:a9fe:a9fe], which the old string patterns let through.
+test('every way of writing a private address inside IPv6 is refused', async () => {
+  for (const ip of ['::ffff:7f00:1', '::ffff:a9fe:a9fe', '::ffff:a00:1', '::ffff:c0a8:101', '[::ffff:7f00:1]',
+    '::7f00:1', '::', '64:ff9b::7f00:1', '64:ff9b::808:808', '64:ff9b:1::1', '2002:7f00:1::', '2002:808:808::1',
+    'fec0::1', 'ff02::1', '2001:db8::1', '198.18.0.1', '203.0.113.9', '255.255.255.255', 'not-an-ip']) {
+    assert.equal(x.isPrivateIp(ip), true, ip);
+  }
+  assert.equal(x.isPrivateIp('::ffff:808:808'), false, 'a public IPv4 mapped into IPv6 is still public');
+  const seen = [];
+  const fetchImpl = fakeFetch([[/./, ok('<title>x</title>', 'text/html')]], seen);
+  for (const u of ['http://[::ffff:169.254.169.254]/latest/', 'http://[::ffff:7f00:1]/', 'http://[64:ff9b::a9fe:a9fe]/',
+    'http://0x7f.1/', 'http://2130706433/']) {
+    assert.equal(await x.extract(u, { fetchImpl, lookup: PUBLIC }), null, u);
+  }
+  assert.equal(seen.length, 0);
+});
+
+test('only the two web ports, and our own hosts in every spelling', async () => {
+  const safe = (u) => x.hostIsSafe(new URL(u), PUBLIC);
+  assert.equal(await safe('https://example.com/'), true);
+  assert.equal(await safe('http://example.com:80/'), true);
+  assert.equal(await safe('https://example.com:443/'), true);
+  for (const u of ['http://example.com:22/', 'https://example.com:8443/', 'http://example.com:6379/',
+    'https://allma.world./me', 'https://ALLMA.WORLD/me', 'https://olmachat.duckdns.org./', 'http://157.230.210.233/',
+    'https://x.allma.world/']) {
+    assert.equal(await safe(u), false, u);
+  }
+  assert.equal(x.isOwnHost('allma.world.'), true);
+  assert.equal(x.isOwnHost('157.230.210.233'), true);
+  assert.equal(x.isOwnHost('example.com'), false);
+});
+
+// The fetch resolves the host itself, so the check above could be answered
+// with a public address and the socket opened to a private one (DNS
+// rebinding). The default fetch connects through the same check.
+test('the default fetch refuses at the SOCKET an address it was not shown', async () => {
+  const http = require('node:http');
+  let hits = 0;
+  const server = http.createServer((req, res) => { hits += 1; res.end('secret'); });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const { port } = server.address();
+  try {
+    const rebound = async () => [{ address: '127.0.0.1', family: 4 }];
+    await assert.rejects(x.guardedFetch(`http://rebind.example:${port}/`, {}, rebound), (e) => e.code === 'EREFUSED_PRIVATE');
+    assert.equal(hits, 0, 'nothing reached the private address');
+    const answers = [];
+    x.guardedLookup(PUBLIC)('example.com', { all: true }, (e, a) => answers.push([e, a]));
+    x.guardedLookup(PUBLIC)('example.com', {}, (e, a, f) => answers.push([e, a, f]));
+    await new Promise((r) => setImmediate(r));
+    assert.deepEqual(answers, [[null, [{ address: '93.184.216.34', family: 4 }]], [null, '93.184.216.34', 4]]);
+  } finally {
+    await new Promise((r) => server.close(r));
+  }
+});
+
+test('a short link spends the same three redirects the read gets, and a deadline already past reads nothing', async () => {
+  const seen = [];
+  const fetchImpl = fakeFetch([
+    [/vm\.tiktok\.com/, redirect('https://vt.tiktok.com/b')],
+    [/vt\.tiktok\.com/, redirect('https://pin.it/c')],
+    [/pin\.it/, redirect('https://www.example.com/d')],
+    [/example\.com\/d/, redirect('https://www.example.com/e')],
+    [/example\.com\/e/, ok('<title>far</title>', 'text/html')],
+  ], seen);
+  assert.equal(await x.extract('https://vm.tiktok.com/a', { fetchImpl, lookup: PUBLIC }), null, 'four hops is one too many');
+  const none = [];
+  assert.equal(await x.extract('https://example.com/', {
+    fetchImpl: fakeFetch([[/./, ok('<title>x</title>', 'text/html')]], none), lookup: PUBLIC, deadline: Date.now() - 1,
+  }), null);
+  assert.equal(none.length, 0);
+});
+
 test('a page over the size cap, a non-200 or a thrown fetch reads as null and never throws', async () => {
   const big = Buffer.alloc(3 * 1024 * 1024, 'a');
   const reasons = [];

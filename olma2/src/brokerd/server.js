@@ -143,11 +143,17 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
   // land either side of that answer, so both orders are handled — an open
   // already queued is dropped, and one arriving later marks 👍 and queues
   // nothing, because no turn is coming to adopt it.
+  //
+  // `mark` is what that late open puts on: 👍 for an answer that is a mark
+  // (the page link, a game join), and `null` for one whose TEXT is the answer
+  // — a saved link says where it went, and the owner wants no 👍 beside it
+  // (2026-10-08). Without that the late open would put back the very 👍 the
+  // shortcut left off, in exactly the order the shortcut cannot control.
   const answeredByCode = new Map();
-  function noteAnsweredByCode(userId, messageId) {
+  function noteAnsweredByCode(userId, messageId, { mark = 'done' } = {}) {
     const at = clock();
-    for (const [id, t] of answeredByCode) if (at - t > PENDING_TTL_MS) answeredByCode.delete(id);
-    answeredByCode.set(messageId, at);
+    for (const [id, v] of answeredByCode) if (at - v.at > PENDING_TTL_MS) answeredByCode.delete(id);
+    answeredByCode.set(messageId, { at, mark });
     const list = livePending(userId).filter((p) => p.messageId !== messageId);
     if (list.length) pending.set(userId, list); else pending.delete(userId);
   }
@@ -412,7 +418,9 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
         ? await meetingExit.onOut(client, user.id)
         : null;
       if (meetingExitNow) lap('exit');
-      const byCode = Boolean(messageId && answeredByCode.has(messageId));
+      const codeAnswer = messageId ? answeredByCode.get(messageId) : undefined;
+      const byCode = Boolean(codeAnswer);
+      const quietByCode = byCode && codeAnswer.mark === null;
       const left = Boolean(meetingExitNow && meetingExitNow.outcome === 'left');
       const state = stoppedReminders || left || byCode ? 'done'
         : thanksOnly ? 'thanks' : (kind === 'voice' ? 'listening' : 'working');
@@ -453,7 +461,7 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
         reportedExit: adopt && params.reportedExit === true,
         marked: new Set(), contextSent: false,
       };
-      if (adopt && messageId) {
+      if (adopt && messageId && !quietByCode) {
         // The 👀 (or 👂) is decided here, before any model latency — and held
         // for `eyes_delay_seconds` when the plugin can tell us the answer went
         // out first (domain/reactions.openingDelayMs): a message answered
@@ -841,69 +849,66 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
   // worst case of this path is a model turn that saves the same link, which
   // the dedupe on `canonical_url` turns into "already saved".
   //
-  // A text reply and no 👍: the reply says where it went, and a mark beside it
-  // would say the same thing twice (rules/doctrine.md, "A 👍 OR a message").
+  // A text reply and NO mark (owner, 2026-10-08): the reply says what was saved
+  // and where, and a 👍 beside it says the same thing twice. A late turn_open
+  // is told the same through `noteAnsweredByCode(…, { mark: null })`.
+  //
+  // Reading and choosing happen OUTSIDE any transaction (`prepareSave`), and
+  // only the write holds one. The plugin sends the moment it stops waiting
+  // (`deadline`): past it the gateway has already handed the message to the
+  // model, so this claims nothing, marks nothing and notes nothing — and a
+  // write that would land after it is rolled back, so the model's own save is
+  // the only one.
   // The body is never logged or audited; only what was saved is.
+  const SAVE_LINK_DEFAULT_MS = 7_500;
+  const SAVE_LINK_MARGIN_MS = 250;
+  const ROLL_BACK = Symbol('save_link_roll_back');
   async function handleSaveLinkShortcut(params = {}) {
     const agentId = String(params.agentId || '').trim();
     if (!/^u-\d+$/.test(agentId)) return { ok: true, claim: false };
     const parsed = savedLinks.parseShortcut(params.body);
     if (!parsed) return { ok: true, claim: false };
+    const given = Number(params.deadline);
+    const deadline = Number.isFinite(given) && given > 0 ? given : Date.now() + SAVE_LINK_DEFAULT_MS;
+    const late = () => Date.now() >= deadline - SAVE_LINK_MARGIN_MS;
     const messageId = reactions.cleanMessageId(params.messageId);
+    const { rows } = await pool.query(
+      `SELECT id, phone, locale, timezone FROM users WHERE agent_id = $1 AND status = 'active' AND is_eval = false`, [agentId]);
+    const user = rows[0];
+    if (!user) return { ok: true, claim: false };
+    const hint = savedLinks.shortcutHint(parsed.rest, await savedLinks.listsOf(pool, user.id));
+    if (hint === undefined) return { ok: true, claim: false };
+    const prepared = await savedLinks.prepareSave(pool, user, { urls: parsed.urls, hint }, { ...saveLinkDeps, deadline });
+    if (late()) return { ok: true, claim: false, late: true };
     let out = { ok: true, claim: false };
-    let userId = null;
-    let mark = null;
-    await withTx(pool, async (client) => {
-      const { rows } = await client.query(
-        `SELECT id, phone, locale, timezone FROM users WHERE agent_id = $1 AND status = 'active' AND is_eval = false`, [agentId]);
-      const user = rows[0];
-      if (!user) return;
-      const hint = savedLinks.shortcutHint(parsed.rest, await savedLinks.listsOf(client, user.id));
-      if (hint === undefined) return;
-      const res = await savedLinks.saveUrls(client, user, {
-        urls: parsed.urls, hint, messageId, now: clock,
-      }, saveLinkDeps);
-      if (!res.ok) return;
-      const lang = String(user.locale || '').startsWith('en') ? 'en' : 'he';
-      const overrides = await templates.load(client);
-      const about = (t) => (t ? `— ${String(t).replace(/\s+/g, ' ').trim().slice(0, 80)}` : '');
-      const items = res.data.saved;
-      let text;
-      if (items.length === 1) {
-        const it = items[0];
-        text = it.duplicate
-          ? templates.render(templates.keyFor('saved_link_dup', lang),
-            { list: it.list || '', when: savedLinks.savedWhen(it.savedAt, clock, user.timezone, lang) }, overrides)
-          : templates.render(templates.keyFor(it.createdList ? 'saved_link_new_list' : 'saved_link', lang),
-            { list: it.list || '', emoji: it.emoji || '', about: about(it.title) }, overrides);
-      } else {
-        // "ב" before the list is not style: a line with no Hebrew letter in it
-        // ("• *Wedding* — Rick Astley - Never Gonna…") is the reply gate's
-        // `english` tier for a Hebrew reader, and the cut takes the whole reply.
-        const at = lang === 'en' ? '' : 'ב';
-        const lines = items.map((it) => `• ${at}*${it.list || ''}*${it.title ? ` ${about(it.title)}` : ''}`).join('\n');
-        text = templates.render(templates.keyFor('saved_link_many', lang),
-          { count: String(items.length), lines }, overrides);
-      }
-      // What an empty value left behind: "*חתונה*  —" with no emoji, or a
-      // space at a line's end.
-      text = text.split('\n').map((l) => l.replace(/[ \t]{2,}/g, ' ').replace(/\s+$/, '')).join('\n');
-      await audit.record(client, user.id, 'saved_link.shortcut', {
-        links: items.length, duplicates: items.filter((i) => i.duplicate).length, hint: Boolean(hint),
+    try {
+      await withTx(pool, async (client) => {
+        const res = await savedLinks.commitSave(client, user, { messageId, now: clock }, prepared);
+        if (!res.ok) return;
+        const items = res.data.saved;
+        // A save with no list to name would read "שמרתי ב** —": the model says
+        // that one, in words.
+        if (items.some((it) => !it.list)) throw ROLL_BACK;
+        const text = savedLinks.shortcutReply(items, {
+          lang: String(user.locale || '').startsWith('en') ? 'en' : 'he',
+          now: clock, timezone: user.timezone, overrides: await templates.load(client),
+        });
+        await audit.record(client, user.id, 'saved_link.shortcut', {
+          links: items.length, duplicates: items.filter((i) => i.duplicate).length, hint: Boolean(hint),
+        });
+        if (late()) throw ROLL_BACK;
+        out = { ok: true, claim: true, text };
       });
-      userId = Number(user.id);
-      out = { ok: true, claim: true, text };
-      // The same 👍 every code-answered shortcut puts on (the link request,
-      // the game join): a late turn_open would place it anyway when it lands
-      // second, so placing it here makes the mark not depend on the order.
-      if (messageId) {
-        const vocab = reactions.vocabulary(await require('../domain/flags').getFlag(client, reactions.VOCAB_FLAG));
-        mark = { channel: 'whatsapp', target: user.phone, messageId, state: 'done', emoji: vocab.done };
-      }
-    });
-    if (out.claim && messageId) noteAnsweredByCode(userId, messageId);
-    if (out.claim && messageId) eyesAnswered(messageId);
-    if (mark) placeMark(mark);
+    } catch (e) {
+      if (e !== ROLL_BACK) throw e;
+      return { ok: true, claim: false, late: late() };
+    }
+    if (out.claim && messageId) {
+      noteAnsweredByCode(Number(user.id), messageId, { mark: null });
+      // The sentence IS the answer, and a code-sent reply may reach neither
+      // signal that drops a held 👀 (no model runs, so maybe no agent_end).
+      eyesAnswered(messageId);
+    }
     return out;
   }
 
@@ -1508,6 +1513,21 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
       // card refresh below keys on `actorId` — which a group call never sets,
       // on purpose, because everything else hung off it is person-shaped.
       let groupCardUserId = null;
+      // A tool that must reach the network first (tools/saved-links.js, a
+      // `save`: reading a page and choosing a list) does it HERE, before the
+      // transaction opens, with only short reads on the pool — a page that
+      // takes three seconds must not hold a connection and a tx open for them
+      // (review of PR #802). The identity is resolved again inside; the
+      // handler checks the prepared work is this person's, and anything that
+      // goes wrong here leaves `prepared` unset and the handler does it the
+      // old way.
+      let prepared;
+      if (tool.prepare && !groupsDomain.looksLikeGroupToken(readIdentity(args))) {
+        try {
+          const who = await usersDomain.resolveByToken(pool, readIdentity(args));
+          if (who.ok) prepared = await tool.prepare(pool, who.data.user, stripIdentity(args), { links: saveLinkDeps });
+        } catch { prepared = undefined; }
+      }
       const result = await withTx(pool, async (client) => {
         // ── the group door ────────────────────────────────────────────────
         // Routed on the token's PREFIX, before the user door is even tried:
@@ -1646,7 +1666,7 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
           turn.messageId = null; turn.lastInboundAt = null; turn.marked = null;
         }
 
-        const out = await tool.handler(client, auth.data.user, stripIdentity(args), { flood, turn, now: clock });
+        const out = await tool.handler(client, auth.data.user, stripIdentity(args), { flood, turn, now: clock, prepared, links: saveLinkDeps });
         // The recovery's count is worth exactly one `turn_start`. Clearing it
         // here means a connection that outlives its turn cannot make the NEXT
         // turn's turn_start believe its message was already counted — which

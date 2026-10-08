@@ -23,6 +23,7 @@ const extract = require('./link-extract');
 const classify = require('./link-classify');
 // Every row here carries a `url` the model must copy, never retype.
 const actionLink = require('./action-link');
+const templates = require('./message-templates');
 
 const MOVE_WINDOW_MS = 30 * 60 * 1000;
 const LINE_MAX = 120;
@@ -137,49 +138,114 @@ async function liveByCanonical(client, userId, canonical) {
   return rows[0] || null;
 }
 
-// saveUrls(client, user, {urls, hint, list, line, messageId, now}, deps) →
+// Saving is TWO phases, and only the second holds a transaction (review of PR
+// #802): reading a page is up to 3.5s on somebody else's server and choosing a
+// list may be a 2s model call, and neither may sit inside an open tx on a
+// 2-vCPU box whose pool every live turn shares.
+//
+// prepareSave(db, user, {urls, hint, list, now}, deps) → { lang, items }
+//   `db` is a pool (or any client) used only for short reads. Every URL is
+//   read AT ONCE under one shared deadline whose abort reaches each socket,
+//   then a list is chosen for each. Nothing is written.
+// commitSave(client, user, {line, messageId, now}, prepared) →
 //   ok({ saved: [{ id, url, title, list, emoji, createdList, duplicate, savedAt, read }] })
+//   Inside the caller's tx: the dedupe is asked again (another door may have
+//   saved it meanwhile), a chosen list that has gone since is chosen again by
+//   code, and the rows are written.
+// saveUrls = both, on one client — for a caller that has nothing better.
+//
 // `hint` names a list the way a person writes it beside a link ("לחתונה",
-// its ל stripped); `list` is a name handed over as a name (the tool), kept
-// as it is; `line` is their own words about the link
-// and is kept as the line under its title. `deps` carries `fetchImpl`,
-// `lookup`, `complete`, `readBudgetMs` and `model: false` for tests and for a
-// caller with no time left.
-async function saveUrls(client, user, input = {}, deps = {}) {
+// its ל stripped); `list` is a name handed over as a name (the tool), kept as
+// it is; `line` is their own words about the link and is kept as the line
+// under its title. `deps` carries `fetchImpl`, `lookup`, `complete`,
+// `readBudgetMs`, `deadline` (an absolute ms the whole thing must finish
+// inside) and `model: false`.
+const COMMIT_RESERVE_MS = 400;
+const CLASSIFY_FLOOR_MS = 300;
+
+async function prepareSave(db, user, input = {}, deps = {}) {
   const userId = Number(user.id);
   const lang = langOf(user);
-  const now = nowOf(input.now);
-  const urls = [...new Set((input.urls || []).map(String))].slice(0, extract.MAX_URLS);
-  if (!urls.length) return err('invalid', 'no url');
-  const ownLine = cleanLine(input.line);
-  const saved = [];
+  const urls = [...new Set((input.urls || []).map(String))]
+    .filter((u) => { const p = extract.normalize(u); return p && !extract.isOwnHost(new URL(p.url).hostname); })
+    .slice(0, extract.MAX_URLS);
+  const items = [];
   for (const url of urls) {
     const n = extract.normalize(url);
-    if (!n) continue;
-    const before = await liveByCanonical(client, userId, n.canonical);
-    if (before) { saved.push(dupOf(before, url)); continue; }
-
-    const read = await withDeadline(
-      extract.extract(url, { fetchImpl: deps.fetchImpl, lookup: deps.lookup, lang }),
-      deps.readBudgetMs || READ_BUDGET_MS
-    ) || null;
-    const canonical = (read && read.canonical) || n.canonical;
-    if (canonical !== n.canonical) {
-      const again = await liveByCanonical(client, userId, canonical);
-      if (again) { saved.push(dupOf(again, url)); continue; }
+    const before = await liveByCanonical(db, userId, n.canonical);
+    items.push({ url, n, dup: Boolean(before), read: null });
+  }
+  const end = Math.min(
+    Date.now() + (deps.readBudgetMs || READ_BUDGET_MS),
+    deps.deadline ? deps.deadline - COMMIT_RESERVE_MS : Infinity
+  );
+  const toRead = items.filter((it) => !it.dup);
+  if (toRead.length && end - Date.now() > 0) {
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), end - Date.now());
+    try {
+      await Promise.all(toRead.map(async (it) => {
+        it.read = await withDeadline(
+          extract.extract(it.url, { fetchImpl: deps.fetchImpl, lookup: deps.lookup, lang, signal: ac.signal, deadline: end }),
+          Math.max(0, end - Date.now()) + 50
+        ) || null;
+      }));
+    } finally {
+      clearTimeout(timer);
+      ac.abort();
     }
-    const platform = (read && read.platform) || n.platform;
-    const kind = (read && read.kind) || KIND_BY_PLATFORM[platform] || null;
+  }
+  const hint = input.list || input.hint || null;
+  let lists = null;
+  let examples = {};
+  for (const it of toRead) {
+    if (it.read && it.read.canonical && it.read.canonical !== it.n.canonical
+      && await liveByCanonical(db, userId, it.read.canonical)) { it.dup = true; continue; }
+    if (!lists) {
+      lists = await listsOf(db, userId);
+      examples = lists.length ? await examplesOf(db, userId) : {};
+    }
+    const left = (deps.deadline || Infinity) - COMMIT_RESERVE_MS - Date.now();
+    const classifyMs = Math.min(deps.classifyMs || classify.CLASSIFY_TIMEOUT_MS, left);
+    const platform = (it.read && it.read.platform) || it.n.platform;
+    it.kind = (it.read && it.read.kind) || KIND_BY_PLATFORM[platform] || null;
+    it.platform = platform;
+    it.choice = await classify.choose({
+      meta: { platform, kind: it.kind, title: it.read && it.read.title, caption: it.read && it.read.caption },
+      lists, examples, hint, exactName: Boolean(input.list), lang,
+    }, {
+      client: db, userId, complete: deps.complete, timeoutMs: classifyMs,
+      model: deps.model === false || classifyMs < CLASSIFY_FLOOR_MS ? false : deps.model,
+    });
+  }
+  return { lang, items };
+}
 
-    const lists = await listsOf(client, userId);
-    const choice = await classify.choose({
-      meta: { platform, kind, title: read && read.title, caption: read && read.caption },
-      lists, examples: lists.length ? await examplesOf(client, userId) : {},
-      hint: input.list || input.hint || null, exactName: Boolean(input.list), lang,
-    }, { client, userId, complete: deps.complete, model: deps.model, timeoutMs: deps.classifyMs });
-    const list = choice.listId
-      ? lists.find((l) => l.id === choice.listId)
-      : await ensureList(client, userId, { name: choice.newName, emoji: choice.emoji, auto: choice.by !== 'hint' });
+async function commitSave(client, user, input = {}, prepared = {}) {
+  const userId = Number(user.id);
+  const now = nowOf(input.now);
+  const ownLine = cleanLine(input.line);
+  const saved = [];
+  let lists = null;
+  for (const it of prepared.items || []) {
+    const { url, n, read } = it;
+    const canonical = (read && read.canonical) || n.canonical;
+    const before = await liveByCanonical(client, userId, n.canonical)
+      || (canonical !== n.canonical ? await liveByCanonical(client, userId, canonical) : null);
+    if (before) { saved.push(dupOf(before, url)); continue; }
+    if (it.dup) continue;   // was saved when read, and is gone now: nothing to say
+    let choice = it.choice;
+    lists = lists || await listsOf(client, userId);
+    let list = choice.listId ? lists.find((l) => l.id === choice.listId) : null;
+    if (choice.listId && !list) {
+      // Chosen a moment ago, deleted since: code chooses again, no model.
+      choice = await classify.choose({ meta: { platform: it.platform, kind: it.kind }, lists, lang: prepared.lang }, { model: false });
+      list = choice.listId ? lists.find((l) => l.id === choice.listId) : null;
+    }
+    if (!list) {
+      list = await ensureList(client, userId, { name: choice.newName, emoji: choice.emoji, auto: choice.by !== 'hint' });
+      if (list && list.created) lists = null;
+    }
 
     const line = ownLine || (read && read.line) || null;
     const { rows } = await client.query(
@@ -189,7 +255,7 @@ async function saveUrls(client, user, input = {}, deps = {}) {
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, to_timestamp($18 / 1000.0))
        ON CONFLICT (user_id, canonical_url) WHERE deleted_at IS NULL DO NOTHING
        RETURNING *`,
-      [userId, list ? list.id : null, choice.by !== 'hint', url, canonical, platform, kind,
+      [userId, list ? list.id : null, choice.by !== 'hint', url, canonical, it.platform, it.kind,
         read && read.title, read && read.author, read && read.caption,
         read && read.recipe ? JSON.stringify(read.recipe) : null, read && read.image,
         line, ownLine ? userId : null,
@@ -206,7 +272,7 @@ async function saveUrls(client, user, input = {}, deps = {}) {
       continue;
     }
     await audit.record(client, userId, 'saved_link.saved', {
-      linkId: Number(rows[0].id), listId: list ? list.id : null, platform, kind,
+      linkId: Number(rows[0].id), listId: list ? list.id : null, platform: it.platform, kind: it.kind,
       read: read ? read.level : 'none', listBy: choice.by, createdList: Boolean(list && list.created),
     });
     saved.push({
@@ -218,6 +284,12 @@ async function saveUrls(client, user, input = {}, deps = {}) {
   }
   if (!saved.length) return err('invalid', 'no url that can be saved');
   return ok({ saved });
+}
+
+async function saveUrls(client, user, input = {}, deps = {}) {
+  if (!(input.urls || []).length) return err('invalid', 'no url');
+  const prepared = await prepareSave(client, user, input, deps);
+  return commitSave(client, user, input, prepared);
 }
 
 function dupOf(row, url) {
@@ -445,8 +517,12 @@ const HINT_MAX_WORDS = 3;
 function parseShortcut(body) {
   const text = String(body == null ? '' : body);
   if (!text.trim() || text.length > SHORTCUT_MAX_CHARS) return null;
-  const urls = extract.findUrls(text);
-  if (!urls.length || urls.length > extract.MAX_URLS) return null;
+  const all = extract.findUrls(text);
+  // A link to OUR pages (their /me, a coordination's page) is never saved —
+  // it is somebody's sign-in, and a message carrying one is about it, so it
+  // goes to the model whole, whatever else is beside it (review of PR #802).
+  if (!all.length || all.length > extract.MAX_URLS || all.some((u) => extract.isOwnHost(new URL(u).hostname))) return null;
+  const urls = all;
   let rest = text;
   for (const u of urls) rest = rest.split(u).join(' ');
   // Only words count: an emoji or a dash beside a link says nothing.
@@ -467,18 +543,80 @@ const FILLER = new Set(['שמור', 'שמרי', 'תשמור', 'תשמרי', 'ל�
   'בבקשה', 'save', 'this', 'please', 'pls', 'thanks', 'for', 'me', 'later']);
 const VERB_RE = /^ל(ראות|קרוא|נסות|קנות|צפות|בדוק|זכור|בשל|הכין|שמוע|הזמין|עשות|שלוח|הראות|שתף|ספר|הוסיף|העביר)$/;
 
+// A ל word that is a question or a preposition, never a list ("link למה?"
+// opened a list called "מה" — review of PR #802). The new-list door is also
+// ONE word: "ל חתונה של דנה" is a sentence, and a sentence is the model's.
+const NOT_A_LIST = new Set(['למה', 'לאן', 'לפני', 'לפי', 'לדעתך', 'לדעתי', 'לדעתכם', 'לגבי', 'לכן', 'למשל',
+  'לפעמים', 'לא', 'לבד', 'לגמרי', 'לאט', 'למרות', 'לעולם', 'לכל', 'לפחות', 'לעומת', 'לכאן', 'לשם', 'לאחר',
+  'לך', 'לו', 'לה', 'לנו', 'לכם', 'להם', 'להן', 'למי', 'לכמה', 'לבינתיים', 'לעכשיו', 'להיום', 'למחר']);
+
 function shortcutHint(rest, lists) {
   if (!rest) return null;
   const words = rest.split(' ').filter((w) => !FILLER.has(w.toLowerCase()));
   if (!words.length) return null;
+  // Before any matching: "למה" stripped to "מה" is inside half the names
+  // anybody could have ("מתכונים מהירים").
+  if (words.some((w) => NOT_A_LIST.has(w))) return undefined;
   const hint = words.join(' ');
   if (classify.matchList(hint, lists)) return hint;
   const starters = Object.values(classify.STARTERS).flatMap((set) => Object.values(set))
     .map((st, i) => ({ id: i, name: st.name }));
   if (classify.matchList(hint, starters)) return hint;
-  if (VERB_RE.test(words[0])) return undefined;
-  const m = /^ל[-־\s]?(\S.*)$/.exec(hint);
+  if (words.length !== 1 || VERB_RE.test(words[0])) return undefined;
+  const m = /^ל[-־]?(\S+)$/.exec(hint);
   return m && m[1].length >= 2 ? hint : undefined;
+}
+
+// A page's title as it may stand inside OUR sentence (review of PR #802): no
+// link — a title carrying a URL would put a link in front of them that nobody
+// chose to send — and no WhatsApp markup, or "*SALE*" bolds half the reply
+// and an underscore pairs with one in the list's name. Somebody else's words,
+// so trimmed rather than trusted.
+const TITLE_URL = /(?:\bhttps?:\/\/|\bwww\.)\S+|\b[\w-]+(?:\.[\w-]+)+\/\S*/gi;
+function cleanTitle(t, max = 80) {
+  const s = String(t == null ? '' : t).replace(TITLE_URL, ' ').replace(/[*_~`]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!s) return null;
+  return s.length > max ? `${s.slice(0, max - 1).trimEnd()}…` : s;
+}
+
+function countWords(n, lang) {
+  if (lang === 'en') return n === 1 ? '1 link' : `${n} links`;
+  return n === 1 ? 'קישור אחד' : `${n} קישורים`;
+}
+
+// The sentence the shortcut answers with. Every item must carry a list — the
+// caller does not claim a save it cannot name. `now` may be a clock function.
+function shortcutReply(items, { lang = 'he', now, timezone, overrides } = {}) {
+  const about = (t) => { const c = cleanTitle(t); return c ? `— ${c}` : ''; };
+  const name = (l) => String(l || '').replace(/[*_~`]/g, '').trim();
+  let text;
+  if (items.length === 1) {
+    const it = items[0];
+    text = it.duplicate
+      ? templates.render(templates.keyFor('saved_link_dup', lang),
+        { list: name(it.list), when: savedWhen(it.savedAt, now, timezone, lang) }, overrides)
+      : templates.render(templates.keyFor(it.createdList ? 'saved_link_new_list' : 'saved_link', lang),
+        { list: name(it.list), emoji: it.emoji || '', about: about(it.title) }, overrides);
+  } else {
+    // "ב" before the list is not style: a line with no Hebrew letter in it
+    // ("• *Wedding* — Rick Astley - Never Gonna…") is the reply gate's
+    // `english` tier for a Hebrew reader, and the cut takes the whole reply.
+    const at = lang === 'en' ? '' : 'ב';
+    const lines = items.map((it) => {
+      const where = it.duplicate
+        ? (lang === 'en' ? `already in *${name(it.list)}*` : `כבר שמור ב*${name(it.list)}*`)
+        : `${at}*${name(it.list)}*`;
+      const a = about(it.title);
+      return `• ${where}${a ? ` ${a}` : ''}`;
+    }).join('\n');
+    const fresh = items.filter((it) => !it.duplicate).length;
+    text = fresh
+      ? templates.render(templates.keyFor('saved_link_many', lang), { count: countWords(fresh, lang), lines }, overrides)
+      : templates.render(templates.keyFor('saved_link_many_dup', lang), { lines }, overrides);
+  }
+  // What an empty value left behind: "*חתונה*  —" with no emoji, or a space
+  // at a line's end.
+  return text.split('\n').map((l) => l.replace(/[ \t]{2,}/g, ' ').replace(/\s+$/, '')).join('\n');
 }
 
 // "היום", "אתמול", "ה־3.10" — when a link was saved, in their clock.
@@ -565,7 +703,7 @@ async function storeThumb(client, linkId, image) {
 }
 
 module.exports = {
-  saveUrls, parseShortcut, shortcutHint, savedWhen, list, search, move, setLine, setStatus, remove, restore, toTask,
+  saveUrls, prepareSave, commitSave, parseShortcut, shortcutReply, cleanTitle, shortcutHint, savedWhen, list, search, move, setLine, setStatus, remove, restore, toTask,
   lists, renameList, deleteList, listsOf, ensureList,
   dueForEnrich, applyRead, dueForThumb, storeThumb,
   withLink: actionLink.withLink,

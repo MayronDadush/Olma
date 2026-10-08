@@ -79,3 +79,7 @@ CREATE TABLE IF NOT EXISTS saved_link_thumbs (
 );
 
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS saved_link_id bigint REFERENCES saved_links(id) ON DELETE SET NULL;
+-- ON DELETE SET NULL scans tasks for every saved_links row deleted (the
+-- retention purge deletes them in batches); without this that is a sequential
+-- scan of tasks per row. Partial: nearly no task carries a link.
+CREATE INDEX IF NOT EXISTS tasks_saved_link_idx ON tasks (saved_link_id) WHERE saved_link_id IS NOT NULL;
