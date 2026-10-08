@@ -271,7 +271,7 @@ Loads when you **Read** a file under `src/domain/reminders.js`, `src/domain/task
 ### People, silence, and data you must not get wrong
 
 **`.claude/rules/people-and-quiet.md`** — the timezone that must never be NULL, the check-in ladder, the once-ever question, deleting a person, and the rename.
-Loads when you **Read** a file under `src/jobs/checkin.js`, `src/jobs/onboarding-review.js`, `src/domain/users.js` and 6 more.
+Loads when you **Read** a file under `src/jobs/checkin.js`, `src/jobs/onboarding-review.js`, `src/domain/users.js` and 7 more.
 
 - **`users.timezone` must never be NULL**
 - **Every time crossing a tool boundary needs an explicit offset.**
@@ -289,6 +289,7 @@ Loads when you **Read** a file under `src/jobs/checkin.js`, `src/jobs/onboarding
 - **The ledgers are append-only.**
 - **`availability` is refused at the write unless it is one `HH:MM-HH:MM` window** — "once a day" was saved, 👍'd, and read as the default
 - **The assistant is עולמה / Allma; the system is still olma2.**
+- **A fact is refused at the one door if it is an email, a reminder request or "יש קשר עם X", and a plan with no end is given one (45 days)** — `facts.rememberFact`; no scheduled cleanup, the door is the cleanup
 
 ### Writing detectors and alarms
 
