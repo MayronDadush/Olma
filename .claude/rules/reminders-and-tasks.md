@@ -595,6 +595,19 @@ title means this file. Grep the title, not the filename.
   that way share one word out of eight, so it belongs to a grouping pass over
   a whole open list, never to a check at the moment of writing.
 
+- **A day said with no hour is the DAY, and 09:00 is the hour the model
+  invents for it** (2026-10-08; `incidents.md`, "Nine o'clock, which nobody
+  said"). The gateway hook's `namesNoHour` reads whether the message named any
+  hour and sends a boolean (`noHour`); brokerd stamps it on the open and does
+  not spend it (one message, many tasks), fifteen minutes like `remindAsk`.
+  On that turn `add_task` and `add_tasks_bulk` move a due moment at exactly
+  09:00:00 in THEIR zone to local midnight (`invented-hour.asDay`) and add
+  `hints.dayOnly`. **Only 09:00**: 18 of 57 other-hour tasks were saved from
+  messages with no hour, because the hour came from the conversation ("כן" to
+  "ל־10?"). Never a range (`ends_at`), never under a heard chase. The reminder
+  is unchanged — a day is reminded at 08:00, as 09:00 was. Inert until the
+  gateway restarts.
+
 - **A model asked to date something must first be told what time it is.** Every
   one of the 27 `extracted` tasks on the box had a NULL `due_at` and three
   carried the hour inside the title as words — "לאכול צהריים ב12", "לעזור לשרה

@@ -24,8 +24,10 @@ draws the day card into the person's workspace (`pack_card`).
 | `src/llm.js` | foodd's only door to a model (OpenRouter), every call written to `model_calls` with its cost. |
 | `bench/` | The vision bench that chose the model: 21 weighed plates and real photos, rerun with one command when a new model comes out. |
 | `src/card.js` | The day card as SVG: meals and balance, never a calorie. brokerd renders it with Olma's fonts. |
-| `src/server.js` | The page, its API (`state`, `write`, `card.svg`), and the box-only `/api/tool`. |
-| `public/day.html` | The page. |
+| `src/server.js` | The page, its API (`state`, `write`, `journal`, `chat`, `card.svg`, `photo/<meal>`), and the box-only `/api/tool`. |
+| `src/chat.js` | The page's chat: Olma for food and water only. Code answers what has one shape (a cup of water, what is left, take back the last one); a sentence about a meal goes to Flash-Lite (`say`, 60 a person a day), and its values come from the table like a photo's. |
+| `src/photos.js` | The plate photos, kept until their meal is deleted, in `FOOD_PHOTO_DIR` (default `/var/lib/olma-food/photos`, outside the release so a deploy's `--delete` cannot reach it). |
+| `public/day.html` | The page: three tabs (today, the plates, the week) on the same floating bar as olma2's `/me` and the game night, and the chat button beside it. |
 | `bin/food-mcp.js` | The MCP shim the gateway spawns (`mcp.servers.food`). A copy of games' shim. |
 | `bin/foodd.js` | The service; also writes the meals people asked to log themselves, once a minute. |
 
@@ -45,6 +47,8 @@ draws the day card into the person's workspace (`pack_card`).
    which, and `items.food_id` the row, so a wrong row can be fixed everywhere.
 5. The meal is logged at once and the question is asked after; the answer is
    an `edit_meal`.
+6. The photo is kept (`meals.photo`, `photos.save`), shown on the page's
+   "הצלחות" tab only through its owner's link, and deleted with its meal.
 
 Why this model and why the table: `bench/` and the decision page "בדיקת מודלי
 ראייה". With values from one table, Flash-Lite put 55% of weighed plates
@@ -69,7 +73,8 @@ Up to 60 photos a person a day.
 - **Shabbat and chagim** are honoured only in what the tools say; there is no proactive message to hold.
 - **Barcodes.** A label photo works; a barcode lookup needs a product database (Open Food Facts).
 - **Tzameret.** The Health Ministry's table (Hebrew names, Israeli foods) fits `foods` as `source = 'tzameret'` (the CHECK already allows it), but its file is not downloaded and its loader is not written; the USDA table carries everything until then.
-- **The photo path is assumed, not seen.** The gateway shows the model a path for a .vcf it receives (olma2's `import_contacts_file`); that it does the same for a photo is the assumption this rests on. Check one real photo's turn before turning the pack on for anybody.
+- **Photos are not in the off-box backup.** The nightly dump holds the meals; `/var/lib/olma-food/photos` is on the box only. A lost box loses the pictures, never the log.
+- **Photos from before 2026-10-08** were not kept, so their meals show as text on the page.
 - **Couples** (sharing with a partner, cheering each other on) is designed in the demo and waits.
 
 ## Run it locally
@@ -92,10 +97,10 @@ npm test          # makes and drops its own database per file; FOOD_TEST_ADMIN_U
    (a nightly dump at 02:25, the off-box copy at 02:50).
 2. `bash food/deploy.sh`: sync, install, start, and prove `/health` answers.
 3. The route in `/etc/caddy/Caddyfile`, inside the `allma.world` block, then
-   `systemctl reload caddy`. Exactly the page and its three actions:
+   `systemctl reload caddy`. Exactly the page and its actions:
 
    ```
-   @food path_regexp food ^/food/[A-Za-z0-9]{22}(/api/(state|write)|/card\.svg)?$
+   @food path_regexp food ^/food/[A-Za-z0-9]{22}(/api/(state|write|journal|chat|snap)|/card(-week)?\.svg|/photo/[0-9]{1,12})?$
    handle @food {
        reverse_proxy 127.0.0.1:8795
    }
@@ -132,6 +137,8 @@ sees and changes that person's log. Olma gives it only to them.
 
 ## Limits
 
-12 items a meal, 40 meals a day, 7 days back; 120 page writes a minute per
+12 items a meal, 40 meals a day, 7 days back; photos up to 6 MB (jpg, png,
+webp); 60 chat sentences a person a day that reach the model; 120 page writes
+(chat included) a minute per
 link and per client, 120 tool calls a minute per person. The unit is capped at
 192 MB.

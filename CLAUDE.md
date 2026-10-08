@@ -197,7 +197,7 @@ Loads when you **Read** a file under `src/brokerd/**`, `src/domain/turn.js`, `sr
 - **A block written to REPLACE a tool call has to say what it does not hold, or its silence is read as the answer** — `today` counts `undated` to-dos, and a question about the whole list (`asksOpenList`, read by the hook) gets no `today` block at all
 - **`messages.queue.mode` stays `followup`.**
 - **Messages sent in a row are answered ONCE, at the reply gate, never by holding the inbox** — `messages.inbound` debounce cannot batch on WhatsApp; flag `burst_reply_phones`, `''` = off
-- **A turn Olma started is not a message from the person.** — but a gateway open carrying a WhatsApp message id is never ours, and the delivery's grace minute records it (`duringOurTurn`); and such a turn writes no coordination ANSWER (`not_their_turn`) unless they wrote since it began
+- **A turn Olma started is not a message from the person.** — but a gateway open carrying a WhatsApp message id is never ours, and the delivery's grace minute records it (`duringOurTurn`); and such a turn writes no coordination ANSWER and passes nobody's WORDS (`not_their_turn`) unless they wrote since it began
 - **A WhatsApp reply names ONE message, and only the MODEL is ever told which.**
 - **A turn is told where every coordination it heard about in the last day stands NOW** — the session remembers the question, not the answer
 - **A DECISION to stay quiet is not a reply that got lost.**
@@ -207,7 +207,7 @@ Loads when you **Read** a file under `src/brokerd/**`, `src/domain/turn.js`, `sr
 - **…and since 2026-09-23 the working-out is caught in Hebrew too** — a first-person next step off a closed verb list drops, the third-person shape is only reported, and a block name counts even inside quotes
 - **…and a Hebrew reply with only an English next step on its END keeps the reply** — `hebrewReplyTail`, measured: one line in 1,461 replies, and quoted Hebrew inside English working-out still drops whole
 - **The last tier's missing input was not a pattern, it was the READER** — `writesHebrew` is a tri-state, `null` acts like `false`, and the value rides `turn_context` to a gate with no database
-- **A reply that says it SAVED something is checked against whether a tool ran — `reply.claim`, report-only** — `unknown` is not `unbacked`, and a turn Olma started is not judged
+- **A reply that says it SAVED something is checked against whether a tool ran — `reply.claim`** — `unknown` is not `unbacked`, a turn Olma started is not judged, and since 2026-10-08 a claim after a write that FAILED gets one fixed correction line under it (flag `claim_correction_phones`, `''` = shadow)
 - **A NO_REPLY the gateway asks again is not overruled by the answer** — the gate cancels text in a run whose every answer was the sentinel (`llm_output` → `after_silence`); an empty answer's retry still goes out
 - **A reply under a standing 👍 that only restates it is CANCELLED at the gate** (`mark-echo.echoOnly`, brokerd `mark_echo`) — every word is theirs, the title's, or a save word: nothing either side did not already know; filed as `reply.gated` kind `echo`, and `unanswered` never re-sends one
 
@@ -243,6 +243,7 @@ Loads when you **Read** a file under `src/domain/reminders.js`, `src/domain/task
 - **A list is ONE row with its items under it, through every door, and is filed under `lists`** — `add_tasks_bulk`'s `list`, `looksLikeShoppingBulk`, "קניות - א, ב"; the open list is found by TITLE, never by category
 - **A task already OPEN on somebody's list is never saved a second time.**
 - **…and the same thing in OTHER words is a judgement, so it was measured before it was written** — and the extraction pass and the live tool take OPPOSITE answers from it
+- **A day said with no hour is the DAY, and 09:00 is the hour the model invents for it** — hook `namesNoHour` → `noHour`, `invented-hour.asDay`, exactly 09:00 local only
 - **A model asked to date something must first be told what time it is.**
 - **A title need not restate the hour the row now carries, but only the SERVER may take it out.**
 - **A day named with ל־ in a title dates the THING, not the task.**

@@ -3,8 +3,9 @@
 const {
   relay, S, tool, connectedUserByPhone,
 } = require('./_shared');
+const ourTurn = require('../our-turn');
 
-module.exports = [
+const TOOLS = [
   tool('send_message_to_connection', 'Pass ONE message from YOUR user to a connected person ("תגיד ל…", "תעביר לו ש…"). Their own Olma delivers it when they are reachable — never during their quiet hours — clearly attributed to your user. The text is your user\'s message: keep their meaning exactly; polish wording only with their ok. NOT for scheduling — arranging a time happens ONLY through the meeting tools. Delivery is queued: say it is on its way, never that it already arrived.',
     { phone: S('string', 'Their E.164 phone'),
       message: S('string', 'The message to pass on, in the user\'s own language') },
@@ -15,3 +16,10 @@ module.exports = [
       return relay.relayMessage(client, user, who.data.target, a.message);
     }),
 ];
+
+// Their words to somebody else wait for them to ask (../our-turn.js).
+const SPEAKS_FOR = { send_message_to_connection: () => true };
+ourTurn.guard(TOOLS, SPEAKS_FOR, ourTurn.WORDS, 'speaksFor');
+
+module.exports = TOOLS;
+module.exports.SPEAKS_FOR = SPEAKS_FOR;

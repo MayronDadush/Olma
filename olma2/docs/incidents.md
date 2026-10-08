@@ -155,6 +155,7 @@ never trust a dated narrative for something you are about to act on.
 - [The morning digest asked the same question four mornings running (fixed 2026-09-06)](#the-morning-digest-asked-the-same-question-four-mornings-running-fixed-2026-09-06)
 - [Four good mornings to a man who had stopped answering (fixed 2026-09-05)](#four-good-mornings-to-a-man-who-had-stopped-answering-fixed-2026-09-05)
 - [The check-in that answered for him (fixed 2026-10-05)](#the-check-in-that-answered-for-him-fixed-2026-10-05)
+- [The check-in that wrote to Sarah (fixed 2026-10-08)](#the-check-in-that-wrote-to-sarah-fixed-2026-10-08)
 - [The minute after a delivery belonged to nobody (fixed 2026-10-02)](#the-minute-after-a-delivery-belonged-to-nobody-fixed-2026-10-02)
 - [Vered's first evening: five tasks, three that would not have arrived (fixed 2026-09-06)](#vereds-first-evening-five-tasks-three-that-would-not-have-arrived-fixed-2026-09-06)
 - [The reminder that could not climb, because its first rung died on the wire (fixed 2026-09-05)](#the-reminder-that-could-not-climb-because-its-first-rung-died-on-the-wire-fixed-2026-09-05)
@@ -198,6 +199,7 @@ never trust a dated narrative for something you are about to act on.
 - [The eval partner was a real WhatsApp recipient, and the broken nightly was what stopped it (fixed 2026-09-23)](#the-eval-partner-was-a-real-whatsapp-recipient-and-the-broken-nightly-was-what-stopped-it-fixed-2026-09-23)
 - [Three reds the model did not earn, and one it did (fixed 2026-09-24)](#three-reds-the-model-did-not-earn-and-one-it-did-fixed-2026-09-24)
 - ["רשמתי לך הכל", and nothing was (watched from 2026-09-25)](#רשמתי-לך-הכל-and-nothing-was-watched-from-2026-09-25)
+- ["שלחתי להם", and nothing was sent (corrected by code from 2026-10-08)](#שלחתי-להם-and-nothing-was-sent-corrected-by-code-from-2026-10-08)
 
 **Cost, billing and the money page**
 
@@ -281,6 +283,7 @@ never trust a dated narrative for something you are about to act on.
 - [The rung nobody asked for, at half past one (2026-09-07)](#the-rung-nobody-asked-for-at-half-past-one-2026-09-07)
 - [Two ladders for one phone call (fixed 2026-09-08)](#two-ladders-for-one-phone-call-fixed-2026-09-08)
 - [The message id the model made up (2026-09-07)](#the-message-id-the-model-made-up-2026-09-07)
+- [Nine o'clock, which nobody said (2026-10-08)](#nine-oclock-which-nobody-said-2026-10-08)
 - [Ten groceries, ten tasks (2026-10-05)](#ten-groceries-ten-tasks-2026-10-05)
 - [Two asks, one task (2026-09-07)](#two-asks-one-task-2026-09-07)
 - [The same thing, saved twice (fixed 2026-09-08)](#the-same-thing-saved-twice-fixed-2026-09-08)
@@ -6873,6 +6876,24 @@ coordination needed. It now asks instead (`fits` on the proposal); the
 automatic NO stays, because it only repeats what they said and closes
 nothing.
 
+### The check-in that wrote to Sarah (fixed 2026-10-08)
+
+u-11, 2026-09-28 16:01 UTC (09:01 in Los Angeles), found by the weekly
+conversation review. A `stalled_goal` check-in told the model to ask its
+reader ONE question about a goal that had stalled. Instead it called
+`send_message_to_connection` and wrote to Sarah directly, in his name, with
+a day ("מחר (שלישי)") it had assumed. He had said nothing that turn: the
+words and the decision to send them were both Olma's.
+
+Same shape as "The check-in that answered for him", one door over. The
+self-initiated mark was there, and `WRITES_ANSWER` guarded the answers; but
+nothing guarded the two tools that pass a person's words to somebody else.
+`send_message_to_connection` and the private chat's `relay_to_group` now
+refuse with `not_their_turn` inside a turn Olma started, unless they wrote
+since the mark began. The guard moved to `src/adapters/mcp/our-turn.js` so both lists
+share one implementation. A test scans every tool slice, not only
+meetings.js, because the door that was missed lived in another file.
+
 ### The minute after a delivery belonged to nobody (fixed 2026-10-02)
 
 Shimon (user 54) joined from a room at 13:29 UTC, wrote once at 13:31:12 and
@@ -8415,6 +8436,40 @@ if every `unbacked` row is a real phantom; the transcript scan says the shape is
 rare and the false-positive classes are known, so the bar is a couple of weeks
 of rows before anyone argues for more. Needs a gateway restart to go live, like
 every change to the plugin.
+
+### "שלחתי להם", and nothing was sent (corrected by code from 2026-10-08)
+
+The detector above watched for a save word with NO tool behind it. The
+commoner lie is the other one: the tool ran, was refused, and the reply said
+it worked anyway — two `complete_task` calls refused as `not_found`, then
+"סימנתי את שניהם" (u-30, 2026-10-08), and the same shape for u-36 and u-56. Read on the box over three weeks: 88 turns where a
+tool failed and a reply followed, and `reply.claim` had filed `failed` for
+none of them. Three reasons, each its own fix:
+
+- **The verbs.** The claim pattern knew saving ("רשמתי", "הוספתי") and not
+  passing on or ticking off — "שלחתי", "העברתי", "סימנתי", "עודכנו" and their
+  English twins went unread.
+- **"The last tool" is the wrong question.** brokerd kept one timestamp for
+  the last failure, so any later success — usually a read the model made to
+  recover — erased it. Now it keeps, per person, each WRITE tool whose latest
+  call failed, and only a success of the SAME tool clears it
+  (`phantom-save.isWrite`; a read failing is noise).
+- **A reply that already says it did not work is honest.** "לא הצלחתי לשלוח"
+  is filed `failed_admitted` and never corrected (`admitsFailure`, a port in
+  the plugin).
+
+What it does about it is the owner's ask, and deliberately small: the gate now
+waits up to 800ms for brokerd's verdict, and for a phone in
+`claim_correction_phones` a `failed` claim gets ONE fixed line under the reply
+— "⚠️ תיקון: זה לא נשלח בפועל." for a relay, "⚠️ תיקון: זה לא נשמר בפועל,
+הפעולה נכשלה." otherwise, English only when the reader is not known to write
+Hebrew. Code writes the line, never the model, for the same reason the
+working-out is stopped in the gateway: the model already had the refusal in
+front of it and wrote the opposite. The flag starts empty, so every hit is a
+shadow row (`wouldCorrect`) first. Roughly three of five candidates read by
+hand were real; the doubtful shape is a refused `complete_task` on a task that
+was already done, where "סימנתי" is true in spirit. Inert until the gateway
+restarts.
 
 ### Twelve people off the bottom of the money page (fixed 2026-09-10)
 
@@ -13157,6 +13212,40 @@ Fixture drift, worth knowing before the next such guard: twenty-three tests in
 four files broke, and every one of them was a test giving the same person two
 open tasks with the same title — two shared helpers (`mkTask`, `taskWithReminder`)
 accounted for all but four. None of them were about titles.
+
+### Nine o'clock, which nobody said (2026-10-08)
+
+Dov dictated a long evening of things for "מחר" and named an hour for none of
+them. Every one came back on his page, his digest and his lists as "09:00"
+(owner, 2026-10-05). The reminder was right either way — a day-shaped task and
+a 09:00 one are both reminded at 08:00 — but the hour on the row was one the
+model wrote, not one he said.
+
+The model has no way to write "a day" except local midnight, and it does not
+reach for it: of 68 chat-dated tasks in thirty days, none sat at midnight.
+Asked for "tomorrow" it writes tomorrow at 09:00 — 35 tasks across 5 people in
+the same window, 16 of them Dov's from that one evening.
+
+Measured on the box before writing anything (counts only, every transcript
+event per agent — `readRecentMessages` alone matched 1 of 32, because sessions
+reset daily): of 32 tasks saved at 09:00 from chat or a dump in thirty days,
+the message behind 13 named no hour; 19 did (12 a digit, 4 a part of the day,
+3 another time word), and two messages that really said nine are kept. One of
+the 13 followed an Olma message that itself named a nine — a "כן" to an
+offered hour is the case this cannot see, and the reason it acts only on
+09:00. 18 of 57 tasks at OTHER hours came from messages with no hour too: the
+hour came from the conversation, so any hour but the invented one stands.
+
+The fix is the turn-open pattern again. The hook's `namesNoHour` reads the
+message (a digit, an hour word, a part of the day, a span, "now", before/after,
+in Hebrew and English — the quoted reply is NOT stripped, so a quote naming an
+hour keeps it) and sends a boolean; brokerd stamps it on the open, not spent,
+fifteen minutes; `add_task` and `add_tasks_bulk` move a due moment at exactly
+09:00:00 in THEIR zone to that day's midnight (`domain/invented-hour.asDay`),
+never one with `ends_at` and never under a heard chase. The result carries
+`hints.dayOnly`, conditional like every hint beside `markPlaced`. Coverage is
+about 40% of the 09:00 rows; mixed dumps and dayparts are left alone on
+purpose. Inert until the gateway restarts, like every hook change.
 
 ### Ten groceries, ten tasks (2026-10-05)
 

@@ -335,7 +335,7 @@ test('the hook handler sends exactly one turn_open line for an inbound message, 
   assert.equal(written.length, 1);
   const msg = JSON.parse(written[0]);
   assert.equal(msg.method, 'turn_open');
-  assert.deepEqual(msg.params, { agentId: 'u-3', messageId: '3EB0HOOK0001', kind: 'voice', senderName: 'Miron', replyToId: null, thanks: false, stopReminders: false, chase: null, openList: false, remindAsk: false, out: false, reportedExit: false, at: '2026-09-05T10:00:00.000Z' });
+  assert.deepEqual(msg.params, { agentId: 'u-3', messageId: '3EB0HOOK0001', kind: 'voice', senderName: 'Miron', replyToId: null, thanks: false, stopReminders: false, chase: null, openList: false, remindAsk: false, noHour: false, out: false, reportedExit: false, at: '2026-09-05T10:00:00.000Z' });
   assert.ok(!written[0].includes('סודי'), 'the text never leaves the gateway');
   // The shape the gateway ACTUALLY sends (OpenClaw 2026.8.1, measured
   // 2026-09-06): `message:preprocessed`, sender name and media type flat on
@@ -345,7 +345,7 @@ test('the hook handler sends exactly one turn_open line for an inbound message, 
     context: { from: '+972500000000', body: 'סודי', bodyForAgent: 'סודי', messageId: '3EB0HOOK0002', senderName: 'Miron', mediaType: 'audio/ogg', transcript: 'שלום', provider: 'whatsapp', cfg: {} },
   }, { connect: fakeSocket }), true);
   assert.equal(written.length, 2);
-  assert.deepEqual(JSON.parse(written[1]).params, { agentId: 'u-3', messageId: '3EB0HOOK0002', kind: 'voice', senderName: 'Miron', replyToId: null, thanks: false, stopReminders: false, chase: null, openList: false, remindAsk: false, out: false, reportedExit: false, at: '2026-09-05T10:00:05.000Z' });
+  assert.deepEqual(JSON.parse(written[1]).params, { agentId: 'u-3', messageId: '3EB0HOOK0002', kind: 'voice', senderName: 'Miron', replyToId: null, thanks: false, stopReminders: false, chase: null, openList: false, remindAsk: false, noHour: true, out: false, reportedExit: false, at: '2026-09-05T10:00:05.000Z' });
   assert.ok(!written[1].includes('סודי') && !written[1].includes('שלום'), 'neither text nor transcript leaves the gateway');
   // A gateway that fires BOTH for one message opens it once.
   assert.equal(await hook({
@@ -856,4 +856,122 @@ test('a turn with no deadline heard arms nothing it was not asked to', async () 
   await open({ agentId: 'u-963', messageId: '3EB0CHASE04', kind: 'text', chase: { kind: 'forever' } });
   const ts2 = await call(u, 'turn_start', { message_id: '3EB0CHASE04' }, newTurn());
   assert.doesNotMatch(ts2.text, /is a CHASE/);
+});
+
+// ── "מחר" with no hour: the 09:00 nobody said is the DAY ─────────────────────
+// incidents.md, "Nine o'clock, which nobody said". The hook reads whether the
+// message named an hour, brokerd stamps it, and add_task moves a due moment at
+// exactly 09:00 local to that day's midnight. Any other hour stands.
+const { instantInZone, partsInZone } = require('../src/domain/datetime');
+const inventedHour = require('../src/domain/invented-hour');
+const ZONE = 'Asia/Jerusalem';
+function localTomorrowAt(hh, mi = 0) {
+  const p = partsInZone(ZONE, new Date(now + 86400_000));
+  return instantInZone(ZONE, { y: p.y, m: p.m, d: p.d, hh, mi, ss: 0 }).toISOString();
+}
+async function zonedUser(phone, agentId) {
+  const u = await agentUser(phone, agentId);
+  await db.pool.query(`UPDATE users SET timezone = $2 WHERE id = $1`, [u.id, ZONE]);
+  return { ...u, timezone: ZONE };
+}
+
+test('the hook hears whether a message named an hour, and only the verdict travels', () => {
+  for (const t of ['מחר לקנות חלב', 'תוסיפי למחר להתקשר לבנק', 'ביום ראשון לשלם ארנונה', 'tomorrow buy milk']) {
+    assert.equal(hook.namesNoHour(t), true, t);
+  }
+  for (const t of ['10', 'מחר ב-10', 'מחר בבוקר', 'בעוד שעה', 'מחר בתשע', 'בערב להתקשר', 'אחרי העבודה',
+    'tomorrow at 9', 'tomorrow morning', 'now', 'בשמונה וחצי', 'לפני הפגישה', '']) {
+    assert.equal(hook.namesNoHour(t), false, t);
+  }
+});
+
+test('asDay moves exactly 09:00:00 in THEIR zone to that local midnight, and nothing else', () => {
+  const nine = instantInZone(ZONE, { y: 2026, m: 10, d: 9, hh: 9, mi: 0, ss: 0 }).toISOString();
+  const day = inventedHour.asDay(nine, ZONE);
+  const p = partsInZone(ZONE, new Date(day));
+  assert.deepEqual([p.y, p.m, p.d, p.hh, p.mi], [2026, 10, 9, 0, 0]);
+  assert.equal(inventedHour.asDay(instantInZone(ZONE, { y: 2026, m: 10, d: 9, hh: 9, mi: 30, ss: 0 }).toISOString(), ZONE), null);
+  assert.equal(inventedHour.asDay(instantInZone(ZONE, { y: 2026, m: 10, d: 9, hh: 10, mi: 0, ss: 0 }).toISOString(), ZONE), null);
+  // 09:00 in Jerusalem is not 09:00 in London: the zone is the person's.
+  assert.equal(inventedHour.asDay(nine, 'Europe/London'), null);
+  const london = instantInZone('Europe/London', { y: 2026, m: 10, d: 9, hh: 9, mi: 0, ss: 0 }).toISOString();
+  assert.ok(inventedHour.asDay(london, 'Europe/London'));
+  // Across a DST change (Israel leaves summer time on 2026-10-25).
+  const after = instantInZone(ZONE, { y: 2026, m: 10, d: 26, hh: 9, mi: 0, ss: 0 }).toISOString();
+  const q = partsInZone(ZONE, new Date(inventedHour.asDay(after, ZONE)));
+  assert.deepEqual([q.d, q.hh, q.mi], [26, 0, 0]);
+  assert.equal(inventedHour.asDay(null, ZONE), null);
+  assert.equal(inventedHour.asDay('not a date', ZONE), null);
+});
+
+test('a task dated 09:00 on a turn that named no hour is saved for the DAY, and still reminded at 08:00', async () => {
+  const u = await zonedUser('+972641100081', 'u-981');
+  await open({ agentId: 'u-981', messageId: '3EB0NOHOUR01', kind: 'text', noHour: true });
+  const turn = newTurn();
+  const res = await call(u, 'add_task', { title: 'לקנות חלב', due_at: localTomorrowAt(9) }, turn);
+  assert.equal(res.ok, true, res.text);
+  assert.match(res.text, /saved for the DAY with no hour/);
+  const { rows } = await db.pool.query(
+    `SELECT t.due_at, r.remind_at FROM tasks t
+       LEFT JOIN task_reminders r ON r.task_id = t.id AND r.cancelled_at IS NULL
+      WHERE t.owner_id = $1`, [u.id]);
+  assert.equal(rows.length, 1);
+  assert.equal(new Date(rows[0].due_at).toISOString(), localTomorrowAt(0));
+  assert.ok(rows[0].remind_at, 'the day still arms its reminder');
+  assert.equal(new Date(rows[0].remind_at).toISOString(), localTomorrowAt(8));
+
+  // Not spent: a second 09:00 in the same message is the same invention.
+  const second = await call(u, 'add_task', { title: 'לשלם ארנונה', due_at: localTomorrowAt(9) }, turn);
+  assert.equal(second.ok, true, second.text);
+  const two = await db.pool.query(`SELECT due_at FROM tasks WHERE owner_id = $1 AND title = 'לשלם ארנונה'`, [u.id]);
+  assert.equal(new Date(two.rows[0].due_at).toISOString(), localTomorrowAt(0));
+});
+
+test('any other hour, a range, no verdict, or a verdict past fifteen minutes leaves the moment alone', async () => {
+  const u = await zonedUser('+972641100082', 'u-982');
+  const dueOf = async (title) => new Date((await db.pool.query(
+    `SELECT due_at FROM tasks WHERE owner_id = $1 AND title = $2`, [u.id, title])).rows[0].due_at).toISOString();
+
+  await open({ agentId: 'u-982', messageId: '3EB0NOHOUR02', kind: 'text', noHour: true });
+  const turn = newTurn();
+  const ten = await call(u, 'add_task', { title: 'עשר', due_at: localTomorrowAt(10) }, turn);
+  assert.equal(ten.ok, true, ten.text);
+  assert.doesNotMatch(ten.text, /saved for the DAY/);
+  assert.equal(await dueOf('עשר'), localTomorrowAt(10), 'an hour the model did not invent stands');
+  const range = await call(u, 'add_task', { title: 'משמרת', kind: 'event', due_at: localTomorrowAt(9), ends_at: localTomorrowAt(17) }, turn);
+  assert.equal(range.ok, true, range.text);
+  assert.equal(await dueOf('משמרת'), localTomorrowAt(9), 'a range was said');
+
+  await open({ agentId: 'u-982', messageId: '3EB0NOHOUR03', kind: 'text', noHour: false });
+  const said = newTurn();
+  const nine = await call(u, 'add_task', { title: 'תשע', due_at: localTomorrowAt(9) }, said);
+  assert.equal(nine.ok, true, nine.text);
+  assert.equal(await dueOf('תשע'), localTomorrowAt(9), 'a message that named an hour keeps 09:00');
+
+  await open({ agentId: 'u-982', messageId: '3EB0NOHOUR04', kind: 'text', noHour: true });
+  const late = newTurn();
+  await call(u, 'turn_start', { message_id: '3EB0NOHOUR04' }, late);
+  const was = now;
+  now += 16 * 60_000;
+  try {
+    const res = await call(u, 'add_task', { title: 'מאוחר', due_at: localTomorrowAt(9) }, late);
+    assert.equal(res.ok, true, res.text);
+  } finally { now = was; }
+  assert.equal(await dueOf('מאוחר'), localTomorrowAt(9), 'a verdict fifteen minutes old is not this message');
+});
+
+test('add_tasks_bulk moves each 09:00 item to its day on a turn that named no hour', async () => {
+  const u = await zonedUser('+972641100083', 'u-983');
+  await open({ agentId: 'u-983', messageId: '3EB0NOHOUR05', kind: 'text', noHour: true });
+  const turn = newTurn();
+  const res = await call(u, 'add_tasks_bulk', { items: [
+    { title: 'לקבוע תור לרופא', due_at: localTomorrowAt(9) },
+    { title: 'להחזיר ספר', due_at: localTomorrowAt(11) },
+  ] }, turn);
+  assert.equal(res.ok, true, res.text);
+  assert.match(res.text, /saved for the DAY with no hour/);
+  const { rows } = await db.pool.query(`SELECT title, due_at FROM tasks WHERE owner_id = $1 ORDER BY title`, [u.id]);
+  const by = Object.fromEntries(rows.map((r) => [r.title, new Date(r.due_at).toISOString()]));
+  assert.equal(by['לקבוע תור לרופא'], localTomorrowAt(0));
+  assert.equal(by['להחזיר ספר'], localTomorrowAt(11));
 });

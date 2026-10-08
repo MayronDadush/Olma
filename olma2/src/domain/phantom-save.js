@@ -23,8 +23,13 @@
 // prefix is still the claim ("ורשמתי"); a Hebrew letter on either side is a
 // different word. `\b` is dead against Hebrew — Hebrew letters are not `\w` —
 // hence the explicit letter class (.claude/rules/turns-and-replies.md).
-const HE_CLAIM_RE = /(?:^|[^֐-׿])[וש]?(רשמתי|שמרתי|הוספתי|קבעתי|עדכנתי|מחקתי|ביטלתי|תזמנתי|הגדרתי)(?![֐-׿])/;
-const EN_CLAIM_RE = /\bI(?:'ve| have)\s+(saved|added|noted|scheduled|updated|deleted|removed|cancel+ed|set)\b/i;
+//
+// Since 2026-10-08 the verbs of PASSING SOMETHING ON and of marking are in it
+// too: three of the five false claims the weekly reviews found in three
+// weeks were "שלחתי להם", "החברים עודכנו", "סימנתי" — not a save word among
+// them (`incidents.md`, "שלחתי להם, and nothing was sent").
+const HE_CLAIM_RE = /(?:^|[^֐-׿])[וש]?(רשמתי|שמרתי|הוספתי|קבעתי|עדכנתי|מחקתי|ביטלתי|תזמנתי|הגדרתי|שלחתי|הודעתי|העברתי|תיעדתי|סימנתי|שיתפתי|הזמנתי|ארכבתי|עודכנו)(?![֐-׿])/;
+const EN_CLAIM_RE = /\bI(?:'ve| have)\s+(saved|added|noted|scheduled|updated|deleted|removed|cancel+ed|set|sent|told|passed|shared|marked|let)\b/i;
 
 function claimedWrite(text) {
   const s = String(text == null ? '' : text);
@@ -56,9 +61,18 @@ const OPEN_WINDOW_MS = 15 * 60 * 1000;
 // is already past") — and Olma told him "רשמתי — כל צהריים ב-12:00". So the
 // burst case keeps its leniency under its own name, and two answers are
 // sharper than it: `backed` needs a success since the NEWEST open, and
-// `failed` is a write that failed since the newest open with no success
-// after it — the phantom save in its plainest form.
-function judge({ ourTurn = false, opens = [], lastToolAt = null, lastFailAt = null, now }) {
+// `failed` is a write that failed since the newest open — the phantom save in
+// its plainest form.
+//
+// `failed` is asked PER TOOL since 2026-10-08 (`unresolved`, kept by brokerd):
+// a WRITE whose last call failed and was not retried successfully. Read off
+// "the last tool call" it never fired once in two weeks, because something
+// always ran after the failure — a list, a retry of a different tool — while
+// six false claims went out (u-36 "שלחתי להם את ההודעה בקבוצה" under a
+// refused `relay_to_group`). A failed READ is not a failed write, and a reply
+// that already says it did not work is `failed_admitted`, which nobody
+// corrects.
+function judge({ ourTurn = false, opens = [], lastToolAt = null, unresolved = [], admits = false, now }) {
   if (ourTurn) return { verdict: 'ours' };
   const live = opens.filter((t) => now - t <= OPEN_WINDOW_MS);
   if (!live.length) return { verdict: 'unknown' };
@@ -67,12 +81,50 @@ function judge({ ourTurn = false, opens = [], lastToolAt = null, lastFailAt = nu
   const openedAgoMs = now - newest;
   const toolAgoMs = lastToolAt == null ? null : now - lastToolAt;
   const okNow = lastToolAt != null && lastToolAt >= newest;
-  const failedNow = lastFailAt != null && lastFailAt >= newest && (lastToolAt == null || lastFailAt > lastToolAt);
+  const failed = (Array.isArray(unresolved) ? unresolved : []).filter((f) => f && f.at >= newest).map((f) => f.tool);
   let verdict = 'unbacked';
-  if (okNow) verdict = 'backed';
-  else if (failedNow) verdict = 'failed';
+  if (failed.length) verdict = admits ? 'failed_admitted' : 'failed';
+  else if (okNow) verdict = 'backed';
   else if (lastToolAt != null && lastToolAt >= earliest) verdict = 'backed_earlier';
-  return { verdict, openedAgoMs, toolAgoMs, opens: live.length };
+  return { verdict, openedAgoMs, toolAgoMs, opens: live.length, ...(failed.length ? { failedTools: failed } : {}) };
 }
 
-module.exports = { claimedWrite, judge, OPEN_WINDOW_MS, HE_CLAIM_RE, EN_CLAIM_RE };
+// Which tools are READING. `failed` asks about a WRITE that failed and was
+// never retried successfully, per tool: a calendar read that failed beside a
+// proposal that landed was 25 of the 88 failed-tool turns in three weeks, and
+// every one of those replies was true. Anything not reading is a write — a
+// new tool is judged until somebody says it only reads.
+const READ_TOOL_RE = /^(?:[a-z]+__)?(?:list_|get_|view_|see_|my_|search|find_|open_my_|render_|generate_|ask_user$|turn_)|_status$/;
+function isWrite(name) {
+  return Boolean(name) && !READ_TOOL_RE.test(String(name));
+}
+
+// The reply already SAYS it did not work, so there is nothing to correct.
+// Every honest reply in the three weeks read said so in one of these words,
+// and a bare "לא" is not one of them: "החברים עודכנו שאתה לא מגיע" was a
+// false claim.
+const ADMITS_RE = /לא הצלח|לא עבד|לא נשלח|לא נשמר|לא נרשם|לא יכול|לא ניתן|לא זמין|לא מאפשר|לא נותנ|לא מחובר|עדיין לא|לצערי|נכשל|תקלה|שגיאה|מגבלה|אי אפשר|\b(?:could not|couldn't|can't|cannot|failed|unable|did not|didn't|wasn't|not sent|not saved)\b/i;
+function admitsFailure(text) {
+  return ADMITS_RE.test(String(text == null ? '' : text));
+}
+
+// The line code adds under a reply that claims what a failed write did not
+// do. Fixed text, never the model's: the model already had the error in front
+// of it and wrote the claim anyway. Two shapes, because "not sent" and "not
+// saved" are different news, and the reader's language — `writesHebrew` is a
+// tri-state and `null` acts like `false` (.claude/rules/turns-and-replies.md).
+const PASSES_ON = new Set(['send_message_to_connection', 'relay_to_group', 'add_group_coordination_option']);
+const CORRECTIONS = {
+  sent: { he: '⚠️ תיקון: זה לא נשלח בפועל.', en: '⚠️ Correction: that was not actually sent.' },
+  saved: { he: '⚠️ תיקון: זה לא נשמר בפועל, הפעולה נכשלה.', en: '⚠️ Correction: that was not actually saved — the action failed.' },
+};
+function correctionFor(tools, writesHebrew) {
+  const list = Array.isArray(tools) ? tools : [];
+  if (!list.length) return null;
+  const shape = list.some((t) => PASSES_ON.has(t)) ? 'sent' : 'saved';
+  return CORRECTIONS[shape][writesHebrew === true ? 'he' : 'en'];
+}
+
+module.exports = {
+  claimedWrite, judge, isWrite, admitsFailure, correctionFor, CORRECTIONS, OPEN_WINDOW_MS, HE_CLAIM_RE, EN_CLAIM_RE, ADMITS_RE,
+};

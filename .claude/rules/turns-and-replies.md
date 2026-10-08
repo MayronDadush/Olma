@@ -211,6 +211,13 @@ title means this file. Grep the title, not the filename.
   minute that the rule above keeps theirs. The page and the room are other
   doors and are untouched (`incidents.md`, "The check-in that answered for
   him").
+  **…and it passes nobody's WORDS** (2026-10-08). `SPEAKS_FOR` beside each
+  tool — `send_message_to_connection` (`messages-between-people.js`) and the
+  private chat's `relay_to_group` (`meetings.js`) — is guarded by the same
+  `src/adapters/mcp/our-turn.js`, same exception, same reason code, with a refusal
+  that says to ask them. A test scans EVERY tool slice for a handler that
+  reaches a relay function off the list (`incidents.md`, "The check-in that
+  wrote to Sarah").
 
 - **A WhatsApp reply names ONE message, and only the MODEL is ever told which.**
   The gateway carries it end to end — `reply_to_id` in `Conversation info`, the
@@ -440,6 +447,21 @@ title means this file. Grep the title, not the filename.
   claim in 4,636 real turns was a delivery reporting an earlier write, or not a
   claim (`incidents.md`, "רשמתי לך הכל, and nothing was"). The plugin carries
   a port of `claimedWrite`, held by `tests/phantom-save.test.js`.
+  **…and since 2026-10-08 a claim after a write that FAILED is corrected by
+  code, for the phones in `claim_correction_phones`** (`incidents.md`,
+  "שלחתי להם, and nothing was sent"). The gate now AWAITS `reply_claim`
+  (800ms, fails toward sending the reply untouched). brokerd keeps, per
+  person, every WRITE tool whose last call this turn failed
+  (`phantom-save.isWrite`; a read failing is noise, and a later success of
+  the SAME tool clears it, never another tool's), and a claim with one still
+  unresolved is `failed` — unless the reply already says it did not work
+  (`admitsFailure`, ported to the plugin), which is `failed_admitted`. For a
+  covered phone brokerd hands back ONE fixed line (`phantom-save.CORRECTIONS`,
+  "sent" for a relay, "saved" otherwise, Hebrew only when `writesHebrew` is
+  `true`) and the gate appends it under the reply. Everyone else is shadow:
+  the row says `wouldCorrect`. **Read those rows before widening the flag** —
+  a refused `complete_task` may be a task already done. Inert until the
+  gateway restarts.
 
 - **A reply under a standing 👍 that only says the 👍 again is cancelled at
   the gate, because the hint alone lost** (`mark-echo.echoOnly`, 2026-09-30;

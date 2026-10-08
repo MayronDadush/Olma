@@ -17,6 +17,7 @@ const { FloodCounter } = require('./flood');
 const { refreshUserCard, CARD_TOOLS } = require('../intake/user-card');
 const turnDomain = require('../domain/turn');
 const BURST_FLAG = 'burst_reply_phones';
+const CLAIM_CORRECTION_FLAG = 'claim_correction_phones';
 const reactions = require('../domain/reactions');
 const reminders = require('../domain/reminders');
 const chaseDeadline = require('../domain/chase-deadline');
@@ -185,9 +186,12 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
   // and a restart that loses it answers `unknown`, never `unbacked`.
   const claimOpens = new Map();
   const lastToolAt = new Map();
-  // …and when one last FAILED, so a claim on a turn whose own write was refused
-  // reads `failed` rather than borrowing an earlier turn's success.
-  const lastFailAt = new Map();
+  // …and which WRITES last failed and have not succeeded since, per tool, so a
+  // claim on a turn whose own write was refused reads `failed` rather than
+  // borrowing another tool's success (domain/phantom-save.judge). A success of
+  // the same tool clears it.
+  const failedWrites = new Map();
+  const unresolvedOf = (userId) => [...(failedWrites.get(userId) || new Map())].map(([tool, at]) => ({ tool, at }));
   // What the tool that earned this turn's 👍 wrote — its title, its name —
   // for the reply gate's echo check (domain/mark-echo.js). Set only where
   // `hints.markPlaced` is set, and forgotten by anything that could make a
@@ -436,6 +440,10 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
         // (reminders.startWeeklyNudge) — and only inside the same window a
         // chase gets, never on a turn that runs on long after the message.
         remindAsk: adopt && params.remindAsk === true ? clock() : null,
+        // "מחר לקנות חלב": the message named no hour, so a 09:00 a save makes
+        // on this turn is the day (domain/invented-hour). Stamped like
+        // remindAsk, and NOT spent: a dump saves many things off one message.
+        noHour: adopt && params.noHour === true ? clock() : null,
         // "רשום עדן יצא": a status they quoted. opt_out_of_meeting refuses on
         // this turn (tools/meetings.js) — the hook's verdict, never the words.
         reportedExit: adopt && params.reportedExit === true,
@@ -1046,11 +1054,15 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
     return { ok: true, filed: true };
   }
 
-  // The reply gate heard its reply claim a save ("רשמתי", "I've added") and
-  // asks whether anything ran. Only the word comes here, never the reply, and
-  // the answer goes nowhere but the audit log: this is a measurement, and a
-  // verdict nobody has calibrated must not touch what the person reads
-  // (domain/phantom-save.js).
+  // The reply gate read a claim word ("רשמתי", "שלחתי") on a reply about to
+  // go out, and whether the reply itself already says it did not work
+  // (`admits`). Only the word and that bit cross; the reply never does.
+  // brokerd alone knows what ran on this turn, files the verdict, and — since
+  // 2026-10-08 — answers with a fixed CORRECTION line when a write it saw fail
+  // is the thing being claimed (domain/phantom-save.js). The line is handed
+  // over only for the people `claim_correction_phones` names; for everybody
+  // else the row says `wouldCorrect` and the reply goes out as before, so the
+  // rate is read before anybody sees one.
   async function handleReplyClaim(params = {}) {
     const agentId = String(params.agentId || '').trim();
     if (agentId === 'intake') return handleIntakeGameShortcut(params);
@@ -1059,18 +1071,30 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
     let out = { ok: false, error: 'no active user for agent' };
     await withTx(pool, async (client) => {
       const { rows } = await client.query(
-        `SELECT id FROM users WHERE agent_id = $1 AND status = 'active'`, [agentId]);
+        `SELECT id, phone FROM users WHERE agent_id = $1 AND status = 'active'`, [agentId]);
       if (!rows[0]) return;
       const userId = Number(rows[0].id);
       const judged = phantomSave.judge({
         ourTurn: selfInitiated.isActive(userId),
         opens: claimOpens.get(userId) || [],
         lastToolAt: lastToolAt.has(userId) ? lastToolAt.get(userId) : null,
-        lastFailAt: lastFailAt.has(userId) ? lastFailAt.get(userId) : null,
+        unresolved: unresolvedOf(userId),
+        admits: params.admits === true,
         now: clock(),
       });
-      await require('../domain/audit').record(client, userId, 'reply.claim', { agentId, word, ...judged });
-      out = { ok: true, verdict: judged.verdict };
+      let correction = null;
+      let wouldCorrect = false;
+      if (judged.verdict === 'failed') {
+        wouldCorrect = true;
+        const flag = await require('../domain/flags').getFlag(client, CLAIM_CORRECTION_FLAG);
+        if (turnDomain.coveredBy(flag, rows[0].phone)) {
+          correction = phantomSave.correctionFor(judged.failedTools, params.writesHebrew === true ? true : null);
+        }
+      }
+      await require('../domain/audit').record(client, userId, 'reply.claim', {
+        agentId, word, ...judged, ...(wouldCorrect ? { wouldCorrect, corrected: Boolean(correction) } : {}),
+      });
+      out = { ok: true, verdict: judged.verdict, ...(correction ? { correction } : {}) };
     });
     return out;
   }
@@ -1531,6 +1555,7 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
           turn.chase = pre.chase || null; turn.chaseUsed = false;
           turn.openList = Boolean(pre.openList);
           turn.remindAsk = pre.remindAsk || null; turn.remindAskUsed = false;
+          turn.noHour = pre.noHour || null;
           turn.reportedExit = Boolean(pre.reportedExit);
           turn.openedByGateway = true;
         } else if (!turn.opened) {
@@ -1583,7 +1608,11 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
       // Any tool that ran for them backs a reply saying it saved something —
       // turn_start excepted, which runs on every message and saves nothing.
       if (actorId && result && result.ok && name !== 'turn_start') lastToolAt.set(Number(actorId), clock());
-      if (actorId && result && !result.ok && name !== 'turn_start') lastFailAt.set(Number(actorId), clock());
+      if (actorId && result && name !== 'turn_start' && phantomSave.isWrite(name)) {
+        const failed = failedWrites.get(Number(actorId)) || new Map();
+        if (result.ok) failed.delete(name); else failed.set(name, clock());
+        if (failed.size) failedWrites.set(Number(actorId), failed); else failedWrites.delete(Number(actorId));
+      }
       // The acknowledgement mark on the person's own message — 👀 as the turn
       // opens, ⏰ or ✅ as the work lands. Here, and not inside the handlers,
       // because every tool already passes through this one line: the table of

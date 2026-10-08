@@ -233,3 +233,15 @@ test('their nights, as they stand now: open, settled, closed without one; nobody
   assert.deepEqual(mine.map(n => [n.code, n.status]), [[second.night.code, 'closed_without_settlement'], [first.night.code, 'settled']]);
   assert.deepEqual((await post('/api/mine', { userId: DANA })).body.nights, []);
 });
+
+// The games icon on the home screen of their own page (olma2 /me) opens their
+// seat. Only when asked: the turn context's reader is a model and gets no link.
+test('their nights carry their own seat link only when the caller asks for links', async t => {
+  const { post } = await boot(t);
+  const first = (await open(post)).body;
+  const plain = (await post('/api/mine', { userId: HOST })).body.nights;
+  assert.ok(!('url' in plain[0]));
+  const linked = (await post('/api/mine', { userId: HOST, links: true })).body.nights;
+  assert.equal(linked[0].url, first.url);
+  assert.match(linked[0].url, /^https:\/\/allma\.test\/night\/[A-Za-z0-9]{22}#me-[a-z0-9]+$/);
+});
