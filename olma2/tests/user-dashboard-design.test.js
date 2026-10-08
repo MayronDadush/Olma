@@ -466,7 +466,7 @@ test('the calendar fold holds what Olma reminds about and is still ahead', () =>
     for (; i < page.length; i++) { if (page[i] === '{') depth++; else if (page[i] === '}' && --depth === 0) break; }
     return page.slice(at, i + 1);
   };
-  const src = ['onCalendar', 'leftToGoogle', 'offList', 'eventOver'].map(grab).join('\n');
+  const src = ['onCalendar', 'daysAhead', 'leftToGoogle', 'offList', 'eventOver'].map(grab).join('\n');
   const fns = new Function('isPinned', src + '\nreturn { onCalendar, leftToGoogle, offList, eventOver };')((x) => !!x.pin);
   // Local calendar days, as the page reads them (bucketFor), never UTC's.
   const day = (n) => {
@@ -480,7 +480,9 @@ test('the calendar fold holds what Olma reminds about and is still ahead', () =>
   assert.equal(where(ev({ inCal: false, rem: false })), 'fold', 'on no calendar and nothing reminds: kept, or it is nowhere');
   assert.equal(where(ev({ rem: false })), 'google', 'Google holds it and Olma says nothing: the calendar is enough');
   assert.equal(where(ev({ d: day(-1) })), 'google', 'yesterday\'s appointment is gone from the page');
-  assert.equal(where(ev({ d: '' })), 'fold', 'an undated event is never over');
+  assert.equal(where(ev({ d: '' })), 'list', 'an undated event is never over, and is not "upcoming" either');
+  assert.equal(where(ev({ d: day(29) })), 'fold', 'the fold is the next 30 days');
+  assert.equal(where(ev({ d: day(30) })), 'list', 'further out is on the list');
   assert.equal(where({ kind: 'todo', d: day(1), tm: '10:00', rem: true, inCal: true }), 'list', 'a synced to-do is a to-do');
   assert.equal(where({ kind: 'todo', d: day(-3), tm: '', rem: false, inCal: true }), 'list', 'a late to-do stays late, never hidden');
   assert.equal(where(ev({ src: 'monday' })), 'list', 'an imported row keeps its own section');
