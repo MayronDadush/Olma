@@ -11,6 +11,10 @@ const { createServer } = require('../src/server');
 const { IDENTITY_PARAM } = require('../src/tool-defs');
 const foods = require('../src/foods');
 const vision = require('../src/vision');
+const store = require('../src/store');
+const photos = require('../src/photos');
+const fs = require('fs');
+const path = require('path');
 
 const TOK = 'olma_tok_' + '1'.repeat(32);
 const identify = async token => (token === TOK ? { ok: true, user: { id: 201, name: 'נועה', timezone: 'Asia/Jerusalem', locale: 'he' }, packs: ['food'] } : { ok: false, error: { message: 'unknown' } });
@@ -55,7 +59,7 @@ async function boot(t, { seen, pick, media = async () => PHOTO } = {}) {
     return (await r.json()).text;
   };
   const okOf = async (name, args) => { const text = await call(name, args); assert.match(text, /^OK /, text); return JSON.parse(text.slice(3)); };
-  return { pool, call, okOf, seeded, model };
+  return { pool, port, call, okOf, seeded, model };
 }
 
 const PLATE = {
@@ -170,4 +174,34 @@ test('what a model answers is made safe before anything uses it', () => {
   assert.equal(c.title.length, 80);
   assert.equal(vision.clean(null), null);
   assert.deepEqual(vision.clean({ food: false }), { food: false, items: [] });
+});
+
+test('the photo is kept for the page, only through its owner\'s link, and goes with the meal', async t => {
+  const { okOf, pool, port } = await boot(t, { seen: PLATE });
+  const r = await okOf('see_meal_photo', { path: '/x/p.jpg', meal: 'lunch' });
+  const id = r.logged.meal_id;
+  const { rows: [row] } = await pool.query('SELECT photo FROM meals WHERE id = $1', [id]);
+  assert.equal(row.photo, `201/${id}.jpg`);
+  const file = path.join(photos.dir(), row.photo);
+  assert.deepEqual(fs.readFileSync(file), Buffer.from(PHOTO.base64, 'base64'));
+  assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+
+  const me = await store.reload(pool, 201);
+  const other = await store.ensurePerson(pool, { id: 202, name: 'אחר', timezone: 'Asia/Jerusalem' });
+  const get = (tok, mid = id) => fetch(`http://127.0.0.1:${port}/food/${tok}/photo/${mid}`);
+  const mine = await get(me.token);
+  assert.equal(mine.status, 200);
+  assert.equal(mine.headers.get('content-type'), 'image/jpeg');
+  assert.deepEqual(Buffer.from(await mine.arrayBuffer()), Buffer.from(PHOTO.base64, 'base64'));
+  assert.equal((await get(other.token)).status, 404, 'the same meal id under somebody else\'s link');
+  assert.equal((await get(me.token, '../../etc')).status, 404);
+
+  const j = await (await fetch(`http://127.0.0.1:${port}/food/${me.token}/api/journal`)).json();
+  assert.equal(j.days.length, 1);
+  assert.equal(j.days[0].meals[0].photo, true);
+
+  const del = await fetch(`http://127.0.0.1:${port}/food/${me.token}/api/write`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ op: 'meal_delete', meal_id: id }) });
+  assert.equal(del.status, 200);
+  assert.equal(fs.existsSync(file), false, 'deleted with the meal');
+  assert.equal((await get(me.token)).status, 404);
 });
