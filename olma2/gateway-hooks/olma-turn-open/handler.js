@@ -316,6 +316,24 @@ function remindWithoutTime(text) {
   return !WHEN_WORDS_RE.test(raw);
 }
 
+// "מחר לקנות חלב" — a day and no hour. The model writes a day as 09:00, and
+// the page, the digest and the lists then draw an hour nobody said (Dov,
+// 2026-10-05: 16 tasks at 09:00 from one evening). brokerd saves a 09:00 on
+// this turn as the DAY (domain/invented-hour). Only the verdict travels.
+//
+// Strict in the direction that matters: anything that COULD be an hour makes
+// this false, and then the model's hour stands. A digit anywhere — a bare "10"
+// answering "באיזו שעה?" is an hour — a number word, a part of the day, a
+// span of hours or minutes, "עכשיו". The quoted message a WhatsApp reply
+// carries is read too: "כן" under "מחר ב־9?" agreed to nine.
+const HOUR_WORDS_RE = new RegExp(`\\d|(?:^|[^${HE}])[ובלמה]{0,2}(?:אחת|שתיים|שתים|שלוש|ארבע|חמש|שש|שבע|שמונה|תשע|עשר|עשרה|חצי|רבע|בוקר|הבוקר|ערב|הערב|לילה|הלילה|צהריים|צהרים|אחה"?צ|לפנה"?צ|שעה|שעתיים|שעות|דקה|דקות|עכשיו|מיד|אחרי|לפני)(?![${HE}])|\\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|noon|midnight|morning|evening|afternoon|night|tonight|hours?|minutes?|now|am|pm|o'?clock|half|quarter|after|before)\\b`, 'iu');
+
+function namesNoHour(text) {
+  const raw = String(text || '').replace(/[‎‏‪-‮]/g, '').trim();
+  if (!raw) return false;
+  return !HOUR_WORDS_RE.test(raw);
+}
+
 // ── A message that is only "I'm out" ─────────────────────────────────────────
 // Yuval, 2026-10-01: asked privately when suits him for the poker his room was
 // arranging, he answered "בחוץ" — and was told "Got it — you're out. When would
@@ -441,6 +459,9 @@ function handle(event, { connect = net.connect, sock = SOCK } = {}) {
     // "תזכיר לי X" with no when at all — brokerd arms a weekly nudge on the
     // undated add_task this turn makes (reminders.startWeeklyNudge).
     remindAsk: remindWithoutTime(said.text),
+    // "מחר לקנות חלב" — no hour anywhere in it, so a 09:00 the model writes
+    // on this turn is the day (domain/invented-hour).
+    noHour: namesNoHour(said.text),
     // "בחוץ" — brokerd reads which coordination question it answered: a
     // general one is leaving it, one time is a question back
     // (domain/meeting-exit.js). The verdict travels; the words do not.
@@ -491,6 +512,7 @@ module.exports.stopRemindersOnly = stopRemindersOnly;
 module.exports.chaseDeadline = chaseDeadline;
 module.exports.asksOpenList = asksOpenList;
 module.exports.remindWithoutTime = remindWithoutTime;
+module.exports.namesNoHour = namesNoHour;
 module.exports.outOnly = outOnly;
 module.exports.reportsExit = reportsExit;
 module.exports._resetSeen = () => seen.clear();
