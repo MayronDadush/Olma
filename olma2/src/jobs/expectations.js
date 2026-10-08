@@ -43,6 +43,10 @@ const JOB_INTERVAL_SECONDS = {
   task_calendar: 300,
   memory_consolidation: 3600,
   fact_extraction: 600,
+  // Saved links read late, and their pictures (jobs/saved-links-enrich.js).
+  // Under KICK_MIN_SECONDS for the same reason as brand_ads below: the
+  // startup-kick window is full, and a tick with nothing due is one query.
+  saved_links_enrich: 240,
   // Jev in shadow over new tasks (jobs/twin-shadow.js). Ten minutes: nothing
   // waits on it, and a tick with the flag off is one flag read.
   twin_shadow: 600,
