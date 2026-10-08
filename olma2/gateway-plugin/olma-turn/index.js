@@ -946,16 +946,25 @@ export function gateReply(text, { readerWritesHebrew = null } = {}) {
 // A reply that says it saved something — a PORT of `domain/phantom-save
 // .claimedWrite`, held against it by `tests/phantom-save.test.js`. Only the
 // word leaves the gateway, never the reply: brokerd alone knows whether a tool
-// ran on this turn, and it files what it decides. Report-only, and never
-// awaited — a reply must not wait on a question about itself.
-const HE_CLAIM_RE = /(?:^|[^\u0590-\u05FF])[וש]?(רשמתי|שמרתי|הוספתי|קבעתי|עדכנתי|מחקתי|ביטלתי|תזמנתי|הגדרתי)(?![\u0590-\u05FF])/;
-const EN_CLAIM_RE = /\bI(?:'ve| have)\s+(saved|added|noted|scheduled|updated|deleted|removed|cancel+ed|set)\b/i;
+// ran on this turn, and it files what it decides. Since 2026-10-08 it is
+// AWAITED, on a short deadline, because brokerd may answer with a fixed
+// correction line (a write it saw fail is the thing being claimed) — asked
+// only for a reply carrying a claim word, and a dead socket sends the reply
+// as it was.
+const HE_CLAIM_RE = /(?:^|[^\u0590-\u05FF])[וש]?(רשמתי|שמרתי|הוספתי|קבעתי|עדכנתי|מחקתי|ביטלתי|תזמנתי|הגדרתי|שלחתי|הודעתי|העברתי|תיעדתי|סימנתי|שיתפתי|הזמנתי|ארכבתי|עודכנו)(?![\u0590-\u05FF])/;
+const EN_CLAIM_RE = /\bI(?:'ve| have)\s+(saved|added|noted|scheduled|updated|deleted|removed|cancel+ed|set|sent|told|passed|shared|marked|let)\b/i;
 export function claimedWrite(text) {
   const s = String(text == null ? "" : text);
   const he = HE_CLAIM_RE.exec(s);
   if (he) return he[1];
   const en = EN_CLAIM_RE.exec(s);
   return en ? en[1].toLowerCase() : null;
+}
+// The reply already says it did not work — a PORT of `domain/phantom-save
+// .admitsFailure`, held by the same test. Only this bit crosses, never the text.
+const ADMITS_RE = /לא הצלח|לא עבד|לא נשלח|לא נשמר|לא נרשם|לא יכול|לא ניתן|לא זמין|לא מאפשר|לא נותנ|לא מחובר|עדיין לא|לצערי|נכשל|תקלה|שגיאה|מגבלה|אי אפשר|\b(?:could not|couldn't|can't|cannot|failed|unable|did not|didn't|wasn't|not sent|not saved)\b/i;
+export function admitsFailure(text) {
+  return ADMITS_RE.test(String(text == null ? "" : text));
 }
 
 // A reply that only says again what the 👍 on their message already said — a
@@ -1091,6 +1100,24 @@ export function buildReplyGateHandler({ connect, sock, timeoutMs = 1500, log = t
           verdict = { action: "cancel", text: "", leaks: [{ kind: "echo", at: "" }], reported: [...verdict.reported, { kind: "echo", at: "", line: 0 }] };
         }
       }
+      // A reply that claims what a write brokerd saw FAIL did not do ("שלחתי
+      // להם" under a refused relay_to_group) gets one fixed line under it
+      // (domain/phantom-save.js, flag `claim_correction_phones`). Read off what
+      // will actually be SENT — a claim inside notes the gate just cut reaches
+      // nobody — and only for a person's own agent: a room has no turn brokerd
+      // can speak for. Anything but a correction sends the reply as it was.
+      const claim = /^u-\d+$/.test(agentId) && verdict.action !== "cancel" ? claimedWrite(verdict.text) : null;
+      let amended = false;
+      if (claim) {
+        const judged = await askBroker("reply_claim", { agentId, word: claim, admits: admitsFailure(verdict.text), writesHebrew: readerOf(agentId) === true },
+          { connect, sock, timeoutMs: Math.min(timeoutMs, 800) });
+        const line = judged && judged.ok === true && typeof judged.correction === "string" ? judged.correction.trim().slice(0, 200) : "";
+        if (line) {
+          verdict = { ...verdict, text: `${verdict.text}\n\n${line}` };
+          amended = true;
+          log({ claim: agentId, corrected: true });
+        }
+      }
       // A reply of theirs is going out: the replies this burst held go out WITH
       // it, joined above it by code (see `heldNote` for why not by the model).
       // Each was leak-gated when it was held. Even a reply the gate is about to
@@ -1111,12 +1138,8 @@ export function buildReplyGateHandler({ connect, sock, timeoutMs = 1500, log = t
       if (person && (verdict.action !== "cancel" || hasMedia || sent)) {
         turnProgress(agentId, "reply", { connect, sock, timeoutMs, asked: sent ? endsWithQuestion(sent) : verdict.action !== "cancel" && endsWithQuestion(verdict.text) });
       }
-      // Read off what will actually be SENT — a claim inside notes the gate
-      // just cut never reaches anybody. Only a person's own agent: a room has
-      // no turn brokerd can speak for.
-      const claim = /^u-\d+$/.test(agentId) && verdict.action !== "cancel" ? claimedWrite(verdict.text) : null;
-      if (claim) askBroker("reply_claim", { agentId, word: claim }, { connect, sock, timeoutMs }).catch(() => {});
-      if (verdict.action === "pass" && !verdict.reported.length) return out() || undefined;
+      const amendedOut = () => (amended ? { payload: { ...payload, text: verdict.text } } : undefined);
+      if (verdict.action === "pass" && !verdict.reported.length) return out() || amendedOut();
       // brokerd is asked only when something was found, so the ordinary reply
       // never waits on a socket. It is asked BEFORE the text goes (or does
       // not), because after a cancel there is nothing left to prove it
@@ -1131,7 +1154,7 @@ export function buildReplyGateHandler({ connect, sock, timeoutMs = 1500, log = t
       const reply = await askBroker("reply_gate", report, { connect, sock, timeoutMs });
       log({ gate: agentId, action: verdict.action, kinds: report.leaks.map((l) => l.kind).join(","), chars: report.chars, kept: report.kept, filed: Boolean(reply && reply.ok) });
       if (out()) return out();
-      if (verdict.action === "pass") return undefined;
+      if (verdict.action === "pass") return amendedOut();
       if (verdict.action === "trim") return { payload: { ...payload, text: verdict.text } };
       // A cancel takes the media with it, and a schedule card is not the thing
       // that leaked — so when there is one, the text is emptied and the card

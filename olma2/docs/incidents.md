@@ -198,6 +198,7 @@ never trust a dated narrative for something you are about to act on.
 - [The eval partner was a real WhatsApp recipient, and the broken nightly was what stopped it (fixed 2026-09-23)](#the-eval-partner-was-a-real-whatsapp-recipient-and-the-broken-nightly-was-what-stopped-it-fixed-2026-09-23)
 - [Three reds the model did not earn, and one it did (fixed 2026-09-24)](#three-reds-the-model-did-not-earn-and-one-it-did-fixed-2026-09-24)
 - ["רשמתי לך הכל", and nothing was (watched from 2026-09-25)](#רשמתי-לך-הכל-and-nothing-was-watched-from-2026-09-25)
+- ["שלחתי להם", and nothing was sent (corrected by code from 2026-10-08)](#שלחתי-להם-and-nothing-was-sent-corrected-by-code-from-2026-10-08)
 
 **Cost, billing and the money page**
 
@@ -8416,6 +8417,40 @@ if every `unbacked` row is a real phantom; the transcript scan says the shape is
 rare and the false-positive classes are known, so the bar is a couple of weeks
 of rows before anyone argues for more. Needs a gateway restart to go live, like
 every change to the plugin.
+
+### "שלחתי להם", and nothing was sent (corrected by code from 2026-10-08)
+
+The detector above watched for a save word with NO tool behind it. The
+commoner lie is the other one: the tool ran, was refused, and the reply said
+it worked anyway — two `complete_task` calls refused as `not_found`, then
+"סימנתי את שניהם" (u-30, 2026-10-08), and the same shape for u-36 and u-56. Read on the box over three weeks: 88 turns where a
+tool failed and a reply followed, and `reply.claim` had filed `failed` for
+none of them. Three reasons, each its own fix:
+
+- **The verbs.** The claim pattern knew saving ("רשמתי", "הוספתי") and not
+  passing on or ticking off — "שלחתי", "העברתי", "סימנתי", "עודכנו" and their
+  English twins went unread.
+- **"The last tool" is the wrong question.** brokerd kept one timestamp for
+  the last failure, so any later success — usually a read the model made to
+  recover — erased it. Now it keeps, per person, each WRITE tool whose latest
+  call failed, and only a success of the SAME tool clears it
+  (`phantom-save.isWrite`; a read failing is noise).
+- **A reply that already says it did not work is honest.** "לא הצלחתי לשלוח"
+  is filed `failed_admitted` and never corrected (`admitsFailure`, a port in
+  the plugin).
+
+What it does about it is the owner's ask, and deliberately small: the gate now
+waits up to 800ms for brokerd's verdict, and for a phone in
+`claim_correction_phones` a `failed` claim gets ONE fixed line under the reply
+— "⚠️ תיקון: זה לא נשלח בפועל." for a relay, "⚠️ תיקון: זה לא נשמר בפועל,
+הפעולה נכשלה." otherwise, English only when the reader is not known to write
+Hebrew. Code writes the line, never the model, for the same reason the
+working-out is stopped in the gateway: the model already had the refusal in
+front of it and wrote the opposite. The flag starts empty, so every hit is a
+shadow row (`wouldCorrect`) first. Roughly three of five candidates read by
+hand were real; the doubtful shape is a refused `complete_task` on a task that
+was already done, where "סימנתי" is true in spirit. Inert until the gateway
+restarts.
 
 ### Twelve people off the bottom of the money page (fixed 2026-09-10)
 
