@@ -572,6 +572,25 @@ async function resolveShort(n, opts) {
   return { n: target ? { ...target, url: n.url } : n, hops };
 }
 
+// The title a sign-in wall or a bare front door gives every page behind it
+// (the owner, 2026-10-09: "say you could not read it"). A closed list, code
+// only: a site's own name alone, or a title that is only about signing in.
+const BARE_SITE_TITLES = new Set([
+  'instagram', 'facebook', 'tiktok', 'linkedin', 'x', 'twitter', 'threads', 'pinterest', 'reddit',
+  'whatsapp', 'google drive', 'google docs', 'google', 'dropbox', 'notion', 'youtube',
+]);
+// One piece of the title (split at its separators) that is only about
+// signing in: "Log in", "Sign in to continue", "Log into Facebook", "כניסה".
+// A word at the front of a real title ("Login Ninja recipes", "התחברות מחדש
+// אחרי פרידה") is a title.
+const SIGN_IN_PIECE = /^(?:log ?in|login|sign ?in|sign up)(?:\s+(?:to|into|or|with)\b.*)?$|^log into \S+$|^(?:התחברות|כניסה|הרשמה|התחבר|התחברי|היכנס|היכנסי)(?:\s+(?:לחשבון|למערכת|לאתר))?$/i;
+function isSignInTitle(t) {
+  const s = String(t == null ? '' : t).replace(/\s+/g, ' ').trim();
+  if (!s) return false;
+  if (BARE_SITE_TITLES.has(s.toLowerCase())) return true;
+  return s.split(/\s*[|·•:,–—]\s*|\s+-\s+/).some((piece) => SIGN_IN_PIECE.test(piece.trim()));
+}
+
 // The whole read. `null` = could not read it (retry later); otherwise an
 // object whose missing fields mean "read, not there".
 //
@@ -601,6 +620,12 @@ async function extract(href, opts = {}) {
       image: got.image ? String(got.image) : null, recipe: got.recipe || null, line: got.line || null,
     };
     if (n.platform === 'maps' && !out.title) out.title = placeFromMapsUrl(got.finalUrl || n.url);
+    // A sign-in wall answers 200 with a page of its own, and its title is
+    // not what they saved. With nothing else read, it was not read at all.
+    if (isSignInTitle(out.title)) {
+      out.title = null;
+      if (!out.caption && !out.recipe && !out.line && !out.author) return null;
+    }
     out.level = out.recipe || out.line || out.caption ? 'full' : 'meta';
     return out;
   } catch {
@@ -619,7 +644,7 @@ async function fetchImage(href, opts = {}) {
 }
 
 module.exports = {
-  findUrls, normalize, platformOf, extract, fetchImage, isOwnHost,
+  findUrls, normalize, platformOf, extract, fetchImage, isOwnHost, isSignInTitle,
   // exported for the tests
   isPrivateIp, hostIsSafe, safeGet, guardedFetch, guardedLookup, yad2Listing, recipeFrom, jsonLdNodes, lineFrom,
   MAX_URLS, MAX_IMAGE_BYTES, PREVIEW_UA,
