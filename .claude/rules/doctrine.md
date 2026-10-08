@@ -11,6 +11,10 @@ paths:
   - "olma2/src/domain/google-connect.js"
   - "olma2/scripts/resync-agent-templates.js"
   - "olma2/src/adapters/http/public-pages.js"
+  - "olma2/src/domain/link-extract.js"
+  - "olma2/src/domain/link-classify.js"
+  - "olma2/src/domain/saved-links.js"
+  - "olma2/src/jobs/saved-links-enrich.js"
 ---
 
 # Doctrine, tools and reactions
@@ -455,3 +459,45 @@ title means this file. Grep the title, not the filename.
   its template and never a gateway restart. The plugin itself needs one
   restart to start claiming (`incidents.md`, "שלח לי קישור, and the new
   person's page").
+
+- **A message that is ONLY a link is SAVED by code, and Olma never asks
+  "which list?" before saving** ("שמורים", owner, 2026-10-08;
+  `docs/design/saved-links-handoff.md`). The plugin's fourth `before_dispatch`
+  handler (`buildSaveLinkHandler`: a DM, a `u-N` agent, ≤2000 chars, ≤5 URLs,
+  and at most three words beside them) hands it to brokerd
+  `save_link_shortcut` with its own DEADLINE, which reads, picks a list and
+  answers from the `saved_link*` templates. **A save earns NO mark** (owner,
+  2026-10-08): the reply names the link and where it went, and a 👍 beside
+  that says nothing — the tool's `save` likewise; a `move`, `done`, delete or
+  rename is a 👍. It always DECIDES and offers the correction on the second
+  line ("אפשר לענות בשם של רשימה אחרת כדי להעביר") — the tool's `move` with
+  no id takes the newest link they saved in the last 30 minutes. **The model
+  never creates a list; only the person's own words do** — a hint of exactly
+  ONE word after ל־ that is not on `NOT_A_LIST` (למה, לפני, לגבי…), or a list
+  they named. A link to OUR own pages (`link-extract.isOwnHost`) is never
+  saved: that message is about it and goes to the model. **Nothing is read
+  inside a transaction** — `prepareSave` reads every link in parallel under
+  one deadline and `commitSave` only writes (the tool's twin is the generic
+  `tool.prepare` hook in `handleToolCall`); past the plugin's deadline brokerd
+  rolls the write back and claims nothing, so the model's turn saves it once.
+  Any broker failure fails open to a normal turn. The plugin needs a restart
+  to start claiming.
+
+- **A saved link is fetched by OUR server, so every fetch goes through the
+  guard in `domain/link-extract.js` and nothing else** — http/https on ports
+  80/443 only, the host RESOLVED and refused on any blocked answer (one bad
+  address among several is enough) by a `net.BlockList`, which also catches
+  every IPv4-mapped form, with NAT64 and 6to4 refused whole; the socket
+  connects through `guardedLookup` to the address it checked, so a rebinding
+  DNS answer cannot swap one in; our own hostnames, their trailing-dot forms
+  and the box's IP refused by name; at most 3 redirects SHARED with a short
+  link's expansion, each checked again; one deadline for the whole read, 2MB a
+  page and 300KB of `image/*` a picture. A title is stripped of URLs and
+  markup before it enters our sentence (`saved-links.cleanTitle`).
+  Somebody pasting `http://169.254.169.254/` is a person, not an attacker we
+  can rule out, and a link is the one thing on this box a stranger's words
+  make it fetch. A link that cannot be read is still SAVED, with no line
+  (`extract_level = 'failed'`, retried by `saved_links_enrich` after 1h, 6h
+  and 24h), and is never an error to them. Titles and lines come from what
+  was READ, never from a model ("Olma never claims a lookup it did not
+  perform").
