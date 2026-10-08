@@ -31,7 +31,7 @@ function mealBrief(m, numbers) {
   const out = { meal_id: m.id, title: m.title, meal: m.slot, day: m.day, time: m.time };
   if (m.rough) return { ...out, rough: true };
   out.items = m.items.map(it => numbers
-    ? { name: it.name, grams: it.grams, kcal: it.kcal, ...(it.confidence === 'portion' ? { their_portion: true } : {}) }
+    ? { name: it.name, grams: it.grams, ...(it.ml ? { unit: 'ml' } : {}), kcal: it.kcal, ...(it.confidence === 'portion' ? { their_portion: true } : {}) }
     : { name: it.name, group: N.GROUP_HE[it.grp] });
   if (numbers) out.totals = m.totals;
   out.plate = plateHe(m.balance);
@@ -210,7 +210,7 @@ const TOOLS = {
   async my_portions({ pool, p }, a) {
     if (a.forget) return await store.forgetPortion(pool, p, a.forget);
     const list = await store.portionsOf(pool, p);
-    return { portions: list.map(x => (p.numbers ? { name: x.name, grams: x.grams } : { name: x.name })), ...(list.length ? {} : { note: 'None yet: a corrected amount becomes one.' }) };
+    return { portions: list.map(x => (p.numbers ? { name: x.name, grams: x.grams, ...(x.ml ? { unit: 'ml' } : {}) } : { name: x.name })), ...(list.length ? {} : { note: 'None yet: a corrected amount becomes one.' }) };
   },
 
   async usual_meals({ pool, p }, a) {
