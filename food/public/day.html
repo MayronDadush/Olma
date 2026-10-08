@@ -186,10 +186,13 @@ main{max-width:860px;margin:0 auto;padding:18px 16px calc(var(--bar-bottom) + 11
 .wgoal .st{display:flex;align-items:center;gap:6px}
 .wgoal .st b{min-width:64px;text-align:center;color:var(--text);font-size:15px}
 .wgoal .st button{width:32px;height:32px;border-radius:50%;border:1px solid var(--sep-2);background:var(--surface);padding:0;display:grid;place-items:center;color:var(--accent)}
-.vseg{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 12px}
+.vseg{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;margin:0 0 14px}
 .vseg::-webkit-scrollbar{display:none}
-.vseg button{flex:none;display:flex;align-items:center;gap:5px;border:1px solid var(--sep);background:var(--surface);border-radius:99px;padding:4px 10px 4px 8px;font-size:12.5px;color:var(--text-2)}
-.vseg button svg{width:12px;height:16px;color:var(--m-water)}
+.vseg button{min-width:0;display:flex;flex-direction:column;align-items:center;gap:5px;border:1px solid var(--sep);background:var(--surface);border-radius:14px;padding:8px 2px 7px;font-size:11.5px;line-height:1.1;white-space:nowrap;color:var(--text-2)}
+.vseg .ic{height:35px;display:flex;align-items:flex-end;color:var(--m-water)}
+.vseg .ic svg{display:block}
+.vseg .wv{fill:var(--m-water);opacity:.8}
+@media (max-width:340px){.vseg button{font-size:10.5px}}
 .vseg button[aria-pressed="true"]{background:var(--m-water-soft);border-color:var(--m-water);color:var(--text);font-weight:600}
 .vessels{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end}
 .ves{border:0;background:transparent;padding:0;color:var(--sep-2);transition:transform .15s}
@@ -369,7 +372,7 @@ main.enter .view > *:nth-child(4){animation-delay:.18s}main.enter .view > *:nth-
     <div style="min-width:0"><b>הצלחת של היום</b><span id="who">עולמה</span></div>
   </div>
   <button class="ibtn" id="cardBtn" type="button" aria-label="כרטיס היום"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="3"/><circle cx="12" cy="10" r="3.5"/><path d="M8 17h8"/></svg></button>
-  <button class="ibtn" id="themeBtn" type="button" aria-label="החלפת מצב תצוגה"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg></button>
+  <button class="ibtn" id="themeBtn" type="button" aria-label="החלפת מצב תצוגה"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path transform="translate(1.2 -1.1)" d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg></button>
 </div></header>
 
 <main id="main">
@@ -382,7 +385,7 @@ main.enter .view > *:nth-child(4){animation-delay:.18s}main.enter .view > *:nth-
   <div class="tabs">
     <button type="button" data-tab="today" aria-pressed="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11h18a9 9 0 0 1-18 0z"/><path d="M7.5 11c0-2.5 1.6-4.5 4.5-4.5s4.5 2 4.5 4.5M12 6.5V4"/></svg><span>היום</span></button>
     <button type="button" data-tab="plates" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="2"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="2"/></svg><span>הצלחות</span></button>
-    <button type="button" data-tab="week" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h16M7 16v-5M12 16V6M17 16v-8"/></svg><span>השבוע</span></button>
+    <button type="button" data-tab="week" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 19.5h18M6.5 15v-4.5M12 15V4M17.5 15V7.5"/></svg><span>השבוע</span></button>
   </div>
   <button class="fab" id="chatBtn" type="button" aria-label="לכתוב לעולמה"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 0 1-11.6 7.1L4 20l1-4.2A8 8 0 1 1 20 12z"/></svg></button>
 </nav>
@@ -515,21 +518,26 @@ function huesHtml() {
       : `<div class="huel">${HUES.map(([k, t, c]) => `<span class="${on.includes(k) ? 'on' : ''}" style="--c:var(${c})"><i></i>${t}</span>`).join('')}</div>`}</div>`;
 }
 /* ── water: counted in ml, drunk from a cup or a bottle ── */
-const VES = [[250, 'כוס'], [500, '500 מ״ל'], [750, '750 מ״ל'], [1000, '1 ליטר'], [1500, '1.5 ליטר']];
+const VES = [[250, 'כוס'], [500, '500 מ״ל'], [750, '750 מ״ל'], [1000, 'ליטר'], [1500, '1.5 ליטר']];
 const L = ml => ml >= 1000 ? `${(ml / 1000).toFixed(2).replace(/\.?0+$/, '')} ליטר` : `${Math.round(ml)} מ״ל`;
 let wOpen = false;        // the goal stepper
 let wFrom = null;         // the ml the fill animates from, after a tap
-// A cup is a tapered glass; a bottle is taller the more it holds.
+// Five vessels, five shapes, so the chips tell them apart at a glance: a
+// glass, a small bottle, a sports bottle (cap and loop), a carafe (handle) and
+// a big ribbed bottle. `d` is the body the water fills; `x` is drawn on top.
 function vesselPath(v) {
+  const bottle = (w, h) => { const n = w / 2; return `M${n - 3.5} 2h7v5c0 1.6 ${n - 5} 2.4 ${n - 5} 6v${h - 17}a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3V13c0-3.6 ${n - 5}-4.4 ${n - 5}-6z`; };
   if (v === 250) return { w: 30, h: 40, d: 'M4 3h22l-2.6 32.5a3 3 0 0 1-3 2.5H9.6a3 3 0 0 1-3-2.5z' };
-  const h = { 500: 46, 750: 52, 1000: 56, 1500: 62 }[v], w = v === 1500 ? 28 : 24, n = w / 2;
-  return { w, h, d: `M${n - 3.5} 2h7v5c0 1.6 ${n - 5} 2.4 ${n - 5} 6v${h - 17}a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3V13c0-3.6 ${n - 5}-4.4 ${n - 5}-6z` };
+  if (v === 500) return { w: 22, h: 44, d: bottle(22, 44) };
+  if (v === 750) return { w: 24, h: 52, d: 'M3 17a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3v30a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3z', x: 'M8 14V9a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v5M10 7V4.5a2 2 0 0 1 4 0V7' };
+  if (v === 1000) return { w: 30, h: 52, d: 'M7 3h10v4c0 4 6 7 6 13v25a4 4 0 0 1-4 4H5a4 4 0 0 1-4-4V20c0-6 6-9 6-13z', x: 'M23 23h2.5a3 3 0 0 1 3 3v10a3 3 0 0 1-3 3H23' };
+  return { w: 30, h: 62, d: bottle(30, 62), x: 'M2 36h26.5M2 41h26.5' };
 }
-function vesselSvg(v, fill, i) {
-  const { w, h, d } = vesselPath(v);
-  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" aria-hidden="true"><defs><clipPath id="wc${i}"><path d="${d}"/></clipPath></defs>
+function vesselSvg(v, fill, i, scale = 1) {
+  const { w, h, d, x } = vesselPath(v);
+  return `<svg width="${Math.round(w * scale)}" height="${Math.round(h * scale)}" viewBox="0 0 ${w} ${h}" aria-hidden="true"><defs><clipPath id="wc${i}"><path d="${d}"/></clipPath></defs>
     <g clip-path="url(#wc${i})"><rect class="wv" x="-8" y="0" width="${w + 16}" height="${h}" data-to="${fill}" style="transform:scaleY(${fill})"/></g>
-    <path d="${d}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>`;
+    <path d="${d}${x ? ' ' + x : ''}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 }
 function waterHtml() {
   const ml = S.water_ml || 0, goal = S.person.water_goal_ml || 2000, v = S.person.water_vessel || 250;
@@ -538,7 +546,7 @@ function waterHtml() {
   return `<div class="card" id="waterCard"><div class="sec-h"><h2>מים</h2>
       <button class="wsum num" type="button" data-wgoal aria-expanded="${wOpen}"><b>${L(ml)}</b><span>מתוך ${L(goal)}</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg></button></div>
     ${wOpen ? `<div class="wgoal"><span>היעד היומי</span><div class="st"><button type="button" data-wg="-250" aria-label="פחות">${I_MINUS}</button><b class="num">${L(goal)}</b><button type="button" data-wg="250" aria-label="יותר">${I_PLUS}</button></div></div>` : ''}
-    <div class="vseg" role="group" aria-label="שותים מ־">${VES.map(([x, t]) => `<button type="button" data-ves="${x}" aria-pressed="${x === v}">${vesselSvg(x, x === v ? 1 : 0, 'c' + x).replace(/width="\d+" height="\d+"/, '')}${t}</button>`).join('')}</div>
+    <div class="vseg" role="group" aria-label="שותים מ־">${VES.map(([x, t]) => `<button type="button" data-ves="${x}" aria-pressed="${x === v}"><span class="ic">${vesselSvg(x, x === v ? 1 : 0, 'c' + x, 0.56)}</span>${t}</button>`).join('')}</div>
     <div class="vessels">${Array.from({ length: n }, (_, i) => `<button type="button" class="ves ${fillOf(ml, i) > 0 ? 'on' : ''}" data-ves-i="${i}" data-from="${wFrom == null ? fillOf(ml, i) : fillOf(wFrom, i)}" aria-label="${i + 1} · ${L((i + 1) * v)}">${vesselSvg(v, fillOf(ml, i), i)}</button>`).join('')}</div></div>`;
 }
 // What was drawn last, so the next drawing fills from there: a new day
