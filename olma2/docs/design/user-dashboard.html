@@ -2584,11 +2584,23 @@ button.srow:active{background:var(--bg-tint)}
    the next one peeks under the name, and the end carries the month's count
    with the week's as a pill in the tile's colour (option B's). Shared by the
    saved-links fold: .fsea is the calendar's blue, .fgold the saved mustard. */
-#taskStack .fcard{opacity:1}
+#taskStack .fcard{opacity:1;position:relative}
 #taskStack .fcard .arcbtn{
   align-items:center;gap:12px;padding:11px 14px 12px;background:var(--surface);
   border-radius:16px;box-shadow:var(--shadow-m);color:var(--text);font-weight:400;text-align:start;
+  position:relative;z-index:1;transition:transform .18s var(--spring)
 }
+#taskStack .fcard .arcbtn:active{transform:scale(.985)}
+/* Two card edges peek under it while it is shut (owner's option C): there
+   is a pile inside. They go when it opens, so the list is not under them. */
+#taskStack .fcard::before,#taskStack .fcard::after{
+  content:"";position:absolute;top:auto;height:14px;border-radius:0 0 14px 14px;
+  background:var(--surface);box-shadow:var(--shadow-s);transition:opacity .2s ease
+}
+#taskStack .fcard::before{inset-inline:10px;bottom:4px;opacity:.75}
+#taskStack .fcard::after{inset-inline:20px;bottom:0;opacity:.45}
+#taskStack .fcard:not(.open){padding-bottom:9px}
+#taskStack .fcard.open::before,#taskStack .fcard.open::after{opacity:0}
 .fcard .ftile{width:34px;height:34px;border-radius:10px;flex:none;display:grid;place-items:center}
 .fcard .ftile svg{width:18px;height:18px}
 .fcard .fsea{background:var(--sea-soft);color:var(--drop-line)}
@@ -2598,11 +2610,17 @@ button.srow:active{background:var(--bg-tint)}
 .fcard .fpeek{display:flex;gap:6px;min-width:0;font-size:13px;color:var(--text-2)}
 .fcard .fpeek b{font-weight:600;color:var(--drop-line);white-space:nowrap}
 .fcard .fpeek span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.fcard .fend{display:flex;flex-direction:column;align-items:flex-end;gap:3px;flex:none}
-.fcard .fnum{display:flex;align-items:center;gap:8px}
-.fcard .calfoldn{margin:0;font-size:19px;font-weight:700;line-height:1.1;font-variant-numeric:tabular-nums}
+/* The end is a number BLOCK (owner's alignment 3): the count over the
+   week's words on one centred axis, set off from the text by a hairline,
+   and the chevron apart from it, centred on the card's height. */
+.fcard .fend{display:flex;align-items:center;gap:12px;flex:none;align-self:stretch}
+.fcard .fnum{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+  min-width:58px;padding-inline-start:12px;border-inline-start:1px solid var(--sep)}
+.fcard .calfoldn{margin:0;font-size:21px;font-weight:700;line-height:1.1;font-variant-numeric:tabular-nums}
 .fcard .chev{width:7px;height:13px;color:var(--text-3)}
-.fcard .fsub{font-size:11.5px;font-weight:600;border-radius:999px;padding:2px 8px;white-space:nowrap}
+.fcard .fsub{font-size:11.5px;font-weight:600;white-space:nowrap}
+.fcard .fsub.fsea{background:none;color:var(--drop-line)}
+.fcard .fsub.fnone{color:var(--text-3);font-weight:500}
 #arcGroup .task{opacity:.7}
 #arcGroup .ttitle{color:var(--text-3)}
 #arcGroup .pill{background:transparent;padding-inline:0;color:var(--text-3);font-weight:500}
@@ -5682,7 +5700,7 @@ button.srow:active{background:var(--bg-tint)}
       "tasks.doneAt":"הושלמה {when}","tasks.justNow":"הרגע",
       "tasks.arcShown":"מוצגות {n} האחרונות מתוך {all}","tasks.arcShowAll":"הצגת כל {all}","tasks.arcShowLess":"מוצגות כל {all} · הצגת {n} האחרונות","tasks.restore":"החזרה לרשימה",
       "toast.restored":"„{name}” חזרה לרשימה",
-      "tasks.pinned":"משותפות","tasks.onCal":"אירועים קרובים","tasks.calWeek":"{n} השבוע","tasks.unpin":"ביטול נעיצה","tasks.pin":"נעיצה למעלה",
+      "tasks.pinned":"משותפות","tasks.onCal":"אירועים קרובים","tasks.calWeek":"{n} השבוע","tasks.calWeekNone":"לא השבוע","tasks.unpin":"ביטול נעיצה","tasks.pin":"נעיצה למעלה",
       "toast.unpinned":"„{name}” חזרה למקום שלה","toast.pinned":"„{name}” נעוצה למעלה",
       "sugg.stuck":"פתוחה כבר {days} ימים, בלי תאריך ובלי תזכורת. להוריד מהרשימה?",
       "sugg.overdue":"התאריך שלה עבר לפני {days} ימים והיא עדיין פתוחה. להוריד מהרשימה?",
@@ -6082,7 +6100,7 @@ button.srow:active{background:var(--bg-tint)}
       "tasks.doneAt":"Done {when}","tasks.justNow":"just now",
       "tasks.arcShown":"Showing the last {n} of {all}","tasks.arcShowAll":"Show all {all}","tasks.arcShowLess":"Showing all {all} · show the last {n}","tasks.restore":"Put back on the list",
       "toast.restored":"\u201c{name}\u201d is back on your list",
-      "tasks.pinned":"Shared","tasks.onCal":"Upcoming events","tasks.calWeek":"{n} this week","tasks.unpin":"Unpin","tasks.pin":"Pin to top",
+      "tasks.pinned":"Shared","tasks.onCal":"Upcoming events","tasks.calWeek":"{n} this week","tasks.calWeekNone":"none this week","tasks.unpin":"Unpin","tasks.pin":"Pin to top",
       "toast.unpinned":"\u201c{name}\u201d is back in its place","toast.pinned":"\u201c{name}\u201d is pinned to the top",
       "sugg.stuck":"Open for {days} days, with no date and no reminder. Take it off the list?",
       "sugg.overdue":"Its date passed {days} days ago and it is still open. Take it off the list?",
@@ -8420,9 +8438,11 @@ button.srow:active{background:var(--bg-tint)}
     });
     /* Drawn as a card (owner, 2026-10-08, option F): the next event peeks
        under the name (its day and start, short, so the title still fits),
-       the month's count stands at the end with the week's
-       beside it, and the chevron sits after the number. The saved-links fold
-       will be drawn from the same classes. */
+       the month's count over the week's words ("לא השבוע" at none, so the
+       block never loses its second line), the chevron apart, and the pile
+       under it while it is shut. Nothing in the next 30 days draws nothing
+       at all — no empty card. The saved-links fold will be drawn from the
+       same classes. */
     var next = items[0], week = 6 - new Date().getDay();
     var inWeek = items.filter(function(x){ return daysAhead(x.d) <= week; }).length;
     return '<div class="tsec calfold archive fcard' + (calFoldOpen ? " open" : "") + '">' +
@@ -8431,8 +8451,9 @@ button.srow:active{background:var(--bg-tint)}
         '<span class="fmid"><span class="fname">' + esc(t("tasks.onCal")) + "</span>" +
           '<span class="fpeek"><b>' + esc(dayWord(next.d) + (next.all || !next.tm ? "" : " " + next.tm)) + "</b><span>" + esc(L(next.t)) + "</span></span></span>" +
         '<span class="fend"><span class="fnum"><span class="calfoldn">' + items.length + "</span>" +
-          '<svg class="chev" aria-hidden="true"><use href="#i-chev"/></svg></span>' +
-          (inWeek ? '<span class="fsub fsea">' + esc(t("tasks.calWeek", {n:inWeek})) + "</span>" : "") +
+          (inWeek ? '<span class="fsub fsea">' + esc(t("tasks.calWeek", {n:inWeek})) + "</span>"
+                  : '<span class="fsub fnone">' + esc(t("tasks.calWeekNone")) + "</span>") +
+          '</span><svg class="chev" aria-hidden="true"><use href="#i-chev"/></svg>' +
         "</span>" +
       "</button>" +
       /* inert while folded: the rows are still in the DOM, and a keyboard or a
