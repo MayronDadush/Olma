@@ -951,13 +951,17 @@ test('any other hour, a range, no verdict, or a verdict past fifteen minutes lea
   await open({ agentId: 'u-982', messageId: '3EB0NOHOUR04', kind: 'text', noHour: true });
   const late = newTurn();
   await call(u, 'turn_start', { message_id: '3EB0NOHOUR04' }, late);
+  // Computed ONCE, before the clock moves: sixteen minutes on, "tomorrow" can
+  // be a different day in Jerusalem (main went red at 22:48 local, the
+  // suite's clock already an hour ahead from the tests above).
+  const nineTomorrow = localTomorrowAt(9);
   const was = now;
   now += 16 * 60_000;
   try {
-    const res = await call(u, 'add_task', { title: 'מאוחר', due_at: localTomorrowAt(9) }, late);
+    const res = await call(u, 'add_task', { title: 'מאוחר', due_at: nineTomorrow }, late);
     assert.equal(res.ok, true, res.text);
   } finally { now = was; }
-  assert.equal(await dueOf('מאוחר'), localTomorrowAt(9), 'a verdict fifteen minutes old is not this message');
+  assert.equal(await dueOf('מאוחר'), nineTomorrow, 'a verdict fifteen minutes old is not this message');
 });
 
 test('add_tasks_bulk moves each 09:00 item to its day on a turn that named no hour', async () => {
