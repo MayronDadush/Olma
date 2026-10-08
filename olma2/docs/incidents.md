@@ -15250,7 +15250,6 @@ envelope header and its sender label cut. The trace line now carries `src`
 and `chars`, so the next zero says which string it was read from. Needs a
 gateway restart; hooks load at startup.
 
-
 ### A morning that said "here is the picture" and had none (2026-10-06)
 
 User 8, 09:01: `get_my_digest` was called with `scope="summary"`, which returns
@@ -15267,3 +15266,19 @@ that would turn every long morning into an image, Olma's own cards are limited
 to two a day at least three hours apart (`card-budget.js`). A person asking is
 never limited. Not done: a per-user opt-out; rolling 24h rather than a local
 calendar day, on purpose, to need no timezone.
+
+### The follow-up a minute behind the digest that already said it (fixed 2026-10-06)
+
+Yahav's task "לבטל את האשראי" (due 08:00 Israel, automatic reminder) had rung 1
+at 07:00 local. At 10:00:36 the morning digest (`scope: today`) listed it, and
+at 10:01:35 rung 2 — the same-day follow-up an inferred hour earns — went out
+saying it again. Nothing was wrong with either by itself: the ladder waits
+three hours after a delivered rung, and the digest runs on its own clock. The
+gap was that a follow-up chases an action and the digest had just put the task
+in front of him.
+
+Fix: `sweepReminders` retires an automatic one-off ladder instead of sending a
+follow-up when a digest reached them after rung 1
+(`reminders.coveredByDigest`; since the same day every digest carries every
+open task, so reaching them is naming it). A nudge, an explicit reminder and a repeating one
+are untouched. Audited as `reminder.covered_by_digest`.

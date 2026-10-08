@@ -86,6 +86,16 @@ title means this file. Grep the title, not the filename.
   draws; one or two together are still followed up. Stamped only on a sent
   or timed-out send, never on a failure.
 
+- **…and a follow-up rung is not sent behind a digest that already LISTED the
+  task.** Yahav (2026-10-06): the 10:00 digest named "לבטל את האשראי" and the
+  automatic rung 2 went out 59 seconds later. `sweepReminders` retires the
+  ladder instead (`reminders.coveredByDigest`, audit
+  `reminder.covered_by_digest`) when a digest that REACHED them
+  (`hold_reason` NULL) after rung 1 — every scheduled digest carries every open
+  task since 2026-10-06, so reaching them is naming it. Only an
+  automatic one-off ladder: a nudge, an explicit reminder and a repeat keep
+  theirs.
+
 - **"להפסיק להזכיר" is a WRITE, not a question.** מאיה asked twice over — once
   for one reminder at 09:00, and once for it to stop — and got six messages and
   a multiple-choice question ("מה להפסיק? 1. … 2. … 3. …") with nothing
