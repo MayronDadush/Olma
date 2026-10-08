@@ -282,7 +282,7 @@ test('intake sweep: open registration provisions immediately — and queues ONE 
   // The 2026-08-17 redesign retired the dedicated 'welcome' kind, and it stays
   // retired: nothing here introduces her again. What IS queued (owner,
   // 2026-09-25) is their own agent's first word — it acts on what they wrote
-  // to the greeter, which has no tools, and hands over their page. Their words
+  // to the greeter, which has no tools (no page since 2026-10-08). Their words
   // are not in the row; USER.md holds them.
   const { rows: outboxRows } = await db.pool.query(
     `SELECT o.* FROM outbox o JOIN users u ON u.id = o.user_id WHERE u.phone = '+972601000002'`);
@@ -317,6 +317,29 @@ test('intake sweep: open registration provisions immediately — and queues ONE 
     listSessions: async () => [{ phone: '+972601000002', key: 'x' }],
   }));
   assert.equal(again.provisioned.length, 0);
+});
+
+// Owner, 2026-10-08 (u-69): the greeter's opening already said what she is, and
+// the follow-up no longer carries their page — so a person who left nothing
+// with the greeter gets no second message at all. It used to be their page,
+// wrapped in a restatement of the greeter's introduction a minute later.
+test('intake sweep: a bare hello to the greeter queues nothing after it', async () => {
+  const phone = '+972601000013';
+  const out = await withTx(db.pool, (c) => intake.sweepIntakeSessions(c, {
+    configPath,
+    listSessions: async () => [{ phone, key: `agent:intake:whatsapp:direct:${phone}` }],
+    // What the production reader hands back for a "היי": the carryover guard
+    // drops text every other stranger also wrote, so there is no note.
+    readFirstMessage: async () => null,
+    readGreeterReply: async () => OPENING.he,
+  }));
+  assert.deepEqual(out.provisioned, [phone]);
+  const { rows } = await db.pool.query(
+    `SELECT u.opening_sent_at, u.intake_note_at, o.kind FROM users u LEFT JOIN outbox o ON o.user_id = u.id
+      WHERE u.phone = $1`, [phone]);
+  assert.ok(rows[0].opening_sent_at, 'greeted');
+  assert.equal(rows[0].intake_note_at, null, 'nothing carried over');
+  assert.deepEqual(rows.map((r) => r.kind), [null], 'and nothing queued behind the greeter');
 });
 
 // ---- a newcomer from a room with a coordination waiting (owner, 2026-09-29)

@@ -329,7 +329,7 @@ async function dayOneSpent(client, u) {
   return rows[0].n >= cap;
 }
 
-// The welcome follow-up still owed — what she is, and their page, held for
+// The welcome follow-up still owed — what she is, held for
 // the morning after a game night or a room's coordination (jobs/intake.js).
 // Until it goes out the day-one ladder says nothing: a question at 2h about
 // somebody's day, from an assistant that has not yet said what she does, is

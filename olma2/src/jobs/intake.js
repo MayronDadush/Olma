@@ -17,8 +17,9 @@
 // into their personal workspace by provisionUser. The conversation the
 // person is already in just continues, more capable — and since 2026-09-25
 // (owner) their own agent says so in one message, `welcome_followup`: it
-// acts on what they wrote to the greeter and hands over their page. It is not
-// a second hello; the greeter's introduction stands and this never repeats it.
+// acts on what they wrote to the greeter. It is not a second hello; the
+// greeter's introduction stands and this never repeats it. Since 2026-10-08 it
+// carries no page link and is not queued when it has nothing to act on.
 //
 // Reopen: registration_open flipped back on → keep the promise, through the
 // outbox (respectfully timed), exactly once per waitlisted phone.
@@ -392,7 +393,12 @@ async function sweepIntakeSessions(client, deps) {
     // the day after it — never in the middle of the game. Their turns during
     // the night do not drop it (outbox/gate.js), because "עוד כניסה" is not
     // them hearing what she is.
-    if (greetedByIntake) {
+    // Only when it has something to do (owner, 2026-10-08): a room's or a game
+    // night's short opening never said what Olma is, and words left with the
+    // greeter may ask for something. A plain greeting already answered by the
+    // greeter's opening leaves it nothing — it used to carry their page, and
+    // repeated the greeter's introduction around it (u-69).
+    if (greetedByIntake && (roomOpened || gameClaim || user.intake_note_at)) {
       const waiting = roomOpened ? await intakeRoom.roomFor(client, phone) : null;
       const now = new Date();
       let releaseAfter = null;

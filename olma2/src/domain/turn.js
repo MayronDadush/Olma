@@ -28,7 +28,6 @@ const holidays = require('./holidays');
 const preferences = require('./preferences');
 const { genderFromWords } = require('./gender-forms');
 const groups = require('./groups');
-const dashboardAuth = require('./dashboard-auth');
 const carryover = require('./carryover-heading');
 const brandAds = require('./brand-ads');
 
@@ -521,21 +520,6 @@ function requireAdviseColumns(user) {
   }
 }
 
-// The page link a first turn hands over, or null when the welcome follow-up
-// already delivered one (a row the gate dropped or let expire delivered
-// nothing, so it does not count) or none can be minted — an eval user, no
-// public base url. Null is a message without a link, never a guessed one.
-async function firstTurnPageLink(client, userId) {
-  const { rows } = await client.query(
-    `SELECT 1 FROM outbox WHERE user_id = $1 AND kind = 'welcome_followup'
-        AND sent_at IS NOT NULL AND hold_reason IS NULL LIMIT 1`, [userId]);
-  if (rows[0]) return null;
-  try {
-    const made = await dashboardAuth.createLinkUrl(client, userId);
-    return made.ok && made.data && made.data.url ? made.data.url : null;
-  } catch { return null; }
-}
-
 // A welcome follow-up queued after a short opening and not yet sent
 // (jobs/intake.js): 'room' after a room's, 'game' after a game night's code,
 // null otherwise. Unsent is the point: once it went out, what she does has
@@ -647,7 +631,7 @@ async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, 
   // never enters their session — so a "מה זה?" or a brain dump right after it
   // would reach a model that never saw it. Same channel as recentReminders.
   // The welcome after a game night or a room goes the same way when it is the
-  // clip (jobs/intake.js, `clip`), with one line and their page under it.
+  // clip (jobs/intake.js, `clip`), with one line under it.
   const { rows: introRows } = await client.query(
     `SELECT sent_at, kind = 'welcome_followup' AS welcome FROM outbox
       WHERE user_id = $1 AND hold_reason IS NULL
@@ -658,7 +642,7 @@ async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, 
     ? { sentAt: introRows[0].sent_at,
       what: 'Olma sent them a short looping video (no text) introducing herself: send her everything, '
         + 'messy is fine, she sorts it into a list and reminds on time. '
-        + (introRows[0].welcome ? 'Under it, one line and the link to their personal page. ' : '')
+        + (introRows[0].welcome ? 'Under it, one short line. ' : '')
         + 'A reply now may be about it.' }
     : null;
   // Same channel for an ad from the library (domain/brand-ads.js).
@@ -829,20 +813,10 @@ async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, 
     + 'are free, a task, a fact, whatever it holds — and never ask them to say '
     + 'it again.';
 
-  // Their page, on the first turn of somebody who has not been handed it yet.
-  // A new person the greeter introduced normally gets it seconds later in the
-  // welcome follow-up (jobs/intake.js); this is every other road in — they
-  // wrote to their own agent before that went out (the gate then drops it), a
-  // greeter that never said the copy, a hand-provisioned or testbed-reset
-  // person. The characters are handed over, never asked for: a prompt that
-  // names a page and leaves the url to the model is how three people got three
-  // invented domains in one minute (`rules/delivering.md`).
-  //
-  // Not after a game night's code: that first turn is a buy-in in the middle
-  // of the game, and the page and what she does wait for the morning's
-  // follow-up (jobs/intake.js), which the gate does not drop for it.
+  // No page link on a first turn (owner, 2026-10-08: "הרבה מאוד אנשים נוח
+  // להם להפעיל את זה רק בוואטסאפ"). The page is offered later, at the end of
+  // day one (jobs/checkin.js), or when they ask for it.
   const shortOpening = firstTurn && user.opening_sent_at ? await shortOpeningPending(client, user.id) : null;
-  const pageLink = firstTurn && shortOpening !== 'game' ? await firstTurnPageLink(client, user.id) : null;
   // Greeted by a room's short opening (domain/intake-room.js), which says she
   // is an AI and sends the coordination, and nothing about what she does: this
   // first turn — usually their answer to that coordination — says it, once,
@@ -855,11 +829,6 @@ async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, 
       + 'personally — tasks, reminders and coordinating with people close to them, written, as a voice note, '
       + 'or all in a mess.'
     : '';
-  const PAGE_LINK = pageLink
-    ? ` End this reply with their personal page: one short line saying this is their page, then this url on `
-      + `a line of its own, bare — nothing else will deliver it: ${pageLink}`
-    : '';
-
   // Whether anyone has already said hello. An organic joiner met the intake
   // greeter, which opens with this exact copy and stamps `opening_sent_at` at
   // provisioning; sending it again here is the duplicate introduction עידן
@@ -888,7 +857,6 @@ async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, 
       ? {
         alreadyOpened: true,
         ...(pendingNote ? { pendingNote: true } : {}),
-        ...(pageLink ? { pageLink } : {}),
         instruction: 'Their first message to YOU, but not their first message '
           + 'to Olma: they have already been greeted, in these words, and the '
           + 'introduction is done. Do not introduce yourself, do not welcome '
@@ -899,12 +867,11 @@ async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, 
             ? PENDING_INTAKE_NOTE + ' Answer it together with whatever they '
               + 'wrote this turn, in one reply. '
             : 'Answer what they actually wrote, in one short reply. ')
-          + NAME_IN_FIRST_MESSAGE + ROOM_INTRO + PAGE_LINK,
+          + NAME_IN_FIRST_MESSAGE + ROOM_INTRO,
       }
       : {
         sendVerbatim,
         ...(pendingNote ? { pendingNote: true } : {}),
-        ...(pageLink ? { pageLink } : {}),
         instruction: 'Their first ever message, and nobody has greeted them '
           + 'yet. Open your reply with sendVerbatim, character for character — '
           + 'do not translate, reword, shorten, or add to it. '
@@ -916,10 +883,7 @@ async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, 
               + 'asked for something, answer it below those lines; otherwise stop '
               + 'there. No feature tour, no menu, and no follow-up question this '
               + 'turn. ' + NAME_IN_FIRST_MESSAGE
-              + (pageLink
-                ? ' Your reply is still the copy above and the page below it, and nothing else.'
-                : ' Your reply is still the copy above and nothing else.'))
-          + PAGE_LINK,
+              + ' Your reply is still the copy above and nothing else.'),
       })
     : null;
 
