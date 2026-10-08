@@ -48,8 +48,6 @@ async function boot(t, { seen, pick, media = async () => PHOTO } = {}) {
   process.env.FOOD_OPENROUTER_KEY = 'test-key';
   t.after(() => { delete process.env.FOOD_OPENROUTER_KEY; foods.reset(); });
   const pool = await freshDb(t);
-  // Written for somebody who asked for numbers; the default (off) is tested in server.test.js.
-  await pool.query('ALTER TABLE people ALTER COLUMN numbers SET DEFAULT true');
   const seeded = await foods.seed(pool);
   const model = fakeModel({ seen, pick });
   const server = createServer({ pool, publicBase: 'https://allma.test', page: '<!doctype html>', identify, media, fetchImpl: model.fetchImpl });
