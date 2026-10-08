@@ -153,6 +153,13 @@ const DEFAULTS = {
   // the open list beside them to OpenRouter, which the owner allowed for this
   // on 2026-09-24, and turning it off stops that on the next tick.
   jev_shadow_twins: false,
+  // jobs/fact-shadow.js: the same shadow over a new FACT — is it a one-off
+  // event or a lasting trait, and is it the same as another fact in other
+  // words. OFF by default and read every tick. A bigger step than the tasks
+  // one: turning it on sends the words of new facts (health and family
+  // included) and the person's other facts beside them to OpenRouter, so it is
+  // the owner's call to make, not a default. Never profile-page answers.
+  jev_shadow_facts: false,
   // gateway-plugin/olma-turn, "a burst is answered once" (owner, 2026-10-02):
   // a reply about to go out while a newer message of theirs is already waiting
   // for its own turn is held, and that turn answers both. '' = off for

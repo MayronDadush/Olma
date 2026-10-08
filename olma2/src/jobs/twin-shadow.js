@@ -200,6 +200,6 @@ async function sweepTwinShadow(client, { decide = jev.decide, now = () => Date.n
 }
 
 module.exports = {
-  sweepTwinShadow, codeVerdict, rankQuestion, openListAt, candidates, isOutage,
+  sweepTwinShadow, codeVerdict, rankQuestion, openListAt, candidates, isOutage, recordUsage,
   FLAG, AGENT_ID, WINDOW_HOURS, PER_TICK,
 };

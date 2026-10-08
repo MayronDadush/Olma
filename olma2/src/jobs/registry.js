@@ -142,6 +142,7 @@ function jobs({ pool }) {
 const deployDrift = require('./deploy-drift');
   // Jev beside the duplicate-task judgement, acting on nothing (rung 1).
   const twinShadow = require('./twin-shadow');
+  const factShadow = require('./fact-shadow');
 
   return [
     { name: 'outbox_worker', run: async () => {
@@ -377,7 +378,16 @@ const deployDrift = require('./deploy-drift');
     // gap is per PERSON (users.suggested_at), so this ticking often costs
     // nothing — it walks only the people whose week is up.
     { name: 'task_suggestions', run: () => withTx(pool, (c) => taskSuggestions.sweepSuggestions(c, {})) },
-    { name: 'twin_shadow', run: () => withTx(pool, (c) => twinShadow.sweepTwinShadow(c)) },
+    // One entry for both shadows (tasks, then facts): a second 600s job would be
+    // a 24th kicked at startup, and the stagger test (job-schedule) is full at
+    // 23. Each has its own transaction, so one failing never costs the other.
+    { name: 'twin_shadow', run: async () => {
+      const tasks = await withTx(pool, (c) => twinShadow.sweepTwinShadow(c));
+      let factsOut;
+      try { factsOut = await withTx(pool, (c) => factShadow.sweepFactShadow(c)); }
+      catch (e) { factsOut = { error: String(e && e.message || e).slice(0, 120) }; }
+      return { ...tasks, facts: factsOut };
+    } },
     // The ad library (domain/brand-ads.js). Reads one flag and stops while the
     // owner has it off; on, it queues rows and the gate and the worker do the
     // rest. The 'morning' timing is a release time on the row, not this tick's

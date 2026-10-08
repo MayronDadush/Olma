@@ -43,7 +43,8 @@ const JOB_INTERVAL_SECONDS = {
   task_calendar: 300,
   memory_consolidation: 3600,
   fact_extraction: 600,
-  // Jev in shadow over new tasks (jobs/twin-shadow.js). Ten minutes: nothing
+  // Jev in shadow over new tasks (jobs/twin-shadow.js) and, in the same entry,
+  // new facts (jobs/fact-shadow.js). Ten minutes: nothing
   // waits on it, and a tick with the flag off is one flag read.
   twin_shadow: 600,
   // A hangup is a rare, clear event (unlike WhatsApp's idle-gap guess), so a

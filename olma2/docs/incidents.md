@@ -228,6 +228,7 @@ never trust a dated narrative for something you are about to act on.
 - [The fact table admitted everything and ranked by recency (fixed 2026-08-28)](#the-fact-table-admitted-everything-and-ranked-by-recency-fixed-2026-08-28)
 - [The fact table kept what had a better home (2026-10-08)](#the-fact-table-kept-what-had-a-better-home-2026-10-08)
 - [The ten card slots went to the profile page (2026-10-08)](#the-ten-card-slots-went-to-the-profile-page-2026-10-08)
+- [Jev in shadow over a new fact (2026-10-08)](#jev-in-shadow-over-a-new-fact-2026-10-08)
 - [The name was in front of us on every turn (fixed 2026-08-22)](#the-name-was-in-front-of-us-on-every-turn-fixed-2026-08-22)
 - ["קוראים לי עידן", and ninety seconds later: "עידן, נכון?" (fixed 2026-09-07)](#קוראים-לי-עידן-and-ninety-seconds-later-עידן-נכון-fixed-2026-09-07)
 - [Two introductions, ninety seconds apart (fixed 2026-09-07)](#two-introductions-ninety-seconds-apart-fixed-2026-09-07)
@@ -9435,6 +9436,26 @@ answers are worth a place — "ילדים: אין" is kept, it costs three token
 line and tells her not to ask. Still open: an undated one-off event filed as a
 core fact cannot be told from a durable trait by code (Jev-in-shadow, not a
 regex).
+
+### Jev in shadow over a new fact (2026-10-08)
+
+Two things the write gate and the card ranking above cannot do, because a
+pattern cannot see them: that "הולכת לניתוח" is an EVENT (undated, importance 3,
+on a card for ever) and that two facts are one said twice (`task-similarity`
+caught 1 of 4 real pairs). Both are closed questions, which is all Jev answers,
+so `jobs/fact-shadow.js` (migration 120, flag `jev_shadow_facts`, OFF) asks
+`lifespan` (event | lasting | other) and `twin` (which of their other facts, or
+none) about each new fact and writes the answer beside what the code knew
+(`fact_shadow`, ids only). Nothing reads it. `scripts/jev-fact-report.js` shows
+the two buckets that matter: Jev says event on a fact with no end, and Jev
+found a twin the code did not.
+
+Same rung as `twin-shadow` and the same failure rules, with one difference that
+is the owner's to weigh before the flag goes on: a fact can be health or family,
+so what leaves the box is a larger step than a task title. Profile-page answers,
+the eval user and `is_test` accounts are never asked. The ladder after this is
+unchanged — read a week of rows, then (maybe) refuse a write or set an end —
+and a refusal on Jev's word alone is not on it.
 
 ### The name was in front of us on every turn (fixed 2026-08-22)
 
