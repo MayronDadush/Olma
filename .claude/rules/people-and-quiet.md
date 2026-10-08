@@ -114,6 +114,16 @@ title means this file. Grep the title, not the filename.
   clip. The pause still drops it, and the night, a quiet day, a pending
   introduction and the pending-user drop all still apply. It is NOT a
   precedent: a second broadcast kind is a second owner decision.
+  **And since 2026-10-08 a new joiner gets it too** (owner: "5 / 10 דקות
+  אחרי ההודעה הראשונה שלהם"): `jobs/intake.js` queues the same row and key
+  (`intro-video.enqueueOne`) seven minutes after provisioning, only after the
+  owner's FULL opening — a room's or a game night's short opening has its own
+  door, `welcome_clip` — named by the flag `joiner_clip` ('' is off). No
+  expiry: a night joiner gets it in their morning ("בבוקר"). It TAKES the 15m
+  day-one step's place ("הסרטון במקומה", `checkin.ONBOARDING_STEPS` `silentIf`,
+  silent rather than skipped), unless the gate dropped it; and it spaces the
+  next step by `STEP_GAP_MS` like a step would. It counts toward
+  `day_one_proactive_cap`, as the step it replaces did.
   **A write from their own page IS the person answering** (2026-09-20).
   `user-dashboard-write.perform` stamps `users.last_dashboard_at` (migration
   075) and resets `checkin_misses` on every successful write — the same line

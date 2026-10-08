@@ -167,6 +167,11 @@ const ONBOARDING_STEPS = [
     // joined at 17:15 (2026-10-03). Of every 15m step ever delivered, his was
     // the only one past 75 minutes (the next was 74).
     slot: '15m', afterMs: 15 * MIN_MS, expiresAfterMs: 75 * MIN_MS,
+    // The intro clip a few minutes after the opening takes this slot (owner,
+    // 2026-10-08: "הסרטון במקומה"). Silent, not skipped — a skipped step hands
+    // its slot to the ordinary ladder. A clip the gate DROPPED was never
+    // heard, so then the step goes as before.
+    silentIf: clipTakesTheSlot,
     instruction: firstContactInstruction,
   },
   {
@@ -240,6 +245,14 @@ function onboardingStepDue(ageMs, deaf) {
   return step;
 }
 
+async function clipTakesTheSlot(client, u) {
+  const { rows } = await client.query(
+    `SELECT 1 FROM outbox
+      WHERE user_id = $1 AND kind = 'intro_video' AND created_at >= $2
+        AND (sent_at IS NULL OR hold_reason IS NULL) LIMIT 1`, [u.id, u.onboarded_at]);
+  return rows.length > 0;
+}
+
 // Two day-one steps are never closer than STEP_GAP_MS, measured from when the
 // earlier one REACHED them, and none starts while they are talking. The
 // schedule spaces them by ONBOARDING time; a hold moves only the earlier one,
@@ -260,8 +273,11 @@ async function dayOneStepWaits(client, u, step, now) {
   const { rows } = await client.query(
     `SELECT max(o.sent_at) AS last_step, u.last_inbound_at
        FROM users u
-       LEFT JOIN outbox o ON o.user_id = u.id AND o.kind = 'checkin'
-        AND o.payload->>'rung' LIKE 'onboarding%'
+       LEFT JOIN outbox o ON o.user_id = u.id
+        AND ((o.kind = 'checkin' AND o.payload->>'rung' LIKE 'onboarding%')
+             -- the joiner's clip stands in for the 15m step, so it spaces the
+             -- next one the same way (a clip and the 2h step both held to 09:00)
+             OR o.kind = 'intro_video')
         AND o.sent_at IS NOT NULL AND o.hold_reason IS NULL
       WHERE u.id = $1
       GROUP BY u.last_inbound_at`, [u.id]);
@@ -925,6 +941,7 @@ async function run(client, now = Date.now()) {
     // link already issued) gives its slot back to the ordinary ladder instead
     // of spending the day's one message on nothing.
     if (step && step.skipIf && await step.skipIf(client, u)) step = null;
+    if (step && step.silentIf && await step.silentIf(client, u)) continue;
     if (step && READS_HOLDINGS.has(step.slot)) {
       u.holdsNothing = await holdsNothing(client, u.id);
       if (u.holdsNothing && step.silentWhenEmpty) continue;
