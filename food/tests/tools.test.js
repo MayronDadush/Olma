@@ -33,6 +33,8 @@ const LATTE = { name: 'קפה הפוך', grams: 240, group: 'drink', per100: { k
 
 async function boot(t, { card } = {}) {
   const pool = await freshDb(t);
+  // Written for somebody who asked for numbers; the default (off) is tested in server.test.js.
+  await pool.query('ALTER TABLE people ALTER COLUMN numbers SET DEFAULT true');
   const cards = [];
   const server = createServer({ pool, publicBase: 'https://allma.test', page: '<!doctype html>', identify,
     card: card || (async x => { cards.push(x); return { ok: true, path: '/root/.openclaw/workspaces/u-101/cards/x.png', invite_link: 'https://allma.world/i/AB12' }; }) });

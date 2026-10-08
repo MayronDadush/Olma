@@ -142,3 +142,12 @@ test('the week card shows the week and no calorie', async t => {
   assert.doesNotMatch(svg, /קק״ל|קלורי/);
   assert.equal((await fetch(`${base}/food/${'A'.repeat(22)}/card-week.svg`)).status, 404);
 });
+
+test('a new person sees the plate, not the numbers, until they set a goal', async t => {
+  const { pool, p, state } = await boot(t);
+  assert.equal((await state()).person.numbers, false, 'numbers are asked for, never a default');
+  await store.setGoal(pool, p, { kcal: 1800, protein: 90, carbs: 200, fat: 60 });
+  const s = await store.dayView(pool, await store.reload(pool, p.user_id));
+  assert.equal(s.person.numbers, true, 'setting a goal is asking for the numbers');
+  assert.equal(s.person.goal.set, true);
+});

@@ -343,7 +343,7 @@ async function setNumbers(pool, p, on) {
 async function setGoal(pool, p, g) {
   const kcal = Math.round(V.num(g.kcal, 800, 6000)), protein = Math.round(V.num(g.protein, 10, 400));
   const carbs = Math.round(V.num(g.carbs, 0, 800)), fat = Math.round(V.num(g.fat, 10, 300));
-  await pool.query('UPDATE people SET goal_kcal=$2, goal_protein=$3, goal_carbs=$4, goal_fat=$5, goal_set=true WHERE user_id = $1', [p.user_id, kcal, protein, carbs, fat]);
+  await pool.query('UPDATE people SET goal_kcal=$2, goal_protein=$3, goal_carbs=$4, goal_fat=$5, goal_set=true, numbers=true WHERE user_id = $1', [p.user_id, kcal, protein, carbs, fat]);
   return { kcal, protein, carbs, fat };
 }
 async function setChallenge(pool, p, key) {
