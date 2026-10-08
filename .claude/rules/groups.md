@@ -35,7 +35,15 @@ have already had to be argued for.
   reasons.** `chat_groups` holds `identity_token`, and
   `meeting_participants.constraints` is why one person said no — the room is
   told "Tuesday does not work for Dana", never why. A behavioural test asserts
-  no group tool ever returns that row.
+  no group tool ever returns that row. **Who said yes, no or nothing IS the
+  board, and it is the same board in the room, the chat and the page** (owner,
+  2026-10-08, the poker room): said only when ASKED — in the room from
+  `group_coordination_status`, by tag, "not answered" only where `asked` is
+  true; in the chat from `get_meeting_status`'s drawn `who`. A REASON only when
+  somebody asks WHY: `reasons: true` adds `group-meetings.reasonsFor`, which is
+  exactly what the page shows (`meetings.standingNotes`, shareable — never one
+  kept private); `statusOf` never carries one, so no fixed line can
+  (`incidents.md`, "The poker room could not say who could and who could not").
 
 - **NULL is the honest third state and a guess never acts.** `chat_groups.kind`
   (migration 051) is asked ONCE, in the room — the gateway never tells us who

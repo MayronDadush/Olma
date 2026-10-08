@@ -331,11 +331,41 @@ async function quietJoinersToAnnounce(client, group, meeting, startedAt) {
 }
 
 // Where it stands, in the room's terms. Answers only — never a reason.
-async function coordinationStatus(client, group, { places = null } = {}) {
+async function coordinationStatus(client, group, { places = null, reasons = false } = {}) {
   const st = await statusOf(client, group, await currentMeeting(client, group.id, { includeClosed: true }));
   const out = { ...st, coordination: roomView(st.coordination) };
+  if (reasons && out.coordination) out.reasons = await reasonsFor(client, group, out.coordination.meetingId);
   if (places === null) return out;
   return { ...out, ...(await commonHoursFor(client, group, places)) };
+}
+
+// WHY somebody can or cannot, for a room that ASKED (owner, 2026-10-08: "by
+// default only who can and who cannot — but if somebody asks for the reason
+// she can write it in the room"). Only on request, never in `statusOf`: the
+// sweep's lines are built from that, and a room is not told a reason unasked.
+// Exactly what the coordination's own page shows every other participant —
+// the notes that still stand, minus any they asked to keep private
+// (`meetings.standingNotes` with `shareable`) — so the room can never hear
+// more than the page already shows. Somebody who left or paused her is not here.
+async function reasonsFor(client, group, meetingId) {
+  if (!meetingId) return [];
+  const members = await groups.listMembers(client, group.id);
+  const byUser = new Map(members.filter((m) => m.user_id).map((m) => [Number(m.user_id), m]));
+  const { rows } = await client.query(
+    `SELECT user_id, constraints FROM meeting_participants
+      WHERE meeting_id = $1 AND state <> 'opted_out'`, [meetingId]);
+  const table = await options.list(client, Number(meetingId));
+  const out = [];
+  for (const r of rows) {
+    const m = byUser.get(Number(r.user_id));
+    if (!m || pause.pausedByRequest(m)) continue;
+    const mine = Object.fromEntries(table.filter((o) => o.answers && o.answers[r.user_id])
+      .map((o) => [o.id, o.answers[r.user_id]]));
+    const { texts } = meetings.standingNotes(r.constraints, mine, { shareable: true });
+    if (!texts.length) continue;
+    out.push({ name: memberLabel(m), tag: mentionToken(m.phone), said: texts });
+  }
+  return out;
 }
 
 // Hours that suit every clock in the room (`meeting-time.commonHours`), for the
