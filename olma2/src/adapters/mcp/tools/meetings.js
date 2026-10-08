@@ -2,8 +2,8 @@
 // meetings — one slice of the tool registry (see ../registry.js).
 const {
   dashboardAuth, meetings, meetingFanout, S, actorName, fanout, tool, connectedUserByPhone, users, groups, groupMeetings, ok, err,
-  selfInitiated,
 } = require('./_shared');
+const ourTurn = require('../our-turn');
 const format = require('../../../domain/message-format');
 const listBlock = require('../../../domain/list-block');
 const meetingCategory = require('../../../domain/meeting-category');
@@ -90,35 +90,9 @@ async function withStartLink(client, user, res) {
   return ok({ ...res.data, dashboard: link.data, hints: { ...(res.data.hints || {}), dashboard: START_LINK_HINT } });
 }
 
-// A turn OLMA started — a check-in, a reminder, a coordination message being
-// delivered — is not the person answering anything (2026-10-04: a check-in
-// turn wrote a yes onto a coordination its reader had never been asked about,
-// and the room counted it). Every tool that writes a person's own answer
-// refuses there, unless they have written since that delivery began: inside
-// the grace minute a real reply is theirs (`self-initiated.since`, against the
-// gateway opener's `last_woke_at`). The page and the room are other doors and
-// are not touched: the page is their own hand, and a room tool acts only as
-// the member whose tag opened the turn.
-//
-// The guard is applied in ONE place, off `WRITES_ANSWER` below, and never
-// inside a handler (owner, 2026-10-05: "a yes or a no is only ever theirs").
-// A guard per handler is a guard the next tool forgets;
-// `tests/self-initiated-answers.test.js` fails when a handler here reaches a
-// function that writes an answer and its tool is not in the list.
-const OUR_TURN_SLACK_MS = 2 * 60_000;
-async function ourTurn(client, user) {
-  const since = selfInitiated.since(user.id);
-  if (since === null) return null;
-  const { rows: [u] } = await client.query('SELECT last_woke_at FROM users WHERE id = $1', [user.id]);
-  // Two minutes of slack before the mark: somebody who wrote just before a
-  // delivery is mid-conversation, and their own turn may still be running
-  // when ours begins.
-  if (u && u.last_woke_at && new Date(u.last_woke_at).getTime() >= since - OUR_TURN_SLACK_MS) return null;
-  return err('forbidden',
-    'this turn was started by Olma, not by the user, so nobody has answered anything. Write nothing in their name: ask them, and record the answer only when THEY reply. A constraint with no ids and no windows is only a note and may still be saved.',
-    { reason: 'not_their_turn' });
-}
-
+// A turn OLMA started writes nobody's answer and passes nobody's words: the
+// guard, its slack and both refusals live in ../our-turn.js. `WRITES_ANSWER`
+// and `SPEAKS_FOR` below say which tools here it covers.
 const TOOLS = [
 
   tool('start_meeting_coordination', 'Start coordinating a meeting with connected people (phones). The ONLY path for cross-user scheduling. A meeting is confirmed ONLY when the system says so — never announce agreement yourself. Title: the topic in their words; it is what everyone\'s invites and calendar show.',
@@ -593,14 +567,13 @@ const WRITES_ANSWER = {
   record_meeting_constraint: (a) => listed(a.declines_option_ids) || listed(a.accepts_option_ids) || listed(a.windows),
 };
 
-for (const t of TOOLS) {
-  const writes = WRITES_ANSWER[t.name];
-  if (!writes) continue;
-  const handler = t.handler;
-  t.handler = async (client, user, a, ...rest) =>
-    (writes(a || {}) && await ourTurn(client, user)) || handler(client, user, a, ...rest);
-  t.writesAnswer = true;
-}
+// A sentence said in the room over their tag is their words, so it waits for
+// them to ask for it too (../our-turn.js).
+const SPEAKS_FOR = { relay_to_group: () => true };
+
+ourTurn.guard(TOOLS, WRITES_ANSWER, ourTurn.ANSWER, 'writesAnswer');
+ourTurn.guard(TOOLS, SPEAKS_FOR, ourTurn.WORDS, 'speaksFor');
 
 module.exports = TOOLS;
 module.exports.WRITES_ANSWER = WRITES_ANSWER;
+module.exports.SPEAKS_FOR = SPEAKS_FOR;

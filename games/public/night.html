@@ -701,6 +701,7 @@ button.seat:active .av{transform:scale(.9)}
 <div dir="rtl" lang="he">
 <div class="app">
   <header class="band"><div class="top">
+    <a class="ibtn" id="olmaBack" href="/me" aria-label="חזרה לעולמה" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 6l6 6-6 6"/></svg></a>
     <div class="brand">
       <svg class="mark" viewBox="0 0 120 120" aria-hidden="true"><use href="#logo"/></svg>
       <div style="min-width:0"><b id="gTitle">ערב פוקר</b><span id="gSub">עולמה</span></div>
@@ -2296,5 +2297,16 @@ async function boot(){
 }
 render();
 boot();
+})();
+</script>
+<script>
+/* Opened from the home screen of Olma's installed app (olma2 /me, the apps
+   row), this page is inside an app with no browser bar, and nothing else on it
+   leads back. In a browser the browser's own back does, so the button stays
+   hidden there. */
+(function(){
+  var b = document.getElementById("olmaBack");
+  var inApp = (window.matchMedia && matchMedia("(display-mode: standalone)").matches) || navigator.standalone === true;
+  if(b && inApp) b.hidden = false;
 })();
 </script>
