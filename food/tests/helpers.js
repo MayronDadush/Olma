@@ -8,6 +8,12 @@ const { createPool, migrate } = require('../src/db');
 
 const ADMIN_URL = process.env.FOOD_TEST_ADMIN_URL || 'postgres:///postgres';
 
+// Photos go to a directory of this test file's own, never the live one
+// (src/photos.js refuses to fall back to it under test).
+if (!process.env.FOOD_PHOTO_DIR) {
+  process.env.FOOD_PHOTO_DIR = require('fs').mkdtempSync(require('path').join(require('os').tmpdir(), 'food-photos-'));
+}
+
 async function freshDb(t) {
   const name = 'food_t_' + crypto.randomBytes(6).toString('hex');
   const admin = new Client({ connectionString: ADMIN_URL });

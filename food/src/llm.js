@@ -13,6 +13,7 @@
 const DEFAULTS = {
   see: 'google/gemini-3.5-flash-lite',
   match: 'google/gemini-3.5-flash-lite',
+  say: 'google/gemini-3.5-flash-lite',
 };
 const TIMEOUT_MS = 45_000;
 

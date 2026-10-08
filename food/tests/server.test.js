@@ -108,3 +108,46 @@ test('their page link, for the box only, made on the first ask', async t => {
   assert.equal((await ask({ user: { id: 'x' } })).status, 400);
   assert.equal((await ask({})).status, 400);
 });
+
+test('water is counted in ml, and the cups every older reader knows stay true', async t => {
+  const { pool, p, write, state } = await boot(t);
+  const ok = async b => { const r = await write(b); const j = await r.json(); assert.equal(r.status, 200, JSON.stringify(j)); return j; };
+  let s = (await state());
+  assert.equal(s.water_ml, 0);
+  assert.equal(s.person.water_goal_ml, 2000, 'eight cups were the goal, so two litres is');
+  assert.equal(s.person.water_vessel, 250);
+  s = (await ok({ op: 'water', ml: 750 })).state;
+  assert.equal(s.water_ml, 750);
+  assert.equal(s.water, 3, 'the nearest whole cup');
+  assert.equal((await ok({ op: 'water', cups: 2 })).state.water_ml, 500, 'a cup is 250 ml');
+  assert.equal((await ok({ op: 'vessel', ml: 1500 })).state.person.water_vessel, 1500);
+  s = (await ok({ op: 'water_goal', ml: 2500 })).state;
+  assert.equal(s.person.water_goal_ml, 2500);
+  assert.equal(s.person.water_goal, 10, 'the goal in cups follows');
+  // The tool's water, in cups, adds onto the same count.
+  assert.equal((await store.water(pool, await store.reload(pool, p.user_id), { add: 1 })).ml, 750);
+  assert.equal((await write({ op: 'vessel', ml: 333 })).status, 400);
+  assert.equal((await write({ op: 'water_goal', ml: 100 })).status, 400);
+  assert.equal((await write({ op: 'water', ml: 20000 })).status, 400);
+});
+
+test('the week card shows the week and no calorie', async t => {
+  const { base, p } = await boot(t);
+  const r = await fetch(`${base}/food/${p.token}/card-week.svg`);
+  assert.equal(r.status, 200);
+  assert.match(r.headers.get('content-type'), /image\/svg\+xml/);
+  const svg = await r.text();
+  assert.match(svg, /השבוע שלי/);
+  assert.match(svg, /שקשוקה/);
+  assert.doesNotMatch(svg, /קק״ל|קלורי/);
+  assert.equal((await fetch(`${base}/food/${'A'.repeat(22)}/card-week.svg`)).status, 404);
+});
+
+test('a new person sees the numbers, and the plate of colours is one switch away', async t => {
+  const { pool, p, state, write } = await boot(t);
+  assert.equal((await state()).person.numbers, true, 'the owner kept numbers on by default (2026-10-08)');
+  assert.equal((await (await write({ op: 'numbers', on: false })).json()).state.person.numbers, false);
+  await store.setGoal(pool, p, { kcal: 1800, protein: 90, carbs: 200, fat: 60 });
+  const s = await store.dayView(pool, await store.reload(pool, p.user_id));
+  assert.equal(s.person.numbers, true, 'setting a goal is asking for the numbers');
+});
