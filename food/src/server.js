@@ -4,7 +4,7 @@
 //   GET  /food/<token>/api/state?day=     its data for one day
 //   POST /food/<token>/api/write          a change made on the page
 //   GET  /food/<token>/card.svg?day=      the day card, as the page previews it
-// Everything else (/health, /api/tool) is for the box itself: Caddy never
+// Everything else (/health, /api/tool, /api/page) is for the box itself: Caddy never
 // routes it, and the handler also refuses anything that arrived through a
 // proxy, so a Caddyfile mistake cannot open the tools to the world.
 //
@@ -116,6 +116,20 @@ function createServer({ pool, publicBase = '', page, identify = resolveIdentity,
         if (limited('u:' + who.user.id)) return send(res, 200, { text: 'ERROR rate_limited: too many calls this minute' });
         const text = await runTool(name, a, { pool, user: who.user, publicBase, makeCard: cardMaker, readMedia: media, fetchImpl });
         return send(res, 200, { text });
+      }
+
+      // The food icon on the home screen of their own page (olma2 /me): their
+      // page's link. olma2 has already checked the session and that they hold
+      // the pack, so the user is its word, which is why only the box may ask.
+      // Made on the first ask, like a first tool call makes it: somebody who
+      // has the pack and has not logged anything yet still has a page to open.
+      if (p_ === '/api/page' && req.method === 'POST') {
+        if (!isLocal(req)) return send(res, 404, { error: 'not_found' });
+        const { user } = await readBody(req);
+        const id = Number(user && user.id);
+        if (!Number.isSafeInteger(id) || id <= 0) return send(res, 400, { ok: false, error: 'bad_user' });
+        const p = await store.ensurePerson(pool, { ...user, id });
+        return send(res, 200, { ok: true, url: `${publicBase}/food/${p.token}` });
       }
 
       const m = p_.match(/^\/food\/([A-Za-z0-9]{22})(?:\/(api\/state|api\/write|card\.svg))?$/);

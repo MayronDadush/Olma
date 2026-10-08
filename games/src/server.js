@@ -155,7 +155,7 @@ function createServer({ pool, publicBase = '', page, identify = resolveIdentity,
       // reason: brokerd has resolved the person and nothing else may ask.
       if (p === '/api/mine' && req.method === 'POST') {
         if (!isLocal(req)) return send(res, 404, { error: 'not_found' });
-        return send(res, 200, await nightsFor(pool, await readBody(req)));
+        return send(res, 200, await nightsFor(pool, await readBody(req), { publicBase }));
       }
       if ((p === '/api/open' || p === '/api/join') && req.method === 'POST') {
         if (!isLocal(req)) return send(res, 404, { error: 'not_found' });

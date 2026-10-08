@@ -92,3 +92,19 @@ test('the card preview is an SVG with no calories on it', async t => {
   assert.match(svg, /שקשוקה/);
   assert.ok(!/קק״ל|kcal/.test(svg));
 });
+
+// The food icon on olma2's home screen asks for the person's page. Box only;
+// an existing person keeps their link, and somebody new gets one made.
+test('their page link, for the box only, made on the first ask', async t => {
+  const { base, p } = await boot(t);
+  const ask = (body, headers = {}) => fetch(`${base}/api/page`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body) });
+  const mine = await (await ask({ user: { id: 7, name: 'נועה', timezone: 'Asia/Jerusalem', locale: 'he' } })).json();
+  assert.deepEqual(mine, { ok: true, url: `https://allma.test/food/${p.token}` });
+  const fresh = await (await ask({ user: { id: 12, name: 'מאיה', timezone: 'Asia/Jerusalem', locale: 'he' } })).json();
+  assert.match(fresh.url, /^https:\/\/allma\.test\/food\/[A-Za-z0-9]{22}$/);
+  assert.notEqual(fresh.url, mine.url);
+  assert.equal((await fetch(fresh.url.replace('https://allma.test', base))).status, 200);
+  assert.equal((await ask({ user: { id: 7 } }, { 'X-Forwarded-For': '1.1.1.1' })).status, 404);
+  assert.equal((await ask({ user: { id: 'x' } })).status, 400);
+  assert.equal((await ask({})).status, 400);
+});

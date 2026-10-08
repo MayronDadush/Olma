@@ -20,6 +20,7 @@
 //     published — the same projection calendar.listEvents makes about
 //     attendees.
 const { ok, err } = require('./results');
+const userApps = require('./user-apps');
 // `meetingsDomain`, not `meetings`: loadMeetings below binds a local
 // `meetings` for its own rows, and a module-level shadow of that name is a
 // TDZ ReferenceError inside the one function that needs this.
@@ -886,6 +887,10 @@ async function load(client, userId) {
     // (domain/referral.js). Null only for an id the code cannot carry, and the
     // page then draws no card.
     invite: await inviteCard(client, user),
+    // The packs they hold, as icons on the home screen in place of that
+    // invitation (domain/user-apps.js). Ids only: the badge and the link are
+    // asked of each app's own service outside this transaction.
+    apps: (await userApps.appsOf(client, userId)).map((id) => ({ id, badge: 0 })),
   });
 }
 
