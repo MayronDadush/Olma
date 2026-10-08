@@ -25,7 +25,7 @@
   --action:#F9C23C;--on-action:#004643;--danger:#B03A2E;
   --band:#004643;--on-band:#F0EDE5;--on-band-2:#BFD3CF;--band-tint:rgba(255,255,255,.14);
   --logo-d:#004643;--logo-l:#F0EDE5;--logo-lens:#F9C23C;--logo-ring:#F0EDE5;
-  --m-protein:#009488;--m-carbs:#C98A0E;--m-fat:#A0559A;--m-veg:#5E9E4A;
+  --m-protein:#009488;--m-carbs:#C98A0E;--m-fat:#A0559A;--m-veg:#5E9E4A;--m-water:#3E93D6;--m-water-soft:#E3EFF9;
   --track:#ECE9E1;--scrim:rgba(14,31,30,.34);
   --bar:rgba(255,255,255,.44);--glass-line:rgba(14,31,30,.08);--lens-bar:blur(15px) saturate(280%) brightness(1.05);
   --rim-soft:inset 0 .6px 0 rgba(255,255,255,.72);--shadow-m:0 1px 2px rgba(14,31,30,.05),0 10px 28px -16px rgba(14,31,30,.28);
@@ -42,7 +42,7 @@
   --action:#F9C23C;--on-action:#0E1F1E;--danger:#F08A7E;
   --band:#004643;--on-band:#EDE9DF;--on-band-2:#AFC6C1;--band-tint:rgba(255,255,255,.1);
   --logo-d:#1B1A18;--logo-l:#EDE9DF;--logo-lens:#F9C23C;--logo-ring:#EDE9DF;
-  --m-protein:#279E93;--m-carbs:#B57D0C;--m-fat:#B06AA9;--m-veg:#6FAE5A;
+  --m-protein:#279E93;--m-carbs:#B57D0C;--m-fat:#B06AA9;--m-veg:#6FAE5A;--m-water:#5AA9E0;--m-water-soft:#1D2E3B;
   --track:#34322C;--scrim:rgba(0,0,0,.55);
   --bar:rgba(38,37,31,.40);--glass-line:rgba(255,255,255,.09);--lens-bar:blur(15px) saturate(300%) brightness(1.22);
   --rim-soft:inset 0 .6px 0 rgba(255,255,255,.16);--shadow-m:0 1px 2px rgba(0,0,0,.4),0 10px 28px -16px rgba(0,0,0,.8);
@@ -58,7 +58,7 @@
   --action:#F9C23C;--on-action:#0E1F1E;--danger:#F08A7E;
   --band:#004643;--on-band:#EDE9DF;--on-band-2:#AFC6C1;--band-tint:rgba(255,255,255,.1);
   --logo-d:#1B1A18;--logo-l:#EDE9DF;--logo-lens:#F9C23C;--logo-ring:#EDE9DF;
-  --m-protein:#279E93;--m-carbs:#B57D0C;--m-fat:#B06AA9;--m-veg:#6FAE5A;
+  --m-protein:#279E93;--m-carbs:#B57D0C;--m-fat:#B06AA9;--m-veg:#6FAE5A;--m-water:#5AA9E0;--m-water-soft:#1D2E3B;
   --track:#34322C;--scrim:rgba(0,0,0,.55);
   --bar:rgba(38,37,31,.40);--glass-line:rgba(255,255,255,.09);--lens-bar:blur(15px) saturate(300%) brightness(1.22);
   --rim-soft:inset 0 .6px 0 rgba(255,255,255,.16);--shadow-m:0 1px 2px rgba(0,0,0,.4),0 10px 28px -16px rgba(0,0,0,.8);
@@ -185,10 +185,26 @@ main{max-width:860px;margin:0 auto;padding:18px 16px calc(var(--bar-bottom) + 11
 .sbtn{border:0;background:var(--fill);border-radius:99px;padding:5px 11px;font-size:12.5px;color:var(--text-2)}
 .sbtn.on{background:var(--accent-soft);color:var(--accent);font-weight:600}
 
-.cups{display:flex;gap:6px;flex-wrap:wrap}
-.cup{width:32px;height:40px;border:0;background:transparent;padding:0;color:var(--sep-2)}
-.cup.on{color:var(--m-protein)}
-.cup svg{width:100%;height:100%}
+.wsum{border:0;background:none;padding:0;display:flex;align-items:baseline;gap:5px;color:var(--text-3);font-size:13px}
+.wsum b{font-size:18px;color:var(--m-water);font-weight:700}
+.wsum svg{width:13px;height:13px;align-self:center}
+.wgoal{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--surface-2);border:1px solid var(--sep);border-radius:14px;padding:6px 8px 6px 12px;margin:0 0 12px;font-size:13.5px;color:var(--text-2)}
+.wgoal .st{display:flex;align-items:center;gap:6px}
+.wgoal .st b{min-width:64px;text-align:center;color:var(--text);font-size:15px}
+.wgoal .st button{width:32px;height:32px;border-radius:50%;border:1px solid var(--sep-2);background:var(--surface);font-size:18px;line-height:1;color:var(--accent)}
+.vseg{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 12px}
+.vseg::-webkit-scrollbar{display:none}
+.vseg button{flex:none;display:flex;align-items:center;gap:5px;border:1px solid var(--sep);background:var(--surface);border-radius:99px;padding:4px 10px 4px 8px;font-size:12.5px;color:var(--text-2)}
+.vseg button svg{width:12px;height:16px;color:var(--m-water)}
+.vseg button[aria-pressed="true"]{background:var(--m-water-soft);border-color:var(--m-water);color:var(--text);font-weight:600}
+.vessels{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end}
+.ves{border:0;background:transparent;padding:0;color:var(--sep-2);transition:transform .15s}
+.ves:active{transform:scale(.92)}
+.ves.on{color:var(--m-water)}
+.ves svg{display:block}
+.ves .wv{fill:var(--m-water);opacity:.8;transform-box:fill-box;transform-origin:50% 100%;transition:transform .8s var(--ease)}
+.ves .wave{animation:wave 2.4s ease-in-out infinite}
+@keyframes wave{0%,100%{transform:translateX(0)}50%{transform:translateX(-6px)}}
 .week{position:relative}
 .week svg{width:100%;height:auto;display:block}
 .wkdots{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;text-align:center;font-size:12px;color:var(--text-3)}
@@ -282,6 +298,33 @@ main{max-width:860px;margin:0 auto;padding:18px 16px calc(var(--bar-bottom) + 11
   .daynav h1{font-size:19px}
   .grid{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
+/* the top of "today": the day's plates, the camera first (the owner's pick, 2026-10-08) */
+.strip{margin:-18px -16px 0;background:var(--band);padding:2px 16px 18px;border-radius:0 0 28px 28px;display:flex;gap:10px;overflow-x:auto;scrollbar-width:none;scroll-snap-type:x mandatory}
+.strip::-webkit-scrollbar{display:none}
+.shot{flex:none;width:84px;border:0;background:none;padding:0;color:var(--on-band);text-align:center;scroll-snap-align:start;animation:pop .5s var(--ease) both}
+.shot img,.shot .snapi{width:84px;height:84px;border-radius:20px;object-fit:cover;display:block;background:var(--band-tint)}
+.shot small{display:block;font-size:11.5px;color:var(--on-band-2);margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.snapi{display:grid!important;place-items:center;border:2px dashed var(--action);color:var(--action)}
+.snapi svg{width:30px;height:30px}
+.stripnote{align-self:center;font-size:13px;color:var(--on-band-2);max-width:180px;line-height:1.35}
+main.enter .view:not([hidden]) > *{animation:rise .55s var(--ease) both}
+main.enter .view > *:nth-child(2){animation-delay:.06s}main.enter .view > *:nth-child(3){animation-delay:.12s}
+main.enter .view > *:nth-child(4){animation-delay:.18s}main.enter .view > *:nth-child(5){animation-delay:.24s}main.enter .view > *:nth-child(n+6){animation-delay:.3s}
+@keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+.confetti{position:fixed;inset:0;pointer-events:none;z-index:60;overflow:hidden}
+.confetti i{position:absolute;top:-12px;width:8px;height:12px;border-radius:2px;animation:fall 1.4s cubic-bezier(.25,.6,.4,1) forwards}
+@keyframes fall{to{transform:translate(var(--dx),105vh) rotate(var(--r));opacity:.9}}
+.b.pic{padding:4px}
+.b.pic img{display:block;width:180px;max-width:100%;border-radius:12px}
+.camb{width:44px;height:44px;border:0;border-radius:50%;background:var(--surface);color:var(--accent);display:grid;place-items:center;flex:none;box-shadow:var(--shadow-s)}
+.camb svg{width:20px;height:20px}
+.weekpic{display:flex;align-items:center;gap:14px;text-align:start;width:100%;color:inherit;font:inherit;padding:14px 16px}
+.weekpic .wp-ic{width:44px;height:44px;border-radius:14px;background:var(--action);color:var(--on-action);display:grid;place-items:center;flex:none}
+.weekpic .wp-ic svg{width:22px;height:22px}
+.weekpic b{display:block;font-size:15.5px}
+.weekpic small{display:block;color:var(--text-3);font-size:12.5px}
+.weekpic .chev{width:18px;height:18px;margin-inline-start:auto;color:var(--text-3)}
+@keyframes pop{from{opacity:0;transform:scale(.6)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 </head>
@@ -324,13 +367,14 @@ main{max-width:860px;margin:0 auto;padding:18px 16px calc(var(--bar-bottom) + 11
   <button class="fab" id="chatBtn" type="button" aria-label="לכתוב לעולמה"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 0 1-11.6 7.1L4 20l1-4.2A8 8 0 1 1 20 12z"/></svg></button>
 </nav>
 
+<input type="file" id="snapFile" accept="image/*" capture="environment" hidden>
 <div class="scrim" id="scrim"></div>
 <section class="sheet" id="cardSheet" aria-label="כרטיס היום" aria-hidden="true">
   <div class="grab"></div>
-  <div class="sheethead"><div><b>כרטיס היום</b><span>ככה הוא נראה כשעולמה שולחת אותו</span></div><button class="ibtn" type="button" data-close aria-label="סגירה"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+  <div class="sheethead"><div><b id="cardT">כרטיס היום</b><span>ככה הוא נראה כשעולמה שולחת אותו</span></div><button class="ibtn" type="button" data-close aria-label="סגירה"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
   <div class="sheetbody">
     <img id="cardImg" alt="כרטיס היום: הארוחות, בלי קלוריות">
-    <p class="note">כדי לקבל אותו כתמונה לשיתוף, כותבים לעולמה ״כרטיס היום״. הוא יוצא עם קישור הצטרפות מתחתיו.</p>
+    <p class="note" id="cardNote">כדי לקבל אותו כתמונה לשיתוף, כותבים לעולמה ״כרטיס היום״. הוא יוצא עם קישור הצטרפות מתחתיו.</p>
   </div>
 </section>
 <section class="sheet" id="mealSheet" aria-label="ארוחה" aria-hidden="true"></section>
@@ -344,6 +388,7 @@ main{max-width:860px;margin:0 auto;padding:18px 16px calc(var(--bar-bottom) + 11
   <div class="msgs" id="msgs" aria-live="polite"></div>
   <div class="qr" id="qr"></div>
   <form class="composer" id="composer" autocomplete="off">
+    <button class="camb" type="button" data-snap aria-label="לצלם ארוחה"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></button>
     <input id="msgIn" type="text" placeholder="מה אכלת?" aria-label="הודעה לעולמה" enterkeyhint="send" maxlength="500">
     <button class="send" type="submit" aria-label="שליחה"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12H5M11 5l-7 7 7 7"/></svg></button>
   </form>
@@ -364,7 +409,7 @@ const BAL = [['protein', 'חלבון', '--m-protein'], ['veg', 'ירקות ופ�
 const CH = [['veg_dinner', 'ירק בכל ארוחת ערב'], ['protein_breakfast', 'חלבון בארוחת הבוקר'], ['water6', '6 כוסות מים ביום']];
 const ERR = {
   rate_limited: 'יותר מדי שינויים בדקה. נסו שוב עוד רגע.', too_old: 'אפשר לשנות רק את 7 הימים האחרונים.',
-  bad_number: 'המספר הזה מחוץ לטווח.', not_found: 'זה כבר לא נמצא. רעננו את העמוד.', internal: 'משהו השתבש. נסו שוב.',
+  bad_number: 'המספר הזה מחוץ לטווח.', too_big: 'התמונה גדולה מדי.', bad_photo: 'את התמונה הזו לא הצלחתי לקרוא.', not_found: 'זה כבר לא נמצא. רעננו את העמוד.', internal: 'משהו השתבש. נסו שוב.',
 };
 
 let S = null;            // the day as the server last sent it
@@ -390,6 +435,79 @@ async function write(op, data = {}) {
   } catch { toast('אין חיבור. נסו שוב.'); return null; }
 }
 
+/* ── the top of "today" ── */
+const CAM = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>';
+const PLUS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>';
+const shotsOf = () => S.meals.filter(m => m.photo);
+function stripHtml() {
+  const shots = shotsOf();
+  const add = S.today ? `<button class="shot" type="button" data-snap><span class="snapi">${CAM}</span><small>לצלם</small></button>` : '';
+  if (!add && !shots.length) return '';
+  return `<div class="strip">${add}${shots.map((m, i) => `<button class="shot" type="button" data-shot="${m.id}" style="animation-delay:${(i + 1) * 70}ms"><img src="${API}/photo/${m.id}" alt="${esc(m.title)}" loading="lazy"><small>${esc(m.title)}</small></button>`).join('')}${!shots.length ? '<span class="stripnote">מצלמים את הצלחת, ועולמה רושמת מה יש בה.</span>' : ''}</div>`;
+}
+/* ── water: counted in ml, drunk from a cup or a bottle ── */
+const VES = [[250, 'כוס'], [500, '500 מ״ל'], [750, '750 מ״ל'], [1000, '1 ליטר'], [1500, '1.5 ליטר']];
+const L = ml => ml >= 1000 ? `${(ml / 1000).toFixed(2).replace(/\.?0+$/, '')} ליטר` : `${Math.round(ml)} מ״ל`;
+let wOpen = false;        // the goal stepper
+let wFrom = null;         // the ml the fill animates from, after a tap
+// A cup is a tapered glass; a bottle is taller the more it holds.
+function vesselPath(v) {
+  if (v === 250) return { w: 30, h: 40, d: 'M4 3h22l-2.6 32.5a3 3 0 0 1-3 2.5H9.6a3 3 0 0 1-3-2.5z' };
+  const h = { 500: 46, 750: 52, 1000: 56, 1500: 62 }[v], w = v === 1500 ? 28 : 24, n = w / 2;
+  return { w, h, d: `M${n - 3.5} 2h7v5c0 1.6 ${n - 5} 2.4 ${n - 5} 6v${h - 17}a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3V13c0-3.6 ${n - 5}-4.4 ${n - 5}-6z` };
+}
+function vesselSvg(v, fill, i) {
+  const { w, h, d } = vesselPath(v);
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" aria-hidden="true"><defs><clipPath id="wc${i}"><path d="${d}"/></clipPath></defs>
+    <g clip-path="url(#wc${i})"><rect class="wv" x="-8" y="0" width="${w + 16}" height="${h}" data-to="${fill}" style="transform:scaleY(${fill})"/></g>
+    <path d="${d}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>`;
+}
+function waterHtml() {
+  const ml = S.water_ml || 0, goal = S.person.water_goal_ml || 2000, v = S.person.water_vessel || 250;
+  const n = Math.min(24, Math.max(Math.ceil(goal / v), Math.ceil(ml / v)));
+  const fillOf = (x, i) => Math.max(0, Math.min(1, (x - i * v) / v));
+  return `<div class="card" id="waterCard"><div class="sec-h"><h2>מים</h2>
+      <button class="wsum num" type="button" data-wgoal aria-expanded="${wOpen}"><b>${L(ml)}</b><span>מתוך ${L(goal)}</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg></button></div>
+    ${wOpen ? `<div class="wgoal"><span>היעד היומי</span><div class="st"><button type="button" data-wg="-250" aria-label="פחות">−</button><b class="num">${L(goal)}</b><button type="button" data-wg="250" aria-label="יותר">+</button></div></div>` : ''}
+    <div class="vseg" role="group" aria-label="שותים מ־">${VES.map(([x, t]) => `<button type="button" data-ves="${x}" aria-pressed="${x === v}">${vesselSvg(x, x === v ? 1 : 0, 'c' + x).replace(/width="\d+" height="\d+"/, '')}${t}</button>`).join('')}</div>
+    <div class="vessels">${Array.from({ length: n }, (_, i) => `<button type="button" class="ves ${fillOf(ml, i) > 0 ? 'on' : ''}" data-ves-i="${i}" data-from="${wFrom == null ? fillOf(ml, i) : fillOf(wFrom, i)}" aria-label="${i + 1} · ${L((i + 1) * v)}">${vesselSvg(v, fillOf(ml, i), i)}</button>`).join('')}</div></div>`;
+}
+// What was drawn last, so the next drawing fills from there: a new day
+// fills from nothing, a tap from where it stood.
+let shown = { day: null, kcal: 0, p: 0 };
+function animateToday() {
+  const fresh = shown.day !== S.day;
+  const ring = $('#vToday .arc');
+  if (ring) {
+    const to = ring.getAttribute('stroke-dashoffset');
+    ring.style.transition = 'none'; ring.setAttribute('stroke-dashoffset', fresh ? 326.7 : 326.7 * (1 - shown.p));
+    ring.getBoundingClientRect(); ring.style.transition = ''; ring.setAttribute('stroke-dashoffset', to);
+  }
+  if (fresh) $('#vToday').querySelectorAll('.bar i').forEach(b => { const w = b.style.width; b.style.transition = 'none'; b.style.width = '0'; b.getBoundingClientRect(); b.style.transition = ''; b.style.width = w; });
+  const big = $('#vToday [data-count]');
+  if (big) {
+    const to = +big.dataset.count, from = fresh ? 0 : shown.kcal, t0 = performance.now();
+    if (from !== to && !matchMedia('(prefers-reduced-motion:reduce)').matches) {
+      const step = now => { const k = Math.min(1, (now - t0) / 800), e = 1 - Math.pow(1 - k, 3); big.textContent = fmt(from + (to - from) * e); if (k < 1) requestAnimationFrame(step); };
+      requestAnimationFrame(step);
+    }
+  }
+  $('#vToday').querySelectorAll('.ves').forEach(b => {
+    const r = b.querySelector('.wv'); const from = fresh ? 0 : +b.dataset.from;
+    r.style.transition = 'none'; r.style.transform = `scaleY(${from})`; r.getBoundingClientRect(); r.style.transition = ''; r.style.transform = `scaleY(${r.dataset.to})`;
+  });
+  if (fresh) { const m = $('#main'); m.classList.remove('enter'); m.getBoundingClientRect(); m.classList.add('enter'); }
+  shown = { day: S.day, kcal: Math.round(S.totals.kcal), p: S.person.goal ? Math.min(1, S.totals.kcal / S.person.goal.kcal) : 0 };
+  wFrom = null;
+}
+function confetti() {
+  if (matchMedia('(prefers-reduced-motion:reduce)').matches) return;
+  const c = document.createElement('div'); c.className = 'confetti';
+  const col = ['var(--m-water)', 'var(--action)', 'var(--m-protein)', 'var(--m-fat)', 'var(--m-veg)'];
+  c.innerHTML = Array.from({ length: 36 }, (_, i) => `<i style="left:${Math.random() * 100}%;background:${col[i % col.length]};--dx:${Math.round(Math.random() * 120 - 60)}px;--r:${Math.round(Math.random() * 720 - 360)}deg;animation-delay:${Math.round(Math.random() * 250)}ms"></i>`).join('');
+  document.body.appendChild(c); setTimeout(() => c.remove(), 1900);
+}
+
 /* ── render ── */
 function render() {
   const num = S.person.numbers;
@@ -397,7 +515,8 @@ function render() {
   $('#who').textContent = S.person.name ? `${S.person.name} · עולמה` : 'עולמה';
   const canNext = !S.today;
   const canPrev = S.week && dayDiff(S.day, S.today_day) < 7;
-  let h = `<div class="dayhead">
+  let h = stripHtml();
+  h += `<div class="dayhead">
     <div class="daynav">
       <button class="navb" type="button" data-nav="-1" ${canPrev ? '' : 'disabled'} aria-label="יום קודם"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></button>
       <div><h1>${esc(S.today ? 'היום, ' + S.date_he.replace(/^יום /, '') : S.date_he)}</h1><p>${num ? `יעד יומי ${fmt(g.kcal)} קק״ל · ${g.protein} ג׳ חלבון${g.set ? '' : ' (ברירת מחדל)'}` : 'בלי מספרים · רק מה שהיה בצלחת'}</p></div>
@@ -410,9 +529,10 @@ function render() {
   h += `<div class="card">`;
   if (num) {
     const p = Math.min(1, S.totals.kcal / g.kcal), left = g.kcal - S.totals.kcal;
-    h += `<div class="hero"><div class="ring" role="img" aria-label="${fmt(S.totals.kcal)} מתוך ${fmt(g.kcal)} קלוריות">
-      <svg viewBox="0 0 120 120"><circle cx="60" cy="60" r="52" fill="none" stroke="var(--track)" stroke-width="11"/><circle cx="60" cy="60" r="52" fill="none" stroke="var(--accent)" stroke-width="11" stroke-linecap="round" stroke-dasharray="326.7" stroke-dashoffset="${326.7 * (1 - p)}"/></svg>
-      <div class="ctr"><div class="big num">${fmt(S.totals.kcal)}</div><div class="of num">מתוך ${fmt(g.kcal)} קק״ל</div><div class="left num">${left >= 0 ? `נשארו ${fmt(left)}` : `${fmt(-left)} מעל היעד`}</div></div></div>
+    const ring = `<div class="ring" role="img" aria-label="${fmt(S.totals.kcal)} מתוך ${fmt(g.kcal)} קלוריות">
+      <svg viewBox="0 0 120 120"><circle cx="60" cy="60" r="52" fill="none" stroke="var(--track)" stroke-width="11"/><circle cx="60" cy="60" r="52" fill="none" stroke="var(--accent)" stroke-width="11" stroke-linecap="round" stroke-dasharray="326.7" stroke-dashoffset="${326.7 * (1 - p)}" class="arc"/></svg>
+      <div class="ctr"><div class="big num" data-count="${Math.round(S.totals.kcal)}">${fmt(S.totals.kcal)}</div><div class="of num">מתוך ${fmt(g.kcal)} קק״ל</div><div class="left num">${left >= 0 ? `נשארו ${fmt(left)}` : `${fmt(-left)} מעל היעד`}</div></div></div>`;
+    h += `<div class="hero">${ring}
       <div class="macros">${[['protein', 'חלבון', '--m-protein'], ['carbs', 'פחמימות', '--m-carbs'], ['fat', 'שומן', '--m-fat']].map(([k, n, c]) => `<div class="mac"><div class="top"><b>${n}</b><span class="num">${fmt(S.totals[k])} / ${g[k]} ג׳</span></div><div class="bar"><i style="width:${Math.min(100, S.totals[k] / g[k] * 100)}%;background:var(${c})"></i></div></div>`).join('')}</div></div>
       <div class="goalline"><span>${g.set ? 'היעד שלך' : 'זה יעד ברירת מחדל. אפשר לבקש מעולמה לחשב אחד שמתאים לך, או לקבוע כאן.'}</span><button class="link" type="button" id="goalBtn">לשנות יעד</button></div>
       <form class="goalform" id="goalForm" hidden>
@@ -431,7 +551,7 @@ function render() {
   // meals
   h += `<div class="card"><div class="sec-h"><h2>הארוחות</h2><span>${S.meals.length ? `${S.meals.length} ארוחות` : ''}</span></div>`;
   if (!S.meals.length) {
-    h += `<div class="empty"><svg class="mark" viewBox="0 0 120 120" aria-hidden="true"><use href="#logo"/></svg><span>${S.today ? 'עוד לא נרשם כלום היום. שולחים לעולמה תמונה של מה שאכלת, הודעה קולית או שורה.' : 'ביום הזה לא נרשם כלום.'}</span></div>`;
+    h += `<div class="empty"><svg class="mark" viewBox="0 0 120 120" aria-hidden="true"><use href="#logo"/></svg><span>${S.today ? 'עוד לא נרשם כלום היום. מצלמים את הצלחת בכפתור המצלמה למעלה, או כותבים לעולמה מה אכלת.' : 'ביום הזה לא נרשם כלום.'}</span></div>`;
   }
   for (const [slot, he] of SLOTS) {
     const ms = S.meals.filter(m => m.slot === slot);
@@ -441,13 +561,14 @@ function render() {
   h += `</div>`;
 
   // water
-  h += `<div class="card"><div class="sec-h"><h2>מים</h2><span class="num">${S.water} / ${S.person.water_goal} כוסות</span></div>
-      <div class="cups">${Array.from({ length: Math.max(S.person.water_goal, S.water) }, (_, i) => `<button type="button" class="cup ${i < S.water ? 'on' : ''}" data-cup="${i}" aria-label="כוס ${i + 1}" aria-pressed="${i < S.water}"><svg viewBox="0 0 34 42"><path d="M5 4h24l-3 33a3 3 0 0 1-3 3H11a3 3 0 0 1-3-3z" fill="${i < S.water ? 'currentColor' : 'none'}" fill-opacity=".85" stroke="currentColor" stroke-width="2"/></svg></button>`).join('')}</div></div>`;
+  h += waterHtml();
   h += `<p class="foot">כל מה שאפשר לעשות כאן, אפשר גם לבקש מעולמה בצ׳אט · הערכים הם הערכה, לא מדידה</p>`;
   $('#vToday').innerHTML = h;
+  animateToday();
 
   // the week: the chart, the challenge, what she found and what she learned
   let w = `<div class="dayhead"><div class="daynav"><div><h1>השבוע</h1><p>${esc(S.today ? 'השבוע הזה' : `השבוע של ${S.date_he}`)}</p></div></div></div>`;
+  w += `<button class="card weekpic" type="button" id="weekCardBtn"><span class="wp-ic">${CAM}</span><span><b>התמונה של השבוע</b><small>כל הצלחות של השבוע בתמונה אחת</small></span><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg></button>`;
   w += `<div class="card"><div class="sec-h"><h2>יום אחרי יום</h2><span>${num ? 'קק״ל ליום · הקו הוא היעד' : 'ארוחות בכל יום'}</span></div><div class="week">${weekHtml(num)}</div></div>`;
   const ins = S.insights.filter(i => num || !i.numbers);
   w += `<div class="two"><div class="card chal"><div class="sec-h"><h2>אתגר השבוע</h2></div>${chalHtml()}</div>
@@ -528,7 +649,16 @@ $('#main').addEventListener('click', async e => {
   if (t.dataset.del) { confirmDel = +t.dataset.del; return render(); }
   if (t.hasAttribute('data-delno')) { confirmDel = null; return render(); }
   if (t.dataset.delyes) { confirmDel = null; open.delete(+t.dataset.delyes); if (await write('meal_delete', { meal_id: +t.dataset.delyes })) toast('הארוחה נמחקה'); return; }
-  if (t.dataset.cup) { const i = +t.dataset.cup; return write('water', { cups: i + 1 === S.water ? i : i + 1 }); }
+  if (t.dataset.vesI != null) {
+    const v = S.person.water_vessel || 250, i = +t.dataset.vesI, ml = S.water_ml || 0, goal = S.person.water_goal_ml || 2000;
+    const next = ml === (i + 1) * v ? i * v : (i + 1) * v;
+    wFrom = ml; const r = await write('water', { ml: next });
+    if (r && ml < goal && next >= goal) { confetti(); toast('הגעת ליעד המים של היום'); }
+    return;
+  }
+  if (t.dataset.ves) return write('vessel', { ml: +t.dataset.ves });
+  if (t.dataset.wgoal !== undefined) { wOpen = !wOpen; return render(); }
+  if (t.dataset.wg) return write('water_goal', { ml: Math.max(500, Math.min(6000, (S.person.water_goal_ml || 2000) + +t.dataset.wg)) });
   if (t.dataset.ch) return write('challenge', { key: t.dataset.ch });
   if (t.id === 'insNext') { insI++; return render(); }
   if (t.dataset.forget) { if (await write('forget', { name: t.dataset.forget })) toast('נשכח'); return; }
@@ -562,7 +692,14 @@ document.querySelector('.tabs').addEventListener('click', e => { const b = e.tar
 const scrim = $('#scrim');
 function openSheet(sel) { closeSheet(); const s = $(sel); s.classList.add('on'); s.setAttribute('aria-hidden', 'false'); scrim.classList.add('on'); }
 function closeSheet() { document.querySelectorAll('.sheet.on').forEach(s => { s.classList.remove('on'); s.setAttribute('aria-hidden', 'true'); }); scrim.classList.remove('on'); }
-$('#cardBtn').addEventListener('click', () => { $('#cardImg').src = `${API}/card.svg${S && !S.today ? `?day=${S.day}` : ''}`; openSheet('#cardSheet'); });
+function showCard(week) {
+  $('#cardT').textContent = week ? 'התמונה של השבוע' : 'כרטיס היום';
+  $('#cardNote').textContent = week ? 'הצלחות של השבוע בתמונה אחת, בלי קלוריות.' : 'כדי לקבל אותו כתמונה לשיתוף, כותבים לעולמה ״כרטיס היום״. הוא יוצא עם קישור הצטרפות מתחתיו.';
+  $('#cardImg').src = `${API}/${week ? 'card-week' : 'card'}.svg${S && !S.today ? `?day=${S.day}` : ''}`;
+  openSheet('#cardSheet');
+}
+$('#cardBtn').addEventListener('click', () => showCard(false));
+$('#vWeek').addEventListener('click', e => { if (e.target.closest('#weekCardBtn')) showCard(true); });
 scrim.addEventListener('click', closeSheet);
 document.addEventListener('click', e => { if (e.target.closest('.sheet [data-close]')) closeSheet(); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSheet(); });
@@ -619,6 +756,17 @@ function mealSheet(id) {
       </div>
     </div>`;
 }
+$('#vToday').addEventListener('click', async e => {
+  const t = e.target.closest('[data-shot],[data-snap]'); if (!t) return;
+  if (t.dataset.snap !== undefined) return $('#snapFile').click();
+  if (!J) await loadJournal();
+  jDel = null; mealSheet(+t.dataset.shot); openSheet('#mealSheet');
+});
+$('#vToday').addEventListener('scroll', e => {
+  if (e.target.id !== 'bigTrack') return;
+  const i = Math.round(Math.abs(e.target.scrollLeft) / e.target.clientWidth);
+  e.target.parentElement.querySelectorAll('.dots i').forEach((d, k) => d.classList.toggle('on', k === i));
+}, true);
 $('#vPlates').addEventListener('click', e => {
   const t = e.target.closest('button'); if (!t) return;
   if (t.dataset.jm) { jDel = null; mealSheet(+t.dataset.jm); openSheet('#mealSheet'); }
@@ -637,15 +785,18 @@ $('#mealSheet').addEventListener('click', async e => {
    a sentence about a meal goes to a small model, and the values come from
    the same table as everywhere else. What was said lives on this device. ── */
 const CHAT_KEY = `food-chat-${TOKEN}`;
-const HELLO = 'היי, כאן רושמים אוכל ומים, כמו בוואטסאפ. למשל ״אכלתי חביתה משתי ביצים וסלט״ או ״כוס מים״. תמונה של צלחת שולחים לי בוואטסאפ.';
+const HELLO = 'היי, כאן רושמים אוכל ומים, כמו בוואטסאפ. למשל ״אכלתי חביתה משתי ביצים וסלט״ או ״כוס מים״, או מצלמים את הצלחת בכפתור המצלמה.';
 const QR = ['כוס מים', 'מה נשאר לי היום?', 'תמחקי את האחרונה', 'עזרה'];
 let chatLog = [];
 try { chatLog = JSON.parse(localStorage.getItem(CHAT_KEY) || '[]'); if (!Array.isArray(chatLog)) chatLog = []; } catch { chatLog = []; }
 let sending = false;
-const saveChat = () => { try { localStorage.setItem(CHAT_KEY, JSON.stringify(chatLog.slice(-60))); } catch {} };
+// Thumbnails are kept for the last few photos only, so the log stays small.
+const saveChat = () => { try { let pics = 0; const keep = chatLog.slice(-60).reverse().map(m => (m.img && ++pics > 6 ? { who: 'me', t: '📷' } : m)).reverse(); localStorage.setItem(CHAT_KEY, JSON.stringify(keep)); } catch {} };
 function drawChat(typing) {
   const shown = chatLog.length ? chatLog : [{ who: 'ol', t: HELLO }];
-  $('#msgs').innerHTML = shown.map(m => `<div class="b ${m.who === 'me' ? 'me' : 'ol'}">${esc(m.t)}</div>`).join('') + (typing ? '<div class="typing" aria-label="עולמה כותבת"><i></i><i></i><i></i></div>' : '');
+  $('#msgs').innerHTML = shown.map(m => typeof m.img === 'string' && m.img.startsWith('data:image/jpeg;base64,')
+    ? `<div class="b me pic"><img src="${m.img}" alt="הצלחת ששלחת"></div>`
+    : `<div class="b ${m.who === 'me' ? 'me' : 'ol'}">${esc(m.t)}</div>`).join('') + (typing ? '<div class="typing" aria-label="עולמה כותבת"><i></i><i></i><i></i></div>' : '');
   $('#msgs').scrollTop = $('#msgs').scrollHeight;
 }
 $('#qr').innerHTML = QR.map(q => `<button class="chip" type="button" data-q="${esc(q)}">${esc(q)}</button>`).join('');
@@ -666,6 +817,38 @@ async function sendChat(text) {
   chatLog.push({ who: 'ol', t: reply }); saveChat(); sending = false; drawChat(false);
 }
 $('#chatBtn').addEventListener('click', () => { drawChat(sending); openSheet('#chatSheet'); });
+
+// The camera button: the photo is shrunk here (a phone's 4MB picture is not
+// what a model needs to read a plate), sent, and answered in the chat, where
+// a correction is one line away. Only a small thumbnail stays on the device.
+async function shrink(file, max, q) {
+  const bmp = await createImageBitmap(file);
+  const k = Math.min(1, max / Math.max(bmp.width, bmp.height));
+  const c = document.createElement('canvas'); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+  c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+  return c.toDataURL('image/jpeg', q);
+}
+async function sendPhoto(file) {
+  if (!file || sending) return;
+  let big, thumb;
+  try { big = await shrink(file, 1280, 0.85); thumb = await shrink(file, 360, 0.7); } catch { return toast('את התמונה הזו לא הצלחתי לפתוח.'); }
+  drawChat(false); openSheet('#chatSheet');
+  sending = true; chatLog.push({ who: 'me', img: thumb }); saveChat(); drawChat(true);
+  let reply;
+  try {
+    const r = await fetch(`${API}/api/snap`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mime: 'image/jpeg', base64: big.split(',')[1] }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) reply = ERR[j.error] || 'לא הצלחתי לקרוא את התמונה. נסו שוב.';
+    else {
+      reply = j.reply;
+      if (j.state && day === null) { S = j.state; render(); }
+      if (J) { J = null; if (tab === 'plates') loadJournal(); }
+    }
+  } catch { reply = 'אין חיבור. נסו שוב.'; }
+  chatLog.push({ who: 'ol', t: reply }); saveChat(); sending = false; drawChat(false);
+}
+$('#snapFile').addEventListener('change', e => { const f = e.target.files[0]; e.target.value = ''; sendPhoto(f); });
+$('#composer').addEventListener('click', e => { if (e.target.closest('[data-snap]')) $('#snapFile').click(); });
 $('#composer').addEventListener('submit', e => { e.preventDefault(); const i = $('#msgIn'); const v = i.value; i.value = ''; sendChat(v); });
 $('#qr').addEventListener('click', e => { const b = e.target.closest('[data-q]'); if (b) sendChat(b.dataset.q); });
 

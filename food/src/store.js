@@ -304,13 +304,35 @@ async function relog(pool, p, a, { via = 'olma', source = 'repeat' } = {}) {
 
 /* ── water, settings ── */
 
-async function water(pool, p, { date, cups, add } = {}) {
+// Counted in ml since migration 005; a cup is 250 ml. `cups` is still
+// written, the nearest whole cup, for every reader that knows only cups.
+const CUP_ML = 250;
+const VESSELS = [250, 500, 750, 1000, 1500];
+async function water(pool, p, { date, cups, add, ml, add_ml } = {}) {
   const day = dayFor(p, date);
-  const now = await pool.query('SELECT cups FROM water WHERE user_id = $1 AND day = $2', [p.user_id, day]);
-  const had = now.rows[0] ? now.rows[0].cups : 0;
-  const n = cups != null ? V.num(cups, 0, 30) : Math.max(0, Math.min(30, had + V.num(add ?? 1, -30, 30)));
-  await pool.query(`INSERT INTO water (user_id, day, cups) VALUES ($1,$2,$3) ON CONFLICT (user_id, day) DO UPDATE SET cups = $3`, [p.user_id, day, Math.round(n)]);
-  return { day, cups: Math.round(n), goal: p.water_goal };
+  const now = await pool.query('SELECT COALESCE(ml, cups * 250) AS ml FROM water WHERE user_id = $1 AND day = $2', [p.user_id, day]);
+  const had = now.rows[0] ? now.rows[0].ml : 0;
+  let n;
+  if (ml != null) n = V.num(ml, 0, 10000);
+  else if (cups != null) n = V.num(cups, 0, 30) * CUP_ML;
+  else if (add_ml != null) n = had + V.num(add_ml, -10000, 10000);
+  else n = had + V.num(add ?? 1, -30, 30) * CUP_ML;
+  n = Math.max(0, Math.min(10000, Math.round(n)));
+  const c = Math.min(30, Math.round(n / CUP_ML));
+  await pool.query(`INSERT INTO water (user_id, day, cups, ml) VALUES ($1,$2,$3,$4) ON CONFLICT (user_id, day) DO UPDATE SET cups = $3, ml = $4`, [p.user_id, day, c, n]);
+  return { day, cups: c, ml: n, goal: p.water_goal, goal_ml: p.water_goal_ml };
+}
+async function setWaterGoal(pool, p, ml) {
+  const g = Math.round(V.num(ml, 500, 6000));
+  const cups = Math.max(1, Math.min(20, Math.round(g / CUP_ML)));
+  await pool.query('UPDATE people SET water_goal_ml = $2, water_goal = $3 WHERE user_id = $1', [p.user_id, g, cups]);
+  return { goal_ml: g };
+}
+async function setVessel(pool, p, v) {
+  const n = Number(v);
+  if (!VESSELS.includes(n)) refuse('bad_value');
+  await pool.query('UPDATE people SET water_vessel = $2 WHERE user_id = $1', [p.user_id, n]);
+  return { vessel: n };
 }
 
 async function setNumbers(pool, p, on) {
@@ -390,18 +412,30 @@ async function runAuto(pool, { at = new Date() } = {}) {
 
 /* ── views ── */
 
-async function waterOf(q, p, from, to) {
-  const { rows } = await q.query('SELECT day, cups FROM water WHERE user_id = $1 AND day BETWEEN $2 AND $3', [p.user_id, from, to]);
-  return new Map(rows.map(r => [typeof r.day === 'string' ? r.day : dayString(r.day), r.cups]));
+// The week a day falls in, for the week card: its meals, water and challenge.
+async function weekOf(pool, p, day) {
+  const d = day ? dayFor(p, day) : todayOf(p);
+  const from = D.weekStart(d), to = D.addDays(from, 6);
+  const meals = await mealsBetween(pool, p, from, to);
+  const w = await waterOf(pool, p, from, to);
+  const v = await dayView(pool, p, d);
+  return { from, to, meals, water_ml: Array.from({ length: 7 }, (_, i) => w.get(D.addDays(from, i)) || 0), challenge: v.challenge };
 }
 
-function dayDigest(meals, cups) {
+async function waterOf(q, p, from, to) {
+  const { rows } = await q.query('SELECT day, COALESCE(ml, cups * 250) AS ml FROM water WHERE user_id = $1 AND day BETWEEN $2 AND $3', [p.user_id, from, to]);
+  return new Map(rows.map(r => [typeof r.day === 'string' ? r.day : dayString(r.day), r.ml]));
+}
+
+// `water` stays in cups (the nearest whole one) for the challenge and every
+// older reader; `water_ml` is the count.
+function dayDigest(meals, ml) {
   const real = meals.filter(m => !m.rough);
   const t = { kcal: 0, protein: 0, carbs: 0, fat: 0 };
   for (const m of real) for (const k in t) t[k] += m.totals[k];
   const counts = { protein: 0, veg: 0, grain: 0 };
   for (const m of real) for (const b of m.balance) counts[b] += 1;
-  return { totals: N.rounded(t), meal_count: meals.length, balance_counts: counts, water: cups || 0 };
+  return { totals: N.rounded(t), meal_count: meals.length, balance_counts: counts, water: Math.round((ml || 0) / CUP_ML), water_ml: ml || 0 };
 }
 
 const goalOf = p => ({ kcal: p.goal_kcal, protein: p.goal_protein, carbs: p.goal_carbs, fat: p.goal_fat, set: p.goal_set });
@@ -431,7 +465,7 @@ async function dayView(pool, p, day, { publicBase = '' } = {}) {
   } : null;
   const goal = goalOf(p);
   return {
-    person: { name: p.name, numbers: p.numbers, goal, water_goal: p.water_goal, timezone: p.timezone },
+    person: { name: p.name, numbers: p.numbers, goal, water_goal: p.water_goal, water_goal_ml: p.water_goal_ml, water_vessel: p.water_vessel, timezone: p.timezone },
     url: publicBase ? `${publicBase}/food/${p.token}` : null,
     day: d, date_he: D.heDate(d), today: d === today, today_day: today,
     meals, ...dig,
@@ -474,7 +508,7 @@ async function insights(q, p) {
 module.exports = {
   ensurePerson, personByToken, reload, todayOf, dayFor,
   mealsBetween, mealOf, lastMeal, logMeal, editMeal, deleteMeal, relog,
-  portionsOf, forgetPortion, water, setNumbers, setGoal, setChallenge,
-  usualOf, setAuto, runAuto, dayView, insights, BACK_DAYS,
+  portionsOf, forgetPortion, water, setWaterGoal, setVessel, VESSELS, setNumbers, setGoal, setChallenge,
+  usualOf, setAuto, runAuto, dayView, weekOf, insights, BACK_DAYS,
   setPhoto, photoOf, journal,
 };

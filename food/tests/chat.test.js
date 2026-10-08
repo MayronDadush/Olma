@@ -18,7 +18,8 @@ function fakeModel(answer) {
     const body = JSON.parse(opts.body);
     const content = body.messages[0].content;
     let out;
-    if (content.includes('המשפט:')) { calls.push('say'); out = JSON.stringify(answer); }
+    if (Array.isArray(content)) { calls.push('see'); out = JSON.stringify(answer.plate || { food: false, items: [] }); }
+    else if (content.includes('המשפט:')) { calls.push('say'); out = JSON.stringify(answer); }
     else {
       calls.push('match');
       const picks = [];
@@ -45,7 +46,8 @@ async function boot(t, answer) {
     assert.equal(r.status, 200);
     return r.json();
   };
-  return { pool, say, model };
+  const snap = async (body) => fetch(`http://127.0.0.1:${server.address().port}/food/${p.token}/api/snap`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  return { pool, say, snap, model, p };
 }
 
 test('code reads what has one shape, with no model', () => {
@@ -68,7 +70,7 @@ test('a sentence about a meal is logged from the table, water and status cost no
   const { rows: [m] } = await pool.query('SELECT source, via FROM meals');
   assert.deepEqual(m, { source: 'text', via: 'page' });
 
-  assert.match((await say('2 כוסות מים')).reply, /^2 כוסות נרשמו\. 2 מתוך/);
+  assert.match((await say('2 כוסות מים')).reply, /^2 כוסות נרשמו\. 500 מ״ל מתוך 2 ליטר היום/);
   assert.match((await say('מה נשאר לי?')).reply, /^היום: 194 קק״ל מתוך/);
   assert.deepEqual(model.calls, ['say'], 'only the sentence about food went to a model');
 
@@ -80,6 +82,37 @@ test('a sentence about a meal is logged from the table, water and status cost no
 test('anything that is not food is sent back to WhatsApp, and nothing is written', async t => {
   const { pool, say } = await boot(t, { kind: 'other' });
   assert.match((await say('תזכירי לי מחר להתקשר לאמא')).reply, /בוואטסאפ/);
+  const { rows: [{ n }] } = await pool.query('SELECT count(*)::int AS n FROM meals');
+  assert.equal(n, 0);
+});
+
+// A 1x1 JPEG is enough: the model is a function here, and the bytes only
+// have to arrive and be kept.
+const DOT_JPEG = '/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=';
+
+test('the camera button logs a plate like a photo sent in WhatsApp, keeps it, and answers in the chat', async t => {
+  const { pool, snap, model } = await boot(t, { plate: { title: 'חביתה וסלט', food: true, question: null,
+    items: [{ name: 'חביתה', name_en: 'egg, whole, fried', grams: 120, group: 'protein', confidence: 'mid' }] } });
+  const r = await snap({ mime: 'image/jpeg', base64: DOT_JPEG });
+  assert.equal(r.status, 200);
+  const j = await r.json();
+  assert.match(j.reply, /^רשמתי .*: חביתה וסלט/);
+  assert.equal(j.state.meals.length, 1);
+  assert.equal(j.state.meals[0].photo, true, 'the plate is kept for the page');
+  const { rows: [m] } = await pool.query('SELECT source, via FROM meals');
+  assert.deepEqual(m, { source: 'photo', via: 'page' });
+  assert.ok(model.calls.includes('see'));
+  // Not a picture we keep, or not a picture at all: refused before any model.
+  const before = model.calls.length;
+  assert.equal((await snap({ mime: 'image/gif', base64: DOT_JPEG })).status, 400);
+  assert.equal((await snap({ mime: 'image/jpeg' })).status, 400);
+  assert.equal(model.calls.length, before);
+});
+
+test('a photo with no food in it writes nothing and says so', async t => {
+  const { pool, snap } = await boot(t, { plate: { food: false, items: [] } });
+  const j = await (await snap({ mime: 'image/jpeg', base64: DOT_JPEG })).json();
+  assert.match(j.reply, /לא ראיתי אוכל/);
   const { rows: [{ n }] } = await pool.query('SELECT count(*)::int AS n FROM meals');
   assert.equal(n, 0);
 });

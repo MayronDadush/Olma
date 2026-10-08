@@ -100,7 +100,7 @@ npm test          # makes and drops its own database per file; FOOD_TEST_ADMIN_U
    `systemctl reload caddy`. Exactly the page and its actions:
 
    ```
-   @food path_regexp food ^/food/[A-Za-z0-9]{22}(/api/(state|write|journal|chat)|/card\.svg|/photo/[0-9]{1,12})?$
+   @food path_regexp food ^/food/[A-Za-z0-9]{22}(/api/(state|write|journal|chat|snap)|/card(-week)?\.svg|/photo/[0-9]{1,12})?$
    handle @food {
        reverse_proxy 127.0.0.1:8795
    }

@@ -15,12 +15,14 @@ const foods = require('./foods');
 const vision = require('./vision');
 const llm = require('./llm');
 const N = require('./nutrition');
+const plate = require('./plate');
 
 const SAYS_PER_DAY = 60;
 const fmt = n => Math.round(n).toLocaleString('he-IL');
+const litres = ml => (ml >= 1000 ? `${Math.round(ml / 100) / 10} ליטר` : `${Math.round(ml)} מ״ל`);
 
 const NUM = { אחת: 1, אחד: 1, שתי: 2, שתיים: 2, שניים: 2, שני: 2, שלוש: 3, שלושה: 3, ארבע: 4, ארבעה: 4, חמש: 5, חמישה: 5, שש: 6, שישה: 6 };
-const HELP = 'כאן אני רושמת אוכל ומים, כמו בוואטסאפ:\n• "אכלתי חביתה משתי ביצים וסלט"\n• "כוס מים" או "שתיתי 3 כוסות"\n• "מה נשאר לי היום?"\n• "תמחקי את האחרונה"\nתמונה של צלחת שולחים לי בוואטסאפ.';
+const HELP = 'כאן אני רושמת אוכל ומים, כמו בוואטסאפ:\n• "אכלתי חביתה משתי ביצים וסלט"\n• "כוס מים" או "שתיתי 3 כוסות"\n• "מה נשאר לי היום?"\n• "תמחקי את האחרונה"\nואפשר לצלם צלחת בכפתור המצלמה.';
 
 const clip = (s, n) => String(s ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, n);
 
@@ -45,9 +47,9 @@ function statusLine(v) {
   if (!v.meals.length) return 'עוד לא נרשם כלום היום.';
   if (v.person.numbers) {
     const left = v.left.kcal;
-    return `היום: ${fmt(v.totals.kcal)} קק״ל מתוך ${fmt(v.person.goal.kcal)}, ${left >= 0 ? `נשארו ${fmt(left)}` : `${fmt(-left)} מעל היעד`}. חלבון ${fmt(v.totals.protein)} מתוך ${v.person.goal.protein} ג׳. מים: ${v.water} מתוך ${v.person.water_goal}.`;
+    return `היום: ${fmt(v.totals.kcal)} קק״ל מתוך ${fmt(v.person.goal.kcal)}, ${left >= 0 ? `נשארו ${fmt(left)}` : `${fmt(-left)} מעל היעד`}. חלבון ${fmt(v.totals.protein)} מתוך ${v.person.goal.protein} ג׳. מים: ${litres(v.water_ml)} מתוך ${litres(v.person.water_goal_ml)}.`;
   }
-  return `היום ${v.meals.length === 1 ? 'ארוחה אחת' : `${v.meals.length} ארוחות`}, ${v.balance_counts.veg ? `ירקות ב-${v.balance_counts.veg}` : 'עוד בלי ירקות'}. מים: ${v.water} מתוך ${v.person.water_goal}.`;
+  return `היום ${v.meals.length === 1 ? 'ארוחה אחת' : `${v.meals.length} ארוחות`}, ${v.balance_counts.veg ? `ירקות ב-${v.balance_counts.veg}` : 'עוד בלי ירקות'}. מים: ${litres(v.water_ml)} מתוך ${litres(v.person.water_goal_ml)}.`;
 }
 
 const PROMPT = `את עולמה, ובצ'אט הזה רק רושמים אוכל. האדם כתב משפט. החזירי JSON בלבד, אחד משלושה:
@@ -91,7 +93,7 @@ async function turn(pool, p, text, { fetchImpl } = {}) {
   if (c.k === 'help') return { reply: HELP };
   if (c.k === 'water') {
     const w = await store.water(pool, p, { add: c.n });
-    return { reply: `${c.n === 1 ? 'כוס נרשמה' : `${c.n} כוסות נרשמו`}. ${w.cups} מתוך ${w.goal} היום.` };
+    return { reply: `${c.n === 1 ? 'כוס נרשמה' : `${c.n} כוסות נרשמו`}. ${litres(w.ml)} מתוך ${litres(w.goal_ml)} היום.` };
   }
   if (c.k === 'status') return { reply: statusLine(await store.dayView(pool, p)) };
   if (c.k === 'undo') {
@@ -103,4 +105,22 @@ async function turn(pool, p, text, { fetchImpl } = {}) {
   return { reply: HELP };
 }
 
-module.exports = { turn, parse, statusLine, PROMPT, SAYS_PER_DAY };
+// A plate from the camera button: read and logged like one sent in WhatsApp.
+async function photo(pool, p, { mime, base64 }, { fetchImpl } = {}) {
+  if (await plate.photosToday(pool, p) >= plate.PHOTOS_PER_DAY) return { reply: 'הגעת למגבלת התמונות להיום. אפשר לכתוב לי מה אכלת.' };
+  let got;
+  try { got = await plate.logPhoto(pool, p, { mime, base64, via: 'page', fetchImpl }); } catch (e) {
+    if (e instanceof llm.ModelUnavailable) return { reply: 'לא הצלחתי לקרוא את התמונה עכשיו. אפשר לכתוב לי מה אכלת, או לנסות שוב עוד רגע.' };
+    throw e;
+  }
+  const { meal, seen } = got;
+  if (!meal) return { reply: 'לא ראיתי אוכל בתמונה הזו. רצית לשלוח אחרת?' };
+  const listed = meal.items.map(i => i.name).join(', ');
+  const names = listed === meal.title ? '' : ` (${listed})`;
+  const said = p.numbers
+    ? `רשמתי ${N.SLOT_HE[meal.slot]}: ${meal.title}, ${fmt(meal.totals.kcal)} קק״ל${names}.`
+    : `רשמתי ${N.SLOT_HE[meal.slot]}: ${meal.title}${names}.`;
+  return { reply: seen.question ? `${said} ${clip(seen.question, 200)}` : `${said} אם משהו לא נכון, כתבו לי כאן.`, logged: meal.id };
+}
+
+module.exports = { turn, photo, parse, statusLine, PROMPT, SAYS_PER_DAY };

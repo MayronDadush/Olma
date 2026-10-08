@@ -3,7 +3,12 @@
 //   GET  /food/<token>                    the person's page
 //   GET  /food/<token>/api/state?day=     its data for one day
 //   POST /food/<token>/api/write          a change made on the page
+//   GET  /food/<token>/api/journal        the plates, newest first
+//   POST /food/<token>/api/chat           a line to the page's chat
+//   POST /food/<token>/api/snap           a photo from the camera button
 //   GET  /food/<token>/card.svg?day=      the day card, as the page previews it
+//   GET  /food/<token>/card-week.svg?day= the week card: its plates and three counts
+//   GET  /food/<token>/photo/<meal id>    a plate's photo
 // Everything else (/health, /api/tool, /api/page) is for the box itself: Caddy never
 // routes it, and the handler also refuses anything that arrived through a
 // proxy, so a Caddyfile mistake cannot open the tools to the world.
@@ -22,6 +27,8 @@ const { resolveIdentity, makeCard, readMedia } = require('./identity');
 
 const PAGE_FILE = path.join(__dirname, '..', 'public', 'day.html');
 const MAX_BODY = 32 * 1024;
+// A photo from the camera button, already shrunk by the page (day.html, snap).
+const MAX_PHOTO_BODY = 3 * 1024 * 1024;
 const WRITES_PER_MIN = 120;      // per page and, separately, per client and per person on the tools
 
 const STATUS = { not_found: 404, too_many: 429, rate_limited: 429, too_old: 409, future_day: 409 };
@@ -53,11 +60,11 @@ function createServer({ pool, publicBase = '', page, identify = resolveIdentity,
     console.error('[foodd]', e && e.stack || e);
     return send(res, 500, { error: 'internal' });
   };
-  const readBody = req => new Promise((resolve, reject) => {
+  const readBody = (req, max = MAX_BODY) => new Promise((resolve, reject) => {
     let size = 0; const chunks = [];
     req.on('data', ch => {
       size += ch.length;
-      if (size > MAX_BODY) { reject(new Refused('too_big')); req.destroy(); return; }
+      if (size > max) { reject(new Refused('too_big')); req.destroy(); return; }
       chunks.push(ch);
     });
     req.on('end', () => {
@@ -78,7 +85,9 @@ function createServer({ pool, publicBase = '', page, identify = resolveIdentity,
       case 'meal_slot': return store.editMeal(pool, p, { meal_id: id, slot: b.slot }, { via: 'page' });
       case 'meal_delete': return store.deleteMeal(pool, p, id);
       case 'relog': return store.relog(pool, p, { meal_id: id, date: b.date }, { via: 'page', source: 'usual' });
-      case 'water': return store.water(pool, p, { date: b.date, cups: b.cups });
+      case 'water': return store.water(pool, p, b.ml != null ? { date: b.date, ml: b.ml } : { date: b.date, cups: b.cups });
+      case 'water_goal': return store.setWaterGoal(pool, p, b.ml);
+      case 'vessel': return store.setVessel(pool, p, b.ml);
       case 'numbers': return store.setNumbers(pool, p, b.on);
       case 'forget': return store.forgetPortion(pool, p, b.name);
       case 'auto': return store.setAuto(pool, p, { meal_id: id, title: b.title, on: b.on, hour: b.hour });
@@ -133,7 +142,7 @@ function createServer({ pool, publicBase = '', page, identify = resolveIdentity,
         return send(res, 200, { ok: true, url: `${publicBase}/food/${p.token}` });
       }
 
-      const m = p_.match(/^\/food\/([A-Za-z0-9]{22})(?:\/(api\/state|api\/write|api\/journal|api\/chat|card\.svg|photo\/(\d{1,12})))?$/);
+      const m = p_.match(/^\/food\/([A-Za-z0-9]{22})(?:\/(api\/state|api\/write|api\/journal|api\/chat|api\/snap|card\.svg|card-week\.svg|photo\/(\d{1,12})))?$/);
       if (!m) return send(res, 404, { error: 'not_found' });
       const [, token, action, photoId] = m;
       const p = await store.personByToken(pool, token);
@@ -166,12 +175,29 @@ function createServer({ pool, publicBase = '', page, identify = resolveIdentity,
         const v = await store.dayView(pool, p, url.searchParams.get('day') || undefined);
         return send(res, 200, card.buildSvg(v).svg, 'image/svg+xml; charset=utf-8');
       }
+      if (action === 'card-week.svg') {
+        if (req.method !== 'GET') return send(res, 405, { error: 'method' });
+        const w = await store.weekOf(pool, p, url.searchParams.get('day') || undefined);
+        // Only the photos the card can hold are read, newest first, as it picks them.
+        const got = new Map();
+        for (const m of w.meals.filter(x => x.photo && !x.rough).reverse().slice(0, card.TILES)) got.set(m.id, await store.photoOf(pool, p, m.id));
+        const photoOf = m => got.get(m.id) || null;
+        return send(res, 200, card.buildWeekSvg(w, photoOf).svg, 'image/svg+xml; charset=utf-8');
+      }
       if (action === 'api/chat') {
         if (req.method !== 'POST') return send(res, 405, { error: 'method' });
         if (limited('t:' + token) || limited('c:' + clientOf(req))) return send(res, 429, { error: 'rate_limited' });
         const body = await readBody(req);
         if (typeof body.text !== 'string' || !body.text.trim()) return send(res, 400, { error: 'bad_text' });
         const out = await chat.turn(pool, p, body.text, { fetchImpl });
+        return send(res, 200, { ok: true, ...out, state: await store.dayView(pool, await store.reload(pool, p.user_id), undefined, { publicBase }) });
+      }
+      if (action === 'api/snap') {
+        if (req.method !== 'POST') return send(res, 405, { error: 'method' });
+        if (limited('t:' + token) || limited('c:' + clientOf(req))) return send(res, 429, { error: 'rate_limited' });
+        const body = await readBody(req, MAX_PHOTO_BODY);
+        if (!['image/jpeg', 'image/png', 'image/webp'].includes(body.mime) || typeof body.base64 !== 'string' || !body.base64) return send(res, 400, { error: 'bad_photo' });
+        const out = await chat.photo(pool, p, { mime: body.mime, base64: body.base64 }, { fetchImpl });
         return send(res, 200, { ok: true, ...out, state: await store.dayView(pool, await store.reload(pool, p.user_id), undefined, { publicBase }) });
       }
       // api/write
