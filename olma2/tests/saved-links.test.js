@@ -418,6 +418,20 @@ test('a mixed message counts only what was saved now, and English says how to mo
     /^שמרתי קישור אחד:\n• ב\*מתכונים\* — Cake\n• כבר שמור ב\*לצפות\* — A talk\n/);
 });
 
+test('a page that could not be read is still saved, and the reply says it could not read it', () => {
+  assert.equal(saved.shortcutReply([{ list: 'לקרוא אחר כך', emoji: '📖', title: null, read: false }], { lang: 'he' }),
+    'לא הצלחתי לקרוא מה יש בקישור, אבל שמרתי אותו ב*לקרוא אחר כך* 📖\nאפשר לענות בשם של רשימה אחרת כדי להעביר');
+  assert.equal(saved.shortcutReply([{ list: 'Wedding', emoji: '', read: false, createdList: true }], { lang: 'en' }),
+    'I couldn’t read what’s in the link, but I saved it to a new list: *Wedding*\nReply with another list name to move it');
+  // Read, or a duplicate (not news about the page): the old sentence.
+  assert.match(saved.shortcutReply([{ list: 'מתכונים', title: 'עוגה', read: true }], { lang: 'he' }), /^שמרתי ב\*מתכונים\* — עוגה/);
+  assert.match(saved.shortcutReply([{ list: 'מתכונים', duplicate: true, read: false, savedAt: Date.now() }], { lang: 'he', now: Date.now() }), /^כבר שמור לך/);
+  assert.equal(saved.shortcutReply([
+    { list: 'מתכונים', title: 'עוגה', read: true },
+    { list: 'לקרוא', title: null, read: false },
+  ], { lang: 'he' }), 'שמרתי 2 קישורים:\n• ב*מתכונים* — עוגה\n• ב*לקרוא* — לא הצלחתי לקרוא מה יש בו\nאפשר לענות בשם של רשימה אחרת כדי להעביר את האחרון');
+});
+
 test('brokerd past the plugin\'s deadline saves nothing, claims nothing, marks nothing', async () => {
   const marks = [];
   const broker = createBrokerServer({
@@ -524,7 +538,7 @@ test('every sentence the shortcut can say passes the reply gate, whoever is read
     list: 'לצפות אחר כך', emoji: '🎬', about: '— Rick Astley - Never Gonna Give You Up (Official Video)', when: 'אתמול', count: '2',
     lines: '• ב*Wedding* — Rick Astley - Never Gonna Give You Up\n• ב*מתכונים* — עוגת שוקולד',
   };
-  for (const base of ['saved_link', 'saved_link_new_list', 'saved_link_dup', 'saved_link_many', 'saved_link_many_dup']) {
+  for (const base of ['saved_link', 'saved_link_new_list', 'saved_link_unread', 'saved_link_new_list_unread', 'saved_link_dup', 'saved_link_many', 'saved_link_many_dup']) {
     for (const lang of ['he', 'en']) {
       const text = templates.render(templates.keyFor(base, lang), vars, {});
       // An English sentence goes only to somebody whose locale is English, and

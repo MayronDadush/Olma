@@ -176,6 +176,39 @@ const TEMPLATES = [
     sample: { list: 'Wedding', emoji: '', about: '— The venue' },
     text: 'New list: *{{list}}* {{emoji}} {{about}}\nReply with another list name to move it',
   },
+  // A page that could not be read (a sign-in wall, a site that refused us, a
+  // read that ran out of time) is still saved, and the reply says so rather
+  // than naming a list with nothing after it (the owner, 2026-10-08).
+  {
+    key: 'saved_link_unread', audience: 'private', label: 'שמורים: נשמר בלי שנקרא',
+    help: 'כמו "נשמר", כשלא הצלחנו לקרוא מה יש בקישור (דורש התחברות, האתר חסם). הקישור נשמר בכל זאת.',
+    vars: { list: 'שם הרשימה', emoji: 'האימוג׳י של הרשימה' },
+    required: ['list'],
+    sample: { list: 'לקרוא אחר כך', emoji: '📖' },
+    text: 'לא הצלחתי לקרוא מה יש בקישור, אבל שמרתי אותו ב*{{list}}* {{emoji}}\nאפשר לענות בשם של רשימה אחרת כדי להעביר',
+  },
+  {
+    key: 'saved_link_unread_en', audience: 'private', label: 'שמורים: נשמר בלי שנקרא', help: '',
+    vars: { list: 'list name', emoji: 'the list emoji' },
+    required: ['list'],
+    sample: { list: 'Read later', emoji: '📖' },
+    text: 'I couldn’t read what’s in the link, but I saved it to *{{list}}* {{emoji}}\nReply with another list name to move it',
+  },
+  {
+    key: 'saved_link_new_list_unread', audience: 'private', label: 'שמורים: נשמר בלי שנקרא, ברשימה חדשה',
+    help: 'כמו "נשמר בלי שנקרא", כשהקישור פתח רשימה שלא הייתה.',
+    vars: { list: 'שם הרשימה', emoji: 'האימוג׳י של הרשימה' },
+    required: ['list'],
+    sample: { list: 'חתונה', emoji: '' },
+    text: 'לא הצלחתי לקרוא מה יש בקישור, אבל שמרתי אותו ברשימה חדשה: *{{list}}* {{emoji}}\nאפשר לענות בשם של רשימה אחרת כדי להעביר',
+  },
+  {
+    key: 'saved_link_new_list_unread_en', audience: 'private', label: 'שמורים: נשמר בלי שנקרא, ברשימה חדשה', help: '',
+    vars: { list: 'list name', emoji: 'the list emoji' },
+    required: ['list'],
+    sample: { list: 'Wedding', emoji: '' },
+    text: 'I couldn’t read what’s in the link, but I saved it to a new list: *{{list}}* {{emoji}}\nReply with another list name to move it',
+  },
   {
     key: 'saved_link_dup', audience: 'private', label: 'שמורים: כבר שמור',
     help: 'כשאותו קישור כבר שמור אצלם. לא נשמר שוב.',
