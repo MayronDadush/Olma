@@ -2579,6 +2579,30 @@ button.srow:active{background:var(--bg-tint)}
 #taskStack{gap:0}
 /* The calendar fold is one slim row, set off by a tint rather than by air. */
 #taskStack .calfold .arcbtn{padding:8px 14px;background:var(--bg-tint);border-radius:12px}
+/* …and since 2026-10-08 a CARD (owner's option F): it was grey on grey at
+   .72 opacity and read as switched off. A coloured tile says what it holds,
+   the next one peeks under the name, and the end carries the month's count
+   with the week's as a pill in the tile's colour (option B's). Shared by the
+   saved-links fold: .fsea is the calendar's blue, .fgold the saved mustard. */
+#taskStack .fcard{opacity:1}
+#taskStack .fcard .arcbtn{
+  align-items:center;gap:12px;padding:11px 14px 12px;background:var(--surface);
+  border-radius:16px;box-shadow:var(--shadow-m);color:var(--text);font-weight:400;text-align:start;
+}
+.fcard .ftile{width:34px;height:34px;border-radius:10px;flex:none;display:grid;place-items:center}
+.fcard .ftile svg{width:18px;height:18px}
+.fcard .fsea{background:var(--sea-soft);color:var(--drop-line)}
+.fcard .fgold{background:var(--gold-soft);color:var(--gold)}
+.fcard .fmid{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.fcard .fname{font-size:15px;font-weight:600}
+.fcard .fpeek{display:flex;gap:6px;min-width:0;font-size:13px;color:var(--text-2)}
+.fcard .fpeek b{font-weight:600;color:var(--drop-line);white-space:nowrap}
+.fcard .fpeek span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fcard .fend{display:flex;flex-direction:column;align-items:flex-end;gap:3px;flex:none}
+.fcard .fnum{display:flex;align-items:center;gap:8px}
+.fcard .calfoldn{margin:0;font-size:19px;font-weight:700;line-height:1.1;font-variant-numeric:tabular-nums}
+.fcard .chev{width:7px;height:13px;color:var(--text-3)}
+.fcard .fsub{font-size:11.5px;font-weight:600;border-radius:999px;padding:2px 8px;white-space:nowrap}
 #arcGroup .task{opacity:.7}
 #arcGroup .ttitle{color:var(--text-3)}
 #arcGroup .pill{background:transparent;padding-inline:0;color:var(--text-3);font-weight:500}
@@ -5658,7 +5682,7 @@ button.srow:active{background:var(--bg-tint)}
       "tasks.doneAt":"הושלמה {when}","tasks.justNow":"הרגע",
       "tasks.arcShown":"מוצגות {n} האחרונות מתוך {all}","tasks.arcShowAll":"הצגת כל {all}","tasks.arcShowLess":"מוצגות כל {all} · הצגת {n} האחרונות","tasks.restore":"החזרה לרשימה",
       "toast.restored":"„{name}” חזרה לרשימה",
-      "tasks.pinned":"משותפות","tasks.onCal":"אירועים קרובים","tasks.unpin":"ביטול נעיצה","tasks.pin":"נעיצה למעלה",
+      "tasks.pinned":"משותפות","tasks.onCal":"אירועים קרובים","tasks.calWeek":"{n} השבוע","tasks.unpin":"ביטול נעיצה","tasks.pin":"נעיצה למעלה",
       "toast.unpinned":"„{name}” חזרה למקום שלה","toast.pinned":"„{name}” נעוצה למעלה",
       "sugg.stuck":"פתוחה כבר {days} ימים, בלי תאריך ובלי תזכורת. להוריד מהרשימה?",
       "sugg.overdue":"התאריך שלה עבר לפני {days} ימים והיא עדיין פתוחה. להוריד מהרשימה?",
@@ -6058,7 +6082,7 @@ button.srow:active{background:var(--bg-tint)}
       "tasks.doneAt":"Done {when}","tasks.justNow":"just now",
       "tasks.arcShown":"Showing the last {n} of {all}","tasks.arcShowAll":"Show all {all}","tasks.arcShowLess":"Showing all {all} · show the last {n}","tasks.restore":"Put back on the list",
       "toast.restored":"\u201c{name}\u201d is back on your list",
-      "tasks.pinned":"Shared","tasks.onCal":"Upcoming events","tasks.unpin":"Unpin","tasks.pin":"Pin to top",
+      "tasks.pinned":"Shared","tasks.onCal":"Upcoming events","tasks.calWeek":"{n} this week","tasks.unpin":"Unpin","tasks.pin":"Pin to top",
       "toast.unpinned":"\u201c{name}\u201d is back in its place","toast.pinned":"\u201c{name}\u201d is pinned to the top",
       "sugg.stuck":"Open for {days} days, with no date and no reminder. Take it off the list?",
       "sugg.overdue":"Its date passed {days} days ago and it is still open. Take it off the list?",
@@ -8349,7 +8373,17 @@ button.srow:active{background:var(--bg-tint)}
      fold, because leaving it out would put it nowhere. A SHARED event keeps
      its own section until it is over, and then leaves like any other: a
      share is a reason to show it, never a reason to show it after. */
-  function onCalendar(x){ return !x.src && !isPinned(x) && x.kind === "event" && !leftToGoogle(x); }
+  function onCalendar(x){ return !x.src && !isPinned(x) && x.kind === "event" && !leftToGoogle(x) && daysAhead(x.d) < 30; }
+  /* "Upcoming" is the next 30 days (owner, 2026-10-08): the number on the
+     row is a month, and "N השבוע" beside it counts to Saturday. An event
+     further out, or with no date, is on the list like anything else — a
+     fold that counts a dentist next spring is not saying what is coming.
+     Local calendar days, like bucketFor; an undated row is never ahead. */
+  function daysAhead(d, now){
+    if(!d) return Infinity;
+    var n = now || new Date(), t0 = new Date(n.getFullYear(), n.getMonth(), n.getDate());
+    return Math.round((new Date(d + "T00:00:00") - t0) / 86400000);
+  }
   function leftToGoogle(x){
     return !x.src && x.kind === "event" && (eventOver(x) || (!isPinned(x) && !x.rem && x.inCal));
   }
@@ -8384,12 +8418,22 @@ button.srow:active{background:var(--bg-tint)}
           kb = (b.d || "~") + " " + (b.all ? "" : (b.tm || ""));
       return ka < kb ? -1 : ka > kb ? 1 : 0;
     });
-    return '<div class="tsec calfold archive' + (calFoldOpen ? " open" : "") + '">' +
+    /* Drawn as a card (owner, 2026-10-08, option F): the next event peeks
+       under the name (its day and start, short, so the title still fits),
+       the month's count stands at the end with the week's
+       beside it, and the chevron sits after the number. The saved-links fold
+       will be drawn from the same classes. */
+    var next = items[0], week = 6 - new Date().getDay();
+    var inWeek = items.filter(function(x){ return daysAhead(x.d) <= week; }).length;
+    return '<div class="tsec calfold archive fcard' + (calFoldOpen ? " open" : "") + '">' +
       '<button class="arcbtn" data-calfold aria-expanded="' + calFoldOpen + '">' +
-        '<svg class="chev"><use href="#i-chev"/></svg>' +
-        '<svg class="calfoldmark" aria-hidden="true"><use href="#i-cal"/></svg>' +
-        "<span>" + esc(t("tasks.onCal")) + "</span>" +
-        '<span class="calfoldn">' + items.length + "</span>" +
+        '<span class="ftile fsea"><svg aria-hidden="true"><use href="#i-cal"/></svg></span>' +
+        '<span class="fmid"><span class="fname">' + esc(t("tasks.onCal")) + "</span>" +
+          '<span class="fpeek"><b>' + esc(dayWord(next.d) + (next.all || !next.tm ? "" : " " + next.tm)) + "</b><span>" + esc(L(next.t)) + "</span></span></span>" +
+        '<span class="fend"><span class="fnum"><span class="calfoldn">' + items.length + "</span>" +
+          '<svg class="chev" aria-hidden="true"><use href="#i-chev"/></svg></span>' +
+          (inWeek ? '<span class="fsub fsea">' + esc(t("tasks.calWeek", {n:inWeek})) + "</span>" : "") +
+        "</span>" +
       "</button>" +
       /* inert while folded: the rows are still in the DOM, and a keyboard or a
          screen reader would otherwise walk into a list nobody can see. */
