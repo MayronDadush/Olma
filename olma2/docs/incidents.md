@@ -227,6 +227,7 @@ never trust a dated narrative for something you are about to act on.
 - [The carryover leak came back, and the code cannot say how (2026-09-06)](#the-carryover-leak-came-back-and-the-code-cannot-say-how-2026-09-06)
 - [The fact table admitted everything and ranked by recency (fixed 2026-08-28)](#the-fact-table-admitted-everything-and-ranked-by-recency-fixed-2026-08-28)
 - [The fact table kept what had a better home (2026-10-08)](#the-fact-table-kept-what-had-a-better-home-2026-10-08)
+- [The ten card slots went to the profile page (2026-10-08)](#the-ten-card-slots-went-to-the-profile-page-2026-10-08)
 - [The name was in front of us on every turn (fixed 2026-08-22)](#the-name-was-in-front-of-us-on-every-turn-fixed-2026-08-22)
 - ["קוראים לי עידן", and ninety seconds later: "עידן, נכון?" (fixed 2026-09-07)](#קוראים-לי-עידן-and-ninety-seconds-later-עידן-נכון-fixed-2026-09-07)
 - [Two introductions, ninety seconds apart (fixed 2026-09-07)](#two-introductions-ninety-seconds-apart-fixed-2026-09-07)
@@ -9413,6 +9414,27 @@ wrongly; the rest are a judgement ("גר בהוד השרון" against the profil
 left: profile-page answers (`prompt_key`, importance 2) crowd the ten card
 slots, and undated one-off events in `health` ("הולכת לניתוח", importance 3)
 cannot be told from a durable trait by code.
+
+### The ten card slots went to the profile page (2026-10-08)
+
+Same measurement as the entry above. `topFacts` ranks importance, then recency,
+and every answer from the profile page is written at importance 2. On the two
+accounts with more than ten facts the card's ten slots were 9 of 10 and 6 of 10
+profile answers ("חיית מחמד: אין", "רכב: יש רכב"), with "הולכת לניתוח"
+(importance 3, undated) on top of one of them; what the person had SAID, newer
+and importance 1, never reached the card. The ranking was not wrong about
+importance — it was comparing a fixed, bounded questionnaire with an open-ended
+conversation as though they were one kind of thing.
+
+`facts.cardFacts` returns the two apart (on `prompt_key`, no text read): ten
+slots for what was said, and the page's answers as one line, led by the
+questions that change what Olma DOES and capped at 12. Not changed:
+`topFacts` (the overnight plan and the extraction pass's "already known" list
+want the profile answers), the importance values, and any judgement about which
+answers are worth a place — "ילדים: אין" is kept, it costs three tokens on a
+line and tells her not to ask. Still open: an undated one-off event filed as a
+core fact cannot be told from a durable trait by code (Jev-in-shadow, not a
+regex).
 
 ### The name was in front of us on every turn (fixed 2026-08-22)
 

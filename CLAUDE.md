@@ -290,6 +290,7 @@ Loads when you **Read** a file under `src/jobs/checkin.js`, `src/jobs/onboarding
 - **`availability` is refused at the write unless it is one `HH:MM-HH:MM` window** — "once a day" was saved, 👍'd, and read as the default
 - **The assistant is עולמה / Allma; the system is still olma2.**
 - **A fact is refused at the one door if it is an email, a reminder request or "יש קשר עם X", and a plan with no end is given one (45 days)** — `facts.rememberFact`; no scheduled cleanup, the door is the cleanup
+- **The ten card slots are for what was said in conversation; the profile page's answers ride ONE capped line** — `facts.cardFacts`, `user-card.PROFILE_LINE_MAX`
 
 ### Writing detectors and alarms
 

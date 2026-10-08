@@ -336,9 +336,36 @@ async function topFacts(client, userId, k = 10) {
   return rows;
 }
 
+// What goes into USER.md, split in two. Measured on the box 2026-10-08: the
+// ten card slots are ranked importance-then-recency, and every answer from the
+// profile page is stored at importance 2 — so on the two accounts that have
+// more than ten facts, 9 of 10 slots (one) and 6 of 10 (the other) were
+// profile answers ("חיית מחמד: אין", "רכב: יש רכב"), and what was said in
+// conversation, newer and importance 1, never reached the card. The ranking
+// was never wrong about importance; it was comparing two different kinds of
+// thing. So the K slots are for what was learned in conversation, and the
+// profile answers — a fixed, bounded set of at most one per question — are
+// returned beside them for the card to print as ONE compact line.
+// `prompt_key` is what tells them apart (migration 068), so no text is read.
+async function cardFacts(client, userId, k = 10) {
+  const limit = Math.max(1, Math.min(Number(k) || 10, 50));
+  const { rows } = await client.query(
+    `SELECT id, category, fact, importance, learned_at, prompt_key FROM user_facts
+      WHERE user_id = $1 AND active = true
+        AND (expires_at IS NULL OR expires_at > now())
+      ORDER BY importance DESC, learned_at DESC`,
+    [userId]
+  );
+  return {
+    facts: rows.filter((r) => !r.prompt_key).slice(0, limit),
+    profile: rows.filter((r) => r.prompt_key),
+    total: rows.length,
+  };
+}
+
 module.exports = {
   firstPerson,
-  rememberFact, forgetFact, listFacts, topFacts,
+  rememberFact, forgetFact, listFacts, topFacts, cardFacts,
   KNOWN_FACT_CATEGORIES, KNOWN_SOURCES, MAX_FACT_CHARS, cleanFact,
   phoneLike, bareNameStatement, systemState,
   emailLike, reminderShaped, connectionShaped, PLAN_SHELF_LIFE_DAYS,
