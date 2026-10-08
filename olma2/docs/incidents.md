@@ -226,6 +226,7 @@ never trust a dated narrative for something you are about to act on.
 
 - [The carryover leak came back, and the code cannot say how (2026-09-06)](#the-carryover-leak-came-back-and-the-code-cannot-say-how-2026-09-06)
 - [The fact table admitted everything and ranked by recency (fixed 2026-08-28)](#the-fact-table-admitted-everything-and-ranked-by-recency-fixed-2026-08-28)
+- [The fact table kept what had a better home (2026-10-08)](#the-fact-table-kept-what-had-a-better-home-2026-10-08)
 - [The name was in front of us on every turn (fixed 2026-08-22)](#the-name-was-in-front-of-us-on-every-turn-fixed-2026-08-22)
 - ["קוראים לי עידן", and ninety seconds later: "עידן, נכון?" (fixed 2026-09-07)](#קוראים-לי-עידן-and-ninety-seconds-later-עידן-נכון-fixed-2026-09-07)
 - [Two introductions, ninety seconds apart (fixed 2026-09-07)](#two-introductions-ninety-seconds-apart-fixed-2026-09-07)
@@ -9387,6 +9388,31 @@ coming back to git — so the repo is renamed to match production, never the
 reverse. Worth noting how it was found: not by anyone reading `ls migrations/`,
 but by every single test failing at once the first time somebody ran the suite
 after both merges.
+
+### The fact table kept what had a better home (2026-10-08)
+
+The owner asked how much "what Olma learned about a user" costs in the prompts,
+and then to measure it. 145 active facts, 23 people, median 2.5 each, p90 7:
+the typical card is nearly EMPTY, and the noise is two accounts (55 and 28
+rows) — the owner's testbed and one more. In those, seven rows were not
+biography: an email address twice ("כתובת אימייל: …", "חיבר את Gmail …"),
+three reminder requests ("מבקש תזכורות לשתות מים"), two "יש קשר עם X". Each
+has a home that stays true and each was read on every turn. Nine of twenty-five
+plans had no end ("טסה לקפריסין" past the trip).
+
+Fixed in the door, not in a pass: the owner said no nightly job — he wants it
+right from the start. `rememberFact` refuses the three shapes (each matched the
+live corpus exactly and nothing else) and defaults a plan's `expires_at` to 45
+days, after the `needs_expiry` check. Migration 119 applied the same verdict
+once to the existing rows (soft: `active = false`, an expiry on the plans).
+
+Measured and NOT done: `task-similarity.compare` across every pair of one
+person's facts (1,651 pairs) found 1 real near-duplicate of 4 and merged nothing
+wrongly; the rest are a judgement ("גר בהוד השרון" against the profile's "עיר
+מגורים: הוד השרון"), which is the Jev-in-shadow question, not a regex. Also
+left: profile-page answers (`prompt_key`, importance 2) crowd the ten card
+slots, and undated one-off events in `health` ("הולכת לניתוח", importance 3)
+cannot be told from a durable trait by code.
 
 ### The name was in front of us on every turn (fixed 2026-08-22)
 
