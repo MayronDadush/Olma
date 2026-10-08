@@ -214,6 +214,36 @@ const SW_SOURCE = [
   '      "Content-Security-Policy": CSP}});',
   '  }));',
   '});',
+  // Notifications (domain/push.js). The payload is the server's own JSON:
+  // a title, one line, the page to open and a tag that replaces an older
+  // notification about the same coordination. Anything unreadable shows
+  // nothing rather than an empty card — iOS counts a push that shows no
+  // notification against the subscription.
+  'self.addEventListener("push", function(e){',
+  '  var d = null;',
+  '  try { d = e.data ? e.data.json() : null; } catch (x) { d = null; }',
+  '  if(!d || !d.title) d = {title: HL === "en" ? "Allma" : "עולמה", body: "", url: "/me"};',
+  '  e.waitUntil(self.registration.showNotification(String(d.title), {',
+  '    body: String(d.body || ""), tag: d.tag || undefined, renotify: Boolean(d.tag),',
+  '    icon: "/icons/icon-192.png", badge: "/icons/icon-192.png", lang: HL, dir: HL === "en" ? "ltr" : "rtl",',
+  '    data: {url: typeof d.url === "string" && d.url.indexOf("/me") === 0 ? d.url : "/me"}}));',
+  '});',
+  // A tap opens the coordination: an open window is navigated and brought
+  // forward, otherwise a new one is opened. Only a path under /me is ever
+  // followed, whatever the payload said.
+  'self.addEventListener("notificationclick", function(e){',
+  '  e.notification.close();',
+  '  var url = (e.notification.data && e.notification.data.url) || "/me";',
+  '  e.waitUntil(self.clients.matchAll({type: "window", includeUncontrolled: true}).then(function(list){',
+  '    for (var i = 0; i < list.length; i++) {',
+  '      var c = list[i];',
+  '      if (new URL(c.url).pathname === "/me" && "focus" in c) {',
+  '        return c.focus().then(function(w){ return (w || c).navigate ? (w || c).navigate(url) : null; });',
+  '      }',
+  '    }',
+  '    return self.clients.openWindow(url);',
+  '  }));',
+  '});',
 ].join('\n');
 
 const COMMON = {

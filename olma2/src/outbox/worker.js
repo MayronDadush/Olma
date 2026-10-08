@@ -18,6 +18,7 @@ const { mergeRoleFor, planMerge, MERGEABLE_KINDS } = require('../domain/message-
 const { checkChannels } = require('../adapters/gateway-health');
 const gameSummary = require('../domain/game-summary');
 const { coveredBy } = require('../domain/turn');
+const pushDomain = require('../domain/push');
 
 // A delivery is a full model turn — 30-90s of wall time and most of the box's
 // one core. An unbounded tick over a backlog (observed live 2026-08-27: ~20
@@ -643,10 +644,40 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
             // this person is paused and this is the one message about it.
             : pausedRoomInvite ? { ...row, payload: { ...payloadOf(row), pausedNotice: true, ...zoneAsk } }
               : zoneAsk.askZone ? { ...row, payload: { ...payloadOf(row), ...zoneAsk } } : row;
-        const closedNews = channels.status === 'down' ? null : await closedNewsFor(client, row, mergedParts);
-        const result = channels.status === 'down'
-          ? { ok: false, error: `channel unavailable, no turn spent: ${channels.detail}` }
-          : await deliver(closedNews ? { ...sendRow, payload: { ...payloadOf(sendRow), closedNews } } : sendRow);
+        // Notifications to the installed app (domain/push.js, owner
+        // 2026-10-08): for somebody who turned them on there, a coordination
+        // row the page answers whole goes as a notification INSTEAD of a turn.
+        // Only a row going out alone and carrying nothing a turn adds (a
+        // merge, a batch, the paused notice, the zone question), and only
+        // after the gate said deliver, so WHEN is unchanged. A refusal from
+        // every push service falls through to WhatsApp in this same tick:
+        // nobody loses a message to an app they no longer open.
+        let pushed = null;
+        if (!mergedParts && ids.length === 1 && !pausedRoomInvite && !zoneAsk.askZone
+          && pushDomain.pushable(row, payloadOf(row))
+          && await pushDomain.enabledFor(client, row.user_phone)) {
+          pushed = await pushDomain.deliver(client, row, { now, send: deps.webPushSend });
+          if (!pushed.ok && pushed.error !== 'no live subscription') {
+            await audit.record(client, row.user_id, 'push.fell_back', {
+              outboxId: Number(row.id), kind: row.kind, gone: pushed.gone, failed: pushed.failed,
+              error: String(pushed.error || '').slice(0, 200),
+            });
+          }
+        }
+        // A notification carries no closed-coordination news: it is one fixed
+        // line, and recording that news as heard would be a lie.
+        const closedNews = (pushed && pushed.ok) || channels.status === 'down' ? null : await closedNewsFor(client, row, mergedParts);
+        const result = pushed && pushed.ok ? { ok: true }
+          : channels.status === 'down'
+            ? { ok: false, error: `channel unavailable, no turn spent: ${channels.detail}` }
+            : await deliver(closedNews ? { ...sendRow, payload: { ...payloadOf(sendRow), closedNews } } : sendRow);
+        if (pushed && pushed.ok) {
+          await client.query(
+            `UPDATE outbox SET payload = payload || '{"deliveredBy":"push"}'::jsonb WHERE id = $1`, [row.id]);
+          await audit.record(client, row.user_id, 'push.delivered', {
+            outboxId: Number(row.id), kind: row.kind, sent: pushed.sent, gone: pushed.gone,
+          });
+        }
         // Written onto the stored row only now, beside the stamp, so "they
         // heard it" is never recorded for a send that failed — the digest and
         // the next message both read it back through unheardClosedMeetings.

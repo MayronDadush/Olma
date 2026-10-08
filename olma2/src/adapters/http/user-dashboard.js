@@ -39,6 +39,7 @@ const experiments = require('../../domain/experiments');
 const events = require('../../domain/user-dashboard-events');
 const opens = require('../../domain/dashboard-opens');
 const write = require('../../domain/user-dashboard-write');
+const push = require('../../domain/push');
 const { refreshUserCard } = require('../../intake/user-card');
 
 // The short shape every link has had since 2026-09-15, or the 64-hex shape of
@@ -517,6 +518,13 @@ async function handle(req, res, pool, pathname) {
       if (loaded.ok) await experiments.expose(c, 'invite_card_moment', userId);
       return loaded;
     });
+    // The notifications switch (domain/push.js): absent unless the flag
+    // covers them, and never on a page the owner opened from the admin side,
+    // or his phone would be subscribed to somebody else's coordinations. Its
+    // own transaction, so a fault here costs the switch and never the page.
+    if (page.ok && page.data && !who.byAdmin) {
+      page.data.push = await withTx(pool, (c) => push.pageState(c, userId)).catch(() => null);
+    }
     return sendJson(res, page.ok ? 200 : 404, page);
   }
 
@@ -539,6 +547,15 @@ async function handle(req, res, pool, pathname) {
   }
   const payload = body.payload && typeof body.payload === 'object' && !Array.isArray(body.payload)
     ? body.payload : {};
+  // The app's three notification calls are not the person writing: they
+  // never pass through write.perform, which would stamp them as having
+  // answered and audit the payload (an endpoint is an address that can be
+  // written to). The same refusal as above for a page the owner opened.
+  if (Object.prototype.hasOwnProperty.call(push.ACTIONS, body.action)) {
+    if (who.byAdmin) return sendJson(res, 403, { ok: false, error: { code: 'forbidden', message: 'not on an admin view' } });
+    const r = await withTx(pool, (c) => push.ACTIONS[body.action](c, userId, payload));
+    return sendJson(res, r.ok ? 200 : r.error.code === 'forbidden' ? 403 : 400, r);
+  }
   const done = await withTx(pool, (c) => write.perform(c, userId, body.action, payload));
   // After the commit, never inside it (refreshUserCard is best-effort and
   // never throws), so the card the agent reads next turn says what this page
