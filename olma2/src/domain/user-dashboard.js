@@ -870,7 +870,11 @@ async function load(client, userId) {
     // No `contacts` here since 2026-10-08 — see contactsPage below.
     groups,
     tasks: tasks.open,
-    archived: tasks.archived,
+    // The archive draws a title and a "when" and nothing else (hydrate in
+    // docs/design/user-dashboard.html reads id, title and completedAt), so
+    // only those travel. The full rows — items, reminders, faces — were 63KB
+    // of the owner's every read on 2026-10-08, for a list that shows eight.
+    archived: tasks.archived.map((t) => ({ id: t.id, title: t.title, completedAt: t.completedAt })),
     // One concrete proposal about their own list, or null — and null is the
     // usual answer. The page renders nothing at all for null, which is the
     // owner's rule for this feature: no filler, no forced suggestion. Read
