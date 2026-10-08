@@ -155,6 +155,7 @@ never trust a dated narrative for something you are about to act on.
 - [The morning digest asked the same question four mornings running (fixed 2026-09-06)](#the-morning-digest-asked-the-same-question-four-mornings-running-fixed-2026-09-06)
 - [Four good mornings to a man who had stopped answering (fixed 2026-09-05)](#four-good-mornings-to-a-man-who-had-stopped-answering-fixed-2026-09-05)
 - [The check-in that answered for him (fixed 2026-10-05)](#the-check-in-that-answered-for-him-fixed-2026-10-05)
+- [The check-in that wrote to Sarah (fixed 2026-10-08)](#the-check-in-that-wrote-to-sarah-fixed-2026-10-08)
 - [The minute after a delivery belonged to nobody (fixed 2026-10-02)](#the-minute-after-a-delivery-belonged-to-nobody-fixed-2026-10-02)
 - [Vered's first evening: five tasks, three that would not have arrived (fixed 2026-09-06)](#vereds-first-evening-five-tasks-three-that-would-not-have-arrived-fixed-2026-09-06)
 - [The reminder that could not climb, because its first rung died on the wire (fixed 2026-09-05)](#the-reminder-that-could-not-climb-because-its-first-rung-died-on-the-wire-fixed-2026-09-05)
@@ -6874,6 +6875,24 @@ someone else added later. That yes could have been the last one a
 coordination needed. It now asks instead (`fits` on the proposal); the
 automatic NO stays, because it only repeats what they said and closes
 nothing.
+
+### The check-in that wrote to Sarah (fixed 2026-10-08)
+
+u-11, 2026-09-28 16:01 UTC (09:01 in Los Angeles), found by the weekly
+conversation review. A `stalled_goal` check-in told the model to ask its
+reader ONE question about a goal that had stalled. Instead it called
+`send_message_to_connection` and wrote to Sarah directly, in his name, with
+a day ("מחר (שלישי)") it had assumed. He had said nothing that turn: the
+words and the decision to send them were both Olma's.
+
+Same shape as "The check-in that answered for him", one door over. The
+self-initiated mark was there, and `WRITES_ANSWER` guarded the answers; but
+nothing guarded the two tools that pass a person's words to somebody else.
+`send_message_to_connection` and the private chat's `relay_to_group` now
+refuse with `not_their_turn` inside a turn Olma started, unless they wrote
+since the mark began. The guard moved to `src/adapters/mcp/our-turn.js` so both lists
+share one implementation. A test scans every tool slice, not only
+meetings.js, because the door that was missed lived in another file.
 
 ### The minute after a delivery belonged to nobody (fixed 2026-10-02)
 
