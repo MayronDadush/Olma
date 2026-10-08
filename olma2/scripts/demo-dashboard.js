@@ -91,6 +91,13 @@ async function main() {
   const req = await withTx(pool, (c) => connections.requestConnection(c, me.id, friend.phone));
   await withTx(pool, (c) => connections.respondToConnection(c, friend.id, req.data.connection.id, 'approve'));
   await withTx(pool, (c) => shares.offerShare(c, me.id, trip.id, friend.id));
+  // The apps on the home screen (domain/user-apps.js). Both by default;
+  // OLMA_DEMO_PACKS=food shows Maya's home screen, '' shows the invitation.
+  // No foodd or gamesd runs here, so a tap shows the page's "could not open".
+  const packs = (process.env.OLMA_DEMO_PACKS ?? 'food,games').split(',').filter(Boolean);
+  for (const pack of packs) {
+    await pool.query(`INSERT INTO user_packs (user_id, pack, via) VALUES ($1, $2, 'owner')`, [me.id, pack]);
+  }
 
   // The real app, behind one demo-only shim. /me/act refuses a write whose
   // Origin is not https://<host> (adapters/http/user-dashboard.js, sameOrigin),

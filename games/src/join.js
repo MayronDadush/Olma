@@ -154,11 +154,17 @@ async function joinByCode(pool, body = {}, { publicBase = '', onState } = {}) {
 // session never sees a night close; on 2026-10-03 Miron's had closed half an
 // hour earlier and she told him twice, from her own earlier words, that she
 // could not close it. Facts only: no names, no amounts, no link.
-async function nightsFor(pool, body = {}) {
+//
+// `links: true` adds each night's personal url (their seat), for the one
+// reader that is a person and not a model: the home screen of their own page
+// in olma2, whose games icon opens the night. turn.advise never asks for it.
+async function nightsFor(pool, body = {}, { publicBase = '' } = {}) {
   const userId = userIdOf(body.userId);
   if (!userId) return { ok: false, error: 'bad_user' };
+  const links = body.links === true;
   const { rows } = await pool.query(
-    `SELECT n.code, n.name, n.created_at, n.closed_at, n.cancelled_at,
+    `SELECT n.code, n.name, n.token, n.created_at, n.closed_at, n.cancelled_at,
+            (SELECT p.id FROM players p WHERE p.night_id = n.id AND p.user_id = $1 ORDER BY p.id LIMIT 1) AS my_pid,
             (SELECT coalesce(sum(b.n), 0)::float FROM buyins b WHERE b.night_id = n.id) AS buyins,
             (SELECT count(*)::int FROM players q WHERE q.night_id = n.id) AS players,
             (SELECT count(*)::int FROM cashouts c WHERE c.night_id = n.id) AS reported
@@ -173,6 +179,7 @@ async function nightsFor(pool, body = {}) {
       status: n.cancelled_at ? 'closed_without_settlement' : n.closed_at ? 'settled' : 'open',
       openedAt: n.created_at, ...(n.closed_at ? { closedAt: n.closed_at } : {}),
       buyins: Number(n.buyins), players: n.players, reported: n.reported,
+      ...(links ? { url: personalUrl(publicBase, n, n.my_pid) } : {}),
     })),
   };
 }

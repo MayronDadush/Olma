@@ -39,6 +39,7 @@ const experiments = require('../../domain/experiments');
 const events = require('../../domain/user-dashboard-events');
 const opens = require('../../domain/dashboard-opens');
 const write = require('../../domain/user-dashboard-write');
+const userApps = require('../../domain/user-apps');
 const push = require('../../domain/push');
 const { refreshUserCard } = require('../../intake/user-card');
 
@@ -519,6 +520,11 @@ async function handle(req, res, pool, pathname) {
       if (loaded.ok) await experiments.expose(c, 'invite_card_moment', userId);
       return loaded;
     });
+    // The games icon's badge, from gamesd, after the commit: a slow service
+    // costs the badge, never the page (domain/user-apps.js).
+    if (page.ok && page.data && Array.isArray(page.data.apps) && page.data.apps.length) {
+      page.data.apps = await userApps.badges(page.data.apps.map((a) => a.id), userId);
+    }
     // The notifications switch (domain/push.js): absent unless the flag
     // covers them, and never on a page the owner opened from the admin side,
     // or his phone would be subscribed to somebody else's coordinations. Its
@@ -548,6 +554,16 @@ async function handle(req, res, pool, pathname) {
   }
   const payload = body.payload && typeof body.payload === 'object' && !Array.isArray(body.payload)
     ? body.payload : {};
+  // A tap on an app's icon: the link to go to, asked of that app's service.
+  // Not a write and not in write.perform, because it waits on another
+  // service and a transaction should not (domain/user-apps.js).
+  if (body.action === 'openApp') {
+    const { rows: [u] } = await pool.query('SELECT id, first_name, timezone, locale FROM users WHERE id = $1', [userId]);
+    if (!u) return sendJson(res, 404, { ok: false, error: { code: 'not_found' } });
+    const out = await userApps.openUrl(pool, u, String(payload.app || ''));
+    const code = out.ok ? 200 : out.error.code === 'forbidden' ? 403 : out.error.code === 'invalid' ? 400 : 503;
+    return sendJson(res, code, out);
+  }
   // The app's three notification calls are not the person writing: they
   // never pass through write.perform, which would stamp them as having
   // answered and audit the payload (an endpoint is an address that can be
