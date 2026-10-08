@@ -176,6 +176,10 @@ function nextMorning(window, tz, now) {
 // Long enough to outlast a quiet day after that morning; past it, their
 // first turn carries the page instead (turn.advise).
 const ROOM_FOLLOWUP_TTL_MS = 3 * 24 * 3600_000;
+// The intro clip a few minutes after the owner's opening (owner, 2026-10-08:
+// "5 / 10 דקות אחרי ההודעה הראשונה שלהם"). Counted from provisioning, which
+// runs a minute or two after their first message.
+const JOINER_CLIP_DELAY_MS = 7 * 60_000;
 
 async function defaultReadGreeterReply(phone) {
   try {
@@ -428,6 +432,22 @@ async function sweepIntakeSessions(client, deps) {
         expiresAt, releaseAfter,
       });
       out.welcomed = (out.welcomed || 0) + 1;
+    }
+
+    // The intro clip, a few minutes after the owner's opening (owner,
+    // 2026-10-08), named by the `joiner_clip` flag ('' is off). Only after the
+    // FULL opening: a room or a game night's short opening says what she is
+    // the next morning, and that is `welcome_clip`'s door. Same row and the
+    // same key as the broadcast (domain/intro-video.js), so nobody gets the
+    // same clip twice. No expiry: a joiner at night gets it in their morning,
+    // which the gate decides. It takes the 15m step's place (jobs/checkin.js).
+    if (saidOwners) {
+      const clipId = introVideo.welcomeClipFor(await flags.getFlag(client, 'joiner_clip'));
+      if (clipId) {
+        await introVideo.enqueueOne(client, user.id, clipId,
+          { releaseAfter: new Date(Date.now() + JOINER_CLIP_DELAY_MS), joiner: true });
+        out.clipped = (out.clipped || 0) + 1;
+      }
     }
 
     if (invited) {

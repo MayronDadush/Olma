@@ -324,6 +324,34 @@ test('day one ladder enqueues one step at a time, each with its own expiry', asy
   assert.equal(again.rows[0].n, 1);
 });
 
+// Owner, 2026-10-08: the intro clip a few minutes after the opening takes the
+// 15m step's place ("הסרטון במקומה") — silently, never handed to the ladder —
+// and a clip the gate dropped leaves the step to go as before.
+test('day one: a joiner\'s intro clip takes the 15m step\'s place', async () => {
+  const mk = async (phone) => {
+    const u = await makeUser(db.pool, phone, { firstName: 'Clip' });
+    await db.pool.query(
+      `UPDATE users SET agent_id = 'u-' || id, onboarded_at = now() - interval '20 minutes' WHERE id = $1`, [u.id]);
+    return u;
+  };
+  const clipped = await mk('+972615077301');
+  await db.pool.query(
+    `INSERT INTO outbox (user_id, kind, payload, urgency, idempotency_key, sent_at)
+     VALUES ($1::bigint, 'intro_video', '{"video":"v2","joiner":true}', 'urgent', 'intro_video:v2:' || $1::text, now())`, [clipped.id]);
+  const dropped = await mk('+972615077302');
+  await db.pool.query(
+    `INSERT INTO outbox (user_id, kind, payload, urgency, idempotency_key, sent_at, hold_reason)
+     VALUES ($1::bigint, 'intro_video', '{"video":"v2"}', 'urgent', 'intro_video:v2:' || $1::text, now(), 'paused')`, [dropped.id]);
+
+  const out = await withTx(db.pool, (c) => checkin.run(c, Date.now()));
+  assert.equal(out.filter((r) => r.userId === clipped.id).length, 0, 'the clip was the 15m message');
+  const { rows } = await db.pool.query(
+    `SELECT count(*)::int n FROM outbox WHERE user_id = $1 AND kind = 'checkin'`, [clipped.id]);
+  assert.equal(rows[0].n, 0, 'and its slot was not handed to the ordinary ladder');
+  assert.deepEqual(out.filter((r) => r.userId === dropped.id).map((r) => r.rung), ['onboarding_15m'],
+    'a clip that never reached them leaves the step');
+});
+
 test('a stuck-meeting nudge carries the user\'s own recorded constraints', async () => {
   const meetings = require('../src/domain/meetings');
   const connections = require('../src/domain/connections');
@@ -1161,7 +1189,7 @@ test('day one: a step held past its moment is dropped, and the next waits for th
 test('day one stops at two unasked messages, and what they chose does not count', async () => {
   const flags = require('../src/domain/flags');
   const H = 3600_000;
-  const u = await makeUser(db.pool, '+972615000301', { firstName: 'Lior' });
+  const u = await makeUser(db.pool, '+972615009301', { firstName: 'Lior' });
   const t0 = Date.now() - 3 * H;
   await db.pool.query(
     `UPDATE users SET onboarded_at = $2, created_at = $2, timezone = 'Asia/Jerusalem',
@@ -1223,7 +1251,7 @@ test('the country question is not asked when the number already answered it', as
 // 63 and 64 heard the 2h step in the middle of the game).
 test('no day-one step goes out ahead of the welcome follow-up still owed', async () => {
   const H = 3600_000;
-  const u = await makeUser(db.pool, '+972615000302', { firstName: 'Omer' });
+  const u = await makeUser(db.pool, '+972615009302', { firstName: 'Omer' });
   const t0 = Date.now() - 3 * H;
   await db.pool.query(
     `UPDATE users SET onboarded_at = $2, created_at = $2, timezone = 'Asia/Jerusalem',
