@@ -4015,6 +4015,18 @@ button.srow:active{background:var(--bg-tint)}
               <button data-theme-opt="auto" aria-pressed="true"><svg><use href="#i-auto"/></svg><span data-i18n="me.themeAuto"></span></button>
             </div>
           </div>
+          <!-- Notifications in place of WhatsApp for coordination updates
+               (domain/push.js, owner 2026-10-08). Drawn only in the installed
+               app, and only when the server sent `push` — which it does only
+               for a number the flag covers. Hidden in markup, so the design
+               page and an ordinary browser tab never show it. -->
+          <div class="row no-icon" id="pushRow" hidden>
+            <div class="row-txt">
+              <div class="row-title" data-i18n="me.push"></div>
+              <div class="row-sub" data-i18n="me.pushSub"></div>
+            </div>
+            <button class="switch" role="switch" aria-checked="false" id="pushSwitch" data-i18n-label="me.push"></button>
+          </div>
         </div></div></div>
 
         <button class="srow prow" aria-expanded="false" aria-controls="pfTasks">
@@ -5812,7 +5824,7 @@ button.srow:active{background:var(--bg-tint)}
       "me.digestTimes":"באיזו שעה","me.digestScope":"כמה פירוט",
       "me.scope.summary":"תקציר","me.scope.today":"רק היום","me.scope.full":"הכול",
       "me.language":"השפה שלך בשיחה",
-      "me.taskCal":"משימות ליומן","me.taskCalSub":"משימות חדשות דרך עולמה שיש להן תאריך ושעה מתווספות ליומן אוטומטית",
+      "me.push":"התראות באפליקציה","me.pushSub":"עדכוני תיאום יגיעו כאן כהתראה, במקום בווטסאפ. אם האפליקציה לא תיפתח שבועיים, הם יחזרו לווטסאפ","me.pushDenied":"הטלפון לא אישר התראות. אפשר לאשר בהגדרות הטלפון","me.taskCal":"משימות ליומן","me.taskCalSub":"משימות חדשות דרך עולמה שיש להן תאריך ושעה מתווספות ליומן אוטומטית",
       
       "me.knows":"מה עולמה זוכרת","me.tasksRow":"משימות",
       "me.sum.quiet":"{days} בשקט","me.sum.cal.on":"ליומן","me.sum.cal.off":"לא ליומן",
@@ -6207,7 +6219,7 @@ button.srow:active{background:var(--bg-tint)}
       "me.digestTimes":"At what time","me.digestScope":"How much detail",
       "me.scope.summary":"Short","me.scope.today":"Today only","me.scope.full":"Everything",
       "me.language":"Your language together",
-      "me.taskCal":"Tasks on your calendar","me.taskCalSub":"New tasks Allma gives a date and time land on your calendar automatically",
+      "me.push":"Notifications in the app","me.pushSub":"Coordination updates arrive here as a notification instead of on WhatsApp. If the app is not opened for two weeks, they go back to WhatsApp","me.pushDenied":"The phone did not allow notifications. You can allow them in its settings","me.taskCal":"Tasks on your calendar","me.taskCalSub":"New tasks Allma gives a date and time land on your calendar automatically",
       
       "me.knows":"What Allma remembers","me.tasksRow":"Tasks",
       "me.sum.quiet":"quiet on {days}","me.sum.cal.on":"to your calendar","me.sum.cal.off":"not to your calendar",
@@ -7829,6 +7841,7 @@ button.srow:active{background:var(--bg-tint)}
         var pact = PERMACT[sw.dataset.p];
         if(pact) refreshPermAction(pact.attr, f.id, on);
       }
+      if(sw.id === "pushSwitch"){ pushToggle(on); return; }
       if(sw.id === "holidaySwitch" || sw.id === "digestSwitch" || sw.id === "taskCalSwitch"){ meSwitch(sw, on); return; }
       if(sw.id === "sRemind"){ $("#sRemindFold").classList.toggle("open", on); commit(); }
       if(sw.id === "sAllDay" || sw.id === "sCal") commit();
@@ -14993,12 +15006,111 @@ button.srow:active{background:var(--bg-tint)}
        on this page does can change it — so it is fetched once, at boot, and
        again only when the week on screen moves past what has been fetched. */
     if(first){ loadDays(); registerOffline(); }
+    pushSync(d.push || null, first);
     openFromHash();
   }
   /* The offline screen (adapters/http/pwa.js, /sw.js). Only once the page
      is LIVE, so the design page never registers one; in the person's own
      language, which the worker reads off its own address. It caches nothing
      — it only answers when opening the page fails outright. */
+  /* ── notifications (domain/push.js) ──
+     The server decides whether this person may have them (`d.push`, null
+     otherwise); the page decides whether this PHONE can: the installed app,
+     with push support. Three calls, none of them a write the person made, so
+     they go straight to /me/act and never through API.send — a refusal here
+     is not "not saved" and must not reload the page.
+     The endpoint is kept in this phone's storage only so that a permission
+     taken away in the phone's settings can be reported on the next open: the
+     subscription is gone by then and nothing else remembers its address. */
+  var PUSH = null, PUSH_KEY = "olma.pushEndpoint";
+  function pushStore(v){
+    try{ if(v) localStorage.setItem(PUSH_KEY, v); else localStorage.removeItem(PUSH_KEY); }catch(e){}
+  }
+  function pushStored(){ try{ return localStorage.getItem(PUSH_KEY) || ""; }catch(e){ return ""; } }
+  function pushCan(){
+    try{
+      return STANDALONE && "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+    }catch(e){ return false; }
+  }
+  function pushPost(action, payload){
+    return fetch("/me/act", {method:"POST", credentials:"same-origin",
+      headers:{"Content-Type":"application/json"}, body:JSON.stringify({action:action, payload:payload})})
+      .then(function(r){ return r.json(); }).catch(function(){ return null; });
+  }
+  function pushKeyBytes(s){
+    var b = atob(s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4));
+    var out = new Uint8Array(b.length);
+    for(var i = 0; i < b.length; i++) out[i] = b.charCodeAt(i);
+    return out;
+  }
+  function pushSet(on){
+    var sw = $("#pushSwitch");
+    if(sw) sw.setAttribute("aria-checked", on ? "true" : "false");
+  }
+  function pushSync(state, first){
+    PUSH = state;
+    var row = $("#pushRow");
+    if(!row) return;
+    if(!PUSH || !pushCan()){ row.hidden = true; return; }
+    row.hidden = false;
+    navigator.serviceWorker.ready.then(function(reg){ return reg.pushManager.getSubscription(); })
+      .then(function(sub){
+        var granted = Notification.permission === "granted";
+        if(sub && granted){
+          pushSet(true);
+          if(!first) return;
+          pushStore(sub.endpoint);
+          /* every open says the app is still here; one the server no longer
+             holds (a push service lost it, a reinstall) is handed over again */
+          pushPost("pushSeen", {endpoint:sub.endpoint}).then(function(b){
+            if(b && b.ok && b.data && !b.data.on) pushPost("pushSubscribe", {subscription:sub.toJSON()});
+          });
+          return;
+        }
+        pushSet(false);
+        var was = pushStored();
+        if(was && first){
+          pushPost("pushOff", {endpoint:was, reason:"permission"});
+          pushStore("");
+        }
+      })
+      .catch(function(){ pushSet(false); });
+  }
+  /* Called inside the tap itself: iOS asks for permission only from a gesture. */
+  function pushToggle(on){
+    if(!PUSH || !pushCan()){ pushSet(false); return; }
+    if(!on){
+      navigator.serviceWorker.ready.then(function(reg){ return reg.pushManager.getSubscription(); })
+        .then(function(sub){
+          var ep = (sub && sub.endpoint) || pushStored();
+          pushStore("");
+          return (ep ? pushPost("pushOff", {endpoint:ep}) : Promise.resolve(null))
+            .then(function(){ return sub ? sub.unsubscribe() : null; });
+        })
+        .then(function(){ toast(t("toast.off")); }, function(){ toast(t("toast.off")); });
+      return;
+    }
+    var asked;
+    try{ asked = Notification.requestPermission(); }catch(e){ asked = null; }
+    Promise.resolve(asked).then(function(perm){
+      perm = perm || Notification.permission;
+      if(perm !== "granted"){ pushSet(false); toast(t("me.pushDenied"), null, true); return; }
+      return navigator.serviceWorker.ready.then(function(reg){
+        return reg.pushManager.getSubscription().then(function(old){
+          return old || reg.pushManager.subscribe({userVisibleOnly:true, applicationServerKey:pushKeyBytes(PUSH.key)});
+        });
+      }).then(function(sub){
+        return pushPost("pushSubscribe", {subscription:sub.toJSON()}).then(function(b){
+          if(b && b.ok){ pushStore(sub.endpoint); toast(t("toast.on")); return; }
+          /* the server did not take it, so nothing may stay subscribed:
+             a message routed to a phone the server never heard of is lost */
+          pushSet(false);
+          sub.unsubscribe().catch(function(){});
+          toast(t("toast.notSaved"), null, true);
+        });
+      });
+    }).catch(function(){ pushSet(false); toast(t("toast.notSaved"), null, true); });
+  }
   function registerOffline(){
     try {
       if(navigator.serviceWorker) navigator.serviceWorker.register("/sw.js?hl=" + LOCALE, {scope:"/"})

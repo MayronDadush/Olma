@@ -166,6 +166,11 @@ const DEFAULTS = {
   // sent when nothing is open. Replies to their own messages are untouched.
   // '' = nobody, 'all', or a comma-separated E.164 list.
   daily_once_phones: '',
+  // Notifications to the installed app (domain/push.js, owner 2026-10-08):
+  // 'all', an E.164 list, or '' (off). Covers who is OFFERED the switch on
+  // their page and whose coordination rows may go as a notification instead
+  // of WhatsApp; off, nothing changes for anybody, subscribed or not.
+  push_delivery_phones: '',
   // domain/silence-pause.js (owner, 2026-10-07, Saar): somebody who has given
   // no sign of life for this many days is paused the way the ladder pauses —
   // nothing cancelled, their first message ends it — and Olma stops starting

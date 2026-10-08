@@ -184,6 +184,7 @@ Loads when you **Read** a file under `src/outbox/**`, `src/domain/message-format
 - **A `--deliver` that TIMES OUT has very likely gone out, and is never retried.**
 - **Anything else due in the same moment is ONE message too, and two rules say what may travel together**
 - **A meeting time reaches each reader in THEIR clock too, beside the proposer's words** — and the confirmed calendar step hands over the exact start, never "work it out from the words"
+- **A notification to the installed app REPLACES the WhatsApp message, never joins it** — flag `push_delivery_phones`, a subscription the app confirmed within 14 days, a kind the page answers whole (`push.templateFor`), and a push service that accepted; anything else, and any refusal, is WhatsApp in the same tick
 
 ### Turns, and what reaches the person
 
