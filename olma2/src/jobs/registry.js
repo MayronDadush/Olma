@@ -35,6 +35,7 @@ const taskSuggestions = require('../domain/task-suggestions');
 const memoryConsolidation = require('./memory-consolidation');
 const groupsJob = require('./groups');
 const groupOutbox = require('../domain/group-outbox');
+const savedLinksEnrich = require('./saved-links-enrich');
 // Resolved per job run, never destructured at module load: brokerd requires
 // this file while it is still starting, and a captured value pins whichever
 // path the environment held at that instant. A test process that spawns a real
@@ -326,6 +327,11 @@ const deployDrift = require('./deploy-drift');
       memoryConsolidation.sweepMemoryConsolidation(c, {})) },
     // Thinks over a direct model call (adapters/llm.js), not an agent turn —
     // no runAgent dep; the job's default is the real adapter.
+    // Saved links the save could not read in time, and their pictures
+    // (jobs/saved-links-enrich.js). Five minutes: a link saved unread shows
+    // its title on the page within one tick, and a tick with nothing due is
+    // two indexed queries and no fetch.
+    { name: 'saved_links_enrich', run: () => savedLinksEnrich.run(pool) },
     { name: 'fact_extraction', run: async () => {
       const out = await withTx(pool, (c) => factExtraction.sweepFactExtraction(c, {}));
       await refreshAfter(out.extracted || []);
