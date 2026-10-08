@@ -224,7 +224,8 @@ function movingAt(text, match) {
   return !NOUN_PREV_RE.test(text.slice(0, start)) && !NOUN_NEXT_RE.test(text.slice(match.index + whole.length));
 }
 
-function freshDayWords(text, moment, tz, now = new Date()) {
+// The one moving word, relabelled by `labelFor(day, claimed)`; null keeps it.
+function relabelDayWord(text, moment, tz, labelFor) {
   if (typeof text !== 'string' || !text) return text;
   const found = [...text.matchAll(MOVING_DAY_RE)].filter((m) => movingAt(text, m));
   if (found.length !== 1) return text;
@@ -237,13 +238,28 @@ function freshDayWords(text, moment, tz, now = new Date()) {
   if (part === 'בלילה' && day.hh < NIGHT_ENDS_HOUR) {
     day = partsInZone(tz, new Date(Date.UTC(day.y, day.m - 1, day.d - 1, 12)));
   }
-  const away = calendarDaysBetween(partsInZone(tz, new Date(now)), day);
-  if (away === claimed) return text;
-  const weekday = `(${DAYS_HE[weekdayOfParts(day)]})`;
-  const label = away === 0 ? `היום ${weekday}` : away === 1 ? `מחר ${weekday}` : dayOf(day);
+  const label = labelFor(day, claimed);
+  if (label === null) return text;
   const [whole, lead, prefix] = found[0];
   const said = `${lead}${prefix}${part ? `${label} ${part}` : label}`;
   return text.slice(0, found[0].index) + said + text.slice(found[0].index + whole.length);
+}
+
+function freshDayWords(text, moment, tz, now = new Date()) {
+  return relabelDayWord(text, moment, tz, (day, claimed) => {
+    const away = calendarDaysBetween(partsInZone(tz, new Date(now)), day);
+    if (away === claimed) return null;
+    const weekday = `(${DAYS_HE[weekdayOfParts(day)]})`;
+    return away === 0 ? `היום ${weekday}` : away === 1 ? `מחר ${weekday}` : dayOf(day);
+  });
+}
+
+// For words that are written down and read for ever after — a calendar
+// event's description — there is no "now" to be fresh against: "מחר בערב" on
+// the event is wrong from the next morning. The moving word becomes its date,
+// always, even while it is still true.
+function datedDayWords(text, moment, tz) {
+  return relabelDayWord(text, moment, tz, (day) => dayOf(day));
 }
 
 // Whether the people hearing a moment are on more than one clock right now —
@@ -362,5 +378,5 @@ function commonHours(zones, roomTz, { from = new Date(), days = 7 } = {}) {
 
 module.exports = {
   zoneLabel, localSlot, distinctZones, roomTimes, readerSlot, readerLabel, spansZones, citiesPhrase,
-  convertible, commonHours, validZone, freshDayWords, DAYS_HE, COMMON_WINDOW, COMMON_WIDE,
+  convertible, commonHours, validZone, freshDayWords, datedDayWords, DAYS_HE, COMMON_WINDOW, COMMON_WIDE,
 };

@@ -4476,6 +4476,14 @@ showed the words. A settled time with no option behind it, such as an exact
 hour set later, is judged on its own instant and the reader's clock. In the
 archive a past "מחר" becomes its date. The calendar event remains.
 
+**…and the calendar event closed it** (`calendar.createSharedMeetingEvent` →
+`meeting-time.datedDayWords`). The event's description is the settled words.
+Unlike every surface above, it is written once and read for as long as the
+event exists, so there is no "now" to be fresh against: "מחר בערב" on it is
+wrong from the next morning. The moving word therefore becomes its date
+always, even on the day it is still true. It is read on the clock of the
+option's author, else the host's.
+
 ### פנתרה: one time, four clocks (fixed 2026-09-25)
 
 Room 10, פנתרה, was coordinating a video call for everybody (meeting 46). Two
