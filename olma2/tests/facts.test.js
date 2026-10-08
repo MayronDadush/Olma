@@ -1474,10 +1474,10 @@ test('a plan with no end is given one, a profile answer and any other category a
   });
 });
 
-test('migration 118 applies the same verdict to rows written before the gate, and twice is a no-op', async () => {
+test('migration 119 applies the same verdict to rows written before the gate, and twice is a no-op', async () => {
   const u = await makeUser(db.pool, '+972590019403', { firstName: 'X' });
   const sql = require('node:fs').readFileSync(
-    require('node:path').join(__dirname, '..', 'migrations', '118-facts-write-gate-backfill.sql'), 'utf8');
+    require('node:path').join(__dirname, '..', 'migrations', '119-facts-write-gate-backfill.sql'), 'utf8');
   await withClient(async (c) => {
     const ins = async (category, fact, promptKey = null) => (await c.query(
       `INSERT INTO user_facts (user_id, category, fact, prompt_key, learned_at)

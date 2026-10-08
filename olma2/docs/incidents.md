@@ -9405,7 +9405,7 @@ plans had no end ("טסה לקפריסין" past the trip).
 Fixed in the door, not in a pass: the owner said no nightly job — he wants it
 right from the start. `rememberFact` refuses the three shapes (each matched the
 live corpus exactly and nothing else) and defaults a plan's `expires_at` to 45
-days, after the `needs_expiry` check. Migration 118 applied the same verdict
+days, after the `needs_expiry` check. Migration 119 applied the same verdict
 once to the existing rows (soft: `active = false`, an expiry on the plans).
 
 Measured and NOT done: `task-similarity.compare` across every pair of one

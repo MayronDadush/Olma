@@ -395,5 +395,7 @@ test('the plugin registers before_dispatch beside its other hooks', async () => 
     pluginConfig: {},
     on: (name) => hooks.push(name),
   });
-  assert.deepEqual(hooks, ['before_prompt_build', 'llm_input', 'before_dispatch', 'before_dispatch', 'before_dispatch', 'llm_output', 'reply_payload_sending', 'agent_end']);
+  // Four claiming handlers on before_dispatch: the room write, the arrival
+  // count, the page-link shortcut and the saved-link shortcut.
+  assert.deepEqual(hooks, ['before_prompt_build', 'llm_input', 'before_dispatch', 'before_dispatch', 'before_dispatch', 'before_dispatch', 'llm_output', 'reply_payload_sending', 'agent_end']);
 });
