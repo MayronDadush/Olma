@@ -263,6 +263,7 @@ never trust a dated narrative for something you are about to act on.
 - [Two times for one game (fixed 2026-10-05)](#two-times-for-one-game-fixed-2026-10-05)
 - [Two coordinations for one meeting (fixed 2026-09-30)](#two-coordinations-for-one-meeting-fixed-2026-09-30)
 - [Two invites for one poker night (fixed 2026-10-05)](#two-invites-for-one-poker-night-fixed-2026-10-05)
+- [The group's coordination, asked for in private (2026-10-08)](#the-groups-coordination-asked-for-in-private-2026-10-08)
 - [The coordination that expired on the wrong Tuesday (fixed 2026-09-23)](#the-coordination-that-expired-on-the-wrong-tuesday-fixed-2026-09-23)
 - [The list he could not put his own task into (2026-09-19)](#the-list-he-could-not-put-his-own-task-into-2026-09-19)
 - [An offer to call a number the bridge has never served (fixed 2026-09-06)](#an-offer-to-call-a-number-the-bridge-has-never-served-fixed-2026-09-06)
@@ -11014,6 +11015,50 @@ the same pair from both sides in one `Promise.all` opened two coordinations in
 The approver's hint was left alone. It is not wrong, since עידן had just said
 when he could, and with this check whichever agent comes second is sent to the
 first one.
+
+### The group's coordination, asked for in private (2026-10-08)
+
+The owner asked for the poker room's board to be readable in the room — who
+can and who cannot — and then drew the line himself: **a private coordination
+is never the room's business, even between people who are all in it.** The
+room's board covers exactly two cases besides one the room asked for: a private
+request "for this group", and a private coordination with EVERYBODY in a room.
+Both become that room's coordination.
+
+Until then the private door had no way to say either. `start_meeting_coordination`
+took phones, demanded a connection to each, and wrote `group_id` NULL, so
+"תתאמי לנו פוקר לקבוצה" from somebody's own chat produced a private
+coordination the room could never see. Members of a room are often not each
+other's connections, so it usually failed outright.
+
+**What changed.** `start_meeting_coordination` takes `group_id` (a room from
+`list_my_meetings`), and with phones alone it asks
+`group-meetings.roomsCoveredBy`: the open rooms of theirs whose whole
+membership those phones are. One match opens it there, two is a
+`which_group` question, and none is the private path as before. Either way it
+goes through `group-meetings.startFromPrivate` → `startCoordination`, so the
+room's coordination is the same object whichever door opened it: the started
+line, the board, the cold invite, `admitLateMembers`, the room's tools.
+
+**"Everybody" is whoever she can name in a private chat** (`coversRoom`):
+every member who has written to her, the asker aside, and nobody who is not in
+the room. A member who never wrote is not required, because the owner said
+they are part of it anyway — the room's machinery reaches them, and in time
+they will see it through the room. A member who paused her themselves is not
+required either, as the room leaves them out.
+
+Two things it does NOT do, on purpose:
+
+- **The asker is not sent their own invite.** A room tag carries no times,
+  which is why `askedItYourself` exists; a private request is the
+  person-to-person case, where they are in the conversation already.
+- **The room's once-ever kind question is not spent.** It is asked in the
+  room's reply to the tag, and a private turn has none, so the stamp would have
+  burnt it unasked.
+
+Not done: an already-open private coordination that happens to cover a room is
+not converted retroactively, and the page's own start button still opens a
+private one.
 
 ### Two invites for one poker night (fixed 2026-10-05)
 
