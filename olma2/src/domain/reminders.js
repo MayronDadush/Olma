@@ -1030,7 +1030,7 @@ async function dueForSending(client, now, opts = {}) {
             r.repeat_until, r.repeat_seq,
             -- a nudge's messages for the day, and whether its end is the cap
             -- rather than a deadline (migration 108)
-            r.rungs, r.nudge_capped,
+            r.rungs, r.nudge_capped, r.nudge,
             -- who it reaches — the person who set it, and only for rows older
             -- than migration 073 the task's owner
             ${RECIPIENT} AS user_id, t.title, t.due_at, u.timezone, u.digest_times, u.locale,
@@ -1110,6 +1110,29 @@ async function dueForSending(client, now, opts = {}) {
     [now, maxAttempts, gapHours, autoRungs, explicitRungs, nudgingRungs, nudgeGapHours]
   );
   return ok({ due: rows });
+}
+
+// A follow-up rung chases an action; a digest that has just LISTED the task
+// has already said it. Yahav (2026-10-06): the 10:00 digest named "לבטל את
+// האשראי" and the automatic rung 2 landed a minute behind it, saying it again.
+// Only an AUTOMATIC one-off ladder is covered — a nudge and an explicit
+// reminder are things they asked to be chased about — and only by a digest that
+// really reached them after the previous rung (`hold_reason` NULL). Since
+// 2026-10-06 every scheduled digest carries every open task (`digest.assemble`,
+// `sweeps.scopeForDigest`), so reaching them is naming it; `block_view` is the
+// one scope that is counts only, and no digest row carries it. Past 25 items
+// the card is a summary of the most pressing — a task whose reminder already
+// fired today is among them.
+async function coveredByDigest(client, { userId, since, now }) {
+  const { rows } = await client.query(
+    `SELECT 1 FROM outbox
+      WHERE user_id = $1 AND kind = 'digest' AND hold_reason IS NULL
+        AND sent_at > $2::timestamptz AND sent_at <= $3::timestamptz
+        AND COALESCE(payload->>'scope', '') <> 'block_view'
+      LIMIT 1`,
+    [userId, since, now]
+  );
+  return rows.length > 0;
 }
 
 // The idempotency key for a rung. Rung 1 deliberately keeps the ORIGINAL
@@ -1377,7 +1400,7 @@ async function markCarried(client, reminderId, outboxId, now = new Date()) {
 
 module.exports = {
   setReminder, attachAutoReminder, retireSiblingLadders, cancelReminder, listReminders, dueForSending, markSent,
-  retireForMovedTask, stopRecentLadders, STOP_WINDOW_HOURS, momentIsPast, PAST_GRACE_MS,
+  coveredByDigest, retireForMovedTask, stopRecentLadders, STOP_WINDOW_HOURS, momentIsPast, PAST_GRACE_MS,
   normalizeRepeatRule, nextOccurrence, resolveMonthlyAnchor, movesOffQuietDay,
   isChase, chaseHour, firstChaseMoment, chaseUntil, chaseReanchor, startChase, startWeeklyNudge, WEEKLY_NUDGE_WEEKS,
   firstNudgeMoment, nextNudgeMoment, describeNudge, lastRungToday, localDaysBetween, NUDGE_DAYS, NUDGE_PER_DAY, NUDGE_GAP_HOURS,

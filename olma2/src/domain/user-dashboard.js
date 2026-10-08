@@ -457,6 +457,21 @@ async function loadContacts(client, userId) {
   }));
 }
 
+// The address book on its own, for the one sheet that shows it.
+//
+// It used to ride every `load`, and for somebody with Google contacts
+// connected it was most of the payload: 2,848 rows and 217KB of the owner's
+// 318KB, measured on the box on 2026-10-08 — re-sent on every open, every
+// re-read after a write, the once-a-minute "anything new" check and the
+// eight-second poll under an open coordination sheet. Everybody else's page
+// was 9-34KB. The page now asks for it when "add a friend" opens, which is
+// also the moment the already-connected filter above is worth re-running.
+async function contactsPage(client, userId) {
+  const user = await loadUser(client, userId);
+  if (!user) return err('not_found', 'no such user');
+  return ok({ contacts: await loadContacts(client, userId) });
+}
+
 // Where Olma can actually reach this person. One WhatsApp row each today, and
 // the schema has always allowed a second identity to join the same user — so
 // this is a LIST, and the page draws its choices from it rather than from a
@@ -490,6 +505,20 @@ async function slotReaderLabel(client, meetingId, slot, startsAt, zone, locale) 
   if (!at) return null;
   return meetingTime.readerLabel(
     { startsAt: at, allDay: mo.allDay, daypart: mo.daypart, slot }, zone, mo.authorTz, locale);
+}
+
+// The proposer's words with a moving day in them ("מחר", "היום בערב") said as
+// the day it is NOW — "מחר (שלישי)" read on the Tuesday is the wrong day
+// (`incidents.md`, "Tomorrow, said on the day itself"). Judged on the
+// AUTHOR's clock, since it was their "tomorrow"; a settled time with no option
+// behind it (an exact hour set later) falls back to its own instant and the
+// reader's clock. The stored words are never rewritten.
+async function freshSlotWords(client, meetingId, slot, startsAt, zone) {
+  if (!slot) return slot;
+  const { slotMoment } = require('./meeting-fanout');
+  const mo = await slotMoment(client, meetingId, slot);
+  const at = mo.startsAtUtc || (startsAt ? new Date(startsAt).toISOString() : null);
+  return meetingTime.freshDayWords(slot, { startsAt: at }, mo.authorTz || zone);
 }
 
 // Meetings still being negotiated, with each participant's answer state. What
@@ -630,6 +659,8 @@ async function loadMeetings(client, userId, zone, locale) {
   const locals = new Map();
   for (const m of meetings) {
     locals.set(m.id, {
+      words: await freshSlotWords(client, m.id, m.proposed_slot, m.proposed_start_at, zone),
+      confirmedWords: await freshSlotWords(client, m.id, m.confirmed_slot, m.confirmed_start_at, zone),
       slot: await localOf(m.id, m.proposed_slot),
       confirmed: await localOf(m.id, m.confirmed_slot),
       slotReader: await slotReaderLabel(client, m.id, m.proposed_slot, m.proposed_start_at, zone, locale),
@@ -644,11 +675,11 @@ async function loadMeetings(client, userId, zone, locale) {
     // first participant in the list would eventually name the wrong person.
     initiatorId: Number(m.initiator_id),
     status: m.status,
-    slot: m.proposed_slot,
+    slot: locals.get(m.id).words,
     proposedStartAt: m.proposed_start_at,
     proposedTime: m.proposed_time,
     proposedDay: m.proposed_day === null ? null : Number(m.proposed_day),
-    confirmedSlot: m.confirmed_slot,
+    confirmedSlot: locals.get(m.id).confirmedWords,
     slotLocal: locals.get(m.id).slot,
     confirmedLocal: locals.get(m.id).confirmed,
     // The same two moments in the words of an ENGLISH page (null for Hebrew,
@@ -741,8 +772,9 @@ async function loadLeftMeetings(client, userId, zone, locale) {
   for (const m of done) {
     // Only when there is one — a Hebrew page's row is exactly what it was.
     const slotReader = await slotReaderLabel(client, m.id, m.confirmed_slot, m.confirmed_start_at, zone, locale);
+    const words = await freshSlotWords(client, m.id, m.confirmed_slot, m.confirmed_start_at, zone);
     out.push({
-      id: Number(m.id), title: m.title, youLeft: false, settled: true, slot: m.confirmed_slot || '',
+      id: Number(m.id), title: m.title, youLeft: false, settled: true, slot: words || '',
       ...(slotReader ? { slotReader } : {}),
     });
   }
@@ -807,7 +839,6 @@ async function load(client, userId) {
   const callAllowed = await voice.pageCallAllowed(client, gateUser);
   const callAttempts = callAllowed ? await voice.attemptsRemaining(client, gateUser.id) : null;
   const channels = await loadChannels(client, userId);
-  const contacts = await loadContacts(client, userId);
   const groups = await loadGroups(client, userId);
   const meetings = await loadMeetings(client, userId, zone, user.locale);
   const liveSuggestions = await suggestions.liveFor(client, userId);
@@ -854,10 +885,14 @@ async function load(client, userId) {
     facts: knownFacts,
     factPrompts: prompts,
     channels,
-    contacts,
+    // No `contacts` here since 2026-10-08 — see contactsPage below.
     groups,
     tasks: tasks.open,
-    archived: tasks.archived,
+    // The archive draws a title and a "when" and nothing else (hydrate in
+    // docs/design/user-dashboard.html reads id, title and completedAt), so
+    // only those travel. The full rows — items, reminders, faces — were 63KB
+    // of the owner's every read on 2026-10-08, for a list that shows eight.
+    archived: tasks.archived.map((t) => ({ id: t.id, title: t.title, completedAt: t.completedAt })),
     // One concrete proposal about their own list, or null — and null is the
     // usual answer. The page renders nothing at all for null, which is the
     // owner's rule for this feature: no filler, no forced suggestion. Read
@@ -920,4 +955,4 @@ async function inviteCard(client, user) {
   return invite;
 }
 
-module.exports = { load, SOURCE_CAPS, KNOWN_CATEGORIES, goodMoment, MOMENT_HOURS };
+module.exports = { load, contactsPage, SOURCE_CAPS, KNOWN_CATEGORIES, goodMoment, MOMENT_HOURS };

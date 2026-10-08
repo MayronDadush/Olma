@@ -51,5 +51,5 @@ test('the order is the arming order the daemon had: outbox first, drift last', (
   const names = jobs({ pool: inertPool }).map((j) => j.name);
   assert.equal(names[0], 'outbox_worker');
   assert.equal(names[names.length - 1], 'deploy_drift');
-  assert.equal(names.length, 36); // +task_suggestions 2026-09-19, +twin_shadow 2026-09-25, +self_delete 2026-09-28, +growth_report 2026-09-30, +brand_ads 2026-10-02
+  assert.equal(names.length, 37); // +task_suggestions 2026-09-19, +twin_shadow 2026-09-25, +self_delete 2026-09-28, +growth_report 2026-09-30, +brand_ads 2026-10-02, +stranger_greet 2026-10-07
 });

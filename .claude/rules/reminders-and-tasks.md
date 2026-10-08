@@ -86,6 +86,16 @@ title means this file. Grep the title, not the filename.
   draws; one or two together are still followed up. Stamped only on a sent
   or timed-out send, never on a failure.
 
+- **…and a follow-up rung is not sent behind a digest that already LISTED the
+  task.** Yahav (2026-10-06): the 10:00 digest named "לבטל את האשראי" and the
+  automatic rung 2 went out 59 seconds later. `sweepReminders` retires the
+  ladder instead (`reminders.coveredByDigest`, audit
+  `reminder.covered_by_digest`) when a digest that REACHED them
+  (`hold_reason` NULL) after rung 1 — every scheduled digest carries every open
+  task since 2026-10-06, so reaching them is naming it. Only an
+  automatic one-off ladder: a nudge, an explicit reminder and a repeat keep
+  theirs.
+
 - **"להפסיק להזכיר" is a WRITE, not a question.** מאיה asked twice over — once
   for one reminder at 09:00, and once for it to stop — and got six messages and
   a multiple-choice question ("מה להפסיק? 1. … 2. … 3. …") with nothing
@@ -234,8 +244,14 @@ title means this file. Grep the title, not the filename.
       moves across (`meeting-options.merge`). Whoever answered is told, not
       asked again (`meeting_answer_moved`).
     - `merge_with=0`: a separate time with new answers.
+  - A decline's COUNTER is a new time too, and asks the same question
+    (`respond_to_meeting_slot` `merge_with`, 2026-10-07) before the decline is
+    written. Merged, the no lands on the time they declined, resolved before
+    the merge — after it, a bare decline would fall on the counter itself
+    (`meetings.declineAndMerge`).
   - Never chosen for them. In a room, `similar` carries the times only, never
-    whose answer is whose. The page does not ask.
+    whose answer is whose. The page does not ask (the owner's call, confirmed
+    2026-10-07).
   - `incidents.md`, "Two times for one game".
 
 - **A constraint that rules out a time ON the table is an ANSWER, and the tool
@@ -578,6 +594,19 @@ title means this file. Grep the title, not the filename.
   The "list inside one task" tier is NOT here: four of the six pairs marked
   that way share one word out of eight, so it belongs to a grouping pass over
   a whole open list, never to a check at the moment of writing.
+
+- **A day said with no hour is the DAY, and 09:00 is the hour the model
+  invents for it** (2026-10-08; `incidents.md`, "Nine o'clock, which nobody
+  said"). The gateway hook's `namesNoHour` reads whether the message named any
+  hour and sends a boolean (`noHour`); brokerd stamps it on the open and does
+  not spend it (one message, many tasks), fifteen minutes like `remindAsk`.
+  On that turn `add_task` and `add_tasks_bulk` move a due moment at exactly
+  09:00:00 in THEIR zone to local midnight (`invented-hour.asDay`) and add
+  `hints.dayOnly`. **Only 09:00**: 18 of 57 other-hour tasks were saved from
+  messages with no hour, because the hour came from the conversation ("כן" to
+  "ל־10?"). Never a range (`ends_at`), never under a heard chase. The reminder
+  is unchanged — a day is reminded at 08:00, as 09:00 was. Inert until the
+  gateway restarts.
 
 - **A model asked to date something must first be told what time it is.** Every
   one of the 27 `extracted` tasks on the box had a NULL `due_at` and three

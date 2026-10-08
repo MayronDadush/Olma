@@ -1,10 +1,11 @@
 'use strict';
 // The welcome follow-up (owner, 2026-09-25): seconds after the greeter
-// introduces her, a new person's OWN agent acts on what they wrote there and
-// hands over their page. jobs/intake.js queues it (tests/intake.test.js holds
-// that half); this file holds the rest — what the gate lets through and when,
-// what the model is told, that it answers their words exactly once, and that
-// every other road into a first turn still carries the page.
+// introduces her, a new person's OWN agent acts on what they wrote there.
+// Since 2026-10-08 nothing at the start hands over their page (owner: many
+// people use Olma in WhatsApp only). jobs/intake.js queues it
+// (tests/intake.test.js holds that half); this file holds the rest — what the
+// gate lets through and when, what the model is told, that it answers their
+// words exactly once, and that no road into a first turn carries the page.
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const { freshDb, makeUser } = require('./helpers');
@@ -53,15 +54,17 @@ test('if they wrote to their own agent first, that turn answered — the follow-
 });
 
 // ---- what the model is told ------------------------------------------------
-test('the instruction points at their words, never carries them, and hands over the link\'s characters', () => {
+test('the instruction points at their words, never carries them, hands over no page, and may be silent', () => {
   const row = { kind: 'welcome_followup', payload: { hasNote: true, greeterReply: 'היי, אני עולמה 👋' } };
-  assert.equal(offersDashboardLink(row), true, 'the worker mints a page for it at delivery');
+  assert.equal(offersDashboardLink(row), false, 'no page is minted for it');
   const url = 'https://allma.world/d/AbCdEfGhIjKlMnOpQrStUv';
   const text = instructionFor(row, url);
   assert.match(text, /Do not introduce yourself/);
   assert.match(text, /מה שכבר שיתפו לפני שהמערכת האישית הייתה מוכנה/, 'the USER.md section, by name');
   assert.match(text, /<<<היי, אני עולמה 👋>>>/, 'what the greeter said, fenced, so it is not said twice');
-  assert.ok(text.includes(url), 'the characters themselves');
+  assert.ok(!text.includes(url), 'even a url handed in is not passed on');
+  assert.doesNotMatch(text, /personal page/);
+  assert.match(text, /your whole answer is exactly NO_REPLY/, 'a hello leaves nothing to say, and nothing is said');
   assert.match(text, /language they wrote in/);
 
   const bare = instructionFor({ kind: 'welcome_followup', payload: { hasNote: false } }, null);
@@ -113,27 +116,19 @@ async function adviseFirstTurn(u) {
   });
 }
 
-test('a first turn with no follow-up behind it carries the page, handed over as characters', async () => {
+test('a first turn carries no page, with or without a follow-up behind it', async () => {
   const u = await newPerson('+972501880002');
   const out = await adviseFirstTurn(u);
-  assert.match(out.onboarding.pageLink, /\/d\/[A-Za-z0-9]{22}$/);
-  assert.ok(out.onboarding.instruction.includes(out.onboarding.pageLink));
-});
-
-test('…and one that the follow-up already reached does not hand it over twice', async () => {
-  const u = await newPerson('+972501880003');
-  await db.pool.query(
-    `INSERT INTO outbox (user_id, kind, payload, sent_at) VALUES ($1, 'welcome_followup', '{}', now())`, [u.id]);
-  const out = await adviseFirstTurn(u);
   assert.equal(out.onboarding.pageLink, undefined);
-  assert.doesNotMatch(out.onboarding.instruction, /\/d\//);
+  assert.doesNotMatch(out.onboarding.instruction, /\/d\/|\/me\/|personal page/);
 
-  // A follow-up the gate DROPPED delivered nothing, so it does not count.
-  const v = await newPerson('+972501880004');
+  const v = await newPerson('+972501880003');
   await db.pool.query(
     `INSERT INTO outbox (user_id, kind, payload, sent_at, hold_reason)
      VALUES ($1, 'welcome_followup', '{}', now(), 'answered_in_turn')`, [v.id]);
-  assert.ok((await adviseFirstTurn(v)).onboarding.pageLink);
+  const dropped = await adviseFirstTurn(v);
+  assert.equal(dropped.onboarding.pageLink, undefined);
+  assert.doesNotMatch(dropped.onboarding.instruction, /\/d\/|\/me\/|personal page/);
 });
 
 // ---- after a room's short opening (owner, 2026-09-29) ------------------------
@@ -149,7 +144,7 @@ test('a first turn after the room\'s short opening says what Olma does, once, af
   const out = await adviseFirstTurn(u);
   assert.equal(out.onboarding.alreadyOpened, true);
   assert.match(out.onboarding.instruction, /After answering what they wrote, add ONE short line/);
-  assert.ok(out.onboarding.pageLink, 'the follow-up has not gone out, so the page comes with this turn');
+  assert.equal(out.onboarding.pageLink, undefined, 'no page at the start, through any door');
   // …and the follow-up that was waiting for the morning is then dropped.
   const v = decide({ ...facts, lastInboundAt: new Date().toISOString(),
     row: { kind: 'welcome_followup', urgency: 'normal', expires_at: null, payload: { roomOpening: true } } });
@@ -166,7 +161,7 @@ test('the morning follow-up after a short opening introduces her, and does not p
   assert.match(text, /tasks, reminders, and coordinating/);
   assert.match(text, /do not mention the coordination/);
   assert.doesNotMatch(text, /a moment ago/);
-  assert.ok(text.includes(url));
+  assert.ok(!text.includes(url));
 });
 
 // ---- after a game night's code (stage 4ב, owner 2026-10-01) -----------------
@@ -193,24 +188,21 @@ test('the morning after the game, the follow-up says what she does and leaves th
   const text = instructionFor({ kind: 'welcome_followup', payload: { hasNote: false, gameOpening: true } }, url);
   assert.match(text, /tasks, reminders, and coordinating/);
   assert.match(text, /do not mention the game night/);
-  assert.ok(text.includes(url));
+  assert.ok(!text.includes(url));
 });
 
-test('the morning welcome as a clip: the flag names it, the line is fixed, and no page means no line', () => {
+test('the morning welcome as a clip: the flag names it, and the line is fixed and carries no page', () => {
   const introVideo = require('../src/domain/intro-video');
   assert.equal(introVideo.welcomeClipFor('v2'), 'v2');
   assert.equal(introVideo.welcomeClipFor(''), null, 'off: the text, as before');
   assert.equal(introVideo.welcomeClipFor('v9'), null, 'a clip we do not ship is no clip');
   assert.equal(introVideo.welcomeClipFor(true), null);
-  const url = 'https://allma.world/me/abc';
-  const he = introVideo.welcomeCaption('he-IL', url);
-  assert.equal(he, `${introVideo.WELCOME_CAPTION.he}\n${url}`);
-  assert.ok(he.endsWith(`\n${url}`), 'the url on a line of its own, bare');
-  assert.ok(introVideo.welcomeCaption('en', url).startsWith('This is Olma'));
-  assert.equal(introVideo.welcomeCaption('he', null), null);
+  assert.equal(introVideo.welcomeCaption('he-IL'), introVideo.WELCOME_CAPTION.he);
+  assert.doesNotMatch(introVideo.welcomeCaption('he-IL'), /https?:/);
+  assert.ok(introVideo.welcomeCaption('en').startsWith('This is Olma'));
 });
 
-test('a turn after the welcome clip knows it was sent, and that the page went with it', async () => {
+test('a turn after the welcome clip knows it was sent, and that a line went with it', async () => {
   const u = await makeUser(db.pool, '+972641000401');
   const { rows: [r] } = await db.pool.query(
     `INSERT INTO outbox (user_id, kind, payload, urgency, sent_at)
@@ -219,7 +211,8 @@ test('a turn after the welcome clip knows it was sent, and that the page went wi
   assert.ok(r.id);
   const out = await adviseFirstTurn(u);
   assert.ok(out.introVideo, JSON.stringify(Object.keys(out)));
-  assert.match(out.introVideo.what, /personal page/);
+  assert.match(out.introVideo.what, /one short line/);
+  assert.doesNotMatch(out.introVideo.what, /personal page/);
   // The composed welcome is not a clip, and says nothing of the kind.
   const v = await makeUser(db.pool, '+972641000402');
   await db.pool.query(

@@ -166,6 +166,14 @@ test('the page lets the browser read its manifest and its icon', async () => {
   assert.equal((html.match(/<meta name="theme-color"/g) || []).length, 2, 'one per scheme');
 });
 
+test('the sign-in screen and the offline screen name the icon too, or Chrome draws a letter', async () => {
+  const signedOut = await (await get('/me')).text();
+  assert.match(signedOut, /<link rel="manifest" href="\/manifest\.webmanifest">/);
+  assert.match(signedOut, /<link rel="apple-touch-icon" href="\/icons\/apple-touch-icon\.png">/);
+  const offline = pwa.offlineHtml('he');
+  assert.ok(offline.includes(pwa.HEAD_TAGS));
+});
+
 // ---- the code ---------------------------------------------------------------
 test('a code opens a session once, on the front page', async () => {
   const code = await codeFor(me);

@@ -667,3 +667,32 @@ title means this file. Grep the title, not the filename.
   New people start on `digest_scope` `full` (migration 113), and
   `set_digest_preferences` tells the model to leave `scope` out: a model that
   filled it in wrote `summary` over a `full` the owner had just set (u-30).
+
+- **A notification to the installed app REPLACES the WhatsApp message, never
+  joins it, and only when five things hold** (owner, 2026-10-08;
+  `domain/push.js`, `outbox/worker.js`, migration 117). Most people have no
+  app, so the one failure this must never have is a message taken from
+  somebody who will not see it (owner: "שלא בטעות אנשים לא יקבלו התראות על
+  דברים"). A `meeting_*` row goes as a notification only when: the
+  `push_delivery_phones` flag covers them (off by default); they turned it on
+  themselves, from the installed app; the app confirmed that subscription
+  within `push.LIVE_DAYS` (14) — `last_seen_at` is stamped by an app OPEN,
+  never by a send, because a push service accepting proves only that the
+  address exists; the kind is one the page answers whole (`push.templateFor`);
+  and a push service accepted it. **Any refusal is a WhatsApp send in the same
+  tick**, a 404/410 retires the subscription, and the gate still decides WHEN —
+  only HOW changes. `templateFor` keeps on WhatsApp everything the turn DOES or
+  SAYS that a fixed line cannot: a confirmation that makes or offers a
+  calendar event (only an `invitee` is pushed), a cancellation offering
+  cleanup, a reopening, the exact-hour question, a time that fits what they
+  said, a reason, a time taken off the table, the paused notice and the zone
+  question — and a merge or a batch. When unsure, the answer is WhatsApp. The
+  words are templates (`push_meeting_*`, both languages), the slot keeps the
+  proposer's words with `freshDayWords` and the reader's own clock beside it.
+  **The app's three calls (`pushSubscribe`/`pushSeen`/`pushOff`) never go
+  through `user-dashboard-write.perform`** — that stamps a page write as the
+  person answering and audits its payload, and an endpoint is an address that
+  can be written to. A page the owner opened from the admin side is offered no
+  switch and refused all three, or his phone would carry somebody else's
+  coordinations. The endpoint is checked against a closed list of push
+  services before the server ever POSTs to it.

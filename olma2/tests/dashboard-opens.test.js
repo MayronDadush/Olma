@@ -166,3 +166,73 @@ test('partOf: morning before noon, evening from five, and the gap is its own wor
   assert.equal(digestStats.partOf('17:00'), 'evening');
   assert.equal(digestStats.partOf(''), null);
 });
+
+// ---- where an open came from (migration 116) ------------------------------
+
+test('an open says whether it came from the app, a link, or a bare browser', async () => {
+  const u = await makeUser(db.pool, '+972531960031', { firstName: 'Noa' });
+  const srcOf = async () => (await db.pool.query(
+    `SELECT source FROM dashboard_opens WHERE user_id = $1 ORDER BY id`, [u.id])).rows.map((r) => r.source);
+
+  // A link spent: one `link` open, and the /me it lands on is the same visit.
+  const c = await ownSignIn(u.id);
+  await get('/me', { headers: { Cookie: c } });
+  assert.deepEqual(await srcOf(), ['link']);
+
+  // The installed app's start address is its own door, even inside the fold.
+  await get('/me?hl=he', { headers: { Cookie: c } });
+  await get('/me?hl=he', { headers: { Cookie: c } });
+  assert.deepEqual(await srcOf(), ['link', 'app']);
+
+  // A second link tapped while already signed in goes straight through and
+  // is still a link — folded, since the last link was minutes ago.
+  const made = await withTx(db.pool, (cl) => auth.createLink(cl, u.id));
+  assert.equal((await get('/d/' + made.data.token, { headers: { Cookie: c } })).status, 303);
+  assert.deepEqual(await srcOf(), ['link', 'app']);
+
+  // Half an hour on, a bare /me is a browser visit.
+  await db.pool.query(`UPDATE dashboard_opens SET opened_at = now() - interval '31 minutes' WHERE user_id = $1`, [u.id]);
+  await get('/me', { headers: { Cookie: c } });
+  assert.deepEqual(await srcOf(), ['link', 'app', 'browser']);
+
+  const s = await withTx(db.pool, (cl) => opens.summary(cl));
+  const p = s.people.find((x) => Number(x.id) === u.id);
+  assert.deepEqual([p.app, p.link, p.browser], [1, 1, 1]);
+  const html = reach.renderOpensView(s);
+  assert.ok(html.includes('אפליקציה בטלפון') && html.includes('קישור מוואטסאפ'));
+});
+
+test('no code sent is never read as nobody using the app', async () => {
+  // The owner's iPhone app runs full screen with no code ever sent: adding
+  // the page to the home screen carried Safari's session along (2026-10-08).
+  const empty = { days: 30, people: [], byHour: [], byDay: [], bySource: [],
+    totals: { opens: 0, people: 0, opens7: 0, people7: 0, admin_opens: 0, test_opens: 0, source_since: new Date() } };
+  const none = reach.renderOpensView({ ...empty, codes: { sent: 0, people: 0 } });
+  assert.ok(!/אף אחד (עוד )?לא (נכנס|ביקש)/.test(none), 'no claim about who never used the app');
+  assert.ok(none.includes('לא ידוע'), 'app use before counting is said to be unknown');
+  const sent = reach.renderOpensView({ ...empty, codes: { sent: 3, people: 2, last_at: new Date() } });
+  assert.ok(sent.includes('נשלחו 3 פעמים'));
+});
+
+test('sourceOf reads the app off ?hl= and nothing else', () => {
+  assert.equal(opens.sourceOf('/me?hl=en'), 'app');
+  assert.equal(opens.sourceOf('/me'), 'browser');
+  assert.equal(opens.sourceOf('/me?x=1'), 'browser');
+});
+
+test('signing into the app with a code is an app open, whatever address it reloads to', async () => {
+  const u = await makeUser(db.pool, '+972531960041', { firstName: 'Code' });
+  const made = await withTx(db.pool, (c) => auth.createCode(c, u.id));
+  const res = await get('/me/code', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: made.data.code }),
+  });
+  assert.equal(res.status, 200);
+  await get('/me', { headers: { Cookie: cookieFrom(res) } });
+  assert.deepEqual((await db.pool.query(
+    `SELECT source FROM dashboard_opens WHERE user_id = $1 ORDER BY id`, [u.id])).rows.map((r) => r.source), ['app']);
+});
+
+test('the app\'s code sign-in reloads with its query, so ?hl= survives it', () => {
+  const html = require('node:fs').readFileSync(require('../src/adapters/http/user-dashboard').PAGE_PATH, 'utf8');
+  assert.ok(html.includes('location.replace("/me" + location.search)'));
+});

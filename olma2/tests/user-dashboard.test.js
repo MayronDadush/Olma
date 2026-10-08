@@ -231,6 +231,11 @@ test('an archived task is archived, and is not in the open list', async () => {
   const d = (await load(me.id)).data;
   assert.equal(d.archived.some((x) => x.title === 'done and gone'), true);
   assert.equal(d.tasks.some((x) => x.title === 'done and gone'), false);
+  // Only what the archive draws travels: the full rows were 63KB of the
+  // owner's every read (2026-10-08), for a list showing a title and a "when".
+  const row = d.archived.find((x) => x.title === 'done and gone');
+  assert.deepEqual(Object.keys(row).sort(), ['completedAt', 'id', 'title']);
+  assert.ok(row.completedAt, 'the "when" is built from completedAt');
 });
 
 // ---------------------------------------------------------- finished vs open

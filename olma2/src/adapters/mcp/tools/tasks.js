@@ -5,6 +5,7 @@ const {
 } = require('./_shared');
 const dt = require('../../../domain/datetime');
 const chaseDeadline = require('../../../domain/chase-deadline');
+const inventedHour = require('../../../domain/invented-hour');
 const format = require('../../../domain/message-format');
 const listBlock = require('../../../domain/list-block');
 
@@ -58,6 +59,31 @@ function remindAskPending(ctx) {
   if (!turn || !turn.remindAsk || turn.remindAskUsed) return false;
   const now = ctx.now ? ctx.now() : Date.now();
   return Number.isFinite(turn.remindAsk) && now - turn.remindAsk <= REMIND_ASK_TTL_MS;
+}
+
+// The gateway read a message with no hour in it (olma-turn-open .namesNoHour).
+// Never spent — a dump dates many things off one message — and dead after the
+// same fifteen minutes, for the same reason.
+function noHourPending(ctx) {
+  const turn = ctx && ctx.turn;
+  if (!turn || !turn.noHour) return false;
+  const now = ctx.now ? ctx.now() : Date.now();
+  return Number.isFinite(turn.noHour) && now - turn.noHour <= REMIND_ASK_TTL_MS;
+}
+
+// A 09:00 they never said is the day (domain/invented-hour). Returns the due
+// moment to save and whether it moved; a range is left alone.
+function dayIfInvented(dueAt, endsAt, user, ctx) {
+  if (!dueAt || endsAt || !noHourPending(ctx)) return { dueAt, moved: false };
+  const day = inventedHour.asDay(dueAt, user.timezone);
+  return day ? { dueAt: day, moved: true } : { dueAt, moved: false };
+}
+
+const DAY_ONLY_HINT = 'No hour was said, so it is saved for the DAY with no hour. If you say when, '
+  + 'say the day only.';
+function withDayOnly(res, moved) {
+  if (!moved || !res || !res.ok || !res.data) return res;
+  return { ...res, data: { ...res.data, hints: { ...(res.data.hints || {}), dayOnly: DAY_ONLY_HINT } } };
 }
 
 function chaseWorthAsking(dueAt, reminder) {
@@ -355,6 +381,11 @@ module.exports = [
       let { due_at: dueAt, ends_at: endsAt, remind_at: remindAt } = a;
       if (chase && !chaseDeadline.onDay(dueAt, chase.day, user.timezone)) { dueAt = chase.dueAt; endsAt = undefined; }
       if (chase && !chase.namedHour) remindAt = undefined;
+      // "מחר" and no hour anywhere in the message: a 09:00 is the model's, and
+      // the day is what they said (domain/invented-hour). Not under a chase,
+      // which picks its own day off the same sentence.
+      let dayOnly = false;
+      if (!chase) ({ dueAt, moved: dayOnly } = dayIfInvented(dueAt, endsAt, user, ctx));
 
       // Miron, 2026-09-22: "תוסיף לי ביומן שביום הראשון הקרוב … אמור להגיע
       // טכנאי לבר מים" was saved for Wednesday and told back as Wednesday —
@@ -400,15 +431,23 @@ module.exports = [
       });
       if (chase && res.ok) ctx.turn.chaseUsed = true;
       if (weekly && res.ok) ctx.turn.remindAskUsed = true;
-      return calendarNote(client, user, taskHints(res, user));
+      return calendarNote(client, user, withDayOnly(taskHints(res, user), dayOnly));
     }),
   tool('add_tasks_bulk', 'Save a whole dump in ONE call (max 60 items). Never loop add_task. To SPLIT a goal into parts: parent_task_id. A shopping list: `list`. Timed items get reminders; follow any hints. Any due_at MUST carry a UTC offset (2026-08-20T09:00:00+03:00), from their local time (USER.md); never bare digits with a Z.',
     { items: S('array', 'Array of {title, kind?, location?, category?, due_at?, ends_at?}; kind event|todo, location, category and times as in add_task.', { items: { type: 'object' } }),
       parent_task_id: S('number', 'Optional: save every item as a subtask of this project (one level)'),
       list: S('string', 'List name, e.g. "קניות": items become ONE list, not tasks') }, ['items'],
-    async (client, user, a) => withDumpLink(client, user, await calendarNote(client, user, taskHints(await tasks.addTasksBulk(client, user.id, (a.items || []).map((i) => ({
-      title: i.title, kind: i.kind, location: i.location, category: i.category, dueAt: i.due_at, endsAt: i.ends_at,
-    })), { parentId: a.parent_task_id, list: a.list }), user)), { parentId: a.parent_task_id })),
+    async (client, user, a, ctx) => {
+      let dayOnly = false;
+      const items = (a.items || []).map((i) => {
+        const { dueAt, moved } = dayIfInvented(i.due_at, i.ends_at, user, ctx);
+        if (moved) dayOnly = true;
+        return { title: i.title, kind: i.kind, location: i.location, category: i.category, dueAt, endsAt: i.ends_at };
+      });
+      const res = await tasks.addTasksBulk(client, user.id, items, { parentId: a.parent_task_id, list: a.list });
+      return withDumpLink(client, user, await calendarNote(client, user, withDayOnly(taskHints(res, user), dayOnly)),
+        { parentId: a.parent_task_id });
+    }),
   tool('complete_task', 'Mark a task done. Pending reminders on it are cancelled automatically. If the task carries a repeating CADENCE it is a standing one — the reply comes back with recurring:true and nextRemindAt, the task stays open and the cadence stays armed, because doing it once does not finish it. Say when it next comes round. To end a standing task for good: cancel_reminder first, then complete_task.',
     { task_id: S('number', 'Task id') }, ['task_id'],
     (client, user, a) => tasks.completeTask(client, user.id, a.task_id)),

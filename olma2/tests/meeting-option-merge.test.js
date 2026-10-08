@@ -178,3 +178,46 @@ test('the notice says what moved and asks nothing', () => {
   assert.match(body, /YES on the old time now stands on the new one/);
   assert.match(body, /Ask nothing else/);
 });
+
+// A decline's counter puts a new time on the table too, so it asks the same
+// question (owner, 2026-10-07).
+test('a counter close to a time on the table is a question, and nothing is written — not even the decline', async () => {
+  const { id, noon } = await noonTable();
+  const eight = localAt('20:00');
+  await call('propose_meeting_slot', ann, { meeting_id: id, slot_description: '20:00', starts_at: eight });
+  const res = await call('respond_to_meeting_slot', ben, {
+    meeting_id: id, accept: false, accepted_starts_at: eight, counter_proposal: '11:00', counter_starts_at: localAt('11:00') });
+  assert.equal(res.ok, false);
+  assert.equal(res.error.reason, 'similar_option');
+  assert.deepEqual(res.error.similar.map((o) => o.optionId), [noon.id]);
+  const table = await tx((c) => meetings.options.list(c, id));
+  assert.equal(table.length, 2);
+  assert.equal(table.find((o) => o.id !== noon.id).answers[ben.id], undefined, 'the decline waits for the answer');
+});
+
+test('a counter merged: the decline lands on the time declined, never on the merged one', async () => {
+  const { id, noon } = await noonTable();
+  const eight = localAt('20:00');
+  await call('propose_meeting_slot', ann, { meeting_id: id, slot_description: '20:00', starts_at: eight });
+  const res = await call('respond_to_meeting_slot', ben, {
+    meeting_id: id, accept: false, accepted_starts_at: eight, counter_proposal: '11:00',
+    counter_starts_at: localAt('11:00'), merge_with: noon.id });
+  assert.ok(res.ok, JSON.stringify(res));
+  const table = await tx((c) => meetings.options.list(c, id));
+  assert.equal(table.length, 2, 'noon became 11:00; 20:00 stays');
+  const eleven = table.find((o) => o.slotText === '11:00');
+  const evening = table.find((o) => o.slotText === '20:00');
+  assert.deepEqual(eleven.answers, { [ann.id]: 'y', [ben.id]: 'y', [cal.id]: 'n' });
+  assert.equal(evening.answers[ben.id], 'n');
+});
+
+test('a counter kept apart is the old road: declined, and a new time beside the others', async () => {
+  const { id } = await noonTable();
+  const eight = localAt('20:00');
+  await call('propose_meeting_slot', ann, { meeting_id: id, slot_description: '20:00', starts_at: eight });
+  const res = await call('respond_to_meeting_slot', ben, {
+    meeting_id: id, accept: false, accepted_starts_at: eight, counter_proposal: '11:00',
+    counter_starts_at: localAt('11:00'), merge_with: 0 });
+  assert.ok(res.ok, JSON.stringify(res));
+  assert.equal((await tx((c) => meetings.options.list(c, id))).length, 3);
+});

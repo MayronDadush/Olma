@@ -436,6 +436,10 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
         // (reminders.startWeeklyNudge) — and only inside the same window a
         // chase gets, never on a turn that runs on long after the message.
         remindAsk: adopt && params.remindAsk === true ? clock() : null,
+        // "מחר לקנות חלב": the message named no hour, so a 09:00 a save makes
+        // on this turn is the day (domain/invented-hour). Stamped like
+        // remindAsk, and NOT spent: a dump saves many things off one message.
+        noHour: adopt && params.noHour === true ? clock() : null,
         // "רשום עדן יצא": a status they quoted. opt_out_of_meeting refuses on
         // this turn (tools/meetings.js) — the hook's verdict, never the words.
         reportedExit: adopt && params.reportedExit === true,
@@ -1531,6 +1535,7 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
           turn.chase = pre.chase || null; turn.chaseUsed = false;
           turn.openList = Boolean(pre.openList);
           turn.remindAsk = pre.remindAsk || null; turn.remindAskUsed = false;
+          turn.noHour = pre.noHour || null;
           turn.reportedExit = Boolean(pre.reportedExit);
           turn.openedByGateway = true;
         } else if (!turn.opened) {
@@ -1653,15 +1658,17 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
         // Asked of the hold being ON, not of this mark still pending: a reply
         // earlier in the turn already dropped it, and "already put" would lie.
         const held = Boolean(actorAgentId) && signalsLive();
+        // ⏰ for an add_task that armed a reminder they asked for, 👍 otherwise.
+        const emoji = reactions.stateFor(name, result) === 'scheduled' ? '⏰' : '👍';
         result.data.hints = {
           ...(result.data.hints || {}),
           markPlaced: held
-            ? 'When this turn ends a 👍 goes on their message, telling them this is done — '
+            ? `When this turn ends a ${emoji} goes on their message, telling them this is done — `
               + 'but only if you write nothing: any words you send replace it. If they gave a '
               + 'plain instruction and you have nothing to add — no question worth asking, no '
               + 'caveat, no error, no other hint here — reply with exactly NO_REPLY and nothing '
               + 'else. Write only when the words carry something the mark cannot.'
-            : 'A 👍 has already been put on their message: it tells them this is done. '
+            : `A ${emoji} has already been put on their message: it tells them this is done. `
               + 'If they gave a plain instruction and you have nothing to add — no question worth '
               + 'asking, no caveat, no error, no other hint here — reply with exactly NO_REPLY and '
               + 'nothing else. Write only when the words carry something the mark cannot.',

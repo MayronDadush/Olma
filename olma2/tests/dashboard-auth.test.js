@@ -187,8 +187,8 @@ test('purge removes what nobody can use, and leaves live rows alone', async () =
   await db.pool.query(
     `INSERT INTO magic_links (token_hash, user_id, expires_at)
      VALUES ('dead', $1, now() - interval '10 days')`, [me.id]);
-  // Spent yesterday: still read by the day-one 22h check-in ("has this person
-  // ever had a link?"), so it stays for a week.
+  // Spent yesterday: still read by the check-in's `dashboard` offer ("has this
+  // person ever had a link?"), so it stays for a week.
   await db.pool.query(
     `INSERT INTO magic_links (token_hash, user_id, expires_at, used_at)
      VALUES ('spentyesterday', $1, now() - interval '20 hours', now() - interval '30 hours')`, [me.id]);

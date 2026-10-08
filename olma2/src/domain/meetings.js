@@ -499,6 +499,26 @@ async function mergeSlot(client, userId, meetingId, intoOptionId, slotText, star
     optionId: res.data.option.id });
 }
 
+// A decline whose counter is close to a time on the table, and the person
+// chose to MERGE (owner, 2026-10-07: the counter asks the question a proposal
+// asks). The declined option is resolved FIRST — once the merge is in, a
+// decline with no accepted_starts_at would fall on the newest option, which is
+// the counter itself. Merge, then the no, and only on a time still on the
+// table: declining the very time they merged away is already said by the merge.
+async function declineAndMerge(client, userId, meetingId, acceptedStartsAt, intoOptionId, slotText, startsAt) {
+  const table = (await options.list(client, meetingId)).filter((o) => o.status === 'active');
+  const named = hasOffset(acceptedStartsAt)
+    && table.find((o) => o.startsAt && new Date(o.startsAt).getTime() === new Date(acceptedStartsAt).getTime());
+  const declined = named || table[0];
+  const res = await mergeSlot(client, userId, meetingId, intoOptionId, slotText, startsAt);
+  if (!res.ok) return res;
+  if (declined && Number(declined.id) !== Number(intoOptionId)) {
+    const r = await options.answer(client, userId, meetingId, declined.id, 'n');
+    if (!r.ok) return r;
+  }
+  return res;
+}
+
 // The hard gate. Since 2026-09-06 it ARMS rather than confirms: unanimity
 // starts a minute, and options.settleDue closes the meeting when the minute is
 // up and the option is still unanimous. Called from respondToSlot and
@@ -1472,7 +1492,7 @@ module.exports = {
   joinSettled,
   cleanLocation,
   startMeeting, openWithSamePeople, nearlySamePeople, privateOpenLikeRoom, roomOpenLikePrivate,
-  recordConstraint, proposeSlot, mergeSlot, slotMomentFor, respondToSlot,
+  recordConstraint, proposeSlot, mergeSlot, declineAndMerge, slotMomentFor, respondToSlot,
   optOut, rejoin, leftByChoice, leftByPause, restorePauseExits, PAUSE_EXIT_CAUSES, LEFT_BY_CHOICE_SQL, applyExit, withdrawConfirmed, cancelMeeting, reopenMeeting, setTitle, setPlace, setCategory, setQuorum,
   getStatus, listMine, pendingMeetingFor, tryConfirm, settleNow, timeIsOpen, setExactTime,
   expireStaleMeetings, dropPassedOptions, expireOne, listNegotiating,

@@ -163,7 +163,7 @@ Loads when you **Read** a file under `src/outbox/**`, `src/domain/message-format
 - **EVERY private message about a coordination offers its own page, after one fixed sentence ("אפשר לענות לי כאן בצ'אט או דרך הקישור:") and on a bare line** — since 2026-09-24, reversing 2026-09-20; and the characters are handed over, never asked for: a prompt that named a meeting id got three invented domains in one minute
 - **A private message about a coordination is one sentence of context and one question** — two options are a sentence, a game room counts heads, and the length is measured
 - **The same thing does not go out twice inside a few minutes unless the person ASKED**
-- **The delivery gate is the chokepoint and a paused user has no exceptions** — save one room-coordination invite per pause, and one per run of silence
+- **The delivery gate is the chokepoint and a paused user has no exceptions** — save one invite per COORDINATION for a quiet pause (since 2026-10-07), and one room invite per run of silence
 - **Somebody on `daily_once_phones` hears ONE message a day that Olma started, at 20:00, and none when nothing is open** — held as `daily_once`, folded by `sweepDigests`; only a reminder they asked for and an introduction pass
 - **An unstated quiet day is not "none" — it is Saturday or Sunday, and which one is a fact about the PERSON.**
 - **Quiet HOURS and a quiet DAY draw different lines, and the digest is where they differ.**
@@ -184,6 +184,7 @@ Loads when you **Read** a file under `src/outbox/**`, `src/domain/message-format
 - **A `--deliver` that TIMES OUT has very likely gone out, and is never retried.**
 - **Anything else due in the same moment is ONE message too, and two rules say what may travel together**
 - **A meeting time reaches each reader in THEIR clock too, beside the proposer's words** — and the confirmed calendar step hands over the exact start, never "work it out from the words"
+- **A notification to the installed app REPLACES the WhatsApp message, never joins it** — flag `push_delivery_phones`, a subscription the app confirmed within 14 days, a kind the page answers whole (`push.templateFor`), and a push service that accepted; anything else, and any refusal, is WhatsApp in the same tick
 
 ### Turns, and what reaches the person
 
@@ -242,6 +243,7 @@ Loads when you **Read** a file under `src/domain/reminders.js`, `src/domain/task
 - **A list is ONE row with its items under it, through every door, and is filed under `lists`** — `add_tasks_bulk`'s `list`, `looksLikeShoppingBulk`, "קניות - א, ב"; the open list is found by TITLE, never by category
 - **A task already OPEN on somebody's list is never saved a second time.**
 - **…and the same thing in OTHER words is a judgement, so it was measured before it was written** — and the extraction pass and the live tool take OPPOSITE answers from it
+- **A day said with no hour is the DAY, and 09:00 is the hour the model invents for it** — hook `namesNoHour` → `noHour`, `invented-hour.asDay`, exactly 09:00 local only
 - **A model asked to date something must first be told what time it is.**
 - **A title need not restate the hour the row now carries, but only the SERVER may take it out.**
 - **A day named with ל־ in a title dates the THING, not the task.**
@@ -269,12 +271,13 @@ Loads when you **Read** a file under `src/domain/reminders.js`, `src/domain/task
 ### People, silence, and data you must not get wrong
 
 **`.claude/rules/people-and-quiet.md`** — the timezone that must never be NULL, the check-in ladder, the once-ever question, deleting a person, and the rename.
-Loads when you **Read** a file under `src/jobs/checkin.js`, `src/jobs/onboarding-review.js`, `src/domain/users.js` and 5 more.
+Loads when you **Read** a file under `src/jobs/checkin.js`, `src/jobs/onboarding-review.js`, `src/domain/users.js` and 6 more.
 
 - **`users.timezone` must never be NULL**
 - **Every time crossing a tool boundary needs an explicit offset.**
 - **Nobody is asked a question they have already not answered once.** — and a miss is a check-in that REACHED them, counted at delivery, never when it was queued
 - **A day-one step that has not gone out is REPLACED by the NEXT CHECK-IN of any kind, never joined by it.** — and one that has gone out spaces the next by `STEP_GAP_MS`, counted from when it reached them; none after the first starts while they are talking
+- **Somebody silent for DAYS is paused on a clock, not only on unanswered questions** — two days holding nothing, five holding an open task (`silence-pause.due`, flags `silence_pause_days_empty`/`_holding`); never somebody with a reminder they asked for; and a quiet pause hears ONE message per coordination opened with them, room or private
 - **Somebody who has stopped answering hears nothing Olma decided to say, and nothing on their record is cancelled.** — but a coordination they ANSWERED is not her idea, and an answer is what earns that, never membership; and another PERSON reaching them (a connection request, a private invite, a share, a relayed message) is not her idea either (`gate.PEER_KINDS`)
 - **A stop is acted on the moment it is HEARD, not when it is confirmed** — `paused_reason = 'said_stop'` is a full pause, and their next message about anything else ends it.
 - **A write from their own page IS the person answering** — `last_dashboard_at`, never `last_inbound_at`
@@ -304,6 +307,8 @@ Loads when you **Read** a file under `src/jobs/**`, `src/domain/issues.js`, `src
 - **Stamp "we told them" only after the send confirms.**
 - **A joiner nobody has reached is asked about as a PERSON, not a config.**
 - **Every check that starts from `users` is blind to the person the gateway dropped**
+- **…and since 2026-10-07 that stranger is ANSWERED: `stranger_greet` sends ONLY "your first message did not arrive" (the greeter says the opening on their resend), once per number, claimed before the send**
+- **The WhatsApp plugin is PATCHED in place so a CIPHERTEXT stub cannot swallow the resend, and every plugin update takes it out** — `config_guard.checkWhatsAppStubPatch` goes red; `scripts/patch-whatsapp-stub.js --apply`, then restart the gateway
 - **`liveness_watch` repairs before it reports.**
 - **A live gateway PROCESS is not a gateway that can send anything, and for six hours nothing in the system knew the difference.**
 - **A new person's first hours are read back by code TWICE — three hours in, and again after their first day**
@@ -356,7 +361,7 @@ Loads when you **Read** a file under `src/intake/agents-template.md`, `src/intak
 - **Telling the model to call a tool is not telling it what the reader of that tool's write actually checks.**
 - **A fixture that writes the state by hand cannot notice the state is only ever reached the other way.**
 - **The owner's opening copy is said ONCE, by whichever voice reaches the person first.**
-- **A first message is not a hello, and the newest arrivals prove it.** …and carrying their words into USER.md is only half of it: the first-turn instruction has to SAY they are unanswered (`users.intake_note_at`) — and since 2026-09-25 their own agent answers them unasked, seconds after the greeter, with their page (`welcome_followup`)
+- **A first message is not a hello, and the newest arrivals prove it.** …and carrying their words into USER.md is only half of it: the first-turn instruction has to SAY they are unanswered (`users.intake_note_at`) — and since 2026-09-25 their own agent answers them unasked, seconds after the greeter (`welcome_followup`) — with no page since 2026-10-08, and not at all when there is nothing to act on
 - **`gmail.readonly` is a RESTRICTED scope and everything else Olma asks for is merely SENSITIVE — the two words are different verification tracks, and one restricted scope prices the whole app onto the paid one** — and since 2026-09-30 the mailbox connection is REMOVED, not closed: no domain, no watch, no USER.md line, no /me switch (migration 103)
 - **Every NEW Google consent link goes through one door, and it is CLOSED**
 - **A display name is not a word to be translated.**
@@ -407,7 +412,7 @@ Loads when you **Read** a file under `src/domain/group-connections.js`, `src/dom
 - **Every line a room hears unasked is Olma's own text, save exactly one: a sentence a MEMBER asked her to say there** — one per person per coordination, and only in a room the flag names
 - **…and that line carries what the same person did to the TABLE, because the reason and the change are one piece of news** — three shapes, chosen by what is true
 - **A joke in the room is answered with a joke, built only from what the room said** — one short line; nothing invented, nothing private, nobody really mocked
-- **A paused member is counted into a room's coordination only until their one invite is spent; a day of silence takes them out** — and only a pause the LADDER took; somebody who paused her themselves is never invited, tagged or asked, and whoever left the WhatsApp group leaves its coordination — **but since 2026-09-28 the room's NUMBER counts every paused member, and a room waits on them before "everybody said yes"**; only a CHOSEN exit leaves the count
+- **A quietly paused member is counted into EVERY new coordination and hears its invite once (since 2026-10-07; it was one per pause); a day of silence takes them out of THAT one** — and only a pause the LADDER took; somebody who paused her themselves is never invited, tagged or asked, and whoever left the WhatsApp group leaves its coordination — **but since 2026-09-28 the room's NUMBER counts every paused member, and a room waits on them before "everybody said yes"**; only a CHOSEN exit leaves the count
 - **A room on more than one clock hears every time in each, by city, from the owner's own `_zones` templates; a time with no clock in it is never converted, and a one-clock room is untouched** — and asked for hours that suit everyone, she answers from `meeting-time.commonHours`, where only a confirmed clock is counted
 - **A member's message in the room opens the gate's fifteen-minute window for that room's coordination — and, since 2026-09-09, the room's own announcement window; nothing else**
 - **The private side knows every room a person shares with Olma, off the ROSTER, and says the list is complete** (`groups.roomsOf` → the turn context's `rooms` and `list_my_meetings`)

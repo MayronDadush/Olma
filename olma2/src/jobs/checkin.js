@@ -167,6 +167,11 @@ const ONBOARDING_STEPS = [
     // joined at 17:15 (2026-10-03). Of every 15m step ever delivered, his was
     // the only one past 75 minutes (the next was 74).
     slot: '15m', afterMs: 15 * MIN_MS, expiresAfterMs: 75 * MIN_MS,
+    // The intro clip a few minutes after the opening takes this slot (owner,
+    // 2026-10-08: "הסרטון במקומה"). Silent, not skipped — a skipped step hands
+    // its slot to the ordinary ladder. A clip the gate DROPPED was never
+    // heard, so then the step goes as before.
+    silentIf: clipTakesTheSlot,
     instruction: firstContactInstruction,
   },
   {
@@ -183,11 +188,12 @@ const ONBOARDING_STEPS = [
     silentWhenEmpty: true,
     instruction: 'Their first day. Briefly reflect back what you are now holding for them (counts, not a recital of every item), and invite whatever else is on their mind — including as a voice note. Two lines, no pressure.' + NO_SECOND_HELLO,
   },
-  // The two things a new person cannot discover for themselves, offered once
-  // each and in this order (Miron, 2026-09-04). Both are LINKS, which is why
-  // they are late rather than early: a link in the first hour is a demand to
-  // go somewhere else before anything here has proved useful. By eight hours
-  // there is something in their list for a calendar to be about.
+  // The thing a new person cannot discover for themselves, offered once
+  // (Miron, 2026-09-04). It is a LINK, which is why it is late rather than
+  // early: a link in the first hour is a demand to go somewhere else before
+  // anything here has proved useful. By eight hours there is something in
+  // their list for a calendar to be about. (Their page was the second, at
+  // 22h, until 2026-10-08 — see DASHBOARD_MIN_TASKS.)
   {
     slot: '8h', afterMs: 8 * HOUR_MS, expiresAfterMs: 16 * HOUR_MS,
     // Nothing to offer someone who already connected — and this is the whole
@@ -208,23 +214,16 @@ const ONBOARDING_STEPS = [
     },
     instruction: 'Offer, once, to connect their Google Calendar, and say in one line what it buys them — you can see what is already on their day, and put things they ask you to schedule straight into it. Then ASK WHICH ACCESS LEVEL they want (view only, or add and edit) and call start_calendar_connection with their answer; never choose for them. Send the link it returns and stop. If they say no or say nothing, drop it and never offer again.',
   },
-  {
-    slot: '22h', afterMs: 22 * HOUR_MS, expiresAfterMs: 26 * HOUR_MS,
-    skipIf: async (client, u) => {
-      // They already have a link, so a fresh one is noise rather than news.
-      const { rows } = await client.query(
-        `SELECT 1 FROM magic_links WHERE user_id = $1 LIMIT 1`, [u.id]);
-      return rows.length > 0;
-    },
-    instruction: 'Their first day is nearly done. Send them their own dashboard once: call open_my_dashboard and put the URL in your reply. One short line on what it is for — seeing and rearranging several things at once, their tasks, who they are connected to, what is connected. Say it opens once and stays open afterwards, and that everything on it can still be done right here in chat. Do not ask a question after it.',
-  },
+  // The 22h step that handed over their page is gone (owner, 2026-10-08:
+  // "היא גם נחשבת התחלה"). The page is offered once they hold enough for it
+  // to show something — the `dashboard` discovery gap below.
 ];
 
 // A step may decline to fire. Slots that ask nothing of the person still run
 // for someone who has never answered; these do not, because both of them ask
 // the person to go and DO something, and sending a link to somebody who has
 // said nothing at all is the drum this doctrine forbids everywhere else.
-const DEAF_SILENT_SLOTS = new Set(['5h', '8h', '22h']);
+const DEAF_SILENT_SLOTS = new Set(['5h', '8h']);
 
 // Which day-one step is due, if any. The first two fire regardless — that is
 // the point of the ladder. Everything from the 5h step on is skipped for
@@ -244,6 +243,14 @@ function onboardingStepDue(ageMs, deaf) {
   if (!step) return null;
   if (deaf && DEAF_SILENT_SLOTS.has(step.slot)) return null;
   return step;
+}
+
+async function clipTakesTheSlot(client, u) {
+  const { rows } = await client.query(
+    `SELECT 1 FROM outbox
+      WHERE user_id = $1 AND kind = 'intro_video' AND created_at >= $2
+        AND (sent_at IS NULL OR hold_reason IS NULL) LIMIT 1`, [u.id, u.onboarded_at]);
+  return rows.length > 0;
 }
 
 // Two day-one steps are never closer than STEP_GAP_MS, measured from when the
@@ -266,8 +273,11 @@ async function dayOneStepWaits(client, u, step, now) {
   const { rows } = await client.query(
     `SELECT max(o.sent_at) AS last_step, u.last_inbound_at
        FROM users u
-       LEFT JOIN outbox o ON o.user_id = u.id AND o.kind = 'checkin'
-        AND o.payload->>'rung' LIKE 'onboarding%'
+       LEFT JOIN outbox o ON o.user_id = u.id
+        AND ((o.kind = 'checkin' AND o.payload->>'rung' LIKE 'onboarding%')
+             -- the joiner's clip stands in for the 15m step, so it spaces the
+             -- next one the same way (a clip and the 2h step both held to 09:00)
+             OR o.kind = 'intro_video')
         AND o.sent_at IS NOT NULL AND o.hold_reason IS NULL
       WHERE u.id = $1
       GROUP BY u.last_inbound_at`, [u.id]);
@@ -325,7 +335,7 @@ async function dayOneSpent(client, u) {
   return rows[0].n >= cap;
 }
 
-// The welcome follow-up still owed — what she is, and their page, held for
+// The welcome follow-up still owed — what she is, held for
 // the morning after a game night or a room's coordination (jobs/intake.js).
 // Until it goes out the day-one ladder says nothing: a question at 2h about
 // somebody's day, from an assistant that has not yet said what she does, is
@@ -560,6 +570,8 @@ async function pickRung(client, userId, misses = 0) {
 // coordination in X came together", which is news for a couple of weeks and
 // a non sequitur after that.
 const MORE_GROUPS_WINDOW_DAYS = 14;
+// Open tasks before their page is worth a link (owner, 2026-10-08: "2 3").
+const DASHBOARD_MIN_TASKS = 3;
 // A private coordination earns it only with this many people still in it
 // (owner, 2026-09-30, the growth plan's week 3): three people arranging
 // something one by one is exactly the chat a WhatsApp group replaces, and
@@ -836,6 +848,23 @@ async function discoveryGaps(client, userId, now = new Date()) {
   const { rows: openTasks } = await client.query(
     `SELECT count(*)::int AS n FROM tasks
      WHERE owner_id = $1 AND status = 'open' AND archived_at IS NULL`, [userId]);
+  // Their own page, once it has something to show (owner, 2026-10-08: "ברגע
+  // שיש למשתמש לפחות 2 3 משימות בעולמה אפשר לשלוח לו את הקישור"). Never at
+  // the start — many people run Olma in WhatsApp only, and a page of nothing
+  // is not news. Not to somebody who already has their page: a link to it, or
+  // a sign-in code, that THEY were given (a coordination's page is not their
+  // list, and the owner opening it from the admin page is not them).
+  if (openTasks[0].n >= DASHBOARD_MIN_TASKS) {
+    const { rows: had } = await client.query(
+      `SELECT 1 FROM magic_links
+        WHERE user_id = $1 AND NOT by_admin AND target IN ('home', 'tasks', 'code') LIMIT 1`, [userId]);
+    if (!had.length) {
+      gaps.push({
+        topic: 'dashboard',
+        instruction: `They now have ${openTasks[0].n} open tasks with you. Send them their own page once: call open_my_dashboard and put the URL in your reply, on a line of its own. One short line on what it is for — seeing and rearranging their tasks all at once. Say that everything on it can still be done right here in chat. Do not ask a question after it.`,
+      });
+    }
+  }
   if (!u[0].digest_times && openTasks[0].n >= 2) {
     gaps.push({
       topic: 'digest',
@@ -912,6 +941,7 @@ async function run(client, now = Date.now()) {
     // link already issued) gives its slot back to the ordinary ladder instead
     // of spending the day's one message on nothing.
     if (step && step.skipIf && await step.skipIf(client, u)) step = null;
+    if (step && step.silentIf && await step.silentIf(client, u)) continue;
     if (step && READS_HOLDINGS.has(step.slot)) {
       u.holdsNothing = await holdsNothing(client, u.id);
       if (u.holdsNothing && step.silentWhenEmpty) continue;

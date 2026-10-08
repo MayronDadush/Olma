@@ -41,6 +41,14 @@ const ICONS = Object.freeze({
 const SW_PATH = '/sw.js';
 const PATHS = new Set([MANIFEST_PATH, SW_PATH, ...Object.keys(ICONS)]);
 
+// What a page's <head> says so the phone knows the icon. A page without it is
+// not "installable" and Chrome on Android, asked to save it to the home screen,
+// draws a tile with the first letter of the title instead — "ע" (2026-10-08,
+// a sign-in page saved from a link). Every page a person can land on carries it.
+const HEAD_TAGS = '<link rel="manifest" href="/manifest.webmanifest">'
+  + '<link rel="icon" href="/icons/icon-192.png" sizes="192x192" type="image/png">'
+  + '<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">';
+
 function matches(pathname) {
   return PATHS.has(pathname);
 }
@@ -164,7 +172,7 @@ function offlineHtml(lang) {
   const c = OFFLINE_COPY[lang === 'en' ? 'en' : 'he'];
   return '<!doctype html><html lang="' + (lang === 'en' ? 'en' : 'he') + '" dir="' + c.dir + '"><head>' +
     '<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">' +
-    '<meta name="theme-color" content="' + BACKGROUND + '"><title>' + c.title + '</title><style>' +
+    '<meta name="theme-color" content="' + BACKGROUND + '">' + HEAD_TAGS + '<title>' + c.title + '</title><style>' +
     // The page's own tokens (Cypress + Mustard, 2026-09-28): the one button
     // is the ACTION colour, as it is on the page.
     ':root{--bg:#F0EDE5;--text:#0E1F1E;--text-2:#44504E;--action:#F9C23C;--on-action:#004643;color-scheme:light dark}' +
@@ -212,6 +220,36 @@ const SW_SOURCE = [
   '    return new Response(PAGES[HL], {status: 503, headers: {',
   '      "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store",',
   '      "Content-Security-Policy": CSP}});',
+  '  }));',
+  '});',
+  // Notifications (domain/push.js). The payload is the server's own JSON:
+  // a title, one line, the page to open and a tag that replaces an older
+  // notification about the same coordination. Anything unreadable shows
+  // nothing rather than an empty card — iOS counts a push that shows no
+  // notification against the subscription.
+  'self.addEventListener("push", function(e){',
+  '  var d = null;',
+  '  try { d = e.data ? e.data.json() : null; } catch (x) { d = null; }',
+  '  if(!d || !d.title) d = {title: HL === "en" ? "Allma" : "עולמה", body: "", url: "/me"};',
+  '  e.waitUntil(self.registration.showNotification(String(d.title), {',
+  '    body: String(d.body || ""), tag: d.tag || undefined, renotify: Boolean(d.tag),',
+  '    icon: "/icons/icon-192.png", badge: "/icons/icon-192.png", lang: HL, dir: HL === "en" ? "ltr" : "rtl",',
+  '    data: {url: typeof d.url === "string" && d.url.indexOf("/me") === 0 ? d.url : "/me"}}));',
+  '});',
+  // A tap opens the coordination: an open window is navigated and brought
+  // forward, otherwise a new one is opened. Only a path under /me is ever
+  // followed, whatever the payload said.
+  'self.addEventListener("notificationclick", function(e){',
+  '  e.notification.close();',
+  '  var url = (e.notification.data && e.notification.data.url) || "/me";',
+  '  e.waitUntil(self.clients.matchAll({type: "window", includeUncontrolled: true}).then(function(list){',
+  '    for (var i = 0; i < list.length; i++) {',
+  '      var c = list[i];',
+  '      if (new URL(c.url).pathname === "/me" && "focus" in c) {',
+  '        return c.focus().then(function(w){ return (w || c).navigate ? (w || c).navigate(url) : null; });',
+  '      }',
+  '    }',
+  '    return self.clients.openWindow(url);',
   '  }));',
   '});',
 ].join('\n');
@@ -274,5 +312,5 @@ function handle(req, res, pathname, { lang } = {}) {
 
 module.exports = {
   matches, handle, manifestFor, iconBytes, offlineHtml,
-  PATHS, ICONS, MANIFEST_PATH, SW_PATH, SW_SOURCE, BACKGROUND,
+  PATHS, ICONS, HEAD_TAGS, MANIFEST_PATH, SW_PATH, SW_SOURCE, BACKGROUND,
 };

@@ -100,6 +100,13 @@ title means this file. Grep the title, not the filename.
   to make it "feel faster"**: that is exactly what put a sentence under a 👍
   in up to 60 of 90 marks in a week. Not covered: 🙏 and the stop-reminders
   👍 (turn open), and a burst-held reply.
+  **ONE mark per message, because every reaction is a notification**
+  (owner, 2026-10-06). A 👍 then an ⏰ in the same turn is one ⏰ at the end,
+  never a 👍 the ⏰ replaces (the hold keeps only the newest state). **An
+  `add_task` that armed a reminder THEY asked for earns ⏰**
+  (`reactions.stateFor`: any reminder with `auto = false`); a date alone,
+  whose automatic reminder nobody asked for, stays 👍. `doneMarkStands`
+  counts that ⏰, so `markPlaced` and the echo gate still follow it.
 
 - **The owner's rule is that anything which CAN end in a like should**
   (2026-09-10), so the table covers every capture, every undo, everything Olma
@@ -350,13 +357,19 @@ title means this file. Grep the title, not the filename.
   said to it was noted by nobody until they wrote again. The follow-up is a
   self-initiated turn on their own agent: it acts on the USER.md section with
   its tools, never repeats what the greeter said (the greeter's reply rides
-  the payload fenced; their words do not), and ends with their page, minted
-  at delivery. Three things keep it from being a second copy of anything:
+  the payload fenced; their words do not). **Since 2026-10-08 it carries NO
+  page, and neither does the first turn** (owner: "הרבה מאוד אנשים נוח להם
+  להפעיל את זה רק בוואטסאפ"): the page around a note with nothing to act on
+  became a restatement of the greeter's introduction, a minute after it
+  (`incidents.md`, "Two introductions in a minute"). So it is queued only
+  when it has something to do — a room's or a game night's short opening, or
+  `intake_note_at` — and a note that asks for nothing is answered `NO_REPLY`.
+  Three things keep it from being a second copy of anything:
   the worker clears `intake_note_at` once it is out, so their first own turn
   is not told the words are still waiting; the gate DROPS it
   (`answered_in_turn`) if they wrote to their own agent first, because that
-  turn answers the same words; and `turn.advise` hands the page on a first
-  turn only when no follow-up reached them (`firstTurnPageLink`). Inside the
+  turn answers the same words; and nothing at the start hands over the page
+  at all. Inside the
   greeter's fifteen minutes it passes the night and the quiet day — it is the
   rest of a reply somebody is waiting for.
   **The copy itself is revision 3, shorter, and carries no link** (owner,

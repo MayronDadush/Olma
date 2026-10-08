@@ -40,6 +40,7 @@ const events = require('../../domain/user-dashboard-events');
 const opens = require('../../domain/dashboard-opens');
 const write = require('../../domain/user-dashboard-write');
 const userApps = require('../../domain/user-apps');
+const push = require('../../domain/push');
 const { refreshUserCard } = require('../../intake/user-card');
 
 // The short shape every link has had since 2026-09-15, or the 64-hex shape of
@@ -134,6 +135,7 @@ function newPageHtml() {
 const { esc } = require('./html');
 const publicPages = require('./public-pages');
 const { linkCard, withLinkCard } = require('./link-card');
+const pwa = require('./pwa');
 
 // The page is one inline script and one inline stylesheet, so 'unsafe-inline'
 // is unavoidable and blocking it would only break the page. What this policy is
@@ -215,7 +217,7 @@ function messagePage(res, status, key, lang, extra = {}) {
     + `<h1>${esc(copy[l].title)}</h1><p>${esc(copy[l].body)}</p></div>`).join('<hr>');
   res.writeHead(status, headers(HTML, extra));
   return res.end(`<!doctype html><html dir="${first === 'he' ? 'rtl' : 'ltr'}" lang="${first}"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
+<meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">${pwa.HEAD_TAGS}
 <title>${langs.map((l) => PAGE_NAME[l]).join(' · ')}</title><style>
 :root{color-scheme:light dark}
 body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
@@ -283,7 +285,7 @@ function signInPage(res, token, firstName, meeting, locale) {
   res.writeHead(200, headers(HTML));
   return res.end(`<!doctype html><html dir="${t.dir}" lang="${lang}"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
-${linkCard({ lang, path: '/' })}
+${linkCard({ lang, path: '/' })}${pwa.HEAD_TAGS}
 <title>${PAGE_NAME[lang]}</title><style>
 :root{color-scheme:light dark}
 body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
@@ -409,6 +411,7 @@ async function handle(req, res, pool, pathname) {
       // what switches whose page this is.
       const who = await currentUser(pool, req);
       if (who && who.userId === peek.data.userId) {
+        await withTx(pool, (c) => opens.record(c, who.userId, { byAdmin: who.byAdmin, source: 'link' })).catch(() => {});
         res.writeHead(303, headers(HTML, { Location: '/me' + landingFragment(peek.data, req.url) }));
         return res.end();
       }
@@ -420,6 +423,7 @@ async function handle(req, res, pool, pathname) {
         const holder = await currentUser(pool, req);
         return messagePage(res, 410, 'linkUsed', holder ? holder.locale || 'he' : null);
       }
+      await withTx(pool, (c) => opens.record(c, opened.data.userId, { byAdmin: opened.data.byAdmin, source: 'link' })).catch(() => {});
       res.writeHead(303, headers(HTML, {
         Location: '/me' + landingFragment(opened.data, req.url),
         'Set-Cookie': auth.cookieHeader(opened.data.sessionId),
@@ -453,6 +457,9 @@ async function handle(req, res, pool, pathname) {
       if (opened.error.code === 'not_found') codeMissed(addr);
       return sendJson(res, opened.error.code === 'forbidden' ? 403 : 400, { ok: false, error: { code: opened.error.code } });
     }
+    // A code is the installed app's door and nothing else's, so this is an
+    // app open whatever address the page reloads to.
+    await withTx(pool, (c) => opens.record(c, opened.data.userId, { source: 'app' })).catch(() => {});
     return sendJson(res, 200, { ok: true }, { 'Set-Cookie': auth.cookieHeader(opened.data.sessionId) });
   }
 
@@ -485,7 +492,7 @@ async function handle(req, res, pool, pathname) {
     }
     // Counted for the admin page (domain/dashboard-opens.js), and never at
     // the page's expense: a failed write is a visit not counted, nothing more.
-    await withTx(pool, (c) => opens.record(c, userId, { byAdmin: who.byAdmin })).catch(() => {});
+    await withTx(pool, (c) => opens.record(c, userId, { byAdmin: who.byAdmin, source: opens.sourceOf(req.url) })).catch(() => {});
     res.writeHead(200, headers(HTML));
     return res.end(ownPageHtml(who.locale));
   }
@@ -497,6 +504,14 @@ async function handle(req, res, pool, pathname) {
 
   if (pathname === '/me/data') {
     if (req.method !== 'GET') return sendJson(res, 405, { ok: false, error: { code: 'invalid' } }, { Allow: 'GET' });
+    // The address book on its own, asked for by the one sheet that shows it
+    // (domain/user-dashboard.contactsPage). A query on the same path rather
+    // than a route of its own, so Caddy's allowlist — which matches /me/data
+    // by path — needs nothing new to pass it.
+    if (new URL(String(req.url || ''), 'http://x').searchParams.get('part') === 'contacts') {
+      const book = await withTx(pool, (c) => dash.contactsPage(c, userId));
+      return sendJson(res, book.ok ? 200 : 404, book);
+    }
     const page = await withTx(pool, async (c) => {
       const loaded = await dash.load(c, userId);
       // Opening the page IS the exposure, in both arms — including the arm
@@ -509,6 +524,13 @@ async function handle(req, res, pool, pathname) {
     // costs the badge, never the page (domain/user-apps.js).
     if (page.ok && page.data && Array.isArray(page.data.apps) && page.data.apps.length) {
       page.data.apps = await userApps.badges(page.data.apps.map((a) => a.id), userId);
+    }
+    // The notifications switch (domain/push.js): absent unless the flag
+    // covers them, and never on a page the owner opened from the admin side,
+    // or his phone would be subscribed to somebody else's coordinations. Its
+    // own transaction, so a fault here costs the switch and never the page.
+    if (page.ok && page.data && !who.byAdmin) {
+      page.data.push = await withTx(pool, (c) => push.pageState(c, userId)).catch(() => null);
     }
     return sendJson(res, page.ok ? 200 : 404, page);
   }
@@ -541,6 +563,15 @@ async function handle(req, res, pool, pathname) {
     const out = await userApps.openUrl(pool, u, String(payload.app || ''));
     const code = out.ok ? 200 : out.error.code === 'forbidden' ? 403 : out.error.code === 'invalid' ? 400 : 503;
     return sendJson(res, code, out);
+  }
+  // The app's three notification calls are not the person writing: they
+  // never pass through write.perform, which would stamp them as having
+  // answered and audit the payload (an endpoint is an address that can be
+  // written to). The same refusal as above for a page the owner opened.
+  if (Object.prototype.hasOwnProperty.call(push.ACTIONS, body.action)) {
+    if (who.byAdmin) return sendJson(res, 403, { ok: false, error: { code: 'forbidden', message: 'not on an admin view' } });
+    const r = await withTx(pool, (c) => push.ACTIONS[body.action](c, userId, payload));
+    return sendJson(res, r.ok ? 200 : r.error.code === 'forbidden' ? 403 : 400, r);
   }
   const done = await withTx(pool, (c) => write.perform(c, userId, body.action, payload));
   // After the commit, never inside it (refreshUserCard is best-effort and

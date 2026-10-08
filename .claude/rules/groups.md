@@ -920,6 +920,11 @@ have already had to be argued for.
   one invite is spent; a day of silence takes them out** (owner, 2026-09-13).
   They are left out only until they write again: that ends the pause
   (people-and-quiet.md).
+  **Since 2026-10-07 the allowance is one invite per COORDINATION for a quiet
+  pause, not one per pause** (`pause.keptOutOfRooms` is now a pause they asked
+  for and nothing else, and the exit below reads the invite about THAT
+  meeting, not `users.room_invite_sent_at`; people-and-quiet.md, "Somebody
+  silent for DAYS"). The rest of this paragraph is the per-pause history.
   `startCoordination` filters out members where `pause.roomInviteSpent` is
   true, but only for who gets COUNTED IN. The membership check, and `settle`,
   still use the full `coordinatingMembers` list, because a pause does not

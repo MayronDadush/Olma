@@ -313,8 +313,9 @@ test('an open coordination sheet re-reads on a timer, and a closed one or a hidd
   const path = require('node:path');
   const page = fs.readFileSync(path.join(__dirname, '..', 'docs', 'design', 'user-dashboard.html'), 'utf8');
   assert.match(page, /var MT_POLL_MS = 8000;/);
-  assert.match(page, /function tickMeetPoll\(\)\{\n\s*if\(!LIVE \|\| !mtOpen \|\| document\.hidden\) return;\n\s*API\.reload\(\);/,
-    'the poll is gated on an open sheet and a visible tab, and it is a re-read, never a local change');
+  assert.match(page, /function tickMeetPoll\(\)\{\n\s*if\(!LIVE \|\| !mtOpen \|\| document\.hidden\) return;\n\s*if\(!\$\("#mtSheet"\)\.classList\.contains\("show"\)\) return;\n\s*API\.reload\(\);/,
+    'the poll is gated on an open sheet and a visible tab, and it is a re-read, never a local change. ' +
+    '`mtOpen` alone is not "open": nothing clears it when the sheet closes (2026-10-08)');
   assert.match(page, /setInterval\(tickMeetPoll, MT_POLL_MS\);/);
   // hydrate is what makes a re-read safe under an open sheet: it carries the
   // open id across and redraws.

@@ -106,7 +106,9 @@ async function startCoordination(client, group, actingUser, title, { where = nul
     return err('forbidden', 'that person is not a member of this group');
   }
   // A paused member whose pause already spent its one coordination message is
-  // not counted in (owner, 2026-09-13; domain/pause.js). They either did not
+  // not counted in (owner, 2026-09-13; domain/pause.js). Since 2026-10-07 a
+  // QUIET pause is counted into every new one — one message per coordination —
+  // so this now leaves out only somebody who paused her themselves. They either did not
   // answer it for a day or asked to stay paused, and either way a coordination
   // they never hear of must not sit in everybody's digest as waiting on them —
   // which is what the room did to Kapish. Scoped to who is SWEPT IN: whether
@@ -727,7 +729,12 @@ async function sweepSilentPausedMembers(client, nowMs = Date.now()) {
        FROM meeting_participants p
        JOIN meetings mt ON mt.id = p.meeting_id
        JOIN users u ON u.id = p.user_id
-      WHERE mt.group_id IS NOT NULL AND mt.status = 'negotiating'
+      -- A private coordination too, for a QUIET pause (2026-10-07): its
+      -- invite now reaches them once as well (outbox/worker.js), and a day of
+      -- silence after it takes them out the same way, or whoever asked waits
+      -- on somebody who is not there. A pause they asked for keeps its old
+      -- reach, rooms only.
+      WHERE (mt.group_id IS NOT NULL OR u.paused_reason = $3) AND mt.status = 'negotiating'
         AND p.state <> 'opted_out'
         AND u.paused_at IS NOT NULL
         -- An answer already on the table keeps them in (owner, 2026-10-05:
@@ -744,9 +751,17 @@ async function sweepSilentPausedMembers(client, nowMs = Date.now()) {
           u.paused_reason IS DISTINCT FROM $3
           OR (p.user_id <> mt.initiator_id
               AND mt.created_at <= $1::timestamptz - ($2::bigint * interval '1 millisecond')
-              AND (u.room_invite_sent_at IS NULL
-                   OR u.room_invite_sent_at < u.paused_at
-                   OR u.room_invite_sent_at <= $1::timestamptz - ($2::bigint * interval '1 millisecond'))
+              -- Per COORDINATION since 2026-10-07: no invite about THIS one
+              -- reached them inside the last day. The person-level stamp
+              -- (users.room_invite_sent_at) meant one per pause; with one per
+              -- coordination it would read a fresh invite to the NEXT one as an
+              -- answer still owed in this one.
+              AND NOT EXISTS (
+                SELECT 1 FROM outbox oi
+                 WHERE oi.user_id = p.user_id AND oi.kind = 'meeting_invite'
+                   AND oi.sent_at IS NOT NULL AND oi.hold_reason IS NULL
+                   AND (oi.payload->>'meetingId')::bigint = p.meeting_id
+                   AND oi.sent_at > $1::timestamptz - ($2::bigint * interval '1 millisecond'))
               AND NOT EXISTS (
                 SELECT 1 FROM outbox o
                  WHERE o.user_id = p.user_id AND o.sent_at IS NULL

@@ -99,6 +99,22 @@ test('a check-in the gate DROPPED, a failed send, and a day-one step never count
   assert.equal(await missesOf(u.id), 0, 'a row dropped as paused reached nobody');
 });
 
+test('a message the owner sent by hand, or a repair of our own fault, is not a miss', async () => {
+  // Gali and Dov, 2026-10-07: an `admin` check-in and an `unanswered_repair`
+  // were counted, and the gate dropped their 09:00 digest as `quiet`.
+  const u = await silentUser('+972641100009');
+  for (const rung of ['admin', 'unanswered_repair', 'missed_goal_repair']) {
+    await withTx(db.pool, (c) => enqueue(c, {
+      userId: u.id, kind: 'checkin', payload: { checkinInstruction: 'hi', rung }, idempotencyKey: `not-a-miss-${rung}`,
+    }));
+    await clearOthers(u.id);
+    const out = await drainOnce(db.pool, ok, daytime());
+    assert.equal(out.delivered, 1, rung);
+    assert.equal(await missesOf(u.id), 0, `${rung} asked nothing`);
+    await db.pool.query(`UPDATE outbox SET sent_at = sent_at - interval '1 day' WHERE user_id = $1`, [u.id]);
+  }
+});
+
 test('a timed-out send is booked as sent, so it counts', async () => {
   const u = await silentUser('+972641100004');
   await withTx(db.pool, (c) => enqueue(c, {

@@ -4,6 +4,7 @@ paths:
   - "olma2/src/jobs/onboarding-review.js"
   - "olma2/src/domain/users.js"
   - "olma2/src/domain/pause.js"
+  - "olma2/src/domain/silence-pause.js"
   - "olma2/src/domain/preferences.js"
   - "olma2/src/domain/onboarding.js"
   - "olma2/src/intake/**"
@@ -84,7 +85,7 @@ title means this file. Grep the title, not the filename.
 
 - **Somebody who has stopped answering hears nothing Olma decided to say, and
   nothing on their record is cancelled.** The check-in ladder's one miss
-  (`checkin_misses >= 1`) is the signal and the delivery gate is where it
+  (`checkin_misses >= 1`) is the signal — counted only for the ladder's own rungs (`worker.countLadderAsk`); an owner's hand-sent `admin` message and a repair of our own fault (`unanswered_repair`, `missed_goal_repair`) are not a question they failed to answer and the delivery gate is where it
   acts: every row is dropped as `hold_reason = 'quiet'` — reminder rungs,
   digests, another user's fan-out — except the ladder's own check-in (the
   three-day and the weekly "מה איתך") and rung 1 of a reminder they asked for
@@ -113,6 +114,16 @@ title means this file. Grep the title, not the filename.
   clip. The pause still drops it, and the night, a quiet day, a pending
   introduction and the pending-user drop all still apply. It is NOT a
   precedent: a second broadcast kind is a second owner decision.
+  **And since 2026-10-08 a new joiner gets it too** (owner: "5 / 10 דקות
+  אחרי ההודעה הראשונה שלהם"): `jobs/intake.js` queues the same row and key
+  (`intro-video.enqueueOne`) seven minutes after provisioning, only after the
+  owner's FULL opening — a room's or a game night's short opening has its own
+  door, `welcome_clip` — named by the flag `joiner_clip` (default 'v2', '' is off). No
+  expiry: a night joiner gets it in their morning ("בבוקר"). It TAKES the 15m
+  day-one step's place ("הסרטון במקומה", `checkin.ONBOARDING_STEPS` `silentIf`,
+  silent rather than skipped), unless the gate dropped it; and it spaces the
+  next step by `STEP_GAP_MS` like a step would. It counts toward
+  `day_one_proactive_cap`, as the step it replaces did.
   **A write from their own page IS the person answering** (2026-09-20).
   `user-dashboard-write.perform` stamps `users.last_dashboard_at` (migration
   075) and resets `checkin_misses` on every successful write — the same line
@@ -152,6 +163,34 @@ title means this file. Grep the title, not the filename.
   (`quietRoomInvite`) — and neither is what follows inside a coordination,
   which still needs an answer of theirs. The first word of each errand only.
   A pause, the night, a quiet day and the budget are all unchanged.
+
+- **Somebody silent for DAYS is paused on a clock, not only on unanswered
+  questions** (owner, 2026-10-07; `src/domain/silence-pause.js`, run from
+  `minute_sweeps` as `sweeps.sweepSilencePause`). The ladder counts silence in
+  check-ins that REACHED somebody, so anything that keeps check-ins from going
+  out keeps the silence from being measured: Saar was on `daily_once_phones`,
+  which drops every check-in, so `checkin_misses` stayed 0 and he heard an
+  empty 20:00 message every evening. `silence-pause.due` reads the newest sign
+  of life from the person's side only — onboarding, `last_inbound_at`,
+  `last_dashboard_at`, a word to her in a room (`last_wrote_at`), an answer in
+  a coordination, an `user.resumed` audit row — and pauses after
+  `silence_pause_days_empty` (2) days when they hold no open task, and
+  `silence_pause_days_holding` (5) when they do; 0 is off. **Never somebody
+  with a reminder they asked for in words still to come** (`auto = false`,
+  `attempts = 0`): a pause stops every reminder, and that one is a moment they
+  chose. The pause is `pause.quietPause` with `note: 'silence_days'` on the
+  audit row — the same `quiet_ladder` reason, so nothing is cancelled and their
+  first message ends it. **And a quiet pause hears ONE message per
+  coordination opened with them, room or private** (owner: "חוץ מהודעה אחת על
+  כל תיאום שנפתח איתם"): `pause.keptOutOfRooms` is only a pause they asked for,
+  so they are swept into every new room coordination; the worker's
+  `pausedRoomInvite` passes an invite whose meeting has no earlier invite that
+  reached them (a `tableChanged` re-invite is the same coordination and
+  drops); the once-a-day hold steps aside for it, because the evening message
+  never comes for a paused person; and a day after it with no answer
+  `group-meetings.sweepSilentPausedMembers` takes them out of THAT one, a
+  private one included (`incidents.md`, "Twenty o'clock, every evening, about
+  nothing").
 
 - **A stop is acted on the moment it is HEARD, not when it is confirmed.** גל
   wrote "dont send me messages bye", was asked "בטוח?", and never answered —

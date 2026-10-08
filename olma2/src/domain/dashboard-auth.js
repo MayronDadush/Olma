@@ -186,7 +186,7 @@ async function redeemLink(client, token) {
   await client.query(
     `INSERT INTO dashboard_sessions (id, user_id, by_admin) VALUES ($1, $2, $3)`,
     [hash(sid), userId, Boolean(rows[0].by_admin)]);
-  return ok({ sessionId: sid, userId, ...(await landing(client, rows[0])) });
+  return ok({ sessionId: sid, userId, byAdmin: Boolean(rows[0].by_admin), ...(await landing(client, rows[0])) });
 }
 
 // ---- codes -----------------------------------------------------------------
@@ -303,10 +303,10 @@ async function endAllSessions(client, userId) {
 // on 2026-09-04 and only wired in on 2026-10-03, so for a month nothing ran it.
 //
 // A spent or expired link is kept a WEEK, not a day, because it is still read:
-// the day-one 22h check-in (jobs/checkin.js) asks "has this person ever had a
-// link?" between their 22nd and 26th hour. A link they opened in their first
-// hour would be gone by then under a one-day grace, and the person who already
-// has their page would be pitched it again.
+// the check-in ladder's `dashboard` offer (jobs/checkin.js) asks "has this
+// person ever had a link to their page?". It is offered once ever either way
+// (the discovery topic), so a purged link costs at most an offer that would
+// otherwise have been skipped.
 async function purgeExpired(client) {
   const links = await client.query(
     `DELETE FROM magic_links WHERE expires_at < now() - interval '7 days' OR used_at < now() - interval '7 days'`);
