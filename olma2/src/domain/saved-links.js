@@ -589,13 +589,16 @@ function countWords(n, lang) {
 function shortcutReply(items, { lang = 'he', now, timezone, overrides } = {}) {
   const about = (t) => { const c = cleanTitle(t); return c ? `— ${c}` : ''; };
   const name = (l) => String(l || '').replace(/[*_~`]/g, '').trim();
+  // Only a save made NOW and not read says so; `read` is absent on a row that
+  // never went through the read, and a duplicate is not news about the page.
+  const unread = (it) => !it.duplicate && it.read === false;
   let text;
   if (items.length === 1) {
     const it = items[0];
     text = it.duplicate
       ? templates.render(templates.keyFor('saved_link_dup', lang),
         { list: name(it.list), when: savedWhen(it.savedAt, now, timezone, lang) }, overrides)
-      : templates.render(templates.keyFor(it.createdList ? 'saved_link_new_list' : 'saved_link', lang),
+      : templates.render(templates.keyFor(`${it.createdList ? 'saved_link_new_list' : 'saved_link'}${unread(it) ? '_unread' : ''}`, lang),
         { list: name(it.list), emoji: it.emoji || '', about: about(it.title) }, overrides);
   } else {
     // "ב" before the list is not style: a line with no Hebrew letter in it
@@ -606,7 +609,9 @@ function shortcutReply(items, { lang = 'he', now, timezone, overrides } = {}) {
       const where = it.duplicate
         ? (lang === 'en' ? `already in *${name(it.list)}*` : `כבר שמור ב*${name(it.list)}*`)
         : `${at}*${name(it.list)}*`;
-      const a = about(it.title);
+      const a = unread(it)
+        ? (lang === 'en' ? '— couldn’t read it' : '— לא הצלחתי לקרוא מה יש בו')
+        : about(it.title);
       return `• ${where}${a ? ` ${a}` : ''}`;
     }).join('\n');
     const fresh = items.filter((it) => !it.duplicate).length;
