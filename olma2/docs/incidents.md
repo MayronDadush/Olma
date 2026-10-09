@@ -15499,3 +15499,26 @@ never switch). A non-Hebrew message counts as the stored language, which ends a
 streak. Needs a gateway restart for the hook to send the new field. Not done:
 the first-hours check-in still follows `locale` until three messages have been
 seen.
+
+### The poker room could not say who could and who could not (2026-10-08)
+
+The owner asked Olma in the poker room who can and who cannot. She named
+nobody. `group_coordination_status` already returns yes, no and missing per
+time with each person's tag; the room doctrine (`agents-group-template.md`)
+told her "even after somebody answered here, do not say in the room what the
+others answered". The owner's call: that is the board of the coordination and
+every member may see it. Now she answers from the status by tag, says "not yet
+answered" only where `asked` is true, and still never says a REASON. The
+fixed room lines already named who could make it, so this only closes the gap
+on a direct question. Unasked, she still does not read the board out.
+
+The same day the owner widened it to every surface: the page has always shown
+who said what by name, so the chat and the room should too. The private
+`get_meeting_status` had the answers by user id and a hint saying "never
+anybody else's answer"; it now draws `who` per time (names, the reader left
+out, nobody who left), said only when asked. Reasons: the page and the chat
+already showed every shareable one (the `private` flag exists and had been set
+on 0 of 48 constraints). In the room a reason is said only when somebody asks
+why, through `group_coordination_status`'s `reasons`. Still open, asked of the
+owner: a PRIVATE coordination between room members, asked about in the room —
+the room agent cannot see it at all today.

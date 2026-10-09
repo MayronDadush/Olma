@@ -1142,7 +1142,10 @@ test('one active option is a sentence, not a numbered block', async () => {
 
   const res = await withClient((c) => BY_NAME.get('get_meeting_status').handler(c, alice, { meeting_id: m.id }));
   assert.equal(res.data.block, undefined, 'one option is nothing to number');
-  assert.equal(res.data.hints, undefined, 'one option, nothing to say about layout either');
+  // Nothing about layout — only who said what, which "who can?" needs even
+  // with one time on the table (owner, 2026-10-08).
+  assert.deepEqual(Object.keys(res.data.hints || {}), ['who'], 'one option, nothing to say about layout either');
+  assert.deepEqual(res.data.options[0].who, { yes: [], no: [], waiting: ['Bob'] });
 });
 
 test('all five active options are numbered, whoever put them there', async () => {
