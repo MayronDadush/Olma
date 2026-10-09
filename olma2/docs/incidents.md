@@ -15478,3 +15478,24 @@ follow-up when a digest reached them after rung 1
 (`reminders.coveredByDigest`; since the same day every digest carries every
 open task, so reaching them is naming it). A nudge, an explicit reminder and a repeating one
 are untouched. Audited as `reminder.covered_by_digest`.
+
+### Hebrew all day, and an English check-in (fixed 2026-10-09)
+
+Rachla (u-70) was filed `locale = 'en'` by her first message
+(`user.provisioned.workspace`, `localeSource: "message"` — Latin letters), wrote
+Hebrew for a day, and was then sent a check-in in English: with no message of
+hers in front of it, the model follows the stored language, and USER.md said
+`Language: en`. Nothing noticed, because the net for a wrong stored language is
+`turn_start`'s `wrote_in` and the Turn context doctrine says NOT to call
+`turn_start` — her `locale_observed` was never written. Her row was set to `he`
+by hand (`users.setLocale` + `refreshUserCard`, nothing in the dashboard had
+touched it: no `user.locale_set`, `last_dashboard_at` empty).
+
+Fix: the turn-open hook counts Hebrew letters (`wroteHebrew`: true, false, or
+null when under three letters), brokerd keeps it on the pending open and
+`turn_context` feeds `users.noteObservedLanguage` once per message — three
+Hebrew messages to a non-Hebrew row raise the existing `languageNudge` (ask,
+never switch). A non-Hebrew message counts as the stored language, which ends a
+streak. Needs a gateway restart for the hook to send the new field. Not done:
+the first-hours check-in still follows `locale` until three messages have been
+seen.

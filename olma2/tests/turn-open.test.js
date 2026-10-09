@@ -335,7 +335,7 @@ test('the hook handler sends exactly one turn_open line for an inbound message, 
   assert.equal(written.length, 1);
   const msg = JSON.parse(written[0]);
   assert.equal(msg.method, 'turn_open');
-  assert.deepEqual(msg.params, { agentId: 'u-3', messageId: '3EB0HOOK0001', kind: 'voice', senderName: 'Miron', replyToId: null, thanks: false, stopReminders: false, chase: null, openList: false, remindAsk: false, noHour: false, out: false, reportedExit: false, at: '2026-09-05T10:00:00.000Z' });
+  assert.deepEqual(msg.params, { agentId: 'u-3', messageId: '3EB0HOOK0001', kind: 'voice', senderName: 'Miron', replyToId: null, thanks: false, stopReminders: false, chase: null, openList: false, remindAsk: false, noHour: false, out: false, reportedExit: false, wroteHebrew: null, at: '2026-09-05T10:00:00.000Z' });
   assert.ok(!written[0].includes('סודי'), 'the text never leaves the gateway');
   // The shape the gateway ACTUALLY sends (OpenClaw 2026.8.1, measured
   // 2026-09-06): `message:preprocessed`, sender name and media type flat on
@@ -345,7 +345,7 @@ test('the hook handler sends exactly one turn_open line for an inbound message, 
     context: { from: '+972500000000', body: 'סודי', bodyForAgent: 'סודי', messageId: '3EB0HOOK0002', senderName: 'Miron', mediaType: 'audio/ogg', transcript: 'שלום', provider: 'whatsapp', cfg: {} },
   }, { connect: fakeSocket }), true);
   assert.equal(written.length, 2);
-  assert.deepEqual(JSON.parse(written[1]).params, { agentId: 'u-3', messageId: '3EB0HOOK0002', kind: 'voice', senderName: 'Miron', replyToId: null, thanks: false, stopReminders: false, chase: null, openList: false, remindAsk: false, noHour: true, out: false, reportedExit: false, at: '2026-09-05T10:00:05.000Z' });
+  assert.deepEqual(JSON.parse(written[1]).params, { agentId: 'u-3', messageId: '3EB0HOOK0002', kind: 'voice', senderName: 'Miron', replyToId: null, thanks: false, stopReminders: false, chase: null, openList: false, remindAsk: false, noHour: true, out: false, reportedExit: false, wroteHebrew: true, at: '2026-09-05T10:00:05.000Z' });
   assert.ok(!written[1].includes('סודי') && !written[1].includes('שלום'), 'neither text nor transcript leaves the gateway');
   // A gateway that fires BOTH for one message opens it once.
   assert.equal(await hook({
@@ -978,4 +978,71 @@ test('add_tasks_bulk moves each 09:00 item to its day on a turn that named no ho
   const by = Object.fromEntries(rows.map((r) => [r.title, new Date(r.due_at).toISOString()]));
   assert.equal(by['לקבוע תור לרופא'], localTomorrowAt(0));
   assert.equal(by['להחזיר ספר'], localTomorrowAt(11));
+});
+
+// ── The language streak, off the gateway's open ──────────────────────────────
+// Rachla (u-70), 2026-10-09: stored `en` by her first message, Hebrew ever
+// after, then an English check-in. `wrote_in` was the net and it rides
+// `turn_start`, which the Turn context doctrine says NOT to call.
+test('the hook says whether a message is Hebrew, and nothing about the words', () => {
+  assert.equal(hook.wroteHebrew('היי, תזכירי לי מחר'), true);
+  assert.equal(hook.wroteHebrew('יש לי meeting מחר'), true, 'Hebrew with an English word is Hebrew');
+  assert.equal(hook.wroteHebrew('please remind me tomorrow'), false);
+  assert.equal(hook.wroteHebrew('ok'), null, 'too little to say');
+  assert.equal(hook.wroteHebrew('👍'), null);
+  assert.equal(hook.wroteHebrew(''), null);
+});
+
+async function localeUser(phone, agentId, locale) {
+  const u = await agentUser(phone, agentId);
+  await db.pool.query(`UPDATE users SET locale = $2 WHERE id = $1`, [u.id, locale]);
+  return u;
+}
+const ctx = (u) => broker.dispatch({ id: 1, method: 'turn_context',
+  params: { agentId: u.agentId, sessionKey: `agent:${u.agentId}:whatsapp:direct:${u.phone}` } });
+
+test('three Hebrew messages to somebody filed as English ask about the language on the third, once', async () => {
+  const flagsDomain = require('../src/domain/flags');
+  const turnDomain = require('../src/domain/turn');
+  const { withTx } = require('../src/db/pool');
+  const u = await localeUser('+972641100091', 'u-991', 'en');
+  u.agentId = 'u-991';
+  await withTx(db.pool, (c) => flagsDomain.setFlag(c, turnDomain.CONTEXT_FLAG, u.phone));
+  try {
+    const seen = [];
+    for (const id of ['3EB0LANG0001', '3EB0LANG0002', '3EB0LANG0003']) {
+      await open({ agentId: 'u-991', messageId: id, kind: 'text', wroteHebrew: true });
+      const r = await ctx(u);
+      assert.equal(r.ok, true, JSON.stringify(r));
+      seen.push(/written several messages/.test(r.context));
+    }
+    assert.deepEqual(seen, [false, false, true]);
+    const { rows: [row] } = await db.pool.query(`SELECT locale, locale_observed, locale_observed_count FROM users WHERE id = $1`, [u.id]);
+    assert.equal(row.locale, 'en', 'asked, never switched');
+    assert.equal(row.locale_observed, 'he');
+    assert.equal(Number(row.locale_observed_count), 3);
+  } finally {
+    await withTx(db.pool, (c) => flagsDomain.setFlag(c, turnDomain.CONTEXT_FLAG, ''));
+  }
+});
+
+test('a message in their stored language ends the streak, and an unreadable one counts nothing', async () => {
+  const flagsDomain = require('../src/domain/flags');
+  const turnDomain = require('../src/domain/turn');
+  const { withTx } = require('../src/db/pool');
+  const u = await localeUser('+972641100092', 'u-992', 'en');
+  u.agentId = 'u-992';
+  await withTx(db.pool, (c) => flagsDomain.setFlag(c, turnDomain.CONTEXT_FLAG, u.phone));
+  try {
+    const step = async (id, wroteHebrew) => {
+      await open({ agentId: 'u-992', messageId: id, kind: 'text', wroteHebrew });
+      await ctx(u);
+      return (await db.pool.query(`SELECT locale_observed_count AS n FROM users WHERE id = $1`, [u.id])).rows[0].n;
+    };
+    assert.equal(Number(await step('3EB0LANG0011', true)), 1);
+    assert.equal(Number(await step('3EB0LANG0012', null)), 1, 'too short to say: no change');
+    assert.equal(Number(await step('3EB0LANG0013', false)), 0, 'English from an English user resets it');
+  } finally {
+    await withTx(db.pool, (c) => flagsDomain.setFlag(c, turnDomain.CONTEXT_FLAG, ''));
+  }
 });

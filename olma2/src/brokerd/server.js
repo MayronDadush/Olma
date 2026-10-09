@@ -463,6 +463,10 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
         // "רשום עדן יצא": a status they quoted. opt_out_of_meeting refuses on
         // this turn (tools/meetings.js) — the hook's verdict, never the words.
         reportedExit: adopt && params.reportedExit === true,
+        // Hebrew letters or not, as the hook counted them (null: too short).
+        // `turn_context` feeds the language streak from it — the model is
+        // told not to call `turn_start` there, and `wrote_in` rode that call.
+        wroteHebrew: adopt && typeof params.wroteHebrew === 'boolean' ? params.wroteHebrew : null,
         marked: new Set(), contextSent: false,
       };
       if (adopt && messageId && !quietByCode) {
@@ -1485,12 +1489,26 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
       if (pre && !user.first_name && pre.senderName) {
         cardStale = (await captureDisplayName(client, user, pre.senderName)).ok;
       }
+      // The language they wrote in, noted once per message: a stored language
+      // that is wrong (Rachla, filed `en` by her first message, 2026-10-09) is
+      // noticed after three Hebrew ones and ASKED about, never switched. A
+      // non-Hebrew message counts as the stored language, which ends a streak;
+      // what neither side can tell (null) counts nothing.
+      let languageNudge = null;
+      if (pre && !pre.languageNoted && typeof pre.wroteHebrew === 'boolean') {
+        pre.languageNoted = true;
+        const observed = pre.wroteHebrew ? 'he' : user.locale;
+        if (observed) {
+          const noted = await require('../domain/users').noteObservedLanguage(client, user, observed);
+          if (noted.ask) languageNudge = { theyWriteIn: noted.observed, stored: user.locale || null, messages: noted.count };
+        }
+      }
       const data = await turnDomain.advise(client, user, {
         counted: ourTurn || !pre ? { data: { blocked: false } } : pre.quota,
         // Spent on the first prompt build for this message: a rebuilt prompt
         // (model fallback) is the same message, and must not stamp twice.
         firstTurn: Boolean(pre && pre.firstTurn && !pre.contextSent),
-        ourTurn, replyTarget, languageNudge: null,
+        ourTurn, replyTarget, languageNudge,
         thanksOnly: Boolean(pre && pre.thanksOnly),
         thanksAfterQuestion: Boolean(pre && pre.thanksAfterQuestion),
         stoppedReminders: (pre && pre.stoppedReminders) || 0,
