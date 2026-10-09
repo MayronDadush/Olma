@@ -222,7 +222,11 @@ async function unanimousOption(client, meetingId) {
        -- …unless they already answered a time on this table: they stay in
        -- and are waited on (owner, 2026-10-05; group-meetings.answeredLive).
        SELECT id AS user_id FROM users u
-        WHERE paused_at IS NOT NULL AND paused_reason IS DISTINCT FROM 'quiet_ladder'
+        -- A stop nobody confirmed (stop_unanswered, 2026-10-09) is waited on
+        -- like anybody: a room's coordinations still reach them.
+        WHERE paused_at IS NOT NULL
+          AND paused_reason IS DISTINCT FROM 'quiet_ladder'
+          AND paused_reason IS DISTINCT FROM 'stop_unanswered'
           AND NOT EXISTS (
             SELECT 1 FROM meeting_option_answers oa
               JOIN meeting_options mo ON mo.id = oa.option_id

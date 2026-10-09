@@ -66,6 +66,47 @@ const QUIET_LADDER = 'quiet_ladder';
 // alone being messaged anyway. Both are recoverable, only one is a betrayal.
 const SAID_STOP = 'said_stop';
 
+// …and for a stop nobody answered (owner, 2026-10-09). They said stop, were
+// asked "בטוח?", and said nothing for a day. Silence is not a yes, so this is
+// not the pause they would have confirmed. The owner's names, so the four
+// states can be told apart in conversation:
+//   השהייה שקטה  — QUIET_LADDER: Olma paused them because they stopped answering
+//   עצירה ממתינה — SAID_STOP: said stop, the question still open (first day)
+//   השהייה רכה   — STOP_UNANSWERED: said stop, never confirmed
+//   השהייה מלאה  — reason NULL: confirmed
+// A soft pause hears each coordination opened with them ONCE, as a quiet
+// pause does (one invite, a day of silence takes them out, never a nudge),
+// and on top of that the people errands (gate.PEER_KINDS). Nothing of Olma's
+// own. The first message of their day carries one fixed line saying they can
+// stop her completely (`SOFT_PAUSE_FOOTER`). Their next message ends it, as it
+// ends a said_stop.
+const STOP_UNANSWERED = 'stop_unanswered';
+
+// How long the question waits before silence turns a said_stop into the
+// softer pause. The owner's number.
+const STOP_ANSWER_MS = 24 * 3600_000;
+
+// Stops said before this rule existed keep the pause they were promised
+// (owner, 2026-10-09: Gal, Matan and מעיין stay fully paused). Only a
+// said_stop taken at or after this moment softens.
+const SOFT_PAUSE_SINCE = new Date('2026-10-09T00:00:00Z');
+
+// The line a soft-paused person reads once a day, word for word. No grammatical
+// gender: "שרוצים" is impersonal, and "לי"/"אשלח" are hers.
+const SOFT_PAUSE_FOOTER = {
+  he: 'אפשר לכתוב לי בכל שלב שרוצים להפסיק, ואז לא אשלח יותר שום הודעה.',
+  en: 'You can tell me at any point that you want to stop, and then I won\'t send you anything at all.',
+};
+
+function softPauseFooter(locale) {
+  return String(locale || '').toLowerCase().startsWith('he') ? SOFT_PAUSE_FOOTER.he : SOFT_PAUSE_FOOTER.en;
+}
+
+// Is this the soft pause? Reads `paused_at` and `paused_reason`.
+function softPaused(row) {
+  return Boolean(row && row.paused_at) && row.paused_reason === STOP_UNANSWERED;
+}
+
 // How long a paused person's one coordination message keeps them in that
 // coordination with no answer, and how long after answering a "leave me
 // paused" still counts as the answer to it.
@@ -102,8 +143,12 @@ function quietRoomInviteSpent(row) {
 // (2026-09-27): somebody who is merely less active still hears one invite from
 // a room; somebody who paused her hears nothing from her, and a room does not
 // count them, wait on them or tag them.
+//
+// A stop nobody confirmed for a day (`STOP_UNANSWERED`) is NOT one, since
+// 2026-10-09: a room counts them, asks them and tags them like anybody else.
 function pausedByRequest(row) {
-  return Boolean(row && row.paused_at) && row.paused_reason !== QUIET_LADDER;
+  return Boolean(row && row.paused_at)
+    && row.paused_reason !== QUIET_LADDER && row.paused_reason !== STOP_UNANSWERED;
 }
 
 // Is this member left out of a room's coordination — never invited, never
@@ -219,11 +264,15 @@ async function pauseUser(client, userId, { note = null, confirmed = true } = {})
 // pause DOES either means it or says so; the model's own "בטוח?" told him
 // nothing. Gender-neutral as written: לך and ענית are spelled the same for
 // both.
+//
+// Reworded 2026-10-09 with the soft pause: a yes is now the only way to stop
+// coordinations other people start, so the question says that is what it
+// costs. "אליך" is spelled the same for both genders.
 const CONFIRM_QUESTION = {
-  he: 'רק לוודא, השהייה אומרת: אני מפסיקה לכתוב לך — בלי תזכורות, סיכומים או הודעות על תיאומים — '
-    + 'ותיאומים שעוד לא ענית בהם ימשיכו בלי לחכות לך. שום דבר לא נמחק. להשהות?',
-  en: 'Just to check — a pause means I stop writing to you: no reminders, summaries or messages about '
-    + 'coordinations, and coordinations you haven\'t answered go on without waiting for you. Nothing is deleted. Pause?',
+  he: 'רק לוודא — השהייה אומרת שאני מפסיקה לגמרי: בלי תזכורות, בלי הודעות ממני, '
+    + 'ולא יגיעו אליך יותר תיאומי פגישות מאף אחד. שום דבר לא נמחק. להשהות?',
+  en: 'Just to check — a pause means I stop completely: no reminders, no messages from me, '
+    + 'and no more meeting coordinations from anyone. Nothing is deleted. Pause?',
 };
 
 // How long the question stays open. The answer is their next message, and
@@ -394,11 +443,36 @@ async function quietResume(client, userId) {
 // when a model decides she may. If the message turns out to be another stop,
 // the model pauses again in the same turn; the queue it would re-arm was
 // cancelled at the first pause and a sweep has one turn to produce a new row.
+//
+// The soft pause a said_stop turns into ends the same way, and through the
+// same door: it was never confirmed either.
 async function stopResume(client, userId, { now = new Date() } = {}) {
   const { rows } = await client.query(
-    `SELECT id FROM users WHERE id = $1 AND paused_reason = $2`, [userId, SAID_STOP]);
+    `SELECT paused_reason FROM users WHERE id = $1 AND paused_reason IN ($2, $3)`,
+    [userId, SAID_STOP, STOP_UNANSWERED]);
   if (!rows[0]) return ok({ resumed: false });
-  return resumeUser(client, userId, { now, reason: SAID_STOP });
+  return resumeUser(client, userId, { now, reason: rows[0].paused_reason });
+}
+
+// A said_stop nobody answered for STOP_ANSWER_MS becomes the soft pause. The
+// minute sweep runs it (jobs/registry.js). Nothing is re-armed: the
+// reminders stay down, because the reminders are Olma's own voice and the
+// soft pause keeps her quiet. `paused_at` is left alone, so a later resume
+// still finds everything this pause took down.
+async function softenUnansweredStops(client, now = new Date()) {
+  const { rows } = await client.query(
+    `UPDATE users SET paused_reason = $1
+      WHERE paused_reason = $2 AND paused_at IS NOT NULL
+        AND paused_at <= $3::timestamptz - ($4::bigint * interval '1 millisecond')
+        AND paused_at >= $5::timestamptz
+      RETURNING id, paused_at`,
+    [STOP_UNANSWERED, SAID_STOP, now, STOP_ANSWER_MS, SOFT_PAUSE_SINCE]);
+  for (const r of rows) {
+    await audit.record(client, Number(r.id), 'user.pause_softened', {
+      from: SAID_STOP, to: STOP_UNANSWERED, pausedAt: r.paused_at,
+    });
+  }
+  return rows.map((r) => Number(r.id));
 }
 
 // They wrote, for the first time since the one coordination message their
@@ -455,7 +529,8 @@ async function resumeOnWrite(client, userId) {
 function endsOnWrite(row) {
   if (!row) return false;
   if (!row.paused_at) return true;
-  if (row.paused_reason === QUIET_LADDER || row.paused_reason === SAID_STOP) return true;
+  if (row.paused_reason === QUIET_LADDER || row.paused_reason === SAID_STOP
+    || row.paused_reason === STOP_UNANSWERED) return true;
   if (!roomInviteSpent(row)) return false;
   return !(row.room_invite_answered_at
     && new Date(row.room_invite_answered_at).getTime() >= new Date(row.room_invite_sent_at).getTime());
@@ -463,8 +538,8 @@ function endsOnWrite(row) {
 
 module.exports = {
   pauseUser, requestPause, resumeUser, quietPause, quietResume, stopResume, resumeAfterRoomInvite,
-  resumeOnWrite, endsOnWrite,
+  resumeOnWrite, endsOnWrite, softenUnansweredStops, softPaused, softPauseFooter,
   roomInviteSpent, quietRoomInviteSpent, pausedByRequest, keptOutOfRooms,
-  isPaused, nextOccurrenceAfter, QUIET_LADDER, SAID_STOP, ROOM_INVITE_ANSWER_MS,
-  CONFIRM_QUESTION, CONFIRM_WINDOW_MS,
+  isPaused, nextOccurrenceAfter, QUIET_LADDER, SAID_STOP, STOP_UNANSWERED, ROOM_INVITE_ANSWER_MS,
+  CONFIRM_QUESTION, CONFIRM_WINDOW_MS, STOP_ANSWER_MS, SOFT_PAUSE_SINCE, SOFT_PAUSE_FOOTER,
 };

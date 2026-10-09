@@ -519,6 +519,12 @@ async function sweepSilencePause(client, now) {
   return require('../domain/silence-pause').sweep(client, now || new Date());
 }
 
+// A stop nobody answered for a day becomes the soft pause (domain/pause.js,
+// STOP_UNANSWERED).
+async function sweepSoftenStops(client, now) {
+  return require('../domain/pause').softenUnansweredStops(client, now || new Date());
+}
+
 async function sweepSilentPausedMembers(client, nowMs) {
   return groupMeetings.sweepSilentPausedMembers(client, nowMs || Date.now());
 }
@@ -759,7 +765,7 @@ async function sweepFinishedTasks(client, nowIso) {
 
 module.exports = {
   sweepReminders, sweepDigests, DAILY_ONCE_AT, sweepUnblocks, sweepStaleMeetings, sweepSettlingMeetings,
-  sweepSilentPausedMembers, sweepSilencePause,
+  sweepSilentPausedMembers, sweepSilencePause, sweepSoftenStops,
   sweepRoomLeavers,
   sweepMediaJobs, sweepNameConfirm, sweepFinishedTasks,
 };

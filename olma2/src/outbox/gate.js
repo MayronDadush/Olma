@@ -270,6 +270,12 @@ function coordinationCap(facts, row, window, tz, now) {
   return null;
 }
 
+// Does a SOFT pause let this row through? Only an explicit `true` on
+// `softPaused` acts, and only for another person's errand.
+function softPausePasses(facts) {
+  return facts.softPaused === true && PEER_KINDS.has((facts.row || {}).kind);
+}
+
 // facts: { row, plan, blocked, paused, pendingUser, window, quietDays, tz, sentToday, budget, now, lastInboundAt, wokeAt, dashboardWroteAt }
 // returns { action: 'deliver' | 'hold' | 'expire' | 'drop', holdReason?, releaseAfter? }
 function decide(facts) {
@@ -295,7 +301,14 @@ function decide(facts) {
   // pause has not yet spent that one message (pause.roomInviteSpent) — so the
   // gate still does not have to know what a meeting is. Everything below this
   // line applies to it as to anything else: the night, a quiet day, the budget.
-  if (paused && !facts.pausedRoomInvite) {
+  //
+  // And a SOFT pause (pause.STOP_UNANSWERED, owner 2026-10-09): somebody who
+  // said stop and never answered "בטוח?" for a day. Its coordinations get the
+  // quiet pause's one message each (`pausedRoomInvite`); on top of that, the
+  // people errands (PEER_KINDS) reach them, because another person is not
+  // Olma. Everything below applies to it as to anything else.
+  const softPass = softPausePasses(facts);
+  if (paused && !facts.pausedRoomInvite && !softPass) {
     return { action: 'drop', holdReason: 'paused' };
   }
 
@@ -400,7 +413,7 @@ function decide(facts) {
   // them — so holding it here for that message would hold it for ever. It
   // goes out on its own, and the night and a quiet day below still apply.
   if (facts.dailyOnce === true && row.kind !== 'digest' && row.kind !== 'introduction'
-    && !askedForInWords(row) && !(facts.paused && facts.pausedRoomInvite)) {
+    && !askedForInWords(row) && !(facts.paused && facts.pausedRoomInvite) && !(facts.paused && softPass)) {
     if (row.kind === 'checkin') return { action: 'drop', holdReason: 'daily_once' };
     return { action: 'hold', holdReason: 'daily_once', releaseAfter: null };
   }
@@ -565,7 +578,8 @@ function decide(facts) {
     && row.kind !== 'checkin' && row.kind !== 'introduction' && row.kind !== 'intro_video'
     && row.kind !== 'policy_update' && !gameSummary.KINDS.has(row.kind) && !PEER_KINDS.has(row.kind)
     && !(row.kind === 'meeting_invite' && facts.privateInvite === true)
-    && !askedForInWords(row) && !inRoomGrace && !onPageGrace && !facts.answeredCoordination) {
+    && !askedForInWords(row) && !inRoomGrace && !onPageGrace && !facts.answeredCoordination
+    && !(facts.paused && softPass)) {
     if (!facts.pausedRoomInvite && !facts.quietRoomInvite) {
       return { action: 'drop', holdReason: 'quiet' };
     }
@@ -748,7 +762,7 @@ function decide(facts) {
 }
 
 module.exports = {
-  decide, withinWindow, msUntilWindowOpen, minutesInTz, parseHHMM, nextUtcMidnight,
+  decide, softPausePasses, withinWindow, msUntilWindowOpen, minutesInTz, parseHHMM, nextUtcMidnight,
   weekdayInTz, localDateInTz, msUntilQuietDaysEnd, quietDayReason, askedForInWords,
   CONVERSATION_GRACE_MS, SAYS_IT_ONCE, REPEAT_WINDOW_MS,
   COORDINATION_DAILY_MAX, COORDINATION_GAP_MS, COORDINATION_RESULTS,

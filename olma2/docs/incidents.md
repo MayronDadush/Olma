@@ -178,6 +178,7 @@ never trust a dated narrative for something you are about to act on.
 
 **Stopping, pausing and doctrine**
 
+- [Silence after a stop was read as a yes (changed 2026-10-09)](#silence-after-a-stop-was-read-as-a-yes-changed-2026-10-09)
 - ["אני רוצה להפסיק את השירות" was answered with a goodbye and nothing else (fixed 2026-08-22)](#אני-רוצה-להפסיק-את-השירות-was-answered-with-a-goodbye-and-nothing-else-fixed-2026-08-22)
 - [Pausing left them relying on their own memory to come back (fixed 2026-08-22)](#pausing-left-them-relying-on-their-own-memory-to-come-back-fixed-2026-08-22)
 - [The writing sounded like a form, and half the users were addressed as "את/ה" (2026-08-31)](#the-writing-sounded-like-a-form-and-half-the-users-were-addressed-as-אתה-2026-08-31)
@@ -7610,6 +7611,43 @@ count; `admin`, `unanswered_repair` and `missed_goal_repair` do not
 (`tests/checkin-misses.test.js`). Gali's counter was reset by hand.
 
 ## Stopping, pausing and doctrine
+
+### Silence after a stop was read as a yes (changed 2026-10-09)
+
+Three people were paused under `said_stop` on 2026-10-09 — Gal (since
+09-23), Matan (09-25) and מעיין (09-27) — and none of them had answered the
+"בטוח?" that followed. An unconfirmed stop was a FULL pause for as long as
+they stayed silent, so a question nobody answered had the same effect as a
+yes: no room coordination, no private one from a friend, no connection
+request, for weeks. The owner's view is that silence is not a decision, and
+a pause that shuts out every other person should take one.
+
+The owner's rule: a stop that goes UNANSWERED for 24 hours becomes a softer
+pause (`pause.STOP_UNANSWERED`, `pause.softenUnansweredStops` on the minute
+sweep). The first version let every coordination row through for as long as
+they stayed in it; the owner narrowed it the same day to the quiet pause's
+shape, on the reasoning that somebody who said stop and never confirmed is
+owed at least as much quiet as somebody who merely stopped answering. So:
+Olma stays silent — no reminders, check-ins, digests, and no nudge of any
+kind — each coordination opened with them is heard ONCE (`pausedRoomInvite`,
+room or private), and a day of silence after it takes them out
+(`group-meetings.sweepSilentPausedMembers`, cause `paused_no_answer`). On top
+of that the people errands, `gate.PEER_KINDS`, always pass, and the first
+message of each local day ends on one fixed line ("אפשר לכתוב לי בכל שלב
+שרוצים להפסיק, ואז לא אשלח יותר שום הודעה.", `pause.SOFT_PAUSE_FOOTER`),
+handed over word for word on both the model path and the raw pipe. Their next
+message ends it, as it ends a `said_stop`.
+
+The owner named the four states so they can be talked about: השהייה שקטה
+(`quiet_ladder`), עצירה ממתינה (`said_stop`, its first day), השהייה רכה
+(`stop_unanswered`) and השהייה מלאה (a confirmed stop). The admin page uses
+the same words.
+
+A YES is now the only thing that stops other people's coordinations, so
+`pause.CONFIRM_QUESTION` was reworded to say that is what it costs. The three
+who were already paused were left in the full pause (`pause.SOFT_PAUSE_SINCE`):
+they were promised it, and nobody asked them otherwise. Tests:
+`tests/soft-pause.test.js`.
 
 ### Not connected, read as not on Olma (fixed 2026-09-30)
 
