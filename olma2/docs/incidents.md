@@ -291,6 +291,7 @@ never trust a dated narrative for something you are about to act on.
 - [Nine o'clock, which nobody said (2026-10-08)](#nine-oclock-which-nobody-said-2026-10-08)
 - [Ten groceries, ten tasks (2026-10-05)](#ten-groceries-ten-tasks-2026-10-05)
 - [Two asks, one task (2026-09-07)](#two-asks-one-task-2026-09-07)
+- [The list he left came back to him (fixed 2026-10-09)](#the-list-he-left-came-back-to-him-fixed-2026-10-09)
 - [The same thing, saved twice (fixed 2026-09-08)](#the-same-thing-saved-twice-fixed-2026-09-08)
 - [A time in the title and no reminder (fixed 2026-09-09)](#a-time-in-the-title-and-no-reminder-fixed-2026-09-09)
 - [A silence read as a delivery fault (fixed 2026-09-09)](#a-silence-read-as-a-delivery-fault-fixed-2026-09-09)
@@ -13272,6 +13273,25 @@ to the END, because a moment named mid-sentence is part of what the thing IS
 word is what licenses reading "ב-6 בערב" as 18:00, never the bare digit; and a
 cut that would leave a stub is refused, because "ב-17:00" alone is not a task
 anybody can read.
+
+### The list he left came back to him (fixed 2026-10-09)
+
+Miron dictated a Vietnam packing list by voice at 10:39 UTC on 2026-10-08,
+shared it with Guy and Yuval, and left it from his page at 10:41 —
+`shares.leaveTask` handed it to Guy, exactly as designed. At 11:56 the
+fact-extraction pass read the same voice note, found nothing like it on his
+open list, and wrote it back to him as task 1427 with all four items. The next
+day he asked Olma what was open and "ציוד לוייטנאם — 5" was on it.
+
+The pass already refused a twin that was open or completed inside 24h
+(`task-similarity.findTwin`'s `doneWithinHours`). Neither applies to a row
+that has changed owner or been deleted, so a thing he had walked away from
+looked like a thing he had forgotten to save. `findTwin` now takes
+`goneWithinHours`: a row of theirs archived inside the window, and any task
+whose `share.left` audit row they wrote inside it, whoever owns it now. The
+extraction pass passes 24h and counts these refusals as `similar_gone`. The
+live `add_task` passes nothing, so a person saying it again is still saved.
+The same hole was open for a task they DELETED, and the same option closes it.
 
 ### The same thing, saved twice (fixed 2026-09-08)
 

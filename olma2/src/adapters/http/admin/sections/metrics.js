@@ -253,7 +253,8 @@ async function renderMetrics(client) {
   const { rows: dupRows } = await client.query(
     `SELECT (a.created_at AT TIME ZONE 'UTC')::date AS d,
             coalesce((a.detail->'factsRefused'->>'similar_open')::int, 0)
-              + coalesce((a.detail->'factsRefused'->>'similar_done')::int, 0) AS stopped,
+              + coalesce((a.detail->'factsRefused'->>'similar_done')::int, 0)
+              + coalesce((a.detail->'factsRefused'->>'similar_gone')::int, 0) AS stopped,
             coalesce((a.detail->>'tasksCaptured')::int, 0) AS captured
        FROM audit_log a
        JOIN users u ON u.id = a.actor_id
