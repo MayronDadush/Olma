@@ -32,6 +32,7 @@ const voice = require('./voice');
 const preferences = require('./preferences');
 const holidays = require('./holidays');
 const factPrompts = require('./fact-prompts');
+const savedLinks = require('./saved-links');
 const suggestions = require('./task-suggestions');
 const referral = require('./referral');
 const experiments = require('./experiments');
@@ -130,9 +131,12 @@ async function loadTasks(client, userId, zone, calendarSyncTasks, calendarWritab
             ow.first_name AS owner_name, ow.avatar AS owner_avatar,
             -- they took the pin off this one (migration 066); pinned is the
             -- default, and it only means anything while the task is shared
-            up.task_id IS NOT NULL AS unpinned
+            up.task_id IS NOT NULL AS unpinned,
+            -- the saved link it was made from ("להפוך למשימה", migration 118)
+            sl.platform AS link_platform, sl.url AS link_url
      FROM tasks t
      JOIN users ow ON ow.id = t.owner_id
+     LEFT JOIN saved_links sl ON sl.id = t.saved_link_id
      LEFT JOIN shares sh
             ON sh.task_id = t.id AND sh.viewer_id = $1 AND sh.status = 'active'
      LEFT JOIN task_unpins up
@@ -239,6 +243,9 @@ async function loadTasks(client, userId, zone, calendarSyncTasks, calendarWritab
       // predates the column (NULL) is a job, which is the safe reading.
       kind: t.kind === 'event' ? 'event' : 'todo',
       location: t.location || null,
+      // The link it carries, when it was made from a saved one: the page
+      // draws the platform's mark and opens the url.
+      link: t.link_url ? { platform: t.link_platform, url: t.link_url } : null,
       // A repeating EVENT (migration 111): the row is its NEXT occurrence and
       // the rule is how the calendar tab draws the ones after it. Not the
       // reminder's repeat, which is `reminder.repeat` and a different thing.
@@ -926,6 +933,9 @@ async function load(client, userId) {
     // invitation (domain/user-apps.js). Ids only: the badge and the link are
     // asked of each app's own service outside this transaction.
     apps: (await userApps.appsOf(client, userId)).map((id) => ({ id, badge: 0 })),
+    // "שמורים": every list with its counts and the latest links across them
+    // (domain/saved-links.pageData). The tasks page draws it as a card.
+    saved: await savedLinks.pageData(client, userId),
   });
 }
 

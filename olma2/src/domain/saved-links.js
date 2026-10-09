@@ -507,6 +507,103 @@ async function deleteList(client, userId, { list: name } = {}) {
   return ok({ list: row.name, deleted: true, links: gone.rowCount });
 }
 
+// The deleteList undo: the list and exactly the links that went with it —
+// the ones carrying its own stamp, never one deleted on its own before.
+// Refused when a live list has taken the name since.
+async function restoreList(client, userId, { listId } = {}) {
+  const gone = await client.query(
+    `SELECT id, name, deleted_at AS stamp FROM saved_link_lists l
+      WHERE l.id = $1 AND l.user_id = $2 AND l.deleted_at IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM saved_link_lists o WHERE o.user_id = l.user_id
+                         AND lower(o.name) = lower(l.name) AND o.deleted_at IS NULL)
+      FOR UPDATE`,
+    [Number(listId), userId]
+  );
+  const rows = gone.rows;
+  if (!rows[0]) return err('not_found', 'nothing to restore');
+  await client.query(`UPDATE saved_link_lists SET deleted_at = NULL WHERE id = $1`, [rows[0].id]);
+  // A link saved again since (same canonical url, live) stays where it is,
+  // and its deleted twin stays deleted: the unique index allows only one.
+  const back = await client.query(
+    `UPDATE saved_links s SET deleted_at = NULL
+      WHERE s.list_id = $1 AND s.deleted_at = $2
+        AND NOT EXISTS (SELECT 1 FROM saved_links o WHERE o.user_id = s.user_id
+                         AND o.canonical_url = s.canonical_url AND o.deleted_at IS NULL)`,
+    [rows[0].id, rows[0].stamp]
+  );
+  await audit.record(client, userId, 'saved_list.restored', { listId: Number(rows[0].id), links: back.rowCount });
+  return ok({ list: rows[0].name, restored: true, links: back.rowCount });
+}
+
+// A list made by hand from the page. Their own words, so never `created_auto`.
+async function createList(client, userId, { name, emoji } = {}) {
+  const made = await ensureList(client, userId, { name, emoji: emoji ? String(emoji).slice(0, 8) : null, auto: false });
+  if (!made) return err('invalid', 'name required');
+  if (!made.created) return err('conflict', `a list called "${made.name}" already exists`, { listId: made.id });
+  return ok({ id: made.id, list: made.name });
+}
+
+// ---- the page -----------------------------------------------------------------
+
+const PAGE_ITEMS = 200;
+const CAPTION_MAX = 300;
+
+// Everything /me draws: every list with its counts, and the latest links
+// across all of them. `lineBy` says whose the line is — 'me' draws "כתבת"
+// under it, 'olma' "עולמה קראה מ־X", and 'other' (somebody else's words on
+// a link that was theirs first) draws no attribution rather than a wrong one.
+async function pageData(client, userId) {
+  const lists = await listsOf(client, userId);
+  const { rows } = await client.query(
+    `SELECT s.id, s.list_id, s.url, s.platform, s.kind, s.title, s.author,
+            left(s.caption, ${CAPTION_MAX}) AS caption, s.recipe, s.line, s.line_by, s.list_auto,
+            s.status, s.extract_level, s.created_at,
+            EXISTS (SELECT 1 FROM saved_link_thumbs th WHERE th.link_id = s.id) AS thumb,
+            (SELECT t.id FROM tasks t WHERE t.saved_link_id = s.id AND t.archived_at IS NULL LIMIT 1) AS task_id
+       FROM saved_links s
+      WHERE s.user_id = $1 AND s.deleted_at IS NULL
+      ORDER BY s.created_at DESC, s.id DESC LIMIT ${PAGE_ITEMS}`,
+    [userId]
+  );
+  return {
+    lists: lists.map((l) => ({
+      id: l.id, name: l.name, emoji: l.emoji || null, auto: Boolean(l.created_auto),
+      count: l.count, fresh: l.fresh, done: l.count - l.fresh,
+    })),
+    items: rows.map((r) => ({
+      id: Number(r.id), listId: r.list_id == null ? null : Number(r.list_id),
+      url: r.url, platform: r.platform, kind: r.kind || KIND_BY_PLATFORM[r.platform] || null,
+      title: r.title || null, author: r.author || null, caption: r.caption || null,
+      recipe: r.recipe && Array.isArray(r.recipe.ingredients) ? {
+        ingredients: r.recipe.ingredients.slice(0, 40).map((x) => String(x).slice(0, 120)),
+        totalMin: r.recipe.total_min || null, servings: r.recipe.servings || null,
+      } : null,
+      line: r.line || null,
+      lineBy: !r.line ? null : r.line_by == null ? 'olma' : Number(r.line_by) === Number(userId) ? 'me' : 'other',
+      listAuto: r.list_auto, done: r.status === 'done',
+      // `none` is still being read, `failed` could not be: both draw "בלי פירוט".
+      read: r.extract_level === 'meta' || r.extract_level === 'full',
+      thumb: r.thumb, taskId: r.task_id == null ? null : Number(r.task_id),
+      savedAt: r.created_at,
+    })),
+  };
+}
+
+// A stored picture of THEIR link, raster only: an SVG served from our own
+// origin is a page that can run script, whatever the img tag meant it as.
+const THUMB_MIMES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif']);
+async function thumbOf(client, userId, linkId) {
+  const id = Number(linkId);
+  if (!Number.isSafeInteger(id) || id <= 0) return null;
+  const { rows } = await client.query(
+    `SELECT th.mime, th.bytes FROM saved_link_thumbs th JOIN saved_links s ON s.id = th.link_id
+      WHERE th.link_id = $1 AND s.user_id = $2 AND s.deleted_at IS NULL`,
+    [id, userId]
+  );
+  const mime = rows[0] && String(rows[0].mime).toLowerCase().split(';')[0].trim();
+  return rows[0] && THUMB_MIMES.has(mime) ? { mime, bytes: rows[0].bytes } : null;
+}
+
 // ---- the shortcut's reading of a message -------------------------------------
 
 const SHORTCUT_MAX_CHARS = 2000;
@@ -711,7 +808,7 @@ async function storeThumb(client, linkId, image) {
 
 module.exports = {
   saveUrls, prepareSave, commitSave, parseShortcut, shortcutReply, cleanTitle, shortcutHint, savedWhen, list, search, move, setLine, setStatus, remove, restore, toTask,
-  lists, renameList, deleteList, listsOf, ensureList,
+  lists, renameList, deleteList, restoreList, createList, listsOf, ensureList, pageData, thumbOf,
   dueForEnrich, applyRead, dueForThumb, storeThumb,
   withLink: actionLink.withLink,
   MOVE_WINDOW_MS, READ_BUDGET_MS, RETRY_AFTER_MS, ROWS_VERBATIM,

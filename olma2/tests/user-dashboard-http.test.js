@@ -420,3 +420,27 @@ test('a dead link speaks the holder\'s language, and both when nobody is known',
   assert.ok(html.includes('This link has expired'));
   assert.ok(!/[\u0590-\u05FF]/.test(html), 'Hebrew on a dead-link page for somebody whose page is English');
 });
+
+test('a saved link\'s picture is served to its owner, behind the session, as the image it is', async () => {
+  const other = await makeUser(db.pool, '+972531930077', { firstName: 'Other' });
+  const add = async (userId, mime, bytes) => {
+    const { rows } = await db.pool.query(
+      `INSERT INTO saved_links (user_id, url, canonical_url, platform) VALUES ($1, $2, $2, 'web') RETURNING id`,
+      [userId, `https://example.com/${userId}/${mime.replace('/', '-')}`]);
+    await db.pool.query(`INSERT INTO saved_link_thumbs (link_id, mime, bytes) VALUES ($1, $2, $3)`, [rows[0].id, mime, bytes]);
+    return rows[0].id;
+  };
+  const mine = await add(me.id, 'image/png', Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+  const svg = await add(me.id, 'image/svg+xml', Buffer.from('<svg onload="alert(1)"/>'));
+  const theirs = await add(other.id, 'image/png', Buffer.from([0x89]));
+
+  assert.equal((await get('/me/thumb/' + mine)).status, 401, 'no session, no picture');
+  const cookie = await signIn();
+  const ok = await get('/me/thumb/' + mine, { headers: { cookie } });
+  assert.equal(ok.status, 200);
+  assert.equal(ok.headers.get('content-type'), 'image/png');
+  assert.deepEqual([...Buffer.from(await ok.arrayBuffer())], [0x89, 0x50, 0x4e, 0x47]);
+  assert.equal((await get('/me/thumb/' + theirs, { headers: { cookie } })).status, 404, 'somebody else\'s picture');
+  assert.equal((await get('/me/thumb/' + svg, { headers: { cookie } })).status, 404, 'an SVG on our origin runs script');
+  assert.notEqual((await get('/me/thumb/0', { headers: { cookie } })).status, 200, 'not the route\'s shape');
+});
