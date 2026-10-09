@@ -23,6 +23,7 @@ const meetingTime = require('../domain/meeting-time');
 const { isoWithOffset } = require('../domain/meeting-option-moment');
 const introVideo = require('../domain/intro-video');
 const brandAds = require('../domain/brand-ads');
+const foodPicture = require('../domain/food-picture');
 const carryover = require('../domain/carryover-heading');
 const onboardingDomain = require('../domain/onboarding');
 
@@ -1012,6 +1013,25 @@ function makeDeliverer(pool) {
         '--target', channel.channel_identifier,
         '--media', media,
         ...(clip.format === 'gif' ? ['--gif-playback'] : []),
+      ]);
+    }
+
+    // The evening picture of what they ate (domain/food-picture.js): the
+    // image the sweep already rendered, and foodd's line under it in their
+    // language with their invite link, so a forward carries the way in. No
+    // model: every word was drawn by code. A file that is not one the sweep
+    // wrote is refused rather than sent.
+    if (row.kind === foodPicture.KIND) {
+      const p = typeof row.payload === 'string' ? JSON.parse(row.payload) : (row.payload || {});
+      if (!foodPicture.fileOk(p.file)) return { ok: false, error: 'food picture file missing' };
+      const invite = require('../domain/referral').inviteFor({ id: Number(row.user_id), firstName: row.first_name, locale: row.locale });
+      const caption = foodPicture.captionFor(p, row.locale, invite ? invite.link : null);
+      return runOpenclaw([
+        'message', 'send',
+        '--channel', channel.channel_type,
+        '--target', channel.channel_identifier,
+        '--media', p.file,
+        ...(caption ? ['--message', caption] : []),
       ]);
     }
 
