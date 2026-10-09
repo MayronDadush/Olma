@@ -364,8 +364,8 @@ test('a slot within the grace window is not closed out from under the people at 
   await withClient(async (c) => {
     const m = (await meetings.startMeeting(c, a.id, 'פוקר', [b.id])).data.meeting;
     const o = (await meetings.proposeSlot(c, a.id, m.id, 'הערב 20:00', slotStart('הערב 20:00'))).data.optionId;
-    // started two hours ago — it may well still be happening
-    await ageOption(c, o, '2 hours');
+    // started forty minutes ago — it may well still be happening
+    await ageOption(c, o, '40 minutes');
     const closed = await meetings.expireStaleMeetings(c);
     assert.ok(!closed.map((x) => Number(x.id)).includes(Number(m.id)),
       'closing a meeting early is worse than closing it late');
@@ -413,9 +413,28 @@ test('a time that has passed comes off the table; the times still ahead of it st
   });
 });
 
+// One hour, since 2026-10-09 (owner): a Friday 11:00 was still on the table,
+// offered to people, at 14:53, because the grace was six.
+test('a clock time leaves the table an hour after it starts, not before', async () => {
+  const { a, b } = await pair('+972572000017', '+972572000018');
+  await withClient(async (c) => {
+    const m = (await meetings.startMeeting(c, a.id, 'פוקר', [b.id])).data.meeting;
+    const recent = (await meetings.proposeSlot(c, a.id, m.id, 'עכשיו 11:00', slotStart('עכשיו 11:00'))).data.optionId;
+    const older = (await meetings.proposeSlot(c, a.id, m.id, 'קודם 10:00', slotStart('קודם 10:00', { hours: 24 }))).data.optionId;
+    await meetings.proposeSlot(c, a.id, m.id, 'אחר כך 20:00', slotStart('אחר כך 20:00', { hours: 72 }));
+    await ageOption(c, recent, '40 minutes');
+    await ageOption(c, older, '90 minutes');
+
+    await meetings.expireStaleMeetings(c);
+    const byId = new Map((await optionRows(c, m.id)).map((o) => [Number(o.id), o.status]));
+    assert.equal(byId.get(Number(recent)), 'active', 'forty minutes in, it may still be happening');
+    assert.equal(byId.get(Number(older)), 'expired', 'an hour and a half past is past');
+  });
+});
+
 // A whole day's instant is 09:00 of the day it means (meeting-option-moment.
-// momentFor), so the six hours that are right for a clock time would take
-// "Sunday, all day" off the table at 15:00 on Sunday — while Sunday is still
+// momentFor), so the hour that is right for a clock time would take
+// "Sunday, all day" off the table at 10:00 on Sunday — while Sunday is still
 // going on and somebody could still say yes to it.
 test('a whole day is not taken off the table in the middle of itself', async () => {
   const { a, b } = await pair('+972572000013', '+972572000014');
