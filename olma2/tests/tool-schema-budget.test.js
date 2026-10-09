@@ -170,7 +170,13 @@ const { IDENTITY_PARAM } = require('../src/adapters/mcp/identity-param');
 // poker instead of declining the dates). Paid for by four group descriptions:
 // the status tool's reason sentence, and a few words each from set_group_kind,
 // leave and answer. Measured 61,044.
-const JSON_CEILING = 61_050;
+//
+// Raised to 62,150, 2026-10-08, with the owner's approval in session ("מאשר
+// את התקרה"): `saved_links` ("שמורים"), ONE tool with an `action` for eleven
+// things — save, move, list, search, the line, done, delete, the lists,
+// to_task — rather than eleven tools. +1,094 chars on every turn, about 0.2%
+// of a message's cost at v4-flash's rates; a room never sees it.
+const JSON_CEILING = 62_150;
 const DESCRIPTION_CEILING = 700;
 const IDENTITY_DESCRIPTION_CEILING = 40;
 

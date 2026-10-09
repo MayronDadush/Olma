@@ -764,7 +764,7 @@ async function sweepSilentPausedMembers(client, nowMs = Date.now()) {
       -- silence after it takes them out the same way, or whoever asked waits
       -- on somebody who is not there. A pause they asked for keeps its old
       -- reach, rooms only.
-      WHERE (mt.group_id IS NOT NULL OR u.paused_reason = $3) AND mt.status = 'negotiating'
+      WHERE (mt.group_id IS NOT NULL OR u.paused_reason IN ($3, $4)) AND mt.status = 'negotiating'
         AND p.state <> 'opted_out'
         AND u.paused_at IS NOT NULL
         -- An answer already on the table keeps them in (owner, 2026-10-05:
@@ -778,7 +778,10 @@ async function sweepSilentPausedMembers(client, nowMs = Date.now()) {
           -- They paused her THEMSELVES (owner, 2026-09-27): out at once, the
           -- person who opened it included — nothing about it reaches them, so
           -- a room must not wait on them, count them or tag them.
-          u.paused_reason IS DISTINCT FROM $3
+          -- A stop nobody confirmed (pause.STOP_UNANSWERED, 2026-10-09) is
+          -- treated as the ladder's pause: a day of silence after its one
+          -- message, never at once.
+          (u.paused_reason IS DISTINCT FROM $3 AND u.paused_reason IS DISTINCT FROM $4)
           OR (p.user_id <> mt.initiator_id
               AND mt.created_at <= $1::timestamptz - ($2::bigint * interval '1 millisecond')
               -- Per COORDINATION since 2026-10-07: no invite about THIS one
@@ -798,12 +801,13 @@ async function sweepSilentPausedMembers(client, nowMs = Date.now()) {
                    AND (o.payload->>'meetingId')::bigint = p.meeting_id)))
       ORDER BY p.meeting_id, p.user_id
       LIMIT 50`,
-    [new Date(nowMs), pause.ROOM_INVITE_ANSWER_MS, pause.QUIET_LADDER]);
+    [new Date(nowMs), pause.ROOM_INVITE_ANSWER_MS, pause.QUIET_LADDER, pause.STOP_UNANSWERED]);
   const out = [];
   for (const r of rows) {
     const meetingId = Number(r.meeting_id);
     const res = await meetings.applyExit(client, Number(r.user_id), meetingId,
-      r.paused_reason === pause.QUIET_LADDER ? 'paused_no_answer' : 'paused_by_request');
+      r.paused_reason === pause.QUIET_LADDER || r.paused_reason === pause.STOP_UNANSWERED
+        ? 'paused_no_answer' : 'paused_by_request');
     if (!res.ok) continue;
     // Closed with nobody left to match: said in the next digest of whoever is
     // still in it (digest.closedMeetings), never on its own (owner, 2026-09-23).

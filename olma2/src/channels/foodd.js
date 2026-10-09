@@ -27,4 +27,7 @@ async function call(route, body, { timeoutMs = TIMEOUT_MS } = {}) {
 
 module.exports = {
   page: (body, opts) => call('/api/page', body, opts),
+  // The evening picture (domain/food-picture.js): foodd asks an image model,
+  // which takes seconds and up to a minute and a half, so its own deadline.
+  picture: (body, opts) => call('/api/picture', body, { timeoutMs: 150_000, ...opts }),
 };

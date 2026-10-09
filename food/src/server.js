@@ -9,7 +9,7 @@
 //   GET  /food/<token>/card.svg?day=      the day card, as the page previews it
 //   GET  /food/<token>/card-week.svg?day= the week card: its plates and three counts
 //   GET  /food/<token>/photo/<meal id>    a plate's photo
-// Everything else (/health, /api/tool, /api/page) is for the box itself: Caddy never
+// Everything else (/health, /api/tool, /api/page, /api/picture) is for the box itself: Caddy never
 // routes it, and the handler also refuses anything that arrived through a
 // proxy, so a Caddyfile mistake cannot open the tools to the world.
 //
@@ -21,6 +21,7 @@ const path = require('path');
 const store = require('./store');
 const card = require('./card');
 const chat = require('./chat');
+const picture = require('./picture');
 const { Refused } = require('./validate');
 const { runTool } = require('./tools');
 const { resolveIdentity, makeCard, readMedia } = require('./identity');
@@ -33,7 +34,7 @@ const WRITES_PER_MIN = 120;      // per page and, separately, per client and per
 
 const STATUS = { not_found: 404, too_many: 429, rate_limited: 429, too_old: 409, future_day: 409 };
 
-function createServer({ pool, publicBase = '', page, identify = resolveIdentity, card: cardMaker = makeCard, media = readMedia, fetchImpl } = {}) {
+function createServer({ pool, publicBase = '', page, identify = resolveIdentity, card: cardMaker = makeCard, media = readMedia, fetchImpl, pictureDeps = {} } = {}) {
   const html = page ?? fs.readFileSync(PAGE_FILE, 'utf8');
   const buckets = new Map();
   const limited = key => {
@@ -140,6 +141,20 @@ function createServer({ pool, publicBase = '', page, identify = resolveIdentity,
         if (!Number.isSafeInteger(id) || id <= 0) return send(res, 400, { ok: false, error: 'bad_user' });
         const p = await store.ensurePerson(pool, { ...user, id });
         return send(res, 200, { ok: true, url: `${publicBase}/food/${p.token}` });
+      }
+
+      // The evening picture of their day or week (src/picture.js), asked by
+      // olma2's food_pictures job, which has already decided it is time and
+      // that they hold the pack. It spends money, so the claim inside make()
+      // answers a second ask for the same day with 'already'.
+      if (p_ === '/api/picture' && req.method === 'POST') {
+        if (!isLocal(req)) return send(res, 404, { error: 'not_found' });
+        const { user, kind, day } = await readBody(req);
+        const id = Number(user && user.id);
+        if (!Number.isSafeInteger(id) || id <= 0) return send(res, 400, { ok: false, error: 'bad_user' });
+        if (kind !== 'day' && kind !== 'week') return send(res, 400, { ok: false, error: 'bad_kind' });
+        const p = await store.ensurePerson(pool, { ...user, id });
+        return send(res, 200, await picture.make(pool, p, { kind, day }, { fetchImpl, ...pictureDeps }));
       }
 
       const m = p_.match(/^\/food\/([A-Za-z0-9]{22})(?:\/(api\/state|api\/write|api\/journal|api\/chat|api\/snap|card\.svg|card-week\.svg|photo\/(\d{1,12})))?$/);

@@ -425,6 +425,23 @@ function textOf(ctx) {
   return { text: bare, src: bare === body ? 'body' : 'body-unwrapped' };
 }
 
+// ── Which script the message is in ───────────────────────────────────────────
+// Rachla (u-70), 2026-10-09: filed as English by the first message she sent,
+// she wrote Hebrew for a day and was then sent an English check-in. The
+// safety net for a wrong stored language is `turn_start`'s `wrote_in`, and the
+// model is told NOT to call `turn_start` when a Turn context block is there —
+// so it never ran. This is the same report made where the words are seen.
+// Hebrew letters at least as many as Latin ones ("יש לי meeting מחר" is
+// Hebrew) → true; three letters or more and not that → false; too little to
+// say → null. The verdict travels; the words do not (domain/language.js).
+function wroteHebrew(text) {
+  const raw = String(text || '');
+  const he = (raw.match(/[֐-׿]/g) || []).length;
+  const other = (raw.match(/[A-Za-z぀-ヿ一-鿿Ѐ-ӿ؀-ۿ]/g) || []).length;
+  if (he + other < 3) return null;
+  return he >= other && he > 0;
+}
+
 // Exported for tests: `connect` is the one seam (net.connect in production).
 function handle(event, { connect = net.connect, sock = SOCK } = {}) {
   if (!event || event.type !== 'message' || !OPENING_ACTIONS.has(event.action)) { trace({ skip: 'not-inbound', type: event && event.type, action: event && event.action }); return false; }
@@ -469,6 +486,9 @@ function handle(event, { connect = net.connect, sock = SOCK } = {}) {
     // "רשום עדן יצא" — a status they quote, not a request: opt_out_of_meeting
     // refuses on this turn, so the model asks instead of acting.
     reportedExit: reportsExit(said.text),
+    // Hebrew or not — brokerd feeds the language streak (users
+    // .noteObservedLanguage); `null` is too short to say, and counts nothing.
+    wroteHebrew: wroteHebrew(said.text),
     at: new Date(event.timestamp || Date.now()).toISOString(),
   };
   return new Promise((resolve) => {
@@ -515,4 +535,5 @@ module.exports.remindWithoutTime = remindWithoutTime;
 module.exports.namesNoHour = namesNoHour;
 module.exports.outOnly = outOnly;
 module.exports.reportsExit = reportsExit;
+module.exports.wroteHebrew = wroteHebrew;
 module.exports._resetSeen = () => seen.clear();

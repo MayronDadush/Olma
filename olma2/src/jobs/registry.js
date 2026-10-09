@@ -35,6 +35,7 @@ const taskSuggestions = require('../domain/task-suggestions');
 const memoryConsolidation = require('./memory-consolidation');
 const groupsJob = require('./groups');
 const groupOutbox = require('../domain/group-outbox');
+const savedLinksEnrich = require('./saved-links-enrich');
 // Resolved per job run, never destructured at module load: brokerd requires
 // this file while it is still starting, and a captured value pins whichever
 // path the environment held at that instant. A test process that spawns a real
@@ -213,6 +214,9 @@ const deployDrift = require('./deploy-drift');
       // tick for the same reason as the line above: one query over the
       // active users, and a pause it takes is a no-op the next time.
       silencePause: await sweeps.sweepSilencePause(c),
+      // A stop nobody confirmed for a day becomes the soft pause
+      // (pause.softenUnansweredStops). One UPDATE, empty almost always.
+      softenedStops: await sweeps.sweepSoftenStops(c),
       // …and somebody who left the WhatsApp group that is coordinating.
       roomLeavers: await sweeps.sweepRoomLeavers(c),
       mediaJobs: await sweeps.sweepMediaJobs(c),
@@ -326,6 +330,11 @@ const deployDrift = require('./deploy-drift');
       memoryConsolidation.sweepMemoryConsolidation(c, {})) },
     // Thinks over a direct model call (adapters/llm.js), not an agent turn —
     // no runAgent dep; the job's default is the real adapter.
+    // Saved links the save could not read in time, and their pictures
+    // (jobs/saved-links-enrich.js). Five minutes: a link saved unread shows
+    // its title on the page within one tick, and a tick with nothing due is
+    // two indexed queries and no fetch.
+    { name: 'saved_links_enrich', run: () => savedLinksEnrich.run(pool) },
     { name: 'fact_extraction', run: async () => {
       const out = await withTx(pool, (c) => factExtraction.sweepFactExtraction(c, {}));
       await refreshAfter(out.extracted || []);
@@ -383,6 +392,10 @@ const deployDrift = require('./deploy-drift');
     // rest. The 'morning' timing is a release time on the row, not this tick's
     // hour, and the daily idempotency key makes a frequent tick harmless.
     { name: 'brand_ads', run: () => withTx(pool, (c) => require('../domain/brand-ads').sweep(c)) },
+    // The evening picture of what they ate (domain/food-picture.js). One flag
+    // read while it is off; on, it asks foodd outside any transaction, since
+    // a picture takes seconds to draw, and the outbox sends it.
+    { name: 'food_pictures', run: () => require('../domain/food-picture').sweep(pool) },
     { name: 'deploy_drift', run: () => withTx(pool, (c) => deployDrift.sweepDeployDrift(c)) },
   ];
 }

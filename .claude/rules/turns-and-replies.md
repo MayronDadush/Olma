@@ -105,6 +105,15 @@ title means this file. Grep the title, not the filename.
   hitting it costs one tool call. **Assert a shared decision once per DOOR**; a
   test that reaches it through one of them proves nothing about the other.
 
+- **The language streak is fed from the gateway's open, not from `wrote_in`.**
+  `turn_start`'s `wrote_in` is the only net for a wrong stored `locale`, and
+  the Turn context doctrine says not to call `turn_start`, so it never ran
+  (Rachla, 2026-10-09: filed `en`, wrote Hebrew, got an English check-in). The
+  hook sends `wroteHebrew` (true / false / null under three letters), brokerd
+  notes it once per message in `turn_context` (`pending.languageNoted`), three
+  in a row raise `languageNudge` — asked, never switched. Needs a gateway
+  restart (`incidents.md`, "Hebrew all day, and an English check-in").
+
 - **A repeat of the same message must never be read as a new one.** The
   gateway hook's `turn_open` counts the message, wakes the person and places
   the 👀 before the model's first call, and until 2026-09-13 it had no memory

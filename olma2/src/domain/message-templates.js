@@ -140,6 +140,114 @@ const TEMPLATES = [
     // by the reply gate for a reader who writes Hebrew (reply-leak.js).
     text: 'Your app code 👇\n{{code}}\nValid 10 minutes.',
   },
+  // ---- saved links, answered by code (brokerd save_link_shortcut) --------
+  // Said with no model, the moment a message is only a link (or a link and a
+  // list's name). The list was chosen without asking — the second line is how
+  // a wrong choice is undone, by answering with another list's name.
+  // `about` is "— <title>" when the page was read and empty when it was not;
+  // the title is the page's own, never a model's.
+  {
+    key: 'saved_link', audience: 'private', label: 'שמורים: נשמר',
+    help: 'התשובה לקישור שנשלח לבד. יוצאת בלי מודל, מיד. הרשימה נבחרה בלי לשאול.',
+    vars: { list: 'שם הרשימה', emoji: 'האימוג׳י של הרשימה', about: '"— " והכותרת שנקראה, או ריק' },
+    required: ['list'],
+    sample: { list: 'מתכונים', emoji: '🍝', about: '— עוגת שוקולד פשוטה' },
+    text: 'שמרתי ב*{{list}}* {{emoji}} {{about}}\nאפשר לענות בשם של רשימה אחרת כדי להעביר',
+  },
+  {
+    key: 'saved_link_en', audience: 'private', label: 'שמורים: נשמר', help: '',
+    vars: { list: 'list name', emoji: 'the list emoji', about: '"— " and the title read, or empty' },
+    required: ['list'],
+    sample: { list: 'Recipes', emoji: '🍝', about: '— Simple chocolate cake' },
+    text: 'Saved to *{{list}}* {{emoji}} {{about}}\nReply with another list name to move it',
+  },
+  {
+    key: 'saved_link_new_list', audience: 'private', label: 'שמורים: נשמר ברשימה חדשה',
+    help: 'כמו "נשמר", כשהקישור פתח רשימה שלא הייתה.',
+    vars: { list: 'שם הרשימה', emoji: 'האימוג׳י של הרשימה', about: '"— " והכותרת שנקראה, או ריק' },
+    required: ['list'],
+    sample: { list: 'חתונה', emoji: '', about: '— אולם גני התערוכה' },
+    text: 'פתחתי רשימה חדשה: *{{list}}* {{emoji}} {{about}}\nאפשר לענות בשם של רשימה אחרת כדי להעביר',
+  },
+  {
+    key: 'saved_link_new_list_en', audience: 'private', label: 'שמורים: נשמר ברשימה חדשה', help: '',
+    vars: { list: 'list name', emoji: 'the list emoji', about: '"— " and the title read, or empty' },
+    required: ['list'],
+    sample: { list: 'Wedding', emoji: '', about: '— The venue' },
+    text: 'New list: *{{list}}* {{emoji}} {{about}}\nReply with another list name to move it',
+  },
+  // A page that could not be read (a sign-in wall, a site that refused us, a
+  // read that ran out of time) is still saved, and the reply says so rather
+  // than naming a list with nothing after it (the owner, 2026-10-08).
+  {
+    key: 'saved_link_unread', audience: 'private', label: 'שמורים: נשמר בלי שנקרא',
+    help: 'כמו "נשמר", כשלא הצלחנו לקרוא מה יש בקישור (דורש התחברות, האתר חסם). הקישור נשמר בכל זאת.',
+    vars: { list: 'שם הרשימה', emoji: 'האימוג׳י של הרשימה' },
+    required: ['list'],
+    sample: { list: 'לקרוא אחר כך', emoji: '📖' },
+    text: 'לא הצלחתי לקרוא מה יש בקישור, אבל שמרתי אותו ב*{{list}}* {{emoji}}\nאפשר לענות בשם של רשימה אחרת כדי להעביר',
+  },
+  {
+    key: 'saved_link_unread_en', audience: 'private', label: 'שמורים: נשמר בלי שנקרא', help: '',
+    vars: { list: 'list name', emoji: 'the list emoji' },
+    required: ['list'],
+    sample: { list: 'Read later', emoji: '📖' },
+    text: 'I couldn’t read what’s in the link, but I saved it to *{{list}}* {{emoji}}\nReply with another list name to move it',
+  },
+  {
+    key: 'saved_link_new_list_unread', audience: 'private', label: 'שמורים: נשמר בלי שנקרא, ברשימה חדשה',
+    help: 'כמו "נשמר בלי שנקרא", כשהקישור פתח רשימה שלא הייתה.',
+    vars: { list: 'שם הרשימה', emoji: 'האימוג׳י של הרשימה' },
+    required: ['list'],
+    sample: { list: 'חתונה', emoji: '' },
+    text: 'לא הצלחתי לקרוא מה יש בקישור, אבל שמרתי אותו ברשימה חדשה: *{{list}}* {{emoji}}\nאפשר לענות בשם של רשימה אחרת כדי להעביר',
+  },
+  {
+    key: 'saved_link_new_list_unread_en', audience: 'private', label: 'שמורים: נשמר בלי שנקרא, ברשימה חדשה', help: '',
+    vars: { list: 'list name', emoji: 'the list emoji' },
+    required: ['list'],
+    sample: { list: 'Wedding', emoji: '' },
+    text: 'I couldn’t read what’s in the link, but I saved it to a new list: *{{list}}* {{emoji}}\nReply with another list name to move it',
+  },
+  {
+    key: 'saved_link_dup', audience: 'private', label: 'שמורים: כבר שמור',
+    help: 'כשאותו קישור כבר שמור אצלם. לא נשמר שוב.',
+    vars: { list: 'שם הרשימה', when: 'מתי נשמר: היום, אתמול, ה־3.10' }, required: ['list'],
+    sample: { list: 'מתכונים', when: 'אתמול' },
+    text: 'כבר שמור לך ב*{{list}}* מ{{when}}',
+  },
+  {
+    key: 'saved_link_dup_en', audience: 'private', label: 'שמורים: כבר שמור', help: '',
+    vars: { list: 'list name', when: 'when it was saved: today, yesterday, 3.10' }, required: ['list'],
+    sample: { list: 'Recipes', when: 'yesterday' },
+    text: 'Already saved in *{{list}}*, {{when}}',
+  },
+  {
+    key: 'saved_link_many', audience: 'private', label: 'שמורים: כמה קישורים',
+    help: 'כשנשלחו כמה קישורים בהודעה אחת. שורה לכל קישור.',
+    vars: { count: 'כמה נשמרו עכשיו: "קישור אחד", "2 קישורים"', lines: 'שורה לכל קישור: הרשימה והכותרת, ו"כבר שמור" למה שהיה' }, required: ['lines'],
+    sample: { count: '2 קישורים', lines: '• ב*מתכונים* — עוגת שוקולד\n• ב*לצפות אחר כך* — הרצאה' },
+    text: 'שמרתי {{count}}:\n{{lines}}\nאפשר לענות בשם של רשימה אחרת כדי להעביר את האחרון',
+  },
+  {
+    key: 'saved_link_many_en', audience: 'private', label: 'שמורים: כמה קישורים', help: '',
+    vars: { count: 'how many were saved now: "1 link", "2 links"', lines: 'one line per link: list and title' }, required: ['lines'],
+    sample: { count: '2 links', lines: '• *Recipes* — Chocolate cake\n• *Watch later* — A talk' },
+    text: 'Saved {{count}}:\n{{lines}}\nReply with another list name to move the last one',
+  },
+  {
+    key: 'saved_link_many_dup', audience: 'private', label: 'שמורים: כמה קישורים, כולם כבר שמורים',
+    help: 'כשנשלחו כמה קישורים וכולם כבר היו שמורים. לא נשמר כלום.',
+    vars: { lines: 'שורה לכל קישור: איפה הוא כבר שמור' }, required: ['lines'],
+    sample: { lines: '• כבר שמור ב*מתכונים* — עוגת שוקולד\n• כבר שמור ב*לצפות אחר כך* — הרצאה' },
+    text: 'כולם כבר שמורים אצלך:\n{{lines}}',
+  },
+  {
+    key: 'saved_link_many_dup_en', audience: 'private', label: 'שמורים: כמה קישורים, כולם כבר שמורים', help: '',
+    vars: { lines: 'one line per link: where it already is' }, required: ['lines'],
+    sample: { lines: '• already in *Recipes* — Chocolate cake\n• already in *Watch later* — A talk' },
+    text: 'All of these are already saved:\n{{lines}}',
+  },
   // ---- game nights, answered by code (domain/game-shortcut.js) -----------
   // Said with no model, the moment somebody writes "ערב משחק חדש", answers
   // the price, or sends a night's join code. The night's page goes on a line

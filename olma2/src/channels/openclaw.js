@@ -23,6 +23,7 @@ const meetingTime = require('../domain/meeting-time');
 const { isoWithOffset } = require('../domain/meeting-option-moment');
 const introVideo = require('../domain/intro-video');
 const brandAds = require('../domain/brand-ads');
+const foodPicture = require('../domain/food-picture');
 const carryover = require('../domain/carryover-heading');
 const onboardingDomain = require('../domain/onboarding');
 
@@ -163,11 +164,29 @@ function instructionFor(row, dashboardUrl) {
   const raw = typeof row.payload === 'string' ? JSON.parse(row.payload) : (row.payload || {});
   const p = dashboardUrl ? { ...raw, dashboardUrl } : raw;
   const parts = Array.isArray(p.mergedParts) ? p.mergedParts : [];
+  const footer = softPauseClause(row, p);
   if (parts.length > 1) return `${DELIVERY_PREAMBLE}
 
-${mergedBody(parts, p, row.timezone)}${closedClause(p)}`;
-  if (p.instruction) return `${DELIVERY_PREAMBLE}\n\n${p.instruction}`;
-  return `${DELIVERY_PREAMBLE}\n\n${bodyFor(row, p)}`;
+${mergedBody(parts, p, row.timezone)}${closedClause(p)}${footer}`;
+  if (p.instruction) return `${DELIVERY_PREAMBLE}\n\n${p.instruction}${footer}`;
+  return `${DELIVERY_PREAMBLE}\n\n${bodyFor(row, p)}${footer}`;
+}
+
+// The once-a-day line of a soft pause (domain/pause.js, STOP_UNANSWERED). The
+// worker decides WHEN (`softPauseFooter` on the in-memory row); the words are
+// handed over whole, never described, so the model cannot soften or drop the
+// one thing that tells them how to stop her completely.
+function softPauseClause(row, p) {
+  if (!p.softPauseFooter) return '';
+  const line = require('../domain/pause').softPauseFooter(row.locale);
+  return `\n\nThis person asked you to stop and never answered whether they were sure, so you send nothing of your own; this message reached them because somebody else started it. End your message with this line, word for word, on its own line, and say nothing else about it: <<<${line}>>>`;
+}
+
+// The raw pipe's half: the same line under the fixed text.
+function withSoftPauseLine(row, text) {
+  const p = typeof row.payload === 'string' ? JSON.parse(row.payload) : (row.payload || {});
+  if (!p.softPauseFooter) return text;
+  return `${text}\n\n${require('../domain/pause').softPauseFooter(row.locale)}`;
 }
 
 // Several rows the worker decided may travel together (domain/message-merge.js
@@ -1015,12 +1034,31 @@ function makeDeliverer(pool) {
       ]);
     }
 
+    // The evening picture of what they ate (domain/food-picture.js): the
+    // image the sweep already rendered, and foodd's line under it in their
+    // language with their invite link, so a forward carries the way in. No
+    // model: every word was drawn by code. A file that is not one the sweep
+    // wrote is refused rather than sent.
+    if (row.kind === foodPicture.KIND) {
+      const p = typeof row.payload === 'string' ? JSON.parse(row.payload) : (row.payload || {});
+      if (!foodPicture.fileOk(p.file)) return { ok: false, error: 'food picture file missing' };
+      const invite = require('../domain/referral').inviteFor({ id: Number(row.user_id), firstName: row.first_name, locale: row.locale });
+      const caption = foodPicture.captionFor(p, row.locale, invite ? invite.link : null);
+      return runOpenclaw([
+        'message', 'send',
+        '--channel', channel.channel_type,
+        '--target', channel.channel_identifier,
+        '--media', p.file,
+        ...(caption ? ['--message', caption] : []),
+      ]);
+    }
+
     const rawText = proactiveText.rawPipeTextFor(row, wording, channel.channel_type);
     if (rawText) {
       return sendRawMessage({
         channel: channel.channel_type,
         target: channel.channel_identifier,
-        message: rawText,
+        message: withSoftPauseLine(row, rawText),
       });
     }
 

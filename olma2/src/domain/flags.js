@@ -178,6 +178,10 @@ const DEFAULTS = {
   // their page and whose coordination rows may go as a notification instead
   // of WhatsApp; off, nothing changes for anybody, subscribed or not.
   push_delivery_phones: '',
+  // The evening picture of what they ate (domain/food-picture.js, owner
+  // 2026-10-09): '' = nobody, 'all' = everybody holding the food pack, or a
+  // comma-separated E.164 list. Shadow-free: on, it sends.
+  food_picture_phones: '',
   // domain/silence-pause.js (owner, 2026-10-07, Saar): somebody who has given
   // no sign of life for this many days is paused the way the ladder pauses —
   // nothing cancelled, their first message ends it — and Olma stops starting

@@ -136,4 +136,4 @@ function buildWeekSvg(week, photoOf) {
   return { svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><defs>${defs.join('')}</defs>${parts.join('')}</svg>`, width: W, height: H };
 }
 
-module.exports = { buildSvg, buildWeekSvg, caption, MAX_MEALS, TILES };
+module.exports = { buildSvg, buildWeekSvg, caption, mark, esc, plain, clip, MAX_MEALS, TILES, FONT, RLM, CYPRESS, SAND, MUSTARD };

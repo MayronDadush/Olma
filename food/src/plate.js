@@ -8,6 +8,7 @@ const store = require('./store');
 const foods = require('./foods');
 const vision = require('./vision');
 const photos = require('./photos');
+const { slotFromNote } = require('./slot-words');
 
 // Each photo is a paid model call. Nobody eats sixty plates a day; a loop does.
 const PHOTOS_PER_DAY = 60;
@@ -24,7 +25,7 @@ async function logPhoto(pool, p, { mime, base64, note, meal: slot, date, via, fe
   const seen = await vision.see({ pool, userId: p.user_id, image: { mime, base64 }, note, fetchImpl });
   if (!seen.food) return { seen };
   const items = await foods.resolve(pool, seen.items, { userId: p.user_id, fetchImpl });
-  const { meal, applied } = await store.logMeal(pool, p, { title: seen.title || undefined, items, meal: slot, date, source: 'photo' }, { via });
+  const { meal, applied } = await store.logMeal(pool, p, { title: seen.title || undefined, items, meal: slot || slotFromNote(note) || undefined, date, source: 'photo' }, { via });
   // A photo that could not be written costs only the picture, never the meal.
   try {
     const name = photos.save({ userId: p.user_id, mealId: meal.id, mime, base64 });

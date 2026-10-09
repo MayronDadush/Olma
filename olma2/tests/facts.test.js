@@ -537,7 +537,10 @@ test('a model answer that validates nowhere writes nothing — the server is the
     const { rows } = await c.query(
       `SELECT fact, expires_at FROM user_facts WHERE user_id = $1 ORDER BY id`, [u.id]);
     assert.deepEqual(rows.map((r) => r.fact), ['מתאמן בבקרים', 'טס לרומא בספטמבר']);
-    assert.equal(rows[1].expires_at, null, 'a past expiry is the model guessing, not the person saying');
+    // The guess is dropped — and a plan with no end of its own is given the
+    // shelf life every plan gets, so "dropped" still never means "for ever".
+    const planEnd = new Date(rows[1].expires_at).getTime();
+    assert.ok(planEnd > Date.now() + 44 * 86400_000, 'a past expiry is the model guessing, not the person saying');
     const { rows: name } = await c.query(`SELECT first_name FROM users WHERE id = $1`, [u.id]);
     assert.equal(name[0].first_name, 'X', 'a named person is never re-named by a guess');
   });
@@ -1403,5 +1406,105 @@ test('extraction dates a range off their words, and never keeps one for ever', a
     assert.equal(over.refused.already_over, 1);
     const { rows: all } = await c.query('SELECT count(*)::int n FROM user_facts WHERE user_id = $1', [u.id]);
     assert.equal(all[0].n, 1);
+  });
+});
+
+
+// ------------------------------------------------- the write gate (2026-10-08)
+// Seven of 145 live rows were not facts about the person: an email address
+// twice, three reminder requests, two "יש קשר עם X". Every one had a home that
+// keeps it true, and every one was read on every turn.
+test('an email, a reminder request and a connection are refused, each with the tool that owns it', async () => {
+  const u = await makeUser(db.pool, '+972590019401', { firstName: 'X' });
+  await withClient(async (c) => {
+    const cases = [
+      ['context', 'כתובת אימייל: someone@example.com', 'email'],
+      ['context', 'חיבר את Gmail someone@example.com לקריאה בלבד', 'email'],
+      ['habits', 'מבקש תזכורות לשתות מים', 'reminder'],
+      ['habits', 'לא רוצה תזכורות או שום דבר בימי שבת', 'reminder'],
+      ['context', 'ניתן להקפיץ תזכורת בקבוצה רק אם האופציה מופעלת', 'reminder'],
+      ['people', 'יש קשר עם עידן תומר — תיאום פגישה', 'connection'],
+      ['people', 'יש לו קשר עם יוסי ומירון', 'connection'],
+    ];
+    for (const [category, fact, reason] of cases) {
+      const res = await facts.rememberFact(c, u.id, { category, fact });
+      assert.equal(res.ok, false, fact);
+      assert.equal(res.error.reason, reason, fact);
+    }
+    // the neighbours that must pass: a secretary, pointing something out, a bond
+    for (const [category, fact] of [
+      ['work', 'עובדת כמזכירה בבית ספר'],
+      ['habits', 'אוהב להזכיר לאחרים את מה שקרה'],
+      ['family', 'יש קשר חזק בין האחים'],
+    ]) {
+      const res = await facts.rememberFact(c, u.id, { category, fact });
+      assert.equal(res.ok, true, fact);
+    }
+  });
+});
+
+test('a plan with no end is given one, a profile answer and any other category are not', async () => {
+  const u = await makeUser(db.pool, '+972590019402', { firstName: 'X' });
+  await withClient(async (c) => {
+    const plan = await facts.rememberFact(c, u.id, { category: 'plans', fact: 'מתכנן טיול לוייטנאם' });
+    assert.equal(plan.ok, true);
+    assert.equal(plan.data.expiryDefaulted, true);
+    const days = (new Date(plan.data.fact.expires_at) - Date.now()) / 86400_000;
+    assert.ok(days > 44 && days < 46, `about ${facts.PLAN_SHELF_LIFE_DAYS} days out, not ${days}`);
+
+    // they named an end: theirs wins, and nothing is defaulted
+    const until = new Date(Date.now() + 5 * 86400_000).toISOString();
+    const dated = await facts.rememberFact(c, u.id, { category: 'plans', fact: 'מתכנן לעבור דירה', expiresAt: until });
+    assert.equal(dated.data.expiryDefaulted, false);
+    assert.equal(new Date(dated.data.fact.expires_at).toISOString(), until);
+
+    // a standing answer from the profile page is not a plan
+    const answer = await facts.rememberFact(c, u.id, { category: 'plans', fact: 'לימודים: תואר', promptKey: 'studies' });
+    assert.equal(answer.data.expiryDefaulted, false);
+    assert.equal(answer.data.fact.expires_at, null);
+
+    // only plans: a habit keeps no end
+    const habit = await facts.rememberFact(c, u.id, { category: 'habits', fact: 'שותה קפה בבוקר' });
+    assert.equal(habit.data.fact.expires_at, null);
+
+    // a plan that NAMES a moment is still refused, not quietly given a made-up end
+    const dated2 = await facts.rememberFact(c, u.id, { category: 'plans', fact: `טס לפאפוס מ-${dm(10)} עד ${dm(14)}` });
+    assert.equal(dated2.ok, false);
+    assert.equal(dated2.error.reason, 'needs_expiry');
+  });
+});
+
+test('migration 119 applies the same verdict to rows written before the gate, and twice is a no-op', async () => {
+  const u = await makeUser(db.pool, '+972590019403', { firstName: 'X' });
+  const sql = require('node:fs').readFileSync(
+    require('node:path').join(__dirname, '..', 'migrations', '119-facts-write-gate-backfill.sql'), 'utf8');
+  await withClient(async (c) => {
+    const ins = async (category, fact, promptKey = null) => (await c.query(
+      `INSERT INTO user_facts (user_id, category, fact, prompt_key, learned_at)
+       VALUES ($1,$2,$3,$4, now() - interval '10 days') RETURNING id`, [u.id, category, fact, promptKey])).rows[0].id;
+    const bad = [
+      await ins('context', 'כתובת אימייל: someone@example.com'),
+      await ins('habits', 'מבקש תזכורות לשתות מים'),
+      await ins('people', 'יש קשר עם עידן תומר — תיאום פגישה'),
+    ];
+    const keep = await ins('work', 'עובדת כמזכירה בבית ספר');
+    const plan = await ins('plans', 'מתכנן טיול לוייטנאם');
+    const answer = await ins('plans', 'לימודים: תואר', 'studies');
+
+    await c.query(sql);
+    await c.query(sql);
+
+    const { rows } = await c.query('SELECT id, active, expires_at, learned_at FROM user_facts WHERE user_id = $1', [u.id]);
+    const by = Object.fromEntries(rows.map((r) => [r.id, r]));
+    for (const id of bad) assert.equal(by[id].active, false, `row ${id} retired, not deleted`);
+    assert.equal(by[keep].active, true);
+    assert.equal(by[plan].active, true);
+    assert.equal(new Date(by[plan].expires_at).getTime() - new Date(by[plan].learned_at).getTime(), 45 * 86400_000);
+    assert.equal(by[answer].expires_at, null);
+
+    // and the JS door agrees with the SQL on every one of those strings
+    for (const f of ['כתובת אימייל: someone@example.com', 'מבקש תזכורות לשתות מים', 'יש קשר עם עידן תומר — תיאום פגישה']) {
+      assert.ok(facts.emailLike(f) || facts.reminderShaped(f) || facts.connectionShaped(f), f);
+    }
   });
 });

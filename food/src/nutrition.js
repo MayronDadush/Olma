@@ -26,6 +26,17 @@ const balanceOf = items => Object.keys(BALANCE).filter(b => items.some(it => BAL
 
 const GROUP_HE = { protein: 'חלבון', veg: 'ירק', fruit: 'פרי', grain: 'פחמימה', fat: 'שומן', sweet: 'מתוק', drink: 'שתייה' };
 const BALANCE_HE = { protein: 'חלבון', veg: 'ירקות ופירות', grain: 'פחמימות' };
+// Something you drink is said in ml, not grams. A drink is its group; soup
+// is filed as veg or protein by what is in it, so it is named, and only by
+// the FIRST word (or the first after a cup or a bowl): "מרק עוף" is soup,
+// "שקדי מרק" and "שוק עוף במרק" are not.
+const LIQUID = new Set(['מרק', 'קפה', 'הפוך', 'אספרסו', 'קפוצ׳ינו', "קפוצ'ינו", 'לאטה', 'תה', 'חלב', 'מיץ', 'שוקו', 'קולה', 'סודה', 'משקה', 'שתייה', 'בירה', 'יין', 'שייק', 'לימונדה', 'מים', 'soup', 'coffee', 'tea', 'milk', 'juice']);
+const VESSEL = new Set(['כוס', 'ספל', 'קערת', 'קערה', 'בקבוק', 'פחית', 'צלחת']);
+function isLiquid(name, grp) {
+  if (grp === 'drink') return true;
+  const w = String(name || '').toLowerCase().split(/[^\p{L}'׳]+/u).filter(Boolean);
+  return LIQUID.has(w[0]) || (VESSEL.has(w[0]) && LIQUID.has(w[1]));
+}
 const SLOT_HE = { breakfast: 'ארוחת בוקר', lunch: 'ארוחת צהריים', dinner: 'ארוחת ערב', snack: 'נשנוש' };
 
 // A daily goal from what they told Olma: Mifflin-St Jeor for the resting
@@ -52,4 +63,4 @@ const CHALLENGES = {
 
 const base = name => String(name).split(' · ')[0].replace(/\s+/g, ' ').trim();
 
-module.exports = { sum, rounded, itemTotals, balanceOf, goalFrom, CHALLENGES, GROUP_HE, BALANCE_HE, SLOT_HE, ACTIVITY, AIM, base, r0, r1 };
+module.exports = { isLiquid, sum, rounded, itemTotals, balanceOf, goalFrom, CHALLENGES, GROUP_HE, BALANCE_HE, SLOT_HE, ACTIVITY, AIM, base, r0, r1 };
