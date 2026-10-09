@@ -50,6 +50,24 @@ function dayBrief(v, numbers) {
   if (v.challenge) out.challenge = { name: v.challenge.he, this_week: `${v.challenge.score} of ${v.challenge.so_far} days so far`, today_met: v.challenge.days.find(d => d.day === v.day)?.met ?? null };
   return out;
 }
+// Their page, once a day, under the first photo they send that day (the
+// owner's call, 2026-10-09). The link reaches them only if the model writes
+// it, so the result says so the way olma2's domain/action-link.js does, and
+// hands over the sentence before it too: a model asked to introduce a link
+// writes "שלחתי לך קישור" and leaves it out. Claimed in one UPDATE, so two
+// photos at once cannot both carry it.
+const PAGE_LINE = { he: 'אפשר לראות את כל היום שלך כאן:', en: 'Your whole day is here:' };
+const PAGE_LINK_NOTE = 'Right after the line saying what you logged (before any question), write `page_line` and then `url` on a line of '
+  + 'its own, both exactly as they are, every character. NOTHING ELSE WILL DELIVER THE LINK. Never write that a link was sent: if '
+  + 'the characters are not in this message, they have no link.';
+async function pageLinkOnce(pool, p, v) {
+  if (!v.url) return null;
+  const { rowCount } = await pool.query(
+    'UPDATE people SET page_link_day = $2 WHERE user_id = $1 AND page_link_day IS DISTINCT FROM $2', [p.user_id, v.today_day]);
+  if (!rowCount) return null;
+  return { url: v.url, page_line: /^en/i.test(p.locale || '') ? PAGE_LINE.en : PAGE_LINE.he };
+}
+
 const insightFor = (v, numbers) => (v.insights.find(i => numbers || !i.numbers) || {}).he || null;
 
 // Very little, several days running. Said once a week per person, in memory:
@@ -98,7 +116,7 @@ const TOOLS = {
   // and it is logged at once, because correcting is easier than confirming.
   // The one question the model may have (an unclear amount, oil it cannot
   // see) is asked after, and its answer is an edit_meal.
-  async see_meal_photo({ pool, p, fetchImpl, readMedia }, a) {
+  async see_meal_photo({ pool, p, fetchImpl, readMedia, publicBase }, a) {
     if (typeof a.path !== 'string' || !a.path) fail('missing', 'path: the exact file path the system showed you for the photo, this turn');
     if (await plate.photosToday(pool, p) >= plate.PHOTOS_PER_DAY) fail('rate_limited', `${plate.PHOTOS_PER_DAY} photos in a day is the limit; log the rest with log_meal from what they tell you`);
     let media;
@@ -111,7 +129,7 @@ const TOOLS = {
     }
     const { seen, meal, applied, items } = got;
     if (!meal) return { logged: null, note: 'There is no food in this photo. Ask, in one line, whether they meant to send another one.' };
-    const v = await store.dayView(pool, p, meal.day);
+    const v = await store.dayView(pool, p, meal.day, { publicBase });
     const out = { logged: mealBrief(meal, p.numbers), for_day: meal.day === v.today_day ? 'today' : meal.day };
     if (applied.length) out.applied_portions = applied.map(x => (p.numbers ? x : { name: x.name }));
     if (meal.day === v.today_day) out.today = p.numbers ? { totals: v.totals, left: v.left } : { meals: v.meals.length, with_vegetables: v.balance_counts.veg };
@@ -122,7 +140,9 @@ const TOOLS = {
     const next = seen.question
       ? 'Say in one short line what you logged, then ask the question in `ask`, in your own words, short. Their answer is an edit_meal on this meal_id (add oil as an item, or change an amount).'
       : 'Say in one short line what you logged; they can correct any amount.';
-    return { ...out, note: p.numbers ? `${next} ${NOTE_LOG}` : `${next} ${NOTE_NO_NUMBERS}`, ...(care ? { care } : {}) };
+    const link = await pageLinkOnce(pool, p, v);
+    const note = `${next} ${p.numbers ? NOTE_LOG : NOTE_NO_NUMBERS}${link ? ` ${PAGE_LINK_NOTE}` : ''}`;
+    return { ...out, note, ...(care ? { care } : {}), ...(link || {}) };
   },
 
   async edit_meal({ pool, p, fetchImpl }, a) {

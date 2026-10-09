@@ -223,3 +223,33 @@ test('slotFromNote reads whole words, and two meals or none are nobody\'s guess'
   for (const [note, want] of Object.entries(cases)) assert.equal(slotFromNote(note), want, note);
   assert.equal(slotFromNote(undefined), null);
 });
+
+test('their page rides the first photo of the day, once, with the sentence before it handed over', async t => {
+  const { okOf, pool } = await boot(t, { seen: PLATE });
+  const first = await okOf('see_meal_photo', { path: '/x/a.jpg', meal: 'lunch' });
+  const { rows: [p] } = await pool.query('SELECT token, page_link_day::text AS day FROM people');
+  assert.equal(first.url, `https://allma.test/food/${p.token}`);
+  assert.equal(first.page_line, 'אפשר לראות את כל היום שלך כאן:');
+  assert.match(first.note, /NOTHING ELSE WILL DELIVER THE LINK/);
+  assert.match(first.note, /before any question/, 'a question they have to answer stays last');
+  assert.ok(p.day, 'stamped with their local day');
+
+  const second = await okOf('see_meal_photo', { path: '/x/b.jpg', meal: 'dinner' });
+  assert.equal(second.url, undefined, 'once a day');
+  assert.equal(second.page_line, undefined);
+  assert.doesNotMatch(second.note, /DELIVER THE LINK/);
+
+  // A new day carries it again.
+  await pool.query(`UPDATE people SET page_link_day = page_link_day - 1`);
+  const next = await okOf('see_meal_photo', { path: '/x/c.jpg', meal: 'snack' });
+  assert.equal(next.url, first.url);
+});
+
+test('a photo with no food in it does not spend the day\'s link', async t => {
+  const { okOf, pool } = await boot(t, { seen: { title: '', food: false, items: [] } });
+  const r = await okOf('see_meal_photo', { path: '/x/a.jpg', meal: 'lunch' });
+  assert.equal(r.logged, null);
+  assert.equal(r.url, undefined);
+  const { rows: [p] } = await pool.query('SELECT page_link_day FROM people');
+  assert.equal(p.page_link_day, null);
+});
