@@ -341,6 +341,20 @@ have already had to be argued for.
   matching rule is in `rules/reminders-and-tasks.md` (`incidents.md`, "Two
   invites for one poker night").
 
+- **A private coordination is the room's only when it IS the room's: asked
+  "for this group", or with everybody in it** (owner, 2026-10-08). Otherwise
+  nothing private reaches a room, even between people who are all in it.
+  `start_meeting_coordination` takes `group_id`, and with phones alone
+  `group-meetings.roomsCoveredBy` checks whether they are a whole room
+  (`coversRoom`: every member who has written, the asker aside, and nobody
+  outside it; a non-writer and a self-paused member are not required). One room
+  opens it there through `group-meetings.startFromPrivate`, two rooms is
+  `which_group`, and none is the private path. It is `startCoordination` itself,
+  with `fromPrivate`: no `askedItYourself` invite (they are in the conversation
+  already) and no kind question (it lives in the room's reply). A room they are
+  not in answers `not_your_group`, whether it exists or not (`incidents.md`,
+  "The group's coordination, asked for in private").
+
 - **Somebody a room sent to the greeter hears about that room in the FIRST
   reply, and its coordination follows that same night if they are awake**
   (2026-09-25). The greeter is handed the room by brokerd `intake_context`
