@@ -31,6 +31,7 @@ on:
           - restart-gateway
           - measure-ask-re
           - count-early-reminders
+          - audit-recent
           - eval-reminder-hour
 
 # Same group as the deploy job of "olma2 tests" on main, so a gateway restart

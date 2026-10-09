@@ -18,6 +18,7 @@
 #   bash olma2/scripts/ops.sh restart-gateway        # restart, wait for the plugin to register, then status
 #   bash olma2/scripts/ops.sh measure-ask-re         # read-only, counts only
 #   bash olma2/scripts/ops.sh count-early-reminders  # read-only, counts only
+#   bash olma2/scripts/ops.sh audit-recent           # read-only, event names and times only
 #   bash olma2/scripts/ops.sh eval-reminder-hour     # runs one behavioural scenario (writes, costs model calls)
 #
 # The three added on 2026-09-18 keep the no-personal-data rule the hard way:
@@ -131,6 +132,10 @@ case "$op" in
   count-early-reminders)
     $SSH "$SERVER" "$in_olma2 node scripts/count-early-reminders.js"
     ;;
+  audit-recent)
+    # Event names, actor ids and times only — never `detail`.
+    $SSH "$SERVER" "$in_olma2 node scripts/audit-recent.js"
+    ;;
   eval-reminder-hour)
     # The scenario id is fixed in this arm, not passed in: the menu stays
     # closed, so no dispatch can choose what runs. It talks to the synthetic
@@ -139,7 +144,7 @@ case "$op" in
     $SSH "$SERVER" "$in_olma2 node scripts/run-evals.js --only named-reminder-hour"
     ;;
   *)
-    echo "usage: $0 status | restart-gateway | measure-ask-re | count-early-reminders | eval-reminder-hour" >&2
+    echo "usage: $0 status | restart-gateway | measure-ask-re | count-early-reminders | audit-recent | eval-reminder-hour" >&2
     exit 2
     ;;
 esac
