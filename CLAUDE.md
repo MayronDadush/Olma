@@ -194,6 +194,7 @@ Loads when you **Read** a file under `src/brokerd/**`, `src/domain/turn.js`, `sr
 - **The turn opens itself, from the gateway's own hook, before the model's first call.**
 - **A function shared by two openers is handed the WHOLE user row, never a projection** — `undefined` is falsy too, and a test through one door proves nothing about the other
 - **A stranger's "first message" is never one of OUR delivery turns** — the English preamble was read as their words and filed invited people as English speakers
+- **The language streak is fed from the gateway's open, not from `wrote_in`** — the doctrine says not to call `turn_start`, so a wrong stored `locale` was never noticed
 - **A repeat of the same message must never be read as a new one.**
 - **A block written to REPLACE a tool call has to say what it does not hold, or its silence is read as the answer** — `today` counts `undated` to-dos, and a question about the whole list (`asksOpenList`, read by the hook) gets no `today` block at all
 - **`messages.queue.mode` stays `followup`.**
@@ -291,6 +292,7 @@ Loads when you **Read** a file under `src/jobs/checkin.js`, `src/jobs/onboarding
 - **`availability` is refused at the write unless it is one `HH:MM-HH:MM` window** — "once a day" was saved, 👍'd, and read as the default
 - **The assistant is עולמה / Allma; the system is still olma2.**
 - **A fact is refused at the one door if it is an email, a reminder request or "יש קשר עם X", and a plan with no end is given one (45 days)** — `facts.rememberFact`; no scheduled cleanup, the door is the cleanup
+- **The ten card slots are for what was said in conversation; the profile page's answers ride ONE capped line** — `facts.cardFacts`, `user-card.PROFILE_LINE_MAX`
 
 ### Writing detectors and alarms
 

@@ -228,6 +228,7 @@ never trust a dated narrative for something you are about to act on.
 - [The carryover leak came back, and the code cannot say how (2026-09-06)](#the-carryover-leak-came-back-and-the-code-cannot-say-how-2026-09-06)
 - [The fact table admitted everything and ranked by recency (fixed 2026-08-28)](#the-fact-table-admitted-everything-and-ranked-by-recency-fixed-2026-08-28)
 - [The fact table kept what had a better home (2026-10-08)](#the-fact-table-kept-what-had-a-better-home-2026-10-08)
+- [The ten card slots went to the profile page (2026-10-08)](#the-ten-card-slots-went-to-the-profile-page-2026-10-08)
 - [The name was in front of us on every turn (fixed 2026-08-22)](#the-name-was-in-front-of-us-on-every-turn-fixed-2026-08-22)
 - ["קוראים לי עידן", and ninety seconds later: "עידן, נכון?" (fixed 2026-09-07)](#קוראים-לי-עידן-and-ninety-seconds-later-עידן-נכון-fixed-2026-09-07)
 - [Two introductions, ninety seconds apart (fixed 2026-09-07)](#two-introductions-ninety-seconds-apart-fixed-2026-09-07)
@@ -266,6 +267,7 @@ never trust a dated narrative for something you are about to act on.
 - [Two coordinations for one meeting (fixed 2026-09-30)](#two-coordinations-for-one-meeting-fixed-2026-09-30)
 - [Two invites for one poker night (fixed 2026-10-05)](#two-invites-for-one-poker-night-fixed-2026-10-05)
 - [The coordination that expired on the wrong Tuesday (fixed 2026-09-23)](#the-coordination-that-expired-on-the-wrong-tuesday-fixed-2026-09-23)
+- [A Friday 11:00 still offered at 14:53 (changed 2026-10-09)](#a-friday-1100-still-offered-at-1453-changed-2026-10-09)
 - [The list he could not put his own task into (2026-09-19)](#the-list-he-could-not-put-his-own-task-into-2026-09-19)
 - [An offer to call a number the bridge has never served (fixed 2026-09-06)](#an-offer-to-call-a-number-the-bridge-has-never-served-fixed-2026-09-06)
 - [The reply's first six seconds were bookkeeping (2026-09-05)](#the-replys-first-six-seconds-were-bookkeeping-2026-09-05)
@@ -9452,6 +9454,27 @@ left: profile-page answers (`prompt_key`, importance 2) crowd the ten card
 slots, and undated one-off events in `health` ("הולכת לניתוח", importance 3)
 cannot be told from a durable trait by code.
 
+### The ten card slots went to the profile page (2026-10-08)
+
+Same measurement as the entry above. `topFacts` ranks importance, then recency,
+and every answer from the profile page is written at importance 2. On the two
+accounts with more than ten facts the card's ten slots were 9 of 10 and 6 of 10
+profile answers ("חיית מחמד: אין", "רכב: יש רכב"), with "הולכת לניתוח"
+(importance 3, undated) on top of one of them; what the person had SAID, newer
+and importance 1, never reached the card. The ranking was not wrong about
+importance — it was comparing a fixed, bounded questionnaire with an open-ended
+conversation as though they were one kind of thing.
+
+`facts.cardFacts` returns the two apart (on `prompt_key`, no text read): ten
+slots for what was said, and the page's answers as one line, led by the
+questions that change what Olma DOES and capped at 12. Not changed:
+`topFacts` (the overnight plan and the extraction pass's "already known" list
+want the profile answers), the importance values, and any judgement about which
+answers are worth a place — "ילדים: אין" is kept, it costs three tokens on a
+line and tells her not to ask. Still open: an undated one-off event filed as a
+core fact cannot be told from a durable trait by code (Jev-in-shadow, not a
+regex).
+
 ### The name was in front of us on every turn (fixed 2026-08-22)
 
 A user's card read `First name: unknown` and, two lines below it, `[context]
@@ -11210,6 +11233,19 @@ have seen any of this. They drive the option now, and three new ones measure
 what was actually wrong: both orderings above, the whole-day exception, and a
 brand-new coordination that must not be closed for having an empty table.
 All three go red on the old code.
+
+### A Friday 11:00 still offered at 14:53 (changed 2026-10-09)
+
+The poker coordination (meeting 74) still had "יום שישי 9.10 ב-11:00" on its
+table at 14:53 that day, and eight private invitations were being written
+against it. Nothing was broken: a clock time left the table six hours after
+its start (`meetings.EXPIRE_AFTER_START_MS`), on the reasoning that the thing
+might still be happening and that closing late is better than closing early.
+The owner's rule is one hour — a time that has already happened is not a
+time anybody can still say yes to. All-day options keep their extra day on
+top (stamped at 09:00, they now leave at 10:00 the next day). Test: "a clock
+time leaves the table an hour after it starts, not before" in
+`tests/meetings.test.js`.
 
 ### The list he could not put his own task into (2026-09-19)
 
@@ -15458,3 +15494,24 @@ first any more because the preamble is prepended to every proactive turn.
 Fix: `isSystemInstruction` matches the preamble, and `readPeerUserText` leaves
 the labelled turns out. u-72 set to `he` by hand; u-12 (Yuval) is English on
 purpose (he talks to her in English); u-17 and u-39 left alone.
+
+### Hebrew all day, and an English check-in (fixed 2026-10-09)
+
+Rachla (u-70) was filed `locale = 'en'` by her first message
+(`user.provisioned.workspace`, `localeSource: "message"` — Latin letters), wrote
+Hebrew for a day, and was then sent a check-in in English: with no message of
+hers in front of it, the model follows the stored language, and USER.md said
+`Language: en`. Nothing noticed, because the net for a wrong stored language is
+`turn_start`'s `wrote_in` and the Turn context doctrine says NOT to call
+`turn_start` — her `locale_observed` was never written. Her row was set to `he`
+by hand (`users.setLocale` + `refreshUserCard`, nothing in the dashboard had
+touched it: no `user.locale_set`, `last_dashboard_at` empty).
+
+Fix: the turn-open hook counts Hebrew letters (`wroteHebrew`: true, false, or
+null when under three letters), brokerd keeps it on the pending open and
+`turn_context` feeds `users.noteObservedLanguage` once per message — three
+Hebrew messages to a non-Hebrew row raise the existing `languageNudge` (ask,
+never switch). A non-Hebrew message counts as the stored language, which ends a
+streak. Needs a gateway restart for the hook to send the new field. Not done:
+the first-hours check-in still follows `locale` until three messages have been
+seen.

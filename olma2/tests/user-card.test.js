@@ -209,3 +209,47 @@ test('refreshUserCard counts the facts it did not print', async () => {
   assert.match(text, /\(\+3 more not shown here/);
   fs.rmSync(ws, { recursive: true, force: true });
 });
+
+// ------------------------------------------------- profile answers (2026-10-08)
+// Every profile-page answer is importance 2, so on the box 9 of one person's 10
+// card slots and 6 of another's were "ילדים: אין" and "רכב: יש רכב", while what
+// they had SAID, newer and importance 1, never reached the card. The ten slots
+// are for what was learned in conversation; the page's answers ride one line.
+test('profile answers share ONE line and no longer crowd out what was said', async () => {
+  const p = await makeUser(db.pool, '+972509100078', { firstName: 'פרופיל' });
+  const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'olma-card-profile-'));
+  await db.pool.query(`UPDATE users SET workspace_path = $2 WHERE id = $1`, [p.id, ws]);
+  const { PROMPTS } = require('../src/domain/fact-prompts');
+  // all of them answered, newest first, so recency alone would put them on top
+  for (const [i, q] of PROMPTS.entries()) {
+    await db.pool.query(
+      `INSERT INTO user_facts (user_id, category, fact, importance, source, prompt_key, learned_at)
+       VALUES ($1, $2, $3, 2, 'user_stated', $4, now() - ($5 || ' minutes')::interval)`,
+      [p.id, q.category, `${q.label.he}: ערך ${i}`, q.key, String(i)]);
+  }
+  for (let i = 0; i < 4; i++) {
+    await db.pool.query(
+      `INSERT INTO user_facts (user_id, category, fact, importance, learned_at)
+       VALUES ($1, 'people', $2, 1, now() - interval '3 days')`, [p.id, `נאמר בשיחה ${i}`]);
+  }
+  await refreshUserCard(db.pool, p.id);
+  const text = fs.readFileSync(path.join(ws, 'USER.md'), 'utf8');
+
+  for (let i = 0; i < 4; i++) assert.match(text, new RegExp(`- \\[people\\] נאמר בשיחה ${i}`), 'said in conversation, on the card');
+  const lines = text.split('\n').filter((l) => l.includes('[their own answers on their page]'));
+  assert.equal(lines.length, 1, 'one line, not one slot each');
+  const shown = lines[0].split(' · ');
+  assert.equal(shown.length, 12, 'capped, so answering every question cannot lengthen the card');
+  assert.match(shown[0], new RegExp(PROMPTS[0].label.he), 'led by the question that changes what Olma does');
+  // everything not printed is counted, never silently dropped
+  const hidden = PROMPTS.length - 12;
+  assert.match(text, new RegExp(`\\(\\+${hidden} more not shown here`));
+  fs.rmSync(ws, { recursive: true, force: true });
+});
+
+test('renderCard: a person with only profile answers still gets the heading and the line', () => {
+  const text = renderCard({ first_name: 'דנה' }, [], [], { profile: ['עיר מגורים: הוד השרון', 'ילדים: אין'], factsTotal: 2 });
+  assert.match(text, /What you know about them:/);
+  assert.match(text, /\[their own answers on their page\] עיר מגורים: הוד השרון · ילדים: אין/);
+  assert.ok(!/more not shown here/.test(text));
+});

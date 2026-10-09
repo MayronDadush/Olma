@@ -12229,20 +12229,33 @@ button.srow:active{background:var(--bg-tint)}
   /* Three states, not two. A group half of whose members are selected cannot
      claim to be pressed, and cannot claim to be off either — and the middle
      state is what tells you what the next press will do. */
+  /* Who a group button may select: its members who are a chip in this same
+     picker and have the meet switch on — the rule `startMeetingWithGroup`
+     already applies. `g.m` is every member ON Olma, and since the roster mints
+     a pending row for a number nobody has met (`groups.ensureRosterUsers`),
+     that includes people who are not friends: Padel Gang selected two of them,
+     counted but drawn nowhere, and the server then refused them. */
+  function mtGroupIds(g){
+    return g.m.filter(function(id){
+      var f = FRIENDS.filter(function(x){ return x.id === id; })[0];
+      return f && f.p && f.p.meet;
+    });
+  }
   function mtGroupState(g){
-    var on = g.m.filter(function(id){ return mtPickWho.indexOf(id) > -1; }).length;
-    return on === 0 ? "" : on === g.m.length ? "all" : "part";
+    var ids = mtGroupIds(g);
+    var on = ids.filter(function(id){ return mtPickWho.indexOf(id) > -1; }).length;
+    return on === 0 ? "" : on === ids.length ? "all" : "part";
   }
   function renderMtPick(){
     var q = mtPickQ.trim().toLowerCase();
     function hit(str){ return !q || String(str).toLowerCase().indexOf(q) > -1; }
-    var gs = GROUPS.filter(function(g){ return hit(grName(g)); });
+    var gs = GROUPS.filter(function(g){ return hit(grName(g)) && mtGroupIds(g).length; });
     var ps = mtPeopleOrder().filter(function(f){ return hit(L(f.n)); });
     var html = gs.map(function(g){
       var st = mtGroupState(g);
       return '<button class="pchip grp' + (st === "part" ? " part" : "") +
         '" aria-pressed="' + (st === "all") + '" data-mtgr="' + g.id + '">' +
-        '<span class="gdot">' + g.m.length + "</span>" + esc(grName(g)) + "</button>";
+        '<span class="gdot">' + mtGroupIds(g).length + "</span>" + esc(grName(g)) + "</button>";
     }).join("") + ps.map(function(f){
       var on = mtPickWho.indexOf(f.id) > -1;
       return '<button class="pchip" aria-pressed="' + on + '" data-mtwho="' + f.id + '">' +
@@ -12406,7 +12419,7 @@ button.srow:active{background:var(--bg-tint)}
         });
       } else {
         var added = 0;
-        grp.m.forEach(function(id){
+        mtGroupIds(grp).forEach(function(id){
           if(mtPickWho.indexOf(id) < 0){ mtPickWho.push(id); added++; }
         });
         if(added) toast(t("toast.mtGroup", {name:grName(grp), n:added}));
