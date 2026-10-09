@@ -15442,3 +15442,19 @@ follow-up when a digest reached them after rung 1
 (`reminders.coveredByDigest`; since the same day every digest carries every
 open task, so reaching them is naming it). A nudge, an explicit reminder and a repeating one
 are untouched. Audited as `reminder.covered_by_digest`.
+
+### Hebrew all day, and an English check-in — the cause underneath (fixed 2026-10-09)
+
+The first fix (the language streak) only catches a wrong `locale` after three
+messages. The wrong value came from provisioning: for somebody a friend
+invited, the greeter session holds nothing but OUR opening, delivered with
+`--deliver` under the English `DELIVERY_PREAMBLE`. `readPeerUserText` joined
+every user-role turn, so that preamble was read as the stranger's first
+message: 6 Hebrew letters against 451 Latin ones, identical for u-70 and u-72,
+`detectLanguage` said `en`. The same text went into u-39's USER.md as "what
+they said". `isSystemInstruction` knew three older openings, none of which is
+first any more because the preamble is prepended to every proactive turn.
+
+Fix: `isSystemInstruction` matches the preamble, and `readPeerUserText` leaves
+the labelled turns out. u-72 set to `he` by hand; u-12 (Yuval) is English on
+purpose (he talks to her in English); u-17 and u-39 left alone.

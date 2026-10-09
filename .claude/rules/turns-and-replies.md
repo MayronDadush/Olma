@@ -105,6 +105,13 @@ title means this file. Grep the title, not the filename.
   hitting it costs one tool call. **Assert a shared decision once per DOOR**; a
   test that reaches it through one of them proves nothing about the other.
 
+- **A stranger's "first message" is never one of OUR delivery turns.** Every
+  `--deliver` turn opens with the English `DELIVERY_PREAMBLE`, and a person a
+  friend invited has nothing else in their greeter session; read as their
+  words it filed u-70 and u-72 as English speakers (2026-10-09).
+  `sessions.isSystemInstruction` matches the preamble and `readPeerUserText`
+  drops those turns (`incidents.md`, "Hebrew all day, … the cause underneath").
+
 - **A repeat of the same message must never be read as a new one.** The
   gateway hook's `turn_open` counts the message, wakes the person and places
   the 👀 before the model's first call, and until 2026-09-13 it had no memory
