@@ -389,6 +389,10 @@ const deployDrift = require('./deploy-drift');
     // rest. The 'morning' timing is a release time on the row, not this tick's
     // hour, and the daily idempotency key makes a frequent tick harmless.
     { name: 'brand_ads', run: () => withTx(pool, (c) => require('../domain/brand-ads').sweep(c)) },
+    // The evening picture of what they ate (domain/food-picture.js). One flag
+    // read while it is off; on, it asks foodd outside any transaction, since
+    // a picture takes seconds to draw, and the outbox sends it.
+    { name: 'food_pictures', run: () => require('../domain/food-picture').sweep(pool) },
     { name: 'deploy_drift', run: () => withTx(pool, (c) => deployDrift.sweepDeployDrift(c)) },
   ];
 }

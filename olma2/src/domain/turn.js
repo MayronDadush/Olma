@@ -647,6 +647,8 @@ async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, 
     : null;
   // Same channel for an ad from the library (domain/brand-ads.js).
   const brandAd = await brandAds.recentForTurn(client, user.id);
+  // Same channel for the evening food picture (domain/food-picture.js).
+  const foodPicture = await require('./food-picture').recentForTurn(client, user.id);
   // Same channel for a changed privacy policy (domain/policy-notice.js): a
   // "מה זה?" right after it must reach a model that knows what was sent.
   const { rows: policyRows } = await client.query(
@@ -915,6 +917,7 @@ async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, 
       ...(recentReminders.length ? { recentReminders } : {}),
       ...(introVideo ? { introVideo } : {}),
       ...(brandAd ? { brandAd } : {}),
+      ...(foodPicture ? { foodPicture } : {}),
       ...(policyNotice ? { policyNotice } : {}),
       ...(recentMeetings.length ? { recentMeetings } : {}),
       ...(rooms.length ? { rooms } : {}),

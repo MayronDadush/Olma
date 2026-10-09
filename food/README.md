@@ -121,6 +121,15 @@ npm test          # makes and drops its own database per file; FOOD_TEST_ADMIN_U
    elsewhere for a trial.
 7. Set the repository variable `FOOD_DEPLOY_ENABLED` to `true`. From then on a
    merge touching `food/` deploys it (`.github/workflows/food.yml`).
+8. The evening picture (`src/picture.js`) is asked for by olma2's
+   `food_pictures` job, and only for the phones in its flag
+   `food_picture_phones` (`''` = nobody, `all` = everyone with the pack). It
+   is paid from the same key, under `FOOD_PICTURE_MONTHLY_USD` (default 20) a
+   calendar month, counted from `model_calls`; over it, the card drawn by code
+   goes instead. `FOOD_PICTURE_MODEL` pins one model for everybody (the
+   default splits people between two, by id), and it needs `ffmpeg` on the
+   PATH (`FOOD_FFMPEG` to point elsewhere). Which model drew what:
+   `SELECT model, count(*), sum(cost_usd) FROM pictures GROUP BY 1`.
 
 Rollback: `bash food/deploy.sh --rollback`. Migrations are additive only.
 

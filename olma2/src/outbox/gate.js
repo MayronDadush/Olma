@@ -165,6 +165,9 @@ function askedForInWords(row) {
 // a preference nobody has ever set.
 const { REPEAT_WINDOW_MS } = require('../domain/repeat-guard');
 const gameSummary = require('../domain/game-summary');
+// domain/food-picture.js's KIND, by value: that module reads this one's clock
+// helpers, and a require back would be a cycle.
+const FOOD_PICTURE = 'food_picture';
 
 const SAYS_IT_ONCE = new Set([
   'digest', 'checkin', 'travel',
@@ -658,7 +661,10 @@ function decide(facts) {
     }
   }
 
-  if (blocked) {
+  // The evening food picture is paid from foodd's own key, never from the
+  // quota this block is about, and a row held here would be folded into the
+  // unblock summary's words and its picture lost (jobs/sweeps.js).
+  if (blocked && row.kind !== FOOD_PICTURE) {
     const paidReminder = row.kind === 'reminder' && plan !== 'free';
     if (!paidReminder && row.kind !== 'unblock_summary') {
       return { action: 'hold', holdReason: 'blocked', releaseAfter: facts.blockedUntil || null };
@@ -715,7 +721,11 @@ function decide(facts) {
   // a deadlock that only the two-day bound in the worker breaks — and it is
   // not one of Olma's four daily initiatives in the first place. It is the
   // sentence that makes the other four make sense.
-  if (row.kind !== 'introduction'
+  // The evening food picture has an allowance of its own (one an evening, by
+  // its idempotency key) and is outside this one, both ways: it never waits
+  // for it, and the worker never counts it into `sentToday` (the owner,
+  // 2026-10-09: "מכסה נפרדת לאוכל").
+  if (row.kind !== 'introduction' && row.kind !== FOOD_PICTURE
     && row.urgency !== 'urgent' && !userChoseThisTime && sentToday >= budget) {
     // A budget-held row is picked up by the next digest rather than retried on
     // a clock — but sweepDigests only visits users who HAVE digest_times, so

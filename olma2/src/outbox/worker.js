@@ -32,7 +32,9 @@ const MAX_DELIVERIES_PER_TICK = 5;
 // a person is waiting for, and at most two ride any one tick. An ad from the
 // library (domain/brand-ads.js) is the same kind of send and shares the cap.
 const MAX_INTRO_VIDEOS_PER_TICK = 2;
-const CLIP_KINDS = new Set(['intro_video', 'brand_ad']);
+// The evening food picture (domain/food-picture.js) is the same cold CLI send
+// of a file, so it shares the cap and the place at the back of the tick.
+const CLIP_KINDS = new Set(['intro_video', 'brand_ad', 'food_picture']);
 
 // ── Reminders that come due together go out together ────────────────────────
 // The outbox drains a row at a time, so nine reminders due at 08:00 were nine
@@ -167,7 +169,7 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
        -- forever despite the release time the gate had set. A 'daily_once'
        -- hold is the same shape: it waits for the evening digest alone.
        AND (o.hold_reason IS NULL OR o.hold_reason NOT IN ('budget', 'daily_once') OR o.release_after IS NOT NULL)
-     ORDER BY (o.kind IN ('intro_video', 'brand_ad')), o.created_at LIMIT 50`,
+     ORDER BY (o.kind IN ('intro_video', 'brand_ad', 'food_picture')), o.created_at LIMIT 50`,
     [now]
   );
 
@@ -232,7 +234,7 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
            WHERE user_id = $1 AND sent_at IS NOT NULL AND sent_at::date = $2::date
              AND (hold_reason IS NULL OR hold_reason NOT IN ('expired', 'cancelled_by_admin', 'paused', 'superseded'))
              AND urgency <> 'urgent'
-             AND kind NOT IN ('reminder', 'digest', 'introduction')`,
+             AND kind NOT IN ('reminder', 'digest', 'introduction', 'food_picture')`,
           [row.user_id, now]
         );
 
