@@ -105,6 +105,12 @@ title means this file. Grep the title, not the filename.
   hitting it costs one tool call. **Assert a shared decision once per DOOR**; a
   test that reaches it through one of them proves nothing about the other.
 
+- **A stranger's "first message" is never one of OUR delivery turns.** Every
+  `--deliver` turn opens with the English `DELIVERY_PREAMBLE`, and a person a
+  friend invited has nothing else in their greeter session; read as their
+  words it filed u-70 and u-72 as English speakers (2026-10-09).
+  `sessions.isSystemInstruction` matches the preamble and `readPeerUserText`
+  drops those turns (`incidents.md`, "Hebrew all day, … the cause underneath").
 - **The language streak is fed from the gateway's open, not from `wrote_in`.**
   `turn_start`'s `wrote_in` is the only net for a wrong stored `locale`, and
   the Turn context doctrine says not to call `turn_start`, so it never ran
