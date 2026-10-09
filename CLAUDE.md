@@ -193,6 +193,7 @@ Loads when you **Read** a file under `src/brokerd/**`, `src/domain/turn.js`, `sr
 
 - **The turn opens itself, from the gateway's own hook, before the model's first call.**
 - **A function shared by two openers is handed the WHOLE user row, never a projection** — `undefined` is falsy too, and a test through one door proves nothing about the other
+- **The language streak is fed from the gateway's open, not from `wrote_in`** — the doctrine says not to call `turn_start`, so a wrong stored `locale` was never noticed
 - **A repeat of the same message must never be read as a new one.**
 - **A block written to REPLACE a tool call has to say what it does not hold, or its silence is read as the answer** — `today` counts `undated` to-dos, and a question about the whole list (`asksOpenList`, read by the hook) gets no `today` block at all
 - **`messages.queue.mode` stays `followup`.**
