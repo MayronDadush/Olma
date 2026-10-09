@@ -243,7 +243,9 @@ const SELF_NUMBER = process.env.OLMA_WA_NUMBER || '972559347282';
 // from its first pass never heard that it could begin (owner, 2026-09-26).
 function renderGroupIntro(overrides, { ready = false } = {}) {
   const intro = templates.render('group_intro', { me: mentionTokens([SELF_NUMBER]) }, overrides);
-  return ready ? `${intro}\n${templates.render('group_intro_ready', {}, overrides)}` : intro;
+  // A blank line before it: the intro is three short paragraphs now, and the
+  // "you can start" line is a fourth, not the tail of the last one.
+  return ready ? `${intro}\n\n${templates.render('group_intro_ready', {}, overrides)}` : intro;
 }
 
 // kind comes from groups.decideNotice: 'explain' the first time, 'nudge' after.
