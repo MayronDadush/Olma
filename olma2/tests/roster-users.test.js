@@ -402,7 +402,7 @@ test('cold invite: closed flag sends nothing; open, one row per person per ROOM,
 
     // The words are the owner's, rendered at delivery, with no model in the path.
     const text = require('../src/domain/proactive-text').rawPipeTextFor(rows[0], {}, 'whatsapp');
-    assert.ok(text.includes('«בדיקה»'), text);
+    assert.ok(text.includes('*בדיקה*'), text);
     assert.ok(text.includes('פאדל השבוע'), text);
     assert.ok(text.startsWith('היי! אני עולמה'), text);
     assert.ok(text.includes('עוזרת AI'), 'she says what she is');

@@ -1512,6 +1512,18 @@ test('agent doctrine: asked whether she is a person, she says she is an AI assis
   assert.match(room, /את עוזרת AI/);
 });
 
+test('room doctrine: asked who can and who cannot, she answers by person from the status', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const room = fs.readFileSync(path.join(__dirname, '../src/intake/agents-group-template.md'), 'utf8');
+  // It used to say the others' answers are never told in the room, so the
+  // poker room's "who can and who can't" got no names at all.
+  assert.doesNotMatch(room, /לא אומרים בקבוצה מה ענו האחרים/);
+  assert.match(room, /מי יכול ומי לא/);
+  assert.match(room, /סיבות — רק כשמישהו כאן שואל למה/, 'a reason only when asked why');
+  assert.match(room, /`reasons: true`/);
+});
+
 test('agent doctrine: act-first outranks curiosity, and one question is a hard cap', () => {
   const fs = require('node:fs');
   const tpl = fs.readFileSync(require('../src/intake/provision').TEMPLATE_PATH, 'utf8');

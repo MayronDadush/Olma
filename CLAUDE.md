@@ -193,6 +193,8 @@ Loads when you **Read** a file under `src/brokerd/**`, `src/domain/turn.js`, `sr
 
 - **The turn opens itself, from the gateway's own hook, before the model's first call.**
 - **A function shared by two openers is handed the WHOLE user row, never a projection** — `undefined` is falsy too, and a test through one door proves nothing about the other
+- **A stranger's "first message" is never one of OUR delivery turns** — the English preamble was read as their words and filed invited people as English speakers
+- **The language streak is fed from the gateway's open, not from `wrote_in`** — the doctrine says not to call `turn_start`, so a wrong stored `locale` was never noticed
 - **A repeat of the same message must never be read as a new one.**
 - **A block written to REPLACE a tool call has to say what it does not hold, or its silence is read as the answer** — `today` counts `undated` to-dos, and a question about the whole list (`asksOpenList`, read by the hook) gets no `today` block at all
 - **`messages.queue.mode` stays `followup`.**
@@ -271,7 +273,7 @@ Loads when you **Read** a file under `src/domain/reminders.js`, `src/domain/task
 ### People, silence, and data you must not get wrong
 
 **`.claude/rules/people-and-quiet.md`** — the timezone that must never be NULL, the check-in ladder, the once-ever question, deleting a person, and the rename.
-Loads when you **Read** a file under `src/jobs/checkin.js`, `src/jobs/onboarding-review.js`, `src/domain/users.js` and 6 more.
+Loads when you **Read** a file under `src/jobs/checkin.js`, `src/jobs/onboarding-review.js`, `src/domain/users.js` and 7 more.
 
 - **`users.timezone` must never be NULL**
 - **Every time crossing a tool boundary needs an explicit offset.**
@@ -279,7 +281,7 @@ Loads when you **Read** a file under `src/jobs/checkin.js`, `src/jobs/onboarding
 - **A day-one step that has not gone out is REPLACED by the NEXT CHECK-IN of any kind, never joined by it.** — and one that has gone out spaces the next by `STEP_GAP_MS`, counted from when it reached them; none after the first starts while they are talking
 - **Somebody silent for DAYS is paused on a clock, not only on unanswered questions** — two days holding nothing, five holding an open task (`silence-pause.due`, flags `silence_pause_days_empty`/`_holding`); never somebody with a reminder they asked for; and a quiet pause hears ONE message per coordination opened with them, room or private
 - **Somebody who has stopped answering hears nothing Olma decided to say, and nothing on their record is cancelled.** — but a coordination they ANSWERED is not her idea, and an answer is what earns that, never membership; and another PERSON reaching them (a connection request, a private invite, a share, a relayed message) is not her idea either (`gate.PEER_KINDS`)
-- **A stop is acted on the moment it is HEARD, not when it is confirmed** — `paused_reason = 'said_stop'` is a full pause, and their next message about anything else ends it.
+- **A stop is acted on the moment it is HEARD, not when it is confirmed** — `paused_reason = 'said_stop'` is a full pause, and their next message about anything else ends it — **and unanswered for a day it SOFTENS** (`stop_unanswered`, השהייה רכה, since 2026-10-09): one message per coordination as in the quiet pause, never a nudge, other people's errands pass, one fixed line a day
 - **A write from their own page IS the person answering** — `last_dashboard_at`, never `last_inbound_at`
 - **A "once ever" question is stamped on the PERSON, never deduped on the route that asks it.**
 - **The chag offer is that shape's second column (`holiday_quiet_asked_at`, migration 062), with two routes from the start.**
@@ -289,6 +291,8 @@ Loads when you **Read** a file under `src/jobs/checkin.js`, `src/jobs/onboarding
 - **The ledgers are append-only.**
 - **`availability` is refused at the write unless it is one `HH:MM-HH:MM` window** — "once a day" was saved, 👍'd, and read as the default
 - **The assistant is עולמה / Allma; the system is still olma2.**
+- **A fact is refused at the one door if it is an email, a reminder request or "יש קשר עם X", and a plan with no end is given one (45 days)** — `facts.rememberFact`; no scheduled cleanup, the door is the cleanup
+- **The ten card slots are for what was said in conversation; the profile page's answers ride ONE capped line** — `facts.cardFacts`, `user-card.PROFILE_LINE_MAX`
 
 ### Writing detectors and alarms
 
@@ -337,7 +341,7 @@ Loads when you **Read** a file under `src/adapters/http/**`, `docs/design/**`.
 ### Doctrine, tools and reactions
 
 **`.claude/rules/doctrine.md`** — the 39,250-char ceiling, the schema budget, the reaction table and markPlaced, Google scopes and links Olma may not invent.
-Loads when you **Read** a file under `src/intake/agents-template.md`, `src/intake/provision.js`, `src/adapters/mcp/**` and 8 more.
+Loads when you **Read** a file under `src/intake/agents-template.md`, `src/intake/provision.js`, `src/adapters/mcp/**` and 12 more.
 
 - **`agents-template.md` reaches existing users only via `scripts/resync-agent-templates.js`.**
 - **The doctrine is FULL: 39,229 of the 39,250 chars the gateway will inject (2026-09-05; it was 39,249 the day before).**
@@ -367,6 +371,8 @@ Loads when you **Read** a file under `src/intake/agents-template.md`, `src/intak
 - **A display name is not a word to be translated.**
 - **Olma never claims a lookup it did not perform.**
 - **A `url` in a tool result is delivered by the MODEL or not at all** — save a whole message that is only "שלח לי קישור", answered by code before any turn (`domain/link-request.js`, one table per language)
+- **A message that is ONLY a link is SAVED by code, and Olma never asks "which list?" before saving** — she decides, says where it went with no 👍, offers the move on the second line, and only the person's own words make a list (`save_link_shortcut`)
+- **A saved link is fetched by OUR server, so every fetch goes through the guard in `domain/link-extract.js`** — ports 80/443, a BlockList over every answer, the socket pinned to the checked address, every redirect re-checked; unreadable is saved, never an error
 
 ### In a group
 

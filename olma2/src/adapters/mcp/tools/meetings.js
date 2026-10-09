@@ -479,6 +479,24 @@ const TOOLS = [
       // not owed and would make "everybody else said yes" false for ever.
       const activeIds = (Array.isArray(res.data.participants) ? res.data.participants : [])
         .filter((p) => p.state !== 'opted_out').map((p) => p.user_id);
+      // Who said yes, who said no and who has not answered each time, by
+      // name — the board their own page already shows every participant
+      // (owner, 2026-10-08: the same in the chat, the room and the page).
+      // Drawn so the model never maps ids to names itself; the reader is left
+      // out, because where THEY stand is on the lines as ✓/✗.
+      const nameOf = new Map((res.data.participants || []).map((p) => [String(p.user_id), p.first_name || null]));
+      const others = activeIds.filter((id) => String(id) !== String(user.id));
+      for (const o of options) {
+        if (o.status !== 'active') continue;
+        const ans = o.answers || {};
+        const names = (ids) => ids.map((id) => nameOf.get(String(id))).filter(Boolean);
+        o.who = {
+          yes: names(others.filter((id) => ans[id] === 'y')),
+          no: names(others.filter((id) => ans[id] === 'n')),
+          waiting: names(others.filter((id) => !ans[id])),
+        };
+      }
+      res.data.hints = { ...(res.data.hints || {}), who: 'Asked who can or who said what: answer from each option\'s `who` (everybody else, by name). Never volunteer it unasked. A reason is in `participants[].constraints`, said as their words, only when asked why.' };
       const block = listBlock.renderMeetingOptionsBlock(options, {
         channelType: ch.ok ? ch.data.channel.channel_type : null,
         locale: user.locale, userId: user.id, activeIds,
@@ -516,7 +534,7 @@ const TOOLS = [
         marks: listBlock.meetingOptionMarks(options, { userId: user.id, activeIds }),
         hints: {
           ...(res.data.hints || {}),
-          pair: 'Two options are ONE sentence in their words ("X or Y?"), never a numbered list. `marks` says where this user stands on each (mine: their own y/n; needsYou: everybody else already agreed) — say it only where it is set, and never anybody else\'s answer.',
+          pair: 'Two options are ONE sentence in their words ("X or Y?"), never a numbered list. `marks` says where this user stands on each (mine: their own y/n; needsYou: everybody else already agreed) — say it only where it is set. Anybody else\'s answer only when asked (`who`).',
           gone: format.HINTS.struckOut,
         },
       });

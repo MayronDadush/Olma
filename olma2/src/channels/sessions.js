@@ -182,9 +182,14 @@ function textOf(content) {
 
 // The gateway wraps proactive turns in a long instruction block. Showing it
 // verbatim would bury the conversation in prompt text, so it is labelled.
+//
+// Every `--deliver` turn opens with channels/openclaw's DELIVERY_PREAMBLE, so
+// that is the first thing to match: the older openings below it were written
+// before the preamble existed and none of them is ever first any more.
 function isSystemInstruction(text) {
-  return /^This is a brand-new user|^You are being asked to|^Send the following message EXACTLY/.test(text.trim());
+  return /^DELIVERY: whatever you say|^This is a brand-new user|^You are being asked to|^Send the following message EXACTLY/.test(text.trim());
 }
+const SYSTEM_TURN_LABEL = '(הודעה יזומה של המערכת)';
 
 // peer === null → the agent's most recently active session (the dashboard's
 // "show me this person's conversation"). peer set → that specific peer's
@@ -307,7 +312,7 @@ function readRecentMessages(agentId, limit = 10, base = HOME(), peer = null) {
     if (role === 'assistant' && text === FAILED_TURN_MARKER) continue;
     out.push({
       role,
-      text: isSystemInstruction(text) ? '(הודעה יזומה של המערכת)' : text,
+      text: isSystemInstruction(text) ? SYSTEM_TURN_LABEL : text,
       at: o.timestamp || null,
       // a voice note carries its media path; the text is whatever the
       // transcriber made of it, which is exactly what we want to eyeball
@@ -537,7 +542,11 @@ function readGroupContext(agentId, sessionKey, base = HOME()) {
 // answers it, so their first reply is a real reply, not a canned hello.
 function readPeerUserText(agentId, peer, { limit = 6, maxChars = 600, base = HOME() } = {}) {
   const msgs = readRecentMessages(agentId, limit, base, peer);
-  const text = msgs.filter((m) => m.role === 'user').map((m) => m.text).join('\n').trim();
+  // Not our own delivery turns: Olma's opening to somebody a friend invited is
+  // the only thing in their greeter session, wrapped in an English preamble,
+  // and read as THEIR words it filed Rachla and u-72 as English speakers and
+  // put the preamble into u-39's USER.md (`incidents.md`, "Hebrew all day").
+  const text = msgs.filter((m) => m.role === 'user' && m.text !== SYSTEM_TURN_LABEL).map((m) => m.text).join('\n').trim();
   return text ? text.slice(0, maxChars) : null;
 }
 

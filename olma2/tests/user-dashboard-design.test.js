@@ -660,3 +660,22 @@ test("the calendar tab draws Google's copy of Olma's own row once", () => {
   assert.deepEqual(titles.sort(), ['ישיבת צוות', 'ערב משחקים', 'לשלם שכר דירה', 'שיחה עם רון', 'תור לספר'].sort());
   assert.equal(titles.filter((x) => x === 'ערב משחקים').length, 1);
 });
+
+// A group in the "new coordination" picker selects only people who are a chip
+// in that same picker (2026-10-09): `g.m` is every member ON Olma, roster
+// pending rows included, and Padel Gang selected two strangers nobody could
+// see. The press, the count on the button and its pressed state all read the
+// same filtered list, or "all" can never be reached and the count lies.
+test('a group in the coordination picker selects only friends the meeting can include', () => {
+  const ids = page.match(/function mtGroupIds\(g\)\{[\s\S]*?\n {2}\}/);
+  assert.ok(ids, 'mtGroupIds is here');
+  assert.match(ids[0], /FRIENDS\.filter/, 'a member must be a friend');
+  assert.match(ids[0], /f\.p && f\.p\.meet/, 'with the meet switch on, as startMeetingWithGroup asks');
+  const click = page.match(/\$\("#mtPick"\)\.addEventListener\("click"[\s\S]*?renderMtNew\(\);/);
+  assert.ok(click, 'the picker click handler is here');
+  assert.match(click[0], /mtGroupIds\(grp\)\.forEach\(function\(id\)\{\s*if\(mtPickWho\.indexOf\(id\) < 0\)/,
+    'pressing a group adds the filtered members');
+  assert.doesNotMatch(click[0], /grp\.m\.forEach\(function\(id\)\{\s*if\(mtPickWho\.indexOf\(id\) < 0\)/,
+    'and never every member on Olma');
+  assert.match(page, /'<span class="gdot">' \+ mtGroupIds\(g\)\.length/, 'the count on the button is the same list');
+});

@@ -37,6 +37,7 @@ const markEcho = require('../domain/mark-echo');
 const linkRequest = require('../domain/link-request');
 const dashboardAuth = require('../domain/dashboard-auth');
 const templates = require('../domain/message-templates');
+const savedLinks = require('../domain/saved-links');
 const gameShortcut = require('../domain/game-shortcut');
 const packsDomain = require('../domain/packs');
 const { timezoneForPhone } = require('../domain/phone-timezone');
@@ -93,8 +94,15 @@ const PENDING_MAX_PER_USER = 8;
 // production gets the worker facade, never `channels/sessions.js` directly,
 // because every export there is synchronous and this daemon answers live
 // users on the same loop.
-function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, timers, endSignalsLive, games, readGreeterReply }) {
+function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, timers, endSignalsLive, games, readGreeterReply, saveLinks }) {
   flood = flood || new FloodCounter();
+  // What reading a saved link may reach: the network and the background
+  // model. Injectable, and REFUSED inside `node --test` unless a test injects
+  // its own — a suite that read real pages would depend on the internet and
+  // on the hour (rules/testing.md).
+  const saveLinkDeps = saveLinks || (process.env.NODE_TEST_CONTEXT
+    ? { fetchImpl: async () => { throw new Error('no network in tests'); }, model: false }
+    : {});
   // gamesd and the gateway's config, for the game shortcut. Injectable for the
   // same reason as the roster: the defaults reach live services.
   games = {
@@ -136,11 +144,17 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
   // land either side of that answer, so both orders are handled — an open
   // already queued is dropped, and one arriving later marks 👍 and queues
   // nothing, because no turn is coming to adopt it.
+  //
+  // `mark` is what that late open puts on: 👍 for an answer that is a mark
+  // (the page link, a game join), and `null` for one whose TEXT is the answer
+  // — a saved link says where it went, and the owner wants no 👍 beside it
+  // (2026-10-08). Without that the late open would put back the very 👍 the
+  // shortcut left off, in exactly the order the shortcut cannot control.
   const answeredByCode = new Map();
-  function noteAnsweredByCode(userId, messageId) {
+  function noteAnsweredByCode(userId, messageId, { mark = 'done' } = {}) {
     const at = clock();
-    for (const [id, t] of answeredByCode) if (at - t > PENDING_TTL_MS) answeredByCode.delete(id);
-    answeredByCode.set(messageId, at);
+    for (const [id, v] of answeredByCode) if (at - v.at > PENDING_TTL_MS) answeredByCode.delete(id);
+    answeredByCode.set(messageId, { at, mark });
     const list = livePending(userId).filter((p) => p.messageId !== messageId);
     if (list.length) pending.set(userId, list); else pending.delete(userId);
   }
@@ -408,7 +422,9 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
         ? await meetingExit.onOut(client, user.id)
         : null;
       if (meetingExitNow) lap('exit');
-      const byCode = Boolean(messageId && answeredByCode.has(messageId));
+      const codeAnswer = messageId ? answeredByCode.get(messageId) : undefined;
+      const byCode = Boolean(codeAnswer);
+      const quietByCode = byCode && codeAnswer.mark === null;
       const left = Boolean(meetingExitNow && meetingExitNow.outcome === 'left');
       const state = stoppedReminders || left || byCode ? 'done'
         : thanksOnly ? 'thanks' : (kind === 'voice' ? 'listening' : 'working');
@@ -447,9 +463,13 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
         // "רשום עדן יצא": a status they quoted. opt_out_of_meeting refuses on
         // this turn (tools/meetings.js) — the hook's verdict, never the words.
         reportedExit: adopt && params.reportedExit === true,
+        // Hebrew letters or not, as the hook counted them (null: too short).
+        // `turn_context` feeds the language streak from it — the model is
+        // told not to call `turn_start` there, and `wrote_in` rode that call.
+        wroteHebrew: adopt && typeof params.wroteHebrew === 'boolean' ? params.wroteHebrew : null,
         marked: new Set(), contextSent: false,
       };
-      if (adopt && messageId) {
+      if (adopt && messageId && !quietByCode) {
         // The 👀 (or 👂) is decided here, before any model latency — and held
         // for `eyes_delay_seconds` when the plugin can tell us the answer went
         // out first (domain/reactions.openingDelayMs): a message answered
@@ -740,7 +760,10 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
         // Stamped whenever they had no opening on record, introduced here or
         // by the greeter: `gameClaimed` provisions off opening_sent_at.
         const introduced = !user.opening_sent_at && !user.privacy_link_sent_at && !greeterIntroduced;
-        if (introduced) text = [say('game_hello', {}), text, say('game_privacy', {})].join('\n');
+        // Blank lines between the three: the answer has paragraphs of its own
+        // now (owner, 2026-10-09), and the hello and the privacy line glued
+        // onto them read as part of the first and the last.
+        if (introduced) text = [say('game_hello', {}), text, say('game_privacy', {})].join('\n\n');
         if (!user.opening_sent_at) {
           await client.query(
             `UPDATE users SET opening_sent_at = COALESCE(opening_sent_at, now()),
@@ -825,6 +848,78 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
     // that drops a held 👀 (no model runs, so maybe no agent_end).
     if (out.claim && messageId) eyesAnswered(messageId);
     if (mark) placeMark(mark);
+    return out;
+  }
+
+  // A direct message that is only a link — or a link and a list's name
+  // ("לחתונה") — is SAVED by code, before any turn ("שמורים",
+  // docs/design/saved-links-handoff.md). The plugin's `before_dispatch` sends it
+  // here; the link is read, a list chosen without asking, the row written, and
+  // the sentence handed back for the gateway to send. Anything else, and every
+  // failure, answers `claim: false` and the model runs as it would have — the
+  // worst case of this path is a model turn that saves the same link, which
+  // the dedupe on `canonical_url` turns into "already saved".
+  //
+  // A text reply and NO mark (owner, 2026-10-08): the reply says what was saved
+  // and where, and a 👍 beside it says the same thing twice. A late turn_open
+  // is told the same through `noteAnsweredByCode(…, { mark: null })`.
+  //
+  // Reading and choosing happen OUTSIDE any transaction (`prepareSave`), and
+  // only the write holds one. The plugin sends the moment it stops waiting
+  // (`deadline`): past it the gateway has already handed the message to the
+  // model, so this claims nothing, marks nothing and notes nothing — and a
+  // write that would land after it is rolled back, so the model's own save is
+  // the only one.
+  // The body is never logged or audited; only what was saved is.
+  const SAVE_LINK_DEFAULT_MS = 7_500;
+  const SAVE_LINK_MARGIN_MS = 250;
+  const ROLL_BACK = Symbol('save_link_roll_back');
+  async function handleSaveLinkShortcut(params = {}) {
+    const agentId = String(params.agentId || '').trim();
+    if (!/^u-\d+$/.test(agentId)) return { ok: true, claim: false };
+    const parsed = savedLinks.parseShortcut(params.body);
+    if (!parsed) return { ok: true, claim: false };
+    const given = Number(params.deadline);
+    const deadline = Number.isFinite(given) && given > 0 ? given : Date.now() + SAVE_LINK_DEFAULT_MS;
+    const late = () => Date.now() >= deadline - SAVE_LINK_MARGIN_MS;
+    const messageId = reactions.cleanMessageId(params.messageId);
+    const { rows } = await pool.query(
+      `SELECT id, phone, locale, timezone FROM users WHERE agent_id = $1 AND status = 'active' AND is_eval = false`, [agentId]);
+    const user = rows[0];
+    if (!user) return { ok: true, claim: false };
+    const hint = savedLinks.shortcutHint(parsed.rest, await savedLinks.listsOf(pool, user.id));
+    if (hint === undefined) return { ok: true, claim: false };
+    const prepared = await savedLinks.prepareSave(pool, user, { urls: parsed.urls, hint }, { ...saveLinkDeps, deadline });
+    if (late()) return { ok: true, claim: false, late: true };
+    let out = { ok: true, claim: false };
+    try {
+      await withTx(pool, async (client) => {
+        const res = await savedLinks.commitSave(client, user, { messageId, now: clock }, prepared);
+        if (!res.ok) return;
+        const items = res.data.saved;
+        // A save with no list to name would read "שמרתי ב** —": the model says
+        // that one, in words.
+        if (items.some((it) => !it.list)) throw ROLL_BACK;
+        const text = savedLinks.shortcutReply(items, {
+          lang: String(user.locale || '').startsWith('en') ? 'en' : 'he',
+          now: clock, timezone: user.timezone, overrides: await templates.load(client),
+        });
+        await audit.record(client, user.id, 'saved_link.shortcut', {
+          links: items.length, duplicates: items.filter((i) => i.duplicate).length, hint: Boolean(hint),
+        });
+        if (late()) throw ROLL_BACK;
+        out = { ok: true, claim: true, text };
+      });
+    } catch (e) {
+      if (e !== ROLL_BACK) throw e;
+      return { ok: true, claim: false, late: late() };
+    }
+    if (out.claim && messageId) {
+      noteAnsweredByCode(Number(user.id), messageId, { mark: null });
+      // The sentence IS the answer, and a code-sent reply may reach neither
+      // signal that drops a held 👀 (no model runs, so maybe no agent_end).
+      eyesAnswered(messageId);
+    }
     return out;
   }
 
@@ -1397,12 +1492,26 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
       if (pre && !user.first_name && pre.senderName) {
         cardStale = (await captureDisplayName(client, user, pre.senderName)).ok;
       }
+      // The language they wrote in, noted once per message: a stored language
+      // that is wrong (Rachla, filed `en` by her first message, 2026-10-09) is
+      // noticed after three Hebrew ones and ASKED about, never switched. A
+      // non-Hebrew message counts as the stored language, which ends a streak;
+      // what neither side can tell (null) counts nothing.
+      let languageNudge = null;
+      if (pre && !pre.languageNoted && typeof pre.wroteHebrew === 'boolean') {
+        pre.languageNoted = true;
+        const observed = pre.wroteHebrew ? 'he' : user.locale;
+        if (observed) {
+          const noted = await require('../domain/users').noteObservedLanguage(client, user, observed);
+          if (noted.ask) languageNudge = { theyWriteIn: noted.observed, stored: user.locale || null, messages: noted.count };
+        }
+      }
       const data = await turnDomain.advise(client, user, {
         counted: ourTurn || !pre ? { data: { blocked: false } } : pre.quota,
         // Spent on the first prompt build for this message: a rebuilt prompt
         // (model fallback) is the same message, and must not stamp twice.
         firstTurn: Boolean(pre && pre.firstTurn && !pre.contextSent),
-        ourTurn, replyTarget, languageNudge: null,
+        ourTurn, replyTarget, languageNudge,
         thanksOnly: Boolean(pre && pre.thanksOnly),
         thanksAfterQuestion: Boolean(pre && pre.thanksAfterQuestion),
         stoppedReminders: (pre && pre.stoppedReminders) || 0,
@@ -1445,6 +1554,21 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
       // card refresh below keys on `actorId` — which a group call never sets,
       // on purpose, because everything else hung off it is person-shaped.
       let groupCardUserId = null;
+      // A tool that must reach the network first (tools/saved-links.js, a
+      // `save`: reading a page and choosing a list) does it HERE, before the
+      // transaction opens, with only short reads on the pool — a page that
+      // takes three seconds must not hold a connection and a tx open for them
+      // (review of PR #802). The identity is resolved again inside; the
+      // handler checks the prepared work is this person's, and anything that
+      // goes wrong here leaves `prepared` unset and the handler does it the
+      // old way.
+      let prepared;
+      if (tool.prepare && !groupsDomain.looksLikeGroupToken(readIdentity(args))) {
+        try {
+          const who = await usersDomain.resolveByToken(pool, readIdentity(args));
+          if (who.ok) prepared = await tool.prepare(pool, who.data.user, stripIdentity(args), { links: saveLinkDeps });
+        } catch { prepared = undefined; }
+      }
       const result = await withTx(pool, async (client) => {
         // ── the group door ────────────────────────────────────────────────
         // Routed on the token's PREFIX, before the user door is even tried:
@@ -1583,7 +1707,7 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
           turn.messageId = null; turn.lastInboundAt = null; turn.marked = null;
         }
 
-        const out = await tool.handler(client, auth.data.user, stripIdentity(args), { flood, turn, now: clock });
+        const out = await tool.handler(client, auth.data.user, stripIdentity(args), { flood, turn, now: clock, prepared, links: saveLinkDeps });
         // The recovery's count is worth exactly one `turn_start`. Clearing it
         // here means a connection that outlives its turn cannot make the NEXT
         // turn's turn_start believe its message was already counted — which
@@ -1737,6 +1861,8 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
         return handleIntakeContext(msg.params || {});
       case 'group_room_write':
         return handleGroupRoomWrite(msg.params || {});
+      case 'save_link_shortcut':
+        return handleSaveLinkShortcut(msg.params || {});
       case 'dashboard_link_shortcut':
         return handleDashboardLinkShortcut(msg.params || {});
       case 'reply_gate':

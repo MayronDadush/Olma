@@ -23,22 +23,21 @@ const { onlinePlace } = require('./online-place');
 const meetingCategory = require('./meeting-category');
 const { freshDayWords } = require('./meeting-time');
 
-// How long a slot stays "live" after its start before the negotiation is
-// closed as expired. Generous on purpose: the thing itself may still be
-// happening, and a meeting confirmed an hour late is fine while a meeting
-// closed an hour early is not.
-const EXPIRE_AFTER_START_MS = 6 * 3600_000;
+// How long a slot stays "live" after its start before it leaves the table
+// (and a negotiation with nothing left is closed as expired). One hour since
+// 2026-10-09, owner: it was six, "generous on purpose", and a Friday 11:00
+// was still on the table being offered to people at 14:53 — a time that has
+// already happened is not a time anybody can say yes to.
+const EXPIRE_AFTER_START_MS = 3600_000;
 // Rows proposed before slots carried a start time (proposed_start_at IS NULL)
 // cannot be dated at all. They stop being nudged about immediately — see
 // pendingMeetingFor — and are closed once they are plainly abandoned.
 const LEGACY_STALE_DAYS = 3;
-// The same six hours decide when a candidate TIME is over — with one
-// exception that has to be said out loud. A whole-day option's instant is
-// 09:00 of the day it means (meeting-option-moment.momentFor), so six hours
-// would take it off the table at 15:00 of its own day, while the day it names
-// is still going on. It gets a full day on top of the grace. Everything here
-// errs late on purpose: a time taken away an hour early is a time somebody
-// could still have said yes to.
+// The same hour decides when a candidate TIME is over — with one exception
+// that has to be said out loud. A whole-day option's instant is 09:00 of the
+// day it means (meeting-option-moment.momentFor), so an hour would take it
+// off the table at 10:00 of its own day, while the day it names is still
+// going on. It gets a full day on top of the grace.
 const ALL_DAY_EXTRA_MS = 24 * 3600_000;
 
 // `groupId` makes this the coordination OF A ROOM (domain/group-meetings.js),

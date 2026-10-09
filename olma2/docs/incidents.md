@@ -178,6 +178,7 @@ never trust a dated narrative for something you are about to act on.
 
 **Stopping, pausing and doctrine**
 
+- [Silence after a stop was read as a yes (changed 2026-10-09)](#silence-after-a-stop-was-read-as-a-yes-changed-2026-10-09)
 - ["אני רוצה להפסיק את השירות" was answered with a goodbye and nothing else (fixed 2026-08-22)](#אני-רוצה-להפסיק-את-השירות-was-answered-with-a-goodbye-and-nothing-else-fixed-2026-08-22)
 - [Pausing left them relying on their own memory to come back (fixed 2026-08-22)](#pausing-left-them-relying-on-their-own-memory-to-come-back-fixed-2026-08-22)
 - [The writing sounded like a form, and half the users were addressed as "את/ה" (2026-08-31)](#the-writing-sounded-like-a-form-and-half-the-users-were-addressed-as-אתה-2026-08-31)
@@ -226,6 +227,8 @@ never trust a dated narrative for something you are about to act on.
 
 - [The carryover leak came back, and the code cannot say how (2026-09-06)](#the-carryover-leak-came-back-and-the-code-cannot-say-how-2026-09-06)
 - [The fact table admitted everything and ranked by recency (fixed 2026-08-28)](#the-fact-table-admitted-everything-and-ranked-by-recency-fixed-2026-08-28)
+- [The fact table kept what had a better home (2026-10-08)](#the-fact-table-kept-what-had-a-better-home-2026-10-08)
+- [The ten card slots went to the profile page (2026-10-08)](#the-ten-card-slots-went-to-the-profile-page-2026-10-08)
 - [The name was in front of us on every turn (fixed 2026-08-22)](#the-name-was-in-front-of-us-on-every-turn-fixed-2026-08-22)
 - ["קוראים לי עידן", and ninety seconds later: "עידן, נכון?" (fixed 2026-09-07)](#קוראים-לי-עידן-and-ninety-seconds-later-עידן-נכון-fixed-2026-09-07)
 - [Two introductions, ninety seconds apart (fixed 2026-09-07)](#two-introductions-ninety-seconds-apart-fixed-2026-09-07)
@@ -265,6 +268,7 @@ never trust a dated narrative for something you are about to act on.
 - [Two invites for one poker night (fixed 2026-10-05)](#two-invites-for-one-poker-night-fixed-2026-10-05)
 - [The group's coordination, asked for in private (2026-10-08)](#the-groups-coordination-asked-for-in-private-2026-10-08)
 - [The coordination that expired on the wrong Tuesday (fixed 2026-09-23)](#the-coordination-that-expired-on-the-wrong-tuesday-fixed-2026-09-23)
+- [A Friday 11:00 still offered at 14:53 (changed 2026-10-09)](#a-friday-1100-still-offered-at-1453-changed-2026-10-09)
 - [The list he could not put his own task into (2026-09-19)](#the-list-he-could-not-put-his-own-task-into-2026-09-19)
 - [An offer to call a number the bridge has never served (fixed 2026-09-06)](#an-offer-to-call-a-number-the-bridge-has-never-served-fixed-2026-09-06)
 - [The reply's first six seconds were bookkeeping (2026-09-05)](#the-replys-first-six-seconds-were-bookkeeping-2026-09-05)
@@ -7611,6 +7615,43 @@ count; `admin`, `unanswered_repair` and `missed_goal_repair` do not
 
 ## Stopping, pausing and doctrine
 
+### Silence after a stop was read as a yes (changed 2026-10-09)
+
+Three people were paused under `said_stop` on 2026-10-09 — Gal (since
+09-23), Matan (09-25) and מעיין (09-27) — and none of them had answered the
+"בטוח?" that followed. An unconfirmed stop was a FULL pause for as long as
+they stayed silent, so a question nobody answered had the same effect as a
+yes: no room coordination, no private one from a friend, no connection
+request, for weeks. The owner's view is that silence is not a decision, and
+a pause that shuts out every other person should take one.
+
+The owner's rule: a stop that goes UNANSWERED for 24 hours becomes a softer
+pause (`pause.STOP_UNANSWERED`, `pause.softenUnansweredStops` on the minute
+sweep). The first version let every coordination row through for as long as
+they stayed in it; the owner narrowed it the same day to the quiet pause's
+shape, on the reasoning that somebody who said stop and never confirmed is
+owed at least as much quiet as somebody who merely stopped answering. So:
+Olma stays silent — no reminders, check-ins, digests, and no nudge of any
+kind — each coordination opened with them is heard ONCE (`pausedRoomInvite`,
+room or private), and a day of silence after it takes them out
+(`group-meetings.sweepSilentPausedMembers`, cause `paused_no_answer`). On top
+of that the people errands, `gate.PEER_KINDS`, always pass, and the first
+message of each local day ends on one fixed line ("אפשר לכתוב לי בכל שלב
+שרוצים להפסיק, ואז לא אשלח יותר שום הודעה.", `pause.SOFT_PAUSE_FOOTER`),
+handed over word for word on both the model path and the raw pipe. Their next
+message ends it, as it ends a `said_stop`.
+
+The owner named the four states so they can be talked about: השהייה שקטה
+(`quiet_ladder`), עצירה ממתינה (`said_stop`, its first day), השהייה רכה
+(`stop_unanswered`) and השהייה מלאה (a confirmed stop). The admin page uses
+the same words.
+
+A YES is now the only thing that stops other people's coordinations, so
+`pause.CONFIRM_QUESTION` was reworded to say that is what it costs. The three
+who were already paused were left in the full pause (`pause.SOFT_PAUSE_SINCE`):
+they were promised it, and nobody asked them otherwise. Tests:
+`tests/soft-pause.test.js`.
+
 ### Not connected, read as not on Olma (fixed 2026-09-30)
 
 ```
@@ -9388,6 +9429,52 @@ coming back to git — so the repo is renamed to match production, never the
 reverse. Worth noting how it was found: not by anyone reading `ls migrations/`,
 but by every single test failing at once the first time somebody ran the suite
 after both merges.
+
+### The fact table kept what had a better home (2026-10-08)
+
+The owner asked how much "what Olma learned about a user" costs in the prompts,
+and then to measure it. 145 active facts, 23 people, median 2.5 each, p90 7:
+the typical card is nearly EMPTY, and the noise is two accounts (55 and 28
+rows) — the owner's testbed and one more. In those, seven rows were not
+biography: an email address twice ("כתובת אימייל: …", "חיבר את Gmail …"),
+three reminder requests ("מבקש תזכורות לשתות מים"), two "יש קשר עם X". Each
+has a home that stays true and each was read on every turn. Nine of twenty-five
+plans had no end ("טסה לקפריסין" past the trip).
+
+Fixed in the door, not in a pass: the owner said no nightly job — he wants it
+right from the start. `rememberFact` refuses the three shapes (each matched the
+live corpus exactly and nothing else) and defaults a plan's `expires_at` to 45
+days, after the `needs_expiry` check. Migration 119 applied the same verdict
+once to the existing rows (soft: `active = false`, an expiry on the plans).
+
+Measured and NOT done: `task-similarity.compare` across every pair of one
+person's facts (1,651 pairs) found 1 real near-duplicate of 4 and merged nothing
+wrongly; the rest are a judgement ("גר בהוד השרון" against the profile's "עיר
+מגורים: הוד השרון"), which is the Jev-in-shadow question, not a regex. Also
+left: profile-page answers (`prompt_key`, importance 2) crowd the ten card
+slots, and undated one-off events in `health` ("הולכת לניתוח", importance 3)
+cannot be told from a durable trait by code.
+
+### The ten card slots went to the profile page (2026-10-08)
+
+Same measurement as the entry above. `topFacts` ranks importance, then recency,
+and every answer from the profile page is written at importance 2. On the two
+accounts with more than ten facts the card's ten slots were 9 of 10 and 6 of 10
+profile answers ("חיית מחמד: אין", "רכב: יש רכב"), with "הולכת לניתוח"
+(importance 3, undated) on top of one of them; what the person had SAID, newer
+and importance 1, never reached the card. The ranking was not wrong about
+importance — it was comparing a fixed, bounded questionnaire with an open-ended
+conversation as though they were one kind of thing.
+
+`facts.cardFacts` returns the two apart (on `prompt_key`, no text read): ten
+slots for what was said, and the page's answers as one line, led by the
+questions that change what Olma DOES and capped at 12. Not changed:
+`topFacts` (the overnight plan and the extraction pass's "already known" list
+want the profile answers), the importance values, and any judgement about which
+answers are worth a place — "ילדים: אין" is kept, it costs three tokens on a
+line and tells her not to ask. Still open: an undated one-off event filed as a
+core fact cannot be told from a durable trait by code (Jev-in-shadow, not a
+regex).
 
 ### The name was in front of us on every turn (fixed 2026-08-22)
 
@@ -11191,6 +11278,19 @@ have seen any of this. They drive the option now, and three new ones measure
 what was actually wrong: both orderings above, the whole-day exception, and a
 brand-new coordination that must not be closed for having an empty table.
 All three go red on the old code.
+
+### A Friday 11:00 still offered at 14:53 (changed 2026-10-09)
+
+The poker coordination (meeting 74) still had "יום שישי 9.10 ב-11:00" on its
+table at 14:53 that day, and eight private invitations were being written
+against it. Nothing was broken: a clock time left the table six hours after
+its start (`meetings.EXPIRE_AFTER_START_MS`), on the reasoning that the thing
+might still be happening and that closing late is better than closing early.
+The owner's rule is one hour — a time that has already happened is not a
+time anybody can still say yes to. All-day options keep their extra day on
+top (stamped at 09:00, they now leave at 10:00 the next day). Test: "a clock
+time leaves the table an hour after it starts, not before" in
+`tests/meetings.test.js`.
 
 ### The list he could not put his own task into (2026-09-19)
 
@@ -15423,3 +15523,63 @@ follow-up when a digest reached them after rung 1
 (`reminders.coveredByDigest`; since the same day every digest carries every
 open task, so reaching them is naming it). A nudge, an explicit reminder and a repeating one
 are untouched. Audited as `reminder.covered_by_digest`.
+
+### Hebrew all day, and an English check-in — the cause underneath (fixed 2026-10-09)
+
+The first fix (the language streak) only catches a wrong `locale` after three
+messages. The wrong value came from provisioning: for somebody a friend
+invited, the greeter session holds nothing but OUR opening, delivered with
+`--deliver` under the English `DELIVERY_PREAMBLE`. `readPeerUserText` joined
+every user-role turn, so that preamble was read as the stranger's first
+message: 6 Hebrew letters against 451 Latin ones, identical for u-70 and u-72,
+`detectLanguage` said `en`. The same text went into u-39's USER.md as "what
+they said". `isSystemInstruction` knew three older openings, none of which is
+first any more because the preamble is prepended to every proactive turn.
+
+Fix: `isSystemInstruction` matches the preamble, and `readPeerUserText` leaves
+the labelled turns out. u-72 set to `he` by hand; u-12 (Yuval) is English on
+purpose (he talks to her in English); u-17 and u-39 left alone.
+
+### Hebrew all day, and an English check-in (fixed 2026-10-09)
+
+Rachla (u-70) was filed `locale = 'en'` by her first message
+(`user.provisioned.workspace`, `localeSource: "message"` — Latin letters), wrote
+Hebrew for a day, and was then sent a check-in in English: with no message of
+hers in front of it, the model follows the stored language, and USER.md said
+`Language: en`. Nothing noticed, because the net for a wrong stored language is
+`turn_start`'s `wrote_in` and the Turn context doctrine says NOT to call
+`turn_start` — her `locale_observed` was never written. Her row was set to `he`
+by hand (`users.setLocale` + `refreshUserCard`, nothing in the dashboard had
+touched it: no `user.locale_set`, `last_dashboard_at` empty).
+
+Fix: the turn-open hook counts Hebrew letters (`wroteHebrew`: true, false, or
+null when under three letters), brokerd keeps it on the pending open and
+`turn_context` feeds `users.noteObservedLanguage` once per message — three
+Hebrew messages to a non-Hebrew row raise the existing `languageNudge` (ask,
+never switch). A non-Hebrew message counts as the stored language, which ends a
+streak. Needs a gateway restart for the hook to send the new field. Not done:
+the first-hours check-in still follows `locale` until three messages have been
+seen.
+
+### The poker room could not say who could and who could not (2026-10-08)
+
+The owner asked Olma in the poker room who can and who cannot. She named
+nobody. `group_coordination_status` already returns yes, no and missing per
+time with each person's tag; the room doctrine (`agents-group-template.md`)
+told her "even after somebody answered here, do not say in the room what the
+others answered". The owner's call: that is the board of the coordination and
+every member may see it. Now she answers from the status by tag, says "not yet
+answered" only where `asked` is true, and still never says a REASON. The
+fixed room lines already named who could make it, so this only closes the gap
+on a direct question. Unasked, she still does not read the board out.
+
+The same day the owner widened it to every surface: the page has always shown
+who said what by name, so the chat and the room should too. The private
+`get_meeting_status` had the answers by user id and a hint saying "never
+anybody else's answer"; it now draws `who` per time (names, the reader left
+out, nobody who left), said only when asked. Reasons: the page and the chat
+already showed every shareable one (the `private` flag exists and had been set
+on 0 of 48 constraints). In the room a reason is said only when somebody asks
+why, through `group_coordination_status`'s `reasons`. Still open, asked of the
+owner: a PRIVATE coordination between room members, asked about in the room —
+the room agent cannot see it at all today.

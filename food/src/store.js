@@ -94,7 +94,7 @@ function mealOut(p, m, items) {
   return {
     id: Number(m.id), day, slot: m.slot, slot_he: N.SLOT_HE[m.slot], time: timeIn(p.timezone, m.at),
     title: m.title, source: m.source, rough: m.rough, shared_part: m.shared_part || null, photo: !!m.photo,
-    items: items.map(it => ({ ...it, kcal: N.r0(N.itemTotals(it).kcal) })),
+    items: items.map(it => ({ ...it, kcal: N.r0(N.itemTotals(it).kcal), ...(N.isLiquid(it.name, it.grp) ? { ml: true } : {}) })),
     totals, balance: m.rough ? [] : N.balanceOf(items),
   };
 }
@@ -125,7 +125,7 @@ const editable = (p, meal) => { if (D.daysBetween(meal.day, todayOf(p)) > BACK_D
 
 async function portionsOf(q, p) {
   const { rows } = await q.query('SELECT name, grams, from_grams, updated_at FROM portions WHERE user_id = $1 ORDER BY updated_at DESC', [p.user_id]);
-  return rows.map(r => ({ name: r.name, grams: Number(r.grams), from_grams: r.from_grams == null ? null : Number(r.from_grams), updated: r.updated_at }));
+  return rows.map(r => ({ name: r.name, grams: Number(r.grams), from_grams: r.from_grams == null ? null : Number(r.from_grams), updated: r.updated_at, ...(N.isLiquid(r.name) ? { ml: true } : {}) }));
 }
 async function learn(c, p, name, grams, fromGrams) {
   if (!(grams > 0)) return null;

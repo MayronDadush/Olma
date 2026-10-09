@@ -284,6 +284,29 @@ test('the room sees the answers and never the reasons', async () => {
     'the reason she gave in private is not in what the room can read');
 });
 
+// Asked WHY, the room may hear a reason (owner, 2026-10-08) — exactly what the
+// coordination's page shows every other participant, and never one kept private.
+test('asked why, the room hears the reasons the page shows, and never a private one', async () => {
+  const { group, people } = await room(98);
+  const [danny, dana, yuval] = people;
+  const started = await withTx(db.pool, (c) => groupMeetings.startCoordination(c, group, danny, 'פוקר'));
+  const meetingId = Number(started.data.meeting.id);
+  const when = slotStart('שלישי', { hours: 72 });
+  await withTx(db.pool, async (c) => {
+    const optionId = (await options.add(c, danny.id, meetingId, 'שלישי 20:00', when)).data.option.id;
+    await meetings.recordConstraint(c, dana.id, meetingId, 'בצילומים ומסיימת מאוחר');
+    await meetings.recordConstraint(c, yuval.id, meetingId, 'סיבה אישית שלי', true);
+    await options.answer(c, dana.id, meetingId, optionId, 'n');
+    await options.answer(c, yuval.id, meetingId, optionId, 'n');
+  });
+  const plain = await withTx(db.pool, (c) => groupMeetings.coordinationStatus(c, group));
+  assert.equal(plain.reasons, undefined, 'no reason unless asked');
+  const asked = await withTx(db.pool, (c) => groupMeetings.coordinationStatus(c, group, { reasons: true }));
+  assert.deepEqual(asked.reasons.map((r) => [r.name, r.said]), [['דנה', ['בצילומים ומסיימת מאוחר']]]);
+  assert.ok(asked.reasons[0].tag, 'said over their tag, the way the room addresses people');
+  assert.equal(JSON.stringify(asked).includes('סיבה אישית'), false, 'a private reason never reaches the room');
+});
+
 test('a room with nothing running says so, rather than inventing a coordination', async () => {
   const { group } = await room(6);
   const status = await withTx(db.pool, (c) => groupMeetings.coordinationStatus(c, group));
