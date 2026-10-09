@@ -159,7 +159,7 @@ test('"קוד כניסה" mints eight digits, answers with them, and makes no li
   const out = await ask({ agentId: `u-${u.id}`, body: 'קוד כניסה לאפליקציה', messageId: '3EB0CCCC0001' });
   assert.equal(out.claim, true);
   assert.equal(out.kind, 'code');
-  const m = out.text.match(/^הקוד לכניסה לאפליקציה 👇\n(\d{4}) (\d{4})\nתקף ל־10 דקות\.$/);
+  const m = out.text.match(/^הקוד לכניסה לאפליקציה 👇\n\*(\d{4}) (\d{4})\*\nתקף ל־10 דקות\.$/);
   assert.ok(m, out.text);
   const { rows } = await db.pool.query(
     `SELECT target, expires_at - created_at AS ttl FROM magic_links WHERE user_id = $1`, [u.id]);
@@ -176,10 +176,10 @@ test('"קוד כניסה" mints eight digits, answers with them, and makes no li
   assert.ok(!JSON.stringify(audit.rows).includes(m[1]), 'the code is never written anywhere readable');
   // A button typed it in English; they are Hebrew on file, so Hebrew it is.
   const typed = await ask({ agentId: `u-${u.id}`, body: 'app sign-in code' });
-  assert.match(typed.text, /^הקוד לכניסה לאפליקציה 👇\n\d{4} \d{4}\n/);
+  assert.match(typed.text, /^הקוד לכניסה לאפליקציה 👇\n\*\d{4} \d{4}\*\n/);
   await db.pool.query(`UPDATE users SET locale = 'en' WHERE id = $1`, [u.id]);
   const en = await ask({ agentId: `u-${u.id}`, body: 'קוד כניסה' });
-  assert.match(en.text, /^Your app code 👇\n\d{4} \d{4}\nValid 10 minutes\.$/, 'and English on file is English');
+  assert.match(en.text, /^Your app code 👇\n\*\d{4} \d{4}\*\nValid 10 minutes\.$/, 'and English on file is English');
 });
 
 test('the owner rewords it from the admin page like every other fixed sentence', async () => {

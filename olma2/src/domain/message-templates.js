@@ -130,7 +130,10 @@ const TEMPLATES = [
     help: 'התשובה כשמישהו כותב "קוד כניסה" (מהאפליקציה באייפון). יוצאת בלי מודל, מיד. הקוד תקף ל־10 דקות.',
     vars: { code: 'שמונה ספרות, נפתח פעם אחת' }, required: ['code'],
     sample: { code: '4821 0937' },
-    text: 'הקוד לכניסה לאפליקציה 👇\n{{code}}\nתקף ל־10 דקות.',
+    // The code in bold, on its own line (owner, 2026-10-09: readable layout in
+    // fixed text). Safe for the paste: the app's field finds the digits and
+    // ignores the markers around them.
+    text: 'הקוד לכניסה לאפליקציה 👇\n*{{code}}*\nתקף ל־10 דקות.',
   },
   {
     key: 'dashboard_code_en', audience: 'private', label: 'קוד כניסה לאפליקציה', help: '',
@@ -138,7 +141,7 @@ const TEMPLATES = [
     sample: { code: '4821 0937' },
     // Short lines on purpose: an English line of four words or more is dropped
     // by the reply gate for a reader who writes Hebrew (reply-leak.js).
-    text: 'Your app code 👇\n{{code}}\nValid 10 minutes.',
+    text: 'Your app code 👇\n*{{code}}*\nValid 10 minutes.',
   },
   // ---- saved links, answered by code (brokerd save_link_shortcut) --------
   // Said with no model, the moment a message is only a link (or a link and a
@@ -257,12 +260,12 @@ const TEMPLATES = [
     key: 'game_open', audience: 'private', label: 'ערב משחק: פתיחה',
     help: 'התשובה ל"ערב משחק חדש". ההודעה הבאה שלהם נקראת כמחיר הכניסה ומספר הז\'יטונים.',
     vars: {}, required: [], sample: {},
-    text: '🃏 פותחים ערב משחק.\nכמה עולה כניסה, וכמה ז\'יטונים לכל כניסה?',
+    text: '🃏 פותחים *ערב משחק*\n\nכמה עולה כניסה, וכמה ז\'יטונים לכל כניסה?',
   },
   {
     key: 'game_open_en', audience: 'private', label: 'ערב משחק: פתיחה', help: '',
     vars: {}, required: [], sample: {},
-    text: '🃏 Let’s open a game night.\nHow much is a buy-in, and how many chips per buy-in?',
+    text: '🃏 Let’s open a *game night*\n\nHow much is a buy-in, and how many chips per buy-in?',
   },
   {
     key: 'game_opened', audience: 'private', label: 'ערב משחק: נפתח',
@@ -270,14 +273,14 @@ const TEMPLATES = [
     vars: { night: 'שם הערב', price: 'מחיר כניסה', chips: 'ז\'יטונים לכניסה', url: 'הדף של הערב, על הכיסא שלו' },
     required: ['url'],
     sample: { night: 'ערב משחק', price: '50', chips: '1,000', url: 'https://allma.world/night/AbCdEfGhIjKlMnOpQrStUv#me-o1' },
-    text: '🃏 פתחתי את {{night}}. כניסה {{price}} ₪, {{chips}} ז\'יטונים לכניסה.\nזה הקישור האישי שלך, רק בשבילך:\n{{url}}\nעוד רגע שולחת לך את ההודעה עם הקישור שאפשר להעביר לשאר השחקנים, בקבוצה או לכל אחד בפרטי 👇',
+    text: '🃏 פתחתי את *{{night}}*\nכניסה {{price}} ₪ · {{chips}} ז\'יטונים לכניסה\n\nזה הקישור האישי שלך, רק בשבילך:\n{{url}}\n\nעוד רגע שולחת לך את ההודעה עם הקישור שאפשר להעביר לשאר השחקנים, בקבוצה או לכל אחד בפרטי 👇',
   },
   {
     key: 'game_opened_en', audience: 'private', label: 'ערב משחק: נפתח', help: '',
     vars: { night: 'night name', price: 'buy-in price', chips: 'chips per buy-in', url: 'the night page, on their seat' },
     required: ['url'],
     sample: { night: 'Game night', price: '50', chips: '1,000', url: 'https://allma.world/night/AbCdEfGhIjKlMnOpQrStUv#me-o1' },
-    text: '🃏 Opened {{night}}. Buy-in {{price}} ₪, {{chips}} chips per buy-in.\nThis is your personal link, just for you:\n{{url}}\nIn a moment I’ll send the message with the link to pass on to the other players, in a group or one by one 👇',
+    text: '🃏 Opened *{{night}}*\nBuy-in {{price}} ₪ · {{chips}} chips per buy-in\n\nThis is your personal link, just for you:\n{{url}}\n\nIn a moment I’ll send the message with the link to pass on to the other players, in a group or one by one 👇',
   },
   {
     key: 'game_invite', audience: 'private', label: 'ערב משחק: הזמנה להעברה',
@@ -285,14 +288,14 @@ const TEMPLATES = [
     vars: { night: 'שם הערב', price: 'מחיר כניסה', url: 'הדף של הערב, בלי כיסא', code: 'קוד הערב, 5 תווים', join: 'הקישור הקצר לצ\'אט עם עולמה' },
     required: ['join'],
     sample: { night: 'ערב משחק', price: '50', url: 'https://allma.world/night/AbCdEfGhIjKlMnOpQrStUv', code: 'K7M2Q', join: 'https://allma.world/g/K7M2Q' },
-    text: '🃏 {{night}} · כניסה {{price}} ₪\nלהצטרפות לוחצים על הקישור ושולחים לעולמה את ההודעה שנפתחת:\n{{join}}',
+    text: '🃏 *{{night}}* · כניסה {{price}} ₪\n\nלהצטרפות לוחצים על הקישור ושולחים לעולמה את ההודעה שנפתחת:\n{{join}}',
   },
   {
     key: 'game_invite_en', audience: 'private', label: 'ערב משחק: הזמנה להעברה', help: '',
     vars: { night: 'night name', price: 'buy-in price', url: 'the night page, no seat', code: 'the night’s 5-character code', join: 'the short link into a chat with Olma' },
     required: ['join'],
     sample: { night: 'Game night', price: '50', url: 'https://allma.world/night/AbCdEfGhIjKlMnOpQrStUv', code: 'K7M2Q', join: 'https://allma.world/g/K7M2Q' },
-    text: '🃏 {{night}} · buy-in {{price}} ₪\nTo join, tap the link and send Allma the message that opens:\n{{join}}',
+    text: '🃏 *{{night}}* · buy-in {{price}} ₪\n\nTo join, tap the link and send Allma the message that opens:\n{{join}}',
   },
   {
     key: 'game_already_open', audience: 'private', label: 'ערב משחק: כבר פתוח',
@@ -300,14 +303,14 @@ const TEMPLATES = [
     vars: { night: 'שם הערב', code: 'קוד הערב', url: 'הדף של הערב, על הכיסא שלו' },
     required: ['url'],
     sample: { night: 'ערב משחק', code: 'K7M2Q', url: 'https://allma.world/night/AbCdEfGhIjKlMnOpQrStUv#me-o1' },
-    text: '🃏 יש לך כבר ערב פתוח: {{night}}, קוד {{code}}.\nאפשר גם לבקש ממני לסגור אותו בלי חישוב ולפתוח חדש.\nהדף של הערב:\n{{url}}',
+    text: '🃏 יש לך כבר ערב פתוח: *{{night}}*, קוד {{code}}\nאפשר גם לבקש ממני לסגור אותו בלי חישוב ולפתוח חדש.\n\nהדף של הערב:\n{{url}}',
   },
   {
     key: 'game_already_open_en', audience: 'private', label: 'ערב משחק: כבר פתוח', help: '',
     vars: { night: 'night name', code: 'night code', url: 'the night page, on their seat' },
     required: ['url'],
     sample: { night: 'Game night', code: 'K7M2Q', url: 'https://allma.world/night/AbCdEfGhIjKlMnOpQrStUv#me-o1' },
-    text: '🃏 You already have an open game: {{night}}, code {{code}}.\nYou can also ask me to close it without settling and open a new one.\nThe game page:\n{{url}}',
+    text: '🃏 You already have an open game: *{{night}}*, code {{code}}\nYou can also ask me to close it without settling and open a new one.\n\nThe game page:\n{{url}}',
   },
   // Somebody NEW, who reached her by the invite's short link: code answers
   // them, so nothing else says who she is. The hello goes above whatever
@@ -340,13 +343,13 @@ const TEMPLATES = [
     help: 'למי ששלח קוד ואין לנו את השם שלו. ההודעה הבאה שלו נקראת כשם.',
     vars: { night: 'שם הערב', price: 'מחיר כניסה' }, required: [],
     sample: { night: 'ערב משחק', price: '50' },
-    text: '🃏 {{night}}, כניסה {{price}} ₪.\nאיך קוראים לך? ככה החברים יראו אותך בערב.',
+    text: '🃏 *{{night}}* · כניסה {{price}} ₪\n\nאיך קוראים לך? ככה החברים יראו אותך בערב.',
   },
   {
     key: 'game_ask_name_en', audience: 'private', label: 'ערב משחק: איך קוראים לך', help: '',
     vars: { night: 'night name', price: 'buy-in price' }, required: [],
     sample: { night: 'Game night', price: '50' },
-    text: '🃏 {{night}}, buy-in {{price}} ₪.\nWhat’s your name? That’s how your friends will see you.',
+    text: '🃏 *{{night}}* · buy-in {{price}} ₪\n\nWhat’s your name? That’s how your friends will see you.',
   },
   {
     key: 'game_joined', audience: 'private', label: 'ערב משחק: נכנסת',
@@ -354,14 +357,14 @@ const TEMPLATES = [
     vars: { name: 'השם שלו בערב', night: 'שם הערב', url: 'הדף של הערב, על הכיסא שלו' },
     required: ['url'],
     sample: { name: 'דני', night: 'ערב משחק', url: 'https://allma.world/night/AbCdEfGhIjKlMnOpQrStUv#me-o2' },
-    text: '👍 {{name}}, נכנסת ל{{night}}.\nבמהלך הערב אפשר לכתוב לי:\n• עוד כניסה / חצי כניסה\n• מה המצב?\n• בסוף: נשארו לי 1,850\nהדף של הערב:\n{{url}}',
+    text: '👍 {{name}}, נכנסת ל{{night}}\n\nבמהלך הערב אפשר לכתוב לי:\n- עוד כניסה / חצי כניסה\n- מה המצב?\n- בסוף: נשארו לי 1,850\n\nהדף של הערב:\n{{url}}',
   },
   {
     key: 'game_joined_en', audience: 'private', label: 'ערב משחק: נכנסת', help: '',
     vars: { name: 'their name at the table', night: 'night name', url: 'the night page, on their seat' },
     required: ['url'],
     sample: { name: 'Dani', night: 'Game night', url: 'https://allma.world/night/AbCdEfGhIjKlMnOpQrStUv#me-o2' },
-    text: '👍 {{name}}, you’re in {{night}}.\nDuring the game you can write to me:\n• another buy-in / half a buy-in\n• what’s the status?\n• at the end: I have 1,850 left\nThe game page:\n{{url}}',
+    text: '👍 {{name}}, you’re in *{{night}}*\n\nDuring the game you can write to me:\n- another buy-in / half a buy-in\n- what’s the status?\n- at the end: I have 1,850 left\n\nThe game page:\n{{url}}',
   },
   {
     key: 'game_name_taken', audience: 'private', label: 'ערב משחק: השם תפוס',
@@ -382,27 +385,27 @@ const TEMPLATES = [
     vars: { night: 'שם הערב', count: 'כמה כניסות, במילים ("כניסה אחת", "3 כניסות")', url: 'הדף של הערב, על הכיסא שלו' },
     required: ['url'],
     sample: { night: 'ערב משחק', count: '3 כניסות', url: 'https://allma.world/night/AbCdEfGhIjKlMnOpQrStUv#me-o2' },
-    text: 'יש לך כבר {{count}} ב{{night}}.\nהדף של הערב:\n{{url}}',
+    text: 'יש לך כבר {{count}} ב{{night}}.\n\nהדף של הערב:\n{{url}}',
   },
   {
     key: 'game_already_en', audience: 'private', label: 'ערב משחק: כבר בפנים', help: '',
     vars: { night: 'night name', count: 'how many buy-ins, in words', url: 'the night page, on their seat' },
     required: ['url'],
     sample: { night: 'Game night', count: '3 buy-ins', url: 'https://allma.world/night/AbCdEfGhIjKlMnOpQrStUv#me-o2' },
-    text: 'You’re already in {{night}}, {{count}} so far.\nThe game page:\n{{url}}',
+    text: 'You’re already in {{night}}, {{count}} so far.\n\nThe game page:\n{{url}}',
   },
   {
     key: 'game_no_night', audience: 'private', label: 'ערב משחק: אין ערב כזה',
     help: 'כשהקוד לא שייך לאף ערב פתוח.',
     vars: { code: 'הקוד ששלחו' }, required: ['code'],
     sample: { code: 'K7M2Q' },
-    text: 'לא מצאתי ערב פתוח עם הקוד {{code}}. אולי הוא כבר נסגר? אפשר לבקש קוד חדש ממי שפתח את הערב.',
+    text: 'לא מצאתי ערב פתוח עם הקוד *{{code}}*\nאולי הוא כבר נסגר? אפשר לבקש קוד חדש ממי שפתח את הערב.',
   },
   {
     key: 'game_no_night_en', audience: 'private', label: 'ערב משחק: אין ערב כזה', help: '',
     vars: { code: 'the code they sent' }, required: ['code'],
     sample: { code: 'K7M2Q' },
-    text: 'I couldn’t find an open game with the code {{code}}. Maybe it has closed? Ask whoever opened it for a new one.',
+    text: 'I couldn’t find an open game with the code *{{code}}*\nMaybe it has closed? Ask whoever opened it for a new one.',
   },
   // A night that closed in the last day answers its code with the page to
   // LOOK at (owner, 2026-10-03): the settlement, nothing to change. After a
@@ -412,13 +415,13 @@ const TEMPLATES = [
     help: 'כשהקוד שייך לערב שנסגר ב־24 השעות האחרונות. הקישור פותח את הדף לצפייה בלבד, או על הכיסא שלהם אם ישבו בו. אחרי 24 שעות עונה "אין ערב כזה".',
     vars: { night: 'שם הערב', url: 'הדף של הערב' }, required: ['url'],
     sample: { night: 'ערב משחק', url: 'https://allma.world/night/AbCdEfGhIjKlMnOpQrStUv#view' },
-    text: '🃏 {{night}} כבר נסגר. אפשר לראות את הסיכום כאן:\n{{url}}',
+    text: '🃏 *{{night}}* כבר נסגר\n\nאפשר לראות את הסיכום כאן:\n{{url}}',
   },
   {
     key: 'game_closed_en', audience: 'private', label: 'ערב משחק: כבר נסגר', help: '',
     vars: { night: 'night name', url: 'the night page' }, required: ['url'],
     sample: { night: 'Game night', url: 'https://allma.world/night/AbCdEfGhIjKlMnOpQrStUv#view' },
-    text: '🃏 {{night}} has already closed. You can see the summary here:\n{{url}}',
+    text: '🃏 *{{night}}* has already closed\n\nYou can see the summary here:\n{{url}}',
   },
   {
     key: 'game_full', audience: 'private', label: 'ערב משחק: מלא',
@@ -455,14 +458,14 @@ const TEMPLATES = [
     // "די להזכיר" is quoted because it is the shortest stop the gateway hook
     // acts on by itself (stopRemindersOnly: a stop word AND a reminding word);
     // a bare "די" goes to the model. Owner's table, 2026-10-03.
-    text: '⏰ תזכורת חוזרת: *{{title}}*\nבוצע? אפשר לכתוב לי, או "די להזכיר" ואפסיק.',
+    text: '⏰ תזכורת חוזרת: *{{title}}*\n\nבוצע? אפשר לכתוב לי, או "די להזכיר" ואפסיק.',
   },
   {
     key: 'reminder_last', audience: 'private', label: 'תזכורת אחרונה',
     help: 'השלב האחרון בסולם. אחריה עולמה לא מזכירה שוב מיוזמתה, וההודעה צריכה להגיד את זה.',
     vars: { title: 'מה שביקשו להזכיר' }, required: ['title'],
     sample: { title: 'לקחת את הרכב לטסט' },
-    text: '⏰ תזכורת חוזרת: *{{title}}*\nזו התזכורת האחרונה על זה — לא אזכיר שוב מיוזמתי. אם עדיין רלוונטי, אפשר להגיד לי מתי להזכיר.',
+    text: '⏰ תזכורת חוזרת: *{{title}}*\n\nזו התזכורת האחרונה על זה — לא אזכיר שוב מיוזמתי. אם עדיין רלוונטי, אפשר להגיד לי מתי להזכיר.',
   },
   // ---- the same three rungs, when several arrive at once -------------------
   // Nine reminders that come due in the same minute were nine messages, one
@@ -483,14 +486,14 @@ const TEMPLATES = [
     help: 'אותו דבר לשלב השני והשלישי. חייבת להגיד איך מפסיקים, בדיוק כמו תזכורת חוזרת בודדת.',
     vars: { items: 'התזכורות, שורה לכל אחת' }, required: ['items'],
     sample: { items: '- לקחת את הרכב לטסט\n- להתקשר לרואה החשבון' },
-    text: '⏰ *תזכורות חוזרות*\n{{items}}\nמשהו מהן בוצע? אפשר לכתוב לי, או "די להזכיר" ואפסיק.',
+    text: '⏰ *תזכורות חוזרות*\n{{items}}\n\nמשהו מהן בוצע? אפשר לכתוב לי, או "די להזכיר" ואפסיק.',
   },
   {
     key: 'reminder_list_last', audience: 'private', label: 'כמה תזכורות אחרונות יחד',
     help: 'השלב האחרון בסולם, לכמה תזכורות יחד. אחריה עולמה לא מזכירה שוב על אף אחת מהן מיוזמתה.',
     vars: { items: 'התזכורות, שורה לכל אחת' }, required: ['items'],
     sample: { items: '- לקחת את הרכב לטסט\n- להתקשר לרואה החשבון' },
-    text: '⏰ *תזכורות חוזרות*\n{{items}}\nאלו התזכורות האחרונות עליהן — לא אזכיר שוב מיוזמתי. אם משהו עדיין רלוונטי, אפשר להגיד לי מתי להזכיר.',
+    text: '⏰ *תזכורות חוזרות*\n{{items}}\n\nאלו התזכורות האחרונות עליהן — לא אזכיר שוב מיוזמתי. אם משהו עדיין רלוונטי, אפשר להגיד לי מתי להזכיר.',
   },
   // The end of a nudge that had no deadline (owner, 2026-10-03): three days of
   // up to three a day, and then ONE question instead of "the last one". Their
@@ -501,14 +504,14 @@ const TEMPLATES = [
     help: 'ההודעה האחרונה של נודניק בלי דדליין, אחרי שלושה ימים. שאלה אחת: להמשיך או להפסיק. בלי לחץ, בלי אשמה.',
     vars: { title: 'מה שביקשו להזכיר' }, required: ['title'],
     sample: { title: 'להזמין תור לרופא שיניים' },
-    text: '⏰ *{{title}}*\nאני מזכירה על זה כבר 3 ימים. להמשיך עוד 3 ימים, או להפסיק?',
+    text: '⏰ *{{title}}*\n\nאני מזכירה על זה כבר 3 ימים. להמשיך עוד 3 ימים, או להפסיק?',
   },
   {
     key: 'reminder_list_nudge_end', audience: 'private', label: 'נודניק: סוף שלושה ימים, כמה יחד',
     help: 'אותה שאלה, כשכמה נודניקים נגמרים באותו רגע.',
     vars: { items: 'התזכורות, שורה לכל אחת' }, required: ['items'],
     sample: { items: '- להזמין תור לרופא שיניים\n- לשלם ארנונה' },
-    text: '⏰ *תזכורות*\n{{items}}\nאני מזכירה על אלה כבר 3 ימים. להמשיך עוד 3 ימים, או להפסיק?',
+    text: '⏰ *תזכורות*\n{{items}}\n\nאני מזכירה על אלה כבר 3 ימים. להמשיך עוד 3 ימים, או להפסיק?',
   },
   // ---- the same six, for somebody whose language is English ---------------
   // A reminder goes out with no model between the code and the phone, so the
@@ -538,14 +541,14 @@ const TEMPLATES = [
     help: '',
     vars: { title: 'what they asked to be reminded of' }, required: ['title'],
     sample: { title: 'take the car for its test' },
-    text: '⏰ Reminder again: *{{title}}*\nDone? Tell me "done" — or "stop reminding me" and I will.',
+    text: '⏰ Reminder again: *{{title}}*\n\nDone? Tell me "done" — or "stop reminding me" and I will.',
   },
   {
     key: 'reminder_last_en', audience: 'private', label: 'תזכורת אחרונה',
     help: '',
     vars: { title: 'what they asked to be reminded of' }, required: ['title'],
     sample: { title: 'take the car for its test' },
-    text: '⏰ Reminder again: *{{title}}*\nThis is the last reminder about this — I won\'t bring it up again on my own. If it still matters, tell me when to remind you.',
+    text: '⏰ Reminder again: *{{title}}*\n\nThis is the last reminder about this — I won\'t bring it up again on my own. If it still matters, tell me when to remind you.',
   },
   {
     key: 'reminder_list_en', audience: 'private', label: 'כמה תזכורות יחד',
@@ -559,28 +562,28 @@ const TEMPLATES = [
     help: '',
     vars: { items: 'the reminders, one per line' }, required: ['items'],
     sample: { items: '- take the car for its test\n- call the accountant' },
-    text: '⏰ *Reminders again*\n{{items}}\nAny of these done? Just tell me — or "stop reminding me" and I will.',
+    text: '⏰ *Reminders again*\n{{items}}\n\nAny of these done? Just tell me — or "stop reminding me" and I will.',
   },
   {
     key: 'reminder_list_last_en', audience: 'private', label: 'כמה תזכורות אחרונות יחד',
     help: '',
     vars: { items: 'the reminders, one per line' }, required: ['items'],
     sample: { items: '- take the car for its test\n- call the accountant' },
-    text: '⏰ *Reminders again*\n{{items}}\nThese are the last reminders about them — I won\'t bring them up again on my own. If any still matter, tell me when to remind you.',
+    text: '⏰ *Reminders again*\n{{items}}\n\nThese are the last reminders about them — I won\'t bring them up again on my own. If any still matter, tell me when to remind you.',
   },
   {
     key: 'reminder_nudge_end_en', audience: 'private', label: 'נודניק: סוף שלושה ימים',
     help: '',
     vars: { title: 'what they asked to be reminded of' }, required: ['title'],
     sample: { title: 'book the dentist' },
-    text: '⏰ *{{title}}*\nI\'ve been reminding you about this for 3 days. Keep going for 3 more, or stop?',
+    text: '⏰ *{{title}}*\n\nI\'ve been reminding you about this for 3 days. Keep going for 3 more, or stop?',
   },
   {
     key: 'reminder_list_nudge_end_en', audience: 'private', label: 'נודניק: סוף שלושה ימים, כמה יחד',
     help: '',
     vars: { items: 'the reminders, one per line' }, required: ['items'],
     sample: { items: '- book the dentist\n- pay the council tax' },
-    text: '⏰ *Reminders*\n{{items}}\nI\'ve been reminding you about these for 3 days. Keep going for 3 more, or stop?',
+    text: '⏰ *Reminders*\n{{items}}\n\nI\'ve been reminding you about these for 3 days. Keep going for 3 more, or stop?',
   },
   {
     key: 'stranger_intro_he', audience: 'private', label: 'פנייה ראשונה לאדם חדש',
@@ -639,14 +642,14 @@ const TEMPLATES = [
     help: 'למי שפנה כשההרשמה הייתה סגורה ונכנס לרשימת ההמתנה — ההבטחה שקיימנו.',
     vars: {}, required: [],
     sample: {},
-    text: 'היי! כאן עולמה — פנית אליי כשלא הייתה אפשרות לצרף משתמשים חדשים. עכשיו נפתח מקום. אם עדיין רלוונטי, פשוט תענה/י לי כאן ונתחיל 🙂',
+    text: 'היי! כאן עולמה 👋\n\nפנית אליי כשלא הייתה אפשרות לצרף משתמשים חדשים — *עכשיו נפתח מקום*.\nאם עדיין רלוונטי, פשוט תענה/י לי כאן ונתחיל 🙂',
   },
   {
     key: 'reopen_en', audience: 'private', label: 'ההרשמה נפתחה מחדש',
     help: '',
     vars: {}, required: [],
     sample: {},
-    text: 'Hi! Olma here — you reached out while new sign-ups were paused. There\'s room now. If you\'re still interested, just reply here and we\'ll get started 🙂',
+    text: 'Hi! Allma here 👋\n\nYou reached out while new sign-ups were paused — *there\'s room now*.\nIf you\'re still interested, just reply here and we\'ll get started 🙂',
   },
   // A room member who has never written to her, when a coordination opens in
   // that room (`group-meetings.coldInvite`, flag `group_cold_invite`). Sent on
@@ -662,14 +665,14 @@ const TEMPLATES = [
     // out, because this is the one message sent to somebody who never chose
     // her. The last line is a promise group-meetings.coldInvite keeps: once
     // per person, across every room.
-    text: 'היי! אני עולמה, עוזרת AI 👋 אני עוזרת לקבוצה: ״«{{group}}»״ שאתה נמצא בה לתאם {{title}}.\nאם תענה לי כאן, אצרף אותך ואשאל מתי נוח לך ☺️\nלא מתאים? אפשר פשוט להתעלם, ולא אכתוב לך שוב.',
+    text: 'היי! אני עולמה, עוזרת AI 👋\n\nאני עוזרת לקבוצה *{{group}}* שאתה נמצא בה לתאם {{title}}.\nאם תענה לי כאן, אצרף אותך ואשאל מתי נוח לך ☺️\n\nלא מתאים? אפשר פשוט להתעלם, ולא אכתוב לך שוב.',
   },
   {
     key: 'group_cold_invite_en', audience: 'private', label: 'הזמנה פרטית לתיאום בקבוצה (למי שעוד לא כתב)',
     help: '',
     vars: { group: 'group name', title: 'what is being coordinated' }, required: ['group', 'title'],
     sample: { group: 'Tuesday padel', title: 'this week\'s game' },
-    text: 'Hi! I\'m Allma, an AI assistant 👋 I\'m helping the group “{{group}}” you\'re in coordinate {{title}}.\nIf you reply here, I\'ll add you and ask when works for you ☺️\nNot for you? Just ignore this and I won\'t write to you again.',
+    text: 'Hi! I\'m Allma, an AI assistant 👋\n\nI\'m helping the group *{{group}}* you\'re in coordinate {{title}}.\nIf you reply here, I\'ll add you and ask when works for you ☺️\n\nNot for you? Just ignore this and I won\'t write to you again.',
   },
   // The privacy policy and terms changed (domain/policy-notice.js, compliance
   // review 2026-09-28). Raw pipe, no model, once per person per version, queued
@@ -679,14 +682,14 @@ const TEMPLATES = [
     help: 'נשלחת פעם אחת לכל מי שעולמה משרתת כשמדיניות הפרטיות משתנה. בשעות היום שלהם, לא למי שמושהה.',
     vars: { url: 'הקישור למדיניות' }, required: ['url'],
     sample: { url: 'https://allma.world/privacy' },
-    text: 'עדכון קצר ממני, עולמה 👋\nעדכנו את מדיניות הפרטיות: מה אני שומרת, לכמה זמן, ואיך מוחקים הכל.\n\nהכל כאן: {{url}}\n\nאין צורך לעשות כלום, ממשיכים כרגיל ☺️',
+    text: 'עדכון קצר ממני, עולמה 👋\nעדכנו את *מדיניות הפרטיות*: מה אני שומרת, לכמה זמן, ואיך מוחקים הכל.\n\nהכל כאן:\n{{url}}\n\nאין צורך לעשות כלום, ממשיכים כרגיל ☺️',
   },
   {
     key: 'policy_update_en', audience: 'private', label: 'עדכון מדיניות פרטיות',
     help: '',
     vars: { url: 'link to the policy' }, required: ['url'],
     sample: { url: 'https://allma.world/privacy' },
-    text: 'A quick update from me, Allma 👋\nWe updated the privacy policy: what I keep, for how long, and how to delete all of it.\n\nIt is all here: {{url}}\n\nNothing to do, we carry on as usual ☺️',
+    text: 'A quick update from me, Allma 👋\nWe updated the *privacy policy*: what I keep, for how long, and how to delete all of it.\n\nIt is all here:\n{{url}}\n\nNothing to do, we carry on as usual ☺️',
   },
   // ---- in a group -----------------------------------------------------------
   {
@@ -694,7 +697,7 @@ const TEMPLATES = [
     help: 'המשפט הראשון שלה בקבוצה, על ההודעה הראשונה של מישהו שם. חייבת לכלול את התיוג שלה, כדי שיהיה משהו ללחוץ עליו.',
     vars: { me: 'התיוג של עולמה עצמה (המספר שלה, כתיוג אמיתי)' }, required: ['me'],
     sample: { me: '@+972559347282' },
-    text: 'נעים מאוד, אני עולמה 👋\nאני עוזרת לקבוצות לתאם דברים בלי הפינג-פונג: מי פנוי מתי ומי עוד לא ענה.\nכשאתם צריכים אותי - תתייגו אותי {{me}}. בלי תיוג אני לא מתערבת מקווה שכולכם מחוברים 🙌',
+    text: 'נעים מאוד, אני עולמה 👋\nאני עוזרת לקבוצות לתאם דברים בלי הפינג-פונג: מי פנוי מתי ומי עוד לא ענה.\n\nכשאתם צריכים אותי — *תתייגו אותי* {{me}}\nבלי תיוג אני לא מתערבת. מקווה שכולכם מחוברים 🙌',
   },
   {
     key: 'group_intro_ready', audience: 'group', label: 'היכרות בקבוצה — אפשר כבר להתחיל',
@@ -708,7 +711,7 @@ const TEMPLATES = [
     help: 'התשובה לתיוג הראשון בקבוצה נעולה: מסבירה למה היא לא עונה עדיין ומתייגת את מי שחסר.',
     vars: { missing: 'תיוגים של מי שעוד לא כתב לה בפרטי' }, required: ['missing'],
     sample: { missing: '@+972501234567 @+972521234567' },
-    text: 'כדי שאוכל לתאם לכם משהו, אני צריכה שכל אחד כאן ישלח לי הודעה - אחרת אין לי דרך לשאול אותו מתי הוא פנוי.\nרק אומרת.. עוד לא שלחו לי: {{missing}}\n״היי״ בפרטי וזהו, אני מתחילה לעבוד ☺️',
+    text: 'כדי שאוכל לתאם לכם משהו, אני צריכה שכל אחד כאן ישלח לי הודעה — אחרת אין לי דרך לשאול אותו מתי הוא פנוי.\n\nרק אומרת.. עוד לא שלחו לי: {{missing}}\n*״היי״ בפרטי* וזהו, אני מתחילה לעבוד ☺️',
   },
   {
     key: 'group_gate_nudge', audience: 'group', label: 'תייגו אותה ולא כולם מחוברים — מהפעם השנייה',
@@ -722,7 +725,7 @@ const TEMPLATES = [
     help: 'פעם אחת, כשהאחרון כתב לה בפרטי. יוצאת בשעות היום של הקבוצה, לא באמצע הלילה.',
     vars: {}, required: [],
     sample: {},
-    text: 'יש! כולם כאן ואפשר להתחיל 🎉\nתתייגו אותי ותגידו מה לתאם — פגישה, משחק, מה שבא — ואני ארוץ לכל אחד בפרטי ואחזור עם מה שמסתדר.',
+    text: 'יש! כולם כאן ואפשר להתחיל 🎉\n\nתתייגו אותי ותגידו מה לתאם — פגישה, משחק, מה שבא — ואני ארוץ לכל אחד בפרטי ואחזור עם מה שמסתדר.',
   },
   {
     key: 'group_too_large', audience: 'group', label: 'הקבוצה גדולה מדי',
@@ -945,7 +948,7 @@ const TEMPLATES = [
     help: 'פעם אחת בכל פעם שמישהו שבתיאום פותח מחדש זמן שכבר נסגר (בצ\'אט, בקבוצה או בדף). הזמנים האחרים ותשובותיהם נשארים; רק הזמן שנסגר נשאל שוב.',
     vars: { title: 'שם התיאום', was: 'הזמן שהיה סגור' }, required: ['title', 'was'],
     sample: { title: 'שיחת וידאו', was: 'יום שבת 26.9 12:00' },
-    text: '🔄 התיאום *{{title}}* נפתח מחדש — *{{was}}* כבר לא סגור. הזמנים האחרים נשארים על השולחן, ואפשר להוסיף חדשים. אני שואלת כל מי שבתיאום בפרטי.',
+    text: '🔄 התיאום *{{title}}* נפתח מחדש — *{{was}}* כבר לא סגור.\n\nהזמנים האחרים נשארים על השולחן, ואפשר להוסיף חדשים.\nאני שואלת כל מי שבתיאום בפרטי.',
   },
   {
     key: 'group_coord_calendar', audience: 'group', label: 'תיאום — ביומן',
@@ -1109,7 +1112,7 @@ const TEMPLATES = [
     help: '',
     vars: { title: 'שם התיאום', was: 'הזמן שהיה סגור, בכל אזורי הזמן' }, required: ['title', 'was'],
     sample: { title: 'שיחת וידאו', was: 'יום שבת 26.9 · 12:00 ישראל · 05:00 ניו יורק · 19:00 סידני' },
-    text: '🔄 התיאום *{{title}}* נפתח מחדש — *{{was}}* כבר לא סגור. הזמנים האחרים נשארים על השולחן, ואפשר להוסיף חדשים. אני שואלת כל מי שבתיאום בפרטי.',
+    text: '🔄 התיאום *{{title}}* נפתח מחדש — *{{was}}* כבר לא סגור.\n\nהזמנים האחרים נשארים על השולחן, ואפשר להוסיף חדשים.\nאני שואלת כל מי שבתיאום בפרטי.',
   },
   {
     key: 'group_coord_drop_offer_zones', audience: 'group', label: 'תיאום — הצעה לוותר',

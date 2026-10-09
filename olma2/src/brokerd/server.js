@@ -760,7 +760,10 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
         // Stamped whenever they had no opening on record, introduced here or
         // by the greeter: `gameClaimed` provisions off opening_sent_at.
         const introduced = !user.opening_sent_at && !user.privacy_link_sent_at && !greeterIntroduced;
-        if (introduced) text = [say('game_hello', {}), text, say('game_privacy', {})].join('\n');
+        // Blank lines between the three: the answer has paragraphs of its own
+        // now (owner, 2026-10-09), and the hello and the privacy line glued
+        // onto them read as part of the first and the last.
+        if (introduced) text = [say('game_hello', {}), text, say('game_privacy', {})].join('\n\n');
         if (!user.opening_sent_at) {
           await client.query(
             `UPDATE users SET opening_sent_at = COALESCE(opening_sent_at, now()),
