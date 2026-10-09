@@ -586,7 +586,9 @@ title means this file. Grep the title, not the filename.
   collapses to `refused.similar_open`, and it alone also refuses a twin
   COMPLETED inside 24h (this job cannot mean "again": "להעיר את מאיה" was
   ticked off two minutes after it was created and written back forty-two
-  minutes later). `tasks.addTask` **saves and asks**: refusing there was tried
+  minutes later) — and, since 2026-10-09, one they DELETED or a shared one
+  they LEFT inside 24h (`findTwin`'s `goneWithinHours`, `refused.similar_gone`;
+  `incidents.md`, "The list he left came back to him"). `tasks.addTask` **saves and asks**: refusing there was tried
   and broke 57 tests on "סופר" beside "סופר השבוע", because one title
   extending another lands on 0.50–0.67 and is a real second task about as
   often as it is one. The row is written, `similarTo` rides the result into

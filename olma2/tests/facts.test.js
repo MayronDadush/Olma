@@ -1087,6 +1087,71 @@ test('a task completed hours ago is not written back by the extraction pass', as
   });
 });
 
+// Miron, 2026-10-08: a Vietnam packing list dictated, shared with two friends,
+// left from his page a minute later — and written back to him, items and all,
+// by this pass 75 minutes on, because nothing like it was on HIS list any more.
+test('a shared list they LEFT, or a task they deleted, is not written back by the extraction pass', async () => {
+  const u = await seedChatter('+972590009013', 40);
+  const friend = await makeUser(db.pool, '+972590009014', { firstName: 'Guy' });
+  await withClient(async (c) => {
+    const tasksDomain = require('../src/domain/tasks');
+    const connections = require('../src/domain/connections');
+    const grants = require('../src/domain/grants');
+    const shares = require('../src/domain/shares');
+    const req = await connections.requestConnection(c, u.id, friend.phone, {});
+    const conn = (await connections.respondToConnection(c, friend.id, req.data.connection.id, 'approve')).data.connection;
+    await grants.grantFeature(c, u.id, conn.id, 'sharing');
+    await grants.grantFeature(c, friend.id, conn.id, 'sharing');
+
+    const list = (await tasksDomain.addTask(c, u.id, { title: 'ציוד לטיול וייטנאם', source: 'chat' })).data.task;
+    await tasksDomain.addTask(c, u.id, { title: 'סנדלים', parentId: list.id });
+    const offered = await shares.offerShare(c, u.id, list.id, friend.id);
+    assert.equal(offered.ok, true, offered.ok ? '' : JSON.stringify(offered.error));
+    const left = await shares.leaveTask(c, u.id, list.id);
+    assert.equal(left.ok, true, left.ok ? '' : JSON.stringify(left.error));
+    assert.equal(String(left.data.handedTo), String(friend.id));
+
+    const applied = await extraction.applyExtraction(c, u, {
+      facts: [], tasks: [{ title: 'ציוד לטיול וייטנאם', subtasks: ['סנדלים', 'דרכון'] }],
+    }, new Set());
+    assert.equal(applied.tasksCaptured, 0, 'the list they left came back to them');
+    assert.equal(applied.refused.similar_gone, 1);
+    const mine = await c.query(`SELECT count(*)::int AS n FROM tasks WHERE owner_id = $1`, [u.id]);
+    assert.equal(mine.rows[0].n, 0);
+
+    // Deleted from their own list counts the same way.
+    const made = await tasksDomain.addTask(c, u.id, { title: 'להזמין מונית לשדה', source: 'chat' });
+    await tasksDomain.archiveTask(c, u.id, made.data.task.id);
+    const again = await extraction.applyExtraction(c, u, {
+      facts: [], tasks: [{ title: 'להזמין מונית לשדה' }],
+    }, new Set());
+    assert.equal(again.tasksCaptured, 0, 'a task they deleted came back to them');
+    assert.equal(again.refused.similar_gone, 1);
+
+    // …and it is a window: a day on, both are new things to save.
+    await c.query(`UPDATE audit_log SET created_at = created_at - interval '2 days' WHERE event = 'share.left'`);
+    await c.query(`UPDATE tasks SET archived_at = now() - interval '2 days' WHERE id = $1`, [made.data.task.id]);
+    const later = await extraction.applyExtraction(c, u, {
+      facts: [], tasks: [{ title: 'ציוד לטיול וייטנאם' }, { title: 'להזמין מונית לשדה' }],
+    }, new Set());
+    assert.equal(later.tasksCaptured, 2);
+  });
+});
+
+// The live tool is not this pass: a person saying it again after leaving is
+// saying it again, and add_task has no window (domain/tasks.js).
+test('add_task still saves a title the person left a minute ago', async () => {
+  const u = await seedChatter('+972590009015', 40);
+  await withClient(async (c) => {
+    const tasksDomain = require('../src/domain/tasks');
+    const made = await tasksDomain.addTask(c, u.id, { title: 'להזמין מונית לשדה', source: 'chat' });
+    await tasksDomain.archiveTask(c, u.id, made.data.task.id);
+    const again = await tasksDomain.addTask(c, u.id, { title: 'להזמין מונית לשדה', source: 'chat' });
+    assert.equal(again.ok, true, again.ok ? '' : JSON.stringify(again.error));
+    assert.equal(again.data.similarTo, undefined);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // A moment stated in conversation reaches the task as a date
 //
