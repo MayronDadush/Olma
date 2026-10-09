@@ -267,6 +267,7 @@ never trust a dated narrative for something you are about to act on.
 - [Two coordinations for one meeting (fixed 2026-09-30)](#two-coordinations-for-one-meeting-fixed-2026-09-30)
 - [Two invites for one poker night (fixed 2026-10-05)](#two-invites-for-one-poker-night-fixed-2026-10-05)
 - [The coordination that expired on the wrong Tuesday (fixed 2026-09-23)](#the-coordination-that-expired-on-the-wrong-tuesday-fixed-2026-09-23)
+- [A Friday 11:00 still offered at 14:53 (changed 2026-10-09)](#a-friday-1100-still-offered-at-1453-changed-2026-10-09)
 - [The list he could not put his own task into (2026-09-19)](#the-list-he-could-not-put-his-own-task-into-2026-09-19)
 - [An offer to call a number the bridge has never served (fixed 2026-09-06)](#an-offer-to-call-a-number-the-bridge-has-never-served-fixed-2026-09-06)
 - [The reply's first six seconds were bookkeeping (2026-09-05)](#the-replys-first-six-seconds-were-bookkeeping-2026-09-05)
@@ -11232,6 +11233,19 @@ have seen any of this. They drive the option now, and three new ones measure
 what was actually wrong: both orderings above, the whole-day exception, and a
 brand-new coordination that must not be closed for having an empty table.
 All three go red on the old code.
+
+### A Friday 11:00 still offered at 14:53 (changed 2026-10-09)
+
+The poker coordination (meeting 74) still had "יום שישי 9.10 ב-11:00" on its
+table at 14:53 that day, and eight private invitations were being written
+against it. Nothing was broken: a clock time left the table six hours after
+its start (`meetings.EXPIRE_AFTER_START_MS`), on the reasoning that the thing
+might still be happening and that closing late is better than closing early.
+The owner's rule is one hour — a time that has already happened is not a
+time anybody can still say yes to. All-day options keep their extra day on
+top (stamped at 09:00, they now leave at 10:00 the next day). Test: "a clock
+time leaves the table an hour after it starts, not before" in
+`tests/meetings.test.js`.
 
 ### The list he could not put his own task into (2026-09-19)
 

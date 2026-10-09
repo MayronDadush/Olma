@@ -184,13 +184,14 @@ title means this file. Grep the title, not the filename.
   the same thing as having none**: a table somebody emptied by hand a minute
   ago, and one nobody has put a time on yet, both sit at zero and neither is
   over.
-  **A whole day is the one option whose moment is not six hours after its
-  instant.** `meeting-option-moment.momentFor` stamps an all-day option at
-  09:00 of the day it means, so the grace a clock time gets would take
-  "Sunday, all day" off the table at 15:00 on Sunday. It gets a full day on
-  top (`meetings.ALL_DAY_EXTRA_MS`), and every line here errs late on purpose
-  — a time removed an hour early is a time somebody could still have agreed
-  to.
+  **A clock time leaves the table ONE HOUR after it starts**
+  (`meetings.EXPIRE_AFTER_START_MS`, owner 2026-10-09; it was six, and a
+  Friday 11:00 was still being offered at 14:53). **A whole day is the one
+  option whose moment is not an hour after its instant.**
+  `meeting-option-moment.momentFor` stamps an all-day option at 09:00 of the
+  day it means, so the grace a clock time gets would take "Sunday, all day"
+  off the table at 10:00 on Sunday. It gets a full day on top
+  (`meetings.ALL_DAY_EXTRA_MS`).
   **The status says which of the two ways a time left**: `deleted` is a person
   taking it off, which is carried to everybody else the next time they hear
   about the coordination (`meeting-options.removed`, `meeting-options.
