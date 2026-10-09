@@ -317,6 +317,16 @@ title means this file. Grep the title, not the filename.
   (`quiet.room_invite_sent` beside `pause.room_invite_sent`), because a pause
   and a silence are different rules on one column (`incidents.md`, "The room
   asked five and reached four").
+  **A SOFT pause (השהייה רכה) shares the quiet pause's allowance and adds
+  one thing** (owner, 2026-10-09; `pause.STOP_UNANSWERED`). Its coordination
+  rows take the same one-message-per-coordination door as `quiet_ladder`
+  (`pausedRoomInvite`, room or private), and `gate.PEER_KINDS` pass as well
+  (`gate.softPausePasses`) — a quiet pause drops those at the paused
+  branch. Nothing of Olma's own passes, nudges included. The first message of their local day carries
+  `pause.SOFT_PAUSE_FOOTER` word for word, on the model path
+  (`softPauseClause`) and the raw pipe alike, stamped on the stored row only
+  once the send confirmed; a row carrying it is never sent as a push
+  notification.
 
 - **For somebody on `daily_once_phones`, everything Olma decides to say waits
   for ONE message at 20:00 their time, and nothing goes out when nothing is

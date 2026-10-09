@@ -937,6 +937,12 @@ have already had to be argued for.
   goes to the initiator only when the exit closes the meeting (`incidents.md`,
   "A room counted in somebody who had paused").
 
+  **A soft pause is not a pause they asked for** (owner, 2026-10-09;
+  `pause.STOP_UNANSWERED`): `pause.pausedByRequest` and `keptOutOfRooms` are
+  false for it, and it is handled exactly as the ladder's pause below — swept
+  in, one invite per coordination, out after a day of silence
+  (`paused_no_answer`), and never nudged.
+
   **Only a pause the ladder took gets that invite** (owner, 2026-09-27).
   Somebody who paused her THEMSELVES is never swept in, and one already in is
   taken out on the next minute sweep, cause `paused_by_request`, with no day's

@@ -214,6 +214,9 @@ const deployDrift = require('./deploy-drift');
       // tick for the same reason as the line above: one query over the
       // active users, and a pause it takes is a no-op the next time.
       silencePause: await sweeps.sweepSilencePause(c),
+      // A stop nobody confirmed for a day becomes the soft pause
+      // (pause.softenUnansweredStops). One UPDATE, empty almost always.
+      softenedStops: await sweeps.sweepSoftenStops(c),
       // …and somebody who left the WhatsApp group that is coordinating.
       roomLeavers: await sweeps.sweepRoomLeavers(c),
       mediaJobs: await sweeps.sweepMediaJobs(c),

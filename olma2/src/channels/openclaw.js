@@ -164,11 +164,29 @@ function instructionFor(row, dashboardUrl) {
   const raw = typeof row.payload === 'string' ? JSON.parse(row.payload) : (row.payload || {});
   const p = dashboardUrl ? { ...raw, dashboardUrl } : raw;
   const parts = Array.isArray(p.mergedParts) ? p.mergedParts : [];
+  const footer = softPauseClause(row, p);
   if (parts.length > 1) return `${DELIVERY_PREAMBLE}
 
-${mergedBody(parts, p, row.timezone)}${closedClause(p)}`;
-  if (p.instruction) return `${DELIVERY_PREAMBLE}\n\n${p.instruction}`;
-  return `${DELIVERY_PREAMBLE}\n\n${bodyFor(row, p)}`;
+${mergedBody(parts, p, row.timezone)}${closedClause(p)}${footer}`;
+  if (p.instruction) return `${DELIVERY_PREAMBLE}\n\n${p.instruction}${footer}`;
+  return `${DELIVERY_PREAMBLE}\n\n${bodyFor(row, p)}${footer}`;
+}
+
+// The once-a-day line of a soft pause (domain/pause.js, STOP_UNANSWERED). The
+// worker decides WHEN (`softPauseFooter` on the in-memory row); the words are
+// handed over whole, never described, so the model cannot soften or drop the
+// one thing that tells them how to stop her completely.
+function softPauseClause(row, p) {
+  if (!p.softPauseFooter) return '';
+  const line = require('../domain/pause').softPauseFooter(row.locale);
+  return `\n\nThis person asked you to stop and never answered whether they were sure, so you send nothing of your own; this message reached them because somebody else started it. End your message with this line, word for word, on its own line, and say nothing else about it: <<<${line}>>>`;
+}
+
+// The raw pipe's half: the same line under the fixed text.
+function withSoftPauseLine(row, text) {
+  const p = typeof row.payload === 'string' ? JSON.parse(row.payload) : (row.payload || {});
+  if (!p.softPauseFooter) return text;
+  return `${text}\n\n${require('../domain/pause').softPauseFooter(row.locale)}`;
 }
 
 // Several rows the worker decided may travel together (domain/message-merge.js
@@ -1040,7 +1058,7 @@ function makeDeliverer(pool) {
       return sendRawMessage({
         channel: channel.channel_type,
         target: channel.channel_identifier,
-        message: rawText,
+        message: withSoftPauseLine(row, rawText),
       });
     }
 

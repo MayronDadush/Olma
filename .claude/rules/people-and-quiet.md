@@ -222,6 +222,20 @@ title means this file. Grep the title, not the filename.
   model reading the conversation and refusing turn by turn is not the
   mechanism — "אין צורך שהמודל יצטרך לקרוא את השיחה ולסרב לפי השיקול דעת
   שלו" — a column the gate reads before a turn is ever spawned is.
+  **…and a stop nobody ANSWERED for a day is not a yes** (owner, 2026-10-09;
+  `pause.STOP_UNANSWERED`, `pause.softenUnansweredStops` on the minute
+  sweep). It becomes a SOFT pause, השהייה רכה: like the quiet pause (השהייה
+  שקטה), each coordination opened with them is heard ONCE and a day of
+  silence takes them out of it; unlike it, `gate.PEER_KINDS` always pass, no
+  nudge ever reaches them, and the first message of each local day ends on
+  one fixed line (`pause.SOFT_PAUSE_FOOTER`). Their next message ends it like
+  a `said_stop`. Only a `said_stop` taken at or after
+  `pause.SOFT_PAUSE_SINCE` softens: the three paused before it keep the full
+  pause (השהייה מלאה) they were promised. `pause.CONFIRM_QUESTION` now says a
+  yes stops other people's coordinations too, because only a yes does
+  (`incidents.md`, "Silence after a stop was read as a yes"). The four names
+  — שקטה / ממתינה (`said_stop`, first day) / רכה / מלאה — are the admin
+  page's and the owner's.
 
 - **A "once ever" question is stamped on the PERSON, never deduped on the
   route that asks it.** Two routes each honouring "at most once" is twice.
