@@ -53,6 +53,8 @@ const CARD_TOOLS = new Set([
 // so the cut is a running cost, not a display choice; importance ordering in
 // topFacts is what makes a fixed, small K survivable.
 const CARD_FACT_LIMIT = 10;
+// How many profile answers the one profile line carries (see refreshUserCard).
+const PROFILE_LINE_MAX = 12;
 
 function renderCard(user, prefs, facts = [], extras = {}) {
   const lines = ['# User', ''];
@@ -145,15 +147,20 @@ function renderCard(user, prefs, facts = [], extras = {}) {
     lines.push('', 'Learned preferences:');
     for (const p of prefs) lines.push(`- ${p.key}: ${p.value}`);
   }
-  if (facts.length) {
+  // Their own answers from the profile page, as ONE line rather than a slot
+  // each (see facts.cardFacts). Already ordered, already capped.
+  const profile = Array.isArray(extras.profile) ? extras.profile : [];
+  if (facts.length || profile.length) {
     lines.push('', 'What you know about them:');
     for (const f of facts) lines.push(`- [${f.category}] ${f.fact}`);
+    if (profile.length) lines.push(`- [their own answers on their page] ${profile.join(' · ')}`);
     // The list is the top CARD_FACT_LIMIT, and until this line nothing said
     // so — ten facts and a full stop read as everything on file, so the model
     // answered from the card and never reached for the rest. A truncation
     // nobody announces is the same mistake as a check that goes quiet: the
     // reader cannot tell "that is all there is" from "that is what fitted".
-    const hidden = Math.max(0, (extras.factsTotal || facts.length) - facts.length);
+    const shown = facts.length + profile.length;
+    const hidden = Math.max(0, (extras.factsTotal || shown) - shown);
     if (hidden) {
       lines.push(`- (+${hidden} more not shown here — list_my_facts for the rest,`
         + ' and always before telling them you do not know something)');
@@ -186,16 +193,19 @@ async function refreshUserCard(pool, userId) {
     const { rows: prefs } = await pool.query(
       `SELECT key, value FROM user_preferences WHERE user_id = $1 ORDER BY key`, [userId]
     );
-    const facts = await require('../domain/facts').topFacts(pool, userId, CARD_FACT_LIMIT);
-    // Counted rather than inferred from a limit+1 read: the card states the
-    // number, and a number that is only ever "at least one" is not worth
-    // printing. Same filter as topFacts, or the two disagree and the card
-    // promises facts list_my_facts will not return.
-    const { rows: factCount } = await pool.query(
-      `SELECT count(*)::int AS n FROM user_facts
-        WHERE user_id = $1 AND active = true
-          AND (expires_at IS NULL OR expires_at > now())`, [userId]
-    );
+    const card = await require('../domain/facts').cardFacts(pool, userId, CARD_FACT_LIMIT);
+    const facts = card.facts;
+    // The profile line leads with the questions that change what Olma DOES
+    // (hours, days, shifts) — the order fact-prompts already offers them in —
+    // and stops at PROFILE_LINE_MAX, so a person who answered all of the
+    // twenty-six cannot make the card grow without limit. The rest is counted
+    // in the "+N more" line below, not dropped from the record.
+    const order = new Map(require('../domain/fact-prompts').PROMPTS.map((p, i) => [p.key, i]));
+    const profile = card.profile
+      .slice()
+      .sort((a, b) => (order.get(a.prompt_key) ?? 99) - (order.get(b.prompt_key) ?? 99))
+      .slice(0, PROFILE_LINE_MAX)
+      .map((r) => r.fact);
     const { rows: cal } = await pool.query(
       `SELECT access_level FROM integrations
        WHERE user_id = $1 AND provider = 'google_calendar' AND status = 'connected'`, [userId]
@@ -222,7 +232,8 @@ async function refreshUserCard(pool, userId) {
       calendar: cal[0] ? cal[0].access_level : false,
       connections: conn[0].n,
       contacts: book[0].n,
-      factsTotal: factCount[0].n,
+      factsTotal: card.total,
+      profile,
       plan: planRows[0]
         ? { headline: planRows[0].headline, bullets: planRows[0].bullets || [] }
         : null,
