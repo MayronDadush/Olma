@@ -205,3 +205,21 @@ test('the photo is kept for the page, only through its owner\'s link, and goes w
   assert.equal(fs.existsSync(file), false, 'deleted with the meal');
   assert.equal((await get(me.token)).status, 404);
 });
+
+test('the words sent with a photo name its meal when the agent did not, and only then', async t => {
+  const { okOf } = await boot(t, { seen: PLATE });
+  // The 2026-10-08 case: "this morning" in the note, no meal, logged at 19:12 as dinner.
+  assert.equal((await okOf('see_meal_photo', { path: '/x/a.jpg', note: 'זה מה שאכלתי היום בבוקר' })).logged.meal, 'breakfast');
+  assert.equal((await okOf('see_meal_photo', { path: '/x/b.jpg', note: 'בבוקר', meal: 'lunch' })).logged.meal, 'lunch', 'the agent\'s meal wins');
+});
+
+test('slotFromNote reads whole words, and two meals or none are nobody\'s guess', () => {
+  const { slotFromNote } = require('../src/slot-words');
+  const cases = {
+    'זה מה שאכלתי היום בבוקר': 'breakfast', 'הבוקר': 'breakfast', 'ארוחת צהריים בעבודה': 'lunch', 'לצהרים': 'lunch',
+    'ובערב אכלתי את זה': 'dinner', 'ארוחת ערב': 'dinner', 'נשנשתי': 'snack', 'my breakfast': 'breakfast',
+    'סלט מעורב': null, 'שאריות מהבוקר לארוחת ערב': null, 'רק חצי היה שלי': null, '': null,
+  };
+  for (const [note, want] of Object.entries(cases)) assert.equal(slotFromNote(note), want, note);
+  assert.equal(slotFromNote(undefined), null);
+});
