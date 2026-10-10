@@ -170,6 +170,7 @@ Loads when you **Read** a file under `src/outbox/**`, `src/domain/message-format
 - **For an Israeli zone, Saturday's quiet day is candle-lighting to havdalah, not midnight to midnight.**
 - **A quiet day releases at the next kept day's window open, not 24 hours after whenever it was checked.**
 - **Nothing about a meeting goes out once the meeting has happened** — the gate drops a held `meeting_*` row as `meeting_over`
+- **A repair answers something the person WROTE, so no night and no quiet day holds it** — `gate.repairGrace`, `payload.rung = 'unanswered_repair'`; `last_woke_at` is exactly what a missed opener leaves stale
 - **Each person hears about ONE coordination at most twice a day, the invite first and the second three hours later** — everything counts; a result skips the wait, and past the cap still goes if the meeting is before the morning (`gate.coordinationCap`)
 - **A chag is QUIET only for somebody who asked for it, and "quiet-able" means yom tov and nothing else.**
 - **`DEFAULT_WINDOW` (09:00-21:00) is no longer only a fallback — it is a sentence somebody read.**
@@ -192,6 +193,7 @@ Loads when you **Read** a file under `src/outbox/**`, `src/domain/message-format
 Loads when you **Read** a file under `src/brokerd/**`, `src/domain/turn.js`, `src/domain/self-initiated.js` and 6 more.
 
 - **The turn opens itself, from the gateway's own hook, before the model's first call.**
+- **When the opener MISSED a person's WhatsApp message, the turn is still told what Olma last said to them, under "Recent context" and never "Turn context"** — `turn.missedOpenContext`; the header is what keeps the `turn_start` fallback, and with it the count, alive
 - **A function shared by two openers is handed the WHOLE user row, never a projection** — `undefined` is falsy too, and a test through one door proves nothing about the other
 - **A stranger's "first message" is never one of OUR delivery turns** — the English preamble was read as their words and filed invited people as English speakers
 - **The language streak is fed from the gateway's open, not from `wrote_in`** — the doctrine says not to call `turn_start`, so a wrong stored `locale` was never noticed

@@ -1486,7 +1486,21 @@ function createBrokerServer({ pool, flood, placeMark, now, lidPhoneNumbers, time
           trigger: params.trigger || null, messageProvider: params.messageProvider || null,
           ...(wrote ? { wrote: true } : {}),
         });
-        out = { ok: true, enabled: true, context: null };
+        // Their message with nothing around it is where the model went wrong
+        // (Bar, 2026-10-09), so a person's own message gets what Olma last said
+        // to them. It is NOT headed "Turn context", so the doctrine's fallback
+        // -- call turn_start -- still runs and still counts the message.
+        let context = null;
+        if (wrote) {
+          try {
+            const missed = await turnDomain.missedOpenContext(client, user);
+            if (missed) context = turnDomain.renderMissedOpenContext(missed);
+          } catch (e) { context = null; /* fails open: the old behaviour */ }
+        }
+        out = {
+          ok: true, enabled: true, context,
+          ...(context ? { readerWritesHebrew: require('../domain/language').writesHebrew(user) } : {}),
+        };
         return;
       }
       if (pre && !user.first_name && pre.senderName) {
