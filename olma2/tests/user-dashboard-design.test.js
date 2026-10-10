@@ -447,8 +447,8 @@ test('tasks on the calendar sit in their own fold, closed by default, in both vi
   const branches = body.match(/open\.filter\(function\(x\)\{[^}]*\}\)/g) || [];
   assert.equal(branches.length, 2, 'the time view and the category view each filter the list once');
   for (const b of branches) assert.match(b, /!offList\(x\)/, 'each view skips what the fold draws and what went back to Google');
-  assert.match(body, /var html = pinnedSection\(\) \+ calendarSection\(\);/,
-    'the fold sits right under the pinned section, above whichever view is on');
+  assert.match(body, /var html = pinnedSection\(\) \+ calendarSection\(\) \+ savedSection\(\);/,
+    'the fold sits right under the pinned section, the saved card under it, above whichever view is on');
   assert.match(page, /inCal:!!x\.inCalendar,/, 'the page reads the server\'s own answer');
   assert.match(page, /'<div class="fold' \+ \(calFoldOpen \? " open" : ""\) \+ '"><div' \+ \(calFoldOpen \? "" : " inert"\)/,
     'folded rows are inert, not just clipped');

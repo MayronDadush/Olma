@@ -50,6 +50,7 @@ const digest = require('./digest');
 const facts = require('./facts');
 const factPrompts = require('./fact-prompts');
 const selfDelete = require('./self-delete');
+const savedLinks = require('./saved-links');
 
 // What a task's origin system can actually hold, for the fields this page can
 // edit. Mirrors the map the page draws its locks from — the page must not be
@@ -889,6 +890,56 @@ const ACTIONS = {
   async answerFactPrompt(client, userId, p) {
     const { rows } = await client.query(`SELECT locale FROM users WHERE id = $1`, [userId]);
     return factPrompts.answer(client, userId, { key: p.key, answer: p.answer, locale: rows[0] && rows[0].locale });
+  },
+
+  // ---- saved links ("שמורים") ------------------------------------------------
+  // The same functions the `saved_links` tool calls (domain/saved-links.js),
+  // each with an explicit id: the page always knows which link it means, so
+  // none of them may fall back to "the latest save", which is the chat's
+  // reading of a bare "לחתונה".
+  async moveSaved(client, userId, p) {
+    if (!p.linkId) return err('invalid', 'linkId required');
+    return savedLinks.move(client, userId, { linkId: p.linkId, list: p.list });
+  },
+
+  async setSavedStatus(client, userId, p) {
+    return savedLinks.setStatus(client, userId, { linkId: p.linkId, done: p.done !== false });
+  },
+
+  async setSavedNote(client, userId, p) {
+    if (!p.linkId) return err('invalid', 'linkId required');
+    return savedLinks.setLine(client, userId, { linkId: p.linkId, line: p.line });
+  },
+
+  async deleteSaved(client, userId, p) {
+    if (!p.linkId) return err('invalid', 'linkId required');
+    return savedLinks.remove(client, userId, { linkId: p.linkId });
+  },
+
+  async restoreSaved(client, userId, p) {
+    return savedLinks.restore(client, userId, { linkId: p.linkId });
+  },
+
+  async savedToTask(client, userId, p) {
+    const { rows } = await client.query(`SELECT id, locale FROM users WHERE id = $1`, [userId]);
+    if (!rows[0]) return err('not_found', 'no such user');
+    return savedLinks.toTask(client, rows[0], { linkId: p.linkId });
+  },
+
+  async createSavedList(client, userId, p) {
+    return savedLinks.createList(client, userId, { name: p.name, emoji: p.emoji });
+  },
+
+  async renameSavedList(client, userId, p) {
+    return savedLinks.renameList(client, userId, { list: p.list, to: p.to });
+  },
+
+  async deleteSavedList(client, userId, p) {
+    return savedLinks.deleteList(client, userId, { list: p.list });
+  },
+
+  async restoreSavedList(client, userId, p) {
+    return savedLinks.restoreList(client, userId, { listId: p.listId });
   },
 
   async pause(client, userId) {

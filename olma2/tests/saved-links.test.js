@@ -616,3 +616,109 @@ test('the plugin claims only an explicit claim, and never carries the link in it
   const dead = plugin.buildSaveLinkHandler({ connect: () => { throw new Error('no socket'); }, log: () => {} });
   assert.equal(await dead({ sessionKey: DM, body: RECIPE }, {}), undefined, 'a dead socket is the model\'s turn');
 });
+
+// ---- the page (/me) -----------------------------------------------------------------
+// What the tasks page draws and the writes it sends (domain/user-dashboard-write.js).
+const write = require('../src/domain/user-dashboard-write');
+const dash = require('../src/domain/user-dashboard');
+
+test('the page gets every list with its counts and the links, whose line says whose it is', async () => {
+  const u = await person();
+  const v = await person();
+  const recipe = (await save(u, { urls: [RECIPE] })).data.saved[0];
+  const flat = (await save(u, { urls: [FLAT], line: 'לשאול על חניה' }, DOWN)).data.saved[0];
+  const video = (await save(u, { urls: [YT] })).data.saved[0];
+  await tx((c) => saved.setStatus(c, u.id, { linkId: recipe.id, done: true }));
+  await db.pool.query(`UPDATE saved_links SET caption = $2 WHERE id = $1`, [video.id, 'x'.repeat(900)]);
+  await db.pool.query(`UPDATE saved_links SET line = 'שלו', line_by = $2 WHERE id = $1`, [video.id, v.id]);
+
+  const page = await tx((c) => saved.pageData(c, u.id));
+  const recipes = page.lists.find((l) => l.name === 'מתכונים');
+  assert.deepEqual({ count: recipes.count, fresh: recipes.fresh, done: recipes.done }, { count: 1, fresh: 0, done: 1 });
+  assert.deepEqual(page.items.map((x) => x.id), [video.id, flat.id, recipe.id], 'newest first');
+  const byId = Object.fromEntries(page.items.map((x) => [x.id, x]));
+  assert.equal(byId[flat.id].lineBy, 'me');
+  assert.equal(byId[flat.id].read, false, 'still unread draws "בלי פירוט"');
+  assert.equal(byId[flat.id].kind, 'listing', 'an unread yad2 link is still a listing');
+  assert.equal(byId[recipe.id].lineBy, 'olma');
+  assert.equal(byId[recipe.id].done, true);
+  assert.ok(byId[recipe.id].recipe.ingredients.length > 0);
+  assert.equal(byId[video.id].lineBy, 'other', 'somebody else\'s words are never "עולמה קראה"');
+  assert.equal(byId[video.id].caption.length, 300);
+  assert.equal((await tx((c) => saved.pageData(c, v.id))).items.length, 0, 'nothing of theirs on anybody else\'s page');
+
+  const loaded = await tx((c) => dash.load(c, u.id));
+  assert.equal(loaded.data.saved.items.length, 3, 'load() carries it');
+  const made = await tx((c) => saved.toTask(c, u, { linkId: recipe.id }));
+  const task = (await tx((c) => dash.load(c, u.id))).data.tasks.find((t) => t.id === made.data.taskId);
+  assert.deepEqual(task.link, { platform: 'web', url: RECIPE }, 'a task made from a link carries it');
+});
+
+test('the page\'s writes name the link they mean and never fall back to the latest save', async () => {
+  const u = await person();
+  const it = (await save(u, { urls: [RECIPE] })).data.saved[0];
+  const act = (action, payload) => tx((c) => write.perform(c, u.id, action, payload));
+
+  assert.equal((await act('moveSaved', { list: 'לחתונה' })).error.code, 'invalid', 'no id, no move — "the latest" is the chat\'s reading');
+  assert.equal((await act('deleteSaved', {})).error.code, 'invalid');
+  assert.equal((await act('setSavedNote', { line: 'x' })).error.code, 'invalid');
+
+  const moved = await act('moveSaved', { linkId: it.id, list: 'חתונה' });
+  assert.equal(moved.data.list, 'חתונה');
+  assert.equal((await act('setSavedStatus', { linkId: it.id, done: true })).data.done, true);
+  assert.equal((await act('setSavedStatus', { linkId: it.id, done: false })).data.done, false);
+  assert.equal((await act('setSavedNote', { linkId: it.id, line: 'בלי סוכר' })).data.line, 'בלי סוכר');
+  assert.equal((await act('deleteSaved', { linkId: it.id })).data.deleted, true);
+  assert.equal((await act('restoreSaved', { linkId: it.id })).data.restored, true);
+  const task = await act('savedToTask', { linkId: it.id });
+  assert.equal(task.data.task, 'לנסות: עוגת שוקולד לילדים');
+
+  const { rows } = await db.pool.query(
+    `SELECT event FROM audit_log WHERE actor_id = $1 AND event LIKE 'dashboard.%Saved%' ORDER BY id`, [u.id]);
+  assert.ok(rows.length >= 6, 'every page write is audited as the page\'s');
+  const stamp = await db.pool.query(`SELECT last_dashboard_at FROM users WHERE id = $1`, [u.id]);
+  assert.ok(stamp.rows[0].last_dashboard_at, 'a write from their page is them answering');
+
+  const other = await person();
+  assert.equal((await tx((c) => write.perform(c, other.id, 'setSavedStatus', { linkId: it.id }))).ok, false);
+});
+
+test('a deleted list comes back with exactly the links that went with it', async () => {
+  const u = await person();
+  const a = (await save(u, { urls: [RECIPE] })).data.saved[0];
+  const b = (await save(u, { urls: ['https://www.10dakot.co.il/recipe/other/'] }, DOWN)).data.saved[0];
+  await tx((c) => saved.move(c, u.id, { linkId: b.id, list: 'מתכונים' }));
+  await tx((c) => saved.remove(c, u.id, { linkId: b.id }));      // gone on its own first
+  const list = (await tx((c) => saved.listsOf(c, u.id))).find((l) => l.name === 'מתכונים');
+  await db.pool.query(`UPDATE saved_links SET deleted_at = now() - interval '1 minute' WHERE id = $1`, [b.id]);
+
+  const act = (action, payload) => tx((c) => write.perform(c, u.id, action, payload));
+  assert.equal((await act('deleteSavedList', { list: 'מתכונים' })).data.links, 1);
+  const back = await act('restoreSavedList', { listId: list.id });
+  assert.equal(back.data.links, 1);
+  const { rows } = await db.pool.query(`SELECT id, deleted_at FROM saved_links WHERE id = ANY($1) ORDER BY id`, [[a.id, b.id]]);
+  assert.equal(rows.find((r) => Number(r.id) === a.id).deleted_at, null);
+  assert.ok(rows.find((r) => Number(r.id) === b.id).deleted_at, 'the one deleted before stays deleted');
+
+  await act('deleteSavedList', { list: 'מתכונים' });
+  assert.equal((await act('createSavedList', { name: 'מתכונים' })).ok, true);
+  assert.equal((await act('restoreSavedList', { listId: list.id })).error.code, 'not_found',
+    'a live list with the name since wins');
+  assert.equal((await act('createSavedList', { name: 'מתכונים' })).error.code, 'conflict');
+});
+
+test('a picture is served to its owner only, and never as anything but a raster image', async () => {
+  const u = await person();
+  const v = await person();
+  const it = (await save(u, { urls: [RECIPE] })).data.saved[0];
+  await tx((c) => saved.storeThumb(c, it.id, { mime: 'image/jpeg', bytes: Buffer.from([0xff, 0xd8, 0xff]) }));
+  const pic = await tx((c) => saved.thumbOf(c, u.id, it.id));
+  assert.equal(pic.mime, 'image/jpeg');
+  assert.equal(await tx((c) => saved.thumbOf(c, v.id, it.id)), null);
+  assert.equal(await tx((c) => saved.thumbOf(c, u.id, 'x')), null);
+  await tx((c) => saved.storeThumb(c, it.id, { mime: 'image/svg+xml', bytes: Buffer.from('<svg onload="x()"/>') }));
+  assert.equal(await tx((c) => saved.thumbOf(c, u.id, it.id)), null, 'an SVG on our origin is a page that runs script');
+  await tx((c) => saved.storeThumb(c, it.id, { mime: 'image/png', bytes: Buffer.from([0x89]) }));
+  await tx((c) => saved.remove(c, u.id, { linkId: it.id }));
+  assert.equal(await tx((c) => saved.thumbOf(c, u.id, it.id)), null, 'a deleted link has no picture');
+});
