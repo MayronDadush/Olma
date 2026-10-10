@@ -40,6 +40,7 @@ const { checkGateway, checkChannels } = require('../adapters/gateway-health');
 const flagsDomain = require('../domain/flags');
 const { ALERT_PHONE_FLAG, DEFAULT_ALERT_PHONE } = require('./credit-watch');
 const gatewayRestart = require('../intake/gateway-restart');
+const audit = require('../domain/audit');
 
 const STATE_FLAG = 'liveness_state';
 const TICKS_BEFORE_ALERT = 2;
@@ -149,6 +150,7 @@ async function run(client, deps = {}) {
   const broken = (g, c) => g.status === 'down' || c.status === 'down';
   if (broken(gateway, channels) && prev0.down && (prev0.ticks || 0) + 1 >= TICKS_BEFORE_ALERT
       && (!prev0.lastRestartAt || now - prev0.lastRestartAt >= RESTART_COOLDOWN_MS)) {
+    const sawBefore = { gateway: gateway.status, channels: channels.status };
     const restart = deps.restartGateway || gatewayRestart.restartGateway;
     try { restartOk = Boolean(await restart()); } catch { restartOk = false; }
     restarted = true;
@@ -156,6 +158,16 @@ async function run(client, deps = {}) {
       await new Promise((r) => setTimeout(r, Number.isFinite(deps.settleMs) ? deps.settleMs : RESTART_SETTLE_MS));
       ({ gateway, channels } = await probeBoth(deps));
     }
+    // A restart takes every in-flight turn down with it, and nothing else
+    // records that THIS job did it: on 2026-10-10 the gateway went down at
+    // 00:06 in the middle of the nightly evals and the journal could only say
+    // that systemd was asked to restart it, not by whom. One row per restart,
+    // with what it saw and what it got, so the next one has a culprit.
+    await audit.record(client, null, 'gateway.restarted_by_liveness', {
+      gatewayBefore: sawBefore.gateway, channelsBefore: sawBefore.channels,
+      outageSince: prev0.since ? new Date(prev0.since).toISOString() : null,
+      restartOk, gatewayAfter: gateway.status, channelsAfter: channels.status,
+    });
   }
   const gatewayNow = gateway;
 
@@ -175,6 +187,13 @@ async function run(client, deps = {}) {
   if (dying > 0) reasons.push(`${dying} הודעות פגו אחרי כשלונות משלוח בחצי השעה האחרונה`);
 
   const prev = restarted ? { ...prev0, lastRestartAt: now } : prev0;
+  // The cooldown has to outlive the outage it was armed in. It used to be
+  // dropped with the rest of the state the moment a tick came back clean, so
+  // a gateway that restarted, recovered and died again ten minutes later was
+  // restarted again — the loop the cooldown exists to stop. Kept only while
+  // it still means something, so a quiet system's state is still `{}`.
+  const carry = prev.lastRestartAt && now - prev.lastRestartAt < RESTART_COOLDOWN_MS
+    ? { lastRestartAt: prev.lastRestartAt } : {};
   const phone = (await flagsDomain.getFlag(client, ALERT_PHONE_FLAG)) || DEFAULT_ALERT_PHONE;
   const note = { gateway: gatewayNow.status, channels: channels.status, stuck, dying, delivered30m: delivered };
   if (gatewayNow.status === 'unknown') note.gatewayDetail = gatewayNow.detail;
@@ -192,14 +211,14 @@ async function run(client, deps = {}) {
     const channelDown = channels.status === 'down';
     next = prev.down
       ? { ...prev, ticks: (prev.ticks || 0) + 1, reasons, channelDown }
-      : { down: true, since: now, ticks: 1, reasons, channelDown, lastAlertAt: null };
+      : { ...carry, down: true, since: now, ticks: 1, reasons, channelDown, lastAlertAt: null };
     const due = next.ticks >= TICKS_BEFORE_ALERT && (!next.lastAlertAt || now - next.lastAlertAt >= REALERT_MS);
     if (due) {
       const channel = await tell(deps, phone, alertText(reasons, next.since));
       if (channel) { next.lastAlertAt = now; note.alerted = channel; } else note.alertFailed = true;
     }
   } else if (prev.down) {
-    next = {};
+    next = { ...carry };
     if (restarted && restartOk) {
       // Fell and came back on its own: said once, as the outcome it is. The
       // pipe just came back, so WhatsApp carries it.
@@ -210,7 +229,7 @@ async function run(client, deps = {}) {
       if (channel) note.recovered = channel; else { note.alertFailed = true; next = { ...prev, recoveredAt: now }; }
     }
   } else {
-    next = {};
+    next = { ...carry };
   }
   note.down = Boolean(next.down);
   if (next.down) { note.ticks = next.ticks; note.since = new Date(next.since).toISOString(); }

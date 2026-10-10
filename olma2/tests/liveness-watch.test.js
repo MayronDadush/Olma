@@ -73,7 +73,13 @@ test('a dead gateway is restarted on the second tick, not the first, and at most
   assert.equal(note.down, false);
   assert.equal(note.recovered, undefined, 'nothing had been announced, so nothing is un-announced');
   assert.deepEqual(log.wa, []);
-  assert.deepEqual(await withTx(db.pool, (c) => flags.getFlag(c, watch.STATE_FLAG)), {});
+  assert.deepEqual(await withTx(db.pool, (c) => flags.getFlag(c, watch.STATE_FLAG)),
+    { lastRestartAt: t0 + 40 * 60_000 }, 'the outage is over; only the cooldown it armed is kept');
+
+  ({ log, d } = deps({ now: t0 + 75 * 60_000 }));
+  await tick(d);
+  assert.deepEqual(await withTx(db.pool, (c) => flags.getFlag(c, watch.STATE_FLAG)), {},
+    'and once the cooldown has run out a quiet system is back to nothing');
 });
 
 test('a dead gateway that comes back after the automatic restart is reported as healed, once', async () => {
@@ -89,7 +95,60 @@ test('a dead gateway that comes back after the automatic restart is reported as 
   assert.equal(note.gateway, 'live', 'the verdict is the re-probe, not the first probe');
   assert.equal(note.selfHealed, 'whatsapp');
   assert.match(log.wa[0].text, /הופעל מחדש אוטומטית/);
-  assert.deepEqual(await withTx(db.pool, (c) => flags.getFlag(c, watch.STATE_FLAG)), {});
+  assert.deepEqual(await withTx(db.pool, (c) => flags.getFlag(c, watch.STATE_FLAG)), { lastRestartAt: t0 + 300_000 });
+});
+
+// The cooldown used to be dropped with the rest of the state on the first
+// clean tick, so restart → recover → die again restarted it again at once.
+test('a gateway that dies again soon after a restart that worked is not restarted again inside the cooldown', async () => {
+  const t0 = Date.parse('2026-09-07T12:00:00Z');
+  const down = { status: 'down', detail: 'ECONNREFUSED', port: 1 };
+  const live = { status: 'live', detail: 'live', port: 1 };
+  let { log, d } = deps({ gateway: down, now: t0 });
+  await tick(d);
+  let probes = 0;
+  ({ log, d } = deps({ now: t0 + 300_000, extra: { checkGateway: async () => (probes++ === 0 ? down : live) } }));
+  await tick(d);
+  assert.equal(log.restarts, 1);
+  ({ log, d } = deps({ now: t0 + 600_000 }));
+  await tick(d); // clean
+  ({ log, d } = deps({ gateway: down, now: t0 + 900_000, waFails: true }));
+  await tick(d);
+  ({ log, d } = deps({ gateway: down, now: t0 + 1_200_000, waFails: true }));
+  const note = await tick(d);
+  assert.equal(log.restarts, undefined, 'fifteen minutes after the last restart is inside the half hour');
+  assert.equal(note.down, true, 'and it is still an outage on the board');
+  ({ log, d } = deps({ gateway: down, now: t0 + 2_200_000, waFails: true }));
+  await tick(d);
+  assert.equal(log.restarts, 1, 'once the half hour has passed, the repair is tried again');
+});
+
+test('every restart leaves an audit row saying what it saw and what it got', async () => {
+  await db.pool.query(`DELETE FROM audit_log WHERE event = 'gateway.restarted_by_liveness'`);
+  const t0 = Date.parse('2026-09-08T12:00:00Z');
+  const chanDown = { status: 'down', detail: 'whatsapp not connected', channels: [{ id: 'whatsapp', down: true }] };
+  let { d } = deps({ channels: chanDown, now: t0 });
+  await tick(d);
+  assert.equal((await db.pool.query(`SELECT 1 FROM audit_log WHERE event = 'gateway.restarted_by_liveness'`)).rowCount, 0,
+    'no restart, no row');
+  let probes = 0;
+  ({ d } = deps({ now: t0 + 300_000, extra: { checkChannels: async () => (probes++ === 0 ? chanDown : { status: 'live', detail: null, channels: [] }) } }));
+  await tick(d);
+  const { rows } = await db.pool.query(`SELECT actor_id, detail FROM audit_log WHERE event = 'gateway.restarted_by_liveness'`);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].actor_id, null);
+  assert.deepEqual(rows[0].detail, {
+    gatewayBefore: 'live', channelsBefore: 'down', outageSince: new Date(t0).toISOString(),
+    restartOk: true, gatewayAfter: 'live', channelsAfter: 'live',
+  });
+
+  ({ d } = deps({ gateway: { status: 'down', detail: 'x', port: 1 }, now: t0 + 3 * 3600_000, restartFails: true, waFails: true }));
+  await tick(d);
+  ({ d } = deps({ gateway: { status: 'down', detail: 'x', port: 1 }, now: t0 + 3 * 3600_000 + 300_000, restartFails: true, waFails: true }));
+  await tick(d);
+  const failed = (await db.pool.query(`SELECT detail FROM audit_log WHERE event = 'gateway.restarted_by_liveness' ORDER BY id DESC LIMIT 1`)).rows[0].detail;
+  assert.equal(failed.restartOk, false, 'a restart that failed is recorded too');
+  assert.equal(failed.gatewayAfter, 'down');
 });
 
 test('a flap — one bad tick, then fine — is never mentioned', async () => {

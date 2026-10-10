@@ -19,6 +19,7 @@ never trust a dated narrative for something you are about to act on.
 
 **Gateway, config and upgrades**
 
+- [A restart with no name on it (fixed 2026-10-10)](#a-restart-with-no-name-on-it-fixed-2026-10-10)
 - [The first message that reached nobody (repair added 2026-10-07)](#the-first-message-that-reached-nobody-repair-added-2026-10-07)
 - [She wrote twice and stayed paused, and her list never reached her morning (fixed 2026-10-06)](#she-wrote-twice-and-stayed-paused-and-her-list-never-reached-her-morning-fixed-2026-10-06)
 - [The silence the gateway asked again (fixed 2026-10-03)](#the-silence-the-gateway-asked-again-fixed-2026-10-03)
@@ -345,6 +346,29 @@ never trust a dated narrative for something you are about to act on.
 - [Merged is not deployed — the drift row (2026-09-04)](#merged-is-not-deployed-the-drift-row-2026-09-04)
 
 ## Gateway, config and upgrades
+
+### A restart with no name on it (fixed 2026-10-10)
+
+At 00:06 UTC on 2026-10-10 the gateway went down for about two minutes in the
+middle of the nightly evals. 13 of 17 scenarios failed with `Opening handshake
+has timed out` and the run read as 13 errors. The journal could say that
+systemd restarted the unit, but not who asked. `liveness_watch` is one of four
+callers of `intake/gateway-restart.js`, and the only one that runs unattended,
+and it recorded its restarts on nothing but a five-minute heartbeat note that
+the next tick overwrote. The underlying cause was memory: the gateway was at
+800–900MB on a 2GB box (see "The gateway carried sixteen plugins and used
+five").
+
+Reading the job for the answer found a second fault. The half-hour cooldown
+lived in the `liveness_state` flag beside the outage, and the first clean tick
+reset the whole flag to `{}`. A gateway that was restarted, recovered, and
+died again ten minutes later was restarted again on the second bad tick: the
+loop the cooldown was written to stop.
+
+Now every restart writes `gateway.restarted_by_liveness` to `audit_log`, with
+what the probes saw before it and after it, failed restarts included.
+`lastRestartAt` is carried through recovery and into the next outage until the
+half hour has run out, so a quiet system's state still returns to `{}`.
 
 ### The first message that reached nobody (repair added 2026-10-07)
 
