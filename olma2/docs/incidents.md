@@ -15660,3 +15660,23 @@ on 0 of 48 constraints). In the room a reason is said only when somebody asks
 why, through `group_coordination_status`'s `reasons`. Still open, asked of the
 owner: a PRIVATE coordination between room members, asked about in the room —
 the room agent cannot see it at all today.
+
+### The poker room heard counts where it asked for names (2026-10-10)
+
+Two days after the fix above, the owner asked the same room "מי יכול בראשון?"
+and she answered "3 said yes, 2 said no, and Idan has not answered — I have
+no breakdown of who, only counts." She never called
+`group_coordination_status`. The turn's prepended block (`group-turn.draw`)
+carried `onTable[].yes/no` as COUNTS, and `CONTEXT_RULE` tells her every
+sentence about the coordination comes from that block — so she obeyed it,
+truthfully, and the doctrine's "call the tool and answer by person" lost to
+the block in front of her. The 10-08 fix changed what the tool returns and
+what the doctrine says; it never touched the one thing she actually reads.
+
+Now the block draws `yesBy`/`noBy` (tags, the label for somebody with no
+phone — the same fallback as `waitingFor`) per time on the table, and
+`yesBy` for the time a confirmed coordination settled on, and the rule says
+when to use them: when asked who can, who cannot or who is in, never read out
+unasked, never a reason. Same shape as "The room heard its own state from
+memory": a model with the answer one tool call away and a rule that says
+"speak from this" speaks from this.

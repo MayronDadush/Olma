@@ -37,7 +37,7 @@ const meetingTime = require('./meeting-time');
 // from. `coordination: null` is a fact and not a gap — the wrong answer
 // available without it was the one that got said.
 const CONTEXT_HEADER = 'Room coordination (from the system, not the room — Olma\'s own rows, read this second):';
-const CONTEXT_RULE = 'Every sentence you say about this room\'s coordination comes from the block above. `coordination: null` means this room has nothing running right now, whatever was said earlier in this conversation; a number that is not there is a number you do not have. `lastCoordination.roomHeard: true` means the room has already been told that result: say it again only when somebody asks about it, never as the tail of a reply about something else. `lastCoordination.timeOpen: true` means it settled with no exact hour: a member naming one on that same day is answered with add_group_coordination_option, which sets it.';
+const CONTEXT_RULE = 'Every sentence you say about this room\'s coordination comes from the block above. `coordination: null` means this room has nothing running right now, whatever was said earlier in this conversation; a number that is not there is a number you do not have. `lastCoordination.roomHeard: true` means the room has already been told that result: say it again only when somebody asks about it, never as the tail of a reply about something else. `lastCoordination.timeOpen: true` means it settled with no exact hour: a member naming one on that same day is answered with add_group_coordination_option, which sets it. `yesBy` and `noBy` are who said yes and no to each time: when somebody asks who can, who cannot or who is in, answer from them by person (each by `tag`), and `waitingFor` is who has not answered; never read them out unasked, and never give a reason for anybody\'s answer.';
 // The owner's rule (2026-09-20). In the room a person is TAGGED, never named:
 // the tag notifies them, and WhatsApp renders it as whatever each reader has
 // that number saved as — so it is also the only spelling that is right for
@@ -253,6 +253,10 @@ function roomClocks(members, group) {
   return zones.length > 1 ? zones.map((z) => z.label) : null;
 }
 
+// A person on the board as the room addresses them: the tag, or the label
+// for somebody we hold no phone for — the same fallback `waitingFor` uses.
+const labelsOf = (list) => (list || []).map((p) => p.tag || p.name).filter(Boolean);
+
 async function draw(client, group, { lidPhones = null } = {}) {
   const members = await groups.listMembers(client, group.id);
   const status = await groupMeetings.coordinationStatus(client, group);
@@ -296,6 +300,9 @@ async function draw(client, group, { lidPhones = null } = {}) {
         // Friday at noon, on Zoom" — to jokes that had nothing to do with it
         // (2026-09-23). The column, not an inference: nothing else says it.
         ...(c.status === 'confirmed' && c.doneToldAt ? { roomHeard: true } : {}),
+        // Who said yes to the time it settled on — "who is in" after the
+        // "סגור" line is the same question as before it.
+        ...(c.status === 'confirmed' && c.confirmedOption ? { yesBy: labelsOf(c.confirmedOption.yes) } : {}),
         // Settled on a whole day or a part of one (087): the room was asked
         // once whether it wants an exact hour, and an answer sets it.
         ...(c.status === 'confirmed' && (c.confirmedAllDay || c.confirmedDaypart) ? { timeOpen: true } : {}),
@@ -332,9 +339,18 @@ async function draw(client, group, { lidPhones = null } = {}) {
       waitingFor: c.silent.filter((p) => p.asked !== false).map((p) => p.tag || p.name).filter(Boolean),
       ...(c.silent.some((p) => p.asked === false)
         ? { notYetAsked: c.silent.filter((p) => p.asked === false).length } : {}),
+      // …and WHO said yes and no to each time, by tag. The owner's rule since
+      // 2026-10-08 is that this is the board every member may see, said when
+      // asked. It was left in `group_coordination_status` alone, and with the
+      // counts here and a rule saying this block is the only thing to speak
+      // from, the poker room asked "מי יכול בראשון?" on 2026-10-10 and heard
+      // "3 said yes, 2 said no — I have no breakdown, only counts" without
+      // the tool ever being called (`incidents.md`, "The poker room heard
+      // counts where it asked for names").
       onTable: c.options.map((o) => ({
         optionId: o.optionId, slot: o.slot, ...(o.roomTimes ? { roomTimes: o.roomTimes } : {}),
         yes: o.yes.length, no: o.no.length,
+        yesBy: labelsOf(o.yes), noBy: labelsOf(o.no),
       })),
     },
   };
