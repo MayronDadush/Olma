@@ -4494,6 +4494,22 @@ wrong from the next morning. The moving word therefore becomes its date
 always, even on the day it is still true. It is read on the clock of the
 option's author, else the host's.
 
+**…and the event's NAME was the same fault one field over** (owner,
+2026-10-08, `domain/meeting-event-title.js`). A coordination's title is the
+opener's words, and those were often when as much as what. Of the 36 titles on
+the box, 13 changed under this fix. Some carried their time: "פאדל בשבת הבאה
+17:00, 4 שחקנים", "פאדל לשבוע הקרוב", "מפגש לבירה השבוע". Others said nothing
+on their own once that was gone: "פגישה", "פגישה של הקבוצה", and
+`startMeeting`'s own "פגישה — names". The calendar copy now drops the time,
+the date, the clock and a head count. A name left generic is called after the
+room ("פגישה – <subject>") or the people ("פגישה דב ומירון"). Every other name
+is left as it was, with no "משחק" added. This is in code, so the same title
+gives the same name on the shared event, on a rename patched onto it, and in
+the solo calendar step, which hands the name to the model as data. The chat and
+the page keep the opener's words. Run on the real titles, its first draft read
+"Mercury 2.5" as the 2nd of May, so a number right after a Latin word is never
+read as a date.
+
 ### פנתרה: one time, four clocks (fixed 2026-09-25)
 
 Room 10, פנתרה, was coordinating a video call for everybody (meeting 46). Two

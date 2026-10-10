@@ -21,6 +21,7 @@ const connectGate = require('./google-connect-gate');
 const { enqueue } = require('../outbox/enqueue');
 const googleFamily = require('./google-family');
 const { datedDayWords } = require('./meeting-time');
+const { eventTitleFor } = require('./meeting-event-title');
 
 // Does another Google row of this user carry this exact refresh token?
 async function tokenHeldBySibling(client, userId, secret) {
@@ -770,7 +771,9 @@ async function createSharedMeetingEvent(client, userId, { meetingId, start, end,
   }
 
   const res = await createEvent(client, userId, {
-    title: meeting.title || 'פגישה',
+    // The coordination's name without the time in it, or named after its
+    // people or its room when nothing is left (`meeting-event-title.js`).
+    title: await eventTitleFor(client, meetingId),
     start, end, location,
     // Settled on a whole day (087): the event is a whole day too, whatever
     // end the model worked out.
