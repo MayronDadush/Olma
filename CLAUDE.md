@@ -754,6 +754,12 @@ It **fails open** everywhere, and `stop_hook_active` means a second stop always
 goes through — so it can slow you down once, never trap you. If the suite
 genuinely cannot run, say so in the reply and stop again.
 
+It reads the checkout from the hook input's `cwd`, never its own path:
+`$CLAUDE_PROJECT_DIR` is the MAIN checkout in a worktree session, and on
+2026-10-10 that checkout's untracked copy of an already-merged migration was
+reported as "this branch adds a migration" on a branch level with
+`origin/main`. A file byte-identical to `origin/main` never counts.
+
 A third candidate was **rejected after measuring it**: "a rule changed with no
 entry in `incidents.md`" would have fired on 8 of the last 22 commits that
 added a rule, about half of them correctly — a 36% block rate on a gate nobody
