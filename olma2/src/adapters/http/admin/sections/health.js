@@ -153,10 +153,11 @@ function doctrineRow(m) {
 //
 // Classes are alert-bad/alert-warn, never the bare `bad`/`warn` the tests
 // slice sections by (tests/dashboard.test.js sectionOf/rowFor).
-// A scheduled run starts inside a three-hour window on three nights a week
-// (jobs/evals.js, RUN_UTC_WEEKDAYS), so the longest gap is three days. A
-// newest start older than that plus half a day means a run night did not
-// happen — 84h, where it was 36h when the suite ran every night.
+// A scheduled run starts inside a three-hour window every Sunday night, and
+// on any other night after the doctrine or the model changed
+// (jobs/evals.js, RUN_UTC_WEEKDAYS). A newest start older than a week plus
+// half a day means a Sunday did not happen — 180h, where it was 36h when the
+// suite ran every night.
 const EVAL_NIGHTLY_STALE_H = evalsJob.staleAfterHours();
 
 async function collectAlerts(client, { hbRows, gateway }) {

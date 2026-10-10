@@ -665,27 +665,62 @@ test('sweepEvals: window gate, once-per-night watermark, and the alert pipe', as
   assert.equal(sent.length, 1, 'an alert delivered is an alert finished');
 });
 
-// Three nights a week, not seven (owner, 2026-10-10): the suite is the box's
-// heaviest regular spike on 2GB. A night off is skipped before the watermark,
-// so it never stamps and never runs — and a queued alert is still delivered.
-test('sweepEvals: only Sunday, Tuesday and Thursday nights run', async () => {
-  // 2026-09-05 is a Saturday, 09-06 a Sunday, 09-07 a Monday, 09-08 a Tuesday.
+// Once a week and after a change, not every night (owner, 2026-10-10): the
+// suite is the box's heaviest regular spike on 2GB, and a regression comes
+// from a change. A night off is skipped before anything is stamped.
+test('sweepEvals: Sunday runs, and another night runs only after the doctrine or model changed', async () => {
+  // 2026-09-06 is a Sunday, 09-07 a Monday, 09-08 a Tuesday, 09-09 a Wednesday.
   const at = (d) => new Date(`2026-09-${d}T01:30:00Z`).getTime();
-  assert.equal(evalsJob.isRunNight(at('05')), false, 'Saturday: the quiet day changes what scenarios may say');
+  assert.equal(evalsJob.isRunNight(new Date('2026-09-05T01:30:00Z').getTime()), false, 'Saturday: the quiet day changes what scenarios may say');
   assert.equal(evalsJob.isRunNight(at('06')), true);
   assert.equal(evalsJob.isRunNight(at('07')), false);
-  assert.equal(evalsJob.isRunNight(at('08')), true);
-  const before = await withTx(db.pool, (c) => flagsDomain.getFlag(c, evalsJob.LAST_RUN_FLAG));
-  const off = await evalsJob.sweepEvals(db.pool, { now: at('07'), runTurn: () => { throw new Error('must not run'); } });
-  assert.equal(off.skipped, 'not a run night');
-  assert.equal(await withTx(db.pool, (c) => flagsDomain.getFlag(c, evalsJob.LAST_RUN_FLAG)), before,
-    'a night off stamps nothing');
+  const flag = (k) => withTx(db.pool, (c) => flagsDomain.getFlag(c, k));
+  await withTx(db.pool, (c) => flagsDomain.setFlag(c, evalsJob.INPUTS_FLAG, ''));
+  const mustNotRun = () => { throw new Error('must not run'); };
+  let fp = 'aaa';
+  const deps = (d) => ({ now: at(d), inputsFingerprint: () => fp, runTurn: mustNotRun });
+
+  // Nothing stamped yet (the first night after this shipped): waits for Sunday.
+  assert.equal((await evalsJob.sweepEvals(db.pool, deps('07'))).skipped, 'not a run night');
+  assert.equal(await flag(evalsJob.INPUTS_FLAG), '', 'a night off stamps nothing');
+
+  // Sunday runs, and stamps what it measured.
+  const sunday = await evalsJob.sweepEvals(db.pool, {
+    ...deps('06'), runTurn: fakeTurns([{ reply: 'ביי' }, { reply: 'בהצלחה 💙' }]), complete: judgePass,
+  });
+  assert.equal(sunday.because, 'weekly');
+  assert.equal(await flag(evalsJob.INPUTS_FLAG), 'aaa');
+
+  // Monday, nothing changed: no run.
+  const before = await flag(evalsJob.LAST_RUN_FLAG);
+  assert.equal((await evalsJob.sweepEvals(db.pool, deps('07'))).skipped, 'not a run night');
+  assert.equal(await flag(evalsJob.LAST_RUN_FLAG), before);
+
+  // An unreadable fingerprint is no change, never a reason to run.
+  fp = null;
+  assert.equal((await evalsJob.sweepEvals(db.pool, deps('08'))).skipped, 'not a run night');
+
+  // Tuesday, after a doctrine change: it runs, says why, and stamps the new one.
+  fp = 'bbb';
+  const tuesday = await evalsJob.sweepEvals(db.pool, {
+    ...deps('08'), runTurn: fakeTurns([{ reply: 'ביי' }, { reply: 'בהצלחה 💙' }]), complete: judgePass,
+  });
+  assert.equal(tuesday.because, 'changed');
+  assert.equal(await flag(evalsJob.INPUTS_FLAG), 'bbb');
+  // ...and Wednesday it has been measured, so no run.
+  assert.equal((await evalsJob.sweepEvals(db.pool, deps('09'))).skipped, 'not a run night');
+});
+
+test('the fingerprint is read from this release and is stable for it', () => {
+  const a = evalsJob.inputsFingerprint();
+  assert.match(a, /^[0-9a-f]{16}$/);
+  assert.equal(evalsJob.inputsFingerprint(), a, 'the same release reads the same');
 });
 
 test('the admin page calls the suite missing only after the longest gap between run nights', () => {
-  assert.equal(evalsJob.staleAfterHours(), 84, 'Thursday to Sunday is three days, plus half a day');
+  assert.equal(evalsJob.staleAfterHours(), 180, 'a week, plus half a day');
   assert.equal(evalsJob.staleAfterHours([0, 1, 2, 3, 4, 5, 6]), 36, 'every night is the old 36h');
-  assert.equal(evalsJob.staleAfterHours([3]), 180, 'one night a week');
+  assert.equal(evalsJob.staleAfterHours([0, 2, 4]), 84, 'three nights a week');
 });
 
 // The half that makes this safe to defer: a pipe that fails must NOT consume
@@ -1336,15 +1371,14 @@ test('the admin strip is RED for a run that measured nothing, and for a nightly 
     assert.equal(pills[0].level, 'bad');
     assert.match(pills[0].text, /0 מתוך 16/);
 
-    // Three run nights a week: Thursday to Sunday is a normal 72h gap and
-    // must not be red; past 84h a run night was missed.
-    await c.query(`UPDATE eval_runs SET started_at = now() - interval '75 hours', errors = 0, greens = 16`);
+    // Once a week: up to a week is normal; past 180h a Sunday was missed.
+    await c.query(`UPDATE eval_runs SET started_at = now() - interval '170 hours', errors = 0, greens = 16`);
     pills = await evalPills(c);
-    assert.deepEqual(pills, [], 'the weekend gap between Thursday and Sunday is not a missed run');
-    await c.query(`UPDATE eval_runs SET started_at = now() - interval '90 hours'`);
+    assert.deepEqual(pills, [], 'a week between Sundays is not a missed run');
+    await c.query(`UPDATE eval_runs SET started_at = now() - interval '190 hours'`);
     pills = await evalPills(c);
     assert.deepEqual(pills.map((p) => p.level), ['bad']);
-    assert.match(pills[0].text, /90 שעות/, 'a nightly that stopped happening is red too');
+    assert.match(pills[0].text, /190 שעות/, 'a Sunday that did not happen is red');
   } finally {
     await c.query('ROLLBACK');
     c.release();

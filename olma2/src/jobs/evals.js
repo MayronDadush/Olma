@@ -1,7 +1,8 @@
 'use strict';
 // The nightly behavioral eval sweep. Ticked hourly by brokerd like every slow
-// job; runs once a night on three nights a week (RUN_UTC_WEEKDAYS), inside
-// the small-hours window, walks every
+// job; runs on Sunday night (RUN_UTC_WEEKDAYS) and on any other night after
+// the doctrine or the model changed (inputsFingerprint), inside the
+// small-hours window, walks every
 // scenario sequentially (one lane, one 1-vCPU box), persists results, and
 // alerts the operator on the two channels agreed 2026-08-27:
 //
@@ -32,14 +33,44 @@ const LAST_RUN_FLAG = 'evals_last_run_date';
 // anyone wakes up. A flag can move it without a deploy.
 const WINDOW_UTC_HOURS = [0, 1, 2];
 
-// And not every night: Sunday, Tuesday and Thursday (UTC, which is also the
-// Israeli date inside the window). Owner, 2026-10-10. The suite is the box's
-// heaviest regular spike, about 850MB of gateway for an hour on a 2GB box,
-// and the restart that took 13 scenarios down at 00:06 that night was the
-// box running out. Three runs a week still catch a regression within two
-// days. Saturday is left out on purpose: the quiet day changes what the
-// scheduling scenarios may say (the chase scenario's red in run #114).
-const RUN_UTC_WEEKDAYS = [0, 2, 4];
+// Not every night (owner, 2026-10-10): once a week, on Sunday (UTC, which
+// is also the Israeli date inside the window), and on any other night after
+// what the suite measures has changed. The suite is the box's heaviest
+// regular spike, about 850MB of gateway for an hour on a 2GB box, and the
+// restart that took 13 scenarios down at 00:06 that night was the box running
+// out. Across the 35 nights before, most reds flipped back to green with no
+// change at all, and twelve nights in a row measured nothing without anyone
+// noticing: a nightly run was mostly re-measuring noise. A regression comes
+// from a change, so a change is what earns a run. Saturday is never the
+// weekly night: the quiet day changes what the scheduling scenarios may say
+// (the chase scenario's red in run #114).
+const RUN_UTC_WEEKDAYS = [0];
+
+// What the suite measures: the two doctrines every agent runs on, and the
+// model the gateway answers with. Its fingerprint is stamped on every run,
+// and a night whose fingerprint differs from the last run's is a run night
+// too. The doctrine is read from THIS release, so the night after a deploy
+// that changed it is the night it is measured.
+const INPUTS_FLAG = 'evals_last_inputs';
+const DOCTRINES = ['agents-template.md', 'agents-group-template.md'];
+
+function inputsFingerprint(deps = {}) {
+  if (typeof deps.inputsFingerprint === 'function') return deps.inputsFingerprint();
+  const crypto = require('node:crypto');
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const h = crypto.createHash('sha256');
+  try {
+    for (const f of DOCTRINES) h.update(fs.readFileSync(path.join(__dirname, '..', 'intake', f)));
+  } catch { return null; }
+  // The model half is best-effort: a config that cannot be read leaves the
+  // doctrine to decide, and never forces a run on its own.
+  try {
+    const model = ((require('../intake/openclaw-config').loadConfig().agents || {}).defaults || {}).model || {};
+    h.update(JSON.stringify({ primary: model.primary || null, fallbacks: model.fallbacks || [] }));
+  } catch { /* doctrine only */ }
+  return h.digest('hex').slice(0, 16);
+}
 
 function isRunNight(now) {
   return RUN_UTC_WEEKDAYS.includes(new Date(now).getUTCDay());
@@ -271,13 +302,21 @@ async function sweepEvals(pool, deps = {}) {
   // 03:00 is delivered by the tick that first finds the morning open.
   const flushed = await flushPendingAlert(pool, deps, now);
   if (!inWindow(now)) return { skipped: 'outside window', ...(flushed || {}) };
-  if (!isRunNight(now)) return { skipped: 'not a run night', ...(flushed || {}) };
   const today = utcDateOf(now);
   const last = await withTx(pool, (c) => flagsDomain.getFlag(c, LAST_RUN_FLAG));
   if (last === today) return { skipped: 'already ran tonight' };
+  // An unreadable fingerprint is "no change", never a reason to run, and
+  // nothing stamped yet (the first night after this shipped) waits for Sunday.
+  const inputs = inputsFingerprint(deps);
+  const lastInputs = await withTx(pool, (c) => flagsDomain.getFlag(c, INPUTS_FLAG));
+  const changed = Boolean(inputs && lastInputs && inputs !== lastInputs);
+  if (!isRunNight(now) && !changed) return { skipped: 'not a run night', ...(flushed || {}) };
   // Stamped at START on purpose: a suite that crashes must not re-run in a
   // loop every hourly tick all night — the ERR heartbeat is the signal there.
-  await withTx(pool, (c) => flagsDomain.setFlag(c, LAST_RUN_FLAG, today));
+  await withTx(pool, async (c) => {
+    await flagsDomain.setFlag(c, LAST_RUN_FLAG, today);
+    if (inputs) await flagsDomain.setFlag(c, INPUTS_FLAG, inputs);
+  });
 
   const summary = await runEvalSuite(pool, { trigger: 'nightly', deps });
   if (summary.skipped) return summary;
@@ -300,6 +339,7 @@ async function sweepEvals(pool, deps = {}) {
   }
   return {
     runId: summary.runId, ...summary.tally,
+    because: isRunNight(now) ? 'weekly' : 'changed',
     ...(summary.noneRan ? { noneRan: true } : {}),
     alerted: summary.alerted || false, alerts: summary.alerts.length,
     // Distinguishes "nothing to say" from "said, but not until morning" —
@@ -310,7 +350,7 @@ async function sweepEvals(pool, deps = {}) {
 
 module.exports = {
   sweepEvals, runEvalSuite, alertText, previousStatus, inWindow,
-  isRunNight, staleAfterHours, RUN_UTC_WEEKDAYS,
+  isRunNight, staleAfterHours, inputsFingerprint, RUN_UTC_WEEKDAYS, INPUTS_FLAG,
   runScenarioTrials, worstOf, SEVERITY,
   flushPendingAlert, alertHoursOpen,
   LAST_RUN_FLAG, WINDOW_UTC_HOURS, PILOT_TRIGGER, PENDING_ALERT_FLAG, ALERT_TZ,
