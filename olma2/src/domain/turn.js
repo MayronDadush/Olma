@@ -534,6 +534,50 @@ async function shortOpeningPending(client, userId) {
   return rows[0].game ? 'game' : 'room';
 }
 
+// Coordinations this person heard about in the last day, with where each stands
+// NOW. Shared by `advise` and by the block a turn gets when the gateway's opener
+// missed its message (`missedOpenContext`), so the two cannot describe one
+// coordination differently.
+async function recentMeetingsOf(client, userId) {
+  const { rows: recentMt } = await client.query(
+    `SELECT m.id, m.title, m.status, m.confirmed_slot,
+            (SELECT max(oa.answered_at) FROM meeting_option_answers oa
+              JOIN meeting_options mo ON mo.id = oa.option_id
+             WHERE mo.meeting_id = m.id AND mo.status = 'active' AND oa.user_id = $1) AS answered_at,
+            (SELECT count(*)::int FROM meeting_options mo WHERE mo.meeting_id = m.id AND mo.status = 'active') AS on_table,
+            (SELECT count(*)::int FROM meeting_option_answers oa
+              JOIN meeting_options mo ON mo.id = oa.option_id
+             WHERE mo.meeting_id = m.id AND mo.status = 'active' AND oa.user_id = $1) AS answered,
+            (SELECT mp.state FROM meeting_participants mp WHERE mp.meeting_id = m.id AND mp.user_id = $1) AS my_state,
+            (SELECT COALESCE(a.detail->>'cause', CASE WHEN a.event = 'meeting.withdrew' THEN 'user_choice' END)
+               FROM audit_log a
+              WHERE a.actor_id = $1 AND a.event IN ('meeting.opted_out', 'meeting.withdrew')
+                AND (a.detail->>'meetingId')::bigint = m.id
+              ORDER BY a.created_at DESC, a.id DESC LIMIT 1) AS exit_cause,
+            max(o.sent_at) AS heard_at
+       FROM outbox o
+       JOIN meetings m ON m.id = (o.payload->>'meetingId')::bigint
+      WHERE o.user_id = $1 AND o.kind LIKE 'meeting\_%' AND o.hold_reason IS NULL
+        AND o.sent_at > now() - interval '24 hours'
+      GROUP BY m.id
+      ORDER BY max(o.sent_at) DESC
+      LIMIT 3`, [userId]);
+  return recentMt.map((m) => ({
+    meetingId: Number(m.id),
+    title: `<<<${String(m.title || '').slice(0, 120)}>>>`,
+    status: m.status,
+    ...(m.confirmed_slot ? { confirmedSlot: `<<<${String(m.confirmed_slot).slice(0, 120)}>>>` } : {}),
+    heardAt: m.heard_at,
+    onTable: Number(m.on_table) || 0,
+    answered: Number(m.answered) || 0,
+    ...(m.answered_at ? { answeredAt: m.answered_at } : {}),
+    // Out of it, and how. Their answers outlive an exit, so `answered` alone
+    // read as "still in, with a yes": Eden was told twice "I did not take you
+    // out" about a coordination a pause had taken him out of (2026-10-05).
+    ...(m.my_state === 'opted_out' ? { out: exitHow(m.exit_cause) } : {}),
+  }));
+}
+
 // How somebody came to be out of a coordination, in the three words the turn
 // hint explains (`meetings.PAUSE_EXIT_CAUSES`, `LEFT_BY_CHOICE_SQL`).
 function exitHow(cause) {
@@ -671,43 +715,7 @@ async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, 
   // closed"). Same channel and same reason as recentReminders: it is true
   // on the turns that follow a coordination message and on no other. Titles
   // are other people's text and travel fenced.
-  const { rows: recentMt } = await client.query(
-    `SELECT m.id, m.title, m.status, m.confirmed_slot,
-            (SELECT max(oa.answered_at) FROM meeting_option_answers oa
-              JOIN meeting_options mo ON mo.id = oa.option_id
-             WHERE mo.meeting_id = m.id AND mo.status = 'active' AND oa.user_id = $1) AS answered_at,
-            (SELECT count(*)::int FROM meeting_options mo WHERE mo.meeting_id = m.id AND mo.status = 'active') AS on_table,
-            (SELECT count(*)::int FROM meeting_option_answers oa
-              JOIN meeting_options mo ON mo.id = oa.option_id
-             WHERE mo.meeting_id = m.id AND mo.status = 'active' AND oa.user_id = $1) AS answered,
-            (SELECT mp.state FROM meeting_participants mp WHERE mp.meeting_id = m.id AND mp.user_id = $1) AS my_state,
-            (SELECT COALESCE(a.detail->>'cause', CASE WHEN a.event = 'meeting.withdrew' THEN 'user_choice' END)
-               FROM audit_log a
-              WHERE a.actor_id = $1 AND a.event IN ('meeting.opted_out', 'meeting.withdrew')
-                AND (a.detail->>'meetingId')::bigint = m.id
-              ORDER BY a.created_at DESC, a.id DESC LIMIT 1) AS exit_cause,
-            max(o.sent_at) AS heard_at
-       FROM outbox o
-       JOIN meetings m ON m.id = (o.payload->>'meetingId')::bigint
-      WHERE o.user_id = $1 AND o.kind LIKE 'meeting\_%' AND o.hold_reason IS NULL
-        AND o.sent_at > now() - interval '24 hours'
-      GROUP BY m.id
-      ORDER BY max(o.sent_at) DESC
-      LIMIT 3`, [user.id]);
-  const recentMeetings = recentMt.map((m) => ({
-    meetingId: Number(m.id),
-    title: `<<<${String(m.title || '').slice(0, 120)}>>>`,
-    status: m.status,
-    ...(m.confirmed_slot ? { confirmedSlot: `<<<${String(m.confirmed_slot).slice(0, 120)}>>>` } : {}),
-    heardAt: m.heard_at,
-    onTable: Number(m.on_table) || 0,
-    answered: Number(m.answered) || 0,
-    ...(m.answered_at ? { answeredAt: m.answered_at } : {}),
-    // Out of it, and how. Their answers outlive an exit, so `answered` alone
-    // read as "still in, with a yes": Eden was told twice "I did not take you
-    // out" about a coordination a pause had taken him out of (2026-10-05).
-    ...(m.my_state === 'opted_out' ? { out: exitHow(m.exit_cause) } : {}),
-  }));
+  const recentMeetings = await recentMeetingsOf(client, user.id);
 
   // The rooms they share with Olma, on every turn they are in one. Without it
   // "אני בקבוצה שאת בה?" was answered "no" by a member of a room with a live
@@ -1067,6 +1075,48 @@ async function gameNightsOf(client, userId) {
   }));
 }
 
+// What Olma last said to them, for the turn whose message the gateway's opener
+// MISSED (brokerd `turn_context`, no pending open). Without an opening there is
+// no Turn context, and the model reads a short Hebrew sentence with nothing
+// around it: Bar's "תפתחי להם אופציה בשלישי ה13.10", an answer to the poker
+// message Olma had sent him that afternoon, came back as "I don't see a question
+// or task yet" (2026-10-09, `incidents.md`, "The repair that waited for
+// Saturday to end"). The same two facts a full opening carries when they matter
+// most for a bare reply -- what was said to them last, and where each
+// coordination stands now -- and nothing that depends on the open (no count,
+// no first-turn signal, no language streak). Null when there is nothing to say.
+const MISSED_OPEN_HEADER = 'Recent context (from the system, not the person). This message reached you WITHOUT the gateway\'s opening, so there is no Turn context: call turn_start once, first, as usual. Below is what Olma last told them; a short message is most likely a reply to it.';
+const LAST_SENT_LIMIT = 3;
+async function missedOpenContext(client, user) {
+  const { rows } = await client.query(
+    `SELECT kind, sent_at, (payload->>'meetingId')::bigint AS meeting_id
+       FROM outbox
+      WHERE user_id = $1 AND sent_at > now() - interval '24 hours' AND hold_reason IS NULL
+      ORDER BY sent_at DESC LIMIT $2`, [user.id, LAST_SENT_LIMIT]);
+  const recentMeetings = await recentMeetingsOf(client, user.id);
+  if (!rows.length && !recentMeetings.length) return null;
+  const data = {
+    lastSent: rows.map((r) => ({
+      kind: r.kind, sentAt: r.sent_at,
+      ...(r.meeting_id ? { meetingId: Number(r.meeting_id) } : {}),
+    })),
+    ...(recentMeetings.length ? { recentMeetings } : {}),
+    hints: {
+      lastSent: 'Newest first, the kinds of message Olma sent them in the last day (not their text). '
+        + 'A meeting_* one with a meetingId is about the coordination of that id in recentMeetings: '
+        + 'a message from them that names a day or a time, or says "תפתחי להם"/"תוסיפי", most likely '
+        + 'concerns it. Say which coordination you took it for in the answer, and ask only if two fit.',
+      ...(recentMeetings.length ? { recentMeetings: turnHints({ recentMeetings }).recentMeetings } : {}),
+    },
+  };
+  return data;
+}
+
+function renderMissedOpenContext(data) {
+  const { renderResult } = require('../adapters/mcp/render');
+  return `${MISSED_OPEN_HEADER}\n${renderResult({ ok: true, data })}`;
+}
+
 // The opening as prompt text, for the people whose turn is opened by the
 // gateway plugin instead of by a tool call. The JSON is rendered exactly as
 // a tool result would be (compact, `OK ` prefix) so the model reads the
@@ -1080,6 +1130,6 @@ function renderContext(data) {
 
 module.exports = {
   openTurnImplicitly, openFromGateway, openRecord, isEnabledFor, coveredBy, FLAG,
-  contextEnabledFor, CONTEXT_FLAG, advise, turnHints, renderContext, CONTEXT_HEADER, gameNightsOf,
+  contextEnabledFor, CONTEXT_FLAG, advise, missedOpenContext, renderMissedOpenContext, MISSED_OPEN_HEADER, turnHints, renderContext, CONTEXT_HEADER, gameNightsOf,
   ADVISE_COLUMNS,
 };

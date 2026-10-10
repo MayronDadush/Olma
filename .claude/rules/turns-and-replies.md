@@ -88,6 +88,20 @@ title means this file. Grep the title, not the filename.
   on every message for ever. It was 922 of 2,482 tool calls in the fourteen
   days before (`incidents.md`, "The conversation that never ended").
 
+- **When the opener MISSED a person's WhatsApp message, the turn is still told
+  what Olma last said to them** (`turn.missedOpenContext`, brokerd
+  `turn_context` with no pending open and `trigger: 'user'` +
+  `messageProvider: 'whatsapp'`, 2026-10-10). Bar answered the poker message
+  with "תפתחי להם אופציה בשלישי ה13.10", the hook timed out, and a bare sentence
+  with no context got "I don't see a question or task yet". The block is the
+  kinds of the last three messages sent in 24 hours (never their text) plus
+  `recentMeetings`, and it is **headed "Recent context", never "Turn
+  context"**: the doctrine's fallback is "no Turn context block -> call
+  `turn_start`", and that call is what counts the message, so a block that
+  looked like the real one would silently stop it. Nothing is counted or
+  woken here, and nothing to say is still `context: null`. Needs no gateway
+  restart (brokerd only).
+
 - **A function shared by two openers is handed the WHOLE user row, never a
   projection.** `turn.advise` serves `turn_start` (`users.resolveByToken`,
   `SELECT *`) and brokerd's `turn_context`, which selected five columns by

@@ -12397,6 +12397,13 @@ opener leaves stale. Not fixed: the hook timeout itself (gateway loop stalls),
 and the model answering a bare sentence badly when no context arrives. The
 manual remedy for Bar was `propose_meeting_slot` through brokerd's socket.
 
+**Second half, same day:** a turn whose message the opener missed now gets a
+"Recent context" block -- the kinds of the last three messages sent to them in
+24 hours and `recentMeetings` (`turn.missedOpenContext`) -- so a bare "תפתחי להם
+אופציה בשלישי" is read against the poker message that preceded it. Headed
+"Recent context" on purpose: the doctrine's "no Turn context -> call
+`turn_start`" fallback is what counts the message.
+
 ### A silence read as a delivery fault (fixed 2026-09-09)
 
 Yahav wrote "בוצע הפקדת צק" at 19:34. Everything after that was correct:

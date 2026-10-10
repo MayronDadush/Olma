@@ -291,6 +291,45 @@ test('no open on file but a WhatsApp prompt from the person: their writing still
   assert.equal(audit.rows[0].detail.wrote, true);
 });
 
+// Bar, 2026-10-09: the opener timed out on "תפתחי להם אופציה בשלישי ה13.10", an
+// answer to the poker message Olma had sent him, and the model -- with a bare
+// sentence and no context -- said "I don't see a question or task yet".
+test('no open on file, a WhatsApp prompt from the person: they get what Olma last told them -- and are still told to call turn_start', async () => {
+  const meetings = require('../src/domain/meetings');
+  const { enqueue } = require('../src/outbox/enqueue');
+  const u = await agentUser();
+  const other = await agentUser();
+  await enable(u.phone);
+  await withTx(db.pool, async (c) => {
+    const connections = require('../src/domain/connections');
+    const req = await connections.requestConnection(c, other.id, u.phone, {});
+    await connections.respondToConnection(c, u.id, req.data.connection.id, 'approve');
+  });
+  const m = (await withTx(db.pool, (c) => meetings.startMeeting(c, other.id, 'פוקר', [u.id]))).data.meeting;
+  // Nothing was said to him yet: the old answer, null.
+  const bare = await context({ agentId: u.agentId, trigger: 'user', messageProvider: 'whatsapp' });
+  assert.equal(bare.context, null, 'nothing to say is not an empty block');
+  await withTx(db.pool, (c) => enqueue(c, { userId: u.id, kind: 'meeting_invite', payload: { meetingId: Number(m.id) }, urgency: 'urgent' }));
+  await db.pool.query(`UPDATE outbox SET sent_at = now() - interval '5 minutes' WHERE user_id = $1`, [u.id]);
+
+  const r = await context({ agentId: u.agentId, trigger: 'user', messageProvider: 'whatsapp' });
+  assert.equal(r.ok, true);
+  assert.match(r.context, /^Recent context/, 'headed so that the doctrine\'s "no Turn context -> turn_start" fallback still runs');
+  assert.doesNotMatch(r.context, /^Turn context/);
+  assert.match(r.context, /turn_start/);
+  const body = JSON.parse(r.context.split('\n')[1].replace(/^OK /, ''));
+  assert.equal(body.lastSent[0].kind, 'meeting_invite');
+  assert.equal(body.lastSent[0].meetingId, Number(m.id));
+  assert.equal(body.recentMeetings[0].title, '<<<פוקר>>>', 'another person\'s text, fenced');
+  assert.equal(typeof r.readerWritesHebrew === 'boolean' || r.readerWritesHebrew === null, true);
+  assert.equal(await received(u.id), 0, 'nothing is counted: turn_start still does that');
+
+  // Our own delivery / a probe is not them writing: no block.
+  for (const p of [{ trigger: 'cron', messageProvider: 'whatsapp' }, { trigger: 'user', messageProvider: 'webchat' }]) {
+    assert.equal((await context({ agentId: u.agentId, ...p })).context, null);
+  }
+});
+
 test('…but a webchat prompt (our own delivery, a CLI probe) or a turn Olma started ends nothing', async () => {
   const u = await agentUser();
   await enable(u.phone);
