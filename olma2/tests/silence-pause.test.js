@@ -150,8 +150,9 @@ test('a coordination a person opens with him reaches him once, at once — not h
     const mine = sent.filter((r) => Number(r.user_id) === Number(saar.id));
     assert.equal(mine.length, 1, 'one message about it');
     assert.equal(mine[0].payload.pausedNotice, true);
-    assert.match(instructionFor(mine[0]), /PAUSED/);
-    assert.match(instructionFor(mine[0]), /somebody asked to meet them/);
+    // The silence clock paused him, not he: the invite says nothing about it.
+    assert.doesNotMatch(instructionFor(mine[0]), /PAUSED|somebody asked to meet them/);
+    assert.match(instructionFor(mine[0]), /Say nothing about a pause/);
 
     // Anything more about the same coordination is dropped, not held.
     await put('inv:2', { tableChanged: true });

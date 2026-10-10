@@ -84,6 +84,7 @@ never trust a dated narrative for something you are about to act on.
 - [The room never heard the times (fixed 2026-09-28)](#the-room-never-heard-the-times-fixed-2026-09-28)
 - [Answered before the question existed (fixed 2026-09-28)](#answered-before-the-question-existed-fixed-2026-09-28)
 - [The room asked five and reached four (fixed 2026-09-22)](#the-room-asked-five-and-reached-four-fixed-2026-09-22)
+- [ת.ג.ל took her out of the room in fifty-three minutes (2026-10-10)](#תגל-took-her-out-of-the-room-in-fifty-three-minutes-2026-10-10)
 - [The pause the room's invite walked through (fixed 2026-09-27)](#the-pause-the-rooms-invite-walked-through-fixed-2026-09-27)
 - [The room could count, and she could not (changed 2026-09-28)](#the-room-could-count-and-she-could-not-changed-2026-09-28)
 - [The coordinations that died in silence (built 2026-09-28)](#the-coordinations-that-died-in-silence-built-2026-09-28)
@@ -3302,6 +3303,48 @@ file.
 which rule paid: `quiet.room_invite_sent` beside `pause.room_invite_sent`.
 Meeting 40's own rows were already spent when this shipped, so Guy heard
 nothing about that coordination — the fix is for the next one.
+
+### ת.ג.ל took her out of the room in fifty-three minutes (2026-10-10)
+
+גלי (u-8) added her to ת.ג.ל 🌺, three women, at 19:48 Israel time ("אשמח
+שננסה לקבוע איתה"), tagged her for "a meeting this week", and by about 20:42
+the room had removed her. Read back from the gateway's file log, which keeps
+the untagged room text the transcript does not:
+
+- **Most of the negotiation happened in the room, untagged, and she never read
+  it.** "לימי באילת עד רביעי", "אז השבוע לא", "רביעי ירד מהפרק יש לי חתונה",
+  "ראשון 18.10 אני בפילאטיס, שני בעבודה, יכולה בשלישי 20/10 או חמישי 22/10":
+  none of it reached a constraint. At 20:36 they gave up on coordinating
+  ("אפשר לקבוע יום קבוע וזהו? אחת לשבועיים"), and the talk moved on to a cat.
+  At 20:41 the room heard "השולחן זז — עכשיו *2* מועדים על הפרק". At 20:21 it
+  had already heard a "על הפרק" list holding a time that was gone a minute
+  later. Both were stamped by `group-voice` off the coordination's state, and
+  neither asked what the room had said since.
+- **תמי was told she was paused.** After eight quiet days the silence clock
+  had paused her (`quiet_ladder`, 2026-10-07), and the room's invite took her
+  one-message allowance with `PAUSED_ROOM_INVITE`, which opens with "The user
+  has PAUSED your messages" and asks the model to say so. She read "זו ההודעה
+  היחידה שתקבלי על זה כי את בהשהייה". She had paused nothing.
+- **"בערב" became 19:00.** גלי's option was saved with a daypart, and
+  `meeting-option-moment.PART_HOURS.evening = 19` anchors it. Asked "באיזו
+  שעה?", the model read the anchor out as an hour. תמי forwarded it to the
+  room: "שיגעה אותי העוזרת שלך… ממתי אנחנו נפגשות ב-19 בערב? כבר לילה בחוץ".
+- Also: the room heard masculine plurals throughout ("כשאתם צריכים אותי",
+  "מי יכול?", "לימור הצטרף"), seven lines in 53 minutes, and a kind question
+  naming padel and poker in a room of women past fifty, which nobody answered.
+  גלי asked for "a new link for the group" and posted her own sign-in link in
+  the room. Nobody used it, and it was revoked that evening.
+
+Nothing in the system noticed the removal: the room stayed `open` and the
+coordination stayed `negotiating`, with a message to תמי still queued. The
+owner cleaned up by hand: the message cancelled, the room retired, the
+coordination cancelled quietly, the link revoked (audit `group.retired`,
+`meeting.cancelled`, `magic_link.revoked`).
+
+**Fixed so far:** a quiet pause is never told it is one (`QUIET_PAUSE_INVITE`
+in `channels/openclaw.js`, chosen off `payload.pausedReason`). A pause they
+took, or a stop they never confirmed, keeps the sentence. The room's
+table-moving lines are a separate change.
 
 ### The pause the room's invite walked through (fixed 2026-09-27)
 
