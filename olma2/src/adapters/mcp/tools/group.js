@@ -15,6 +15,11 @@
 const { groups, groupMeetings, meetings, meetingFanout, users, ok, err, groupTool, S } = require('./_shared');
 const standingAnswers = require('../../../domain/standing-answers');
 
+// The one question a room is asked about itself, in the words it is asked in
+// (start_group_coordination's `hints.ask`). Gender-neutral, and it names no
+// game: see the comment where it is handed over.
+const KIND_QUESTION = 'שאלה קטנה לפני שמתחילה: צריך מספר מסוים של אנשים כדי שזה יקרה, או שהעיקר למצוא זמן שמתאים לכולם?';
+
 // `leave_group_coordination` with `until`: a no from now until they are back,
 // kept as a window on their constraint. Null means it IS leaving after all — a
 // settled time that falls while they are away is one they cannot make.
@@ -104,8 +109,17 @@ module.exports = [
       // The one question this room is ever asked about itself, folded into
       // that same line so it is one message and not two. Asked once ever —
       // the column is already stamped, answered or not.
+      //
+      // The words are handed over, and they name no game. Until 2026-10-10
+      // this said "(a game: padel, poker)" and the model read the examples out
+      // to ת.ג.ל, three women arranging a get-together: "צריכה מספר מינימלי
+      // של אנשים (כמו פאדל, פוקר)?" — a question about somebody else's hobby
+      // as her first sentence to a room that removed her within the hour
+      // (incidents.md, "ת.ג.ל took her out of the room in fifty-three
+      // minutes"). The second half is the social kind in the room's own
+      // terms, a time that suits everyone, and no word in it is gendered.
       if (res.data.askKind) {
-        hints.ask = 'Nobody has told you what kind of group this is, so instead of NO_REPLY say ONE short question — does this need a minimum number of people (a game: padel, poker), or is everyone simply invited and whoever can, comes? On their answer call set_group_kind. Ask it once; if they ignore it, drop it and coordinate as if everyone is invited.';
+        hints.ask = `Nobody has told you what kind of group this is, so instead of NO_REPLY ask exactly this, nothing added: "${KIND_QUESTION}" Never name a game or a sport as an example. On their answer call set_group_kind. Ask it once; if they ignore it, drop it and coordinate as if everyone is invited.`;
       }
       return ok({
         meetingId: Number(res.data.meeting.id), title: res.data.meeting.title,

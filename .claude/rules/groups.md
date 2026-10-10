@@ -54,7 +54,11 @@ have already had to be argued for.
   (migration 051) is asked ONCE, in the room — the gateway never tells us who
   added her, and `registered_by_user_id` is merely the lowest-id member — and
   until it is answered she has nothing to say about "enough people": not
-  "one more" and not "we have enough". `quorum_min/max` are about the PLAN and
+  "one more" and not "we have enough". **The question is handed over word for
+  word and names no game** (2026-10-10, `KIND_QUESTION` in
+  `adapters/mcp/tools/group.js`): "(a game: padel, poker)" in the hint was read
+  out to ת.ג.ל, three women arranging a get-together, as her first sentence
+  there. `quorum_min/max` are about the PLAN and
   are unrelated to the `group_max_members` flag, which is about the room.
 
 - **Everything a room hears unasked is fixed text on the raw pipe**, because
