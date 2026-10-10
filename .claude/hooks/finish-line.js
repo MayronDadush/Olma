@@ -91,6 +91,40 @@ function changedFiles(root) {
   return [...out];
 }
 
+// Which of those paths hold exactly what origin/main holds. A file that is
+// byte-identical to the base is not something this branch adds, however git
+// status describes it — an untracked copy of a migration main already merged
+// read as "this branch adds a migration" on a branch with no diff at all.
+// Returns a predicate; any git failure means "differs", so the guard stays on.
+function sameAsBase(root, files) {
+  const base = new Map();
+  try {
+    for (const line of git(root, ['ls-tree', '-r', 'origin/main', '--', ...files]).split('\n')) {
+      const m = /^\d+ blob ([0-9a-f]+)\t(.+)$/.exec(line);
+      if (m) base.set(m[2], m[1]);
+    }
+  } catch { return () => false; }
+  const same = new Set();
+  for (const f of files) {
+    if (!base.has(f)) continue;
+    try {
+      if (git(root, ['hash-object', '--', f]).trim() === base.get(f)) same.add(f);
+    } catch { /* deleted or unreadable: it differs */ }
+  }
+  return (f) => same.has(f);
+}
+
+// The checkout this session is working in. Not __dirname: settings.json runs
+// the hook from $CLAUDE_PROJECT_DIR, which in a worktree session is the MAIN
+// checkout — a different branch, a stale local main and its own untracked
+// files, none of which this session touched.
+function repoRoot(input) {
+  if (input && typeof input.cwd === 'string' && input.cwd) {
+    try { return git(input.cwd, ['rev-parse', '--show-toplevel']).trim(); } catch { /* not a repo */ }
+  }
+  return path.resolve(__dirname, '..', '..');
+}
+
 // What the session did, read off its own transcript. Subagent rows are skipped:
 // their work is not this conversation's, and a subagent running tests is not
 // evidence that this one did.
@@ -134,7 +168,8 @@ function mtime(file) {
 // of those files was last written, and what the session did. Pure, so the
 // self-test can put it in states this repo has actually been in.
 // Returns null to allow, or the reason to block with.
-function decide({ changed, mtimeOf, seen }) {
+function decide({ changed: all, mtimeOf, seen, onBase = () => false }) {
+  const changed = all.filter((f) => !onBase(f));
   const touched = changed
     .filter((f) => TESTED.test(f))
     .map((f) => [f, mtimeOf(f)])
@@ -192,17 +227,21 @@ function run(input) {
   // Already blocked once and the model came back — never loop.
   if (input.stop_hook_active) ALLOW('allow: stop_hook_active — this hook already blocked once');
 
-  const root = path.resolve(__dirname, '..', '..');
+  const root = repoRoot(input);
   const seen = readTranscript(input.transcript_path);
   if (!seen || seen.sessionStart === null) ALLOW('allow: no readable transcript');
 
   let changed;
-  try { changed = changedFiles(root); } catch { ALLOW('allow: git would not answer'); return; }
+  let onBase;
+  try {
+    changed = changedFiles(root);
+    onBase = sameAsBase(root, changed);
+  } catch { ALLOW('allow: git would not answer'); return; }
 
   // mtime, not the transcript, decides what was touched: a file written with
   // `sed -i` or a heredoc leaves no Edit tool call, and those are exactly the
   // writes that bypass every other guard in this repo.
-  const reason = decide({ changed, mtimeOf: (f) => mtime(path.join(root, f)), seen });
+  const reason = decide({ changed, mtimeOf: (f) => mtime(path.join(root, f)), seen, onBase });
   if (reason) block(reason);
   ALLOW('allow: checklist clear');
 }
@@ -246,6 +285,16 @@ function selfTest() {
     decide({ changed: ['olma2/src/domain/tasks.js'], mtimeOf: m({ 'olma2/src/domain/tasks.js': 2000 }), seen: seenAt({ lastTestAt: 2500 }) }), null);
   check('a migration, and the box was asked',
     decide({ changed: ['olma2/migrations/061-x.sql'], mtimeOf: m({ 'olma2/migrations/061-x.sql': 500 }), seen: seenAt({ askedTheBox: true, lastTestAt: 4000 }) }), null);
+  // 2026-10-10: the main checkout held an untracked copy of 114-food-pack.sql,
+  // already merged to origin/main, and a worktree branch level with origin/main
+  // was told it "adds a migration". Identical to the base is not added.
+  check('a migration already on origin/main, byte-identical (untracked copy)',
+    decide({ changed: ['olma2/migrations/114-food-pack.sql', 'olma2/src/domain/food.js'],
+      mtimeOf: m({ 'olma2/migrations/114-food-pack.sql': 2000, 'olma2/src/domain/food.js': 2000 }),
+      seen: seenAt({}), onBase: () => true }), null);
+  check('…but the same file EDITED away from origin/main still blocks',
+    decide({ changed: ['olma2/migrations/114-food-pack.sql'], mtimeOf: m({ 'olma2/migrations/114-food-pack.sql': 500 }),
+      seen: seenAt({ lastTestAt: 4000 }), onBase: () => false }), 'asked the box');
 
   // the transcript reader, on the shapes this session really produces
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'finish-line-'));
@@ -268,11 +317,34 @@ function selfTest() {
     if (seen.lastTestAt !== Date.parse('2026-09-11T09:10:00.000Z')) { console.error("  FAILED: a subagent's test run was counted as this session's"); failures += 1; }
     if (!seen.askedTheBox) { console.error('  FAILED: the schema_migrations query was not seen'); failures += 1; }
   }
+  // the git half, against a real repo shaped like the incident: origin/main
+  // holds a migration, the checkout has it untracked and identical, plus one
+  // that is genuinely new.
+  try {
+    const repo = path.join(tmp, 'repo');
+    fs.mkdirSync(path.join(repo, 'olma2', 'migrations'), { recursive: true });
+    const g = (...a) => git(repo, a);
+    g('init', '-q', '-b', 'main');
+    fs.writeFileSync(path.join(repo, 'olma2/migrations/114-x.sql'), 'select 1;\n');
+    g('add', '.');
+    g('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'base');
+    g('update-ref', 'refs/remotes/origin/main', 'HEAD');
+    g('rm', '-q', '--cached', 'olma2/migrations/114-x.sql');
+    g('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'stale local');
+    fs.writeFileSync(path.join(repo, 'olma2/migrations/115-y.sql'), 'select 2;\n');
+    const sub = path.join(repo, 'olma2');
+    if (fs.realpathSync(repoRoot({ cwd: sub })) !== fs.realpathSync(repo)) { console.error('  FAILED: root not resolved from the hook input cwd'); failures += 1; }
+    const files = changedFiles(repo);
+    const onBase = sameAsBase(repo, files);
+    if (!files.includes('olma2/migrations/114-x.sql') || !onBase('olma2/migrations/114-x.sql')) { console.error('  FAILED: an untracked copy identical to origin/main was not recognised'); failures += 1; }
+    if (onBase('olma2/migrations/115-y.sql')) { console.error('  FAILED: a genuinely new migration read as already on origin/main'); failures += 1; }
+  } catch (e) { console.error(`  FAILED: git fixture: ${e.message}`); failures += 1; }
+
   if (readTranscript(path.join(tmp, 'nope.jsonl')) !== null) { console.error('  FAILED: a missing transcript must read as null'); failures += 1; }
   fs.rmSync(tmp, { recursive: true, force: true });
 
   if (failures) { console.error(`\nself-test: ${failures} failure(s)`); process.exit(1); }
-  console.log('self-test: 3 blocking states still block, 5 ordinary states still pass, transcript reader ok');
+  console.log('self-test: 4 blocking states still block, 6 ordinary states still pass, transcript reader and git base check ok');
   process.exit(0);
 }
 
