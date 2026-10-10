@@ -178,6 +178,19 @@ function checkOpenclawConfig(cfg, { packs = new Map() } = {}) {
   return violations;
 }
 
+// Bundled plugins the gateway imports by default and nothing of ours calls
+// (intake/unused-plugins.js): memory on a 2GB box where the gateway is the
+// process that does not fit. Unset is ON, so the rule is "false,
+// explicitly", like dreaming. A row of its own, outside checkOpenclawConfig,
+// so the fixtures that pin that function's other rules need not name ten
+// plugins each. Dashboard row, never BREAKS_USERS: a plugin that came back
+// costs memory, not a tool call.
+function checkUnusedPlugins(cfg) {
+  const back = require('../intake/unused-plugins').stillEnabled(cfg);
+  if (!back.length) return [];
+  return [`${back.length} unused gateway plugin(s) are not switched off: ${back.join(', ')} — each is imported into the gateway's memory and nothing calls it (fix: scripts/disable-unused-plugins.js --apply, then restart the gateway at a quiet hour)`];
+}
+
 // Phase B has three halves that must agree — the `turn_context_phones`
 // flag (what brokerd answers, and which doctrine variant the resync writes),
 // the plugin's `config.agents` list (who the gateway asks for), and the
@@ -1234,6 +1247,7 @@ async function run(client, { configPath, ...deps } = {}) {
     const packs = await readPacks(client);
     violations = violations.concat(checkOpenclawConfig(cfg, { packs }));
     violations = violations.concat(checkModelPermissions(cfg));
+    violations = violations.concat(checkUnusedPlugins(cfg));
     violations = violations.concat(await checkOrphanAgents(client, cfg));
     violations = violations.concat(await checkTurnContextCoverage(client, cfg));
     budget = await checkBootstrapBudget(client, cfg);
@@ -1294,7 +1308,7 @@ async function run(client, { configPath, ...deps } = {}) {
 
 module.exports = {
   checkTurnContextCoverage,
-  run, checkOpenclawConfig, checkModelPermissions, checkConfigApplied, makeConfigValidator,
+  run, checkOpenclawConfig, checkModelPermissions, checkUnusedPlugins, checkConfigApplied, makeConfigValidator,
   checkIdentityFiles, checkAgentsTokens,
   checkCarryovers, checkOrphanAgents, checkStuckOutbox, checkUnreachableJoiners, checkInfraAgentSessions,
   checkUnansweredStrangers, STRANGER_GRACE_MS,

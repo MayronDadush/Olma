@@ -12,6 +12,8 @@ paths:
   - "olma2/scripts/set-cache-retention.js"
   - "olma2/scripts/enable-turn-context.js"
   - "olma2/scripts/register-openrouter-models.js"
+  - "olma2/scripts/disable-unused-plugins.js"
+  - "olma2/src/intake/unused-plugins.js"
   - "olma2/scripts/sync-agent-tool-policies.js"
   - "olma2/src/intake/agent-tool-policy.js"
 ---
@@ -131,6 +133,17 @@ title means this file. Grep the title, not the filename.
   2026-09-29 with an archive in `/root/backups/openclaw-dreams-20260929.tar.gz`.
   Unset means ON, so `config_guard` wants `false` explicitly and goes red on
   anything else.
+
+- **Ten bundled plugins stay OFF: `plugins.entries.<id>.enabled: false` for
+  each id in `src/intake/unused-plugins.js`.** The gateway imports them by
+  default, nothing of ours calls them, and the gateway is the process that
+  does not fit in 2GB. Turn them off with that file's entries, never with
+  `plugins.allow`, because an allowlist also drops the plugins loaded on demand
+  for voice notes and attachments, and nothing errors. **A plugin write
+  restarts the gateway by itself** after draining (about 3.5 minutes on
+  2026-10-10), so run `scripts/disable-unused-plugins.js --apply` at a quiet
+  hour. `config_guard.checkUnusedPlugins` goes red when one comes back
+  (`incidents.md`, "The gateway carried sixteen plugins and used five").
 
 - **A room's agent is shown six tools and a person's is shown the rest, by a
   `tools.deny` on each agent's entry — computed, never typed.** The shim
