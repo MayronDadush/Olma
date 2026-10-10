@@ -83,6 +83,12 @@ title means this file. Grep the title, not the filename.
   on the cost path filters `is_eval`, and for the dashboard's cost pages that
   is arguably right: they answer "what did we spend", not "how efficient are
   we". Know which question the number you are writing answers.
+  **And both sides on the same RULER**: since migration 110 a ledger dollar
+  is either billed or the rate table's estimate, and the pinned host billed
+  ~2x the table, so a billed day against an estimated week read as a 2x
+  regression (2026-10-09). The dollar metrics compare only days of one
+  `costBasis`, weighted by dollars (`efficiency-watch.sameBasis`;
+  `incidents.md`, "The ruler changed and the watch read it as a cost").
 
 - **A thing that could not be READ is never a thing in trouble.** An unreadable
   config, a failed billing API, a missing log: report it in the heartbeat, file
