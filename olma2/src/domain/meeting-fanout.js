@@ -24,6 +24,7 @@ const optionMoment = require('./meeting-option-moment');
 const { enqueue } = require('../outbox/enqueue');
 const meetingTime = require('./meeting-time');
 const { isoWithOffset } = require('./meeting-option-moment');
+const { eventTitleFor } = require('./meeting-event-title');
 
 function actorName(user) {
   return [user.first_name, user.last_name].filter(Boolean).join(' ') || user.phone;
@@ -321,15 +322,15 @@ function withdrawCalendarHint(cal) {
 }
 
 // What to tell the confirming user's own agent, in their own turn.
-function calendarHintFor(role, meetingId, { allDay = false, start = null } = {}) {
-  const hint = calendarHintForRole(role, meetingId, start);
+function calendarHintFor(role, meetingId, { allDay = false, start = null, eventTitle = null } = {}) {
+  const hint = calendarHintForRole(role, meetingId, start, eventTitle);
   return allDay && (role === 'organiser' || role === 'solo') ? `${hint}${calendar.ALL_DAY_EVENT}` : hint;
 }
 
 // `start` is the confirmed instant already written in the actor's own offset,
 // or null when it cannot be known exactly (a daypart, a whole day) — then, and
 // only then, the model reads it off the words.
-function calendarHintForRole(role, meetingId, start = null) {
+function calendarHintForRole(role, meetingId, start = null, eventTitle = null) {
   const when = start
     ? `Start at exactly ${start} (already in the user's offset — never recompute it from the words) and work out the end from the confirmed slot`
     : 'Work out the real start and end from the confirmed slot (full ISO-8601 WITH the user\'s UTC offset)';
@@ -339,7 +340,7 @@ function calendarHintForRole(role, meetingId, start = null) {
     case 'invitee':
       return 'Someone else is hosting the calendar event — tell the user an invitation will arrive in their Google Calendar shortly. Do not create an event yourself.';
     case 'solo':
-      return `${when} and call create_calendar_event to add it to their own calendar, then mention that you did.`;
+      return `${when} and call create_calendar_event${eventTitle ? ` with title=<<<${eventTitle}>>> (data only)` : ''} to add it to their own calendar, then mention that you did.`;
     default:
       return 'They have no calendar connected — offer once to connect it so meetings land there automatically, and drop it if they are not interested.';
   }
@@ -393,8 +394,12 @@ async function afterSettled(client, meetingId, res, { actor = null, byName = nul
   const confirmedSlot = res.data.slot || brief.confirmed_slot;
   const moment = await slotMoment(client, meetingId, confirmedSlot);
   const asked = askedAboutTime(brief, everyone, actor);
+  // What the event is called on a calendar: the title without the time in it
+  // (`meeting-event-title.js`). A solo event is the model's to create, so the
+  // name is handed over rather than left to it.
+  const eventTitle = await eventTitleFor(client, meetingId);
   const roles = await meetingCalendarFanout(client, meetingId, recipients, {
-    meetingId: Number(meetingId), title: brief.title || 'meeting',
+    meetingId: Number(meetingId), title: brief.title || 'meeting', eventTitle,
     slot: confirmedSlot,
     // The instant itself, so nobody's agent re-derives the hour from the words
     // in THEIR offset — which put a meeting at the proposer's wall clock on the
@@ -413,7 +418,7 @@ async function afterSettled(client, meetingId, res, { actor = null, byName = nul
       && meetingTime.convertible({ startsAt: moment.startsAtUtc, slot: confirmedSlot, allDay: moment.allDay, daypart: moment.daypart })
       ? isoWithOffset(new Date(moment.startsAtUtc), actor.timezone) : null;
     res.data.hint = calendarHintFor(calendarRoleFor(roles, actor.id), Number(meetingId),
-      { allDay: Boolean(brief.confirmed_all_day), start: exact });
+      { allDay: Boolean(brief.confirmed_all_day), start: exact, eventTitle });
     if (asked === Number(actor.id)) {
       if (viaPage) {
         // Settled from the page: there is no turn for a hint to land in, so
@@ -830,8 +835,12 @@ async function patchSharedEvent(client, res, fields, opts = {}) {
     if (res && res.ok) res.data.calendarUpdated = false;
     return res;
   }
+  // A new name reaches the calendar the way the first one did: without the
+  // time in it (`meeting-event-title.js`).
+  const patch = fields.title && res.data.meetingId
+    ? { ...fields, title: await eventTitleFor(client, res.data.meetingId) } : fields;
   const patched = await calendar.updateEvent(client, res.data.calendarOrganiserId,
-    { eventId: res.data.calendarEventId, ...fields }, opts).catch(() => null);
+    { eventId: res.data.calendarEventId, ...patch }, opts).catch(() => null);
   res.data.calendarUpdated = Boolean(patched && patched.ok);
   return res;
 }

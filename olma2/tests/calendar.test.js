@@ -759,6 +759,31 @@ test('the shared event\'s description says the date, never "מחר"', async () =
   assert.equal(posted.description, 'יום חמישי 20.8 בערב');
 });
 
+// The event's NAME is what it is called on a calendar for as long as it
+// exists, and a coordination's title was often when as much as what (owner,
+// 2026-10-08). The time comes out; a name that says nothing once it has is
+// named after the people in it.
+test('the shared event is named without the time in its title, and after its people when nothing is left', async () => {
+  const { a, meetingId } = await confirmedMeetingFixture('+972632000073', '+972632000074');
+  const titles = [];
+  const fetchImpl = fakeFetch({
+    'calendars/primary/events': (url, init) => {
+      titles.push(JSON.parse(init.body).summary);
+      return { body: { id: `evt-named-${titles.length}`, summary: 'x', start: { dateTime: '2026-08-20T20:00:00+03:00' } } };
+    },
+  });
+  const create = () => withTx(db.pool, (c) => calendar.createSharedMeetingEvent(c, a.id, {
+    meetingId, start: '2026-08-20T20:00:00+03:00', end: '2026-08-20T21:00:00+03:00',
+  }, { fetchImpl }));
+  await db.pool.query(`UPDATE meetings SET title = 'פאדל בשבת הבאה 17:00, 4 שחקנים' WHERE id = $1`, [meetingId]);
+  const first = await create();
+  assert.equal(first.ok, true, first.ok ? '' : JSON.stringify(first.error));
+  await db.pool.query(`UPDATE meetings SET title = 'פגישה שבוע הקרוב', calendar_event_id = NULL WHERE id = $1`, [meetingId]);
+  const second = await create();
+  assert.equal(second.ok, true, second.ok ? '' : JSON.stringify(second.error));
+  assert.deepEqual(titles, ['פאדל', 'פגישה Alef וBet']);
+});
+
 test('only the host may create the shared event', async () => {
   const { b, meetingId } = await confirmedMeetingFixture('+972632000009', '+972632000010');
   const fetchImpl = fakeFetch({}); // any outbound call here is a bug
