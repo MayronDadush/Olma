@@ -33,6 +33,45 @@ const OPEN_TIMEOUT_MS = 2_000;
 const JUDGE_MODEL = 'moonshotai/kimi-k2.6';
 const TURN_TIMEOUT_MS = 240_000; // a cold flash turn measured ~77s; leave room
 
+// A turn whose CLI never reached the gateway is not a scenario result, it is
+// the gateway being away. On 2026-10-10 it restarted at 00:06 UTC in the
+// middle of the nightly run and was back by 00:08; 13 of 17 scenarios had
+// already been written down as harness errors by then, each one a message
+// that never left the box. These are the CLI's words for "I never connected",
+// said before any message is handed over, so a retry cannot send one twice.
+// A timeout or a failure AFTER connecting is not on the list and is never
+// retried: by then the turn may have run.
+const CLI_NEVER_CONNECTED = /Could not start the CLI|Opening handshake has timed out/;
+// How long a scenario waits for the gateway to answer its health route
+// again: a restart on this box measured 2–4 minutes, the drain included.
+const GATEWAY_WAIT_MS = 6 * 60_000;
+const GATEWAY_POLL_MS = 5_000;
+
+// Runs one CLI turn; if the CLI never connected, waits for the gateway to be
+// live again and tries ONCE more. Anything else is thrown exactly as before.
+async function runTurnCall(run, args, deps = {}) {
+  try {
+    return await run(args, TURN_TIMEOUT_MS);
+  } catch (e) {
+    if (!CLI_NEVER_CONNECTED.test(String(e && e.message))) throw e;
+    const probe = deps.checkGateway || require('../adapters/gateway-health').checkGateway;
+    const sleep = deps.sleep || ((ms) => new Promise((r) => setTimeout(r, ms)));
+    const waitMs = Number.isFinite(deps.gatewayWaitMs) ? deps.gatewayWaitMs : GATEWAY_WAIT_MS;
+    const pollMs = Number.isFinite(deps.gatewayPollMs) ? deps.gatewayPollMs : GATEWAY_POLL_MS;
+    let waited = 0;
+    for (;;) {
+      const g = await probe({}).catch(() => ({ status: 'unknown' }));
+      if (g.status === 'live') break;
+      if (waited >= waitMs) {
+        throw new Error(`${e.message} — and the gateway was not back after ${Math.round(waited / 1000)}s`);
+      }
+      await sleep(pollMs);
+      waited += pollMs;
+    }
+    return run(args, TURN_TIMEOUT_MS);
+  }
+}
+
 // THE eval user, by its phone — not "the first is_eval row". Scenario seeds
 // create partners, and a partner is marked is_eval too (so the gate drops
 // every row addressed to it), which makes `is_eval ORDER BY id LIMIT 1` a
@@ -310,15 +349,16 @@ function makeTurnRunner({ agentId, sessionKey, model }, deps = {}) {
   let sessionFile = null;
   return async function runTurn(message) {
     await openTurn(agentId, { message });
-    const json = await run(
+    // openTurn is not repeated on a retry: the turn was opened once, and a
+    // second open with the same words would read as a person repeating it.
+    const json = await runTurnCall(run,
       ['agent', '--agent', agentId, '--session-key', sessionKey, '--message', message, '--json',
         // A per-call override, exactly as scripts/model-pilot.js uses it: it
         // moves THIS disposable session onto a candidate model and changes
         // nothing about what real users are routed to. Omitted → the live
         // default, which is what a nightly baseline must measure.
         ...(model ? ['--model', model] : [])],
-      TURN_TIMEOUT_MS
-    );
+      deps);
     const meta = json.result && json.result.meta && json.result.meta.agentMeta;
     const payload = json.result && json.result.payloads && json.result.payloads[0];
     sessionFile = (meta && meta.sessionFile) || sessionFile;
@@ -690,6 +730,7 @@ async function runScenario(pool, user, scenario, deps = {}) {
 
 module.exports = {
   EVAL_PHONE, JUDGE_MODEL, TURN_TIMEOUT_MS,
+  runTurnCall, CLI_NEVER_CONNECTED, GATEWAY_WAIT_MS,
   getEvalUser, resetEvalUser, runScenario, judgeScenario,
   assertCleanSlate, cleanSlateViolations, KEPT_ACROSS_RESET,
   makeTurnRunner, toolCallsInSlice, openTurnForEval, JUDGE_SYSTEM,
