@@ -59,6 +59,8 @@ const METRICS = [
     worse: 'higher',
     factor: 2,
     minMessages: 20,
+    // Dollars: compared only across days measured the same way (`sameBasis`).
+    dollars: true,
   },
   {
     key: 'cache_hit_rate',
@@ -80,6 +82,10 @@ const METRICS = [
     worse: 'higher',
     factor: 2,
     minMessages: 20,
+    // A share of two dollar sums that can be on different rulers on the same
+    // day — background calls went billed with the rest, but a day on one
+    // ruler is still the only fair comparison.
+    dollars: true,
   },
 ];
 
@@ -155,6 +161,39 @@ function sig4(v) {
 // join would silently drop it.
 const NOT_EVAL = (col) => `NOT EXISTS (SELECT 1 FROM users u WHERE u.id = ${col} AND u.is_eval)`;
 
+// ── A dollar billed and a dollar estimated are different units ──────────────
+// Until 2026-10-05 every ledger row was the rate table's ESTIMATE of a call;
+// from then on (migration 110, `billed`) a row carries what OpenRouter
+// actually charged. The pinned host charged cache reads above its listing, so
+// the same tokens read about 2x once billed — and on 2026-10-09 this watch
+// sent "cost per message 2.0x, and trending for days" when, re-priced at the
+// table, the day was $0.0095/message against a $0.0089 baseline. Nothing had
+// moved but the ruler.
+//
+// So a day says which ruler measured it, and the money ratios compare a day
+// only with days measured the same way. Weighted by DOLLARS, never by rows:
+// `delivery-mirror` writes a zero-cost unbilled row every day, and counting
+// rows would call every billed day mixed and silence the alarm for good.
+// Under 5% either way is noise; anything between is `mixed` and judged
+// against nothing — and the heartbeat says so (`costBasis`, `costBaseDays`).
+const BASIS_SLACK = 0.05;
+function costBasisOf(billed, total) {
+  if (!(total > 0)) return null;
+  const share = (Number(billed) || 0) / total;
+  if (share >= 1 - BASIS_SLACK) return 'billed';
+  if (share <= BASIS_SLACK) return 'estimated';
+  return 'mixed';
+}
+
+// The days a dollar metric may be held against: the same basis as the day
+// under test, or a day with no spend at all (null — no ruler was used). A
+// mixed day under test has no peers.
+function sameBasis(history, today) {
+  if (today.costBasis === 'mixed') return [];
+  return history.filter((d) => d.costBasis == null || today.costBasis == null
+    || d.costBasis === today.costBasis);
+}
+
 // One row per day: the four ratios plus the denominators that produced them,
 // so a later reading can tell "the cost doubled" from "the traffic halved".
 async function dailyRatios(client, days) {
@@ -177,11 +216,13 @@ async function dailyRatios(client, days) {
               sum(l.cache_read_tokens)
                 FILTER (WHERE ${NOT_EVAL('l.user_id')})::bigint AS cache_tok,
               sum(l.cost_usd) FILTER (WHERE ${NOT_EVAL('l.user_id')})::numeric AS cost,
+              sum(l.cost_usd) FILTER (WHERE ${NOT_EVAL('l.user_id')} AND l.billed)::numeric AS billed_cost,
               sum(l.cost_usd) FILTER (WHERE NOT ${NOT_EVAL('l.user_id')})::numeric AS eval_cost
          FROM usage_ledger l WHERE l.date >= current_date - ($1::int - 1) GROUP BY 1
      ),
      sys AS (
-       SELECT date AS d, sum(cost_usd)::numeric AS cost
+       SELECT date AS d, sum(cost_usd)::numeric AS cost,
+              sum(cost_usd) FILTER (WHERE billed)::numeric AS billed_cost
          FROM usage_system_ledger WHERE date >= current_date - ($1::int - 1) GROUP BY 1
      )
      SELECT days.d::text AS date,
@@ -191,7 +232,8 @@ async function dailyRatios(client, days) {
             coalesce(usr.cache_tok, 0)::bigint AS cache_tokens,
             coalesce(usr.cost, 0)::float8    AS user_cost,
             coalesce(usr.eval_cost, 0)::float8 AS eval_cost,
-            coalesce(sys.cost, 0)::float8    AS system_cost
+            coalesce(sys.cost, 0)::float8    AS system_cost,
+            (coalesce(usr.billed_cost, 0) + coalesce(sys.billed_cost, 0))::float8 AS billed_cost
        FROM days
        LEFT JOIN msgs ON msgs.d = days.d
        LEFT JOIN usr  ON usr.d  = days.d
@@ -212,6 +254,7 @@ async function dailyRatios(client, days) {
       // Carried, never divided. See NOT_EVAL above.
       evalCost: Number(r.eval_cost),
       evalMessages: Number(r.eval_messages),
+      costBasis: costBasisOf(Number(r.billed_cost), total),
       // null, never 0, on a day with no denominator. A zero here would read as
       // "perfectly efficient" and drag every baseline down with it — the same
       // rule the cost page's `remaining: null` follows.
@@ -299,10 +342,11 @@ function trendFor(history, m) {
 // are one piece of news to the person reading, not two. A spike wins the
 // headline and carries the trend as context; a trend alone is its own entry,
 // and that is the one that arrives days earlier than this watch used to.
-function crossings(history, today) {
-  const prior = history.filter((d) => d.date !== today.date);
+function crossings(allHistory, today) {
   const out = [];
   for (const m of METRICS) {
+    const history = m.dollars ? sameBasis(allHistory, today) : allHistory;
+    const prior = history.filter((d) => d.date !== today.date);
     const trend = trendFor(history, m);
     const now = today[m.key];
     let spike = null;
@@ -541,6 +585,12 @@ async function run(client, deps = {}) {
     // nothing. Four characters of key for the difference between "the pilots
     // cost nothing today" and "no metric here can see them any more".
     evalUsd: sig4(day.evalCost),
+    // Which ruler today's dollars were read with, and how many earlier days
+    // were read with the same one. A mixed day or a fresh ruler judges the
+    // money against little or nothing, and that has to be visible rather than
+    // look like a pass.
+    costBasis: day.costBasis,
+    costBaseDays: sameBasis(complete, day).filter((d) => d.date !== day.date).length,
     ...extra,
     // Reported every tick even when nothing crossed, so the ratios are numbers
     // an operator watches drift rather than news they hear once. A watch that
@@ -683,5 +733,5 @@ async function run(client, deps = {}) {
 module.exports = {
   run, dailyRatios, crossings, trendFor, escalate, median, evidence, reportText, briefFor,
   METRICS, BASELINE_DAYS, TREND_RECENT_DAYS, TREND_FACTOR, ALERTED_FLAG, MONEY_KEY,
-  SELF_AGENT_ID, NOT_EVAL,
+  SELF_AGENT_ID, NOT_EVAL, costBasisOf, sameBasis,
 };

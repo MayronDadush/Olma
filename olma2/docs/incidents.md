@@ -211,6 +211,7 @@ never trust a dated narrative for something you are about to act on.
 - [DigitalOcean never cached (measured 2026-09-14)](#digitalocean-never-cached-measured-2026-09-14)
 - [Novita cached the probe and not the turns (measured 2026-09-25)](#novita-cached-the-probe-and-not-the-turns-measured-2026-09-25)
 - [The pilot that read as an expensive day (fixed 2026-09-09)](#the-pilot-that-read-as-an-expensive-day-fixed-2026-09-09)
+- [The ruler changed and the watch read it as a cost (fixed 2026-10-10)](#the-ruler-changed-and-the-watch-read-it-as-a-cost-fixed-2026-10-10)
 - [The heartbeat was the bill (fixed 2026-09-05)](#the-heartbeat-was-the-bill-fixed-2026-09-05)
 - [The ledger overstated OpenRouter by 65%, in both directions at once (fixed 2026-09-03)](#the-ledger-overstated-openrouter-by-65-in-both-directions-at-once-fixed-2026-09-03)
 - [OpenRouter cache reads were priced 5x too high (fixed 2026-08-31)](#openrouter-cache-reads-were-priced-5x-too-high-fixed-2026-08-31)
@@ -8950,6 +8951,31 @@ still count everything. They answer "what did we spend", which the pilots are
 genuinely part of. The rule is not "filter `is_eval` everywhere" — it is to
 know which question the number answers.
 
+
+### The ruler changed and the watch read it as a cost (fixed 2026-10-10)
+
+On 2026-10-10 the efficiency watch reported 2026-10-09 at $0.0179 a message
+against a $0.0089 baseline, "פי 2.0 — וגם במגמה כבר כמה ימים". Nothing had
+moved but the unit. On 2026-10-05 (`0880375f`, migration 110) the ledger
+stopped storing the rate table's estimate and started storing what OpenRouter
+billed, and the pinned host billed about twice the table — cache reads above
+its listing. Every row from 10-06 on was billed; every baseline day was an
+estimate. Re-priced at the table, 10-06..10-09 were $0.207-0.283 a day, about
+$0.0095 a message: 1.07x.
+
+Fix: each day carries `costBasis` (billed / estimated / mixed, weighted by
+DOLLARS — `delivery-mirror` writes a $0 unbilled row daily, and counting rows
+would have called every day mixed and switched the money alarm off for
+good), and the two dollar metrics are judged only against days on the same
+basis. A mixed day judges no dollars; the token and cache ratios ignore the
+ruler. The heartbeat carries `costBasis` and `costBaseDays`, so a money check
+with three peers or none says so rather than reading as a pass. Replayed on the
+box: 10-09 is 1.36x its three billed peers, no crossing.
+
+Two things found on the way. Novita stopped listing deepseek-v4-flash, and from
+10-09 OpenRouter served it from Relace, a host nobody chose, under
+`allow_fallbacks`. And the 10-05 commit had measured a ~30% undercount over a
+month; on the most recent days it was ~2x.
 
 ### The heartbeat was the bill (fixed 2026-09-05)
 

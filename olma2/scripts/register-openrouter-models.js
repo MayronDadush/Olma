@@ -105,6 +105,12 @@ const MODELS = [
   // newer snapshot, the smallest possible step.
   'openrouter/deepseek/deepseek-v4.1-flash',
   'openrouter/deepseek/deepseek-v4-flash-0731',
+  // Haiku 5.5, 2026-10-10 (listed 10-07): $0.10 / $0.50, cache read $0.01 —
+  // a tenth of Haiku 4.5 and, at today's real billed v4-flash cost (~$0.018 a
+  // message), in the same range. Registered on QUALITY: Hebrew, gender and
+  // tool selection are where v4-flash has failed scenarios, and this is the
+  // first candidate whose price no longer rules it out. `tools` read first.
+  'openrouter/anthropic/claude-haiku-5.5',
 ];
 
 const APPLY = process.argv.includes('--apply');

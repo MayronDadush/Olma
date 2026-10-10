@@ -24,7 +24,7 @@ test.before(async () => {
 test.after(async () => { if (teardown) await teardown(); });
 
 // day 0 = today, 1 = yesterday, ...
-async function seedDay(back, { messages, inTokens, cacheTokens, cost, systemCost = 0, as = 'user' }) {
+async function seedDay(back, { messages, inTokens, cacheTokens, cost, systemCost = 0, as = 'user', billed = false }) {
   const who = as === 'eval' ? evalUserId : userId;
   for (let i = 0; i < messages; i++) {
     await pool.query(
@@ -34,9 +34,9 @@ async function seedDay(back, { messages, inTokens, cacheTokens, cost, systemCost
   }
   if (inTokens) {
     await pool.query(
-      `INSERT INTO usage_ledger (user_id, date, model, input_tokens, cache_read_tokens, cost_usd)
-       VALUES ($1, current_date - $2::int, $6, $3, $4, $5)`,
-      [who, back, inTokens - cacheTokens, cacheTokens, cost, as === 'eval' ? 'pilot/model' : 'test/model']);
+      `INSERT INTO usage_ledger (user_id, date, model, input_tokens, cache_read_tokens, cost_usd, billed)
+       VALUES ($1, current_date - $2::int, $6, $3, $4, $5, $7)`,
+      [who, back, inTokens - cacheTokens, cacheTokens, cost, as === 'eval' ? 'pilot/model' : 'test/model', billed]);
   }
   if (systemCost) {
     await pool.query(
@@ -535,4 +535,67 @@ test('advice the token ceiling cut is thrown away, and the numbers still go out'
   const { rows } = await pool.query(
     `SELECT detail FROM issues WHERE source = 'agent_detected' ORDER BY id DESC LIMIT 1`);
   assert.equal(JSON.parse(rows[0].detail).advice, null);
+});
+
+// ── A dollar billed and a dollar estimated are different units ──────────────
+// 2026-10-09: the ledger had switched from the rate table's estimate to what
+// OpenRouter billed four days earlier, the pinned host billed about 2x the
+// table, and this watch sent "cost per message 2.0x, trending for days" about
+// a day that, on one ruler, was 1.07x its baseline.
+test('costBasisOf weighs dollars, so a zero-cost unbilled row cannot make a day mixed', () => {
+  assert.equal(eff.costBasisOf(0.49, 0.49), 'billed');
+  // delivery-mirror writes a $0 unbilled row every day; by rows that day is
+  // mixed, by dollars it is billed — and by rows the alarm would never fire again.
+  assert.equal(eff.costBasisOf(0.49, 0.49 + 0), 'billed');
+  assert.equal(eff.costBasisOf(0, 0.2), 'estimated');
+  assert.equal(eff.costBasisOf(0.33, 0.72), 'mixed', 'the changeover day itself');
+  assert.equal(eff.costBasisOf(0, 0), null, 'no spend used no ruler');
+});
+
+test('a billed day is not held against an estimated week — and IS against a billed one', () => {
+  const norm = (date, cost, costBasis) => ({ date, messages: 40, cost_per_message: cost, input_tokens_per_message: 50_000, cache_hit_rate: 0.5, system_cost_share: 0.03, costBasis });
+  const estWeek = ['a', 'b', 'c', 'd', 'e', 'f', 'g'].map((d) => norm(d, 0.0089, 'estimated'));
+  const today = norm('t', 0.0179, 'billed');
+  assert.deepEqual(eff.crossings([...estWeek, today], today), [],
+    'the ruler changed, not the system: the real 2026-10-09 numbers');
+  // The fix must not be an off switch: the same jump on one ruler still fires.
+  const billedWeek = ['a', 'b', 'c', 'd', 'e', 'f', 'g'].map((d) => norm(d, 0.0089, 'billed'));
+  assert.deepEqual(eff.crossings([...billedWeek, today], today).map((c) => c.key), ['cost_per_message']);
+  // And an estimated day still judges against estimated history.
+  const estToday = norm('t', 0.0179, 'estimated');
+  assert.deepEqual(eff.crossings([...estWeek, estToday], estToday).map((c) => c.key), ['cost_per_message']);
+});
+
+test('a mixed day judges no dollars, and the proxies are untouched by the ruler', () => {
+  const norm = (date, costBasis) => ({ date, messages: 40, cost_per_message: 0.0089, input_tokens_per_message: 50_000, cache_hit_rate: 0.5, system_cost_share: 0.03, costBasis });
+  const week = ['a', 'b', 'c', 'd', 'e', 'f', 'g'].map((d) => norm(d, 'estimated'));
+  const mixed = { ...norm('t', 'mixed'), cost_per_message: 0.05, input_tokens_per_message: 200_000 };
+  assert.deepEqual(eff.crossings([...week, mixed], mixed).map((c) => c.key), ['input_tokens_per_message'],
+    'tokens are not dollars: a ruler change must not blind the token ratio');
+});
+
+test('the first billed day says it had no peers, rather than reading as a pass', async () => {
+  await pool.query(`DELETE FROM usage_ledger`);
+  await pool.query(`DELETE FROM usage_system_ledger`);
+  await pool.query(`DELETE FROM audit_log WHERE event = 'message.received'`);
+  await pool.query(`DELETE FROM issues WHERE title LIKE 'efficiency:%'`);
+  await flags.setFlag(pool, eff.ALERTED_FLAG, []);
+  for (let d = 8; d >= 2; d--) {
+    await seedDay(d, { messages: 40, inTokens: 2_000_000, cacheTokens: 1_000_000, cost: 0.36 });
+  }
+  // Same tokens, billed at twice the table — plus the $0 unbilled mirror row.
+  await seedDay(1, { messages: 40, inTokens: 2_000_000, cacheTokens: 1_000_000, cost: 0.72, billed: true });
+  await pool.query(
+    `INSERT INTO usage_system_ledger (agent_id, date, model, cost_usd, billed)
+     VALUES ('main', current_date - 1, 'delivery-mirror', 0, false)`);
+
+  const sent = [];
+  const out = await eff.run(pool, {
+    llm: null, alertHourOpen: async () => true,
+    send: async (phone, text) => { sent.push(text); return { ok: true }; },
+  });
+  assert.equal(out.crossed, 0, `nothing moved but the ruler: ${JSON.stringify(out)}`);
+  assert.equal(sent.length, 0);
+  assert.equal(out.costBasis, 'billed');
+  assert.equal(out.costBaseDays, 0, 'a money check with no peers says so on the heartbeat');
 });
