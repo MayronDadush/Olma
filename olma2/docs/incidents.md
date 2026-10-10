@@ -20,6 +20,7 @@ never trust a dated narrative for something you are about to act on.
 **Gateway, config and upgrades**
 
 - [A restart with no name on it (fixed 2026-10-10)](#a-restart-with-no-name-on-it-fixed-2026-10-10)
+- [The gateway carried sixteen plugins and used five (switched off 2026-10-10)](#the-gateway-carried-sixteen-plugins-and-used-five-switched-off-2026-10-10)
 - [The first message that reached nobody (repair added 2026-10-07)](#the-first-message-that-reached-nobody-repair-added-2026-10-07)
 - [She wrote twice and stayed paused, and her list never reached her morning (fixed 2026-10-06)](#she-wrote-twice-and-stayed-paused-and-her-list-never-reached-her-morning-fixed-2026-10-06)
 - [The silence the gateway asked again (fixed 2026-10-03)](#the-silence-the-gateway-asked-again-fixed-2026-10-03)
@@ -369,6 +370,47 @@ Now every restart writes `gateway.restarted_by_liveness` to `audit_log`, with
 what the probes saw before it and after it, failed restarts included.
 `lastRestartAt` is carried through recovery and into the next outage until the
 half hour has run out, so a quiet system's state still returns to `{}`.
+
+### The gateway carried sixteen plugins and used five (switched off 2026-10-10)
+
+On a 2GB box the gateway is the process that does not fit: 771MB resident
+plus 544MB in swap on 2026-10-10, 25 `critical` readings from its own
+`[diagnostics/memory]` the day before, and a restart at 00:06 UTC that took
+13 nightly eval scenarios down with it. A bigger droplet was not available
+that week, so the question was what it carries that nobody uses.
+
+Its startup line answers that: `http server listening (16 plugins: anthropic,
+browser, canvas, cua-computer, device-pair, file-transfer, geolocation,
+linux-node, memory-core, ollama, olma-turn, openai, openrouter, talk-voice,
+whatsapp, xai)`. Our config enabled five of them. The other eleven are bundled
+plugins the gateway turns on by default, and `plugins.allow` was never set.
+Every agent's transcript store, all history, had not one call to any tool they
+own (browser, canvas, file_fetch, node_inference, code_execution, x_search),
+and the gateway's environment had no OpenAI, xAI or Ollama credential. Our
+`openrouter/openai/*` refs go through the openrouter provider plugin.
+
+Ten were switched off (`src/intake/unused-plugins.js`,
+`scripts/disable-unused-plugins.js --apply`). device-pair stayed, because it
+is the CLI's own pairing and every `--deliver` rides that handshake. Three
+things were learned doing it:
+
+- **`plugins.entries.<id>.enabled: false`, not `plugins.allow`.** An allowlist
+  must also name what the gateway loads ON DEMAND — elevenlabs for voice
+  notes, document-extract for attachments, neither in the startup sixteen —
+  and a forgotten one is a capability that disappears without an error.
+- **A plugin write restarts the gateway by itself.** The docs say a plugin
+  change needs a restart. The managed gateway does it unasked: `config change
+  requires gateway restart — deferring until … complete`, then a drain, then a
+  full process restart. The drain took 120s, and the whole outage was about
+  3.5 minutes. So run it at a quiet hour, the same as a manual restart.
+- **The saving is small at start.** At about 25s after the restart the
+  gateway read 663MB, against 648–795MB (median about 720) at the same point
+  after the nine restarts before it. The real figure is the steady state over
+  a day, and that is what to compare, not one reading.
+
+`config_guard.checkUnusedPlugins` is a dashboard row when any of the ten is
+not explicitly off. Unset is ON, the same shape as dreaming, so an upgrade
+that resets the entries shows on the board.
 
 ### The first message that reached nobody (repair added 2026-10-07)
 
