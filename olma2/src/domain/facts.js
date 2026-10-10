@@ -128,6 +128,41 @@ function systemState(text) {
   return ACCESS_LEVEL_RE.test(t) || (SYSTEM_NOUN_RE.test(t) && SYSTEM_STATE_RE.test(t));
 }
 
+// ── Three shapes that are not biography, measured on the box 2026-10-08 ──────
+// 145 active facts, 23 people; seven rows were something other than a fact
+// about the person, and each one has a home that keeps it true:
+//
+// - An EMAIL ADDRESS ("כתובת אימייל: …", "חיבר את Gmail …"). The phone guard
+//   above exists because contact details live in tables that can be corrected;
+//   a copy in a fact is injected into every turn and never updated.
+// - A REMINDER request ("מבקש תזכורות לשתות מים", "לא רוצה תזכורות בשבת").
+//   It is something to DO or a rule about being messaged: `set_reminder`, or
+//   `remember_preference` / the quiet day. As a fact it was read every turn and
+//   obeyed by nothing.
+// - "יש קשר עם X — תיאום פגישה": who knows whom is `connections`, which the
+//   doctrine has said since the first week, and a fact that lists a person
+//   goes stale the day the connection does.
+//
+// Narrow on purpose, same reasoning as every guard here: a false positive
+// refuses a true fact. All three matched the live corpus exactly (and nothing
+// else among the 145). Only the NOUN: `להזכיר` is also "to point out", and
+// `מזכירה` (a secretary) shares no stem with it.
+const EMAIL_RE = /[^\s@]+@[^\s@]+\.[^\s@]+/;
+const REMINDER_RE = /תזכורת|תזכורות/;
+const CONNECTION_RE = /^\s*יש\s+(?:לו\s+|לה\s+)?קשר\s+עם\s/;
+function emailLike(text) { return EMAIL_RE.test(String(text || '')); }
+function reminderShaped(text) { return REMINDER_RE.test(String(text || '')); }
+function connectionShaped(text) { return CONNECTION_RE.test(String(text || '')); }
+
+// A PLAN has a shelf life by definition — it is something that has not
+// happened yet. Nine of the twenty-five on the box had none, and a plan with no
+// end is a plan that is still "upcoming" a year after it was done ("טסה
+// לקפריסין" sat on a card past the trip). Nothing in the sentence says when,
+// so the server picks: 45 days from now, said back in the result so the model
+// can set a real date if it knows one. A profile-page answer is exempt — its
+// key says it is a standing answer ("לימודים: תואר"), not a plan.
+const PLAN_SHELF_LIFE_DAYS = 45;
+
 function parseExpiry(value) {
   if (value == null || value === '') return { ok: true, value: null };
   const d = new Date(value);
@@ -153,6 +188,15 @@ async function rememberFact(client, userId, { category, fact, importance, expire
   if (systemState(text)) {
     return err('invalid', "that is Olma's own state, not something about the person — it is already on their card and in the integrations/connections tables, and a copy here goes stale the moment it changes", { reason: 'system_state' });
   }
+  if (emailLike(text)) {
+    return err('invalid', 'an email address never goes into a fact — contact details live where they can be corrected, and a copy here is read every turn and never updated. Keep the fact about them without it.', { reason: 'email' });
+  }
+  if (reminderShaped(text)) {
+    return err('invalid', 'that is a reminder, not a fact about them — set it with set_reminder, and if it is a standing rule about when to write to them, remember_preference (or their quiet day). As a fact it is read every turn and obeyed by nothing.', { reason: 'reminder' });
+  }
+  if (connectionShaped(text)) {
+    return err('invalid', 'who is connected to them is tracked by the system (list_my_connections, set_contact_label), never by a fact — a sentence naming a person goes stale the day the connection does', { reason: 'connection' });
+  }
 
   const imp = Number(importance || 1);
   if (![1, 2, 3].includes(imp)) return err('invalid', 'importance must be 1, 2 or 3');
@@ -162,11 +206,18 @@ async function rememberFact(client, userId, { category, fact, importance, expire
 
   const expiry = parseExpiry(expiresAt);
   if (!expiry.ok) return err('invalid', 'expires_at must be a valid ISO datetime');
+  let expiryDefaulted = false;
   // A fact anchored to a moment must say when it stops being one. See
   // datetime.namesAMoment for what counts and, more importantly, what does not
   // — a recurring weekday ("ביום חמישי עובד מהבית") is durable and passes.
   if (!expiry.value && namesAMoment(text)) {
     return err('invalid', 'this names a specific date or day ("היום", "29.8") — set expires_at to when it stops being true, or, if it is something they need to DO, save it with add_task instead', { reason: 'needs_expiry' });
+  }
+  // After the check above, never before it: a plan that names a moment is
+  // REFUSED for want of its real date, not quietly given a made-up one.
+  if (!expiry.value && category === 'plans' && !promptKey) {
+    expiry.value = new Date(Date.now() + PLAN_SHELF_LIFE_DAYS * 86400_000).toISOString();
+    expiryDefaulted = true;
   }
 
   // The same sentence twice is one row. Nothing here compared text, so
@@ -229,7 +280,7 @@ async function rememberFact(client, userId, { category, fact, importance, expire
         { oldFactId: replacedId, newFactId: Number(rows[0].id) });
     }
   }
-  return ok({ fact: rows[0], replacedId, duplicate });
+  return ok({ fact: rows[0], replacedId, duplicate, expiryDefaulted });
 }
 
 // Soft delete: the row stays, it just stops being retrieved. Someone correcting
@@ -285,9 +336,37 @@ async function topFacts(client, userId, k = 10) {
   return rows;
 }
 
+// What goes into USER.md, split in two. Measured on the box 2026-10-08: the
+// ten card slots are ranked importance-then-recency, and every answer from the
+// profile page is stored at importance 2 — so on the two accounts that have
+// more than ten facts, 9 of 10 slots (one) and 6 of 10 (the other) were
+// profile answers ("חיית מחמד: אין", "רכב: יש רכב"), and what was said in
+// conversation, newer and importance 1, never reached the card. The ranking
+// was never wrong about importance; it was comparing two different kinds of
+// thing. So the K slots are for what was learned in conversation, and the
+// profile answers — a fixed, bounded set of at most one per question — are
+// returned beside them for the card to print as ONE compact line.
+// `prompt_key` is what tells them apart (migration 068), so no text is read.
+async function cardFacts(client, userId, k = 10) {
+  const limit = Math.max(1, Math.min(Number(k) || 10, 50));
+  const { rows } = await client.query(
+    `SELECT id, category, fact, importance, learned_at, prompt_key FROM user_facts
+      WHERE user_id = $1 AND active = true
+        AND (expires_at IS NULL OR expires_at > now())
+      ORDER BY importance DESC, learned_at DESC`,
+    [userId]
+  );
+  return {
+    facts: rows.filter((r) => !r.prompt_key).slice(0, limit),
+    profile: rows.filter((r) => r.prompt_key),
+    total: rows.length,
+  };
+}
+
 module.exports = {
   firstPerson,
-  rememberFact, forgetFact, listFacts, topFacts,
+  rememberFact, forgetFact, listFacts, topFacts, cardFacts,
   KNOWN_FACT_CATEGORIES, KNOWN_SOURCES, MAX_FACT_CHARS, cleanFact,
   phoneLike, bareNameStatement, systemState,
+  emailLike, reminderShaped, connectionShaped, PLAN_SHELF_LIFE_DAYS,
 };

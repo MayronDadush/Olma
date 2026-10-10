@@ -148,8 +148,13 @@ function renderPauseBanner(u, csrf) {
   // confirmed one stops, and their next message ends it (pause.stopResume).
   // Shown apart so an operator never reads it as a settled goodbye.
   const heard = u.paused_reason === 'said_stop';
-  return `<section><h3>${ladder ? 'מושהה — לא עונה' : heard ? 'ביקש להפסיק — טרם אישר' : 'ביקש להפסיק'}</h3>
-    <p class="hint">${ladder
+  // …and a stop nobody confirmed for a day (pause.STOP_UNANSWERED): Olma is
+  // quiet, but coordinations and people still reach them.
+  const soft = u.paused_reason === 'stop_unanswered';
+  return `<section><h3>${ladder ? 'השהייה שקטה — לא עונה' : heard ? 'עצירה ממתינה — טרם אישר' : soft ? 'השהייה רכה — ביקש להפסיק ולא אישר' : 'השהייה מלאה — ביקש להפסיק'}</h3>
+    <p class="hint">${soft
+      ? `ביקש להפסיק ב-${esc(String(u.paused_at).slice(0, 16))} ולא ענה כשנשאל אם הוא בטוח. עולמה לא פונה מיוזמתה — בלי תזכורות, צ'ק-אינים, סיכומים ונודניקים. מכל תיאום שנפתח איתו מגיעה הודעה אחת, ובקשות מאנשים עדיין מגיעות; פעם ביום עם שורה שאפשר להפסיק לגמרי. ההודעה הבאה שלו מחזירה אותו לבד.`
+      : ladder
       ? `שלושה צ'ק-אינים בלי תשובה, אז עולמה הפסיקה לפנות ב-${esc(String(u.paused_at).slice(0, 16))}. שום דבר לא בוטל — התזכורות והמשימות במקום. ההודעה הראשונה שלו מחזירה אותו לבד.`
       : heard
       ? `אמר שרוצה להפסיק ב-${esc(String(u.paused_at).slice(0, 16))}, ועולמה הפסיקה מיד — לפני שנשאל אם הוא בטוח. שום דבר לא נמחק. ההודעה הבאה שלו, על כל נושא אחר, מחזירה אותו לבד.`

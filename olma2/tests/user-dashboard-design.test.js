@@ -447,8 +447,8 @@ test('tasks on the calendar sit in their own fold, closed by default, in both vi
   const branches = body.match(/open\.filter\(function\(x\)\{[^}]*\}\)/g) || [];
   assert.equal(branches.length, 2, 'the time view and the category view each filter the list once');
   for (const b of branches) assert.match(b, /!offList\(x\)/, 'each view skips what the fold draws and what went back to Google');
-  assert.match(body, /var html = pinnedSection\(\) \+ calendarSection\(\);/,
-    'the fold sits right under the pinned section, above whichever view is on');
+  assert.match(body, /var html = pinnedSection\(\) \+ calendarSection\(\) \+ savedSection\(\);/,
+    'the fold sits right under the pinned section, the saved card under it, above whichever view is on');
   assert.match(page, /inCal:!!x\.inCalendar,/, 'the page reads the server\'s own answer');
   assert.match(page, /'<div class="fold' \+ \(calFoldOpen \? " open" : ""\) \+ '"><div' \+ \(calFoldOpen \? "" : " inert"\)/,
     'folded rows are inert, not just clipped');
@@ -466,7 +466,7 @@ test('the calendar fold holds what Olma reminds about and is still ahead', () =>
     for (; i < page.length; i++) { if (page[i] === '{') depth++; else if (page[i] === '}' && --depth === 0) break; }
     return page.slice(at, i + 1);
   };
-  const src = ['onCalendar', 'leftToGoogle', 'offList', 'eventOver'].map(grab).join('\n');
+  const src = ['onCalendar', 'daysAhead', 'leftToGoogle', 'offList', 'eventOver'].map(grab).join('\n');
   const fns = new Function('isPinned', src + '\nreturn { onCalendar, leftToGoogle, offList, eventOver };')((x) => !!x.pin);
   // Local calendar days, as the page reads them (bucketFor), never UTC's.
   const day = (n) => {
@@ -480,7 +480,9 @@ test('the calendar fold holds what Olma reminds about and is still ahead', () =>
   assert.equal(where(ev({ inCal: false, rem: false })), 'fold', 'on no calendar and nothing reminds: kept, or it is nowhere');
   assert.equal(where(ev({ rem: false })), 'google', 'Google holds it and Olma says nothing: the calendar is enough');
   assert.equal(where(ev({ d: day(-1) })), 'google', 'yesterday\'s appointment is gone from the page');
-  assert.equal(where(ev({ d: '' })), 'fold', 'an undated event is never over');
+  assert.equal(where(ev({ d: '' })), 'list', 'an undated event is never over, and is not "upcoming" either');
+  assert.equal(where(ev({ d: day(29) })), 'fold', 'the fold is the next 30 days');
+  assert.equal(where(ev({ d: day(30) })), 'list', 'further out is on the list');
   assert.equal(where({ kind: 'todo', d: day(1), tm: '10:00', rem: true, inCal: true }), 'list', 'a synced to-do is a to-do');
   assert.equal(where({ kind: 'todo', d: day(-3), tm: '', rem: false, inCal: true }), 'list', 'a late to-do stays late, never hidden');
   assert.equal(where(ev({ src: 'monday' })), 'list', 'an imported row keeps its own section');
@@ -657,4 +659,23 @@ test("the calendar tab draws Google's copy of Olma's own row once", () => {
   const titles = agendaFor(3).map((v) => v.title);
   assert.deepEqual(titles.sort(), ['ישיבת צוות', 'ערב משחקים', 'לשלם שכר דירה', 'שיחה עם רון', 'תור לספר'].sort());
   assert.equal(titles.filter((x) => x === 'ערב משחקים').length, 1);
+});
+
+// A group in the "new coordination" picker selects only people who are a chip
+// in that same picker (2026-10-09): `g.m` is every member ON Olma, roster
+// pending rows included, and Padel Gang selected two strangers nobody could
+// see. The press, the count on the button and its pressed state all read the
+// same filtered list, or "all" can never be reached and the count lies.
+test('a group in the coordination picker selects only friends the meeting can include', () => {
+  const ids = page.match(/function mtGroupIds\(g\)\{[\s\S]*?\n {2}\}/);
+  assert.ok(ids, 'mtGroupIds is here');
+  assert.match(ids[0], /FRIENDS\.filter/, 'a member must be a friend');
+  assert.match(ids[0], /f\.p && f\.p\.meet/, 'with the meet switch on, as startMeetingWithGroup asks');
+  const click = page.match(/\$\("#mtPick"\)\.addEventListener\("click"[\s\S]*?renderMtNew\(\);/);
+  assert.ok(click, 'the picker click handler is here');
+  assert.match(click[0], /mtGroupIds\(grp\)\.forEach\(function\(id\)\{\s*if\(mtPickWho\.indexOf\(id\) < 0\)/,
+    'pressing a group adds the filtered members');
+  assert.doesNotMatch(click[0], /grp\.m\.forEach\(function\(id\)\{\s*if\(mtPickWho\.indexOf\(id\) < 0\)/,
+    'and never every member on Olma');
+  assert.match(page, /'<span class="gdot">' \+ mtGroupIds\(g\)\.length/, 'the count on the button is the same list');
 });

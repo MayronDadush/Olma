@@ -170,6 +170,7 @@ Loads when you **Read** a file under `src/outbox/**`, `src/domain/message-format
 - **For an Israeli zone, Saturday's quiet day is candle-lighting to havdalah, not midnight to midnight.**
 - **A quiet day releases at the next kept day's window open, not 24 hours after whenever it was checked.**
 - **Nothing about a meeting goes out once the meeting has happened** — the gate drops a held `meeting_*` row as `meeting_over`
+- **A repair answers something the person WROTE, so no night and no quiet day holds it** — `gate.repairGrace`, `payload.rung = 'unanswered_repair'`; `last_woke_at` is exactly what a missed opener leaves stale
 - **Each person hears about ONE coordination at most twice a day, the invite first and the second three hours later** — everything counts; a result skips the wait, and past the cap still goes if the meeting is before the morning (`gate.coordinationCap`)
 - **A chag is QUIET only for somebody who asked for it, and "quiet-able" means yom tov and nothing else.**
 - **`DEFAULT_WINDOW` (09:00-21:00) is no longer only a fallback — it is a sentence somebody read.**
@@ -192,12 +193,15 @@ Loads when you **Read** a file under `src/outbox/**`, `src/domain/message-format
 Loads when you **Read** a file under `src/brokerd/**`, `src/domain/turn.js`, `src/domain/self-initiated.js` and 6 more.
 
 - **The turn opens itself, from the gateway's own hook, before the model's first call.**
+- **When the opener MISSED a person's WhatsApp message, the turn is still told what Olma last said to them, under "Recent context" and never "Turn context"** — `turn.missedOpenContext`; the header is what keeps the `turn_start` fallback, and with it the count, alive
 - **A function shared by two openers is handed the WHOLE user row, never a projection** — `undefined` is falsy too, and a test through one door proves nothing about the other
+- **A stranger's "first message" is never one of OUR delivery turns** — the English preamble was read as their words and filed invited people as English speakers
+- **The language streak is fed from the gateway's open, not from `wrote_in`** — the doctrine says not to call `turn_start`, so a wrong stored `locale` was never noticed
 - **A repeat of the same message must never be read as a new one.**
 - **A block written to REPLACE a tool call has to say what it does not hold, or its silence is read as the answer** — `today` counts `undated` to-dos, and a question about the whole list (`asksOpenList`, read by the hook) gets no `today` block at all
 - **`messages.queue.mode` stays `followup`.**
 - **Messages sent in a row are answered ONCE, at the reply gate, never by holding the inbox** — `messages.inbound` debounce cannot batch on WhatsApp; flag `burst_reply_phones`, `''` = off
-- **A turn Olma started is not a message from the person.** — but a gateway open carrying a WhatsApp message id is never ours, and the delivery's grace minute records it (`duringOurTurn`); and such a turn writes no coordination ANSWER (`not_their_turn`) unless they wrote since it began
+- **A turn Olma started is not a message from the person.** — but a gateway open carrying a WhatsApp message id is never ours, and the delivery's grace minute records it (`duringOurTurn`); and such a turn writes no coordination ANSWER and passes nobody's WORDS (`not_their_turn`) unless they wrote since it began
 - **A WhatsApp reply names ONE message, and only the MODEL is ever told which.**
 - **A turn is told where every coordination it heard about in the last day stands NOW** — the session remembers the question, not the answer
 - **A DECISION to stay quiet is not a reply that got lost.**
@@ -207,7 +211,7 @@ Loads when you **Read** a file under `src/brokerd/**`, `src/domain/turn.js`, `sr
 - **…and since 2026-09-23 the working-out is caught in Hebrew too** — a first-person next step off a closed verb list drops, the third-person shape is only reported, and a block name counts even inside quotes
 - **…and a Hebrew reply with only an English next step on its END keeps the reply** — `hebrewReplyTail`, measured: one line in 1,461 replies, and quoted Hebrew inside English working-out still drops whole
 - **The last tier's missing input was not a pattern, it was the READER** — `writesHebrew` is a tri-state, `null` acts like `false`, and the value rides `turn_context` to a gate with no database
-- **A reply that says it SAVED something is checked against whether a tool ran — `reply.claim`, report-only** — `unknown` is not `unbacked`, and a turn Olma started is not judged
+- **A reply that says it SAVED something is checked against whether a tool ran — `reply.claim`** — `unknown` is not `unbacked`, a turn Olma started is not judged, and since 2026-10-08 a claim after a write that FAILED gets one fixed correction line under it (flag `claim_correction_phones`, `''` = shadow)
 - **A NO_REPLY the gateway asks again is not overruled by the answer** — the gate cancels text in a run whose every answer was the sentinel (`llm_output` → `after_silence`); an empty answer's retry still goes out
 - **A reply under a standing 👍 that only restates it is CANCELLED at the gate** (`mark-echo.echoOnly`, brokerd `mark_echo`) — every word is theirs, the title's, or a save word: nothing either side did not already know; filed as `reply.gated` kind `echo`, and `unanswered` never re-sends one
 
@@ -243,6 +247,7 @@ Loads when you **Read** a file under `src/domain/reminders.js`, `src/domain/task
 - **A list is ONE row with its items under it, through every door, and is filed under `lists`** — `add_tasks_bulk`'s `list`, `looksLikeShoppingBulk`, "קניות - א, ב"; the open list is found by TITLE, never by category
 - **A task already OPEN on somebody's list is never saved a second time.**
 - **…and the same thing in OTHER words is a judgement, so it was measured before it was written** — and the extraction pass and the live tool take OPPOSITE answers from it
+- **A day said with no hour is the DAY, and 09:00 is the hour the model invents for it** — hook `namesNoHour` → `noHour`, `invented-hour.asDay`, exactly 09:00 local only
 - **A model asked to date something must first be told what time it is.**
 - **A title need not restate the hour the row now carries, but only the SERVER may take it out.**
 - **A day named with ל־ in a title dates the THING, not the task.**
@@ -270,7 +275,7 @@ Loads when you **Read** a file under `src/domain/reminders.js`, `src/domain/task
 ### People, silence, and data you must not get wrong
 
 **`.claude/rules/people-and-quiet.md`** — the timezone that must never be NULL, the check-in ladder, the once-ever question, deleting a person, and the rename.
-Loads when you **Read** a file under `src/jobs/checkin.js`, `src/jobs/onboarding-review.js`, `src/domain/users.js` and 6 more.
+Loads when you **Read** a file under `src/jobs/checkin.js`, `src/jobs/onboarding-review.js`, `src/domain/users.js` and 7 more.
 
 - **`users.timezone` must never be NULL**
 - **Every time crossing a tool boundary needs an explicit offset.**
@@ -278,7 +283,7 @@ Loads when you **Read** a file under `src/jobs/checkin.js`, `src/jobs/onboarding
 - **A day-one step that has not gone out is REPLACED by the NEXT CHECK-IN of any kind, never joined by it.** — and one that has gone out spaces the next by `STEP_GAP_MS`, counted from when it reached them; none after the first starts while they are talking
 - **Somebody silent for DAYS is paused on a clock, not only on unanswered questions** — two days holding nothing, five holding an open task (`silence-pause.due`, flags `silence_pause_days_empty`/`_holding`); never somebody with a reminder they asked for; and a quiet pause hears ONE message per coordination opened with them, room or private
 - **Somebody who has stopped answering hears nothing Olma decided to say, and nothing on their record is cancelled.** — but a coordination they ANSWERED is not her idea, and an answer is what earns that, never membership; and another PERSON reaching them (a connection request, a private invite, a share, a relayed message) is not her idea either (`gate.PEER_KINDS`)
-- **A stop is acted on the moment it is HEARD, not when it is confirmed** — `paused_reason = 'said_stop'` is a full pause, and their next message about anything else ends it.
+- **A stop is acted on the moment it is HEARD, not when it is confirmed** — `paused_reason = 'said_stop'` is a full pause, and their next message about anything else ends it — **and unanswered for a day it SOFTENS** (`stop_unanswered`, השהייה רכה, since 2026-10-09): one message per coordination as in the quiet pause, never a nudge, other people's errands pass, one fixed line a day
 - **A write from their own page IS the person answering** — `last_dashboard_at`, never `last_inbound_at`
 - **A "once ever" question is stamped on the PERSON, never deduped on the route that asks it.**
 - **The chag offer is that shape's second column (`holiday_quiet_asked_at`, migration 062), with two routes from the start.**
@@ -288,6 +293,8 @@ Loads when you **Read** a file under `src/jobs/checkin.js`, `src/jobs/onboarding
 - **The ledgers are append-only.**
 - **`availability` is refused at the write unless it is one `HH:MM-HH:MM` window** — "once a day" was saved, 👍'd, and read as the default
 - **The assistant is עולמה / Allma; the system is still olma2.**
+- **A fact is refused at the one door if it is an email, a reminder request or "יש קשר עם X", and a plan with no end is given one (45 days)** — `facts.rememberFact`; no scheduled cleanup, the door is the cleanup
+- **The ten card slots are for what was said in conversation; the profile page's answers ride ONE capped line** — `facts.cardFacts`, `user-card.PROFILE_LINE_MAX`
 
 ### Writing detectors and alarms
 
@@ -336,7 +343,7 @@ Loads when you **Read** a file under `src/adapters/http/**`, `docs/design/**`.
 ### Doctrine, tools and reactions
 
 **`.claude/rules/doctrine.md`** — the 39,250-char ceiling, the schema budget, the reaction table and markPlaced, Google scopes and links Olma may not invent.
-Loads when you **Read** a file under `src/intake/agents-template.md`, `src/intake/provision.js`, `src/adapters/mcp/**` and 8 more.
+Loads when you **Read** a file under `src/intake/agents-template.md`, `src/intake/provision.js`, `src/adapters/mcp/**` and 12 more.
 
 - **`agents-template.md` reaches existing users only via `scripts/resync-agent-templates.js`.**
 - **The doctrine is FULL: 39,229 of the 39,250 chars the gateway will inject (2026-09-05; it was 39,249 the day before).**
@@ -366,6 +373,8 @@ Loads when you **Read** a file under `src/intake/agents-template.md`, `src/intak
 - **A display name is not a word to be translated.**
 - **Olma never claims a lookup it did not perform.**
 - **A `url` in a tool result is delivered by the MODEL or not at all** — save a whole message that is only "שלח לי קישור", answered by code before any turn (`domain/link-request.js`, one table per language)
+- **A message that is ONLY a link is SAVED by code, and Olma never asks "which list?" before saving** — she decides, says where it went with no 👍, offers the move on the second line, and only the person's own words make a list (`save_link_shortcut`)
+- **A saved link is fetched by OUR server, so every fetch goes through the guard in `domain/link-extract.js`** — ports 80/443, a BlockList over every answer, the socket pinned to the checked address, every redirect re-checked; unreadable is saved, never an error
 
 ### In a group
 
@@ -387,6 +396,7 @@ Loads when you **Read** a file under `src/domain/group-connections.js`, `src/dom
 - **The room reaches each member's OWN page as a group already made**
 - **The room is a second door to every action on its coordination, and it acts only as somebody still IN it** — cancel, rename, remove a time, leave and answer from the room; place and minimum from the chat; each the private twin's own domain call, results picked; and the way back in (`rejoin_meeting`/`rejoin_group_coordination`, since 2026-10-01) only for an exit they CHOSE
 - **A room does not open a coordination its asker is already negotiating PRIVATELY with nearly the same people** — `meetings.privateOpenLikeRoom`, `already_open`, `separate`
+- **A private coordination is the room's only when asked "for this group" or with everybody in it** — `group_id`, or `group-meetings.roomsCoveredBy`; then it IS the room's, through `startCoordination` with `fromPrivate`
 - **Somebody a room sent to the greeter hears about that room in the FIRST reply, and its coordination follows that same night if they are awake** (`intake_context` → `domain/intake-room.js`; `admitLateMembers({ awakeSince })`; the room's line waits for its morning) — and since 2026-09-29, with a coordination waiting, a SHORT opening replaces the owner's and what she does is said after the coordination (`intake-room.ROOM_OPENING`)
 - **The person who asked the ROOM for a coordination is asked privately too** — a tag carries no times, and the test asserted the bug
 - **…and a time said in the room is that person's proposal, put on the table in their name from the room** (`add_group_coordination_option`) — never the room's voice, and never "sent to everyone" when nothing was written

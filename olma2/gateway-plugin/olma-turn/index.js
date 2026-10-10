@@ -744,6 +744,59 @@ export function buildLinkShortcutHandler({ connect, sock, timeoutMs = 800, log =
   };
 }
 
+// ---- a message that is only a link is SAVED by code ("שמורים") -----------
+// A person's own DM that is one to five links, with at most a list's name
+// beside them, is saved by brokerd `save_link_shortcut` and answered with its
+// sentence ("שמרתי ב*מתכונים* 🍝 — …"); no model turn. What counts as such a
+// message is brokerd's to decide (`domain/saved-links.parseShortcut`), so the
+// rule moves with a deploy and never needs a restart. What stays here is the
+// cheap bound that keeps every other DM off the socket: no "http", or longer
+// than any message the shortcut takes, never leaves the gateway.
+//
+// The wait is longer than the page-link shortcut's because the answer READS
+// the page (brokerd spends at most 3.5s on it, then saves it unread) and may
+// ask the background model for a list (2s). The gateway puts no deadline on a
+// claiming hook (2026.8.1, `runClaimingHook`: only a timeout the plugin sets),
+// so this one is the only bound. Past it the message goes to the model, which
+// has the same tool, and the dedupe on the saved URL makes a double save say
+// "already saved" rather than keep two.
+const SAVE_LINK_MAX_CHARS = 2000;
+
+export function buildSaveLinkHandler({ connect, sock, timeoutMs = 8000, log = trace } = {}) {
+  return async (event, ctx) => {
+    try {
+      const key = String((event && event.sessionKey) || (ctx && ctx.sessionKey) || "");
+      if (INTAKE_KEY_RE.test(key)) return undefined;
+      const agentId = agentIdOf(key);
+      if (!agentId || !/^u-\d+$/.test(agentId) || (event && event.isGroup === true)) return undefined;
+      const body = typeof (event && event.body) === "string" ? event.body
+        : (typeof (event && event.content) === "string" ? event.content : "");
+      if (!/https?:\/\//i.test(body) || body.length > SAVE_LINK_MAX_CHARS) return undefined;
+      const messageId = String((event && event.messageId) || (ctx && ctx.messageId) || "").slice(0, 200);
+      const t0 = Date.now();
+      // The moment this stops waiting, sent along: past it the message is the
+      // model's, so brokerd must not save, claim or mark it (it rolls its
+      // write back and answers no claim).
+      const deadline = t0 + timeoutMs;
+      const reply = await askBroker("save_link_shortcut", { agentId, body, messageId, deadline }, { connect, sock, timeoutMs });
+      const claim = Boolean(reply && reply.ok === true && reply.claim === true
+        && typeof reply.text === "string" && reply.text.trim());
+      if (claim) forgetArrival(agentId, messageId);
+      // A line per link message, never the body: few enough to keep, and the
+      // `ms` is how the budget above gets checked against real pages.
+      log({
+        saveLink: agentId,
+        ...(claim ? { claim: true } : { outcome: reply ? (reply.ok === true ? "declined" : "refused") : "unreachable" }),
+        ms: Date.now() - t0,
+      });
+      return claim ? { handled: true, text: reply.text } : undefined;
+    } catch (e) {
+      log({ saveLink: "error", error: String((e && e.message) || e).slice(0, 200) });
+      return undefined;
+    }
+  };
+}
+
 // ---- the reply gate --------------------------------------------------------
 // The third thing this plugin does, since 2026-09-10: the last thing between
 // the model's text and somebody's phone.
@@ -946,16 +999,25 @@ export function gateReply(text, { readerWritesHebrew = null } = {}) {
 // A reply that says it saved something — a PORT of `domain/phantom-save
 // .claimedWrite`, held against it by `tests/phantom-save.test.js`. Only the
 // word leaves the gateway, never the reply: brokerd alone knows whether a tool
-// ran on this turn, and it files what it decides. Report-only, and never
-// awaited — a reply must not wait on a question about itself.
-const HE_CLAIM_RE = /(?:^|[^\u0590-\u05FF])[וש]?(רשמתי|שמרתי|הוספתי|קבעתי|עדכנתי|מחקתי|ביטלתי|תזמנתי|הגדרתי)(?![\u0590-\u05FF])/;
-const EN_CLAIM_RE = /\bI(?:'ve| have)\s+(saved|added|noted|scheduled|updated|deleted|removed|cancel+ed|set)\b/i;
+// ran on this turn, and it files what it decides. Since 2026-10-08 it is
+// AWAITED, on a short deadline, because brokerd may answer with a fixed
+// correction line (a write it saw fail is the thing being claimed) — asked
+// only for a reply carrying a claim word, and a dead socket sends the reply
+// as it was.
+const HE_CLAIM_RE = /(?:^|[^\u0590-\u05FF])[וש]?(רשמתי|שמרתי|הוספתי|קבעתי|עדכנתי|מחקתי|ביטלתי|תזמנתי|הגדרתי|שלחתי|הודעתי|העברתי|תיעדתי|סימנתי|שיתפתי|הזמנתי|ארכבתי|עודכנו)(?![\u0590-\u05FF])/;
+const EN_CLAIM_RE = /\bI(?:'ve| have)\s+(saved|added|noted|scheduled|updated|deleted|removed|cancel+ed|set|sent|told|passed|shared|marked|let)\b/i;
 export function claimedWrite(text) {
   const s = String(text == null ? "" : text);
   const he = HE_CLAIM_RE.exec(s);
   if (he) return he[1];
   const en = EN_CLAIM_RE.exec(s);
   return en ? en[1].toLowerCase() : null;
+}
+// The reply already says it did not work — a PORT of `domain/phantom-save
+// .admitsFailure`, held by the same test. Only this bit crosses, never the text.
+const ADMITS_RE = /לא הצלח|לא עבד|לא נשלח|לא נשמר|לא נרשם|לא יכול|לא ניתן|לא זמין|לא מאפשר|לא נותנ|לא מחובר|עדיין לא|לצערי|נכשל|תקלה|שגיאה|מגבלה|אי אפשר|\b(?:could not|couldn't|can't|cannot|failed|unable|did not|didn't|wasn't|not sent|not saved)\b/i;
+export function admitsFailure(text) {
+  return ADMITS_RE.test(String(text == null ? "" : text));
 }
 
 // A reply that only says again what the 👍 on their message already said — a
@@ -1091,6 +1153,24 @@ export function buildReplyGateHandler({ connect, sock, timeoutMs = 1500, log = t
           verdict = { action: "cancel", text: "", leaks: [{ kind: "echo", at: "" }], reported: [...verdict.reported, { kind: "echo", at: "", line: 0 }] };
         }
       }
+      // A reply that claims what a write brokerd saw FAIL did not do ("שלחתי
+      // להם" under a refused relay_to_group) gets one fixed line under it
+      // (domain/phantom-save.js, flag `claim_correction_phones`). Read off what
+      // will actually be SENT — a claim inside notes the gate just cut reaches
+      // nobody — and only for a person's own agent: a room has no turn brokerd
+      // can speak for. Anything but a correction sends the reply as it was.
+      const claim = /^u-\d+$/.test(agentId) && verdict.action !== "cancel" ? claimedWrite(verdict.text) : null;
+      let amended = false;
+      if (claim) {
+        const judged = await askBroker("reply_claim", { agentId, word: claim, admits: admitsFailure(verdict.text), writesHebrew: readerOf(agentId) === true },
+          { connect, sock, timeoutMs: Math.min(timeoutMs, 800) });
+        const line = judged && judged.ok === true && typeof judged.correction === "string" ? judged.correction.trim().slice(0, 200) : "";
+        if (line) {
+          verdict = { ...verdict, text: `${verdict.text}\n\n${line}` };
+          amended = true;
+          log({ claim: agentId, corrected: true });
+        }
+      }
       // A reply of theirs is going out: the replies this burst held go out WITH
       // it, joined above it by code (see `heldNote` for why not by the model).
       // Each was leak-gated when it was held. Even a reply the gate is about to
@@ -1111,12 +1191,8 @@ export function buildReplyGateHandler({ connect, sock, timeoutMs = 1500, log = t
       if (person && (verdict.action !== "cancel" || hasMedia || sent)) {
         turnProgress(agentId, "reply", { connect, sock, timeoutMs, asked: sent ? endsWithQuestion(sent) : verdict.action !== "cancel" && endsWithQuestion(verdict.text) });
       }
-      // Read off what will actually be SENT — a claim inside notes the gate
-      // just cut never reaches anybody. Only a person's own agent: a room has
-      // no turn brokerd can speak for.
-      const claim = /^u-\d+$/.test(agentId) && verdict.action !== "cancel" ? claimedWrite(verdict.text) : null;
-      if (claim) askBroker("reply_claim", { agentId, word: claim }, { connect, sock, timeoutMs }).catch(() => {});
-      if (verdict.action === "pass" && !verdict.reported.length) return out() || undefined;
+      const amendedOut = () => (amended ? { payload: { ...payload, text: verdict.text } } : undefined);
+      if (verdict.action === "pass" && !verdict.reported.length) return out() || amendedOut();
       // brokerd is asked only when something was found, so the ordinary reply
       // never waits on a socket. It is asked BEFORE the text goes (or does
       // not), because after a cancel there is nothing left to prove it
@@ -1131,7 +1207,7 @@ export function buildReplyGateHandler({ connect, sock, timeoutMs = 1500, log = t
       const reply = await askBroker("reply_gate", report, { connect, sock, timeoutMs });
       log({ gate: agentId, action: verdict.action, kinds: report.leaks.map((l) => l.kind).join(","), chars: report.chars, kept: report.kept, filed: Boolean(reply && reply.ok) });
       if (out()) return out();
-      if (verdict.action === "pass") return undefined;
+      if (verdict.action === "pass") return amendedOut();
       if (verdict.action === "trim") return { payload: { ...payload, text: verdict.text } };
       // A cancel takes the media with it, and a schedule card is not the thing
       // that leaked — so when there is one, the text is emptied and the card
@@ -1196,7 +1272,7 @@ export default {
     // `agent_end` is also what brokerd reads off the stamp to know the 👀 may
     // wait (domain/reactions.endSignalsLive): a gateway on a build without it
     // would never cancel a held mark.
-    const hooks = ["before_prompt_build", "llm_input", "before_dispatch", "before_dispatch:arrival", "before_dispatch:link", "llm_output", "reply_payload_sending", "agent_end"];
+    const hooks = ["before_prompt_build", "llm_input", "before_dispatch", "before_dispatch:arrival", "before_dispatch:link", "before_dispatch:save_link", "llm_output", "reply_payload_sending", "agent_end"];
     trace({ registered: true, agents, hooks });
     stampRegistration({ agents, hooks });
     api.on("before_prompt_build", buildHandler({ agents: cfg.agents }));
@@ -1211,6 +1287,9 @@ export default {
     // only for `g-N` sessions and this one only for `u-N`, so they never both
     // claim one message.
     api.on("before_dispatch", buildLinkShortcutHandler());
+    // After it: a short link-only DM asks the page-link shortcut first (one
+    // fast refusal), then this one saves it.
+    api.on("before_dispatch", buildSaveLinkHandler());
     // Remembers a run that answered NO_REPLY, for the gate below.
     api.on("llm_output", buildSilenceHandler());
     // Deliberately NOT narrowed by `cfg.agents`: that list is which people get

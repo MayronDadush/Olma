@@ -43,6 +43,10 @@ const JOB_INTERVAL_SECONDS = {
   task_calendar: 300,
   memory_consolidation: 3600,
   fact_extraction: 600,
+  // Saved links read late, and their pictures (jobs/saved-links-enrich.js).
+  // Under KICK_MIN_SECONDS for the same reason as brand_ads below: the
+  // startup-kick window is full, and a tick with nothing due is one query.
+  saved_links_enrich: 240,
   // Jev in shadow over new tasks (jobs/twin-shadow.js). Ten minutes: nothing
   // waits on it, and a tick with the flag off is one flag read.
   twin_shadow: 600,
@@ -91,6 +95,11 @@ const JOB_INTERVAL_SECONDS = {
   // jobs at the 10s floor), and an hourly job that is not kicked starves
   // between deploys. While the flag is off a tick is one flag read.
   brand_ads: 240,
+  // Four minutes, under KICK_MIN_SECONDS for the same reason as brand_ads
+  // above: the startup-kick window is full. The picture is due at a minute of
+  // the evening and a tick past it is fine; while the flag is off a tick is
+  // one flag read, and on, the idempotency key makes a frequent tick harmless.
+  food_pictures: 240,
   // Five minutes: two bad ticks before a word means an outage is reported
   // within ten. Faster would alarm on a single probe timeout.
   liveness_watch: 300,

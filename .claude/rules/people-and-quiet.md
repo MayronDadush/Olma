@@ -6,6 +6,7 @@ paths:
   - "olma2/src/domain/pause.js"
   - "olma2/src/domain/silence-pause.js"
   - "olma2/src/domain/preferences.js"
+  - "olma2/src/domain/facts.js"
   - "olma2/src/domain/onboarding.js"
   - "olma2/src/intake/**"
   - "olma2/src/jobs/sweeps.js"
@@ -221,6 +222,20 @@ title means this file. Grep the title, not the filename.
   model reading the conversation and refusing turn by turn is not the
   mechanism — "אין צורך שהמודל יצטרך לקרוא את השיחה ולסרב לפי השיקול דעת
   שלו" — a column the gate reads before a turn is ever spawned is.
+  **…and a stop nobody ANSWERED for a day is not a yes** (owner, 2026-10-09;
+  `pause.STOP_UNANSWERED`, `pause.softenUnansweredStops` on the minute
+  sweep). It becomes a SOFT pause, השהייה רכה: like the quiet pause (השהייה
+  שקטה), each coordination opened with them is heard ONCE and a day of
+  silence takes them out of it; unlike it, `gate.PEER_KINDS` always pass, no
+  nudge ever reaches them, and the first message of each local day ends on
+  one fixed line (`pause.SOFT_PAUSE_FOOTER`). Their next message ends it like
+  a `said_stop`. Only a `said_stop` taken at or after
+  `pause.SOFT_PAUSE_SINCE` softens: the three paused before it keep the full
+  pause (השהייה מלאה) they were promised. `pause.CONFIRM_QUESTION` now says a
+  yes stops other people's coordinations too, because only a yes does
+  (`incidents.md`, "Silence after a stop was read as a yes"). The four names
+  — שקטה / ממתינה (`said_stop`, first day) / רכה / מלאה — are the admin
+  page's and the owner's.
 
 - **A "once ever" question is stamped on the PERSON, never deduped on the
   route that asks it.** Two routes each honouring "at most once" is twice.
@@ -303,3 +318,7 @@ title means this file. Grep the title, not the filename.
   tool sets a frequency. A refused call earns no 👍. The read side keeps its
   fallback for rows written before. `incidents.md`, "Saved, marked done, and
   read as nothing".
+
+- **A fact is refused at the one door every writer shares, and a plan always has an end.** `facts.rememberFact` refuses an email address (`emailLike`), a reminder request (`reminderShaped`, the NOUN `תזכורת/ות` only) and "יש קשר עם X" (`connectionShaped`) — each has a home that stays true (the profile, `set_reminder`/`remember_preference`, `connections`) — and a `plans` fact with no `expires_at` and no `promptKey` is given one 45 days out (`PLAN_SHELF_LIFE_DAYS`, `expiryDefaulted` in the result). The default comes AFTER the `needs_expiry` check, never before it: a plan that names a moment is refused for want of its real date, not handed a made-up one. Migration 119 applied the same verdict once to the old rows; there is no scheduled pass and none should be added — the door keeps new rows honest. The same thing in other words stays at "a judgement": `task-similarity.compare` over the live facts caught 1 of 4 real near-duplicates (0 wrong merges), and an earlier test pins that this door does not make that call. Story: `incidents.md`, "The fact table kept what had a better home (2026-10-08)".
+
+- **The ten card slots are for what was learned in CONVERSATION; the profile page's answers ride ONE line** (`facts.cardFacts` splits on `prompt_key`; `user-card.PROFILE_LINE_MAX` = 12, in the order `fact-prompts.PROMPTS` offers them, the rest counted in the "+N more" line). Every page answer is importance 2, so ranked together they took 9 of one person's 10 slots and 6 of another's, and what they had said, newer and importance 1, never reached the card. `topFacts` is unchanged for its other two readers (the overnight plan, the extraction pass's "already known" list), which want the profile answers in. Story: `incidents.md`, "The ten card slots went to the profile page (2026-10-08)".

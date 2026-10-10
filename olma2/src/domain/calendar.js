@@ -704,7 +704,10 @@ async function meetingCalendarRoles(client, meetingId) {
         -- A Google invitation is a message by email, and somebody who paused
         -- her THEMSELVES gets none (owner, 2026-09-27) — it would reach them
         -- with every WhatsApp row about the same meeting dropped at the gate.
-        AND NOT (u.paused_at IS NOT NULL AND u.paused_reason IS DISTINCT FROM 'quiet_ladder')`,
+        -- A stop nobody confirmed (stop_unanswered) still hears the
+        -- coordinations it is in, so it gets the invitation too.
+        AND NOT (u.paused_at IS NOT NULL AND u.paused_reason IS DISTINCT FROM 'quiet_ladder'
+                 AND u.paused_reason IS DISTINCT FROM 'stop_unanswered')`,
     [meetingId, PROVIDER]
   );
   const connected = rows.filter((r) => r.connected);

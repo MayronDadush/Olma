@@ -165,6 +165,9 @@ function askedForInWords(row) {
 // a preference nobody has ever set.
 const { REPEAT_WINDOW_MS } = require('../domain/repeat-guard');
 const gameSummary = require('../domain/game-summary');
+// domain/food-picture.js's KIND, by value: that module reads this one's clock
+// helpers, and a require back would be a cycle.
+const FOOD_PICTURE = 'food_picture';
 
 const SAYS_IT_ONCE = new Set([
   'digest', 'checkin', 'travel',
@@ -267,6 +270,12 @@ function coordinationCap(facts, row, window, tz, now) {
   return null;
 }
 
+// Does a SOFT pause let this row through? Only an explicit `true` on
+// `softPaused` acts, and only for another person's errand.
+function softPausePasses(facts) {
+  return facts.softPaused === true && PEER_KINDS.has((facts.row || {}).kind);
+}
+
 // facts: { row, plan, blocked, paused, pendingUser, window, quietDays, tz, sentToday, budget, now, lastInboundAt, wokeAt, dashboardWroteAt }
 // returns { action: 'deliver' | 'hold' | 'expire' | 'drop', holdReason?, releaseAfter? }
 function decide(facts) {
@@ -292,7 +301,14 @@ function decide(facts) {
   // pause has not yet spent that one message (pause.roomInviteSpent) — so the
   // gate still does not have to know what a meeting is. Everything below this
   // line applies to it as to anything else: the night, a quiet day, the budget.
-  if (paused && !facts.pausedRoomInvite) {
+  //
+  // And a SOFT pause (pause.STOP_UNANSWERED, owner 2026-10-09): somebody who
+  // said stop and never answered "בטוח?" for a day. Its coordinations get the
+  // quiet pause's one message each (`pausedRoomInvite`); on top of that, the
+  // people errands (PEER_KINDS) reach them, because another person is not
+  // Olma. Everything below applies to it as to anything else.
+  const softPass = softPausePasses(facts);
+  if (paused && !facts.pausedRoomInvite && !softPass) {
     return { action: 'drop', holdReason: 'paused' };
   }
 
@@ -397,7 +413,7 @@ function decide(facts) {
   // them — so holding it here for that message would hold it for ever. It
   // goes out on its own, and the night and a quiet day below still apply.
   if (facts.dailyOnce === true && row.kind !== 'digest' && row.kind !== 'introduction'
-    && !askedForInWords(row) && !(facts.paused && facts.pausedRoomInvite)) {
+    && !askedForInWords(row) && !(facts.paused && facts.pausedRoomInvite) && !(facts.paused && softPass)) {
     if (row.kind === 'checkin') return { action: 'drop', holdReason: 'daily_once' };
     return { action: 'hold', holdReason: 'daily_once', releaseAfter: null };
   }
@@ -499,6 +515,17 @@ function decide(facts) {
     && createdMs > 0 && (now.getTime() - createdMs) < CONVERSATION_GRACE_MS;
   const gameGrace = inviteGrace || (row.kind === gameSummary.KIND
     && wokeAtMs > 0 && (now.getTime() - wokeAtMs) < CONVERSATION_GRACE_MS);
+  // A repair answers a message the PERSON wrote and nothing else. The sweep
+  // enqueues it only for a message of theirs found in the transcript (a
+  // delivery turn is excluded there) and it expires 45 minutes after, so the
+  // row is itself the evidence they are right there. It cannot lean on
+  // `wokeAt`: the repair exists because the gateway's opener may have MISSED
+  // the message, and then `wokeAt` is stale. Bar, Friday night 2026-10-09: the
+  // opener timed out, the model answered in English, the reply gate rightly
+  // cancelled it, the repair was queued four minutes later and held as
+  // `quiet_day` until it expired -- he heard nothing (`incidents.md`, "The
+  // repair that waited for Saturday to end").
+  const repairGrace = Boolean(row.payload && row.payload.rung === 'unanswered_repair');
 
   // An `introduction` is exempt for the same reason the ladder's own check-in
   // is: it is the one thing Olma OWES rather than something she decided to
@@ -562,7 +589,8 @@ function decide(facts) {
     && row.kind !== 'checkin' && row.kind !== 'introduction' && row.kind !== 'intro_video'
     && row.kind !== 'policy_update' && !gameSummary.KINDS.has(row.kind) && !PEER_KINDS.has(row.kind)
     && !(row.kind === 'meeting_invite' && facts.privateInvite === true)
-    && !askedForInWords(row) && !inRoomGrace && !onPageGrace && !facts.answeredCoordination) {
+    && !askedForInWords(row) && !inRoomGrace && !onPageGrace && !facts.answeredCoordination
+    && !(facts.paused && softPass)) {
     if (!facts.pausedRoomInvite && !facts.quietRoomInvite) {
       return { action: 'drop', holdReason: 'quiet' };
     }
@@ -607,7 +635,7 @@ function decide(facts) {
   // step. It is opt-in and nothing else about it is special (owner,
   // 2026-09-11): asked once, and the calendar is yom tov only. `inRoomGrace`
   // exempts a meeting row from this one too, same reasoning as above.
-  const quietReason = !askedForInWords(row) && !inRoomGrace && !welcomeGrace && !gameGrace
+  const quietReason = !askedForInWords(row) && !inRoomGrace && !welcomeGrace && !gameGrace && !repairGrace
     && quietDayReason(facts, tz, now);
   if (quietReason) {
     return {
@@ -658,7 +686,10 @@ function decide(facts) {
     }
   }
 
-  if (blocked) {
+  // The evening food picture is paid from foodd's own key, never from the
+  // quota this block is about, and a row held here would be folded into the
+  // unblock summary's words and its picture lost (jobs/sweeps.js).
+  if (blocked && row.kind !== FOOD_PICTURE) {
     const paidReminder = row.kind === 'reminder' && plan !== 'free';
     if (!paidReminder && row.kind !== 'unblock_summary') {
       return { action: 'hold', holdReason: 'blocked', releaseAfter: facts.blockedUntil || null };
@@ -701,7 +732,7 @@ function decide(facts) {
   const greeterGrace = greetedAt > 0 && (now.getTime() - greetedAt) < CONVERSATION_GRACE_MS
     && Boolean(row.payload && row.payload.meetingId);
   const midConversation = (lastInbound > 0 && (now.getTime() - lastInbound) < CONVERSATION_GRACE_MS)
-    || inRoomGrace || onPageGrace || greeterGrace || welcomeGrace || inviteGrace;
+    || inRoomGrace || onPageGrace || greeterGrace || welcomeGrace || inviteGrace || repairGrace;
   if (!userChoseThisTime && !midConversation && !withinWindow(window, tz, now)) {
     return {
       action: 'hold', holdReason: 'night',
@@ -715,7 +746,11 @@ function decide(facts) {
   // a deadlock that only the two-day bound in the worker breaks — and it is
   // not one of Olma's four daily initiatives in the first place. It is the
   // sentence that makes the other four make sense.
-  if (row.kind !== 'introduction'
+  // The evening food picture has an allowance of its own (one an evening, by
+  // its idempotency key) and is outside this one, both ways: it never waits
+  // for it, and the worker never counts it into `sentToday` (the owner,
+  // 2026-10-09: "מכסה נפרדת לאוכל").
+  if (row.kind !== 'introduction' && row.kind !== FOOD_PICTURE
     && row.urgency !== 'urgent' && !userChoseThisTime && sentToday >= budget) {
     // A budget-held row is picked up by the next digest rather than retried on
     // a clock — but sweepDigests only visits users who HAVE digest_times, so
@@ -738,7 +773,7 @@ function decide(facts) {
 }
 
 module.exports = {
-  decide, withinWindow, msUntilWindowOpen, minutesInTz, parseHHMM, nextUtcMidnight,
+  decide, softPausePasses, withinWindow, msUntilWindowOpen, minutesInTz, parseHHMM, nextUtcMidnight,
   weekdayInTz, localDateInTz, msUntilQuietDaysEnd, quietDayReason, askedForInWords,
   CONVERSATION_GRACE_MS, SAYS_IT_ONCE, REPEAT_WINDOW_MS,
   COORDINATION_DAILY_MAX, COORDINATION_GAP_MS, COORDINATION_RESULTS,

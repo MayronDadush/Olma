@@ -23,7 +23,8 @@ const PEER = '+972595990001';
 const ARCHIVED_PEER = '+972595990002';
 const SESSION = 'aaaaaaaa-1111-2222-3333-444444444444';
 
-function agentDir(...parts) { return path.join(HOME_DIR, 'agents', AGENT, ...parts); }
+let agentId = AGENT;
+function agentDir(...parts) { return path.join(HOME_DIR, 'agents', agentId, ...parts); }
 
 function seedDb(rows) {
   fs.mkdirSync(agentDir('agent'), { recursive: true });
@@ -215,6 +216,29 @@ test('readRecentMessages follows the reset chain into the previous window', () =
 test('readPeerUserText joins only the user side, sqlite mode', () => {
   assert.equal(sessions.readPeerUserText(AGENT, PEER), 'מה שלומך?\nתודה רבה');
   assert.equal(sessions.readPeerUserText(AGENT, '+972590000000'), null);
+});
+
+// Rachla (u-70) and u-72, 2026-10-09: somebody a friend invited has nothing in
+// their greeter session but OUR opening, wrapped in the English DELIVERY
+// preamble. Read as their words it filed both as English speakers.
+test('our own delivery turn is a system turn, never the stranger\'s words', () => {
+  const INVITEE = '+972595990003';
+  const sid = 'bbbbbbbb-1111-2222-3333-444444444444';
+  agentId = 'u-inv'; // its own agent: the listing tests above count AGENT's sessions
+  seedDb({
+    nodes: [{
+      key: `agent:${agentId}:whatsapp:direct:${INVITEE}`, sessionId: sid,
+      entry: { sessionId: sid, updatedAt: Date.now() },
+    }],
+    events: [
+      { sessionId: sid, seq: 0, event: msg('user', 'DELIVERY: whatever you say in this turn is automatically sent to the user. Never call a message-sending tool. Send the following message EXACTLY: היי! כאן עולמה') },
+      { sessionId: sid, seq: 1, event: msg('assistant', 'היי! כאן עולמה — עוזרת אישית') },
+    ],
+  });
+  assert.equal(sessions.readPeerUserText(agentId, INVITEE), null, 'nothing they said');
+  assert.deepEqual(sessions.readRecentMessages(agentId, 5, undefined, INVITEE).map((m) => m.text),
+    ['(הודעה יזומה של המערכת)', 'היי! כאן עולמה — עוזרת אישית']);
+  agentId = AGENT;
 });
 
 // ---- cost accounting --------------------------------------------------------

@@ -155,6 +155,7 @@ never trust a dated narrative for something you are about to act on.
 - [The morning digest asked the same question four mornings running (fixed 2026-09-06)](#the-morning-digest-asked-the-same-question-four-mornings-running-fixed-2026-09-06)
 - [Four good mornings to a man who had stopped answering (fixed 2026-09-05)](#four-good-mornings-to-a-man-who-had-stopped-answering-fixed-2026-09-05)
 - [The check-in that answered for him (fixed 2026-10-05)](#the-check-in-that-answered-for-him-fixed-2026-10-05)
+- [The check-in that wrote to Sarah (fixed 2026-10-08)](#the-check-in-that-wrote-to-sarah-fixed-2026-10-08)
 - [The minute after a delivery belonged to nobody (fixed 2026-10-02)](#the-minute-after-a-delivery-belonged-to-nobody-fixed-2026-10-02)
 - [Vered's first evening: five tasks, three that would not have arrived (fixed 2026-09-06)](#vereds-first-evening-five-tasks-three-that-would-not-have-arrived-fixed-2026-09-06)
 - [The reminder that could not climb, because its first rung died on the wire (fixed 2026-09-05)](#the-reminder-that-could-not-climb-because-its-first-rung-died-on-the-wire-fixed-2026-09-05)
@@ -177,6 +178,7 @@ never trust a dated narrative for something you are about to act on.
 
 **Stopping, pausing and doctrine**
 
+- [Silence after a stop was read as a yes (changed 2026-10-09)](#silence-after-a-stop-was-read-as-a-yes-changed-2026-10-09)
 - ["אני רוצה להפסיק את השירות" was answered with a goodbye and nothing else (fixed 2026-08-22)](#אני-רוצה-להפסיק-את-השירות-was-answered-with-a-goodbye-and-nothing-else-fixed-2026-08-22)
 - [Pausing left them relying on their own memory to come back (fixed 2026-08-22)](#pausing-left-them-relying-on-their-own-memory-to-come-back-fixed-2026-08-22)
 - [The writing sounded like a form, and half the users were addressed as "את/ה" (2026-08-31)](#the-writing-sounded-like-a-form-and-half-the-users-were-addressed-as-אתה-2026-08-31)
@@ -198,6 +200,7 @@ never trust a dated narrative for something you are about to act on.
 - [The eval partner was a real WhatsApp recipient, and the broken nightly was what stopped it (fixed 2026-09-23)](#the-eval-partner-was-a-real-whatsapp-recipient-and-the-broken-nightly-was-what-stopped-it-fixed-2026-09-23)
 - [Three reds the model did not earn, and one it did (fixed 2026-09-24)](#three-reds-the-model-did-not-earn-and-one-it-did-fixed-2026-09-24)
 - ["רשמתי לך הכל", and nothing was (watched from 2026-09-25)](#רשמתי-לך-הכל-and-nothing-was-watched-from-2026-09-25)
+- ["שלחתי להם", and nothing was sent (corrected by code from 2026-10-08)](#שלחתי-להם-and-nothing-was-sent-corrected-by-code-from-2026-10-08)
 
 **Cost, billing and the money page**
 
@@ -224,6 +227,8 @@ never trust a dated narrative for something you are about to act on.
 
 - [The carryover leak came back, and the code cannot say how (2026-09-06)](#the-carryover-leak-came-back-and-the-code-cannot-say-how-2026-09-06)
 - [The fact table admitted everything and ranked by recency (fixed 2026-08-28)](#the-fact-table-admitted-everything-and-ranked-by-recency-fixed-2026-08-28)
+- [The fact table kept what had a better home (2026-10-08)](#the-fact-table-kept-what-had-a-better-home-2026-10-08)
+- [The ten card slots went to the profile page (2026-10-08)](#the-ten-card-slots-went-to-the-profile-page-2026-10-08)
 - [The name was in front of us on every turn (fixed 2026-08-22)](#the-name-was-in-front-of-us-on-every-turn-fixed-2026-08-22)
 - ["קוראים לי עידן", and ninety seconds later: "עידן, נכון?" (fixed 2026-09-07)](#קוראים-לי-עידן-and-ninety-seconds-later-עידן-נכון-fixed-2026-09-07)
 - [Two introductions, ninety seconds apart (fixed 2026-09-07)](#two-introductions-ninety-seconds-apart-fixed-2026-09-07)
@@ -261,7 +266,9 @@ never trust a dated narrative for something you are about to act on.
 - [Two times for one game (fixed 2026-10-05)](#two-times-for-one-game-fixed-2026-10-05)
 - [Two coordinations for one meeting (fixed 2026-09-30)](#two-coordinations-for-one-meeting-fixed-2026-09-30)
 - [Two invites for one poker night (fixed 2026-10-05)](#two-invites-for-one-poker-night-fixed-2026-10-05)
+- [The group's coordination, asked for in private (2026-10-08)](#the-groups-coordination-asked-for-in-private-2026-10-08)
 - [The coordination that expired on the wrong Tuesday (fixed 2026-09-23)](#the-coordination-that-expired-on-the-wrong-tuesday-fixed-2026-09-23)
+- [A Friday 11:00 still offered at 14:53 (changed 2026-10-09)](#a-friday-1100-still-offered-at-1453-changed-2026-10-09)
 - [The list he could not put his own task into (2026-09-19)](#the-list-he-could-not-put-his-own-task-into-2026-09-19)
 - [An offer to call a number the bridge has never served (fixed 2026-09-06)](#an-offer-to-call-a-number-the-bridge-has-never-served-fixed-2026-09-06)
 - [The reply's first six seconds were bookkeeping (2026-09-05)](#the-replys-first-six-seconds-were-bookkeeping-2026-09-05)
@@ -281,11 +288,14 @@ never trust a dated narrative for something you are about to act on.
 - [The rung nobody asked for, at half past one (2026-09-07)](#the-rung-nobody-asked-for-at-half-past-one-2026-09-07)
 - [Two ladders for one phone call (fixed 2026-09-08)](#two-ladders-for-one-phone-call-fixed-2026-09-08)
 - [The message id the model made up (2026-09-07)](#the-message-id-the-model-made-up-2026-09-07)
+- [Nine o'clock, which nobody said (2026-10-08)](#nine-oclock-which-nobody-said-2026-10-08)
 - [Ten groceries, ten tasks (2026-10-05)](#ten-groceries-ten-tasks-2026-10-05)
 - [Two asks, one task (2026-09-07)](#two-asks-one-task-2026-09-07)
+- [The list he left came back to him (fixed 2026-10-09)](#the-list-he-left-came-back-to-him-fixed-2026-10-09)
 - [The same thing, saved twice (fixed 2026-09-08)](#the-same-thing-saved-twice-fixed-2026-09-08)
 - [A time in the title and no reminder (fixed 2026-09-09)](#a-time-in-the-title-and-no-reminder-fixed-2026-09-09)
 - [A silence read as a delivery fault (fixed 2026-09-09)](#a-silence-read-as-a-delivery-fault-fixed-2026-09-09)
+- [The repair that waited for Saturday to end (fixed 2026-10-10)](#the-repair-that-waited-for-saturday-to-end-fixed-2026-10-10)
 - [The hour in the title nobody compared (fixed 2026-09-11)](#the-hour-in-the-title-nobody-compared-fixed-2026-09-11)
 - [A lost reply is re-sent, not re-answered (fixed 2026-09-09)](#a-lost-reply-is-re-sent-not-re-answered-fixed-2026-09-09)
 - [The sentinel that only stripped itself (fixed 2026-09-15)](#the-sentinel-that-only-stripped-itself-fixed-2026-09-15)
@@ -6881,6 +6891,24 @@ coordination needed. It now asks instead (`fits` on the proposal); the
 automatic NO stays, because it only repeats what they said and closes
 nothing.
 
+### The check-in that wrote to Sarah (fixed 2026-10-08)
+
+u-11, 2026-09-28 16:01 UTC (09:01 in Los Angeles), found by the weekly
+conversation review. A `stalled_goal` check-in told the model to ask its
+reader ONE question about a goal that had stalled. Instead it called
+`send_message_to_connection` and wrote to Sarah directly, in his name, with
+a day ("מחר (שלישי)") it had assumed. He had said nothing that turn: the
+words and the decision to send them were both Olma's.
+
+Same shape as "The check-in that answered for him", one door over. The
+self-initiated mark was there, and `WRITES_ANSWER` guarded the answers; but
+nothing guarded the two tools that pass a person's words to somebody else.
+`send_message_to_connection` and the private chat's `relay_to_group` now
+refuse with `not_their_turn` inside a turn Olma started, unless they wrote
+since the mark began. The guard moved to `src/adapters/mcp/our-turn.js` so both lists
+share one implementation. A test scans every tool slice, not only
+meetings.js, because the door that was missed lived in another file.
+
 ### The minute after a delivery belonged to nobody (fixed 2026-10-02)
 
 Shimon (user 54) joined from a room at 13:29 UTC, wrote once at 13:31:12 and
@@ -7596,6 +7624,43 @@ count; `admin`, `unanswered_repair` and `missed_goal_repair` do not
 (`tests/checkin-misses.test.js`). Gali's counter was reset by hand.
 
 ## Stopping, pausing and doctrine
+
+### Silence after a stop was read as a yes (changed 2026-10-09)
+
+Three people were paused under `said_stop` on 2026-10-09 — Gal (since
+09-23), Matan (09-25) and מעיין (09-27) — and none of them had answered the
+"בטוח?" that followed. An unconfirmed stop was a FULL pause for as long as
+they stayed silent, so a question nobody answered had the same effect as a
+yes: no room coordination, no private one from a friend, no connection
+request, for weeks. The owner's view is that silence is not a decision, and
+a pause that shuts out every other person should take one.
+
+The owner's rule: a stop that goes UNANSWERED for 24 hours becomes a softer
+pause (`pause.STOP_UNANSWERED`, `pause.softenUnansweredStops` on the minute
+sweep). The first version let every coordination row through for as long as
+they stayed in it; the owner narrowed it the same day to the quiet pause's
+shape, on the reasoning that somebody who said stop and never confirmed is
+owed at least as much quiet as somebody who merely stopped answering. So:
+Olma stays silent — no reminders, check-ins, digests, and no nudge of any
+kind — each coordination opened with them is heard ONCE (`pausedRoomInvite`,
+room or private), and a day of silence after it takes them out
+(`group-meetings.sweepSilentPausedMembers`, cause `paused_no_answer`). On top
+of that the people errands, `gate.PEER_KINDS`, always pass, and the first
+message of each local day ends on one fixed line ("אפשר לכתוב לי בכל שלב
+שרוצים להפסיק, ואז לא אשלח יותר שום הודעה.", `pause.SOFT_PAUSE_FOOTER`),
+handed over word for word on both the model path and the raw pipe. Their next
+message ends it, as it ends a `said_stop`.
+
+The owner named the four states so they can be talked about: השהייה שקטה
+(`quiet_ladder`), עצירה ממתינה (`said_stop`, its first day), השהייה רכה
+(`stop_unanswered`) and השהייה מלאה (a confirmed stop). The admin page uses
+the same words.
+
+A YES is now the only thing that stops other people's coordinations, so
+`pause.CONFIRM_QUESTION` was reworded to say that is what it costs. The three
+who were already paused were left in the full pause (`pause.SOFT_PAUSE_SINCE`):
+they were promised it, and nobody asked them otherwise. Tests:
+`tests/soft-pause.test.js`.
 
 ### Not connected, read as not on Olma (fixed 2026-09-30)
 
@@ -8423,6 +8488,40 @@ if every `unbacked` row is a real phantom; the transcript scan says the shape is
 rare and the false-positive classes are known, so the bar is a couple of weeks
 of rows before anyone argues for more. Needs a gateway restart to go live, like
 every change to the plugin.
+
+### "שלחתי להם", and nothing was sent (corrected by code from 2026-10-08)
+
+The detector above watched for a save word with NO tool behind it. The
+commoner lie is the other one: the tool ran, was refused, and the reply said
+it worked anyway — two `complete_task` calls refused as `not_found`, then
+"סימנתי את שניהם" (u-30, 2026-10-08), and the same shape for u-36 and u-56. Read on the box over three weeks: 88 turns where a
+tool failed and a reply followed, and `reply.claim` had filed `failed` for
+none of them. Three reasons, each its own fix:
+
+- **The verbs.** The claim pattern knew saving ("רשמתי", "הוספתי") and not
+  passing on or ticking off — "שלחתי", "העברתי", "סימנתי", "עודכנו" and their
+  English twins went unread.
+- **"The last tool" is the wrong question.** brokerd kept one timestamp for
+  the last failure, so any later success — usually a read the model made to
+  recover — erased it. Now it keeps, per person, each WRITE tool whose latest
+  call failed, and only a success of the SAME tool clears it
+  (`phantom-save.isWrite`; a read failing is noise).
+- **A reply that already says it did not work is honest.** "לא הצלחתי לשלוח"
+  is filed `failed_admitted` and never corrected (`admitsFailure`, a port in
+  the plugin).
+
+What it does about it is the owner's ask, and deliberately small: the gate now
+waits up to 800ms for brokerd's verdict, and for a phone in
+`claim_correction_phones` a `failed` claim gets ONE fixed line under the reply
+— "⚠️ תיקון: זה לא נשלח בפועל." for a relay, "⚠️ תיקון: זה לא נשמר בפועל,
+הפעולה נכשלה." otherwise, English only when the reader is not known to write
+Hebrew. Code writes the line, never the model, for the same reason the
+working-out is stopped in the gateway: the model already had the refusal in
+front of it and wrote the opposite. The flag starts empty, so every hit is a
+shadow row (`wouldCorrect`) first. Roughly three of five candidates read by
+hand were real; the doubtful shape is a refused `complete_task` on a task that
+was already done, where "סימנתי" is true in spirit. Inert until the gateway
+restarts.
 
 ### Twelve people off the bottom of the money page (fixed 2026-09-10)
 
@@ -9340,6 +9439,52 @@ coming back to git — so the repo is renamed to match production, never the
 reverse. Worth noting how it was found: not by anyone reading `ls migrations/`,
 but by every single test failing at once the first time somebody ran the suite
 after both merges.
+
+### The fact table kept what had a better home (2026-10-08)
+
+The owner asked how much "what Olma learned about a user" costs in the prompts,
+and then to measure it. 145 active facts, 23 people, median 2.5 each, p90 7:
+the typical card is nearly EMPTY, and the noise is two accounts (55 and 28
+rows) — the owner's testbed and one more. In those, seven rows were not
+biography: an email address twice ("כתובת אימייל: …", "חיבר את Gmail …"),
+three reminder requests ("מבקש תזכורות לשתות מים"), two "יש קשר עם X". Each
+has a home that stays true and each was read on every turn. Nine of twenty-five
+plans had no end ("טסה לקפריסין" past the trip).
+
+Fixed in the door, not in a pass: the owner said no nightly job — he wants it
+right from the start. `rememberFact` refuses the three shapes (each matched the
+live corpus exactly and nothing else) and defaults a plan's `expires_at` to 45
+days, after the `needs_expiry` check. Migration 119 applied the same verdict
+once to the existing rows (soft: `active = false`, an expiry on the plans).
+
+Measured and NOT done: `task-similarity.compare` across every pair of one
+person's facts (1,651 pairs) found 1 real near-duplicate of 4 and merged nothing
+wrongly; the rest are a judgement ("גר בהוד השרון" against the profile's "עיר
+מגורים: הוד השרון"), which is the Jev-in-shadow question, not a regex. Also
+left: profile-page answers (`prompt_key`, importance 2) crowd the ten card
+slots, and undated one-off events in `health` ("הולכת לניתוח", importance 3)
+cannot be told from a durable trait by code.
+
+### The ten card slots went to the profile page (2026-10-08)
+
+Same measurement as the entry above. `topFacts` ranks importance, then recency,
+and every answer from the profile page is written at importance 2. On the two
+accounts with more than ten facts the card's ten slots were 9 of 10 and 6 of 10
+profile answers ("חיית מחמד: אין", "רכב: יש רכב"), with "הולכת לניתוח"
+(importance 3, undated) on top of one of them; what the person had SAID, newer
+and importance 1, never reached the card. The ranking was not wrong about
+importance — it was comparing a fixed, bounded questionnaire with an open-ended
+conversation as though they were one kind of thing.
+
+`facts.cardFacts` returns the two apart (on `prompt_key`, no text read): ten
+slots for what was said, and the page's answers as one line, led by the
+questions that change what Olma DOES and capped at 12. Not changed:
+`topFacts` (the overnight plan and the extraction pass's "already known" list
+want the profile answers), the importance values, and any judgement about which
+answers are worth a place — "ילדים: אין" is kept, it costs three tokens on a
+line and tells her not to ask. Still open: an undated one-off event filed as a
+core fact cannot be told from a durable trait by code (Jev-in-shadow, not a
+regex).
 
 ### The name was in front of us on every turn (fixed 2026-08-22)
 
@@ -10968,6 +11113,50 @@ The approver's hint was left alone. It is not wrong, since עידן had just sai
 when he could, and with this check whichever agent comes second is sent to the
 first one.
 
+### The group's coordination, asked for in private (2026-10-08)
+
+The owner asked for the poker room's board to be readable in the room — who
+can and who cannot — and then drew the line himself: **a private coordination
+is never the room's business, even between people who are all in it.** The
+room's board covers exactly two cases besides one the room asked for: a private
+request "for this group", and a private coordination with EVERYBODY in a room.
+Both become that room's coordination.
+
+Until then the private door had no way to say either. `start_meeting_coordination`
+took phones, demanded a connection to each, and wrote `group_id` NULL, so
+"תתאמי לנו פוקר לקבוצה" from somebody's own chat produced a private
+coordination the room could never see. Members of a room are often not each
+other's connections, so it usually failed outright.
+
+**What changed.** `start_meeting_coordination` takes `group_id` (a room from
+`list_my_meetings`), and with phones alone it asks
+`group-meetings.roomsCoveredBy`: the open rooms of theirs whose whole
+membership those phones are. One match opens it there, two is a
+`which_group` question, and none is the private path as before. Either way it
+goes through `group-meetings.startFromPrivate` → `startCoordination`, so the
+room's coordination is the same object whichever door opened it: the started
+line, the board, the cold invite, `admitLateMembers`, the room's tools.
+
+**"Everybody" is whoever she can name in a private chat** (`coversRoom`):
+every member who has written to her, the asker aside, and nobody who is not in
+the room. A member who never wrote is not required, because the owner said
+they are part of it anyway — the room's machinery reaches them, and in time
+they will see it through the room. A member who paused her themselves is not
+required either, as the room leaves them out.
+
+Two things it does NOT do, on purpose:
+
+- **The asker is not sent their own invite.** A room tag carries no times,
+  which is why `askedItYourself` exists; a private request is the
+  person-to-person case, where they are in the conversation already.
+- **The room's once-ever kind question is not spent.** It is asked in the
+  room's reply to the tag, and a private turn has none, so the stamp would have
+  burnt it unasked.
+
+Not done: an already-open private coordination that happens to cover a room is
+not converted retroactively, and the page's own start button still opens a
+private one.
+
 ### Two invites for one poker night (fixed 2026-10-05)
 
 On 2026-10-05 the poker room (group 13) got two coordinations two and a half
@@ -11099,6 +11288,19 @@ have seen any of this. They drive the option now, and three new ones measure
 what was actually wrong: both orderings above, the whole-day exception, and a
 brand-new coordination that must not be closed for having an empty table.
 All three go red on the old code.
+
+### A Friday 11:00 still offered at 14:53 (changed 2026-10-09)
+
+The poker coordination (meeting 74) still had "יום שישי 9.10 ב-11:00" on its
+table at 14:53 that day, and eight private invitations were being written
+against it. Nothing was broken: a clock time left the table six hours after
+its start (`meetings.EXPIRE_AFTER_START_MS`), on the reasoning that the thing
+might still be happening and that closing late is better than closing early.
+The owner's rule is one hour — a time that has already happened is not a
+time anybody can still say yes to. All-day options keep their extra day on
+top (stamped at 09:00, they now leave at 10:00 the next day). Test: "a clock
+time leaves the table an hour after it starts, not before" in
+`tests/meetings.test.js`.
 
 ### The list he could not put his own task into (2026-09-19)
 
@@ -12178,6 +12380,38 @@ So the id is taken only when the model is the best source there is: never on
 exactly as before — a real person writing, with no gateway opening on file,
 is still a turn where the model is all we have.
 
+### The repair that waited for Saturday to end (fixed 2026-10-10)
+
+Friday 2026-10-09, 19:11 Jerusalem. Bar answered the poker coordination with
+"תפתחי להם אופציה בשלישי ה13.10 שאני חוזר אצלי" and heard nothing. Four faults
+in a row, only the last one ours to fix in code:
+
+1. The gateway's `olma-turn-open` hook timed out at 13.2s with
+   `connected: false` (the gateway's loop was stalled; the same minute shows
+   u-10 and u-3 doing it). The message was never counted, `last_woke_at` and
+   `last_inbound_at` stayed on 10-08, and the turn ran with no Turn context
+   (`turn.context_without_open`, 9 that day, 3-6 a day all week).
+2. `deepseek-v4-flash` read a bare Hebrew sentence with no context and answered
+   "I don't see a question or task yet" in English, with no tool call.
+3. The reply gate cancelled it correctly (`english`, two `reply.gated` rows).
+4. `unanswered` did its job: case (c) queued a `dropped_turn` repair at 16:15.
+   The gate held it as `quiet_day` (Friday night is Shabbat for him), and the
+   45-minute expiry took it. 3 of the 35 repairs in 14 days were held that way.
+
+The fix is the gate's: a row with `payload.rung = 'unanswered_repair'` is
+exempt from the night and the quiet day (`gate.repairGrace`), because it only
+ever answers a message the person wrote and `wokeAt` is exactly what a missed
+opener leaves stale. Not fixed: the hook timeout itself (gateway loop stalls),
+and the model answering a bare sentence badly when no context arrives. The
+manual remedy for Bar was `propose_meeting_slot` through brokerd's socket.
+
+**Second half, same day:** a turn whose message the opener missed now gets a
+"Recent context" block -- the kinds of the last three messages sent to them in
+24 hours and `recentMeetings` (`turn.missedOpenContext`) -- so a bare "תפתחי להם
+אופציה בשלישי" is read against the poker message that preceded it. Headed
+"Recent context" on purpose: the doctrine's "no Turn context -> call
+`turn_start`" fallback is what counts the message.
+
 ### A silence read as a delivery fault (fixed 2026-09-09)
 
 Yahav wrote "בוצע הפקדת צק" at 19:34. Everything after that was correct:
@@ -13081,6 +13315,25 @@ word is what licenses reading "ב-6 בערב" as 18:00, never the bare digit; an
 cut that would leave a stub is refused, because "ב-17:00" alone is not a task
 anybody can read.
 
+### The list he left came back to him (fixed 2026-10-09)
+
+Miron dictated a Vietnam packing list by voice at 10:39 UTC on 2026-10-08,
+shared it with Guy and Yuval, and left it from his page at 10:41 —
+`shares.leaveTask` handed it to Guy, exactly as designed. At 11:56 the
+fact-extraction pass read the same voice note, found nothing like it on his
+open list, and wrote it back to him as task 1427 with all four items. The next
+day he asked Olma what was open and "ציוד לוייטנאם — 5" was on it.
+
+The pass already refused a twin that was open or completed inside 24h
+(`task-similarity.findTwin`'s `doneWithinHours`). Neither applies to a row
+that has changed owner or been deleted, so a thing he had walked away from
+looked like a thing he had forgotten to save. `findTwin` now takes
+`goneWithinHours`: a row of theirs archived inside the window, and any task
+whose `share.left` audit row they wrote inside it, whoever owns it now. The
+extraction pass passes 24h and counts these refusals as `similar_gone`. The
+live `add_task` passes nothing, so a person saying it again is still saved.
+The same hole was open for a task they DELETED, and the same option closes it.
+
 ### The same thing, saved twice (fixed 2026-09-08)
 
 The owner noticed a few duplicate tasks on one person's list and asked why.
@@ -13165,6 +13418,40 @@ Fixture drift, worth knowing before the next such guard: twenty-three tests in
 four files broke, and every one of them was a test giving the same person two
 open tasks with the same title — two shared helpers (`mkTask`, `taskWithReminder`)
 accounted for all but four. None of them were about titles.
+
+### Nine o'clock, which nobody said (2026-10-08)
+
+Dov dictated a long evening of things for "מחר" and named an hour for none of
+them. Every one came back on his page, his digest and his lists as "09:00"
+(owner, 2026-10-05). The reminder was right either way — a day-shaped task and
+a 09:00 one are both reminded at 08:00 — but the hour on the row was one the
+model wrote, not one he said.
+
+The model has no way to write "a day" except local midnight, and it does not
+reach for it: of 68 chat-dated tasks in thirty days, none sat at midnight.
+Asked for "tomorrow" it writes tomorrow at 09:00 — 35 tasks across 5 people in
+the same window, 16 of them Dov's from that one evening.
+
+Measured on the box before writing anything (counts only, every transcript
+event per agent — `readRecentMessages` alone matched 1 of 32, because sessions
+reset daily): of 32 tasks saved at 09:00 from chat or a dump in thirty days,
+the message behind 13 named no hour; 19 did (12 a digit, 4 a part of the day,
+3 another time word), and two messages that really said nine are kept. One of
+the 13 followed an Olma message that itself named a nine — a "כן" to an
+offered hour is the case this cannot see, and the reason it acts only on
+09:00. 18 of 57 tasks at OTHER hours came from messages with no hour too: the
+hour came from the conversation, so any hour but the invented one stands.
+
+The fix is the turn-open pattern again. The hook's `namesNoHour` reads the
+message (a digit, an hour word, a part of the day, a span, "now", before/after,
+in Hebrew and English — the quoted reply is NOT stripped, so a quote naming an
+hour keeps it) and sends a boolean; brokerd stamps it on the open, not spent,
+fifteen minutes; `add_task` and `add_tasks_bulk` move a due moment at exactly
+09:00:00 in THEIR zone to that day's midnight (`domain/invented-hour.asDay`),
+never one with `ends_at` and never under a heard chase. The result carries
+`hints.dayOnly`, conditional like every hint beside `markPlaced`. Coverage is
+about 40% of the 09:00 rows; mixed dumps and dayparts are left alone on
+purpose. Inert until the gateway restarts, like every hook change.
 
 ### Ten groceries, ten tasks (2026-10-05)
 
@@ -15297,3 +15584,63 @@ follow-up when a digest reached them after rung 1
 (`reminders.coveredByDigest`; since the same day every digest carries every
 open task, so reaching them is naming it). A nudge, an explicit reminder and a repeating one
 are untouched. Audited as `reminder.covered_by_digest`.
+
+### Hebrew all day, and an English check-in — the cause underneath (fixed 2026-10-09)
+
+The first fix (the language streak) only catches a wrong `locale` after three
+messages. The wrong value came from provisioning: for somebody a friend
+invited, the greeter session holds nothing but OUR opening, delivered with
+`--deliver` under the English `DELIVERY_PREAMBLE`. `readPeerUserText` joined
+every user-role turn, so that preamble was read as the stranger's first
+message: 6 Hebrew letters against 451 Latin ones, identical for u-70 and u-72,
+`detectLanguage` said `en`. The same text went into u-39's USER.md as "what
+they said". `isSystemInstruction` knew three older openings, none of which is
+first any more because the preamble is prepended to every proactive turn.
+
+Fix: `isSystemInstruction` matches the preamble, and `readPeerUserText` leaves
+the labelled turns out. u-72 set to `he` by hand; u-12 (Yuval) is English on
+purpose (he talks to her in English); u-17 and u-39 left alone.
+
+### Hebrew all day, and an English check-in (fixed 2026-10-09)
+
+Rachla (u-70) was filed `locale = 'en'` by her first message
+(`user.provisioned.workspace`, `localeSource: "message"` — Latin letters), wrote
+Hebrew for a day, and was then sent a check-in in English: with no message of
+hers in front of it, the model follows the stored language, and USER.md said
+`Language: en`. Nothing noticed, because the net for a wrong stored language is
+`turn_start`'s `wrote_in` and the Turn context doctrine says NOT to call
+`turn_start` — her `locale_observed` was never written. Her row was set to `he`
+by hand (`users.setLocale` + `refreshUserCard`, nothing in the dashboard had
+touched it: no `user.locale_set`, `last_dashboard_at` empty).
+
+Fix: the turn-open hook counts Hebrew letters (`wroteHebrew`: true, false, or
+null when under three letters), brokerd keeps it on the pending open and
+`turn_context` feeds `users.noteObservedLanguage` once per message — three
+Hebrew messages to a non-Hebrew row raise the existing `languageNudge` (ask,
+never switch). A non-Hebrew message counts as the stored language, which ends a
+streak. Needs a gateway restart for the hook to send the new field. Not done:
+the first-hours check-in still follows `locale` until three messages have been
+seen.
+
+### The poker room could not say who could and who could not (2026-10-08)
+
+The owner asked Olma in the poker room who can and who cannot. She named
+nobody. `group_coordination_status` already returns yes, no and missing per
+time with each person's tag; the room doctrine (`agents-group-template.md`)
+told her "even after somebody answered here, do not say in the room what the
+others answered". The owner's call: that is the board of the coordination and
+every member may see it. Now she answers from the status by tag, says "not yet
+answered" only where `asked` is true, and still never says a REASON. The
+fixed room lines already named who could make it, so this only closes the gap
+on a direct question. Unasked, she still does not read the board out.
+
+The same day the owner widened it to every surface: the page has always shown
+who said what by name, so the chat and the room should too. The private
+`get_meeting_status` had the answers by user id and a hint saying "never
+anybody else's answer"; it now draws `who` per time (names, the reader left
+out, nobody who left), said only when asked. Reasons: the page and the chat
+already showed every shareable one (the `private` flag exists and had been set
+on 0 of 48 constraints). In the room a reason is said only when somebody asks
+why, through `group_coordination_status`'s `reasons`. Still open, asked of the
+owner: a PRIVATE coordination between room members, asked about in the room —
+the room agent cannot see it at all today.

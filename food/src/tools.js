@@ -15,7 +15,7 @@ const N = require('./nutrition');
 const D = require('./days');
 const card = require('./card');
 const foods = require('./foods');
-const vision = require('./vision');
+const plate = require('./plate');
 const llm = require('./llm');
 const { Refused } = require('./validate');
 
@@ -31,7 +31,7 @@ function mealBrief(m, numbers) {
   const out = { meal_id: m.id, title: m.title, meal: m.slot, day: m.day, time: m.time };
   if (m.rough) return { ...out, rough: true };
   out.items = m.items.map(it => numbers
-    ? { name: it.name, grams: it.grams, kcal: it.kcal, ...(it.confidence === 'portion' ? { their_portion: true } : {}) }
+    ? { name: it.name, grams: it.grams, ...(it.ml ? { unit: 'ml' } : {}), kcal: it.kcal, ...(it.confidence === 'portion' ? { their_portion: true } : {}) }
     : { name: it.name, group: N.GROUP_HE[it.grp] });
   if (numbers) out.totals = m.totals;
   out.plate = plateHe(m.balance);
@@ -39,7 +39,7 @@ function mealBrief(m, numbers) {
   return out;
 }
 function dayBrief(v, numbers) {
-  const out = { date: v.day, date_he: v.date_he, meals: v.meals.map(m => mealBrief(m, numbers)), water: { cups: v.water, goal: v.person.water_goal } };
+  const out = { date: v.day, date_he: v.date_he, meals: v.meals.map(m => mealBrief(m, numbers)), water: { cups: v.water, ml: v.water_ml, goal: v.person.water_goal, goal_ml: v.person.water_goal_ml } };
   if (numbers) {
     out.totals = v.totals;
     out.goal = { ...v.person.goal, ...(v.person.goal.set ? {} : { note: 'a default; set_food_goal sets theirs' }) };
@@ -50,6 +50,24 @@ function dayBrief(v, numbers) {
   if (v.challenge) out.challenge = { name: v.challenge.he, this_week: `${v.challenge.score} of ${v.challenge.so_far} days so far`, today_met: v.challenge.days.find(d => d.day === v.day)?.met ?? null };
   return out;
 }
+// Their page, once a day, under the first photo they send that day (the
+// owner's call, 2026-10-09). The link reaches them only if the model writes
+// it, so the result says so the way olma2's domain/action-link.js does, and
+// hands over the sentence before it too: a model asked to introduce a link
+// writes "שלחתי לך קישור" and leaves it out. Claimed in one UPDATE, so two
+// photos at once cannot both carry it.
+const PAGE_LINE = { he: 'אפשר לראות את כל היום שלך כאן:', en: 'Your whole day is here:' };
+const PAGE_LINK_NOTE = 'Right after the line saying what you logged (before any question), write `page_line` and then `url` on a line of '
+  + 'its own, both exactly as they are, every character. NOTHING ELSE WILL DELIVER THE LINK. Never write that a link was sent: if '
+  + 'the characters are not in this message, they have no link.';
+async function pageLinkOnce(pool, p, v) {
+  if (!v.url) return null;
+  const { rowCount } = await pool.query(
+    'UPDATE people SET page_link_day = $2 WHERE user_id = $1 AND page_link_day IS DISTINCT FROM $2', [p.user_id, v.today_day]);
+  if (!rowCount) return null;
+  return { url: v.url, page_line: /^en/i.test(p.locale || '') ? PAGE_LINE.en : PAGE_LINE.he };
+}
+
 const insightFor = (v, numbers) => (v.insights.find(i => numbers || !i.numbers) || {}).he || null;
 
 // Very little, several days running. Said once a week per person, in memory:
@@ -77,8 +95,6 @@ const NOTE_NO_NUMBERS = 'No-numbers mode: never say a calorie or gram amount. Ta
 
 // A goal waiting for their yes: the second call saves it.
 const CONFIRM_TTL_MS = 30 * 60_000;
-// Each photo is a paid model call. Nobody eats sixty plates a day; a loop does.
-const PHOTOS_PER_DAY = 60;
 const goalAsks = new Map();
 
 /* ── the tools ── */
@@ -100,22 +116,20 @@ const TOOLS = {
   // and it is logged at once, because correcting is easier than confirming.
   // The one question the model may have (an unclear amount, oil it cannot
   // see) is asked after, and its answer is an edit_meal.
-  async see_meal_photo({ pool, p, fetchImpl, readMedia }, a) {
+  async see_meal_photo({ pool, p, fetchImpl, readMedia, publicBase }, a) {
     if (typeof a.path !== 'string' || !a.path) fail('missing', 'path: the exact file path the system showed you for the photo, this turn');
-    const { rows: [{ n }] } = await pool.query(`SELECT count(*)::int AS n FROM model_calls WHERE user_id = $1 AND purpose = 'see' AND at > now() - interval '1 day'`, [p.user_id]);
-    if (n >= PHOTOS_PER_DAY) fail('rate_limited', `${PHOTOS_PER_DAY} photos in a day is the limit; log the rest with log_meal from what they tell you`);
+    if (await plate.photosToday(pool, p) >= plate.PHOTOS_PER_DAY) fail('rate_limited', `${plate.PHOTOS_PER_DAY} photos in a day is the limit; log the rest with log_meal from what they tell you`);
     let media;
     try { media = await readMedia({ userId: p.user_id, path: a.path }); } catch (e) { fail('unavailable', `the photo could not be fetched (${e.message}); ask them to send it again`); }
     if (!media || !media.ok) fail(media?.code === 'too_old' ? 'too_old' : 'no_photo', `${media?.error || 'no photo'}. Never invent or reuse a path; if none was shown this turn, ask them to send the photo again.`);
-    let seen;
-    try { seen = await vision.see({ pool, userId: p.user_id, image: { mime: media.mime, base64: media.base64 }, note: a.note, fetchImpl }); } catch (e) {
+    let got;
+    try { got = await plate.logPhoto(pool, p, { mime: media.mime, base64: media.base64, note: a.note, meal: a.meal, date: a.date, via: 'olma', fetchImpl }); } catch (e) {
       if (e instanceof llm.ModelUnavailable) fail('unavailable', `the photo could not be read right now (${e.message}). Ask them what they ate in words and use log_meal.`);
       throw e;
     }
-    if (!seen.food) return { logged: null, note: 'There is no food in this photo. Ask, in one line, whether they meant to send another one.' };
-    const items = await foods.resolve(pool, seen.items, { userId: p.user_id, fetchImpl });
-    const { meal, applied } = await store.logMeal(pool, p, { title: seen.title || undefined, items, meal: a.meal, date: a.date, source: 'photo' }, { via: 'olma' });
-    const v = await store.dayView(pool, p, meal.day);
+    const { seen, meal, applied, items } = got;
+    if (!meal) return { logged: null, note: 'There is no food in this photo. Ask, in one line, whether they meant to send another one.' };
+    const v = await store.dayView(pool, p, meal.day, { publicBase });
     const out = { logged: mealBrief(meal, p.numbers), for_day: meal.day === v.today_day ? 'today' : meal.day };
     if (applied.length) out.applied_portions = applied.map(x => (p.numbers ? x : { name: x.name }));
     if (meal.day === v.today_day) out.today = p.numbers ? { totals: v.totals, left: v.left } : { meals: v.meals.length, with_vegetables: v.balance_counts.veg };
@@ -126,7 +140,9 @@ const TOOLS = {
     const next = seen.question
       ? 'Say in one short line what you logged, then ask the question in `ask`, in your own words, short. Their answer is an edit_meal on this meal_id (add oil as an item, or change an amount).'
       : 'Say in one short line what you logged; they can correct any amount.';
-    return { ...out, note: p.numbers ? `${next} ${NOTE_LOG}` : `${next} ${NOTE_NO_NUMBERS}`, ...(care ? { care } : {}) };
+    const link = await pageLinkOnce(pool, p, v);
+    const note = `${next} ${p.numbers ? NOTE_LOG : NOTE_NO_NUMBERS}${link ? ` ${PAGE_LINK_NOTE}` : ''}`;
+    return { ...out, note, ...(care ? { care } : {}), ...(link || {}) };
   },
 
   async edit_meal({ pool, p, fetchImpl }, a) {
@@ -214,7 +230,7 @@ const TOOLS = {
   async my_portions({ pool, p }, a) {
     if (a.forget) return await store.forgetPortion(pool, p, a.forget);
     const list = await store.portionsOf(pool, p);
-    return { portions: list.map(x => (p.numbers ? { name: x.name, grams: x.grams } : { name: x.name })), ...(list.length ? {} : { note: 'None yet: a corrected amount becomes one.' }) };
+    return { portions: list.map(x => (p.numbers ? { name: x.name, grams: x.grams, ...(x.ml ? { unit: 'ml' } : {}) } : { name: x.name })), ...(list.length ? {} : { note: 'None yet: a corrected amount becomes one.' }) };
   },
 
   async usual_meals({ pool, p }, a) {

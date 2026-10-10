@@ -155,7 +155,7 @@ test('"ערב משחק חדש" turns the pack on, asks the price, and the answer
 
   const first = await ask({ agentId: u.agent, body: 'ערב משחק חדש', messageId: '3EB0GAME0001' });
   assert.equal(first.claim, true);
-  assert.equal(first.text, "🃏 פותחים ערב משחק.\nכמה עולה כניסה, וכמה ז'יטונים לכל כניסה?");
+  assert.equal(first.text, "🃏 פותחים *ערב משחק*\n\nכמה עולה כניסה, וכמה ז'יטונים לכל כניסה?");
   assert.deepEqual(calls, [['open', { userId: Number(u.id), probe: true }]], 'a probe, nothing opened yet');
   assert.deepEqual(await packsOf(u.id), [{ pack: 'games', via: 'phrase' }]);
   assert.deepEqual(policies, [[u.agent, ['games']]], 'the deny list follows the row at once');
@@ -165,7 +165,7 @@ test('"ערב משחק חדש" turns the pack on, asks the price, and the answer
   assert.equal(second.claim, true);
   assert.deepEqual(calls[1], ['open', { userId: Number(u.id), name: 'מירון', locale: 'he', price: 50, chips: 1000, nightName: 'ערב משחק' }]);
   assert.equal(second.text,
-    `🃏 פתחתי את ערב משחק. כניסה 50 ₪, 1,000 ז'יטונים לכניסה.\nזה הקישור האישי שלך, רק בשבילך:\n${URL}#me-p1\nעוד רגע שולחת לך את ההודעה עם הקישור שאפשר להעביר לשאר השחקנים, בקבוצה או לכל אחד בפרטי 👇`);
+    `🃏 פתחתי את *ערב משחק*\nכניסה 50 ₪ · 1,000 ז'יטונים לכניסה\n\nזה הקישור האישי שלך, רק בשבילך:\n${URL}#me-p1\n\nעוד רגע שולחת לך את ההודעה עם הקישור שאפשר להעביר לשאר השחקנים, בקבוצה או לכל אחד בפרטי 👇`);
 
   const { rows: [inv] } = await db.pool.query(
     'SELECT kind, urgency, payload, idempotency_key, release_after FROM outbox WHERE user_id = $1', [u.id]);
@@ -174,7 +174,7 @@ test('"ערב משחק חדש" turns the pack on, asks the price, and the answer
   assert.equal(inv.urgency, 'urgent');
   assert.equal(inv.idempotency_key, `game_invite:K7M2Q:${u.id}`);
   assert.equal(inv.payload.texts.he,
-    '🃏 ערב משחק · כניסה 50 ₪\nלהצטרפות לוחצים על הקישור ושולחים לעולמה את ההודעה שנפתחת:\nhttps://allma.world/g/K7M2Q');
+    '🃏 *ערב משחק* · כניסה 50 ₪\n\nלהצטרפות לוחצים על הקישור ושולחים לעולמה את ההודעה שנפתחת:\nhttps://allma.world/g/K7M2Q');
   assert.ok(!inv.payload.texts.he.includes('/night/'), 'the invite carries no page at all: everybody comes in through Olma');
   assert.match(inv.payload.texts.en, /send Allma the message that opens:\nhttps:\/\/allma\.world\/g\/K7M2Q$/);
   // And the raw pipe says the Hebrew to a Hebrew host.
@@ -215,11 +215,11 @@ test('the model opening a night: both of the host\'s messages are sent by code, 
   assert.equal(host.urgency, 'urgent');
   assert.equal(host.release_after, null, 'their own link goes at once');
   assert.equal(host.payload.texts.he,
-    `🃏 פתחתי את ערב משחק. כניסה 50 ₪, 1,000 ז'יטונים לכניסה.\nזה הקישור האישי שלך, רק בשבילך:\n${URL}#me-p1\nעוד רגע שולחת לך את ההודעה עם הקישור שאפשר להעביר לשאר השחקנים, בקבוצה או לכל אחד בפרטי 👇`);
-  assert.match(host.payload.texts.en, /^🃏 Opened ערב משחק\. .*This is your personal link, just for you:\n.*#me-p1\n/s);
+    `🃏 פתחתי את *ערב משחק*\nכניסה 50 ₪ · 1,000 ז'יטונים לכניסה\n\nזה הקישור האישי שלך, רק בשבילך:\n${URL}#me-p1\n\nעוד רגע שולחת לך את ההודעה עם הקישור שאפשר להעביר לשאר השחקנים, בקבוצה או לכל אחד בפרטי 👇`);
+  assert.match(host.payload.texts.en, /^🃏 Opened \*ערב משחק\*\n.*This is your personal link, just for you:\n.*#me-p1\n/s);
   assert.equal(proactiveText.rawPipeTextFor({ kind: host.kind, payload: host.payload, locale: 'he' }, {}), host.payload.texts.he);
   assert.equal(inv.payload.texts.he,
-    '🃏 ערב משחק · כניסה 50 ₪\nלהצטרפות לוחצים על הקישור ושולחים לעולמה את ההודעה שנפתחת:\nhttps://allma.world/g/K7M2Q');
+    '🃏 *ערב משחק* · כניסה 50 ₪\n\nלהצטרפות לוחצים על הקישור ושולחים לעולמה את ההודעה שנפתחת:\nhttps://allma.world/g/K7M2Q');
   assert.equal(inv.release_after.getTime(), now + gameSummary.INVITE_AFTER_HOST_MS, 'the invite in a later tick than the message that says it is coming');
 
   assert.equal((await call(good)).ok, true);
@@ -244,7 +244,7 @@ test('a night already open is handed back, and the phrase asks nothing', async (
   const u = await person();
   fake.open = () => ({ ok: true, already: true, night: NIGHT, url: `${URL}#me-p1` });
   const out = await ask({ agentId: u.agent, body: 'ערב פוקר חדש' });
-  assert.equal(out.text, `🃏 יש לך כבר ערב פתוח: ערב משחק, קוד K7M2Q.\nאפשר גם לבקש ממני לסגור אותו בלי חישוב ולפתוח חדש.\nהדף של הערב:\n${URL}#me-p1`);
+  assert.equal(out.text, `🃏 יש לך כבר ערב פתוח: *ערב משחק*, קוד K7M2Q\nאפשר גם לבקש ממני לסגור אותו בלי חישוב ולפתוח חדש.\n\nהדף של הערב:\n${URL}#me-p1`);
   // The next message is not read as a price.
   assert.deepEqual(await ask({ agentId: u.agent, body: '50 1000' }), { ok: true, claim: false });
 });
@@ -284,7 +284,7 @@ test('a code seats them under their first name, turns the pack on, and says what
   const out = await ask({ agentId: u.agent, body: 'משחק K7M2Q', messageId: '3EB0GAME0100' });
   assert.deepEqual(calls, [['join', { userId: Number(u.id), code: 'K7M2Q', names: ['דני', 'דני לוי'] }]]);
   assert.equal(out.text,
-    `👍 דני, נכנסת לערב משחק.\nבמהלך הערב אפשר לכתוב לי:\n• עוד כניסה / חצי כניסה\n• מה המצב?\n• בסוף: נשארו לי 1,850\nהדף של הערב:\n${URL}#me-p7`);
+    `👍 דני, נכנסת לערב משחק\n\nבמהלך הערב אפשר לכתוב לי:\n- עוד כניסה / חצי כניסה\n- מה המצב?\n- בסוף: נשארו לי 1,850\n\nהדף של הערב:\n${URL}#me-p7`);
   assert.deepEqual(await packsOf(u.id), [{ pack: 'games', via: 'code' }]);
   assert.deepEqual(policies, [[u.agent, ['games']]]);
 });
@@ -294,9 +294,9 @@ test('sending the code again says where they stand', async () => {
   const u = await person({ firstName: 'דני' });
   fake.join = () => ({ ok: true, already: true, night: NIGHT, name: 'דני', buyins: 1.5, url: `${URL}#me-p7` });
   const out = await ask({ agentId: u.agent, body: 'K7M2Q' });
-  assert.equal(out.text, `יש לך כבר כניסה וחצי בערב משחק.\nהדף של הערב:\n${URL}#me-p7`);
+  assert.equal(out.text, `יש לך כבר כניסה וחצי בערב משחק.\n\nהדף של הערב:\n${URL}#me-p7`);
   fake.join = () => ({ ok: true, already: true, night: NIGHT, name: 'דני', buyins: 0, url: `${URL}#me-p7` });
-  assert.match((await ask({ agentId: u.agent, body: 'K7M2Q' })).text, /^👍 דני, נכנסת לערב משחק\./,
+  assert.match((await ask({ agentId: u.agent, body: 'K7M2Q' })).text, /^👍 דני, נכנסת לערב משחק\n/,
     'with nothing bought yet, the instructions again');
 });
 
@@ -307,11 +307,11 @@ test('no name on file: she asks, and the answer seats them', async () => {
     ? { ok: true, joined: true, night: NIGHT, name: b.names[0], buyins: 0, url: `${URL}#me-p9` }
     : { ok: false, error: 'need_name', night: NIGHT });
   const q = await ask({ agentId: u.agent, body: 'משחק K7M2Q' });
-  assert.equal(q.text, '🃏 ערב משחק, כניסה 50 ₪.\nאיך קוראים לך? ככה החברים יראו אותך בערב.');
+  assert.equal(q.text, '🃏 *ערב משחק* · כניסה 50 ₪\n\nאיך קוראים לך? ככה החברים יראו אותך בערב.');
   assert.deepEqual(await packsOf(u.id), [], 'not seated, so no pack yet');
   const a = await ask({ agentId: u.agent, body: 'יוסי' });
   assert.deepEqual(calls[1], ['join', { userId: Number(u.id), code: 'K7M2Q', names: ['יוסי'] }]);
-  assert.match(a.text, /^👍 יוסי, נכנסת לערב משחק\./);
+  assert.match(a.text, /^👍 יוסי, נכנסת לערב משחק\n/);
 });
 
 test('a name already at the table asks for the last name, and seats them under both', async () => {
@@ -333,7 +333,7 @@ test('a night that closed in the last day is answered with the page to look at',
   const u = await person();
   fake.join = () => ({ ok: false, error: 'closed', night: NIGHT, url: `${URL}#view` });
   assert.equal((await ask({ agentId: u.agent, body: 'משחק K7M2Q' })).text,
-    `🃏 ערב משחק כבר נסגר. אפשר לראות את הסיכום כאן:\n${URL}#view`);
+    `🃏 *ערב משחק* כבר נסגר\n\nאפשר לראות את הסיכום כאן:\n${URL}#view`);
   assert.deepEqual(await packsOf(u.id), [], 'looking is not sitting: no pack');
 });
 
@@ -342,7 +342,7 @@ test('an unknown code is answered only when a game word came with it', async () 
   const u = await person();
   fake.join = () => ({ ok: false, error: 'no_night' });
   assert.equal((await ask({ agentId: u.agent, body: 'משחק ABCDE' })).text,
-    'לא מצאתי ערב פתוח עם הקוד ABCDE. אולי הוא כבר נסגר? אפשר לבקש קוד חדש ממי שפתח את הערב.');
+    'לא מצאתי ערב פתוח עם הקוד *ABCDE*\nאולי הוא כבר נסגר? אפשר לבקש קוד חדש ממי שפתח את הערב.');
   assert.deepEqual(await ask({ agentId: u.agent, body: 'HAPPY' }), { ok: true, claim: false },
     'a bare word in capitals that is no night is not ours');
   assert.deepEqual(await packsOf(u.id), []);
@@ -449,7 +449,7 @@ test('a new number\'s code: she says she is an AI, asks the name, and the page o
   fake.join = seatByName;
   const q = await ask({ agentId: 'intake', sessionKey: intakeKey(phone), body: 'משחק K7M2Q', messageId: '3EB0NEW00001' });
   assert.equal(q.claim, true);
-  assert.equal(q.text, `${HELLO}\n🃏 ערב משחק, כניסה 50 ₪.\nאיך קוראים לך? ככה החברים יראו אותך בערב.\n${PRIVACY}`);
+  assert.equal(q.text, `${HELLO}\n\n🃏 *ערב משחק* · כניסה 50 ₪\n\nאיך קוראים לך? ככה החברים יראו אותך בערב.\n\n${PRIVACY}`);
   const u = await rowOf(phone);
   assert.equal(u.status, 'pending');
   assert.equal(u.agent_id, null, 'the sweep gives the agent, never brokerd');
@@ -464,7 +464,7 @@ test('a new number\'s code: she says she is an AI, asks the name, and the page o
 
   const a = await ask({ agentId: 'intake', sessionKey: intakeKey(phone), body: 'יוסי כהן' });
   assert.deepEqual(calls[1], ['join', { userId: Number(u.id), code: 'K7M2Q', names: ['יוסי כהן'] }]);
-  assert.match(a.text, /^👍 יוסי כהן, נכנסת לערב משחק\./, 'no second hello, no second privacy line');
+  assert.match(a.text, /^👍 יוסי כהן, נכנסת לערב משחק\n/, 'no second hello, no second privacy line');
   assert.doesNotMatch(a.text, /privacy|עולמה/);
   const after = await rowOf(phone);
   assert.deepEqual([after.first_name, after.last_name, after.name_confirmed], ['יוסי', 'כהן', true]);
@@ -491,7 +491,7 @@ test('a wrong code from a new number is answered; a bare five letters is not our
   fake.join = () => ({ ok: false, error: 'no_night' });
   const phone = newPhone();
   const out = await ask({ agentId: 'intake', sessionKey: intakeKey(phone), body: 'משחק ABCDE' });
-  assert.equal(out.text, `${HELLO}\nלא מצאתי ערב פתוח עם הקוד ABCDE. אולי הוא כבר נסגר? אפשר לבקש קוד חדש ממי שפתח את הערב.\n${PRIVACY}`);
+  assert.equal(out.text, `${HELLO}\n\nלא מצאתי ערב פתוח עם הקוד *ABCDE*\nאולי הוא כבר נסגר? אפשר לבקש קוד חדש ממי שפתח את הערב.\n\n${PRIVACY}`);
   const bare = newPhone();
   assert.deepEqual(await ask({ agentId: 'intake', sessionKey: intakeKey(bare), body: 'HAPPY' }), { ok: true, claim: false });
   assert.equal(await rowOf(bare), undefined, 'rolled back: the greeter meets them as before');
@@ -534,7 +534,7 @@ test('somebody the greeter already greeted is not introduced a second time', () 
   await db.pool.query('UPDATE users SET opening_sent_at = now() WHERE id = $1', [p.id]);
   fake.join = seatByName;
   const q = await ask({ agentId: 'intake', sessionKey: intakeKey(phone), body: 'משחק K7M2Q' });
-  assert.equal(q.text, '🃏 ערב משחק, כניסה 50 ₪.\nאיך קוראים לך? ככה החברים יראו אותך בערב.');
+  assert.equal(q.text, '🃏 *ערב משחק* · כניסה 50 ₪\n\nאיך קוראים לך? ככה החברים יראו אותך בערב.');
   assert.deepEqual(await claimsOf(p.id), [{ outcome: 'need_name', lang: 'he', introduced: false }]);
 }));
 
@@ -586,7 +586,7 @@ test('given an agent between the question and the answer, the answer still seats
   await ask({ agentId: 'intake', sessionKey: intakeKey(one), body: 'משחק K7M2Q' });
   const u1 = await provisioned(one);
   const a1 = await ask({ agentId: u1.agent, body: 'דנה' });
-  assert.match(a1.text, /^👍 דנה, נכנסת לערב משחק\./);
+  assert.match(a1.text, /^👍 דנה, נכנסת לערב משחק\n/);
   assert.deepEqual(await packsOf(u1.id), [{ pack: 'games', via: 'code' }]);
   assert.deepEqual(policies, [[u1.agent, ['games']]], 'an agent exists now, so the deny list follows at once');
 
@@ -595,7 +595,7 @@ test('given an agent between the question and the answer, the answer still seats
   await ask({ agentId: 'intake', sessionKey: intakeKey(two), body: 'משחק K7M2Q' });
   const u2 = await provisioned(two);
   const a2 = await ask({ agentId: 'intake', sessionKey: intakeKey(two), body: 'רוני' });
-  assert.match(a2.text, /^👍 רוני, נכנסת לערב משחק\./);
+  assert.match(a2.text, /^👍 רוני, נכנסת לערב משחק\n/);
   assert.equal((await rowOf(two)).first_name, 'רוני');
   assert.deepEqual(await packsOf(u2.id), [{ pack: 'games', via: 'code' }]);
 }));

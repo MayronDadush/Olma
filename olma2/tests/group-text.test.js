@@ -14,7 +14,9 @@ test('the intro says who she is and how to reach her, and nothing else', () => {
   const intro = text.renderGroupIntro();
   assert.match(intro, /עולמה/);
   assert.match(intro, /תתייגו אותי/);
-  assert.ok(intro.split('\n').length <= 4, 'a first impression is not a manual');
+  // Blank lines are layout, not content (2026-10-09): what is counted is lines
+  // somebody has to read.
+  assert.ok(intro.split('\n').filter((l) => l.trim()).length <= 4, 'a first impression is not a manual');
 });
 
 // "@" on its own teaches nobody anything. The intro tags HER, with the same

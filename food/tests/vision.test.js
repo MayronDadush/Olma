@@ -11,6 +11,10 @@ const { createServer } = require('../src/server');
 const { IDENTITY_PARAM } = require('../src/tool-defs');
 const foods = require('../src/foods');
 const vision = require('../src/vision');
+const store = require('../src/store');
+const photos = require('../src/photos');
+const fs = require('fs');
+const path = require('path');
 
 const TOK = 'olma_tok_' + '1'.repeat(32);
 const identify = async token => (token === TOK ? { ok: true, user: { id: 201, name: 'נועה', timezone: 'Asia/Jerusalem', locale: 'he' }, packs: ['food'] } : { ok: false, error: { message: 'unknown' } });
@@ -55,7 +59,7 @@ async function boot(t, { seen, pick, media = async () => PHOTO } = {}) {
     return (await r.json()).text;
   };
   const okOf = async (name, args) => { const text = await call(name, args); assert.match(text, /^OK /, text); return JSON.parse(text.slice(3)); };
-  return { pool, call, okOf, seeded, model };
+  return { pool, port, call, okOf, seeded, model };
 }
 
 const PLATE = {
@@ -170,4 +174,82 @@ test('what a model answers is made safe before anything uses it', () => {
   assert.equal(c.title.length, 80);
   assert.equal(vision.clean(null), null);
   assert.deepEqual(vision.clean({ food: false }), { food: false, items: [] });
+});
+
+test('the photo is kept for the page, only through its owner\'s link, and goes with the meal', async t => {
+  const { okOf, pool, port } = await boot(t, { seen: PLATE });
+  const r = await okOf('see_meal_photo', { path: '/x/p.jpg', meal: 'lunch' });
+  const id = r.logged.meal_id;
+  const { rows: [row] } = await pool.query('SELECT photo FROM meals WHERE id = $1', [id]);
+  assert.equal(row.photo, `201/${id}.jpg`);
+  const file = path.join(photos.dir(), row.photo);
+  assert.deepEqual(fs.readFileSync(file), Buffer.from(PHOTO.base64, 'base64'));
+  assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+
+  const me = await store.reload(pool, 201);
+  const other = await store.ensurePerson(pool, { id: 202, name: 'אחר', timezone: 'Asia/Jerusalem' });
+  const get = (tok, mid = id) => fetch(`http://127.0.0.1:${port}/food/${tok}/photo/${mid}`);
+  const mine = await get(me.token);
+  assert.equal(mine.status, 200);
+  assert.equal(mine.headers.get('content-type'), 'image/jpeg');
+  assert.deepEqual(Buffer.from(await mine.arrayBuffer()), Buffer.from(PHOTO.base64, 'base64'));
+  assert.equal((await get(other.token)).status, 404, 'the same meal id under somebody else\'s link');
+  assert.equal((await get(me.token, '../../etc')).status, 404);
+
+  const j = await (await fetch(`http://127.0.0.1:${port}/food/${me.token}/api/journal`)).json();
+  assert.equal(j.days.length, 1);
+  assert.equal(j.days[0].meals[0].photo, true);
+
+  const del = await fetch(`http://127.0.0.1:${port}/food/${me.token}/api/write`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ op: 'meal_delete', meal_id: id }) });
+  assert.equal(del.status, 200);
+  assert.equal(fs.existsSync(file), false, 'deleted with the meal');
+  assert.equal((await get(me.token)).status, 404);
+});
+
+test('the words sent with a photo name its meal when the agent did not, and only then', async t => {
+  const { okOf } = await boot(t, { seen: PLATE });
+  // The 2026-10-08 case: "this morning" in the note, no meal, logged at 19:12 as dinner.
+  assert.equal((await okOf('see_meal_photo', { path: '/x/a.jpg', note: 'זה מה שאכלתי היום בבוקר' })).logged.meal, 'breakfast');
+  assert.equal((await okOf('see_meal_photo', { path: '/x/b.jpg', note: 'בבוקר', meal: 'lunch' })).logged.meal, 'lunch', 'the agent\'s meal wins');
+});
+
+test('slotFromNote reads whole words, and two meals or none are nobody\'s guess', () => {
+  const { slotFromNote } = require('../src/slot-words');
+  const cases = {
+    'זה מה שאכלתי היום בבוקר': 'breakfast', 'הבוקר': 'breakfast', 'ארוחת צהריים בעבודה': 'lunch', 'לצהרים': 'lunch',
+    'ובערב אכלתי את זה': 'dinner', 'ארוחת ערב': 'dinner', 'נשנשתי': 'snack', 'my breakfast': 'breakfast',
+    'סלט מעורב': null, 'שאריות מהבוקר לארוחת ערב': null, 'רק חצי היה שלי': null, '': null,
+  };
+  for (const [note, want] of Object.entries(cases)) assert.equal(slotFromNote(note), want, note);
+  assert.equal(slotFromNote(undefined), null);
+});
+
+test('their page rides the first photo of the day, once, with the sentence before it handed over', async t => {
+  const { okOf, pool } = await boot(t, { seen: PLATE });
+  const first = await okOf('see_meal_photo', { path: '/x/a.jpg', meal: 'lunch' });
+  const { rows: [p] } = await pool.query('SELECT token, page_link_day::text AS day FROM people');
+  assert.equal(first.url, `https://allma.test/food/${p.token}`);
+  assert.equal(first.page_line, 'אפשר לראות את כל היום שלך כאן:');
+  assert.match(first.note, /NOTHING ELSE WILL DELIVER THE LINK/);
+  assert.match(first.note, /before any question/, 'a question they have to answer stays last');
+  assert.ok(p.day, 'stamped with their local day');
+
+  const second = await okOf('see_meal_photo', { path: '/x/b.jpg', meal: 'dinner' });
+  assert.equal(second.url, undefined, 'once a day');
+  assert.equal(second.page_line, undefined);
+  assert.doesNotMatch(second.note, /DELIVER THE LINK/);
+
+  // A new day carries it again.
+  await pool.query(`UPDATE people SET page_link_day = page_link_day - 1`);
+  const next = await okOf('see_meal_photo', { path: '/x/c.jpg', meal: 'snack' });
+  assert.equal(next.url, first.url);
+});
+
+test('a photo with no food in it does not spend the day\'s link', async t => {
+  const { okOf, pool } = await boot(t, { seen: { title: '', food: false, items: [] } });
+  const r = await okOf('see_meal_photo', { path: '/x/a.jpg', meal: 'lunch' });
+  assert.equal(r.logged, null);
+  assert.equal(r.url, undefined);
+  const { rows: [p] } = await pool.query('SELECT page_link_day FROM people');
+  assert.equal(p.page_link_day, null);
 });

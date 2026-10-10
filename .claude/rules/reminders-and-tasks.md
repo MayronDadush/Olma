@@ -184,13 +184,14 @@ title means this file. Grep the title, not the filename.
   the same thing as having none**: a table somebody emptied by hand a minute
   ago, and one nobody has put a time on yet, both sit at zero and neither is
   over.
-  **A whole day is the one option whose moment is not six hours after its
-  instant.** `meeting-option-moment.momentFor` stamps an all-day option at
-  09:00 of the day it means, so the grace a clock time gets would take
-  "Sunday, all day" off the table at 15:00 on Sunday. It gets a full day on
-  top (`meetings.ALL_DAY_EXTRA_MS`), and every line here errs late on purpose
-  — a time removed an hour early is a time somebody could still have agreed
-  to.
+  **A clock time leaves the table ONE HOUR after it starts**
+  (`meetings.EXPIRE_AFTER_START_MS`, owner 2026-10-09; it was six, and a
+  Friday 11:00 was still being offered at 14:53). **A whole day is the one
+  option whose moment is not an hour after its instant.**
+  `meeting-option-moment.momentFor` stamps an all-day option at 09:00 of the
+  day it means, so the grace a clock time gets would take "Sunday, all day"
+  off the table at 10:00 on Sunday. It gets a full day on top
+  (`meetings.ALL_DAY_EXTRA_MS`).
   **The status says which of the two ways a time left**: `deleted` is a person
   taking it off, which is carried to everybody else the next time they hear
   about the coordination (`meeting-options.removed`, `meeting-options.
@@ -585,7 +586,9 @@ title means this file. Grep the title, not the filename.
   collapses to `refused.similar_open`, and it alone also refuses a twin
   COMPLETED inside 24h (this job cannot mean "again": "להעיר את מאיה" was
   ticked off two minutes after it was created and written back forty-two
-  minutes later). `tasks.addTask` **saves and asks**: refusing there was tried
+  minutes later) — and, since 2026-10-09, one they DELETED or a shared one
+  they LEFT inside 24h (`findTwin`'s `goneWithinHours`, `refused.similar_gone`;
+  `incidents.md`, "The list he left came back to him"). `tasks.addTask` **saves and asks**: refusing there was tried
   and broke 57 tests on "סופר" beside "סופר השבוע", because one title
   extending another lands on 0.50–0.67 and is a real second task about as
   often as it is one. The row is written, `similarTo` rides the result into
@@ -594,6 +597,19 @@ title means this file. Grep the title, not the filename.
   The "list inside one task" tier is NOT here: four of the six pairs marked
   that way share one word out of eight, so it belongs to a grouping pass over
   a whole open list, never to a check at the moment of writing.
+
+- **A day said with no hour is the DAY, and 09:00 is the hour the model
+  invents for it** (2026-10-08; `incidents.md`, "Nine o'clock, which nobody
+  said"). The gateway hook's `namesNoHour` reads whether the message named any
+  hour and sends a boolean (`noHour`); brokerd stamps it on the open and does
+  not spend it (one message, many tasks), fifteen minutes like `remindAsk`.
+  On that turn `add_task` and `add_tasks_bulk` move a due moment at exactly
+  09:00:00 in THEIR zone to local midnight (`invented-hour.asDay`) and add
+  `hints.dayOnly`. **Only 09:00**: 18 of 57 other-hour tasks were saved from
+  messages with no hour, because the hour came from the conversation ("כן" to
+  "ל־10?"). Never a range (`ends_at`), never under a heard chase. The reminder
+  is unchanged — a day is reminded at 08:00, as 09:00 was. Inert until the
+  gateway restarts.
 
 - **A model asked to date something must first be told what time it is.** Every
   one of the 27 `extracted` tasks on the box had a NULL `due_at` and three

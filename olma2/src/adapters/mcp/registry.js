@@ -18,6 +18,7 @@ const TOOLS = [
   ...require('./tools/live-updates'),
   ...require('./tools/tasks'),
   ...require('./tools/reminders'),
+  ...require('./tools/saved-links'),
   ...require('./tools/preferences'),
   ...require('./tools/combined-connect'),
   ...require('./tools/calendar'),

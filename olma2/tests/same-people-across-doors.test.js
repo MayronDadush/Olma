@@ -83,8 +83,9 @@ test('the room does not open a second coordination for people already negotiatin
   const { group, people } = await room(1, 5);
   const [opener, asker, ...rest] = people;
 
-  // The founding case: somebody opens it privately with the whole room...
-  const priv = await inChat(opener, { title: 'פוקר', phones: people.slice(1).map((u) => u.phone) });
+  // The founding case: somebody opens it privately with nearly the whole room
+  // (with ALL of it, it is the room's own since 2026-10-08 — below)...
+  const priv = await inChat(opener, { title: 'פוקר', phones: people.slice(1, 4).map((u) => u.phone) });
   assert.equal(priv.ok, true, priv.ok ? '' : JSON.stringify(priv.error));
   const privateId = Number(priv.data.meeting.id);
   const invitesBefore = await invitesOf(rest[0].id);
@@ -148,8 +149,15 @@ test('the chat does not open a private coordination for people the room is alrea
   assert.equal(started.ok, true, started.ok ? '' : JSON.stringify(started.error));
   const roomId = started.data.meetingId;
 
-  // A member opens "the same" privately with everybody in the room.
-  const res = await inChat(member, { title: 'פוקר', phones: [asker, ...rest].map((u) => u.phone) });
+  // A member opens "the same" privately with EVERYBODY in the room: that is
+  // the room's coordination, and it is handed back (owner, 2026-10-08).
+  const whole = await inChat(member, { title: 'פוקר', phones: [asker, ...rest].map((u) => u.phone) });
+  assert.equal(whole.ok, true, whole.ok ? '' : JSON.stringify(whole.error));
+  assert.equal(whole.data.created, false);
+  assert.equal(whole.data.meetingId, roomId);
+
+  // With NEARLY everybody it is a question.
+  const res = await inChat(member, { title: 'פוקר', phones: [asker, rest[0]].map((u) => u.phone) });
   assert.equal(res.ok, false);
   assert.equal(res.error.reason, 'already_open');
   assert.equal(res.error.open[0].meetingId, roomId);
@@ -164,4 +172,6 @@ test('the chat does not open a private coordination for people the room is alrea
   // And `separate` is how a checked "another one" gets through.
   const again = await inChat(member, { title: 'פוקר 2', phones: [asker, ...rest].map((u) => u.phone), separate: true });
   assert.equal(again.ok, true, again.ok ? '' : JSON.stringify(again.error));
+  const { rows } = await db.pool.query(`SELECT group_id FROM meetings WHERE id = $1`, [again.data.meeting.id]);
+  assert.equal(rows[0].group_id, null, 'the room holds one at a time, so another is private');
 });

@@ -142,6 +142,34 @@ offers "he, en, ar, ru" — so `he-il` is ordinary, and it bought an English
 opening followed by Hebrew reminders for ever after. Both readers test the
 PREFIX now, and an empty locale is the house language.
 
+## How fixed text is laid out (owner, 2026-10-09)
+
+The owner asked for the verbatim messages to be easier to read on a phone —
+bold where the eye should land, and lines broken where the message changes
+subject. The defaults in `message-templates.js` were re-laid along four rules.
+Words were not changed, apart from three slips (a missing full stop in the
+group intro, the doubled quotes around the group's name in the cold invite,
+"Olma" for "Allma" in `reopen_en`).
+
+- **Bold is the one thing the message is about** — the night, the code, the
+  list, the group, the reminder's title. One span, two at most when a message
+  carries two facts (who shared, and what). Never a whole sentence.
+- **A blank line separates the news from what to do about it.** The fact
+  first, then an empty line, then the question, the instruction or the way
+  to stop. A two-line message with nothing to separate stays two lines.
+- **A link sits on its own line, under a short line that says what it is**,
+  and that pair is its own paragraph.
+- **Commands they can send are a native list** (`- `), not `•` characters.
+
+**A marker glued to a Hebrew prefix letter** (`ב*{{list}}*`, `ל*…*`) is
+avoided in what was touched here: WhatsApp expects a marker to start a word,
+and whether it renders after ב/ל/מ was not checked on a phone. The saved-link
+templates still have that shape (`שמרתי ב*{{list}}*`) and are left for the
+owner to look at, not changed blind.
+
+An override saved on the admin page ("ניסוחים") still wins over every default
+here — a template the owner already reworded keeps his layout.
+
 ## Where styling is and is not used today
 
 - **Reminders and their rungs** (the raw pipe): the list form is a native

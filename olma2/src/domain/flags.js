@@ -160,6 +160,13 @@ const DEFAULTS = {
   // E.164 list. Read by brokerd's `burst_hold` on every held reply, so turning
   // it off takes effect on the next message, with no gateway restart.
   burst_reply_phones: 'all',
+  // domain/phantom-save + brokerd `reply_claim` (2026-10-08): a reply that
+  // claims what a write it saw FAIL did not do ("שלחתי להם" under a refused
+  // relay_to_group) gets one fixed correction line under it, added by the
+  // gateway. '' = nobody (every such reply is only filed, `wouldCorrect`),
+  // 'all', or a comma-separated E.164 list. Read on every claim, so a change
+  // takes effect on the next reply; the plugin side needs a gateway restart.
+  claim_correction_phones: '',
   // outbox/gate.js + jobs/sweeps.sweepDigests, "once a day" (owner,
   // 2026-10-03, for Saar first): everything Olma decides to say to these
   // people waits for ONE message at 20:00 their time, and that message is not
@@ -171,6 +178,10 @@ const DEFAULTS = {
   // their page and whose coordination rows may go as a notification instead
   // of WhatsApp; off, nothing changes for anybody, subscribed or not.
   push_delivery_phones: '',
+  // The evening picture of what they ate (domain/food-picture.js, owner
+  // 2026-10-09): '' = nobody, 'all' = everybody holding the food pack, or a
+  // comma-separated E.164 list. Shadow-free: on, it sends.
+  food_picture_phones: '',
   // domain/silence-pause.js (owner, 2026-10-07, Saar): somebody who has given
   // no sign of life for this many days is paused the way the ladder pauses —
   // nothing cancelled, their first message ends it — and Olma stops starting

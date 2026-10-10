@@ -1259,6 +1259,31 @@ html.is-app .welcome .wcode-have{display:none}
 .inst-yes{background:var(--accent);color:var(--on-accent)}
 .inst-no{background:var(--bg-tint);color:var(--text-2)}
 
+/* ─────────────────  the apps on the home screen  ───────────────── */
+/* Food and game nights, each its own service, as icons the way a phone's home
+   screen draws apps (owner, 2026-10-08: option ג of the home-apps mockups).
+   Only the packs somebody holds; none, and the invitation keeps the place.
+   A tap asks the server for that person's own link (domain/user-apps.js) and
+   goes there; the badge is open game nights, and nothing when gamesd is slow. */
+.apps{margin:0 0 26px}
+.apps[hidden]{display:none}
+.appsh{font-family:var(--font-display);font-weight:700;font-size:20px;letter-spacing:-.01em;padding:0 2px 12px}
+.appsrow{display:flex;flex-wrap:wrap;gap:14px 22px;padding:0 4px}
+.appbtn{display:flex;flex-direction:column;align-items:center;gap:7px;min-width:72px;text-align:center;
+  transition:transform .38s var(--squash)}
+.appbtn:active{transform:scale(.92)}
+.appbtn[aria-busy="true"]{opacity:.6}
+.appico{position:relative;width:64px;height:64px;border-radius:15px;display:grid;place-items:center;
+  box-shadow:var(--shadow-m),var(--rim-soft)}
+.appico svg{width:31px;height:31px}
+.appbtn[data-app="food"] .appico{background:var(--action);color:var(--on-action)}
+.appbtn[data-app="games"] .appico{background:var(--accent);color:var(--on-accent)}
+.appbtn b{font-size:13px;font-weight:600;line-height:1.2;color:var(--text);white-space:nowrap}
+.appbadge{position:absolute;top:-6px;inset-inline-end:-6px;min-width:22px;height:22px;padding:0 6px;
+  border-radius:999px;background:var(--danger);color:var(--on-accent);border:2px solid var(--bg);
+  font-size:12px;font-weight:700;line-height:18px;font-variant-numeric:tabular-nums}
+@media (prefers-reduced-motion:reduce){.appbtn{transition:none}}
+
 /* ─────────────────  the invitation to a friend  ───────────────── */
 /* Under the home cards (owner, 2026-09-30: the growth plan). The message and
    its link are made by the server (domain/referral.js); the page only hands
@@ -2554,6 +2579,48 @@ button.srow:active{background:var(--bg-tint)}
 #taskStack{gap:0}
 /* The calendar fold is one slim row, set off by a tint rather than by air. */
 #taskStack .calfold .arcbtn{padding:8px 14px;background:var(--bg-tint);border-radius:12px}
+/* …and since 2026-10-08 a CARD (owner's option F): it was grey on grey at
+   .72 opacity and read as switched off. A coloured tile says what it holds,
+   the next one peeks under the name, and the end carries the month's count
+   with the week's as a pill in the tile's colour (option B's). Shared by the
+   saved-links fold: .fsea is the calendar's blue, .fgold the saved mustard. */
+#taskStack .fcard{opacity:1;position:relative}
+#taskStack .fcard .arcbtn{
+  align-items:center;gap:12px;padding:11px 14px 12px;background:var(--surface);
+  border-radius:16px;box-shadow:var(--shadow-m);color:var(--text);font-weight:400;text-align:start;
+  position:relative;z-index:1;transition:transform .18s var(--spring)
+}
+#taskStack .fcard .arcbtn:active{transform:scale(.985)}
+/* Two card edges peek under it while it is shut (owner's option C): there
+   is a pile inside. They go when it opens, so the list is not under them. */
+#taskStack .fcard::before,#taskStack .fcard::after{
+  content:"";position:absolute;top:auto;height:14px;border-radius:0 0 14px 14px;
+  background:var(--surface);box-shadow:var(--shadow-s);transition:opacity .2s ease
+}
+#taskStack .fcard::before{inset-inline:10px;bottom:4px;opacity:.75}
+#taskStack .fcard::after{inset-inline:20px;bottom:0;opacity:.45}
+#taskStack .fcard:not(.open){padding-bottom:9px}
+#taskStack .fcard.open::before,#taskStack .fcard.open::after{opacity:0}
+.fcard .ftile{width:34px;height:34px;border-radius:10px;flex:none;display:grid;place-items:center}
+.fcard .ftile svg{width:18px;height:18px}
+.fcard .fsea{background:var(--sea-soft);color:var(--drop-line)}
+.fcard .fgold{background:var(--gold-soft);color:var(--gold)}
+.fcard .fmid{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.fcard .fname{font-size:15px;font-weight:600}
+.fcard .fpeek{display:flex;gap:6px;min-width:0;font-size:13px;color:var(--text-2)}
+.fcard .fpeek b{font-weight:600;color:var(--drop-line);white-space:nowrap}
+.fcard .fpeek span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* The end is a number BLOCK (owner's alignment 3): the count over the
+   week's words on one centred axis, set off from the text by a hairline,
+   and the chevron apart from it, centred on the card's height. */
+.fcard .fend{display:flex;align-items:center;gap:12px;flex:none;align-self:stretch}
+.fcard .fnum{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+  min-width:58px;padding-inline-start:12px;border-inline-start:1px solid var(--sep)}
+.fcard .calfoldn{margin:0;font-size:21px;font-weight:700;line-height:1.1;font-variant-numeric:tabular-nums}
+.fcard .chev{width:7px;height:13px;color:var(--text-3)}
+.fcard .fsub{font-size:11.5px;font-weight:600;white-space:nowrap}
+.fcard .fsub.fsea{background:none;color:var(--drop-line)}
+.fcard .fsub.fnone{color:var(--text-3);font-weight:500}
 #arcGroup .task{opacity:.7}
 #arcGroup .ttitle{color:var(--text-3)}
 #arcGroup .pill{background:transparent;padding-inline:0;color:var(--text-3);font-weight:500}
@@ -3536,6 +3603,120 @@ button.srow:active{background:var(--bg-tint)}
   *,*::before,*::after{animation-duration:.001ms !important;animation-delay:0ms !important;
     animation-iteration-count:1 !important;transition-duration:.001ms !important}
 }
+
+/* ─────────────────────────  saved links ("שמורים")  ───────────────────────── */
+/* The card on the tasks page is the calendar fold's own (.fcard, above), in
+   mustard; the sheets are the owner's approved demo (2026-10-08), drawn with
+   the page's list classes (.litem, .lbox, .ltext, .lrm, .tcount, .row). Every
+   class of their own starts with sv. */
+.svth{width:var(--th,44px);height:var(--th,44px);border-radius:10px;flex:none;position:relative;display:grid;place-items:center;
+  font-size:calc(var(--th,44px)*.48);overflow:hidden;font-style:normal}
+.svth img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.svth .svpf{position:absolute;bottom:3px;inset-inline-start:3px;width:16px;height:16px;border-radius:5px;display:grid;place-items:center;
+  background:rgba(255,255,255,.94);box-shadow:0 1px 2px rgba(0,0,0,.18)}
+.svth .svpf svg{width:11px;height:11px}
+.svg1{background:linear-gradient(135deg,#F6D9A8,#E9A35B)}.svg2{background:linear-gradient(135deg,#F2C6D3,#D9849E)}
+.svg3{background:linear-gradient(135deg,#BFDDE3,#7FB2BE)}.svg4{background:linear-gradient(135deg,#C9A592,#8A5A44)}
+.svg5{background:linear-gradient(135deg,#D8E7C6,#97B97A)}.svg6{background:linear-gradient(135deg,#E3DED3,#C9C1B1)}
+.svg7{background:linear-gradient(135deg,#F7E7A6,#E8C14F)}.svg8{background:linear-gradient(135deg,#CFD3F0,#8D95D6)}
+.svg9{background:linear-gradient(135deg,#F3D3C2,#D98F6E)}
+/* a list, one row inside the folded card */
+.svrow{display:flex;align-items:center;gap:12px;padding:12px 14px;position:relative;width:100%;
+  font:inherit;color:inherit;background:none;border:0;cursor:pointer;text-align:start}
+.svrow + .svrow::before{content:"";position:absolute;top:0;inset-inline:48px 0;border-top:1px solid var(--sep)}
+.svrow .sve{width:24px;font-size:19px;text-align:center;flex:none}
+.svrow .svb{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.svrow .svt{font-size:16px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.svrow .svm{font-size:12.5px;color:var(--gold);font-weight:500}
+.svrow .svm.quiet{color:var(--text-3)}
+.svrow .svend{display:flex;align-items:center;gap:8px;flex:none}
+.svstack{display:flex;flex-direction:row-reverse}
+.svstack .svth{--th:26px;border-radius:7px;box-shadow:0 0 0 2px var(--surface);font-size:13px}
+.svstack .svth + .svth{margin-inline-end:-9px}
+.svstack .svpf{display:none}
+.fcard .fsub.fgold{background:none;color:var(--gold)}
+.svdot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--gold);margin-inline-end:6px;vertical-align:middle}
+/* the sheets: a stack, each above the last, all under the toast (90) */
+.svback{position:fixed;inset:0;background:rgba(12,11,17,.42);opacity:0;transition:opacity .22s}
+.svback.in{opacity:1}
+.svsh{position:fixed;inset-inline:0;bottom:0;margin-inline:auto;max-width:560px;background:var(--bg);border-radius:24px 24px 0 0;
+  box-shadow:var(--shadow-l);padding:10px 16px calc(26px + env(safe-area-inset-bottom,0px));max-height:90vh;overflow:auto;
+  transform:translateY(100%);transition:transform .3s var(--ease-io,ease);color:var(--text)}
+.svsh.in{transform:none}
+.svsh button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;text-align:inherit}
+.svsh .svgrab{width:38px;height:5px;border-radius:3px;background:var(--sep-2);margin:0 auto 10px}
+.svsh .svx{position:absolute;top:16px;inset-inline-end:14px;width:34px;height:34px;border-radius:50%;background:var(--bg-tint);
+  display:grid;place-items:center;color:var(--text-2)}
+.svsh .svx svg{width:14px;height:14px}
+.svsh h3{font-family:var(--font-display);font-size:22px;font-weight:700;text-align:center;margin:0}
+.svsh .svhead{display:flex;align-items:center;justify-content:center;gap:8px;margin:2px 44px 6px}
+.svsh .svhead svg{width:15px;height:15px;color:var(--text-3);flex:none}
+.svsh .svcat{display:table;margin:0 auto 14px;font-size:13px;color:var(--text-3);background:var(--bg-tint);border-radius:999px;padding:5px 12px;text-align:center}
+.svsh .svcat b{color:var(--text-2);font-weight:600}
+.svsh .svcat i{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--gold);margin-inline-end:6px;vertical-align:1px}
+.svsh .group{overflow:hidden}
+.svsh .group + .group{margin-top:12px}
+.svsh .row.svr{display:flex;align-items:center;gap:12px;padding:10px 14px;min-height:54px;width:100%;text-align:start}
+.svsh .svsearch{display:flex;align-items:center;gap:8px;padding:0 14px;border-top:1px solid var(--sep);border-bottom:1px solid var(--sep);color:var(--text-3)}
+.svsh .svsearch svg{width:16px;height:16px;flex:none}
+.svsh input[type=search],.svsh input[type=text]{flex:1;min-width:0;border:0;background:none;font:inherit;font-size:16px;color:var(--text);padding:11px 0;outline:none}
+.svsh input::placeholder{color:var(--text-3)}
+.svsh input[type=search]::-webkit-search-cancel-button{-webkit-appearance:none;display:none}
+.svsh .listbox{max-height:none}
+.svsh .litem .svth{--th:34px;border-radius:8px}
+.svsh .litem .svpf{width:13px;height:13px;border-radius:4px;bottom:2px;inset-inline-start:2px}
+.svsh .litem .svpf svg{width:9px;height:9px}
+.svsh .litem + .litem::before{inset-inline-start:94px}
+.svsh .ltext{display:flex;flex-direction:column;gap:1px;text-align:start}
+/* the strike hugs the words, as on a plain list — but a title here wraps, and
+   the list's drawn line sits at 53% of the whole block, i.e. BETWEEN two lines.
+   A text strike follows every line. */
+.svsh .ltext i{align-self:flex-start}
+.svsh .ltext i::after{display:none}
+.svsh .litem.on .ltext i{text-decoration:line-through;text-decoration-thickness:1.3px}
+.svsh .ltext small{font-size:12px;color:var(--text-3);display:flex;gap:5px;align-items:center;flex-wrap:wrap}
+.svsh .ltext small b{color:var(--gold);font-weight:600}
+.svsh .svempty{text-align:center;color:var(--text-3);font-size:14px;padding:22px 12px}
+.svsh mark{background:var(--warn-soft);color:inherit;border-radius:3px;padding:0 1px}
+.svsh .svopt{display:flex;align-items:center;gap:12px;padding:12px 16px;font-size:16px;width:100%}
+.svsh .svopt + .svopt{border-top:1px solid var(--sep)}
+.svsh .svopt .sve{font-size:20px;width:26px;text-align:center}
+.svsh .svopt .svc{margin-inline-start:auto;font-size:13px;color:var(--text-3)}
+.svsh .svopt.on{font-weight:600;color:var(--gold)}
+.svsh .svopt.svdanger,.svsh .srow.svdanger{color:var(--danger)}
+.svsh .svnewlist{display:flex;align-items:center;gap:12px;padding:4px 16px;border-top:1px solid var(--sep)}
+.svsh .svnewlist .sve{font-size:20px;width:26px;text-align:center;color:var(--gold)}
+.svsh .srow{display:flex;align-items:center;gap:12px;padding:13px 16px;font-size:15px;width:100%;text-decoration:none;color:inherit}
+.svsh .srow + .srow{border-top:1px solid var(--sep)}
+.svsh .srow svg.svic{width:19px;height:19px;color:var(--text-2);flex:none}
+.svsh .srow.svdanger svg.svic{color:inherit}
+.svsh .srow .svv{margin-inline-start:auto;color:var(--text-3);font-size:13.5px;text-align:end}
+.svsh .srow .svv.on{color:var(--gold);font-weight:600}
+.svsh .srow input[type=text]{padding:0}
+/* one link */
+.svsh .svhero{display:flex;gap:14px;align-items:flex-start;margin:8px 0 12px}
+.svsh .svhero .svth{--th:96px;height:120px;border-radius:14px;font-size:44px}
+.svsh .svhero .svpf{width:20px;height:20px}
+.svsh .svhero .svpf svg{width:13px;height:13px}
+.svsh .svhero .svb{min-width:0;flex:1;padding-inline-end:36px}
+.svsh .svhero .svt{font-size:18px;font-weight:700;line-height:1.3;margin-bottom:4px;overflow-wrap:anywhere}
+.svsh .svhero .svm{font-size:13px;color:var(--text-3);margin-top:3px}
+.svsh .svline{display:block;width:100%;font:inherit;font-size:15px;font-weight:600;color:var(--text);background:var(--surface);border:0;
+  box-shadow:inset 0 0 0 1px var(--sep);border-radius:12px;padding:11px 14px;margin:2px 0 4px;box-sizing:border-box}
+.svsh .svline::placeholder{color:var(--text-3);font-weight:400}
+.svsh .svline:focus{outline:none;box-shadow:inset 0 0 0 1.5px var(--gold)}
+.svsh .svlineby{font-size:12px;color:var(--text-3);margin:0 4px 12px;min-height:1em}
+.svsh .svcap{font-size:14px;color:var(--text-2);line-height:1.5;margin:0 4px 12px;overflow-wrap:anywhere}
+.svsh .svings .svln{display:flex;align-items:center;gap:10px;padding:8px 16px;font-size:14.5px}
+.svsh .svings .svln + .svln{border-top:1px solid var(--sep)}
+.svsh .svings .svln::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--gold);flex:none}
+.svsh .svacts{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
+.svsh .svbtn{border-radius:13px;padding:12px;font-size:14.5px;font-weight:600;background:var(--bg-tint);color:var(--text);text-align:center;
+  text-decoration:none;display:flex;align-items:center;justify-content:center;gap:6px}
+.svsh .svbtn svg{width:14px;height:14px;flex:none}
+.svsh .svbtn.on{background:var(--ok-soft);color:var(--ok)}
+.svsh .svnote{font-size:12.5px;color:var(--text-3);margin:10px 4px 0;line-height:1.5}
+@media (prefers-reduced-motion:reduce){.svsh,.svback{transition:none}}
 </style>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs>
   <symbol id="i-chev" viewBox="0 0 8 15"><path d="M6.6 1 1 7.5 6.6 14" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></symbol>
@@ -3565,6 +3746,9 @@ button.srow:active{background:var(--bg-tint)}
   <symbol id="i-home" viewBox="0 0 24 24"><path d="M4 10.6 12 4l8 6.6V19a1.8 1.8 0 0 1-1.8 1.8H15v-5.6H9v5.6H5.8A1.8 1.8 0 0 1 4 19z" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/></symbol>
   <symbol id="i-tools" viewBox="0 0 24 24"><path d="M4 7h9M17.5 7H20M4 17h3M11.5 17H20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/><circle cx="15.3" cy="7" r="2.5" fill="none" stroke="currentColor" stroke-width="1.9"/><circle cx="9.3" cy="17" r="2.5" fill="none" stroke="currentColor" stroke-width="1.9"/></symbol>
   <symbol id="i-list" viewBox="0 0 24 24"><path d="M4 6.6 5.7 8.4 9 5M4 16.6l1.7 1.8L9 15M12.5 7h7.5M12.5 17H20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <!-- the home screen's app icons (.apps): a plate, and a poker chip -->
+  <symbol id="i-app-food" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="13.6" cy="12" r="7.4"/><circle cx="13.6" cy="12" r="3.9"/><path d="M3.4 4v5.4M5.4 4v5.4M4.4 9.4V20"/></g></symbol>
+  <symbol id="i-app-games" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="12" cy="12" r="8.6"/><circle cx="12" cy="12" r="3.9"/><path d="M12 3.4v3M12 17.6v3M3.4 12h3M17.6 12h3M5.9 5.9l2.1 2.1M16 16l2.1 2.1M18.1 5.9 16 8M8 16l-2.1 2.1"/></g></symbol>
   <symbol id="i-cal24" viewBox="0 0 24 24"><rect x="3.2" y="4.8" width="17.6" height="16" rx="4" fill="none" stroke="currentColor" stroke-width="1.9"/><path d="M3.2 9.6h17.6M8 3v3.2M16 3v3.2" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></symbol>
   <symbol id="i-people" viewBox="0 0 24 24"><circle cx="9.2" cy="8.4" r="3.4" fill="none" stroke="currentColor" stroke-width="1.9"/><path d="M2.8 19.4c.6-3.3 3.2-5.2 6.4-5.2s5.8 1.9 6.4 5.2" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/><path d="M16 5.4a3.2 3.2 0 0 1 0 6.1M17.6 14.6c2.1.5 3.4 2.2 3.8 4.4" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></symbol>
   <symbol id="i-user24" viewBox="0 0 24 24"><circle cx="12" cy="8.2" r="4" fill="none" stroke="currentColor" stroke-width="1.9"/><path d="M4.4 20.2c.8-3.9 3.9-6 7.6-6s6.8 2.1 7.6 6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></symbol>
@@ -3603,6 +3787,12 @@ button.srow:active{background:var(--bg-tint)}
   <symbol id="i-phone" viewBox="0 0 20 20"><path d="M5.3 3h1.42c.63 0 1.2.4 1.4 1l.78 2.05c.21.57.03 1.2-.44 1.58l-.7.55a8.7 8.7 0 0 0 3.06 3.06l.55-.7c.38-.47 1.01-.65 1.58-.44l2.05.78c.6.2 1 .77 1 1.4v1.42a2.1 2.1 0 0 1-2.28 2.1C8.5 15.3 4.7 11.5 3.2 5.28A2.1 2.1 0 0 1 5.3 3Z" fill="currentColor"/></symbol>
   <symbol id="i-note" viewBox="0 0 20 20"><path d="M4.4 2.6h11.2v10.2l-4 4.6H4.4Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M15.6 12.6h-4v4.8M7.2 6.4h5.6M7.2 9.4h4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-folder" viewBox="0 0 20 20"><path d="M2.6 5.6a2 2 0 0 1 2-2h2.9l2 2.4h6a2 2 0 0 1 2 2v6.4a2 2 0 0 1-2 2h-10.9a2 2 0 0 1-2-2Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></symbol>
+  <symbol id="i-bookmark" viewBox="0 0 24 24"><path d="M7 3.5h10a1.5 1.5 0 0 1 1.5 1.5v15.2a.6.6 0 0 1-.95.5L12 16.8l-5.55 3.9a.6.6 0 0 1-.95-.5V5A1.5 1.5 0 0 1 7 3.5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
+  <symbol id="p-ig" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="5.5" fill="none" stroke="#C13584" stroke-width="2.4"/><circle cx="12" cy="12" r="4.2" fill="none" stroke="#C13584" stroke-width="2.4"/><circle cx="17.3" cy="6.7" r="1.4" fill="#C13584"/></symbol>
+  <symbol id="p-tt" viewBox="0 0 24 24"><path d="M14 3v11.5a3.6 3.6 0 1 1-3.1-3.56" fill="none" stroke="#111" stroke-width="2.6" stroke-linecap="round"/><path d="M14 3.2c.6 2.6 2.4 4.3 5 4.6" fill="none" stroke="#111" stroke-width="2.6" stroke-linecap="round"/></symbol>
+  <symbol id="p-yt" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="4.5" fill="#E62117"/><path d="M10 9v6l5.2-3z" fill="#fff"/></symbol>
+  <symbol id="p-web" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.8" fill="none" stroke="#2F7F9E" stroke-width="2"/><path d="M3.5 12h17M12 3.2c2.6 2.6 2.6 15 0 17.6M12 3.2c-2.6 2.6-2.6 15 0 17.6" fill="none" stroke="#2F7F9E" stroke-width="1.7"/></symbol>
+  <symbol id="p-map" viewBox="0 0 24 24"><path d="M12 21s-6.5-6.2-6.5-11a6.5 6.5 0 0 1 13 0c0 4.8-6.5 11-6.5 11z" fill="#34A853"/><circle cx="12" cy="10" r="2.4" fill="#fff"/></symbol>
   <symbol id="i-swipe" viewBox="0 0 18 18"><path d="M15 9H3.4M7.4 5 3.4 9l4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-arrdown" viewBox="0 0 16 16"><path d="M2.9 5.3h10.2L8 12.4Z" fill="currentColor" stroke="currentColor" stroke-width="2.1" stroke-linejoin="round"/></symbol>
   <symbol id="i-sun" viewBox="0 0 16 16"><circle cx="8" cy="8" r="3.1" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8 1.2v1.6M8 13.2v1.6M1.2 8h1.6M13.2 8h1.6M3.3 3.3l1.13 1.13M11.57 11.57l1.13 1.13M3.3 12.7l1.13-1.13M11.57 4.43l1.13-1.13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></symbol>
@@ -3688,6 +3878,13 @@ button.srow:active{background:var(--bg-tint)}
         <i id="homeMeetsSub"></i>
         <svg class="chev homechev"><use href="#i-chev"/></svg>
       </button>
+    </div>
+    <!-- The apps they hold (see .apps): food, game nights. Drawn by
+         renderApps() from the server's `apps`, and where there is one the
+         invitation below gives up its place to it. -->
+    <div class="apps" id="apps" role="region" hidden>
+      <h2 class="appsh" data-i18n="apps.h"></h2>
+      <div class="appsrow" id="appsRow"></div>
     </div>
     <div class="invite" id="invite" role="region" hidden>
       <b data-i18n="invite.h"></b>
@@ -4938,7 +5135,10 @@ button.srow:active{background:var(--bg-tint)}
     setAvailability:"setAvailability", setQuietDays:"setQuietDays", setDigest:"setDigest",
     setCalendarSync:"setCalendarSync", setReminderNudge:"setReminderNudge",
     forgetFact:"forgetFact", answerFactPrompt:"answerFactPrompt",
-    decideSuggestion:"decideSuggestion", setAvatar:"setAvatar"
+    decideSuggestion:"decideSuggestion", setAvatar:"setAvatar",
+    setSavedStatus:"setSavedStatus", setSavedNote:"setSavedNote", moveSaved:"moveSaved",
+    deleteSaved:"deleteSaved", restoreSaved:"restoreSaved", savedToTask:"savedToTask",
+    renameSavedList:"renameSavedList", deleteSavedList:"deleteSavedList", restoreSavedList:"restoreSavedList"
   };
   /* Ids the server has actually seen. It is what decides whether saving a task
      creates one or edits one — the page numbers its own new rows from a local
@@ -5566,6 +5766,9 @@ button.srow:active{background:var(--bg-tint)}
       "code.net":"אין חיבור כרגע. נסו שוב בעוד רגע.",
       /* the invitation to install (see .inst) */
       /* the invitation to a friend (see .invite) */
+      /* the apps on the home screen (see .apps) */
+      "apps.h":"האפליקציות שלך","apps.food":"אוכל","apps.games":"ערב משחק",
+      "apps.badge":"{n} פתוחים","apps.fail":"לא הצלחתי לפתוח את זה עכשיו — אפשר לנסות שוב בעוד רגע",
       "invite.h":"להזמין חברים לעולמה",
       "invite.p":"הודעה מוכנה עם קישור אישי. מי שיכתוב לעולמה דרכו — היא תדע שהגיע מכם.",
       "invite.send":"שליחה בוואטסאפ","invite.copy":"העתקת ההודעה",
@@ -5620,7 +5823,8 @@ button.srow:active{background:var(--bg-tint)}
       "tasks.doneAt":"הושלמה {when}","tasks.justNow":"הרגע",
       "tasks.arcShown":"מוצגות {n} האחרונות מתוך {all}","tasks.arcShowAll":"הצגת כל {all}","tasks.arcShowLess":"מוצגות כל {all} · הצגת {n} האחרונות","tasks.restore":"החזרה לרשימה",
       "toast.restored":"„{name}” חזרה לרשימה",
-      "tasks.pinned":"משותפות","tasks.onCal":"אירועים קרובים","tasks.unpin":"ביטול נעיצה","tasks.pin":"נעיצה למעלה",
+      "tasks.pinned":"משותפות","tasks.onCal":"אירועים קרובים","tasks.calWeek":"{n} השבוע","tasks.calWeekNone":"לא השבוע","tasks.unpin":"ביטול נעיצה","tasks.pin":"נעיצה למעלה",
+      "saved.title":"שמורים","saved.fresh.n0":"אין חדשים","saved.fresh.n1":"חדש אחד","saved.fresh.nN":"{n} חדשים","saved.count.n0":"אין שמורים","saved.count.n1":"שמור אחד","saved.count.nN":"{n} שמורים","saved.yad2":"יד2","saved.verbTried":"ניסיתי","saved.verbSeen":"ראינו","saved.verbWatched":"צפיתי","saved.close":"סגירה","saved.olmaSorts":"עולמה ממיינת לכאן","saved.links":"קישורים","saved.doneOf":"{d} מתוך {n} {verb}","saved.none":"אין עדיין קישורים","saved.searchIn":"חיפוש ב{name}","saved.new":"חדש","saved.inTasks":"במשימות","saved.delete":"מחיקה","saved.noMatch":"אין כאן \"{q}\"","saved.listName":"שם הרשימה","saved.deleteList":"מחיקת הרשימה","saved.lineEmpty":"אפשר לכתוב כאן מה חשוב לזכור","saved.unread":"עוד לא הצלחתי לקרוא את הקישור","saved.lineMine":"כתבת","saved.lineRead":"עולמה קראה מ־{src}","saved.olmaChose":"עולמה בחרה","saved.linePh":"מחיר, חדרים, מה חשוב לזכור","saved.openIn":"לפתוח ב־{pf}","saved.openSite":"לפתוח את האתר","saved.toTask":"להפוך למשימה","saved.openTask":"לפתוח את המשימה","saved.list":"רשימה","saved.moveTitle":"להעביר לרשימה","saved.hereNow":"עכשיו כאן","saved.newList":"רשימה חדשה…","saved.deleted":"הקישור נמחק","saved.moved":"הועבר ל{name}","saved.taskMade":"נוספה למשימות","saved.listDeleted":"הרשימה {name} נמחקה","saved.lineSaved":"נשמר","saved.lineCleared":"השורה נמחקה",
       "toast.unpinned":"„{name}” חזרה למקום שלה","toast.pinned":"„{name}” נעוצה למעלה",
       "sugg.stuck":"פתוחה כבר {days} ימים, בלי תאריך ובלי תזכורת. להוריד מהרשימה?",
       "sugg.overdue":"התאריך שלה עבר לפני {days} ימים והיא עדיין פתוחה. להוריד מהרשימה?",
@@ -5964,6 +6168,8 @@ button.srow:active{background:var(--bg-tint)}
       "code.bad":"That code doesn't match, or its 10 minutes are up. You can ask for a new one.",
       "code.slow":"Too many tries. You can try again in a quarter of an hour.",
       "code.net":"No connection right now. Try again in a moment.",
+      "apps.h":"Your apps","apps.food":"Food","apps.games":"Game night",
+      "apps.badge":"{n} open","apps.fail":"Couldn't open that right now \u2014 try again in a moment",
       "invite.h":"Invite friends to Allma",
       "invite.p":"A ready message with your personal link. When a friend writes to Allma through it, she'll know you sent them.",
       "invite.send":"Send on WhatsApp","invite.copy":"Copy message",
@@ -6018,7 +6224,8 @@ button.srow:active{background:var(--bg-tint)}
       "tasks.doneAt":"Done {when}","tasks.justNow":"just now",
       "tasks.arcShown":"Showing the last {n} of {all}","tasks.arcShowAll":"Show all {all}","tasks.arcShowLess":"Showing all {all} · show the last {n}","tasks.restore":"Put back on the list",
       "toast.restored":"\u201c{name}\u201d is back on your list",
-      "tasks.pinned":"Shared","tasks.onCal":"Upcoming events","tasks.unpin":"Unpin","tasks.pin":"Pin to top",
+      "tasks.pinned":"Shared","tasks.onCal":"Upcoming events","tasks.calWeek":"{n} this week","tasks.calWeekNone":"none this week","tasks.unpin":"Unpin","tasks.pin":"Pin to top",
+      "saved.title":"Saved","saved.fresh.n0":"none new","saved.fresh.n1":"1 new","saved.fresh.nN":"{n} new","saved.count.n0":"nothing saved","saved.count.n1":"1 saved","saved.count.nN":"{n} saved","saved.yad2":"Yad2","saved.verbTried":"Tried","saved.verbSeen":"Seen","saved.verbWatched":"Watched","saved.close":"Close","saved.olmaSorts":"Allma sorts into it","saved.links":"Links","saved.doneOf":"{d} of {n} {verb}","saved.none":"No links yet","saved.searchIn":"Search {name}","saved.new":"New","saved.inTasks":"In tasks","saved.delete":"Delete","saved.noMatch":"Nothing here for \u201c{q}\u201d","saved.listName":"List name","saved.deleteList":"Delete the list","saved.lineEmpty":"Write what to remember here","saved.unread":"I couldn\u2019t read this link yet","saved.lineMine":"You wrote this","saved.lineRead":"Allma read this from {src}","saved.olmaChose":"Allma chose","saved.linePh":"Price, rooms, what to remember","saved.openIn":"Open in {pf}","saved.openSite":"Open the site","saved.toTask":"Make it a task","saved.openTask":"Open the task","saved.list":"List","saved.moveTitle":"Move to a list","saved.hereNow":"Here now","saved.newList":"New list\u2026","saved.deleted":"Link deleted","saved.moved":"Moved to {name}","saved.taskMade":"Added to tasks","saved.listDeleted":"{name} deleted","saved.lineSaved":"Saved","saved.lineCleared":"Line removed",
       "toast.unpinned":"\u201c{name}\u201d is back in its place","toast.pinned":"\u201c{name}\u201d is pinned to the top",
       "sugg.stuck":"Open for {days} days, with no date and no reminder. Take it off the list?",
       "sugg.overdue":"Its date passed {days} days ago and it is still open. Take it off the list?",
@@ -7635,6 +7842,49 @@ button.srow:active{background:var(--bg-tint)}
     box.hidden = !INVITE;
     if(INVITE) $("#inviteSend").href = INVITE.shareUrl;
   }
+  /* The apps they hold. Ids and a badge, all the server's; the link is asked
+     for on the tap, because a game night's changes from night to night
+     (domain/user-apps.js). With any app here, the invitation steps aside:
+     the home screen has room for one of the two. */
+  var APP_ICON = {food:"i-app-food", games:"i-app-games"};
+  function renderApps(list){
+    var box = $("#apps"), row = $("#appsRow");
+    if(!box || !row) return;
+    var apps = (list || []).filter(function(a){ return a && APP_ICON[a.id]; });
+    box.hidden = !apps.length;
+    if(apps.length){ var inv = $("#invite"); if(inv) inv.hidden = true; }
+    row.innerHTML = apps.map(function(a){
+      var n = Number(a.badge) || 0;
+      return '<button class="appbtn" type="button" data-app="'+a.id+'">'+
+        '<span class="appico"><svg aria-hidden="true"><use href="#'+APP_ICON[a.id]+'"/></svg>'+
+        (n ? '<span class="appbadge" aria-label="'+esc(t("apps.badge",{n:n}))+'">'+n+'</span>' : '')+
+        '</span><b>'+esc(t("apps."+a.id))+'</b></button>';
+    }).join("");
+  }
+  (function(){
+    var row = $("#appsRow");
+    if(!row) return;
+    row.addEventListener("click", function(e){
+      var b = e.target.closest(".appbtn");
+      if(!b || b.getAttribute("aria-busy") === "true" || !LIVE) return;
+      b.setAttribute("aria-busy","true");
+      var fail = function(){ b.removeAttribute("aria-busy"); toast(t("apps.fail"), null, true); };
+      fetch("/me/act", {
+        method:"POST", credentials:"same-origin",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({action:"openApp", payload:{app:b.getAttribute("data-app")}})
+      }).then(function(r){ return r.json().catch(function(){ return null; }); })
+        .then(function(body){
+          var url = body && body.ok && body.data && body.data.url;
+          if(!url) return fail();
+          /* Same tab: inside the installed app this keeps them in it, and the
+             page they land on draws its own way back (".olmaback"). */
+          b.removeAttribute("aria-busy");
+          location.href = url;
+        })
+        .catch(fail);
+    });
+  })();
   /* A tap on either button is the outcome the invite experiment counts
      (domain/experiments.js). keepalive, because "send" leaves for WhatsApp in
      the same tap and the page may not live to see the answer. */
@@ -8266,7 +8516,17 @@ button.srow:active{background:var(--bg-tint)}
      fold, because leaving it out would put it nowhere. A SHARED event keeps
      its own section until it is over, and then leaves like any other: a
      share is a reason to show it, never a reason to show it after. */
-  function onCalendar(x){ return !x.src && !isPinned(x) && x.kind === "event" && !leftToGoogle(x); }
+  function onCalendar(x){ return !x.src && !isPinned(x) && x.kind === "event" && !leftToGoogle(x) && daysAhead(x.d) < 30; }
+  /* "Upcoming" is the next 30 days (owner, 2026-10-08): the number on the
+     row is a month, and "N השבוע" beside it counts to Saturday. An event
+     further out, or with no date, is on the list like anything else — a
+     fold that counts a dentist next spring is not saying what is coming.
+     Local calendar days, like bucketFor; an undated row is never ahead. */
+  function daysAhead(d, now){
+    if(!d) return Infinity;
+    var n = now || new Date(), t0 = new Date(n.getFullYear(), n.getMonth(), n.getDate());
+    return Math.round((new Date(d + "T00:00:00") - t0) / 86400000);
+  }
   function leftToGoogle(x){
     return !x.src && x.kind === "event" && (eventOver(x) || (!isPinned(x) && !x.rem && x.inCal));
   }
@@ -8301,12 +8561,25 @@ button.srow:active{background:var(--bg-tint)}
           kb = (b.d || "~") + " " + (b.all ? "" : (b.tm || ""));
       return ka < kb ? -1 : ka > kb ? 1 : 0;
     });
-    return '<div class="tsec calfold archive' + (calFoldOpen ? " open" : "") + '">' +
+    /* Drawn as a card (owner, 2026-10-08, option F): the next event peeks
+       under the name (its day and start, short, so the title still fits),
+       the month's count over the week's words ("לא השבוע" at none, so the
+       block never loses its second line), the chevron apart, and the pile
+       under it while it is shut. Nothing in the next 30 days draws nothing
+       at all — no empty card. The saved-links fold will be drawn from the
+       same classes. */
+    var next = items[0], week = 6 - new Date().getDay();
+    var inWeek = items.filter(function(x){ return daysAhead(x.d) <= week; }).length;
+    return '<div class="tsec calfold archive fcard' + (calFoldOpen ? " open" : "") + '">' +
       '<button class="arcbtn" data-calfold aria-expanded="' + calFoldOpen + '">' +
-        '<svg class="chev"><use href="#i-chev"/></svg>' +
-        '<svg class="calfoldmark" aria-hidden="true"><use href="#i-cal"/></svg>' +
-        "<span>" + esc(t("tasks.onCal")) + "</span>" +
-        '<span class="calfoldn">' + items.length + "</span>" +
+        '<span class="ftile fsea"><svg aria-hidden="true"><use href="#i-cal"/></svg></span>' +
+        '<span class="fmid"><span class="fname">' + esc(t("tasks.onCal")) + "</span>" +
+          '<span class="fpeek"><b>' + esc(dayWord(next.d) + (next.all || !next.tm ? "" : " " + next.tm)) + "</b><span>" + esc(L(next.t)) + "</span></span></span>" +
+        '<span class="fend"><span class="fnum"><span class="calfoldn">' + items.length + "</span>" +
+          (inWeek ? '<span class="fsub fsea">' + esc(t("tasks.calWeek", {n:inWeek})) + "</span>"
+                  : '<span class="fsub fnone">' + esc(t("tasks.calWeekNone")) + "</span>") +
+          '</span><svg class="chev" aria-hidden="true"><use href="#i-chev"/></svg>' +
+        "</span>" +
       "</button>" +
       /* inert while folded: the rows are still in the DOM, and a keyboard or a
          screen reader would otherwise walk into a list nobody can see. */
@@ -8314,6 +8587,384 @@ button.srow:active{background:var(--bg-tint)}
         '<div class="group">' + items.map(taskHTML).join("") + "</div>" +
       "</div></div></div>";
   }
+  /* ───────── saved links ("שמורים", domain/saved-links.js) ─────────
+     Links a person sent Olma, sorted into lists. The card is the calendar
+     fold's own (owner, 2026-10-08): the number is every link, the pill is
+     the ones not yet marked, and each list is a row. A list opens exactly like
+     a list on this page, and one link opens over it. Every write is one of the
+     server's saved actions, which call the same functions as the chat tool;
+     the page changes what is on screen first and the next read is the truth.
+     `SAVED` is the server's `saved` as sent: {lists, items}. */
+  var SAVED = {lists:[], items:[]};
+  var savedFoldOpen = false;
+  var SV_PF = {instagram:"Instagram", tiktok:"TikTok", youtube:"YouTube", maps:"Google Maps"};
+  var SV_SYM = {instagram:"p-ig", tiktok:"p-tt", youtube:"p-yt", maps:"p-map", yad2:"p-web", web:"p-web"};
+  var SV_EMOJI = {recipe:"🍝", video:"🎬", place:"📍", listing:"🏠", article:"📰", product:"🛍️"};
+  function svList(id){ return SAVED.lists.filter(function(l){ return l.id === id; })[0] || null; }
+  function svItem(id){ return SAVED.items.filter(function(x){ return x.id === id; })[0] || null; }
+  function svItemsOf(id){ return SAVED.items.filter(function(x){ return x.listId === id; }); }
+  /* Only a web address is ever a link here: anything else drawn into an
+     href is a script waiting for a tap. */
+  function svHref(u){ return /^https?:\/\//i.test(String(u || "")) ? String(u) : ""; }
+  function svHost(x){ try{ return new URL(x.url).hostname.replace(/^www\./, ""); }catch(e){ return ""; } }
+  function svPlatform(x){ return x.platform === "yad2" ? t("saved.yad2") : SV_PF[x.platform] || svHost(x); }
+  function svSource(x){ return [x.author, svPlatform(x)].filter(Boolean).join(" · "); }
+  /* What marking one off means, by what the list mostly holds: a recipe is
+     tried, a flat is seen, anything else is watched. */
+  function svVerbFor(kind){
+    return t(kind === "recipe" ? "saved.verbTried" : kind === "listing" || kind === "place" ? "saved.verbSeen" : "saved.verbWatched");
+  }
+  /* A list's count speaks in its commonest kind; one link, in its own. */
+  function svVerb(listId){
+    var kinds = {};
+    svItemsOf(listId).forEach(function(x){ if(x.kind) kinds[x.kind] = (kinds[x.kind] || 0) + 1; });
+    return svVerbFor(Object.keys(kinds).sort(function(a, b){ return kinds[b] - kinds[a]; })[0]);
+  }
+  /* The picture is OURS (/me/thumb/<id>) when the server has one; until it
+     loads, or if it never does, the tile under it is the placeholder. */
+  function svThumb(x){
+    return '<span class="svth svg' + (x.id % 9 + 1) + '">' + (SV_EMOJI[x.kind] || "🔗") +
+      (x.thumb ? '<img class="svimg" src="/me/thumb/' + x.id + '" alt="" loading="lazy">' : "") +
+      '<span class="svpf"><svg aria-hidden="true"><use href="#' + (SV_SYM[x.platform] || "p-web") + '"/></svg></span></span>';
+  }
+  document.addEventListener("error", function(e){
+    if(e.target && e.target.classList && e.target.classList.contains("svimg")) e.target.remove();
+  }, true);
+  function svMark(text, q){
+    var s = String(text || ""), i = q ? s.toLowerCase().indexOf(q.toLowerCase()) : -1;
+    if(i < 0) return esc(s);
+    return esc(s.slice(0, i)) + "<mark>" + esc(s.slice(i, i + q.length)) + "</mark>" + esc(s.slice(i + q.length));
+  }
+  function svTitle(x){ return x.title || svHost(x) || x.url; }
+
+  function savedSection(){
+    var lists = SAVED.lists.filter(function(l){ return l.count > 0; });
+    if(!lists.length) return "";
+    var total = 0, fresh = 0;
+    lists.forEach(function(l){ total += l.count; fresh += l.fresh; });
+    var newest = SAVED.items[0], nl = newest && svList(newest.listId);
+    return '<div class="tsec calfold archive fcard svfold' + (savedFoldOpen ? " open" : "") + '">' +
+      '<button class="arcbtn" data-svfold aria-expanded="' + savedFoldOpen + '">' +
+        '<span class="ftile fgold"><svg aria-hidden="true"><use href="#i-bookmark"/></svg></span>' +
+        '<span class="fmid"><span class="fname">' + esc(t("saved.title")) + "</span>" +
+          (newest ? '<span class="fpeek"><b>' + esc(nl && nl.emoji || "🔖") + "</b><span>" + esc(svTitle(newest)) + "</span></span>" : "") + "</span>" +
+        '<span class="fend"><span class="fnum"><span class="calfoldn">' + total + "</span>" +
+          (fresh ? '<span class="fsub fgold">' + esc(pl("saved.fresh", fresh)) + "</span>" : "") +
+          '</span><svg class="chev" aria-hidden="true"><use href="#i-chev"/></svg>' +
+        "</span>" +
+      "</button>" +
+      '<div class="fold' + (savedFoldOpen ? " open" : "") + '"><div' + (savedFoldOpen ? "" : " inert") + ">" +
+        '<div class="group">' + lists.map(function(l){
+          var its = svItemsOf(l.id);
+          var sub = [pl("saved.count", l.count)].concat(l.fresh ? [pl("saved.fresh", l.fresh)] : []).join(" · ");
+          return '<button class="svrow" data-svlist="' + l.id + '"><span class="sve">' + esc(l.emoji || "🔖") + "</span>" +
+            '<span class="svb"><span class="svt">' + esc(l.name) + '</span><span class="svm' + (l.fresh ? "" : " quiet") + '">' + esc(sub) + "</span></span>" +
+            '<span class="svend"><span class="svstack">' + its.slice(0, 3).map(svThumb).join("") + "</span>" +
+            '<span class="tcount' + (l.done === l.count ? " full" : "") + '">' + l.done + "/" + l.count + "</span></span></button>";
+        }).join("") + "</div>" +
+      "</div></div></div>";
+  }
+  function toggleSavedFold(btn){
+    var sec = btn.parentNode, on = !sec.classList.contains("open");
+    savedFoldOpen = on;
+    sec.classList.toggle("open", on);
+    $(".fold", sec).classList.toggle("open", on);
+    $(".fold > div", sec).inert = !on;
+    btn.setAttribute("aria-expanded", on ? "true" : "false");
+  }
+
+  /* ── the sheets: a stack, each one above the last ──
+     83 and up, under the toast (90) so "ביטול" stays reachable, and never
+     more than three deep (a list, a link, the list to move it to). The
+     page's own task sheet is opened only after this stack has closed. */
+  var svStack = [];
+  function svOpen(entry){
+    /* A double tap on a row is two clicks: the second must not stack the
+       same sheet on itself. */
+    var top = svStack[svStack.length - 1];
+    if(top && top.listId === entry.listId && top.itemId === entry.itemId && top.moveId === entry.moveId) return;
+    var depth = svStack.length, z = 83 + depth * 2;
+    var back = document.createElement("div"); back.className = "svback"; back.style.zIndex = z;
+    var sh = document.createElement("div"); sh.className = "svsh"; sh.style.zIndex = z + 1;
+    sh.setAttribute("role", "dialog"); sh.setAttribute("aria-modal", "true");
+    document.body.append(back, sh);
+    entry.sh = sh; entry.back = back;
+    svStack.push(entry);
+    back.addEventListener("click", svCloseTop);
+    svPaint(entry);
+    requestAnimationFrame(function(){ requestAnimationFrame(function(){ back.classList.add("in"); sh.classList.add("in"); }); });
+  }
+  function svPaint(entry){
+    var html = entry.render();
+    /* The thing it showed is gone (deleted here, or by the chat): close it. */
+    if(html === null){ svClose(entry); return; }
+    var keep = {}, focused = document.activeElement && entry.sh.contains(document.activeElement) ? document.activeElement.id : "";
+    entry.sh.querySelectorAll("input[id]").forEach(function(i){ keep[i.id] = i.value; });
+    entry.sh.innerHTML = '<div class="svgrab"></div><button class="svx" data-svclose aria-label="' + esc(t("saved.close")) + '"><svg><use href="#i-x"/></svg></button>' + html;
+    Object.keys(keep).forEach(function(id){ var i = document.getElementById(id); if(i && entry.sh.contains(i)) i.value = keep[id]; });
+    if(focused){
+      var f = document.getElementById(focused);
+      if(f && entry.sh.contains(f)){ f.focus(); try{ f.setSelectionRange(f.value.length, f.value.length); }catch(e){} }
+    }
+    if(entry.after) entry.after();
+  }
+  function svRepaint(){ svStack.slice().forEach(svPaint); }
+  function svClose(entry){
+    var i = svStack.indexOf(entry);
+    if(i < 0) return;
+    svStack.splice(i, 1);
+    entry.sh.classList.remove("in"); entry.back.classList.remove("in");
+    setTimeout(function(){ entry.sh.remove(); entry.back.remove(); }, 300);
+  }
+  function svCloseTop(){ if(svStack.length) svClose(svStack[svStack.length - 1]); }
+  function svCloseAll(){ while(svStack.length) svCloseTop(); }
+  document.addEventListener("keydown", function(e){ if(e.key === "Escape" && svStack.length){ e.stopPropagation(); svCloseTop(); } }, true);
+  /* A sheet keeps the height it opened at once its search is touched, so a
+     shorter list never drops the field out from under the thumb. */
+  function svLockHeight(sh){ if(sh && !sh.style.height) sh.style.height = sh.offsetHeight + "px"; }
+
+  /* ── one list, drawn like a list on this page ── */
+  function svMatches(x, q){
+    if(!q) return true;
+    var hay = [x.title, x.line, x.author, x.caption, svPlatform(x)].filter(Boolean).join(" ").toLowerCase();
+    return hay.indexOf(q.toLowerCase()) >= 0;
+  }
+  function openSavedList(id){
+    var entry = {listId:id};
+    entry.render = function(){
+      var l = svList(id);
+      if(!l) return null;
+      var input = document.getElementById("svq-" + id), q = input ? input.value.trim() : "";
+      var all = svItemsOf(id), its = all.filter(function(x){ return svMatches(x, q); }), verb = svVerb(id);
+      return '<div class="svhead"><h3>' + esc((l.emoji ? l.emoji + " " : "") + l.name) + '</h3><svg aria-hidden="true"><use href="#i-bookmark"/></svg></div>' +
+        '<span class="svcat"><i></i><b>' + esc(t("saved.title")) + "</b>" + (l.auto ? " · " + esc(t("saved.olmaSorts")) : "") + "</span>" +
+        '<div class="group">' +
+          '<div class="row no-icon svr"><div class="row-txt"><div class="row-title">' + esc(t("saved.links")) + '</div><div class="row-sub">' +
+            esc(l.count ? t("saved.doneOf", {d:l.done, n:l.count, verb:LOCALE === "en" ? verb.toLowerCase() : verb}) : t("saved.none")) + "</div></div>" +
+            (l.count ? '<span class="tcount' + (l.done === l.count ? " full" : "") + '">' + l.done + "/" + l.count + "</span>" : "") + "</div>" +
+          (all.length > 4 ? '<label class="svsearch"><svg aria-hidden="true"><use href="#i-search"/></svg><input type="search" id="svq-' + id +
+            '" data-svsearch placeholder="' + esc(t("saved.searchIn", {name:l.name})) + '" enterkeyhint="search"></label>' : "") +
+          '<div class="listbox">' + (its.length ? its.map(function(x){
+            return '<div class="litem' + (x.done ? " on" : "") + '"><button class="lbox" data-svtick="' + x.id + '" aria-pressed="' + !!x.done +
+              '" aria-label="' + esc(verb) + '"><svg><use href="#i-check"/></svg></button>' + svThumb(x) +
+              '<button class="ltext" data-svitem="' + x.id + '"><i>' + (x.done ? "" : '<span class="svdot" aria-label="' + esc(t("saved.new")) + '"></span>') +
+                svMark(svTitle(x), q) + "</i>" +
+                "<small>" + (x.line ? "<b><bdi>" + svMark(x.line, q) + "</bdi></b> · " : "") + "<bdi>" + esc(svPlatform(x)) + "</bdi>" +
+                (x.taskId ? " · " + esc(t("saved.inTasks")) : "") + "</small></button>" +
+              '<button class="lrm" data-svdel="' + x.id + '" aria-label="' + esc(t("saved.delete")) + '"><svg><use href="#i-x"/></svg></button></div>';
+          }).join("") : '<div class="svempty">' + esc(q ? t("saved.noMatch", {q:q}) : t("saved.none")) + "</div>") + "</div>" +
+        "</div>" +
+        '<div class="group">' +
+          '<label class="srow"><svg class="svic" aria-hidden="true"><use href="#i-folder"/></svg><input type="text" id="svname-' + id +
+            '" data-svrename="' + id + '" value="' + esc(l.name) + '" aria-label="' + esc(t("saved.listName")) + '" maxlength="40" enterkeyhint="done"></label>' +
+          '<button class="srow svdanger" data-svdellist="' + id + '"><svg class="svic" aria-hidden="true"><use href="#i-trash"/></svg>' + esc(t("saved.deleteList")) +
+            '<span class="svv">' + esc(pl("saved.count", l.count)) + "</span></button>" +
+        "</div>";
+    };
+    svOpen(entry);
+  }
+
+  /* ── one link ── */
+  function svLineBy(x){
+    if(!x.line) return x.read ? t("saved.lineEmpty") : t("saved.unread");
+    if(x.lineBy === "me") return t("saved.lineMine");
+    if(x.lineBy === "olma") return t("saved.lineRead", {src:svPlatform(x) || svHost(x)});
+    return "";
+  }
+  function openSavedItem(id){
+    var entry = {itemId:id};
+    entry.render = function(){
+      var x = svItem(id);
+      if(!x) return null;
+      var l = svList(x.listId), verb = svVerbFor(x.kind), href = svHref(x.url), when = "";
+      try{ when = new Date(x.savedAt).toLocaleDateString(LOCALE === "he" ? "he-IL" : "en-GB", {day:"numeric", month:"short"}); }catch(e){}
+      return '<div class="svhero">' + svThumb(x) + '<div class="svb"><div class="svt">' + esc(svTitle(x)) + "</div>" +
+          (svSource(x) ? '<div class="svm"><bdi>' + esc(svSource(x)) + "</bdi></div>" : "") +
+          '<div class="svm">' + esc([l ? (l.emoji ? l.emoji + " " : "") + l.name : "", x.listAuto ? t("saved.olmaChose") : "", when].filter(Boolean).join(" · ")) + "</div></div></div>" +
+        '<input class="svline" type="text" id="svline-' + id + '" data-svline="' + id + '" value="' + esc(x.line || "") +
+          '" placeholder="' + esc(t("saved.linePh")) + '" maxlength="120" enterkeyhint="done">' +
+        '<div class="svlineby">' + esc(svLineBy(x)) + "</div>" +
+        (!x.read ? "" : x.recipe && x.recipe.ingredients.length
+          ? '<div class="group svings">' + x.recipe.ingredients.map(function(w){ return '<div class="svln">' + esc(w) + "</div>"; }).join("") + "</div>"
+          : x.caption ? '<p class="svcap">' + esc(x.caption) + "</p>" : "") +
+        '<div class="svacts">' +
+          (href ? '<a class="svbtn" href="' + esc(href) + '" target="_blank" rel="noopener noreferrer">' +
+            esc(svPlatform(x) && SV_PF[x.platform] ? t("saved.openIn", {pf:svPlatform(x)}) : t("saved.openSite")) +
+            '<svg aria-hidden="true"><use href="#i-out"/></svg></a>' : "") +
+          '<button class="svbtn' + (x.done ? " on" : "") + '" data-svtick="' + x.id + '" aria-pressed="' + !!x.done + '">' + esc(verb + (x.done ? " ✓" : "?")) + "</button>" +
+        "</div>" +
+        '<div class="group" style="margin-top:12px">' +
+          '<button class="srow" data-svtask="' + x.id + '"><svg class="svic" aria-hidden="true"><use href="#i-check"/></svg>' +
+            esc(x.taskId ? t("saved.inTasks") : t("saved.toTask")) +
+            '<span class="svv' + (x.taskId ? " on" : "") + '">' + esc(x.taskId ? t("saved.openTask") : "") + "</span></button>" +
+          '<button class="srow" data-svmove="' + x.id + '"><svg class="svic" aria-hidden="true"><use href="#i-folder"/></svg>' + esc(t("saved.list")) +
+            '<span class="svv">' + esc(l ? (l.emoji ? l.emoji + " " : "") + l.name : "") + "</span></button>" +
+          '<button class="srow svdanger" data-svdel="' + x.id + '" data-svfromitem><svg class="svic" aria-hidden="true"><use href="#i-trash"/></svg>' + esc(t("saved.delete")) + "</button>" +
+        "</div>";
+    };
+    svOpen(entry);
+  }
+  function openSavedMove(id){
+    var entry = {moveId:id};
+    entry.render = function(){
+      var x = svItem(id);
+      if(!x) return null;
+      return '<div class="svhead"><h3>' + esc(t("saved.moveTitle")) + "</h3></div>" +
+        '<span class="svcat">' + esc(svTitle(x)) + "</span>" +
+        '<div class="group">' + SAVED.lists.map(function(l){
+          var here = l.id === x.listId;
+          return '<button class="svopt' + (here ? " on" : "") + '" data-svto="' + l.id + '"' + (here ? " disabled" : "") + '><span class="sve">' + esc(l.emoji || "🔖") + "</span>" + esc(l.name) +
+            '<span class="svc">' + esc(here ? t("saved.hereNow") : String(l.count)) + "</span></button>";
+        }).join("") +
+        '<label class="svnewlist"><span class="sve">+</span><input type="text" id="svnew-' + id + '" data-svnewlist="' + id +
+          '" placeholder="' + esc(t("saved.newList")) + '" maxlength="40" enterkeyhint="done"></label></div>';
+    };
+    svOpen(entry);
+  }
+
+  /* ── the writes ── */
+  function svCounts(listId, dCount, dDone){
+    var l = svList(listId);
+    if(!l) return;
+    l.count += dCount; l.done += dDone; l.fresh = l.count - l.done;
+  }
+  function svChanged(){ renderTasks(); svRepaint(); }
+  function svTick(id){
+    var x = svItem(id);
+    if(!x) return;
+    x.done = !x.done;
+    svCounts(x.listId, 0, x.done ? 1 : -1);
+    svChanged();
+    API.send("setSavedStatus", {linkId:id, done:x.done});
+  }
+  function svDelete(id){
+    var at = SAVED.items.findIndex(function(x){ return x.id === id; });
+    if(at < 0) return;
+    var x = SAVED.items[at];
+    SAVED.items.splice(at, 1);
+    svCounts(x.listId, -1, x.done ? -1 : 0);
+    svChanged();
+    API.send("deleteSaved", {linkId:id});
+    toast(t("saved.deleted"), function(){
+      if(svItem(id)) return;
+      SAVED.items.splice(Math.min(at, SAVED.items.length), 0, x);
+      svCounts(x.listId, 1, x.done ? 1 : 0);
+      svChanged();
+      API.send("restoreSaved", {linkId:id});
+    });
+  }
+  function svMove(id, list){
+    var x = svItem(id), name = typeof list === "number" ? (svList(list) || {}).name : String(list || "").trim();
+    if(!x || !name) return;
+    var dest = typeof list === "number" ? svList(list) : null;
+    svCloseTop();
+    if(dest){
+      svCounts(x.listId, -1, x.done ? -1 : 0);
+      x.listId = dest.id; x.listAuto = false;
+      svCounts(dest.id, 1, x.done ? 1 : 0);
+      svChanged();
+    }
+    /* A new name is a new list, and only the server knows its id: re-read. */
+    API.send("moveSaved", {linkId:id, list:name}, function(data, ok){
+      if(ok) toast(t("saved.moved", {name:data && data.list || name}));
+      if(ok && !dest) API.reload();
+    });
+  }
+  function svToTask(id){
+    var x = svItem(id);
+    if(!x) return;
+    if(x.taskId){
+      /* Their task, in the page's own sheet — once this stack is out of the way. */
+      var tid = x.taskId;
+      svCloseAll();
+      setTimeout(function(){ if(taskById(tid)) openSheet(tid); }, 320);
+      return;
+    }
+    API.send("savedToTask", {linkId:id}, function(data, ok){
+      if(!ok || !data) return;
+      x.taskId = data.taskId;
+      svRepaint();
+      toast(t("saved.taskMade"));
+      API.reload();
+    });
+  }
+  function svRename(id, to){
+    var l = svList(id), name = String(to || "").replace(/\s+/g, " ").trim();
+    if(!l || !name || name === l.name) return;
+    var was = l.name;
+    l.name = name;
+    svChanged();
+    API.send("renameSavedList", {list:was, to:name});
+  }
+  function svDeleteList(id){
+    var l = svList(id);
+    if(!l) return;
+    svCloseAll();
+    var at = SAVED.lists.indexOf(l), its = svItemsOf(id);
+    SAVED.lists.splice(at, 1);
+    SAVED.items = SAVED.items.filter(function(x){ return x.listId !== id; });
+    renderTasks();
+    API.send("deleteSavedList", {list:l.name});
+    toast(t("saved.listDeleted", {name:l.name}), function(){
+      SAVED.lists.splice(Math.min(at, SAVED.lists.length), 0, l);
+      SAVED.items = SAVED.items.concat(its).sort(function(a, b){ return a.savedAt < b.savedAt ? 1 : a.savedAt > b.savedAt ? -1 : b.id - a.id; });
+      renderTasks();
+      API.send("restoreSavedList", {listId:id});
+    });
+  }
+
+  /* every tap inside a saved sheet, in one place */
+  document.addEventListener("click", function(e){
+    var el = e.target, b;
+    if(!el.closest || !el.closest(".svsh")) return;
+    if(el.closest("[data-svclose]")){ svCloseTop(); return; }
+    if((b = el.closest("[data-svtick]"))){ svTick(+b.dataset.svtick); return; }
+    if((b = el.closest("[data-svitem]"))){ openSavedItem(+b.dataset.svitem); return; }
+    if((b = el.closest("[data-svdel]"))){
+      if(b.hasAttribute("data-svfromitem")) svCloseTop();
+      svDelete(+b.dataset.svdel); return;
+    }
+    if((b = el.closest("[data-svmove]"))){ openSavedMove(+b.dataset.svmove); return; }
+    if((b = el.closest("[data-svto]"))){
+      var top = svStack[svStack.length - 1];
+      if(top && top.moveId) svMove(top.moveId, +b.dataset.svto);
+      return;
+    }
+    if((b = el.closest("[data-svtask]"))){ svToTask(+b.dataset.svtask); return; }
+    if((b = el.closest("[data-svdellist]"))){ svDeleteList(+b.dataset.svdellist); return; }
+  });
+  document.addEventListener("focusin", function(e){
+    if(e.target.matches && e.target.matches("[data-svsearch]")) svLockHeight(e.target.closest(".svsh"));
+  });
+  document.addEventListener("input", function(e){
+    if(!(e.target.matches && e.target.matches("[data-svsearch]"))) return;
+    var top = svStack[svStack.length - 1];
+    if(top) svPaint(top);
+  });
+  /* The line under the title, and a list's name: saved when they leave the
+     field or press Enter, never on every letter. */
+  document.addEventListener("change", function(e){
+    var el = e.target;
+    if(!el.matches) return;
+    if(el.matches("[data-svline]")){
+      var x = svItem(+el.dataset.svline), v = el.value.replace(/\s+/g, " ").trim();
+      if(!x || v === (x.line || "")) return;
+      x.line = v || null; x.lineBy = v ? "me" : null;
+      svChanged();
+      API.send("setSavedNote", {linkId:x.id, line:v}, function(data, ok){ if(ok) toast(t(v ? "saved.lineSaved" : "saved.lineCleared")); });
+      return;
+    }
+    if(el.matches("[data-svrename]")){ svRename(+el.dataset.svrename, el.value); return; }
+  });
+  document.addEventListener("keydown", function(e){
+    var el = e.target;
+    if(e.key !== "Enter" || !el.matches) return;
+    if(el.matches("[data-svline],[data-svrename]")){ e.preventDefault(); el.blur(); return; }
+    if(el.matches("[data-svnewlist]")){
+      e.preventDefault();
+      if(el.value.trim()) svMove(+el.dataset.svnewlist, el.value);
+    }
+  });
   /* One place for all of them, whichever way the list is sorted — so it is
      built here rather than inside either branch, and the branches skip these
      tasks instead of each having to know about sources. */
@@ -8478,7 +9129,7 @@ button.srow:active{background:var(--bg-tint)}
   function renderTasks(){
     /* Shared first, then what is already on the calendar, folded (owner,
        2026-09-29) — both drawn once, above whichever view is on. */
-    var html = pinnedSection() + calendarSection();
+    var html = pinnedSection() + calendarSection() + savedSection();
     if(viewBy === "cat"){
       /* Empty categories are not drawn: the set is fixed so the person can
          always MOVE a task into one, but a heading with nothing under it is
@@ -8508,7 +9159,9 @@ button.srow:active{background:var(--bg-tint)}
         ? '<div class="empty alldone"><span class="okmark"><svg><use href="#i-check"/></svg></span>' +
           '<span class="txt"><b>' + esc(t("tasks.allDone")) + "</b>" +
           '<span class="sub">' + esc(pl("tasks.allDoneSub", archived.length)) + "</span></span></div>"
-        : emptyBig(t("tasks.empty"), "addTask", t("tasks.new"))) + "</div>";
+        : emptyBig(t("tasks.empty"), "addTask", t("tasks.new"))) + "</div>" +
+        /* Nothing to do is not nothing saved. */
+        savedSection();
     }
     $("#taskStack").innerHTML = html;
     goneSig = goneNow();
@@ -8643,6 +9296,10 @@ button.srow:active{background:var(--bg-tint)}
       cf.setAttribute("aria-expanded", on ? "true" : "false");
       return;
     }
+    var sf = e.target.closest("[data-svfold]");
+    if(sf){ toggleSavedFold(sf); return; }
+    var sl = e.target.closest("[data-svlist]");
+    if(sl){ openSavedList(+sl.dataset.svlist); return; }
     var wrap = e.target.closest(".taskwrap");
     if(e.target.closest(".tick") && wrap){ tickTask(wrap); return; }
     var jp = e.target.closest("[data-jump]");
@@ -12081,20 +12738,33 @@ button.srow:active{background:var(--bg-tint)}
   /* Three states, not two. A group half of whose members are selected cannot
      claim to be pressed, and cannot claim to be off either — and the middle
      state is what tells you what the next press will do. */
+  /* Who a group button may select: its members who are a chip in this same
+     picker and have the meet switch on — the rule `startMeetingWithGroup`
+     already applies. `g.m` is every member ON Olma, and since the roster mints
+     a pending row for a number nobody has met (`groups.ensureRosterUsers`),
+     that includes people who are not friends: Padel Gang selected two of them,
+     counted but drawn nowhere, and the server then refused them. */
+  function mtGroupIds(g){
+    return g.m.filter(function(id){
+      var f = FRIENDS.filter(function(x){ return x.id === id; })[0];
+      return f && f.p && f.p.meet;
+    });
+  }
   function mtGroupState(g){
-    var on = g.m.filter(function(id){ return mtPickWho.indexOf(id) > -1; }).length;
-    return on === 0 ? "" : on === g.m.length ? "all" : "part";
+    var ids = mtGroupIds(g);
+    var on = ids.filter(function(id){ return mtPickWho.indexOf(id) > -1; }).length;
+    return on === 0 ? "" : on === ids.length ? "all" : "part";
   }
   function renderMtPick(){
     var q = mtPickQ.trim().toLowerCase();
     function hit(str){ return !q || String(str).toLowerCase().indexOf(q) > -1; }
-    var gs = GROUPS.filter(function(g){ return hit(grName(g)); });
+    var gs = GROUPS.filter(function(g){ return hit(grName(g)) && mtGroupIds(g).length; });
     var ps = mtPeopleOrder().filter(function(f){ return hit(L(f.n)); });
     var html = gs.map(function(g){
       var st = mtGroupState(g);
       return '<button class="pchip grp' + (st === "part" ? " part" : "") +
         '" aria-pressed="' + (st === "all") + '" data-mtgr="' + g.id + '">' +
-        '<span class="gdot">' + g.m.length + "</span>" + esc(grName(g)) + "</button>";
+        '<span class="gdot">' + mtGroupIds(g).length + "</span>" + esc(grName(g)) + "</button>";
     }).join("") + ps.map(function(f){
       var on = mtPickWho.indexOf(f.id) > -1;
       return '<button class="pchip" aria-pressed="' + on + '" data-mtwho="' + f.id + '">' +
@@ -12258,7 +12928,7 @@ button.srow:active{background:var(--bg-tint)}
         });
       } else {
         var added = 0;
-        grp.m.forEach(function(id){
+        mtGroupIds(grp).forEach(function(id){
           if(mtPickWho.indexOf(id) < 0){ mtPickWho.push(id); added++; }
         });
         if(added) toast(t("toast.mtGroup", {name:grName(grp), n:added}));
@@ -14947,6 +15617,7 @@ button.srow:active{background:var(--bg-tint)}
        can create. */
     GROUPS = (d.groups || []).map(liveGroup);
     renderInvite(d.invite);
+    renderApps(d.apps);
     var block = document.querySelector(".groupsblock:not(button)");
     if(block) block.classList.toggle("hasrooms", GROUPS.length > 0);
     /* Google is the only provider with a connection behind it. Everything
@@ -14999,6 +15670,7 @@ button.srow:active{background:var(--bg-tint)}
           PEOPLE[w.id] = {id:w.id, n:w.name || "", av:avatarFor(w.id, w.avatar), g:"m"};
       });
     });
+    SAVED = d.saved && Array.isArray(d.saved.lists) && Array.isArray(d.saved.items) ? d.saved : {lists:[], items:[]};
     var openId = mtOpen ? mtOpen.id : null;
     MEETS = (d.meetings || []).map(liveMeet);
     MTLEFT = (d.meetingsLeft || []).map(function(m){ return {id:m.id, t:m.title || "", settled:!!m.settled, slot:m.slotReader || m.slot || ""}; });
@@ -15008,6 +15680,7 @@ button.srow:active{background:var(--bg-tint)}
     try{ localStorage.setItem("olma.been", "1"); }catch(e){}
     renderAll();
     if(mtOpen) renderMeet();
+    svRepaint();
     /* Their calendar is a separate round trip to Google, and nothing a write
        on this page does can change it — so it is fetched once, at boot, and
        again only when the week on screen moves past what has been fetched. */

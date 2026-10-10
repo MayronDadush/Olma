@@ -466,9 +466,15 @@ async function applyExtraction(client, user, parsed, knownFactIds = new Set()) {
     // was created and written back forty-two minutes later off the same
     // conversation, and no window shorter than a day catches that without
     // also being a window a person could cross on purpose.
-    const twin = await similarity.findTwin(client, user.id, title, { doneWithinHours: DONE_WINDOW_HOURS });
+    //
+    // The same day covers what they PUT AWAY — deleted, or a shared list they
+    // left — for the same reason: a row they walked away from an hour ago is
+    // not one this job may hand back (task-similarity.findTwin).
+    const twin = await similarity.findTwin(client, user.id, title,
+      { doneWithinHours: DONE_WINDOW_HOURS, goneWithinHours: DONE_WINDOW_HOURS });
     if (twin) {
-      const why = twin.task.status === 'open' ? 'similar_open' : 'similar_done';
+      const why = twin.task.gone ? 'similar_gone'
+        : twin.task.status === 'open' ? 'similar_open' : 'similar_done';
       out.refused[why] = (out.refused[why] || 0) + 1;
       continue;
     }

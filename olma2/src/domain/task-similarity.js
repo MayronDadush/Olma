@@ -187,24 +187,46 @@ function compare(a, b) {
 // completed two minutes after it was created and written back forty-two
 // minutes later off the same conversation. So the window is the CALLER's
 // judgement, not this file's, and it is open by default.
-async function findTwin(client, ownerId, title, { excludeId = null, doneWithinHours = 0 } = {}) {
+//
+// `goneWithinHours` widens it again, for the same caller and the same reason,
+// to things they PUT AWAY: a row of theirs deleted inside the window, and a
+// shared one they LEFT inside it (`shares.leaveTask` → `share.left`), whoever
+// owns it now. Miron (2026-10-08) dictated a Vietnam packing list, shared it
+// with two friends, left it from his page a minute later — and the extraction
+// pass read the same voice note 75 minutes on, found nothing like it on his
+// list, and wrote the whole list back to him, four items and all. A row he
+// walked away from is the opposite of a thing he forgot to save. Returned
+// with `gone: true`, so the caller can count it apart.
+async function findTwin(client, ownerId, title, { excludeId = null, doneWithinHours = 0, goneWithinHours = 0 } = {}) {
   const { rows } = await client.query(
-    `SELECT id, title, due_at, status, completed_at FROM tasks
-      WHERE owner_id = $1 AND archived_at IS NULL AND parent_id IS NULL
+    `SELECT id, title, due_at, status, completed_at,
+            (archived_at IS NOT NULL OR owner_id <> $1) AS gone
+       FROM tasks
+      WHERE parent_id IS NULL
         AND ($2::bigint IS NULL OR id <> $2::bigint)
-        AND (status = 'open'
-             OR ($3::int > 0 AND status = 'done'
-                 AND completed_at > now() - ($3::int * interval '1 hour')))`,
-    [ownerId, excludeId, doneWithinHours]
+        AND ((owner_id = $1 AND archived_at IS NULL
+              AND (status = 'open'
+                   OR ($3::int > 0 AND status = 'done'
+                       AND completed_at > now() - ($3::int * interval '1 hour'))))
+             OR ($4::int > 0 AND owner_id = $1
+                 AND archived_at > now() - ($4::int * interval '1 hour'))
+             OR ($4::int > 0 AND id IN (
+                   SELECT CASE WHEN a.detail->>'taskId' ~ '^[0-9]{1,18}$'
+                               THEN (a.detail->>'taskId')::bigint END
+                     FROM audit_log a
+                    WHERE a.actor_id = $1 AND a.event = 'share.left'
+                      AND a.created_at > now() - ($4::int * interval '1 hour'))))`,
+    [ownerId, excludeId, doneWithinHours, goneWithinHours]
   );
   let best = null;
   for (const row of rows) {
     const verdict = compare(title, row.title);
     if (!verdict.same) continue;
-    // An open row always beats a completed one at equal closeness: it is the
-    // row they would have to look at.
+    // An open row of theirs always beats anything else at equal closeness: it
+    // is the row they would have to look at.
+    const live = (r) => r.status === 'open' && !r.gone;
     const better = !best || verdict.text > best.text
-      || (verdict.text === best.text && row.status === 'open' && best.task.status !== 'open');
+      || (verdict.text === best.text && live(row) && !live(best.task));
     if (better) best = { ...verdict, task: row };
   }
   return best;

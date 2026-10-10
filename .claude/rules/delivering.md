@@ -317,6 +317,16 @@ title means this file. Grep the title, not the filename.
   (`quiet.room_invite_sent` beside `pause.room_invite_sent`), because a pause
   and a silence are different rules on one column (`incidents.md`, "The room
   asked five and reached four").
+  **A SOFT pause (השהייה רכה) shares the quiet pause's allowance and adds
+  one thing** (owner, 2026-10-09; `pause.STOP_UNANSWERED`). Its coordination
+  rows take the same one-message-per-coordination door as `quiet_ladder`
+  (`pausedRoomInvite`, room or private), and `gate.PEER_KINDS` pass as well
+  (`gate.softPausePasses`) — a quiet pause drops those at the paused
+  branch. Nothing of Olma's own passes, nudges included. The first message of their local day carries
+  `pause.SOFT_PAUSE_FOOTER` word for word, on the model path
+  (`softPauseClause`) and the raw pipe alike, stamped on the stored row only
+  once the send confirmed; a row carrying it is never sent as a push
+  notification.
 
 - **For somebody on `daily_once_phones`, everything Olma decides to say waits
   for ONE message at 20:00 their time, and nothing goes out when nothing is
@@ -506,6 +516,16 @@ title means this file. Grep the title, not the filename.
   stopped it (`incidents.md`, "The probe that was read as him writing").
   `turn_start` releases no night-held rows either. The gateway opener already
   did that for a real message.
+
+- **A repair answers something the person WROTE, so no night and no quiet day
+  holds it** (`gate.repairGrace`, row `payload.rung = 'unanswered_repair'`,
+  2026-10-10). It cannot lean on `last_woke_at`: the repair exists because the
+  gateway opener may have missed the message, and then the stamp is stale. Bar,
+  Friday night: the opener timed out (13s, `connected: false`), the model
+  answered in English, the reply gate cancelled it, and the repair queued four
+  minutes later sat as `quiet_day` until its 45 minutes ran out. Paused,
+  blocked and expired rows are still judged before it (`incidents.md`, "The
+  repair that waited for Saturday to end").
 
 - **Only rung 1 of a reminder is a moment THEY chose; every rung after it is
   one OLMA chose, and quiet hours apply to it.** The gate exempted `kind ===

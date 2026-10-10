@@ -92,7 +92,7 @@ function roomZonesFlag(members, group) {
 
 // Start one. `actingUser` is the member whose tag started this turn, chosen by
 // the server (groups.actingMember) — never by the model.
-async function startCoordination(client, group, actingUser, title, { where = null, separate = false } = {}) {
+async function startCoordination(client, group, actingUser, title, { where = null, separate = false, fromPrivate = false } = {}) {
   if (!group || group.state !== 'open') return err('forbidden', 'this group is not open');
   // Null acting member is a real state, not an error to paper over: the
   // gateway filed no sender for this turn, or the sender is not a user. Olma
@@ -197,11 +197,17 @@ async function startCoordination(client, group, actingUser, title, { where = nul
   // everyone", and reading that about yourself is how a tool tells you it has
   // lost track of who you are. `askedItYourself` is the whole difference and
   // `channels/openclaw.js` is where it is spent.
-  await fanout.fanout(client, [Number(actingUser.id)], 'meeting_invite',
-    { ...invitePayload, askedItYourself: true }, { key: `minvite:${meeting.id}` });
+  // …unless they asked in their OWN chat (2026-10-08): they are in the
+  // conversation where they just said it, exactly the person-to-person case
+  // above, so a second message asking them would be the same question twice.
+  if (!fromPrivate) {
+    await fanout.fanout(client, [Number(actingUser.id)], 'meeting_invite',
+      { ...invitePayload, askedItYourself: true }, { key: `minvite:${meeting.id}` });
+  }
 
   await audit.record(client, actingUser.id, 'group.coordination_started', {
     groupId: group.id, meetingId: Number(meeting.id), participants: members.length,
+    ...(fromPrivate ? { fromPrivate: true } : {}),
   });
   // The one question, asked once ever, and folded into the line she was going
   // to say anyway. It is asked HERE rather than at registration for two
@@ -210,9 +216,71 @@ async function startCoordination(client, group, actingUser, title, { where = nul
   // in the room rather than privately because the answer is a fact ABOUT the
   // room that everyone in it can correct, and because we do not reliably know
   // who added her to it.
-  const askKind = !groups.validKind(group.kind) && !group.kind_asked_at;
+  // Never from a private chat: it is asked in the room's reply, and a private
+  // turn has none, so the stamp would spend the once-ever question unasked.
+  const askKind = !fromPrivate && !groups.validKind(group.kind) && !group.kind_asked_at;
   if (askKind) await groups.noteKindAsked(client, group.id);
   return ok({ meeting, created: true, participants: members.length, askKind });
+}
+
+// ── A room's coordination, asked for in a PRIVATE chat ───────────────────────
+// The owner, 2026-10-08: a private coordination is never the room's business —
+// except when it IS the room's: asked for "for this group", or with everybody
+// in a room. Then it becomes that room's coordination, exactly as if it had
+// been asked for there, so the room sees the board and acts on it like any
+// other. Nobody needs a connection, the same as in the room.
+//
+// "Everybody" is everybody the room can coordinate (`coordinatingMembers`),
+// the asker aside: each of them named, and nobody named who is not in the
+// room. A member who never wrote to her cannot be named in a private chat and
+// is not required — the room's own machinery reaches them (`coldInvite`,
+// `admitLateMembers`), which is how they end up in it all the same. Somebody
+// who paused her themselves is not required either: the room leaves them out.
+function digitsOf(phone) {
+  return String(phone || '').replace(/\D/g, '');
+}
+
+function coversRoom(members, actorId, phones) {
+  const live = members.filter((m) => m.user_id);
+  if (!live.some((m) => Number(m.user_id) === Number(actorId))) return false;
+  const byDigits = new Map(live.map((m) => [digitsOf(m.phone), m]));
+  const named = new Set();
+  for (const p of phones || []) {
+    const m = byDigits.get(digitsOf(p));
+    if (!m) return false;
+    if (Number(m.user_id) !== Number(actorId)) named.add(Number(m.user_id));
+  }
+  if (!named.size) return false;
+  return live.filter((m) => groups.isConnected(m) && Number(m.user_id) !== Number(actorId)
+    && !pause.keptOutOfRooms(m))
+    .every((m) => named.has(Number(m.user_id)));
+}
+
+// The open rooms `actor` is in whose whole membership those phones are. Not
+// `groups.roomsOf`: that is the five newest, for a turn to read.
+async function roomsCoveredBy(client, actorId, phones) {
+  const { rows } = await client.query(
+    `SELECT g.* FROM chat_groups g
+       JOIN chat_group_members cm ON cm.group_id = g.id AND cm.user_id = $1 AND cm.left_at IS NULL
+      WHERE g.state = 'open' ORDER BY g.id`, [actorId]);
+  const out = [];
+  for (const group of rows) {
+    if (coversRoom(await groups.listMembers(client, group.id), actorId, phones)) out.push(group);
+  }
+  return out;
+}
+
+// "Arrange it for this group", from their own chat. A room they are not in is
+// one that does not exist, as far as this chat can tell; everything else is
+// `startCoordination`'s.
+async function startFromPrivate(client, actingUser, groupId, title, { separate = false } = {}) {
+  const group = Number.isInteger(Number(groupId)) ? await groups.getById(client, Number(groupId)) : null;
+  const mine = group && group.state !== 'retired'
+    && (await groups.listMembers(client, group.id)).some((m) => Number(m.user_id) === Number(actingUser.id));
+  if (!mine) return err('not_found', 'not a group you share with Olma', { reason: 'not_your_group' });
+  const res = await startCoordination(client, group, actingUser, title, { separate, fromPrivate: true });
+  if (!res.ok) return res;
+  return ok({ ...res.data, group });
 }
 
 // ── A member who arrives after it started ─────────────────────────────────────
@@ -331,11 +399,41 @@ async function quietJoinersToAnnounce(client, group, meeting, startedAt) {
 }
 
 // Where it stands, in the room's terms. Answers only — never a reason.
-async function coordinationStatus(client, group, { places = null } = {}) {
+async function coordinationStatus(client, group, { places = null, reasons = false } = {}) {
   const st = await statusOf(client, group, await currentMeeting(client, group.id, { includeClosed: true }));
   const out = { ...st, coordination: roomView(st.coordination) };
+  if (reasons && out.coordination) out.reasons = await reasonsFor(client, group, out.coordination.meetingId);
   if (places === null) return out;
   return { ...out, ...(await commonHoursFor(client, group, places)) };
+}
+
+// WHY somebody can or cannot, for a room that ASKED (owner, 2026-10-08: "by
+// default only who can and who cannot — but if somebody asks for the reason
+// she can write it in the room"). Only on request, never in `statusOf`: the
+// sweep's lines are built from that, and a room is not told a reason unasked.
+// Exactly what the coordination's own page shows every other participant —
+// the notes that still stand, minus any they asked to keep private
+// (`meetings.standingNotes` with `shareable`) — so the room can never hear
+// more than the page already shows. Somebody who left or paused her is not here.
+async function reasonsFor(client, group, meetingId) {
+  if (!meetingId) return [];
+  const members = await groups.listMembers(client, group.id);
+  const byUser = new Map(members.filter((m) => m.user_id).map((m) => [Number(m.user_id), m]));
+  const { rows } = await client.query(
+    `SELECT user_id, constraints FROM meeting_participants
+      WHERE meeting_id = $1 AND state <> 'opted_out'`, [meetingId]);
+  const table = await options.list(client, Number(meetingId));
+  const out = [];
+  for (const r of rows) {
+    const m = byUser.get(Number(r.user_id));
+    if (!m || pause.pausedByRequest(m)) continue;
+    const mine = Object.fromEntries(table.filter((o) => o.answers && o.answers[r.user_id])
+      .map((o) => [o.id, o.answers[r.user_id]]));
+    const { texts } = meetings.standingNotes(r.constraints, mine, { shareable: true });
+    if (!texts.length) continue;
+    out.push({ name: memberLabel(m), tag: mentionToken(m.phone), said: texts });
+  }
+  return out;
 }
 
 // Hours that suit every clock in the room (`meeting-time.commonHours`), for the
@@ -734,7 +832,7 @@ async function sweepSilentPausedMembers(client, nowMs = Date.now()) {
       -- silence after it takes them out the same way, or whoever asked waits
       -- on somebody who is not there. A pause they asked for keeps its old
       -- reach, rooms only.
-      WHERE (mt.group_id IS NOT NULL OR u.paused_reason = $3) AND mt.status = 'negotiating'
+      WHERE (mt.group_id IS NOT NULL OR u.paused_reason IN ($3, $4)) AND mt.status = 'negotiating'
         AND p.state <> 'opted_out'
         AND u.paused_at IS NOT NULL
         -- An answer already on the table keeps them in (owner, 2026-10-05:
@@ -748,7 +846,10 @@ async function sweepSilentPausedMembers(client, nowMs = Date.now()) {
           -- They paused her THEMSELVES (owner, 2026-09-27): out at once, the
           -- person who opened it included — nothing about it reaches them, so
           -- a room must not wait on them, count them or tag them.
-          u.paused_reason IS DISTINCT FROM $3
+          -- A stop nobody confirmed (pause.STOP_UNANSWERED, 2026-10-09) is
+          -- treated as the ladder's pause: a day of silence after its one
+          -- message, never at once.
+          (u.paused_reason IS DISTINCT FROM $3 AND u.paused_reason IS DISTINCT FROM $4)
           OR (p.user_id <> mt.initiator_id
               AND mt.created_at <= $1::timestamptz - ($2::bigint * interval '1 millisecond')
               -- Per COORDINATION since 2026-10-07: no invite about THIS one
@@ -768,12 +869,13 @@ async function sweepSilentPausedMembers(client, nowMs = Date.now()) {
                    AND (o.payload->>'meetingId')::bigint = p.meeting_id)))
       ORDER BY p.meeting_id, p.user_id
       LIMIT 50`,
-    [new Date(nowMs), pause.ROOM_INVITE_ANSWER_MS, pause.QUIET_LADDER]);
+    [new Date(nowMs), pause.ROOM_INVITE_ANSWER_MS, pause.QUIET_LADDER, pause.STOP_UNANSWERED]);
   const out = [];
   for (const r of rows) {
     const meetingId = Number(r.meeting_id);
     const res = await meetings.applyExit(client, Number(r.user_id), meetingId,
-      r.paused_reason === pause.QUIET_LADDER ? 'paused_no_answer' : 'paused_by_request');
+      r.paused_reason === pause.QUIET_LADDER || r.paused_reason === pause.STOP_UNANSWERED
+        ? 'paused_no_answer' : 'paused_by_request');
     if (!res.ok) continue;
     // Closed with nobody left to match: said in the next digest of whoever is
     // still in it (digest.closedMeetings), never on its own (owner, 2026-09-23).
@@ -1099,7 +1201,7 @@ async function coldInvite(client, group, meeting) {
 module.exports = {
   coldInvite, COLD_INVITE_FLAG, COLD_INVITE_SETTLE_MINUTES,
   roomMeetingFor,
-  startCoordination, admitLateMembers, quietJoinersToAnnounce, coordinationStatus, commonHoursFor, statusOf, roomView, settle, setPlace,
+  startCoordination, startFromPrivate, roomsCoveredBy, coversRoom, admitLateMembers, quietJoinersToAnnounce, coordinationStatus, commonHoursFor, statusOf, roomView, settle, setPlace,
   sweepSilentPausedMembers, sweepRoomLeavers, answeredLive, currentMeeting, coordinatingMembers, memberLabel, participantFor,
   relayToRoom, pendingRelay, markRelaySaid, cleanRelay, relayRoomEnabled, RELAY_MAX_CHARS, RELAY_FLAG,
 };

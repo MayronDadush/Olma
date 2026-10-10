@@ -11,9 +11,16 @@
 // in words: "No image understanding provider is configured".
 //
 // The entry sits beside the two audio ones and is chosen by its
-// `capabilities`, so audio is untouched. Gemini Flash-Lite because food/
-// already reads plates with it through the same OpenRouter account, and read
-// the very photo the gateway failed on.
+// `capabilities`, so audio is untouched.
+//
+// NOT gemini-3.5-flash-lite, though food/ reads plates with it: the gateway's
+// image call sends `reasoning: { effort: "none" }`, and both 3.5 Flash models
+// answer 400 "Reasoning is mandatory for this endpoint and cannot be
+// disabled" — so the first entry (2026-10-07) failed every photo, by a new
+// route. Measured on the box 2026-10-08 through the gateway's own describe
+// function: 3.1-flash-lite, 2.5-flash-lite, 2.5-flash and 3-flash-preview
+// all accept it. food/ calls the model itself, without that field, and is
+// unaffected.
 //
 // Config only; `tools.media` hot-reloads. Verify on the next real photo: the
 // gateway log shows a model-fetch to this model and no "image: failed".
@@ -22,7 +29,7 @@
 //   --reset removes the entry (back to the gateway's guess)
 'use strict';
 
-const MODEL = 'google/gemini-3.5-flash-lite';
+const MODEL = 'google/gemini-3.1-flash-lite';
 const isImageEntry = (m) => Array.isArray(m && m.capabilities) && m.capabilities.length === 1 && m.capabilities[0] === 'image';
 
 // Returns the config with exactly one image entry (or none, on reset), every

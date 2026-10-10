@@ -88,6 +88,20 @@ title means this file. Grep the title, not the filename.
   on every message for ever. It was 922 of 2,482 tool calls in the fourteen
   days before (`incidents.md`, "The conversation that never ended").
 
+- **When the opener MISSED a person's WhatsApp message, the turn is still told
+  what Olma last said to them** (`turn.missedOpenContext`, brokerd
+  `turn_context` with no pending open and `trigger: 'user'` +
+  `messageProvider: 'whatsapp'`, 2026-10-10). Bar answered the poker message
+  with "תפתחי להם אופציה בשלישי ה13.10", the hook timed out, and a bare sentence
+  with no context got "I don't see a question or task yet". The block is the
+  kinds of the last three messages sent in 24 hours (never their text) plus
+  `recentMeetings`, and it is **headed "Recent context", never "Turn
+  context"**: the doctrine's fallback is "no Turn context block -> call
+  `turn_start`", and that call is what counts the message, so a block that
+  looked like the real one would silently stop it. Nothing is counted or
+  woken here, and nothing to say is still `context: null`. Needs no gateway
+  restart (brokerd only).
+
 - **A function shared by two openers is handed the WHOLE user row, never a
   projection.** `turn.advise` serves `turn_start` (`users.resolveByToken`,
   `SELECT *`) and brokerd's `turn_context`, which selected five columns by
@@ -104,6 +118,21 @@ title means this file. Grep the title, not the filename.
   because the plugin fails open and the doctrine falls back to `turn_start`, so
   hitting it costs one tool call. **Assert a shared decision once per DOOR**; a
   test that reaches it through one of them proves nothing about the other.
+
+- **A stranger's "first message" is never one of OUR delivery turns.** Every
+  `--deliver` turn opens with the English `DELIVERY_PREAMBLE`, and a person a
+  friend invited has nothing else in their greeter session; read as their
+  words it filed u-70 and u-72 as English speakers (2026-10-09).
+  `sessions.isSystemInstruction` matches the preamble and `readPeerUserText`
+  drops those turns (`incidents.md`, "Hebrew all day, … the cause underneath").
+- **The language streak is fed from the gateway's open, not from `wrote_in`.**
+  `turn_start`'s `wrote_in` is the only net for a wrong stored `locale`, and
+  the Turn context doctrine says not to call `turn_start`, so it never ran
+  (Rachla, 2026-10-09: filed `en`, wrote Hebrew, got an English check-in). The
+  hook sends `wroteHebrew` (true / false / null under three letters), brokerd
+  notes it once per message in `turn_context` (`pending.languageNoted`), three
+  in a row raise `languageNudge` — asked, never switched. Needs a gateway
+  restart (`incidents.md`, "Hebrew all day, and an English check-in").
 
 - **A repeat of the same message must never be read as a new one.** The
   gateway hook's `turn_open` counts the message, wakes the person and places
@@ -211,6 +240,13 @@ title means this file. Grep the title, not the filename.
   minute that the rule above keeps theirs. The page and the room are other
   doors and are untouched (`incidents.md`, "The check-in that answered for
   him").
+  **…and it passes nobody's WORDS** (2026-10-08). `SPEAKS_FOR` beside each
+  tool — `send_message_to_connection` (`messages-between-people.js`) and the
+  private chat's `relay_to_group` (`meetings.js`) — is guarded by the same
+  `src/adapters/mcp/our-turn.js`, same exception, same reason code, with a refusal
+  that says to ask them. A test scans EVERY tool slice for a handler that
+  reaches a relay function off the list (`incidents.md`, "The check-in that
+  wrote to Sarah").
 
 - **A WhatsApp reply names ONE message, and only the MODEL is ever told which.**
   The gateway carries it end to end — `reply_to_id` in `Conversation info`, the
@@ -440,6 +476,21 @@ title means this file. Grep the title, not the filename.
   claim in 4,636 real turns was a delivery reporting an earlier write, or not a
   claim (`incidents.md`, "רשמתי לך הכל, and nothing was"). The plugin carries
   a port of `claimedWrite`, held by `tests/phantom-save.test.js`.
+  **…and since 2026-10-08 a claim after a write that FAILED is corrected by
+  code, for the phones in `claim_correction_phones`** (`incidents.md`,
+  "שלחתי להם, and nothing was sent"). The gate now AWAITS `reply_claim`
+  (800ms, fails toward sending the reply untouched). brokerd keeps, per
+  person, every WRITE tool whose last call this turn failed
+  (`phantom-save.isWrite`; a read failing is noise, and a later success of
+  the SAME tool clears it, never another tool's), and a claim with one still
+  unresolved is `failed` — unless the reply already says it did not work
+  (`admitsFailure`, ported to the plugin), which is `failed_admitted`. For a
+  covered phone brokerd hands back ONE fixed line (`phantom-save.CORRECTIONS`,
+  "sent" for a relay, "saved" otherwise, Hebrew only when `writesHebrew` is
+  `true`) and the gate appends it under the reply. Everyone else is shadow:
+  the row says `wouldCorrect`. **Read those rows before widening the flag** —
+  a refused `complete_task` may be a task already done. Inert until the
+  gateway restarts.
 
 - **A reply under a standing 👍 that only says the 👍 again is cancelled at
   the gate, because the hint alone lost** (`mark-echo.echoOnly`, 2026-09-30;

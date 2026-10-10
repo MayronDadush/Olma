@@ -295,11 +295,11 @@ test('the admin page names both pauses and the quiet drop', async () => {
   const c = await db.pool.connect();
   try {
     const page = await renderUserPage(c, u.id, {});
-    assert.match(page, /מושהה — לא עונה/);
+    assert.match(page, /השהייה שקטה — לא עונה/);
     assert.match(page, /שום דבר לא בוטל/);
     assert.doesNotMatch(page, /ביקש להפסיק/);
     const list = await renderUsers(c, 'csrf');
-    assert.match(list, /מושהה — לא עונה/);
+    assert.match(list, /השהייה שקטה/);
   } finally { c.release(); }
   assert.equal(OUTBOX_STATE.quiet, 'נעצרו — לא עונה');
 });

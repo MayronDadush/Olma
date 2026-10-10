@@ -165,6 +165,21 @@ test('delete and edit act on the last meal when none is named, and an emptied me
   assert.equal((await okOf(TOK(1), 'food_today', {})).meals.length, 0);
 });
 
+// 2026-10-08: coffee and a bowl of soup came back as grams, and the soup's
+// almonds would have come back as ml if "מרק" anywhere in a name counted.
+test('what you drink is said in ml, and only the first word makes it soup', async t => {
+  const { okOf } = await boot(t);
+  const SOUP = { name: 'מרק עוף צח עם ירקות', grams: 350, group: 'veg', per100: { kcal: 30, protein: 2, carbs: 3, fat: 1 } };
+  const ALMONDS = { name: 'שקדי מרק', grams: 25, group: 'grain', per100: { kcal: 500, protein: 8, carbs: 60, fat: 25 } };
+  const LEG = { name: 'שוק עוף במרק', grams: 100, group: 'protein', per100: { kcal: 180, protein: 25, carbs: 0, fat: 9 } };
+  const r = await okOf(TOK(1), 'log_meal', { title: 'מרק', meal: 'dinner', items: [SOUP, ALMONDS, LEG, LATTE] });
+  assert.deepEqual(r.logged.items.map(i => i.unit || 'g'), ['ml', 'g', 'g', 'ml']);
+  const N = require('../src/nutrition');
+  for (const [name, want] of [['כוס חלב', true], ['חלבון', false], ['תה ירוק', true], ['פודינג חלב', false], ['קערת מרק עדשים', true], ['Chicken soup', false]]) {
+    assert.equal(N.isLiquid(name, 'protein'), want, name);
+  }
+});
+
 test('water: a cup at a time, or the day\'s count', async t => {
   const { okOf } = await boot(t);
   assert.equal((await okOf(TOK(1), 'log_water', {})).cups, 1);

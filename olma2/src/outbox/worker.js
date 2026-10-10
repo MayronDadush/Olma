@@ -32,7 +32,9 @@ const MAX_DELIVERIES_PER_TICK = 5;
 // a person is waiting for, and at most two ride any one tick. An ad from the
 // library (domain/brand-ads.js) is the same kind of send and shares the cap.
 const MAX_INTRO_VIDEOS_PER_TICK = 2;
-const CLIP_KINDS = new Set(['intro_video', 'brand_ad']);
+// The evening food picture (domain/food-picture.js) is the same cold CLI send
+// of a file, so it shares the cap and the place at the back of the tick.
+const CLIP_KINDS = new Set(['intro_video', 'brand_ad', 'food_picture']);
 
 // ── Reminders that come due together go out together ────────────────────────
 // The outbox drains a row at a time, so nine reminders due at 08:00 were nine
@@ -167,7 +169,7 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
        -- forever despite the release time the gate had set. A 'daily_once'
        -- hold is the same shape: it waits for the evening digest alone.
        AND (o.hold_reason IS NULL OR o.hold_reason NOT IN ('budget', 'daily_once') OR o.release_after IS NOT NULL)
-     ORDER BY (o.kind IN ('intro_video', 'brand_ad')), o.created_at LIMIT 50`,
+     ORDER BY (o.kind IN ('intro_video', 'brand_ad', 'food_picture')), o.created_at LIMIT 50`,
     [now]
   );
 
@@ -232,7 +234,7 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
            WHERE user_id = $1 AND sent_at IS NOT NULL AND sent_at::date = $2::date
              AND (hold_reason IS NULL OR hold_reason NOT IN ('expired', 'cancelled_by_admin', 'paused', 'superseded'))
              AND urgency <> 'urgent'
-             AND kind NOT IN ('reminder', 'digest', 'introduction')`,
+             AND kind NOT IN ('reminder', 'digest', 'introduction', 'food_picture')`,
           [row.user_id, now]
         );
 
@@ -291,6 +293,8 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
         // send me messages" and the room's next coordination reached him.
         let pausedRoomInvite = false;
         let quietRoomInvite = false;
+        // A soft pause (pause.STOP_UNANSWERED) takes it exactly as a quiet
+        // one does: one message per coordination (owner, 2026-10-09).
         const roomInviteCandidate = row.kind === 'meeting_invite' && meetingId
           && (row.paused_at
             ? !pauseDomain.keptOutOfRooms(row)
@@ -488,6 +492,7 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
           lastInboundAt: row.last_inbound_at, wokeAt: row.last_woke_at, dashboardWroteAt: row.last_dashboard_at, groupWroteAt,
           greetedAt: row.opening_sent_at,
           pausedRoomInvite, quietRoomInvite, answeredCoordination, privateInvite, meetingOver, coordinationDay, coldInviteGone,
+          softPaused: pauseDomain.softPaused(row),
           hasDigest: Boolean(row.digest_times),
           introductionPending: introRows.length > 0,
           introductionSentAt: introSent[0] ? introSent[0].sent_at : null,
@@ -637,13 +642,32 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
           && payloadOf(row).roomZones && row.timezone_confirmed === false && !row.room_zone_asked_at
           && meetingTime.zoneLabel(row.timezone)
           ? { askZone: meetingTime.zoneLabel(row.timezone) } : {};
+        // The once-a-day line a soft pause adds (pause.SOFT_PAUSE_FOOTER, owner
+        // 2026-10-09): on the first message of their own day that reaches them.
+        // "Reached" is a row stamped with it and not held; the stamp is written
+        // only once the send confirmed or timed out (spendSoftFooter below).
+        let softFooter = false;
+        if (pauseDomain.softPaused(row)) {
+          const { rows: said } = await client.query(
+            `SELECT 1 FROM outbox
+              WHERE user_id = $1 AND sent_at IS NOT NULL AND hold_reason IS NULL
+                AND payload->>'softPauseFooter' = 'true'
+                AND sent_at >= (date_trunc('day', $2::timestamptz AT TIME ZONE $3) AT TIME ZONE $3)
+                AND sent_at <= $2::timestamptz + interval '1 minute'
+              LIMIT 1`,
+            [row.user_id, now, row.timezone || 'UTC']);
+          softFooter = said.length === 0;
+        }
         const channels = await channelsCanCarry();
-        const sendRow = mergedParts ? { ...row, payload: { ...payloadOf(row), mergedParts } }
+        const baseSendRow = mergedParts ? { ...row, payload: { ...payloadOf(row), mergedParts } }
           : ids.length > 1 ? { ...row, payload: { ...payloadOf(row), items: titles } }
             // In memory only, like `items`: the reader tells the model
             // this person is paused and this is the one message about it.
             : pausedRoomInvite ? { ...row, payload: { ...payloadOf(row), pausedNotice: true, ...zoneAsk } }
               : zoneAsk.askZone ? { ...row, payload: { ...payloadOf(row), ...zoneAsk } } : row;
+        // In memory only, like the rest: the deliverer prints the line.
+        const sendRow = softFooter
+          ? { ...baseSendRow, payload: { ...payloadOf(baseSendRow), softPauseFooter: true } } : baseSendRow;
         // Notifications to the installed app (domain/push.js, owner
         // 2026-10-08): for somebody who turned them on there, a coordination
         // row the page answers whole goes as a notification INSTEAD of a turn.
@@ -653,7 +677,7 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
         // every push service falls through to WhatsApp in this same tick:
         // nobody loses a message to an app they no longer open.
         let pushed = null;
-        if (!mergedParts && ids.length === 1 && !pausedRoomInvite && !zoneAsk.askZone
+        if (!mergedParts && ids.length === 1 && !pausedRoomInvite && !zoneAsk.askZone && !softFooter
           && pushDomain.pushable(row, payloadOf(row))
           && await pushDomain.enabledFor(client, row.user_phone)) {
           pushed = await pushDomain.deliver(client, row, { now, send: deps.webPushSend });
@@ -714,7 +738,15 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
           if (row.kind !== 'welcome_followup') return;
           await client.query(`UPDATE users SET intake_note_at = NULL WHERE id = $1`, [row.user_id]);
         };
+        // Stamped on the stored row, so tomorrow's first message asks the
+        // same query and today's later ones find it.
+        const spendSoftFooter = async () => {
+          if (!softFooter) return;
+          await client.query(
+            `UPDATE outbox SET payload = payload || '{"softPauseFooter":true}'::jsonb WHERE id = $1`, [row.id]);
+        };
         const spendRoomInvite = async () => {
+          await spendSoftFooter();
           await spendWelcome();
           await spendZoneAsk();
           const quiet = Boolean(verdict.spendsQuietRoomInvite);

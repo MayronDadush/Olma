@@ -451,28 +451,31 @@ details.fold[open] summary{border-bottom:1px solid var(--sep)}
 /* ─────────────── tabs, chat button, sheets ─────────────── */
 .tabbar{
   position:fixed;inset-inline:0;bottom:0;z-index:50;display:flex;justify-content:center;
-  padding:8px 16px calc(22px + env(safe-area-inset-bottom,0px));pointer-events:none;
+  padding:8px 12px max(44px,calc(env(safe-area-inset-bottom,0px) + 16px));pointer-events:none;
 }
 .tabs{
-  pointer-events:auto;display:flex;gap:2px;padding:7px;border-radius:26px;background:var(--bar);
+  pointer-events:auto;display:flex;gap:2px;padding:8px;border-radius:28px;background:var(--bar);
   border:.5px solid var(--glass-line);-webkit-backdrop-filter:var(--lens);backdrop-filter:var(--lens);
-  box-shadow:var(--shadow-m),var(--rim-soft);flex:1;max-width:380px;
+  box-shadow:var(--shadow-m),var(--rim-soft);
 }
+/* The same numbers as the bar on the person's own page (olma2 /me) and the
+   food page's, so whoever knows one knows all three: 8px around, 72px tabs,
+   26px icons, and a 64px chat button beside it. */
 /* An icon over a word, the same shape as the bar on the person's own page:
    a row of three words in a thin pill was easy to miss as the page's main control. */
-.tabs button{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:9px 6px 8px;border-radius:19px;font-size:12px;font-weight:600;letter-spacing:-.01em;color:var(--text-3);position:relative;transition:background .26s var(--ease-io),color .26s var(--ease-io),transform .38s var(--squash)}
-.tabs button svg{width:24px;height:24px}
+.tabs button{display:flex;flex-direction:column;align-items:center;gap:3px;padding:10px 16px 9px;min-width:72px;border-radius:20px;font-size:12.5px;font-weight:600;letter-spacing:-.01em;color:var(--text-3);position:relative;transition:background .26s var(--ease-io),color .26s var(--ease-io),transform .38s var(--squash)}
+.tabs button svg{width:26px;height:26px}
 .tabs button:active{transform:scale(.92)}
 .tabs button[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent);font-weight:700}
 .tabs .dot{position:absolute;top:6px;inset-inline-end:calc(50% - 20px);width:8px;height:8px;border-radius:50%;background:var(--gold-arc);animation:rx .4s var(--squash)}
-.tabbar{gap:8px;align-items:center}
+.tabbar{gap:10px;align-items:center}
 .fab{
-  pointer-events:auto;width:58px;height:58px;border-radius:50%;flex:none;display:grid;place-items:center;
+  pointer-events:auto;width:64px;height:64px;border-radius:50%;flex:none;display:grid;place-items:center;
   background:var(--accent);color:var(--on-accent);box-shadow:var(--shadow-m);
   transition:transform .38s var(--squash);
 }
 .fab:active{transform:scale(.92)}
-.fab svg{width:22px;height:22px}
+.fab svg{width:24px;height:24px}
 .tab{display:none}
 body[data-tab="night"] #tNight,body[data-tab="food"] #tFood,body[data-tab="settle"] #tSettle{display:grid}
 
@@ -701,6 +704,7 @@ button.seat:active .av{transform:scale(.9)}
 <div dir="rtl" lang="he">
 <div class="app">
   <header class="band"><div class="top">
+    <a class="ibtn" id="olmaBack" href="/me" aria-label="חזרה לעולמה" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 6l6 6-6 6"/></svg></a>
     <div class="brand">
       <svg class="mark" viewBox="0 0 120 120" aria-hidden="true"><use href="#logo"/></svg>
       <div style="min-width:0"><b id="gTitle">ערב פוקר</b><span id="gSub">עולמה</span></div>
@@ -2296,5 +2300,16 @@ async function boot(){
 }
 render();
 boot();
+})();
+</script>
+<script>
+/* Opened from the home screen of Olma's installed app (olma2 /me, the apps
+   row), this page is inside an app with no browser bar, and nothing else on it
+   leads back. In a browser the browser's own back does, so the button stays
+   hidden there. */
+(function(){
+  var b = document.getElementById("olmaBack");
+  var inApp = (window.matchMedia && matchMedia("(display-mode: standalone)").matches) || navigator.standalone === true;
+  if(b && inApp) b.hidden = false;
 })();
 </script>

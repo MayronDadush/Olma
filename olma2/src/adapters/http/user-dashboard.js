@@ -21,6 +21,7 @@
 //   GET  /me/data     everything on it, as JSON. Session required.
 //   GET  /me/events   their calendar, fetched from Google. Session required.
 //   POST /me/act      one write. Session required.
+//   GET  /me/thumb/N  the picture of saved link N, theirs only. Session required.
 //   POST /me/out      sign out.
 //   POST /me/code     spend an eight-digit code from Olma and open a session —
 //                     the way into the home-screen app on an iPhone, whose
@@ -39,7 +40,9 @@ const experiments = require('../../domain/experiments');
 const events = require('../../domain/user-dashboard-events');
 const opens = require('../../domain/dashboard-opens');
 const write = require('../../domain/user-dashboard-write');
+const userApps = require('../../domain/user-apps');
 const push = require('../../domain/push');
+const savedLinks = require('../../domain/saved-links');
 const { refreshUserCard } = require('../../intake/user-card');
 
 // The short shape every link has had since 2026-09-15, or the 64-hex shape of
@@ -350,8 +353,12 @@ async function currentUser(pool, req) {
 // never has to know the route list — and so a path that is nearly one of ours
 // (`/mesh`, `/me/x`) falls through to Basic Auth instead of being answered here.
 const OWN = new Set(['/me', '/me/data', '/me/events', '/me/act', '/me/out', '/me/code']);
+// A saved link's picture, by the link's id (domain/saved-links.thumbOf).
+// Exact shape for the same reason as LINK_RE; Caddy has to name it too, and
+// until it does the page draws its placeholder, which is what a 404 draws.
+const THUMB_RE = /^\/me\/thumb\/([1-9][0-9]{0,17})$/;
 function matches(pathname) {
-  return OWN.has(pathname) || LINK_RE.test(pathname);
+  return OWN.has(pathname) || LINK_RE.test(pathname) || THUMB_RE.test(pathname);
 }
 
 // ---- guessing a code -------------------------------------------------------
@@ -462,8 +469,9 @@ async function handle(req, res, pool, pathname) {
     return sendJson(res, 200, { ok: true }, { 'Set-Cookie': auth.cookieHeader(opened.data.sessionId) });
   }
 
+  const thumb = pathname.match(THUMB_RE);
   if (pathname !== '/me' && pathname !== '/me/data'
-      && pathname !== '/me/events' && pathname !== '/me/act') {
+      && pathname !== '/me/events' && pathname !== '/me/act' && !thumb) {
     // Only reachable if `matches` and this list ever disagree. Say so rather
     // than falling through to a 200 with no body.
     return sendJson(res, 404, { ok: false, error: { code: 'not_found' } });
@@ -501,6 +509,18 @@ async function handle(req, res, pool, pathname) {
   // rather than as the 401 it actually is.
   if (!userId) return sendJson(res, 401, { ok: false, error: { code: 'unauthorized' } });
 
+  // Their own link's picture and nobody else's: the id is checked against the
+  // session's user, and an id that is not theirs is the same 404 as none.
+  if (thumb) {
+    if (req.method !== 'GET') return sendJson(res, 405, { ok: false, error: { code: 'invalid' } }, { Allow: 'GET' });
+    const pic = await withTx(pool, (c) => savedLinks.thumbOf(c, userId, thumb[1]));
+    if (!pic) return sendJson(res, 404, { ok: false, error: { code: 'not_found' } });
+    // no-store like everything else here: a picture of what they saved is
+    // theirs, and it must not outlive a sign-out in the browser's cache.
+    res.writeHead(200, headers(pic.mime));
+    return res.end(pic.bytes);
+  }
+
   if (pathname === '/me/data') {
     if (req.method !== 'GET') return sendJson(res, 405, { ok: false, error: { code: 'invalid' } }, { Allow: 'GET' });
     // The address book on its own, asked for by the one sheet that shows it
@@ -519,6 +539,11 @@ async function handle(req, res, pool, pathname) {
       if (loaded.ok) await experiments.expose(c, 'invite_card_moment', userId);
       return loaded;
     });
+    // The games icon's badge, from gamesd, after the commit: a slow service
+    // costs the badge, never the page (domain/user-apps.js).
+    if (page.ok && page.data && Array.isArray(page.data.apps) && page.data.apps.length) {
+      page.data.apps = await userApps.badges(page.data.apps.map((a) => a.id), userId);
+    }
     // The notifications switch (domain/push.js): absent unless the flag
     // covers them, and never on a page the owner opened from the admin side,
     // or his phone would be subscribed to somebody else's coordinations. Its
@@ -548,6 +573,16 @@ async function handle(req, res, pool, pathname) {
   }
   const payload = body.payload && typeof body.payload === 'object' && !Array.isArray(body.payload)
     ? body.payload : {};
+  // A tap on an app's icon: the link to go to, asked of that app's service.
+  // Not a write and not in write.perform, because it waits on another
+  // service and a transaction should not (domain/user-apps.js).
+  if (body.action === 'openApp') {
+    const { rows: [u] } = await pool.query('SELECT id, first_name, timezone, locale FROM users WHERE id = $1', [userId]);
+    if (!u) return sendJson(res, 404, { ok: false, error: { code: 'not_found' } });
+    const out = await userApps.openUrl(pool, u, String(payload.app || ''));
+    const code = out.ok ? 200 : out.error.code === 'forbidden' ? 403 : out.error.code === 'invalid' ? 400 : 503;
+    return sendJson(res, code, out);
+  }
   // The app's three notification calls are not the person writing: they
   // never pass through write.perform, which would stamp them as having
   // answered and audit the payload (an endpoint is an address that can be
@@ -594,6 +629,6 @@ async function frontPage(req, res, pool) {
 }
 
 module.exports = {
-  handle, matches, currentUser, frontPage, pageLocale, resetCodeLimits, LINK_RE, PAGE_PATH,
+  handle, matches, currentUser, frontPage, pageLocale, resetCodeLimits, LINK_RE, THUMB_RE, PAGE_PATH,
   CODE_MAX_PER_ADDRESS, CODE_MAX_TOTAL,
 };
