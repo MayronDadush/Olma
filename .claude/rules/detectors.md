@@ -149,6 +149,12 @@ title means this file. Grep the title, not the filename.
   not re-alert. It speaks over the gateway's own pipe (owner's choice, no
   SMS), so a gateway that stays dead is repaired from here but reported only
   by the external monitor.
+  **Every restart it performs is an `audit_log` row**
+  (`gateway.restarted_by_liveness`, what the probes said before and after),
+  and **the half-hour cooldown outlives the outage**: `lastRestartAt` stays in
+  the state until it has run out. Before 2026-10-10 a clean tick dropped it,
+  and a restart nobody could attribute took the nightly evals down
+  (`incidents.md`, "A restart with no name on it").
 
 - **A live gateway PROCESS is not a gateway that can send anything, and for
   six hours nothing in the system knew the difference.** `checkGateway` asks
