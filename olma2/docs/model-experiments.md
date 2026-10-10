@@ -1158,3 +1158,34 @@ reload confirmed in the journal; `scripts/set-default-model.js` now says so),
 OpenRouter's reasoning control set and measured on real turns — the same
 lesson as the provider probe: the number that was measured was fast, and the
 number people wait on was not it.
+
+## Run #114 — 2026-10-10 — `claude-haiku-5.5` (via OpenRouter), the full suite: no gain, not adopted
+
+Listed 2026-10-07 at $0.10 / $0.50 per Mtok (cache read $0.01) — the first
+Anthropic model whose price no longer rules it out against v4-flash's real
+billed cost. Registered with `scripts/register-openrouter-models.js` (hot, no
+restart); smoke set as runs #112-#113, then `--full`.
+
+**`10 green · 3 yellow · 2 red · 2 error`**, against v4-flash's last five
+complete nights (#106-#110): 10-13 green, 0-2 red.
+
+- **RED `named-reminder-hour` — her voice.** "אני לא יכול לשלוח לה הודעה":
+  a masculine self-reference, caught by `hebrew-quality.flawsIn`. v4-flash is
+  yellow on this scenario most nights, never for gender.
+- **RED `chase-until-done`** — the reply armed the first reminder for
+  tomorrow (Sunday 11.10) 14:00; the check wants it inside a day. Run on a
+  Saturday, so possibly the same quiet-day reading #518 fixed for Friday
+  nights — not judged against the model until that is ruled out.
+- Yellows on `stop-service` (v4-flash is yellow there every night),
+  `goal-capture` (two questions), `hebrew-gender-feminine` (241s, its slowest).
+- **Both errors are the gateway, not the model**: "Opening handshake has timed
+  out" at CLI start. The same error took 13 of 17 scenarios in nightly #111
+  (2026-10-10 00:06 UTC) on v4-flash. #113's error was the JUDGE (background
+  v4-flash) timing out at 180s; Haiku's reply there was correct.
+- Wall clock per scenario: comparable (median ~40s), not faster.
+- Cost: $0.168 for 22 scenario runs, against $0.11-0.13 for v4-flash's 17 a
+  night — ~1.3x per scenario.
+
+**Verdict:** no quality gain on the board, a gender slip in her own voice,
+more money. v4-flash stays. Registered and left registered, so a re-run after
+the next Haiku snapshot is one command.
