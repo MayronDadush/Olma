@@ -24,6 +24,10 @@ const DEFAULTS = {
   // come back, and how long after a DELIVERED rung the next one is due.
   reminder_escalation_max: 3,
   reminder_escalation_gap_hours: 3,
+  // outbox/worker.js, coalesceWait: how long a first-rung reminder may wait
+  // for this person's NEXT one, so 09:00 and 09:02 are one message rather
+  // than two a couple of minutes apart (owner, 2026-10-04). 0 turns it off.
+  reminder_coalesce_seconds: 180,
   // jobs/checkin.js, dayOneSpent: how many unasked messages somebody may hear
   // in their first 24 hours before the day-one ladder goes quiet (owner,
   // 2026-10-04, after new people said she "חופרת"). Reminders and the digest

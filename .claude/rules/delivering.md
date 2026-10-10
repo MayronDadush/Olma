@@ -588,6 +588,15 @@ title means this file. Grep the title, not the filename.
   templates), and a failed send fails for all of them and skips them for the
   rest of the tick. Vered got nine messages in ninety seconds
   (`incidents.md`, "Nine reminders, nine messages").
+  **…and since 2026-10-04 a first rung WAITS up to three minutes for the
+  person's next first rung** (owner; `worker.coalesceWait`, flag
+  `reminder_coalesce_seconds`, 180, `0` = off). The same-tick batch cannot see
+  a reminder whose moment has not come, so 09:00 and 09:02 were two messages.
+  The row is held `hold_reason = 'coalesce'` until the next one is due, and a
+  coalesce-held row rides as a sibling before its own release time. Anchored
+  on `payload.remindAt`, so a chain cannot walk it forward and a row a hold
+  carried past its hour waits for nothing. **Late, never early** — saying
+  09:03's reminder at 09:00 breaks the hour they named the other way.
 
 - **On the model path a retry is not a retry — it is a NEW message, composed
   against a world the failed sends themselves created.** `--deliver` runs a
