@@ -295,6 +295,7 @@ never trust a dated narrative for something you are about to act on.
 - [The same thing, saved twice (fixed 2026-09-08)](#the-same-thing-saved-twice-fixed-2026-09-08)
 - [A time in the title and no reminder (fixed 2026-09-09)](#a-time-in-the-title-and-no-reminder-fixed-2026-09-09)
 - [A silence read as a delivery fault (fixed 2026-09-09)](#a-silence-read-as-a-delivery-fault-fixed-2026-09-09)
+- [The repair that waited for Saturday to end (fixed 2026-10-10)](#the-repair-that-waited-for-saturday-to-end-fixed-2026-10-10)
 - [The hour in the title nobody compared (fixed 2026-09-11)](#the-hour-in-the-title-nobody-compared-fixed-2026-09-11)
 - [A lost reply is re-sent, not re-answered (fixed 2026-09-09)](#a-lost-reply-is-re-sent-not-re-answered-fixed-2026-09-09)
 - [The sentinel that only stripped itself (fixed 2026-09-15)](#the-sentinel-that-only-stripped-itself-fixed-2026-09-15)
@@ -12370,6 +12371,31 @@ So the id is taken only when the model is the best source there is: never on
 `ourTurn`, never over an id the gateway already put on the turn, and otherwise
 exactly as before — a real person writing, with no gateway opening on file,
 is still a turn where the model is all we have.
+
+### The repair that waited for Saturday to end (fixed 2026-10-10)
+
+Friday 2026-10-09, 19:11 Jerusalem. Bar answered the poker coordination with
+"תפתחי להם אופציה בשלישי ה13.10 שאני חוזר אצלי" and heard nothing. Four faults
+in a row, only the last one ours to fix in code:
+
+1. The gateway's `olma-turn-open` hook timed out at 13.2s with
+   `connected: false` (the gateway's loop was stalled; the same minute shows
+   u-10 and u-3 doing it). The message was never counted, `last_woke_at` and
+   `last_inbound_at` stayed on 10-08, and the turn ran with no Turn context
+   (`turn.context_without_open`, 9 that day, 3-6 a day all week).
+2. `deepseek-v4-flash` read a bare Hebrew sentence with no context and answered
+   "I don't see a question or task yet" in English, with no tool call.
+3. The reply gate cancelled it correctly (`english`, two `reply.gated` rows).
+4. `unanswered` did its job: case (c) queued a `dropped_turn` repair at 16:15.
+   The gate held it as `quiet_day` (Friday night is Shabbat for him), and the
+   45-minute expiry took it. 3 of the 35 repairs in 14 days were held that way.
+
+The fix is the gate's: a row with `payload.rung = 'unanswered_repair'` is
+exempt from the night and the quiet day (`gate.repairGrace`), because it only
+ever answers a message the person wrote and `wokeAt` is exactly what a missed
+opener leaves stale. Not fixed: the hook timeout itself (gateway loop stalls),
+and the model answering a bare sentence badly when no context arrives. The
+manual remedy for Bar was `propose_meeting_slot` through brokerd's socket.
 
 ### A silence read as a delivery fault (fixed 2026-09-09)
 
