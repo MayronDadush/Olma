@@ -44,6 +44,11 @@ have already had to be argued for.
   exactly what the page shows (`meetings.standingNotes`, shareable — never one
   kept private); `statusOf` never carries one, so no fixed line can
   (`incidents.md`, "The poker room could not say who could and who could not").
+  **…and the board is drawn into the turn's own block** (`group-turn.draw`:
+  `onTable[].yesBy/noBy`, `lastCoordination.yesBy`), because a model told the
+  block is the only thing it may speak from answers from the block and never
+  calls the tool (`incidents.md`, "The poker room heard counts where it asked
+  for names").
 
 - **NULL is the honest third state and a guess never acts.** `chat_groups.kind`
   (migration 051) is asked ONCE, in the room — the gateway never tells us who

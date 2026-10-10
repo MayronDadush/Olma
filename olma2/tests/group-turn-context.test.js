@@ -137,7 +137,14 @@ test('a running coordination: the title, how many were asked, how many answered,
     data.coordination.asked - data.coordination.answered,
     'the two numbers and the list are one fact and must agree');
   assert.equal(data.coordination.notYetAsked, undefined, 'everybody here has been written to');
-  assert.deepEqual(data.coordination.onTable, [{ optionId, slot: 'רביעי 21:00', yes: 1, no: 1 }]);
+  // Who said what, by tag — the board the room may ask for (owner,
+  // 2026-10-08). Counts alone were answered as "no breakdown, only counts" in
+  // the poker room on 2026-10-10, with the tool that had the names never called.
+  assert.deepEqual(data.coordination.onTable, [{
+    optionId, slot: 'רביעי 21:00', yes: 1, no: 1, yesBy: [`@${danny.phone}`], noBy: [`@${dana.phone}`],
+  }]);
+  assert.match(groupTurn.CONTEXT_RULE, /`yesBy` and `noBy` are who said yes and no/);
+  assert.match(groupTurn.CONTEXT_RULE, /never read them out unasked, and never give a reason/);
   assert.equal(Number(yuval.id) > 0, true);
 
   // And the other half of the rule the owner asked for on 2026-09-22: while
@@ -202,6 +209,24 @@ test('a confirmed coordination the room has already heard about says so', async 
   await db.pool.query(`UPDATE meetings SET status = 'cancelled' WHERE id = $1`, [meetingId]);
   data = parse((await ask({ agentId: group.agent_id, externalId: group.external_id })).context);
   assert.equal(data.lastCoordination.roomHeard, undefined);
+});
+
+// "מי בפנים?" after the "סגור" line is the same question as before it, and a
+// settled coordination draws no `onTable` at all.
+test('a confirmed coordination carries who said yes to the time it settled on', async () => {
+  const { group, people } = await room(22, { subject: 'פוקר' });
+  const [danny, dana] = people;
+  const started = await withTx(db.pool, (c) => groupMeetings.startCoordination(c, group, danny, 'פוקר'));
+  const meetingId = Number(started.data.meeting.id);
+  const optionId = await withTx(db.pool, async (c) => {
+    const added = await options.add(c, danny.id, meetingId, 'ראשון 20:00', slotStart('ראשון', { hours: 96 }));
+    return Number(added.data.option.id);
+  });
+  await withTx(db.pool, (c) => options.answer(c, dana.id, meetingId, optionId, 'y'));
+  await db.pool.query(
+    `UPDATE meetings SET status = 'confirmed', confirmed_slot = 'ראשון 20:00' WHERE id = $1`, [meetingId]);
+  const data = parse((await ask({ agentId: group.agent_id, externalId: group.external_id })).context);
+  assert.deepEqual([...data.lastCoordination.yesBy].sort(), [`@${danny.phone}`, `@${dana.phone}`].sort());
 });
 
 test('the block never carries the room\'s own row, and a nameless member is still counted', async () => {
