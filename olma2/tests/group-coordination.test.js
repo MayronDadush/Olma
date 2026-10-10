@@ -576,6 +576,19 @@ const groupTools = () => require('../src/adapters/mcp/tools/group');
 const addTool = () => groupTools().find((t) => t.name === 'add_group_coordination_option');
 const startTool = () => groupTools().find((t) => t.name === 'start_group_coordination');
 
+// 2026-10-10, ת.ג.ל: the hint said "(a game: padel, poker)" and the model read
+// the examples out, as her first sentence to three women arranging a
+// get-together. The question is handed over whole now and names no game.
+test('the kind question is handed over in words that name no game', async () => {
+  const { group, people } = await room(46, { subject: 'ת.ג.ל' });
+  const res = await withTx(db.pool, (c) => startTool().handler(c, { group, actingUser: people[0] }, { what: 'מפגש' }, {}));
+  assert.equal(res.ok, true, res.ok ? '' : JSON.stringify(res.error));
+  const ask = res.data.hints.ask;
+  assert.match(ask, /צריך מספר מסוים של אנשים כדי שזה יקרה, או שהעיקר למצוא זמן שמתאים לכולם\?/);
+  assert.doesNotMatch(ask, /padel|poker|פאדל|פוקר/i);
+  assert.match(ask, /Never name a game or a sport/);
+});
+
 test('a time said in the room goes on the table as the speaker\'s option, with their yes', async () => {
   const { group, people } = await room(40, { subject: 'פחם הסעות' });
   const [amit, miron, bar] = people;
