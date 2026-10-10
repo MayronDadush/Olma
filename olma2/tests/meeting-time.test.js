@@ -179,3 +179,13 @@ test('"היום" that is a noun or a duration is not a day that goes stale', () 
   // a weekday after it is the day it names
   assert.equal(mt.freshDayWords('היום שלישי בערב', TUE_EVENING, IL, MON_NOON), 'מחר (שלישי) בערב');
 });
+
+test('words written down for good say the date even while "מחר" is still true', () => {
+  // A calendar event's description: there is no moment it is read at.
+  assert.equal(mt.datedDayWords('מחר (שלישי) בערב', TUE_EVENING, IL), 'יום שלישי 6.10 בערב');
+  assert.equal(mt.datedDayWords('הערב ב-19:00', TUE_EVENING, IL), 'יום שלישי 6.10 בערב ב-19:00');
+  // Nothing moving, or nothing to be sure of: untouched.
+  assert.equal(mt.datedDayWords('יום שישי 9.10 ב-11:00', TUE_EVENING, IL), 'יום שישי 9.10 ב-11:00');
+  assert.equal(mt.datedDayWords('מחר בערב', {}, IL), 'מחר בערב');
+  assert.equal(mt.datedDayWords(null, TUE_EVENING, IL), null);
+});

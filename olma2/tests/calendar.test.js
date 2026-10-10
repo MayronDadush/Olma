@@ -736,6 +736,29 @@ test('the shared event carries attendees, asks Google to mail them, and leaks no
   assert.doesNotMatch(JSON.stringify(res.data), /@example\.com/, 'no email may reach the model');
 });
 
+// "מחר בערב" written onto an event is wrong from the next morning, and the
+// event is read for as long as it exists (2026-10-06, the poker room). The
+// moving word goes on as its date; the rest of the words stay the proposer's.
+test('the shared event\'s description says the date, never "מחר"', async () => {
+  const { a, meetingId } = await confirmedMeetingFixture('+972632000071', '+972632000072');
+  await db.pool.query(`UPDATE users SET timezone = 'Asia/Jerusalem' WHERE id = $1`, [a.id]);
+  await db.pool.query(
+    `UPDATE meetings SET confirmed_slot = 'מחר בערב', confirmed_start_at = '2026-08-20T17:00:00Z' WHERE id = $1`,
+    [meetingId]);
+  let posted = null;
+  const fetchImpl = fakeFetch({
+    'calendars/primary/events': (url, init) => {
+      posted = JSON.parse(init.body);
+      return { body: { id: 'evt-dated', summary: 'קפה', start: { dateTime: '2026-08-20T20:00:00+03:00' } } };
+    },
+  });
+  const res = await withTx(db.pool, (c) => calendar.createSharedMeetingEvent(c, a.id, {
+    meetingId, start: '2026-08-20T20:00:00+03:00', end: '2026-08-20T21:00:00+03:00',
+  }, { fetchImpl }));
+  assert.equal(res.ok, true, res.ok ? '' : JSON.stringify(res.error));
+  assert.equal(posted.description, 'יום חמישי 20.8 בערב');
+});
+
 test('only the host may create the shared event', async () => {
   const { b, meetingId } = await confirmedMeetingFixture('+972632000009', '+972632000010');
   const fetchImpl = fakeFetch({}); // any outbound call here is a bug

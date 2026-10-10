@@ -20,6 +20,7 @@ const google = require('./google-oauth');
 const connectGate = require('./google-connect-gate');
 const { enqueue } = require('../outbox/enqueue');
 const googleFamily = require('./google-family');
+const { datedDayWords } = require('./meeting-time');
 
 // Does another Google row of this user carry this exact refresh token?
 async function tokenHeldBySibling(client, userId, secret) {
@@ -728,7 +729,13 @@ async function meetingCalendarRoles(client, meetingId) {
 // Called by the organiser's own agent once it has worked out real times.
 async function createSharedMeetingEvent(client, userId, { meetingId, start, end, location }, opts = {}) {
   const { rows } = await client.query(
-    `SELECT m.id, m.title, m.status, m.confirmed_slot, m.confirmed_all_day
+    `SELECT m.id, m.title, m.status, m.confirmed_slot, m.confirmed_all_day, m.confirmed_start_at,
+            -- Whose clock the settled words were written on: the author of
+            -- the option they came from, else whoever hosts the event.
+            COALESCE((SELECT a.timezone FROM meeting_options o JOIN users a ON a.id = o.added_by
+                       WHERE o.meeting_id = m.id AND o.slot_text = m.confirmed_slot
+                       ORDER BY o.id DESC LIMIT 1),
+                     (SELECT timezone FROM users WHERE id = $2)) AS words_tz
        FROM meetings m
        JOIN meeting_participants mp ON mp.meeting_id = m.id AND mp.user_id = $2
       WHERE m.id = $1 AND mp.state <> 'opted_out'`,
@@ -768,7 +775,12 @@ async function createSharedMeetingEvent(client, userId, { meetingId, start, end,
     // Settled on a whole day (087): the event is a whole day too, whatever
     // end the model worked out.
     allDay: Boolean(meeting.confirmed_all_day),
-    description: meeting.confirmed_slot || undefined,
+    // The settled words, with "מחר"/"היום" written as their date: the
+    // description is read for as long as the event exists, and "מחר בערב"
+    // on it is wrong from the next morning (`incidents.md`, "Tomorrow, said
+    // on the day itself").
+    description: datedDayWords(meeting.confirmed_slot,
+      { startsAt: meeting.confirmed_start_at }, meeting.words_tz) || undefined,
     attendees,
   }, opts);
   if (!res.ok) return res;
