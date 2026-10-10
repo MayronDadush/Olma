@@ -3343,8 +3343,13 @@ coordination cancelled quietly, the link revoked (audit `group.retired`,
 
 **Fixed so far:** a quiet pause is never told it is one (`QUIET_PAUSE_INVITE`
 in `channels/openclaw.js`, chosen off `payload.pausedReason`). A pause they
-took, or a stop they never confirmed, keeps the sentence. The room's
-table-moving lines are a separate change.
+took, or a stop they never confirmed, keeps the sentence. The kind question
+is handed over word for word and names no game (`KIND_QUESTION`). And a table
+line, `laid` or `table`, is said once per coordination (`saidTable`): reading
+the room's untagged talk would have told the sweep to stay quiet, but a
+`requireMention` room drops that talk before any hook of ours — g-15's trace
+held three tagged messages and none of the conversation — so the owner chose
+fewer lines over a new signal.
 
 ### The pause the room's invite walked through (fixed 2026-09-27)
 

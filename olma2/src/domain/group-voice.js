@@ -190,7 +190,7 @@ function withClocks(line, co, { timezone, nowMs } = {}) {
 
 function decideLine(co, {
   saidStarted, saidBase, saidBaseSlot, saidBaseStartAt, saidChase, chaseSaidAtMs, saidAlmost, saidDone, doneSaidAtMs, saidCalendar, saidDayOf, saidHour,
-  saidTime, pendingRelay, startedAtMs, nowMs, timezone, tableSaidAtMs, reopenedAt, reopenedFrom, saidReopened,
+  saidTime, pendingRelay, startedAtMs, nowMs, timezone, tableSaidAtMs, saidTable, reopenedAt, reopenedFrom, saidReopened,
   roomAsleep, coldTags, calendarPending,
 } = {}) {
   const taggable = mayTag(coldTags);
@@ -476,8 +476,18 @@ function decideLine(co, {
     };
   }
 
+  // …and since 2026-10-10 it is said ONCE per coordination, `laid` included:
+  // whichever of the two went first is the room's one picture of the table
+  // (`saidTable`, off `group_table_at`, which both of them stamp). ת.ג.ל heard
+  // "על הפרק" with a time already deleted and then "השולחן זז" after it had
+  // dropped the coordination among themselves — talk she never saw, because
+  // an untagged message never reaches us in a `requireMention` room — and
+  // took her out of the room (owner, 2026-10-10: option 2 of three; the other
+  // was reading the room's untagged talk, which is the `group_untagged_rooms`
+  // experiment). A time the room was TOLD about leaving the table is still
+  // said (`moved`, above): that one corrects something she said.
   const onTable = (co.options || []).length;
-  if (onTable && tableSaidAtMs && settled) {
+  if (onTable && tableSaidAtMs && settled && !saidTable) {
     return { kind: 'table', count: onTable, lead: lead ? lead.slot : null };
   }
   return { kind: 'none', reason: 'nothing new to say' };
