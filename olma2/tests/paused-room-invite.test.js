@@ -199,7 +199,11 @@ test('a quietly paused member hears about EACH coordination once (owner, 2026-10
   const toPaused = rec.sent.filter((r) => Number(r.user_id) === Number(paused.id));
   assert.equal(toPaused.length, 1, 'exactly one message reached the paused member');
   assert.equal(toPaused[0].payload.pausedNotice, true);
-  assert.match(instructionFor(toPaused[0]), /PAUSED/);
+  // A quiet pause is not one they took, and they are not told about it
+  // (ת.ג.ל, 2026-10-10: "כי את בהשהייה" after eight quiet days).
+  assert.equal(toPaused[0].payload.pausedReason, pause.QUIET_LADDER);
+  assert.doesNotMatch(instructionFor(toPaused[0]), /PAUSED/);
+  assert.match(instructionFor(toPaused[0]), /Say nothing about a pause/);
   assert.doesNotMatch(instructionFor(rec.sent.find((r) => Number(r.user_id) === Number(other.id))), /PAUSED/,
     'nobody else is told they are paused');
   const { rows: [u] } = await db.pool.query(`SELECT room_invite_sent_at FROM users WHERE id = $1`, [paused.id]);

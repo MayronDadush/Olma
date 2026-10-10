@@ -662,8 +662,9 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
         const baseSendRow = mergedParts ? { ...row, payload: { ...payloadOf(row), mergedParts } }
           : ids.length > 1 ? { ...row, payload: { ...payloadOf(row), items: titles } }
             // In memory only, like `items`: the reader tells the model
-            // this person is paused and this is the one message about it.
-            : pausedRoomInvite ? { ...row, payload: { ...payloadOf(row), pausedNotice: true, ...zoneAsk } }
+            // this person is paused and this is the one message about it —
+            // or, for a pause they did not take, to say nothing about it.
+            : pausedRoomInvite ? { ...row, payload: { ...payloadOf(row), pausedNotice: true, pausedReason: row.paused_reason || null, ...zoneAsk } }
               : zoneAsk.askZone ? { ...row, payload: { ...payloadOf(row), ...zoneAsk } } : row;
         // In memory only, like the rest: the deliverer prints the line.
         const sendRow = softFooter
