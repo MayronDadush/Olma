@@ -642,6 +642,15 @@ have already had to be argued for.
   because whose answer is whose is still nobody else's to hear. Its
   idempotency key carries the change's own timestamp, so one line per
   movement and a re-run of the pass collapses onto it.
+  **REVERSED 2026-10-10: a table line is said ONCE per coordination, `laid`
+  or `table`, whichever goes first** (owner, option 2 of three; `saidTable`
+  off `group_table_at`, which both stamp). ת.ג.ל heard "על הפרק" with a time
+  already deleted, then "השולחן זז" after it had dropped the coordination
+  among itself, in talk she never saw: a `requireMention` room drops an
+  untagged message before any hook of ours, so nothing can tell a sweep the
+  room is talking. A time the room was told about leaving the table is still
+  `moved` (`incidents.md`, "ת.ג.ל took her out of the room in fifty-three
+  minutes").
 
 - **…and it waits a quarter of an hour, so a burst of changes is ONE sentence**
   (`group-voice.TABLE_SETTLE_MS`, owner 2026-09-22: the room should wait before

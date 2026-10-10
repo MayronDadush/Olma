@@ -721,6 +721,9 @@ async function sweepGroupVoice(client, deps) {
       // been told a table, and a table it has not heard cannot have moved.
       tableSaidAtMs: Math.max(...[row.group_table_at, row.group_base_at]
         .filter(Boolean).map((t) => new Date(t).getTime()), 0),
+      // Whether a table line (`laid` or `table`) has been said at all: since
+      // 2026-10-10 it is said once per coordination (group-voice, `saidTable`).
+      saidTable: Boolean(row.group_table_at),
       startedAtMs: new Date(row.meeting_created_at).getTime(),
       nowMs: now.getTime(),
       timezone: row.timezone,

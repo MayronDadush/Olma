@@ -185,6 +185,17 @@ test('a table of several times with no direction is laid once, and stamped as th
   sent = [];
   await pass(sent, null, group.external_id);
   assert.deepEqual(sent, [], 'said once');
+
+  // ת.ג.ל, 2026-10-10: the table moved after it was laid, and the room heard
+  // "השולחן זז" about a coordination it had already dropped among itself. A
+  // table line is said ONCE per coordination now, whichever of the two it was.
+  const wed = await withTx(db.pool, async (c) =>
+    (await options.add(c, a.id, meetingId, 'רביעי 19:00', slotStart('רביעי', { hours: 96 }))).data.option.id);
+  await optionMovedAt(wed, 1, 'on');
+  sent = [];
+  await pass(sent, DAY_AT(30), group.external_id);
+  assert.deepEqual(sent.map((m) => m.body).filter((b) => /השולחן זז|על הפרק/.test(b)), [],
+    'a table already laid is not followed by "the table moved"');
 });
 
 test('the base of a game is its own minimum, not two people', async () => {
@@ -1247,7 +1258,7 @@ test('a table nobody has a direction on yet is said ONCE, a quarter of an hour a
     'one time with its proposer\'s yes is one person agreeing with themselves: not news');
 });
 
-test('the table moving is news every time it moves, and never says who said what', () => {
+test('the table moving is news once per coordination, and never says who said what', () => {
   const now = Date.now();
   const base = {
     saidStarted: true, saidBase: true, saidChase: true, saidDone: false,
@@ -1265,6 +1276,10 @@ test('the table moving is news every time it moves, and never says who said what
 
   // Nothing has moved since the room last heard the table.
   assert.equal(groupVoice.decideGroupLine(co, { ...base, tableSaidAtMs: now }).kind, 'none');
+  // …and once a table line has been said, the next move is not one (owner,
+  // 2026-10-10, after ת.ג.ל).
+  assert.equal(groupVoice.decideGroupLine(co, { ...base, tableSaidAtMs: now - 30 * 60_000, saidTable: true }).kind, 'none',
+    'one table line per coordination');
 
   // A burst is ONE sentence, not one a minute. מירון's table moved at 16:14,
   // 16:22, 16:23 and 16:25 and this sweep runs every sixty seconds, so the
