@@ -515,6 +515,17 @@ function decide(facts) {
     && createdMs > 0 && (now.getTime() - createdMs) < CONVERSATION_GRACE_MS;
   const gameGrace = inviteGrace || (row.kind === gameSummary.KIND
     && wokeAtMs > 0 && (now.getTime() - wokeAtMs) < CONVERSATION_GRACE_MS);
+  // A repair answers a message the PERSON wrote and nothing else. The sweep
+  // enqueues it only for a message of theirs found in the transcript (a
+  // delivery turn is excluded there) and it expires 45 minutes after, so the
+  // row is itself the evidence they are right there. It cannot lean on
+  // `wokeAt`: the repair exists because the gateway's opener may have MISSED
+  // the message, and then `wokeAt` is stale. Bar, Friday night 2026-10-09: the
+  // opener timed out, the model answered in English, the reply gate rightly
+  // cancelled it, the repair was queued four minutes later and held as
+  // `quiet_day` until it expired -- he heard nothing (`incidents.md`, "The
+  // repair that waited for Saturday to end").
+  const repairGrace = Boolean(row.payload && row.payload.rung === 'unanswered_repair');
 
   // An `introduction` is exempt for the same reason the ladder's own check-in
   // is: it is the one thing Olma OWES rather than something she decided to
@@ -624,7 +635,7 @@ function decide(facts) {
   // step. It is opt-in and nothing else about it is special (owner,
   // 2026-09-11): asked once, and the calendar is yom tov only. `inRoomGrace`
   // exempts a meeting row from this one too, same reasoning as above.
-  const quietReason = !askedForInWords(row) && !inRoomGrace && !welcomeGrace && !gameGrace
+  const quietReason = !askedForInWords(row) && !inRoomGrace && !welcomeGrace && !gameGrace && !repairGrace
     && quietDayReason(facts, tz, now);
   if (quietReason) {
     return {
@@ -721,7 +732,7 @@ function decide(facts) {
   const greeterGrace = greetedAt > 0 && (now.getTime() - greetedAt) < CONVERSATION_GRACE_MS
     && Boolean(row.payload && row.payload.meetingId);
   const midConversation = (lastInbound > 0 && (now.getTime() - lastInbound) < CONVERSATION_GRACE_MS)
-    || inRoomGrace || onPageGrace || greeterGrace || welcomeGrace || inviteGrace;
+    || inRoomGrace || onPageGrace || greeterGrace || welcomeGrace || inviteGrace || repairGrace;
   if (!userChoseThisTime && !midConversation && !withinWindow(window, tz, now)) {
     return {
       action: 'hold', holdReason: 'night',

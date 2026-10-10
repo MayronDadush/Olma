@@ -517,6 +517,16 @@ title means this file. Grep the title, not the filename.
   `turn_start` releases no night-held rows either. The gateway opener already
   did that for a real message.
 
+- **A repair answers something the person WROTE, so no night and no quiet day
+  holds it** (`gate.repairGrace`, row `payload.rung = 'unanswered_repair'`,
+  2026-10-10). It cannot lean on `last_woke_at`: the repair exists because the
+  gateway opener may have missed the message, and then the stamp is stale. Bar,
+  Friday night: the opener timed out (13s, `connected: false`), the model
+  answered in English, the reply gate cancelled it, and the repair queued four
+  minutes later sat as `quiet_day` until its 45 minutes ran out. Paused,
+  blocked and expired rows are still judged before it (`incidents.md`, "The
+  repair that waited for Saturday to end").
+
 - **Only rung 1 of a reminder is a moment THEY chose; every rung after it is
   one OLMA chose, and quiet hours apply to it.** The gate exempted `kind ===
   'reminder'` wholesale, so Vered was asked "בוצע?" at 01:33 about a reminder
