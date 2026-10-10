@@ -667,7 +667,7 @@ test('yellow alerts only on the second consecutive bad night', async () => {
 });
 
 test('sweepEvals: window gate, once-per-night watermark, and the alert pipe', async () => {
-  const night = new Date('2026-08-29T01:30:00Z').getTime(); // 04:30 IL
+  const night = new Date('2026-08-30T01:30:00Z').getTime(); // 04:30 IL, a Sunday — a run night
   const sent = [];
   const deps = {
     now: night,
@@ -676,7 +676,7 @@ test('sweepEvals: window gate, once-per-night watermark, and the alert pipe', as
     complete: judgePass,
   };
   // outside the window → skipped
-  const day = await evalsJob.sweepEvals(db.pool, { ...deps, now: new Date('2026-08-29T12:00:00Z').getTime() });
+  const day = await evalsJob.sweepEvals(db.pool, { ...deps, now: new Date('2026-08-30T12:00:00Z').getTime() });
   assert.equal(day.skipped, 'outside window');
 
   const first = await evalsJob.sweepEvals(db.pool, { ...deps });
@@ -696,7 +696,7 @@ test('sweepEvals: window gate, once-per-night watermark, and the alert pipe', as
 
   // ...morning. The first tick inside civil hours delivers it, on the same
   // raw pipe as before — the channel was never the problem, the hour was.
-  const morning = new Date('2026-08-29T06:30:00Z').getTime(); // 09:30 IL
+  const morning = new Date('2026-08-30T06:30:00Z').getTime(); // 09:30 IL
   const out = await evalsJob.sweepEvals(db.pool, { ...deps, now: morning });
   assert.equal(out.skipped, 'outside window', 'the suite does not re-run to deliver');
   assert.equal(out.alerted, true);
@@ -706,6 +706,64 @@ test('sweepEvals: window gate, once-per-night watermark, and the alert pipe', as
   // Delivered once, and the flag is cleared — a later tick must not repeat it.
   await evalsJob.sweepEvals(db.pool, { ...deps, now: morning + 3600_000 });
   assert.equal(sent.length, 1, 'an alert delivered is an alert finished');
+});
+
+// Once a week and after a change, not every night (owner, 2026-10-10): the
+// suite is the box's heaviest regular spike on 2GB, and a regression comes
+// from a change. A night off is skipped before anything is stamped.
+test('sweepEvals: Sunday runs, and another night runs only after the doctrine or model changed', async () => {
+  // 2026-09-06 is a Sunday, 09-07 a Monday, 09-08 a Tuesday, 09-09 a Wednesday.
+  const at = (d) => new Date(`2026-09-${d}T01:30:00Z`).getTime();
+  assert.equal(evalsJob.isRunNight(new Date('2026-09-05T01:30:00Z').getTime()), false, 'Saturday: the quiet day changes what scenarios may say');
+  assert.equal(evalsJob.isRunNight(at('06')), true);
+  assert.equal(evalsJob.isRunNight(at('07')), false);
+  const flag = (k) => withTx(db.pool, (c) => flagsDomain.getFlag(c, k));
+  await withTx(db.pool, (c) => flagsDomain.setFlag(c, evalsJob.INPUTS_FLAG, ''));
+  const mustNotRun = () => { throw new Error('must not run'); };
+  let fp = 'aaa';
+  const deps = (d) => ({ now: at(d), inputsFingerprint: () => fp, runTurn: mustNotRun });
+
+  // Nothing stamped yet (the first night after this shipped): waits for Sunday.
+  assert.equal((await evalsJob.sweepEvals(db.pool, deps('07'))).skipped, 'not a run night');
+  assert.equal(await flag(evalsJob.INPUTS_FLAG), '', 'a night off stamps nothing');
+
+  // Sunday runs, and stamps what it measured.
+  const sunday = await evalsJob.sweepEvals(db.pool, {
+    ...deps('06'), runTurn: fakeTurns([{ reply: 'ביי' }, { reply: 'בהצלחה 💙' }]), complete: judgePass,
+  });
+  assert.equal(sunday.because, 'weekly');
+  assert.equal(await flag(evalsJob.INPUTS_FLAG), 'aaa');
+
+  // Monday, nothing changed: no run.
+  const before = await flag(evalsJob.LAST_RUN_FLAG);
+  assert.equal((await evalsJob.sweepEvals(db.pool, deps('07'))).skipped, 'not a run night');
+  assert.equal(await flag(evalsJob.LAST_RUN_FLAG), before);
+
+  // An unreadable fingerprint is no change, never a reason to run.
+  fp = null;
+  assert.equal((await evalsJob.sweepEvals(db.pool, deps('08'))).skipped, 'not a run night');
+
+  // Tuesday, after a doctrine change: it runs, says why, and stamps the new one.
+  fp = 'bbb';
+  const tuesday = await evalsJob.sweepEvals(db.pool, {
+    ...deps('08'), runTurn: fakeTurns([{ reply: 'ביי' }, { reply: 'בהצלחה 💙' }]), complete: judgePass,
+  });
+  assert.equal(tuesday.because, 'changed');
+  assert.equal(await flag(evalsJob.INPUTS_FLAG), 'bbb');
+  // ...and Wednesday it has been measured, so no run.
+  assert.equal((await evalsJob.sweepEvals(db.pool, deps('09'))).skipped, 'not a run night');
+});
+
+test('the fingerprint is read from this release and is stable for it', () => {
+  const a = evalsJob.inputsFingerprint();
+  assert.match(a, /^[0-9a-f]{16}$/);
+  assert.equal(evalsJob.inputsFingerprint(), a, 'the same release reads the same');
+});
+
+test('the admin page calls the suite missing only after the longest gap between run nights', () => {
+  assert.equal(evalsJob.staleAfterHours(), 180, 'a week, plus half a day');
+  assert.equal(evalsJob.staleAfterHours([0, 1, 2, 3, 4, 5, 6]), 36, 'every night is the old 36h');
+  assert.equal(evalsJob.staleAfterHours([0, 2, 4]), 84, 'three nights a week');
 });
 
 // The half that makes this safe to defer: a pipe that fails must NOT consume
@@ -1356,10 +1414,14 @@ test('the admin strip is RED for a run that measured nothing, and for a nightly 
     assert.equal(pills[0].level, 'bad');
     assert.match(pills[0].text, /0 מתוך 16/);
 
-    await c.query(`UPDATE eval_runs SET started_at = now() - interval '50 hours', errors = 0, greens = 16`);
+    // Once a week: up to a week is normal; past 180h a Sunday was missed.
+    await c.query(`UPDATE eval_runs SET started_at = now() - interval '170 hours', errors = 0, greens = 16`);
+    pills = await evalPills(c);
+    assert.deepEqual(pills, [], 'a week between Sundays is not a missed run');
+    await c.query(`UPDATE eval_runs SET started_at = now() - interval '190 hours'`);
     pills = await evalPills(c);
     assert.deepEqual(pills.map((p) => p.level), ['bad']);
-    assert.match(pills[0].text, /50 שעות/, 'a nightly that stopped happening is red too');
+    assert.match(pills[0].text, /190 שעות/, 'a Sunday that did not happen is red');
   } finally {
     await c.query('ROLLBACK');
     c.release();
