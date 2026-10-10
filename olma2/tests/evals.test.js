@@ -439,6 +439,49 @@ test('an unparseable judge is an ERROR, never a silent green', async () => {
   assert.equal(r.status, 'error');
 });
 
+// 2026-10-10 00:06 UTC: the gateway restarted mid-run and 13 scenarios were
+// written down as errors, each a message that never left the box. A CLI that
+// never connected waits for the gateway and tries once more; anything that
+// could have run a turn is thrown exactly as before.
+test('a turn whose CLI never connected waits for the gateway and is retried once', async () => {
+  const never = new Error('openclaw agent exit 1: [openclaw] Could not start the CLI.\n[openclaw] Reason: Opening handshake has timed out');
+  let calls = 0, opens = 0, probes = 0;
+  const slept = [];
+  const runTurn = harness.makeTurnRunner({ agentId: 'u-15', sessionKey: 'k' }, {
+    runOpenclawJson: async () => { calls++; if (calls === 1) throw never; return { result: { meta: {}, payloads: [{ text: 'שלום' }] } }; },
+    openTurn: async () => { opens++; },
+    readSessionEventsSlice: () => null,
+    checkGateway: async () => ({ status: probes++ < 2 ? 'down' : 'live' }),
+    sleep: async (ms) => { slept.push(ms); },
+    gatewayPollMs: 5000,
+  });
+  const t = await runTurn('היי');
+  assert.equal(calls, 2, 'one retry');
+  assert.equal(opens, 1, 'the turn is opened once: a second open with the same words reads as a repeat');
+  assert.deepEqual(slept, [5000, 5000], 'it waited while the gateway was down, and no longer');
+  assert.equal(t.reply, 'שלום');
+});
+
+test('a gateway that does not come back is still an error, and says how long it waited', async () => {
+  const never = new Error('openclaw agent exit 1: [openclaw] Reason: Opening handshake has timed out');
+  let calls = 0;
+  await assert.rejects(harness.runTurnCall(async () => { calls++; throw never; }, ['agent'], {
+    checkGateway: async () => ({ status: 'down' }), sleep: async () => {}, gatewayWaitMs: 20_000, gatewayPollMs: 5_000,
+  }), /Opening handshake has timed out — and the gateway was not back after 20s/);
+  assert.equal(calls, 1, 'no retry into a gateway that is not there');
+});
+
+test('a failure that could have run the turn is never retried', async () => {
+  for (const msg of ['openclaw agent timed out after 240000ms', 'openclaw agent exit 1: model provider error', 'openclaw agent returned unparseable JSON']) {
+    let calls = 0, probed = false;
+    await assert.rejects(harness.runTurnCall(async () => { calls++; throw new Error(msg); }, ['agent'], {
+      checkGateway: async () => { probed = true; return { status: 'live' }; }, sleep: async () => {},
+    }), (e) => e.message === msg);
+    assert.equal(calls, 1, msg);
+    assert.equal(probed, false, msg);
+  }
+});
+
 // The cheaper-model pilot: --model drives the suite on a candidate. Two
 // things must hold — the override reaches the gateway call, and a pilot's
 // results can never be mistaken for production's.

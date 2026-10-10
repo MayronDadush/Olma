@@ -128,7 +128,7 @@ the impression that the first green answer is the answer.
 ### Talking to the gateway (and systemd scope)
 
 **`.claude/rules/gateway.md`** — writing openclaw.json, the three model lists, heartbeats, the daily session reset, and which units are user-scope.
-Loads when you **Read** a file under `src/intake/openclaw-config.js`, `src/intake/provision.js`, `src/channels/**` and 11 more.
+Loads when you **Read** a file under `src/intake/openclaw-config.js`, `src/intake/provision.js`, `src/channels/**` and 13 more.
 
 - **Never shell out to `openclaw config set`**
 - **An invalid config is IGNORED, not rejected.**
@@ -142,6 +142,7 @@ Loads when you **Read** a file under `src/intake/openclaw-config.js`, `src/intak
 - **The gateway heartbeat stays OFF: `agents.defaults.heartbeat.every: "0m"`.**
 - **Every session resets daily: `session.reset: { mode: "daily", atHour: 2 }`**
 - **memory-core "dreaming" stays OFF: `plugins.entries["memory-core"].config.dreaming.enabled: false`** — the gateway's default is on, and `config_guard` goes red if it comes back
+- **Ten bundled plugins stay OFF (`src/intake/unused-plugins.js`), by `enabled: false` each and never by `plugins.allow`** — and a plugin write restarts the gateway by itself, so it is a quiet-hour change
 - **A room's agent is shown six tools and a person's the rest, by a computed `tools.deny` per agent** — never hand-edited; the deploy re-syncs it.
 - **A pack's tools (`games__*`, `food__*`) are denied to EVERY agent and lifted only for a person holding the pack** — `user_packs`, read by the sync and `config_guard`; gamesd is still the lock
 

@@ -134,6 +134,10 @@ test('a room coordination: one message, the line on the first of the day, and no
   assert.equal(toQuiet[0].payload.pausedNotice, true, 'told it is the only message about it');
   assert.equal(toQuiet[0].payload.softPauseFooter, true);
   const text = instructionFor({ ...toQuiet[0], locale: 'he' });
+  // They DID say stop, so unlike a quiet pause the model is told and says so.
+  assert.equal(toQuiet[0].payload.pausedReason, pause.STOP_UNANSWERED);
+  assert.match(text, /The user has PAUSED your messages/);
+  assert.doesNotMatch(text, /Say nothing about a pause/);
   assert.ok(text.includes(pause.SOFT_PAUSE_FOOTER.he), 'the line is handed over word for word');
   assert.doesNotMatch(instructionFor({ ...toQuiet[0], locale: 'he', payload: { ...toQuiet[0].payload, softPauseFooter: false } }),
     /never answered whether/);

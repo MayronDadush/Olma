@@ -327,6 +327,13 @@ title means this file. Grep the title, not the filename.
   (`softPauseClause`) and the raw pipe alike, stamped on the stored row only
   once the send confirmed; a row carrying it is never sent as a push
   notification.
+  **The person in a QUIET pause is never TOLD they are paused** (2026-10-10).
+  It is a pause the ladder or the silence clock took, and they do not know it
+  exists. That allowance's invite carries `QUIET_PAUSE_INVITE`, which forbids
+  saying it, picked by `payload.pausedReason`. Only a pause they asked for,
+  or a stop they never confirmed, keeps "The user has PAUSED your messages".
+  תמי read "כי את בהשהייה" after eight quiet days and forwarded it to the room
+  (`incidents.md`, "ת.ג.ל took her out of the room in fifty-three minutes").
 
 - **For somebody on `daily_once_phones`, everything Olma decides to say waits
   for ONE message at 20:00 their time, and nothing goes out when nothing is

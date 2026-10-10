@@ -19,6 +19,7 @@ never trust a dated narrative for something you are about to act on.
 
 **Gateway, config and upgrades**
 
+- [The gateway carried sixteen plugins and used five (switched off 2026-10-10)](#the-gateway-carried-sixteen-plugins-and-used-five-switched-off-2026-10-10)
 - [The first message that reached nobody (repair added 2026-10-07)](#the-first-message-that-reached-nobody-repair-added-2026-10-07)
 - [She wrote twice and stayed paused, and her list never reached her morning (fixed 2026-10-06)](#she-wrote-twice-and-stayed-paused-and-her-list-never-reached-her-morning-fixed-2026-10-06)
 - [The silence the gateway asked again (fixed 2026-10-03)](#the-silence-the-gateway-asked-again-fixed-2026-10-03)
@@ -83,6 +84,7 @@ never trust a dated narrative for something you are about to act on.
 - [The room never heard the times (fixed 2026-09-28)](#the-room-never-heard-the-times-fixed-2026-09-28)
 - [Answered before the question existed (fixed 2026-09-28)](#answered-before-the-question-existed-fixed-2026-09-28)
 - [The room asked five and reached four (fixed 2026-09-22)](#the-room-asked-five-and-reached-four-fixed-2026-09-22)
+- [ת.ג.ל took her out of the room in fifty-three minutes (2026-10-10)](#תגל-took-her-out-of-the-room-in-fifty-three-minutes-2026-10-10)
 - [The pause the room's invite walked through (fixed 2026-09-27)](#the-pause-the-rooms-invite-walked-through-fixed-2026-09-27)
 - [The room could count, and she could not (changed 2026-09-28)](#the-room-could-count-and-she-could-not-changed-2026-09-28)
 - [The coordinations that died in silence (built 2026-09-28)](#the-coordinations-that-died-in-silence-built-2026-09-28)
@@ -345,6 +347,47 @@ never trust a dated narrative for something you are about to act on.
 - [Merged is not deployed — the drift row (2026-09-04)](#merged-is-not-deployed-the-drift-row-2026-09-04)
 
 ## Gateway, config and upgrades
+
+### The gateway carried sixteen plugins and used five (switched off 2026-10-10)
+
+On a 2GB box the gateway is the process that does not fit: 771MB resident
+plus 544MB in swap on 2026-10-10, 25 `critical` readings from its own
+`[diagnostics/memory]` the day before, and a restart at 00:06 UTC that took
+13 nightly eval scenarios down with it. A bigger droplet was not available
+that week, so the question was what it carries that nobody uses.
+
+Its startup line answers that: `http server listening (16 plugins: anthropic,
+browser, canvas, cua-computer, device-pair, file-transfer, geolocation,
+linux-node, memory-core, ollama, olma-turn, openai, openrouter, talk-voice,
+whatsapp, xai)`. Our config enabled five of them. The other eleven are bundled
+plugins the gateway turns on by default, and `plugins.allow` was never set.
+Every agent's transcript store, all history, had not one call to any tool they
+own (browser, canvas, file_fetch, node_inference, code_execution, x_search),
+and the gateway's environment had no OpenAI, xAI or Ollama credential. Our
+`openrouter/openai/*` refs go through the openrouter provider plugin.
+
+Ten were switched off (`src/intake/unused-plugins.js`,
+`scripts/disable-unused-plugins.js --apply`). device-pair stayed, because it
+is the CLI's own pairing and every `--deliver` rides that handshake. Three
+things were learned doing it:
+
+- **`plugins.entries.<id>.enabled: false`, not `plugins.allow`.** An allowlist
+  must also name what the gateway loads ON DEMAND — elevenlabs for voice
+  notes, document-extract for attachments, neither in the startup sixteen —
+  and a forgotten one is a capability that disappears without an error.
+- **A plugin write restarts the gateway by itself.** The docs say a plugin
+  change needs a restart. The managed gateway does it unasked: `config change
+  requires gateway restart — deferring until … complete`, then a drain, then a
+  full process restart. The drain took 120s, and the whole outage was about
+  3.5 minutes. So run it at a quiet hour, the same as a manual restart.
+- **The saving is small at start.** At about 25s after the restart the
+  gateway read 663MB, against 648–795MB (median about 720) at the same point
+  after the nine restarts before it. The real figure is the steady state over
+  a day, and that is what to compare, not one reading.
+
+`config_guard.checkUnusedPlugins` is a dashboard row when any of the ten is
+not explicitly off. Unset is ON, the same shape as dreaming, so an upgrade
+that resets the entries shows on the board.
 
 ### The first message that reached nobody (repair added 2026-10-07)
 
@@ -3260,6 +3303,48 @@ file.
 which rule paid: `quiet.room_invite_sent` beside `pause.room_invite_sent`.
 Meeting 40's own rows were already spent when this shipped, so Guy heard
 nothing about that coordination — the fix is for the next one.
+
+### ת.ג.ל took her out of the room in fifty-three minutes (2026-10-10)
+
+גלי (u-8) added her to ת.ג.ל 🌺, three women, at 19:48 Israel time ("אשמח
+שננסה לקבוע איתה"), tagged her for "a meeting this week", and by about 20:42
+the room had removed her. Read back from the gateway's file log, which keeps
+the untagged room text the transcript does not:
+
+- **Most of the negotiation happened in the room, untagged, and she never read
+  it.** "לימי באילת עד רביעי", "אז השבוע לא", "רביעי ירד מהפרק יש לי חתונה",
+  "ראשון 18.10 אני בפילאטיס, שני בעבודה, יכולה בשלישי 20/10 או חמישי 22/10":
+  none of it reached a constraint. At 20:36 they gave up on coordinating
+  ("אפשר לקבוע יום קבוע וזהו? אחת לשבועיים"), and the talk moved on to a cat.
+  At 20:41 the room heard "השולחן זז — עכשיו *2* מועדים על הפרק". At 20:21 it
+  had already heard a "על הפרק" list holding a time that was gone a minute
+  later. Both were stamped by `group-voice` off the coordination's state, and
+  neither asked what the room had said since.
+- **תמי was told she was paused.** After eight quiet days the silence clock
+  had paused her (`quiet_ladder`, 2026-10-07), and the room's invite took her
+  one-message allowance with `PAUSED_ROOM_INVITE`, which opens with "The user
+  has PAUSED your messages" and asks the model to say so. She read "זו ההודעה
+  היחידה שתקבלי על זה כי את בהשהייה". She had paused nothing.
+- **"בערב" became 19:00.** גלי's option was saved with a daypart, and
+  `meeting-option-moment.PART_HOURS.evening = 19` anchors it. Asked "באיזו
+  שעה?", the model read the anchor out as an hour. תמי forwarded it to the
+  room: "שיגעה אותי העוזרת שלך… ממתי אנחנו נפגשות ב-19 בערב? כבר לילה בחוץ".
+- Also: the room heard masculine plurals throughout ("כשאתם צריכים אותי",
+  "מי יכול?", "לימור הצטרף"), seven lines in 53 minutes, and a kind question
+  naming padel and poker in a room of women past fifty, which nobody answered.
+  גלי asked for "a new link for the group" and posted her own sign-in link in
+  the room. Nobody used it, and it was revoked that evening.
+
+Nothing in the system noticed the removal: the room stayed `open` and the
+coordination stayed `negotiating`, with a message to תמי still queued. The
+owner cleaned up by hand: the message cancelled, the room retired, the
+coordination cancelled quietly, the link revoked (audit `group.retired`,
+`meeting.cancelled`, `magic_link.revoked`).
+
+**Fixed so far:** a quiet pause is never told it is one (`QUIET_PAUSE_INVITE`
+in `channels/openclaw.js`, chosen off `payload.pausedReason`). A pause they
+took, or a stop they never confirmed, keeps the sentence. The room's
+table-moving lines are a separate change.
 
 ### The pause the room's invite walked through (fixed 2026-09-27)
 
