@@ -624,7 +624,7 @@ test('yellow alerts only on the second consecutive bad night', async () => {
 });
 
 test('sweepEvals: window gate, once-per-night watermark, and the alert pipe', async () => {
-  const night = new Date('2026-08-29T01:30:00Z').getTime(); // 04:30 IL
+  const night = new Date('2026-08-30T01:30:00Z').getTime(); // 04:30 IL, a Sunday — a run night
   const sent = [];
   const deps = {
     now: night,
@@ -633,7 +633,7 @@ test('sweepEvals: window gate, once-per-night watermark, and the alert pipe', as
     complete: judgePass,
   };
   // outside the window → skipped
-  const day = await evalsJob.sweepEvals(db.pool, { ...deps, now: new Date('2026-08-29T12:00:00Z').getTime() });
+  const day = await evalsJob.sweepEvals(db.pool, { ...deps, now: new Date('2026-08-30T12:00:00Z').getTime() });
   assert.equal(day.skipped, 'outside window');
 
   const first = await evalsJob.sweepEvals(db.pool, { ...deps });
@@ -653,7 +653,7 @@ test('sweepEvals: window gate, once-per-night watermark, and the alert pipe', as
 
   // ...morning. The first tick inside civil hours delivers it, on the same
   // raw pipe as before — the channel was never the problem, the hour was.
-  const morning = new Date('2026-08-29T06:30:00Z').getTime(); // 09:30 IL
+  const morning = new Date('2026-08-30T06:30:00Z').getTime(); // 09:30 IL
   const out = await evalsJob.sweepEvals(db.pool, { ...deps, now: morning });
   assert.equal(out.skipped, 'outside window', 'the suite does not re-run to deliver');
   assert.equal(out.alerted, true);
@@ -663,6 +663,29 @@ test('sweepEvals: window gate, once-per-night watermark, and the alert pipe', as
   // Delivered once, and the flag is cleared — a later tick must not repeat it.
   await evalsJob.sweepEvals(db.pool, { ...deps, now: morning + 3600_000 });
   assert.equal(sent.length, 1, 'an alert delivered is an alert finished');
+});
+
+// Three nights a week, not seven (owner, 2026-10-10): the suite is the box's
+// heaviest regular spike on 2GB. A night off is skipped before the watermark,
+// so it never stamps and never runs — and a queued alert is still delivered.
+test('sweepEvals: only Sunday, Tuesday and Thursday nights run', async () => {
+  // 2026-09-05 is a Saturday, 09-06 a Sunday, 09-07 a Monday, 09-08 a Tuesday.
+  const at = (d) => new Date(`2026-09-${d}T01:30:00Z`).getTime();
+  assert.equal(evalsJob.isRunNight(at('05')), false, 'Saturday: the quiet day changes what scenarios may say');
+  assert.equal(evalsJob.isRunNight(at('06')), true);
+  assert.equal(evalsJob.isRunNight(at('07')), false);
+  assert.equal(evalsJob.isRunNight(at('08')), true);
+  const before = await withTx(db.pool, (c) => flagsDomain.getFlag(c, evalsJob.LAST_RUN_FLAG));
+  const off = await evalsJob.sweepEvals(db.pool, { now: at('07'), runTurn: () => { throw new Error('must not run'); } });
+  assert.equal(off.skipped, 'not a run night');
+  assert.equal(await withTx(db.pool, (c) => flagsDomain.getFlag(c, evalsJob.LAST_RUN_FLAG)), before,
+    'a night off stamps nothing');
+});
+
+test('the admin page calls the suite missing only after the longest gap between run nights', () => {
+  assert.equal(evalsJob.staleAfterHours(), 84, 'Thursday to Sunday is three days, plus half a day');
+  assert.equal(evalsJob.staleAfterHours([0, 1, 2, 3, 4, 5, 6]), 36, 'every night is the old 36h');
+  assert.equal(evalsJob.staleAfterHours([3]), 180, 'one night a week');
 });
 
 // The half that makes this safe to defer: a pipe that fails must NOT consume
@@ -1313,10 +1336,15 @@ test('the admin strip is RED for a run that measured nothing, and for a nightly 
     assert.equal(pills[0].level, 'bad');
     assert.match(pills[0].text, /0 מתוך 16/);
 
-    await c.query(`UPDATE eval_runs SET started_at = now() - interval '50 hours', errors = 0, greens = 16`);
+    // Three run nights a week: Thursday to Sunday is a normal 72h gap and
+    // must not be red; past 84h a run night was missed.
+    await c.query(`UPDATE eval_runs SET started_at = now() - interval '75 hours', errors = 0, greens = 16`);
+    pills = await evalPills(c);
+    assert.deepEqual(pills, [], 'the weekend gap between Thursday and Sunday is not a missed run');
+    await c.query(`UPDATE eval_runs SET started_at = now() - interval '90 hours'`);
     pills = await evalPills(c);
     assert.deepEqual(pills.map((p) => p.level), ['bad']);
-    assert.match(pills[0].text, /50 שעות/, 'a nightly that stopped happening is red too');
+    assert.match(pills[0].text, /90 שעות/, 'a nightly that stopped happening is red too');
   } finally {
     await c.query('ROLLBACK');
     c.release();

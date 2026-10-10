@@ -1,6 +1,7 @@
 'use strict';
 // The nightly behavioral eval sweep. Ticked hourly by brokerd like every slow
-// job; runs once per night inside the small-hours window, walks every
+// job; runs once a night on three nights a week (RUN_UTC_WEEKDAYS), inside
+// the small-hours window, walks every
 // scenario sequentially (one lane, one 1-vCPU box), persists results, and
 // alerts the operator on the two channels agreed 2026-08-27:
 //
@@ -30,6 +31,29 @@ const LAST_RUN_FLAG = 'evals_last_run_date';
 // 00:00-02:59 UTC = 03:00-05:59 Israel — after the planning pass, before
 // anyone wakes up. A flag can move it without a deploy.
 const WINDOW_UTC_HOURS = [0, 1, 2];
+
+// And not every night: Sunday, Tuesday and Thursday (UTC, which is also the
+// Israeli date inside the window). Owner, 2026-10-10. The suite is the box's
+// heaviest regular spike, about 850MB of gateway for an hour on a 2GB box,
+// and the restart that took 13 scenarios down at 00:06 that night was the
+// box running out. Three runs a week still catch a regression within two
+// days. Saturday is left out on purpose: the quiet day changes what the
+// scheduling scenarios may say (the chase scenario's red in run #114).
+const RUN_UTC_WEEKDAYS = [0, 2, 4];
+
+function isRunNight(now) {
+  return RUN_UTC_WEEKDAYS.includes(new Date(now).getUTCDay());
+}
+
+// How old the newest scheduled run may be before the admin page calls it
+// missing: the longest gap between two run nights, plus the half-day the old
+// nightly rule allowed (36h on a 24h cadence).
+function staleAfterHours(days = RUN_UTC_WEEKDAYS) {
+  const sorted = [...days].sort((x, y) => x - y);
+  let gap = 0;
+  sorted.forEach((d, i) => { gap = Math.max(gap, ((sorted[(i + 1) % sorted.length] - d + 6) % 7) + 1); });
+  return gap * 24 + 12;
+}
 
 // Where a night's alert waits until morning. The suite still runs at 03:00 —
 // it is cheap, the box is quiet, and the results are ready by breakfast — but
@@ -247,6 +271,7 @@ async function sweepEvals(pool, deps = {}) {
   // 03:00 is delivered by the tick that first finds the morning open.
   const flushed = await flushPendingAlert(pool, deps, now);
   if (!inWindow(now)) return { skipped: 'outside window', ...(flushed || {}) };
+  if (!isRunNight(now)) return { skipped: 'not a run night', ...(flushed || {}) };
   const today = utcDateOf(now);
   const last = await withTx(pool, (c) => flagsDomain.getFlag(c, LAST_RUN_FLAG));
   if (last === today) return { skipped: 'already ran tonight' };
@@ -285,6 +310,7 @@ async function sweepEvals(pool, deps = {}) {
 
 module.exports = {
   sweepEvals, runEvalSuite, alertText, previousStatus, inWindow,
+  isRunNight, staleAfterHours, RUN_UTC_WEEKDAYS,
   runScenarioTrials, worstOf, SEVERITY,
   flushPendingAlert, alertHoursOpen,
   LAST_RUN_FLAG, WINDOW_UTC_HOURS, PILOT_TRIGGER, PENDING_ALERT_FLAG, ALERT_TZ,
